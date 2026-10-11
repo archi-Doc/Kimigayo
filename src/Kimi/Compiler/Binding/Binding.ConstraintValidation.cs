@@ -1,11 +1,43 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // The causes of each pair occurrence that a final check failed with a Language cause, for its evidence and for the separate record
+    // of an unproven target role (Check).
+    private Dictionary<Koto, TypeRoleCause>? formationCauses;
+
+    // The first failed conformance a check's Error rests on: one resting on its specification, or one limited by OCC-X outside
+    // conformance verification (ResolveConformance). A consumer clears it before its proof and takes it after (TakeFailedConformance).
+    private BoundConformancePath? failedConformance;
+
+    // Conformance verifications and agreements in progress; inside them a conformance limited by OCC-X stays Unknown.
+    private int conformanceChecks;
+
+    // The conformance uses whose completeness rests on a specification, settled at publication (SettleSpecificationLinks).
+    private List<Koto>? specificationLinks;
+
+    // The independent causes of an unproven Type role or pair formation (TypeRoleCauses).
+    [Flags]
+    private enum TypeRoleCause : byte
+    {
+        None = 0,
+
+        // SPEC 8.1.2: no outer-Origin slot, although a borrow binding is admitted (MissingOriginBinding_Kd).
+        MissingSlot = 1,
+
+        // SPEC 8.1.2: a static outer-Origin slot, although an exclusive borrow binding is admitted (InvalidOriginBinding_Kd).
+        StaticExclusive = 2,
+
+        // SPEC 8.4.7.2: the target is not proven a value Type or an Object Target (UnprovenConstraint_Kd).
+        Role = 4,
+    }
+
     /// <summary>
     /// Computes the admitted set of a Semantics binding from every available premise on it (SPEC 8.7):
     /// names and categories contribute their members, and/or/not intersect, unite and complement,
@@ -54,6 +86,16 @@ public sealed partial class Binding
             ConstraintKind.And => SemanticsSet(constraint.Left!) & SemanticsSet(constraint.Right!),
             ConstraintKind.Or => SemanticsSet(constraint.Left!) | SemanticsSet(constraint.Right!),
             _ => SemanticsMask.All & ~SemanticsSet(constraint.Left!),
+        };
+
+    /// <summary>Gets the subject of one clause's proposition (SPEC 8.7): every atom of `T is A or B`, `T is A and B` or `T is not A`
+    /// carries the clause's subject and the composite only its operands; an Error or Unresolved atom has none.</summary>
+    private static BoundType? ClauseSubject(BoundConstraint constraint)
+        => constraint.Kind switch
+        {
+            ConstraintKind.And or ConstraintKind.Or => ClauseSubject(constraint.Left!) ?? ClauseSubject(constraint.Right!),
+            ConstraintKind.Not => ClauseSubject(constraint.Left!),
+            _ => constraint.Subject,
         };
 
     private static bool InvalidConstraintRequirement(BoundConstraint constraint)
@@ -160,6 +202,21 @@ public sealed partial class Binding
         }
 
         return proof;
+    }
+
+    // Late witness/Effect failures invalidate declarations even when normalization already erased
+    // their projections. Reuse the ordinary validation until declaration states stop changing.
+    private void InvalidateProjectionCertificates(BindingMode mode)
+    {
+        while (this.ValidateClosedTypeConstraints(mode) | this.ValidateDeclarationProjectionInputs(mode) | this.ValidateConstraintEnvironments(sourcesOnly: true))
+        {
+            this.ClearCapabilityResults();
+            this.ValidateBaseDeclarations(mode);
+            this.ValidateProperties(mode);
+            this.ValidateConformances(mode, true);
+        }
+
+        this.ClearCapabilityResults();
     }
 
     private bool ValidateDeclarationProjectionInputs(BindingMode mode)
@@ -331,7 +388,7 @@ public sealed partial class Binding
                 this.RequireConstraint(clause, this.ProveConstraint(constraint, this.ConstraintScope(clause)), mode);
             }
 
-            if (node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto container } type && container.ConstraintNodes.Count != 0 &&
+            if (node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto container } type && container.ConstraintNodes.Count != 0 && !this.inferredConstructorTargets.Contains(node) &&
                 (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0))
             {
                 var scope = this.ConstraintScope(node);
@@ -362,7 +419,7 @@ public sealed partial class Binding
         for (var i = 0; i < this.obligations.Count; i++)
         {
             var obligation = this.obligations[i];
-            if (obligation.Deadline == BindingDeadline.Definition && this.ProveTypeRole(obligation))
+            if (obligation.Deadline == BindingDeadline.Definition && this.TypeRoleCauses(obligation) == TypeRoleCause.None)
             {
                 this.obligationSet.Remove(obligation);
                 continue;
@@ -374,11 +431,103 @@ public sealed partial class Binding
         this.obligations.RemoveRange(remaining, this.obligations.Count - remaining);
     }
 
+    // SPEC 23.3.6.4: an unproven Definition obligation publishes its Language cause, a missing slot before a static exclusive one, and
+    // keeps an unproven target role of the same occurrence as a separate record; every final check recomputes the causes.
+    private void FailTypeRole(BindingObligation obligation)
+    {
+        var causes = this.TypeRoleCauses(obligation);
+        var failure = (causes & TypeRoleCause.MissingSlot) != 0 ? BindingFailure.MissingOrigin
+            : (causes & TypeRoleCause.StaticExclusive) != 0 ? BindingFailure.InvalidOrigin
+            : BindingFailure.UnprovenConstraint;
+        this.Fail(obligation.Use, failure);
+        if (failure != BindingFailure.UnprovenConstraint)
+        {
+            (this.formationCauses ??= new(ReferenceEqualityComparer.Instance))[obligation.Use] = causes;
+        }
+    }
+
+    // SPEC 23.3.6.4: a call or fit that reads a Field whose declared pair occurrence failed with a Language cause rests on that failure:
+    // the Field's Type, completed only at the Definition deadline, is what the read could not use. Returns that occurrence.
+    private Koto? UnformedFieldRead(Koto node)
+    {
+        if (this.formationCauses is not { Count: > 0 } causes)
+        {
+            return null;
+        }
+
+        if (node is InvocationKoto call)
+        {
+            for (var i = 0; i < call.ArgumentNodes.Count; i++)
+            {
+                if (FieldOccurrence(call.ArgumentNodes[i], causes) is { } argument)
+                {
+                    return argument;
+                }
+            }
+
+            return null;
+        }
+
+        return FieldOccurrence(node, causes);
+
+        // The failed occurrence whose nearest enclosing declaration is the Field or property that the member read selects.
+        static Koto? FieldOccurrence(Koto read, Dictionary<Koto, TypeRoleCause> causes)
+        {
+            if (KotoHelper.UnwrapParentheses(read) is not MemberAccessKoto { BoundSymbol.Declaration: { } member })
+            {
+                return null;
+            }
+
+            foreach (var cause in causes.Keys)
+            {
+                for (var at = cause.Parent; at is not null; at = at.Parent)
+                {
+                    if (ReferenceEquals(at, member))
+                    {
+                        return cause;
+                    }
+
+                    if (at is DeclarationKoto)
+                    {
+                        break;
+                    }
+                }
+            }
+
+            return null;
+        }
+    }
+
+    // SPEC 8.1.2: the evidence of a pair occurrence failed with a Language cause.
+    private bool ReportFormationCause(Koto node, DiagnosticRequirement requirement, DiagnosticCode code)
+    {
+        if (this.formationCauses?.TryGetValue(node, out var causes) != true || node is not TypeSemanticsKoto { BoundSymbol.Pair: { } pair } application ||
+            pair.WholeType is not { } whole)
+        {
+            return false;
+        }
+
+        var admitted = this.AdmittedSemantics(whole, this.ConstraintScope(node));
+        var text = new StringBuilder();
+        AppendSemantics(text, admitted & ((causes & TypeRoleCause.MissingSlot) != 0 ? SemanticsMask.Borrow : SemanticsMask.Uniq | SemanticsMask.ObjUniq), " or ");
+        var name = application.SemanticsParameter!;
+        if ((causes & TypeRoleCause.MissingSlot) != 0)
+        {
+            node.Report(requirement, code, evidence: [$"{name} admits {text}, and a borrow needs an outer-Origin slot"], note: "A pair layer stores an outer Origin in its binder's borrow cases, which this occurrence does not name (SPEC 8.1.2)");
+        }
+        else
+        {
+            node.Report(requirement, code, evidence: [$"{name} admits {text}, which a static Origin never admits"], note: "A static outer-Origin slot admits no exclusive borrow (SPEC 8.1.2)");
+        }
+
+        return true;
+    }
+
     private void RequireConstraint(Koto use, ConstraintProof proof, BindingMode mode, Koto? diagnosticCause = null)
     {
         if (proof == ConstraintProof.Error)
         {
-            this.FailConstraint(use, diagnosticCause);
+            this.FailConstraint(use, diagnosticCause ?? this.TakeFailedConformance());
         }
         else if (proof == ConstraintProof.Refuted)
         {
@@ -398,52 +547,84 @@ public sealed partial class Binding
         }
     }
 
-    private bool ProveTypeRole(BindingObligation obligation)
+    // SPEC 23.3.6.4: the Use of the failed conformance that the Error a check just consumed rests on; a limit a failing check needs is
+    // published by Binding.Check.
+    private Koto? TakeFailedConformance()
+    {
+        if (this.failedConformance is not { } path)
+        {
+            return null;
+        }
+
+        this.failedConformance = null;
+        path.Needed |= path.Unsupported;
+        return path.Use;
+    }
+
+    // SPEC 8.1.1, 8.1.2, 8.4.7.2: the independent causes for which a Type occurrence's role or pair formation is not proven, None when
+    // it is. A missing outer-Origin slot under an admitted borrow and a static slot under an admitted exclusive borrow are Language
+    // causes; a target that is not proven a value Type or an Object Target is a Proof cause, judged separately.
+    private TypeRoleCause TypeRoleCauses(BindingObligation obligation)
     {
         if (obligation.Type is not { } type)
         {
-            return false;
+            return TypeRoleCause.Role;
         }
 
         var scope = this.ConstraintScope(obligation.Use);
         var objectTarget = obligation.Use is TypeSemanticsKoto { Type: not null, SemanticsKind: SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.ObjRef or SemanticsKind.ObjUniq };
         if (obligation.Kind == BindingObligationKind.TypeRole)
         {
-            return this.HasValueRole(type, scope, objectTarget);
+            return this.HasValueRole(type, scope, objectTarget) ? TypeRoleCause.None : TypeRoleCause.Role;
         }
 
-        if (obligation.Kind == BindingObligationKind.TypeFormation &&
-            obligation.Use is TypeSemanticsKoto { SemanticsParameter: not null, BoundType: { } applied } application && application.BoundSymbol?.Pair?.WholeType is { } whole)
+        if (obligation.Kind != BindingObligationKind.TypeFormation ||
+            obligation.Use is not TypeSemanticsKoto { SemanticsParameter: not null, BoundType: { } applied } application || application.BoundSymbol?.Pair?.WholeType is not { } whole)
         {
-            // SPEC 8.1.1, 8.1.2: every admitted Semantics of `s` must form a valid Type with `U`;
-            // object-family bindings additionally need `U` to be an Object Target.
-            var admitted = this.AdmittedSemantics(whole, scope);
-            const SemanticsMask objectFamily = SemanticsMask.Object | SemanticsMask.ObjectBorrow;
-            if (admitted == SemanticsMask.None)
-            {
-                return false;
-            }
-
-            if (application.OriginExpression is not null || application.OriginName is not null || (applied.Kind == BoundTypeKind.SemanticsApplication && applied.Origin is not null))
-            {
-                // SPEC 8.1.2: an outer-Origin slot, written or recorded for a direct input, is active only for the admitted
-                // borrow bindings and contributes nothing for the others. A static Origin admits no exclusive borrow.
-                if (applied.Origin?.Kind == OriginKind.Static && (admitted & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0)
-                {
-                    return false;
-                }
-
-                return (applied.Kind == BoundTypeKind.Parameter || (admitted & ~objectFamily) == 0 || this.HasValueRole(type, scope, false)) &&
-                    ((admitted & objectFamily) == 0 || this.HasValueRole(type, scope, true));
-            }
-
-            // Without an Origin slot, no borrow binding can be admitted; owning objects need no Origin.
-            return (admitted & SemanticsMask.Borrow) == 0 &&
-                ((admitted & SemanticsMask.Object) == 0 || this.HasValueRole(type, scope, true)) &&
-                ((admitted & (SemanticsMask.Owner | SemanticsMask.Raw)) == 0 || this.HasValueRole(type, scope, false));
+            return TypeRoleCause.Role;
         }
 
-        return false;
+        // SPEC 8.1.1, 8.1.2: every admitted Semantics of `s` must form a valid Type with `U`; object-family bindings additionally need `U`
+        // to be an Object Target.
+        var admitted = this.AdmittedSemantics(whole, scope);
+        const SemanticsMask objectFamily = SemanticsMask.Object | SemanticsMask.ObjectBorrow;
+        if (admitted == SemanticsMask.None)
+        {
+            return TypeRoleCause.Role;
+        }
+
+        var causes = TypeRoleCause.None;
+        if (application.OriginExpression is not null || application.OriginName is not null || (applied.Kind == BoundTypeKind.SemanticsApplication && applied.Origin is not null))
+        {
+            // SPEC 8.1.2: an outer-Origin slot, written or recorded for a direct input, is active only for the admitted borrow
+            // bindings and contributes nothing for the others. A static Origin admits no exclusive borrow.
+            if (applied.Origin?.Kind == OriginKind.Static && (admitted & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0)
+            {
+                causes |= TypeRoleCause.StaticExclusive;
+            }
+
+            if (!(applied.Kind == BoundTypeKind.Parameter || (admitted & ~objectFamily) == 0 || this.HasValueRole(type, scope, false)) ||
+                ((admitted & objectFamily) != 0 && !this.HasValueRole(type, scope, true)))
+            {
+                causes |= TypeRoleCause.Role;
+            }
+
+            return causes;
+        }
+
+        // Without an Origin slot, no borrow binding can be admitted; owning objects need no Origin.
+        if ((admitted & SemanticsMask.Borrow) != 0)
+        {
+            causes |= TypeRoleCause.MissingSlot;
+        }
+
+        if (((admitted & SemanticsMask.Object) != 0 && !this.HasValueRole(type, scope, true)) ||
+            ((admitted & (SemanticsMask.Owner | SemanticsMask.Raw)) != 0 && !this.HasValueRole(type, scope, false)))
+        {
+            causes |= TypeRoleCause.Role;
+        }
+
+        return causes;
     }
 
     /// <summary>Decides the value-Type role of a generic target, or its Object Target role (SPEC 8.4.7.2).</summary>
@@ -470,6 +651,11 @@ public sealed partial class Binding
         }
         else if (type.Kind is not (BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection))
         {
+            return true;
+        }
+        else if (this.RequestCapability(type, this.Library.ObjectPayload, scope) == ConstraintProof.Proven)
+        {
+            // SPEC 8.4.7.2: ObjectPayload proves a complete owner value Type, including a pair's target.
             return true;
         }
         else if (type.Kind == BoundTypeKind.TargetProjection && type.Symbol?.WholeType is { } whole && this.HasSemanticsRole(whole, SemanticsMask.Owner | SemanticsMask.ValueBorrow | SemanticsMask.Raw, scope))

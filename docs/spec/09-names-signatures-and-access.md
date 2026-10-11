@@ -253,29 +253,31 @@ A nearer group `X` does not stop Core lookup for an annotation `X`, but it does 
 **No implicit receiver or inheritance.** In the Type and Value namespaces, an unqualified Name never supplies a receiver and never selects a declaration that a struct inherits from its bases. When stage 2 or 3 searches a Container `C`, lookup stops there with `QualificationRequired_Kd` (Error, `Language`) instead of searching outward if `C`'s own eligible declarations are all instance members, or if `C` is a struct without own eligible declarations and an examination of its base layers finds a declaration of the Name. The examination visits the direct base, then its base, one layer at a time, over the completed declaration set (§6.2.2), conditional members included, and stops at the first layer with an accessible, role-compatible declaration of the Name, as inherited ordinary lookup does (§9.5). It reads declarations only: it needs no base Type or Origin arguments and selects nothing. Accessibility is judged by the effective access domain at the use (§9.3.1); the protected receiver restriction concerns an explicit receiver and does not apply. A base's generic parameters and `Self` are not members and are never examined. A struct's base clause, with its arguments, resolves without examining that struct's own base layers; a dependency cycle that an examination still forms is an unresolvable dependency cycle, as when `struct S : S.N` is declared and resolving the base clause of the nested `N` examines the base layers of `S`, which begin with `N`. In the two-namespace exploration of §9.5, such a stop is a failed path of its namespace. Instance members are reached with `self.member` or another explicit receiver, and other inherited declarations with `Self.member` or `C.member`. The rule does not concern Origin lookup (§15.3.4) or Label lookup.
 
 ```kimi
-func marker() -> i32 => 1
+group Outer
+    func marker() -> i32 => 1
 
-struct Node
+    struct Node
 
-open struct Base
-    protected var count: i32 = 0
+    open struct Base
+        protected var count: i32 = 0
 
-    public func marker() -> i32 => 25
+        public func marker() -> i32 => 25
 
-    public struct Node
+        public struct Node
 
-struct Derived : Base
-    func total(self) -> i32 => self.count + Self.marker() // Valid: both inherited members are qualified.
+    struct Derived : Base
+        func total(self) -> i32 => self.count + Self.marker() // Valid: both inherited members are qualified.
 
-    func root() -> i32 => ::marker()                      // Valid: selects the root marker, 1.
+        func root() -> i32 => ::Outer.marker() // Valid: selects Outer.marker, 1.
 
-    func keep(value: Self.Node) -> () => ()               // Valid: Base.Node (§9.6.1).
+        func keep(value: Self.Node) -> () => ()               // Valid: Base.Node (§9.6.1).
 
-    func first() -> i32 => marker()                       // Error: lookup finds Base.marker and stops.
+        func first() -> i32 => marker()                       // Error: lookup finds Base.marker and stops.
 
-    func second(self) -> i32 => count                     // Error: an inherited instance member; write self.count.
+        func second(self) -> i32 => count                     // Error: an inherited instance member; write self.count.
 
-    func third(value: Node) -> () => ()                   // Error: the inherited Node; write Self.Node or ::Node.
+        // Error: the inherited Node; write Self.Node or ::Outer.Node.
+        func third(value: Node) -> () => ()
 ```
 
 A bare `marker()` in a Container nested in `Derived` stops in the same way at stage 3, and one in a fragment of `Derived` without the base clause stops at stage 2.
@@ -299,6 +301,8 @@ A.writeLine("Hello")     // Search dependency A, without fallback to Console.
 ```
 
 ## 9.5. Qualified and inherited lookup
+
+A valid override updates an implementation without introducing a lookup layer or hiding inherited overloads; [slot selection](virtual-dispatch.md#2-slot-identity-and-selection) fixes the original public declaration. Direct base calls retain their lexical lookup origin.
 
 The first component of `A.B.C` is resolved by ordinary lookup with its syntactic role; after that, only the selected target's members are searched, never its parents. Intermediate Type-side components are Qualifiers, and the final role follows the syntax, such as Core in a Type annotation or Declaration Container in an alias. [Associated-Type projections](08-generics-constraints-and-contracts.md#843-associated-types) such as `T.(C).Element` and the short form `T.Element` follow §8.4.3; Binding distinguishes them from ordinary qualified paths, and distinct successful interpretations remain ambiguous.
 
@@ -354,7 +358,7 @@ These are member-receiver operations only, never Exact conversions or [argument 
 
 An ordinary borrowed-receiver implementation used through projection requires published [ObjectCallCompatible Proven](12-expressions.md#1244-object-receiver-compatibility), checked after overload selection. A use of a NotProven implementation is rejected without inspecting the private body or retrying overload selection, and the status never excludes a candidate. A method that replaces all of `self` may work on a complete `B` but cannot replace the base inside `D`. Neither projection nor an escaping unrestricted exclusive borrow may permit whole-base Move, Replacement, reconstruction or acquisition of a sliced owner. The body keeps its declaration's Self and result contract. Receiver-derived results keep the projected Loan and cannot outlive the original storage; construction, destruction and ancestor-completeness restrictions still apply.
 
-For Object Semantics, the receiver of the statically selected ObjectCallCompatible implementation is adjusted, preserving the complete object's identity, Dynamic Type, metadata and cleanup. Projection creates no public object view or owning or counting handle and changes no reference count. Projection cannot satisfy an owning receiver requirement (`owner/B`, `obj/B`, `rc/B` or `arc/B`); that needs an independently permitted acquisition or an explicit object upcast.
+For Object Semantics, the receiver of the statically selected ObjectCallCompatible implementation is adjusted, preserving the complete object's identity, Dynamic Type, metadata and cleanup. Projection creates no standalone View expression, owning handle or count change. Exposing an object base receiver requires the common [Owned erasure evidence](virtual-dispatch.md#5-receiver-safety-and-completeness), and virtual Loans protect the complete original payload. Projection cannot satisfy an owning receiver requirement (`owner/B`, `obj/B`, `rc/B` or `arc/B`); that needs an independently permitted acquisition or an explicit object upcast.
 
 Projection is confined to this member operation. It adds no standalone base-view expression, argument or result conversion, subtype relation, bound-method value or change to the explicit adaptation tables. The complete Sealed payload receiver path (§12.4.4) is separate: inherited Self remains the defining base, so a non-open derived Type cannot use that path to replace its base subobject.
 
@@ -363,6 +367,10 @@ Projection is confined to this member operation. It adds no standalone base-view
 After lookup commits, Type candidates are filtered by the number and kinds of explicit Type arguments; the arguments themselves resolve in the use-site context. Exactly one candidate must remain: zero means a Type-argument mismatch and several mean ambiguity. The selected Type's Constraints are checked afterward, and a failure never tries another Type.
 
 For example, `Box<i32>` selects `Box<T>` from a stage containing `Box<T>` and `Box<T, U>`, while a nearer stage containing only `Box<T, U>` blocks an outer `Box<T>`. Different same-arity Types imported at one stage remain ambiguous. Legitimately unresolved argument kinds defer selection with its stage fixed; malformed arguments and unknown Names are errors. Omitted Type arguments use only the inference their construct permits.
+
+For the final construction target in `A.init(...)` with its own Type-argument list omitted, first commit the ordinary lookup stage, role and access. Deduplicate equal references by declaration and normalized outer bindings. If zero-own-arity references exist, select among them; otherwise exactly one generic reference must remain. Several distinct references at the selected priority are ambiguous. Constructor inputs and the expected Type do not disambiguate this lookup. A later failure never retries another declaration or stage. Adding a same-name nongeneric Type can therefore retarget an omitted form.
+
+`Outer<i32>.Inner.init(value)` may infer only `Inner`'s own slots. `Outer.Inner.init(value)` cannot infer an unbound `Outer<T>`. Explicit Type arguments keep the ordinary arity rules above.
 
 ### 9.6.1. Bound container paths
 

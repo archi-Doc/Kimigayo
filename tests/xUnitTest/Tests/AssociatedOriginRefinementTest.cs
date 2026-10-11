@@ -16,7 +16,7 @@ public class AssociatedOriginRefinementTest
         var c = MinimalEmissionTest.Analyze(Declarations + "func f(x: ref/i32 during a) -> S.(Parent).Item(a) => 42");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var f = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
-        Assert.Same(BoundType.I32, f.ReturnType!.BoundType);
+        Assert.Same(BoundType.I32, f.ReturnType!.TypeOf());
     }
 
     [Fact]

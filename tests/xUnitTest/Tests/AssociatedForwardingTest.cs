@@ -14,6 +14,10 @@ public class AssociatedForwardingTest
     public void EmitsUnchangedMilestone()
         => ScalarEmissionTest.EmitFixture("AssociatedForwardingMilestone19", MilestoneSource, "Associated numbers are 21, 21.\nAssociated flags are true, true.\nContract forwarding finished.\n");
 
+    [Fact]
+    public void EmitsMilestoneWithAnInferredBinding()
+        => ScalarEmissionTest.EmitFixture("AssociatedInferenceForwarding", MilestoneSource.Replace("    associate Source.Element is i32\n", string.Empty, StringComparison.Ordinal), "Associated numbers are 21, 21.\nAssociated flags are true, true.\nContract forwarding finished.\n");
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmBindingRetainsAssociatedEvidenceWithoutAllocations()
@@ -37,31 +41,32 @@ public class AssociatedForwardingTest
         var c = MinimalEmissionTest.Analyze(MilestoneSource);
         Assert.True(c.Binding.Result.IsComplete);
         var requirement = c.Ownership.Bodies.SelectMany(x => x.Operations).Select(x => x.Source).OfType<InvocationKoto>()
-            .Select(x => x.BoundCall).First(x => x?.Target.Declaration is FunctionKoto { IsRequirement: true })!;
+            .Select(x => x.CallOf()).First(x => x?.Target.Declaration is FunctionKoto { IsRequirement: true })!;
         var main = c.Ownership.Bodies.Single(x => x.Function.Name == "main");
         foreach (var operation in main.Operations)
         {
-            if (operation.Source is InvocationKoto { BoundCall: { } call } && call.Target.Name is "readTwice" or "readNumber")
+            if (operation.Source is InvocationKoto invocation && invocation.CallOf() is { } call && call.Target.Name is "readTwice" or "readNumber")
             {
-                Assert.Equal(ConstraintProof.Proven, c.Binding.ResolveConformance(call.TypeArguments[0]!, requirement.Target.Scope.Owner.BoundSymbol!, main.Function, out var path));
+                Assert.Equal(ConstraintProof.Proven, c.Binding.ResolveConformance(call.TypeArguments[0]!, requirement.Target.Scope.Owner.SymbolOf()!, main.Function, out var path));
                 Assert.True(path!.IsVerified);
-                var implementation = path.GetImplementation(requirement.Target);
+                var implementation = path.GetImplementation(new(requirement.Target, requirement.RequirementContract!));
                 Assert.NotNull(implementation);
-                Assert.Equal("Wrapper", implementation.Scope.Owner.BoundSymbol!.Name);
+                Assert.Equal("Wrapper", implementation.Scope.Owner.SymbolOf()!.Name);
                 Assert.NotNull(implementation.ConditionalDeclaration);
             }
         }
     }
 
     [Theory]
-    [InlineData("Missing", "InvalidAssociatedType_Kd")]
+    [InlineData("Missing", "AssociatedTypeInferenceFailed_Kd")]
     [InlineData("Duplicate", "DuplicateBinding_Kd")]
     [InlineData("Contradictory", "InvalidAssociatedType_Kd")]
     public void InvalidMappingsCannotPublishIr(string mutation, string diagnostic)
     {
         var source = mutation switch
         {
-            "Missing" => MilestoneSource.Replace("    associate Source.Element is i32\n", string.Empty, StringComparison.Ordinal),
+            "Missing" => MilestoneSource.Replace("    associate Source.Element is i32\n", string.Empty, StringComparison.Ordinal)
+                .Replace("public func read(self: ref/Self) -> i32", "public func read(self: ref/Self) -> Self.Element", StringComparison.Ordinal),
             "Duplicate" => MilestoneSource.Replace("    Self is Source\n", "    Self is Source\n    Self is Source\n", StringComparison.Ordinal),
             _ => MilestoneSource.Replace("    associate Source.Element is i32\n", "    associate Source.Element is i32\n    associate Source.Element is bool\n", StringComparison.Ordinal),
         };
@@ -69,7 +74,7 @@ public class AssociatedForwardingTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code.ToString() == diagnostic);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -96,7 +101,7 @@ public class AssociatedForwardingTest
     public void MilestoneOwnershipIsVerified()
     {
         var c = MinimalEmissionTest.Analyze(MilestoneSource);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]
@@ -115,7 +120,7 @@ public class AssociatedForwardingTest
     [Theory]
     [InlineData("wrongEquality")]
     [InlineData("missingPremise")]
-    [InlineData("missingAssociated")]
+    [InlineData("missingIndependentEvidence")]
     [InlineData("exclusiveReceiver")]
     [InlineData("missingDefinitionPremise")]
     public void RejectsInvalidEvidence(string mutation)
@@ -125,7 +130,8 @@ public class AssociatedForwardingTest
         {
             "wrongEquality" => source.Replace("let nested =", "let invalid = readNumber(flag@ref)\n    let nested =", StringComparison.Ordinal),
             "missingPremise" => source.Replace("    Console.writeLine(\"Contract forwarding finished.\")", "    let invalid = readTwice(storageOnly@ref)", StringComparison.Ordinal),
-            "missingAssociated" => source.Replace("    associate Source.Element is i32\n", string.Empty, StringComparison.Ordinal),
+            "missingIndependentEvidence" => source.Replace("    associate Source.Element is i32\n", string.Empty, StringComparison.Ordinal)
+                .Replace("public func read(self: ref/Self) -> i32", "public func read(self: ref/Self) -> Self.Element", StringComparison.Ordinal),
             "exclusiveReceiver" => source.Replace("public func read(self: ref/Self) -> i32", "public func read(self: uniq/Self) -> i32", StringComparison.Ordinal),
             _ => source.Replace("    T is Source\n    let first", "    let first", StringComparison.Ordinal),
         };

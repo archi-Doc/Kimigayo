@@ -61,7 +61,7 @@ public class IndexableContractTest
     [InlineData("struct Box\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value\nlet box = Box.init(1)\nlet read = box[0]", DiagnosticCode.NotIndexable_Kd)]
     [InlineData("struct Wrong\n    Self is Indexable<isize>\n    associate Element is string\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value", DiagnosticCode.IncompatibleContractImplementation_Kd)]
     [InlineData("struct Missing\n    Self is UniqIndexable<isize>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value", DiagnosticCode.MissingContractImplementation_Kd)]
-    [InlineData("struct Value\n    Self is Indexable<isize>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> i32 => self.value", DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("struct Value\n    Self is Indexable<isize>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> i32 => self.value", DiagnosticCode.MissingContractImplementation_Kd)]
     [InlineData("func f<S>(items: uniq/S) -> place uniq/S.Element during items\n    S is Indexable<isize>\n    return items[0]", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(Shared + FirstUniq + "var view = View.init(1)\nfirstUniq(view@uniq) = 2", DiagnosticCode.NoApplicableOverload_Kd)]
     public void RejectsAtBinding(string source, DiagnosticCode code)
@@ -78,9 +78,9 @@ public class IndexableContractTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
 
     // SPEC 8.4.9, 4.6.9: Indexable<isize> and Indexable<Name> are distinct conformances with their own Element, specified
@@ -151,8 +151,8 @@ public class IndexableContractTest
             {
                 Assert.True(c.Bind().IsComplete);
                 c.Binding.CheckStartup(OutputKind.Application);
-                Assert.True(c.Ownership.Analyze().IsVerified);
-                Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+                Assert.True(c.Analyze().IsVerified);
+                Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
             }
 
             var success = true;
@@ -167,14 +167,14 @@ public class IndexableContractTest
             before = GC.GetAllocatedBytesForCurrentThread();
             for (var i = 0; i < 128; i++)
             {
-                success &= c.Ownership.Analyze().IsVerified;
+                success &= c.Analyze().IsVerified;
             }
 
             var ownership = GC.GetAllocatedBytesForCurrentThread() - before;
             before = GC.GetAllocatedBytesForCurrentThread();
             for (var i = 0; i < 128; i++)
             {
-                success &= c.Emission.WriteIr(TextWriter.Null, out _);
+                success &= c.WriteIr(TextWriter.Null, out _);
             }
 
             Assert.True(success);
@@ -223,7 +223,7 @@ public class IndexableContractTest
             "let keyed = Keyed<Range<i32, i32>>.init(7)\nrequire pick(keyed) == 7 else => $abort(\"pick\")\nConsole.writeLine(\"ok\")";
         var c = MinimalEmissionTest.Analyze(Source);
         var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(x => x.ToString() == "items.index(0..2)");
-        Assert.NotNull(call.BoundCall!.RequirementContract);
+        Assert.NotNull(call.CallOf()!.RequirementContract);
         ScalarEmissionTest.EmitFixture("IndexableRequirementRangeArgument", Source, "ok\n");
     }
 

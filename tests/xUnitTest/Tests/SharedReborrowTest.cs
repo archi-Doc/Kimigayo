@@ -71,7 +71,7 @@ public class SharedReborrowTest
         const string Source = "var number = 42\nlet value = (number@uniq, 1)\nmatch value\n    (let saved, _)\n        number = 7\n        require saved == 42 else => $abort(\"value\")";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 }

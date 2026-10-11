@@ -7,7 +7,10 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<DeclarationContainerKoto, StorageShape> storageShapes = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BoundType, AdtDef.InstanceStorage> instances = new(ReferenceEqualityComparer.Instance);
+    private readonly List<DeclarationContainerKoto> storageDeclarations = new();
+    private readonly List<PropertyKoto> storedFields = new();
+    private readonly List<BoundEnumCase?> storedCases = new();
     private readonly List<DeclarationContainerKoto> inlineLayoutStack = new();
     private readonly List<bool> inlineLayoutOwnDeclaration = new();
     private readonly List<DeclarationContainerKoto> cyclicInlineLayouts = new();
@@ -17,36 +20,24 @@ public sealed partial class Binding
     private readonly List<BoundType> enumPayloadTypes = new();
     private bool storagePrepared;
 
-    internal bool PrepareEnumCases(BoundType type)
+    // The stored Types of a struct or enum instance: its declaration's base, Fields and Case payloads under the instance's
+    // substitution. They are substituted once per pass after PrepareStorage refilled the declaration, and on every request before.
+    internal AdtDef.InstanceStorage Instance(BoundType type)
     {
-        var count = Compiler.EnumStorage.Count(type);
-        if (type.StoredCases?.Length != count)
+        var adt = type.Symbol!.Adt;
+        if (!this.instances.TryGetValue(type, out var instance))
         {
-            type.StoredCases = new BoundType[count];
+            this.instances.Add(type, instance = new());
         }
 
-        for (var i = 0; i < count; i++)
+        if (instance.Version != this.storageVersion || adt?.Version != this.storageVersion)
         {
-            this.enumPayloadTypes.Clear();
-            foreach (var syntax in Compiler.EnumStorage.Case(type, i)!.Payload)
-            {
-                if (this.StoredType(syntax, type) is not { } payload)
-                {
-                    return false;
-                }
-
-                this.enumPayloadTypes.Add(payload);
-            }
-
-            type.StoredCases[i] = this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, CollectionsMarshal.AsSpan(this.enumPayloadTypes));
+            this.Substitute(type, adt, instance);
+            instance.Version = adt?.Version ?? 0;
         }
 
-        this.enumPayloadTypes.Clear();
-        return true;
+        return instance;
     }
-
-    internal IReadOnlyList<Koto>? EnumStorage(BoundType type)
-        => type.Symbol?.Declaration is EnumKoto declaration && this.storageShapes.TryGetValue(declaration, out var shape) ? shape.Types : null;
 
     internal BoundType? StoredType(Koto syntax, BoundType owner)
     {
@@ -73,6 +64,53 @@ public sealed partial class Binding
         return false;
     }
 
+    private void Substitute(BoundType type, AdtDef? adt, AdtDef.InstanceStorage instance)
+    {
+        if (type.Symbol!.Declaration is StructKoto declaration)
+        {
+            instance.Base = declaration.Bases.Count == 1 ? this.StoredType(declaration.Bases[0], type) : null;
+            var count = adt?.Fields.Length ?? 0;
+            if (instance.Fields.Length != count)
+            {
+                instance.Fields = new BoundType?[count];
+            }
+
+            for (var i = 0; i < count; i++)
+            {
+                instance.Fields[i] = this.StoredType(adt!.Fields[i], type);
+            }
+
+            return;
+        }
+
+        var cases = adt?.Cases ?? [];
+        var types = instance.Cases?.Length == cases.Length ? instance.Cases : new BoundType[cases.Length];
+        instance.Cases = null;
+        for (var i = 0; i < cases.Length; i++)
+        {
+            this.enumPayloadTypes.Clear();
+            if (cases[i] is not { } selected)
+            {
+                return;
+            }
+
+            foreach (var syntax in selected.Payload)
+            {
+                if (this.StoredType(syntax, type) is not { } payload)
+                {
+                    return;
+                }
+
+                this.enumPayloadTypes.Add(payload);
+            }
+
+            types[i] = this.types.Tuple(CollectionsMarshal.AsSpan(this.enumPayloadTypes));
+        }
+
+        this.enumPayloadTypes.Clear();
+        instance.Cases = types;
+    }
+
     // SPEC 21.3.5: a struct or enum that contains itself by value (through stored Fields and inline
     // bases, payloads, Tuple/array components and other by-value containers, under the substitution
     // each use supplies) has no finite inline layout; a reference or object Semantics layer is an
@@ -81,7 +119,7 @@ public sealed partial class Binding
     {
         this.cyclicInlineLayouts.Clear();
         this.finiteInlineLayouts.Clear();
-        foreach (var container in this.storageShapes.Keys)
+        foreach (var container in this.storageDeclarations)
         {
             if (container.BoundSymbol?.Type is { } type)
             {
@@ -114,11 +152,12 @@ public sealed partial class Binding
             return;
         }
 
-        if ((!StructStorage.IsStruct(type) && !Compiler.EnumStorage.IsEnum(type)) || type.Symbol!.Declaration is not DeclarationContainerKoto container || !this.storageShapes.TryGetValue(container, out var shape))
+        if ((!AdtDef.IsStruct(type) && !AdtDef.IsEnum(type)) || type.Symbol!.Adt is not { } shape)
         {
             return; // Parameters, primitives, references, objects, Slices and pointers store no inline copy of this Type.
         }
 
+        var container = (DeclarationContainerKoto)type.Symbol.Declaration;
         var index = this.inlineLayoutStack.IndexOf(container);
         if (index >= 0)
         {
@@ -156,6 +195,7 @@ public sealed partial class Binding
 
     private void PrepareStorage()
     {
+        this.storageDeclarations.Clear();
         for (var n = 0; n < this.nodes.Count; n++)
         {
             if (this.nodes[n] is not (StructKoto or EnumKoto))
@@ -164,14 +204,12 @@ public sealed partial class Binding
             }
 
             var container = (DeclarationContainerKoto)this.nodes[n];
-            if (!this.storageShapes.TryGetValue(container, out var shape))
-            {
-                this.storageShapes.Add(container, shape = new());
-            }
-
+            var shape = container.BoundSymbol!.Adt ??= new();
             shape.Types.Clear();
-            shape.CaseCount = 0;
-            shape.HasDestructor = false;
+            shape.DestructorKoto = null;
+            this.storedFields.Clear();
+            this.storedCases.Clear();
+            this.storageDeclarations.Add(container);
             var scope = this.scopes[container];
             if (container is EnumKoto && (container.Bases.Count != 0 || container.NestedContainers.Count != 0 || (container.Modifier & ModifierKind.Open) != 0))
             {
@@ -188,7 +226,7 @@ public sealed partial class Binding
             for (var i = 0; i < container.Members.Count; i++)
             {
                 var member = container.Members[i];
-                if (member is VariableKoto field && IsStoredVariable(field))
+                if (member is PropertyKoto field && IsStoredVariable(field))
                 {
                     if (container is EnumKoto)
                     {
@@ -206,6 +244,7 @@ public sealed partial class Binding
                     }
 
                     shape.Types.Add(syntax);
+                    this.storedFields.Add(field);
                 }
                 else if (TryEnumPayload(member, out var payload))
                 {
@@ -216,10 +255,10 @@ public sealed partial class Binding
 
                     if (member.BoundSymbol?.EnumCase is { } enumeration)
                     {
-                        enumeration.Ordinal = shape.CaseCount;
+                        enumeration.Ordinal = this.storedCases.Count;
                     }
 
-                    shape.CaseCount++;
+                    this.storedCases.Add(member.BoundSymbol?.EnumCase);
 
                     // SPEC 15.3.3: the Case's sets and clauses bind every payload together, as a Field's bind its Type. As for a
                     // Field, a payload Type that failed leaves the clauses unbound, so they add no record derived from that failure.
@@ -245,9 +284,9 @@ public sealed partial class Binding
                         }
                     }
                 }
-                else if (member is FunctionKoto { IsDestructor: true })
+                else if (member is FunctionKoto { IsDestructor: true } destructor)
                 {
-                    shape.HasDestructor = true;
+                    shape.DestructorKoto ??= destructor;
                     if (container is EnumKoto)
                     {
                         this.Fail(member, BindingFailure.InvalidTypeFormation);
@@ -259,10 +298,13 @@ public sealed partial class Binding
                 }
             }
 
-            if (container is EnumKoto && shape.CaseCount == 0)
+            if (container is EnumKoto && this.storedCases.Count == 0)
             {
                 this.Fail(container, BindingFailure.InvalidTypeFormation);
             }
+
+            shape.SetParts(this.storedFields, this.storedCases);
+            shape.Version = this.storageVersion;
         }
 
         this.ValidateEnumProjections();
@@ -287,11 +329,21 @@ public sealed partial class Binding
         return this.SubstituteStoredOrigins(substituted, binder, (BoundOrigin[])owner.OriginArguments);
     }
 
-    private BoundOrigin SubstituteStoredOrigin(BoundOrigin origin, Koto binder, ReadOnlySpan<BoundOrigin> arguments, ReadOnlySpan<BoundOrigin> inputs = default)
+    // Substitutes a stored Origin's declared slots and inputs. A pair's outer Origin `o`, a negative slot of its binder, is bound
+    // through the Type arguments when they are given (SPEC 8.1.1, 8.1.2) and is otherwise kept.
+    private BoundOrigin SubstituteStoredOrigin(BoundOrigin origin, Koto binder, ReadOnlySpan<BoundOrigin> arguments, ReadOnlySpan<BoundOrigin> inputs = default, ReadOnlySpan<BoundType?> types = default)
     {
-        if (origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, binder) && origin.Slot < arguments.Length && arguments[origin.Slot] is { } argument)
+        if (origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, binder))
         {
-            return argument;
+            if ((uint)origin.Slot < (uint)arguments.Length && arguments[origin.Slot] is { } argument)
+            {
+                return argument;
+            }
+
+            if (origin.Slot < 0 && this.PairOuterImage(origin, binder, types) is { } image)
+            {
+                return image;
+            }
         }
 
         if (origin.Kind == OriginKind.Parameter && binder is DeclarationContainerKoto && binder.BoundSymbol?.Schema is { } schema)
@@ -305,17 +357,17 @@ public sealed partial class Binding
             }
         }
 
-        if (origin.Kind == OriginKind.Input && ReferenceEquals(origin.Binder, binder) && origin.Slot < inputs.Length && inputs[origin.Slot] is { } input)
+        if (origin.Kind == OriginKind.Input && ReferenceEquals(origin.Binder, binder) && (uint)origin.Slot < (uint)inputs.Length && inputs[origin.Slot] is { } input)
         {
             return input;
         }
 
         if (origin.Kind == OriginKind.Intersection && origin.Operands.Count != 0)
         {
-            var result = this.SubstituteStoredOrigin(origin.Operands[0], binder, arguments, inputs);
+            var result = this.SubstituteStoredOrigin(origin.Operands[0], binder, arguments, inputs, types);
             for (var i = 1; i < origin.Operands.Count; i++)
             {
-                result = this.Meet(result, this.SubstituteStoredOrigin(origin.Operands[i], binder, arguments, inputs));
+                result = this.Meet(result, this.SubstituteStoredOrigin(origin.Operands[i], binder, arguments, inputs, types));
             }
 
             return result;
@@ -342,9 +394,19 @@ public sealed partial class Binding
         var length = correspondingBinder is null ? type.LengthExpression : this.CorrespondingLength(type.LengthExpression, binder, correspondingBinder);
         var components = this.RentTypes(type.Components.Count);
         var origins = this.originScratch.Rent(type.OriginArguments.Count);
+        var lengths = correspondingBinder is null ? type.LengthArguments : this.lengthScratch.Rent(type.LengthArguments.Length);
         try
         {
             var changed = !ReferenceEquals(origin, type.Origin) || !ReferenceEquals(length, type.LengthExpression);
+            if (correspondingBinder is not null)
+            {
+                for (var i = 0; i < type.LengthArguments.Length; i++)
+                {
+                    lengths[i] = this.CorrespondingLength(type.LengthArguments[i], binder, correspondingBinder);
+                    changed |= !ReferenceEquals(lengths[i], type.LengthArguments[i]);
+                }
+            }
+
             for (var i = 0; i < type.Components.Count; i++)
             {
                 components[i] = this.SubstituteStoredOrigins(type.Components[i], binder, arguments, inputs, correspondingBinder);
@@ -357,21 +419,16 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(origins[i], type.OriginArguments[i]);
             }
 
-            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), length, type.ClosureContext) : type;
+            return changed ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), length, type.ClosureContext, lengths.AsSpan(0, type.LengthArguments.Length), type.ResultMode) : type;
         }
         finally
         {
             this.typeScratch.Return(components, clearArray: true);
             this.originScratch.Return(origins, clearArray: true);
+            if (correspondingBinder is not null)
+            {
+                this.lengthScratch.Return(lengths, clearArray: true);
+            }
         }
-    }
-
-    private sealed class StorageShape
-    {
-        internal List<Koto> Types { get; } = new();
-
-        internal int CaseCount { get; set; }
-
-        internal bool HasDestructor { get; set; }
     }
 }

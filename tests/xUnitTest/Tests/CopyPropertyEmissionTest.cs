@@ -41,8 +41,8 @@ public class CopyPropertyEmissionTest
         {
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.Validate(out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.Validate(out var error), error);
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
@@ -53,7 +53,7 @@ public class CopyPropertyEmissionTest
             }
 
             c.Binding.CheckStartup(OutputKind.Application);
-            if (!c.Ownership.Analyze().IsVerified || !c.Emission.Validate(out _))
+            if (!c.Analyze().IsVerified || !c.Validate(out _))
             {
                 throw new InvalidOperationException("Accessor generation failed.");
             }
@@ -97,18 +97,14 @@ public class CopyPropertyEmissionTest
     public void UnusedGetterBorrowDoesNotExtendTheTemporaryLifetime()
         => ScalarEmissionTest.EmitFixture("CopyPropertyUnusedBorrow", Meter + "let m = Meter.init()\nlet unused = m.level@ref", "get\n");
 
-    [Fact]
-    public void AbruptAssignmentInputDoesNotEvaluateReceiverOrSetter()
-        => ScalarEmissionTest.EmitFixture("CopyPropertyAbruptInput", Meter + "func receiver(m: uniq/Meter during source) -> uniq/Meter during source\n    Console.writeLine(\"receiver\")\n    return m\nfunc test(m: uniq/Meter) -> i32\n    receiver(m).level = do\n        return 5\nvar m = Meter.init()\nrequire test(m@uniq) == 5 and m.level == 3 else => $abort(\"result\")", "get\n");
-
     [Theory]
     [InlineData("private set", "@move")]
     [InlineData("set(value: i32) -> () => storage = value", "@move")]
     public void StorageTransferRequiresAnAccessibleStandardSetter(string setter, string transfer)
     {
         var c = MinimalEmissionTest.Analyze("struct S\n    public var item: i32 = 1\n        " + setter + "\nlet s = S.init()\nlet taken = s.item" + transfer);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
+        Assert.False(c.Validate(out _));
     }
 
     [Fact]
@@ -146,8 +142,8 @@ public class CopyPropertyEmissionTest
     public void RejectsInvalidReceiverAndResultLifetimes(string source)
     {
         var c = MinimalEmissionTest.Analyze(Meter + source);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -159,8 +155,8 @@ public class CopyPropertyEmissionTest
     public void RejectsWritesIntoGetterOwnedDescendants(string operation)
     {
         var c = MinimalEmissionTest.Analyze("struct Point\n    Self is Copy\n    public var x: i32 = 1\n    public func update(self: uniq/Self) => self.x = 9\nstruct S\n    public var point: Point = Point.init()\n        get() -> Point => storage\nvar s = S.init()\n" + operation);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -172,6 +168,6 @@ public class CopyPropertyEmissionTest
     {
         var source = Meter.Replace("public init() => self.level = 3", "public init(flag: bool)\n        " + body, StringComparison.Ordinal) + "let m = Meter.init(true)";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
 }

@@ -55,7 +55,7 @@ Conversion Type arguments follow the same adjacent-`<` and matching-`>` rule as 
 | Operator | Operand and result |
 | --- | --- |
 | `+value` | Numeric value; unchanged Type and value. |
-| `-value` | Negated signed integer, wrapping integer or floating-point value. |
+| `-value` | Built-in numeric negation below, or the result of the terminal Type's [Negatable requirement](arithmetic-contracts.md). |
 | `not value` | Negated `bool`. |
 | `*pointer` | Raw-pointer Place under the [unsafe dereference rules](05-raw-pointers-and-unsafe-memory.md#52-dereference-and-ownership). |
 | `^value` | The from-end position `FromEnd<T>` storing `value` of any `T is PrimitiveInteger`, unchecked until resolution (§4.6.2). |
@@ -74,7 +74,9 @@ let after = ++count   // after = 3, count = 3
 
 ## 13.3. Arithmetic, bitwise, and shift operators
 
-`+`, `-`, `*` and `/` take operands of the same numeric Type and return that Type; `%` accepts integers only. Integer division truncates toward zero. On mathematical integers the remainder satisfies `a = (a / b) * b + a % b`, and a nonzero remainder has the dividend's sign.
+Binary `+`, `-`, `*`, `/`, `%` and unary `-` select either the built-in operation or a standard [arithmetic Contract](arithmetic-contracts.md), which defines provider direction, associated Output, inference, shared acquisition and function-value use. A user arithmetic operation need not return its operand Type. Bitwise, shift and increment/decrement operators have no user extension.
+
+For built-in numeric operands, `+`, `-`, `*` and `/` require the same numeric Type and return it; `%` accepts integer and wrapping integer Types only. Integer division truncates toward zero. On mathematical integers the remainder satisfies `a = (a / b) * b + a % b`, and a nonzero remainder has the dividend's sign.
 
 ```kimi
 let quotient = -7 / 3       // -2
@@ -105,7 +107,7 @@ func lowestBit(value: u32) -> u32
 
 Floating-point operations follow IEEE 754 for `f32`/`f64`, rounding to nearest with ties to even. They support infinities, NaN and signed zero, and floating-point division by zero does not use the integer failure rules. Ordinary operations are not implicitly reassociated or fused when rounding or NaN results would change.
 
-**Strings.** `string` has no arithmetic, bitwise or shift operator, and there is no concatenation operator. An interpolated literal is the one form that joins strings: it produces an owning `string` and borrows the values it embeds ([interpolation formatting](12-expressions.md#1233-interpolation-formatting)). Text built in steps is written to a `Text.HeapBuffer` through `Utf8Writer` or `$tryWrite` and converted once with `intoString` ([formatting profile](utf8-formatting.md#2-text-operations)). `+` or `+=` with a `string` operand, directly or through safe reference layers, is rejected by the numeric-operand rule above; the diagnostic names the interpolated literal that joins the same operands in the same order, or for `+=` the replacement assignment of §13.7.1.
+**Strings.** `string` has no arithmetic, bitwise or shift operator, and there is no concatenation operator. An interpolated literal is the one form that joins strings: it produces an owning `string` and borrows the values it embeds ([interpolation formatting](12-expressions.md#1233-interpolation-formatting)). Text built in steps is written to a `Text.HeapBuffer` through `Utf8Writer` or `$tryWrite` and converted once with `intoString` ([formatting profile](utf8-formatting.md#2-text-operations)). `+` or `+=` with a `string` operand, directly or through safe reference layers, is prohibited even as a counterpart of a user arithmetic provider.
 
 ```kimi
 let first = "Hello, "
@@ -113,7 +115,7 @@ let second = "world"
 let joined = "\(first)\(second)" // An owning string; first and second are borrowed.
 var log = "start"
 log = "\(log)!"                   // Replaces log with a new string.
-// let bad = first + second       // Error: + requires numeric operands; strings are joined by interpolation.
+// let bad = first + second       // Error: strings are joined by interpolation.
 ```
 
 Raw-pointer arithmetic is limited to the forms and unsafe conditions of [pointer arithmetic](05-raw-pointers-and-unsafe-memory.md#53-pointer-arithmetic-and-indexing); its undefined-behavior rules are distinct from checked integer arithmetic.
@@ -186,7 +188,7 @@ Beyond the built-in cases above, comparing two operands of the same complete use
 | `==`, `!=` | `Equatable.equals` on shared borrows of both operands | The returned `bool`, or its negation |
 | `<`, `<=`, `>`, `>=` | `Comparable.compare` on shared borrows of both operands | The returned `i32` compared with zero |
 
-`Comparable` refines `Equatable`: the sign of `compare` must agree with equality and with a total order. Integers, wrapping integers, `char` and `string` under `owner` Semantics provide both; `bool`, Unit and floats provide Equatable only. Floats have built-in relational operators but no Comparable, because NaN is unordered. Borrow and Tuple Types forward or compose these capabilities and their mappings, separately from the built-in operator semantics. Structs and enums, including payload-free enums, need explicit conformance and members; equality and ordering are never derived. Arithmetic Contracts, user operators and user-defined arithmetic remain deferred, so arithmetic on arbitrary user Types is an error. A Type parameter with a proven `PrimitiveInteger` requirement uses the built-in integer operators (§8.4.7.3).
+`Comparable` refines `Equatable`: the sign of `compare` must agree with equality and with a total order. Integers, wrapping integers, `char` and `string` under `owner` Semantics provide both; `bool`, Unit and floats provide Equatable only. Floats have built-in relational operators but no Comparable, because NaN is unordered. Borrow and Tuple Types forward or compose these capabilities and their mappings, separately from the built-in operator semantics. Structs and enums, including payload-free enums, need explicit conformance and members; equality and ordering are never derived. Arithmetic has its own explicit [Contract mapping](arithmetic-contracts.md); comparison conformance alone grants no arithmetic. A Type parameter with a proven `PrimitiveInteger` requirement uses the built-in integer operators (§8.4.7.3).
 
 For `f32`/`f64`, the intrinsic `Equatable.equals` mapping uses the NaN-reflexive equality defined in §12.3.4, whereas a built-in `==` expression still returns false for NaN. Generic comparison through an Equatable requirement uses the mapping, and such a generic call must not be specialized into a floating `==` instruction that changes its meaning.
 
@@ -194,7 +196,7 @@ For `f32`/`f64`, the intrinsic `Equatable.equals` mapping uses the NaN-reflexive
 
 Explicit operation selection is distinct from subtyping and acquisition legality under [Type relations and expression operations](03-types-and-values.md#38-type-relations-and-expression-operations). Origin restriction fits the selected operation's result; it never substitutes another operation.
 
-`@` is a built-in explicit value operation. It cannot be overloaded, searches no conversion chains, and applies only to its direct operand. The operation itself calls no user code, although ordinary operand evaluation, including calls and getters, still may. It never implicitly boxes, acquires resources, duplicates ownership or increments reference counts.
+`@` is a built-in explicit value operation. It cannot be overloaded, searches no conversion chains, and applies only to its direct operand. The operation itself calls no user code, although ordinary operand evaluation, including calls and getters, still may. Only the explicit object-creation row (§13.5.8) allocates resources. No row implicitly boxes, duplicates ownership or increments an existing reference count.
 
 ```text
 Explicit @ Operation
@@ -301,6 +303,7 @@ Deferred generic effects follow [generic access effects](08-generics-constraints
 | Wrapping Conversion | `@wrap<U>` only; an integer or wrapping integer operand, a value or its value read, and such a target (§13.5.4.3) |
 | Bit Conversion | `@bits<U>` only; a floating-point Type and a same-width integer or wrapping integer Type, the operand a value or its value read (§13.5.4.4) |
 | Borrow / Reborrow | The explicit Borrow tables of §13.5.5 |
+| Object Creation | `owner/T` to `obj/T`, `rc/T` or `arc/T`, with `T is ObjectPayload`; the complete payload Type is unchanged (§13.5.8) |
 | Object Upcast | The finite [object upcast table](#1357-object-upcasts), including its specified borrow forms |
 | Raw Pointer Conversion | `@raw/U` under the [pointer conversion rules](05-raw-pointers-and-unsafe-memory.md#54-addresses-and-pointer-conversions); no Unsafe context required |
 | Address | Bare `@raw` on a Place (§5.4); no Unsafe context required |
@@ -308,9 +311,9 @@ Deferred generic effects follow [generic access effects](08-generics-constraints
 
 **Transfer.** `E@move` requires a Movable Place (§15.1.5) and transfers its value and destruction responsibility, marking the Place Moved even when its Type is Copy. A borrow value's transfer moves the reference, not its referent; a Place reached through a reference offers no Take and is never transferred. Applied to a Temporary Value, including a getter result, `@move` has no effect. `@` applies to its direct operand only: `holder.item@move` transfers the Field or the getter result, never the receiver, which is acquired under §7.3. `@move/T`, `@move?` and `@move{...}` are invalid, and `x@move@ref` shared-borrows the transferred temporary.
 
-**Copy.** `E@copy` Copies the value of `E` and requires its Type to be proven Copy (§3.5); it never transfers or borrows. A Place keeps its value and state, and a Temporary Value is used as is. A Non-Copy or Copy-unproven operand is an error that suggests `@move` or a borrow; a generic `T` needs `T is Copy` at definition checking. `r@copy` Copies a reference value `r`, not its referent, and `r@follow@copy` Copies a Copy referent. Where an owned value must be spelled, as for a ByValue Subject (§15.1.6), `E@copy` is the Copy counterpart of `E@move`. At an overloaded call, `E@copy` states the Copy and names no candidate; a by-value parameter and a borrowing parameter of overlapping Types never share one position ([§7.3.1](07-functions-and-callable-values.md#731-parameter-acquisition-shape)). `@copy/T`, `@copy?` and `@copy{...}` are invalid.
+**Copy.** `E@copy` Copies the value of `E` and requires its Type to be proven Copy (§3.5); it never transfers or borrows. A Place keeps its value and state, and a Temporary Value is used as is. A Non-Copy or Copy-unproven operand is an error; a generic `T` needs `T is Copy` at definition checking. `r@copy` Copies a reference value `r`, not its referent, and `r@follow@copy` Copies a Copy referent. Where an owned value must be spelled, as for a ByValue Subject (§15.1.6), `E@copy` is the Copy counterpart of `E@move`. At an overloaded call, `E@copy` states the Copy and names no candidate; a by-value parameter and a borrowing parameter of overlapping Types never share one position ([§7.3.1](07-functions-and-callable-values.md#731-parameter-acquisition-shape)). `@copy/T`, `@copy?` and `@copy{...}` are invalid.
 
-`@move` is the only transfer spelling and `@copy` the only Copy spelling. The bare owning shorthands `@owner`, `@obj`, `@rc` and `@arc` are not operations, because an owning Semantics names no Core; the diagnostic suggests `@copy`, `@move` or a complete target. The complete forms, such as `@owner/T` and `@obj/T`, and a generic `@s` bound to an owning Semantics are ordinary same-Type acquisitions when the target's outermost written Semantics, after applying the Option suffix rule of §3.2.3 with grouping transparent, matches the operand's outer Semantics: they Copy a Copy value, transfer a temporary and reject a Non-Copy Place. When the target selects an owning [upcast row](#1357-object-upcasts), such as `@obj/Base`, that upcast is performed on the operand acquired the same way. Alias expansion supplies no written Semantics. `n@owner/i32` and `n@(owner/i32)` Copy; `x@uniq/i32?` and `x@owner/T?` are Type targets for the whole Option. Any other owning target is an error: these spellings neither perform [ownership creation or strong-owner duplication](#1358-object-ownership-creation-and-sharing) nor convert between ownership representations.
+`@move` is the only transfer spelling and `@copy` the only explicit Copy spelling. Bare `@owner` is invalid; use `@copy`, `@move` or a complete target. Complete owning targets and generic targets use the resolved operation table: same-Type acquisition, object creation (§13.5.8), or object upcast (§13.5.7), otherwise error. Short `@obj`, `@rc` and `@arc` obtain their payload target from the input and use that same table. Aliases and grouping do not create another operation. Ordinary acquisition Copies a Copy Place, transfers a temporary and requires `@move` for a Non-Copy Place. `n@owner/i32` Copies; `x@uniq/i32?` and `x@owner/T?` target the whole Option under §3.2.3. No owning target duplicates a strong owner or changes an existing ownership representation.
 
 **Identity Acquisition** copies a Copy Type; a Non-Copy Place is an error that names `@move`, and a Temporary Value transfers its ownership. Borrow targets take precedence. Same-Type raw pointer acquisition is an ordinary Copy and needs no Unsafe context for the operation itself.
 
@@ -629,6 +632,36 @@ A checked cast (§13.6.2) is needed when the source view cannot guarantee the ta
 
 ### 13.5.8. Object ownership creation and sharing
 
+**Operation selection.** Resolve the input and target, then apply this table for `s` in `obj`, `rc`, `arc`. Short `@s`, complete `@s/T`, aliases and generic `@s` / `@s/T` / `@Type` share it.
+
+Alias expansion here uses the existing name-resolution rules, including Container aliases in a target path; it introduces no transparent source Type-alias declaration (Appendix D).
+
+| Input → target | Operation |
+| --- | --- |
+| `owner/T → s/T` | Prove `T is ObjectPayload`, acquire the value and create an object |
+| `s/T → s/T` | Ordinary same-Type acquisition; no new allocation, clone or count increment |
+| `s/Derived → s/Base` | Existing explicit upcast; preserve Dynamic Type, Identity and ownership mode |
+| Other | Use another explicitly defined adaptation row, or reject |
+
+For a short target, use an owner's complete Type or an existing object's View Target. Creation preserves Type arguments, lengths, internal Origins and Loans; it never combines creation with an upcast (`Derived.init()@obj/Base`), implicitly follows a borrow/raw pointer, or reboxes an object. It adds no `obj → rc/arc`, `rc ↔ arc`, shared-to-exclusive or borrow-to-owner operation. Strong duplication remains `clone`.
+
+**Independent input inference.** Before selecting an adaptation whose target outer Semantics is `obj`, `rc` or `arc`, fix the input Type independently of that target and the outer expected result. A generic target admitting any such case fixes and shares one input Type across all cases, without reselecting literals or overloads. Check Type formation, acquisition, dependencies, cleanup and any ObjectPayload obligation in every admitted case. Other adaptations keep their existing inference rules. Thus `1@obj` is `obj/i32`, `1@obj/i64` is invalid and `1@i64@obj` explicitly converts then creates. Do not rewrite internal Origins before creation; subsequent result fitting may shorten them subject to View Target invariance.
+
+If the input itself is Never, the expression is non-completing: perform no creation/acquisition/count initialization and do not form `obj/Never` or require ObjectPayload/Copy of a nonexistent result. Syntax, explicit target formation and Unsafe checks remain; ordinary unreachable code gains no exemption.
+
+```kimi
+let single = 7@obj
+let shared = 7@rc
+let atomicShared = 7@arc
+let same = single@move@obj // Same object; no allocation.
+let text = "sample"
+let boxedText = text@move@obj
+// let wrong: obj/i64 = 1@obj // Input remains i32.
+// let duplicate = shared@rc // Non-Copy Place needs @move; this is not clone.
+```
+
+Use these adaptations for ordinary creation. The following factories remain public, with unchanged ordinary inference, argument acquisition and Function Item / Callable / common Function uses; they are not deprecated. Adaptations and factories share the creation contract **after** inference and acquisition, not input inference. Same-named user declarations cannot change adaptation meaning.
+
 These public functions belong to `Kimi.Intrinsics` (§22.1.1) and use ordinary inference and the argument labels `value` and `build`. Both labels precede any name-required boundary and permit name omission; every argument value is required. The Weak operations in §13.5.9 likewise permit omission of their `value` label. `T` satisfies [ObjectPayload](08-generics-constraints-and-contracts.md#8472-objectpayload): every creation API declares `T is ObjectPayload`, and the cyclic factories additionally `T is Owned`. ObjectPayload is an intrinsic requirement, not a user Contract, and does not extend the current object and runtime-Contract boundary. The operations on an existing strong handle take one pair `<s/T>` with the Semantics requirement `s is rc or arc`; `S` denotes the complete `s/T`, with the eligibility of §3.2.2. Same-named user functions gain no intrinsic behavior.
 
 | API | Input -> result | Contract |
@@ -642,7 +675,7 @@ These public functions belong to `Kimi.Intrinsics` (§22.1.1) and use ordinary i
 
 Any valid complete owner Core other than Never that does not opt out of ObjectPayload may be the concrete payload, including open struct Cores; only following it to an ordinary value Place additionally requires Sealed (§13.5.5.1). Generic signatures must prove the target's validity from their declared constraints (§8.10).
 
-**Normal creation** acquires the complete input once by bare acquisition or transfer (`makeObj(value@move)` for a Non-Copy Place), allocates object storage and Moves `T` into the payload, without transferring ownership of the original storage and without repeating constructors, accessors or `drop`. The initial exact-`T` view is published only after metadata and payload initialization. No blanket Owned constraint applies to concrete payload creation, and normal external dependencies are preserved; view erasure separately requires the existing Owned proof.
+**Normal creation**, through either spelling, acquires the complete input once by bare acquisition or transfer (`makeObj(value@move)` for a Non-Copy Place), allocates object storage and Moves `T` into the payload, without transferring ownership of the original storage and without repeating constructors, accessors or `drop`. The initial exact-`T` view is published only after metadata and payload initialization. No blanket Owned, Sealed or Transferable constraint applies to concrete creation; external dependencies are preserved and View erasure separately requires Owned. Creating `arc` alone grants no cross-thread transfer or concurrent payload-access permission. New `rc`/`arc` strong counts are one. Allocation and allocation Abort themselves are not environment effects (§8.4.10.2); operand evaluation and destruction effects compose normally. Abort promises neither Move rollback nor cleanup.
 
 **Strong clone** shared-borrows its input for the operation, leaves it Initialized, and returns an independent responsibility without allocation, payload copying, user-code calls or view changes. The handle slot is borrowed explicitly, as in `clone(handle@ref)` or the equivalent `clone(handle@ref/rc/T)` (§13.5.5.2); no implicit handle-layer adaptation exists (§10.2). It preserves the full View Type, Dynamic Type and payload dependencies, without a lasting Loan on the input handle slot. Moving or borrowing an object never changes counts, and `rc`/`arc` provide shared payload access even at count one. These operations introduce no general deep clone, `obj` duplication, `rc`/`arc` conversion or ownership creation from a borrow.
 
@@ -848,18 +881,18 @@ Reading and writing are selected independently under Chapter 11: standard operat
 
 ```kimi
 values[nextIndex()] += amount() // amount, nextIndex, old value, addition, write.
-// item: Resource has standard get and custom set.
-holder.item += x // Cannot acquire non-Copy item for this update.
-// User-defined Resource arithmetic is itself unavailable (§13.8).
-holder.item = rebuild(holder.item@ref, x)
-// OK if rebuild returns an independent owner and its input Loan ends before set.
+// item: Resource has standard get, custom set and the selected Addable conformance.
+holder.item += x // May borrow Non-Copy item and write an independent result through set.
+// Existing Loans and getter-temporary destruction dependencies must still permit set.
 ```
 
-Compound assignment is not atomic and provides no synchronization. Raw-pointer `+=` and `-=` use only the permitted displacement operations and their unsafe conditions; other pointer compound assignments are forbidden. Any future user-defined operator follows this acquisition and evaluation order.
+Arithmetic compound assignments use the selected binary Contract, never a separate update Contract. Its operation-only Loans end before writeback; a computed getter temporary retains its ordinary lifetime and dependencies. Thus `x += x` is valid when only those operation-only shared Loans stand in the way of writing. A result need only fit the setter input, not equal the old value's Type. See [arithmetic writeback](arithmetic-contracts.md#4-compound-assignment).
+
+Compound assignment is not atomic and provides no synchronization. Raw-pointer `+=` and `-=` use only the permitted displacement operations and their unsafe conditions; other pointer compound assignments are forbidden.
 
 ## 13.8. Extension boundaries and reserved syntax
 
-Operator symbols, precedence and associativity are fixed by the language. User-defined comparison uses the [Kimi Contract mapping](#1341-contract-comparison-mapping). User-defined arithmetic remains deferred and unavailable, and a same-named method does not authorize an operator. Future arithmetic must preserve evaluation order and counts and assignment's Unit result.
+Operator symbols, precedence and associativity are fixed by the language. User-defined comparison uses the [comparison mapping](#1341-contract-comparison-mapping); user-defined arithmetic uses the [arithmetic Contracts](arithmetic-contracts.md). A same-named method alone authorizes neither. Unary `+`, increment/decrement, bitwise and shift operators have no user extension.
 
 `and`, `or`, `not`, `=`, `@`, `is`, Ranges and control transfers cannot be reinterpreted by user code. Custom operator symbols and precedence declarations are not defined, and neither are `!`, `&&`, `||`, `~`, `**`, `??`, `?.` or a ternary `?:`; use the logical keywords and `if`. Unary `&` is not a borrow operation; use `@ref`/`@uniq`. Prefix `move`, a Move accessor and a dedicated `<-` Move operator are not defined; `@move` is the only transfer spelling (§13.5.3). The Type-only T?/T?? suffix (§3.2.3) and prefix try (§17.2.4) are separate. Recognition by the lexer alone does not make a token a usable operator.
 

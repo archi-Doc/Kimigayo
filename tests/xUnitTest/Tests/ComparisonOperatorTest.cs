@@ -61,7 +61,7 @@ public class ComparisonOperatorTest
             func run() -> i32
                 let first = Key.init()
                 defer => Console.writeLine("deferred")
-                let ignored = {{(left ? "(do => return 7) == first" : "first == (do => return 7)")}}
+                let ignored = {{(left ? "(do => return 7) == Key.init()" : "first == (do => return 7)")}}
                 return 0
             require run() == 7 else => $abort("return")
             """;
@@ -127,8 +127,8 @@ public class ComparisonOperatorTest
             let invalid = value == take(value@move)
             """);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.False(c.Analysis.IsVerified);
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
     }
 
     [Fact]

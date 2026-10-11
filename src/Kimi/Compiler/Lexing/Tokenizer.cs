@@ -80,8 +80,8 @@ internal ref struct Tokenizer
     private int sharedBodyIndentDepth;
     private int tokenAdded;
 
-    // Only malformed literals allocate this map. A delimiter opened before the rejected literal cannot be diagnosed
-    // independently until the literal's extent is known; delimiters opened by later source items remain independent.
+    // Only malformed input allocates this map. A failed lexical scan or wrong-kind closer explains the affected
+    // grouping's synthesized close; delimiters opened by later source items remain independent.
     private Dictionary<int, DiagnosticKey>? delimiterRecoveryCauses;
 
     /// <summary>
@@ -105,6 +105,10 @@ internal ref struct Tokenizer
     public ReadOnlySpan<Token> Tokens => this.tokens.AsSpan(0, this.tokenCount);
 
     internal bool CollectDocumentation { get; set; }
+
+    internal Compilation? OptionalHoverOwner { get; set; }
+
+    internal bool DocumentationFailed { get; private set; }
 
     internal Documentation.DocumentationSource? Documentation { get; private set; }
 
@@ -176,7 +180,7 @@ internal ref struct Tokenizer
         var offset = this.position;
         while (offset < this.sourceText.Length)
         {
-            var relative = this.sourceText[offset..].IndexOfAnyInRange('\uD800', '\uDFFF');
+            var relative = IndexOfSurrogate(this.sourceText[offset..]);
             if (relative < 0)
             {
                 break;
@@ -210,6 +214,40 @@ internal ref struct Tokenizer
             IndentSource.Brace => TokenKind.CloseBrace,
             _ => throw new UnreachableException(),
         };
+
+    // IndexOfAnyInRange<char> boxes its bounds before full optimization on the supported runtime. Keep this
+    // source-wide check allocation-free from its first call, with the same vector width as identifier scanning.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int IndexOfSurrogate(ReadOnlySpan<char> span)
+    {
+        ref var start = ref MemoryMarshal.GetReference(span);
+        var index = 0;
+        if (Vector128.IsHardwareAccelerated)
+        {
+            var last = span.Length - Vector128<ushort>.Count;
+            while (index <= last)
+            {
+                var values = Vector128.LoadUnsafe(ref Unsafe.As<char, ushort>(ref start), (nuint)index);
+                var matches = Vector128.Equals(values & Vector128.Create((ushort)0xF800), Vector128.Create((ushort)0xD800)).ExtractMostSignificantBits();
+                if (matches != 0)
+                {
+                    return index + BitOperations.TrailingZeroCount(matches);
+                }
+
+                index += Vector128<ushort>.Count;
+            }
+        }
+
+        for (; index < span.Length; index++)
+        {
+            if (char.IsSurrogate(span[index]))
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
 
     /// <summary>Gets the syntax form of the closing delimiter an open grouping needs.</summary>
     private static SyntaxForm CloserForm(TokenKind closingKind)
@@ -282,6 +320,36 @@ internal ref struct Tokenizer
         return count;
     }
 
+    // Physical prefix length and recovered columns differ for tabs. Scanning and lookahead must agree;
+    // only the physical-line reader reports the forbidden tab, once for the entire indentation.
+    private static int CountIndentation(ReadOnlySpan<char> span, out int columns, out int firstTab)
+    {
+        var count = CountSpaces(span);
+        columns = count;
+        firstTab = -1;
+        if (count < span.Length && span[count] == '\t')
+        {
+            firstTab = count;
+            for (; count < span.Length; count++)
+            {
+                if (span[count] == '\t')
+                {
+                    columns += Constants.IndentationSpaces - (columns % Constants.IndentationSpaces);
+                }
+                else if (span[count] == Constants.SpaceChar)
+                {
+                    columns++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+
+        return count;
+    }
+
     /// <summary>
     /// Reads one logical line: its tokens, the physical lines that continue it inside delimiters, and the layout tokens that the
     /// indentation of the next effective line produces (SPEC 2.2.1). The indentation stack lives for one logical line only; the
@@ -301,7 +369,7 @@ Loop:
             goto EndOfFile;
         }
 
-        if (this.span[0] == Constants.SpaceChar)
+        if (this.span[0] is Constants.SpaceChar or '\t')
         {// If whitespace is present, process it first.
             goto MeasureIndentation;
         }
@@ -698,9 +766,13 @@ MeasureIndentation:
 // Indentation is measured once, at the physical line start.
 // Comments that follow do not change it.
         var indentationStart = this.position;
-        var numberOfSpaces = CountSpaces(this.span);
-        var indentationLength = numberOfSpaces;
-        this.Slice(numberOfSpaces);
+        var indentationLength = CountIndentation(this.span, out var numberOfSpaces, out var firstTab);
+        if (firstTab >= 0)
+        {
+            this.Report(new(indentationStart + firstTab, 1), DiagnosticCode.TabIndentation_Kd);
+        }
+
+        this.Slice(indentationLength);
 
 LineContent:
         if (this.span.Length == 0)
@@ -743,14 +815,22 @@ LineContent:
         var unnecessarySpaces = numberOfSpaces % Constants.IndentationSpaces;
         if (unnecessarySpaces > 0)
         {// Invalid indentation
-            this.Report(new(indentationStart, indentationLength), DiagnosticCode.InvalidIndentation_Kd, Constants.IndentationSpaces);
+            if (firstTab < 0)
+            {
+                this.Report(new(indentationStart, indentationLength), DiagnosticCode.InvalidIndentation_Kd, Constants.IndentationSpaces);
+            }
+
             numberOfSpaces += Constants.IndentationSpaces - unnecessarySpaces;
         }
 
         var indentLevel = (numberOfSpaces / Constants.IndentationSpaces) - this.indentationOffset;
         if (this.tokenCount == 0 && indentLevel > 0)
         {
-            this.Report(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+            if (firstTab < 0 && unnecessarySpaces == 0)
+            {
+                this.Report(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+            }
+
             indentLevel = 0;
         }
 
@@ -793,12 +873,29 @@ LineContent:
 
         if (indentDelta > 0)
         {
+            if (this.nonBlockDepth > 0 && this.indentStack[this.indentCount - 1].Source != IndentSource.Block && !this.PreviousLineStartsBody())
+            {
+                // Extra indentation cannot invent an executable body inside a grouping. Keep its content in the
+                // existing delimiter region, whose written closer still closes it at the original baseline. An inner
+                // block has its own grammar, including match arm headers with no body-introducing keyword.
+                if (firstTab < 0 && unnecessarySpaces == 0)
+                {
+                    this.Report(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+                }
+
+                goto Loop;
+            }
+
             this.AddToken(new(TokenKind.Separator, this.CurrentRange));
             separatorInserted = true;
 
             if (indentDelta > 1)
             {
-                this.Report(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+                if (firstTab < 0 && unnecessarySpaces == 0)
+                {
+                    this.Report(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+                }
+
                 indentDelta = 1;
             }
 
@@ -817,11 +914,30 @@ LineContent:
             // Otherwise, recover by treating the grouping construct as implicitly closed,
             // remove it from the indentation stack, and report a missing delimiter.
 
-            var hasTrailingContentOnCurrentLine = false;
+            var closedDelimiter = false;
             var indentationMismatch = false;
+            var branchJoin = this.span.StartsWith("else") && (this.span.Length == 4 || TokenHelper.IsSeparator(this.span[4]));
 
-            for (var i = indentDelta; i < 0; i++)
+            // A header delimiter shares the body's baseline, but remains an explicit delimiter. After the body
+            // closes, discharge it too unless an aligned branch joins the construct inside it.
+            for (var i = indentDelta; i < 0 || (!branchJoin && this.indentCount > 0 && this.indentStack[this.indentCount - 1].SharesBodyIndent); i++)
             {
+                if (i >= 0 && !this.span.IsEmpty && this.span[0] is not (Constants.CrChar or Constants.LfChar) &&
+                    (closedDelimiter || this.span[0] is ',' or '!'))
+                {
+                    // A written closer may be followed by an access, adaptation or another argument on this line;
+                    // a comma or parameter-name boundary after the dedent also resumes the enclosing list.
+                    // Remaining shared header delimiters belong to that outer expression. Resume ordinary tokenization
+                    // and restore their ordinary indentation now that the nested body's grouping has ended.
+                    for (var s = this.indentCount - 1; s >= 0 && this.indentStack[s].SharesBodyIndent; s--)
+                    {
+                        this.indentStack[s] = this.indentStack[s] with { SharesBodyIndent = false };
+                        this.sharedBodyIndentDepth--;
+                    }
+
+                    break;
+                }
+
                 if (this.indentCount > 0)
                 {
                     var entry = this.indentStack[--this.indentCount];
@@ -844,26 +960,10 @@ LineContent:
                     }
                     else if (this.TryCloseIndentSourceByCurrentToken(indentSource))
                     {
-                        // Content after an outer-indented closing delimiter remains part of
-                        // the same logical line, even when separated from the delimiter by spaces.
-                        //
-                        // Example:
-                        //     foo(
-                        //         a
-                        //     ) + 1
-                        //
-                        // A newline or single-line comment still ends the logical line. Finish
-                        // processing the remaining indentation sources before continuing so that
-                        // enclosing blocks are closed correctly.
+                        // The closer completes part of this logical line. Continue through its newline as well:
+                        // the next effective line may still extend the expression with a leading-dot chain.
                         this.Slice(CountSpaces(this.span));
-
-                        hasTrailingContentOnCurrentLine =
-                            !this.span.IsEmpty &&
-                            this.span[0] != Constants.CrChar &&
-                            this.span[0] != Constants.LfChar &&
-                            !(this.span.Length >= 2 &&
-                                this.span[0] == Constants.SlashChar &&
-                                this.span[1] == Constants.SlashChar);
+                        closedDelimiter = true;
 
                         continue;
                     }
@@ -891,13 +991,17 @@ LineContent:
                 }
                 else
                 {
-                    this.Report(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+                    if (firstTab < 0 && unnecessarySpaces == 0)
+                    {
+                        this.Report(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+                    }
+
                     indentationMismatch = true;
                     break;
                 }
             }
 
-            if (hasTrailingContentOnCurrentLine && !indentationMismatch)
+            if (closedDelimiter && !indentationMismatch)
             {
                 goto Loop;
             }
@@ -1026,7 +1130,7 @@ EndOfFile:
                         if (openingIndent < 0)
                         {
                             var lineStart = this.sourceText[..this.position].LastIndexOfAny(Constants.CrChar, Constants.LfChar) + 1;
-                            openingIndent = CountSpaces(this.sourceText[lineStart..]);
+                            _ = CountIndentation(this.sourceText[lineStart..], out openingIndent, out _);
                         }
 
                         var next = this.NextEffectiveLine(i, out var indent);
@@ -1101,8 +1205,7 @@ EndOfFile:
         while (true)
         {
             i += this.span[i] == Constants.CrChar && i + 1 < this.span.Length && this.span[i + 1] == Constants.LfChar ? 2 : 1;
-            indent = CountSpaces(this.span[i..]);
-            i += indent;
+            i += CountIndentation(this.span[i..], out indent, out _);
             if (i >= this.span.Length)
             {
                 return -1;
@@ -1165,7 +1268,8 @@ EndOfFile:
 
         var last = this.tokens[this.tokenCount - 1].Span.Start;
         var lineStart = this.sourceText[..last].LastIndexOfAny('\r', '\n') + 1;
-        var headerIndent = (CountSpaces(this.sourceText[lineStart..]) / Constants.IndentationSpaces) - this.indentationOffset;
+        _ = CountIndentation(this.sourceText[lineStart..], out var headerColumns, out _);
+        var headerIndent = (headerColumns / Constants.IndentationSpaces) - this.indentationOffset;
         if (indentLevel != headerIndent + 1)
         {
             return;
@@ -1211,9 +1315,22 @@ EndOfFile:
         for (var i = this.indentCount - 1; i >= 0; i--)
         {
             var entry = this.indentStack[i];
-            if (entry.Position < lineStart || entry.Source is IndentSource.Block or IndentSource.LineContinuation)
+            if (entry.Source is IndentSource.Block or IndentSource.LineContinuation)
             {
                 break;
+            }
+
+            if (entry.Position < lineStart)
+            {
+                // A preceding body's closer can continue an older list with another body-bearing item on this line.
+                // Only delimiters opened at this header's physical baseline share its indentation; an ordinary
+                // outer delimiter opened at a shallower baseline keeps its continuation level.
+                var openingLine = this.sourceText[..entry.Position].LastIndexOfAny('\r', '\n') + 1;
+                _ = CountIndentation(this.sourceText[openingLine..], out var openingColumns, out _);
+                if ((openingColumns / Constants.IndentationSpaces) - this.indentationOffset != headerIndent)
+                {
+                    break;
+                }
             }
 
             if (!entry.SharesBodyIndent)
@@ -1308,15 +1425,15 @@ EndOfFile:
 
         // Scan and validate ordinary names together; Unicode takes the shared slow path.
         var length = ScanAsciiIdentifierLength(span);
-        if (length < span.Length && !TokenHelper.IsSeparator(span[length]))
+        if (length == 0 && span[0] < 128)
         {
-            this.ReadNonAsciiIdentifier(span);
+            this.ReadInvalidCharacter(span);
             return;
         }
 
-        if (length == 0)
+        if (length < span.Length && !TokenHelper.IsSeparator(span[length]))
         {
-            this.ReadInvalidCharacter(span);
+            this.ReadNonAsciiIdentifier(span);
             return;
         }
 
@@ -1328,19 +1445,10 @@ EndOfFile:
     [MethodImpl(MethodImplOptions.NoInlining)]
     private bool TryReadNumberLiteral(ReadOnlySpan<char> span)
     {
-        if (this.tokenCount > 0 && this.tokens[this.tokenCount - 1].Kind == TokenKind.Dot)
-        {
-            var digits = 1;
-            while (digits < span.Length && span[digits] is >= '0' and <= '9')
-            {
-                digits++;
-            }
-
-            this.AddTokenAndSlice(TokenKind.NumericLiteral, digits);
-            return true;
-        }
-
-        if (NumberLiteralHelper.ScanNumberLiteral(span, out var numberLiteralLength))
+        var valid = this.tokenCount > 0 && this.tokens[this.tokenCount - 1].Kind == TokenKind.Dot
+            ? NumberLiteralHelper.ScanTupleIndex(span, out var numberLiteralLength)
+            : NumberLiteralHelper.ScanNumberLiteral(span, out numberLiteralLength);
+        if (valid)
         {// Numeric literal
             this.AddTokenAndSlice(TokenKind.NumericLiteral, numberLiteralLength);
             return true;
@@ -1369,8 +1477,14 @@ EndOfFile:
 
         var spelling = span[..length];
         var kind = TokenHelper.GetKeywordOrIdentifierKind(spelling);
-        if (!IdentifierHelper.IsValidIdentifier(spelling))
+        if (!IdentifierHelper.IsValidIdentifier(spelling, out var invalidStartLength))
         {
+            if (invalidStartLength != 0)
+            {
+                this.ReadInvalidCharacter(span, invalidStartLength);
+                return;
+            }
+
             this.Report(this.NewRange(length), DiagnosticCode.InvalidIdentifier_Kd, spelling.ToString());
             kind = TokenKind.Invalid;
         }
@@ -1379,10 +1493,10 @@ EndOfFile:
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void ReadInvalidCharacter(ReadOnlySpan<char> span)
+    private void ReadInvalidCharacter(ReadOnlySpan<char> span, int length = 1)
     {
-        this.Report(this.NewRange(1), DiagnosticCode.InvalidCharacter_Kd, span[0]);
-        this.AddTokenAndSlice(TokenKind.Invalid, 1);
+        this.Report(this.NewRange(length), DiagnosticCode.InvalidCharacter_Kd, length == 1 ? span[0] : span[..length].ToString());
+        this.AddTokenAndSlice(TokenKind.Invalid, length);
     }
 
     private void ReadCharLiteral()
@@ -1393,14 +1507,15 @@ EndOfFile:
         }
         else
         {
-            this.Report(this.NewRange(length), DiagnosticCode.MissingCharLiteralEnd_Kd);
-            this.AddTokenAndSlice(TokenKind.Invalid, length);
+            var opening = this.NewRange(1);
+            this.Report(opening, DiagnosticCode.MissingCharLiteralEnd_Kd);
+            this.RecoverLexicalToken(opening, length);
         }
     }
 
     private void ReadStringLiteral()
     {
-        var result = StringLiteralHelper.ScanStringLiteral(this.span, out var doubleQuoteCount, out var stringLiteralLength);
+        var result = StringLiteralHelper.ScanStringLiteral(this.span, out _, out var stringLiteralLength, out var failure);
         if (result == ScanStringLiteralResult.String)
         {// Like every other literal, the token spans the literal as written, delimiters included.
             this.AddTokenAndSlice(TokenKind.StringLiteral, stringLiteralLength);
@@ -1411,23 +1526,53 @@ EndOfFile:
         }
         else
         {// Invalid
-            var opening = this.NewRange(doubleQuoteCount);
-            this.Report(opening, DiagnosticCode.MissingStringLiteralEnd_Kd, new string('"', doubleQuoteCount));
-            var cause = this.diagnostics.LastError!.Value;
-            for (var i = 0; i < this.indentCount; i++)
+            var opening = new SourceSpan(this.position + failure.Opening.Start, failure.Opening.Length);
+            switch (failure.Kind)
             {
-                var entry = this.indentStack[i];
-                if (entry.Source is not (IndentSource.Block or IndentSource.LineContinuation))
-                {
-                    (this.delimiterRecoveryCauses ??= []).TryAdd(entry.Position, cause);
-                }
+                case StringScanFailureKind.CharEnd:
+                    this.Report(opening, DiagnosticCode.MissingCharLiteralEnd_Kd);
+                    break;
+
+                case StringScanFailureKind.BlockCommentEnd:
+                    this.Report(opening, DiagnosticCode.MissingBlockCommentEnd_Kd);
+                    break;
+
+                case StringScanFailureKind.InterpolationEnd:
+                    this.ReportMissingDelimiter(opening, new(this.position + failure.RecoveryEnd, 0), TokenKind.CloseParenthesis);
+                    // The failed string token rests on its missing interpolation delimiter; its lexical subject is the
+                    // opening, while the public missing-form record correctly points to an insertion position.
+                    this.diagnostics.AddDependentSyntax(opening, "interpolated string token", this.diagnostics.LastError!.Value, this.sourceDocument);
+                    break;
+
+                case StringScanFailureKind.NestingLimit:
+                    this.Report(opening, DiagnosticCode.InterpolationNestingLimit_Kd, StringLiteralHelper.MaximumInterpolationDepth);
+                    break;
+
+                default:
+                    this.Report(opening, DiagnosticCode.MissingStringLiteralEnd_Kd, new string('"', opening.Length));
+                    break;
             }
 
-            // Retain the operand and its exact lexical subject for the parser's ErrorKoto. Dropping it would turn a
-            // malformed argument into an absent argument and cause an unrelated overload-selection diagnostic.
-            this.AddToken(new(TokenKind.Invalid, opening));
-            this.Slice(stringLiteralLength);
+            this.RecoverLexicalToken(opening, stringLiteralLength);
         }
+    }
+
+    // The scan consumed text that may have contained the enclosing closers. Keep one invalid token at its lexical
+    // subject so parser recovery (including a missing operand) and delimiter recovery share the originating check.
+    private void RecoverLexicalToken(SourceSpan subject, int consumed)
+    {
+        var cause = this.diagnostics.LastError!.Value;
+        for (var i = 0; i < this.indentCount; i++)
+        {
+            var entry = this.indentStack[i];
+            if (entry.Source is not (IndentSource.Block or IndentSource.LineContinuation))
+            {
+                (this.delimiterRecoveryCauses ??= []).TryAdd(entry.Position, cause);
+            }
+        }
+
+        this.AddToken(new(TokenKind.Invalid, subject));
+        this.Slice(consumed);
     }
 
     // Returns true when a comment crosses a physical line and ends the current line.
@@ -1439,8 +1584,9 @@ EndOfFile:
             var length = this.span.IndexOf("*/");
             if (length < 0)
             {
-                this.Report(this.NewRange(Math.Min(2, this.span.Length)), DiagnosticCode.MissingBlockCommentEnd_Kd);
-                this.Slice(this.span.Length);
+                var opening = this.NewRange(Math.Min(2, this.span.Length));
+                this.Report(opening, DiagnosticCode.MissingBlockCommentEnd_Kd);
+                this.RecoverLexicalToken(opening, this.span.Length);
                 return true;
             }
 
@@ -1473,10 +1619,19 @@ EndOfFile:
     private void ReadSingleLineComment()
     {// // Comment\n
         var idx = this.span.IndexOfAny('\r', '\n');
-        if (this.CollectDocumentation && this.span.Length >= 3 && this.span[2] == '/' && (this.span.Length == 3 || this.span[3] != '/'))
+        if (this.CollectDocumentation && !this.DocumentationFailed && this.span.Length >= 3 && this.span[2] == '/' && (this.span.Length == 3 || this.span[3] != '/'))
         {
-            this.Documentation ??= new(this.sourceDocument);
-            this.Documentation.AddLine(this.position, this.position + (idx < 0 ? this.span.Length : idx));
+            try
+            {
+                this.Documentation ??= new(this.sourceDocument, this.OptionalHoverOwner);
+                this.Documentation.AddLine(this.position, this.position + (idx < 0 ? this.span.Length : idx));
+            }
+            catch (Exception ex) when (this.OptionalHoverOwner is not null && Compilation.OptionalHoverFailure(ex))
+            {
+                this.DocumentationFailed = true;
+                this.Documentation = null;
+                this.OptionalHoverOwner.RecordDocumentationFailure(this.sourceDocument, ex.Message);
+            }
         }
 
         if (idx < 0)
@@ -1594,6 +1749,8 @@ EndOfFile:
     private bool PopIndentSource(TokenKind expected)
     {
         var closesBody = false;
+        var matchingOuter = -2; // Search once, only when a written closer disagrees with the innermost grouping.
+        SourceSpan missingRange = default;
         while (this.indentCount > 0)
         {
             var entry = this.indentStack[this.indentCount - 1];
@@ -1634,7 +1791,8 @@ EndOfFile:
                 continue;
             }
 
-            if (GetClosingTokenKind(indentSource) == expected)
+            var closingKind = GetClosingTokenKind(indentSource);
+            if (closingKind == expected)
             {
                 if (entry.SharesBodyIndent)
                 {
@@ -1646,12 +1804,45 @@ EndOfFile:
                 return true;
             }
 
-            break;
+            if (matchingOuter == -2)
+            {
+                matchingOuter = -1;
+                for (var i = this.indentCount - 2; i >= 0; i--)
+                {
+                    var outer = this.indentStack[i].Source;
+                    if (outer is not (IndentSource.Block or IndentSource.LineContinuation) && GetClosingTokenKind(outer) == expected)
+                    {
+                        matchingOuter = i;
+                        missingRange = this.InsertionPoint(this.CurrentRange);
+                        break;
+                    }
+                }
+            }
+
+            if (matchingOuter >= 0)
+            {
+                // The token closes a known outer grouping. Supply only the intermediate closers before consuming it.
+                this.indentCount--;
+                this.nonBlockDepth--;
+                if (entry.SharesBodyIndent)
+                {
+                    this.sharedBodyIndentDepth--;
+                }
+
+                this.ReportMissingDelimiter(entry, missingRange, closingKind);
+                this.AddToken(new(closingKind, missingRange, true));
+                continue;
+            }
+
+            // Keep the grouping available for a later correct closer. If none arrives, its synthesized closer rests
+            // on this wrong-kind token, rather than reporting the same incomplete grouping again at line end.
+            var opened = this.diagnostics.Relate("opening delimiter", new SourceSpan(entry.Position, 1), this.sourceDocument, "opened here");
+            var cause = this.diagnostics.ReportSyntax(this.NewRange(1), DiagnosticCode.ExpectedSyntax_Kd, CloserForm(closingKind), expected.ToText(), this.sourceDocument, [opened]);
+            (this.delimiterRecoveryCauses ??= []).TryAdd(entry.Position, cause);
+            return false;
         }
 
-        // Error recovery policy: the mismatched closer is treated as spurious and the
-        // stack is left intact, so the still-open grouping can be matched (or reported)
-        // later. e.g. "(]" reports an unmatched ']' and keeps '(' open.
+        // With no open grouping, the token has no possible corresponding opener.
         this.diagnostics.ReportSyntax(this.NewRange(1), DiagnosticCode.MisplacedSyntax_Kd, SyntaxForm.UnmatchedCloser, null, this.sourceDocument);
         return false;
     }
@@ -1720,13 +1911,18 @@ EndOfFile:
         }
         else
         {
-            // The closer is missing at an insertion point; the grouping it closes is related evidence (SPEC 23.3.6.2), and the closer
-            // inserted there is the repair candidate (SPEC 23.3.6.9).
-            var opened = this.diagnostics.Relate("opening delimiter", new SourceSpan(entry.Position, 1), this.sourceDocument, "opened here");
-            var closer = closingKind.ToText();
-            var repairs = this.sourceDocument is null ? null : new DiagnosticRepairFact[] { new(RepairKind.InsertToken, [closer], [this.diagnostics.Edit(new(range.Start, 0), closer, this.sourceDocument)], RepairConditionSet.None) };
-            this.diagnostics.ReportSyntax(range, DiagnosticCode.MissingSyntax_Kd, CloserForm(closingKind), null, this.sourceDocument, [opened], repairs);
+            this.ReportMissingDelimiter(new SourceSpan(entry.Position, 1), range, closingKind);
         }
+    }
+
+    private void ReportMissingDelimiter(SourceSpan opening, SourceSpan range, TokenKind closingKind)
+    {
+        // The closer is missing at an insertion point; the grouping it closes is related evidence (SPEC 23.3.6.2), and the closer
+        // inserted there is the repair candidate (SPEC 23.3.6.9).
+        var opened = this.diagnostics.Relate("opening delimiter", opening, this.sourceDocument, "opened here");
+        var closer = closingKind.ToText();
+        var repairs = this.sourceDocument is null ? null : new DiagnosticRepairFact[] { new(RepairKind.InsertToken, [closer], [this.diagnostics.Edit(new(range.Start, 0), closer, this.sourceDocument)], RepairConditionSet.None) };
+        this.diagnostics.ReportSyntax(range, DiagnosticCode.MissingSyntax_Kd, CloserForm(closingKind), null, this.sourceDocument, [opened], repairs);
     }
 
     private bool TryCloseIndentSourceByCurrentToken(IndentSource indentSource)

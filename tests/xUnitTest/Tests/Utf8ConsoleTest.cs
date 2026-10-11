@@ -109,7 +109,7 @@ public class Utf8ConsoleTest
     {
         var c = MinimalEmissionTest.Analyze("let text = Text.utf8(\"\\(42)\")\nConsole.writeLine(text)");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == Kimi.Compiler.OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
     }
 
     private sealed class SelectionVisitor : KotoVisitor
@@ -118,9 +118,9 @@ public class Utf8ConsoleTest
 
         public override void Visit(Koto node)
         {
-            if (node is MemberAccessKoto && node.BoundSymbol?.Name == "writeLine")
+            if (node is MemberAccessKoto && node.SymbolOf()?.Name == "writeLine")
             {
-                this.Selected = node.BoundSymbol.LibraryDeclaration;
+                this.Selected = node.SymbolOf()!.LibraryDeclaration;
             }
 
             base.Visit(node);

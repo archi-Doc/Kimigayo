@@ -56,31 +56,15 @@ public sealed class InterpolatedStringKoto : ExpressionKoto
         }
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
         for (var i = 0; i < this.Segments.Length; i++)
         {
-            visitor.Visit(this.Segments[i]);
+            this.Segments[i] = slots.Slot(this.Segments[i]);
             if (i < this.Expressions.Length)
             {
-                visitor.Visit(this.Expressions[i]);
+                this.Expressions[i] = slots.Slot(this.Expressions[i]);
             }
         }
     }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-    {
-        for (var i = 0; i < this.Segments.Length; i++)
-        {
-            yield return this.Segments[i];
-            if (i < this.Expressions.Length)
-            {
-                yield return this.Expressions[i];
-            }
-        }
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-        => (newKoto is StringLiteralKoto && ReplaceInList(this.Segments, oldKoto, newKoto)) ||
-            ReplaceInList(this.Expressions, oldKoto, newKoto);
 }

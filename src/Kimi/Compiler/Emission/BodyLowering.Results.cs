@@ -34,7 +34,7 @@ internal sealed partial class BodyLowering
         }
 
         var type = body.Places[operation.Place].Type;
-        if (function.Abi.NoReturn || !ReferenceEquals(type, SignatureType(this, body.DeclaredResultType) ?? (body.Function.IsGenerated ? BoundType.Unit : null)))
+        if (function.Abi.NoReturn || !ReferenceEquals(type, body.Resolve(body.DeclaredResultType, InterpretationContext.Root) ?? (body.Function.IsGenerated ? BoundType.Unit : null)))
         {
             return Fail("A function returns contrary to its signature.", out failure);
         }
@@ -309,7 +309,7 @@ internal sealed partial class BodyLowering
                 return Fail("Result was not secured before cleanup.", out failure);
             }
         }
-        else if (input.Write != -1 || body.Operations[id].Source is not (Parsing.AndKoto or Parsing.OrKoto))
+        else if (input.Write != -1 || body.Operations[id].Source is not Parsing.BinaryKoto { Akind: Parsing.KotoKind.And or Parsing.KotoKind.Or })
         {
             return Fail("Missing result acquisition operation.", out failure);
         }

@@ -38,7 +38,7 @@ public class FunctionBodyParseTest
 
         Assert.IsType<FieldKoto>(body.Items[0]);
         var whileExpression = Assert.IsType<WhileKoto>(body.Items[1]);
-        Assert.IsType<LessThanKoto>(whileExpression.Condition);
+        ParseTestHelper.Binary(KotoKind.LessThan, whileExpression.Condition);
 
         var loopIf = Assert.IsType<IfKoto>(Assert.Single(whileExpression.Body.Items));
         Assert.Equal(2, loopIf.Branches.Count);
@@ -99,7 +99,7 @@ public class FunctionBodyParseTest
                 value = 2
             """);
         Assert.False(assignmentTail.Body!.HasTrailingExpression);
-        Assert.IsType<EqualsKoto>(assignmentTail.Body.Items[^1]);
+        ParseTestHelper.Binary(KotoKind.Equals, assignmentTail.Body.Items[^1]);
 
         var expressionTail = ParseSingleFunction(
             """

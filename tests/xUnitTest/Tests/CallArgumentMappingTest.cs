@@ -1,0 +1,70 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
+using Xunit;
+
+namespace XunitTest;
+
+public class CallArgumentMappingTest
+{
+    [Theory]
+    [InlineData("", false, 3, new int[0])]
+    [InlineData("b: 2", false, 2, new[] { 1 })]
+    [InlineData("1", true, 2, new[] { 0 })]
+    [InlineData("c: 3, a: 1", true, 1, new[] { 2, 0 })]
+    [InlineData("missing: 4, c: 3, a: 1", false, 1, new[] { -1, 2, 0 })]
+    [InlineData("a: 1, a: 2, c: 3", false, 1, new[] { 0, -1, 2 })]
+    [InlineData("a: 1, 2, c: 3", false, 1, new[] { 0, -1, 2 })]
+    [InlineData("1, 2, 3, 4", false, 0, new[] { 0, 1, 2, -1 })]
+    public void MappingPreservesIndependentPositionsAfterAFailure(string arguments, bool valid, int defaults, int[] expected)
+    {
+        var (call, function) = Parse(arguments);
+        var map = new int[expected.Length];
+        var used = new bool[3];
+        var result = Binding.MapCallArguments(call, function, false, map, used);
+        Assert.Equal(expected.All(x => x >= 0), result.InputsValid);
+        Assert.Equal(valid, result.Valid);
+        Assert.Equal(defaults, result.DefaultsUsed);
+        Assert.Equal(expected, map);
+    }
+
+    [Fact]
+    public void SemanticCallKeepsEvaluationOrderAndParameterSlots()
+    {
+        var c = MinimalEmissionTest.Analyze("func f(a: i32, b: i32 = 2, c: i32 = 3) -> i32 => a + b + c\nfunc use() -> i32 => f(c: 3, a: 1)");
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "use");
+        var call = Enumerable.Range(0, body.Operations.Count).Single(i => body.Operations[i].Kind == OwnershipOperationKind.Call);
+        var target = body.CallAt(call);
+        var inputs = body.CallInputs(call).ToArray();
+        Assert.Equal(new[] { 2, 0, 1 }, inputs.Select(x => x.Parameter));
+        Assert.Equal(new[] { false, false, true }, inputs.Select(x => x.IsDefault));
+        body.OperationStorage[call] = body.Operations[call] with { Source = body.Function };
+        Assert.Same(target, body.CallAt(call));
+    }
+
+    [Fact]
+    [Trait("Purpose", "Allocation")]
+    public void ReusedMappingsAllocateNothingAndClearPreviousUse()
+    {
+        var (call, function) = Parse("c: 3, a: 1");
+        var map = new int[2];
+        var used = new[] { true, true, true };
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            var result = Binding.MapCallArguments(call, function, false, map, used);
+            if (!result.Valid || result.DefaultsUsed != 1 || map[0] != 2 || map[1] != 0 || used[1])
+            {
+                throw new InvalidOperationException("Stale mapping.");
+            }
+        }));
+    }
+
+    private static (InvocationKoto Call, FunctionKoto Function) Parse(string arguments)
+    {
+        var c = MinimalEmissionTest.Analyze("func f(a: i32, b: i32 = 2, c: i32 = 3) -> i32 => a + b + c\nfunc use() -> i32 => f(" + arguments + ")");
+        var members = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>();
+        return (Assert.IsType<InvocationKoto>(members.Single(x => x.Name == "use").ExpressionBody), members.Single(x => x.Name == "f"));
+    }
+}

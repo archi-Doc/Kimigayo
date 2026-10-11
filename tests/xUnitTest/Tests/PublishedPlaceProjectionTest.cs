@@ -73,9 +73,9 @@ public class PublishedPlaceProjectionTest
             "    " + selection + ".0@follow = 99\n    require child == 42 else => $abort(\"value\")";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict && x.Source.ToString() != "item.0");
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject).ToString() != "item.0");
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.False(c.Validate(out _));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -84,7 +84,7 @@ public class PublishedPlaceProjectionTest
     {
         var c = MinimalEmissionTest.Analyze(Header + "var value = 40\nvar values = [1: (value@uniq, 7)]\nchange(values[1].0)\nrequire value == 42 else => $abort(\"value\")");
         var valid = true;
-        var bytes = AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified);
+        var bytes = AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified);
         Assert.True(valid);
         Assert.Equal(0, bytes);
     }

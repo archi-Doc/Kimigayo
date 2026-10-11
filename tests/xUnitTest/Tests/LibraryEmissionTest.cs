@@ -19,7 +19,7 @@ public class LibraryEmissionTest
     {
         var c = Analyze(source);
         Assert.True(c.Binding.Startup.IsComplete);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
         for (var i = 0; i < module.FunctionCount; i++)
         {
@@ -49,7 +49,7 @@ public class LibraryEmissionTest
     {
         var c = Analyze(source);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -106,7 +106,7 @@ public class LibraryEmissionTest
             c.Binding.CheckStartup(OutputKind.Library);
         }
 
-        c.Ownership.Analyze();
+        c.Analyze();
         return c;
     }
 }

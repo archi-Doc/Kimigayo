@@ -41,8 +41,8 @@ public class EffectBoundDeclarationTest
     [InlineData("struct Plain\ncontract Bounded: Source\n    effect Plain.take confined\n", "effect Plain.take confined", "Plain names no Contract", null)]
     [InlineData("contract Bounded\n    func own(self: ref/Self) -> ()\n    effect confined\n", "effect confined", "an effect clause outside a requirement", "Constraint region")]
     [InlineData("contract Bounded: Source\n    func own(self: ref/Self) -> ()\n        effect Source.take confined\n", "effect Source.take confined", "an effect specification in a requirement", "Contract item")]
-    [InlineData("struct S\n    effect confined\n", "effect confined", "an effect item outside a Contract or a Callable Constraint", "S declares no bound of its own")]
-    [InlineData("func f() -> ()\n    effect confined\n", "effect confined", "an effect item outside a Contract or a Callable Constraint", "the function f declares no bound of its own")]
+    [InlineData("struct S\n    effect confined\n", "effect confined", "an effect item outside a Contract, original virtual function or Callable Constraint", "S declares no bound of its own")]
+    [InlineData("func f() -> ()\n    effect confined\n", "effect confined", "an effect item outside a Contract, original virtual function or Callable Constraint", "the function f declares no bound of its own")]
     public void RejectsInvalidEffectItems(string declarations, string text, string cause, string? note)
     {
         var c = MinimalEmissionTest.Analyze(Source + declarations + Main);

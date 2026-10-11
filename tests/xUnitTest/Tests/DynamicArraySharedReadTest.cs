@@ -38,15 +38,22 @@ public class DynamicArraySharedReadTest
     public void ChainedReadsThroughViewsBorrowTheNonCopyElement(string name, string read)
         => ScalarEmissionTest.EmitFixture("DynamicArraySharedRead" + name, Task + "var values: Array<Task> = [Task.init(42)]\nrequire " + read + " == 42 else => $abort(\"value\")", "drop\n");
 
+    // SPEC 10.2: a Copy part below an element is lent at a fixed ref/U expectation as a new shared borrow of the element's part,
+    // through the element's own borrow, never as a borrow of a copy.
+    [Fact]
+    public void ACopyPartIsLentAtASharedExpectation()
+        => ScalarEmissionTest.EmitFixture("DynamicArraySharedReadCopyPart", Task + "func show(v: ref/i32) => Console.writeLine(\"\\(v@follow)\")\nvar values: Array<Task> = [Task.init(42)]\nshow(values[0].id)", "42\ndrop\n");
+
     [Theory]
     [InlineData("func make() -> Array<Task> => [Task.init(42)]\nlet item = make()[0]@ref\nlet id = item.id")]
     [InlineData("func inspect(item: ref/Task, ignored: ()) => ()\nvar values: Array<Task> = [Task.init(42)]\ninspect(values[0], values@uniq.clear())")]
+    [InlineData("var values: Array<Task> = [Task.init(42)]\nlet id = values[0].id@ref\nvalues[0] = Task.init(7)\nlet read: i32 = id@follow")]
     public void RejectsExpiredOrInvalidatedSharedReads(string source)
     {
         var c = MinimalEmissionTest.Analyze(Task + source);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Bodies.SelectMany(x => x.Issues), x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -58,7 +65,7 @@ public class DynamicArraySharedReadTest
         var c = MinimalEmissionTest.Analyze(Task + "var values: Array<Task> = [Task.init(42)]\nlet item = values[0]@ref\n" + mutation + "\nlet id = item.id");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Bodies.SelectMany(x => x.Issues), x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -72,8 +79,8 @@ public class DynamicArraySharedReadTest
         var c = MinimalEmissionTest.Analyze(Task + "let values: Array<Task> = [Task.init(42)]\nlet view = values[..]\n" + use);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var element = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IndexKoto>().Single(x => x.Right is not RangeKoto);
-        Assert.Equal("Task", element.BoundType!.Name);
-        Assert.Equal(SemanticsKind.Owner, element.BoundType.Semantics);
+        Assert.Equal("Task", element.TypeOf()!.Name);
+        Assert.Equal(SemanticsKind.Owner, element.TypeOf()!.Semantics);
     }
 
     [Theory]
@@ -84,7 +91,7 @@ public class DynamicArraySharedReadTest
     public void AnElementReadNeverTransfersItsNonCopyPayload(string use)
     {
         var c = MinimalEmissionTest.Analyze(Task + "let values: Array<Task> = [Task.init(42)]\n" + use);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 }

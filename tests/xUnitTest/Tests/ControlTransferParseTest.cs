@@ -59,7 +59,7 @@ public class ControlTransferParseTest
 
         var returnIf = Assert.IsType<IfKoto>(body.Items[0]);
         var earlyReturn = Assert.IsType<ReturnKoto>(Assert.Single(returnIf.Branches[0].Body.Items));
-        Assert.IsType<PrefixMinusKoto>(earlyReturn.Expression);
+        ParseTestHelper.Unary(KotoKind.PrefixMinus, earlyReturn.Expression);
 
         var forExpression = Assert.IsType<ForKoto>(body.Items[1]);
         var forIf = Assert.IsType<IfKoto>(forExpression.Body.Items[0]);

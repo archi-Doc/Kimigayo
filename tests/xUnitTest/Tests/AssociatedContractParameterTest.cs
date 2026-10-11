@@ -43,7 +43,7 @@ public class AssociatedContractParameterTest
         const string source = "contract C<E>\n    associate Item(a) is ref/E during a\nstruct S\n    Self is C<i32>\nfunc f(value: ref/i32 during a) -> S.Item(a) => value\nvar value = 7\nlet result = f(value@ref)\nvalue = 9\nrequire result == 7 else => $abort(\"loan\")";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.False(c.Analysis.IsVerified);
     }
 
     [Theory]

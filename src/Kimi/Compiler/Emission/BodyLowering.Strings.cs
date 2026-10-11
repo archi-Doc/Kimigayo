@@ -130,7 +130,7 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        if (EnumStorage.IsEnum(type) && type.StoredCases is { } cases)
+        if (AdtDef.CaseTypes(type) is { } cases)
         {
             foreach (var payload in cases)
             {
@@ -141,24 +141,25 @@ internal sealed partial class BodyLowering
             }
         }
 
-        if (StructStorage.IsStruct(type))
+        if (AdtDef.IsStruct(type))
         {
-            if (StructStorage.Destructor(type) is not null || (type.StoredBase is { } parent && HasOwnedStorage(parent)))
+            if (AdtDef.Destructor(type) is not null || (AdtDef.Base(type) is { } parent && HasOwnedStorage(parent)))
             {
                 return true;
             }
 
-            for (var i = 0; i < StructStorage.Count(type); i++)
+            for (var i = 0; i < AdtDef.Count(type); i++)
             {
-                if (HasOwnedStorage(StructStorage.FieldType(type, i)!))
+                if (HasOwnedStorage(AdtDef.FieldType(type, i)!))
                 {
                     return true;
                 }
             }
         }
 
-        // SPEC 4.7.6: an Array handle owns its buffer even when its elements are Copy.
-        if (ReferenceEquals(type, BoundType.String) || type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary)
+        // SPEC 4.7.6: an Array handle owns its buffer even when its elements are Copy. SPEC 16.3.3: an obj, rc or arc
+        // handle owns its allocation or one strong count, so a path-dependent Move needs a live flag as well.
+        if (ReferenceEquals(type, BoundType.String) || type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary || type.HandleMode is not null)
         {
             return true;
         }
@@ -245,17 +246,11 @@ internal sealed partial class BodyLowering
             case OwnershipOperationKind.WriteElement:
                 clear = operation.Input;
                 break;
-            case OwnershipOperationKind.UpdateBorrowed:
-                if (operation.Source is InvocationKoto { BoundCall.Target.CompilerFunction: not CompilerFunctionKind.Swap })
-                {
-                    clear = operation.Input;
-                }
-
-                if (operation.Source is InvocationKoto { BoundCall.Target.CompilerFunction: CompilerFunctionKind.Exchange })
-                {
-                    initialize = operation.Place;
-                }
-
+            case OwnershipOperationKind.ExchangeBorrowed:
+                initialize = operation.Place;
+                goto case OwnershipOperationKind.ReplaceBorrowed;
+            case OwnershipOperationKind.ReplaceBorrowed:
+                clear = operation.Input;
                 break;
         }
     }
@@ -270,7 +265,7 @@ internal sealed partial class BodyLowering
         }
         else
         {
-            function.AddCall(id, WindowsLowering.DestroyString, [address, new(EmissionOperandKind.ConstantAddress, location), new(EmissionOperandKind.ConstantLength, location)]);
+            function.AddCall(id, WindowsLowering.DestroyString, [address, new(location < 0 ? EmissionOperandKind.CallerLocation : EmissionOperandKind.ConstantAddress, location), new(location < 0 ? EmissionOperandKind.CallerLocationLength : EmissionOperandKind.ConstantLength, location)]);
         }
     }
 

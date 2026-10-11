@@ -28,9 +28,9 @@ public class GenericEnumEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
 
     [Theory]
@@ -41,13 +41,13 @@ public class GenericEnumEmissionTest
         // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
         // the damaged construction plan is rejected on the ordinary body that owns it.
         var c = MinimalEmissionTest.Analyze("func wrap(x: i32) -> Option<i32> => .Some(x)\nlet result = wrap(7)");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "wrap");
         body.ConstructionStorage[0] = defect == "case" ? body.Constructions[0] with { Case = null } : body.Constructions[0] with { PayloadCount = 0 };
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.Validate(out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.Validate(out error), error);
     }
 }

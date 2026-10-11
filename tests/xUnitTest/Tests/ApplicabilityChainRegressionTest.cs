@@ -108,7 +108,7 @@ public class ApplicabilityChainRegressionTest
         Assert.Equal((code, at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
         if (code == nameof(DiagnosticCode.UnboundTypeArgument_Kd))
         {
-            Assert.Equal("Type parameter 'T' is not bound", error.Label);
+            Assert.Equal("Generic parameter 'T' is not bound", error.Label);
             Assert.Contains("No explicit Type argument or evidence binds T", error.Note, StringComparison.Ordinal);
         }
     }
@@ -123,7 +123,6 @@ public class ApplicabilityChainRegressionTest
         var error = Assert.Single(rejected.Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.UnprovenOriginContract_Kd), error.Code);
         Assert.Equal("the result requires x == y, which is not proven", error.Label);
-        Assert.Equal("Use equal Origin bindings at the compared positions, or convert an implementation whose bindings match the required Type", error.Advice);
         Assert.True(DiagnosticCorpus.Check(Source.Replace("during y", "during x", StringComparison.Ordinal)).Accepted);
     }
 
@@ -174,8 +173,8 @@ public class ApplicabilityChainRegressionTest
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 }

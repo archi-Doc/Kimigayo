@@ -30,8 +30,8 @@ public class Utf8CompilationCostTest
         {
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         var allocated = AllocationMeasurement.Measure(() =>
@@ -44,7 +44,7 @@ public class Utf8CompilationCostTest
                 }
 
                 c.Binding.CheckStartup(OutputKind.Application);
-                if (!c.Ownership.Analyze().IsVerified || !c.Emission.WriteIr(TextWriter.Null, out _))
+                if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
                 {
                     throw new InvalidOperationException("Warm formatting compilation failed.");
                 }
@@ -55,9 +55,9 @@ public class Utf8CompilationCostTest
             var valid = stage switch
             {
                 "Binding" => c.Bind().IsComplete,
-                "Ownership" => c.Ownership.Analyze().IsVerified,
-                "Validation" => c.Emission.Validate(out _),
-                _ => c.Emission.WriteIr(TextWriter.Null, out _),
+                "Ownership" => c.Analyze().IsVerified,
+                "Validation" => c.Validate(out _),
+                _ => c.WriteIr(TextWriter.Null, out _),
             };
             if (!valid)
             {
@@ -73,7 +73,7 @@ public class Utf8CompilationCostTest
     public void ReloadRecomputesFormattingBoundsAndSelectedCalls()
     {
         var c = MinimalEmissionTest.Analyze("let value = \"text\"\nConsole.writeLine(\"value=\\(value)\")");
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         var replacement = MinimalEmissionTest.Analyze("let value = 42@i64\nConsole.writeLine(\"value=\\(value)\")");
         var bytes = Tinyhand.TinyhandSerializer.Serialize(replacement.Kotonoha);
         var tree = c.Kotonoha;
@@ -82,9 +82,9 @@ public class Utf8CompilationCostTest
         tree!.OnDeserialized(c);
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Ownership.Analyze().IsVerified);
+        Assert.True(c.Analyze().IsVerified);
         using var output = new StringWriter();
-        Assert.True(c.Emission.WriteIr(output, out error), error);
+        Assert.True(c.WriteIr(output, out error), error);
         Assert.Contains("alloca [26 x i8]", output.ToString());
         ScalarEmissionTest.WriteFixture("Utf8CompilationReload", output.ToString(), "value=42\n");
     }

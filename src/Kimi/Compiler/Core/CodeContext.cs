@@ -123,10 +123,10 @@ public sealed class CodeContext
             this.Kotonoha.RecordSource(sourceDocument, producingModId, additionOrder);
         }
 
-        this.Compilation.BeginSourceParsing();
+        this.Compilation.BeginSourceParsing(this.Kotonoha);
         // One target bound to the document serves the lexer and the parser, so parser recovery can rest on a lexical Error.
         var diagnostics = this.DiagnosticCollection.For(sourceDocument);
-        var tokenizer = new Tokenizer(diagnostics, sourceDocument) { CollectDocumentation = this.Compilation.CollectDocumentation };
+        var tokenizer = new Tokenizer(diagnostics, sourceDocument) { CollectDocumentation = this.Compilation.CollectDocumentation, OptionalHoverOwner = this.Compilation.CollectHover ? this.Compilation : null };
         try
         {
             tokenizer.ReadAll();
@@ -134,7 +134,7 @@ public sealed class CodeContext
             var sourceContext = new CodeContext(this.Kotonoha, diagnostics, sourceDocument) { Documentation = tokenizer.Documentation };
             var reader = new TokenReader(sourceContext, ref tokenizer);
             parentKoto.Parse(ref reader);
-            sourceContext.Documentation?.SetLocation(this.Compilation.Project.Directory, producingModId, additionOrder);
+            sourceContext.Documentation?.SetLocation(this.Kotonoha.SourceDirectory, producingModId, additionOrder);
             sourceContext.Documentation?.Finish(this.Compilation.Diagnostics.HasSyntaxErrors(sourceDocument));
             this.Kotonoha.RecordDocumentation(sourceContext.Documentation);
         }

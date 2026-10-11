@@ -19,7 +19,7 @@ public class PairCaseTypeTest
         var c = Parse(Box + "func f<s/T>(value: s/T, shared: ref/Box<s/T>, applied: s/Box<T>) -> ()\n    s is owner or uniq\n    ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "f");
-        var target = f.BoundSymbol!.Schema!.GenericSlots[0].Symbol;
+        var target = f.SymbolOf()!.Schema!.GenericSlots[0].Symbol;
         var whole = target.WholeType!;
         var projection = target.Type!;
         var o = c.Binding.PairOuterOrigin(target);
@@ -34,14 +34,14 @@ public class PairCaseTypeTest
         Assert.Same(exclusive, c.Binding.CaseType(whole, uniq));
         Assert.Same(projection, c.Binding.CaseType(whole, owner));
 
-        var shared = f.Parameters[1].Type.BoundType!;
+        var shared = f.Parameters[1].Type.TypeOf()!;
         var sharedUniq = c.Binding.CaseType(shared, uniq);
         Assert.Equal(SemanticsKind.Ref, sharedUniq.Semantics);
         Assert.Same(shared.Origin, sharedUniq.Origin);
         Assert.Same(exclusive, sharedUniq.Components[0].Components[0]);
         Assert.Same(projection, c.Binding.CaseType(shared, owner).Components[0].Components[0]);
 
-        var applied = f.Parameters[2].Type.BoundType!;
+        var applied = f.Parameters[2].Type.TypeOf()!;
         Assert.Equal(BoundTypeKind.SemanticsApplication, applied.Kind);
         var appliedUniq = c.Binding.CaseType(applied, uniq);
         Assert.Equal(SemanticsKind.Uniq, appliedUniq.Semantics);
@@ -59,9 +59,9 @@ public class PairCaseTypeTest
         var c = Parse("func g<s/T, t/U>(value: s/(t/U)) -> ()\n    s is value or valueborrow\n    t is valueborrow\n    ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var g = Function(c, "g");
-        var outer = g.BoundSymbol!.Schema!.GenericSlots[0].Symbol;
-        var inner = g.BoundSymbol.Schema.GenericSlots[1].Symbol;
-        var type = g.Parameters[0].Type.BoundType!;
+        var outer = g.SymbolOf()!.Schema!.GenericSlots[0].Symbol;
+        var inner = g.SymbolOf()!.Schema!.GenericSlots[1].Symbol;
+        var type = g.Parameters[0].Type.TypeOf()!;
         ReadOnlySpan<PairCase> cases = [new(outer, SemanticsKind.Ref), new(inner, SemanticsKind.Uniq)];
         var formed = c.Binding.CaseType(type, cases);
         Assert.Equal(SemanticsKind.Ref, formed.Semantics);
@@ -79,8 +79,8 @@ public class PairCaseTypeTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "f");
         var g = Function(c, "g");
-        var ft = f.BoundSymbol!.Schema!.GenericSlots[0].Symbol;
-        var gt = g.BoundSymbol!.Schema!.GenericSlots[0].Symbol;
+        var ft = f.SymbolOf()!.Schema!.GenericSlots[0].Symbol;
+        var gt = g.SymbolOf()!.Schema!.GenericSlots[0].Symbol;
         var o = c.Binding.PairOuterOrigin(ft);
         Assert.Equal(OriginKind.Parameter, o.Kind);
         Assert.Same(f, o.Binder);
@@ -88,18 +88,18 @@ public class PairCaseTypeTest
         Assert.True(o.Slot < 0);
         Assert.NotSame(o, c.Binding.PairOuterOrigin(gt));
         Assert.Same(o, c.Binding.OuterOrigin(ft.WholeType!));
-        Assert.Same(o, c.Binding.OuterOrigin(f.Parameters[1].Type.BoundType!));
+        Assert.Same(o, c.Binding.OuterOrigin(f.Parameters[1].Type.TypeOf()!));
         Assert.Null(ft.WholeType!.Origin);
 
         // An annotated occurrence is a pair layer whose slot is the annotation (SPEC 8.1.2).
-        var annotated = g.Parameters[0].Type.BoundType!;
+        var annotated = g.Parameters[0].Type.TypeOf()!;
         Assert.True(Binding.TryPairLayer(annotated, out var whole, out var target));
         Assert.Same(gt.WholeType, whole);
         Assert.Same(gt.Type, target);
-        Assert.Same(g.BoundSymbol.Schema.Origins[0].Origin, c.Binding.OuterOrigin(annotated));
+        Assert.Same(g.SymbolOf()!.Schema!.Origins[0].Origin, c.Binding.OuterOrigin(annotated));
 
         Assert.True(c.Bind().IsComplete);
-        Assert.Same(o, c.Binding.PairOuterOrigin(Function(c, "f").BoundSymbol!.Schema!.GenericSlots[0].Symbol));
+        Assert.Same(o, c.Binding.PairOuterOrigin(Function(c, "f").SymbolOf()!.Schema!.GenericSlots[0].Symbol));
     }
 
     [Theory]
@@ -115,7 +115,7 @@ public class PairCaseTypeTest
         var c = Parse($"func f<s/T>(value: s/T) -> ()\n    {premises}\n    ()");
         c.Bind();
         var f = Function(c, "f");
-        var type = f.Parameters[0].Type.BoundType!;
+        var type = f.Parameters[0].Type.TypeOf()!;
         Assert.Equal(failing, c.Binding.BareAcquisition(type, f.Parameters[0].Type, out var reborrowed));
         Assert.Equal(reborrow, reborrowed);
         Assert.Equal(SemanticsMask.None, c.Binding.BareAcquisition(BoundType.I32, f.Parameters[0].Type, out var none));
@@ -130,7 +130,7 @@ public class PairCaseTypeTest
         c.Bind();
         var peek = Function(c, "peek");
         var binders = new List<PairBinder>();
-        c.Binding.PairBinders(peek, binders);
+        PairBinder.Collect(peek, binders);
         Assert.Equal(3, binders.Count);
         Assert.Equal("H", binders[0].Target.Name);
         Assert.Equal(SemanticsMask.Owner | SemanticsMask.ValueBorrow, binders[0].Admitted);
@@ -140,10 +140,11 @@ public class PairCaseTypeTest
         Assert.True(binders[1].Resolved);
         Assert.Equal("V", binders[2].Target.Name);
         Assert.Equal(SemanticsMask.Owner | SemanticsMask.Rc, binders[2].Admitted);
-        Assert.False(binders[2].Resolved);
+        Assert.True(binders[2].Resolved);
+        Assert.Equal(12, PairBinder.CaseProduct(binders));
 
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous);
-        c.Binding.PairBinders(closure, binders);
+        PairBinder.Collect(closure, binders);
         Assert.Equal(3, binders.Count);
         Assert.Equal("H", binders[0].Target.Name);
         Assert.Equal("T", binders[1].Target.Name);

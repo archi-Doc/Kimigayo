@@ -35,7 +35,7 @@ public class GenericIterationEmissionTest
         // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
         // the corrupt iteration plan is rejected on the ordinary body that owns it.
         var c = MinimalEmissionTest.Analyze("func first(values: ref/[1 of i32]) -> isize\n    for index in values.indices\n        return index\n    return values.length\nlet values: [1 of i32] = [7]\nlet result = first(values@ref)");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "first");
         if (defect == "endpoint")
         {
@@ -56,9 +56,9 @@ public class GenericIterationEmissionTest
         }
 
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.Validate(out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.Validate(out error), error);
     }
 }

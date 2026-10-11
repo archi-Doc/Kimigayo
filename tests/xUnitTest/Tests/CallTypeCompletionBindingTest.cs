@@ -16,13 +16,13 @@ public class CallTypeCompletionBindingTest
         var c = MinimalEmissionTest.Analyze("contract Hidden\npublic struct Source\n    Self is Hidden\npublic enum E<T>\n    T is Hidden\n    A\ngroup Consumer\n    func take<T>() => ()\n    func call() => take<" + type + ">()");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
-        Assert.Null(Call(c).BoundCall);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
+        Assert.Null(Call(c).CallOf());
         Assert.False(c.Bind().IsComplete);
-        Assert.Null(Call(c).BoundCall);
+        Assert.Null(Call(c).CallOf());
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
-        Assert.Null(Call(restored).BoundCall);
+        Assert.Null(Call(restored).CallOf());
     }
 
     [Fact]
@@ -31,7 +31,7 @@ public class CallTypeCompletionBindingTest
         var c = MinimalEmissionTest.Analyze("struct Owner<T>\n    T is i32\n    public func take(self: ref/Self) => ()\ngroup Consumer\n    func call(value: ref/Owner<string>) => value.take()");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Null(Call(c).BoundCall);
+        Assert.Null(Call(c).CallOf());
     }
 
     [Theory]
@@ -43,8 +43,8 @@ public class CallTypeCompletionBindingTest
         var c = MinimalEmissionTest.Analyze(Prefix("internal") + "group Consumer\n    func take(value: " + type + ") -> " + type + " => value\n    func call(value: " + type + ") => take(value)");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
-        Assert.Null(Call(c).BoundCall);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
+        Assert.Null(Call(c).CallOf());
     }
 
     [Theory]
@@ -55,10 +55,10 @@ public class CallTypeCompletionBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Prefix("public") + "group Consumer\n    func take<T>(value: T) -> T => value@move\n    func call(value: " + type + ") => take(value@move)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.NotNull(Call(c).BoundCall);
+        Assert.NotNull(Call(c).CallOf());
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
-        Assert.NotNull(Call(restored).BoundCall);
+        Assert.NotNull(Call(restored).CallOf());
     }
 
     [Theory]
@@ -78,7 +78,7 @@ public class CallTypeCompletionBindingTest
         var c = MinimalEmissionTest.Analyze(Prefix("internal") + "group Consumer\n    func take<T>() => ()\n    func call() => take<i32>()");
         Assert.False(c.Binding.Result.IsComplete);
         var call = Call(c);
-        var plan = call.BoundCall;
+        var plan = call.CallOf();
         Assert.NotNull(plan);
         var generic = Assert.IsType<GenericsKoto>(call.Method);
         var original = generic.TypeArguments.Single();
@@ -86,10 +86,10 @@ public class CallTypeCompletionBindingTest
         var replacement = Assert.IsType<GenericsKoto>(Call(donor).Method).TypeArguments.Single();
         Assert.True(KotoHelper.Replace(generic, original, replacement));
         Assert.False(c.Bind().IsComplete);
-        Assert.Null(call.BoundCall);
+        Assert.Null(call.CallOf());
         Assert.True(KotoHelper.Replace(generic, replacement, original));
         Assert.False(c.Bind().IsComplete); // The unrelated public E constraint still fails API validation.
-        Assert.Same(plan, call.BoundCall);
+        Assert.Same(plan, call.CallOf());
     }
 
     [Trait("Purpose", "Allocation")]

@@ -4,11 +4,11 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(bool Find, BoundType Key, BoundType Value), BoundCall> dictionaryStorageCalls = new();
+    private readonly Dictionary<(bool Find, BoundType Key, BoundType Value), CallPlan> dictionaryStorageCalls = new();
 
     // Closed compiler calls reuse the same source definitions, substitutions and equality witnesses as
     // ordinary library calls. Only complete Dictionary element Types reach these generation bridges.
-    internal BoundCall DictionaryStorageCall(bool find, BoundType key, BoundType value)
+    internal CallPlan DictionaryStorageCall(bool find, BoundType key, BoundType value)
     {
         var function = find ? this.compilation.Library.DictionaryFind : this.compilation.Library.DictionaryClear;
         var identity = (find, key, value);

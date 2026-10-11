@@ -51,24 +51,30 @@ internal static partial class LlvmModuleWriter
             return;
         }
 
+        var record = new EmissionOperand(EmissionOperandKind.SlotAddress, instruction.Place);
         if (instruction.ScalarOperator == "FixedStorage")
         {
-            // {storage, position, count} = {first element, 0, N} of the borrowed fixed array.
+            // {storage, position, count} = {first element, 0, N} of the borrowed fixed array, at the named Field offsets.
+            DefineField(output, function, record, "%ffield", id, operands[2].Value);
             output.Write("  store ptr ");
             Address();
             output.Write(", ptr ");
-            WriteSlot(output, function, instruction.Place);
+            WriteField(output, function, record, "%ffield", id, operands[2].Value);
             output.Write(", align 8\n  %fpos");
             WriteNumber(output, id);
             output.Write(" = getelementptr i8, ptr ");
             WriteSlot(output, function, instruction.Place);
-            output.Write(", i64 8\n  store i64 0, ptr %fpos");
+            output.Write(", i64 ");
+            WriteNumber(output, operands[3].Value);
+            output.Write("\n  store i64 0, ptr %fpos");
             WriteNumber(output, id);
             output.Write(", align 8\n  %fcount");
             WriteNumber(output, id);
             output.Write(" = getelementptr i8, ptr ");
             WriteSlot(output, function, instruction.Place);
-            output.Write(", i64 16\n  store i64 ");
+            output.Write(", i64 ");
+            WriteNumber(output, operands[4].Value);
+            output.Write("\n  store i64 ");
             WriteNumber(output, operands[1].Value);
             output.Write(", ptr %fcount");
             WriteNumber(output, id);
@@ -78,8 +84,8 @@ internal static partial class LlvmModuleWriter
 
         if (instruction.ScalarOperator is "DictionaryBorrowStorage" or "DictionaryOwnStorage")
         {
-            // {storage, stride, link, count} = {buffer, slot stride, head, length} of the borrowed handle; the owning
-            // remainder also keeps the tail link before its count.
+            // {storage, stride, link, count} = {buffer, slot stride, head, length} of the borrowed handle at the remainder's
+            // named Field offsets (operands 2 and after); the owning remainder also keeps the tail link.
             var owning = instruction.ScalarOperator == "DictionaryOwnStorage";
             output.Write("  %dbuf");
             WriteNumber(output, id);
@@ -101,13 +107,10 @@ internal static partial class LlvmModuleWriter
             WriteNumber(output, id);
             output.Write(" = load i64, ptr %dheadp");
             WriteNumber(output, id);
-            output.Write(", align 8\n  store ptr %dbuf");
-            WriteNumber(output, id);
-            output.Write(", ptr ");
-            WriteSlot(output, function, instruction.Place);
             output.Write(", align 8\n");
-            Field(8, "i64 ", operands[1].Value);
-            Field(16, "i64 %dhead", id);
+            Field(operands[2].Value, "ptr %dbuf", id);
+            Field(operands[3].Value, "i64 ", operands[1].Value);
+            Field(operands[4].Value, "i64 %dhead", id);
             if (owning)
             {
                 output.Write("  %dtailp");
@@ -119,29 +122,20 @@ internal static partial class LlvmModuleWriter
                 output.Write(" = load i64, ptr %dtailp");
                 WriteNumber(output, id);
                 output.Write(", align 8\n");
-                Field(24, "i64 %dtail", id);
+                Field(operands[5].Value, "i64 %dtail", id);
             }
 
-            Field(owning ? 32 : 24, "i64 %dlen", id);
+            Field(operands[^1].Value, "i64 %dlen", id);
             return;
 
-            void Field(int offset, string prefix, Int128 number)
+            void Field(Int128 offset, string prefix, Int128 number)
             {
-                output.Write("  %dfield");
-                WriteNumber(output, id);
-                output.Write('_');
-                WriteNumber(output, offset);
-                output.Write(" = getelementptr i8, ptr ");
-                WriteSlot(output, function, instruction.Place);
-                output.Write(", i64 ");
-                WriteNumber(output, offset);
-                output.Write("\n  store ");
+                DefineField(output, function, record, "%dfield", id, offset);
+                output.Write("  store ");
                 output.Write(prefix);
                 WriteNumber(output, number);
-                output.Write(", ptr %dfield");
-                WriteNumber(output, id);
-                output.Write('_');
-                WriteNumber(output, offset);
+                output.Write(", ptr ");
+                WriteField(output, function, record, "%dfield", id, offset);
                 output.Write(", align 8\n");
             }
         }

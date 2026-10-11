@@ -41,7 +41,7 @@ public class GenericForwardingEmissionTest
         var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone22.kimi")).Replace("\r\n", "\n", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Empty(module.PendingEntries);
+        Assert.True(module.IsComplete);
         ScalarEmissionTest.EmitFixture("GenericForwardingProgram22", source, "Compound layouts preserved.\nSpecialization preserved.\nRed received.\nRed destroyed.\nBlue received.\nBlue destroyed.\nGeneric generation finished.\n");
     }
 
@@ -99,7 +99,7 @@ public class GenericForwardingEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
     }
 
@@ -115,22 +115,24 @@ public class GenericForwardingEmissionTest
     public void RejectsCorruptPlanAndRecovers(string defect)
     {
         var c = MinimalEmissionTest.Analyze("func weight(value: ref/i32) -> i32 => 2\nfunc total(values: ref/[1 of i32]) -> i32 => weight(values[0]@ref/i32)\nlet values: [1 of i32] = [7]\nlet result = total(values@ref)");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "total");
-        var id = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Borrow && x.Source is IndexKoto);
+        var sequence = body.Sequences.FindIndex(x => x.Kind == SequenceOperation.Borrow);
+        Assert.True(sequence >= 0);
+        var id = body.Sequences[sequence].Operation;
         if (defect == "loan")
         {
             body.OperationStorage[id] = body.Operations[id] with { LoanMode = LoanRequirement.Uniq };
         }
         else
         {
-            body.ValueOperands[body.Values[id].Start + 1] = id;
+            body.Sequences[sequence] = body.Sequences[sequence] with { Index = id };
         }
 
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.Validate(out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.Validate(out error), error);
     }
 }

@@ -36,9 +36,9 @@ public class BorrowedArrayEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
 
     [Theory]
@@ -63,21 +63,21 @@ public class BorrowedArrayEmissionTest
         {
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         for (var i = 0; i < 32; i++)
         {
-            c.Ownership.Analyze();
-            c.Emission.WriteIr(TextWriter.Null, out _);
+            c.Analyze();
+            c.WriteIr(TextWriter.Null, out _);
         }
 
         var before = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 16; i++)
         {
-            c.Ownership.Analyze();
-            c.Emission.WriteIr(TextWriter.Null, out _);
+            c.Analyze();
+            c.WriteIr(TextWriter.Null, out _);
         }
 
         Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
@@ -87,16 +87,16 @@ public class BorrowedArrayEmissionTest
     public void RejectsDifferentReferenceProducerAndReanalysisRecovers()
     {
         var c = MinimalEmissionTest.Analyze("let a: [1 of i32] = [42]\nlet r = a@ref\nlet n = r.length");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single();
         var sequence = body.Sequences.Single();
         var borrow = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Borrow);
         body.ValueOperands[body.Values[sequence.Operation].Start] = borrow;
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public class BorrowedArrayEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func identity<T>(x: T) -> T => x\nlet a: [1 of i32] = [42]\nlet r = identity(a@ref)\nlet n = r[0]");
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
     }
 }

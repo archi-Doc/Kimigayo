@@ -15,7 +15,7 @@ public class OriginSyntaxRevisionTest
     public void EmbeddedLibraryUsesCurrentOriginSyntax()
     {
         var c = MinimalEmissionTest.Analyze("let value = 1");
-        Assert.True(c.Bind().IsComplete, string.Join("\n", TestDiagnostics.Of(c).Select(x => $"{x.Path}:{x.Span}: {x.Message}")) + "\n" + c.Binding.Library.InvalidDeclaration);
+        Assert.True(c.Bind().IsComplete, string.Join("\n", TestDiagnostics.Of(c).Select(x => $"{x.Path}:{x.Span}: {x.Message}")));
     }
 
     [Theory]
@@ -31,12 +31,12 @@ public class OriginSyntaxRevisionTest
         var c = MinimalEmissionTest.Analyze(View + $"func inspect(left: {input}, right: {input}) => ()");
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         var function = ParseTestHelper.GetChildren(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single();
-        var left = Origins(function.Parameters[0].Type.BoundType!).Where(x => x.Kind == OriginKind.Input).ToArray();
-        var right = Origins(function.Parameters[1].Type.BoundType!).Where(x => x.Kind == OriginKind.Input).ToArray();
+        var left = Origins(function.Parameters[0].Type.TypeOf()!).Where(x => x.Kind == OriginKind.Input).ToArray();
+        var right = Origins(function.Parameters[1].Type.TypeOf()!).Where(x => x.Kind == OriginKind.Input).ToArray();
         Assert.NotEmpty(left);
         Assert.DoesNotContain(left, right.Contains);
         Assert.True(c.Bind().IsComplete);
-        Assert.Equal(left, Origins(function.Parameters[0].Type.BoundType!).Where(x => x.Kind == OriginKind.Input));
+        Assert.Equal(left, Origins(function.Parameters[0].Type.TypeOf()!).Where(x => x.Kind == OriginKind.Input));
     }
 
     [Theory]
@@ -121,7 +121,7 @@ public class OriginSyntaxRevisionTest
         var c = MinimalEmissionTest.Analyze(View + "group G\n    func identity<T>(value: View<T>) -> View<T>{result}\n        origin result.source == value.source\n        return value\n    specialize func identity<i32>(value: View<i32>) -> View<i32> => value");
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         var functions = ParseTestHelper.GetChildren(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G")).OfType<FunctionKoto>().ToArray();
-        Assert.Equal(Origins(functions[0].Parameters[0].Type.BoundType!).Select(x => x.Slot), Origins(functions[1].Parameters[0].Type.BoundType!).Select(x => x.Slot));
+        Assert.Equal(Origins(functions[0].Parameters[0].Type.TypeOf()!).Select(x => x.Slot), Origins(functions[1].Parameters[0].Type.TypeOf()!).Select(x => x.Slot));
         Assert.True(c.Bind().IsComplete);
     }
 
@@ -143,7 +143,7 @@ public class OriginSyntaxRevisionTest
     {
         const string Source = "struct Counter\n    public var value: i32 = 7\nstruct View<T> {source}\n    public let value: ref/T during source\n    public init(value: ref/T during source) => self.value = value\nfunc read<T>(view: ref/View<T>) -> i32 => 1\nspecialize func read<Counter>(view: ref/View<Counter>) -> i32 => view.value.value\nlet counter = Counter.init()\nlet view = View<Counter>.init(counter@ref)\nif read(view@ref) != 7 => $abort(\"specialization\")\n";
         var compilation = MinimalEmissionTest.Analyze(Source);
-        Assert.True(compilation.Ownership.Result.IsVerified, string.Join("\n", compilation.Binding.Obligations) + "\n" + string.Join("\n", compilation.Ownership.ControlFlow!.PendingBinding));
+        Assert.True(compilation.Analysis.IsVerified, string.Join("\n", compilation.Binding.Obligations) + "\n" + string.Join("\n", compilation.Ownership.ControlFlow!.PendingBinding));
         ScalarEmissionTest.EmitFixture("AnonymousOriginSpecialization", Source, string.Empty);
     }
 
@@ -153,33 +153,33 @@ public class OriginSyntaxRevisionTest
     {
         const string Source = "struct Counter\n    public var value: i32 = 7\nstruct View {source}\n    public let counter: ref/Counter during source\n    public init(counter: ref/Counter during source) => self.counter = counter\nfunc read(view: ref/View) -> i32 => view.counter.value\nvar counter = Counter.init()\nlet view = View.init(counter@ref)\nif read(view@ref) != 7 => $abort(\"bad value\")\n";
         var valid = MinimalEmissionTest.Analyze(Source);
-        Assert.True(valid.Ownership.Result.IsVerified, string.Join("\n", valid.Binding.Obligations) + "\n" + string.Join("\n", valid.Ownership.ControlFlow!.Issues) + "\n" + string.Join("\n", valid.Ownership.ControlFlow.PendingBinding));
+        Assert.True(valid.Analysis.IsVerified, string.Join("\n", valid.Binding.Obligations) + "\n" + string.Join("\n", valid.Ownership.ControlFlow!.Issues) + "\n" + string.Join("\n", valid.Ownership.ControlFlow.PendingBinding));
         ScalarEmissionTest.EmitFixture("AnonymousAggregateOrigin", Source, string.Empty);
         valid = CompilationTestHelper.Reload(valid);
         for (var i = 0; i < 3; i++)
         {
             Assert.True(valid.Bind().IsComplete);
             valid.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(valid.Ownership.Analyze().IsVerified);
-            Assert.True(valid.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(valid.Analyze().IsVerified);
+            Assert.True(valid.WriteIr(TextWriter.Null, out var error), error);
         }
 
         for (var i = 0; i < 32; i++)
         {
-            valid.Ownership.Analyze();
-            valid.Emission.WriteIr(TextWriter.Null, out _);
+            valid.Analyze();
+            valid.WriteIr(TextWriter.Null, out _);
         }
 
         var before = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 16; i++)
         {
-            valid.Ownership.Analyze();
-            valid.Emission.WriteIr(TextWriter.Null, out _);
+            valid.Analyze();
+            valid.WriteIr(TextWriter.Null, out _);
         }
 
         Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
         var invalid = MinimalEmissionTest.Analyze(Source.Replace("if read", "counter.value = 8\nif read", StringComparison.Ordinal));
-        Assert.False(invalid.Emission.Validate(out _));
+        Assert.False(invalid.Validate(out _));
     }
 
     private static IEnumerable<BoundOrigin> Origins(BoundType type)

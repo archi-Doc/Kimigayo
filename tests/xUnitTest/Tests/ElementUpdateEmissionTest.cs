@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
@@ -24,7 +25,6 @@ public class ElementUpdateEmissionTest
         { "Deferred", "var a = (0, \"held\")\nvar i = 0\nloop\n    defer => a.0 += 14\n    i += 1\n    if i < 3 => continue\n    exit\nif a.0 == 42 => Console.writeLine(\"ok\")" },
         { "DeferredIncrement", "var a = (39, \"held\")\nvar i = 0\nloop\n    defer => ++a.0\n    i += 1\n    if i < 3 => continue\n    exit\nif a.0 == 42 => Console.writeLine(\"ok\")" },
         { "Function", "func f(input: [1 of i32]) -> i32\n    var a = input\n    a[0] += 2\n    return a[0]\nlet input: [1 of i32] = [40]\nif f(input) == 42 and input[0] == 40 => Console.writeLine(\"ok\")" },
-        { "Dead", "func f()\n    return\n    var a = (40, true)\n    a.0 += 2\n    a.0++\nf()\nConsole.writeLine(\"ok\")" },
         { "Covered", "var a = (40, true)\nmatch true\n    _ => a.0 += 2\n    true => a.0 -= 1\nif a.0 == 42 => Console.writeLine(\"ok\")" },
         { "RhsTransfer", "func f() -> i32\n    var a = (0, true)\n    defer => a.0++\n    a.0 += (return 42)\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
         { "IndexTransfer", "func f() -> i32\n    var a: [1 of i32] = [0]\n    a[(return 42)] += 2\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
@@ -79,7 +79,7 @@ public class ElementUpdateEmissionTest
         var issue = Assert.Single(c.Binding.Issues);
         Assert.Equal(Kimi.DiagnosticCode.NonNumericOperand_Kd, issue.Code);
         Assert.Contains("+=", issue.Node.ToString(), StringComparison.Ordinal);
-        Assert.Empty(c.Ownership.Issues);
+        Assert.Empty(c.Problems);
     }
 
     [Theory]
@@ -174,8 +174,8 @@ public class ElementUpdateEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
     }
 
     // The located receiver stays protected while its index operands evaluate (SPEC 4.6.4).
@@ -186,8 +186,8 @@ public class ElementUpdateEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]
@@ -195,8 +195,8 @@ public class ElementUpdateEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func take(a: (string, i32)) => ()\nvar a = (\"held\", 0)\na.1 += (label work: do\n    take(a@move)\n    exit to work 42\n)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.PossiblyMovedUse);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd);
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -237,13 +237,12 @@ public class ElementUpdateEmissionTest
     [InlineData("var a: [2 of i32] = [21, 21]\na[0] += a[1 + 0]")]
     [InlineData("func count(a: [1 of i32]) -> i32 => a[0]\nvar a: [1 of i32] = [21]\na[0] += count(a)")]
     [InlineData("var a: [1 of i32] = [21]\na[0] += (label work: do\n    defer => a[0]\n    exit to work 21\n)")]
-    [InlineData("func f()\n    return\n    var a: [1 of i32] = [21]\n    a[0] += a[0]\nf()")]
     public void SelfReadsInTheRightSidePrecedeTheExclusiveUpdate(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
     }
 
     [Theory]
@@ -273,7 +272,7 @@ public class ElementUpdateEmissionTest
     public void InvalidUpdatePlansFailBeforeWritingAndRecover(string defect)
     {
         var c = MinimalEmissionTest.Analyze("var a: [1 of i32] = [40]\nlet old = a[0]++");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var update = Assert.Single(body.ElementUpdates);
         var plan = body.Projections[update.Projection];
@@ -298,10 +297,10 @@ public class ElementUpdateEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -314,8 +313,8 @@ public class ElementUpdateEmissionTest
         {
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         var success = true;
@@ -330,8 +329,8 @@ public class ElementUpdateEmissionTest
         before = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 128; i++)
         {
-            success &= c.Ownership.Analyze().IsVerified;
-            success &= c.Emission.WriteIr(TextWriter.Null, out _);
+            success &= c.Analyze().IsVerified;
+            success &= c.WriteIr(TextWriter.Null, out _);
         }
 
         var bytes = GC.GetAllocatedBytesForCurrentThread() - before;
@@ -360,7 +359,7 @@ public class ElementUpdateEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 

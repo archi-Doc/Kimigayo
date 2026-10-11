@@ -35,7 +35,7 @@ public class ObjectRuntimeTest
                     let child = owner@objuniq/Leaf
                     inspect(child@objref/Base)
                     inspectExclusive(child@objuniq/Base)
-                let moved = owner@obj/Base
+                let moved = owner@move@obj/Base
                 inspect(moved@objref)
                 require moved is Leaf else => $abort("lost identity")
             do
@@ -61,7 +61,7 @@ public class ObjectRuntimeTest
         var c = MinimalEmissionTest.Analyze(Declarations + "\n" + operation);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.NotEmpty(c.Binding.Issues);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]
@@ -91,12 +91,12 @@ public class ObjectRuntimeTest
                 public init(): base() => ()
             var owner = Kimi.Intrinsics.makeObj(Leaf.init())
             let view = owner@objuniq/Base
-            _ = owner@obj/Base
+            _ = owner@move@obj/Base
             _ = view@move
             """;
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(c.Problems, issue => issue.Code.IsLoanConflict());
     }
 
     [Trait("Purpose", "Allocation")]
@@ -178,7 +178,7 @@ public class ObjectRuntimeTest
             """;
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(c.Problems, issue => issue.Code.IsLoanConflict());
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 }

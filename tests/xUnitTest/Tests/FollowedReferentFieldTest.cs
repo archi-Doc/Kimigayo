@@ -9,7 +9,7 @@ using Xunit;
 namespace XunitTest;
 
 // SPEC 13.5.5.1, 15.6.2: a field or Tuple element of an explicitly selected referent (`p@follow.x`) is reached through the
-// reference as `p.x` is, and a borrow of it depends on that reference (SPEC 13.5.5). It was UnsupportedOwnership_Kd, and
+// reference as `p.x` is, and a borrow of it depends on that reference (SPEC 13.5.5). It was Unsupported_Kd, and
 // Binding gave `p@follow.x@ref` an Origin unrelated to `p`.
 public class FollowedReferentFieldTest(ITestOutputHelper output)
 {
@@ -40,10 +40,10 @@ public class FollowedReferentFieldTest(ITestOutputHelper output)
         var path = Path.GetFullPath("followed-field-update.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict && x.Source.ToString() == conflict);
-        Assert.False(c.Emission.Validate(out _));
-        c.Ownership.ReportDiagnostics();
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject).ToString() == conflict);
+        Assert.False(c.Validate(out _));
+        c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var console = new DiagnosticContractTest.DiagnosticConsole();

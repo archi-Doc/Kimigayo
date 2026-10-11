@@ -19,7 +19,7 @@ public class ObjectHandleModeTest(ITestOutputHelper output)
     public void StaticModesSeparateAuthorityFromCounting(SemanticsKind semantics, LoanRequirement authority, int counting)
     {
         var type = new BoundType("handle", BoundTypeKind.Semantics, semantics: semantics, components: [BoundType.I32]);
-        var mode = ObjectTypes.HandleMode(type);
+        var mode = type.HandleMode;
         Assert.NotNull(mode);
         Assert.Equal(semantics, mode.Value.Semantics);
         Assert.Equal(authority, mode.Value.PayloadAuthority);
@@ -34,7 +34,7 @@ public class ObjectHandleModeTest(ITestOutputHelper output)
     [InlineData(SemanticsKind.ObjUniq)]
     [InlineData(SemanticsKind.Raw)]
     public void OtherSemanticsHaveNoStrongHandleMode(SemanticsKind semantics)
-        => Assert.Null(ObjectTypes.HandleMode(new("other", BoundTypeKind.Semantics, semantics: semantics, components: [BoundType.I32])));
+        => Assert.Null(new BoundType("other", BoundTypeKind.Semantics, semantics: semantics, components: [BoundType.I32]).HandleMode);
 
     [Fact]
     public void EqualSizedHandlesKeepModeSpecificDestructionLayouts()
@@ -67,7 +67,7 @@ public class ObjectHandleModeTest(ITestOutputHelper output)
     [InlineData("arc")]
     public void OwningUpcastsPreserveTheirMode(string mode)
     {
-        var c = CompilationTestHelper.Parse($"open struct Base\nstruct Leaf: Base\nfunc widen(value: {mode}/Leaf) -> {mode}/Base => value@{mode}/Base");
+        var c = CompilationTestHelper.Parse($"open struct Base\nstruct Leaf: Base\nfunc widen(value: {mode}/Leaf) -> {mode}/Base => value@move@{mode}/Base");
         Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
     }
 
@@ -124,8 +124,8 @@ public class ObjectHandleModeTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze($"func consume(value: {type}) => ()\n()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.Validate(out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Validate(out var failure), MinimalEmissionTest.Describe(c, failure));
     }
 
     [Theory]
@@ -136,7 +136,7 @@ public class ObjectHandleModeTest(ITestOutputHelper output)
     public void RcOwnershipUsesOrdinaryStorageAndCleanup(string type)
     {
         var c = MinimalEmissionTest.Analyze($"func consume(value: {type}) => ()\n()");
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.Validate(out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Validate(out var issue), MinimalEmissionTest.Describe(c, issue));
     }
 }

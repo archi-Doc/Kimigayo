@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
@@ -31,7 +32,7 @@ public class GuardEmissionTest
         { "OuterYield", "let result = label outer: match 0\n    _ => match 1\n        _ if (yield 7) => 1\n        _ => 2\nif result == 7 => Console.writeLine(\"ok\")", "ok\n" },
         { "ReturnCandidate", "func f() -> i32\n    match 7\n        let n if (return n) => ()\n        _ => ()\n    return 0\nif f() == 7 => Console.writeLine(\"ok\")", "ok\n" },
         { "GuardContinue", "var n = 0\nwhile n < 2\n    n += 1\n    match n\n        _ if (if n == 1 => continue else => true) => Console.writeLine(\"ok\")\n        _ => ()", "ok\n" },
-        { "CheckedBody", "func f() -> i32\n    return match 7\n        let n if (return 9) => n\n        _ => 0\nif f() == 9 => Console.writeLine(\"ok\")", "ok\n" },
+        { "ReturningGuard", "func f() -> i32\n    return match 7\n        let n if (return 9) => 1\n        _ => 0\nif f() == 9 => Console.writeLine(\"ok\")", "ok\n" },
         { "ConditionalMove", "var text = \"a\"\nmatch 1\n    _ if (label check: do\n        Console.writeLine(text@move)\n        exit to check false\n    ) => ()\n    _ => ()\ntext = \"b\"\nConsole.writeLine(text)", "a\nb\n" },
     };
 
@@ -68,7 +69,7 @@ public class GuardEmissionTest
         Assert.Same(pattern.BodySymbol!.Declaration, pattern.CandidateSymbol.Declaration);
         Assert.False(body.SymbolPlaces.ContainsKey(pattern.CandidateSymbol));
         // SPEC 14.8.3: the candidate is a shared reference, so it borrows the Subject Place, which holds the value.
-        Assert.Contains(body.Operations, x => x.Kind == OwnershipOperationKind.Borrow && x.Source.BoundSymbol == pattern.CandidateSymbol);
+        Assert.Contains(body.Operations, x => x.Kind == OwnershipOperationKind.Borrow && x.Source.SymbolOf() == pattern.CandidateSymbol);
         Assert.Contains(module.GetFunction(0).Slots, x => x.Place == body.Matches[0].Subject);
     }
 
@@ -81,8 +82,8 @@ public class GuardEmissionTest
         var allocated = AllocationMeasurement.Measure(
             () =>
             {
-                valid &= c.Ownership.Analyze().IsVerified;
-                valid &= c.Emission.WriteIr(TextWriter.Null, out _);
+                valid &= c.Analyze().IsVerified;
+                valid &= c.WriteIr(TextWriter.Null, out _);
             },
             iterations: 128,
             warmupIterations: 100);
@@ -131,12 +132,12 @@ public class GuardEmissionTest
     public void MalformedGuardPlansFailBeforeWriting(string defect)
     {
         var c = MinimalEmissionTest.Analyze("func echo(text: string) -> string => text@move\nmatch 1\n    let n if echo(\"a\") == \"a\" and n == 1 => ()\n    _ => ()");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Matches.Count != 0);
         var arm = body.MatchArms[0];
         if (defect == "candidate")
         {
-            var read = body.OperationStorage.FindIndex(x => x.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Borrow && x.Source.BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate);
+            var read = body.OperationStorage.FindIndex(x => x.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Borrow && x.Source.SymbolOf()?.Kind == BindingSymbolKind.PatternCandidate);
             body.OperationSteps[read] = -1;
         }
         else if (defect == "boolean")
@@ -151,10 +152,10 @@ public class GuardEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.Validate(out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.Validate(out error), error);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -167,7 +168,7 @@ public class GuardEmissionTest
         var allocated = AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 100, warmupIterations: 100);
         Assert.True(valid);
         Assert.Equal(0, allocated);
-        c.Ownership.Analyze();
+        c.Analyze();
         Assert.Same(candidate, c.Ownership.Bodies[0].Matches[0].Binding.Positions[0].CandidateSymbol);
     }
 
@@ -201,7 +202,7 @@ public class GuardEmissionTest
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.TryGetMatch(match, out var plan));
         Assert.Null(plan!.Positions[0].CandidateSymbol);
-        Assert.Same(plan.Positions[0].BodySymbol, ((BinaryKoto)oldGuard).Left.BoundSymbol);
+        Assert.Same(plan.Positions[0].BodySymbol, ((BinaryKoto)oldGuard).Left.SymbolOf());
     }
 
     [Fact]
@@ -219,9 +220,9 @@ public class GuardEmissionTest
         var source = "let text = \"a\"\nmatch 1\n    _ if (label check: do\n        _ = text@move\n        exit to check false\n    ) => ()\n" + (covered ? "    _ => ()\n" : string.Empty) + "    _ => Console.writeLine(text)";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.True(c.Ownership.Result.ErrorCount > 0);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.PossiblyMovedUse);
+        Assert.False(c.Analysis.IsVerified);
+        Assert.True(c.Analysis.ErrorCount > 0);
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd);
     }
 
     [Fact]

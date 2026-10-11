@@ -72,9 +72,9 @@ public class PrimitiveIntegerTest
         // SPEC 8.4.7.3: the generic body is valid; the initial profile refuses its 128-bit instance before optimization.
         var c = MinimalEmissionTest.Analyze("func half<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value / 2\nlet a = half(10)\nlet b = half(10@i128)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out var error));
+        Assert.False(c.WriteIr(writer, out var error));
         Assert.Contains("Generic instance", error, StringComparison.Ordinal);
     }
 
@@ -83,7 +83,6 @@ public class PrimitiveIntegerTest
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Bind().IsComplete);
-        Assert.Equal(KimiDeclarationState.Validated, c.Library.GetDeclarationState(KimiDeclarationId.PrimitiveInteger));
         Assert.Equal(IntrinsicKind.PrimitiveInteger, c.Library.PrimitiveInteger.Intrinsic);
     }
 }

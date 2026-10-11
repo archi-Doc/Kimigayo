@@ -4,7 +4,7 @@ These files ship as resources in the compiler assembly. They are the source of
 the currently implemented Kimi declarations, not the complete required library.
 SPEC Chapter 22 and its references remain authoritative. The public API is
 summarized in [LIBRARY.md](../../../docs/LIBRARY.md); this file covers how the sources are
-embedded, validated and implemented.
+embedded and implemented.
 
 - Put ordinary types, Contracts and method bodies in `.kimi` files, subject to the
   Text implementation policy below. Add new source
@@ -27,7 +27,7 @@ embedded, validated and implemented.
   lookup. Keep the native API-equivalence, receiver-once and Partial Move checks when changing this
   choice, and measure any claimed benefit before replacing the wrappers.
 - `Comparison.kimi` declares Equatable and Comparable as ordinary Contracts with
-  validated recognized identities. Primitive witnesses use compiler lowering;
+  recognized identities. Primitive witnesses use compiler lowering;
   user witnesses use ordinary calls with the same ownership and effect checks.
 - Array's two sorting overloads use the same heapsort traversal in Kimigayo. The
   default overload calls Comparable directly: a generic anonymous Callable adapter
@@ -49,7 +49,10 @@ embedded, validated and implemented.
   Their private loader supplies the owning container (a group, the `Array` struct for its constructor and mutation operations, the
   internal `Storage` group of `Storage.kimi` for the standard storage boundary, or the public `Raw` group of `Raw.kimi` for raw storage; a struct also admits bodiless `init` signatures).
   Within these signature resources, only catalog-registered compiler implementations may omit bodies
-  without an ordinary `#LibraryImport` declaration. Ordinary
+  without an ordinary `#LibraryImport` declaration. A catalog link may instead name an internal source function of the same
+  struct as a bodiless constructor's definition (`Array.init(! capacity:)` → `Array.initCapacity` and
+  `Array.init(! repeating:count:)` → `Array.initRepeating`, SPEC 22.1); calls select and present the public constructor and
+  execute the implementation. Ordinary
   helpers in these containers use the normal compilation pipeline; this is not
   public syntax for declaring a user intrinsic or omitting a function body.
 - `Storage.kimi` implements contiguous shared/exclusive `splitFirst` by borrowing raw element
@@ -59,24 +62,24 @@ embedded, validated and implemented.
   Its owning remainder destroys unreturned elements in reverse order in a concrete
   generic `drop`, then calls the internal unsafe `release` primitive. Only handle
   construction, capability creation and raw region release remain compiler operations.
-- Register compiler-recognized identities in `KimiLibraryCatalog` and validate
-  their contracts in `KimiLibraryValidation`. Append new stable declaration IDs;
-  never derive them from source order. Ordinary helper declarations need no ID. `SourceExpected` distinguishes a
-  broken embedded source from an API whose source is not implemented yet.
+- Register compiler-recognized identities in `KimiLibraryCatalog`; `KimiLibraryShapeTest` fixes the shapes the
+  compiler and the runtime rely on, so a change to them updates that test with its compiler consumer. Append new
+  stable declaration IDs; never derive them from source order. Ordinary helper declarations need no ID. A
+  `SourceExpected` declaration that is missing or duplicated fails library construction; the other entries are APIs
+  whose source is not implemented yet.
 - Preserve reference identity through binding. Call lowering must use the
   recognized symbol or compiler-function kind, never a user-visible spelling.
 
 Source text and successfully lexed immutable tokens are cached and shared. Source
-documents, ASTs, symbols and validation state remain compilation-local; no cached
+documents, ASTs, symbols and binding state remain compilation-local; no cached
 item retains a compilation. Token publication is thread-safe, and lexical errors
 are reported per compilation rather than cached. Rebinding does not perform
 resource IO, lexing or parsing. Keep the allocation checks in `CoreCatalogTest` and use
 `KimiLibraryBenchmark` for initialization and warm-binding measurements.
 
-Catalog validation does not prove runtime support. Missing API entries do not
-create placeholder declarations. Use `GetSymbol` / `GetDeclarationState` for ID
-lookup; the `Declarations` sequence is not indexed by the numeric ID. The old
-ObjectOwnership ID is reserved; ownership-family completeness is a separate query.
+Recognition does not prove runtime support. Missing API entries do not create
+placeholder declarations. Use `GetSymbol` for ID lookup. The old ObjectOwnership
+ID is reserved.
 
 ## Dictionary implementation policy
 

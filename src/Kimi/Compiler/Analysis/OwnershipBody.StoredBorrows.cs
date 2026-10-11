@@ -165,11 +165,6 @@ public sealed partial class OwnershipBody
             }
         }
 
-        for (var e = this.checkingBorrowHeads[operation]; e >= 0; e = this.checkingBorrowEdges[e].Next)
-        {
-            queued = table.Enqueue(this.checkingBorrowEdges[e].To, active, queued);
-        }
-
         return queued;
     }
 

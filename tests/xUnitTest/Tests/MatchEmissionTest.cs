@@ -100,8 +100,8 @@ public class MatchEmissionTest
         var allocated = AllocationMeasurement.Measure(
             () =>
             {
-                valid &= c.Ownership.Analyze().IsVerified;
-                valid &= c.Emission.WriteIr(TextWriter.Null, out _);
+                valid &= c.Analyze().IsVerified;
+                valid &= c.WriteIr(TextWriter.Null, out _);
             },
             iterations: 128,
             warmupIterations: 100);
@@ -134,7 +134,7 @@ public class MatchEmissionTest
     public void MalformedPlansFailBeforeWriting(string defect)
     {
         var c = MinimalEmissionTest.Analyze("let result = match \"a\"@move\n    \"b\" => \"other\"\n    let text => text@move\nConsole.writeLine(result)");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var match = body.Matches[0];
         var test = body.MatchArms[0].Test;
@@ -164,10 +164,10 @@ public class MatchEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Fact]
@@ -241,7 +241,7 @@ public class MatchEmissionTest
     public void ScalarSnapshotPlansAreValidated(string defect)
     {
         var c = MinimalEmissionTest.Analyze("let unrelated = 123\nlet result = match 7@move\n    let n => n\nif result == 7 => ()");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var id = body.OperationStorage.FindIndex(x => x.Kind == (defect == "binding" ? OwnershipOperationKind.AcquirePattern : OwnershipOperationKind.InitializeSubject));
         if (defect == "wrong_source")
@@ -255,7 +255,7 @@ public class MatchEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 }

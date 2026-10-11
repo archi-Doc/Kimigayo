@@ -22,7 +22,7 @@ public class DictionaryLiteralTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var declaration = c.Kotonoha.GeneratedFunction!.Body!.ChildNodes.OfType<VariableKoto>().Last();
-        var type = declaration.BoundType!;
+        var type = declaration.TypeOf()!;
         Assert.Equal(BoundTypeKind.Dictionary, type.Kind);
         Assert.Same(key == "string" ? BoundType.String : BoundType.Primitives[key], type.Components[0]);
         Assert.Same(BoundType.Primitives[value], type.Components[1]);
@@ -43,8 +43,8 @@ public class DictionaryLiteralTest
         c.Binding.ReportDiagnostics();
         var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
         Assert.NotEmpty(errors);
-        Assert.DoesNotContain(errors, static x => x.Code is nameof(DiagnosticCode.UnsupportedBinding_Kd) or nameof(DiagnosticCode.PrerequisiteUnavailable_Kd));
-        Assert.False(c.Emission.Validate(out _));
+        Assert.DoesNotContain(errors, static x => x.Code is nameof(DiagnosticCode.Unsupported_Kd) or nameof(DiagnosticCode.PrerequisiteUnavailable_Kd));
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]

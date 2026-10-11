@@ -11,13 +11,10 @@ namespace Kimi.Compiler.Parsing;
 public sealed class OriginRelationKoto : BinaryKoto
 {
     internal OriginRelationKoto(ref TokenReader reader, SourceSpan span, Koto left, Koto right, bool equality)
-        : base(ref reader, span, left, right)
+        : base(ref reader, span, KotoKind.OriginRelation, left, right)
     {
         this.IsEquality = equality;
     }
-
-    /// <inheritdoc/>
-    public override KotoKind Akind => KotoKind.OriginRelation;
 
     /// <summary>Gets a value indicating whether the relation requires equality rather than outlives.</summary>
     public bool IsEquality { get; }

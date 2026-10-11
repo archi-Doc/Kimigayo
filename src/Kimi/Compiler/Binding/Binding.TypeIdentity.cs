@@ -1,7 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Compiler.Parsing;
-
 namespace Kimi.Compiler;
 
 // SPEC 8.3, 8.4.8.1: an available Type-identity premise `X is U` makes X and U one Type in its scope. Expressions bound
@@ -10,23 +8,6 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly HashSet<BoundType> identityExpansions = new(ReferenceEqualityComparer.Instance);
-
-    /// <summary>Fits <paramref name="actual"/> to <paramref name="expected"/> after substituting the Type-identity premises
-    /// of the scope that contains <paramref name="use"/>; flow analysis compares written Types this way (SPEC 8.3).</summary>
-    /// <param name="actual">The supplied Type.</param>
-    /// <param name="expected">The required Type.</param>
-    /// <param name="use">A node in the premise's scope.</param>
-    /// <returns>Whether the substituted Types fit.</returns>
-    internal bool FitsUnderIdentity(BoundType actual, BoundType expected, Koto use)
-    {
-        if (!actual.ContainsParameter && !expected.ContainsParameter)
-        {
-            return false;
-        }
-
-        var scope = this.ConstraintScope(use);
-        return HasParameterIdentity(scope) && FitsType(this.SubstituteIdentityPremises(actual, scope), this.SubstituteIdentityPremises(expected, scope));
-    }
 
     private static bool HasParameterIdentity(BindingScope scope)
     {
@@ -98,7 +79,7 @@ public sealed partial class Binding
 
             // A substituted struct or enum is another Type: its stored fields and cases follow the substitution, as for the
             // declared Types whose storage is prepared, so a field of it keeps the substituted Type (SPEC 8.3).
-            var substituted = this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, count), type.Length, type.Origin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, type.ClosureContext);
+            var substituted = this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, count), type.Length, type.Origin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, type.ClosureContext, type.LengthArguments, type.ResultMode);
             this.PrepareInstantiatedStorage(substituted, 0);
             return substituted;
         }

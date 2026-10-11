@@ -20,8 +20,8 @@ public class TypeArityBindingTest
         Assert.Empty(TestDiagnostics.Of(c));
         Assert.True(c.Bind().IsComplete, Describe(c));
         var functions = c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>().ToArray();
-        var plain = functions.Single(x => x.Name == "plain").Parameters[0].Type.BoundType!;
-        var generic = functions.Single(x => x.Name == "generic").Parameters[0].Type.BoundType!;
+        var plain = functions.Single(x => x.Name == "plain").Parameters[0].Type.TypeOf()!;
+        var generic = functions.Single(x => x.Name == "generic").Parameters[0].Type.TypeOf()!;
         Assert.NotSame(plain.Symbol, generic.Symbol);
         Assert.Empty(Assert.IsType<StructKoto>(plain.Symbol!.Declaration).GenericParameterNodes);
         Assert.Single(Assert.IsType<StructKoto>(generic.Symbol!.Declaration).GenericParameterNodes);

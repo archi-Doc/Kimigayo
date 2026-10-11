@@ -51,21 +51,8 @@ public sealed class PlaceResultKoto : TypeKoto
         this.Type.WriteTo(ref builder);
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        visitor.Visit(this.Type);
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes() => [this.Type];
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (this.Type != oldKoto)
-        {
-            return false;
-        }
-
-        this.Type = newKoto;
-        return true;
+        this.Type = slots.Slot(this.Type);
     }
 }

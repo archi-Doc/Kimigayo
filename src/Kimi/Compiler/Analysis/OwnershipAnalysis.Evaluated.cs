@@ -20,7 +20,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         projection = -1;
-        this.Unsupported(node);
+        this.Internal(node);
         return -1;
     }
 

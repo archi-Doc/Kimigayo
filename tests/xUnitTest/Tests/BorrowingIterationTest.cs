@@ -76,7 +76,7 @@ public class BorrowingIterationTest
     {
         var c = MinimalEmissionTest.Analyze(Declarations(exclusive) + "var values = Values.init()\nfor item in values" + (exclusive ? "@uniq" : string.Empty) + "\n    values = Values.init()\n    require item == 7 else => $abort(\"source\")");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.False(c.Analysis.IsVerified);
     }
 
     [Theory]

@@ -40,6 +40,40 @@ public sealed partial class Binding
         return (function is not null && IsSignatureLength(obligation.Use, function)) || this.ProveLength(length, function);
     }
 
+    internal BoundLength? SubstituteLength(BoundLength expression, Koto binder, ReadOnlySpan<BoundLength?> arguments)
+    {
+        if (expression.Parameter is { } parameter)
+        {
+            return ReferenceEquals(parameter.Scope.Owner, binder) ? arguments[parameter.Slot] : expression;
+        }
+
+        if (expression.IsConstant)
+        {
+            return expression;
+        }
+
+        var left = this.SubstituteLength(expression.Left!, binder, arguments);
+        var right = expression.Right is { } operand ? this.SubstituteLength(operand, binder, arguments) : null;
+        if (left is null || (expression.Right is not null && right is null))
+        {
+            return null;
+        }
+
+        if (!left.IsConstant || right is { IsConstant: false })
+        {
+            return this.InternLength(expression.Operation, left: left, right: right);
+        }
+
+        if (expression.Operation == KotoKind.PrefixMinus)
+        {
+            var minimum = this.compilation.PointerWidth == 64 ? long.MinValue : int.MinValue;
+            return left.Value == minimum ? null : this.InternLength(KotoKind.NumberLiteral, -left.Value);
+        }
+
+        return TryLengthArithmetic(expression.Operation, BoundType.ISize, this.compilation.PointerWidth, unchecked((UInt128)(Int128)left.Value), unchecked((UInt128)(Int128)right!.Value), out var value)
+            ? this.InternLength(KotoKind.NumberLiteral, unchecked((long)value)) : null;
+    }
+
     private static bool IsSignatureLength(Koto node, FunctionKoto function)
     {
         for (Koto? current = node; current is not null && !ReferenceEquals(current, function); current = current.Parent)
@@ -223,40 +257,6 @@ public sealed partial class Binding
         return name is not null && this.Lookup(name, scope, syntax, false) is { Kind: BindingSymbolKind.LengthParameter or BindingSymbolKind.Local or BindingSymbolKind.Property or BindingSymbolKind.Parameter };
     }
 
-    private BoundLength? SubstituteLength(BoundLength expression, Koto binder, ReadOnlySpan<BoundLength?> arguments)
-    {
-        if (expression.Parameter is { } parameter)
-        {
-            return ReferenceEquals(parameter.Scope.Owner, binder) ? arguments[parameter.Slot] : expression;
-        }
-
-        if (expression.IsConstant)
-        {
-            return expression;
-        }
-
-        var left = this.SubstituteLength(expression.Left!, binder, arguments);
-        var right = expression.Right is { } operand ? this.SubstituteLength(operand, binder, arguments) : null;
-        if (left is null || (expression.Right is not null && right is null))
-        {
-            return null;
-        }
-
-        if (!left.IsConstant || right is { IsConstant: false })
-        {
-            return this.InternLength(expression.Operation, left: left, right: right);
-        }
-
-        if (expression.Operation == KotoKind.PrefixMinus)
-        {
-            var minimum = this.compilation.PointerWidth == 64 ? long.MinValue : int.MinValue;
-            return left.Value == minimum ? null : this.InternLength(KotoKind.NumberLiteral, -left.Value);
-        }
-
-        return TryLengthArithmetic(expression.Operation, BoundType.ISize, this.compilation.PointerWidth, unchecked((UInt128)(Int128)left.Value), unchecked((UInt128)(Int128)right!.Value), out var value)
-            ? this.InternLength(KotoKind.NumberLiteral, unchecked((long)value)) : null;
-    }
-
     private bool InferLength(BoundType pattern, BoundType actual, Koto binder, BoundLength?[] arguments)
     {
         if (actual.Length < 0)
@@ -265,7 +265,12 @@ public sealed partial class Binding
         }
 
         var supplied = actual.LengthExpression ?? this.InternLength(KotoKind.NumberLiteral, actual.Length);
-        if (pattern.LengthExpression is { Parameter: { } parameter } && ReferenceEquals(parameter.Scope.Owner, binder))
+        return this.InferLength(pattern.LengthExpression ?? this.InternLength(KotoKind.NumberLiteral, pattern.Length), supplied, binder, arguments);
+    }
+
+    private bool InferLength(BoundLength pattern, BoundLength supplied, Koto binder, BoundLength?[] arguments)
+    {
+        if (pattern is { Parameter: { } parameter } && ReferenceEquals(parameter.Scope.Owner, binder))
         {
             var previous = arguments[parameter.Slot];
             if (previous is null)
@@ -277,7 +282,7 @@ public sealed partial class Binding
             return ReferenceEquals(previous, supplied);
         }
 
-        var required = pattern.LengthExpression is { } expression ? this.SubstituteLength(expression, binder, arguments) : this.InternLength(KotoKind.NumberLiteral, pattern.Length);
+        var required = this.SubstituteLength(pattern, binder, arguments);
         // A later input may establish slots used by a compound expression. The
         // completed signature is checked after all direct-slot evidence is known.
         return required is null || ReferenceEquals(required, supplied);
@@ -344,6 +349,14 @@ public sealed partial class Binding
             return false;
         }
 
+        foreach (var argument in type.LengthArguments)
+        {
+            if (argument is not null && !this.ProveLength(argument, function))
+            {
+                return false;
+            }
+        }
+
         for (var i = 0; i < type.Components.Count; i++)
         {
             if (!this.ProveTypeLengths(type.Components[i], function))
@@ -373,6 +386,13 @@ public sealed partial class Binding
 
     private BoundLength? BindLength(Koto syntax, BindingScope scope)
     {
+        if (IsRecovery(syntax, out _))
+        {
+            this.BindNode(syntax, scope);
+            this.Fail(syntax, BindingFailure.InvalidTypeFormation);
+            return null;
+        }
+
         if (IsArrayHole(syntax))
         {
             this.Consulted(syntax);
@@ -486,10 +506,8 @@ public sealed partial class Binding
                 return false;
             }
         }
-        else if (syntax is NumberLiteralKoto or PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto })
+        else if (KotoHelper.SignedNumber(syntax, out var negative) is { } literal)
         {
-            var literal = syntax as NumberLiteralKoto ?? (NumberLiteralKoto)((UnaryKoto)syntax).Operand;
-            var negative = syntax is PrefixMinusKoto;
             if (!literal.IsInteger || !literal.TryGetIntegerMagnitude(out var magnitude) ||
                 !ScalarTypes.TryLiteral(type, magnitude, negative, this.compilation.PointerWidth, out _))
             {

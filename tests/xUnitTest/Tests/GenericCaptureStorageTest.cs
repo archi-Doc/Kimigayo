@@ -46,8 +46,8 @@ public class GenericCaptureStorageTest
         var source = Replace.Replace("    return action(next)", "    _ = value@follow\n    return action(next)", StringComparison.Ordinal) + "var value = 7\n_ = replace(value@uniq, 9)";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        c.Ownership.ReportDiagnostics();
+        Assert.False(c.Analysis.IsVerified);
+        c.ReportAnalysis();
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "MovedPlace_Kd");
     }
 
@@ -57,7 +57,7 @@ public class GenericCaptureStorageTest
     {
         var c = MinimalEmissionTest.Analyze(Take + Replace + "let values = take([\"first\", \"second\"])\nvar value = 1\n_ = replace(value@uniq, 2)");
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 }

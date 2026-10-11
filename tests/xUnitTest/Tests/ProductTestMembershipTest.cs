@@ -19,7 +19,7 @@ public class ProductTestMembershipTest
         var compilation = MinimalEmissionTest.Analyze(source);
         Assert.True(compilation.Binding.Result.IsComplete, MinimalEmissionTest.Describe(compilation, null));
         Assert.True(compilation.Binding.Startup.IsComplete);
-        Assert.True(compilation.Ownership.Result.IsVerified);
+        Assert.True(compilation.Analysis.IsVerified);
         Assert.Single(compilation.Ownership.Bodies);
     }
 
@@ -78,7 +78,7 @@ public class ProductTestMembershipTest
         var cases = kind == "enum" ? "    Value\n" : string.Empty;
         var compilation = MinimalEmissionTest.Analyze($"{kind} Container\n{cases}    #Test\n    func test() => Tests.missing()\nConsole.writeLine(\"product\")");
         Assert.True(compilation.Binding.Result.IsComplete, MinimalEmissionTest.Describe(compilation, null));
-        Assert.True(compilation.Ownership.Result.IsVerified);
+        Assert.True(compilation.Analysis.IsVerified);
     }
 
     [Theory]
@@ -108,8 +108,8 @@ public class ProductTestMembershipTest
         var changed = MinimalEmissionTest.Analyze(Product + "#Test\nfunc renamed()\n    loop => Missing.second()");
         var first = new StringWriter();
         var second = new StringWriter();
-        Assert.True(original.Emission.WriteIr(first, out _));
-        Assert.True(changed.Emission.WriteIr(second, out _));
+        Assert.True(original.WriteIr(first, out _));
+        Assert.True(changed.WriteIr(second, out _));
         Assert.Equal(first.ToString(), second.ToString());
     }
 
@@ -127,20 +127,20 @@ public class ProductTestMembershipTest
         Assert.Contains("Missing.api", Assert.Single(module.SourceDocuments).SourceText);
         Assert.True(restored.Bind().IsComplete);
         Assert.True(restored.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(restored.Ownership.Analyze().IsVerified);
+        Assert.True(restored.Analyze().IsVerified);
     }
 
     [Fact]
     public void RebindingReclassifiesReplacedDeclarations()
     {
         var compilation = MinimalEmissionTest.Analyze("func target() => ()\ntarget()");
-        Assert.True(compilation.Ownership.Result.IsVerified);
+        Assert.True(compilation.Analysis.IsVerified);
         var original = FindFunction(compilation.Kotonoha.RootKoto, "target")!;
         var replacementSource = MinimalEmissionTest.Analyze("#Test\nfunc target() => Missing.api()\n()");
         var replacement = FindFunction(replacementSource.Kotonoha.RootKoto, "target")!;
         Assert.True(KotoHelper.Replace(original.Parent!, original, replacement));
         Assert.False(compilation.Bind().IsComplete);
-        Assert.False(compilation.Ownership.Result.IsVerified);
+        Assert.False(compilation.Analysis.IsVerified);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -150,7 +150,7 @@ public class ProductTestMembershipTest
         var compilation = MinimalEmissionTest.Analyze("Console.writeLine(\"product\")\n#Test\nfunc test() => Missing.api()");
         void Analyze()
         {
-            if (!compilation.Bind().IsComplete || !compilation.Binding.CheckStartup(OutputKind.Application).IsComplete || !compilation.Ownership.Analyze().IsVerified)
+            if (!compilation.Bind().IsComplete || !compilation.Binding.CheckStartup(OutputKind.Application).IsComplete || !compilation.Analyze().IsVerified)
             {
                 throw new InvalidOperationException("Product membership analysis failed.");
             }

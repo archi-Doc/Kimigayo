@@ -24,18 +24,18 @@ public class OriginRelationDiagnosticTest
     private const string Refuted = "Return or store an owned value, or a borrow of an input, instead of a borrow of storage that ends with the body";
 
     [Theory]
-    [InlineData(Bad, nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "r", "requires the borrow local@ref outlives x, which is false", "local@ref", Refuted)]
-    [InlineData("func pick(a: ref/i32, b: ref/i32) -> ref/i32 during a\n    return b\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "b", "requires b outlives a, which is not proven", null, "If b always outlives a, add 'origin b outlives a', which changes the public contract, or bound the result by b")]
-    [InlineData("func store(anchor: ref/i32, target: uniq/(ref/i32 during anchor))\n    let local: i32 = 5\n    target@follow = local@ref\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref", "requires the borrow local@ref outlives anchor, which is false", "local@ref", Refuted)]
-    [InlineData("func f(x: ref/i32, y: ref/i32, c: bool) -> ref/i32 during x\n    return if c => x else => y\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "if c => x else => y", "requires y outlives x, which is not proven", null, "If y always outlives x, add 'origin y outlives x', which changes the public contract, or bound the result by y")]
-    [InlineData(Holder + "func pick(p: ref/Holder, q: ref/i32) -> ref/(ref/i32 during q) during p\n    return p.item@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "p.item@ref", "requires p.a outlives q, which is not proven", null, "If p.a always outlives q, add 'origin p.a outlives q', which changes the public contract, or bound the inner result by p.a")]
-    [InlineData("func toStatic(x: ref/i32) -> ref/i32 during static\n    return x\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "x", "requires x outlives static, which is not proven", null, "Bind x to static where it is introduced, as in 'x: ref/i32 during static', or bound the result by x")]
-    [InlineData("func f(a: ref/i32, b: ref/i32) -> i32\n    let r: ref/i32 during a = b\n    return r@follow\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "b", "requires b outlives a, which is not proven", null, "If b always outlives a, add 'origin b outlives a', which changes the public contract")]
-    [InlineData("func g(a: ref/i32) -> i32\n    let local = 4\n    let r: ref/i32 during a = local@ref\n    return r@follow\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref", "requires the borrow local@ref outlives a, which is false", "local@ref", Refuted)]
-    [InlineData("func g(b: ref/i32) -> ref/(ref/i32 during b) during b\n    let c = b\n    return c@ref\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "c@ref", "requires the borrow c@ref outlives b, which is false", "c@ref", Refuted)]
-    [InlineData("func g(b: ref/i32) -> ref/(ref/i32 during b) during b\n    return b@ref\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "b@ref", "requires the borrow b@ref outlives b, which is false", "b@ref", Refuted)]
-    [InlineData("func pick<length N, T>(values: ref/[N of T] during source) -> ref/T during sorce\n    return values[0]@ref/T\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "values[0]@ref/T", "requires source outlives sorce, which is not proven", null, "; sorce is introduced by this signature, so if source was meant, write it instead")]
-    public void AnOriginOnlyFailureIsOneRelationRecord(string body, string code, string text, string label, string? origin, string advice)
+    [InlineData(Bad, nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "r", "requires the borrow local@ref outlives x, which is false", "local@ref")]
+    [InlineData("func pick(a: ref/i32, b: ref/i32) -> ref/i32 during a\n    return b\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "b", "requires b outlives a, which is not proven", null)]
+    [InlineData("func store(anchor: ref/i32, target: uniq/(ref/i32 during anchor))\n    let local: i32 = 5\n    target@follow = local@ref\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref", "requires the borrow local@ref outlives anchor, which is false", "local@ref")]
+    [InlineData("func f(x: ref/i32, y: ref/i32, c: bool) -> ref/i32 during x\n    return if c => x else => y\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "if c => x else => y", "requires y outlives x, which is not proven", null)]
+    [InlineData(Holder + "func pick(p: ref/Holder, q: ref/i32) -> ref/(ref/i32 during q) during p\n    return p.item@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "p.item@ref", "requires p.a outlives q, which is not proven", null)]
+    [InlineData("func toStatic(x: ref/i32) -> ref/i32 during static\n    return x\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "x", "requires x outlives static, which is not proven", null)]
+    [InlineData("func f(a: ref/i32, b: ref/i32) -> i32\n    let r: ref/i32 during a = b\n    return r@follow\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "b", "requires b outlives a, which is not proven", null)]
+    [InlineData("func g(a: ref/i32) -> i32\n    let local = 4\n    let r: ref/i32 during a = local@ref\n    return r@follow\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref", "requires the borrow local@ref outlives a, which is false", "local@ref")]
+    [InlineData("func g(b: ref/i32) -> ref/(ref/i32 during b) during b\n    let c = b\n    return c@ref\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "c@ref", "requires the borrow c@ref outlives b, which is false", "c@ref")]
+    [InlineData("func g(b: ref/i32) -> ref/(ref/i32 during b) during b\n    return b@ref\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "b@ref", "requires the borrow b@ref outlives b, which is false", "b@ref")]
+    [InlineData("func pick<length N, T>(values: ref/[N of T] during source) -> ref/T during sorce\n    return values[0]@ref/T\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "values[0]@ref/T", "requires source outlives sorce, which is not proven", null)]
+    public void AnOriginOnlyFailureIsOneRelationRecord(string body, string code, string text, string label, string? origin)
     {
         var source = body + Main;
         var output = DiagnosticCorpus.Check(source);
@@ -44,7 +44,6 @@ public class OriginRelationDiagnosticTest
         Assert.Equal(code == nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) ? DiagnosticCategory.Language : DiagnosticCategory.Proof, error.Category);
         Assert.Equal(text, Text(source, error.Span));
         Assert.Equal(label, error.Label);
-        Assert.Contains(advice, error.Advice, StringComparison.Ordinal);
         var reason = error.Reason!;
         Assert.Equal(["relation", "longer", "shorter", "source", "destination"], reason.Select(static x => x.Name));
         Assert.Equal(("outlives", "fit"), (reason[0].Value, reason[3].Value));
@@ -93,39 +92,45 @@ public class OriginRelationDiagnosticTest
         Assert.Equal(["relation", "longer", "shorter", "source"], errors[0].Reason!.Select(static x => x.Name));
         Assert.Equal(["relation", "longer", "shorter", "source", "destination"], errors[1].Reason!.Select(static x => x.Name));
         Assert.All(errors, static x => Assert.Equal("requires b outlives a, which is not proven", x.Label));
-        Assert.All(errors, static x => Assert.DoesNotContain("bound the", x.Advice, StringComparison.Ordinal));
     }
 
-    // SPEC 15.6.5: a chain between two body Origins is Proven by the spec and constrains region inference, but ownership analysis
-    // keeps Loans only through the Origins written in a holder's Type, so accepting it would lose the longer Borrow's Loan (a use
-    // after the Move of `w` was accepted). It is a located limit at the value, never a relation record and never accepted.
+    // Finite region bounds keep the actual Loan through annotations, scope exits and shared views of exclusive inputs.
     [Theory]
-    [InlineData("struct H {s}\n    public let item: ref/string during s\n    public init(item: ref/string during s) => self.item = item\nfunc eat(n: string) -> () => ()\nfunc peek(n: ref/string) -> () => ()\nfunc f() -> ()\n    let v = \"v\"\n    let h = H.init(v@ref)\n    let w = \"w\"\n    let r: ref/string during h.s = w@ref\n    eat(w@move)\n    peek(r)\n")]
-    [InlineData("struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\nfunc f() -> ()\n    let v = 7\n    let h = H.init(v@ref)\n    var keep = h.item\n    if true\n        let w = 9\n        let r: ref/i32 during h.s = w@ref\n        keep = r\n    Console.writeLine(\"\\(keep@follow)\")\n")]
-    [InlineData("func f() -> ()\n    var x: i32 = 4\n    var y: i32 = 6\n    let r: ref/i32 = x@ref\n    let s: ref/i32 during r = y@ref\n    y = 7\n    Console.writeLine(\"\\(s@follow) \\(r@follow)\")\n")]
+    [InlineData("struct H {s}\n    public let item: ref/string during s\n    public init(item: ref/string during s) => self.item = item\nfunc eat(n: string) -> () => ()\nfunc peek(n: ref/string) -> () => ()\nfunc f() -> ()\n    let v = \"v\"\n    let h = H.init(v@ref)\n    let w = \"w\"\n    let r: ref/string during h.s = w@ref\n    eat(w@move)\n    peek(r)\n", "w")]
+    [InlineData("struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\nfunc f() -> ()\n    let v = 7\n    let h = H.init(v@ref)\n    var keep = h.item\n    if true\n        let w = 9\n        let r: ref/i32 during h.s = w@ref\n        keep = r\n    Console.writeLine(\"\\(keep@follow)\")\n", "let w = 9\n        let r: ref/i32 during h.s = w@ref\n        keep = r")]
+    [InlineData("func f() -> ()\n    var x: i32 = 4\n    var y: i32 = 6\n    let r: ref/i32 = x@ref\n    let s: ref/i32 during r = y@ref\n    y = 7\n    Console.writeLine(\"\\(s@follow) \\(r@follow)\")\n", "y = 7")]
     // A fixed input over a local Borrow also loses the input's Loan: the write through `x` was accepted while `h` lived.
-    [InlineData("func g(x: uniq/i32) -> i32\n    let local: i32 = 1\n    let r = local@ref\n    let h: ref/i32 during r = x@follow@ref\n    x@follow = 5\n    return h@follow\n")]
-    public void AChainBetweenBodyOriginsIsALocatedLimit(string body)
+    [InlineData("func g(x: uniq/i32) -> i32\n    let local: i32 = 1\n    let r = local@ref\n    let h: ref/i32 during r = x@follow@ref\n    x@follow = 5\n    return h@follow\n", "x")]
+    public void AChainBetweenBodyOriginsRetainsTheSourceLoan(string body, string at)
     {
         var source = body + Main;
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.UnsupportedOwnership_Kd), error.Code);
-        Assert.EndsWith("@ref", Text(source, error.Span), StringComparison.Ordinal);
+        Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), error.Code);
+        Assert.Equal(at, Text(source, error.Span));
+        Assert.Equal(DiagnosticCategory.Language, error.Category);
+        Assert.Contains(error.Related!, static x => x.Role == "loan");
     }
 
-    // SPEC 15.6.5: only a finite Origin that must outlive a fixed one is Refuted. An annotated local's omitted Origin is an inferred
-    // region, so a borrow fitted to it is a chain between body Origins, the located limit, never a Language record; it was "requires
-    // the borrow x@ref outlives the omitted Origin of Inference, which is false" (review of 2549bce2).
+    // SPEC 15.4.4: the local's initializer completes its omitted Origin before a later anonymous header reads it.
+    // Eager declaration-header binding used to retain the unresolved local slot and report UnsupportedOwnership.
     [Fact]
-    public void AnInferredLocalRegionIsNeverRefuted()
+    public void AnAnnotatedLocalOriginCompletesBeforeTheClosureHeader()
     {
         var source = "public func main() -> ()\n    let x: i32 = 4\n    let r: ref/i32 = x@ref\n    let f = func (n: ref/i32 during r) -> i32 => n@follow\n    require f(x@ref) == 4 else => $abort(\"v5\")\n";
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
-        Assert.NotEmpty(errors);
-        Assert.All(errors, static x => Assert.Equal(nameof(DiagnosticCode.UnsupportedOwnership_Kd), x.Code));
+        Assert.Empty(errors);
+        ScalarEmissionTest.EmitFixture("ClosureCompletedLocalOrigin", source, string.Empty);
     }
 
-    // SPEC 7.6.1, 15.6.1: an anonymous function has no origin clauses, so Advice for its input writes the Origin on that input.
+    [Fact]
+    public void ACompletedLocalOriginStillKeepsTheArgumentLoan()
+    {
+        const string Source = "func change(n: uniq/i32) -> i32\n    n@follow = 7\n    return 0\npublic func main() -> ()\n    var x: i32 = 4\n    let r: ref/i32 = x@ref\n    let f = func (n: ref/i32 during r, ignored: i32) -> i32 => n@follow\n    let value = f(x@ref, change(x@uniq))\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.CallActivationConflict_Kd), error.Code);
+    }
+
+    // SPEC 7.6.1, 15.6.1: an anonymous function has no origin clauses, so only an Origin written on its input bounds that input.
     [Fact]
     public void AnAnonymousInputIsBoundByItsWrittenOrigin()
     {
@@ -134,7 +139,6 @@ public class OriginRelationDiagnosticTest
             "        return got@follow\n    return inner(x)\n" + Main;
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "a"), (error.Code, Text(source, error.Span)));
-        Assert.Equal("An anonymous function has no origin clauses; write the input as 'a: ref/i32 during x' so that it accepts only borrows that outlive x", error.Advice);
     }
 
     // DIAGNOSTICS.md rule 1: a failed relation leaves the Loan checks of the same body to proceed without it, so an independent Loan

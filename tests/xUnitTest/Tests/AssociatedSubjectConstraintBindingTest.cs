@@ -16,7 +16,7 @@ public class AssociatedSubjectConstraintBindingTest
         var c = MinimalEmissionTest.Analyze(Source(enumeration, "string", "i32"));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.UnsatisfiedConstraint);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.UnsatisfiedConstraint);
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
     }
@@ -49,7 +49,7 @@ public class AssociatedSubjectConstraintBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Source(false, "string", "i32").Replace("x: Box<Source>", "x: " + type, StringComparison.Ordinal));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.UnsatisfiedConstraint);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.UnsatisfiedConstraint);
     }
 
     [Theory]
@@ -63,10 +63,10 @@ public class AssociatedSubjectConstraintBindingTest
         source = source[..source.IndexOf("group Consumer", StringComparison.Ordinal)] + "group Consumer\n    func take<U>() => ()\n    func call() => take<Box<Source>>()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Equal(valid, c.Binding.Result.IsComplete);
-        Assert.Equal(valid, Assert.IsType<InvocationKoto>(Function(c, "call").ExpressionBody).BoundCall is not null);
+        Assert.Equal(valid, Assert.IsType<InvocationKoto>(Function(c, "call").ExpressionBody).CallOf() is not null);
         var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(valid, restored.Bind().IsComplete);
-        Assert.Equal(valid, Assert.IsType<InvocationKoto>(Function(restored, "call").ExpressionBody).BoundCall is not null);
+        Assert.Equal(valid, Assert.IsType<InvocationKoto>(Function(restored, "call").ExpressionBody).CallOf() is not null);
     }
 
     [Theory]

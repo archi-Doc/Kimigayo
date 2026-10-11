@@ -23,11 +23,11 @@ public class AccessorReceiverBindingTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var issue = Assert.Single(c.Binding.Issues, x => x.Node is PropertyAccessorKoto && x.Node.BindingFailure == BindingFailure.InvalidTypeFormation);
+        var issue = Assert.Single(c.Binding.Issues, x => x.Node is PropertyAccessorKoto && x.Node.FailureOf() == BindingFailure.InvalidTypeFormation);
         var accessor = (PropertyAccessorKoto)issue.Node;
-        Assert.NotNull(accessor.ReceiverType!.BoundType);
-        Assert.False(((PropertyKoto)accessor.Parent!).BoundSymbol!.Property!.IsVerified);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.NotNull(accessor.ReceiverType!.TypeOf());
+        Assert.False(((PropertyKoto)accessor.Parent!).SymbolOf()!.Property!.IsVerified);
+        Assert.False(c.Validate(out _));
     }
 
     // SPEC 11.2: a function keeps every receiver form, while a computed getter reads through ref/Self only; the Core of a
@@ -44,10 +44,10 @@ public class AccessorReceiverBindingTest
     {
         var c = MinimalEmissionTest.Analyze($"public struct Api<T>\n    public computed item: i32\n        get(self: {receiver}) -> i32 => 1\n        set(self: uniq/Self, value: i32) -> () => ()\n    public func read(self: {receiver}) -> i32 => 1");
         Assert.False(c.Binding.Result.IsComplete);
-        var issue = Assert.Single(c.Binding.Issues, x => x.Node is PropertyAccessorKoto && x.Node.BindingFailure == BindingFailure.AccessorReceiverShape);
+        var issue = Assert.Single(c.Binding.Issues, x => x.Node is PropertyAccessorKoto && x.Node.FailureOf() == BindingFailure.AccessorReceiverShape);
         Assert.Equal(PropertyAccessorKind.Get, ((PropertyAccessorKoto)issue.Node).AccessorKind);
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.InvalidTypeFormation);
-        Assert.False(Property(c).BoundSymbol!.Property!.IsVerified);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.InvalidTypeFormation);
+        Assert.False(Property(c).SymbolOf()!.Property!.IsVerified);
     }
 
     [Theory]
@@ -60,7 +60,7 @@ public class AccessorReceiverBindingTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(Property(c).BoundSymbol!.Property!.IsVerified);
+        Assert.True(Property(c).SymbolOf()!.Property!.IsVerified);
     }
 
     [Theory]
@@ -73,7 +73,7 @@ public class AccessorReceiverBindingTest
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         if (!valid)
         {
-            Assert.Equal(BindingFailure.Access, Property(c).BoundSymbol!.Property!.Setter.Declaration!.BindingFailure);
+            Assert.Equal(BindingFailure.Access, Property(c).SymbolOf()!.Property!.Setter.Declaration!.FailureOf());
         }
     }
 
@@ -102,12 +102,12 @@ public class AccessorReceiverBindingTest
         var replacement = Property(valid).GetAccessor(PropertyAccessorKind.Get)!;
         Assert.True(KotoHelper.Replace(property, original, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Null(property.BoundSymbol!.Property!.Getter.Receiver);
-        Assert.True(property.BoundSymbol.Property.IsVerified);
+        Assert.Null(property.SymbolOf()!.Property!.Getter.Receiver);
+        Assert.True(property.SymbolOf()!.Property!.IsVerified);
         Assert.True(KotoHelper.Replace(property, replacement, original));
         Assert.False(c.Bind().IsComplete);
-        Assert.Equal(BindingFailure.InvalidTypeFormation, original.BindingFailure);
-        Assert.False(property.BoundSymbol.Property.IsVerified);
+        Assert.Equal(BindingFailure.InvalidTypeFormation, original.FailureOf());
+        Assert.False(property.SymbolOf()!.Property!.IsVerified);
     }
 
     [Trait("Purpose", "Allocation")]

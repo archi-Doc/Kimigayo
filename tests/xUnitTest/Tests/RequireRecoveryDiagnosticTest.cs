@@ -69,8 +69,7 @@ public class RequireRecoveryDiagnosticTest
     {
         c.Binding.ReportDiagnostics();
         c.Binding.ReportStartupDiagnostics();
-        c.Ownership.ControlFlow!.ReportDiagnostics();
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         return TestDiagnostics.Of(c, "Hello.kimi").Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
     }
 

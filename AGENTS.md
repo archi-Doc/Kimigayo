@@ -24,12 +24,23 @@ The specification and implementation are not set in stone. The specification gui
 
 # Coding Guidelines
 
-- Minimize memory allocations and optimize code for performance wherever practical.
+- Prefer solving problems by removing code rather than adding it. Before adding new code, consider whether deleting or consolidating existing code would suffice. Judge design quality by how few concepts are needed to meet requirements, not by the amount of abstraction.
+- Keep allocations in generated native code to a minimum. In the compiler, allocate when it makes compilation faster, and add no allocation that buys no speed. Optimize code for performance wherever practical.
 - Implement Kimi's core libraries, including Iterator and Dictionary, in Kimigayo rather than hand-written LLVM IR whenever possible.
 - Update `docs/SPEC.md` and `docs/STATUS.md` as needed to reflect the changes made. Write all updates in English.
 - Do not automatically update files in the `draft` folder unless explicitly instructed.
 - Do not run NativeAOT tests unless explicitly specified.
 - Follow `docs/STYLE.md` when writing Kimigayo code. Rules tagged `[Kimi]` are required in `src/Kimi/Library` and in code examples under `docs/spec/`; elsewhere they are recommended.
+
+# Compiler Size and Structure
+
+- Follow [docs/dev/COMPILER_ARCHITECTURE.md](docs/dev/COMPILER_ARCHITECTURE.md): dependency rules, closed vocabularies, one location-only `Unsupported_Kd`, and the migration freeze on the old Analysis/Emission paths.
+- Fix the general rule, not one source shape. Before adding a branch for a form, a case or a diagnostic, name the general rule it departs from and change that rule; if no general rule covers the form, report the located Unsupported. Do not add `Supports*`-style gates, shape allowlists, Advice or downstream re-verification.
+- Before writing a helper, search the canonical components listed in CODEMAP and extend one instead of duplicating it.
+- State the net line change per compiler area in each commit message. A unit that grows the compiler by more than 300 lines also states what it replaced and removed. `CompilerSizeBudgetTest` and `ArchitectureRulesTest` must pass; raise a cap only on explicit owner instruction or to keep O2 performance and zero allocation, recording the reason.
+- Before completing a unit, review its diff separately for reuse, duplication and efficiency.
+- Test through public entry points (acceptance, diagnostics, IR, MIR dumps); assert internal state only in a component's own rule tests. Add size-scaling checks for analyses whose cost depends on input size.
+- At each milestone completion, record per-area line counts, change hotspots and duplication candidates under `artifacts/benchmarks/`; restructure a file that keeps growing through repeated fixes before fixing it again.
 
 # Documentation Responsibilities
 
@@ -45,7 +56,7 @@ The specification and implementation are not set in stone. The specification gui
 - `docs/LIBRARY.md`: public Kimi declarations (Types, Contracts, groups, functions, Properties), each with a brief guarantee. Update in the same commit as declaration additions, removals or changes. The spec is authoritative; `src/Kimi/Library/README.md` covers embedding and implementation policy.
 - `docs/dev/PLAN.md`: current scope, working rules, position, milestone order/completion conditions, next actions and open issues. Keep under 200 lines; exclude deferred items (Appendix D).
 - `docs/STATUS.md`: product-wide implemented capabilities, verified support boundaries and remaining limits. Update only when a support boundary changes; never report planned/unverified work as supported.
-- `docs/dev/DIAGNOSTICS.md`: internal diagnostic model, common rules and workflow details. SPEC §23 governs observable behavior.
+- `docs/dev/DIAGNOSTICS.md`: internal diagnostic model and common rules. `docs/dev/DIAGNOSTIC_WORKFLOW.md` contains the detailed workflow, applied only on explicit user instruction. SPEC §23 governs observable behavior.
 - `docs/dev/PLAN_HISTORY.md`: a few lines per session; detailed evidence belongs in commits and `artifacts/verify/`. Pre-2026-09-22-compaction records: `git show 32324537:PLAN_HISTORY.md`.
 - Pre-alpha spec changes need no language-version bump, breaking-change or migration docs. Update affected chapters, examples and milestone programs in place.
 
@@ -57,27 +68,24 @@ The specification and implementation are not set in stone. The specification gui
 
 # Implementation Workflow
 
+- Select verification by change type. For documentation-only changes, check the relevant diffs and references; do not run builds, tests or native-code verification. Compiler, Kimi library and compiler-test changes require related Unit verification and one Session verification at session end. Benchmark/Playground code changes require Session verification before completion plus relevant execution or measurements. Verification-script, CI and tooling changes require checks of the affected workflow; extension changes follow `src/kimi-ext/AGENTS.md`. Mixed changes combine the applicable requirements. See [verification scope](docs/dev/VERIFICATION.md#verification-scope).
 - Work in units of reproducer, implementation and focused tests; formally verify each before committing with a descriptive message.
+- Add test cases to the class that already owns the feature, reuse the shared test helpers, assert each rule at the lowest layer that observes it, emit native fixtures only for behavior that depends on generated code, and limit comments to the rule being checked. See [writing tests](docs/dev/VERIFICATION.md#writing-tests).
 - Commit each completed unit and push the current branch to `origin` without waiting to be asked. Push only commits whose required verification passed, and never force-push. Stage only the files the unit changed, since other sessions may share this working tree.
 - For intermediate feedback, incrementally build `tests/xUnitTest/xUnitTest.csproj` and directly run selected test methods. Do not run formal Verify after every edit. Feedback is not completion evidence: only Verify's build counts, since direct `dotnet build` can hide analyzer warnings from later incremental builds.
 - Unit: `./scripts/verify.ps1 -Class <test classes> [-Fixtures '<pattern>'] [-Milestone <n>]` — non-incremental Release build of Kimi/tests with warnings as errors, related tests, native O0/O2 fixtures and milestone harnesses. Benchmark/Playground changes also require the whole-solution Session build before completion.
 - Session, once at session end: `./scripts/verify.ps1 -Mode Session [...]` — non-incremental whole-solution Release build and all functional and allocation/reuse regressions.
+- A successful final Session may also satisfy the last Unit's formal verification when it covers the same source/configuration and every required Unit check, including explicitly selected native fixtures, milestones and any additional checks. Prepare the unit's source/documentation changes before running it, then commit, associate the evidence and push. Do not run a duplicate Unit or Session solely for the mode name; missing coverage must still pass, and changed verification inputs require reverification.
 - Both modes default to Release; use `-Configuration Debug` explicitly for Debug. The selected compiler configuration governs builds, tests, fixture selection and milestone harnesses; native O0/O2 coverage stays unchanged. Native parallelism: `-NativeParallel` (default up to 4; 1 for serial). Never edit sources during builds or verification.
 - Toolchain identity: setup/update or `kimi toolchain verify`; Verify's `-VerifyToolchain` checks once before tests, otherwise records it as not performed. Milestones build original sources once per O0/O2 and execute each binary directly once; feature/rejection and CLI tests remain separate. Use `run --no-build` for built CLI artifacts.
 - Separate functional regressions, allocation/reuse regressions (zero allocation, retained capacity, storage bounds), and opt-in performance measurements (timing, throughput, scaling). Tag allocation/reuse tests `Purpose=Allocation`; unmarked tests are functional. Unit includes both by default; narrow focused checks with `-TestPurpose Functional` or `Allocation`. Include related allocation/reuse regressions for hot-path changes. Session always runs both in full.
-- Keep timing-only repetition and measurement reports in `src/Benchmark`, outside normal Verify. Run relevant measurements explicitly for performance changes and at milestone completion. Share regression workload inputs where applicable; keep warm-up/measurement conditions fixed; never relax allocation assertions or warm until a failing measurement passes. Commands/isolation: [docs/dev/VERIFICATION.md](docs/dev/VERIFICATION.md).
+- Keep timing-only repetition and measurement reports in `src/Benchmark`, outside normal Verify. Run relevant measurements explicitly for performance changes and at milestone completion. Share regression workload inputs where applicable; keep warm-up/measurement conditions fixed; never relax a native allocation assertion or warm until a failing measurement passes. A compiler allocation assertion changes only with a change measured to make compilation faster, recorded in the commit. Commands/isolation: [docs/dev/VERIFICATION.md](docs/dev/VERIFICATION.md).
 
-# Diagnostic Development Workflow
+# Diagnostic Development
 
-Apply to additions/changes in diagnostics, reporting checks, recovery, suppression, publication or presentation, including new paths reusing existing codes, and reports of confusing, missing or misleading diagnostics. Details: [docs/dev/DIAGNOSTICS.md](docs/dev/DIAGNOSTICS.md) §10.
-
-1. **Capture.** Add a minimal reproducer or known-valid program mutation with the intended failure and independently written public-record expectations. Confirm it reaches the intended check; add a valid counterpart against false positives.
-2. **Review.** Check code, severity/category, primary range/label, factual Reason, related locations, Note and Advice. Decide whether each fix is a repair candidate or Advice; a candidate's verified conditions are only those established from the check's facts, and a candidate with a refuted condition is not offered. The message must stand alone and retain required facts under limits. Inspect representative CLI and language-server output for user-visible changes.
-3. **Exercise interactions.** Add focused cases covering relevant prerequisites, recovery, independent errors, input relations and every affected output adapter. Keep causes explained and independent problems visible; acceptance must never depend on suppression or presentation.
-4. **Repair and repeat.** Fix missing evidence, misleading explanations, wrong ranges and unwanted cascades at their source; rerun and inspect. Never weaken expectations or equate fewer diagnostics with improvement. Retain reproducers/expectations as regressions.
-5. **Verify and record.** Follow the implementation workflow; measure changed hot paths. Record reviewed behavior, intended public-output changes, results and uncertainty in commits and `artifacts/verify/`.
-
-Completion requires accurate, understandable explanations at correct locations, passing interaction/output checks, and repair and reverification of every observed quality defect. Tests alone do not establish clarity. Otherwise, record unresolved conditions and next actions; leave the unit incomplete.
+- During ordinary implementation, create or update only simple diagnostic information: an appropriate code and severity/category, the relevant source location, and a concise factual explanation of the cause. Reuse the existing diagnostic model and follow SPEC §23; do not invent evidence or repair guarantees.
+- Apply the full [Diagnostic Development Workflow](docs/dev/DIAGNOSTIC_WORKFLOW.md) only when the user explicitly requests that workflow or a detailed diagnostic review. A diagnostic change or bug report alone does not activate it. Otherwise, do not expand the unit into diagnostic enrichment, a comprehensive interaction audit or CLI/LSP presentation review.
+- The ordinary implementation and verification requirements still apply. This distinction changes development scope, not required language behavior or diagnostic contracts.
 
 # VS Code Extension (`src/kimi-ext/`)
 

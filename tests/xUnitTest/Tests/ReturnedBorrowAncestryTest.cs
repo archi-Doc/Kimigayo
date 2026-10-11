@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler;
 using Xunit;
 
 namespace XunitTest;
@@ -18,7 +19,7 @@ public class ReturnedBorrowAncestryTest
     public void ReturnedExclusiveEndsBeforeParentUse(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(Counter + source);
-        Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
+        Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
         ScalarEmissionTest.EmitFixture("ReturnedBorrowAncestry" + name, Counter + source, string.Empty);
     }
 
@@ -31,9 +32,29 @@ public class ReturnedBorrowAncestryTest
     {
         var c = MinimalEmissionTest.Analyze(Counter + source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == Kimi.Compiler.OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Analysis.IsVerified);
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
+    }
+
+    [Theory]
+    [InlineData("second(q, p)")]
+    [InlineData("second(b: p, a: q)")]
+    public void ResultAncestryUsesRecordedInputsAfterSourceDetachment(string expression)
+    {
+        var c = MinimalEmissionTest.Analyze(Counter + "func change(p: uniq/Counter, q: uniq/Counter)\n    " + expression + ".value += 1\n    p.value += 1");
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "change");
+        var call = Enumerable.Range(0, body.Operations.Count).Single(i => body.Operations[i].Kind == OwnershipOperationKind.Call && body.CallAt(i)?.Target.Name == "second");
+        var inputs = body.CallInputs(call).ToArray();
+        var expected = Assert.Single(inputs, x => x.Parameter == 1).Entry;
+        body.OperationStorage[call] = body.Operations[call] with { Source = body.Function };
+        foreach (var input in inputs)
+        {
+            body.OperationStorage[input.Entry] = body.Operations[input.Entry] with { Source = body.Function };
+        }
+
+        Assert.Equal(expected, body.ResultArgument(call));
     }
 
     [Fact]
@@ -41,6 +62,6 @@ public class ReturnedBorrowAncestryTest
     {
         var c = MinimalEmissionTest.Analyze(Counter + "func change(p: ref/Counter)\n    relay(p).value += 1");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 }

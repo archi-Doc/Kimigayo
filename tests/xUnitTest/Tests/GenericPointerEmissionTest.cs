@@ -62,7 +62,7 @@ public class GenericPointerEmissionTest
     {
         var c = MinimalEmissionTest.Analyze($"func take<E>(pointer: raw/E, index: isize) -> E\n    unsafe => return {expression}\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         CompilationTestHelper.WriteIr(c);
     }
 
@@ -73,7 +73,7 @@ public class GenericPointerEmissionTest
     {
         var c = MinimalEmissionTest.Analyze($"func take<E>(pointer: raw/E) -> E\n    unsafe => return (*pointer)@move\nfunc read(pointer: raw/({type})) => take(pointer)\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         CompilationTestHelper.WriteIr(c);
     }
 
@@ -83,12 +83,12 @@ public class GenericPointerEmissionTest
     public void VerifiedTemplateBuildsDependentConcreteReads(string type)
     {
         var c = MinimalEmissionTest.Analyze($"func take<E>(pointer: raw/E) -> E\n    unsafe => return (*pointer)@move\nfunc input(pointer: raw/({type})) => ()\npublic func main() => ()");
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var generic = c.Ownership.Bodies.Single(x => x.Function.Name == "take");
         var input = c.Ownership.Bodies.Single(x => x.Function.Name == "input");
-        var element = input.Function.Parameters[0].Type.BoundType!.Components[0];
-        var call = new BoundCall();
-        call.Set(generic.Function.BoundSymbol!, element, null, [0], [element]);
+        var element = input.Function.Parameters[0].Type.TypeOf()!.Components[0];
+        var call = new CallPlan();
+        call.Set(generic.Function.SymbolOf()!, element, null, [0], [element]);
         Assert.NotNull(c.Ownership.AnalyzeInstance(generic, call));
     }
 
@@ -97,6 +97,6 @@ public class GenericPointerEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func take<E>(pointer: raw/E) -> E\n    unsafe\n        let value = (*pointer)@move\n        let moved = value@move\n        return value@move\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.ErrorCount > 0);
+        Assert.True(c.Analysis.ErrorCount > 0);
     }
 }

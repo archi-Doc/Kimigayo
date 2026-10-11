@@ -15,7 +15,7 @@ internal static class MatchTypes
         // Complete handles move without decomposing their pointees. Their prepared layout selects destruction:
         // common Function values use their operations table; object handles use their static ownership mode.
         if (ScalarTypes.Supports(type) || ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type) ||
-            ObjectTypes.HandleMode(type) is not null ||
+            type.HandleMode is not null ||
             ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || type.Kind is BoundTypeKind.Slice or BoundTypeKind.Function or BoundTypeKind.FunctionItem)
         {
             return true;
@@ -47,16 +47,16 @@ internal static class MatchTypes
             return cache[type] = true;
         }
 
-        if (StructStorage.IsStruct(type))
+        if (AdtDef.IsStruct(type))
         {
-            if (type.StoredBase is { } parent && !SupportsOwnedPatternValue(parent, cache))
+            if (AdtDef.Base(type) is { } parent && !SupportsOwnedPatternValue(parent, cache))
             {
                 return false;
             }
 
-            for (var i = 0; i < StructStorage.Count(type); i++)
+            for (var i = 0; i < AdtDef.Count(type); i++)
             {
-                if (StructStorage.FieldType(type, i) is not { } field || !SupportsOwnedPatternValue(field, cache))
+                if (AdtDef.FieldType(type, i) is not { } field || !SupportsOwnedPatternValue(field, cache))
                 {
                     return false;
                 }
@@ -65,7 +65,7 @@ internal static class MatchTypes
             return cache[type] = true;
         }
 
-        if (EnumStorage.IsEnum(type) && type.StoredCases is { } cases)
+        if (AdtDef.CaseTypes(type) is { } cases)
         {
             for (var i = 0; i < cases.Length; i++)
             {
@@ -79,25 +79,6 @@ internal static class MatchTypes
         }
 
         return false;
-    }
-
-    internal static bool SupportsGuard(BoundMatch match, int root)
-    {
-        if (SupportsGuard(match.Positions[root].MatchedType))
-        {
-            return true;
-        }
-
-        for (var i = root; i < match.Positions[root].End; i++)
-        {
-            var position = match.Positions[i];
-            if (position.Kind == BoundPatternKind.Binding && position.CandidateSymbol?.Type is null)
-            {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     internal static bool NeedsGuardProtection(BoundType type) => !ScalarTypes.Supports(type) && !ReferenceEquals(type, BoundType.Unit);

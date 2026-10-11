@@ -44,19 +44,6 @@ public sealed partial class Binding
     /// <returns>The admitted Semantics, a subset of owner, ref and uniq.</returns>
     internal SemanticsMask PairAdmitted(Koto node) => this.pairFollows.GetValueOrDefault(node);
 
-    /// <summary>Gets the shared reference Type to <paramref name="referent"/>.</summary>
-    /// <param name="referent">The borrowed Type.</param>
-    /// <param name="origin">The reference's Origin, or null when ownership analysis infers it.</param>
-    /// <returns>The interned <c>ref/referent</c>.</returns>
-    internal BoundType SharedReference(BoundType referent, BoundOrigin? origin = null) => this.Reference(SemanticsKind.Ref, referent, origin);
-
-    /// <summary>Gets the shared or exclusive reference Type to <paramref name="referent"/>.</summary>
-    /// <param name="semantics">Ref or Uniq.</param>
-    /// <param name="referent">The borrowed Type.</param>
-    /// <param name="origin">The reference's Origin, or null when ownership analysis infers it.</param>
-    /// <returns>The interned reference Type.</returns>
-    internal BoundType Reference(SemanticsKind semantics, BoundType referent, BoundOrigin? origin = null) => this.InternType(BoundTypeKind.Semantics, null, semantics, [referent], origin: origin);
-
     /// <summary>Gets the admitted set of a pair layer that selection follows implicitly at a receiver (SPEC 3.4.1, 7.3), or None.</summary>
     /// <param name="node">The receiver operand whose stored pair layer is followed.</param>
     /// <returns>The admitted Semantics, a subset of owner, ref and uniq.</returns>
@@ -125,7 +112,7 @@ public sealed partial class Binding
 
         if (FitsType(target, pattern.Components[0]))
         {
-            adapted = this.Reference(pattern.Semantics, target, this.PairOrigin(source, actual, admitted));
+            adapted = this.types.Reference(pattern.Semantics, target, this.PairOrigin(source, actual, admitted));
             kind = ArgumentOperationKind.Borrow;
         }
         else if (!exclusive && target is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref } &&
@@ -166,7 +153,7 @@ public sealed partial class Binding
         }
 
         this.implicitPairFollows[node] = admitted;
-        return this.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, target, this.PairOrigin(node, type, admitted));
+        return this.types.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, target, this.PairOrigin(node, type, admitted));
     }
 
     // SPEC 13.5.5.1: the Type below every further qualifying pair layer of a pair target. Following for Write needs Write
@@ -187,9 +174,12 @@ public sealed partial class Binding
         return target;
     }
 
-    // SPEC 13.5.5.1: a reference through a pair layer depends on the operand Place when owner is admitted (Borrow) and
-    // otherwise on the layer's outer-Origin slot and the parent Loan (Reborrow): `o` for the original pair, the annotation or
-    // the application's own slot otherwise, and the Place only for an application without a slot.
-    private BoundOrigin PairOrigin(Koto node, BoundType pair, SemanticsMask admitted)
-        => (admitted & SemanticsMask.Owner) != 0 ? this.PlaceOrigin(node) : this.OuterOrigin(pair) ?? this.PlaceOrigin(node);
+    // SPEC 13.5.5.1, 15.5, 15.6.3: a reference through a pair layer depends on the operand Place when owner is admitted (Borrow)
+    // and otherwise keeps the dependencies of the stored reference, like a Reborrow: the layer's outer-Origin slot (`o` for the
+    // original pair, the annotation or the application's own slot otherwise), met with the borrows that reach the operand when an
+    // exclusive case is admitted, as that case's follow of its concrete reference is; the Place only for an application without
+    // a slot. The meet over the cases keeps the one judgment as strong as every case's.
+    private BoundOrigin PairOrigin(Koto node, BoundType? pair, SemanticsMask admitted)
+        => (admitted & SemanticsMask.Owner) != 0 || pair is null || this.OuterOrigin(pair) is not { } slot ? this.PlaceOrigin(node)
+            : (admitted & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0 ? this.PathReborrowOrigin(node, slot)! : slot;
 }

@@ -32,22 +32,8 @@ public sealed class LoopKoto : ExpressionKoto
         this.Body.WriteBranchTo(ref builder);
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        visitor.Visit(this.Body);
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-        => [this.Body];
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (this.Body != oldKoto || newKoto is not CodeBlockKoto block)
-        {
-            return false;
-        }
-
-        this.Body = block;
-        return true;
+        this.Body = slots.Slot(this.Body);
     }
 }

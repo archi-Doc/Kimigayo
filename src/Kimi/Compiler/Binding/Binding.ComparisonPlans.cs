@@ -8,7 +8,7 @@ public sealed partial class Binding
 
     // One verified tree supplies both effect traversal and generation. Selection of a leaf uses
     // the conformance witness map, exactly like an explicit requirement invocation.
-    internal BoundComparison? ComparisonPlan(BoundCall site)
+    internal BoundComparison? ComparisonPlan(CallPlan site)
         => site.ConformingType is { } self ? this.ComparisonPlan(site.Target, self, site.Target.CompilerFunction == CompilerFunctionKind.BuiltinEquals ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable, site.TupleOperator) : null;
 
     internal BoundComparison? DictionaryComparison(BoundType dictionary)
@@ -22,7 +22,7 @@ public sealed partial class Binding
             return cached.Plan;
         }
 
-        BoundCall? implementation = null;
+        CallPlan? implementation = null;
         BoundComparison[] parts = [];
         if (ComparisonTypes.IsComposite(self))
         {

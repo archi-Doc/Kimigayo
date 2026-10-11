@@ -66,7 +66,7 @@ public class StaticInitializationTest
         {
             compilation.Bind();
             compilation.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(compilation.Ownership.Analyze().IsVerified);
+            Assert.True(compilation.Analyze().IsVerified);
             Assert.Equal(original, CompilationTestHelper.WriteIr(compilation));
         }
     }
@@ -80,8 +80,8 @@ public class StaticInitializationTest
         var bytes = AllocationMeasurement.Measure(
             () =>
             {
-                valid &= c.Ownership.Analyze().IsVerified;
-                valid &= c.Emission.WriteIr(TextWriter.Null, out _);
+                valid &= c.Analyze().IsVerified;
+                valid &= c.WriteIr(TextWriter.Null, out _);
             },
             iterations: 128,
             warmupIterations: 100);

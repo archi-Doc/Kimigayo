@@ -14,8 +14,6 @@ public sealed partial class OwnershipAnalysis
         var depth = this.comparisonDepth++;
         var reference = this.PrepareCallArgument(acquisition, acquisition.ArgumentNodes[0], acquisition.BoundCall!.ArgumentOperations[0], immediate: true);
         this.formattingPlaces[plan.Writer] = reference;
-        var region = this.checkingRegion;
-        var mark = this.terminalSeeds.Count;
         var join = this.New(OwnershipOperationKind.Branch, plan.Root);
         var completes = reference >= 0;
         foreach (var write in plan.Writes)
@@ -46,8 +44,6 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.current = reference >= 0 ? join : -1;
-        this.checkingRegion = region;
-        this.FilterTerminalSeeds(plan.Root, mark);
         var result = reference >= 0 ? this.Call(plan.Outcome) : -1;
         this.EndComparisonLoans(depth, plan.Root);
         this.comparisonDepth = depth;

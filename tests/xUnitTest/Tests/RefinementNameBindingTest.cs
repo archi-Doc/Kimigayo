@@ -25,12 +25,12 @@ public class RefinementNameBindingTest
         var c = MinimalEmissionTest.Analyze("public contract Origin\npublic group Api\n    public contract Origin\npublic contract Child: " + parent);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
-        Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Child").BindingState);
+        Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Child").StateOf());
         if (valid)
         {
             var root = c.Kotonoha.RootKoto;
             var expected = parent.Contains("Api.", StringComparison.Ordinal) ? root.NestedContainers.Single(x => x.Name == "Api").NestedContainers.Single() : root.NestedContainers.Single(x => x.Name == "Origin");
-            Assert.Same(expected.BoundSymbol, root.NestedContainers.Single(x => x.Name == "Child").BoundSymbol!.Contract!.Ancestors.Single());
+            Assert.Same(expected.SymbolOf(), root.NestedContainers.Single(x => x.Name == "Child").SymbolOf()!.Contract!.Ancestors.Single());
         }
 
         Assert.Equal(valid, c.Bind().IsComplete);
@@ -47,7 +47,7 @@ public class RefinementNameBindingTest
         var c = MinimalEmissionTest.Analyze("public contract Origin\npublic group Api\n    public contract Origin\npublic contract Child: " + parent);
         Assert.NotEmpty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Equal(BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Child").BindingState);
+        Assert.Equal(BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Child").StateOf());
     }
 
     [Theory]
@@ -59,7 +59,7 @@ public class RefinementNameBindingTest
         var c = MinimalEmissionTest.Analyze("public group Api\npublic contract Child: " + parent);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Bind(BindingMode.Provisional).InvalidCount > 0);
-        Assert.Equal(BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Child").BindingState);
+        Assert.Equal(BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Child").StateOf());
     }
 
     [Trait("Purpose", "Allocation")]

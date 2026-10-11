@@ -33,7 +33,6 @@ public class ErasureAfterSelectionTest
         var source = Call + "func g<T>(v: T) -> i32\n    let f = func [v@move] (n: i32) => n\n    return call(f@move, 1)\npublic func main() -> ()\n    let r = g(1)\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), "f@move"), (error.Code, Text(source, error.Span)));
-        Assert.Contains("T is Owned", error.Advice, StringComparison.Ordinal);
     }
 
     // SPEC 10.7: an erasure and a concrete acquisition are incomparable, and an Owned or receiver failure cannot reopen selection, so the

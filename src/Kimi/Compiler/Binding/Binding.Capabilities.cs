@@ -57,7 +57,7 @@ public sealed partial class Binding
         if (kind == IntrinsicKind.PrimitiveInteger)
         {
             // SPEC 8.4.7.3: exactly the twelve owner integer Cores; a symbolic Type is decided by its premises.
-            if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection)
+            if (type.IsAbstract)
             {
                 return false;
             }
@@ -75,7 +75,7 @@ public sealed partial class Binding
             }
 
             // SPEC 8.4.7.2: symbolic targets, a Contract's Self among them, are decided by their premises.
-            if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection)
+            if (type.IsAbstract)
             {
                 return false;
             }
@@ -94,7 +94,7 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection)
+            if (type.IsAbstract)
             {
                 return false;
             }
@@ -213,17 +213,12 @@ public sealed partial class Binding
 
         if (!this.capabilitiesReady)
         {
-            if (this.running && this.kimiValid && !derivation && TryLeafCapability(type, intrinsic.Intrinsic, out var concrete))
+            if (this.running && !derivation && TryLeafCapability(type, intrinsic.Intrinsic, out var concrete))
             {
                 return concrete;
             }
 
             return ConstraintProof.Unknown;
-        }
-
-        if (!this.kimiValid)
-        {
-            return ConstraintProof.Error;
         }
 
         if (!derivation && TryLeafCapability(type, intrinsic.Intrinsic, out var leaf))
@@ -328,7 +323,24 @@ public sealed partial class Binding
             return leaf;
         }
 
-        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection)
+        if (type.Kind == BoundTypeKind.SemanticsAdaptation)
+        {
+            var result = ConstraintProof.Unknown;
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                var child = this.RequestCapability(type.Components[i], work.Intrinsic, work.Scope);
+                if (child == ConstraintProof.Error)
+                {
+                    return child;
+                }
+
+                result = i == 0 || result == child ? child : ConstraintProof.Unknown;
+            }
+
+            return result;
+        }
+
+        if (type.IsAbstract)
         {
             // A Contract's Self, a Type parameter, has no structure of its own; its ObjectPayload evidence is the Contract's clause
             // (SPEC 8.4.7.2).
@@ -341,12 +353,12 @@ public sealed partial class Binding
             {
                 if (work.Derivation)
                 {
-                    if (!this.storageShapes.TryGetValue(container, out var shape))
+                    if (container.BoundSymbol?.Adt is not { } shape)
                     {
                         return ConstraintProof.Unknown;
                     }
 
-                    return CombineProof(shape.HasDestructor ? ConstraintProof.Refuted : ConstraintProof.Proven, this.StoredCapability(work, shape), true);
+                    return CombineProof(shape.DestructorKoto is not null ? ConstraintProof.Refuted : ConstraintProof.Proven, this.StoredCapability(work, shape), true);
                 }
 
                 return this.NominalCopy(work, container);
@@ -364,7 +376,7 @@ public sealed partial class Binding
 
     private ConstraintProof NominalCopy(CapabilityWork work, DeclarationContainerKoto container)
     {
-        if (!this.storageShapes.TryGetValue(container, out var shape))
+        if (container.BoundSymbol?.Adt is not { } shape)
         {
             return ConstraintProof.Unknown;
         }
@@ -384,7 +396,7 @@ public sealed partial class Binding
 
         if (!this.copyByType.TryGetValue(container, out var declarations) || declarations.Count == 0)
         {
-            return this.capabilityMode == BindingMode.Final && this.storageShapes.ContainsKey(container) ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+            return this.capabilityMode == BindingMode.Final ? ConstraintProof.Refuted : ConstraintProof.Unknown;
         }
 
         var result = ConstraintProof.Refuted;
@@ -445,19 +457,39 @@ public sealed partial class Binding
 
         if (work.Type.Symbol?.Declaration is DeclarationContainerKoto container)
         {
-            return this.storageShapes.TryGetValue(container, out var shape) ? this.StoredCapability(work, shape) : ConstraintProof.Unknown;
+            return container.BoundSymbol?.Adt is { } shape ? this.StoredCapability(work, shape) : ConstraintProof.Unknown;
         }
 
         var result = ConstraintProof.Proven;
         for (var i = 0; i < work.Type.Components.Count; i++)
         {
+            if (work.Type.Kind == BoundTypeKind.FunctionItem && work.Type.Symbol?.Declaration is FunctionKoto { IsRequirement: true } && i == 1)
+            {
+                // The Contract reference is metadata; only its bound Type arguments are retained bindings.
+                var reference = work.Type.Components[i];
+                for (var a = 0; a < reference.Components.Count; a++)
+                {
+                    result = CombineProof(result, this.RequestCapability(reference.Components[a], work.Intrinsic, work.Scope), true);
+                }
+
+                if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned)
+                {
+                    for (var a = 0; a < reference.OriginArguments.Count; a++)
+                    {
+                        result = CombineProof(result, reference.OriginArguments[a] is { } origin && this.ProvesOriginOutlives(origin, BoundOrigin.Static, work.Scope.Owner) ? ConstraintProof.Proven : ConstraintProof.Unknown, true);
+                    }
+                }
+
+                continue;
+            }
+
             result = CombineProof(result, this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, work.Type.Components[i], contract: work.Intrinsic)), work.Scope), true);
         }
 
         return result;
     }
 
-    private ConstraintProof StoredCapability(CapabilityWork work, StorageShape shape)
+    private ConstraintProof StoredCapability(CapabilityWork work, AdtDef shape)
     {
         var result = ConstraintProof.Proven;
         if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && work.Type.Symbol?.Declaration is DeclarationContainerKoto declaration)
@@ -603,7 +635,7 @@ public sealed partial class Binding
         }
 
         private static ConstraintProof InitialResult(BindingSymbol intrinsic, BoundType type)
-            => intrinsic.Intrinsic == IntrinsicKind.Owned && type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection)
+            => intrinsic.Intrinsic == IntrinsicKind.Owned && !type.IsAbstract
                 ? ConstraintProof.Proven
                 : ConstraintProof.Unknown;
     }

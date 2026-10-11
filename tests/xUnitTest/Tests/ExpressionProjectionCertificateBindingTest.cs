@@ -16,7 +16,7 @@ public class ExpressionProjectionCertificateBindingTest
         var c = MinimalEmissionTest.Analyze(Source("internal", runtime));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         AssertCertificate(c, runtime, false);
         Assert.False(c.Bind().IsComplete);
         AssertCertificate(c, runtime, false);
@@ -98,6 +98,6 @@ public class ExpressionProjectionCertificateBindingTest
     private static void AssertCertificate(Compilation c, bool runtime, bool valid)
     {
         var expression = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single(x => x.Name == "call").ExpressionBody;
-        Assert.Equal(valid, runtime ? Assert.IsType<IsKoto>(expression).BoundRuntimeTest is not null : Assert.IsType<InvocationKoto>(expression).BoundCall is not null);
+        Assert.Equal(valid, runtime ? Assert.IsType<IsKoto>(expression).RuntimeTestOf() is not null : Assert.IsType<InvocationKoto>(expression).CallOf() is not null);
     }
 }

@@ -8,12 +8,12 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
-    private readonly Dictionary<(DictionaryHelperKind Kind, ValueLowering Key, int KeyLayout, ValueLowering Value, int ValueLayout, BoundCall? Related), DictionaryHelper> dictionaryHelpers = new();
-    private readonly Dictionary<(DictionaryHelperKind Kind, ValueLowering Key, int KeyLayout, ValueLowering Value, int ValueLayout, BoundCall? Related), DictionaryHelper> dictionaryHelperCache = new();
+    private readonly Dictionary<(DictionaryHelperKind Kind, ValueLowering Key, int KeyLayout, ValueLowering Value, int ValueLayout, int Related), DictionaryHelper> dictionaryHelpers = new();
+    private readonly Dictionary<(DictionaryHelperKind Kind, ValueLowering Key, int KeyLayout, ValueLowering Value, int ValueLayout, int Related), DictionaryHelper> dictionaryHelperCache = new();
     private bool dictionaryRuntimeUsed;
     private bool storageBytesUsed;
 
-    internal Func<bool, BoundType, BoundType, BoundCall>? RequireDictionaryOperation { get; set; }
+    internal Func<bool, BoundType, BoundType, int>? RequireDictionaryOperation { get; set; }
 
     private static long AlignDictionary(long size, int alignment) => (size + alignment - 1) & -(long)alignment;
 
@@ -30,7 +30,7 @@ internal sealed partial class BodyLowering
     {
         var find = kind == DictionaryHelperKind.CheckKey;
         var related = find || (kind == DictionaryHelperKind.Drop && (key.NeedsDestruction || value.NeedsDestruction))
-            ? this.RequireDictionaryOperation!(find, key.Type, value.Type) : null;
+            ? this.RequireDictionaryOperation!(find, key.Type, value.Type) : -1;
         var cacheKey = (kind, key.Value, key.Layout?.Id ?? -1, value.Value, value.Layout?.Id ?? -1, related);
         if (this.dictionaryHelpers.TryGetValue(cacheKey, out var helper))
         {
@@ -104,21 +104,21 @@ internal sealed partial class BodyLowering
 
     // SPEC 22.1.2.5: the nullable form of Alloc and the unsafe byte copy that the DictionaryStorage capacity bodies use; neither
     // reports a failure, so neither needs a location.
-    private bool LowerStorageBytes(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, BoundCall plan, out string? failure)
+    private bool LowerStorageBytes(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
         failure = null;
         var transfer = plan.Target.CompilerFunction == CompilerFunctionKind.StorageTransferBytes;
         var inputs = transfer ? 3 : 1;
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != inputs || call.ArgumentNodes.Count != inputs || target.Parameters.Count != inputs || plan.ArgumentToParameter.Length != inputs ||
-            !(transfer ? ReferenceEquals(SignatureType(this, call.BoundType), BoundType.Unit) : BytePointer(SignatureType(this, call.BoundType))))
+            !(transfer ? ReferenceEquals(body.Resolve(call.BoundType, body.ContextAt(id)), BoundType.Unit) : BytePointer(body.Resolve(call.BoundType, body.ContextAt(id)))))
         {
             return Fail("A private storage byte primitive requires its fixed signature.", out failure);
         }
 
         for (var i = 0; i < inputs; i++)
         {
-            var parameter = SignatureType(this, plan.ArgumentOperations[i].ParameterType);
+            var parameter = body.Resolve(plan.ArgumentOperations[i].ParameterType, InterpretationContext.Root);
             if (plan.ArgumentToParameter[i] != i || !(i == inputs - 1 ? ReferenceEquals(parameter, BoundType.ISize) : BytePointer(parameter)))
             {
                 return Fail("A private storage byte primitive requires its arguments in order.", out failure);
@@ -138,7 +138,7 @@ internal sealed partial class BodyLowering
         this.callOperands.Clear();
         for (var i = 0; i < inputs; i++)
         {
-            if (!this.ScalarArrayArgument(body, id, i, SignatureType(this, plan.ArgumentOperations[i].ParameterType)!, out var operand))
+            if (!this.ScalarArrayArgument(body, id, i, body.Resolve(plan.ArgumentOperations[i].ParameterType, InterpretationContext.Root)!, out var operand))
             {
                 return Fail("A private storage byte primitive argument is unavailable at the call.", out failure);
             }
@@ -156,20 +156,20 @@ internal sealed partial class BodyLowering
     // SPEC 4.7.5: placeEntry appends one slot, growing the storage first, and transfers the acquired key and value into
     // it through the literal's typed placement helper. The ordinary source bodies prove that no equal key is stored, and
     // growth failure reports the standard operation's forwarded caller location.
-    private bool LowerDictionaryPlacement(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, BoundCall plan, out string? failure)
+    private bool LowerDictionaryPlacement(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
         failure = null;
         const int inputs = 3;
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != inputs || call.ArgumentNodes.Count != inputs || target.Parameters.Count != inputs || plan.ArgumentToParameter.Length != inputs ||
             plan.ArgumentToParameter[0] != 0 || plan.ArgumentToParameter[1] != 1 || plan.ArgumentToParameter[2] != 2 || plan.TypeArguments.Length != 2 ||
-            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } handleType ||
+            body.Resolve(plan.ArgumentOperations[0].ParameterType, InterpretationContext.Root) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } handleType ||
             !ReferenceEquals(pointee, BoundType.Primitives["u8"]) ||
-            SignatureType(this, plan.TypeArguments[0]) is not { } keyType || SignatureType(this, plan.TypeArguments[1]) is not { } valueType ||
-            !ReferenceEquals(SignatureType(this, plan.ArgumentOperations[1].ParameterType), keyType) ||
-            !ReferenceEquals(SignatureType(this, plan.ArgumentOperations[inputs - 1].ParameterType), valueType) ||
+            body.Resolve(plan.TypeArguments[0], InterpretationContext.Root) is not { } keyType || body.Resolve(plan.TypeArguments[1], InterpretationContext.Root) is not { } valueType ||
+            !ReferenceEquals(body.Resolve(plan.ArgumentOperations[1].ParameterType, InterpretationContext.Root), keyType) ||
+            !ReferenceEquals(body.Resolve(plan.ArgumentOperations[inputs - 1].ParameterType, InterpretationContext.Root), valueType) ||
             !this.TryGetArrayElement(keyType, out var key) || !this.TryGetArrayElement(valueType, out var value) ||
-            !ReferenceEquals(SignatureType(this, call.BoundType), BoundType.Unit))
+            !ReferenceEquals(body.Resolve(call.BoundType, body.ContextAt(id)), BoundType.Unit))
         {
             return Fail("Dictionary placement requires the physical slot and acquired key/value Types.", out failure);
         }

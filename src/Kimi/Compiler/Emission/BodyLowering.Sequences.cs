@@ -11,7 +11,8 @@ internal sealed partial class BodyLowering
         failure = null;
         var operation = body.Operations[id];
         var value = body.Values[id];
-        if (value.Constant < 0 || value.Constant >= body.Sequences.Count || operation.Kind != OwnershipOperationKind.Produce)
+        // Sequence values retain their checked receiver's authority; they do not introduce an independent Loan.
+        if (value.Constant < 0 || value.Constant >= body.Sequences.Count || operation.Kind != OwnershipOperationKind.Produce || operation.LoanMode != LoanRequirement.None)
         {
             return Fail("Missing sequence value plan.", out failure);
         }
@@ -26,29 +27,34 @@ internal sealed partial class BodyLowering
         var receiver = body.Places[plan.Receiver].Type;
         var syntaxReceiver = operation.Source switch
         {
-            FromEndIndexKoto { Parent: BinaryKoto selection } => ElementAccess.ValueSource(selection.Left),
-            BinaryKoto binary => ElementAccess.ValueSource(binary.Left),
-            ForKoto loop => ElementAccess.ValueSource(loop.Iterable),
+            FromEndIndexKoto { Parent: BinaryKoto selection } => ElementAccess.ValueSource(selection.Left, body, id),
+            BinaryKoto binary => ElementAccess.ValueSource(binary.Left, body, id),
+            ForKoto loop => ElementAccess.ValueSource(loop.Iterable, body, id),
             _ => null,
         };
         var receiverPlace = body.Places[plan.Receiver];
         if (syntaxReceiver is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PairFollow } followed &&
-            !ReferenceEquals(ElementAccess.ValueSource(receiverPlace.Source), syntaxReceiver))
+            !ReferenceEquals(ElementAccess.ValueSource(receiverPlace.Source, body, id), syntaxReceiver))
         {
             // SPEC 13.5.5: a followed collection is reached through its reference, or is the operand Place for an owner layer.
-            syntaxReceiver = ElementAccess.ValueSource(followed.Left);
+            syntaxReceiver = ElementAccess.ValueSource(followed.Left, body, id);
         }
 
-        var acquiredSource = syntaxReceiver is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow &&
-            (ReferenceTypes.IsArray(receiverPlace.Type) || ReferenceTypes.IsDynamicArray(receiverPlace.Type) || ReferenceTypes.IsDictionary(receiverPlace.Type)) && ReferenceEquals(receiverPlace.Type, SignatureType(this, borrow.BoundType))
-            ? ElementAccess.ValueSource(borrow.Left) : syntaxReceiver;
+        var acquiredSource = syntaxReceiver is ConversionKoto borrow && ElementAccess.ConversionKind(borrow, body, id) == ConversionBinding.Borrow &&
+            (ReferenceTypes.IsArray(receiverPlace.Type) || ReferenceTypes.IsDynamicArray(receiverPlace.Type) || ReferenceTypes.IsDictionary(receiverPlace.Type)) && ReferenceEquals(receiverPlace.Type, body.Resolve(borrow.BoundType, body.ContextAt(id)))
+            ? ElementAccess.ValueSource(borrow.Left, body, id) : syntaxReceiver;
         // A shared iterable written as an explicit borrow (dictionary@ref) is reborrowed from the evaluated borrow itself.
-        var receiverSource = ElementAccess.ValueSource(receiverPlace.Source);
+        var receiverSource = ElementAccess.ValueSource(receiverPlace.Source, body, id);
         if (syntaxReceiver is null || plan.Projection < -1 ||
             (plan.Projection < 0 && !ReferenceEquals(receiverSource, acquiredSource) && !ReferenceEquals(receiverSource, syntaxReceiver) &&
                 !(syntaxReceiver.BoundSymbol is { } symbol && body.TrySymbolPlaceAt(symbol, id, out var local) && local == plan.Receiver)))
         {
             return Fail("Sequence receiver does not match its evaluated source.", out failure);
+        }
+
+        if (plan.Address < -1 || (plan.Address >= 0 && plan.Kind != SequenceOperation.Borrow))
+        {
+            return Fail("Only an element borrow can reuse a located address.", out failure);
         }
 
         if (plan.Kind == SequenceOperation.Length && plan.Index != -1)
@@ -92,7 +98,7 @@ internal sealed partial class BodyLowering
                 return Fail("Sequence receiver projection is not available.", out failure);
             }
 
-            receiver = SignatureType(this, body.Operations[projection.Operation].Source.BoundType)!;
+            receiver = body.Resolve(body.Operations[projection.Operation].Source.BoundType, body.ContextAt(projection.Operation))!;
             address = new(EmissionOperandKind.ElementAddress, projection.Operation);
         }
 
@@ -127,7 +133,7 @@ internal sealed partial class BodyLowering
             // SPEC 4.6.9: an exclusive element borrow addresses the elements through a uniq array reference.
             var exclusiveElements = borrowedArray && receiverPlace.Type.Semantics == SemanticsKind.Uniq &&
                 operation.Source is IndexKoto && reference?.Semantics == SemanticsKind.Uniq;
-            var fixedElements = receiver.Kind == BoundTypeKind.FixedArray && exclusiveElements;
+            var fixedElements = receiver.Kind == BoundTypeKind.FixedArray && borrowedArray;
             if ((receiver.Kind is not (BoundTypeKind.Slice or BoundTypeKind.Array) && !fixedElements) || !ReferenceTypes.IsStorage(reference) ||
                 reference!.Semantics != (exclusiveElements ? SemanticsKind.Uniq : SemanticsKind.Ref) || receiver.Components.Count != 1 ||
                 !ReferenceEquals(reference.Components[0], receiver.Components[0]) || !sameOrigin ||
@@ -137,6 +143,26 @@ internal sealed partial class BodyLowering
                 !this.TryGetLocation(operation.Source, directory, constants, out var borrowLocation))
             {
                 return Fail("Sequence element borrow requires a checked index and matching backing Origin.", out failure);
+            }
+
+            if (plan.Address >= 0)
+            {
+                // The physical address survives inspection; the new exclusive access is checked against the original
+                // receiver, not acquired from a shared capability. No index or bounds check is evaluated again.
+                if (!exclusiveElements || (uint)plan.Address >= (uint)id ||
+                    body.Values[plan.Address] is not { Kind: OwnershipValueKind.Sequence, Constant: var previous } ||
+                    (uint)previous >= (uint)body.Sequences.Count || body.Sequences[(int)previous] is not { Kind: SequenceOperation.Borrow, Address: -1 } located ||
+                    located.Operation != plan.Address || located.Receiver != plan.Receiver || located.Projection != plan.Projection || located.Index != plan.Index || located.End != plan.End ||
+                    !ReferenceEquals(body.Operations[plan.Address].Source, operation.Source) ||
+                    ValueType(body, plan.Address) is not { Semantics: SemanticsKind.Ref, Components: [var stored] } prior ||
+                    !ReferenceEquals(stored, reference.Components[0]) || !ReferenceEquals(prior.Origin, reference.Origin) ||
+                    (body.IsReachable(id) && !this.Dominates(plan.Address, id)))
+                {
+                    return Fail("Replacement requires the same dominating located element and exclusive receiver authority.", out failure);
+                }
+
+                this.physicalValues[id] = this.physicalValues[plan.Address];
+                return true;
             }
 
             if (fixedElements && (receiver.Length == 0 || this.aggregateLayouts.Get(receiver)?.Value.Layout.Size == 0))
@@ -158,7 +184,7 @@ internal sealed partial class BodyLowering
                 address = new(EmissionOperandKind.NullAddress, 0);
             }
 
-            var validSource = borrowedArray ? operation.Source is IndexKoto index && (ReferenceTypes.IsArray(SignatureType(this, ElementAccess.AccessType(index.Left))) || ReferenceTypes.IsDynamicArray(SignatureType(this, ElementAccess.AccessType(index.Left)))) :
+            var validSource = borrowedArray ? operation.Source is IndexKoto index && (ReferenceTypes.IsArray(body.Resolve(ElementAccess.AccessType(index.Left), body.ContextAt(id))) || ReferenceTypes.IsDynamicArray(body.Resolve(ElementAccess.AccessType(index.Left), body.ContextAt(id)))) :
                 operation.Source is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Slice or BoundTypeKind.Array };
             var aggregate = this.aggregateLayouts.Get(ValueType(body, id)!);
             if ((arrayRead ? receiver.Kind != BoundTypeKind.FixedArray : receiver.Kind is not (BoundTypeKind.Slice or BoundTypeKind.Array)) || !validSource ||
@@ -197,14 +223,14 @@ internal sealed partial class BodyLowering
             {
                 // SPEC 4.6.4: one ResolvedRange value, written or resolved from a Range, supplies both boundaries.
                 resolvedKey = ElementAccess.KeySyntax(keyed);
-                sliceType = SignatureType(this, keyed.BoundType);
+                sliceType = body.Resolve(keyed.BoundType, body.ContextAt(id));
             }
             else if (operation.Source is IndexKoto { Right: RangeKoto rangeSyntax } source)
             {
                 // SPEC 4.6.4: a `^x` boundary evaluates x and resolves against the length in the slice operation.
                 startSyntax = rangeSyntax.Start is FromEndIndexKoto { Operand: var startOffset } ? startOffset : rangeSyntax.Start;
                 endSyntax = rangeSyntax.End is FromEndIndexKoto { Operand: var endOffset } ? endOffset : rangeSyntax.End;
-                sliceType = SignatureType(this, source.BoundType);
+                sliceType = body.Resolve(source.BoundType, body.ContextAt(id));
                 shape = (rangeSyntax.Start is FromEndIndexKoto ? SliceShape.StartFromEnd : 0) | (rangeSyntax.End is FromEndIndexKoto ? SliceShape.EndFromEnd : 0) | (rangeSyntax.IsInclusive ? SliceShape.Closed : 0);
             }
 
@@ -221,16 +247,17 @@ internal sealed partial class BodyLowering
 
             if (resolvedKey is not null)
             {
-                if (plan.End != -1 || (uint)plan.Index >= (uint)id || !ReferenceEquals(body.Operations[plan.Index].Source, ElementAccess.ValueSource(resolvedKey)) ||
-                    !ReferenceTypes.IsResolvedRange(ValueType(body, plan.Index)) || (body.IsReachable(id) && !this.Dominates(plan.Index, id)) ||
-                    FunctionAbi.GetValue(receiver.Components[0], this.aggregateLayouts) is not { } resolvedElement ||
+                if (plan.End != -1 || (uint)plan.Index >= (uint)id || !ReferenceEquals(body.Operations[plan.Index].Source, ElementAccess.ValueSource(resolvedKey, body, plan.Index)) ||
+                    ValueType(body, plan.Index) is not { } key || !ReferenceTypes.IsResolvedRange(key) || this.aggregateLayouts.Get(key) is not { } keyLayout ||
+                    (body.IsReachable(id) && !this.Dominates(plan.Index, id)) || FunctionAbi.GetValue(receiver.Components[0], this.aggregateLayouts) is not { } resolvedElement ||
                     !this.TryGetLocation(operation.Source, directory, constants, out var resolvedLocation))
                 {
                     return Fail("Slice application requires its evaluated ResolvedRange key.", out failure);
                 }
 
+                // The key's {start, end} Fields are read at their named offsets.
                 ReadOnlySpan<EmissionOperand> resolvedBounds = [address, new(EmissionOperandKind.Integer, receiver.Kind == BoundTypeKind.FixedArray ? receiver.Length : -1),
-                    new(EmissionOperandKind.SlotAddress, ValuePlace(body.Operations[plan.Index])), new(EmissionOperandKind.Integer, 0), new(EmissionOperandKind.Integer, 0),
+                    new(EmissionOperandKind.SlotAddress, ValuePlace(body.Operations[plan.Index])), FieldOffset(keyLayout, key, "start"), FieldOffset(keyLayout, key, "end"),
                     new(EmissionOperandKind.Integer, body.Operations.Count + id)];
                 function.AddScalar(EmissionOpcode.Sequence, id, resolvedBounds, place: operation.Place, location: resolvedLocation, op: "SliceResolved", check: ArithmeticCheckKind.Bounds, representation: resolvedElement);
                 return true;
@@ -253,7 +280,7 @@ internal sealed partial class BodyLowering
             // An isize boundary is used as evaluated, so its producer is the boundary's value source (parentheses, labels and
             // identity conversions removed); a boundary of another integer Type is converted at the written syntax.
             bool Endpoint(Koto? syntax, int producer) => syntax is null ? producer == -1 :
-                (uint)producer < (uint)id && (ReferenceEquals(body.Operations[producer].Source, syntax) || ReferenceEquals(body.Operations[producer].Source, ElementAccess.ValueSource(syntax))) &&
+                (uint)producer < (uint)id && (ReferenceEquals(body.Operations[producer].Source, syntax) || ReferenceEquals(body.Operations[producer].Source, ElementAccess.ValueSource(syntax, body, producer))) &&
                 ReferenceEquals(ValueType(body, producer), BoundType.ISize) && (!body.IsReachable(id) || this.Dominates(producer, id));
         }
 
@@ -279,7 +306,15 @@ internal sealed partial class BodyLowering
             return Fail("Sequence operation does not match its source and result Type.", out failure);
         }
 
-        function.AddScalar(EmissionOpcode.Sequence, id, [address, new(EmissionOperandKind.Integer, receiver.Kind == BoundTypeKind.FixedArray ? receiver.Length : -1), new(EmissionOperandKind.Integer, receiver.Kind == BoundTypeKind.Dictionary ? 24 : 8)], place: operation.Place, op: name, representation: ReferenceTypes.IsResolvedRange(receiver) ? WindowsLowering.Unit : null);
+        // A ResolvedRange receiver or `indices` result is addressed by its {start, end} Field names; a collection handle's length
+        // follows its buffer (a Dictionary's follows its slot metadata).
+        var range = ReferenceTypes.IsResolvedRange(receiver) ? receiver : plan.Kind == SequenceOperation.Indices ? ValueType(body, id) : null;
+        var fields = range is null ? null : this.aggregateLayouts.Get(range) ?? throw new InvalidOperationException("ResolvedRange has no layout.");
+        var first = fields is null ? new EmissionOperand(EmissionOperandKind.Integer, 0) : FieldOffset(fields, range!, "start");
+        var last = fields is null ? new EmissionOperand(EmissionOperandKind.Integer, 0) : FieldOffset(fields, range!, "end");
+        ReadOnlySpan<EmissionOperand> metadata = [address, new(EmissionOperandKind.Integer, receiver.Kind == BoundTypeKind.FixedArray ? receiver.Length : -1),
+            ReferenceEquals(range, receiver) ? last : new(EmissionOperandKind.Integer, receiver.Kind == BoundTypeKind.Dictionary ? 24 : 8), first, last];
+        function.AddScalar(EmissionOpcode.Sequence, id, metadata, place: operation.Place, op: name, representation: ReferenceEquals(range, receiver) ? WindowsLowering.Unit : null);
         return true;
     }
 }

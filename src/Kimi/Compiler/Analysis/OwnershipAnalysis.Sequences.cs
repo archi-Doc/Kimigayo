@@ -40,11 +40,25 @@ public sealed partial class OwnershipAnalysis
         return result;
     }
 
+    // SPEC 15.1.3, 15.1.5: an element of a dynamic collection or at a runtime index forms no Move Path, so @move cannot take it;
+    // another acquisition this analysis does not snapshot is not implemented.
+    private void UnmovableElement(IndexKoto source, AcquisitionKind? acquisition)
+    {
+        if (acquisition == AcquisitionKind.Move)
+        {
+            this.body.ReportIssue(new(source, OwnershipFailure.StaticMovePathRequired));
+        }
+        else
+        {
+            this.Unsupported(source);
+        }
+    }
+
     private int ReadSlice(IndexKoto source, AcquisitionKind? acquisition)
     {
         if (ReferenceTypes.IsDictionary(source.Left.BoundType))
         {
-            if (acquisition == AcquisitionKind.Move || this.Concrete(source.BoundType) is not { } stored || !this.SupportsCopySnapshot(stored, source))
+            if (acquisition == AcquisitionKind.Move || this.Resolve(source.BoundType, this.Active) is not { } stored || !this.SupportsCopySnapshot(stored, source))
             {
                 if (acquisition is null && this.compilation.Binding.ProveCopy(source.BoundType!, source) != ConstraintProof.Proven)
                 {
@@ -52,14 +66,14 @@ public sealed partial class OwnershipAnalysis
                 }
                 else
                 {
-                    this.Unsupported(source);
+                    this.UnmovableElement(source, acquisition);
                 }
 
                 return -1;
             }
 
             // Lookup produces the same borrowed Place used by explicit @ref; a bare read snapshots its Copy referent.
-            var reference = this.BorrowStruct(source, this.compilation.Binding.SharedReference(source.BoundType!, source.Left.BoundType!.Origin));
+            var reference = this.BorrowStruct(source, this.compilation.Types.Reference(SemanticsKind.Ref, source.BoundType!, source.Left.BoundType!.Origin));
             return reference < 0 ? -1 : this.LoadPointer(source, this.Value(reference));
         }
 
@@ -85,7 +99,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         int result;
-        if (acquisition == AcquisitionKind.Move || this.Concrete(source.BoundType) is not { } resultType ||
+        if (acquisition == AcquisitionKind.Move || this.Resolve(source.BoundType, this.Active) is not { } resultType ||
             !this.SupportsCopySnapshot(resultType, source))
         {
             if (acquisition is null && source.BoundType is { } element && this.compilation.Binding.ProveCopy(element, source) != ConstraintProof.Proven)
@@ -97,7 +111,7 @@ public sealed partial class OwnershipAnalysis
             }
             else
             {
-                this.Unsupported(source);
+                this.UnmovableElement(source, acquisition);
                 result = -1;
             }
         }
@@ -128,12 +142,12 @@ public sealed partial class OwnershipAnalysis
         return converted;
     }
 
-    private int SequenceValue(Koto source, BoundType type, SequenceOperation kind, int receiver, int projection = -1, int index = -1, int end = -1)
+    private int SequenceValue(Koto source, BoundType type, SequenceOperation kind, int receiver, int projection = -1, int index = -1, int end = -1, int address = -1)
     {
         var result = this.Place(source, type, OwnershipPlaceKind.Temporary, true);
         var op = this.Emit(OwnershipOperationKind.Produce, source, result);
         this.SetValue(op, OwnershipValueKind.Sequence, ReferenceTypes.IsArray(this.body.Places[receiver].Type) || ReferenceTypes.IsDynamicArray(this.body.Places[receiver].Type) || ReferenceTypes.IsDictionary(this.body.Places[receiver].Type) || FormattingTypes.IsSliceBorrow(this.body.Places[receiver].Type) || ReferenceTypes.IsSlice(this.body.Places[receiver].Type) ? [this.Value(receiver)] : [], constant: this.body.Sequences.Count);
-        this.body.Sequences.Add(new(op, kind, receiver, projection, index, end));
+        this.body.Sequences.Add(new(op, kind, receiver, projection, index, end, address));
         return this.RegisterTemporary(result);
     }
 
@@ -190,7 +204,7 @@ public sealed partial class OwnershipAnalysis
         {
             // SPEC 4.6.1: collection fields and elements are inspected through their shared Place, without attempting to
             // Copy or Move the Non-Copy handle. An element borrowed through it keeps the Origin of that borrow.
-            return this.BorrowStruct(stored, this.compilation.Binding.SharedReference(source.BoundType, elementOrigin));
+            return this.BorrowStruct(stored, this.compilation.Types.Reference(SemanticsKind.Ref, source.BoundType, elementOrigin));
         }
 
         if (source.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary)
@@ -311,10 +325,7 @@ public sealed partial class OwnershipAnalysis
         var next = this.ComputeUpdate(source, BoundType.ISize, this.Value(current), this.Value(this.SequenceConstant(source, BoundType.ISize, 1)), KotoKind.Plus);
 
         this.Emit(OwnershipOperationKind.Write, source, cursor, next);
-        var seeds = this.terminalSeeds.Count;
-        this.Block(source.Body, out var continuation);
-        this.RecordTerminalSeed(source.Body, continuation);
-        this.FilterTerminalSeeds(source, seeds);
+        this.Block(source.Body);
         this.Cleanup(this.temporaries.Count, bindingMark, source, CleanupReason.ScopeExit);
         this.locals.RemoveRange(bindingMark, this.locals.Count - bindingMark);
         this.Connect(this.current, head, OwnershipEdgeKind.Back);

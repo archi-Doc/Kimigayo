@@ -20,7 +20,7 @@ public class DisjointBorrowedProjectionTest
     public void AcceptsDisjointOrSharedAccess(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
+        Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
         ScalarEmissionTest.EmitFixture("DisjointBorrowedProjection" + name, source, string.Empty);
     }
 
@@ -36,8 +36,8 @@ public class DisjointBorrowedProjectionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == Kimi.Compiler.OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     // SPEC 15.6: direct inline paths below a borrowed base are Places.
@@ -50,7 +50,7 @@ public class DisjointBorrowedProjectionTest
     public void ExecutesNestedBorrowedPaths(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
+        Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
         ScalarEmissionTest.EmitFixture("DisjointBorrowedProjection" + name, source, string.Empty);
     }
 
@@ -63,8 +63,8 @@ public class DisjointBorrowedProjectionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == Kimi.Compiler.OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -74,7 +74,7 @@ public class DisjointBorrowedProjectionTest
     public void RejectsNestedWriteThroughSharedBase(string source)
     {
         var c = MinimalEmissionTest.Analyze(Pair + source);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 }

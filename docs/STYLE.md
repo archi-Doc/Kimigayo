@@ -18,6 +18,8 @@ Apply conventions to changed declarations, without unrelated formatting or behav
 may omit context, bodies and documentation, or use explicit syntax for teaching; they need not be complete
 programs. Hypothetical APIs do not imply support; see [STATUS.md](STATUS.md).
 
+[Kimi] Prefer `value@obj`, `value@rc` or `value@arc` for ordinary object creation, with `@move` for a Non-Copy Place. Keep `makeObj` / `makeRc` / `makeArc` when ordinary call inference or a factory Function Item is useful; these public APIs remain supported.
+
 ## 1. Naming
 
 ### 1.1. Names and files
@@ -162,6 +164,8 @@ declares; the restatement is valid but adds nothing.
   `lessThan` callbacks for the same purpose.
 
 ### 3.4. Integer arithmetic and conversions
+
+[Kimi] Arithmetic implementations use the canonical requirement names (`added`, `subtracted`, `multiplied`, `divided`, `remainder`, their `From` forms, and `negated`) and let the common bounded inference rule determine Output when the declared result exposes it unambiguously. Write an explicit `associate` when the public result should remain fixed independently of implementation signatures, or when inference cannot determine it. Document domain, rounding and failure guarantees; do not imply algebraic laws, Copy or allocation-free behavior from conformance alone. Use named mutation methods when callers need explicit buffer reuse. See [arithmetic Contracts](spec/arithmetic-contracts.md).
 
 - `[Kimi]` Make a wrapping integer Type visible on the line that introduces it: a Type annotation,
   `@Wrapping<…>` or `@wrap<Wrapping<…>>`. Inference alone hides whether a line wraps or checks

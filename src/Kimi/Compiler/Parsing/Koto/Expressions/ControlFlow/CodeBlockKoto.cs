@@ -125,14 +125,8 @@ public sealed class CodeBlockKoto : ExpressionKoto
         item.Parent = this;
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        visitor.VisitMany(this.items);
+        slots.List(this.items);
     }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-        => this.items;
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-        => ReplaceInList(this.items, oldKoto, newKoto);
 }

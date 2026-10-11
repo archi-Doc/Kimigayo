@@ -58,46 +58,9 @@ public sealed class RangeKoto : ExpressionKoto
         this.End?.WriteTo(ref builder);
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        if (this.Start is not null)
-        {
-            visitor.Visit(this.Start);
-        }
-
-        if (this.End is not null)
-        {
-            visitor.Visit(this.End);
-        }
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-    {
-        if (this.Start is not null)
-        {
-            yield return this.Start;
-        }
-
-        if (this.End is not null)
-        {
-            yield return this.End;
-        }
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (this.Start == oldKoto)
-        {
-            this.Start = newKoto;
-            return true;
-        }
-
-        if (this.End == oldKoto)
-        {
-            this.End = newKoto;
-            return true;
-        }
-
-        return false;
+        this.Start = slots.Slot(this.Start);
+        this.End = slots.Slot(this.End);
     }
 }

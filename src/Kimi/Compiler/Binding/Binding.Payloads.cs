@@ -20,18 +20,19 @@ public sealed partial class Binding
             return false;
         }
 
+        // SPEC 13.5.5.1: exclusive payload access needs exclusive authority along the whole path, also to an objuniq view.
         var exclusive = pattern.Semantics == SemanticsKind.Uniq;
-        if (exclusive && actual.Semantics != SemanticsKind.ObjUniq && ObjectTypes.HandleMode(actual) is not { PayloadAuthority: LoanRequirement.Uniq })
+        if (exclusive && ((actual.Semantics != SemanticsKind.ObjUniq && actual.HandleMode is not { PayloadAuthority: LoanRequirement.Uniq }) || ReachedThroughShared(source)))
         {
             return false;
         }
 
-        if (actual.Semantics is not (SemanticsKind.ObjRef or SemanticsKind.ObjUniq) && !this.BorrowablePlace(source, scope, exclusive))
+        if (actual.Semantics is not (SemanticsKind.ObjRef or SemanticsKind.ObjUniq) && !this.BorrowableHandle(source, scope, exclusive, true))
         {
             return false;
         }
 
-        result = this.InternType(BoundTypeKind.Semantics, null, pattern.Semantics, [actual.Components[0]], origin: this.PlaceOrigin(source));
+        result = this.types.Intern(BoundTypeKind.Semantics, null, pattern.Semantics, [actual.Components[0]], origin: this.PlaceOrigin(source));
         return true;
     }
 }

@@ -7,20 +7,9 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 15.3.2: the projections of a slot their Type does not declare, with that Type, and the first such projection in each
-    // function's clauses, on which the function's result and returns rest. Recorded only on failure and reused across passes.
+    // SPEC 15.3.2: the projections of a slot their Type does not declare, with that Type.
+    // Recorded only on failure and reused across passes; dependent checks use the failed Origin contract's cause.
     private Dictionary<Koto, BoundType>? absentSlotProjections;
-    private Dictionary<FunctionKoto, Koto>? absentSlotFunctions;
-
-    private static bool HasUngroupedBorrowSuffix(Koto syntax)
-    {
-        while (syntax is OptionalTypeKoto optional)
-        {
-            syntax = optional.Type;
-        }
-
-        return syntax is TypeSemanticsKoto { Type: not null, HasOrigin: true, IsTransparentWrapper: false };
-    }
 
     // SPEC 15.3.2: the struct or enum whose storage (an instance Field Type, an enum payload or a base) writes this Origin name;
     // null for any other position, such as an accessor signature or an attached relation.
@@ -89,8 +78,7 @@ public sealed partial class Binding
 
     // SPEC 10.6, 15.3.6: a reference slot that only per-call Origins of the fixed expected call signature S would satisfy, at the
     // reference. The Reason names the slot and the parameters of S, the Note shows S, the declaration and the written parameters of S
-    // are related, and the Advice wraps the reference in an anonymous function, whose every call binds the slot, when that call infers
-    // every slot. No candidate is offered.
+    // are related. No candidate is offered.
     private static void ReportPerCallSlot(Koto use, PerCallSlotFact fact, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var slot = fact.Declaration.GenericArguments[fact.Slot].Identifier;
@@ -140,70 +128,7 @@ public sealed partial class Binding
                 $"{shownParameters} at each call, and a per-call Origin never becomes part of a bound Type argument (SPEC 10.5, 15.3.6)";
             var evidence = count == 1 ? $"only the {ordinals} parameter's per-call Origin would satisfy Type parameter '{slot}'"
                 : $"only the per-call Origins of the {ordinals} parameters would satisfy Type parameter '{slot}'";
-            if (fact.Moves is not { } moves)
-            {
-                // A slot that only written Type arguments bind would leave the wrapper's call unsolved, so no wrapper is advised.
-                use.Report(requirement, code, note: note, evidence: [evidence], related: related.AsSpan(0, relatedCount).ToArray());
-                return;
-            }
-
-            // The anonymous function takes the declaration's parameters by their names, renaming one that the reference itself names or
-            // that cannot be written, and passes each as the declaration takes it, a by-value parameter that is not Copy with @move. The
-            // call infers the slots, so written Type arguments are dropped; one candidate remains for the name.
-            var callee = KotoHelper.UnwrapParentheses(use) is GenericsKoto { Identifier: { } name } ? name : KotoHelper.UnwrapParentheses(use);
-            var parameters = fact.Declaration.Parameters;
-            var names = new string?[parameters.Count];
-            for (var i = 0; i < parameters.Count; i++)
-            {
-                names[i] = parameters[i].InternalName is { Length: > 0 } written && written != "_" && written != "self" && !Names(callee, written, 0) && Array.IndexOf(names, written, 0, i) < 0
-                    ? written : null;
-            }
-
-            for (var i = 0; i < parameters.Count; i++)
-            {
-                if (names[i] is null)
-                {
-                    var candidate = $"p{i + 1}";
-                    for (var k = 2; Names(callee, candidate, 0) || Array.IndexOf(names, candidate) >= 0; k++)
-                    {
-                        candidate = $"p{i + 1}_{k}";
-                    }
-
-                    names[i] = candidate;
-                }
-            }
-
-            builder.Clear();
-            builder.Append("Wrap the reference in an anonymous function that calls it, so that each call binds ");
-            builder.Append(slot);
-            builder.Append(", as in func (");
-            for (var i = 0; i < parameters.Count; i++)
-            {
-                builder.Append(i == 0 ? string.Empty : ", ");
-                builder.Append(names[i]!);
-            }
-
-            builder.Append(") => ");
-            callee.WriteTo(ref builder);
-            builder.Append('(');
-            for (var i = 0; i < parameters.Count; i++)
-            {
-                builder.Append(i == 0 ? string.Empty : ", ");
-                if (!fact.Declaration.AllowsPositionalArgument(i))
-                {
-                    builder.Append(parameters[i].ExternalName);
-                    builder.Append(": ");
-                }
-
-                builder.Append(names[i]!);
-                if ((moves & (1UL << i)) != 0)
-                {
-                    builder.Append("@move");
-                }
-            }
-
-            builder.Append(')');
-            use.Report(requirement, code, note: note, evidence: [evidence], advice: builder.ToString(), related: related.AsSpan(0, relatedCount).ToArray());
+            use.Report(requirement, code, note: note, evidence: [evidence], related: related.AsSpan(0, relatedCount).ToArray());
         }
         finally
         {
@@ -211,88 +136,45 @@ public sealed partial class Binding
         }
 
         static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
-
-        // Whether the reference's syntax names the identifier, which a parameter of that name would shadow.
-        static bool Names(Koto node, string name, int depth)
-        {
-            if (node is IdentifierNameKoto identifier && identifier.IdentifierName == name)
-            {
-                return true;
-            }
-
-            if (depth < 32)
-            {
-                foreach (var child in node.ChildNodes)
-                {
-                    if (Names(child, name, depth + 1))
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
     }
 
-    // Run only while publishing failures. These checks neither bind new names nor
-    // change a syntax decision, and require no state on successful uses.
-    private string? BorrowOriginHint(Koto node)
+    // SPEC 15.4.3, 15.6.1: a result fitting or Origin failure whose omitted result Origin defaulted to static because the only
+    // matching borrow sits inside an Option input explains that boundary in the Note. Run only while publishing failures.
+    private string? OmittedResultNote(Koto node)
     {
-        if (node is TypeSemanticsKoto { IsLegacyBorrowCandidate: true } legacy &&
-            (legacy.BoundSymbol?.Kind == BindingSymbolKind.SemanticsParameter ||
-            (legacy.BoundSymbol is null && legacy.BindingFailure == BindingFailure.MissingType && CompilerHelper.TryParse(legacy.Identifier, out _))))
+        if (node.BindingFailure is not (BindingFailure.TypeMismatch or BindingFailure.OriginRelation))
         {
-            return "This may be a removed brace borrow annotation. Use 's/T during a' in a Type; an adaptation's outer Origin must be inferred with 'x@s/T'.";
+            return null;
         }
 
-        if (node.BindingFailure == BindingFailure.InvalidOrigin && node is IdentifierNameKoto
-            { BoundSymbol: { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture, Type: { } valueType } } &&
-            !IsBorrow(valueType.Semantics))
+        var returned = node as ReturnKoto ?? node.Parent as ReturnKoto;
+        var function = returned is not null ? KotoHelper.ResolveTransferTarget(returned) as FunctionKoto : node.Parent as FunctionKoto;
+        var syntax = function?.ReturnType;
+        while (syntax is ParenthesizedTypeKoto group)
         {
-            return "This value's name does not denote an outer borrow Origin. Use a declared schema slot such as 'x.slot', or borrow local storage with 'let r = x@ref' and infer its Origin. Borrowing does not extend its lifetime.";
+            syntax = group.Type;
         }
 
-        if (node.Parent is AndKoto conjunction && ReferenceEquals(conjunction.Right, node) &&
-            HasUngroupedBorrowSuffix(conjunction.Left) && this.IsExistingOriginForHint(node))
+        if (syntax is not TypeSemanticsKoto { HasOrigin: false } || function?.BoundSymbol?.Type is not
+            { Origin.Kind: OriginKind.Static, Components.Count: 1 } expected)
         {
-            return "An Origin intersection requires parentheses: 'during (a and b)'. Here 'and' separates constraint requirements.";
+            return null;
         }
 
-        if (node.BindingFailure is BindingFailure.TypeMismatch or BindingFailure.OriginRelation)
+        var excluded = this.IsExcludedInputOrigin(returned?.Expression?.BoundType ?? node.BoundType, expected, function);
+        if (!excluded && this.resultContexts.TryGetValue(node, out var context))
         {
-            var returned = node as ReturnKoto ?? node.Parent as ReturnKoto;
-            var function = returned is not null ? KotoHelper.ResolveTransferTarget(returned) as FunctionKoto : node.Parent as FunctionKoto;
-            var syntax = function?.ReturnType;
-            while (syntax is ParenthesizedTypeKoto group)
+            foreach (var source in context.Sources)
             {
-                syntax = group.Type;
-            }
-
-            if (syntax is TypeSemanticsKoto { HasOrigin: false } && function?.BoundSymbol?.Type is
-                { Origin.Kind: OriginKind.Static, Components.Count: 1 } expected)
-            {
-                var excluded = this.IsExcludedInputOrigin(returned?.Expression?.BoundType ?? node.BoundType, expected, function);
-                if (!excluded && this.resultContexts.TryGetValue(node, out var context))
+                if (this.IsExcludedInputOrigin(source, expected, function))
                 {
-                    foreach (var source in context.Sources)
-                    {
-                        if (this.IsExcludedInputOrigin(source, expected, function))
-                        {
-                            excluded = true;
-                            break;
-                        }
-                    }
-                }
-
-                if (excluded)
-                {
-                    return "The omitted result Origin is static; Origins inside Option inputs are not elision candidates. Write an explicit result 'during' annotation using the required named input Origins, then recheck lifetime and Type fitting.";
+                    excluded = true;
+                    break;
                 }
             }
         }
 
-        return null;
+        return excluded ? "The omitted result Origin is static: an Origin inside an Option input is not an elision candidate (SPEC 15.4.3)" : null;
     }
 
     private bool IsExcludedInputOrigin(BoundType? actual, BoundType expected, FunctionKoto function)
@@ -316,7 +198,7 @@ public sealed partial class Binding
     }
 
     // SPEC 15.3.2: a storage name that no declaration of any role matches is reported once, at the name. The Reason says that own
-    // slots are declared only in the header; the Advice gives both repairs with their consequence for the public API; the header,
+    // slots are declared only in the header; the header,
     // or the Type name without one, is the related location. `during self` is explained by the storage rule of SPEC 11.3 instead.
     private bool ReportUndeclaredStorageOrigin(Koto use, DiagnosticRequirement requirement, DiagnosticCode code)
     {
@@ -328,8 +210,7 @@ public sealed partial class Binding
         if (name == "self")
         {
             const string SelfNote = "A stored value cannot borrow from the value that stores it: self creates no self-borrowing storage contract (SPEC 11.3)";
-            const string SelfAdvice = "Store an owned value, or declare a header slot for the lifetime of the borrowed referent and bind the Field to it";
-            use.Report(requirement, code, note: SelfNote, evidence: ["self is not a storage Origin"], advice: SelfAdvice);
+            use.Report(requirement, code, note: SelfNote, evidence: ["self is not a storage Origin"]);
             return true;
         }
 
@@ -345,62 +226,17 @@ public sealed partial class Binding
 
         var slots = type.OriginNames;
         var header = slots.Count == 0 ? $"{{{name}}}" : $"{{{string.Join(", ", slots)}, {name}}}";
-        var advice = (known.Length == 0 ? string.Empty : $"If an existing Origin was intended ({known}), write its name instead; the slot declaration does not change. ") +
-            $"If a new slot was intended, add {name} to the header, as {type.Name} {header}; this changes the public API, and a member signature that uses {name} as a universal Origin is then bound to the new slot";
         var note = $"{name} is declared neither in the header of {type.Name} nor as a visible enclosing Origin; a Type declares its own Origin slots only in its header (SPEC 15.3.2)";
         var related = slots is OriginNameList { HeaderSpan.Length: > 0 } written
             ? ("header", (Koto)type, written.HeaderSpan, "the Origin header")
             : ("type", type, TypeNameSpan(type), "the Type, which writes no Origin header");
-        use.Report(requirement, code, note: note, evidence: [$"{name} is not a declared Origin slot"], advice: advice, relatedSpans: [related]);
+        use.Report(requirement, code, note: note, evidence: [$"{name} is not a declared Origin slot"], relatedSpans: [related]);
 
         return true;
     }
 
     private void RecordAbsentSlot(Koto projection, BoundType type)
-    {
-        (this.absentSlotProjections ??= new(ReferenceEqualityComparer.Instance))[projection] = type;
-        if (OriginOwner(projection) is FunctionKoto function)
-        {
-            (this.absentSlotFunctions ??= new(ReferenceEqualityComparer.Instance)).TryAdd(function, projection);
-        }
-    }
-
-    // SPEC 15.3.2: a function whose clauses project a slot their Type does not declare leaves its result slot unbound and its
-    // returned values without the intended contract; those failures rest on the projection, not on independent causes.
-    private bool RestsOnAbsentSlot(Koto node)
-    {
-        if (this.absentSlotFunctions is not { Count: > 0 } functions || node.BindingFailure is not (BindingFailure.MissingOrigin or BindingFailure.TypeMismatch or BindingFailure.OriginRelation))
-        {
-            return false;
-        }
-
-        var returned = false;
-        var inResult = false;
-        for (var current = node; current is not null; current = current.Parent)
-        {
-            if (current is FunctionKoto function)
-            {
-                // A returned value is affected only where it differs from the result in its bindings, not in its Type; an Origin
-                // relation differs in its Origins only by construction.
-                if (!functions.TryGetValue(function, out var projection) ||
-                    !(node.BindingFailure == BindingFailure.MissingOrigin ? inResult
-                        : node.BindingFailure == BindingFailure.OriginRelation ? returned
-                        : returned && this.mismatches?.TryGetValue(node, out var mismatch) == true && mismatch.Actual is BoundType { Symbol: { } actual } &&
-                            mismatch.Expected is BoundType { Symbol: var expected } && ReferenceEquals(actual, expected)))
-                {
-                    return false;
-                }
-
-                this.partPrerequisites[node] = projection;
-                return true;
-            }
-
-            returned |= current is ReturnKoto;
-            inResult |= current.Parent is FunctionKoto owner && ReferenceEquals(owner.ReturnType, current);
-        }
-
-        return false;
-    }
+        => (this.absentSlotProjections ??= new(ReferenceEqualityComparer.Instance))[projection] = type;
 
     // SPEC 15.3.2: a projection of a slot that its Type does not declare, once per projection at the slot name, relating the
     // Type's header and listing the declared slots.
@@ -419,79 +255,10 @@ public sealed partial class Binding
         }
 
         var note = declared.Length == 0 ? $"{symbol.Name} declares no Origin slot" : $"The Origin slots of {symbol.Name} are {declared}";
-        var advice = declared.Length == 0
-            ? $"Remove the projection, or declare the slot in the header of {symbol.Name}, which changes its public API"
-            : $"Write a declared slot of {symbol.Name}, such as {schema.Origins[0].Name}, instead of {slot.IdentifierName}";
         (string Role, Koto In, SourceSpan Span, string? Label)[]? related = symbol.Declaration is DeclarationContainerKoto declaration
             ? [declaration.OriginNames is OriginNameList { HeaderSpan.Length: > 0 } written ? ("header", declaration, written.HeaderSpan, "the Origin header") : ("type", declaration, TypeNameSpan(declaration), "the Type, which writes no Origin header")]
             : null;
-        node.Report(requirement, code, note: note, at: slot, evidence: [$"{symbol.Name} has no Origin slot {slot.IdentifierName}"], advice: advice, relatedSpans: related);
+        node.Report(requirement, code, note: note, at: slot, evidence: [$"{symbol.Name} has no Origin slot {slot.IdentifierName}"], relatedSpans: related);
         return true;
-    }
-
-    private bool IsExistingOriginForHint(Koto node)
-    {
-        var name = node is IdentifierNameKoto identifier ? identifier.IdentifierName :
-            node is MemberAccessKoto { Left: IdentifierNameKoto left, Right: IdentifierNameKoto } ? left.IdentifierName : null;
-        if (name is null)
-        {
-            return false;
-        }
-
-        for (var scope = this.ConstraintScope(node); scope is not null; scope = scope.Parent)
-        {
-            BoundType? carrier = null;
-            var found = false;
-            if (scope.Origins?.ContainsKey(name) == true)
-            {
-                return node is IdentifierNameKoto;
-            }
-
-            if (scope.Values.TryGetValue(name, out var value))
-            {
-                carrier = value.Type;
-                found = true;
-            }
-            else if (this.originDeclarations.GetValueOrDefault(scope.Owner)?.Sets.TryGetValue(name, out var set) == true)
-            {
-                carrier = set.BoundType;
-                found = true;
-            }
-            else if (scope.OriginSets?.TryGetValue(name, out var localSet) == true)
-            {
-                carrier = localSet.BoundType;
-                found = true;
-            }
-
-            if (!found)
-            {
-                continue;
-            }
-
-            if (node is IdentifierNameKoto)
-            {
-                return carrier?.Origin is not null && IsBorrow(carrier.Semantics);
-            }
-
-            while (carrier is { Kind: BoundTypeKind.Semantics } && IsBorrow(carrier.Semantics))
-            {
-                carrier = carrier.Components[0];
-            }
-
-            if (carrier?.Symbol?.Schema is { } schema && node is MemberAccessKoto { Right: IdentifierNameKoto slot })
-            {
-                for (var i = 0; i < schema.Origins.Count; i++)
-                {
-                    if (schema.Origins[i].Name == slot.IdentifierName)
-                    {
-                        return carrier.Kind == BoundTypeKind.Slice ? carrier.Origin is not null : i < carrier.OriginArguments.Count;
-                    }
-                }
-            }
-
-            return false;
-        }
-
-        return false;
     }
 }

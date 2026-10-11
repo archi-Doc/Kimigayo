@@ -47,7 +47,7 @@ public sealed partial class OwnershipAnalysis
         var acquired = input.BoundType?.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq ? "reborrowed" : "borrowed";
         if (call.BoundValueCall is { } value)
         {
-            return Contains(value.Receiver, input) && !IsDirectExclusiveBorrow(value.Receiver) ? $"`{input}` implicitly {acquired} exclusively as the receiver of its call" : null;
+            return Contains(value.CalleeValue, input) && !IsDirectExclusiveBorrow(value.CalleeValue) ? $"`{input}` implicitly {acquired} exclusively as the receiver of its call" : null;
         }
 
         if (call.BoundCall is not { } bound)
@@ -55,9 +55,11 @@ public sealed partial class OwnershipAnalysis
             return null;
         }
 
+        // A linked Kimi constructor is named as the public declaration the call selected (SPEC 22.1).
+        var target = bound.Target.LibraryDeclaration is { } id && KimiLibraryCatalog.PresentationOf(id) is not null && call.BoundSymbol is { } selected ? selected : bound.Target;
         if (bound.Receiver is { } receiver && Contains(receiver, input))
         {
-            return IsDirectExclusiveBorrow(receiver) ? null : $"`{input}` implicitly {acquired} exclusively as the receiver of `{bound.Target.Name}`";
+            return IsDirectExclusiveBorrow(receiver) ? null : $"`{input}` implicitly {acquired} exclusively as the receiver of `{target.Name}`";
         }
 
         for (var i = 0; i < call.ArgumentNodes.Count && i < bound.ArgumentOperations.Length; i++)
@@ -70,9 +72,9 @@ public sealed partial class OwnershipAnalysis
                 }
 
                 var index = bound.ArgumentOperations[i].ParameterIndex;
-                return bound.Target.Declaration is FunctionKoto function && (uint)index < (uint)function.Parameters.Count && function.Parameters[index] is { } parameter
-                    ? $"`{input}` implicitly {acquired} exclusively for parameter `{(parameter.ExternalName.Length > 0 ? parameter.ExternalName : parameter.InternalName)}` of `{bound.Target.Name}`"
-                    : $"`{input}` implicitly {acquired} exclusively as an argument of `{bound.Target.Name}`";
+                return target.Declaration is FunctionKoto function && (uint)index < (uint)function.Parameters.Count && function.Parameters[index] is { } parameter
+                    ? $"`{input}` implicitly {acquired} exclusively for parameter `{(parameter.ExternalName.Length > 0 ? parameter.ExternalName : parameter.InternalName)}` of `{target.Name}`"
+                    : $"`{input}` implicitly {acquired} exclusively as an argument of `{target.Name}`";
             }
         }
 
@@ -92,8 +94,39 @@ public sealed partial class OwnershipAnalysis
             this.body.Operations[value].Kind == OwnershipOperationKind.Borrow;
     }
 
+    // SPEC 9.5.1: a shared receiver selected through a base path is the whole receiver, borrowed at its own Type (`whole`), whose base
+    // prefix is then lent at the parameter Type (`type`). Binding rejects an exclusive or unproven projection first (OCC-X).
+    private bool BaseBorrowTypes(Koto source, in BoundArgumentOperation argument, out BoundType type, out BoundType whole)
+    {
+        type = whole = null!;
+        if (argument.ObjectCompatibility != ConstraintProof.Proven || argument.ParameterType?.Semantics is not (SemanticsKind.Ref or SemanticsKind.ObjRef) ||
+            argument.SourceType is not { } receiverType || argument.BasePath is null)
+        {
+            this.Internal(source);
+            return false;
+        }
+
+        type = argument.AdaptedType ?? this.compilation.Binding.PreparedBorrowType(source, argument.ParameterType);
+        var core = type.IsObjectBorrow ? ReferenceTypes.ViewTarget(receiverType)! : ReferenceTypes.IsReference(receiverType) || receiverType.HandleMode is not null || receiverType.IsObjectBorrow ? receiverType.Components[0] : receiverType;
+        whole = this.compilation.Types.Reference(type.Semantics, core, type.Origin);
+        return true;
+    }
+
     private int PrepareCallArgument(InvocationKoto call, Koto source, BoundArgumentOperation argument, bool immediate = false)
     {
+        if (argument.Kind == ArgumentOperationKind.BaseBorrow)
+        {
+            // Acquire the complete source once by the ordinary Place path, then lend its base prefix.
+            // Keeping the parent reference retains the original storage/Loan anchor through the call and its result.
+            if (!this.BaseBorrowTypes(source, argument, out var type, out var whole))
+            {
+                return -1;
+            }
+
+            var reference = this.BorrowStruct(source, whole);
+            return reference < 0 ? -1 : this.BorrowThrough(call, reference, type, -1);
+        }
+
         // SPEC 4.6.9: a string element reached through a sequence or a reference is borrowed through the common element borrow.
         var stringElement = ElementAccess.IsBorrowedSelection(BorrowedArgumentSource(source)) || ElementAccess.IsPlaceCall(BorrowedArgumentSource(source)) || ElementAccess.IsUserIndex(BorrowedArgumentSource(source));
         if (argument.Kind == ArgumentOperationKind.Borrow && ReferenceTypes.IsString(argument.ParameterType) && !stringElement && !this.SpecialField(BorrowedArgumentSource(source)))

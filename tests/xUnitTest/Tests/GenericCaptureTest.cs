@@ -38,8 +38,8 @@ public class GenericCaptureTest
     {
         const string Source = "func identity<T>(value: T) -> T\n    let action = func [] (inner: T) -> T => inner@move\n    return action(value@move)\n_ = identity(1)\n_ = identity(2)\n_ = identity(true)";
         var c = MinimalEmissionTest.Analyze(Source);
-        var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous).BoundClosure!.EnvironmentType!;
-        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(x => x.BoundCall?.Target.Name == "identity").Select(x => x.BoundCall!).ToArray();
+        var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous).ClosureOf()!.EnvironmentType!;
+        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(x => x.CallOf()?.Target.Name == "identity").Select(x => x.CallOf()!).ToArray();
         var first = c.Binding.InstantiateStorageType(closure, calls[0])!;
         Assert.Same(first, c.Binding.InstantiateStorageType(closure, calls[1]));
         var other = c.Binding.InstantiateStorageType(closure, calls[2])!;
@@ -70,9 +70,9 @@ public class GenericCaptureTest
     {
         var source = "func invalid<T>(value: T)\n    let action = func " + capture + " () => _ = value\n    action()\ninvalid(42)";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
         c.Binding.ReportDiagnostics();
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "TransferRequired_Kd");
     }
 
@@ -82,7 +82,7 @@ public class GenericCaptureTest
     {
         var c = MinimalEmissionTest.Analyze(Take + "require take(42) == 42 else => $abort(\"warm\")\nConsole.writeLine(take(\"string\"))");
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 }

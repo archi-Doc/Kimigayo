@@ -13,14 +13,33 @@ public class DictionaryLibraryTest
     {
         var c = MinimalEmissionTest.Analyze("var entries = [1: \"first\", 2: \"second\"]\nentries.clear()\n_ = entries.tryInsert(3, \"last\")\nConsole.writeLine(entries[3])");
         Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
-        Assert.Contains(module.SourceCalls, entry => ReferenceEquals(entry.Key.Target.Declaration, c.Library.DictionaryFind));
-        var clear = Assert.Single(module.SourceCalls, entry => ReferenceEquals(entry.Key.Target.Declaration, c.Library.DictionaryClear));
-        Assert.Equal(1, Enumerable.Range(0, module.FunctionCount).Count(i => ReferenceEquals(module.GetFunction(i).Abi, clear.Value)));
+        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryFind));
+        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryClear));
+        var check = Assert.Single(module.DictionaryHelpers, helper => helper.Kind == DictionaryHelperKind.CheckKey);
+        var clear = Assert.Single(module.DictionaryHelpers, helper => helper.Kind == DictionaryHelperKind.Drop);
+        Assert.InRange(check.Related, 0, module.FunctionReferences.Count - 1);
+        Assert.InRange(clear.Related, 0, module.FunctionReferences.Count - 1);
+        Assert.Equal(1, Enumerable.Range(0, module.FunctionCount).Count(i => ReferenceEquals(module.GetFunction(i).Abi, module.FunctionReferences[clear.Related])));
         var ir = CompilationTestHelper.WriteIr(c);
         Assert.DoesNotContain("__kimi_dictionary_find", ir, StringComparison.Ordinal);
         Assert.DoesNotContain("__kimi_dictionary_clear", ir, StringComparison.Ordinal);
         Assert.DoesNotContain("_destroy(i64 %environment", ir, StringComparison.Ordinal);
         ScalarEmissionTest.WriteFixture("DictionaryLibraryTypedCleanup", ir, "last\n");
+    }
+
+    [Fact]
+    public void UnresolvedPhysicalHelperCannotPublishAndRepreparationRecovers()
+    {
+        var c = MinimalEmissionTest.Analyze("let entries = [1: 2]\nrequire entries[1] == 2 else => $abort(\"value\")");
+        Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
+        module.FunctionReferences.Clear();
+        Assert.False(module.Complete(out failure));
+        Assert.Contains("unresolved physical function", failure, StringComparison.Ordinal);
+        Assert.False(module.IsComplete);
+        Assert.Throws<InvalidOperationException>(() => module.WriteIr(TextWriter.Null));
+        Assert.True(c.Emission.TryPrepare(out module, out failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(module.IsComplete);
+        module.WriteIr(TextWriter.Null);
     }
 
     [Theory]
@@ -34,11 +53,20 @@ public class DictionaryLibraryTest
         Assert.False(module.NeedsDictionaryRuntime);
     }
 
+    // SPEC 4.7.5: a Dictionary operation is called with its published summary, not as an unbounded generic call, so a generic body may
+    // keep its result across another call; `K` here may be a borrow, whose Loans the ordinary dependencies track.
+    [Theory]
+    [InlineData("DictionaryPublishedTwice", "func put<K>(k: K) -> isize\n    K is Copy\n    K is Equatable\n    var d: Dictionary<K, i32> = [:]\n    let r = d.tryInsert(k, 1)\n    var e: Dictionary<K, i32> = [:]\n    let s = e.tryInsert(k, 2)\n    match r\n        .Ok(()) => return 1\n        .Err(_) => return 0\nlet n = 7\nConsole.writeLine(\"\\(put(n@ref))\")", "1\n")]
+    [InlineData("DictionaryPublishedThenGeneric", "func touch<V>(v: V) -> isize\n    V is Copy\n    return 1\nfunc put<K>(k: K) -> isize\n    K is Copy\n    K is Equatable\n    var d: Dictionary<K, i32> = [:]\n    let r = d.tryInsert(k, 1)\n    let n = touch(k)\n    match r\n        .Ok(()) => return n\n        .Err(_) => return 0\nlet n = 7\nConsole.writeLine(\"\\(put(n@ref))\")", "1\n")]
+    [InlineData("DictionaryPublishedArrayControl", "func f<U>(x: U) -> isize\n    U is Copy\n    var a = Array<U>.init(capacity: 2)\n    a.append(x)\n    var b = Array<U>.init(capacity: 2)\n    b.append(x)\n    return a.length + b.length\nlet n = 3\nConsole.writeLine(\"\\(f(n@ref))\")", "2\n")]
+    public void GenericBodiesUsePublishedSummaries(string name, string source, string stdout)
+        => ScalarEmissionTest.EmitFixture(name, source, stdout);
+
     [Fact]
     public void RemovalResultCompilesFromOrdinarySource()
     {
         var c = MinimalEmissionTest.Analyze("var entries = [1: 42]\nmatch entries.remove(1)\n    .Some((let key, let value)) => require key == 1 and value == 42 else => $abort(\"removed\")\n    .None => $abort(\"missing\")\nrequire entries.length == 0 else => $abort(\"length\")");
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var function = c.Library.GetSymbol(KimiDeclarationId.DictionaryRemove);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
@@ -52,7 +80,7 @@ public class DictionaryLibraryTest
     public void ClearingCompilesFromOrdinarySource()
     {
         var c = MinimalEmissionTest.Analyze("var entries = [1: 42]\nentries.clear()\nrequire entries.length == 0 and entries.capacity >= 1 else => $abort(\"clear\")");
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var function = c.Library.GetSymbol(KimiDeclarationId.DictionaryClear);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
@@ -64,7 +92,7 @@ public class DictionaryLibraryTest
     public void LookupCompilesFromOrdinarySource()
     {
         var c = MinimalEmissionTest.Analyze("var entries = [1: 42]\nmatch entries.tryGet(1)\n    .Some(let value) => require value == 42 else => $abort(\"value\")\n    .None => $abort(\"missing\")");
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var function = c.Library.GetSymbol(KimiDeclarationId.DictionaryTryGet);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
@@ -81,7 +109,7 @@ public class DictionaryLibraryTest
     public void InsertionCompilesFromOrdinarySource(KimiDeclarationId id, string name, string valueType, string source)
     {
         var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, " + valueType + "> = [:]\n" + source);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var function = c.Library.GetSymbol(id);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
@@ -99,7 +127,7 @@ public class DictionaryLibraryTest
     public void CapacityOperationsCompileFromOrdinarySource(KimiDeclarationId id, string name, string source)
     {
         var c = MinimalEmissionTest.Analyze("var entries = [1: 2]\n" + source);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var function = c.Library.GetSymbol(id);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
@@ -131,7 +159,7 @@ public class DictionaryLibraryTest
     public void CapacityDecisionsCompileFromOrdinarySource()
     {
         var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]\nentries.reserve(8)\n_ = entries.tryInsert(1, 2)");
-        Assert.True(c.Library.IsValid, string.Join('\n', TestDiagnostics.Of(c.Library.Kotonoha)));
+        Assert.True(c.Binding.Result.IsComplete, string.Join('\n', TestDiagnostics.Of(c.Library.Kotonoha)));
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var reserve = module.DictionaryReserveStorage!.Name;
         var ir = CompilationTestHelper.WriteIr(c);
@@ -235,7 +263,7 @@ public class DictionaryLibraryTest
     public void PrivateHandleUsesTheExpectedPlatformLayout()
     {
         var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]");
-        var pointer = c.Library.DictionaryUnlink.Parameters[0].Type.BoundType!;
+        var pointer = c.Library.DictionaryUnlink.Parameters[0].Type.TypeOf()!;
         var layout = Assert.IsType<AggregateLayout>(new AggregateLayoutPool().Get(pointer.Components[0]));
         Assert.True(layout.CLayout);
         Assert.Equal(56, layout.Value.Layout.Size);
@@ -275,7 +303,7 @@ public class DictionaryLibraryTest
         // Shrinking is reached only through shrinkToFit calls; no bridge compiles it eagerly.
         Assert.DoesNotContain(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryCompact));
         Assert.DoesNotContain(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryShrink));
-        Assert.Equal(CompilerFunctionKind.None, c.Library.DictionaryUnlink.BoundSymbol!.CompilerFunction);
+        Assert.Equal(CompilerFunctionKind.None, c.Library.DictionaryUnlink.SymbolOf()!.CompilerFunction);
         Assert.Contains("DictionaryStorage.kimi", c.Library.DictionaryUnlink.CodeContext.SourceDocument!.Path);
         Assert.DoesNotContain("%left_index = sub", outputIr);
         ScalarEmissionTest.WriteFixture("DictionaryLibraryRemoval", outputIr, string.Empty);

@@ -19,7 +19,7 @@ internal sealed class StructuralCompletion(Func<Koto, bool> isNever, Func<Koto, 
     internal static void CollectEvaluationChildren(Koto node, List<Koto> children, KotoVisitor collector)
     {
         node.VisitChildren(collector);
-        if (node is EqualsKoto)
+        if (node.Akind == KotoKind.Equals)
         {
             // Keep lexical visitors unchanged; simple assignment alone evaluates RHS first.
             var last = children.Count - 1;
@@ -212,8 +212,7 @@ internal sealed class StructuralCompletion(Func<Koto, bool> isNever, Func<Koto, 
             case IsKoto { IsRuntimeTest: true } test:
                 result = this.Visit(test.Left);
                 break;
-            case AndKoto or OrKoto:
-                var logical = (BinaryKoto)node;
+            case BinaryKoto { Akind: KotoKind.And or KotoKind.Or } logical:
                 result = this.Visit(logical.Left);
                 if (result.Normal)
                 {

@@ -151,9 +151,9 @@ public class ExpressionPrecedenceTest
         compilation.Kotonoha.CreateCodeContext().Parse(compilation.Kotonoha.RootKoto, source);
         Assert.Empty(TestDiagnostics.Of(compilation));
         var function = compilation.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>().Single();
-        var requirement = Assert.IsType<NotKoto>(Assert.IsType<IsKoto>(Assert.Single(function.TypeConstraints)).Right);
-        var disjunction = Assert.IsType<OrKoto>(requirement.Operand);
-        var conjunction = Assert.IsType<AndKoto>(disjunction.Left);
+        var requirement = ParseTestHelper.Unary(KotoKind.Not, Assert.IsType<IsKoto>(Assert.Single(function.TypeConstraints)).Right);
+        var disjunction = ParseTestHelper.Binary(KotoKind.Or, requirement.Operand);
+        var conjunction = ParseTestHelper.Binary(KotoKind.And, disjunction.Left);
         Assert.Equal("not Copy and Owned or Copy", source.Substring(requirement.Span.Start, requirement.Span.Length));
         Assert.Equal("Copy and Owned or Copy", source.Substring(disjunction.Span.Start, disjunction.Span.Length));
         Assert.Equal("Copy and Owned", source.Substring(conjunction.Span.Start, conjunction.Span.Length));
@@ -197,17 +197,17 @@ public class ExpressionPrecedenceTest
 
         var field = Assert.IsType<FieldKoto>(body.Items[1]);
         var text = Assert.IsType<InterpolatedStringKoto>(field.InitializerKoto);
-        var embedded = Assert.IsType<EqualsEqualsKoto>(Assert.Single(text.Expressions));
-        Assert.IsType<AmpersandKoto>(embedded.Left);
+        var embedded = ParseTestHelper.Binary(KotoKind.EqualsEquals, Assert.Single(text.Expressions));
+        ParseTestHelper.Binary(KotoKind.Ampersand, embedded.Left);
     }
 
     [Fact]
     public void DistinguishesConversionBeforeAndAfterNegation()
     {
         var afterNegation = Assert.IsType<ConversionKoto>(ParseExpression("-value@i64"));
-        Assert.IsType<PrefixMinusKoto>(afterNegation.Left);
+        ParseTestHelper.Unary(KotoKind.PrefixMinus, afterNegation.Left);
 
-        var beforeNegation = Assert.IsType<PrefixMinusKoto>(ParseExpression("-(value@i64)"));
+        var beforeNegation = ParseTestHelper.Unary(KotoKind.PrefixMinus, ParseExpression("-(value@i64)"));
         Assert.IsType<ConversionKoto>(Assert.IsType<ParenthesizedKoto>(beforeNegation.Operand).Operand);
     }
 

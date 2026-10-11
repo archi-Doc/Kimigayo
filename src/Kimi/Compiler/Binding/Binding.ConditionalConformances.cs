@@ -36,7 +36,7 @@ public sealed partial class Binding
 
                         // Substitute explicit identities, then compare determined concrete atoms.
                         // No case splitting, contrapositive, or general satisfiability solver.
-                        if (p.Kind == ConstraintKind.TypeIdentity && q.Kind == ConstraintKind.TypeIdentity && p.RequiredType is { } pt && q.RequiredType is { } qt && !DependentType(pt) && !DependentType(qt) && !ReferenceEquals(pt, qt))
+                        if (p.Kind == ConstraintKind.TypeIdentity && q.Kind == ConstraintKind.TypeIdentity && p.RequiredType is { } pt && q.RequiredType is { } qt && !DependentType(pt) && !DependentType(qt) && !this.SameCompleteType(pt, qt))
                         {
                             return true;
                         }
@@ -64,10 +64,26 @@ public sealed partial class Binding
         for (var i = 0; i < identity.PathStorage.Count; i++)
         {
             var a = identity.PathStorage[i];
-            proof = CombineProof(proof, this.VerifyConformance(a), true);
+            var available = this.VerifyConformance(a);
+            if (a.InheritedFrom is not null && available != ConstraintProof.Proven)
+            {
+                if (available != ConstraintProof.Refuted)
+                {
+                    proof = CombineProof(proof, available, true);
+                }
+
+                continue; // An unavailable inherited path is not a declaration obligation.
+            }
+
+            proof = CombineProof(proof, available, true);
             for (var j = 0; j < i; j++)
             {
                 var b = identity.PathStorage[j];
+                if (b.InheritedFrom is not null && !b.IsVerified)
+                {
+                    continue;
+                }
+
                 if (!a.IsVerified || !b.IsVerified)
                 {
                     proof = CombineProof(proof, ConstraintProof.Unknown, true);
@@ -122,7 +138,7 @@ public sealed partial class Binding
                 for (var w = 0; w < a.WitnessStorage.Count; w++)
                 {
                     var witness = a.WitnessStorage[w];
-                    same &= b.WitnessMap.TryGetValue(witness.Requirement, out var otherWitness) && ReferenceEquals(witness.Implementation, otherWitness.Implementation) && this.SameFunctionWitness(witness.Function, otherWitness.Function, scope);
+                    same &= b.WitnessMap.TryGetValue(witness.Identity, out var otherWitness) && ReferenceEquals(witness.Implementation, otherWitness.Implementation) && this.SameFunctionWitness(witness.Function, otherWitness.Function, scope);
                 }
 
                 foreach (var binding in a.AssociatedStorage)
@@ -133,20 +149,13 @@ public sealed partial class Binding
                 for (var w = 0; w < a.PropertyWitnessStorage.Count; w++)
                 {
                     var x = a.PropertyWitnessStorage[w];
-                    if (!b.PropertyWitnessMap.TryGetValue((x.Requirement.Property.Symbol, x.Requirement.Kind), out var y))
+                    if (!b.PropertyWitnessMap.TryGetValue((x.Identity, x.Requirement.Kind), out var y))
                     {
                         same = false;
                         continue;
                     }
 
-                    same &= ReferenceEquals(x.Requirement, y.Requirement) && ReferenceEquals(x.Implementation, y.Implementation) && x.Kind == y.Kind && this.SameMemberPath(x.BasePath, y.BasePath, scope) && x.ObjectCompatibility == y.ObjectCompatibility
-                        && this.SameConformanceType(x.ReceiverType, y.ReceiverType, scope) && this.SameConformanceType(x.InputType, y.InputType, scope)
-                        && this.SameConformanceType(x.ResultType, y.ResultType, scope) && this.SameConformanceType(x.ImplementationType, y.ImplementationType, scope)
-                        && x.InputOrigins.Count == y.InputOrigins.Count;
-                    for (var o = 0; o < Math.Min(x.InputOrigins.Count, y.InputOrigins.Count); o++)
-                    {
-                        same &= ReferenceEquals(x.InputOrigins[o], y.InputOrigins[o]);
-                    }
+                    same &= this.SamePropertyWitness(x, y, scope);
                 }
 
                 if (!same)
@@ -232,6 +241,8 @@ public sealed partial class Binding
                     }
 
                     this.BindConstraint(condition, scope);
+                    this.AddPrerequisite(syntax, condition);
+                    this.AddPrerequisite(target, condition);
                     var subject = condition.BoundConstraint?.Subject ?? condition.Left.BoundType;
                     while (subject?.Kind == BoundTypeKind.AssociatedProjection)
                     {
@@ -267,6 +278,11 @@ public sealed partial class Binding
             {
                 return ConstraintProof.Error;
             }
+        }
+
+        if (this.contractHeadersReady && this.BuiltinArithmeticConformance(type, contract, scope))
+        {
+            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
         }
 
         if (this.contractHeadersReady && contract.LibraryDeclaration == KimiDeclarationId.Utf8Format && FormattingTypes.IsBuiltin(type))
@@ -365,6 +381,13 @@ public sealed partial class Binding
             {
                 var path = identity.PathStorage[i];
                 var definition = this.VerifyConformance(path);
+                if (path.Unsupported && this.conformanceChecks == 0)
+                {
+                    // SPEC 23.3.6.1, 23.3.6.4: a check that needs a conformance limited by OCC-X rests on its one record (TakeFailedConformance).
+                    this.failedConformance ??= path;
+                    definition = ConstraintProof.Error;
+                }
+
                 var condition = this.ProveConformanceConditions(path, type, scope);
                 var available = definition == ConstraintProof.Proven ? condition : condition == ConstraintProof.Error ? ConstraintProof.Error : definition;
                 result = CombineProof(result, available, false);
@@ -394,6 +417,22 @@ public sealed partial class Binding
 
     private ConstraintProof ProveConformanceConditions(BoundConformancePath path, BoundType type, BindingScope scope)
     {
+        if (path.InheritedFrom is not null)
+        {
+            if (this.StoredType(path.InheritedBase!, type) is not { } parent)
+            {
+                return ConstraintProof.Unknown;
+            }
+
+            var proof = ConstraintProof.Proven;
+            for (var i = 0; i < path.InheritedSourceCount; i++)
+            {
+                proof = CombineProof(proof, this.ProveConformanceConditions(path.InheritedSource(i), parent, scope), true);
+            }
+
+            return proof;
+        }
+
         if (path.Scope.Parent?.Constraints?.Invalid == true)
         {
             return ConstraintProof.Error;
@@ -402,7 +441,7 @@ public sealed partial class Binding
         return this.ProveConditionalPremises(path.Premises, path.Type.Declaration, type, scope);
     }
 
-    private ConstraintProof ProveConditionalPremises(SyntaxFormKoto? premises, Koto binder, BoundType type, BindingScope scope)
+    private ConstraintProof ProveConditionalPremises(SyntaxFormKoto? premises, Koto binder, BoundType type, BindingScope scope, Koto? failureUse = null)
     {
         if (premises is null)
         {
@@ -418,7 +457,14 @@ public sealed partial class Binding
         for (var i = 0; i < premises.Operands.Length; i++)
         {
             var condition = (IsKoto)premises.Operands[i];
-            result = CombineProof(result, condition.BoundConstraint is { } bound ? this.ProveConstraint(this.ContractConstraint(this.SubstituteConstraint(bound, binder, (BoundType[])type.Components), scope, type), scope) : ConstraintProof.Unknown, true);
+            var bound = condition.BoundConstraint is { } written ? this.ContractConstraint(this.SubstituteConstraint(written, binder, (BoundType[])type.Components), scope, type) : null;
+            var proof = bound is null ? ConstraintProof.Unknown : this.ProveConstraint(bound, scope);
+            if (bound is not null && failureUse is not null)
+            {
+                this.RecordReferenceConstraint(failureUse, condition, bound, proof);
+            }
+
+            result = CombineProof(result, proof, true);
         }
 
         return result;

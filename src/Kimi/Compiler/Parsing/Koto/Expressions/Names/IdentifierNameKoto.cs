@@ -10,7 +10,7 @@ namespace Kimi.Compiler.Parsing;
 /// <summary>
 /// Represents an identifier expression.
 /// </summary>
-public sealed class IdentifierNameKoto : ExpressionKoto
+public class IdentifierNameKoto : ExpressionKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.IdentifierName;

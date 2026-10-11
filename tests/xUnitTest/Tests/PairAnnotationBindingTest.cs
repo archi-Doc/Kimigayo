@@ -36,12 +36,12 @@ public class PairAnnotationBindingTest
             {
                 Assert.False(c.Bind().IsComplete);
                 var f = Function(c);
-                var annotated = f.Parameters[0].Type.BoundType!;
+                var annotated = f.Parameters[0].Type.TypeOf()!;
                 Assert.Equal(BoundTypeKind.Parameter, annotated.Kind);
-                Assert.Same(f.BoundSymbol!.Schema!.GenericSlots[0].Symbol, annotated.Symbol);
-                Assert.Same(f.BoundSymbol.Schema.Origins[0].Origin, annotated.Origin);
+                Assert.Same(f.SymbolOf()!.Schema!.GenericSlots[0].Symbol, annotated.Symbol);
+                Assert.Same(f.SymbolOf()!.Schema!.Origins[0].Origin, annotated.Origin);
                 Assert.Empty(annotated.Components);
-                Assert.Null(f.BoundSymbol.Schema.GenericSlots[0].Symbol.WholeType!.Origin);
+                Assert.Null(f.SymbolOf()!.Schema!.GenericSlots[0].Symbol.WholeType!.Origin);
                 Assert.Contains(c.Binding.Obligations, x => x.Kind == BindingObligationKind.TypeFormation && x.Deadline == BindingDeadline.Definition);
                 Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.UnprovenConstraint_Kd, x.Code));
                 if (previous is not null)
@@ -71,6 +71,20 @@ public class PairAnnotationBindingTest
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
+    // SPEC 8.1.2: so is a struct Field's conditional slot, whatever the pair binder of the struct admits.
+    [Theory]
+    [InlineData("s/T during a", "owner")]
+    [InlineData("s/T during a", "owner or ref")]
+    [InlineData("s/U during a", "value or valueborrow")]
+    [InlineData("s/Option<U> during a", "owner or uniq")]
+    [InlineData("Array<s/U during a>", "value or valueborrow")]
+    public void AFieldOuterOriginIsInactiveForValueBindings(string type, string semantics)
+    {
+        var c = Parse($"struct Holder<s/T, U> {{a}}\n    s is {semantics}\n    let anchor: ref/i32 during a\n    let value: {type}\n");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
+    }
+
     // The same signature serves a value and a borrow: the slot binds `a` only for the borrow instance.
     [Fact]
     public void OneAnnotatedSignatureServesValueAndBorrowInstances()
@@ -81,7 +95,49 @@ public class PairAnnotationBindingTest
         ScalarEmissionTest.EmitFixture("PairConditionalOuterOrigin", Source, "conditional slot\n");
     }
 
-    // A static Origin admits no exclusive borrow, so an admitted `uniq` cannot form the Type.
+    // SPEC 8.1.2, 15.6.1: the original `W` fits an annotated occurrence when its implicit `o` outlives the annotation, in owner and ref
+    // instances alike, and a common element Type meets two annotated occurrences (F16).
+    [Fact]
+    public void TheOriginalPairFitsAnAnnotatedOccurrence()
+    {
+        const string Source = "struct Holder<s/T>\n    s is owner or ref\n    T is Copy\n    var item: s/T\n    public init(item: s/T) => self.item = item@move\n" +
+            "    public func peek(self: ref/Self during a) -> s/T during a\n        return self.item\n" +
+            "func k<s/T>(x: ref/(s/T) during a) -> s/T during a\n    s is owner or ref\n    T is Copy\n    return x@follow\n" +
+            "func both<s/T>(x: s/T during a, y: s/T during b) -> isize\n    s is owner or ref\n    T is Copy\n    let items = [x, y]\n    return items.length\n" +
+            "let owned = Holder<i32>.init(4)\nlet n: i32 = 3\nlet shared = Holder<ref/i32>.init(n@ref)\nlet five: i32 = 5\nlet c = five@ref\n" +
+            "require owned.peek() == 4 and shared.peek() == 3 and k(five@ref) == 5 and k(c@ref) == 5 else => $abort(\"fit\")\n" +
+            "require both(n@ref, five@ref) == 2 and both(1, 2) == 2 else => $abort(\"meet\")\nConsole.writeLine(\"annotated fit\")";
+        ScalarEmissionTest.EmitFixture("PairAnnotatedFit", Source, "annotated fit\n");
+    }
+
+    // SPEC 8.1.2, 15.6.1: a difference in Origin presence between pair layers of one binder relates their slots, never a Type mismatch,
+    // and the relation needs a premise like any other (F16); a common element Type keeps no such difference, so the element fits it.
+    [Theory]
+    [InlineData("func widen<s/T>(x: s/T during b, q: ref/i32 during a) -> s/T during a\n    s is ref\n    origin b outlives a\n    return x@move", null)]
+    [InlineData("func widen<s/T>(x: s/T, q: ref/i32 during a) -> s/T during a\n    s is ref\n    return x@move", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData("func back<s/T>(x: s/T during a) -> s/T\n    s is owner or ref\n    return x@move", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData("func fwd<s/T>(x: s/T) -> s/T during a\n    s is owner or ref\n    return x@move", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData("func both<s/T>(x: s/T, y: s/T during b) -> isize\n    s is owner or ref\n    T is Copy\n    let items = [x, y]\n    return items.length", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    public void AnOriginPresenceDifferenceIsARelation(string source, string? code)
+    {
+        var c = Parse(source);
+        c.Bind();
+        Assert.Equal(code is null ? [] : [code], c.Binding.Issues.Select(static x => x.Code.ToString()));
+    }
+
+    // SPEC 15.6.1, 23.3.6.4: an unformed pair Field reports its formation once; a fit against it derives from that failure instead of
+    // adding a Type mismatch, and a call that reads the Field rests on it (F17, A.11).
+    [Fact]
+    public void AnUnformedPairFieldReportsOnlyItsFormation()
+    {
+        var c = Parse("struct Holder<s/T, U>\n    s is value or valueborrow\n    public let first: s/T\n    public let other: s/U\n" +
+            "    public init(first: s/T, other: s/U)\n        self.first = first@move\n        self.other = other@move\n" +
+            "let x: i32 = 1\nlet y: i64 = 2\nlet h = Holder<ref/i32, i64>.init(x@ref, y@ref)\nConsole.writeLine(\"\\(h.other)\")");
+        c.Bind();
+        Assert.Equal([DiagnosticCode.MissingOriginBinding_Kd], c.Binding.Issues.Select(static x => x.Code));
+    }
+
+    // A static Origin admits no exclusive borrow, so an admitted `uniq` cannot form the Type: a Language cause (SPEC 8.1.2).
     [Theory]
     [InlineData("s/T during static", "uniq")]
     [InlineData("s/U during static", "owner or uniq")]
@@ -89,7 +145,26 @@ public class PairAnnotationBindingTest
     {
         var c = Parse($"func f<s/T, U>(value: {type})\n    s is {semantics}\n    ()");
         Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
+        Assert.Equal([DiagnosticCode.InvalidOriginBinding_Kd], c.Binding.Issues.Select(static x => x.Code));
+    }
+
+    // SPEC 8.1.2, 23.3.6.4: a pair occurrence's formation publishes each independent cause, a Language cause before a target role that
+    // is not proven: a missing slot under an admitted borrow is MissingOriginBinding_Kd, as for its concrete twin, and an unproven Object
+    // Target of an admitted object binding is UnprovenConstraint_Kd beside it. An associated specification omits no slot either
+    // (SPEC 15.3.3, 15.4.4).
+    [Theory]
+    [InlineData("struct Holder<s/T, U>\n    s is ref\n    let value: s/T\n    let other: s/U\n", new[] { DiagnosticCode.MissingOriginBinding_Kd })]
+    [InlineData("struct Holder<s/T, U>\n    s is value or valueborrow\n    let value: s/T\n    let other: s/U\n", new[] { DiagnosticCode.MissingOriginBinding_Kd })]
+    [InlineData("contract Source\n    associate Element\nstruct Holder<s/T, U>\n    s is value or valueborrow\n    Self is Source\n    associate Source.Element is s/U\n    var item: s/T\n", new[] { DiagnosticCode.MissingOriginBinding_Kd })]
+    [InlineData("struct Holder<s/T, U>\n    let value: s/T\n    let other: s/U\n", new[] { DiagnosticCode.MissingOriginBinding_Kd, DiagnosticCode.UnprovenConstraint_Kd })]
+    [InlineData("struct Holder<s/T, U> {a}\n    let value: s/T\n    let other: s/U during a\n", new[] { DiagnosticCode.UnprovenConstraint_Kd })]
+    public void FormationCausesKeepTheirOwnCodes(string source, DiagnosticCode[] codes)
+    {
+        var c = Parse(source);
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(codes, c.Binding.Issues.Select(static x => x.Code));
+        Assert.False(c.Binding.CheckBound().IsComplete);
+        Assert.Equal(codes, c.Binding.Issues.Select(static x => x.Code));
     }
 
     [Theory]
@@ -111,7 +186,7 @@ public class PairAnnotationBindingTest
     {
         var c = Parse($"func f<s/T>(value: {type})\n    s is ref\n    T is i32\n    ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.Equal(BoundTypeKind.Parameter, Function(c).Parameters[0].Type.BoundType!.Kind);
+        Assert.Equal(BoundTypeKind.Parameter, Function(c).Parameters[0].Type.TypeOf()!.Kind);
     }
 
     [Theory]
@@ -131,12 +206,12 @@ public class PairAnnotationBindingTest
         var c = Parse("func f<s/T>(x: s/T, y: s/T during a, z: s/T during b) => ()");
         Assert.False(c.Bind().IsComplete);
         var f = Function(c);
-        var schema = f.BoundSymbol!.Schema!;
-        Assert.Same(schema.GenericSlots[0].Symbol.WholeType, f.Parameters[0].Type.BoundType);
-        Assert.Null(f.Parameters[0].Type.BoundType!.Origin);
-        Assert.Same(schema.Origins[0].Origin, f.Parameters[1].Type.BoundType!.Origin);
-        Assert.Same(schema.Origins[1].Origin, f.Parameters[2].Type.BoundType!.Origin);
-        Assert.NotSame(f.Parameters[1].Type.BoundType, f.Parameters[2].Type.BoundType);
+        var schema = f.SymbolOf()!.Schema!;
+        Assert.Same(schema.GenericSlots[0].Symbol.WholeType, f.Parameters[0].Type.TypeOf());
+        Assert.Null(f.Parameters[0].Type.TypeOf()!.Origin);
+        Assert.Same(schema.Origins[0].Origin, f.Parameters[1].Type.TypeOf()!.Origin);
+        Assert.Same(schema.Origins[1].Origin, f.Parameters[2].Type.TypeOf()!.Origin);
+        Assert.NotSame(f.Parameters[1].Type.TypeOf(), f.Parameters[2].Type.TypeOf());
     }
 
     [Fact]
@@ -145,13 +220,13 @@ public class PairAnnotationBindingTest
         var c = Parse("func f<s/T>(value: (raw/(s/T during a), [2 of s/T during a])) => ()");
         Assert.False(c.Bind().IsComplete);
         var f = Function(c);
-        var tuple = f.Parameters[0].Type.BoundType!;
+        var tuple = f.Parameters[0].Type.TypeOf()!;
         Assert.Equal(BoundTypeKind.Tuple, tuple.Kind);
         var pointerTarget = Assert.Single(tuple.Components[0].Components);
         var arrayElement = Assert.Single(tuple.Components[1].Components);
         Assert.Same(pointerTarget, arrayElement);
         Assert.Equal(BoundTypeKind.Parameter, pointerTarget.Kind);
-        Assert.Same(f.BoundSymbol!.Schema!.Origins[0].Origin, pointerTarget.Origin);
+        Assert.Same(f.SymbolOf()!.Schema!.Origins[0].Origin, pointerTarget.Origin);
     }
 
     [Fact]
@@ -163,7 +238,7 @@ public class PairAnnotationBindingTest
         var clause = Parse("func g<s/T>(x: s/i32) -> s/i32\n    origin static outlives static\n    return x");
         Assert.True(plain.Bind().IsComplete, Describe(plain));
         Assert.True(clause.Bind().IsComplete, Describe(clause));
-        Assert.Equal(Function(plain).BoundSymbol!.Type!.Origin?.Kind, Function(clause).BoundSymbol!.Type!.Origin?.Kind);
+        Assert.Equal(Function(plain).SymbolOf()!.Type!.Origin?.Kind, Function(clause).SymbolOf()!.Type!.Origin?.Kind);
     }
 
     private static Compilation Parse(string source)

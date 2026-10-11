@@ -13,7 +13,12 @@ public static class IdentifierHelper
     /// <param name="identifier">The text to validate as an identifier.</param>
     /// <returns><see langword="true"/> if the text is valid; otherwise, <see langword="false"/>.</returns>
     public static bool IsValidIdentifier(ReadOnlySpan<char> identifier)
+        => IsValidIdentifier(identifier, out _);
+
+    // A failed start is an invalid token character; a later failure belongs to the attempted Name.
+    internal static bool IsValidIdentifier(ReadOnlySpan<char> identifier, out int invalidStartLength)
     {
+        invalidStartLength = 0;
         if (identifier.IsEmpty)
         {
             return false;
@@ -24,12 +29,13 @@ public static class IdentifierHelper
             var c = identifier[i];
             if (c > 0x7F)
             {
-                return UnicodeIdentifierHelper.IsValid(identifier);
+                return UnicodeIdentifierHelper.IsValid(identifier, out invalidStartLength);
             }
 
             var lower = (uint)(c | 0x20);
             if (!(lower - 'a' <= 'z' - 'a' || c == '_' || (i > 0 && (uint)(c - '0') <= 9)))
             {
+                invalidStartLength = i == 0 ? 1 : 0;
                 return false;
             }
         }

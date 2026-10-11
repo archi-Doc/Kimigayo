@@ -33,7 +33,7 @@ public class SemanticsDefaultTest
         Assert.Contains(error.Related!, x => x.Label == "the Semantics binding s");
         var path = Path.GetFullPath("semantics-default.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var console = new DiagnosticContractTest.DiagnosticConsole();
@@ -67,16 +67,16 @@ public class SemanticsDefaultTest
         public void DefaultCasePlansReuseStorage()
         {
             var c = MinimalEmissionTest.Analyze(Read + Run);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
             var valid = true;
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
             Assert.True(valid);
             var restored = CompilationTestHelper.Reload(c);
             Assert.True(restored.Bind().IsComplete);
             restored.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(restored.Ownership.Analyze().IsVerified);
-            Assert.True(restored.Emission.WriteIr(TextWriter.Null, out error), MinimalEmissionTest.Describe(restored, error));
+            Assert.True(restored.Analyze().IsVerified);
+            Assert.True(restored.WriteIr(TextWriter.Null, out error), MinimalEmissionTest.Describe(restored, error));
         }
     }
 }

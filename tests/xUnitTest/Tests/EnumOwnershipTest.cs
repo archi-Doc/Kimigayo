@@ -30,7 +30,7 @@ public class EnumOwnershipTest
     public void SupportedEnumProgramsVerify(string source)
     {
         var c = Parse(source);
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         Assert.Empty(c.Ownership.ControlFlow!.PendingBinding);
     }
 
@@ -59,26 +59,26 @@ public class EnumOwnershipTest
         => CheckConstruction("enum E<T>\n    Full(T)\n    Empty\n", "E<i32>", expression, 0);
 
     [Theory]
-    [InlineData("let x = Option<string>.Some(\"a\")\nlet y = x@move\nlet z = x@move", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let x = Result<i32, i32>.Ok(1)\nlet y = x@move\nlet z = x@move", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let x: Option<string>\nlet y = x@move", OwnershipFailure.UninitializedUse)]
-    [InlineData("let x = Option<string>.None\nx = Option<string>.Some(\"a\")", OwnershipFailure.ReassignedLet)]
-    [InlineData("let x = Option<string>.None\nlet y = x@move\nx = Option<string>.None", OwnershipFailure.ReassignedLet)]
-    [InlineData("enum E\n    Both(string, string)\nlet s = \"a\"\nlet x = E.Both(s@move, s@move)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f(c: bool)\n    let x = Option<string>.None\n    if c\n        let y = x@move\n    let z = x@move", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f(c: bool)\n    let x = Option<string>.None\n    while c\n        let y = x@move", OwnershipFailure.PossiblyMovedUse)]
-    public void EnumStateErrorsAreRejected(string source, OwnershipFailure expected)
+    [InlineData("let x = Option<string>.Some(\"a\")\nlet y = x@move\nlet z = x@move", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("let x = Result<i32, i32>.Ok(1)\nlet y = x@move\nlet z = x@move", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("let x: Option<string>\nlet y = x@move", DiagnosticCode.UninitializedPlace_Kd)]
+    [InlineData("let x = Option<string>.None\nx = Option<string>.Some(\"a\")", DiagnosticCode.ReassignedLet_Kd)]
+    [InlineData("let x = Option<string>.None\nlet y = x@move\nx = Option<string>.None", DiagnosticCode.ReassignedLet_Kd)]
+    [InlineData("enum E\n    Both(string, string)\nlet s = \"a\"\nlet x = E.Both(s@move, s@move)", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("func f(c: bool)\n    let x = Option<string>.None\n    if c\n        let y = x@move\n    let z = x@move", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("func f(c: bool)\n    let x = Option<string>.None\n    while c\n        let y = x@move", DiagnosticCode.MovedPlace_Kd)]
+    public void EnumStateErrorsAreRejected(string source, DiagnosticCode expected)
     {
         var c = Parse(source);
-        Assert.False(c.Ownership.Analyze().IsVerified);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == expected);
+        Assert.False(c.Analyze().IsVerified);
+        Assert.Contains(c.Problems, x => x.Code == expected);
     }
 
     [Fact]
     public void SuccessfulConstructionTransfersPayloadResponsibilityExactlyOnce()
     {
         var c = Parse("enum E\n    Both(string, string)\nlet s = \"first\"\nlet x = E.Both(s@move, \"second\")");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         var body = Body(c);
         var construction = Assert.Single(body.Constructions);
         var complete = body.Operations.Select((operation, index) => (operation, index)).Single(x => x.operation.Kind == OwnershipOperationKind.CompleteConstruction);
@@ -98,13 +98,13 @@ public class EnumOwnershipTest
     public void AbandonmentInterleavesPlacedPayloadsAndSurvivingTemporaries()
     {
         var c = Parse("enum E\n    Make(bool, string, i32)\nfunc makeText() -> string => \"temporary\"\nfunc use(c: bool)\n    let t = \"comparison\"\n    E.Make(makeText() == t, \"payload\", if c => return else => 1)");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         var body = Body(c, "use");
         var construction = Assert.Single(body.Constructions);
         var steps = ReturnDestruction(body);
         var payload0 = Array.FindIndex(steps, x => x.Place == construction.PayloadStart);
         var payload1 = Array.FindIndex(steps, x => x.Place == construction.PayloadStart + 1);
-        var temporary = Array.FindIndex(steps, x => x.Source is InvocationKoto call && call.BoundCall?.Target.Name == "makeText");
+        var temporary = Array.FindIndex(steps, x => x.Source is InvocationKoto call && call.CallOf()?.Target.Name == "makeText");
         Assert.True(payload1 >= 0 && payload0 > payload1 && temporary > payload0);
         Assert.DoesNotContain(steps, x => x.Place == construction.Place || x.Place == construction.PayloadStart + 2);
     }
@@ -113,7 +113,7 @@ public class EnumOwnershipTest
     public void NestedAbandonmentCleansInnerPayloadThenOuterPayload()
     {
         var c = Parse("enum E\n    Inner(string, i32)\nenum Outer\n    Both(string, E)\nfunc use(c: bool)\n    Outer.Both(\"outer\", E.Inner(\"inner\", if c => return else => 1))");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         var body = Body(c, "use");
         var outer = body.Constructions[0];
         var inner = body.Constructions[1];
@@ -128,7 +128,7 @@ public class EnumOwnershipTest
     public void ReturnInsidePayloadCleansLocalBeforeEarlierPayload()
     {
         var c = Parse("enum E\n    Both(string, i32)\nfunc use(c: bool)\n    E.Both(\n        \"outer\",\n        if c\n            let inner = \"inner\"\n            return\n        else => 1\n    )");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         var body = Body(c, "use");
         var steps = ReturnDestruction(body);
         var local = Array.FindIndex(steps, x => x.Source is FieldKoto);
@@ -140,7 +140,7 @@ public class EnumOwnershipTest
     public void ReturningAnEnumSecuresResultBeforeAbandonedConstructionCleanup()
     {
         var c = Parse("enum E\n    Both(string, i32)\nfunc use(c: bool) -> Option<string>\n    E.Both(\"outer\", if c => return Option<string>.Some(\"result\") else => 1)\n    return Option<string>.None");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         var body = Body(c, "use");
         var cleanup = ReturnDestruction(body).Single(x => x.Place == body.Constructions[0].PayloadStart);
         var secured = body.Operations.Take(cleanup.Operation).Last(x => x.Kind == OwnershipOperationKind.Write && body.Places[x.Place].Kind == OwnershipPlaceKind.Result);
@@ -154,7 +154,7 @@ public class EnumOwnershipTest
     public void LoopTransferAbandonsConstructionAndResetsPayloads(string transfer)
     {
         var c = Parse($"enum E\n    Both(string, i32)\nfunc use(c: bool)\n    while c\n        E.Both(\"a\", if c => {transfer} else => 1)");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         var body = Body(c, "use");
         var construction = Assert.Single(body.Constructions);
         Assert.Contains(body.CleanupSteps, x => x.Place == construction.PayloadStart && x.Action == CleanupAction.Destroy && body.Operations[x.Operation].Source is JumpKoto);
@@ -169,7 +169,7 @@ public class EnumOwnershipTest
     public void AbortDoesNotReachCleanupOrConstructionCompletion()
     {
         var c = Parse("enum E\n    Both(string, i32)\nfunc stop() -> Never\n    loop\n        ()\nfunc use()\n    E.Both(\"a\", stop())");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         var body = Body(c, "use");
         Assert.All(body.Edges.Where(x => x.Kind == OwnershipEdgeKind.Abort), x => Assert.Equal(OwnershipOperationKind.Exit, body.Operations[x.To].Kind));
         Assert.All(body.Operations.Select((operation, index) => (operation, index)).Where(x => x.operation.Kind == OwnershipOperationKind.CompleteConstruction), x => Assert.False(body.IsReachable(x.index)));
@@ -180,7 +180,7 @@ public class EnumOwnershipTest
     public void WholeReplacementUsesPostAcquisitionState()
     {
         var c = Parse("var x = Option<string>.Some(\"a\")\nx = Option<string>.None\nx = x@move");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         var body = Body(c);
         var local = body.Places.Single(x => x.Kind == OwnershipPlaceKind.Local);
         var writes = body.Operations.Where(x => x.Kind == OwnershipOperationKind.Write && x.Place == local.Id).ToArray();
@@ -193,7 +193,7 @@ public class EnumOwnershipTest
     public void ConditionalReplacementAndCleanupUseWholeEnumState()
     {
         var c = Parse("func use(c: bool)\n    var x: Option<string>\n    if c\n        x = Option<string>.Some(\"a\")\n    x = Option<string>.None\n    if c\n        let y = x@move");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         var body = Body(c, "use");
         var local = body.Places.Single(x => x.Source is FieldKoto field && field.NameKoto.IdentifierName == "x");
         Assert.Contains(body.Operations, x => x.Place == local.Id && x.Kind == OwnershipOperationKind.Write && x.Placement == PlacementKind.ConditionalReplacement);
@@ -204,11 +204,11 @@ public class EnumOwnershipTest
     public void CompletedTemporaryRegistersAfterItsConditionTemporaries()
     {
         var c = Parse("enum E\n    Both(bool, i32)\nfunc makeText() -> string => \"condition\"\nfunc use(c: bool)\n    let t = \"test\"\n    E.Both((if makeText() == t => \"yes\" else => \"no\") == t, if c => return else => 1)");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         var body = Body(c, "use");
         var steps = ReturnDestruction(body);
         var result = Array.FindIndex(steps, x => x.Source is IfKoto && body.Places[x.Place].Type.Name == "string");
-        var condition = Array.FindIndex(steps, x => x.Source is InvocationKoto call && call.BoundCall?.Target.Name == "makeText");
+        var condition = Array.FindIndex(steps, x => x.Source is InvocationKoto call && call.CallOf()?.Target.Name == "makeText");
         var payload = Array.FindIndex(steps, x => x.Place == body.Constructions[0].PayloadStart);
         Assert.True(payload >= 0 && result > payload);
         Assert.Equal(-1, condition); // Condition temporaries end before entering either branch.
@@ -219,19 +219,20 @@ public class EnumOwnershipTest
     public void RebindingChangedStorageInvalidatesTheSupportedTypeCache()
     {
         var c = Parse("struct S<T>\n    var value: T\nenum E\n    Empty\nlet x = E.Empty");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         var body = Body(c);
-        var originalCases = body.Places[body.Constructions[0].Place].Type.StoredCases!;
+        var originalCases = AdtDef.CaseTypes(body.Places[body.Constructions[0].Place].Type)!;
         var declaration = (EnumKoto)Assert.IsType<BoundEnumCase>(body.Constructions[0].Case).Owner.Declaration;
         c.Kotonoha.CreateCodeContext().Parse(declaration, "Again(ref/i32 during static)");
         Assert.True(c.Bind().IsComplete);
         Assert.False(body.IsVerified);
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         var rebuilt = body.Places[Assert.Single(body.Constructions).Place].Type;
         Assert.Single(originalCases);
-        Assert.NotSame(originalCases, rebuilt.StoredCases);
-        Assert.Equal(2, rebuilt.StoredCases!.Length);
-        var reference = Assert.Single(rebuilt.StoredCases[1].Components);
+        var rebuiltCases = AdtDef.CaseTypes(rebuilt)!;
+        Assert.NotSame(originalCases, rebuiltCases);
+        Assert.Equal(2, rebuiltCases.Length);
+        var reference = Assert.Single(rebuiltCases[1].Components);
         Assert.Equal(SemanticsKind.Ref, reference.Semantics);
         Assert.Equal(OriginKind.Static, reference.Origin!.Kind);
     }
@@ -243,9 +244,8 @@ public class EnumOwnershipTest
     public void StaticReferencePayloadsUseCompleteEnumStorage(string source)
     {
         var c = Parse(source);
-        var result = c.Ownership.Analyze();
+        var result = c.Analyze();
         Assert.True(result.IsVerified, Describe(c));
-        Assert.Equal(0, result.UnsupportedCount);
     }
 
     // SPEC 10.2, 12.2: implicit borrowed payloads use the ordinary borrow/reborrow acquisition and retain their Loans.
@@ -255,27 +255,27 @@ public class EnumOwnershipTest
     public void BorrowedPayloadAcquisitionsVerify(string source)
     {
         var c = Parse(source);
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
     }
 
     [Fact]
     public void CommonFunctionPayloadHasOwnedStorage()
     {
         var c = Parse("struct S<T>\n    var value: T\nenum E\n    Empty\n    Full(S<(i32) -> i32>)\nlet x = E.Empty");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
     }
 
     [Fact]
     public void SymbolicEnumPayloadHasUniversalOwnership()
     {
         var c = Parse("func f<T>(x: T) -> Option<T> => .Some(x@move)");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
     }
 
     private static void CheckConstruction(string declarations, string type, string expression, int count)
     {
         var c = Parse(declarations + $"let x: {type} = {expression}");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         Assert.Empty(c.Ownership.ControlFlow!.PendingBinding);
         var body = Body(c);
         var construction = Assert.Single(body.Constructions);
@@ -284,7 +284,7 @@ public class EnumOwnershipTest
         Assert.Single(body.Operations, x => x.Kind == OwnershipOperationKind.CompleteConstruction);
         Assert.DoesNotContain(body.Operations, x => x.Kind is OwnershipOperationKind.Call or OwnershipOperationKind.CallEntry);
         var baseline = Parse(declarations + $"let x: {type} = " + (count == 0 ? ".Empty" : ".Full(127)"));
-        Assert.True(baseline.Ownership.Analyze().IsVerified, Describe(baseline));
+        Assert.True(baseline.Analyze().IsVerified, Describe(baseline));
         Assert.Equal(Body(baseline).Operations.Select(x => x.Kind), body.Operations.Select(x => x.Kind));
         if (body.Places[construction.Place].Type.Kind == BoundTypeKind.Nominal)
         {
@@ -309,7 +309,7 @@ public class EnumOwnershipTest
         => CompilationTestHelper.BindSuccess(source);
 
     private static string Describe(Compilation c)
-        => string.Join("\n", c.Ownership.Issues.Select(x => $"{x.Failure}: {x.Source}")) +
+        => string.Join("\n", c.Problems.Select(x => $"{x.Code}: {c.SyntaxOf(x.Subject)}")) +
             string.Join("\n", c.Ownership.ControlFlow?.Issues.Select(x => x.Message) ?? []) +
             string.Join("\n", c.Ownership.ControlFlow?.PendingBinding.Select(x => $"pending: {x}") ?? []);
 
@@ -325,22 +325,22 @@ public class EnumOwnershipTest
         {
             var source = "func use(c: bool)\n" + string.Join('\n', Enumerable.Range(0, count).Select(i => $"    var x{i} = Option<Option<string>>.Some(Option<string>.Some(\"a\"))\n    if c\n        let y{i} = x{i}@move"));
             var c = Parse(source);
-            Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+            Assert.True(c.Analyze().IsVerified, Describe(c));
             var body = Body(c, "use");
             var plans = body.Constructions;
-            Assert.Equal(0, AllocationMeasurement.Measure(() => c.Ownership.Analyze()));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
             Assert.Equal(0, AllocationMeasurement.Measure(() =>
             {
                 c.Bind();
-                c.Ownership.Analyze();
+                c.Analyze();
             }));
             Assert.Same(body, Body(c, "use"));
             Assert.Same(plans, body.Constructions);
             Assert.Equal(count * 2, plans.Count);
             c.Bind();
             Assert.False(body.IsVerified);
-            Assert.False(c.Ownership.Result.IsVerified);
-            Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+            Assert.False(c.Analysis.IsVerified);
+            Assert.True(c.Analyze().IsVerified, Describe(c));
             Assert.Equal(count * 2, body.Constructions.Count);
         }
     }

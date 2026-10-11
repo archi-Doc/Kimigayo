@@ -33,15 +33,15 @@ public class ProjectedBorrowEmissionTest
     {
         var source = Batch + "let values: [2 of i32] = [6, 7]\nlet b = Batch.init(values)\nlet r = b.view()\nlet n = r[1]";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.Validate(out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Function.BoundSymbol?.Name == "view");
+        Assert.True(c.Validate(out var error), error);
+        var body = c.Ownership.Bodies.Single(x => x.Function.SymbolOf()?.Name == "view");
         var address = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Borrow);
         body.Values[address] = body.Values[address] with { Constant = 0 };
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.Validate(out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.Validate(out error), error);
     }
 
     [Theory]
@@ -51,9 +51,9 @@ public class ProjectedBorrowEmissionTest
     public void RejectsInvalidLifetimeAndMutation(string source)
     {
         var c = MinimalEmissionTest.Analyze(Batch + "let values: [2 of i32] = [6, 7]\n" + source);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
     }
 }

@@ -55,9 +55,9 @@ public class GenericClosureDispatchTest
     public void WarmRecursiveGenericClosurePlansAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Count + "require count(\"owned\", 4) == 5 else => $abort(\"warm\")");
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 }

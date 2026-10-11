@@ -25,9 +25,6 @@ public enum KotoKind : byte
     /// <summary>An enumeration declaration.</summary>
     Enum,
 
-    /// <summary>An extension declaration.</summary>
-    Extension,
-
     /// <summary>A namespace-like group declaration.</summary>
     Group,
 
@@ -369,6 +366,9 @@ public enum KotoKind : byte
     /// <summary>A declaration directive skipping initial Scalar-array stores.</summary>
     NoInit,
 
+    /// <summary>The lexical receiver marker of a direct base call; it has no value.</summary>
+    BaseReference,
+
     /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
 }
@@ -402,25 +402,21 @@ public abstract class Koto
     /// <summary>Gets the parent node, or <see langword="null"/> for the root.</summary>
     public Koto? Parent { get; internal set; }
 
-    /// <summary>Gets the direct syntax-tree children of this node.</summary>
+    /// <summary>Gets the table that numbers this node, or <see langword="null"/> while the node has no id.</summary>
+    public SyntaxTable? SyntaxOwner { get; internal set; }
+
+    /// <summary>Gets the dense id of this node in <see cref="SyntaxOwner"/>; 0 is none.</summary>
+    public int SyntaxId { get; internal set; }
+
+    /// <summary>Gets the direct syntax-tree children of this node, in the order <see cref="VisitChildren"/> visits them.</summary>
     public IEnumerable<Koto> ChildNodes
     {
         get
         {
-            if (this.AttributeChain is not null)
-            {
-                yield return this.AttributeChain;
-            }
-
-            foreach (var clause in OriginClauses.Get(this))
-            {
-                yield return clause;
-            }
-
-            foreach (var child in this.GetChildNodes())
-            {
-                yield return child;
-            }
+            var children = new List<Koto>();
+            var slots = new ChildSlots(children);
+            this.ForEachSlot(ref slots);
+            return children;
         }
     }
 
@@ -483,59 +479,69 @@ public abstract class Koto
     }
 
     /// <summary>Gets the current semantic binding state; this does not certify descendants.</summary>
-    public BindingState BindingState { get; internal set; }
+    public BindingState BindingState
+    {
+        get => HirTables.State(this);
+        internal set => HirTables.Of(this).States[this.SyntaxId] = value;
+    }
 
     /// <summary>Gets the resolved complete type, or null while unavailable.</summary>
     public BoundType? BoundType
     {
-        get => this.boundMeaning as BoundType;
-        internal set => this.boundMeaning = value;
+        get => HirTables.Meaning(this) as BoundType;
+        internal set => this.BoundMeaning = value;
     }
 
     /// <summary>Gets the resolved Origin when this syntax occurs in the Origin namespace.</summary>
     public BoundOrigin? BoundOrigin
     {
-        get => this.boundMeaning as BoundOrigin;
-        internal set => this.boundMeaning = value;
+        get => HirTables.Meaning(this) as BoundOrigin;
+        internal set => this.BoundMeaning = value;
     }
 
     /// <summary>Gets the selected symbol, or null before selection.</summary>
-    public BindingSymbol? BoundSymbol { get; internal set; }
+    public BindingSymbol? BoundSymbol
+    {
+        get => HirTables.Symbol(this);
+        internal set => HirTables.Of(this).Symbols[this.SyntaxId] = value;
+    }
 
-    internal BoundType? ErasedFunctionType { get; set; }
+    internal bool HasCurrentBinding => this.BindingState == BindingState.Resolved &&
+        (this.CodeContext.Compilation.Binding.IsRunning || this.CodeContext.Compilation.Binding.Result != default);
 
-    internal BoundFormatting? FormattingStorage { get; set; }
+    internal BoundType? ErasedFunctionType
+    {
+        get => HirTables.ErasedType(this);
+        set => HirTables.Of(this).ErasedTypes[this.SyntaxId] = value;
+    }
+
+    internal BoundFormatting? FormattingStorage
+    {
+        get => HirTables.PlanOf(this).Formatting;
+        set => HirTables.PlanFor(this, value is not null).Formatting = value;
+    }
 
     internal BoundFormatting? Formatting => this.FormattingStorage is { Active: true } plan ? plan : null;
 
-    internal BindingFailure BindingFailure { get; set; }
+    internal BindingFailure BindingFailure
+    {
+        get => HirTables.Failure(this);
+        set => HirTables.Of(this).Failures[this.SyntaxId] = value;
+    }
 
     /// <summary>Gets or sets the shared Type/Origin slot as a whole, so snapshots never clear one meaning through the other.</summary>
     internal object? BoundMeaning
     {
-        get => this.boundMeaning;
-        set => this.boundMeaning = value;
+        get => HirTables.Meaning(this);
+        set => HirTables.Of(this).Meanings[this.SyntaxId] = value;
     }
-
-    // Type and Origin syntax occupy different namespaces; they share one semantic reference slot.
-    private object? boundMeaning;
 
     /// <summary>Visits attributes and concrete child storage without creating iterators.</summary>
     /// <param name="visitor">The reusable visitor.</param>
     public void VisitChildren(KotoVisitor visitor)
     {
-        if (this.AttributeChain is { } attribute)
-        {
-            visitor.Visit(attribute);
-        }
-
-        var originClauses = OriginClauses.Get(this);
-        for (var i = 0; i < originClauses.Count; i++)
-        {
-            visitor.Visit(originClauses[i]);
-        }
-
-        this.VisitChildrenCore(visitor);
+        var slots = new ChildSlots(visitor);
+        this.ForEachSlot(ref slots);
     }
 
     /// <summary>Reports a syntax problem at this node's span.</summary>
@@ -574,6 +580,7 @@ public abstract class Koto
 
                 current.Parent = default;
                 current.AttributeChain = default;
+                this.CodeContext.Compilation.NoteSyntaxEdit(this);
                 return true;
             }
 
@@ -606,13 +613,12 @@ public abstract class Koto
     /// <param name="note">A Note formed from the facts.</param>
     /// <param name="at">The smallest syntax that shows the failed condition, when it is not this node; this node stays the subject.</param>
     /// <param name="evidence">The code's evidence facts, all of them or none.</param>
-    /// <param name="advice">Conditional advice formed from the facts.</param>
     /// <param name="related">Syntax related to the problem, with its role and label.</param>
     /// <param name="condition">The condition within the requirement that distinguishes independent problems of this node, such as its arguments.</param>
     /// <param name="span">The part of the located syntax that has no node of its own, such as one capture entry; the location's document is kept.</param>
     /// <param name="relatedSpans">Related syntax without a node of its own, such as an Origin header, in the document of the given node.</param>
     /// <param name="repairs">The repair candidates the report offers (SPEC 23.3.6.9), with edits located by <see cref="Edit"/>.</param>
-    internal void Report(DiagnosticRequirement requirement, DiagnosticCode code, object? first = null, object? second = null, string? note = null, Koto? at = null, object?[]? evidence = null, string? advice = null, (string Role, Koto At, string? Label)[]? related = null, ushort condition = 0, SourceSpan? span = null, (string Role, Koto In, SourceSpan Span, string? Label)[]? relatedSpans = null, DiagnosticRepairFact[]? repairs = null)
+    internal void Report(DiagnosticRequirement requirement, DiagnosticCode code, object? first = null, object? second = null, string? note = null, Koto? at = null, object?[]? evidence = null, (string Role, Koto At, string? Label)[]? related = null, ushort condition = 0, SourceSpan? span = null, (string Role, Koto In, SourceSpan Span, string? Label)[]? relatedSpans = null, DiagnosticRepairFact[]? repairs = null)
     {
         if (this.DiagnosticCollection is not { } collection)
         {
@@ -637,7 +643,7 @@ public abstract class Koto
         }
 
         // A span narrows the location within the located node's document, such as one capture entry of a closure.
-        collection.Report(requirement.Partition, this.KeyOf(requirement, condition), span ?? (at ?? this).Span, code, first, second, note, advice, null, (at ?? this).CodeContext.SourceDocument, evidence, locations, repairs);
+        collection.Report(requirement.Partition, this.KeyOf(requirement, condition), span ?? (at ?? this).Span, code, first, second, note, null, (at ?? this).CodeContext.SourceDocument, evidence, locations, repairs);
     }
 
     /// <summary>Locates one edit of a repair candidate in this node's document (SPEC 23.3.6.9).</summary>
@@ -651,7 +657,7 @@ public abstract class Koto
     /// <param name="requirement">The requirement left undecided.</param>
     /// <param name="prerequisites">The check keys of the unmet prerequisites; the unresolved mark when unknown.</param>
     internal void ReportDerived(DiagnosticRequirement requirement, DiagnosticKey[] prerequisites)
-        => this.DiagnosticCollection?.Report(requirement.Partition, this.KeyOf(requirement), this.Span, DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, prerequisites, this.CodeContext.SourceDocument);
+        => this.DiagnosticCollection?.Report(requirement.Partition, this.KeyOf(requirement), this.Span, DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, prerequisites, this.CodeContext.SourceDocument);
 
     /// <summary>Reports that this node is a form of syntax not permitted where it stands (docs/dev/DIAGNOSTICS.md §4.4). The caller
     /// records the node as a recovery when its later checks depend on the misplaced syntax; independent checks stay direct.</summary>
@@ -703,43 +709,22 @@ public abstract class Koto
 
             this.AttributeChain = attribute;
         }
-        else if (!ReplaceInList(OriginClauses.Get(this), oldKoto, newKoto) && !this.ReplaceChildCore(oldKoto, newKoto))
+        else
         {
-            return false;
+            // The attribute chain is replaced above as a chain; every other slot is replaced by the walk.
+            var slots = new ChildSlots(oldKoto, newKoto);
+            slots.List(OriginClauses.Get(this));
+            this.ForEachChildSlot(ref slots);
+            if (!slots.Replaced)
+            {
+                return false;
+            }
         }
 
         oldKoto.Parent = default;
         newKoto.Parent = this;
-        this.CodeContext.Compilation.NoteSyntaxEdit();
+        this.CodeContext.Compilation.NoteSyntaxEdit(this);
         return true;
-    }
-
-    /// <summary>Replaces an element of a list in place.</summary>
-    /// <typeparam name="T">The element type.</typeparam>
-    /// <param name="list">The list to update.</param>
-    /// <param name="oldKoto">The current element.</param>
-    /// <param name="newKoto">The replacement element.</param>
-    /// <returns><see langword="true"/> when the element was replaced.</returns>
-    protected static bool ReplaceInList<T>(IReadOnlyList<T>? list, Koto oldKoto, Koto newKoto)
-        where T : Koto
-    {
-        if (list is not IList<T> mutable ||
-            (mutable.IsReadOnly && list is not T[]) ||
-            oldKoto is not T current || newKoto is not T replacement)
-        {
-            return false;
-        }
-
-        for (var index = 0; index < list.Count; index++)
-        {
-            if (ReferenceEquals(list[index], current))
-            {
-                mutable[index] = replacement;
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /// <summary>Replaces a known child slot in constant time, retaining source and attribute provenance.</summary>
@@ -788,7 +773,7 @@ public abstract class Koto
         this.BoundMeaning = null;
         this.BoundSymbol = null;
         this.BindingFailure = BindingFailure.None;
-        this.CodeContext.Compilation.NoteSyntaxEdit();
+        this.CodeContext.Compilation.NoteSyntaxEdit(this);
     }
 
     /// <summary>Writes the attribute chain, if any, followed by the requested trailing text.</summary>
@@ -855,21 +840,17 @@ public abstract class Koto
         }
     }
 
-    /// <summary>Enumerates children owned by the concrete node.</summary>
-    /// <returns>The direct child nodes, excluding the attribute chain handled by <see cref="ChildNodes"/>.</returns>
-    protected virtual IEnumerable<Koto> GetChildNodes()
-        => [];
-
-    /// <summary>Visits direct child storage, excluding the attribute chain.</summary>
-    /// <param name="visitor">The reusable visitor.</param>
-    protected virtual void VisitChildrenCore(KotoVisitor visitor)
+    /// <summary>Walks the child slots the concrete node owns in source order; the attribute chain and Origin clauses are walked before them.</summary>
+    /// <param name="slots">The walk.</param>
+    protected virtual void ForEachChildSlot(ref ChildSlots slots)
     {
     }
 
-    /// <summary>Replaces a child reference owned by the concrete node.</summary>
-    /// <param name="oldKoto">The current child.</param>
-    /// <param name="newKoto">The replacement child.</param>
-    /// <returns><see langword="true"/> when a child reference was replaced.</returns>
-    protected virtual bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-        => false;
+    // The attribute chain, the Origin clauses, then the node's own slots. A replacement walks only the last two (ReplaceChild).
+    private void ForEachSlot(ref ChildSlots slots)
+    {
+        slots.Slot(this.AttributeChain);
+        slots.List(OriginClauses.Get(this));
+        this.ForEachChildSlot(ref slots);
+    }
 }

@@ -160,10 +160,10 @@ public class Utf8BufferTest
     {
         var c = MinimalEmissionTest.Analyze("var storage = [3 of 0@u8]\nlet buffer = Text.fixed(storage@uniq)\n" + use);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(valid, c.Ownership.Result.IsVerified);
+        Assert.Equal(valid, c.Analysis.IsVerified);
         if (!valid)
         {
-            Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+            Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
         }
     }
 

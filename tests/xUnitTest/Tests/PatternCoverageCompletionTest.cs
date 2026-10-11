@@ -13,13 +13,13 @@ public class PatternCoverageCompletionTest
         var c = MinimalEmissionTest.Analyze(Source("internal"));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.NonExhaustiveMatch);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.NonExhaustiveMatch);
         Assert.False(c.Bind().IsComplete);
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.NonExhaustiveMatch);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.NonExhaustiveMatch);
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
-        Assert.DoesNotContain(restored.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.NonExhaustiveMatch);
+        Assert.DoesNotContain(restored.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.NonExhaustiveMatch);
     }
 
     [Fact]
@@ -27,12 +27,12 @@ public class PatternCoverageCompletionTest
     {
         var c = MinimalEmissionTest.Analyze(Source("public"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.NonExhaustiveMatch);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.NonExhaustiveMatch);
         Assert.False(c.Binding.CheckBound().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.NonExhaustiveMatch);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.NonExhaustiveMatch);
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
-        Assert.Contains(restored.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.NonExhaustiveMatch);
+        Assert.Contains(restored.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.NonExhaustiveMatch);
     }
 
     [Fact]

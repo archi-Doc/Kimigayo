@@ -41,30 +41,9 @@ public sealed class FunctionTypeKoto : TypeKoto
         this.ReturnType.WriteTo(ref builder);
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        visitor.Visit(this.Parameters);
-        visitor.Visit(this.ReturnType);
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-        => [this.Parameters, this.ReturnType];
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (this.Parameters == oldKoto)
-        {
-            this.Parameters = newKoto;
-        }
-        else if (this.ReturnType == oldKoto)
-        {
-            this.ReturnType = newKoto;
-        }
-        else
-        {
-            return false;
-        }
-
-        return true;
+        this.Parameters = slots.Slot(this.Parameters);
+        this.ReturnType = slots.Slot(this.ReturnType);
     }
 }

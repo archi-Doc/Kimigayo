@@ -32,9 +32,9 @@ public class GenericObjectFactoryTest(ITestOutputHelper output)
         var path = Path.GetFullPath("generic-factory.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var emitted = c.Emission.Validate(out var failure);
+        var emitted = c.Validate(out var failure);
         Assert.True(emitted == !independent, MinimalEmissionTest.Describe(c, failure));
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         Assert.DoesNotContain(result.Diagnostics, x => x.Code == "GenerationFailed_Kd");
@@ -109,11 +109,11 @@ public class GenericObjectFactoryTest(ITestOutputHelper output)
             let root = Expanding<i32>.init()
             """;
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         using var ir = new StringWriter();
-        Assert.False(c.Emission.WriteIr(ir, out var failure));
+        Assert.False(c.WriteIr(ir, out var failure));
         Assert.True(c.Emission.FailureIsResourceLimit, failure);
-        Assert.Contains("destruction", failure, StringComparison.Ordinal);
+        Assert.Contains("'drop' grows through generated dependencies", failure, StringComparison.Ordinal);
         Assert.Equal(string.Empty, ir.ToString());
     }
 
@@ -125,10 +125,10 @@ public class GenericObjectFactoryTest(ITestOutputHelper output)
     {
         const string Source = "func box<T>(value: T) -> rc/T\n    T is ObjectPayload\n    return Kimi.Intrinsics.makeRc(value@move)\nlet first = box(7)\nlet second = box(true)";
         var c = MinimalEmissionTest.Analyze(atomic ? SharedObjectRuntimeTest.ArcSource(Source) : Source);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid);
     }
 
@@ -156,9 +156,9 @@ public class GenericObjectFactoryTest(ITestOutputHelper output)
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         if (conflict)
         {
-            Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-            Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
-            Assert.False(c.Emission.Validate(out _));
+            Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
+            Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+            Assert.False(c.Validate(out _));
         }
         else
         {

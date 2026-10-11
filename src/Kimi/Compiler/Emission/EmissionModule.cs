@@ -61,6 +61,7 @@ internal enum EmissionOpcode : byte
 
     /// <summary>A direct call of <c>Callee</c> with prepared operands.</summary>
     Call,
+    VirtualCall,
     TestSnapshot,
     TestPhaseEnter,
     TestPhaseLeave,
@@ -205,7 +206,7 @@ internal sealed class EmissionFunction
     internal void Add(EmissionOpcode opcode, int operation, int place = -1, int constant = -1)
         => this.Instructions.Add(new(opcode, operation, place, constant));
 
-    internal void AddCall(int operation, FunctionAbi callee, ReadOnlySpan<EmissionOperand> operands)
+    internal void AddCall(int operation, FunctionAbi callee, ReadOnlySpan<EmissionOperand> operands, int virtualSlot = -1, int receiver = -1)
     {
         if (operands.Length != callee.Parameters.Length)
         {
@@ -214,7 +215,7 @@ internal sealed class EmissionFunction
 
         var start = this.Operands.Count;
         this.Operands.AddRange(operands);
-        this.Instructions.Add(new(EmissionOpcode.Call, operation, Callee: callee, OperandStart: start, OperandCount: operands.Length));
+        this.Instructions.Add(new(virtualSlot < 0 ? EmissionOpcode.Call : EmissionOpcode.VirtualCall, operation, Place: receiver, Constant: virtualSlot, Callee: callee, OperandStart: start, OperandCount: operands.Length));
     }
 
     internal void AddScalar(EmissionOpcode opcode, int operation, ReadOnlySpan<EmissionOperand> operands, string? type = null, string? op = null, int place = -1, int location = -1, ArithmeticCheckKind check = ArithmeticCheckKind.None, bool comparison = false, ValueLowering? representation = null, ValueLowering? countRepresentation = null)
@@ -243,7 +244,7 @@ internal sealed class EmissionModule
 
     internal List<DictionaryHelper> DictionaryHelpers { get; } = new();
 
-    internal Dictionary<BoundCall, FunctionAbi> SourceCalls { get; } = new(ReferenceEqualityComparer.Instance);
+    internal List<FunctionAbi> FunctionReferences { get; } = new();
 
     /// <summary>Gets or sets a value indicating whether a lowered body uses the Array capacity routines (SPEC 4.7.4).</summary>
     internal bool NeedsArrayRuntime { get; set; }
@@ -272,9 +273,6 @@ internal sealed class EmissionModule
     internal List<(FunctionAbi Wrapper, FunctionAbi Implementation)> FormattingWrites { get; } = new();
 
     internal List<(FunctionAbi Wrapper, FunctionAbi Write, bool Fixed)> FormattingConversions { get; } = new();
-
-    /// <summary>Gets the generic call entries whose concrete instance is still to be lowered (SPEC 21.3.1); empty once generation succeeds.</summary>
-    internal List<GenericStoragePlan.CallEntry> PendingEntries { get; } = new();
 
     internal List<ObjectCreation> Objects { get; } = new();
 
@@ -306,7 +304,7 @@ internal sealed class EmissionModule
         this.Aggregates.Clear();
         this.ArrayHelpers.Clear();
         this.DictionaryHelpers.Clear();
-        this.SourceCalls.Clear();
+        this.FunctionReferences.Clear();
         this.NeedsArrayRuntime = false;
         this.NeedsDictionaryRuntime = false;
         this.NeedsStorageBytes = false;
@@ -320,7 +318,6 @@ internal sealed class EmissionModule
         this.NeedsFormattingRuntime = false;
         this.FormattingWrites.Clear();
         this.FormattingConversions.Clear();
-        this.PendingEntries.Clear();
         this.Objects.Clear();
         this.NeedsObjectRuntime = false;
         this.Externals.Clear();
@@ -348,8 +345,24 @@ internal sealed class EmissionModule
     internal void RemoveLastFunction()
         => this.functionCount--;
 
-    internal void Complete()
-        => this.IsComplete = true;
+    internal bool Complete(out string? failure)
+    {
+        this.IsComplete = false;
+        foreach (var helper in this.DictionaryHelpers)
+        {
+            if (helper.Related < -1 || helper.Related >= this.FunctionReferences.Count ||
+                (helper.Kind == DictionaryHelperKind.CheckKey && (helper.Related < 0 || this.DictionaryRequireAbsent is null)) ||
+                (helper.Kind == DictionaryHelperKind.Place && this.DictionaryAppend is null))
+            {
+                failure = "Dictionary helper has an unresolved physical function reference.";
+                return false;
+            }
+        }
+
+        failure = null;
+        this.IsComplete = true;
+        return true;
+    }
 
     internal void WriteIr(TextWriter output)
     {
@@ -384,8 +397,13 @@ internal enum ArrayHelperKind : byte
     OwnFixedStorage,
 }
 
-/// <summary>A generated Array helper for one element representation: its ABI, element lowering and, for pop, the Option layout.</summary>
-internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, ValueLowering Element, AggregateLayout? ElementLayout, bool ElementIsString, AggregateLayout? Option, AggregateLayout? Remainder = null)
+/// <summary>The layout offsets of a storage remainder record's Fields {storage, position, count, capacity}, addressed by name,
+/// and the size of its storage Field (SPEC 22.1.2.5).</summary>
+internal readonly record struct RemainderFields(int Storage, int Position, int Count, int Capacity, int StorageSize);
+
+/// <summary>A generated Array helper for one element representation: its ABI, element lowering, for pop the Option layout, and
+/// for the storage boundary its remainder record.</summary>
+internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, ValueLowering Element, AggregateLayout? ElementLayout, bool ElementIsString, AggregateLayout? Option, AggregateLayout? Remainder = null, RemainderFields Fields = default)
 {
     /// <summary>Gets a value indicating whether the element has no bytes (Unit or a zero-sized aggregate); its helpers take
     /// no value or result pointer, because zero-sized values have no slot.</summary>
@@ -403,7 +421,7 @@ internal enum DictionaryHelperKind : byte
 }
 
 /// <summary>Physical Dictionary entry helper; source calls resolve to the ordinary instantiated ABI.</summary>
-internal sealed record DictionaryHelper(DictionaryHelperKind Kind, FunctionAbi Abi, ValueLowering Key, AggregateLayout? KeyLayout, bool KeyIsString, ValueLowering Value, AggregateLayout? ValueLayout, bool ValueIsString, long KeyOffset, long ValueOffset, long Stride, BoundCall? Related);
+internal sealed record DictionaryHelper(DictionaryHelperKind Kind, FunctionAbi Abi, ValueLowering Key, AggregateLayout? KeyLayout, bool KeyIsString, ValueLowering Value, AggregateLayout? ValueLayout, bool ValueIsString, long KeyOffset, long ValueOffset, long Stride, int Related);
 
 // SPEC 4.6.4: the shape flags of a directly applied range slice (the SliceRange operand after its boundaries).
 internal static class SliceShape

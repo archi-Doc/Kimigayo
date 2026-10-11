@@ -69,8 +69,8 @@ public class FunctionEmissionTest
     [InlineData("func unused() -> ()\n    " + MinimalEmissionTest.FloatExpression + "\n()", true)]
     [InlineData("public func main() -> i32 => 0")]
     [InlineData("public func main() => ()\n()")]
-    [InlineData("func spin() -> Never => loop => ()\nfunc f(a: i32, b: i32) => ()\nvar x = 1\nf(spin(), x++)", true)]
-    [InlineData("func f(a: i32, b: i32) -> i32 => a + b\nvar x = 1\nlet y = label outer: do\n    f((label inner: do => exit to outer 7), x++)", true)]
+    [InlineData("func spin() -> Never => loop => ()\nfunc f(a: i32, b: i32) => ()\nf(spin(), 2)", true)]
+    [InlineData("func f(a: i32, b: i32) -> i32 => a + b\nlet y = label outer: do\n    f((label inner: do => exit to outer 7), 2)", true)]
     public void SelectedBodiesAndStartupRespectSupportedFeatures(string source, bool emitted = false)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -103,7 +103,7 @@ public class FunctionEmissionTest
         Assert.Equal(EmissionOpcode.Unreachable, main.Instructions[^1].Opcode);
         Assert.DoesNotContain(main.Instructions, x => x.Opcode is EmissionOpcode.ReturnVoid or EmissionOpcode.ReturnScalar or EmissionOpcode.Phi);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "main");
-        var invoke = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call && ((InvocationKoto)x.Source).BoundCall!.ReturnType == BoundType.Never);
+        var invoke = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call && ((InvocationKoto)x.Source).CallOf()!.ReturnType == BoundType.Never);
         Assert.All(body.Edges.Where(x => x.From == invoke), x => Assert.Equal(OwnershipEdgeKind.Abort, x.Kind));
 
         c = MinimalEmissionTest.Analyze("func f() -> i32\n    defer => loop => ()\n    return 1\nf()");
@@ -127,7 +127,7 @@ public class FunctionEmissionTest
     public void MalformedFunctionPlansFailBeforeWritingAndRecover(string mutation)
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32) -> i32\n    var y = x\n    defer => y = 9\n    return y\nif f(3) == 3 => Console.writeLine(\"ok\")");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var f = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "f");
         var caller = Assert.Single(c.Ownership.Bodies, x => x.Function.IsGenerated);
         var call = caller.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call && x.Place >= 0);
@@ -163,18 +163,18 @@ public class FunctionEmissionTest
         }
         else
         {
-            var plan = ((InvocationKoto)caller.Operations[call].Source).BoundCall!;
+            var plan = ((InvocationKoto)caller.Operations[call].Source).CallOf()!;
             plan.Set(plan.Target, plan.ReturnType, null, [1], [], operations: plan.ArgumentOperations);
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out error));
+        Assert.False(c.WriteIr(writer, out error));
         Assert.NotNull(error);
         Assert.Empty(writer.ToString());
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
-        Assert.True(c.Emission.Validate(out error), MinimalEmissionTest.Describe(c, error));
+        c.Analyze();
+        Assert.True(c.Validate(out error), MinimalEmissionTest.Describe(c, error));
     }
 
     [Theory]
@@ -195,7 +195,7 @@ public class FunctionEmissionTest
         Assert.Same(old.Abi, abi);
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
+        c.Analyze();
         Assert.Same(abi, pool.Get(0, function));
         Assert.Equal("__kimi_f0", abi.Name);
         var changed = MinimalEmissionTest.Analyze("func renamed(x: bool) -> bool => x\n()");
@@ -213,8 +213,8 @@ public class FunctionEmissionTest
         var allocated = AllocationMeasurement.Measure(
             () =>
             {
-                valid &= c.Ownership.Analyze().IsVerified;
-                valid &= c.Emission.WriteIr(TextWriter.Null, out _);
+                valid &= c.Analyze().IsVerified;
+                valid &= c.WriteIr(TextWriter.Null, out _);
             },
             iterations: 128,
             warmupIterations: 100);

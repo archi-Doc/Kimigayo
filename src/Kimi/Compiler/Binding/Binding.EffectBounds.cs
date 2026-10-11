@@ -6,10 +6,61 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    /// <summary>How an effect summary classifies a compiler function (SPEC 8.4.10.2).</summary>
+    internal enum CompilerFunctionEffect : byte
+    {
+        /// <summary>The kind names no compiler function, or one the summary cannot classify.</summary>
+        Unclassified,
+
+        /// <summary>The function acts only on its acquired inputs and the allocator, and may Abort.</summary>
+        Inputs,
+
+        /// <summary>The function obtains authority from the environment, which confined excludes.</summary>
+        Environment,
+
+        /// <summary>The function runs a selected formatting witness, which the summary follows before classifying.</summary>
+        Formatting,
+    }
+
+    // SPEC 8.4.10.2: the Storage and Raw families act only on their inputs and the allocator (SPEC 5.6, 22.1.2.5), so they are classified
+    // as families; a storage kind that obtained environment authority would have to be split out of its family. Console output and the
+    // test temporary directory are environment effects. Comparison, formatting and destruction callbacks are summarized separately.
+    internal static CompilerFunctionEffect ClassifyCompilerFunction(CompilerFunctionKind kind) => kind switch
+    {
+        CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
+        CompilerFunctionKind.WriterWrite or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat => CompilerFunctionEffect.Formatting,
+        CompilerFunctionKind.Abort or CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap or CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc or CompilerFunctionKind.MakeArc or CompilerFunctionKind.Clone or
+            >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.TextHeap or
+            CompilerFunctionKind.TextWriter or CompilerFunctionKind.TextUtf8 or CompilerFunctionKind.TextValidateUtf8 or
+            >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus or CompilerFunctionKind.BuiltinFormat or
+            CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.BuiltinArithmetic => CompilerFunctionEffect.Inputs,
+        _ => KimiLibraryCatalog.IsStorageOperation(kind) || KimiLibraryCatalog.IsRawOperation(kind) ? CompilerFunctionEffect.Inputs : CompilerFunctionEffect.Unclassified,
+    };
+
     private EffectSummary? effectSummary;
 
     // The pass after ownership analysis keeps its own call pool: its contexts differ from the Binding pass (SPEC 8.4.5).
     private EffectSummary? destructionSummary;
+
+    // Cleanup extraction may run while a transitive effect check requests a library body; keep its scratch independent.
+    private EffectSummary? cleanupCollector;
+
+    /// <summary>SPEC 4.7.5: summarizes the body of a Kimi operation that publishes its summary, under its own premises with abstract
+    /// Type parameters, as its published row permits: the parameter-dependent requirement the row names is covered.</summary>
+    /// <param name="operation">The operation.</param>
+    /// <param name="confined">Whether the summary is judged under confined.</param>
+    /// <param name="preserves">Whether the summary is judged under preserves results.</param>
+    /// <param name="published">The requirement whose effects the row publishes, such as `K` equality, or null.</param>
+    /// <returns>Whether the body stays within the bounds, and the first effect that does not.</returns>
+    internal (bool Valid, EffectViolation Violation, Koto? Node) SummarizePublishedOperation(BindingSymbol operation, bool confined, bool preserves, BindingSymbol? published)
+    {
+        var summary = this.effectSummary ??= new(this);
+        var valid = summary.Check(confined, preserves, operation, this.ConstraintScope(operation.Declaration), false, implementationBody: true, published: published);
+        return (valid, summary.Violation, summary.ViolationNode);
+    }
+
+    internal void CollectCaseDestructions(OwnershipBody source, OwnershipBody target, ulong cases)
+        => (this.cleanupCollector ??= new(this)).CollectDestructions(source, target, cases);
 
     /// <summary>
     /// SPEC 8.4.5, 22.1.2.4: checks every effect bound again after ownership analysis, now counting the destructions each
@@ -27,7 +78,22 @@ public sealed partial class Binding
                 rejected.Add(path.Use);
             }
         }
+
+        this.InvalidateAssociatedEvidence();
+        if (rejected.Count != 0)
+        {
+            this.InvalidateProjectionCertificates(BindingMode.Final);
+        }
     }
+
+    /// <summary>Gets whether a failed bound check stopped at an effect this implementation cannot classify yet, which is reported as
+    /// the located Unsupported_Kd, never as a violation of the bound (plan rule 5).</summary>
+    /// <param name="use">The conformance, the Callable use or the virtual function of the failed check.</param>
+    /// <returns>Whether the recorded violation is an implementation limit.</returns>
+    internal bool IsEffectLimit(Koto use)
+        => (this.effectViolations?.TryGetValue(use, out var conformance) == true && conformance.Kind == EffectViolation.Limit) ||
+            (this.callableEffectViolations.TryGetValue(use, out var callable) && callable.Kind == EffectViolation.Limit) ||
+            (use is FunctionKoto function && this.virtualEffectViolations?.TryGetValue(function, out var slot) == true && slot.Kind == EffectViolation.Limit);
 
     // SPEC 8.4.10.4: a conformance checks the complete transitive effect summary of every witness against the bounds that
     // its Contract and the ancestors declare for the requirement; an effect it cannot classify is a conflict (SPEC 8.4.5).
@@ -41,16 +107,25 @@ public sealed partial class Binding
         {
             if (this.EffectBoundViolation(this.activeConformancePaths[i], false) is { } path)
             {
-                this.Fail(path.Use, BindingFailure.IncompatibleImplementation);
+                var limit = this.IsEffectLimit(path.Use);
+                this.Fail(path.Use, limit ? BindingFailure.Unsupported : BindingFailure.IncompatibleImplementation, limit);
             }
         }
+
+        this.InvalidateAssociatedEvidence();
     }
 
     // The path, marked invalid, when one of its bounded implementations exceeds a bound; null otherwise. One traversal of a
     // witness's summary serves both bounds.
     private BoundConformancePath? EffectBoundViolation(BoundConformancePath path, bool destructions)
     {
-        if (!path.IsVerified || path.Contract.Declaration.BoundSymbol?.Contract is not { HasEffectBounds: true } shape)
+        if (!path.IsVerified || path.Contract.Contract is not { } shape)
+        {
+            return null;
+        }
+
+        this.EnsureEffectBounds(shape);
+        if (!shape.HasEffectBounds)
         {
             return null;
         }
@@ -63,8 +138,8 @@ public sealed partial class Binding
                 continue;
             }
 
-            var confined = this.DeclaredEffectBound(shape, requirement, EffectBoundKind.Confined) is not null;
-            var preserves = this.DeclaredEffectBound(shape, requirement, EffectBoundKind.PreservesResults) is not null;
+            var confined = this.DeclaredEffectBound(shape, witness.Identity, EffectBoundKind.Confined) is not null;
+            var preserves = this.DeclaredEffectBound(shape, witness.Identity, EffectBoundKind.PreservesResults) is not null;
             if ((!confined && !preserves) ||
                 (destructions && witness.Implementation.Declaration is FunctionKoto implementation && this.compilation.Ownership.TemplateBody(implementation, false) is null))
             {
@@ -75,7 +150,7 @@ public sealed partial class Binding
             if (!summary.Check(confined, preserves, witness.Implementation, path.Scope, destructions))
             {
                 (this.effectViolations ??= new(ReferenceEqualityComparer.Instance))[path.Use] =
-                    new(summary.Violation, summary.ViolationSite, summary.ViolationNode, summary.Delegation, summary.DelegationNode, requirement, shape, confined, preserves);
+                    new(summary.Violation, summary.ViolationSite, summary.ViolationNode, summary.Delegation, summary.DelegationNode, requirement, shape, confined, preserves, witness.Identity);
                 path.Invalid = true;
                 path.IsVerified = false;
                 path.Identity.Invalid = true;
@@ -96,17 +171,17 @@ public sealed partial class Binding
         private readonly HashSet<(Koto Node, int Context)> seen = new();
         private readonly HashSet<BoundType> destroyed = new(ReferenceEqualityComparer.Instance);
         private readonly List<(Koto Node, int Context, Koto? Site)> pending = new();
-        private readonly List<BoundCall?> contexts = new();
-        private readonly Dictionary<BoundCall, int> contextIndex = new(CallInstanceComparer.Instance);
-        private readonly List<BoundCall> calls = new();
+        private readonly List<CallPlan?> contexts = new();
+        private readonly Dictionary<CallPlan, int> contextIndex = new(CallInstanceComparer.Instance);
+        private readonly List<CallPlan> calls = new();
         private readonly List<(BoundType Value, BoundOrigin Storage)> storedValues = new();
         private readonly List<int> selectedArms = new();
 
         // SPEC 8.4.10.5: the abstract parts of the result, the requirement calls producing values of them, the own-body calls
         // tentatively compared with no earlier result, and the replacements of values on self paths in the own body.
         private readonly List<BoundType> itemParts = new();
-        private readonly List<(object Requirement, Koto Call, Koto? Receiver)> producers = new();
-        private readonly List<(object Requirement, Koto Call, Koto Receiver, bool Confined)> candidates = new();
+        private readonly List<(object Requirement, BindingSymbol? Contract, Koto Call, Koto? Receiver)> producers = new();
+        private readonly List<(object Requirement, BindingSymbol? Contract, Koto Call, Koto Receiver, bool Confined)> candidates = new();
         private readonly List<(Koto Path, Koto Node)> replacements = new();
         private BodyScan? scan;
         private bool delegable;
@@ -124,6 +199,12 @@ public sealed partial class Binding
         private Koto? last;
         private bool valid;
         private bool destructions;
+        private BindingSymbol? published;
+        private OwnershipBody? cleanupSource;
+        private OwnershipBody? subjectBody;
+        private InterpretationContext subjectContext;
+        private OwnershipBody? cleanupTarget;
+        private ulong cleanupCases;
 
         /// <summary>Gets the kind of the first effect that violated a bound in the last check.</summary>
         internal EffectViolation Violation { get; private set; }
@@ -194,7 +275,7 @@ public sealed partial class Binding
 
                 if (this.destructions && property.InitializerKoto is not null && !StaticScalar.TryGet(node.BoundSymbol.Property, out _))
                 {
-                    this.Violate(EffectViolation.UnknownDestruction, node);
+                    this.DestructionLimit(node);
                     return;
                 }
             }
@@ -237,13 +318,42 @@ public sealed partial class Binding
         // unrelated signatures repeatedly resize the same call's argument and substitution arrays on every rebind.
         internal void BeginPass() => this.callCount = 0;
 
+        // Capture the same remaining parts that ordinary effect checking visits, before this pooled case body is reused.
+        internal void CollectDestructions(OwnershipBody source, OwnershipBody target, ulong cases)
+        {
+            if (source.Issues.Count != 0)
+            {
+                return;
+            }
+
+            this.valid = true;
+            this.destructions = true;
+            this.contexts.Clear();
+            this.contexts.Add(null);
+            this.context = 0;
+            this.cleanupSource = source;
+            this.cleanupTarget = target;
+            this.cleanupCases = cases;
+            try
+            {
+                this.Cleanups(source);
+            }
+            finally
+            {
+                this.cleanupSource = null;
+                this.cleanupTarget = null;
+                this.cleanupCases = 0;
+            }
+        }
+
         // SPEC 8.4.8.2: the bounds are judged in the conformance scope (D and the conditions P); the implementation's result
         // is normalized there, so a forwarded `I.(LendingIterator).LentItem(step)` is the step-independent `I.Item` under
         // `I is Iterator`. With `destructions`, the values each reached body destroys are summarized too.
-        internal bool Check(bool confined, bool preserves, BindingSymbol implementation, BindingScope scope, bool destructions, BoundType? callable = null, SemanticsKind receiver = SemanticsKind.Ref)
+        internal bool Check(bool confined, bool preserves, BindingSymbol implementation, BindingScope scope, bool destructions, BoundType? callable = null, SemanticsKind receiver = SemanticsKind.Ref, bool implementationBody = false, BindingSymbol? published = null)
         {
             this.confined = confined;
             this.preserves = preserves;
+            this.published = published;
             this.scope = scope;
             this.valid = true;
             this.destructions = destructions;
@@ -278,7 +388,7 @@ public sealed partial class Binding
                 }
 
                 var item = binding.ContractType(declared, scope);
-                if (!item.CarriesOrigin && !AbstractTypes.HasAbstractPart(item))
+                if (!item.CarriesOrigin && !item.HasAbstractPart)
                 {
                     // A result that keeps no Loan conflicts with no effect.
                     this.preserves = false;
@@ -297,7 +407,16 @@ public sealed partial class Binding
                 }
             }
 
-            this.Function(implementation, callable is null ? null : binding.FunctionItemContext(callable));
+            if (implementationBody && this.implementation is { } body)
+            {
+                // The obligation checks this body; all calls inside it still use their own dispatch kind.
+                this.Body(body, null);
+            }
+            else
+            {
+                this.Function(implementation, callable is null ? null : binding.FunctionItemContext(callable, requireClosed: false));
+            }
+
             if (callable is { Kind: BoundTypeKind.Closure } && receiver == SemanticsKind.Owner &&
                 callable.Symbol?.Declaration is FunctionKoto { BoundClosure.Receiver: not SemanticsKind.Owner })
             {
@@ -352,7 +471,7 @@ public sealed partial class Binding
         private static LoanRequirement Mode(BoundType? type)
             => type?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref;
 
-        private static bool MaySelect(Specialization candidate, BoundCall call)
+        private static bool MaySelect(Specialization candidate, CallPlan call)
         {
             for (var i = 0; i < call.TypeArguments.Length; i++)
             {
@@ -375,7 +494,7 @@ public sealed partial class Binding
 
         private static bool MayMatch(BoundType pattern, BoundType closed)
         {
-            if (ReferenceEquals(pattern, closed) || AbstractTypes.IsAbstract(pattern))
+            if (ReferenceEquals(pattern, closed) || pattern.IsAbstract)
             {
                 return true;
             }
@@ -398,13 +517,13 @@ public sealed partial class Binding
             return true;
         }
 
-        // The receiver parameter of a call, whether bound as its receiver or as its first argument.
-        private static BoundType? Receiver(BoundCall call)
+        // The receiver parameter of a bound or unbound call, in its declared slot.
+        private static BoundType? Receiver(CallPlan call)
         {
             var receiver = call.ReceiverOperation.ParameterType;
             for (var i = 0; receiver is null && i < call.ArgumentOperations.Length; i++)
             {
-                if (call.ArgumentOperations[i].ParameterIndex == 0)
+                if (call.ArgumentOperations[i].ParameterIndex == call.Target.ReceiverIndex)
                 {
                     receiver = call.ArgumentOperations[i].ParameterType;
                 }
@@ -415,6 +534,19 @@ public sealed partial class Binding
 
         // An associated projection, whose root Type is not a part of its values.
         private static bool IsProjection(BoundType type) => type is { Kind: BoundTypeKind.AssociatedProjection, Components.Count: 2 };
+
+        private SemanticsMask AdaptationSemantics(BoundType type, Koto use)
+        {
+            if (this.Type(type) is not { } selected)
+            {
+                this.Violate(EffectViolation.Limit, use);
+                return SemanticsMask.None;
+            }
+
+            var scope = !ReferenceEquals(selected, type) && TryAdaptationSelector(selected, out var whole) && whole.Symbol is { } selector
+                ? selector.Scope : binding.ConstraintScope(use);
+            return binding.ResultSemantics(selected, scope);
+        }
 
         // Whether a value of `type` holds a raw pointer at any depth: in a Type argument, a component, a stored Field or a
         // Case payload. A recursive struct is cut off at a fixed depth, which counts as holding one.
@@ -439,18 +571,18 @@ public sealed partial class Binding
                 }
             }
 
-            if (StructStorage.IsStruct(type))
+            if (AdtDef.IsStruct(type))
             {
-                for (var i = 0; i < StructStorage.Count(type); i++)
+                for (var i = 0; i < AdtDef.Count(type); i++)
                 {
-                    if (this.ContainsRawPointer(StructStorage.FieldType(type, i), depth + 1))
+                    if (this.ContainsRawPointer(AdtDef.FieldType(type, i), depth + 1))
                     {
                         return true;
                     }
                 }
             }
 
-            for (var i = 0; type.StoredCases is { } cases && i < cases.Length; i++)
+            for (var i = 0; AdtDef.CaseTypes(type) is { } cases && i < cases.Length; i++)
             {
                 if (this.ContainsRawPointer(cases[i], depth + 1))
                 {
@@ -496,6 +628,19 @@ public sealed partial class Binding
             this.Queue(binding.StorageProjection(node));
             switch (node)
             {
+                case ConversionKoto { CreationCall: { } creation }:
+                    this.Queue(creation);
+                    break;
+                case ConversionKoto { Adaptation: { Creates: true } plan, CreationStorage.BoundCall: { } factory } conversion:
+                    if ((this.AdaptationSemantics(plan.Source, conversion) & SemanticsMask.Owner) != 0 &&
+                        (this.AdaptationSemantics(plan.Target, conversion) & SemanticsMask.Object) != 0)
+                    {
+                        // Every creation case has the same confined allocation effect. Its ordinary input acquisition
+                        // and written operand are inspected below once, without revisiting a synthetic argument tree.
+                        this.Target(factory, conversion);
+                    }
+
+                    break;
                 case IndexKoto:
                     this.Queue(binding.ResolvedKeyCall(node));
                     break;
@@ -504,6 +649,24 @@ public sealed partial class Binding
                     break;
                 case BinaryKoto { ComparisonCall: { } comparison }:
                     this.Queue(comparison);
+                    break;
+                case BinaryKoto { ArithmeticCall: { } arithmetic } arithmeticSource:
+                    this.Queue(arithmetic);
+                    if (arithmetic.RightFirstArguments)
+                    {
+                        if (binding.PropertyCall(arithmeticSource.Left, PropertyAccessorKind.Set) is { } arithmeticSetter)
+                        {
+                            this.Queue(arithmeticSetter);
+                        }
+                        else
+                        {
+                            this.PlaceAccess(arithmeticSource.Left, LoanRequirement.Uniq, node);
+                        }
+                    }
+
+                    break;
+                case UnaryKoto { ArithmeticCall: { } unary }:
+                    this.Queue(unary);
                     break;
                 case ForKoto { Iteration: { Decomposition.IsCurrent: true } iteration } loop:
                     // SPEC 14.6.2: the entry call, the internal Iterator local with its destruction, and each step.
@@ -557,6 +720,21 @@ public sealed partial class Binding
                     this.Access(borrow.BoundType, Mode(borrow.BoundType), node);
                     this.PlaceAccess(borrow.Left, Mode(borrow.BoundType), node);
                     break;
+                case ConversionKoto { Adaptation: { } explicitPlan } explicitAdaptation:
+                    var admitted = this.AdaptationSemantics(explicitPlan.Target, explicitAdaptation);
+                    if ((explicitPlan.Operations & ((1U << (int)ConversionBinding.Borrow) | (1U << (int)ConversionBinding.ObjectUpcast))) != 0 &&
+                        (admitted & SemanticsMask.Borrow) != 0)
+                    {
+                        var borrowing = (admitted & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0 ? LoanRequirement.Uniq : LoanRequirement.Ref;
+                        this.Access(explicitPlan.Target, borrowing, node);
+                        this.PlaceAccess(explicitAdaptation.Left, borrowing, node);
+                    }
+                    else
+                    {
+                        this.Argument(new(explicitAdaptation.Left, explicitPlan.Source, explicitPlan.Source, ArgumentOperationKind.Value, ArgumentAdaptation.Exact), node);
+                    }
+
+                    break;
                 case ConversionKoto { ConversionBinding: ConversionBinding.Address } address:
                     this.PlaceAccess(address.Left, LoanRequirement.Ref, node); // SPEC 5.4: an immediately ending borrow.
                     break;
@@ -596,7 +774,7 @@ public sealed partial class Binding
 
             switch (parent)
             {
-                case ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.Address or ConversionBinding.Transfer or ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } conversion:
+                case ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.Address or ConversionBinding.Transfer or ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow or ConversionBinding.CaseAdaptation } conversion:
                     return ReferenceEquals(conversion.Left, node);
                 case BinaryKoto assignment when IsAssignment(assignment.Akind):
                     return ReferenceEquals(assignment.Left, node);
@@ -691,7 +869,7 @@ public sealed partial class Binding
 
             if (this.Type(type) is not { } layer)
             {
-                this.Violate(EffectViolation.UnclassifiedAccess, use); // An access whose Type cannot be instantiated has no classified Loan.
+                this.Violate(EffectViolation.Limit, use); // An access whose Type cannot be instantiated has no classified Loan.
                 return;
             }
 
@@ -744,7 +922,7 @@ public sealed partial class Binding
         // reach any Loan, which conflicts with any item Loan.
         private void Reachable(BoundType? type, LoanRequirement mode, Koto use)
         {
-            if (type is null || AbstractTypes.IsAbstract(type))
+            if (type is null || type.IsAbstract)
             {
                 this.Violate(EffectViolation.UnclassifiedAccess, use);
                 return;
@@ -788,7 +966,7 @@ public sealed partial class Binding
             }
         }
 
-        private void Call(BoundCall call, Koto use)
+        private void Call(CallPlan call, Koto use)
         {
             this.Argument(call.ReceiverOperation, use);
             for (var i = 0; i < call.ArgumentOperations.Length; i++)
@@ -800,7 +978,7 @@ public sealed partial class Binding
             {
                 if (binding.InstantiateForwardedCall(call, outer, this.NextCall()) is not { } instantiated)
                 {
-                    this.Violate(EffectViolation.UnclassifiedCall, use);
+                    this.Violate(EffectViolation.Limit, use);
                     return;
                 }
 
@@ -818,24 +996,24 @@ public sealed partial class Binding
             this.Target(call, use);
         }
 
-        private void Callable(BoundValueCall call, Koto use)
+        private void Callable(CallPlan call, Koto use)
         {
-            for (var i = 0; i < call.Arguments.Length; i++)
+            for (var i = 0; i < call.ArgumentOperations.Length; i++)
             {
-                this.Argument(call.Arguments[i], use);
+                this.Argument(call.ArgumentOperations[i], use);
             }
 
-            var type = CallableCore(this.Type(call.ReceiverType));
+            var type = CallableCore(this.Type(call.CalleeType));
             if (type is null)
             {
-                this.Violate(EffectViolation.UnclassifiedCall, use);
+                this.Violate(EffectViolation.Limit, use);
                 return;
             }
 
             if (type.Kind is BoundTypeKind.FunctionItem or BoundTypeKind.Closure && type.Symbol is { } symbol)
             {
                 this.stepUse = use;
-                this.Function(symbol, binding.FunctionItemContext(type));
+                this.Function(symbol, binding.FunctionItemContext(type, requireClosed: false));
                 this.stepUse = null;
                 if (type.Kind == BoundTypeKind.Closure && call.ReceiverKind == SemanticsKind.Owner &&
                     type.Symbol.Declaration is FunctionKoto { BoundClosure.Receiver: not SemanticsKind.Owner })
@@ -864,14 +1042,14 @@ public sealed partial class Binding
                 this.stepUse = null;
                 if (this.Type(call.ReturnType) is { } produced && this.MentionsItemPart(binding.ContractType(produced, this.scope!)))
                 {
-                    this.producers.Add((type, use, own));
+                    this.producers.Add((type, null, use, own));
                 }
 
                 // The bound excludes earlier results of this value only. Apply the same producer/path proof used
                 // for requirement delegation, so two callbacks of one Type cannot borrow each other's guarantee.
                 if (available.Preserves && this.delegable && own is not null && (!this.confined || available.Confined))
                 {
-                    this.candidates.Add((type, use, own, available.Confined));
+                    this.candidates.Add((type, null, use, own, available.Confined));
                     return;
                 }
             }
@@ -888,7 +1066,7 @@ public sealed partial class Binding
             }
         }
 
-        private void Target(BoundCall call, Koto use)
+        private void Target(CallPlan call, Koto use)
         {
             var kind = call.Target.CompilerFunction;
             if (kind is CompilerFunctionKind.ArrayClear or CompilerFunctionKind.Replace)
@@ -917,7 +1095,7 @@ public sealed partial class Binding
                 // Formatting dispatch runs its selected witness; built-in formatting only writes its inputs.
                 if (!binding.TryResolveFormattingCallback(call, out var implementation))
                 {
-                    this.Violate(EffectViolation.UnclassifiedCall, use);
+                    this.Violate(EffectViolation.Limit, use);
                 }
                 else if (implementation is not null)
                 {
@@ -942,7 +1120,7 @@ public sealed partial class Binding
         {
             if (plan is null)
             {
-                this.Violate(EffectViolation.UnclassifiedCall, null);
+                this.Violate(EffectViolation.Limit, null);
                 return;
             }
 
@@ -957,13 +1135,16 @@ public sealed partial class Binding
             }
         }
 
-        private void Function(BindingSymbol symbol, BoundCall? call)
+        private void Function(BindingSymbol symbol, CallPlan? call)
         {
+            // A closed requirement Item has already retained its verified witness mapping.
+            symbol = call?.Target ?? symbol;
             if (symbol.CompilerFunction != CompilerFunctionKind.None)
             {
-                if (!this.Allows(symbol.CompilerFunction))
+                var effect = ClassifyCompilerFunction(symbol.CompilerFunction);
+                if (effect != CompilerFunctionEffect.Inputs && (effect != CompilerFunctionEffect.Environment || this.confined))
                 {
-                    this.Violate(symbol.CompilerFunction is CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 ? EffectViolation.ExternalOperation : EffectViolation.UnclassifiedCall, null);
+                    this.Violate(effect == CompilerFunctionEffect.Environment ? EffectViolation.ExternalOperation : EffectViolation.Limit, null);
                 }
 
                 return;
@@ -971,7 +1152,7 @@ public sealed partial class Binding
 
             if (symbol.Declaration is not FunctionKoto function)
             {
-                this.Violate(EffectViolation.UnclassifiedCall, null);
+                this.Violate(EffectViolation.Limit, null);
                 return;
             }
 
@@ -981,13 +1162,49 @@ public sealed partial class Binding
                 return;
             }
 
+            if (function.IsVirtual)
+            {
+                if (call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true })
+                {
+                    if (call.VirtualImplementation is not { BoundSymbol: { } implementation } body || call.VirtualImplementingType is null)
+                    {
+                        this.Violate(EffectViolation.Limit, null);
+                        return;
+                    }
+
+                    var context = call;
+                    if (!ReferenceEquals(body, function))
+                    {
+                        context = this.NextCall();
+                        context.Set(implementation, call.ReturnType, call.Receiver, call.ArgumentToParameter, call.TypeArguments, declaringType: call.VirtualImplementingType, origins: call.Origins, inputOrigins: call.InputOrigins, operations: call.ArgumentOperations, receiverOperation: call.ReceiverOperation, lengthArguments: call.LengthArguments);
+                    }
+
+                    this.Body(body, context);
+                }
+                else if (call is not null)
+                {
+                    this.Requirement(symbol, call);
+                }
+                else
+                {
+                    // A Contract witness must satisfy its bounds from the slot contract, not an accidental body effect.
+                    var bounds = binding.AvailableEffectBounds(function, null, this.scope!);
+                    if ((this.confined && !bounds.Confined) || (this.preserves && !bounds.Preserves))
+                    {
+                        this.Violate(EffectViolation.UnboundedVirtual, function);
+                    }
+                }
+
+                return;
+            }
+
             if (function.Body is null && function.ExpressionBody is null && !(function.IsConstructor && function.IsGenerated))
             {
                 // SPEC 22.3.1, 8.4.10.2: a foreign function accesses only what its arguments permit, which the arguments
                 // already accessed, and the environment, which confined excludes. Any other bodyless call is unknown.
                 if (!IsLibraryImport(function))
                 {
-                    this.Violate(EffectViolation.UnclassifiedCall, null);
+                    this.Violate(EffectViolation.Limit, null);
                 }
                 else if (this.confined)
                 {
@@ -1021,28 +1238,11 @@ public sealed partial class Binding
             }
         }
 
-        // These operations act only on their acquired inputs and the allocator; comparison, formatting and destruction
-        // callbacks are summarized separately. Console output is an environment effect, outside confined (SPEC 8.4.10.2).
-        private bool Allows(CompilerFunctionKind kind) => kind switch
-        {
-            CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 => !this.confined,
-            CompilerFunctionKind.Abort or CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap or CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc or CompilerFunctionKind.MakeArc or CompilerFunctionKind.Clone or
-                >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.TextHeap or
-                CompilerFunctionKind.TextWriter or CompilerFunctionKind.TextUtf8 or CompilerFunctionKind.TextValidateUtf8 or
-                >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus or CompilerFunctionKind.BuiltinFormat or
-                CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or
-                CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive or
-                CompilerFunctionKind.StorageOwn or
-                >= CompilerFunctionKind.StorageBorrowDictionary and <= CompilerFunctionKind.StorageTransferBytes or
-                >= CompilerFunctionKind.RawAllocate and <= CompilerFunctionKind.RawSlice => true, // SPEC 5.6: an allocation and raw accesses.
-            _ => false,
-        };
-
         // SPEC 8.4.10.4: a requirement call has the effects that the bounds available under its premises leave. With preserves
         // results, a call of the one delegated requirement on the one stored value is covered (SPEC 8.4.10.5). Without
         // confined, its environment effects are unknown, which a bound check counts as a conflict. Its inputs are affected
         // in their parameters' modes, which only preserves results classifies.
-        private void Requirement(BindingSymbol symbol, BoundCall? call)
+        private void Requirement(BindingSymbol symbol, CallPlan? call)
         {
             if (call is null || symbol.Declaration is not FunctionKoto requirement)
             {
@@ -1053,30 +1253,46 @@ public sealed partial class Binding
             // The premises are those of the call's own scope and, in the implementation's own body, the conditions of the
             // conformance (SPEC 8.4.8.2), such as I is Iterator for Self is Iterator when I is Iterator.
             var conforming = call.ConformingType is { } type ? this.Type(type) : null;
-            var (confined, preserves) = binding.AvailableEffectBounds(requirement, conforming, this.scope!);
+            var reference = call.RequirementContract is { } declared && this.Type(declared.Type!) is { } applied
+                ? ReferenceEquals(applied, declared.Type) ? declared : binding.BoundContractReference(applied) : null;
+            var (confined, preserves) = binding.AvailableEffectBounds(requirement, conforming, this.scope!, reference: reference);
+            if (ReferenceEquals(requirement.BoundSymbol, this.published))
+            {
+                return; // SPEC 4.7.5: the parameter-dependent effect the operation's row publishes.
+            }
+
             if (this.stepUse is { } use && (!confined || !preserves))
             {
-                var (local, held) = binding.AvailableEffectBounds(requirement, conforming, binding.ConstraintScope(use));
+                var (local, held) = binding.AvailableEffectBounds(requirement, conforming, binding.ConstraintScope(use), reference: call.RequirementContract);
                 confined |= local;
                 preserves |= held;
             }
 
+            var untried = false;
             if (this.preserves)
             {
                 // SPEC 8.4.10.5: every requirement call producing a value of an abstract part of the result is recorded.
                 var own = this.OwnFieldPathReceiver();
-                if (this.Type(call.ReturnType) is { } produced && this.MentionsItemPart(binding.ContractType(produced, this.scope!)))
+                var producer = this.Type(call.ReturnType) is { } produced && this.MentionsItemPart(binding.ContractType(produced, this.scope!));
+                if (producer)
                 {
-                    this.producers.Add((requirement, this.stepUse ?? symbol.Declaration, own));
+                    this.producers.Add((requirement, reference, this.stepUse ?? symbol.Declaration, own));
                 }
 
+                // Virtual exclusions additionally need actual-object and bound-slot identity, which are not implemented: such a
+                // call retains its producer, and a conflict its exclusion might remove is a limit (plan rule 5).
                 if (preserves && this.delegable && own is not null)
                 {
-                    this.candidates.Add((requirement, this.stepUse!, own, confined));
-                    return;
+                    if (!requirement.IsVirtual)
+                    {
+                        this.candidates.Add((requirement, reference, this.stepUse!, own, confined));
+                        return;
+                    }
+
+                    untried = producer;
                 }
 
-                if (preserves)
+                if (preserves && !requirement.IsVirtual)
                 {
                     this.Delegation = this.delegable ? DelegationFailure.CallSite : DelegationFailure.Untraced;
                 }
@@ -1084,19 +1300,26 @@ public sealed partial class Binding
 
             if (!confined)
             {
-                this.Violate(EffectViolation.UnboundedRequirement, null);
+                this.Violate(untried && !this.confined ? EffectViolation.Limit : requirement.IsVirtual ? EffectViolation.UnboundedVirtual : EffectViolation.UnboundedRequirement, requirement.IsVirtual && this.stepUse is null ? requirement : null);
                 return;
             }
 
             if (this.preserves)
             {
-                this.Reachable(Receiver(call) is { } receiver ? this.Type(receiver) : null, LoanRequirement.Uniq, symbol.Declaration);
+                var valid = this.valid;
+                var receiver = Receiver(call) is { } input ? this.Type(input) : null;
+                this.Reachable(receiver, Mode(receiver), symbol.Declaration);
                 for (var i = 0; this.valid && i < call.ArgumentOperations.Length; i++)
                 {
-                    if (call.ArgumentOperations[i] is { ParameterIndex: > 0, ParameterType: { } parameter } && (ReferenceTypes.IsBorrow(parameter) || ObjectTypes.IsBorrow(parameter)))
+                    if (call.ArgumentOperations[i] is { ParameterType: { } parameter } argument && argument.ParameterIndex != symbol.ReceiverIndex && (ReferenceTypes.IsBorrow(parameter) || parameter.IsObjectBorrow))
                     {
                         this.Reachable(this.Type(parameter), Mode(parameter), symbol.Declaration);
                     }
+                }
+
+                if (untried && valid && !this.valid)
+                {
+                    this.Violation = EffectViolation.Limit;
                 }
             }
         }
@@ -1123,7 +1346,7 @@ public sealed partial class Binding
             for (var c = 0; this.valid && c < this.candidates.Count; c++)
             {
                 var candidate = this.candidates[c];
-                var failure = this.DelegationFailureOf(candidate.Requirement, candidate.Receiver, out var blocking);
+                var failure = this.DelegationFailureOf(candidate.Requirement, candidate.Contract, candidate.Receiver, out var blocking);
                 if (failure != DelegationFailure.None)
                 {
                     // The call's effects are then those of SPEC 8.4.10.4, which reach every Loan of the abstract value.
@@ -1136,7 +1359,7 @@ public sealed partial class Binding
             }
         }
 
-        private DelegationFailure DelegationFailureOf(object requirement, Koto receiver, out Koto? blocking)
+        private DelegationFailure DelegationFailureOf(object requirement, BindingSymbol? contract, Koto receiver, out Koto? blocking)
         {
             for (var i = 0; i < this.replacements.Count; i++)
             {
@@ -1158,11 +1381,11 @@ public sealed partial class Binding
                 }
             }
 
-            for (var i = 0; StructStorage.IsStruct(this.receiverType) && i < StructStorage.Count(this.receiverType!); i++)
+            for (var i = 0; AdtDef.IsStruct(this.receiverType) && i < AdtDef.Count(this.receiverType!); i++)
             {
-                if (StructStorage.FieldType(this.receiverType!, i) is not { } stored || this.MentionsItemPart(binding.ContractType(stored, this.scope!)))
+                if (AdtDef.FieldType(this.receiverType!, i) is not { } stored || this.MentionsItemPart(binding.ContractType(stored, this.scope!)))
                 {
-                    blocking = StructStorage.Field(this.receiverType!, i);
+                    blocking = AdtDef.Field(this.receiverType!, i);
                     return DelegationFailure.Untraced;
                 }
             }
@@ -1170,7 +1393,7 @@ public sealed partial class Binding
             for (var i = 0; i < this.producers.Count; i++)
             {
                 var producer = this.producers[i];
-                var failure = !ReferenceEquals(producer.Requirement, requirement) ? DelegationFailure.OtherRequirement
+                var failure = !ReferenceEquals(producer.Requirement, requirement) || !ReferenceEquals(producer.Contract, contract) ? DelegationFailure.OtherRequirement
                     : producer.Receiver is not { } path || this.SelfPathDepth(path) != this.SelfPathDepth(receiver) || !this.IsPathPrefix(path, receiver) ? DelegationFailure.OtherValue
                     : DelegationFailure.None;
                 if (failure != DelegationFailure.None)
@@ -1193,7 +1416,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            var receiver = call.BoundValueCall?.Receiver ?? (call.Method as MemberAccessKoto)?.Left;
+            var receiver = call.BoundValueCall?.CalleeValue ?? (call.Method as MemberAccessKoto)?.Left;
             while (receiver is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow)
             {
                 receiver = KotoHelper.UnwrapParentheses(borrow.Left);
@@ -1267,7 +1490,7 @@ public sealed partial class Binding
         // anywhere.
         private bool CollectItemParts(BoundType type)
         {
-            if (AbstractTypes.IsAbstract(type))
+            if (type.IsAbstract)
             {
                 if (!this.itemParts.Contains(type))
                 {
@@ -1318,7 +1541,7 @@ public sealed partial class Binding
             return false;
         }
 
-        private void Specialization(FunctionKoto function, BoundCall call)
+        private void Specialization(FunctionKoto function, CallPlan call)
         {
             // The specialization has its own input/Origin binders but inherits their slots from the original.
             var specialized = this.NextCall();
@@ -1326,7 +1549,7 @@ public sealed partial class Binding
             this.Body(function, specialized);
         }
 
-        private void Body(FunctionKoto function, BoundCall? call)
+        private void Body(FunctionKoto function, CallPlan? call)
         {
             var previous = this.context;
             if (call is not null)
@@ -1337,11 +1560,11 @@ public sealed partial class Binding
             this.Queue(function.Body);
             this.Queue(function.ExpressionBody);
             this.Queue(function.BaseInitializer);
-            if (function.IsConstructor && (call?.DeclaringType ?? StructStorage.ReceiverType(function)) is { } owner)
+            if (function.IsConstructor && (call?.DeclaringType ?? AdtDef.ReceiverType(function)) is { } owner)
             {
-                for (var i = 0; i < StructStorage.Count(owner); i++)
+                for (var i = 0; i < AdtDef.Count(owner); i++)
                 {
-                    this.Queue(StructStorage.Field(owner, i).InitializerKoto);
+                    this.Queue(AdtDef.Field(owner, i).InitializerKoto);
                 }
             }
 
@@ -1366,7 +1589,7 @@ public sealed partial class Binding
 
             if (binding.compilation.Ownership.TemplateBody(function, true) is not { } body)
             {
-                this.Violate(EffectViolation.UnknownDestruction, null);
+                this.DestructionLimit(null);
                 return;
             }
 
@@ -1375,6 +1598,26 @@ public sealed partial class Binding
                 return;
             }
 
+            if (body.HasCaseDestructions)
+            {
+                var cases = body.ApplicableCleanupCases(binding, this.contexts[this.context]);
+                for (var i = 0; this.valid && i < body.CaseDestructions.Count; i++)
+                {
+                    var destroyed = body.CaseDestructions[i];
+                    if ((destroyed.Cases & cases) != 0)
+                    {
+                        this.Destruction(destroyed.Type is { } type ? this.Type(type) : null, destroyed.Source);
+                    }
+                }
+
+                return;
+            }
+
+            this.Cleanups(body);
+        }
+
+        private void Cleanups(OwnershipBody body)
+        {
             for (var id = 0; this.valid && id < body.Operations.Count; id++)
             {
                 if (!body.IsReachable(id))
@@ -1388,14 +1631,11 @@ public sealed partial class Binding
                     // A write to the result initializes it and has no cleanup step of its own.
                     case OwnershipOperationKind.Cleanup or OwnershipOperationKind.Write when operation.Place >= 0 && (uint)body.OperationSteps[id] < (uint)body.CleanupSteps.Count &&
                         body.CleanupSteps[body.OperationSteps[id]].Operation == id:
-                        var action = body.CleanupSteps[body.OperationSteps[id]].Action;
-                        if (action == CleanupAction.Unsupported)
-                        {
-                            this.Violate(EffectViolation.UnknownDestruction, operation.Source);
-                        }
-                        else if (action != CleanupAction.Skip && (body.GetStorageState(id, operation.Place) & PlaceState.MayOwn) != 0)
+                        if (body.CleanupSteps[body.OperationSteps[id]].Action != CleanupAction.Skip && (body.GetStorageState(id, operation.Place) & PlaceState.MayOwn) != 0)
                         {
                             var place = body.Places[operation.Place];
+                            this.subjectBody = body;
+                            this.subjectContext = body.ContextOf(operation.Place); // The Subject's own context, recorded at its construction.
                             if (operation.Kind != OwnershipOperationKind.Cleanup || place.Kind != OwnershipPlaceKind.Subject || this.Type(place.Type) is not { } subject ||
                                 !this.SubjectDestroyed(place.Source, operation.Source, subject))
                             {
@@ -1508,7 +1748,7 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    this.Destruction(this.Type(part.MatchedType), use);
+                    this.Destruction(this.DeclaredType(part.MatchedType), use);
                 }
             }
         }
@@ -1543,22 +1783,41 @@ public sealed partial class Binding
                 return;
             }
 
-            for (var part = 0; remainder && this.valid && part < node.Count; part++)
+            this.DestroyedLayer(body, path, node.Type, use, remainder);
+        }
+
+        private void DestroyedLayer(OwnershipBody body, int path, BoundType type, Koto use, bool remainder)
+        {
+            var node = body.GetMovePath(path);
+            var first = AdtDef.Base(type) is { } parentType ? AdtDef.StorageCount(parentType) : 0;
+            var count = type.Kind == BoundTypeKind.FixedArray ? (int)type.Length : type.Kind == BoundTypeKind.Tuple ? type.Components.Count : AdtDef.StorageCount(type);
+            for (var part = first; remainder && this.valid && part < count; part++)
             {
                 if (!HasPath(body, node, part))
                 {
-                    this.Destruction(PartType(node.Type, part) is { } stored ? this.Type(stored) : null, use);
+                    this.Destruction(PartType(type, part - first) is { } stored ? this.Type(stored) : null, use);
                 }
             }
 
             for (var child = node.Child; this.valid && child >= 0; child = body.GetMovePath(child).Next)
             {
-                this.DestroyedParts(body, child, use);
+                if (body.GetMovePath(child).Selector >= first && body.GetMovePath(child).Selector < count)
+                {
+                    this.DestroyedParts(body, child, use);
+                }
             }
 
-            if (remainder && node.Type.StoredBase is { } parent)
+            if (AdtDef.Base(type) is { } parent)
             {
-                this.Destruction(this.Type(parent), use);
+                var complete = body.CurrentBaseComplete(path, first);
+                if (complete && remainder)
+                {
+                    this.Destruction(this.Type(parent), use);
+                }
+                else if (!complete)
+                {
+                    this.DestroyedLayer(body, path, parent, use, remainder);
+                }
             }
 
             static bool HasPath(OwnershipBody body, MovePath node, int selector)
@@ -1578,12 +1837,18 @@ public sealed partial class Binding
             {
                 BoundTypeKind.FixedArray => type.Components[0],
                 BoundTypeKind.Tuple => type.Components[selector],
-                _ => StructStorage.FieldType(type, selector),
+                _ => AdtDef.FieldType(type, selector),
             };
         }
 
         private void Destruction(BoundType? type, Koto use)
         {
+            if (this.cleanupTarget is { } target)
+            {
+                target.AddCaseDestruction(type, use, this.cleanupCases);
+                return;
+            }
+
             if (!this.destructions)
             {
                 return; // Binding checks accesses and calls; destruction is counted after ownership analysis.
@@ -1591,7 +1856,7 @@ public sealed partial class Binding
 
             if (type is null)
             {
-                this.Violate(EffectViolation.UnknownDestruction, use);
+                this.DestructionLimit(use);
                 return;
             }
 
@@ -1600,7 +1865,7 @@ public sealed partial class Binding
                 return;
             }
 
-            if (ObjectTypes.HandleMode(type) is not null)
+            if (type.HandleMode is not null)
             {
                 // An open view can hide any more-derived destructor, which has no complete effect bound.
                 if (binding.ProveSealed(type.Components[0], use) == ConstraintProof.Proven)
@@ -1625,19 +1890,19 @@ public sealed partial class Binding
             {
                 this.Violate(EffectViolation.UnknownDestruction, use); // A Type parameter that is not proven Copy may have any destructor.
             }
-            else if (StructStorage.IsStruct(type))
+            else if (AdtDef.IsStruct(type))
             {
                 if (binding.DestructionCall(type) is { } destructor)
                 {
                     this.Function(destructor.Target, destructor);
                 }
 
-                for (var i = 0; i < StructStorage.Count(type); i++)
+                for (var i = 0; i < AdtDef.Count(type); i++)
                 {
-                    this.Destruction(StructStorage.FieldType(type, i), use);
+                    this.Destruction(AdtDef.FieldType(type, i), use);
                 }
 
-                if (binding.StoredBase(type) is { } parent)
+                if (AdtDef.Base(type) is { } parent)
                 {
                     this.Destruction(parent, use);
                 }
@@ -1649,7 +1914,7 @@ public sealed partial class Binding
                     this.Destruction(type.Components[i], use);
                 }
 
-                if (type.StoredCases is { } cases)
+                if (AdtDef.CaseTypes(type) is { } cases)
                 {
                     for (var i = 0; i < cases.Length; i++)
                     {
@@ -1664,14 +1929,14 @@ public sealed partial class Binding
         private void StoredValues(BoundType? receiver)
         {
             this.storedValues.Clear();
-            if (!StructStorage.IsStruct(receiver))
+            if (!AdtDef.IsStruct(receiver))
             {
                 return;
             }
 
-            for (var i = 0; i < StructStorage.Count(receiver!); i++)
+            for (var i = 0; i < AdtDef.Count(receiver!); i++)
             {
-                if (StructStorage.FieldType(receiver!, i) is { Kind: BoundTypeKind.Semantics, Semantics: not SemanticsKind.Owner, Components: [var value], Origin: { } storage })
+                if (AdtDef.FieldType(receiver!, i) is { Kind: BoundTypeKind.Semantics, Semantics: not SemanticsKind.Owner, Components: [var value], Origin: { } storage })
                 {
                     this.storedValues.Add((value, storage));
                 }
@@ -1718,7 +1983,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (AbstractTypes.IsAbstract(type) && (exclusive || !shared))
+            if (type.IsAbstract && (exclusive || !shared))
             {
                 if (type.Origin is { } outer && this.SharesDependency(accessed, outer, use))
                 {
@@ -1789,7 +2054,7 @@ public sealed partial class Binding
             return false;
         }
 
-        private BoundCall NextCall()
+        private CallPlan NextCall()
         {
             if (this.callCount == this.calls.Count)
             {
@@ -1810,8 +2075,18 @@ public sealed partial class Binding
         }
 
         // Records the first effect that violates a bound, at its node and at the own-body syntax that reaches it.
+        // A destruction this implementation cannot classify yet: a limit of the check, or an unknown destruction of the collected
+        // cleanups, which their check judges.
+        private void DestructionLimit(Koto? at) => this.Violate(this.cleanupTarget is null ? EffectViolation.Limit : EffectViolation.UnknownDestruction, at);
+
         private void Violate(EffectViolation kind, Koto? at)
         {
+            if (this.cleanupTarget is { } target && kind == EffectViolation.UnknownDestruction)
+            {
+                target.AddCaseDestruction(null, at ?? this.cleanupSource!.Function, this.cleanupCases);
+                return;
+            }
+
             if (!this.valid)
             {
                 return;
@@ -1823,12 +2098,17 @@ public sealed partial class Binding
             this.ViolationSite = this.site ?? this.ViolationNode;
         }
 
+        // SPEC 8.10 (PLAN G82): a declared Pattern Type is interpreted in its Subject's context, then composed with any outer call
+        // context like an analyzed Type.
+        private BoundType? DeclaredType(BoundType type) => this.subjectBody!.SubstituteDefaults(type, this.subjectContext) is { } declared ? this.Type(declared) : null;
+
         private BoundType? Type(BoundType type)
-            => this.contexts[this.context] is { } call ? binding.InstantiateStorageType(type, call) : type;
+            => this.cleanupSource is { } body ? body.Resolve(type, InterpretationContext.Root)
+            : this.contexts[this.context] is { } call ? binding.InstantiateStorageType(type, call) : type;
 
         // A call instantiates the callee's parameters, lengths and Origins; a call that substitutes nothing reads
         // the callee's Types as declared.
-        private int Context(BoundCall call)
+        private int Context(CallPlan call)
         {
             if (call.TypeArguments.Length == 0 && call.LengthArguments.Length == 0 && call.Origins.Length == 0 && call.InputOrigins.Length == 0 &&
                 call.DeclaringType is null or { Components.Count: 0, OriginArguments.Count: 0 })
@@ -1843,7 +2123,7 @@ public sealed partial class Binding
 
             if (this.contexts.Count >= 1024)
             {
-                this.Violate(EffectViolation.UnclassifiedCall, null); // An unbounded effect expansion cannot prove conformance.
+                this.Violate(EffectViolation.Limit, null); // An effect expansion beyond 1024 instantiation contexts is not summarized.
                 return 0;
             }
 
@@ -1873,7 +2153,7 @@ public sealed partial class Binding
                         this.Replace(transfer.Left, node);
                         break;
                     case ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq } borrow:
-                        if (borrow.Parent is not InvocationKoto { BoundValueCall: { } own } || !ReferenceEquals(own.Receiver, borrow))
+                        if (borrow.Parent is not InvocationKoto { BoundValueCall: { } own } || !ReferenceEquals(own.CalleeValue, borrow))
                         {
                             this.Replace(borrow.Left, node);
                         }
@@ -1897,11 +2177,11 @@ public sealed partial class Binding
 
                         break;
                     case InvocationKoto { BoundValueCall: { } callable }:
-                        for (var i = 0; i < callable.Arguments.Length; i++)
+                        for (var i = 0; i < callable.ArgumentOperations.Length; i++)
                         {
-                            if (IsExclusive(callable.Arguments[i].ParameterType))
+                            if (IsExclusive(callable.ArgumentOperations[i].ParameterType))
                             {
-                                this.Replace(callable.Arguments[i].Source, node);
+                                this.Replace(callable.ArgumentOperations[i].Source, node);
                             }
                         }
 
@@ -1924,16 +2204,16 @@ public sealed partial class Binding
     }
 
     // Two calls read the callee's Types identically when they agree on target, declaring Type and every substitution.
-    private sealed class CallInstanceComparer : IEqualityComparer<BoundCall>
+    private sealed class CallInstanceComparer : IEqualityComparer<CallPlan>
     {
         internal static readonly CallInstanceComparer Instance = new();
 
-        public bool Equals(BoundCall? x, BoundCall? y)
+        public bool Equals(CallPlan? x, CallPlan? y)
             => ReferenceEquals(x, y) || (x is not null && y is not null && ReferenceEquals(x.Target, y.Target) && ReferenceEquals(x.DeclaringType, y.DeclaringType) &&
                 x.TypeArguments.SequenceEqual(y.TypeArguments) && x.LengthArguments.SequenceEqual(y.LengthArguments) &&
                 x.Origins.SequenceEqual(y.Origins) && x.InputOrigins.SequenceEqual(y.InputOrigins));
 
-        public int GetHashCode(BoundCall call)
+        public int GetHashCode(CallPlan call)
         {
             var hash = HashCode.Combine(call.Target, call.DeclaringType, call.TypeArguments.Length, call.Origins.Length, call.InputOrigins.Length);
             for (var i = 0; i < call.TypeArguments.Length; i++)

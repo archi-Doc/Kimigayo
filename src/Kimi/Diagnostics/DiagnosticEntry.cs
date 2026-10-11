@@ -28,9 +28,6 @@ public partial record class DiagnosticEntry
     /// a record whose report lacks a referenced fact has no label.</summary>
     public string? Label { get; init; }
 
-    /// <summary>Gets conditional repair advice. It is prose: no edit or guarantee is inferred from it.</summary>
-    public string? Advice { get; init; }
-
     public string? Note { get; init; }
 
     /// <summary>Gets the message arguments as <c>name:Kind</c> pairs separated by commas, one for each argument. A kind is
@@ -63,14 +60,13 @@ public partial record class DiagnosticEntry
     [IgnoreMember]
     private CompositeFormat? labelFormat;
 
-    public DiagnosticEntry(string name, DiagnosticSeverity diagnosticSeverity, string message, DiagnosticCategory category = DiagnosticCategory.Language, string? label = default, string? advice = default, string? note = default)
+    public DiagnosticEntry(string name, DiagnosticSeverity diagnosticSeverity, string message, DiagnosticCategory category = DiagnosticCategory.Language, string? label = default, string? note = default)
     {
         this.Name = name;
         this.Severity = diagnosticSeverity;
         this.Category = category;
         this.Message = message;
         this.Label = label;
-        this.Advice = advice;
         this.Note = note;
     }
 

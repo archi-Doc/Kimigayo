@@ -90,7 +90,6 @@ public class LocalOriginClauseTest
         Assert.Equal((relation, "fit"), (reason[0].Value, reason[3].Value));
         Assert.All(reason[1..3], static x => Assert.Equal(("expression", DiagnosticValueKind.Origin), (x.Origin, x.Kind)));
         Assert.Null(error.Related);
-        Assert.Contains(relation == "==" ? "Use one Origin at both positions" : "add 'origin ", error.Advice, StringComparison.Ordinal);
     }
 
     // SPEC 15.3.5, 15.6.1: a Type argument's slots follow the variance of the generic slot that holds it, composed with the enclosing
@@ -102,9 +101,8 @@ public class LocalOriginClauseTest
     [InlineData(Writer + "func f(a: ref/i32, b: ref/i32, w0: W<H{p}>) -> i32\n    origin p.s == a\n    origin a outlives b\n    var w: W<H{x}> = w0@move\n        origin x.s == b\n    w.slot@follow = H.init(b)\n    return 0\n", "w0@move", "==", "requires b == a, which is not proven")]
     [InlineData(Reader + "func f(a: ref/i32, b: ref/i32, c0: R<H{p}>) -> i32\n    origin p.s == a\n    origin a outlives b\n    let c: R<H{x}> = c0@move\n        origin x.s == b\n    return (c.call)(H.init(b))\n", "c0@move", "outlives", "requires b outlives a, which is not proven")]
     // An exclusive target under a contravariant slot is invariant: the reversed outer `q outlives p` holds, and the target's slot
-    // needs `==`. Its fit is no obligation (CheckTypeUse needs an identical exclusive target) and goes to RecordMismatch, which named
-    // the covariant "p outlives q", a relation the position does not need, with that clause as Advice (p2e).
-    [InlineData(Reader + "func f(a: ref/i32, b: ref/i32, p: ref/i32, q: ref/i32, r0: R<uniq/H{hw} during p>) -> i32\n    origin hw.s == a\n    origin a outlives b\n    origin q outlives p\n    origin b outlives q\n    let r: R<uniq/H{x} during q> = r0@move\n        origin x.s == b\n    return 0\n", "r0@move", "==", "requires a == b, which is not proven")]
+    // needs `==`. Its fit records equality at the inner slot; the proven forward relation leaves only the reverse direction to report.
+    [InlineData(Reader + "func f(a: ref/i32, b: ref/i32, p: ref/i32, q: ref/i32, r0: R<uniq/H{hw} during p>) -> i32\n    origin hw.s == a\n    origin a outlives b\n    origin q outlives p\n    origin b outlives q\n    let r: R<uniq/H{x} during q> = r0@move\n        origin x.s == b\n    return 0\n", "r0@move", "==", "requires b == a, which is not proven")]
     // A value call's argument: covariant (it was a fact-less UnprovenConstraint_Kd), invariant and contravariant.
     [InlineData("func use(a: ref/i32, b: ref/i32, h0: H{p}, k: (H{q}) -> i32) -> i32\n    origin p.s == a\n    origin q.s == b\n    return k(h0@move)\n", "h0@move", "outlives", "requires a outlives b, which is not proven")]
     [InlineData(Writer + "func use(a: ref/i32, b: ref/i32, w0: W<H{p}> during b, k: (W<H{q}> during b) -> i32) -> i32\n    origin p.s == a\n    origin q.s == b\n    origin a outlives b\n    return k(w0@move)\n", "w0@move", "==", "requires b == a, which is not proven")]
@@ -118,7 +116,6 @@ public class LocalOriginClauseTest
         var reason = error.Reason!;
         Assert.Equal(["relation", "longer", "shorter", "source", "destination"], reason.Select(static x => x.Name));
         Assert.Equal((relation, "fit"), (reason[0].Value, reason[3].Value));
-        Assert.Contains(relation == "==" ? "Use one Origin at both positions" : "add 'origin ", error.Advice, StringComparison.Ordinal);
     }
 
     // The whole program behind the write through W: a caller passes a shorter `b`, so `f` stores a borrow of `two` where its caller's
@@ -148,41 +145,38 @@ public class LocalOriginClauseTest
 
     [Theory]
     // q31 f2: the inferred slot is the initializer's `a`, which the clause requires to outlive `b`.
-    [InlineData(Holder + "func f(a: ref/i32, b: ref/i32) -> i32\n    let h0 = H.init(a)\n    let h: H{x} = h0@move\n        origin x.s outlives b\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "h0@move", "requires a outlives b, which is not proven", null, "origin x.s outlives b", "add 'origin a outlives b' to the clauses of the enclosing function")]
+    [InlineData(Holder + "func f(a: ref/i32, b: ref/i32) -> i32\n    let h0 = H.init(a)\n    let h: H{x} = h0@move\n        origin x.s outlives b\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "h0@move", "requires a outlives b, which is not proven", null, "origin x.s outlives b")]
     // An invariant inferred slot equals the initializer's Origin, so an upper bound must outlive it.
-    [InlineData(Exclusive + "func f(a: ref/i32, b: ref/i32, slot: uniq/(ref/i32 during a)) -> i32\n    let h0 = U.init(slot)\n    let h: U{x} = h0@move\n        origin b outlives x.s\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "h0@move", "requires b outlives a, which is not proven", null, "origin b outlives x.s", "add 'origin b outlives a' to the clauses of the enclosing function")]
+    [InlineData(Exclusive + "func f(a: ref/i32, b: ref/i32, slot: uniq/(ref/i32 during a)) -> i32\n    let h0 = U.init(slot)\n    let h: U{x} = h0@move\n        origin b outlives x.s\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "h0@move", "requires b outlives a, which is not proven", null, "origin b outlives x.s")]
     // A body-local Borrow can never outlive a fixed Origin.
-    [InlineData(Holder + "func f(a: ref/i32) -> i32\n    let local = 3\n    let h: H{x} = H.init(local@ref)\n        origin x.s outlives a\n    return h.item@follow\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "H.init(local@ref)", "requires the borrow local@ref outlives a, which is false", "local@ref", "origin x.s outlives a", "Return or store an owned value")]
+    [InlineData(Holder + "func f(a: ref/i32) -> i32\n    let local = 3\n    let h: H{x} = H.init(local@ref)\n        origin x.s outlives a\n    return h.item@follow\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "H.init(local@ref)", "requires the borrow local@ref outlives a, which is false", "local@ref", "origin x.s outlives a")]
     // A Field's clause has no initializer: it is located at the clause, which names the Type's slots as written there.
-    [InlineData("struct V<T> {source}\n    public let value: ref/T during source\n\nstruct Wrong {a, b}\n    let item: V<i32>{v}\n        origin v.source == a\n        origin a outlives b\n\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "origin a outlives b", "requires a outlives b, which is not proven", null, "origin a outlives b", "add 'origin a outlives b' to the clauses of the enclosing Type")]
+    [InlineData("struct V<T> {source}\n    public let value: ref/T during source\n\nstruct Wrong {a, b}\n    let item: V<i32>{v}\n        origin v.source == a\n        origin a outlives b\n\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "origin a outlives b", "requires a outlives b, which is not proven", null, "origin a outlives b")]
     // So is a Case's clause, which binds its payload's set like a Field's (it was MissingOriginBinding_Kd at the payload).
-    [InlineData("struct V<T> {source}\n    public let value: ref/T during source\n\nenum E {a, b}\n    One(V<i32>{v})\n        origin v.source == a\n        origin a outlives b\n    Two(ref/i32 during b)\n\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "origin a outlives b", "requires a outlives b, which is not proven", null, "origin a outlives b", "add 'origin a outlives b' to the clauses of the enclosing Type")]
+    [InlineData("struct V<T> {source}\n    public let value: ref/T during source\n\nenum E {a, b}\n    One(V<i32>{v})\n        origin v.source == a\n        origin a outlives b\n    Two(ref/i32 during b)\n\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "origin a outlives b", "requires a outlives b, which is not proven", null, "origin a outlives b")]
     // A method's local clause names the receiver's slots through `self`, which the method's own clauses can relate.
-    [InlineData(Holder + "struct S {a, b}\n    public let first: ref/i32 during a\n    public let second: ref/i32 during b\n    public func view(self: ref/Self) -> i32\n        let h0 = H.init(self.second)\n        let h: H{x} = h0@move\n            origin x.s outlives self.a\n        return h.item@follow\n\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "h0@move", "requires self.b outlives self.a, which is not proven", null, "origin x.s outlives self.a", "add 'origin self.b outlives self.a' to the clauses of the enclosing function")]
-    public void AClauseThatDoesNotHoldIsADeclaredRelation(string body, string code, string at, string label, string? borrow, string clause, string advice)
-        => AssertDeclared(body + Main, code, at, label, borrow, clause, advice);
+    [InlineData(Holder + "struct S {a, b}\n    public let first: ref/i32 during a\n    public let second: ref/i32 during b\n    public func view(self: ref/Self) -> i32\n        let h0 = H.init(self.second)\n        let h: H{x} = h0@move\n            origin x.s outlives self.a\n        return h.item@follow\n\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "h0@move", "requires self.b outlives self.a, which is not proven", null, "origin x.s outlives self.a")]
+    public void AClauseThatDoesNotHoldIsADeclaredRelation(string body, string code, string at, string label, string? borrow, string clause)
+        => AssertDeclared(body + Main, code, at, label, borrow, clause);
 
-    // SPEC 7.6.1, 15.3.3: an anonymous function has no origin clauses, so a local clause over its own Origins is offered the bound on
-    // its input, and one over an enclosing function's captured Origins that function's clauses; neither suggests an impossible clause.
+    // SPEC 7.6.1, 15.3.3: a local clause in an anonymous function, over its own inputs' Origins or over an enclosing function's captured
+    // Origins, that does not hold is a declared relation at the initializer, relating the clause.
     [Theory]
-    [InlineData(Holder + "public func main()\n    let one = 1\n    let two = 2\n    let g = func (a: ref/i32, b: ref/i32) -> i32\n        let h0 = H.init(a)\n        let h: H{x} = h0@move\n            origin x.s outlives b\n        return 0\n    Console.writeLine(\"\\(g(one@ref, two@ref))\")\n", "requires a outlives b, which is not proven", "origin x.s outlives b", "An anonymous function has no origin clauses; write the input as 'a: ref/i32 during b' so that it accepts only borrows that outlive b, or remove this clause")]
-    [InlineData(Holder + "func outer(p: ref/i32, q: ref/i32) -> i32\n    let g = func [p, q] () -> i32\n        let h0 = H.init(p)\n        let h: H{x} = h0@move\n            origin x.s outlives q\n        return 0\n    return g()\n" + Main, "requires p outlives q, which is not proven", "origin x.s outlives q", "If p always outlives q, add 'origin p outlives q' to the clauses of the enclosing function 'outer', which changes its public contract, or remove this clause")]
-    public void AClauseInAnAnonymousFunctionIsOfferedOnlyApplicableAdvice(string source, string label, string clause, string advice)
+    [InlineData(Holder + "public func main()\n    let one = 1\n    let two = 2\n    let g = func (a: ref/i32, b: ref/i32) -> i32\n        let h0 = H.init(a)\n        let h: H{x} = h0@move\n            origin x.s outlives b\n        return 0\n    Console.writeLine(\"\\(g(one@ref, two@ref))\")\n", "requires a outlives b, which is not proven", "origin x.s outlives b")]
+    [InlineData(Holder + "func outer(p: ref/i32, q: ref/i32) -> i32\n    let g = func [p, q] () -> i32\n        let h0 = H.init(p)\n        let h: H{x} = h0@move\n            origin x.s outlives q\n        return 0\n    return g()\n" + Main, "requires p outlives q, which is not proven", "origin x.s outlives q")]
+    public void AClauseInAnAnonymousFunctionIsADeclaredRelation(string source, string label, string clause)
     {
-        var error = AssertDeclared(source, nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "h0@move", label, null, clause, advice);
-        Assert.Equal(advice, error.Advice);
+        var error = AssertDeclared(source, nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "h0@move", label, null, clause);
     }
 
-    // An `==` clause is offered an `==` premise where one can be stated, and in an anonymous function only its removal, since an input
-    // bound states one direction; it was offered "bind b to a where it is introduced", which a Type slot or parameter cannot do.
+    // An `==` clause that does not hold is an `==` declared relation, on a local, on a Field and in an anonymous function.
     [Theory]
-    [InlineData("func f(a: ref/i32, b: ref/i32) -> i32\n    let x: ref/i32 during a = a\n        origin a == b\n    return x@follow\n" + Main, "If a and b are always equal, add 'origin a == b' to the clauses of the enclosing function, which changes its public contract, or remove this clause")]
-    [InlineData("struct V<T> {source}\n    public let value: ref/T during source\n\nstruct Wrong<T> {a, b}\n    let item: V<T>{v}\n        origin v.source == a\n        origin a == b\n\n" + Main, "If a and b are always equal, add 'origin a == b' to the clauses of the enclosing Type, which changes its public contract, or remove this clause")]
-    [InlineData("public func main()\n    let one = 1\n    let g = func (a: ref/i32, b: ref/i32) -> i32\n        let x: ref/i32 during a = a\n            origin a == b\n        return x@follow\n    Console.writeLine(\"\\(g(one@ref, one@ref))\")\n", "An anonymous function has no origin clauses that could establish this relation; remove this clause")]
-    public void ADeclaredEqualityIsOfferedAnEqualityPremise(string source, string advice)
+    [InlineData("func f(a: ref/i32, b: ref/i32) -> i32\n    let x: ref/i32 during a = a\n        origin a == b\n    return x@follow\n" + Main)]
+    [InlineData("struct V<T> {source}\n    public let value: ref/T during source\n\nstruct Wrong<T> {a, b}\n    let item: V<T>{v}\n        origin v.source == a\n        origin a == b\n\n" + Main)]
+    [InlineData("public func main()\n    let one = 1\n    let g = func (a: ref/i32, b: ref/i32) -> i32\n        let x: ref/i32 during a = a\n            origin a == b\n        return x@follow\n    Console.writeLine(\"\\(g(one@ref, one@ref))\")\n")]
+    public void ADeclaredEqualityRequiresAnEqualityPremise(string source)
     {
-        var error = AssertDeclared(source, nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "origin a == b", "requires a == b, which is not proven", null, "origin a == b", advice);
-        Assert.Equal(advice, error.Advice);
+        var error = AssertDeclared(source, nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "origin a == b", "requires a == b, which is not proven", null, "origin a == b");
     }
 
     // SPEC 15.3.6, 15.4.4: the Milestone 13 and 28 clause shapes, a slot equal to its initializer's or proven by a premise, a covariant
@@ -204,7 +198,7 @@ public class LocalOriginClauseTest
     [InlineData(Holder + Reader + "func use(a: ref/i32, c0: R<H{p}>, k: (R<H{q}>) -> i32) -> i32\n    origin p.s == a\n    origin q.s == a\n    return k(c0@move)\n")]
     // An exclusive target under a contravariant slot with equal target slots and the reversed outer premise (p2e's counterpart).
     [InlineData(Holder + Reader + "func f(a: ref/i32, b: ref/i32, p: ref/i32, q: ref/i32, r0: R<uniq/H{hw} during p>) -> i32\n    origin hw.s == a\n    origin a == b\n    origin q outlives p\n    origin b outlives q\n    let r: R<uniq/H{x} during q> = r0@move\n        origin x.s == b\n    return 0\n")]
-    // The Advice of an anonymous function's clause applied: the input bounds itself, or the enclosing function states the premise.
+    // An anonymous function's clause proven: the input bounds itself, or the enclosing function states the premise.
     [InlineData(Holder + "func f() -> i32\n    let g = func (a: ref/i32 during b, b: ref/i32) -> i32\n        let h0 = H.init(a)\n        let h: H{x} = h0@move\n            origin x.s outlives b\n        return h.item@follow\n    return 0\n")]
     [InlineData(Holder + "func outer(p: ref/i32, q: ref/i32) -> i32\n    origin p outlives q\n    let g = func [p, q] () -> i32\n        let h0 = H.init(p)\n        let h: H{x} = h0@move\n            origin x.s outlives q\n        return h.item@follow\n    return g()\n")]
     // The `==` premise applied to a local's clause.
@@ -215,7 +209,7 @@ public class LocalOriginClauseTest
         Assert.True(output.Accepted, string.Join("\n", output.Diagnostics.Select(static x => $"{x.Code}: {x.Label}")));
     }
 
-    // SPEC 15.3.3: the Advice of a Field's or Case's clause applied: the Type states the premise in its Constraint region. A Type's
+    // SPEC 15.3.3: a Field's or Case's clause is proven where the Type states the premise in its Constraint region. A Type's
     // own clause was a fallback PrerequisiteUnavailable_Kd in every program without another Error, since control flow read it as an
     // untyped expression; a Phantom slot's clause is accepted too.
     [Theory]
@@ -250,14 +244,13 @@ public class LocalOriginClauseTest
     // a method, whose receiver slots are shown through `self`. The local's Type is never a premise of the body. These were accepted
     // once a Type's own clause stopped being a fallback PrerequisiteUnavailable_Kd (tp1).
     [Theory]
-    [InlineData("func f(p: ref/i32, q: ref/i32, r: ref/i32, s: S{u}) -> i32\n    origin u.a == p\n    origin u.b == q\n    origin p outlives r\n    let s2: S{w} = s@move\n        origin w.a == r\n        origin w.b == q\n    return s2.x@follow + s2.y@follow\n", "S{w}", "requires r outlives q, which is not proven", "If r always outlives q, add 'origin r outlives q' to the clauses of the enclosing function, which changes its public contract, or give this S Origins that satisfy its clause")]
-    [InlineData("func f(p: ref/i32, q: ref/i32, r: ref/i32, s: Option<S{u}>) -> i32\n    origin u.a == p\n    origin u.b == q\n    origin p outlives r\n    let s2: Option<S{w}> = s@move\n        origin w.a == r\n        origin w.b == q\n    return 0\n", "Option<S{w}>", "requires r outlives q, which is not proven", "If r always outlives q, add 'origin r outlives q' to the clauses of the enclosing function, which changes its public contract, or give this S Origins that satisfy its clause")]
-    [InlineData("struct T {c, d}\n    origin c outlives d\n    public let s: S{z}\n        origin z.a == c\n        origin z.b == c\n    public let e: ref/i32 during d\n    public func take(self: owner/Self) -> i32\n        let s2: S{w} = self.s@move\n            origin w.a == self.d\n            origin w.b == self.c\n        return 0\n\n", "S{w}", "requires self.d outlives self.c, which is not proven", "If self.d always outlives self.c, add 'origin self.d outlives self.c' to the clauses of the enclosing function, which changes its public contract, or give this S Origins that satisfy its clause")]
-    public void ATypesClauseIsADeclaredRelationWhereALocalNamesIt(string body, string at, string label, string advice)
+    [InlineData("func f(p: ref/i32, q: ref/i32, r: ref/i32, s: S{u}) -> i32\n    origin u.a == p\n    origin u.b == q\n    origin p outlives r\n    let s2: S{w} = s@move\n        origin w.a == r\n        origin w.b == q\n    return s2.x@follow + s2.y@follow\n", "S{w}", "requires r outlives q, which is not proven")]
+    [InlineData("func f(p: ref/i32, q: ref/i32, r: ref/i32, s: Option<S{u}>) -> i32\n    origin u.a == p\n    origin u.b == q\n    origin p outlives r\n    let s2: Option<S{w}> = s@move\n        origin w.a == r\n        origin w.b == q\n    return 0\n", "Option<S{w}>", "requires r outlives q, which is not proven")]
+    [InlineData("struct T {c, d}\n    origin c outlives d\n    public let s: S{z}\n        origin z.a == c\n        origin z.b == c\n    public let e: ref/i32 during d\n    public func take(self: owner/Self) -> i32\n        let s2: S{w} = self.s@move\n            origin w.a == self.d\n            origin w.b == self.c\n        return 0\n\n", "S{w}", "requires self.d outlives self.c, which is not proven")]
+    public void ATypesClauseIsADeclaredRelationWhereALocalNamesIt(string body, string at, string label)
     {
         var source = Ordered + body + Main;
-        var error = AssertDeclared(source, nameof(DiagnosticCode.UnprovenOriginRelation_Kd), at, label, null, "origin a outlives b", advice);
-        Assert.Equal(advice, error.Advice);
+        var error = AssertDeclared(source, nameof(DiagnosticCode.UnprovenOriginRelation_Kd), at, label, null, "origin a outlives b");
         Assert.Equal(source.IndexOf("let s2: " + at, StringComparison.Ordinal) + 8, error.Span!.Value.Start);
         Assert.Equal(source.IndexOf("origin a outlives b", StringComparison.Ordinal), error.Related![0].Span!.Value.Start);
     }
@@ -268,7 +261,7 @@ public class LocalOriginClauseTest
     {
         var source = Ordered.Replace("origin a outlives b", "origin a == b", StringComparison.Ordinal) +
             "func f(p: ref/i32, q: ref/i32, s: S{u}) -> i32\n    origin u.a == p\n    origin u.b == p\n    origin p outlives q\n    let s2: S{w} = s@move\n        origin w.a == p\n        origin w.b == q\n    return 0\n" + Main;
-        var error = AssertDeclared(source, nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "S{w}", "requires q == p, which is not proven", null, "origin a == b", "If q and p are always equal, add 'origin q == p' to the clauses of the enclosing function, which changes its public contract, or give this S Origins that satisfy its clause");
+        var error = AssertDeclared(source, nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "S{w}", "requires q == p, which is not proven", null, "origin a == b");
         Assert.Equal(source.IndexOf("let s2: S{w}", StringComparison.Ordinal) + 8, error.Span!.Value.Start);
     }
 
@@ -285,7 +278,7 @@ public class LocalOriginClauseTest
         Assert.Equal(source.IndexOf("let h: U{x}", StringComparison.Ordinal) + 7, errors[0].Span!.Value.Start);
     }
 
-    // The Advice applied, the premise in the enclosing function or in the method, other Origins for the Type, Origins inferred from
+    // The premise in the enclosing function or in the method, other Origins for the Type, Origins inferred from
     // an initializer whose Type proves the clause, and the meet of a parameter with its Borrow, kept as the local's Origin.
     [Theory]
     [InlineData("func f(p: ref/i32, q: ref/i32, r: ref/i32, s: S{u}) -> i32\n    origin u.a == p\n    origin u.b == q\n    origin p outlives r\n    origin r outlives q\n    let s2: S{w} = s@move\n        origin w.a == r\n        origin w.b == q\n    return s2.x@follow + s2.y@follow\n")]
@@ -341,8 +334,8 @@ public class LocalOriginClauseTest
 
         var unknown = Assert.Single(errors, static x => x.Code != nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd));
         Assert.Equal(
-            (nameof(DiagnosticCode.UnprovenOriginRelation_Kd), error.Span, "requires a outlives static, which is not proven", "a is an exclusive borrow, which cannot be bound to static; return an owned value instead"),
-            (unknown.Code, unknown.Span, unknown.Label, unknown.Advice));
+            (nameof(DiagnosticCode.UnprovenOriginRelation_Kd), error.Span, "requires a outlives static, which is not proven"),
+            (unknown.Code, unknown.Span, unknown.Label));
         Assert.Equal(["outlives", "a", "static", "fit", "ref/i32 during static"], unknown.Reason!.Select(static x => x.Value));
     }
 
@@ -366,17 +359,62 @@ public class LocalOriginClauseTest
     }
 
     [Theory]
-    // A slot chain between two body Borrows needs region inference: the located limit at the value, never accepted or a Proof record.
-    [InlineData(Holder + "func f() -> i32\n    let v = 1\n    let w = 2\n    let r = w@ref\n    let h0 = H.init(v@ref)\n    let h: H{x} = h0@move\n        origin x.s == r\n    return h.item@follow\n", nameof(DiagnosticCode.UnsupportedOwnership_Kd), "h0@move")]
-    // So is a clause between two body Borrows, at the clause; `h` keeps only `v@ref`'s Loan, so writing `w` is no conflict.
-    [InlineData(Holder + "func f() -> i32\n    let v = 1\n    var w = 2\n    let r = w@ref\n    let h: H{x} = H.init(v@ref)\n        origin x.s outlives r\n    w = 5\n    return h.item@follow\n", nameof(DiagnosticCode.UnsupportedOwnership_Kd), "origin x.s outlives r")]
-    // A contravariant slot's principal solution is a lower bound outliving every other, which local inference does not choose.
-    [InlineData(Callback + "func f(a: ref/i32, b: ref/i32, g: (ref/i32 during a) -> i32) -> i32\n    let h0 = C.init(g@move)\n    let h: C{x} = h0@move\n        origin x.s outlives b\n    return 0\n", nameof(DiagnosticCode.UnsupportedBinding_Kd), "origin x.s outlives b")]
-    public void AnUnrepresentableLocalRelationIsALocatedLimit(string body, string code, string at)
+    [InlineData("Equality", "let h0 = H.init(v@ref)\n    let h: H{x} = h0@move\n        origin x.s == r")]
+    [InlineData("Bound", "let h: H{x} = H.init(v@ref)\n        origin x.s outlives r\n    w = 5")]
+    public void FiniteLocalClausesKeepOnlyTheValuesActuallyStored(string name, string declaration)
+    {
+        var source = Holder + "func f() -> i32\n    let v = 1\n    var w = 2\n    let r = w@ref\n    " + declaration + "\n    return h.item@follow\nrequire f() == 1 else => $abort(\"finite clause\")";
+        ScalarEmissionTest.EmitFixture("FiniteLocalClause" + name, source, string.Empty);
+    }
+
+    [Theory]
+    [InlineData("Longer", "origin b outlives a", "origin x.s outlives b")]
+    [InlineData("AlreadyLongest", "origin a outlives b", "origin x.s outlives b")]
+    [InlineData("Third", "origin c outlives a\n    origin c outlives b", "origin x.s outlives b\n        origin x.s outlives c")]
+    [InlineData("Reordered", "origin c outlives a\n    origin c outlives b", "origin x.s outlives c\n        origin x.s outlives b")]
+    public void AContravariantLocalSelectsAProvenPrincipalBound(string name, string premises, string clauses)
+    {
+        var argument = name == "Longer" ? "b" : name == "AlreadyLongest" ? "a" : "c";
+        var source = Callback + "func f(a: ref/i32, b: ref/i32, c: ref/i32, g: (ref/i32 during a) -> i32) -> i32\n    " + premises +
+            "\n    let h0 = C.init(g@move)\n    let h: C{x} = h0@move\n        " + clauses + "\n    return h.call(" + argument + ")\n" +
+            "func read(value: ref/i32) -> i32 => value@follow\nlet n = 1\nrequire f(n@ref, n@ref, n@ref, read) == 1 else => $abort(\"principal\")";
+        ScalarEmissionTest.EmitFixture("ContravariantLocal" + name, source, string.Empty);
+    }
+
+    [Theory]
+    // Incomparable lower bounds have no principal solution; the local declaration needs an annotation.
+    [InlineData(Callback + "func f(a: ref/i32, b: ref/i32, g: (ref/i32 during a) -> i32) -> i32\n    let h0 = C.init(g@move)\n    let h: C{x} = h0@move\n        origin x.s outlives b\n    return 0\n", nameof(DiagnosticCode.MissingOriginBinding_Kd), "let h: C{x} = h0@move")]
+    public void IncomparableContravariantBoundsRequireAnAnnotation(string body, string code, string at)
     {
         var source = body + Main;
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        var output = DiagnosticCorpus.Check(source);
+        var error = Assert.Single(output.Diagnostics);
         Assert.Equal((code, at), (error.Code, Text(source, error.Span)));
+        Assert.Contains(error.Reason!, x => x.Value.Contains("neither", StringComparison.Ordinal));
+        Assert.Contains(error.Reason!, x => x.Value.Contains("outlive", StringComparison.Ordinal));
+        Assert.Contains(error.Related!, x => x.Role == "relation");
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(new DiagnosticResult(output.Diagnostics, output.Sources), string.Empty);
+        Assert.Contains("neither a nor b is proven to outlive the other lower bound", console.Text, StringComparison.Ordinal);
+        var identity = SourceIdentity.FromPath(output.Sources[error.Source].Path);
+        var lsp = Assert.Single(WorkspaceCheck.Place(output, [identity], identity, true)[identity]);
+        Assert.Equal((error.Code, error.Display!.Range), (lsp.Code, lsp.Range));
+        Assert.Contains("neither a nor b", lsp.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    [Trait("Purpose", "Allocation")]
+    public void ContravariantBoundSuccessAndFailureReuseStorage(bool proven)
+    {
+        var source = Callback + "func f(a: ref/i32, b: ref/i32, g: (ref/i32 during a) -> i32) -> i32\n" +
+            (proven ? "    origin b outlives a\n" : string.Empty) +
+            "    let h0 = C.init(g@move)\n    let h: C{x} = h0@move\n        origin x.s outlives b\n    return 0\n" + Main;
+        var c = CompilationTestHelper.Parse(source);
+        var valid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete == proven, iterations: 64, warmupIterations: 32));
+        Assert.True(valid);
     }
 
     // Without an initializer an outlives clause cannot determine the slot (SPEC 15.4.4); its relation rests on that failure and adds
@@ -427,6 +465,31 @@ public class LocalOriginClauseTest
         Assert.Equal(result, JsonSerializer.Deserialize(json, DiagnosticJsonContext.Default.DiagnosticResult));
     }
 
+    // SPEC 15.4.4, 15.3.6: a local's omitted Origin is bounded by the values fitted to it; an `if` join is fitted as its meet, so the
+    // order of its branches changes no relation.
+    [Theory]
+    [InlineData("a", "b", "(a and b)", null)]
+    [InlineData("b", "a", "(a and b)", null)]
+    [InlineData("a", "b", "a", "UnprovenOriginRelation_Kd")]
+    [InlineData("b", "a", "a", "UnprovenOriginRelation_Kd")]
+    public void AJoinBoundsAnOmittedOriginWithItsMeet(string first, string second, string result, string? code)
+    {
+        var source = "func f(c: bool, a: ref/i32, b: ref/i32) -> ref/i32 during " + result + "\n    let k: ref/i32 = if c => " + first + " else => " + second + "\n    return k\n" + Main;
+        Assert.Equal(code is null ? [] : [code], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+    }
+
+    // SPEC 10.1, 15.4.4: only the selected candidate's fits bound a local's omitted Origin, whatever the declaration order.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void OnlyTheSelectedCandidateBoundsAnOmittedOrigin(bool boolFirst)
+    {
+        const string Flag = "func pick(x: ref/i32, flag: bool) -> ref/i32 during x => x\n";
+        const string Number = "func pick(x: ref/i32, flag: i32) -> ref/i32 during x => x\n";
+        var source = (boolFirst ? Flag + Number : Number + Flag) + "func f(a: ref/i32) -> ref/i32 during a\n    let r: ref/i32 = pick(a, true)\n    return r\n" + Main;
+        Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
+    }
+
     // A warm rebind of locals whose clauses read inferred slots, with an upper-bound meet, allocates nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]
@@ -467,7 +530,7 @@ public class LocalOriginClauseTest
         }));
     }
 
-    private static CheckDiagnostic AssertDeclared(string source, string code, string at, string label, string? borrow, string clause, string advice)
+    private static CheckDiagnostic AssertDeclared(string source, string code, string at, string label, string? borrow, string clause)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal(code, error.Code);
@@ -477,7 +540,6 @@ public class LocalOriginClauseTest
         // SPEC 23.3.6.5: a declared relation names no destination; it relates its clause instead.
         Assert.Equal(["relation", "longer", "shorter", "source"], reason.Select(static x => x.Name));
         Assert.Equal((label.Contains(" == ", StringComparison.Ordinal) ? "==" : "outlives", "declared"), (reason[0].Value, reason[3].Value));
-        Assert.Contains(advice, error.Advice, StringComparison.Ordinal);
         var related = error.Related!.Select(x => (x.Role, Text(source, x.Span))).ToArray();
         Assert.Equal(borrow is null ? [("relation", clause)] : [("origin", borrow), ("relation", clause)], related);
         return error;

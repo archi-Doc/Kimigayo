@@ -13,12 +13,12 @@ public class DeclaredOriginSlotTest
     private const string Main = "public func main() => ()\n";
 
     [Theory]
-    [InlineData("public struct View<T> {source}\n    private let data: ref/T during buffer\n", "buffer", "header", "{source}", "If an existing Origin was intended (source)", "add buffer to the header, as View {source, buffer}")]
-    [InlineData("struct Pair {source}\n    let first: ref/i32 during source\n    let second: ref/i32 during souce\n", "souce", "header", "{source}", "If an existing Origin was intended (source)", "add souce to the header, as Pair {source, souce}")]
-    [InlineData("struct Holder<T>\n    let value: ref/T during source\n", "source", "type", "Holder", null, "add source to the header, as Holder {source}")]
-    [InlineData("struct Outer<T> {source}\n    struct Inner\n        let value: ref/T during sauce\n", "sauce", "type", "Inner", "If an existing Origin was intended (source)", "add sauce to the header, as Inner {sauce}")]
-    [InlineData("enum Choice<T> {source}\n    Some(ref/T during sorce)\n    None\n", "sorce", "header", "{source}", "If an existing Origin was intended (source)", "add sorce to the header, as Choice {source, sorce}")]
-    public void AnUndeclaredStorageNameIsReportedOnceAtTheName(string declarations, string name, string role, string related, string? existing, string added)
+    [InlineData("public struct View<T> {source}\n    private let data: ref/T during buffer\n", "buffer", "header", "{source}")]
+    [InlineData("struct Pair {source}\n    let first: ref/i32 during source\n    let second: ref/i32 during souce\n", "souce", "header", "{source}")]
+    [InlineData("struct Holder<T>\n    let value: ref/T during source\n", "source", "type", "Holder")]
+    [InlineData("struct Outer<T> {source}\n    struct Inner\n        let value: ref/T during sauce\n", "sauce", "type", "Inner")]
+    [InlineData("enum Choice<T> {source}\n    Some(ref/T during sorce)\n    None\n", "sorce", "header", "{source}")]
+    public void AnUndeclaredStorageNameIsReportedOnceAtTheName(string declarations, string name, string role, string related)
     {
         var source = declarations + Main;
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
@@ -26,17 +26,6 @@ public class DeclaredOriginSlotTest
         Assert.Equal(name, Text(source, error.Span));
         Assert.Equal($"{name} is not a declared Origin slot", error.Label);
         Assert.Contains("declares its own Origin slots only in its header", error.Note);
-        Assert.Contains(added, error.Advice);
-        Assert.Contains("this changes the public API", error.Advice);
-        if (existing is null)
-        {
-            Assert.DoesNotContain("existing Origin", error.Advice);
-        }
-        else
-        {
-            Assert.Contains(existing, error.Advice);
-        }
-
         var location = Assert.Single(error.Related!);
         Assert.Equal(role, location.Role);
         Assert.Equal(related, Text(source, location.Span));
@@ -89,7 +78,6 @@ public class DeclaredOriginSlotTest
             Assert.Equal("source", Text(source, error.Span));
             Assert.Equal("Renamed has no Origin slot source", error.Label);
             Assert.Equal("The Origin slots of Renamed are buffer", error.Note);
-            Assert.Contains("such as buffer", error.Advice);
             var header = Assert.Single(error.Related!);
             Assert.Equal(("header", "{buffer}"), (header.Role, Text(source, header.Span)));
         });

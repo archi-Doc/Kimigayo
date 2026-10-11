@@ -82,8 +82,8 @@ public class ResultEmissionTest
         var bytes = AllocationMeasurement.Measure(
             () =>
             {
-                success &= c.Ownership.Analyze().IsVerified;
-                success &= c.Emission.WriteIr(TextWriter.Null, out _);
+                success &= c.Analyze().IsVerified;
+                success &= c.WriteIr(TextWriter.Null, out _);
             },
             iterations: 128,
             warmupIterations: 100);
@@ -97,7 +97,7 @@ public class ResultEmissionTest
     public void DeferredCleanupUsesVerifiedExitPlans(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Ownership.Result.IsVerified);
+        Assert.True(c.Analysis.IsVerified);
         var ir = CompilationTestHelper.WriteIr(c);
         Assert.NotEmpty(ir);
     }
@@ -115,7 +115,7 @@ public class ResultEmissionTest
     public void MalformedResultPlansNeverWriteIr(string mutation)
     {
         var c = MinimalEmissionTest.Analyze("var c = true\nlet x = if c => 1 + 2 else => 4 + 5\nif x == 3 => Console.writeLine(\"ok\")");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var phi = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Phi);
         var value = body.Values[phi];
@@ -153,7 +153,7 @@ public class ResultEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out error));
+        Assert.False(c.WriteIr(writer, out error));
         Assert.NotNull(error);
         Assert.Equal(string.Empty, writer.ToString());
     }

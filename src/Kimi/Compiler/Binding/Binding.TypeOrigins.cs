@@ -6,6 +6,8 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private Dictionary<Koto, OriginParameter>? invalidStaticOriginSlots;
+
     // Complete stored Origin identity, including declared slots and intersections; shared by fitting and diagnostics.
     internal static bool ContainsOrigin(BoundType type, BoundOrigin origin)
     {
@@ -51,10 +53,7 @@ public sealed partial class Binding
         }
     }
 
-    private BoundType WithOrigins(BoundType type, BoundOrigin? origin, ReadOnlySpan<BoundOrigin> arguments)
-        => this.InternType(type.Kind, type.Symbol, type.Semantics, (BoundType[])type.Components, type.Length, origin, arguments, type.LengthExpression, type.ClosureContext);
-
-    private BoundType SelfType(BindingSymbol symbol)
+    internal BoundType SelfType(BindingSymbol symbol)
     {
         var schema = symbol.Schema!;
         var types = this.RentTypes(schema.GenericSlots.Count);
@@ -78,7 +77,7 @@ public sealed partial class Binding
                 return symbol.Type!;
             }
 
-            return this.InternType(schema.GenericSlots.Count == 0 ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, types.AsSpan(0, schema.GenericSlots.Count), originArguments: origins.AsSpan(0, schema.Origins.Count));
+            return this.types.Intern(schema.GenericSlots.Count == 0 ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, types.AsSpan(0, schema.GenericSlots.Count), originArguments: origins.AsSpan(0, schema.Origins.Count));
         }
         finally
         {
@@ -86,6 +85,28 @@ public sealed partial class Binding
             this.originScratch.Return(origins, clearArray: true);
         }
     }
+
+    private static Koto OriginFormationSite(Koto node, BoundType type)
+    {
+        var declaration = node is VariableKoto ? node : node.BoundSymbol?.Declaration;
+        Koto? annotation = declaration switch
+        {
+            VariableKoto variable => variable.TypeKoto,
+            FunctionKoto function => function.ReturnType,
+            _ => null,
+        };
+        var site = annotation is not null && ReferenceEquals(annotation.BoundType, type) ? annotation : node;
+        while (site.Parent is TypeKoto parent && ReferenceEquals(parent.BoundType, type))
+        {
+            site = parent;
+        }
+
+        return site;
+    }
+
+    private BoundType WithOrigins(BoundType type, BoundOrigin? origin, ReadOnlySpan<BoundOrigin> arguments)
+        => type.Kind == BoundTypeKind.SemanticsAdaptation ? this.TransformFamily(type, FamilyTransform.Origin, origin)
+            : this.types.Intern(type.Kind, type.Symbol, type.Semantics, (BoundType[])type.Components, type.Length, origin, arguments, type.LengthExpression, type.ClosureContext, type.LengthArguments, type.ResultMode);
 
     private BoundType? CompleteOrigins(BoundType type, TypeSemanticsKoto? annotation, Koto use, BindingScope scope, TypeBindingContext context)
     {
@@ -158,9 +179,17 @@ public sealed partial class Binding
                 type = this.WithOrigins(type, origin, (BoundOrigin[])type.OriginArguments);
             }
 
-            if (origin is not null && type.Components.Count != 0)
+            // A conditional pair slot exists only in admitted borrow cases. Its payload keeps its own Origins
+            // in every case, but value/object cases impose no outlives relation to an inactive outer slot.
+            if (origin is not null && type.Components.Count != 0 && !InactiveOuterOrigin(type, this, use))
             {
-                this.RetainInnerOutlives(type.Components[0], origin, use);
+                // SPEC 8.1.2, 15.6.4: a direct borrowed input of a struct, or a pair layer whose outer slot is active only for a borrow
+                // binding, guarantees its own stored Origins outlive the borrow: each call judges them as the instantiated input's
+                // well-formedness (RequireInputPremises), whether its argument is a Borrow formed there or an existing reference.
+                var discharge = context is { Position: TypePosition.Parameter, Direct: true, Owner: FunctionKoto function } &&
+                    origin is { Kind: OriginKind.Input } && ReferenceEquals(origin.Binder, function) && origin.Slot == context.Slot &&
+                    (ReferenceTypes.IsStruct(type) || TryPairLayer(type, out _, out _)) ? OriginDischarge.CallBorrows : OriginDischarge.Judgment;
+                this.RetainInnerOutlives(type.Components[0], origin, use, discharge, RequiredCondition(this.PairSlotCondition(type, use)));
             }
         }
         else
@@ -222,7 +251,7 @@ public sealed partial class Binding
                     }
 
                     target = this.WithOrigins(target, target.Origin, arguments.AsSpan(0, count));
-                    type = objectLayer ? this.InternType(type.Kind, type.Symbol, type.Semantics, [target], type.Length, type.Origin) : target;
+                    type = objectLayer ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, [target], type.Length, type.Origin) : target;
                 }
                 finally
                 {
@@ -252,16 +281,19 @@ public sealed partial class Binding
         return type;
     }
 
-    private void RetainInnerOutlives(BoundType inner, BoundOrigin outer, Koto use)
+    // `discharge` applies to the Origins stored directly in `inner`; those of its components are judged. `condition` is the Semantics
+    // case in which `outer` stores `inner`; a pair layer's own slot, the implicit `o` of an original `s/T` included, is stored only in
+    // its binder's borrow cases (SPEC 15.6.5).
+    private void RetainInnerOutlives(BoundType inner, BoundOrigin outer, Koto use, OriginDischarge discharge = OriginDischarge.Judgment, ulong condition = 0)
     {
-        if (!inner.CarriesOrigin)
+        if (!inner.StoresOrigin)
         {
             return;
         }
 
-        if (inner.Origin is { } origin && !OriginOutlives(origin, outer))
+        if (this.StoredSlot(inner, use, out var slot) is { } origin && !OriginOutlives(origin, outer))
         {
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, origin, outer));
+            this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, origin, outer, Discharge: discharge, Condition: condition | RequiredCondition(slot)));
         }
 
         for (var i = 0; i < inner.OriginArguments.Count; i++)
@@ -269,13 +301,13 @@ public sealed partial class Binding
             var argument = inner.OriginArguments[i];
             if (!OriginOutlives(argument, outer))
             {
-                this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, argument, outer));
+                this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, argument, outer, Discharge: discharge, Condition: condition));
             }
         }
 
         for (var i = 0; i < inner.Components.Count; i++)
         {
-            this.RetainInnerOutlives(inner.Components[i], outer, use);
+            this.RetainInnerOutlives(inner.Components[i], outer, use, condition: condition);
         }
     }
 
@@ -391,29 +423,49 @@ public sealed partial class Binding
                 continue;
             }
 
+            var invalid = false;
             if (type.Symbol?.Schema is { } schema)
             {
                 for (var i = 0; i < type.OriginArguments.Count && i < schema.Origins.Count; i++)
                 {
                     if (type.OriginArguments[i].Kind == OriginKind.Static && schema.Origins[i].LoanRequirement == LoanRequirement.Uniq)
                     {
-                        this.Fail(node, BindingFailure.InvalidOrigin);
+                        // A late storage summary may establish uniq after this Type was completed. The written
+                        // annotation owns formation; its declaration and names only repeat the already invalid Type.
+                        var site = OriginFormationSite(node, type);
+                        this.FailExplained(ref this.invalidStaticOriginSlots, site, BindingFailure.InvalidOrigin, schema.Origins[i]);
+                        if (!ReferenceEquals(site, node))
+                        {
+                            this.CompleteDependent(node, site);
+                        }
+
+                        invalid = true;
                     }
                 }
             }
 
+            if (invalid)
+            {
+                continue;
+            }
+
             if (node is PropertyKoto property && IsStoredVariable(property) && this.symbols[property].Scope.Owner is GroupKoto)
             {
-                if (this.symbols[property].Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 })
+                if (property.TypeKoto is { BindingState: BindingState.Invalid } annotation)
                 {
-                    // Check the stored value under the inherited premises, not the enclosing Type.
-                    this.RequireConstraint(property, this.ProveOwned(type, property), this.capabilityMode);
+                    this.CompleteDependent(property, annotation);
+                    continue;
                 }
 
+                // Check the stored value under the inherited premises, not the enclosing Type. A shared static borrow
+                // may be Owned; carrying a borrow is not itself a language error (SPEC 11.3.2, 15.4.2).
+                var owned = this.ProveOwned(type, property);
+                this.RequireConstraint(property, owned, this.capabilityMode);
+
                 this.borrowVisiting.Clear();
-                if (this.RetainsBorrow(type, this.borrowVisiting))
+                if (owned == ConstraintProof.Proven && this.RetainsBorrow(type, this.borrowVisiting))
                 {
-                    this.Fail(node, BindingFailure.InvalidTypeFormation);
+                    this.Fail(node, BindingFailure.Unsupported, true);
                 }
             }
         }
@@ -440,7 +492,7 @@ public sealed partial class Binding
 
             try
             {
-                if (!this.storageShapes.TryGetValue(container, out var shape))
+                if (container.BoundSymbol?.Adt is not { } shape)
                 {
                     return false;
                 }

@@ -54,14 +54,8 @@ public sealed class TupleTypeKoto : TypeKoto
         builder.Append(')');
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        visitor.VisitMany(this.elements);
+        slots.List(this.elements);
     }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-        => this.elements;
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-        => ReplaceInList(this.elements, oldKoto, newKoto);
 }

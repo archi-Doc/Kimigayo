@@ -124,7 +124,7 @@ public sealed partial class Binding
             return direct;
         }
 
-        if (!this.conformancesByType.TryGetValue(type, out var identities))
+        if (IsBoundContractReference(contract) || !this.conformancesByType.TryGetValue(type, out var identities))
         {
             return null;
         }
@@ -157,6 +157,8 @@ public sealed partial class Binding
             bound.Contract!.State = 0;
         }
 
+        this.ResetAssociatedInference();
+        this.failedConformance = null;
         this.contractHeadersReady = false;
         this.bindingConstraintTypes = false;
         this.activeConformancePaths.Clear();
@@ -168,6 +170,9 @@ public sealed partial class Binding
         this.projectionUses.Clear();
         this.userIterations.Clear();
         this.associatedApplications.Clear();
+        this.associatedAmbiguities?.Clear();
+        this.contractAgreementFailures?.Clear();
+        this.ambiguousAssociatedMatches?.Clear();
         this.memberSelections.Clear();
         foreach (var group in this.requirementGroups.Values)
         {
@@ -178,6 +183,13 @@ public sealed partial class Binding
         {
             binding.Candidates.Clear();
             binding.Result = null;
+            binding.Inferred = null;
+            binding.InferenceSource = null;
+            binding.InferenceConflict = false;
+            binding.Problem = InferenceProblem.None;
+            binding.ProblemSource = null;
+            binding.ProblemDetail = null;
+            binding.EvidenceSources.Clear();
             binding.State = 0;
             binding.FormationScope?.Reset();
         }
@@ -195,12 +207,16 @@ public sealed partial class Binding
             conformance.Active = false;
             conformance.IsVerified = false;
             conformance.Checking = false;
+            conformance.RejectedSelfSignature = null;
             conformance.Invalid = false;
             conformance.WitnessStorage.Clear();
             conformance.WitnessMap.Clear();
             conformance.PropertyWitnessStorage.Clear();
             conformance.PropertyWitnessMap.Clear();
+            conformance.Unsupported = false;
+            conformance.Needed = false;
             conformance.AssociatedStorage.Clear();
+            conformance.InferenceStorage.Clear();
             conformance.Scope.Reset();
         }
     }
@@ -228,6 +244,7 @@ public sealed partial class Binding
             shape.EffectBoundStorage.Clear();
             shape.EffectState = 0;
             shape.Seen.Clear();
+            shape.SeenRequirements.Clear();
             foreach (var members in shape.MembersByName.Values)
             {
                 members.Clear();
@@ -272,7 +289,7 @@ public sealed partial class Binding
         }
 
         var symbol = this.Declare(declaration, spelling, BindingSymbolKind.AssociatedType, declaration, this.scopes[contract]);
-        symbol.Type = this.InternType(BoundTypeKind.AssociatedProjection, symbol, SemanticsKind.Owner, [this.ContractSelfType(contract.BoundSymbol!), this.SelfType(contract.BoundSymbol!)], originArguments: this.AssociatedParameters(declaration));
+        symbol.Type = this.types.Intern(BoundTypeKind.AssociatedProjection, symbol, SemanticsKind.Owner, [this.ContractSelfType(contract.BoundSymbol!), this.SelfType(contract.BoundSymbol!)], originArguments: this.AssociatedParameters(declaration));
         name.BoundSymbol = symbol;
         Complete(name, symbol.Type);
         if (head is OriginApplicationKoto)
@@ -369,7 +386,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                parent = this.BoundContractReference(this.InternType(BoundTypeKind.Constructed, parent, SemanticsKind.Owner, (BoundType[])arguments.Components));
+                parent = this.BoundContractReference(this.types.Intern(BoundTypeKind.Constructed, parent, SemanticsKind.Owner, (BoundType[])arguments.Components));
                 inherited = parent.Contract!;
             }
 
@@ -383,12 +400,12 @@ public sealed partial class Binding
 
             for (var j = 0; j < inherited.Requirements.Count; j++)
             {
-                Add(inherited.Requirements[j], shape.RequirementStorage);
+                AddRequirement(inherited.Requirements[j]);
             }
 
             for (var j = 0; j < inherited.AssociatedTypes.Count; j++)
             {
-                Add(inherited.AssociatedTypes[j], shape.AssociatedStorage);
+                AddAssociated(inherited.AssociatedTypes[j]);
             }
         }
 
@@ -397,11 +414,11 @@ public sealed partial class Binding
             var member = contract.Members[i];
             if (member is FunctionKoto { IsRequirement: true } or PropertyKoto { IsContractRequirement: true })
             {
-                Add(member.BoundSymbol!, shape.RequirementStorage);
+                AddRequirement(new(member.BoundSymbol!, shape.Symbol));
             }
             else if (member is SyntaxFormKoto { Akind: KotoKind.AssociatedType } && member.BoundSymbol is { } associated)
             {
-                Add(associated, shape.AssociatedStorage);
+                AddAssociated(new(associated, shape.Symbol));
                 Complete(member, BoundType.Unit);
             }
             else if (member is not EffectBoundKoto)
@@ -418,7 +435,7 @@ public sealed partial class Binding
             shape.ClauseStorage.Add(clause);
             if (clause.IsAssociatedConstraint && clause.BoundSymbol is { Kind: BindingSymbolKind.AssociatedType } associated)
             {
-                Add(associated, shape.AssociatedStorage);
+                AddAssociated(new(associated, shape.Symbol));
             }
         }
 
@@ -429,9 +446,9 @@ public sealed partial class Binding
         for (var i = 0; i < shape.Requirements.Count; i++)
         {
             var member = shape.Requirements[i];
-            if (!shape.MembersByName.TryGetValue(member.Name, out var list))
+            if (!shape.MembersByName.TryGetValue(member.Symbol.Name, out var list))
             {
-                shape.MembersByName.Add(member.Name, list = new());
+                shape.MembersByName.Add(member.Symbol.Name, list = new());
             }
 
             list.Add(member);
@@ -443,6 +460,22 @@ public sealed partial class Binding
         }
 
         return valid;
+
+        void AddRequirement(BoundRequirement requirement)
+        {
+            if (shape.SeenRequirements.Add(requirement))
+            {
+                shape.RequirementStorage.Add(requirement);
+            }
+        }
+
+        void AddAssociated(BoundRequirement requirement)
+        {
+            if (shape.SeenRequirements.Add(requirement))
+            {
+                shape.AssociatedStorage.Add(requirement);
+            }
+        }
 
         void Add(BindingSymbol symbol, List<BindingSymbol> destination)
         {
@@ -597,6 +630,9 @@ public sealed partial class Binding
         if (!result.Active)
         {
             result.Active = true;
+            result.InheritedFrom = null;
+            result.AdditionalInheritedSources?.Clear();
+            result.InheritedBase = null;
             result.Use = use;
             result.Declaration = use;
             result.RootContract = root;
@@ -740,6 +776,7 @@ public sealed partial class Binding
 
         void AddClauses(BoundContract declaration)
         {
+            this.AddArithmeticPremises(declaration, self, environment, shape.Symbol);
             for (var i = 0; i < declaration.ClauseStorage.Count; i++)
             {
                 if (declaration.ClauseStorage[i].BoundConstraint is { } constraint && DependentConstraint(constraint, contractSelf: true))
@@ -770,7 +807,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < this.activeConformancePaths.Count; i++)
             {
-                if (!this.IsLibraryDeclaration(this.activeConformancePaths[i].Declaration))
+                if (!this.IsLibraryDeclaration(this.activeConformancePaths[i].Type.Declaration))
                 {
                     this.activeConformancePaths[i].IsVerified = false;
                 }
@@ -780,26 +817,49 @@ public sealed partial class Binding
         for (var i = 0; i < this.activeConformancePaths.Count; i++)
         {
             var conformance = this.activeConformancePaths[i];
+            this.failedConformance = null;
             var proof = this.VerifyConformance(conformance);
-            if (final)
+            if (final && conformance.InheritedFrom is null)
             {
+                if (conformance.Unsupported && mode == BindingMode.Final)
+                {
+                    this.Fail(conformance.Use, BindingFailure.Unsupported); // SPEC 12.4.4.1, 23.3.6.1: the limit's one location
+                    continue;
+                }
+
                 this.RequireConstraint(conformance.Use, proof, mode);
             }
         }
 
         if (final)
         {
+            this.InvalidateAssociatedEvidence();
             foreach (var identity in this.conformances.Values)
             {
                 if (identity.PathStorage.Count != 0)
                 {
-                    this.RequireConstraint(identity.PathStorage[0].Use, this.VerifyConformanceAgreement(identity), mode);
+                    this.failedConformance = null;
+                    this.conformanceChecks++;
+                    var agreement = this.VerifyConformanceAgreement(identity);
+                    this.conformanceChecks--;
+                    var explicitPath = false;
+                    foreach (var path in identity.PathStorage)
+                    {
+                        explicitPath |= path.InheritedFrom is null;
+                    }
+
+                    if (explicitPath || agreement == ConstraintProof.Error)
+                    {
+                        this.RequireConstraint(identity.PathStorage[0].Use, agreement, mode);
+                    }
                 }
             }
 
+            this.ValidateBoundConformanceAgreement();
             for (var i = 0; i < this.projectionUses.Count; i++)
             {
                 var use = this.projectionUses[i];
+                this.failedConformance = null;
                 this.RequireConstraint(use.Use, this.ProveConformance(use.Type, use.Contract, this.ConstraintScope(use.Use)), mode);
             }
         }
@@ -815,6 +875,7 @@ public sealed partial class Binding
             }
 
             var scope = this.scopes[this.nodes[n]];
+            this.ValidateAssociatedOverlapAgreement(scope);
             if (scope.Constraints is { } environment)
             {
                 this.associatedIdentityChecks.Clear();
@@ -825,7 +886,7 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    if (this.associatedIdentityChecks.TryGetValue(a.Subject, out var previous) && !ReferenceEquals(ta, previous))
+                    if (this.associatedIdentityChecks.TryGetValue(a.Subject, out var previous) && !this.SameCompleteType(ta, previous))
                     {
                         environment.Invalid = true;
                         this.Fail(scope.Owner, BindingFailure.InvalidAssociatedType);
@@ -852,12 +913,12 @@ public sealed partial class Binding
             {
                 for (var i = 0; i < members.Count; i++)
                 {
-                    if (members[i].Declaration is not FunctionKoto a)
+                    if (members[i].Symbol.Declaration is not FunctionKoto a)
                     {
                         continue;
                     }
 
-                    var declaringContract = members[i].Scope.Owner.BoundSymbol!;
+                    var declaringContract = members[i].Contract;
                     if (a.BoundSymbol!.Type is { } result && !TypeAccessCovers(result, declaringContract, declaringContract))
                     {
                         this.Fail(a, BindingFailure.Access);
@@ -881,7 +942,7 @@ public sealed partial class Binding
 
                     for (var j = 0; j < i; j++)
                     {
-                        if (members[j].Declaration is not FunctionKoto b || a.GenericArguments.Count != b.GenericArguments.Count || a.Parameters.Count != b.Parameters.Count)
+                        if (members[j].Symbol.Declaration is not FunctionKoto b || a.GenericArguments.Count != b.GenericArguments.Count || a.Parameters.Count != b.Parameters.Count)
                         {
                             continue;
                         }
@@ -896,7 +957,7 @@ public sealed partial class Binding
                                 break;
                             }
 
-                            sameSignature &= SignatureEquals(this.ContractType(ta, scope), this.ContractType(tb, scope), a, b);
+                            sameSignature &= SignatureEquals(this.ContractType(this.SubstituteContractReference(ta, members[i].Contract), scope), this.ContractType(this.SubstituteContractReference(tb, members[j].Contract), scope), a, b);
                             differentLabels |= a.Parameters[p].ExternalName != b.Parameters[p].ExternalName;
                         }
 

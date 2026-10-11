@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Tinyhand;
@@ -22,7 +23,6 @@ public class AbortEmissionTest
         { "AbortArgumentReturn", "func f()\n    defer => Console.writeLine(\"cleanup\")\n    $abort((label message: do\n        return\n        exit to message \"unused\"\n    ))\nf()\nConsole.writeLine(\"after\")", "cleanup\nafter\n", 0, string.Empty },
         { "AbortCondition", "if $abort(\"condition\") => Console.writeLine(\"bad\")", string.Empty, 1, "Hello.kimi:1:4: abort KIMI_E_ABORT: condition\n" },
         { "AbortArgumentOverflow", "$abort((label message: do\n    var x: i32 = 2147483647\n    x = x + 1\n    exit to message \"outer\"\n))", string.Empty, 1, "Hello.kimi:3:9: abort KIMI_E_INT_OVERFLOW: Integer overflow\n" },
-        { "AbortUnreachableLocal", "let text = \"kept\"\n$abort(\"stop\")\nConsole.writeLine(text)", string.Empty, 1, "Hello.kimi:2:1: abort KIMI_E_ABORT: stop\n" },
         { "AbortConditionalResult", "var flag = false\nlet text = if flag => $abort(\"bad\") else => \"ok\"\nConsole.writeLine(text)", "ok\n", 0, string.Empty },
         { "AbortWhileCondition", "while $abort(\"condition\") => Console.writeLine(\"bad\")", string.Empty, 1, "Hello.kimi:1:7: abort KIMI_E_ABORT: condition\n" },
         { "AbortRequireCondition", "require $abort(\"condition\") else => $abort(\"bad\")", string.Empty, 1, "Hello.kimi:1:9: abort KIMI_E_ABORT: condition\n" },
@@ -41,9 +41,9 @@ public class AbortEmissionTest
     public void ExplicitAbortPassesEveryCompilerStage(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
         using var writer = new StringWriter();
-        Assert.True(c.Emission.WriteIr(writer, out error), error);
+        Assert.True(c.WriteIr(writer, out error), error);
         Assert.Contains("@__kimi_abort_message", writer.ToString());
     }
 
@@ -64,20 +64,30 @@ public class AbortEmissionTest
     public void RejectsInvalidInput(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
-    [InlineData("let text: string\n$abort(text@move)", OwnershipFailure.UninitializedUse)]
-    [InlineData("let text = \"x\"\n_ = text@move\n$abort(text@move)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let text = \"x\"\n$abort(text@move)\nConsole.writeLine(text)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let x: i32\n$abort(\"stop\")\nlet y = x", OwnershipFailure.UninitializedUse)]
-    public void RejectsOwnershipViolationsIncludingUnreachableUses(string source, OwnershipFailure failure)
+    [InlineData("let text: string\n$abort(text@move)", DiagnosticCode.UninitializedPlace_Kd)]
+    [InlineData("let text = \"x\"\n_ = text@move\n$abort(text@move)", DiagnosticCode.MovedPlace_Kd)]
+    public void RejectsOwnershipViolations(string source, DiagnosticCode failure)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == failure);
-        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, x => x.Code == failure);
+        Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.False(c.Validate(out _));
+    }
+
+    // Code after $abort is unreachable: its first use of a Local is one location-only Unsupported at that use.
+    [Theory]
+    [InlineData("let text = \"x\"\n$abort(text@move)\nConsole.writeLine(text)", "text")]
+    [InlineData("let x: i32\n$abort(\"stop\")\nlet y = x", "x")]
+    public void UnreachableLocalUseIsUnsupported(string source, string at)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        var issue = Assert.Single(c.Problems);
+        Assert.Equal((DiagnosticCode.Unsupported_Kd, source.LastIndexOf(at, StringComparison.Ordinal), at.Length), (issue.Code, c.SyntaxOf(issue.Subject).Span.Start, c.SyntaxOf(issue.Subject).Span.Length));
+        Assert.False(c.Validate(out _));
     }
 
     [Fact]
@@ -105,16 +115,16 @@ public class AbortEmissionTest
         {
             Assert.True(c.Bind().IsComplete);
             Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out _));
         }
 
         var before = GC.GetAllocatedBytesForCurrentThread();
         var success = true;
         for (var i = 0; i < 128; i++)
         {
-            success &= c.Ownership.Analyze().IsVerified;
-            success &= c.Emission.WriteIr(TextWriter.Null, out _);
+            success &= c.Analyze().IsVerified;
+            success &= c.WriteIr(TextWriter.Null, out _);
         }
 
         var allocated = GC.GetAllocatedBytesForCurrentThread() - before;

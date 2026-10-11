@@ -100,46 +100,12 @@ public sealed class PropertyKoto : VariableKoto
 
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        base.WriteTo(ref builder);
+        => this.WritePropertyTo(ref builder, headerOnly: false);
 
-        if (this.accessors is not { Count: > 0 } accessors)
-        {
-            return;
-        }
-
-        if (this.HasInlineAccessors)
-        {
-            builder.AppendSpace();
-            builder.Append(Constants.HasKeyword);
-            builder.AppendSpace();
-            for (var i = 0; i < accessors.Count; i++)
-            {
-                if (i > 0)
-                {
-                    builder.AppendCommaAndSpace();
-                }
-
-                accessors[i].WriteTo(ref builder);
-            }
-
-            return;
-        }
-
-        builder.AppendLine();
-        builder.IncrementIndent();
-        for (var i = 0; i < accessors.Count; i++)
-        {
-            if (i > 0)
-            {
-                builder.AppendLine();
-            }
-
-            accessors[i].WriteTo(ref builder);
-        }
-
-        builder.DecrementIndent();
-    }
+    /// <summary>Writes the Property and explicit accessor contracts without executable expressions.</summary>
+    /// <param name="builder">The output.</param>
+    internal void WriteHeaderTo(ref IndentedStringBuilder builder)
+        => this.WritePropertyTo(ref builder, headerOnly: true);
 
     /// <summary>Adds an explicit accessor unless that kind is already present.</summary>
     /// <param name="accessor">The accessor to add.</param>
@@ -162,37 +128,65 @@ public sealed class PropertyKoto : VariableKoto
     internal void CompleteSpan(int end)
         => this.Span = SourceSpan.FromBounds(this.Span.Start, Math.Max(this.Span.End, end));
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        base.VisitChildrenCore(visitor);
-
-        if (this.accessors is not null)
-        {
-            for (var accessorIndex = 0; accessorIndex < this.accessors.Count; accessorIndex++)
-            {
-                var accessor = this.accessors[accessorIndex];
-                visitor.Visit(accessor);
-            }
-        }
+        base.ForEachChildSlot(ref slots);
+        slots.List(this.accessors);
     }
 
-    protected override IEnumerable<Koto> GetChildNodes()
+    private void WritePropertyTo(ref IndentedStringBuilder builder, bool headerOnly)
     {
-        foreach (var child in base.GetChildNodes())
+        this.WriteDeclarationTo(ref builder, headerOnly);
+
+        if (this.accessors is not { Count: > 0 } accessors)
         {
-            yield return child;
+            return;
         }
 
-        if (this.accessors is not null)
+        if (this.HasInlineAccessors)
         {
-            foreach (var accessor in this.accessors)
+            builder.AppendSpace();
+            builder.Append(Constants.HasKeyword);
+            builder.AppendSpace();
+            for (var i = 0; i < accessors.Count; i++)
             {
-                yield return accessor;
+                if (i > 0)
+                {
+                    builder.AppendCommaAndSpace();
+                }
+
+                if (headerOnly)
+                {
+                    accessors[i].WriteHeaderTo(ref builder);
+                }
+                else
+                {
+                    accessors[i].WriteTo(ref builder);
+                }
+            }
+
+            return;
+        }
+
+        builder.AppendLine();
+        builder.IncrementIndent();
+        for (var i = 0; i < accessors.Count; i++)
+        {
+            if (i > 0)
+            {
+                builder.AppendLine();
+            }
+
+            if (headerOnly)
+            {
+                accessors[i].WriteHeaderTo(ref builder);
+            }
+            else
+            {
+                accessors[i].WriteTo(ref builder);
             }
         }
-    }
 
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-        => base.ReplaceChildCore(oldKoto, newKoto) ||
-            (oldKoto is PropertyAccessorKoto && ReplaceInList(this.accessors, oldKoto, newKoto));
+        builder.DecrementIndent();
+    }
 }

@@ -17,6 +17,7 @@ public sealed partial class Binding
 
         inference.Bounds.Clear();
         inference.Variables.Clear();
+        inference.WellFormed.Clear();
         return inference;
     }
 
@@ -80,7 +81,9 @@ public sealed partial class Binding
     }
 
     // With `select`, candidate applicability: the bounds are not judged, since the Origin relations of a fit never change a selection
-    // (SPEC 15.6.1, 10.4); the selected call judges them after selection.
+    // (SPEC 15.6.1, 10.4); the selected call judges them after selection. A call's inputs' well-formedness (SPEC 15.6.4 step 3) also
+    // shortens the solution (OriginInference.WellFormed), and the selected call judges it at each input (RequireInputPremises), so it
+    // is never verified here.
     private bool SolveOriginInference(OriginInference inference, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType = null, bool select = false)
     {
         var binder = inference.Binder;
@@ -134,6 +137,18 @@ public sealed partial class Binding
                         {
                             incomparable = true;
                         }
+                    }
+                }
+
+                // An input's well-formedness only shortens the meet of a covariant variable that other bounds already limit, where they do
+                // not prove it: an Origin that no argument bounds, such as a receiver Borrow formed later, stays open, and a redundant
+                // operand would make the solution name an Origin it does not depend on.
+                for (var i = 0; upper is not null && variable.Polarity != 3 && i < inference.WellFormed.Count; i++)
+                {
+                    if (ReferenceEquals(inference.WellFormed[i].Shorter, variable.Origin) && Resolve(inference.WellFormed[i].Longer, true) is { } stored &&
+                        !this.ProvesOriginOutlives(stored, upper, use))
+                    {
+                        upper = this.Meet(upper, stored);
                     }
                 }
 
@@ -280,6 +295,9 @@ public sealed partial class Binding
         internal List<(BoundOrigin Longer, BoundOrigin Shorter, bool LongerVariable, bool ShorterVariable)> Bounds { get; } = new();
 
         internal List<(BoundOrigin Origin, int Polarity)> Variables { get; } = new();
+
+        // SPEC 15.6.4 step 3: the relations of the call's inputs' well-formedness, each an upper limit of its shorter end only.
+        internal List<(BoundOrigin Longer, BoundOrigin Shorter)> WellFormed { get; } = new();
 
         internal void Add(BoundOrigin longer, BoundOrigin shorter, bool longerVariable = true, bool shorterVariable = true)
         {

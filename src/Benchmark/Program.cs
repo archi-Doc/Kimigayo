@@ -9,6 +9,96 @@ public class Program
 {
     public static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--associated-inference")
+        {
+            AssociatedInferenceMeasurements.Run();
+            return;
+        }
+
+        if (args.Length > 0 && args[0] == "--fixed-origin-loans")
+        {
+            CompilerPlanMeasurements.Run(fixedOrigins: true);
+            return;
+        }
+
+        if (args.Length > 0 && args[0] == "--arithmetic-plans")
+        {
+            CompilerPlanMeasurements.Run(arithmetic: true);
+            return;
+        }
+
+        if (args.Length == 2 && args[0] == "--arithmetic-native-sources")
+        {
+            ArithmeticMeasurements.WriteNativeSources(args[1]);
+            return;
+        }
+
+        if (args.Length > 0 && args[0] == "--adaptation-plans")
+        {
+            CompilerPlanMeasurements.Run(adaptations: true);
+            return;
+        }
+
+        if (args.Length > 0 && args[0] == "--inheritance-lifecycle")
+        {
+            InheritanceLifecycleMeasurements.Run();
+            return;
+        }
+
+        if (args.Length > 0 && args[0] == "--inheritance-plans")
+        {
+            CompilerPlanMeasurements.Run(inheritance: true);
+            return;
+        }
+
+        if (args.Length > 0 && args[0] == "--property-plans")
+        {
+            CompilerPlanMeasurements.Run(properties: true);
+            return;
+        }
+
+        if (args.Length > 0 && args[0] == "--constructor-inference")
+        {
+            ConstructorInferenceMeasurements.Run();
+            return;
+        }
+
+        if (args.Length > 0 && args[0] == "--hover")
+        {
+            HoverMeasurements.Run();
+            return;
+        }
+
+        if (args.Length > 0 && args[0] == "--origin-proof")
+        {
+            OriginProofMeasurements.Run();
+            return;
+        }
+
+        if (args.Length == 3 && args[0] == "--origin-proof-case")
+        {
+            OriginProofMeasurements.RunCase(args[1], int.Parse(args[2], System.Globalization.CultureInfo.InvariantCulture));
+            return;
+        }
+
+        if (args.Length > 0 && args[0] == "--element-places")
+        {
+            CompilerPlanMeasurements.Run(elements: true);
+            return;
+        }
+
+        if (args.Length > 0 && args[0] == "--generic-defaults")
+        {
+            CompilerPlanMeasurements.Run(defaults: true);
+            return;
+        }
+
+        if (args.Length > 0 && args[0] == "--local-regions")
+        {
+            CompilerPlanMeasurements.Run(regions: true);
+            return;
+        }
+
         if (args.Length > 0 && args[0] == "--view-plans")
         {
             CompilerPlanMeasurements.Run(views: true);

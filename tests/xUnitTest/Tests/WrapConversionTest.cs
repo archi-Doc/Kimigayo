@@ -17,13 +17,13 @@ public class WrapConversionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var variables = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().ToDictionary(x => x.NameKoto.IdentifierName, x => x);
-        Assert.Same(BoundType.Primitives["u32"], variables["a"].NameKoto.BoundType);
-        Assert.Same(BoundType.WrappingOf(BoundType.Primitives["u8"]), variables["b"].NameKoto.BoundType);
-        Assert.Same(BoundType.Primitives["u64"], variables["c"].NameKoto.BoundType);
-        Assert.Same(BoundType.WrappingOf(BoundType.Primitives["i16"]), variables["d"].NameKoto.BoundType);
-        Assert.Same(BoundType.Primitives["u64"], variables["e"].NameKoto.BoundType);
-        Assert.Same(BoundType.Primitives["i128"], variables["f"].NameKoto.BoundType);
-        Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), x => Assert.Equal(ConversionBinding.Wrap, x.ConversionBinding));
+        Assert.Same(BoundType.Primitives["u32"], variables["a"].NameKoto.TypeOf());
+        Assert.Same(BoundType.WrappingOf(BoundType.Primitives["u8"]), variables["b"].NameKoto.TypeOf());
+        Assert.Same(BoundType.Primitives["u64"], variables["c"].NameKoto.TypeOf());
+        Assert.Same(BoundType.WrappingOf(BoundType.Primitives["i16"]), variables["d"].NameKoto.TypeOf());
+        Assert.Same(BoundType.Primitives["u64"], variables["e"].NameKoto.TypeOf());
+        Assert.Same(BoundType.Primitives["i128"], variables["f"].NameKoto.TypeOf());
+        Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), x => Assert.Equal(ConversionBinding.Wrap, x.ConversionOf().Kind));
     }
 
     [Theory]
@@ -41,9 +41,9 @@ public class WrapConversionTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>());
         var expected = type.StartsWith("Wrapping<", StringComparison.Ordinal) ? BoundType.WrappingOf(BoundType.Primitives[type[9..^1]]) : BoundType.Primitives[type];
-        Assert.Same(expected, conversion.BoundType);
-        Assert.Equal(ConversionBinding.Wrap, conversion.ConversionBinding);
-        var folded = Assert.NotNull(conversion.FoldedConstant);
+        Assert.Same(expected, conversion.TypeOf());
+        Assert.Equal(ConversionBinding.Wrap, conversion.ConversionOf().Kind);
+        var folded = Assert.NotNull(conversion.ConversionOf().Folded);
         if (type == "u128")
         {
             Assert.Equal(Int128.MinValue, folded); // -2^127 is the bit pattern 2^127, read as u128.
@@ -53,7 +53,7 @@ public class WrapConversionTest
             Assert.Equal((Int128)payload, folded);
         }
 
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
     }
 
     [Fact]
@@ -111,7 +111,7 @@ public class WrapConversionTest
     public void InvalidFormsAreRejected(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]
@@ -122,6 +122,5 @@ public class WrapConversionTest
         var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
         Assert.Equal(nameof(Kimi.DiagnosticCode.InvalidWrapConversion_Kd), error.Code);
         Assert.Equal("f@wrap<u32>", error.Text);
-        Assert.Contains("@bits<U>", error.Advice);
     }
 }

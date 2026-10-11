@@ -13,17 +13,17 @@ internal static partial class LlvmModuleWriter
             switch (helper.Kind)
             {
                 case DictionaryHelperKind.CheckKey:
-                    WriteDictionaryKeyCheck(output, helper, module.SourceCalls[helper.Related!], module.DictionaryRequireAbsent!);
+                    WriteDictionaryKeyCheck(output, helper, module.FunctionReferences[helper.Related], module.DictionaryRequireAbsent!);
                     break;
                 case DictionaryHelperKind.Place:
                     WriteDictionaryInsertion(output, helper, module.DictionaryAppend ?? throw new InvalidOperationException("Dictionary append source was not compiled."));
                     output.Write("  ret void\n");
                     break;
                 case DictionaryHelperKind.Drop:
-                    if (helper.Related is { } clear)
+                    if (helper.Related >= 0)
                     {
                         output.Write("  call void @");
-                        output.Write(module.SourceCalls[clear].Name);
+                        output.Write(module.FunctionReferences[helper.Related].Name);
                         output.Write("(ptr %handle, ptr %location, i64 %location_length)\n");
                     }
 

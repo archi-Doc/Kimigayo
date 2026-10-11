@@ -144,7 +144,7 @@ public class PropertyParseTest
 
         var areaGetter = Assert.Single(properties[0].Accessors);
         Assert.Equal(PropertyAccessorKind.Get, areaGetter.AccessorKind);
-        Assert.IsType<AsteriskKoto>(areaGetter.Body);
+        ParseTestHelper.Binary(KotoKind.Asterisk, areaGetter.Body);
 
         Assert.Collection(
             properties[1].Accessors,
@@ -153,7 +153,7 @@ public class PropertyParseTest
             {
                 Assert.Equal(ModifierKind.Private, setter.Modifier);
                 var body = Assert.IsType<CodeBlockKoto>(setter.Body);
-                Assert.IsType<EqualsKoto>(Assert.Single(body.Items));
+                ParseTestHelper.Binary(KotoKind.Equals, Assert.Single(body.Items));
             });
 
         Assert.False(properties[2].HasInlineAccessors);

@@ -22,7 +22,7 @@ public class AssociatedNominalFormationTest
     {
         var c = MinimalEmissionTest.Analyze(View + Family + "var value = 7\nlet view = wrap(value@ref)\nvalue = 9\nrequire view.value == 7 else => $abort(\"view\")");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.False(c.Analysis.IsVerified);
     }
 
     // SPEC 15.3.7: the published stored-Origin condition of the result S.Item(a, b) is a premise of f and an obligation of its calls
@@ -46,7 +46,7 @@ public class AssociatedNominalFormationTest
         var source = declarations + "var value = 7\nlet box = wrap(value@ref)\n" + (mutate ? "value = 9\n" : string.Empty) + "require box.value == 7 else => $abort(\"box\")\nConsole.writeLine(\"box\")";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(!mutate, c.Ownership.Result.IsVerified);
+        Assert.Equal(!mutate, c.Analysis.IsVerified);
         if (!mutate)
         {
             ScalarEmissionTest.EmitFixture("AssociatedConstructedBorrow", source, "box\n");

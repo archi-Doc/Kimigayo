@@ -38,22 +38,9 @@ public abstract class BlockStatementKoto : Koto
         this.Body.WriteBranchTo(ref builder);
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        visitor.Visit(this.Body);
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes() => [this.Body];
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (this.Body != oldKoto || newKoto is not CodeBlockKoto body)
-        {
-            return false;
-        }
-
-        this.Body = body;
-        return true;
+        this.Body = slots.Slot(this.Body);
     }
 }
 

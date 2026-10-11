@@ -71,10 +71,13 @@ public class GenericCallbackEmissionTest
         // SPEC 21.3.1: the instance calls its (T) -> bool value through the substituted signature.
         var c = MinimalEmissionTest.Analyze("func accepts<T>(value: T, f: (T) -> bool) -> bool => f(value@move)\nlet r = accepts<" + type + ">(" + value + ", func (x: " + type + ") => x == " + value + ")");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Empty(module.PendingEntries);
+        Assert.True(module.IsComplete);
         var instance = Assert.Single(GenericStorageEmissionTest.Instances(module));
         var valueCall = Assert.Single(instance.Instructions, x => x.Opcode == EmissionOpcode.CallValue);
-        Assert.Equal([type == "bool" ? "i1" : type], valueCall.Callee!.Parameters.Select(p => p.Type).ToArray());
+        Assert.Equal([type == "bool" ? "i1" : type, "ptr", "i64"], valueCall.Callee!.Parameters.Select(p => p.Type).ToArray());
+        Assert.True(valueCall.Callee.CallerLocation);
+        Assert.Equal(AbiParameterKind.Location, valueCall.Callee.Parameters[^2].Kind);
+        Assert.Equal(AbiParameterKind.LocationLength, valueCall.Callee.Parameters[^1].Kind);
     }
 
     [Theory]
@@ -86,7 +89,7 @@ public class GenericCallbackEmissionTest
         // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
         // the corrupt value call is rejected on the ordinary body that owns it.
         var c = MinimalEmissionTest.Analyze("func invoke(x: i32, f: (i32) -> bool) -> bool => f(x)\nlet result = invoke(7, func (x: i32) => true)");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "invoke");
         var call = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call);
         if (defect == "loan")
@@ -104,10 +107,10 @@ public class GenericCallbackEmissionTest
         }
 
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.Validate(out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.Validate(out error), error);
     }
 
     [Fact]

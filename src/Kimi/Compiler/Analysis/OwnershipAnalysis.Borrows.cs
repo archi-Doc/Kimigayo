@@ -6,24 +6,49 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
-    internal bool SupportsOriginObligations() => this.UnprovenOriginObligation() is null;
-
-    // SPEC 15.6.1: every Origin obligation that Binding left unproven and this analysis cannot check is its own record, reported
-    // without adding constraints. A failed Origin relation leaves the Loan, destruction and result checks to proceed without it;
-    // any other unchecked obligation, such as an unsolved inference, stops the analysis.
+    // SPEC 15.6.1: every obligation receives one verdict once Binding is final (PLAN G74 U4), and every Origin obligation that
+    // remains unchecked is its own record, reported without adding constraints, so an unchecked obligation leaves the analysis
+    // unverified. A failed Origin relation leaves the Loan, destruction and result checks to proceed without it; any other unchecked
+    // obligation, such as an unsolved inference, stops the analysis.
     private bool ReportUnprovenOriginObligations()
     {
         var obligations = this.compilation.Binding.Obligations;
         var stop = false;
         for (var i = 0; i < obligations.Count; i++)
         {
-            if (this.UncheckedOriginObligation(obligations[i]))
+            var verdict = this.JudgeObligation(obligations[i]);
+            if (verdict.Unchecked)
             {
-                stop |= this.ReportUnprovenOriginObligation(obligations[i], false);
+                stop |= this.ReportJudgedOriginObligation(obligations[i], verdict.Judgment, verdict.Reversed, false);
             }
         }
 
         return stop;
+    }
+
+    // The verdict of one obligation, by the check that owns it: Binding's length verification, call-site borrow formation for a
+    // borrowed input's well-formedness, or the proof and region judgment of SPEC 15.6.5.
+    private ObligationVerdict JudgeObligation(in BindingObligation obligation)
+    {
+        var binding = this.compilation.Binding;
+        binding.OriginProofMetrics?.Verdict();
+        if (binding.IsVerifiedLengthObligation(obligation))
+        {
+            return default; // Definition conditions and each call's substituted lengths were checked by Binding.
+        }
+
+        if (obligation.Discharge == OriginDischarge.CallBorrows || binding.IsVerifiedOriginObligation(obligation))
+        {
+            return default;
+        }
+
+        if (obligation is not { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null })
+        {
+            return new(true, default, false);
+        }
+
+        var judgment = binding.JudgeOriginObligation(obligation, out var reversed);
+        return judgment == OriginJudgment.Proven ? default : new(true, judgment, reversed);
     }
 
     // SPEC 15.3.6, 15.6.1 Identity: a meet at the longer end of an `outlives` relation outlives an Origin exactly when each operand
@@ -31,9 +56,16 @@ public sealed partial class OwnershipAnalysis
     // whole. True when the analysis must stop.
     private bool ReportUnprovenOriginObligation(in BindingObligation obligation, bool operand)
     {
+        var reversed = false;
+        var judgment = obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null }
+            ? this.compilation.Binding.JudgeOriginObligation(obligation, out reversed) : default;
+        return this.ReportJudgedOriginObligation(obligation, judgment, reversed, operand);
+    }
+
+    private bool ReportJudgedOriginObligation(in BindingObligation obligation, OriginJudgment judgment, bool reversed, bool operand)
+    {
         if (obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: not null, Use: var use })
         {
-            var judgment = this.compilation.Binding.JudgeOriginObligation(obligation, out var reversed);
             if (operand && judgment == OriginJudgment.Proven)
             {
                 return false;
@@ -44,6 +76,21 @@ public sealed partial class OwnershipAnalysis
                 // A chain between two body Origins needs region inference over Loan edges; it is a located limit, not a proof.
                 var at = use is VariableKoto { InitializerKoto: { } initializer } && Binding.IsFitObligation(obligation) ? initializer : use;
                 this.issues.Add(new(at, OwnershipFailure.Unsupported));
+                return false;
+            }
+
+            if (reversed && Binding.IsLocalRegion(obligation.Shorter))
+            {
+                return this.ReportUnprovenOriginObligation(obligation with { Longer = obligation.Shorter, Shorter = longer, Equality = false }, true);
+            }
+
+            if (Binding.IsLocalRegion(longer))
+            {
+                foreach (var source in this.compilation.Binding.LocalRegionSources(longer))
+                {
+                    this.ReportUnprovenOriginObligation(obligation with { Longer = source, Equality = false }, true);
+                }
+
                 return false;
             }
 
@@ -73,46 +120,10 @@ public sealed partial class OwnershipAnalysis
         return obligation is not { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null };
     }
 
-    // The use of the first Origin obligation that Binding left unproven and this analysis cannot check, or null.
-    private Koto? UnprovenOriginObligation()
-    {
-        var obligations = this.compilation.Binding.Obligations;
-        for (var i = 0; i < obligations.Count; i++)
-        {
-            if (this.UncheckedOriginObligation(obligations[i]))
-            {
-                return obligations[i].Use;
-            }
-        }
-
-        return null;
-    }
-
-    private bool UncheckedOriginObligation(in BindingObligation obligation)
-    {
-        if (this.compilation.Binding.IsVerifiedLengthObligation(obligation))
-        {
-            return false; // Definition conditions and each call's substituted lengths were checked by Binding.
-        }
-
-        if (this.compilation.Binding.IsVerifiedOriginObligation(obligation) ||
-            (obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null } &&
-            this.compilation.Binding.JudgeOriginObligation(obligation, out _) == OriginJudgment.Proven))
-        {
-            return false;
-        }
-
-        // A well-formed borrowed input, or a pair-layer input whose outer slot is active only for a borrow binding (SPEC 8.1.2),
-        // guarantees its nested stored Origins outlive that input. Call-site borrow formation checks the concrete
-        // nested dependencies, including drop uses, in VerifyBorrows.
-        return obligation.Kind != BindingObligationKind.OriginOutlives || obligation.Deadline != BindingDeadline.BodyOrigins || obligation.Equality ||
-            obligation.Shorter is not { Kind: OriginKind.Input, Binder: FunctionKoto function } outer ||
-            (uint)outer.Slot >= (uint)function.Parameters.Count ||
-            function.Parameters[outer.Slot].Type.BoundType is not { } input || !(ReferenceTypes.IsStruct(input) || Binding.TryPairLayer(input, out _, out _)) ||
-            !ReferenceEquals(input.Origin, outer) || !ReferenceEquals(input.Components[0], obligation.Type) ||
-            !(input.Components[0].OriginArguments.Contains(obligation.Longer!) || ReferenceEquals(input.Components[0].Origin, obligation.Longer));
-    }
-
+    // SPEC 3.4: each branch below is one Place route (raw, stored reference, published Place, Reborrow, object payload, sequence
+    // element, borrowed path, owned static path), chosen from the selection's form; designator outcomes are alternatives, never
+    // fallback stages. Only the final Value route evaluates its source, and a Place selection that no route reached fails closed
+    // there (PLAN G59 U1). An address-producing use (`@raw`, an address adaptation) observes the borrowed address itself.
     private int BorrowStruct(Koto source, BoundType type, int reservation = -1)
     {
         var unwrapped = this.SelectedPlace(KotoHelper.UnwrapParentheses(source));
@@ -169,11 +180,11 @@ public sealed partial class OwnershipAnalysis
         }
 
         if (unwrapped is BinaryKoto objectPart && !Binding.IsGetterResult(objectPart) && !this.SpecialField(objectPart) &&
-            ObjectTypes.HandleMode(this.Concrete(objectPart.BoundType)) is not null && ReferenceEquals(objectPart.BoundType!.Components[0], type.Components[0]) &&
+            this.Resolve(objectPart.BoundType, this.Active) is { } storedObject && storedObject.HandleMode is not null && ReferenceEquals(storedObject.Components[0], type.Components[0]) &&
             (ElementAccess.OwnedPathRoot(objectPart) is not null || (objectPart is MemberAccessKoto objectField && ElementAccess.BorrowedPathRoot(objectField) is not null) ||
                 (objectPart is IndexKoto objectIndex && (objectIndex.Left.BoundType?.Kind == BoundTypeKind.FixedArray || ReferenceTypes.IsArray(objectIndex.Left.BoundType)))))
         {
-            return this.BorrowStoredObject(objectPart, type, reservation);
+            return this.BorrowStoredObject(objectPart, storedObject, type, reservation);
         }
 
         if (unwrapped is IndexKoto element && element.Right is not RangeKoto && type.Semantics == SemanticsKind.Uniq &&
@@ -196,7 +207,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         if (unwrapped is IndexKoto slice && type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef &&
-            (slice.Left.BoundType?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array || ReferenceTypes.IsDynamicArray(slice.Left.BoundType)))
+            (slice.Left.BoundType?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array || ReferenceTypes.IsDynamicArray(slice.Left.BoundType) || ReferenceTypes.IsArray(slice.Left.BoundType)))
         {
             // A shared Reborrow of a stored exclusive reference or an objref view of a stored handle loads the stored
             // pointer (SPEC 10.2, 4.6.9); any other shared borrow takes the element slot's address.
@@ -212,10 +223,11 @@ public sealed partial class OwnershipAnalysis
 
         if (unwrapped is IndexKoto index && !ElementAccess.IsSlicing(index) && ((index.Left.BoundType?.Kind == BoundTypeKind.FixedArray && ElementAccess.StaticSelector(index) < 0) ||
             (ElementAccess.AccessType(index.Left) is { Semantics: SemanticsKind.Ref } array && ReferenceTypes.IsArray(array))) &&
-            type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef)
+            (type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef || (type.Semantics == SemanticsKind.Uniq && index.Left.BoundType?.Kind == BoundTypeKind.FixedArray)))
         {
-            // SPEC 4.6.9: the fixed array is a declared reference or an element Place borrowed as the receiver. A stored
-            // exclusive reference or handle is read as its shared view; any other element is borrowed at its address.
+            // SPEC 4.6.9: the fixed array is a declared reference or an element Place borrowed as the receiver, in the use's mode for
+            // a runtime index into an owned fixed array (PLAN G59). A stored exclusive reference or handle is read as its shared view;
+            // any other element is borrowed at its address.
             if (index.BoundType is { } stored && SharedReadTypes.ReadsStoredPointer(stored, type))
             {
                 if (!ReferenceTypes.IsArray(index.Left.BoundType))
@@ -233,14 +245,14 @@ public sealed partial class OwnershipAnalysis
                 return read;
             }
 
-            if (type.Semantics != SemanticsKind.Ref)
+            if (type.Semantics == SemanticsKind.ObjRef)
             {
                 this.Unsupported(index);
                 return -1;
             }
 
             var receiver = index.Left.BoundType?.Kind == BoundTypeKind.FixedArray
-                ? this.BorrowStruct(index.Left, this.compilation.Binding.Reference(SemanticsKind.Ref, index.Left.BoundType, type.Origin))
+                ? this.BorrowStruct(index.Left, this.compilation.Types.Reference(type.Semantics, index.Left.BoundType, type.Origin))
                 : this.Receiver(index.Left);
             var receiverValue = this.Value(receiver);
             var subscript = this.SelectionKey(index, receiver);
@@ -250,8 +262,8 @@ public sealed partial class OwnershipAnalysis
             }
 
             var projected = this.Place(index, type, OwnershipPlaceKind.Temporary, false);
-            var address = this.Emit(OwnershipOperationKind.Borrow, index, receiver, projected, loanMode: LoanRequirement.Ref);
-            this.SetValue(address, OwnershipValueKind.Address, [receiverValue, this.Value(subscript)], constant: receiver);
+            var elementBorrow = this.Emit(OwnershipOperationKind.Borrow, index, receiver, projected, loanMode: type.Semantics == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref, reservation: reservation);
+            this.SetValue(elementBorrow, OwnershipValueKind.Address, [receiverValue, this.Value(subscript)], constant: receiver);
             return this.RegisterTemporary(projected);
         }
 
@@ -284,10 +296,7 @@ public sealed partial class OwnershipAnalysis
                 return -1;
             }
 
-            var projected = this.Place(field, type, OwnershipPlaceKind.Temporary, false);
-            var address = this.Emit(OwnershipOperationKind.Borrow, field, receiver, projected, loanMode: type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref, reservation: reservation);
-            this.SetValue(address, OwnershipValueKind.Address, [this.Value(receiver)], constant: receiver);
-            return this.RegisterTemporary(projected);
+            return this.BorrowFieldAddress(field, receiver, type, reservation);
         }
 
         if (unwrapped is BinaryKoto path && !Binding.IsGetterResult(path) && !this.SpecialField(path) && ReferenceEquals(type.Components[0], path.BoundType) &&
@@ -306,7 +315,28 @@ public sealed partial class OwnershipAnalysis
             return this.RegisterTemporary(borrowed);
         }
 
-        var direct = (StructStorage.IsStruct(source.BoundType) || EnumStorage.IsEnum(source.BoundType) || ReferenceEquals(source.BoundType, BoundType.String) || source.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || ScalarTypes.Supports(source.BoundType) || ReferenceTypes.IsPointer(source.BoundType)) &&
+        if (unwrapped is BinaryKoto part && ElementAccess.ElementPathBase(part) is { } elementBase && type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq &&
+            ReferenceEquals(type.Components[0], part.BoundType))
+        {
+            // SPEC 3.4.1, 4.6.9 (PLAN G59): a stored part below an Array element is borrowed in place. The element is borrowed in the
+            // use's mode through its own route, keeping the Array's Loan, and the part through that borrow, as `(xs[i]@m).part@m` is.
+            var receiver = this.BorrowStruct(elementBase, this.compilation.Binding.ElementPlaceReference(type.Semantics, elementBase));
+            return receiver < 0 ? -1 : this.BorrowFieldAddress(part, receiver, type, reservation);
+        }
+
+        // The Value route: a value expression, including a getter's result or a range selection's Slice, is evaluated once and its
+        // temporary borrowed (SPEC 10.2, 4.6.6). A stored Field, Tuple or element selection that reaches here has no Place route:
+        // borrowing a temporary read of it would update, expose or lend a copy (SPEC 3.4, 5.4), so it fails closed before any state
+        // is emitted and names the route it lacks (PLAN G59). Only a Reborrow through a read stored reference or handle, which
+        // addresses its referent rather than the selection's slot, reads its selection.
+        if (this.UnroutedSelection(unwrapped) is { } selection && !this.ReborrowsStoredReference(selection, type))
+        {
+            this.ReadSelectionInputs(selection);
+            this.Unsupported(selection);
+            return -1;
+        }
+
+        var direct = (AdtDef.IsStruct(source.BoundType) || AdtDef.IsEnum(source.BoundType) || ReferenceEquals(source.BoundType, BoundType.String) || source.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || ScalarTypes.Supports(source.BoundType) || ReferenceTypes.IsPointer(source.BoundType)) &&
             unwrapped is IdentifierNameKoto && unwrapped.BoundSymbol?.Kind != BindingSymbolKind.PatternCandidate;
         var place = this.SpecialField(unwrapped) ? this.Local(unwrapped)
             : source is FormattingKoto hidden && !ReferenceTypes.IsBorrow(hidden.BoundType) && this.formattingPlaces.TryGetValue(hidden, out var prepared) ? prepared
@@ -332,10 +362,50 @@ public sealed partial class OwnershipAnalysis
         return this.RegisterTemporary(result);
     }
 
+    // A stored Field, Tuple or element Place selection, other than a receiver's own Field (a named Place), a getter or accessor
+    // result, or a range selection's Slice value.
+    private BinaryKoto? UnroutedSelection(Koto unwrapped)
+        => KotoHelper.UnwrapParentheses(unwrapped) is BinaryKoto selection && ElementAccess.IsSyntax(selection) && !ElementAccess.IsSlicing(selection) &&
+            !Binding.IsGetterResult(selection) && this.compilation.Binding.PropertyCall(selection, PropertyAccessorKind.Get) is null &&
+            !this.SpecialField(selection) ? selection : null;
+
+    // SPEC 10.2, 13.5.5.1: a borrow whose referent is not the selection's own stored Type Reborrows the reference or handle the
+    // selection stores.
+    private bool ReborrowsStoredReference(BinaryKoto selection, BoundType type)
+        => this.Resolve(selection.BoundType, this.Active) is { } part && type.Components.Count == 1 &&
+            !ReferenceTypes.StorageMatches(part, this.Resolve(type.Components[0], this.Active));
+
+    // SPEC 23.3.6.4 (PLAN G59 U1): a rejected selection still reads its root and runtime keys in evaluation order, so their own
+    // diagnostics remain; no element is located, protected or acquired, and no value is consumed as an acquisition.
+    private void ReadSelectionInputs(BinaryKoto level)
+    {
+        if (KotoHelper.UnwrapParentheses(level.Left) is BinaryKoto parent && ElementAccess.IsSyntax(parent) && !Binding.IsGetterResult(parent))
+        {
+            this.ReadSelectionInputs(parent);
+        }
+        else
+        {
+            this.Expression(level.Left, PlaceUseKind.Read);
+        }
+
+        if (level is IndexKoto index && ElementAccess.StaticSelector(index) < 0)
+        {
+            this.Expression(index.Right, PlaceUseKind.Read);
+        }
+    }
+
+    private int BorrowFieldAddress(BinaryKoto field, int receiver, BoundType type, int reservation = -1)
+    {
+        var projected = this.Place(field, type, OwnershipPlaceKind.Temporary, false);
+        var address = this.Emit(OwnershipOperationKind.Borrow, field, receiver, projected, loanMode: type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref, reservation: reservation);
+        this.SetValue(address, OwnershipValueKind.Address, [this.Value(receiver)], constant: receiver);
+        return this.RegisterTemporary(projected);
+    }
+
     // SPEC 3.4.1: a receiver with a recorded adaptation is evaluated to its one reference; any other receiver is read.
     private int Receiver(Koto root, bool exclusive = false, int reservation = -1)
     {
-        if (this.Concrete(root.BoundType) is { } handle && ObjectTypes.HandleMode(handle) is not null)
+        if (this.Resolve(root.BoundType, this.Active) is { } handle && handle.HandleMode is not null)
         {
             return this.BorrowIntermediate(root, this.compilation.Binding.ObjectView(root, handle, exclusive), reservation);
         }
@@ -348,9 +418,9 @@ public sealed partial class OwnershipAnalysis
         // SPEC 13.5.5.1, 15.6.2: for a shared access the reference of an explicitly selected referent (`p@follow.x`) lends its
         // referent as the adapted receiver of `p.x` does; an exclusive access uses the reference itself, so a write is judged
         // by its own path and disjoint parts stay separate.
-        if (!exclusive && ElementAccess.IsFollowedRoot(root) && this.Concrete(root.BoundType) is { Components.Count: 1 } reference)
+        if (!exclusive && ElementAccess.IsFollowedRoot(root) && this.Resolve(root.BoundType, this.Active) is { Components.Count: 1 } reference)
         {
-            return this.BorrowStruct(root, this.compilation.Binding.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, reference.Components[0], reference.Origin));
+            return this.BorrowStruct(root, this.compilation.Types.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, reference.Components[0], reference.Origin));
         }
 
         return this.Expression(root, PlaceUseKind.Read);
@@ -364,7 +434,7 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        if (this.Concrete(field.BoundType) is not { } type)
+        if (this.Resolve(field.BoundType, this.Active) is not { } type)
         {
             this.Unsupported(field);
             return -1;
@@ -392,12 +462,12 @@ public sealed partial class OwnershipAnalysis
         // SPEC 13.7: secure the RHS, then acquire the field's exclusive address once. References and owning object
         // paths share the same read/update/replacement, including destruction of the old value.
         var root = ElementAccess.BorrowedPathRoot(field)!;
-        var receiverType = this.Concrete(ElementAccess.AccessType(root, true));
+        var receiverType = this.Resolve(ElementAccess.AccessType(root, true), this.Active);
         var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
-        if (!(receiverType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq || ObjectTypes.HandleMode(receiverType) is { PayloadAuthority: LoanRequirement.Uniq }) ||
-            this.Concrete(field.BoundType) is not { } stored || (operation != KotoKind.Equals && !this.SupportsUpdate(field, stored, operation)))
+        if (!(receiverType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq || receiverType?.HandleMode is { PayloadAuthority: LoanRequirement.Uniq }) ||
+            this.Resolve(field.BoundType, this.Active) is not { } stored || (operation != KotoKind.Equals && !this.SupportsUpdate(field, stored, operation)))
         {
-            this.Unsupported(source);
+            this.Internal(source);
             return -1;
         }
 
@@ -407,7 +477,7 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        var referenceType = this.compilation.Binding.Reference(SemanticsKind.Uniq, stored, receiverType!.Origin);
+        var referenceType = this.compilation.Types.Reference(SemanticsKind.Uniq, stored, receiverType!.Origin);
         var address = this.BorrowStruct(field, referenceType);
         if (address < 0)
         {
@@ -444,6 +514,10 @@ public sealed partial class OwnershipAnalysis
     // a generic integer, and a raw pointer displaced by + or - (SPEC 5.3) where the target may hold one. Any other target, such
     // as a string, is outside the implemented subset on every path that reaches it.
     private bool SupportsUpdate(Koto target, BoundType? type, KotoKind operation, bool pointer = false)
-        => operation != KotoKind.Invalid && this.Concrete(type) is { } concrete &&
+        => operation != KotoKind.Invalid && this.Resolve(type, this.Active) is { } concrete &&
             (concrete.IsNumeric || this.GenericInteger(target) || (pointer && ReferenceTypes.IsPointer(concrete) && operation is KotoKind.Plus or KotoKind.Minus));
+
+    // An obligation's verdict: whether it remains unchecked and, for an Origin relation, its judgment and whether its reverse
+    // direction decides it.
+    private readonly record struct ObligationVerdict(bool Unchecked, OriginJudgment Judgment, bool Reversed);
 }

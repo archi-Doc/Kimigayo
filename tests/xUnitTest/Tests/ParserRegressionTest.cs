@@ -43,7 +43,7 @@ public class ParserRegressionTest
 
         Assert.Empty(diagnostics);
         var field = Assert.IsType<FieldKoto>(GetChildren(root).Single());
-        Assert.IsType<LessThanKoto>(field.InitializerKoto);
+        ParseTestHelper.Binary(KotoKind.LessThan, field.InitializerKoto);
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public class ParserRegressionTest
 
         Assert.Empty(diagnostics);
         var field = Assert.IsType<FieldKoto>(GetChildren(root).Single());
-        var addition = Assert.IsType<PlusKoto>(field.InitializerKoto);
+        var addition = ParseTestHelper.Binary(KotoKind.Plus, field.InitializerKoto);
         Assert.IsType<MemberAccessKoto>(addition.Left);
     }
 
@@ -71,17 +71,17 @@ public class ParserRegressionTest
         Assert.Empty(diagnostics);
         var fields = GetChildren(root).Select(Assert.IsType<FieldKoto>).ToArray();
 
-        var first = Assert.IsType<AndKoto>(fields[0].InitializerKoto);
+        var first = ParseTestHelper.Binary(KotoKind.And, fields[0].InitializerKoto);
         Assert.IsType<IdentifierNameKoto>(first.Left);
         Assert.IsType<IdentifierNameKoto>(first.Right);
 
-        var second = Assert.IsType<OrKoto>(fields[1].InitializerKoto);
-        Assert.IsType<NotKoto>(second.Left);
+        var second = ParseTestHelper.Binary(KotoKind.Or, fields[1].InitializerKoto);
+        ParseTestHelper.Unary(KotoKind.Not, second.Left);
         Assert.IsType<IdentifierNameKoto>(second.Right);
 
-        var third = Assert.IsType<AndKoto>(fields[2].InitializerKoto);
+        var third = ParseTestHelper.Binary(KotoKind.And, fields[2].InitializerKoto);
         Assert.IsType<IdentifierNameKoto>(third.Left);
-        Assert.IsType<NotKoto>(third.Right);
+        ParseTestHelper.Unary(KotoKind.Not, third.Right);
     }
 
     [Fact]
@@ -99,19 +99,19 @@ public class ParserRegressionTest
         Assert.Empty(diagnostics);
         var fields = GetChildren(root).Select(Assert.IsType<FieldKoto>).ToArray();
 
-        var first = Assert.IsType<AndKoto>(fields[0].InitializerKoto);
+        var first = ParseTestHelper.Binary(KotoKind.And, fields[0].InitializerKoto);
         Assert.IsType<IsKoto>(first.Left);
 
-        var second = Assert.IsType<OrKoto>(fields[1].InitializerKoto);
+        var second = ParseTestHelper.Binary(KotoKind.Or, fields[1].InitializerKoto);
         Assert.True(Assert.IsType<IsKoto>(second.Left).IsNegated);
         Assert.IsType<IdentifierNameKoto>(Assert.IsType<IsKoto>(second.Left).Right);
 
-        var third = Assert.IsType<AndKoto>(fields[2].InitializerKoto);
+        var third = ParseTestHelper.Binary(KotoKind.And, fields[2].InitializerKoto);
         Assert.IsType<IsKoto>(third.Left);
-        Assert.IsType<NotKoto>(third.Right);
+        ParseTestHelper.Unary(KotoKind.Not, third.Right);
 
-        var fourth = Assert.IsType<OrKoto>(fields[3].InitializerKoto);
-        Assert.IsType<IsKoto>(Assert.IsType<AndKoto>(fourth.Right).Left);
+        var fourth = ParseTestHelper.Binary(KotoKind.Or, fields[3].InitializerKoto);
+        Assert.IsType<IsKoto>(ParseTestHelper.Binary(KotoKind.And, fourth.Right).Left);
     }
 
     [Fact]
@@ -127,7 +127,7 @@ public class ParserRegressionTest
 
         // Assert.Empty(diagnostics);
         var field = Assert.IsType<FieldKoto>(GetChildren(root).Single());
-        var addition = Assert.IsType<PlusKoto>(field.InitializerKoto);
+        var addition = ParseTestHelper.Binary(KotoKind.Plus, field.InitializerKoto);
         Assert.IsType<InvocationKoto>(addition.Left);
     }
 
@@ -344,7 +344,7 @@ public class ParserRegressionTest
 
         var selfConstraint = type.TypeConstraints[0];
         Assert.Equal("Self", Assert.IsType<IdentifierNameKoto>(selfConstraint.Left).IdentifierName);
-        var selfTypes = Assert.IsType<AndKoto>(selfConstraint.Right);
+        var selfTypes = ParseTestHelper.Binary(KotoKind.And, selfConstraint.Right);
         Assert.Equal("StructB", Assert.IsType<IdentifierNameKoto>(selfTypes.Left).IdentifierName);
         Assert.Equal("InterfaceA", Assert.IsType<IdentifierNameKoto>(selfTypes.Right).IdentifierName);
 
@@ -354,7 +354,7 @@ public class ParserRegressionTest
 
         var typeParameterConstraint = type.TypeConstraints[2];
         Assert.Equal("T", Assert.IsType<IdentifierNameKoto>(typeParameterConstraint.Left).IdentifierName);
-        var typeAnd = Assert.IsType<AndKoto>(typeParameterConstraint.Right);
+        var typeAnd = ParseTestHelper.Binary(KotoKind.And, typeParameterConstraint.Right);
         Assert.IsType<IdentifierNameKoto>(typeAnd.Left);
         Assert.IsType<ParenthesizedKoto>(typeAnd.Right);
 
@@ -722,9 +722,9 @@ public class ParserRegressionTest
         var field = Assert.IsType<FieldKoto>(GetChildren(root).Single());
         Assert.Equal(Source, Source.AsSpan(field.Span.Start, field.Span.Length).ToString());
 
-        var addition = Assert.IsType<PlusKoto>(field.InitializerKoto);
+        var addition = ParseTestHelper.Binary(KotoKind.Plus, field.InitializerKoto);
         Assert.Equal("-a + target.method(value)", Source.AsSpan(addition.Span.Start, addition.Span.Length).ToString());
-        var prefix = Assert.IsType<PrefixMinusKoto>(addition.Left);
+        var prefix = ParseTestHelper.Unary(KotoKind.PrefixMinus, addition.Left);
         Assert.Equal("-a", Source.AsSpan(prefix.Span.Start, prefix.Span.Length).ToString());
         var invocation = Assert.IsType<InvocationKoto>(addition.Right);
         Assert.Equal("target.method(value)", Source.AsSpan(invocation.Span.Start, invocation.Span.Length).ToString());

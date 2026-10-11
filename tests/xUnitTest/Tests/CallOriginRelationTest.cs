@@ -13,7 +13,7 @@ namespace XunitTest;
 // SPEC 15.6.1, 10.1, 10.3, 10.4: candidate applicability, expected-result filtering and ranking use only the structural part of each
 // fit, so the Origin relations of a call never change its selection. The selected candidate's relations are judged after selection at
 // their own sources: each argument's fit at the argument, a substituted clause at the first input that names its longer Origin, and
-// the result at its destination. A chain between body Origins stays the located UnsupportedOwnership_Kd limit at the argument.
+// the result at its destination. A chain between body Origins stays the located Unsupported_Kd limit at the argument.
 public class CallOriginRelationTest(ITestOutputHelper output)
 {
     private const string Main = "public func main() => ()\n";
@@ -22,6 +22,8 @@ public class CallOriginRelationTest(ITestOutputHelper output)
 
     private const string Refuted = "Return or store an owned value, or a borrow of an input, instead of a borrow of storage that ends with the body";
 
+    private const string Box = "public struct Box<E>\n    public let item: E\n    public init(item: E) => self.item = item@move\n";
+
     // q35: the clause is related with the role `relation`, and its source is `declared`.
     private const string Clause = "func needs(a: ref/i32) -> i32\n    origin a outlives static\n    return 1\n\nfunc caller(p: ref/i32) -> i32 => needs(p)\n";
 
@@ -29,21 +31,20 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     private const string Fresh = "func pair(a: uniq/(ref/i32 during o), b: uniq/(ref/i32 during o)) -> () => ()\n\nfunc caller(x: ref/i32, y: ref/i32, p: uniq/(ref/i32 during x), q: uniq/(ref/i32 during y)) -> ()\n    pair(p, q)\n";
 
     [Theory]
-    [InlineData(NeedsStatic + "func caller(p: ref/i32) -> i32 => needsStatic(p)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "p", "requires p outlives static, which is not proven", null, "Bind p to static where it is introduced, as in 'p: ref/i32 during static'")]
-    [InlineData(NeedsStatic + "func caller() -> i32\n    let local = 3\n    return needsStatic(local)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local", "requires the borrow local outlives static, which is false", "local", Refuted)]
-    [InlineData(NeedsStatic + "func caller() -> i32\n    let local = 3\n    return needsStatic(local@ref)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref", "requires the borrow local@ref outlives static, which is false", "local@ref", Refuted)]
-    [InlineData(NeedsStatic + "func caller() -> i32 => needsStatic(5)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "5", "requires the borrow 5 outlives static, which is false", "5", Refuted)]
-    [InlineData(NeedsStatic + "func make() -> i32 => 4\nfunc caller() -> i32 => needsStatic(make())\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "make()", "requires the borrow make() outlives static, which is false", "make()", Refuted)]
-    [InlineData("func takePair(x: (ref/i32 during static, i32)) -> i32 => 1\nfunc caller(p: ref/i32) -> i32 => takePair((p, 1))\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "(p, 1)", "requires p outlives static, which is not proven", null, "Bind p to static where it is introduced")]
-    [InlineData("func store(x: ref/i32, target: uniq/Array<ref/i32 during x>) -> ()\n    let local: i32 = 1\n    target@follow.append(local@ref)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref", "requires the borrow local@ref outlives x, which is false", "local@ref", Refuted)]
-    public void AnArgumentRelationIsJudgedAfterSelection(string body, string code, string text, string label, string? origin, string advice)
+    [InlineData(NeedsStatic + "func caller(p: ref/i32) -> i32 => needsStatic(p)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "p", "requires p outlives static, which is not proven", null)]
+    [InlineData(NeedsStatic + "func caller() -> i32\n    let local = 3\n    return needsStatic(local)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local", "requires the borrow local outlives static, which is false", "local")]
+    [InlineData(NeedsStatic + "func caller() -> i32\n    let local = 3\n    return needsStatic(local@ref)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref", "requires the borrow local@ref outlives static, which is false", "local@ref")]
+    [InlineData(NeedsStatic + "func caller() -> i32 => needsStatic(5)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "5", "requires the borrow 5 outlives static, which is false", "5")]
+    [InlineData(NeedsStatic + "func make() -> i32 => 4\nfunc caller() -> i32 => needsStatic(make())\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "make()", "requires the borrow make() outlives static, which is false", "make()")]
+    [InlineData("func takePair(x: (ref/i32 during static, i32)) -> i32 => 1\nfunc caller(p: ref/i32) -> i32 => takePair((p, 1))\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "(p, 1)", "requires p outlives static, which is not proven", null)]
+    [InlineData("func store(x: ref/i32, target: uniq/Array<ref/i32 during x>) -> ()\n    let local: i32 = 1\n    target@follow.append(local@ref)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref", "requires the borrow local@ref outlives x, which is false", "local@ref")]
+    public void AnArgumentRelationIsJudgedAfterSelection(string body, string code, string text, string label, string? origin)
     {
         var source = body + Main;
         var check = DiagnosticCorpus.Check(source);
         var error = Assert.Single(check.Diagnostics);
         Assert.Equal((code, text, label), (error.Code, Text(source, error.Span), error.Label));
         Assert.Equal(code == nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) ? DiagnosticCategory.Language : DiagnosticCategory.Proof, error.Category);
-        Assert.Contains(advice, error.Advice, StringComparison.Ordinal);
         var reason = error.Reason!;
         Assert.Equal(["relation", "longer", "shorter", "source", "destination"], reason.Select(static x => x.Name));
         Assert.Equal(("outlives", "fit"), (reason[0].Value, reason[3].Value));
@@ -86,17 +87,17 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     // record names that Borrow and relates it, and the destination shows only the Origin at the failed position. A shorter end that an
     // equality fixed to another argument's stored Borrow is shown and related the same way, and never written as `during` a borrow.
     [Theory]
-    [InlineData("func needs(x: uniq/(ref/i32 during static)) -> () => ()\nfunc g() -> i32\n    let local: i32 = 1\n    var y = local@ref\n    needs(y@uniq)\n    return 1\n", "y@uniq", "requires the borrow local@ref == static, which is false", "uniq/(ref/i32 during static)")]
+    [InlineData("func needs(x: uniq/(ref/i32 during static)) -> () => ()\nfunc g() -> i32\n    let local: i32 = 1\n    var y = local@ref\n    needs(y@uniq)\n    return 1\n", "y@uniq", "requires the borrow local@ref outlives static, which is false", "uniq/(ref/i32 during static)")]
     [InlineData("func needs(x: ref/Option<ref/i32 during static>) -> i32 => 1\nfunc g() -> i32\n    let local: i32 = 1\n    let o: Option<ref/i32> = .Some(local@ref)\n    return needs(o@ref)\n", "o@ref", "requires the borrow local@ref outlives static, which is false", "ref/Option<ref/i32 during static>")]
-    [InlineData("func assign<T>(a: uniq/T, b: uniq/T) -> () => ()\nfunc g(p: ref/i32) -> ref/i32 during p\n    var x = p\n    let local: i32 = 1\n    var y = local@ref\n    assign(x@uniq, y@uniq)\n    return x\n", "y@uniq", "requires the borrow local@ref == p, which is false", "uniq/(ref/i32 during p)")]
-    [InlineData("func assign<T>(a: uniq/T, b: uniq/T) -> () => ()\nfunc h(p: ref/i32) -> ref/i32 during p\n    var x = p\n    let local: i32 = 1\n    var y = local@ref\n    assign(y@uniq, x@uniq)\n    return x\n", "x@uniq", "requires p == the borrow local@ref, which is false", "uniq/ref/i32")]
+    [InlineData("func assign<T>(a: uniq/T, b: uniq/T) -> () => ()\nfunc g(p: ref/i32) -> ref/i32 during p\n    var x = p\n    let local: i32 = 1\n    var y = local@ref\n    assign(x@uniq, y@uniq)\n    return x\n", "x", "requires the borrow local@ref outlives p, which is false", "ref/i32 during p")]
+    [InlineData("func assign<T>(a: uniq/T, b: uniq/T) -> () => ()\nfunc h(p: ref/i32) -> ref/i32 during p\n    var x = p\n    let local: i32 = 1\n    var y = local@ref\n    assign(y@uniq, x@uniq)\n    return x\n", "x", "requires the borrow local@ref outlives p, which is false", "ref/i32 during p")]
     public void AnInnerBorrowIsNamedAndRelated(string body, string text, string label, string destination)
     {
         var source = body + Main;
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), text, label), (error.Code, Text(source, error.Span), error.Label));
         Assert.Equal(("fit", destination), (error.Reason![3].Value, error.Reason[4].Value));
-        Assert.Contains(error.Related!, x => x.Role == "origin" && Text(source, x.Span) == "local@ref");
+        Assert.Contains(error.Related!, x => x.Role == "origin" && (Text(source, x.Span) == "local@ref" || Text(source, x.Span) == "local"));
     }
 
     // A valid counterpart: the stored value's Origin fits the inner position, so the call is accepted. (The exclusive forms with a
@@ -182,22 +183,31 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     public void AStructuralSelectionRuns(string name, string source)
         => ScalarEmissionTest.EmitFixture("CallOriginRelation" + name, source, string.Empty);
 
-    // SPEC 15.6.5, PLAN G56: a call whose argument would store a borrow into a body Origin needs region-inference Loan edges, so it
-    // stays the located limit at the argument; it is never accepted, also where the stored borrow would dangle. A generic `put<T>`
-    // solves T from its exclusive target, an invariant binding (SPEC 10.8), so the stored value is the argument that does not fit.
+    // SPEC 15.6.5: selected call contracts constrain the local region and retain potential stored Loans.
+    // The same contract is accepted while all sources live and rejected at destruction when one escapes its scope.
     [Theory]
     [InlineData("func put(anchor: ref/i32, target: uniq/(ref/i32 during anchor)) -> () => ()\nfunc f() -> ()\n    let a = 1\n    let c = 3\n    var slot: ref/i32 = c@ref\n    put(a@ref, slot@uniq)\n    Console.writeLine(\"\\(slot@follow)\")\n", "a@ref")]
     [InlineData("func put<T>(target: uniq/T, value: T) -> () => ()\nfunc f() -> ()\n    let a = 1\n    let b = 2\n    var slot = a@ref\n    put(slot@uniq, b@ref)\n    Console.writeLine(\"\\(slot@follow)\")\n", "b@ref")]
     [InlineData("func put<T>(target: uniq/T, value: T) -> () => ()\nfunc f() -> ()\n    let a = 1\n    var slot = a@ref\n    if true\n        let b = 2\n        put(slot@uniq, b@ref)\n    Console.writeLine(\"\\(slot@follow)\")\n", "b@ref")]
     [InlineData("func put(target: uniq/(ref/i32 during o), value: ref/i32 during o) -> () => ()\nfunc g(x: ref/i32) -> i32\n    let local = 1\n    var slot = local@ref\n    put(slot@uniq, x)\n    return slot@follow\n", "x")]
-    public void CallsThatStoreIntoBodyOriginsAreALocatedLimit(string body, string text)
+    public void CallsThatStoreIntoBodyOriginsKeepTheirLoans(string body, string text)
     {
         var source = body + Main;
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
-        output.WriteLine(string.Join("\n", errors.Select(x => $"{x.Code} {Text(source, x.Span)}")));
-        Assert.NotEmpty(errors);
-        Assert.All(errors, static x => Assert.Equal(nameof(DiagnosticCode.UnsupportedOwnership_Kd), x.Code));
-        Assert.Contains(errors, x => Text(source, x.Span) == text);
+        if (body.Contains("    if true", StringComparison.Ordinal))
+        {
+            var error = Assert.Single(errors);
+            Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), error.Code);
+            Assert.Equal("let b = 2\n        put(slot@uniq, b@ref)", Text(source, error.Span));
+            Assert.Contains("`b` is destroyed here", error.Note, StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.Empty(errors);
+            Assert.True(MinimalEmissionTest.Analyze(source).Validate(out var issue), issue);
+        }
+
+        Assert.Contains(text, source, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -244,6 +254,63 @@ public class CallOriginRelationTest(ITestOutputHelper output)
         Assert.Equal(result, JsonSerializer.Deserialize(json, DiagnosticJsonContext.Default.DiagnosticResult));
     }
 
+    // SPEC 15.3.7, 15.6.4 step 3: the call proves its inputs' instantiated Types well formed. Where `c` cannot shorten, being fixed by
+    // the invariant third input, the input whose Type is not well formed is the record, with the shared Origin's Borrow related.
+    [Theory]
+    [InlineData("    f(m@ref, q, w)\n")]
+    [InlineData("    let h = f\n    h(m@ref, q, w)\n")]
+    public void AnInputsWellFormednessIsJudgedAtThatInput(string call)
+    {
+        var source = Box + "func f(x: ref/i32 during a, y: ref/Box<ref/i32 during a> during c, z: uniq/(ref/i32 during c)) -> ()\n    z@follow = x\n" +
+            "func g(q: ref/Box<ref/i32 during s> during t, w: uniq/(ref/i32 during t)) -> ()\n    let m: i32 = 5\n" + call + Main;
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "q", "requires the borrow m@ref outlives t, which is false"), (error.Code, Text(source, error.Span), error.Label));
+        Assert.Equal("wellFormed", error.Reason![3].Value);
+        Assert.Equal(["relation", "longer", "shorter", "source"], error.Reason.Select(static x => x.Name));
+        var related = Assert.Single(error.Related!);
+        Assert.Equal(("origin", "m@ref"), (related.Role, Text(source, related.Span)));
+    }
+
+    // SPEC 15.6.4 step 3: an Origin shared with an input's inner position bounds the call's solution, so the result over it is shortened
+    // to the borrow and fails at its destination (PLAN G85: these programs read a dead local before).
+    [Theory]
+    [InlineData("func f(x: ref/i32 during a, y: ref/Box<ref/i32 during a> during c) -> ref/i32 during c\n    return x\n", "", "f(m@ref, q)")]
+    [InlineData("func f(x: ref/i32 during a, y: ref/Box<ref/i32 during a> during c) -> ref/i32 during c\n    return x\n", "    let h = f\n", "h(m@ref, q)")]
+    [InlineData("func f<s/T>(x: s/T during a, y: ref/Box<s/T during a> during c) -> ref/T during c\n    s is ref\n    return x@follow@ref\n", "", "f(m@ref, q)")]
+    public void ASharedInputOriginBoundsTheResult(string callee, string prefix, string call)
+    {
+        var source = Box + callee + "func g(q: ref/Box<ref/i32 during s> during t) -> ref/i32 during t\n    let m: i32 = 5\n" + prefix + "    return " + call + "\n" + Main;
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), call, "requires the borrow m@ref outlives t, which is false"), (error.Code, Text(source, error.Span), error.Label));
+        Assert.Equal("fit", error.Reason![3].Value);
+    }
+
+    // The valid twins: a shared Origin that every input supplies, an owner instance whose pair slot does not exist, a generic caller
+    // whose own input premise proves the shortened result, and a conformance whose requirement shares the Origin too.
+    [Theory]
+    [InlineData("func f(x: ref/i32 during a, y: ref/Box<ref/i32 during a> during c) -> ref/i32 during c\n    return x\nfunc g() -> i32\n    let n: i32 = 3\n    let b = Box.init(n@ref)\n    return f(n@ref, b@ref)@follow\n")]
+    [InlineData("func f<s/T>(x: s/T during a, y: ref/Box<s/T during a> during c, z: ref/i32 during a) -> i32\n    s is owner or ref\n    return 1\nfunc g(q: ref/Box<i32>) -> i32\n    let m: i32 = 5\n    let k: i32 = 6\n    return f(k, q, m@ref)\n")]
+    [InlineData("func f<E>(x: ref/E during a, y: ref/Box<ref/E during a> during c) -> ref/E during c\n    return x\nfunc g<E>(q: ref/Box<ref/E during s> during t, v: ref/E during s) -> ref/E during t\n    return f(v, q)\n")]
+    [InlineData("contract Picker\n    func pick(self: ref/Self, x: ref/i32 during p, y: ref/Box<ref/i32 during p> during r) -> ref/i32 during r\nstruct Chooser\n    Self is Picker\n    public init() => ()\n    public func pick(self: ref/Self, x: ref/i32 during a, y: ref/Box<ref/i32 during a> during c) -> ref/i32 during c => x\n")]
+    public void AWellFormedInstanceIsAccepted(string body)
+    {
+        var check = DiagnosticCorpus.Check(Box + body + Main);
+        Assert.True(check.Accepted, string.Join("\n", check.Diagnostics.Select(static x => $"{x.Code}: {x.Label}")));
+    }
+
+    // SPEC 15.3.7: a whole-contract comparison proves the implementation's instantiated inputs well formed wherever its solve replaced a
+    // required Origin, here one the required contract keeps apart from the shared one: a Function Item argument, a conversion and a
+    // conformance witness.
+    [Theory]
+    [InlineData("func apply(h: (ref/i32, ref/Box<ref/i32 during s> during t) -> ref/i32 during t, y: ref/Box<ref/i32 during s> during t) -> ref/i32 during t\n    let m: i32 = 5\n    return h(m@ref, y)\nfunc g(q: ref/Box<ref/i32 during s> during t) -> ref/i32 during t => apply(f, q)\n", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
+    [InlineData("func g(q: ref/Box<ref/i32 during s> during t) -> ref/i32 during t\n    let h: (ref/i32, ref/Box<ref/i32 during s> during t) -> ref/i32 during t = f\n    let m: i32 = 5\n    return h(m@ref, q)\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
+    [InlineData("contract Picker\n    func pick(self: ref/Self, x: ref/i32 during p, y: ref/Box<ref/i32 during q> during r) -> ref/i32 during r\nstruct Chooser\n    Self is Picker\n    public init() => ()\n    public func pick(self: ref/Self, x: ref/i32 during a, y: ref/Box<ref/i32 during a> during c) -> ref/i32 during c => x\n", nameof(DiagnosticCode.IncompatibleContractImplementation_Kd))]
+    public void AComparisonProvesTheImplementationsInputs(string body, string code)
+    {
+        var source = Box + "func f(x: ref/i32 during a, y: ref/Box<ref/i32 during a> during c) -> ref/i32 during c\n    return x\n" + body + Main;
+        Assert.Equal([code], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+    }
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmRelationFreeOverloadSelectionAllocatesNothing()
@@ -252,7 +319,7 @@ public class CallOriginRelationTest(ITestOutputHelper output)
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 

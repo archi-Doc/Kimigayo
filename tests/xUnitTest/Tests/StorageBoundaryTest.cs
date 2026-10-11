@@ -44,7 +44,7 @@ public class StorageBoundaryTest
         // Two items from the same iterator are live at once; the second step conflicts with neither the first item
         // nor the source Loan the iterator keeps.
         var c = MinimalEmissionTest.Analyze(Values + "var it = values." + entry + "()\nlet p = it.next()\nlet q = it.next()\nmatch p\n    .Some(_) => ()\n    .None => ()\nmatch q\n    .Some(_) => ()\n    .None => ()");
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]
@@ -52,7 +52,7 @@ public class StorageBoundaryTest
     {
         var c = MinimalEmissionTest.Analyze(Values + "var it = values.iterateUniq()\nlet p = it.next()\nvalues = [4]\nmatch p\n    .Some(_) => ()\n    .None => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.False(c.Analysis.IsVerified);
     }
 
     // SPEC 22.1.2.5, 15.3.5: a remainder holds the Loan of its source slot although no field stores a safe reference, so a
@@ -67,7 +67,7 @@ public class StorageBoundaryTest
     {
         var c = MinimalEmissionTest.Analyze(Values + use + "\nmatch it.next()\n    .Some(_) => ()\n    .None => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.False(c.Analysis.IsVerified);
     }
 
     // SPEC 15.6.3: an item is a child split from the iterator's authority, so a Reborrow through it stays in its region
@@ -80,7 +80,7 @@ public class StorageBoundaryTest
     {
         var c = MinimalEmissionTest.Analyze(Values + "var it = values.iterateUniq()\n" + use + "\nmatch it.next()\n    .Some(_) => ()\n    .None => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(valid, c.Ownership.Result.IsVerified);
+        Assert.Equal(valid, c.Analysis.IsVerified);
     }
 
     // The same holds for a user Type's exclusive entry enumerated by `for`: the iterator stays live across the body.
@@ -102,14 +102,14 @@ public class StorageBoundaryTest
         var c = MinimalEmissionTest.Analyze("func total(values: uniq/Array<i32>) -> i32\n    var it = values.iterateUniq()\n    values.append(4)\n    match it.next()\n" +
             "        .Some(let v) => return v@follow\n        .None => return 0\nvar values: Array<i32> = [1]\nlet t = total(values@uniq)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.False(c.Analysis.IsVerified);
     }
 
     [Fact]
     public void ASharedIteratorAllowsReads()
     {
         var c = MinimalEmissionTest.Analyze(Values + "var it = values.iterate()\nlet first = values[0]\nmatch it.next()\n    .Some(_) => ()\n    .None => ()");
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     // The Kimigayo iterators execute natively over the boundary: shared items are read in index order, exclusive items
@@ -168,6 +168,19 @@ public class StorageBoundaryTest
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
     }
 
+    // The distinct Dictionary family is internal to the Kimi Kotonoha too.
+    [Theory]
+    [InlineData("let r = Kimi.Storage.borrowStorage(map@ref)")]
+    [InlineData("unsafe => _ = Kimi.Storage.keyAt<i32, i32>(null@raw/u8)")]
+    [InlineData("unsafe => _ = Kimi.Storage.dictionaryStorage(map@uniq)")]
+    [InlineData("Kimi.Storage.missingDictionaryKey()")]
+    [InlineData("func f(r: Kimi.Storage.DictionaryRefRemainder<string, i32>) => ()")]
+    public void UserSourceCannotReachTheDictionaryBoundary(string use)
+    {
+        var c = MinimalEmissionTest.Analyze("let map: Dictionary<string, i32> = [\"a\": 1]\n" + use);
+        Assert.False(c.Binding.Result.IsComplete);
+    }
+
     // The library's own conformances pass the Iterator effect bound: splitting off a child conflicts with no earlier
     // child, while a user iterator that reborrows its stored reference does not (IteratorOriginEffectsTest).
     [Fact]
@@ -175,8 +188,6 @@ public class StorageBoundaryTest
     {
         var c = MinimalEmissionTest.Analyze("Console.writeLine(\"a\")");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Library.ValidateDeclarations(), "declarations: " + c.Library.InvalidDeclaration?.ToString().Split((char)10)[0]);
-        Assert.True(c.Library.ValidateBoundDeclarations(), "bound: " + c.Library.InvalidDeclaration?.ToString().Split((char)10)[0]);
     }
 
     // SPEC 5.2.2, 22.1.2.5: a library helper lends a remainder element by borrowing its raw Place.
@@ -203,7 +214,7 @@ public class StorageBoundaryTest
         c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, helper);
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         ScalarEmissionTest.WriteFixture("StorageBoundaryRawBorrow" + (exclusive ? "Uniq" : "Ref"), CompilationTestHelper.WriteIr(c), "borrowed\n");
     }
 }

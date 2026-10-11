@@ -221,9 +221,11 @@ func store<T>(value: T) -> ()
         useDirectWriteRenderer()
 ```
 
-**Diagnostics.** A diagnostic in excluded syntax keeps the code, primary location, Reason and Advice it would have in selected syntax. When its primary location lies in excluded syntax, it also carries a related location with the role `excludedBy` at the innermost excluding directive: the Condition of an `#if`, or the header of a `#case` arm (§23.3.6.2). That location is not a Reason fact. An `#if` with an invalid Condition reports the Condition error and the independent syntax errors of its target; the target is never checked semantically, so it causes no Name or Type cascade. A `#case` outside a `#switch` body reports its placement error, and its Condition and body are still validated and parsed.
+**Diagnostics.** A diagnostic in excluded syntax keeps the code, primary location and Reason it would have in selected syntax. When its primary location lies in excluded syntax, it also carries a related location with the role `excludedBy` at the innermost excluding directive: the Condition of an `#if`, or the header of a `#case` arm (§23.3.6.2). That location is not a Reason fact. An `#if` with an invalid Condition reports the Condition error and the independent syntax errors of its target; the target is never checked semantically, so it causes no Name or Type cascade. A `#case` outside a `#switch` body reports its placement error, and its Condition and body are still validated and parsed.
 
 **Recovery.** Excluded syntax is parsed with the recovery rules of selected syntax and never affects selected syntax: it contributes no merged declaration, root runtime item, Constraint, Origin relation, omission or recovery record, documentation association or Attribute. An invalid Case Group may keep its arms for error recovery, but they remain excluded syntax. An uppercase-initial `#Name` is Attribute syntax, and other lowercase hash forms are errors under §6.5. Attributes in excluded syntax are parsed but not resolved.
+
+Misplaced non-arm items in a Case Group receive source checks using the enclosing owner's item grammar as recovery, including its generic context and source-order placement rules. This recovery stops before the next direct `#case` or the end of the Case Group; a misplaced prefix cannot attach to that arm. These items receive no semantic checks and contribute none of the declarations or records listed above. Misplacement alone does not create an `excludedBy` location.
 
 ```kimi
 #if false and 1

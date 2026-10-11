@@ -58,26 +58,9 @@ public abstract class JumpKoto : ExpressionKoto
         }
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        if (this.Expression is { } expression)
-        {
-            visitor.Visit(expression);
-        }
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-        => this.Expression is null ? [] : [this.Expression];
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (this.Expression != oldKoto)
-        {
-            return false;
-        }
-
-        this.Expression = newKoto;
-        return true;
+        this.Expression = slots.Slot(this.Expression);
     }
 }
 

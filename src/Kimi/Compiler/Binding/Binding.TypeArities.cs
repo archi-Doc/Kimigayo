@@ -6,6 +6,18 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private enum TypeLookupRole : byte
+    {
+        Any,
+        Type,
+        Semantics,
+    }
+
+    private static bool HasTypeLookupRole(BindingSymbol candidate, TypeLookupRole role)
+        => role == TypeLookupRole.Any || (role == TypeLookupRole.Semantics
+            ? candidate.Kind == BindingSymbolKind.SemanticsParameter
+            : (candidate.Kind is BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.AssociatedType) && candidate.Declaration is not ContractKoto);
+
     private static bool DistinctTypeArities(DeclarationContainerKoto declaration, BindingSymbol head)
     {
         for (var candidate = head; candidate is not null; candidate = candidate.Next)
@@ -44,21 +56,31 @@ public sealed partial class Binding
         internal BindingSymbol? First;
         internal BindingSymbol? Match;
         internal bool Ambiguous;
+        internal bool NonGeneric;
         internal BoundType? Environment;
     }
 
-    private void AddTypeCandidates(ref TypeCandidates result, BindingSymbol? head, BindingScope scope, bool core, int arity, BoundType? environment = null)
+    private void AddTypeCandidates(ref TypeCandidates result, BindingSymbol? head, BindingScope scope, bool core, int arity, BoundType? environment = null, TypeLookupRole role = TypeLookupRole.Any)
     {
         for (var candidate = head; candidate is not null; candidate = candidate.Next)
         {
-            if ((core && candidate.Kind == BindingSymbolKind.Container) || !this.Accessible(candidate, scope))
+            if ((core && candidate.Kind == BindingSymbolKind.Container) || !HasTypeLookupRole(candidate, role) || !this.Accessible(candidate, scope))
             {
                 continue;
             }
 
             result.First ??= candidate;
             var count = candidate.Declaration is DeclarationContainerKoto container ? container.GenericParameterNodes.Count : 0;
-            if (count != arity)
+            // An omitted construction target prefers own arity zero within this stage;
+            // otherwise one distinct generic reference must remain. Evidence never reopens lookup.
+            if (arity < 0 && count == 0 && !result.NonGeneric)
+            {
+                result.Match = null;
+                result.Ambiguous = false;
+                result.NonGeneric = true;
+            }
+
+            if (arity < 0 ? result.NonGeneric && count != 0 : count != arity)
             {
                 continue;
             }

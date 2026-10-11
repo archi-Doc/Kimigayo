@@ -32,9 +32,9 @@ public class ClosureResultOriginTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.False(c.Validate(out _));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -47,40 +47,23 @@ public class ClosureResultOriginTest
     public void StoredObjectResultsKeepHeaderIdentityAndTheOwner()
         => NativeAllocationAudit.WriteFixture("ClosureResultOriginObject", "struct Item\n    public let id: i32 = 7\n    drop => Console.writeLine(\"drop\")\nlet owner = Kimi.Intrinsics.makeObj(Item.init())\nlet values: [1 of objref/Item] = [owner@objref]\nlet f = func [values] () => values[0]\nlet result = f()\nrequire result.id == 7 else => $abort(\"result\")", 1, 1, 20, "drop\n");
 
-    // SPEC 15.8.2, 15.6.4, 7.6.3: a Shared or Exclusive call's result over the closure's environment depends on the call receiver: a
-    // borrow of an environment binding becomes a borrow of the closure Place the call lends, and a Reborrow through a captured
-    // exclusive reference also stays within it, so the result keeps that Place lent while it lives. A Consuming call that moves a
-    // captured reference out returns it with its own Origin, and a returned closure that borrows the outer environment keeps that
-    // environment lent. These were UnsupportedBinding_Kd (G65).
+    // SPEC 15.8.2, 15.6.4, 7.6.3: a call's result over the closure's environment depends on the call receiver, which needs region
+    // inference, so each such call is one Unsupported_Kd: a borrow of an environment binding, through a reference receiver, a Reborrow
+    // through a captured exclusive reference, a result beside a per-call input, a temporary closure, a Consuming call that moves a
+    // captured reference out and a returned closure that borrows the environment (compiler reduction R1; they ran since G65).
     [Theory]
-    [InlineData("SlotBorrow", "let n = 7\nlet f = func [n] () => n@ref\nlet r = f()\nrequire r == 7 else => $abort(\"r\")")]
-    [InlineData("ThroughReference", "let n = 7\nlet f = func [n] () => n@ref\nlet g = f@ref\nlet r = g()\nrequire r == 7 else => $abort(\"r\")")]
-    [InlineData("SharedReborrow", "var n = 7\nlet view = n@uniq\nlet f = func [view] () => view@follow@ref\nlet r = f()\nrequire r == 7 else => $abort(\"r\")")]
-    [InlineData("WithInput", "func pick(a: ref/i32, b: ref/i32) -> ref/i32 => a\nlet n = 7\nlet f = func [n] (x: ref/i32) => pick(n@ref, x)\nlet m = 8\nlet r = f(m@ref)\nrequire r == 7 else => $abort(\"r\")")]
-    [InlineData("Temporary", "let n = 7\nrequire (func [n] () => n@ref)() == 7 else => $abort(\"r\")")]
-    [InlineData("Exclusive", "var n = 7\nlet view = n@uniq\nvar f = func [view] () => view\nlet r = f()\nr@follow = 9\nlet s = f()\ns@follow = 10\nrequire n == 10 else => $abort(\"n\")")]
-    [InlineData("MovedOut", "var n = 7\nlet view = n@uniq\nlet take = func [view@move] () => view@move\nlet r = take@move()\nr@follow = 9\nrequire n == 9 else => $abort(\"n\")")]
-    [InlineData("Nested", "let n = 7\nlet outer = func [n] () => func [n@ref] () => n\nlet inner = outer()\nlet v = inner()\nrequire v == 7 else => $abort(\"v\")")]
-    public void ReceiverDependentResultsRun(string name, string source)
-        => ScalarEmissionTest.EmitFixture("ClosureReceiverResult" + name, source, string.Empty);
-
-    // The receiver stays lent while the result lives: a Move of the closure, a temporary closure's destruction, a write of the captured
-    // referent, an Exclusive call while an earlier result lives, and a Move of the outer closure while a returned closure that borrows
-    // its environment lives are rejected.
-    [Theory]
-    [InlineData("let n = 7\nlet f = func [n] () => n@ref\nlet g = f@ref\nlet r = g()\nlet h = f@move\nrequire r == 7 else => $abort(\"r\")")]
-    [InlineData("let n = 7\nlet r = (func [n] () => n@ref)()\nrequire r == 7 else => $abort(\"r\")")]
-    [InlineData("var n = 7\nlet view = n@uniq\nlet f = func [view] () => view@follow@ref\nlet r = f()\nn = 9\nrequire r == 7 else => $abort(\"r\")")]
-    [InlineData("var n = 7\nlet view = n@uniq\nlet f = func [view] () => view@follow@ref\nlet r = f()\nview@follow = 1\nrequire r == 7 else => $abort(\"r\")")]
-    [InlineData("var n = 7\nlet view = n@uniq\nvar f = func [view] () => view\nlet r = f()\nlet s = f()\nr@follow = 9")]
-    [InlineData("let n = 7\nlet outer = func [n] () => func [n@ref] () => n\nlet inner = outer()\nlet moved = outer@move\nlet v = inner()")]
-    public void TheReceiverStaysLentWhileTheResultLives(string source)
+    [InlineData("let n = 7\nlet f = func [n] () => n@ref\nlet r = f()", "f()")]
+    [InlineData("let n = 7\nlet f = func [n] () => n@ref\nlet g = f@ref\nlet r = g()", "g()")]
+    [InlineData("var n = 7\nlet view = n@uniq\nlet f = func [view] () => view@follow@ref\nlet r = f()", "f()")]
+    [InlineData("func pick(a: ref/i32, b: ref/i32) -> ref/i32 => a\nlet n = 7\nlet f = func [n] (x: ref/i32) => pick(n@ref, x)\nlet m = 8\nlet r = f(m@ref)", "f(m@ref)")]
+    [InlineData("let n = 7\nlet r = (func [n] () => n@ref)()", "(func [n] () => n@ref)()")]
+    [InlineData("var n = 7\nlet view = n@uniq\nvar f = func [view] () => view\nlet r = f()", "f()")]
+    [InlineData("var n = 7\nlet view = n@uniq\nlet take = func [view@move] () => view@move\nlet r = take@move()", "take@move()")]
+    [InlineData("let n = 7\nlet outer = func [n] () => func [n@ref] () => n\nlet inner = outer()", "outer()")]
+    public void AResultOverTheEnvironmentIsUnsupported(string source, string call)
     {
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.False(c.Emission.Validate(out _));
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), call), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
     }
 
     [Fact]
@@ -88,7 +71,7 @@ public class ClosureResultOriginTest
     {
         var c = MinimalEmissionTest.Analyze(Captured + "let erased: () -> ref/i32 = f\nerased()");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     // SPEC 7.6.4, 15.6.1, 23.3.6.5: a common Function value cannot return a borrow of its hidden environment receiver, so the erasure of
@@ -121,7 +104,7 @@ public class ClosureResultOriginTest
         var c = MinimalEmissionTest.Analyze("func bad() -> ref/i32 during static\n    let n = 7\n    let values: [1 of ref/i32] = [n@ref]\n    let f = func [values] () => values[0]\n    return f()\nbad()");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Failure == BindingFailure.Unsupported);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -133,23 +116,9 @@ public class ClosureResultOriginTest
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid);
         Assert.Equal(expected, CompilationTestHelper.WriteIr(c));
-    }
-
-    [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void WarmReceiverDependentCallsAllocateNothing()
-    {
-        var c = MinimalEmissionTest.Analyze(VerificationWorkloads.ReceiverDependentValueCall);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
-        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
-        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 }

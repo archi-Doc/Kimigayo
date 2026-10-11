@@ -9,12 +9,13 @@ public sealed partial class Binding
     private readonly Dictionary<FunctionKoto, Specialization> specializations = new(ReferenceEqualityComparer.Instance);
 
     // The intermediate call of a forwarded requirement call, before its witness is resolved into the destination.
-    private readonly BoundCall forwardedRequirement = new();
-    private readonly Dictionary<(BoundCall Inner, BoundCall Outer), BoundCall> defaultCalls = new();
+    // Each template call retains its shape; one shared buffer reallocates when get and set alternate.
+    private readonly Dictionary<CallPlan, CallPlan> forwardedRequirements = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<(CallPlan Inner, CallPlan Outer), CallPlan> defaultCalls = new();
 
     // Defaults are replicated into pending calls. Retain one selected call per declaration and enclosing call context;
     // unlike a syntax-keyed table, this distinguishes two instantiations of the same default in one caller.
-    internal BoundCall? InstantiateDefaultCall(BoundCall inner, BoundCall outer)
+    internal CallPlan? InstantiateDefaultCall(CallPlan inner, CallPlan outer)
     {
         var key = (inner, outer);
         this.defaultCalls.TryGetValue(key, out var previous);
@@ -65,6 +66,15 @@ public sealed partial class Binding
                         destination.Add(function);
                     }
                 }
+
+                var properties = paths[p].PropertyWitnessStorage;
+                for (var w = 0; w < properties.Count; w++)
+                {
+                    if (this.PropertyWitnessFunction(paths[p], properties[w]) is { } accessor && !destination.Contains(accessor))
+                    {
+                        destination.Add(accessor);
+                    }
+                }
             }
         }
     }
@@ -74,7 +84,7 @@ public sealed partial class Binding
     /// <param name="outer">The closed call context.</param>
     /// <param name="destination">A call to overwrite, such as the previous emission's result for the same position, or null.</param>
     /// <returns>The concrete call, or null when the context has no complete instantiation.</returns>
-    internal BoundCall? InstantiateForwardedCall(BoundCall inner, BoundCall outer, BoundCall? destination = null)
+    internal CallPlan? InstantiateForwardedCall(CallPlan inner, CallPlan outer, CallPlan? destination = null)
     {
         var types = this.typeScratch.Rent(inner.TypeArguments.Length);
         var lengths = this.lengthScratch.Rent(inner.LengthArguments.Length);
@@ -135,7 +145,19 @@ public sealed partial class Binding
 
             // A requirement call is resolved from an intermediate call into the destination, so the two never share storage.
             var requirement = inner.Target.Declaration is FunctionKoto { IsRequirement: true };
-            var call = requirement ? this.forwardedRequirement : destination ?? new BoundCall();
+            CallPlan call;
+            if (requirement)
+            {
+                if (!this.forwardedRequirements.TryGetValue(inner, out call!))
+                {
+                    this.forwardedRequirements.Add(inner, call = new());
+                }
+            }
+            else
+            {
+                call = destination ?? new CallPlan();
+            }
+
             call.Set(inner.Target, result, inner.Receiver, inner.ArgumentToParameter, types.AsSpan(0, inner.TypeArguments.Length), conformingType: inner.ConformingType is { } self ? this.InstantiateStorageType(self, outer) : null, declaringType: declaring, origins: origins.AsSpan(0, inner.Origins.Length), inputOrigins: inputs.AsSpan(0, inner.InputOrigins.Length), operations: operations.AsSpan(0, inner.ArgumentOperations.Length), receiverOperation: receiver, lengthArguments: lengths.AsSpan(0, inner.LengthArguments.Length), defaults: defaults.AsSpan(0, inner.DefaultArguments.Length));
             call.TupleOperator = inner.TupleOperator;
             call.RequirementContract = inner.RequirementContract;
@@ -164,23 +186,32 @@ public sealed partial class Binding
         {
             for (var i = 0; i < source.Length; i++)
             {
-                if (source[i] is not { } origin)
-                {
-                    values[i] = null!;
-                    continue;
-                }
-
-                if (outer.DeclaringType is { Symbol: { } symbol } container)
-                {
-                    // A Slice stores its source as its own Origin; substitute through a span over it, not a new array per use.
-                    origin = container.Kind == BoundTypeKind.Slice && container.Origin is { } sliceSource
-                        ? this.SubstituteStoredOrigin(origin, symbol.Declaration, new ReadOnlySpan<BoundOrigin>(ref sliceSource))
-                        : this.SubstituteStoredOrigin(origin, symbol.Declaration, (BoundOrigin[])container.OriginArguments);
-                }
-
-                values[i] = this.SubstituteStoredOrigin(origin, outer.Target.Declaration, outer.Origins, outer.InputOrigins);
+                values[i] = source[i] is { } origin ? this.ForwardOrigin(origin, outer.Target, outer.DeclaringType, outer.Origins, outer.InputOrigins, outer.TypeArguments) : null!;
             }
         }
+    }
+
+    /// <summary>Gets an Origin of a generic body in the instance a call's substitution makes (TyCtxt.Compose too): through the stored
+    /// Origins of the Type declaring the callee, then the call's Origins and inputs and the pair Origins its Type arguments bind.</summary>
+    /// <param name="origin">The body's Origin.</param>
+    /// <param name="target">The callee.</param>
+    /// <param name="declaring">The instantiated Type declaring the callee.</param>
+    /// <param name="origins">The substitution of the callee's declared Origins.</param>
+    /// <param name="inputs">The input Origins in parameter-slot order.</param>
+    /// <param name="types">The Type arguments by slot.</param>
+    /// <returns>The Origin in the instance.</returns>
+    internal BoundOrigin ForwardOrigin(BoundOrigin origin, BindingSymbol target, BoundType? declaring, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs, ReadOnlySpan<BoundType?> types)
+    {
+        if (declaring is { Symbol: { } symbol } container)
+        {
+            // A Slice stores its source as its own Origin; substitute through a span over it, not a new array per use.
+            origin = container.Kind == BoundTypeKind.Slice && container.Origin is { } sliceSource
+                ? this.SubstituteStoredOrigin(origin, symbol.Declaration, new ReadOnlySpan<BoundOrigin>(ref sliceSource))
+                : this.SubstituteStoredOrigin(origin, symbol.Declaration, (BoundOrigin[])container.OriginArguments, types: (BoundType[])container.Components);
+        }
+
+        // A body's Origin may name a pair's `o` (SPEC 13.5.5.1), which the instance binds through its Type arguments.
+        return this.SubstituteStoredOrigin(origin, target.Declaration, origins, inputs, types);
     }
 
     /// <summary>Lists the verified specializations of a generic original (SPEC 8.8).</summary>
@@ -188,7 +219,7 @@ public sealed partial class Binding
     /// <returns>The specializations, or null when it has none.</returns>
     internal List<FunctionKoto>? Specializations(BindingSymbol original) => this.specializationsByOriginal.GetValueOrDefault(original);
 
-    internal FunctionKoto? SelectSpecialization(BoundCall call)
+    internal FunctionKoto? SelectSpecialization(CallPlan call)
     {
         if (!this.specializationsByOriginal.TryGetValue(call.Target, out var candidates))
         {
@@ -272,7 +303,7 @@ public sealed partial class Binding
 
             // Constraint and attribute specializations require their own inherited contract certificates.
             // Do not accept their syntax by merely erasing the generic header. Written binder names
-            // are inherited by CompleteSpecializationOrigins (SPEC 8.8.2); a receiver is an ordinary
+            // are inherited by CompleteImplementationOrigins (SPEC 8.8.2); a receiver is an ordinary
             // restated parameter matched at the original's position (SPEC 8.8.1).
             if (function.AttributeChain is not null || function.GenericArguments.Count == 0 || HasParameterAttributes(function))
             {
@@ -375,7 +406,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var valid = this.CompleteSpecializationOrigins(function, definition, arguments, lengths);
+            var valid = this.CompleteImplementationOrigins(function, definition, arguments, lengths, out var originMismatch);
             for (var p = 0; p < function.Parameters.Count; p++)
             {
                 valid &= function.Parameters[p].ExternalName == definition.Parameters[p].ExternalName;
@@ -383,7 +414,15 @@ public sealed partial class Binding
 
             if (!valid)
             {
-                this.Fail(function, BindingFailure.IncompatibleImplementation);
+                if (originMismatch is { } contract)
+                {
+                    this.FailExplained(ref this.originContracts, function, BindingFailure.OriginContract, contract);
+                }
+                else
+                {
+                    this.Fail(function, BindingFailure.IncompatibleImplementation);
+                }
+
                 continue;
             }
 

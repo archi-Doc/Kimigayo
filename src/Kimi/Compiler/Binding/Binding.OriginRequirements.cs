@@ -157,7 +157,7 @@ public sealed partial class Binding
                 Visit(result, 1);
             }
         }
-        else if (work.Owner is DeclarationContainerKoto container && this.storageShapes.TryGetValue(container, out var shape))
+        else if (work.Owner is DeclarationContainerKoto { BoundSymbol.Adt: { } shape })
         {
             for (var i = 0; i < shape.Types.Count; i++)
             {

@@ -39,6 +39,21 @@ These are compiler identities, not user-implementable replacements.
 
 The floating-point Equatable mapping treats all NaNs as equal and signed zeros as equal. Built-in floating-point `==` retains its IEEE behavior; floats do not conform to Comparable.
 
+### 1.2.1. Arithmetic
+
+[Specification: arithmetic Contracts](spec/arithmetic-contracts.md). Every Contract declares `associate Output`. Ordinary binary requirements take `(self: ref/Self, right: ref/Rhs) -> Self.Output`; Left requirements take `(left: ref/Lhs, self: ref/Self) -> Self.Output` and compute `left op self`.
+
+| Ordinary Contract / member | Numeric-left Contract / member | Operation |
+| --- | --- | --- |
+| `Addable<Rhs>` / `added` | `LeftAddable<Lhs>` / `addedFrom` | `+` |
+| `Subtractable<Rhs>` / `subtracted` | `LeftSubtractable<Lhs>` / `subtractedFrom` | `-` |
+| `Multipliable<Rhs>` / `multiplied` | `LeftMultipliable<Lhs>` / `multipliedFrom` | `*` |
+| `Dividable<Rhs>` / `divided` | `LeftDividable<Lhs>` / `dividedFrom` | `/` |
+| `RemainderProvider<Rhs>` / `remainder` | `LeftRemainderProvider<Lhs>` / `remainderFrom` | `%` |
+| `Negatable` / `negated(self: ref/Self) -> Self.Output` | — | Unary `-` |
+
+Inputs are shared without requiring Copy; Output may differ from Self or retain existing external dependencies. Conformance alone promises neither algebraic laws nor particular effects or failure behavior. Provider eligibility, built-in numeric conformances and requirement function-value compatibility are defined in the linked specification. No named members are added to numeric Types.
+
 ### 1.3. Option and Result
 
 [Specification: required declarations](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) and [try propagation](spec/17-failure-handling.md#1724-try-propagation).
@@ -260,12 +275,12 @@ Complexity bounds describe collection management for fixed Types. Allocator inte
 
 [Specification: Array operations](spec/04-arrays-indexing-and-slices.md#472-array-operations) and [destruction order](spec/04-arrays-indexing-and-slices.md#476-commit-failure-and-destruction-order).
 
-An ordered, growable sequence constructed with `[]`, `[a, b, ...]` or `init(! capacity:)`.
+An ordered, growable sequence constructed with `[]`, `[a, b, ...]`, `init(! capacity:)` or `init(! repeating:count:)`.
 
 | Member | Guarantee |
 | --- | --- |
 | `init(! capacity: isize)` | An empty Array with `capacity >= capacity`; a negative argument Aborts and zero allocates nothing. |
-| `init(! repeating: T, count: isize)`, `T is Copy` | `count` Copies of `repeating`; a negative count Aborts. |
+| `init(! repeating: T, count: isize)`, `T is Copy` | `count` Copies of `repeating`, placed after one reservation, so at most one allocation; `repeating` is acquired once, a negative count Aborts before any element is placed, and zero allocates nothing. |
 | `indices: ResolvedRange` | The interval `[0, length)`. |
 | `values[i]`, where i is a position | An element Place: shared for reads, exclusive for mutation; invalid bounds Abort. |
 | `values[r]`, where r is a range | A shared Slice; invalid bounds Abort. |
@@ -450,6 +465,8 @@ Targets must contain complete values; these operations do not repair uninitializ
 
 [Specification: object ownership](spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing). All functions belong to `Intrinsics`.
 
+The three normal factories share the post-acquisition creation contract with `@obj` / `@rc` / `@arc` ([SPEC §13.5.8](spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing)); their ordinary inference and Function Item APIs remain unchanged.
+
 | Function | Constraint | Guarantee |
 | --- | --- | --- |
 | `makeObj<T>(value: T) -> obj/T` | `T is ObjectPayload` | Creates a uniquely owned object. |
@@ -459,8 +476,8 @@ Targets must contain complete values; these operations do not repair uninitializ
 
 Ordinary creation does not require Owned; payload dependencies survive in the object handle. Strong clone is not a deep copy or an obj duplicator. The argument borrows the handle slot, as in `Intrinsics.clone(handle@ref)`. Atomic counting alone grants no payload thread-safety guarantee.
 
-These four signatures are declared together in `src/Kimi/Library/Intrinsics.kimi`; their compiler catalog validates the
-normal factory signatures and the strong clone's single complete-Type pair separately from runtime support.
+These four signatures are declared together in `src/Kimi/Library/Intrinsics.kimi`; their signatures, including the strong
+clone's single complete-Type pair, are fixed by the library shape tests, separately from runtime support.
 
 ### 5.3. Weak Handles and Cyclic Construction
 

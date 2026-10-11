@@ -8,6 +8,12 @@ public sealed partial class Binding
 {
     private PropertyTypeVisitor? propertyTypeVisitor;
 
+    internal static BoundAccessor Accessor(PropertyAccessorKoto syntax)
+    {
+        var property = ((PropertyKoto)syntax.Parent!).BoundSymbol!.Property!;
+        return syntax.AccessorKind == PropertyAccessorKind.Get ? property.Getter : property.Setter;
+    }
+
     private static bool NarrowerAccess(ModifierKind inner, ModifierKind outer) => outer switch
     {
         ModifierKind.Public => inner is ModifierKind.ProtectedOrInternal or ModifierKind.Protected or ModifierKind.Internal or ModifierKind.ProtectedAndInternal or ModifierKind.Private,
@@ -16,12 +22,6 @@ public sealed partial class Binding
         ModifierKind.ProtectedAndInternal => inner == ModifierKind.Private,
         _ => false,
     };
-
-    private static BoundAccessor Accessor(PropertyAccessorKoto syntax)
-    {
-        var property = ((PropertyKoto)syntax.Parent!).BoundSymbol!.Property!;
-        return syntax.AccessorKind == PropertyAccessorKind.Get ? property.Getter : property.Setter;
-    }
 
     private static Koto? PropertySignatureOwner(Koto use)
     {
@@ -136,7 +136,7 @@ public sealed partial class Binding
         else if (property.Symbol.Scope.Owner is StructKoto or ContractKoto)
         {
             var self = this.DeclarationSelf(property.Symbol.Scope.Owner.BoundSymbol!);
-            accessor.Receiver = this.InternType(BoundTypeKind.Semantics, null, accessor.Kind == PropertyAccessorKind.Get ? SemanticsKind.Ref : SemanticsKind.Uniq, [self], origin: this.OriginAtom(syntax, OriginKind.Input, 0));
+            accessor.Receiver = this.types.Intern(BoundTypeKind.Semantics, null, accessor.Kind == PropertyAccessorKind.Get ? SemanticsKind.Ref : SemanticsKind.Uniq, [self], origin: this.OriginAtom(syntax, OriginKind.Input, 0));
         }
 
         if (accessor.SelfSymbol is { } symbol)
@@ -280,12 +280,13 @@ public sealed partial class Binding
 
             var proof = this.ValidateAccessor(property.Getter);
             proof = CombineProof(proof, this.ValidateAccessor(property.Setter), true);
-            property.IsVerified = proof == ConstraintProof.Proven && !InvalidDeclarationContext(syntax);
+            property.IsVerified = proof == ConstraintProof.Proven && syntax.BindingFailure == BindingFailure.None && !InvalidDeclarationContext(syntax);
 
             // SPEC 23.3.6.4: an accessor's own declaration Error explains the Property's failed verification; a second record at
             // the Property would restate it. Every other failure is the Property's own problem.
             var explainedByAccessor = proof == ConstraintProof.Error &&
-                (property.Getter.Declaration?.BindingState == BindingState.Invalid || property.Setter.Declaration?.BindingState == BindingState.Invalid);
+                ((property.Getter.Declaration is { } getter && (getter.BindingState == BindingState.Invalid || this.HasUnresolvedPrerequisite(getter))) ||
+                (property.Setter.Declaration is { } setter && (setter.BindingState == BindingState.Invalid || this.HasUnresolvedPrerequisite(setter))));
             if (proof != ConstraintProof.Proven && !explainedByAccessor)
             {
                 this.RequireConstraint(syntax, proof, mode, this.ConformanceDiagnosticCause(property.Symbol.Scope.Owner));
@@ -305,6 +306,19 @@ public sealed partial class Binding
         if (syntax?.BindingState == BindingState.Invalid)
         {
             return ConstraintProof.Error;
+        }
+
+        if (syntax is not null)
+        {
+            // Header failures leave the operation unavailable, not a disproven receiver or conformance.
+            var missing = accessor.Receiver is null ? syntax.ReceiverType : null;
+            missing ??= accessor.Kind == PropertyAccessorKind.Set && accessor.Input is null ? syntax.ValueType : null;
+            missing ??= accessor.Result is null ? syntax.ReturnType : null;
+            if (missing is not null)
+            {
+                this.CompleteDependent(syntax, missing);
+                return ConstraintProof.Error;
+            }
         }
 
         if (InvalidDeclarationContextCause(property.Declaration) is { } context)
@@ -418,7 +432,7 @@ public sealed partial class Binding
         }
 
         var owner = accessor.Property.Symbol.Scope.Owner.BoundSymbol!;
-        var shaped = this.InternType(BoundTypeKind.Semantics, null, accessor.Kind == PropertyAccessorKind.Get ? SemanticsKind.Ref : SemanticsKind.Uniq, [this.DeclarationSelf(owner)], origin: this.OriginAtom(declaration, OriginKind.Input, 0));
+        var shaped = this.types.Intern(BoundTypeKind.Semantics, null, accessor.Kind == PropertyAccessorKind.Get ? SemanticsKind.Ref : SemanticsKind.Uniq, [this.DeclarationSelf(owner)], origin: this.OriginAtom(declaration, OriginKind.Input, 0));
         var required = declaringType is null ? shaped : this.MemberType(shaped, declaringType);
         if (required is null || !this.AdaptInput(receiver, required, actual, scope, path, declaringType, out _, out _, out _, explicitBorrow: explicitBorrow, receiver: true))
         {

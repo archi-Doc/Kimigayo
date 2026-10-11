@@ -6,28 +6,13 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
-    // Reuse the runtime ABI offsets: materializing the constant span's field handle
-    // on each adapter validation allocates a RuntimeFieldInfoStub on this runtime.
-    private static readonly int[] FormattingWriterOffsets = [0, 8, 16, 56, 24, 32, 40, 48];
+    // The runtime ABI offsets of the named Utf8Writer Fields; a static table, because materializing a constant span's field
+    // handle on each adapter validation allocates a RuntimeFieldInfoStub on this runtime.
+    private static readonly (string Name, int Offset)[] FormattingWriterOffsets =
+        [("destination", 0), ("dispatch", 8), ("kind", 16), ("failed", 56), ("hint", 24), ("pending", 32), ("pendingLength", 40), ("logicalLength", 48)];
 
-    private int BuiltinFormatKind(BoundCall call)
+    internal static int BuiltinFormatKind(BoundType type)
     {
-        var logical = call.Target.CompilerFunction == CompilerFunctionKind.WriterWrite ? 1 : 0;
-        var required = call.Receiver is not null && call.ReceiverOperation.ParameterIndex == logical ? call.ReceiverOperation.ParameterType : null;
-        for (var i = 0; required is null && i < call.ArgumentOperations.Length; i++)
-        {
-            if (call.ArgumentOperations[i].ParameterIndex == logical)
-            {
-                required = call.ArgumentOperations[i].ParameterType;
-            }
-        }
-
-        if (SignatureType(this, required) is not { Semantics: SemanticsKind.Ref, Components.Count: 1 } reference)
-        {
-            return -1;
-        }
-
-        var type = reference.Components[0];
         var width = ScalarTypes.Width(type);
         if (width != 0)
         {
@@ -38,22 +23,21 @@ internal sealed partial class BodyLowering
             ReferenceEquals(type, BoundType.String) ? 16 : FormattingTypes.IsUtf8Slice(type) ? 17 : -1;
     }
 
-    private bool PrepareWriterDispatch(KimiLibrary library, BoundCall call, EmissionFunction function, BoundType result, out long kind, out EmissionOperand dispatch, out string? failure)
+    internal bool PrepareWriterDispatch(CallPlan call, EmissionFunction function, BoundType result, out long kind, out EmissionOperand dispatch, out string? failure)
     {
         kind = -1;
         dispatch = new(EmissionOperandKind.NullAddress, 0);
         failure = null;
-        if (call.ArgumentOperations.Length != 1 || SignatureType(this, call.ArgumentOperations[0].ParameterType) is not { Components.Count: 1 } input ||
+        if (call.ArgumentOperations.Length != 1 || this.Resolve(call.ArgumentOperations[0].ParameterType, InterpretationContext.Root) is not { Components.Count: 1 } input ||
             input.Semantics != SemanticsKind.Uniq || result.Symbol?.LibraryDeclaration != KimiDeclarationId.Utf8Writer ||
-            this.aggregateLayouts.Get(result) is not { Value.Layout.Size: 64, Fields.Length: 9 } layout || layout.Fields[8].Layout.Size != 0)
+            this.aggregateLayouts.Get(result) is not { Value.Layout.Size: 64, Fields.Length: 9 } layout || layout.Fields[AdtDef.IndexOf(result, "loan")].Layout.Size != 0)
         {
             return Fail("Writer erasure requires a concrete exclusive input and its verified adapter layout.", out failure);
         }
 
-        ReadOnlySpan<int> offsets = FormattingWriterOffsets;
-        for (var i = 0; i < offsets.Length; i++)
+        foreach (var (name, offset) in FormattingWriterOffsets)
         {
-            if (layout.Offset(i) != offsets[i])
+            if (layout.Offset(result, name) != offset)
             {
                 return Fail("Writer fields do not match the erased runtime layout.", out failure);
             }
@@ -86,5 +70,25 @@ internal sealed partial class BodyLowering
 
         dispatch = new(EmissionOperandKind.FunctionAddress, index);
         return true;
+    }
+
+    private int BuiltinFormatKind(CallPlan call)
+    {
+        var logical = call.Target.CompilerFunction == CompilerFunctionKind.WriterWrite ? 1 : 0;
+        var required = call.Receiver is not null && call.ReceiverOperation.ParameterIndex == logical ? call.ReceiverOperation.ParameterType : null;
+        for (var i = 0; required is null && i < call.ArgumentOperations.Length; i++)
+        {
+            if (call.ArgumentOperations[i].ParameterIndex == logical)
+            {
+                required = call.ArgumentOperations[i].ParameterType;
+            }
+        }
+
+        if (this.Resolve(required, InterpretationContext.Root) is not { Semantics: SemanticsKind.Ref, Components.Count: 1 } reference)
+        {
+            return -1;
+        }
+
+        return BuiltinFormatKind(reference.Components[0]);
     }
 }

@@ -57,9 +57,9 @@ public class ContentUpdateTest
         var source = "func run(a: uniq/i32 during s, b: uniq/i32 during s) -> i32\n    var slot = a\n" + operations;
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.DoesNotContain(c.Ownership.Issues, static issue => issue.Failure is OwnershipFailure.Unsupported or OwnershipFailure.Internal);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, static issue => issue.Code.IsLoanConflict());
+        Assert.DoesNotContain(c.Problems, static issue => issue.Code is DiagnosticCode.Unsupported_Kd or DiagnosticCode.InternalInvariant_Kd);
+        Assert.False(c.Validate(out _));
     }
 
     [Fact]
@@ -85,9 +85,9 @@ public class ContentUpdateTest
         var source = "func run(a: uniq/i32 during s, b: uniq/i32 during s)\n    var slot = a\n" + operations;
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.DoesNotContain(c.Ownership.Issues, static issue => issue.Failure is OwnershipFailure.Unsupported or OwnershipFailure.Internal);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, static issue => issue.Code.IsLoanConflict());
+        Assert.DoesNotContain(c.Problems, static issue => issue.Code is DiagnosticCode.Unsupported_Kd or DiagnosticCode.InternalInvariant_Kd);
+        Assert.False(c.Validate(out _));
     }
 
     [Fact]
@@ -103,8 +103,8 @@ public class ContentUpdateTest
         const string source = "func run(a: uniq/i32 during s, b: uniq/i32 during s)\n    var slot = b@follow@ref\n    var i = 0\n    while i < 2\n        a@follow += 1\n        Kimi.Intrinsics.replace(slot@uniq, with: a@follow@ref)\n        require slot@follow > 0 else => $abort(\"loop reference\")\n        i += 1";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.DoesNotContain(c.Ownership.Issues, static issue => issue.Failure is OwnershipFailure.Unsupported or OwnershipFailure.Internal);
+        Assert.Contains(c.Problems, static issue => issue.Code.IsLoanConflict());
+        Assert.DoesNotContain(c.Problems, static issue => issue.Code is DiagnosticCode.Unsupported_Kd or DiagnosticCode.InternalInvariant_Kd);
     }
 
     [Theory]
@@ -137,7 +137,7 @@ public class ContentUpdateTest
         var source = Generic + "func run(a: uniq/i32 during s, b: uniq/i32 during s)\n    var slot = a@move\n    let old = change(slot@uniq, b@move)\n    Kimi.Intrinsics.replace(slot@uniq, with: old)\n    old@follow = 4\n    slot@follow = 5";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(c.Problems, static issue => issue.Code.IsLoanConflict());
     }
 
     [Theory]
@@ -159,7 +159,7 @@ public class ContentUpdateTest
         var source = Generic + "func run(a: uniq/i32 during s, b: uniq/i32 during s)\n    var slot = (a@move, 1)\n    let old = change(slot@uniq, (b@move, 2))\n    slot.0 = old.0@follow@uniq\n    old.0@follow = 4\n    slot.0@follow = 5";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(c.Problems, static issue => issue.Code.IsLoanConflict());
     }
 
     [Theory]
@@ -170,7 +170,7 @@ public class ContentUpdateTest
         var source = "func run(a: ref/i32 during s, b: ref/i32 during s)\n    var slot = (a, 1)\n    let child = slot.0@ref\n    " + update + "\n    _ = child@follow@follow";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, name + MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(c.Problems, static issue => issue.Code.IsLoanConflict());
     }
 
     [Fact]
@@ -187,7 +187,7 @@ public class ContentUpdateTest
         const string source = "func run(a: uniq/i32 during s, b: uniq/i32 during s)\n    var slot = a\n    let child = slot\n    Kimi.Intrinsics.replace(slot@uniq, with: b)\n    child@follow = 3";
         var path = Path.GetFullPath("content-update.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var record = Assert.Single(result.Diagnostics);
@@ -230,16 +230,16 @@ public class ContentUpdateTest
         public void ContentFlowAndCallIndependenceReuseStorage()
         {
             var c = MinimalEmissionTest.Analyze(Generic + "func run(a: uniq/i32 during s, b: uniq/i32 during s)\n    var slot = a@move\n    let old = change(slot@uniq, b@move)\n    slot@follow = 20\n    old@follow = 10\n" + Inputs + "run(a@uniq, b@uniq)");
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
             var valid = true;
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
             Assert.True(valid);
             var restored = CompilationTestHelper.Reload(c);
             Assert.True(restored.Bind().IsComplete);
             restored.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(restored.Ownership.Analyze().IsVerified);
-            Assert.True(restored.Emission.WriteIr(TextWriter.Null, out error), MinimalEmissionTest.Describe(restored, error));
+            Assert.True(restored.Analyze().IsVerified);
+            Assert.True(restored.WriteIr(TextWriter.Null, out error), MinimalEmissionTest.Describe(restored, error));
         }
     }
 }

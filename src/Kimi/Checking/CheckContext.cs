@@ -11,8 +11,12 @@ namespace Kimi.Checking;
 /// collects what its caller finalizes: every diagnostic of the request in one owner, and the compilation whose front end ran.
 /// </remarks>
 /// <param name="inputs">The input source of the check.</param>
-internal sealed class CheckContext(CheckInputSource inputs)
+/// <param name="collectHover">Whether to collect optional editor information before releasing the compilation.</param>
+internal sealed class CheckContext(CheckInputSource inputs, bool collectHover = false)
 {
+    /// <summary>Gets a value indicating whether this check requests optional editor information.</summary>
+    public bool CollectHover { get; } = collectHover;
+
     /// <summary>Gets the input source of the check.</summary>
     public CheckInputSource Inputs { get; } = inputs;
 

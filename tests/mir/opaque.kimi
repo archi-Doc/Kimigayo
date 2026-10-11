@@ -1,0 +1,5 @@
+func scale(x: i32, factor: i32 = 2) -> i32 => x * factor
+func sum(a: i32, b: i32) -> i32
+    let c = scale(a + b)
+    return c
+func fail() -> i32 => missing

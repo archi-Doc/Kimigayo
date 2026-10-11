@@ -38,7 +38,6 @@ public sealed class AccessorReceiverShapeTest(ITestOutputHelper output)
         Assert.Equal(nameof(DiagnosticCode.AccessorReceiverShape_Kd), error.Code);
         Assert.Equal(written, error.Text);
         Assert.Equal($"a {accessor} receiver is {required}", error.Label);
-        Assert.Contains(accessor == "get" ? "func name(self: R) -> T" : "func name(self: R, value: U) -> ()", error.Advice, StringComparison.Ordinal);
         var result = c.Diagnostics.Finalize();
         var record = Assert.Single(result.Diagnostics, static x => x.Severity == DiagnosticSeverity.Error);
         Assert.Equal(DiagnosticCategory.Language, record.Category);
@@ -101,7 +100,6 @@ public sealed class AccessorReceiverShapeTest(ITestOutputHelper output)
         Assert.Contains("AccessorReceiverShape.kimi:4:19", console.Text, StringComparison.Ordinal);
         Assert.Contains("^^^^^^^^^ a get receiver is ref/Self", console.Text, StringComparison.Ordinal);
         Assert.Contains("reading is read through ref/Self and written through uniq/Self", console.Text, StringComparison.Ordinal);
-        Assert.Contains(record.Advice!, console.Text, StringComparison.Ordinal);
         output.WriteLine(console.Text);
         var identity = SourceIdentity.FromPath(path);
         var check = new CheckOutput(CheckOutcome.Completed, false, TestPresence.No, result);
@@ -111,7 +109,6 @@ public sealed class AccessorReceiverShapeTest(ITestOutputHelper output)
             Assert.Equal(record.Display.Range, sent.Range);
             Assert.Equal(record.Code, sent.Code);
             Assert.Contains(record.Label!, sent.Message, StringComparison.Ordinal);
-            Assert.Contains(record.Advice!, sent.Message, StringComparison.Ordinal);
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
     }

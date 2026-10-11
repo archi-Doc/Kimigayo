@@ -45,7 +45,7 @@ public class OriginRedesignTest
         Assert.Empty(TestDiagnostics.Of(c));
         for (var pass = 0; pass < 2; pass++)
         {
-            Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Node.CodeContext.SourceDocument?.Path}: {x.Node}: {x.Node.BindingFailure}")));
+            Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Node.CodeContext.SourceDocument?.Path}: {x.Node}: {x.Node.FailureOf()}")));
         }
     }
 
@@ -150,8 +150,8 @@ public class OriginRedesignTest
             $"var first = Cell.init()\nvar second = Cell.init()\nupdate({arguments})";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        Assert.True(valid == c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
-        Assert.Equal(valid, c.Emission.Validate(out _));
+        Assert.True(valid == c.Analysis.IsVerified, string.Join('\n', c.Problems));
+        Assert.Equal(valid, c.Validate(out _));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -161,7 +161,7 @@ public class OriginRedesignTest
         var c = MinimalEmissionTest.Analyze("struct Cell\n    public var value: i32 = 0\n" +
             "func update(x: uniq/Cell during a, y: uniq/Cell during b)\n    origin a == b\n    x.value = 1\n    y.value = 2\n" +
             "var first = Cell.init()\nvar second = Cell.init()\nupdate(first@uniq, second@uniq)");
-        Assert.True(c.Emission.Validate(out _));
+        Assert.True(c.Validate(out _));
         var bindingBytes = AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)
@@ -170,8 +170,8 @@ public class OriginRedesignTest
             }
         });
         c.Binding.CheckStartup(OutputKind.Application);
-        var ownershipBytes = AllocationMeasurement.Measure(() => c.Ownership.Analyze());
-        var emissionBytes = AllocationMeasurement.Measure(() => c.Emission.WriteIr(TextWriter.Null, out _));
+        var ownershipBytes = AllocationMeasurement.Measure(() => c.Analyze());
+        var emissionBytes = AllocationMeasurement.Measure(() => c.WriteIr(TextWriter.Null, out _));
         // Eight measured warm passes: Binding retains a bounded 288 bytes per pass.
         Assert.True(
             bindingBytes <= 8 * 288 && ownershipBytes == 0 && emissionBytes == 0,

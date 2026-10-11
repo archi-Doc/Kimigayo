@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<Koto, BoundOrigin[]> associatedOrigins = new(ReferenceEqualityComparer.Instance);
-    private readonly List<(Koto Use, BoundType Projection, BindingSymbol Contract)> associatedApplications = new();
+    private readonly List<(Koto Use, BoundType Projection)> associatedApplications = new();
 
     private static bool IsAssociatedRequirement(Koto node)
         => node.Parent is ContractKoto && AssociatedHead(node) is OriginApplicationKoto application &&
@@ -49,8 +49,17 @@ public sealed partial class Binding
 
         if (type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)
         {
-            return type.Origin is not null && (type.Components[0].Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.Primitive or BoundTypeKind.Semantics or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice) &&
+            return type.Origin is not null && (type.Components[0].Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.Primitive or BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice) &&
                 HasSupportedAssociatedFormation(type.Components[0]);
+        }
+
+        // SPEC 8.1.2, 8.4.3: an original, annotated or applied pair layer whose binder admits only value or valueborrow Semantics is a
+        // conditional borrow of its target, supported when its target is; object families and raw layers wait for their tracks.
+        if (type.Kind != BoundTypeKind.SemanticsAdaptation && TryPairLayer(type, out var whole, out var target) && whole.Symbol is { Scope: { } scope } pair &&
+            pair.Declaration.CodeContext.Compilation.Binding.AdmittedSemantics(whole, scope) is var admitted && admitted != SemanticsMask.None &&
+            (admitted & ~(SemanticsMask.Owner | SemanticsMask.ValueBorrow)) == 0)
+        {
+            return HasSupportedAssociatedFormation(target);
         }
 
         if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice or BoundTypeKind.AssociatedProjection ||
@@ -76,6 +85,7 @@ public sealed partial class Binding
         => ReferenceEquals(pattern, type) ||
         (pattern is { Kind: BoundTypeKind.AssociatedProjection, OriginArguments.Count: > 0 } && type.Kind == BoundTypeKind.AssociatedProjection &&
          ReferenceEquals(pattern.Symbol, type.Symbol) && ReferenceEquals(pattern.Components[0], type.Components[0]) &&
+         pattern.Components.Count == type.Components.Count && (pattern.Components.Count < 2 || ReferenceEquals(pattern.Components[1], type.Components[1])) &&
          pattern.OriginArguments.Count == type.OriginArguments.Count && UniversalAssociatedArguments(pattern));
 
     private static bool UniversalAssociatedArguments(BoundType type)
@@ -141,6 +151,11 @@ public sealed partial class Binding
     {
         var owner = scope.Owner.BoundSymbol!;
         var qualifier = this.TypeName(member.Left, scope, false);
+        if (qualifier?.Declaration is ContractKoto && UnwrapAssociatedHead(member.Left) is GenericsKoto)
+        {
+            qualifier = this.BindContractReference(member.Left, qualifier, scope);
+        }
+
         if (qualifier?.Declaration is not ContractKoto || ReferenceEquals(qualifier, owner) || !IsRefinement(owner, qualifier) || TypeSpelling(member.Right) is not { } name)
         {
             return this.Fail(clause, BindingFailure.InvalidAssociatedType);
@@ -153,7 +168,7 @@ public sealed partial class Binding
             return this.Fail(clause, BindingFailure.InvalidAssociatedType);
         }
 
-        var projection = this.InternType(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [self, this.ProjectionContract(associated, reference ?? qualifier)], originArguments: this.AssociatedParameters(associated.Declaration));
+        var projection = this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [self, this.ProjectionContract(associated, reference ?? qualifier)], originArguments: this.AssociatedParameters(associated.Declaration));
         clause.BoundSymbol = member.BoundSymbol = member.Right.BoundSymbol = application.BoundSymbol = associated;
         member.Left.BoundSymbol = qualifier;
         Complete(member.Left, BoundType.Unit);
@@ -238,17 +253,7 @@ public sealed partial class Binding
             }
 
             projection = this.WithOrigins(projection, null, arguments.AsSpan(0, application.ArgumentNodes.Count));
-            var contract = associated.Scope.Owner.BoundSymbol!;
-            for (var i = this.projectionUses.Count - 1; i >= 0; i--)
-            {
-                if (ReferenceEquals(this.projectionUses[i].Use, target))
-                {
-                    contract = this.projectionUses[i].Contract;
-                    break;
-                }
-            }
-
-            this.associatedApplications.Add((application, projection, contract));
+            this.associatedApplications.Add((application, projection));
             application.BoundSymbol = target.BoundSymbol = associated;
             Complete(target, projection);
             return this.bindingConstraintTypes ? projection : this.ContractType(projection, scope);
@@ -270,18 +275,22 @@ public sealed partial class Binding
                 if (!this.CheckAssociatedFormation(definition, node))
                 {
                     this.Fail(node, BindingFailure.InvalidOrigin);
+                    if (node is IsKoto { Right: { } specified })
+                    {
+                        this.partPrerequisites[node] = specified; // Derived when the specified occurrence's own formation fails (IsDerived).
+                    }
                 }
             }
         }
 
-        foreach (var (use, projection, contract) in this.associatedApplications)
+        foreach (var (use, projection) in this.associatedApplications)
         {
             var declaration = projection.Symbol!.Declaration;
             var formation = AssociatedFormationType(declaration);
             if (formation is not null)
             {
                 formation = this.SubstituteStoredOrigins(formation, declaration, (BoundOrigin[])projection.OriginArguments);
-                formation = this.SubstituteContractReference(formation, contract);
+                formation = this.StoredType(formation, projection.Components[1]) ?? formation;
                 formation = this.StoredType(formation, projection.Components[0]) ?? formation;
                 formation = this.ContractType(formation, this.ConstraintScope(use), projection.Components[0]);
             }
@@ -292,39 +301,5 @@ public sealed partial class Binding
                 this.Fail(use, BindingFailure.InvalidOrigin);
             }
         }
-    }
-
-    private bool ProvesAssociatedRequirementRelation(Koto node, BoundOrigin longer, BoundOrigin shorter, Koto use)
-    {
-        if (AssociatedHead(node) is not OriginApplicationKoto || node.BoundSymbol is not { Kind: BindingSymbolKind.AssociatedType } associated ||
-            ReferenceEquals(associated.Declaration, node))
-        {
-            return false;
-        }
-
-        var arguments = this.AssociatedParameters(node);
-        if (this.InheritedAssociatedFormation(node) is { } formation &&
-            this.ProvesTypeOriginPremise(formation, longer, shorter, use))
-        {
-            return true;
-        }
-
-        if (!this.originDeclarations.TryGetValue(associated.Declaration, out var requirement) || requirement.State != 3)
-        {
-            return false;
-        }
-
-        foreach (var relation in requirement.Relations)
-        {
-            var a = this.SubstituteStoredOrigin(relation.Longer, associated.Declaration, arguments);
-            var b = this.SubstituteStoredOrigin(relation.Shorter, associated.Declaration, arguments);
-            if ((this.ProvesOriginOutlives(longer, a, use) && this.ProvesOriginOutlives(b, shorter, use)) ||
-                (relation.Equality && this.ProvesOriginOutlives(longer, b, use) && this.ProvesOriginOutlives(a, shorter, use)))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 }

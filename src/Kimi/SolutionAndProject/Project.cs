@@ -393,7 +393,12 @@ public partial class Project
 
         // A command's target owns its diagnostics, so no earlier target's diagnostics can leak into it;
         // a check request shares its caller's owner.
-        var compilation = new Compilation(this.kimigayo, project, context?.Diagnostics) { IsTestBuild = prepared is not null };
+        var compilation = new Compilation(this.kimigayo, project, context?.Diagnostics)
+        {
+            IsTestBuild = prepared is not null,
+            CollectDocumentation = context?.CollectHover == true,
+            CollectHover = context?.CollectHover == true,
+        };
         if (this.FilePath is { } file)
         {
             compilation.Diagnostics.RegisterPath(file); // SPEC 23.3.6.3: the project file is consumed before every source.
@@ -488,13 +493,11 @@ public partial class Project
         compilation.Binding.ReportDiagnostics();
         var startup = compilation.IsTestBuild ? compilation.Binding.CheckTestStartup() : compilation.Binding.CheckStartup(this.ProjectFile.OutputKind);
         compilation.Binding.ReportStartupDiagnostics();
-        var ownership = compilation.Ownership.Analyze();
-        var controlFlow = compilation.Ownership.ControlFlow!;
-        controlFlow.ReportDiagnostics();
-        compilation.Ownership.ReportDiagnostics();
+        var analysis = compilation.Analyze();
+        compilation.ReportAnalysis();
 
         // SPEC 23.3.3: acceptance reads the error state of every front-end partition, never the displayed list.
-        var accepted = binding.IsComplete && startup.IsComplete && ownership.IsVerified && !compilation.Diagnostics.HasErrorsThrough(DiagnosticPartition.Ownership);
+        var accepted = binding.IsComplete && startup.IsComplete && analysis.IsVerified && !compilation.Diagnostics.HasErrorsThrough(DiagnosticPartition.Ownership);
         if (accepted && prepared is not null)
         {
             compilation.Tests.Discover(compilation);

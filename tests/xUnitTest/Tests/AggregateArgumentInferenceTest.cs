@@ -25,7 +25,7 @@ public class AggregateArgumentInferenceTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.NotNull(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall);
+        Assert.NotNull(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).CallOf());
     }
 
     [Theory]
@@ -36,9 +36,9 @@ public class AggregateArgumentInferenceTest
         var c = MinimalEmissionTest.Analyze(source);
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Equal(BindingFailure.Ambiguous, call.BindingFailure);
-        Assert.Null(call.BoundCall);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Equal(BindingFailure.Ambiguous, call.FailureOf());
+        Assert.Null(call.CallOf());
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -67,9 +67,9 @@ public class AggregateArgumentInferenceTest
         var c = MinimalEmissionTest.Analyze(source);
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Equal(BindingFailure.NoApplicableCandidate, call.BindingFailure);
-        Assert.Null(call.BoundCall);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Equal(BindingFailure.NoApplicableCandidate, call.FailureOf());
+        Assert.Null(call.CallOf());
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]

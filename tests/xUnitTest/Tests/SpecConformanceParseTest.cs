@@ -124,7 +124,6 @@ public class SpecConformanceParseTest
     [InlineData("u(D800)")]
     [InlineData("u(DFFF)")]
     [InlineData("u(110000)")]
-    [InlineData("u(D83D)\\u(DE00)")]
     [InlineData("x41")]
     public void CharAndStringLiteralsRejectTheSameInvalidCharacterEscapes(string escape)
     {
@@ -133,6 +132,21 @@ public class SpecConformanceParseTest
         var charError = Assert.Single(TestDiagnostics.Of(character));
         var stringError = Assert.Single(TestDiagnostics.Of(text));
         Assert.Equal(charError.Code, stringError.Code);
+    }
+
+    [Theory]
+    [InlineData("\\u(D83D)\\u(DE00)", "InvalidUnicodeScalar_Kd", 8)]
+    [InlineData("\\q\\q", "InvalidEscape_Kd", 2)]
+    public void CharAndStringLiteralsValidateEveryEscapeIndependently(string content, string code, int length)
+    {
+        foreach (var quote in new[] { '\'', '"' })
+        {
+            var errors = TestDiagnostics.Of(Parse("let value = " + quote + content + quote));
+            Assert.Equal(2, errors.Length);
+            Assert.All(errors, error => Assert.Equal(code, error.Code));
+            Assert.Equal((13, length), (errors[0].Span.Start, errors[0].Span.Length));
+            Assert.Equal((13 + length, length), (errors[1].Span.Start, errors[1].Span.Length));
+        }
     }
 
     [Theory]
@@ -234,8 +248,8 @@ public class SpecConformanceParseTest
         AssertValid(parsed);
         var items = parsed.GeneratedFunction!.Body!.Items.Cast<FieldKoto>().ToArray();
         Assert.IsType<InvocationKoto>(items[1].InitializerKoto);
-        Assert.IsType<GreaterThanGreaterThanKoto>(items[2].InitializerKoto);
-        Assert.IsType<GreaterThanEqualsKoto>(items[3].InitializerKoto);
+        ParseTestHelper.Binary(KotoKind.GreaterThanGreaterThan, items[2].InitializerKoto);
+        ParseTestHelper.Binary(KotoKind.GreaterThanEquals, items[3].InitializerKoto);
         RoundTrip(parsed);
     }
 

@@ -97,12 +97,12 @@ public class SharedMatchTest
         var source = explicitIntersection ? Source.Replace("during input>", "during (input and savedText)>", StringComparison.Ordinal) : Source;
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        Assert.True(c.Ownership.Result.IsVerified, string.Join("\n", c.Binding.Obligations));
+        Assert.True(c.Analysis.IsVerified, string.Join("\n", c.Binding.Obligations));
         NativeAllocationAudit.WriteFixture("SharedMatchNestedReferences" + explicitIntersection, source, 0, 0, 0, "hello\n");
         var invalid = MinimalEmissionTest.Analyze(source.Replace("match value@ref", "_ = text@move\nmatch value@ref", StringComparison.Ordinal));
         Assert.True(invalid.Binding.Result.IsComplete, string.Join("\n", invalid.Binding.Issues));
-        Assert.Contains(invalid.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(invalid.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(invalid.Problems, x => x.Code.IsLoanConflict());
+        Assert.False(invalid.WriteIr(TextWriter.Null, out _));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -127,8 +127,8 @@ public class SharedMatchTest
     {
         var c = MinimalEmissionTest.Analyze("var value = (\"hello\", 1)\nmatch value\n    (let saved, _)\n        value = (\"new\", 2)\n        Console.writeLine(saved)");
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -179,7 +179,7 @@ public class SharedMatchTest
     {
         var c = MinimalEmissionTest.Analyze("var text = \"hello\"\nmatch text\n    let saved\n        text = \"new\"\n        Console.writeLine(saved)");
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 }

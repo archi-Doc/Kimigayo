@@ -96,7 +96,7 @@ internal sealed partial class BodyLowering
         for (var p = 0; p < body.Places.Count; p++)
         {
             var place = body.Places[p];
-            if (place.Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Closure) && !StructStorage.IsStruct(place.Type) && !EnumStorage.IsEnum(place.Type) && ObjectTypes.HandleMode(place.Type) is null)
+            if (place.Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Closure) && !AdtDef.IsStruct(place.Type) && !AdtDef.IsEnum(place.Type) && place.Type.HandleMode is null)
             {
                 continue;
             }
@@ -153,13 +153,13 @@ internal sealed partial class BodyLowering
             if (plan.Case is { } selected)
             {
                 if (ownerLayout.Cases is not { } cases || (uint)selected.Ordinal >= (uint)cases.Length ||
-                    !ReferenceEquals(EnumStorage.Case(type, selected.Ordinal), selected) || !ReferenceEquals(body.Places[plan.Place].Source.BoundSymbol?.EnumCase, selected))
+                    !ReferenceEquals(AdtDef.Case(type, selected.Ordinal), selected) || !ReferenceEquals(body.Places[plan.Place].Source.BoundSymbol?.EnumCase, selected))
                 {
                     return Fail("Enum construction has no matching active Case.", out failure);
                 }
 
                 layout = cases[selected.Ordinal];
-                type = type.StoredCases![selected.Ordinal];
+                type = AdtDef.CaseTypes(type)![selected.Ordinal];
                 offset = ownerLayout.PayloadOffset;
             }
             else if (ownerLayout.Cases is not null || body.Places[plan.Place].Source is not (TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto))
@@ -217,13 +217,13 @@ internal sealed partial class BodyLowering
             var offset = 0;
             if (plan.Case is { } selected)
             {
-                if (owner.Cases is not { } cases || (uint)selected.Ordinal >= (uint)cases.Length || !ReferenceEquals(EnumStorage.Case(type, selected.Ordinal), selected))
+                if (owner.Cases is not { } cases || (uint)selected.Ordinal >= (uint)cases.Length || !ReferenceEquals(AdtDef.Case(type, selected.Ordinal), selected))
                 {
                     return Fail("Pattern decomposition has the wrong enum Case.", out failure);
                 }
 
                 shape = cases[selected.Ordinal];
-                type = type.StoredCases![selected.Ordinal];
+                type = AdtDef.CaseTypes(type)![selected.Ordinal];
                 offset = owner.PayloadOffset;
             }
             else if (type.Kind != BoundTypeKind.Tuple)
@@ -354,7 +354,7 @@ internal sealed partial class BodyLowering
         switch (operation.Kind)
         {
             case OwnershipOperationKind.Read when place.Type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Closure:
-            case OwnershipOperationKind.Read when ObjectTypes.HandleMode(place.Type) is not null:
+            case OwnershipOperationKind.Read when place.Type.HandleMode is not null:
                 return !body.IsReachable(id) || (body.GetInputState(id, place.Id) & PlaceState.MustInit) != 0 || Fail("Callable receiver is not initialized.", out failure);
             case OwnershipOperationKind.Read when place.Type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice:
                 // SPEC 4.6.1: metadata and a receiver borrow share the handle in place; the operation loads its fields.
@@ -480,11 +480,12 @@ internal sealed partial class BodyLowering
             case OwnershipOperationKind.Write:
             case OwnershipOperationKind.Consume:
                 // A transfer (@move) of a Copy aggregate is the same byte transfer as its Copy.
-                var upcast = operation.Kind == OwnershipOperationKind.Consume && operation.Source is ConversionKoto { ConversionBinding: ConversionBinding.ObjectUpcast } conversion &&
-                    ObjectTypes.HandleMode(place.Type) is { } sourceMode && ObjectTypes.HandleMode(conversion.BoundType) == sourceMode &&
-                    ReferenceEquals(body.ConcreteAt(conversion.Left.BoundType, id), place.Type) &&
-                    (uint)operation.Input < (uint)body.Places.Count && ReferenceEquals(body.ConcreteAt(conversion.BoundType, id), body.Places[operation.Input].Type) &&
-                    ObjectTypes.Supports(place.Type.Components[0], body.Places[operation.Input].Type.Components[0]);
+                var upcast = operation.Kind == OwnershipOperationKind.Consume && operation.Source is ConversionKoto conversion &&
+                    ElementAccess.ConversionKind(conversion, body, id) == ConversionBinding.ObjectUpcast &&
+                    place.Type.HandleMode is { } sourceMode && body.Resolve(conversion.BoundType, body.ContextAt(id))?.HandleMode == sourceMode &&
+                    ReferenceEquals(body.Resolve(conversion.Left.BoundType, body.ContextAt(id)), place.Type) &&
+                    (uint)operation.Input < (uint)body.Places.Count && ReferenceEquals(body.Resolve(conversion.BoundType, body.ContextAt(id)), body.Places[operation.Input].Type) &&
+                    AdtDef.IsOrInherits(place.Type.Components[0], body.Places[operation.Input].Type.Components[0]);
                 if ((uint)operation.Input >= (uint)body.Places.Count || operation.Input == place.Id ||
                     (!upcast && !(operation.Kind == OwnershipOperationKind.Consume
                         ? this.FitsStoredValue(place, body.Places[operation.Input], operation.Source)
@@ -668,7 +669,7 @@ internal sealed partial class BodyLowering
             {
                 var capture = closure.Captures[i];
                 if (capture.Environment.CaptureAcquisition is CaptureAcquisition.Copy or CaptureAcquisition.Bare && !this.BorrowingEntry(capture) && capture.Source is { } source &&
-                    ReferenceEquals(body.ConcreteAt(capture.Environment.Type, id), place.Type) && this.IsPreparedArgument(body, id, source, place.Id))
+                    ReferenceEquals(body.Resolve(capture.Environment.Type, body.ContextAt(id)), place.Type) && this.IsPreparedArgument(body, id, source, place.Id))
                 {
                     return true;
                 }
@@ -677,7 +678,7 @@ internal sealed partial class BodyLowering
             return false;
         }
 
-        return ReferenceEquals(body.ConcreteAt(operation.Source.BoundType, id), place.Type) &&
+        return ReferenceEquals(body.Resolve(operation.Source.BoundType, body.ContextAt(id)), place.Type) &&
             operation.Source is IdentifierNameKoto { BoundSymbol: { } symbol } && this.IsPreparedArgument(body, id, symbol, place.Id);
     }
 }

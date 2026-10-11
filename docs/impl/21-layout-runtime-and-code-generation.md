@@ -205,6 +205,8 @@ An extension that introduces runtime implementation selection defines its own ad
 
 ### 21.2.2. Value metadata and object descriptors
 
+[Object creation and virtual dispatch generation](virtual-dispatch.md) defines shared creation plans, descriptor slot tables, entry ABI, reachability and invalidation. Its slot layout preserves the existing handle/header/payload layout.
+
 The following immutable, module-local records belong to windows-x64-v1. They define storage and entry contracts, not a stable external calling convention, and all physical signatures use the FunctionAbi of §21.4.2. Instance counts, allocation state, initialization state and Loans do not belong in shared metadata.
 
 **Type keys.** Value metadata uses the ArgKey of the full normalized Type, recursively erasing only Origins and keeping all Semantics. Object payload metadata uses `CoreId(D)` of the complete Dynamic Type `D`, which equals `ArgKey(owner/D)` and is independent of the handle mode and static View Target. Distinct nonzero `u64` tokens are assigned deterministically within the final generation unit, and hash collisions are checked against the original keys. Artifacts keep those keys and dependencies, and integration may retokenize all references. Tokens have no public numeric, persistence or dynamic-linking contract. Several records for one key are allowed; shared code or layout never merges Type identities, and equal tokens prove no static Type, Origin, Loan or code-sharing judgment.
@@ -314,6 +316,8 @@ A CAS retry reuses the observed value and rechecks the representation. The heade
 
 A Place result (§7.1.1) `place ref/T` or `place uniq/T` has exactly the ABI of `ref/T` or `uniq/T` under the same Type binding, generation method and contract. This holds for direct and indirect calls, Callable values, and Contract entries and adapters. It is an ABI equality, not a Type identity.
 
+The fixed-Origin contract handoff of SPEC §15.6.4 preserves compiler-side acquisition and destination dependencies. It changes neither the pointer representation nor the call ABI, and adds no runtime Loan holder, reference count or repeated acquisition.
+
 A zero-sized `V` keeps its logical initialization, Loans and destruction. It uses nonnull aligned substitute storage that stays alive for the required uses; one static substitute per alignment may serve several distinct Places. Pointer equality merges neither those Places nor their logical overlap. Size and stride remain zero, lifetimes are not extended, and substitute bytes justify no positive `dereferenceable` attribute; `noalias` follows the call contract of §21.5.5, not substitute addresses.
 
 An unknown-layout generic `V` still uses one borrow pointer. A separate GenericContext is passed only if operations on `V` need it; transferring the borrow alone needs no `V` metadata. Direct value layouts must be finite. If materializing a required temporary needs unsupported storage, a verified adapter or specialization is used, or the use is diagnosed; it is never silently boxed or made unsized.
@@ -408,6 +412,16 @@ specialize func classify<i32>(value: ref/i32) -> i32 => 1
 func forward<T>(value: ref/T) -> i32 => classify<T>(value)
 // forward<i32> calls the explicit implementation even with specialization budget 0.
 ~~~
+
+#### 21.3.1.1. Call selection and inference plans
+
+Ordinary calls and constructions share one argument mapping per candidate, including determined partial mappings and omitted defaults, one declaration-owned slot table, and structured fit/failure facts. Keep the acquisition-shape contract and its correlations separately from candidate applicability. Cache dependencies include declarations, source/configuration, normalized outer bindings, slot evidence and whether a judgment used inference or a fixed Type. Do not lower, instantiate code or finalize layout for rejected candidates.
+
+Best Candidate reads immutable candidate facts. With `better(a, b)` meaning strict superiority under SPEC §10.4, keep a tentative candidate while scanning (replace it only when the next candidate is better), then verify that it is better than every other candidate. Return it only if that verification succeeds; otherwise report ambiguity. Asymmetry suffices, without transitivity. For K eligible candidates, selection performs at most `2(K - 1)` pair comparisons; this bound does not cover inference or diagnostic explanation work.
+
+The constructor fixed-binding reference check (SPEC §10.8.1) may reuse mapping failures and facts unaffected by the fixed bindings. Inference conflicts are not such facts: a declaration rejected by inference may become applicable by fixed-Type adaptation. Track slot and judgment-mode dependencies to revisit affected facts only. Reuse worklists, scratch buffers and interned Types; a fixed-width mask must not impose a language slot limit. Optimized and reference paths must agree on acceptance, selection and diagnostic evidence, including waiting contexts. Explicit/single-candidate fast paths preserve that result.
+
+Explicit and inferred construction share the same complete-Type and generation keys, ABI, acquisition and cleanup plans. Inference adds no runtime lookup, boxing, Function erasure or adapter, and retains concrete Function Item and Closure Types. Measurements separate cold/warm time, allocations, retained capacity and mapping/comparison/reprocessing counts; zero-allocation regressions and fixed workload conditions remain independent of timing thresholds.
 
 ### 21.3.2. Identity and generation keys
 
@@ -694,6 +708,8 @@ The internal function ABI is compiler-controlled within a final generation and d
 Within the entry rules of §21.3.6, direct or indirect passing, aggregate splitting and coercion, result storage, omitted slots, calling conventions such as LLVM `ccc` or `fastcc`, and ABI attributes such as `byval` or `sret` are compiler choices. Storage layouts defined elsewhere, including those of Scalars, `string`, object handles and `Kimi.Weak<S>`, do not fix function passing. Unit still has its logical value and effects, and Never still has no normal result or return edge. Every emitted representation requires an implemented ValueLowering and its complete validity, ownership and cleanup operations; implementation freedom never permits guessing an unsupported representation.
 
 Definitions and all calls, including indirect entries and adapters where supported, derive from the same FunctionAbi contract, and physical rearrangement must preserve the mapping to logical parameters and results. Explicit arguments are evaluated and acquired once, in source order. A value receiver is evaluated once before the explicit arguments (§7.3); a Type-qualified unbound call supplies `self` in ordinary argument order. Physical slot order does not determine evaluation order. ABI attributes are selected according to the actual backend contract, and any additional validity or optimization premises are proven; a calling convention or attribute cannot grant source-level Copy, Move or alias permissions.
+
+Indirect entries and standard-function adapters carry the invocation context required by SPEC §22.5.1. Diagnostic location is distinct from immutable entry/Type context: it is supplied for each call and does not participate in source arguments, overload comparison or Callable identity. Adapters forward to the original primitive or source entry, preserving result mode, ownership and cleanup. They do not duplicate library algorithms or capture the reference-creation location.
 
 An ABI change must update every affected definition, caller, adapter and compiler-generated runtime helper consistently, and invalidate incompatible generated and cached artifacts. The generation scheme identity and typed entry contracts of §21.3.6 are used; no separately published internal ABI version or compatibility window is required. This initial design rebuilds generation artifacts rather than persisting them (§21.3.4). The specified OS entry, foreign C calls, backend-support symbols and externally observable storage keep their own contracts. In particular, `backendSupport.abiVersion` identifies the external backend supply, not a stable Kimigayo function ABI.
 

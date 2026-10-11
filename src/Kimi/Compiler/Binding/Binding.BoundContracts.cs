@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<BoundType, BindingSymbol> boundContracts = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<BoundType, BoundType> collisionSubstitutions = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<CollisionTerm, CollisionTerm> collisionSubstitutions = new();
 
     private BindingSymbol? BindContractReference(Koto syntax, BindingSymbol declaration, BindingScope scope)
     {
@@ -62,6 +62,11 @@ public sealed partial class Binding
 
     private BindingSymbol BoundContractReference(BoundType reference)
     {
+        if (ReferenceEquals(reference.Symbol!.Type, reference) || ReferenceEquals(this.SelfType(reference.Symbol), reference))
+        {
+            return reference.Symbol;
+        }
+
         if (this.boundContracts.TryGetValue(reference, out var cached) && cached.Contract!.State == 2)
         {
             return cached;
@@ -76,7 +81,11 @@ public sealed partial class Binding
         shape.State = 2;
         shape.RequirementStorage.Clear();
         shape.ClauseStorage.Clear();
+        shape.EffectBoundStorage.Clear();
+        shape.EffectState = 0;
+        shape.HasEffectBounds = false;
         shape.Seen.Clear();
+        shape.SeenRequirements.Clear();
         foreach (var members in shape.MembersByName.Values)
         {
             members.Clear();
@@ -87,15 +96,20 @@ public sealed partial class Binding
         if (declaration.Contract is { } original)
         {
             // Indexed loops: a warm rebind rebuilds every bound reference without allocating.
-            shape.RequirementStorage.AddRange(original.RequirementStorage);
             shape.ClauseStorage.AddRange(original.ClauseStorage);
             for (var i = 0; i < original.RequirementStorage.Count; i++)
             {
-                var requirement = original.RequirementStorage[i];
-                shape.Seen.Add(requirement);
-                if (!shape.MembersByName.TryGetValue(requirement.Name, out var members))
+                var source = original.RequirementStorage[i];
+                var requirement = new BoundRequirement(source.Symbol, ReferenceEquals(source.Contract, declaration) ? bound : this.SubstituteRequirementContract(source.Contract, reference));
+                if (!shape.SeenRequirements.Add(requirement))
                 {
-                    shape.MembersByName.Add(requirement.Name, members = new());
+                    continue;
+                }
+
+                shape.RequirementStorage.Add(requirement);
+                if (!shape.MembersByName.TryGetValue(requirement.Symbol.Name, out var members))
+                {
+                    shape.MembersByName.Add(requirement.Symbol.Name, members = new());
                 }
 
                 members.Add(requirement);
@@ -106,18 +120,18 @@ public sealed partial class Binding
             // Indexable<isize>); an ancestor without Type arguments keeps its declaration identity.
             for (var i = 0; i < original.AssociatedStorage.Count; i++)
             {
-                if (shape.Seen.Add(original.AssociatedStorage[i]))
+                var source = original.AssociatedStorage[i];
+                var associated = new BoundRequirement(source.Symbol, ReferenceEquals(source.Contract, declaration) ? bound : this.SubstituteRequirementContract(source.Contract, reference));
+                if (shape.SeenRequirements.Add(associated))
                 {
-                    shape.AssociatedStorage.Add(original.AssociatedStorage[i]);
+                    shape.AssociatedStorage.Add(associated);
                 }
             }
 
             for (var i = 0; i < original.AncestorStorage.Count; i++)
             {
                 var ancestor = original.AncestorStorage[i];
-                var boundAncestor = ancestor.Type is { Components.Count: > 0 } ancestorReference && !ReferenceEquals(ancestorReference.Symbol, ancestor) &&
-                    this.StoredType(ancestorReference, reference) is { } substituted && !ReferenceEquals(substituted, ancestorReference)
-                    ? this.BoundContractReference(substituted) : ancestor;
+                var boundAncestor = this.SubstituteRequirementContract(ancestor, reference);
                 if (shape.Seen.Add(boundAncestor))
                 {
                     shape.AncestorStorage.Add(boundAncestor);
@@ -135,6 +149,10 @@ public sealed partial class Binding
         return bound;
     }
 
+    private BindingSymbol SubstituteRequirementContract(BindingSymbol contract, BoundType reference)
+        => IsBoundContractReference(contract) && this.StoredType(contract.Type!, reference) is { } substituted && !ReferenceEquals(substituted, contract.Type)
+            ? this.BoundContractReference(substituted) : contract;
+
     private BoundType ApplyContractEnvironment(BoundType type, BindingScope scope)
     {
         for (var current = scope; current is not null; current = current.Parent)
@@ -148,8 +166,8 @@ public sealed partial class Binding
         return type;
     }
 
-    // SPEC 8.4.2: a bound reference substitutes its own Type parameters and, through its bound ancestors, each
-    // inherited requirement's parameters.
+    // The caller supplies the requirement's exact declaring reference. Substituting every ancestor would give an
+    // arbitrary binding to a parameter shared by P<i32> and P<i64> in the same refinement.
     private BoundType SubstituteContractReference(BoundType type, BindingSymbol contract)
     {
         if (contract.Type is not { } reference || ReferenceEquals(reference.Symbol, contract))
@@ -157,20 +175,7 @@ public sealed partial class Binding
             return type;
         }
 
-        var result = this.StoredType(type, reference) ?? type;
-        if (contract.Contract is { } shape)
-        {
-            for (var i = 0; i < shape.Ancestors.Count; i++)
-            {
-                var ancestor = shape.Ancestors[i];
-                if (ancestor.Type is { } ancestorReference && !ReferenceEquals(ancestorReference.Symbol, ancestor))
-                {
-                    result = this.StoredType(result, ancestorReference) ?? result;
-                }
-            }
-        }
-
-        return result;
+        return this.StoredType(type, reference) ?? type;
     }
 
     private bool ContractBindingsMayCollide(BindingSymbol a, BindingSymbol b, BindingScope scope)
@@ -186,33 +191,68 @@ public sealed partial class Binding
     // SPEC 8.4.9.1 steps 2-4, shared with the parameter acquisition shape (SPEC 7.3.1): Type parameters are variables with an
     // occurs check, residual terms unify, and only a fixed-structure mismatch proves two Types apart. Unification calls back into
     // nothing, so one scratch map serves every check (a warm bind allocates none).
-    private bool MayUnify(BoundType left, BoundType right)
+    private bool MayUnify(BoundType left, BoundType right, FunctionKoto? leftBinder = null, FunctionKoto? rightBinder = null, bool shared = false)
     {
         this.collisionSubstitutions.Clear();
-        return this.UnifyTypes(left, right);
+        this.collisionLeft = leftBinder;
+        this.collisionRight = rightBinder;
+        this.collisionShared = shared;
+        this.shapeSharedSlots.Clear();
+        return this.UnifyTypes(new(left, leftBinder), new(right, rightBinder));
     }
 
-    private BoundType ResolveSubstitution(BoundType type)
+    // A candidate identity qualifies only its inferred variables; fixed enclosing variables keep
+    // one identity. No synthetic Type tree or declaration is needed for candidate independence.
+    private readonly record struct CollisionTerm(BoundType Type, FunctionKoto? Binder);
+
+    private CollisionTerm NormalizeCollisionTerm(CollisionTerm term)
     {
-        while (this.collisionSubstitutions.TryGetValue(type, out var target))
+        if (term.Type.Kind != BoundTypeKind.Parameter)
         {
-            type = target;
+            return term;
         }
 
-        return type;
+        if (term.Binder is not { } binder || term.Type.Symbol is not { } symbol ||
+            !ReferenceEquals(symbol.Scope.Owner, CallSlotOwner(binder)) || symbol.Slot >= CallOwnSlots(binder).Count)
+        {
+            return new(term.Type, null);
+        }
+
+        if (this.collisionShared && this.collisionLeft is { } left && this.collisionRight is { } right && PermittedSlotSharing(left, right))
+        {
+            if (!this.shapeSharedSlots.Contains(symbol.Slot))
+            {
+                this.shapeSharedSlots.Add(symbol.Slot);
+            }
+
+            return new(CallOwnSlots(left)[symbol.Slot].BoundSymbol!.WholeType!, left);
+        }
+
+        return term;
     }
 
-    private bool ContainsVariable(BoundType value, BoundType variable)
+    private CollisionTerm ResolveSubstitution(CollisionTerm term)
+    {
+        term = this.NormalizeCollisionTerm(term);
+        while (this.collisionSubstitutions.TryGetValue(term, out var target))
+        {
+            term = target;
+        }
+
+        return term;
+    }
+
+    private bool ContainsVariable(CollisionTerm value, CollisionTerm variable)
     {
         value = this.ResolveSubstitution(value);
-        if (ReferenceEquals(value, variable))
+        if (value == variable)
         {
             return true;
         }
 
-        for (var i = 0; i < value.Components.Count; i++)
+        for (var i = 0; i < value.Type.Components.Count; i++)
         {
-            if (this.ContainsVariable(value.Components[i], variable))
+            if (this.ContainsVariable(new(value.Type.Components[i], value.Binder), variable))
             {
                 return true;
             }
@@ -221,17 +261,17 @@ public sealed partial class Binding
         return false;
     }
 
-    private bool IsFreeTerm(BoundType value)
+    private bool IsFreeTerm(CollisionTerm value)
     {
         value = this.ResolveSubstitution(value);
-        if (value.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication)
+        if (value.Type.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation)
         {
             return false;
         }
 
-        for (var i = 0; i < value.Components.Count; i++)
+        for (var i = 0; i < value.Type.Components.Count; i++)
         {
-            if (!this.IsFreeTerm(value.Components[i]))
+            if (!this.IsFreeTerm(new(value.Type.Components[i], value.Binder)))
             {
                 return false;
             }
@@ -240,50 +280,59 @@ public sealed partial class Binding
         return true;
     }
 
-    private bool UnifyTypes(BoundType left, BoundType right)
+    private bool UnifyTypes(CollisionTerm left, CollisionTerm right)
     {
         left = this.ResolveSubstitution(left);
         right = this.ResolveSubstitution(right);
-        if (ReferenceEquals(left, right))
+        if (left == right)
         {
             return true;
         }
 
-        if (left.Kind == BoundTypeKind.Parameter || right.Kind == BoundTypeKind.Parameter)
+        var a = left.Type;
+        var b = right.Type;
+        if (a.Kind == BoundTypeKind.Parameter || b.Kind == BoundTypeKind.Parameter)
         {
-            var variable = left.Kind == BoundTypeKind.Parameter ? left : right;
-            var value = ReferenceEquals(variable, left) ? right : left;
+            var variable = a.Kind == BoundTypeKind.Parameter ? left : right;
+            var value = variable == left ? right : left;
             if (this.ContainsVariable(value, variable))
             {
-                // An occurs check proves inequality only for free constructors.
-                return !this.IsFreeTerm(value);
+                return !this.IsFreeTerm(value); // An occurs check proves inequality only for free constructors.
             }
 
             this.collisionSubstitutions.Add(variable, value);
             return true;
         }
 
-        if (left.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication ||
-            right.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication)
+        if (a.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation ||
+            b.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation)
         {
-            return true; // Residual, non-free terms are not injective constructors.
+            return true; // Residual terms are not injective constructors.
         }
 
-        if (left.Kind != right.Kind || left.Symbol != right.Symbol || left.Semantics != right.Semantics || left.Components.Count != right.Components.Count ||
-            (left.Kind == BoundTypeKind.Primitive && left.Name != right.Name) ||
-            (left.Kind == BoundTypeKind.FixedArray && left.LengthExpression is null && right.LengthExpression is null && left.Length != right.Length))
+        if (a.Kind != b.Kind || a.Symbol != b.Symbol || a.Semantics != b.Semantics || a.Components.Count != b.Components.Count || a.LengthArguments.Length != b.LengthArguments.Length ||
+            (a.Kind == BoundTypeKind.Primitive && a.Name != b.Name) ||
+            (a.Kind == BoundTypeKind.FixedArray && a.LengthExpression is null && b.LengthExpression is null && a.Length != b.Length))
         {
             return false;
         }
 
-        for (var i = 0; i < left.Components.Count; i++)
+        for (var i = 0; i < a.LengthArguments.Length; i++)
         {
-            if (!this.UnifyTypes(left.Components[i], right.Components[i]))
+            if (a.LengthArguments[i] is { IsConstant: true } x && b.LengthArguments[i] is { IsConstant: true } y && !ReferenceEquals(x, y))
             {
                 return false;
             }
         }
 
-        return true; // Origin/order and unresolved length equalities remain possible.
+        for (var i = 0; i < a.Components.Count; i++)
+        {
+            if (!this.UnifyTypes(new(a.Components[i], left.Binder), new(b.Components[i], right.Binder)))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

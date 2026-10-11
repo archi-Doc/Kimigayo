@@ -50,16 +50,16 @@ public sealed partial class OwnershipAnalysis
             return true;
         }
 
-        if (StructStorage.IsStruct(type))
+        if (AdtDef.IsStruct(type))
         {
-            if (type.StoredBase is { } parent && !IsZeroSized(parent))
+            if (AdtDef.Base(type) is { } parent && !IsZeroSized(parent))
             {
                 return false;
             }
 
-            for (var i = 0; i < StructStorage.Count(type); i++)
+            for (var i = 0; i < AdtDef.Count(type); i++)
             {
-                if (StructStorage.FieldType(type, i) is not { } field || !IsZeroSized(field))
+                if (AdtDef.FieldType(type, i) is not { } field || !IsZeroSized(field))
                 {
                     return false;
                 }
@@ -93,10 +93,10 @@ public sealed partial class OwnershipAnalysis
     // Every Case is checked because a whole value can arrive from a parameter or branch.
     private bool SupportsType(BoundType type)
     {
-        var handle = ObjectTypes.HandleMode(type);
+        var handle = type.HandleMode;
         if (handle is null && ReferenceTypes.IsReference(type))
         {
-            handle = ObjectTypes.HandleMode(type.Components[0]);
+            handle = type.Components[0].HandleMode;
         }
 
         if (handle is not null)
@@ -149,30 +149,21 @@ public sealed partial class OwnershipAnalysis
             return supported;
         }
 
-        if (StructStorage.Declaration(type) is { } structure)
+        if (AdtDef.Declaration(type) is { } structure)
         {
-            if (StructStorage.Destructor(type) is { } destructor)
+            if (AdtDef.Destructor(type) is { } destructor)
             {
                 this.CollectLibraryBody(destructor);
             }
 
             // Reserve the key before following fields to reject recursive inline storage.
             this.supportedTypes[type] = false;
-            type.StoredBase = this.compilation.Binding.StoredBase(type);
-            supported = (type.StoredBase is null || this.SupportsType(type.StoredBase)) &&
-                type.OriginArguments.Count <= structure.OriginNames.Count;
-            var count = StructStorage.Count(type);
-            if (type.StoredFields?.Length != count)
+            var parent = AdtDef.Base(type);
+            supported = (parent is null || this.SupportsType(parent)) && type.OriginArguments.Count <= structure.OriginNames.Count;
+            for (var i = 0; i < AdtDef.Count(type) && supported; i++)
             {
-                type.StoredFields = new BoundType[count];
-            }
-
-            for (var i = 0; i < StructStorage.Count(type) && supported; i++)
-            {
-                var field = this.compilation.Binding.StoredType(StructStorage.Field(type, i), type);
                 // Collection fields retain their recursive destruction plans (SPEC 16.3.2).
-                supported = field is not null && (field.Kind == BoundTypeKind.Parameter || this.SupportsType(field));
-                type.StoredFields[i] = field!;
+                supported = AdtDef.FieldType(type, i) is { } field && (field.Kind == BoundTypeKind.Parameter || this.SupportsType(field));
             }
 
             this.supportedTypes[type] = supported;
@@ -194,7 +185,7 @@ public sealed partial class OwnershipAnalysis
         if (type.Semantics != SemanticsKind.Owner || type.Origin is not null ||
             type.OriginArguments.Count != (type.Symbol?.Schema?.Origins.Count ?? 0) ||
             type.Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) ||
-            this.compilation.Binding.EnumStorage(type) is not { } storage)
+            type.Symbol is not { Declaration: EnumKoto, Adt.Types: { } storage })
         {
             this.supportedTypes[type] = false;
             return false;
@@ -224,18 +215,24 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.visitingTypes.RemoveAt(this.visitingTypes.Count - 1);
-        supported = supported && this.compilation.Binding.PrepareEnumCases(type);
+        supported = supported && AdtDef.CaseTypes(type) is not null;
         this.supportedTypes[type] = supported;
         return supported;
     }
 
     private void CheckAcquisition(int place, AcquisitionKind? acquisition)
     {
-        // A case or an instance resolves a committed CopyOrMove to its substitution's exact effect, and a transfer (@move)
-        // moves a Copy or Copy-unproven Place (SPEC 13.5.3).
-        if (place >= 0 && acquisition is { } expected && this.body.PlaceStorage[place].Acquisition is var actual && actual != expected &&
-            !(this.Substituting && expected == AcquisitionKind.CopyOrMove && actual is AcquisitionKind.Copy or AcquisitionKind.Move) &&
-            !(expected == AcquisitionKind.Move && actual is AcquisitionKind.Copy or AcquisitionKind.CopyOrMove))
+        if (place < 0 || acquisition is not { } committed)
+        {
+            return;
+        }
+
+        // A committed CopyOrMove is checked as the exact effect of the source Place's own Type under the environment its Place was
+        // built in (SPEC 8.10), and a transfer (@move) moves a Copy or Copy-unproven Place (SPEC 13.5.3).
+        var source = this.body.PlaceStorage[place];
+        var expected = committed == AcquisitionKind.CopyOrMove
+            ? this.ExactAcquisition(this.CopyProof(source.Type, source.Source, this.body.ContextOf(place)), source.Type, source.Source) : committed;
+        if (source.Acquisition != expected && !(expected == AcquisitionKind.Move && source.Acquisition is AcquisitionKind.Copy or AcquisitionKind.CopyOrMove))
         {
             throw new InvalidOperationException("Committed payload acquisition disagrees with its source Place.");
         }

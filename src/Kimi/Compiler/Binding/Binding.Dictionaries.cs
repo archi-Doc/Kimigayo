@@ -35,7 +35,7 @@ public sealed partial class Binding
                 return this.Fail(literal, BindingFailure.MissingType, true);
             }
 
-            expected = this.InternType(BoundTypeKind.Dictionary, this.Library.GetSymbol(KimiDeclarationId.Dictionary), SemanticsKind.Owner, [inferredKey, inferredValue]);
+            expected = this.types.Intern(BoundTypeKind.Dictionary, this.Library.GetSymbol(KimiDeclarationId.Dictionary), SemanticsKind.Owner, [inferredKey, inferredValue]);
         }
 
         BoundType? key = null;
@@ -79,7 +79,7 @@ public sealed partial class Binding
         }
 
         this.dictionaryLiteralKeys.Clear();
-        return Complete(literal, complete ? this.InternType(BoundTypeKind.Dictionary, expected.Symbol, SemanticsKind.Owner, [key ?? expected.Components[0], value ?? expected.Components[1]]) : null);
+        return Complete(literal, complete ? this.types.Intern(BoundTypeKind.Dictionary, expected.Symbol, SemanticsKind.Owner, [key ?? expected.Components[0], value ?? expected.Components[1]]) : null);
     }
 
     private bool TryDictionaryLiteralKey(Koto syntax, BoundType type, out PatternLiteral literal)
@@ -91,7 +91,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (syntax is PrefixPlusKoto { Operand: NumberLiteralKoto number })
+        if (syntax is UnaryKoto { Akind: KotoKind.PrefixPlus, Operand: NumberLiteralKoto number })
         {
             syntax = number;
         }

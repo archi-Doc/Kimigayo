@@ -38,6 +38,32 @@ public sealed record DocumentationHtmlOptions
 public static class DocumentationLinks
 {
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+    private static readonly DocumentationHtmlOptions ExternalOptions = new();
+    private static readonly DocumentationHtmlOptions FileOptions = new() { AllowScheme = static scheme => scheme == "file" };
+
+    // Editor placement is separate from HTML output paths. Only mapped source links may acquire the file scheme.
+    internal static string? ResolveEditor(string destination, string? logicalSourceName, object? projectIdentity, Func<DocumentationLinkTarget, string?> map)
+    {
+        var valid = Validate(destination, ExternalOptions, out var parts, out var scheme);
+        if (valid is null || scheme is not null)
+        {
+            return valid;
+        }
+
+        if (parts.Path.Length == 0 || parts.Path.StartsWith('/'))
+        {
+            return null;
+        }
+
+        var target = ResolveSource(destination, logicalSourceName, projectIdentity);
+        if (target is null || map(target) is not { } physical || !Uri.TryCreate(physical, UriKind.Absolute, out var uri) ||
+            !uri.IsFile || uri.Query.Length != 0 || uri.Fragment.Length != 0)
+        {
+            return null;
+        }
+
+        return Validate(Serialize(new(physical, target.Query, target.Fragment)), FileOptions, out _, out _);
+    }
 
     public static string? Resolve(string destination, DocumentationHtmlOptions options)
     {

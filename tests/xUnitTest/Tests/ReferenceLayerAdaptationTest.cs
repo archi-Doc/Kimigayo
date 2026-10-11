@@ -40,7 +40,7 @@ public class ReferenceLayerAdaptationTest
     {
         // The Copied inner reference no longer depends on the array slot; replacing the whole array afterwards is valid.
         var c = MinimalEmissionTest.Analyze("let x = \"a\"\nvar names: [1 of ref/string] = [x@ref]\nlet view: ref/string = names[0]\nnames = [x@ref]\nConsole.writeLine(view)");
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public class ReferenceLayerAdaptationTest
         // Reborrowing through a uniq layer keeps that layer's Loan: the owner cannot be replaced while the view lives.
         var c = MinimalEmissionTest.Analyze(Node + "var first = Node.init(1)\nlet nodes: [1 of uniq/Node] = [first@uniq]\nlet view: ref/Node = nodes[0]\nfirst = Node.init(5)\nlet id = validate(view)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.False(c.Analysis.IsVerified);
     }
 
     [Theory]
@@ -77,7 +77,7 @@ public class ReferenceLayerAdaptationTest
         var c = MinimalEmissionTest.Analyze("func set(m: ref/(uniq/Dictionary<i32, i32> during b)) => m[1] = 42");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, static x => x.Code == Kimi.DiagnosticCode.SharedPathAccess_Kd);
-        Assert.DoesNotContain(c.Binding.Issues, static x => x.Code == Kimi.DiagnosticCode.UnsupportedBinding_Kd);
+        Assert.DoesNotContain(c.Binding.Issues, static x => x.Code == Kimi.DiagnosticCode.Unsupported_Kd);
         Assert.Empty(c.AnalyzeControlFlow().Issues);
     }
 
@@ -87,7 +87,20 @@ public class ReferenceLayerAdaptationTest
     {
         // STATUS boundary: indexing through several reference layers stops at Binding with one diagnostic.
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.UnsupportedBinding_Kd);
+        Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.Unsupported_Kd);
         Assert.Empty(c.AnalyzeControlFlow().Issues);
+    }
+
+    // SPEC 3.4.1: sequence metadata and indexing follow every safe reference layer and pair layer, so metadata past one reference
+    // layer and indexing through a pair layer are one located Unsupported_Kd, not a missing Name or a receiver without an index.
+    [Theory]
+    [InlineData("func count(a: ref/(ref/Array<i32> during b)) -> isize => a.length", "a.length")]
+    [InlineData("func at<s/T>(xs: s/Array<i32>) -> i32\n    s is owner or ref\n    return xs[0]", "xs[0]")]
+    [InlineData("func at<s/T>(xs: s/[2 of i32]) -> i32\n    s is owner or ref\n    return xs[0]", "xs[0]")]
+    public void SequenceAccessThroughFurtherLayersIsOneUnsupportedRecord(string body, string at)
+    {
+        var source = body + "\npublic func main() => ()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(("Unsupported_Kd", source.IndexOf(at, StringComparison.Ordinal), at.Length), (error.Code, error.Span!.Value.Start, error.Span.Value.Length));
     }
 }

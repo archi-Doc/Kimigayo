@@ -25,7 +25,8 @@ public sealed partial class OwnershipBody
         => (this.reservedElementWrites ??= new()).Add((projection, issue));
 
     // SPEC 15.6.7: the completed plan reports a write during preparation once, as a conflict with the reservation it relates. The
-    // held record stands when no such record exists for the write, such as for an incomplete plan or a write the plan accepts.
+    // held record stands for an incomplete plan; a write the completed plan accepts, such as one to a path disjoint from the
+    // reservation (SPEC 15.6.2), is rejected only by the build-time element-write check: an implementation limit (plan rule 5).
     internal void ReportReservedElementWrites(bool completed)
     {
         if (this.reservedElementWrites is not { Count: > 0 } held)
@@ -46,7 +47,7 @@ public sealed partial class OwnershipBody
 
             if (!stated)
             {
-                this.ReportIssue(issue);
+                this.ReportIssue(completed ? new(issue.Source, OwnershipFailure.Unsupported) : issue);
             }
         }
 
@@ -74,7 +75,9 @@ public sealed partial class OwnershipBody
 
     internal void VerifyCallReservations()
     {
-        if (this.CallReservations.Count == 0)
+        // A completed reservation always begins its Loan, which starts the Loan states; without them every reservation was
+        // abandoned by a failed preparation and holds nothing to check.
+        if (this.CallReservations.Count == 0 || this.LoanInputs.Count == 0)
         {
             return;
         }
@@ -243,7 +246,7 @@ public sealed partial class OwnershipBody
 
                 // A value call's owned receiver enters first, under its own source.
                 var entry = op + 1;
-                var owner = operation.Source is InvocationKoto { BoundValueCall: { ReceiverKind: SemanticsKind.Owner } valueCall } ? valueCall.Receiver : null;
+                var owner = operation.Source is InvocationKoto { BoundValueCall: { ReceiverKind: SemanticsKind.Owner } valueCall } ? valueCall.CalleeValue : null;
                 if (owner is not null && entry < this.Operations.Count && this.Operations[entry].Kind == OwnershipOperationKind.CallEntry && ReferenceEquals(this.Operations[entry].Source, owner))
                 {
                     entry++;
@@ -259,9 +262,7 @@ public sealed partial class OwnershipBody
                 if (entry == this.Operations.Count ||
                     (operation.Source is not InvocationKoto ? this.Operations[entry].Kind is not (OwnershipOperationKind.PayloadPlacement or OwnershipOperationKind.StoreDictionaryEntry)
                         : !ReferenceEquals(this.Operations[entry].Source, operation.Source) ||
-                        (operation.Source is InvocationKoto { BoundCall.Target.CompilerFunction: CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap }
-                            ? this.Operations[entry].Kind is not (OwnershipOperationKind.Consume or OwnershipOperationKind.Write or OwnershipOperationKind.UpdateBorrowed)
-                            : this.Operations[entry].Kind != OwnershipOperationKind.Call)))
+                        (!this.Operations[entry].IsWholeUpdate && this.Operations[entry].Kind != OwnershipOperationKind.Call)))
                 {
                     return false;
                 }
@@ -314,8 +315,21 @@ public sealed partial class OwnershipBody
                 (this.Places[place].Type.Origin is { } origin && this.OriginNamesRoot(origin, root))) ? LoanRequirement.Ref : mode;
     }
 
-    private bool OriginNamesRoot(BoundOrigin origin, int root)
+    private bool OriginNamesRoot(BoundOrigin origin, int root, bool expand = true)
     {
+        if (expand && this.Function.CodeContext.Compilation.Binding.HasRegionBounds(origin))
+        {
+            foreach (var source in this.Function.CodeContext.Compilation.Binding.LocalRegionSources(origin))
+            {
+                if (this.OriginNamesRoot(source, root, false))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         if (origin.Kind == OriginKind.Parameter)
         {
             // A declared-Origin exclusive input is its own capability root, just like an elided Input Origin.

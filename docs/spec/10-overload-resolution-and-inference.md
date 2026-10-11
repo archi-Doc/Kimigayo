@@ -1,14 +1,16 @@
 # 10. Overload resolution and inference
 
+[Associated-Type inference](associated-type-inference.md) is declaration completion under frozen conformance premises. It does not change the call-site selection, adaptation or Type/Origin inference rules in this chapter.
+
 [Specification index](../SPEC.md)
 
-Container qualifiers are resolved and bound under §9.6.1 before call inference. This chapter infers only a function's own arguments; an omitted outer Container environment is never inferred from call arguments or an expected result. Candidate identity includes the retained environment, and a failed later constraint does not reopen qualifier lookup.
+Container qualifiers are resolved under §9.6.1 before call inference. This chapter infers a function's own arguments or the selected construction target's own arguments (§10.8.1), keeping their declaration identities distinct. An omitted outer Container environment is never inferred from call arguments or an expected result. Candidate identity includes the retained environment, and a failed later constraint does not reopen qualifier lookup.
 
 Argument adaptation, expected-result compatibility and acquisition legality are separate judgments ([Type relations and expression operations](03-types-and-values.md#38-type-relations-and-expression-operations)). A successful subtype proof neither selects nor authorizes a value operation.
 
 ## 10.1. Candidate applicability
 
-Each declaration in the committed function group is checked as follows, within the shared-expectation and body-checking boundaries of §10.5. A nested call or anonymous body is never checked separately for each candidate.
+First verify the acquisition-shape contract of the entire committed group (§7.3.1), before candidate filtering. Each declaration is then checked as follows, within the shared-expectation and body-checking boundaries of §10.5. A nested call or anonymous body is never checked separately for each candidate.
 
 1. Validate the explicit Type-argument count and kinds.
 2. Match positional and named arguments and record omitted defaults.
@@ -99,7 +101,7 @@ func positiveOrZero(value: ref/Option<i32>) -> i32
 
 **Temporaries.** An owner temporary may be borrowed at every value position, not only at arguments. It is evaluated once and materialized in a Temporary Place with the ordinary temporary lifetime (§3.6.2), which lasts at least through a call; that lifetime is neither shortened nor extended to keep a borrow valid. Using `view` after `let view: ref/Node = makeNode()`, or returning that borrow, is rejected with a diagnostic naming the expired temporary and the use. A borrow that ends within the full expression, such as inside an aggregate literal passed to a call, passes the same lifetime check. A known source Type infers `U`; an unfitted literal follows **Literals** below.
 
-**Literals.** An untyped integer literal, or a [literal-only expression](12-expressions.md#1231-type-inference), fits any representable candidate integer Type directly; floating literals follow the numeric rules. Literals are not defaulted to `i32`/`f64` before fitting, narrower widths are not preferred, and defaults never break overload ambiguity. Generic inference processes receiver, other-argument and known-result constraints first, then candidate fitting, and applies the ordinary value defaults last. Outside candidate comparison, an independent expression without an expected Type uses the ordinary numeric defaults. `null`, empty collections and untyped functions gain no universal fallback Type.
+**Literals.** An untyped integer literal or integer numeric [literal-only expression](12-expressions.md#1231-type-inference) fits a candidate integer or wrapping Type under the leaf/operator rules; floating-point literals and floating-point numeric literal-only expressions fit `f32` or `f64`. Position/range forms retain their own fitting rules. Literals are not defaulted to `i32`/`f64` before fitting, narrower widths are not preferred, and defaults never break overload ambiguity. Generic inference processes receiver, other-argument and known-result constraints first, then candidate fitting, and applies the ordinary value defaults last. Outside candidate comparison, an independent expression without an expected Type uses the ordinary numeric defaults. `null`, empty collections and untyped functions gain no universal fallback Type.
 
 ```kimi
 func choose(value: i32) -> () => ()
@@ -350,11 +352,11 @@ inspect(number) // Select Exact i32, then reject without an Unsafe Block.
 
 Adding a better overload can invalidate existing calls, even if the new overload then fails usage legality. A failed Move, Loan or Property permission check cannot retry with a borrow, a getter or a same-name declaration.
 
-Operator operands keep the fixed syntax, evaluation order and permitted adaptations. Built-in operations and the comparison Contract mappings of §13.4.1 define the available operator candidates, and the [Indexable Contracts](04-arrays-indexing-and-slices.md#469-indexable-contracts) define index-expression candidates; there are no extension operator candidates in this revision. User-defined arithmetic and additional ambiguity-resolution syntax remain deferred, and ordinary lookup must not invent them (§10.9).
+Operator operands keep the fixed syntax, evaluation order and permitted adaptations. Built-in operations, the comparison mappings of §13.4.1 and the [arithmetic Contracts](arithmetic-contracts.md#2-selection-and-inference) define operator candidates; the [Indexable Contracts](04-arrays-indexing-and-slices.md#469-indexable-contracts) define index-expression candidates. Arithmetic fixes provider direction first, requires a unique structurally fitting conformance and checks Origin fitting after selection; ordinary call ranking and expected-result filtering do not select its conformance. No other extension candidates or ambiguity-resolution syntax are introduced (§10.9).
 
 **Diagnostics** distinguish undefined, wrong-role and inaccessible names, path or value-kind conflicts, missing receivers and inherited declarations named without a qualifier (§9.4), Type-argument or argument mismatches, no applicable overload, ambiguity, a gathered group that violates the parameter acquisition shape (§7.3.1), inference boundaries, dependency cycles, declaration errors and usage errors. Ambiguity diagnostics show the candidate Signatures and declaration locations and keep useful rejection reasons without dumping every tentative error.
 
-For an ambiguous function reference (§10.5), the diagnostic shows the fitting candidates with their substituted signatures and declaration locations, with Advice to write explicit Type arguments or a Type annotation. When a per-call Origin leaves the Origin of a reference's slot unsolved, the diagnostic is `MissingOriginBinding_Kd` (§15.3.6). It shows that slot and the corresponding parameter of the fixed expected call signature (§10.5), with Advice to wrap the reference in an anonymous function. A required structural slot that neither explicit Type arguments nor evidence bind, at a function reference without a fixed expected call signature (§10.5) or at the selected candidate of a call (§10.8), is the inference-boundary diagnostic `UnboundTypeArgument_Kd` (Error, `Language`) at the reference or the call; its Reason names the slot, and the declaration is related. When the slot appears in the fixed expected call signature of a waiting argument, that argument is related too, and the Advice is to write its Types, namely an anonymous function's parameter or result Types or a function reference's explicit Type arguments, or to annotate the Type of the call's result; otherwise the Advice is to write explicit Type arguments or to annotate the expected Type. None of these diagnostics offers a repair candidate (§23.3.6.9).
+For an ambiguous function reference (§10.5), the diagnostic shows the fitting candidates with their substituted signatures and declaration locations. When a per-call Origin leaves the Origin of a reference's slot unsolved, the diagnostic is `MissingOriginBinding_Kd` (§15.3.6). It shows that slot and the corresponding parameter of the fixed expected call signature (§10.5). A required structural slot that neither explicit Type arguments nor evidence bind, at a function reference without a fixed expected call signature (§10.5) or at the selected candidate of a call (§10.8), is the inference-boundary diagnostic `UnboundTypeArgument_Kd` (Error, `Language`) at the reference or the call; its Reason names the slot, and the declaration is related. When the slot appears in the fixed expected call signature of a waiting argument, that argument is related too. None of these diagnostics offers a repair candidate (§23.3.6.9).
 
 A call whose gathered group violates the parameter acquisition shape is reported at the called Name as §7.3.1 states; it fixes no callee, acquisition plan or result, explicit operations and inner calls already inside its arguments are not undone, independent problems stay visible, and problems that depend on the call, including an expectation it could not supply, follow the prerequisite rules of §23.3.6.4. Exhausting a resource limit is distinct from language ambiguity or mismatch; it must request annotations or smaller expressions and never chooses the first candidate.
 
@@ -397,13 +399,52 @@ let written = consume(func () -> i64 => 2) // T = i64 from the written result Ty
 // let mixed = both(makeSmall, makeLarge)  // Error: conflicting evidence for T; neither argument fixes it first.
 ```
 
-An independently known expected result fills only still-unbound parts. The nested-expression boundaries and literal fitting apply, and literal defaults are used only after all other evidence. An expected Type propagates through a Semantics-preserving adaptation to an untyped literal: under an expected `s/T`, the untyped literal or literal-only operand `n` of `n@s` is fitted to `T`. A typed operand keeps its own Type there, so the borrow forms from its Place and never from a value read of it.
+An independently known expected result fills only still-unbound parts. The nested-expression boundaries and literal fitting apply, and literal defaults are used only after all other evidence. Except for object targets, which fix the input independently under [§13.5.8](13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing), an expected Type propagates through a Semantics-preserving adaptation to an untyped literal: under an expected `s/T`, the untyped literal or literal-only operand `n` of `n@s` is fitted to `T`. A typed operand keeps its own Type there, so the borrow forms from its Place and never from a value read of it.
 
 An unbound `s` is inferred directly from the source's outer Semantics. No implicit Borrow, Reborrow or other conversion is searched to find a common Semantics: `owner` and `ref` evidence for the same `s` conflict. Once a target Type is fixed, including by explicit arguments, normal adaptation is checked separately. Origin inference uses the [limited principal-solution rules](15-ownership-and-lifetime-analysis.md#1536-limited-origin-inference).
 
 Structural, Semantics and Origin constraints are solved to a fixed point, and every required slot must be resolved uniquely and consistently. A structural slot that no evidence binds once steps 3 and 4 of §10.1 and the literal defaults of §10.2 are complete, such as a slot that only a waiting argument could fix, is not a mismatch: its candidate stays applicable on its other checks, the parts of its matches and fits that do not contain the slot are still checked, and the Constraints and premises whose judgment needs the slot are not judged. §10.4 compares such a candidate unchanged, and a parameter Type that contains the slot is neither identical to nor a subtype of another Type (§3.8). A parameter of Type `F`, `ref/F` or `uniq/F` whose `F` a waiting argument binds is not such a slot: candidates whose parameters at that position have the same form compare as equal there in step 2 of §10.4, because the waiting argument is completed only for the selected candidate (§10.5). If a candidate with an unsolved slot is selected, the slot is reported as §10.6 states, and the checks that need it are derived (§23.3.6.4). An occurs-check rejects infinite substitutions such as `X = ref/X`; nominal recursive Types instead require a valid layout. Cycles supply no result. Unresolved work is kept only for an identified dependency that can resolve by its deadline.
 
 Argument or candidate traversal order, arbitrary conversion chains, common-base search and Constraint strength never choose a solution. Constraint substitution uses the same binding table as Type expressions: `s is reference` checks the Semantics projection, and the pair's `T is C` checks its target projection and that requirement's role; an ordinary `T` keeps its complete Semantics. Then fixed-target argument adaptation, substituted Constraints and expected-result compatibility are checked; flow-dependent acquisition, Loans and cleanup follow selection.
+
+### 10.8.1. Constructor Type inference
+
+Construction uses the common inference rules, with the selected structure's own slots in place of function-own slots. The declaration and outer environment are fixed under §9.6 before inference. Explicit arguments and existing bindings stay fixed; independent argument Types and written callable headers contribute first, then an independent expected result fills only unbound parts, and literal fitting/defaults follow at their ordinary points. Information shortage is not a mismatch: check independent parts and retain the candidate under §10.8 until selection. Defaults, Field initializers and constructor bodies supply no inference evidence.
+
+An expected result supplies constructor slots only by direct structural matching with an owner Type of the same structure declaration and outer environment. Do not invert borrowing, object creation, upcasting, a conversion or an associated projection. Once a Type is fixed, its ordinary result adaptation remains available. Enum Case construction keeps its separate expected-Type-first rule (§6.3.2), and `try` keeps its inference boundary (§10.5).
+
+```kimi
+func wrap<T>(value: T) -> Box<T>
+    return Box.init(value@move)
+
+// Given Holder<T>.init(value: T.Element), an i32 input cannot determine T.
+// With init(value: T.Element, witness: Tag<T>), Tag<K> can bind T = K;
+// the ordinary forward resolution then checks K.Element.
+// At an expected ref/Empty<i32>, Empty.init() cannot infer T by undoing a borrow;
+// Empty<i32>.init() can use the normal temporary-borrow rules.
+```
+
+**Fixed-binding reference check.** An inferred construction is accepted only if explicitly fixing its inferred complete construction Type would select the same constructor. This check defines acceptance independently of optimization or proof strength:
+
+1. Keep the inferred declaration and construction Type as tentative, and retain the original group, including declarations rejected by inference conflicts.
+2. Fix the construction Type's arguments and apply ordinary applicability and Best Candidate to that group, using the original argument mapping and independent input facts. Literals start from their original untyped facts, not a candidate's fitted Types. Perform no new name lookup, Type inference, Type enumeration or candidate-specific body analysis.
+3. Accept only when the same declaration is uniquely best, using the common fixed-binding fit and acquisition plan. A different winner, no winner or ambiguity requires explicit Type arguments; do not switch candidates. Requiring another expected context for a waiting argument also requires explicit arguments without attempting that analysis.
+
+Keep waiting arguments incomplete up to the boundaries of §10.5 and §10.8. Preserve any expectation or call signature already supplied. A single completion in that context may fix a concrete Closure slot; verify that completed binding without reinferring the body from the resulting Type. Do not reuse its context-dependent result as independent evidence for another candidate or context. A single candidate is subject to the same rule; waiting alone is not a reason to reject it. Actual acquisition, Origin/Loan and cleanup checks run once after selection, with no fallback.
+
+```text
+C<T> constructors:
+  init(x: ref/i32, y: ref/T)
+  init(x: ref/T,   y: ref/T)
+Input Types: x is ref/ref/i32; y is ref/i32.
+```
+
+Inference can provisionally choose the first constructor at `T = i32`, while the second has conflicting inference evidence. With `C<i32>` fixed, both parameter lists become equal under ordinary fitting and are ambiguous. The inferred form therefore requires explicit arguments; it must not silently succeed. Explicit arguments do not promise to resolve the remaining ambiguity.
+
+This extra equivalence guarantee applies to constructors. Explicit function Type arguments retain their existing effect on the candidate set. No partial lists, placeholders, default Type arguments, structure length parameters, constructor-own generic parameters or new anonymous-Type spelling are introduced.
+
+The [complete example](../examples/ConstructorInference/README.md) demonstrates input and expected-result inference,
+borrow dependencies, a concrete Closure, evaluation order and cleanup.
 
 ## 10.9. Inference and operation design boundaries
 

@@ -90,17 +90,26 @@ public class ForParseTest
         Assert.IsType<FieldKoto>(body.Items[2]);
     }
 
+    // SPEC 14.6.1: each slot keeps its own mutability, so a header has no binding limit.
     [Fact]
-    public void ReportsTheBindingBeyondTheSixtyFourthAsAResourceLimit()
+    public void KeepsTheMutabilityOfEverySlot()
     {
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
-        var slots = string.Join(", ", Enumerable.Range(0, 65).Select(static i => "var s" + i));
+        var slots = string.Join(", ", Enumerable.Range(0, 65).Select(static i => (i % 2 == 0 ? "var s" : "s") + i));
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "func f(values: Values)\n    for (" + slots + ") in values\n        ()\n");
 
-        var diagnostic = Assert.Single(TestDiagnostics.Of(kotonoha));
-        Assert.Equal(nameof(DiagnosticCode.ForBindingLimit_Kd), diagnostic.Code);
-        Assert.Equal("s64", diagnostic.Text);
+        Assert.Empty(TestDiagnostics.Of(kotonoha));
+        var loop = Assert.Single(KotoTree.Walk(kotonoha.RootKoto).OfType<ForKoto>());
+        Assert.All(Enumerable.Range(0, 65), i => Assert.Equal(i % 2 == 0, loop.IsMutableSlot(loop.Bindings[i])));
+    }
+
+    [Fact]
+    public void SlotsBeyondTheSixtyFourthRunNatively()
+    {
+        var slots = string.Join(", ", Enumerable.Range(0, 65).Select(static i => "var s" + i));
+        var values = string.Join(", ", Enumerable.Range(0, 65));
+        ScalarEmissionTest.EmitFixture("ForBindingSlots", $"let rows = [({values})]\nfor ({slots}) in rows@move\n    s64 += 1\n    s0 += s64\n    require s0 == 65 and s63 == 63 else => $abort(\"slots\")\nConsole.writeLine(\"ok\")", "ok\n");
     }
 
     [Fact]

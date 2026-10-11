@@ -263,7 +263,7 @@ public sealed class EmissionArtifactsTest : IDisposable
             var c = MinimalEmissionTest.Analyze("Console.writeLine(\"日本語\")", Path.Combine(checkout, "Hello.kimi"));
             c.Project.Directory = checkout;
             using var writer = new StringWriter();
-            Assert.True(c.Emission.WriteIr(writer, out var error), error);
+            Assert.True(c.WriteIr(writer, out var error), error);
             return writer.ToString();
         }
 
@@ -338,7 +338,7 @@ public sealed class EmissionArtifactsTest : IDisposable
             configure: (root, library) => library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } });
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
+        c.Analyze();
         c.Project.Directory = this.directory;
         c.Project.Name = "Hello";
         c.Project.ProjectFile.OutputPath = "out/Hello.ll";
@@ -356,7 +356,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
+        c.Analyze();
         c.Project.Directory = this.directory;
         c.Project.Name = "Hello";
         c.Project.ProjectFile.OutputPath = "out/Hello.ll";

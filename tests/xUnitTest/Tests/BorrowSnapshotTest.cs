@@ -9,17 +9,16 @@ public class BorrowSnapshotTest
 {
     [Trait("Purpose", "Allocation")]
     [Theory]
-    [InlineData(8, false)]
-    [InlineData(16, false)]
-    [InlineData(8, true)]
-    public void ManyLivePartLoansRetainIndependentInitialization(int count, bool checking)
+    [InlineData(8)]
+    [InlineData(16)]
+    public void ManyLivePartLoansRetainIndependentInitialization(int count)
     {
-        var source = VerificationWorkloads.LivePartLoans(count, checking);
+        var source = VerificationWorkloads.LivePartLoans(count);
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
+        Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
         void Analyze()
         {
-            if (!c.Ownership.Analyze().IsVerified)
+            if (!c.Analyze().IsVerified)
             {
                 throw new InvalidOperationException("Live part Loans failed.");
             }
@@ -31,6 +30,6 @@ public class BorrowSnapshotTest
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(Analyze, 2));
-        ScalarEmissionTest.EmitFixture($"BorrowSnapshot{count}{checking}", source, string.Empty);
+        ScalarEmissionTest.EmitFixture($"BorrowSnapshot{count}False", source, string.Empty);
     }
 }

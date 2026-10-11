@@ -126,11 +126,19 @@ internal static partial class LlvmModuleWriter
             WriteSlot(output, function, instruction.Place);
         }
 
-        output.Write(", ptr @");
-        output.Write(constants[instruction.Constant].Name);
-        output.Write(", i64 ");
-        WriteNumber(output, constants[instruction.Constant].ByteLength);
-        output.Write(")\n");
+        if (instruction.Constant < 0)
+        {
+            output.Write(", ptr %location, i64 %location_length)\n");
+        }
+        else
+        {
+            output.Write(", ptr @");
+            output.Write(constants[instruction.Constant].Name);
+            output.Write(", i64 ");
+            WriteNumber(output, constants[instruction.Constant].ByteLength);
+            output.Write(")\n");
+        }
+
         if (conditional)
         {
             Name(output, "  br label %b", instruction.Continuation);

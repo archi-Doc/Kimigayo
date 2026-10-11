@@ -25,7 +25,7 @@ public class VerifiedSpecExampleTest
         Assert.Contains(rejection, source);
         var c = MinimalEmissionTest.Analyze(source.Replace(rejection, rejection[3..], StringComparison.Ordinal));
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 }

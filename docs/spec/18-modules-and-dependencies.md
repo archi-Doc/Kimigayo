@@ -295,6 +295,8 @@ A **ModuleInputId** includes the raw input identity, effective language, compile
 
 ### 18.7.2. Correspondence and semantic records
 
+Virtual [slot/implementation mappings and verified guarantees](virtual-dispatch.md#7-semantic-records-and-diagnostics) belong to these records. Missing required evidence is an artifact error; it cannot mean that an override is absent.
+
 Old and new graphs are matched in two stages. First, within the same project history, the root is matched by a dedicated root correspondence key and dependencies by PackageId. Ambiguity, including several versions of one ID, disables this matching-based reuse. The root key does not identify unrelated Applications. Second, within matched nodes, a **DeclarationKey** consists of the Container, declaration kind and normalized declaration identifier, excluding version, content hash and position.
 
 These keys only find candidates; actual Type and Symbol identities keep the defining version. Reuse compares all content and environment facts read by a judgment, and the current identities of its dependencies. Hashes index comparisons but do not replace necessary structural and premise checks. Cross-version references are remapped and validated before reuse; otherwise the judgment is reverified. Complete edit tracking is not required. This reuse mechanism introduces no Composition Entry identity (§13.8).
@@ -303,7 +305,7 @@ These keys only find candidates; actual Type and Symbol identities keep the defi
 | --- | --- |
 | Declarations and contracts | Defining Symbol, access and enclosing domains, public paths, open/base relations, Field identity, complete Types/Semantics/Origins, generic slots and projections, Constraints, `unsafe` and length conditions |
 | Property and callable contracts | Callable effect bounds, parameter-relative callback calls and their composed effects (§8.4.10.7), Stored Types, standard/custom permissions, accessor signatures and Origins, environment and capture identity, internal and public call signatures, receiver acquisition, per-call Origins, effects and returned Loan anchors |
-| Conformance and public guarantees | Witness and associated-Type mappings, conditional premises, closed specialization sets, completed ObjectCallCompatible and root-operation summaries with causes, Supports relationships, Runtime Type Identity, and required adjustment/destruction/release contracts |
+| Conformance and public guarantees | Witness and complete associated-Type mappings (including inferred bindings, separate source provenance and outstanding validation dependencies under [bounded inference](associated-type-inference.md#6-publication-diagnostics-and-reuse)), conditional premises, closed specialization sets, completed ObjectCallCompatible and root-operation summaries with causes, Supports relationships, Runtime Type Identity, and required adjustment/destruction/release contracts |
 | Semantic plans | Verified bodies, acquisition/ownership/cleanup, definition-site binding and private dependencies, legitimate representation obligations |
 | Verification records | Subject, property, premises, result, content dependencies, rule identity, source references and generation provenance |
 

@@ -35,8 +35,8 @@ public class SharedMemberCallEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(Counter + "func run<T>(value: ref/T, c: uniq/Counter)\n    c.add(c.read())\nlet v = true\nvar c = Counter.init(1)\nrun(v, c@uniq)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Analysis.IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
     }
 
     [Fact]
@@ -45,15 +45,15 @@ public class SharedMemberCallEmissionTest
         // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
         // the corrupt reborrow authority is rejected on the ordinary body that owns it.
         var c = MinimalEmissionTest.Analyze(Counter + "func run(value: ref/bool, c: uniq/Counter) => c.add(1)\nlet v = true\nvar c = Counter.init(1)\nrun(v, c@uniq)");
-        Assert.True(c.Emission.TryPrepare(out _, out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "run");
         var borrow = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Borrow);
         Assert.True(borrow >= 0);
         body.OperationStorage[borrow] = body.Operations[borrow] with { LoanMode = LoanRequirement.Ref };
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Equal(string.Empty, output.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 }

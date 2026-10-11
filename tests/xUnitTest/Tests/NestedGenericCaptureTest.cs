@@ -40,9 +40,9 @@ public class NestedGenericCaptureTest
         const string Source = "func invalid<T>(value: T)\n    let outer = func [value@move] () => func [value@move] () -> T => value@move\n    let first = outer@move()\n    let second = outer@move()\ninvalid(\"owned\")";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.False(c.Emission.Validate(out _));
-        c.Ownership.ReportDiagnostics();
+        Assert.False(c.Analysis.IsVerified);
+        Assert.False(c.Validate(out _));
+        c.ReportAnalysis();
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "MovedPlace_Kd");
     }
 
@@ -53,7 +53,7 @@ public class NestedGenericCaptureTest
         const string Source = "func take<T>(value: T) -> T\n    let outer = func [value@move] () => func [value@move] () -> T => value@move\n    let inner = outer@move()\n    return inner@move()\nConsole.writeLine(take(\"owned\"))";
         var c = MinimalEmissionTest.Analyze(Source);
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 }

@@ -151,7 +151,7 @@ public sealed partial class Binding
     private BoundConformance? ConformanceForKey(BindingSymbol owner, BindingSymbol contract, Koto keyNode)
     {
         var key = KotoHelper.UnwrapParentheses(keyNode);
-        if (key is NumberLiteralKoto or NullLiteralKoto or PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto } ||
+        if (key is NullLiteralKoto || KotoHelper.SignedNumber(key, out _) is not null ||
             key.BoundType is not { } type || !this.conformancesByType.TryGetValue(owner, out var identities))
         {
             return null;
@@ -230,7 +230,7 @@ public sealed partial class Binding
         // SPEC 10.2: a literal key is an unfitted literal that each call fits to ref/Key once; the second synthesized call
         // fits the key the first one already completed.
         var key = KotoHelper.UnwrapParentheses(source.Right);
-        if (key.BoundType is not null && key is NumberLiteralKoto or NullLiteralKoto or PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto })
+        if (key.BoundType is not null && (key is NullLiteralKoto || KotoHelper.SignedNumber(key, out _) is not null))
         {
             if (key is UnaryKoto prefix)
             {

@@ -1,0 +1,24 @@
+struct Counter
+    var count: i32
+    public init() => self.count = 0
+    public func bump(self: uniq/Self, by: i32) => self.count = self.count + by
+    public func read(self) -> i32 => self.count
+    public computed doubled: i32
+        get() -> i32 => self.count * 2
+        set(value: i32) -> () => self.count = value / 2
+
+func methods(counter: uniq/Counter, owned: Counter) -> i32
+    counter.bump(2)
+    counter.doubled = 8
+    var local = owned@move
+    local.bump(1)
+    return counter.read() + local.doubled
+func same<T>(a: T, b: T) -> bool
+    T is Equatable
+    return a == b
+func apply<F>(action: ref/F) -> i32
+    F is Callable<ref, () -> i32>
+    return action()
+func first(values: ref/[3 of i32]) -> place ref/i32 during values => values[0]
+func read(values: ref/[3 of i32]) -> i32 => first(values)
+func stop() -> Never => $abort("stopped")

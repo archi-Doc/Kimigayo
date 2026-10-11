@@ -49,7 +49,7 @@ public class ReceiverDefaultTest
         const string Source = "func f(action: (string) -> i32, x: string, value: i32 = action(x@move)) -> i32 => value\npublic func main() => ()";
         var path = Path.GetFullPath("receiver-default.kimi");
         var c = MinimalEmissionTest.Analyze(Source, path);
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var record = Assert.Single(result.Diagnostics);
@@ -57,14 +57,12 @@ public class ReceiverDefaultTest
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains(record.Message, console.Text, StringComparison.Ordinal);
-        Assert.Contains(record.Advice!, console.Text, StringComparison.Ordinal);
         var identity = SourceIdentity.FromPath(path);
         foreach (var related in new[] { false, true })
         {
             var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, related)[identity]);
             Assert.Equal((record.Display!.Range, record.Code), (sent.Range, sent.Code));
             Assert.Contains(record.Message, sent.Message, StringComparison.Ordinal);
-            Assert.Contains(record.Advice!, sent.Message, StringComparison.Ordinal);
         }
     }
 
@@ -84,10 +82,10 @@ public class ReceiverDefaultTest
         public void WarmNestedReceiverDefaultsAllocateNothing()
         {
             var c = MinimalEmissionTest.Analyze(Nested);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
             var valid = true;
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
             Assert.True(valid);
         }
     }

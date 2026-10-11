@@ -118,6 +118,12 @@ public partial class Compilation
 
     internal Testing.TestCatalog Tests => field ??= new();
 
+    /// <summary>Gets the facts Binding publishes to Hover, the LSP and tests.</summary>
+    internal SemanticQuery Semantics => this.Binding.Semantics;
+
+    /// <summary>Gets the Type context: interned Types and substitutions, which the MIR builder reads without Binding.</summary>
+    internal TyCtxt Types => this.Binding.Types;
+
     #endregion
 
     /// <summary>
@@ -275,12 +281,11 @@ public partial class Compilation
         return this.kotonohaIdToKotonoha.TryGetValue(kotonohaId, out kotonoha);
     }
 
-    /// <summary>Analyzes control flow after parsing and compile-time directive selection.</summary>
-    /// <param name="types">Type facts supplied by Binding, or syntax-only facts when omitted.</param>
-    /// <returns>Definite errors, inferred contracts, and obligations pending further Binding.</returns>
-    public ControlFlowAnalysis AnalyzeControlFlow(ControlFlowTypeSystem? types = null)
+    /// <summary>Analyzes control flow from the parsed source and Binding's current facts.</summary>
+    /// <returns>Definite errors, warnings, and obligations pending further Binding.</returns>
+    public ControlFlowAnalysis AnalyzeControlFlow()
     {
-        var flow = ControlFlowAnalysis.Analyze(this.Kotonoha.RootKoto, types);
+        var flow = ControlFlowAnalysis.Analyze(this.Kotonoha.RootKoto);
         for (var i = 1; i < this.SourceModules.Length; i++)
         {
             flow.Append(this.SourceModules[i].RootKoto);
@@ -300,8 +305,6 @@ public partial class Compilation
         return this.Binding.Bind(BindingMode.Final);
     }
 
-    internal void InvalidateOwnership() => this.ownership?.Invalidate();
-
     internal bool TryGetIdentifier(ReadOnlySpan<char> text, [NotNullWhen(true)] out string? identifier)
         => this.identifiers.TryGetIdentifier(text, out identifier);
 
@@ -313,21 +316,25 @@ public partial class Compilation
     }
 
     /// <summary>Records a syntax edit. Every edit revokes the whole source analysis, since Types, Origins, effects and
-    /// certificates published by one declaration are used everywhere; only Binding's own normalization of the syntax it
-    /// is binding, such as a try selection, is not an edit.</summary>
-    internal void NoteSyntaxEdit()
+    /// certificates published by one declaration are used everywhere, and renumbers the edited module at the next Bind; only
+    /// Binding's own normalization of the syntax it is binding, such as a try selection, is not an edit.</summary>
+    /// <param name="parent">The node whose children changed.</param>
+    internal void NoteSyntaxEdit(Koto parent)
     {
         if (this.binding is { IsRunning: true })
         {
             return;
         }
 
+        // The table that numbered the parent holds it, also after a transplant re-homed it from its source module.
+        (parent.SyntaxOwner ?? parent.Kotonoha.Syntax).Edit();
         this.InvalidateSourceAnalysis();
     }
 
-    internal void BeginSourceParsing()
+    internal void BeginSourceParsing(Kotonoha module)
     {
         this.hasParsedSource = true;
+        module.Syntax.Edit();
         this.InvalidateSourceAnalysis();
     }
 

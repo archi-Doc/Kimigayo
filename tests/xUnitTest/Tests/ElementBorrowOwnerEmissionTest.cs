@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -14,6 +15,7 @@ public class ElementBorrowOwnerEmissionTest
     {
         { "Parameter", "func f(a: (string, i32)) -> bool => same(a.0, a.0)\nif f((\"held\", 0)) => Console.writeLine(\"ok\")", "ok\n" },
         { "ParameterArray", "func f(a: [2 of string]) -> bool => a[0] < a[1]\nlet a: [2 of string] = [\"first\", \"last\"]\nif f(a@move) => Console.writeLine(\"ok\")", "ok\n" },
+        { "ParameterRuntimeIndex", "func f(a: [1 of string], i: isize) -> bool => same(a[i], \"held\")\nif f([\"held\"], 0) => Console.writeLine(\"ok\")", "ok\n" },
         { "ParameterMoveAfter", "func f(a: (string, i32)) -> (string, i32)\n    let equal = same(a.0, a.0)\n    return a@move\nif f((\"held\", 0)).0 == \"held\" => Console.writeLine(\"ok\")", "ok\n" },
         { "ParameterNested", "func f(a: (string, (string, i32))) -> bool => same(a.0, a.1.0)\nif f((\"held\", (\"held\", 42))) => Console.writeLine(\"ok\")", "ok\n" },
         { "ParameterDefer", "func f(a: (string, i32))\n    defer\n        if a.0 == \"held\" => Console.writeLine(\"ok\")\nf((\"held\", 0))", "ok\n" },
@@ -41,22 +43,21 @@ public class ElementBorrowOwnerEmissionTest
 
     [Theory]
     [MemberData(nameof(Fixtures))]
-    public void OwnersSupportStaticStringBorrowing(string name, string source, string stdout)
+    public void OwnersSupportStringBorrowing(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("ElementBorrowOwner" + name, Same + Make + source, stdout);
 
     [Theory]
-    [InlineData("func inspect(a: ref/string, b: (string, i32)) => ()\nfunc f(a: (string, i32)) => inspect(a.0, a@move)", OwnershipFailure.ComparisonLoanConflict)]
-    [InlineData("func take(a: (string, i32)) -> string => \"held\"\nfunc f(a: (string, i32)) -> bool => a.0 == take(a@move)", OwnershipFailure.ComparisonLoanConflict)]
-    [InlineData("func f(a: (string, i32)) -> bool\n    let moved = a@move\n    return same(a.0, a.0)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let value = make().0", OwnershipFailure.Unsupported)]
-    [InlineData("func f(a: [1 of string], i: isize) -> bool => same(a[i], \"held\")", OwnershipFailure.Unsupported)]
-    public void BorrowingDoesNotGrantMoveOrDynamicAccess(string source, OwnershipFailure failure)
+    [InlineData("func inspect(a: ref/string, b: (string, i32)) => ()\nfunc f(a: (string, i32)) => inspect(a.0, a@move)", DiagnosticCode.ComparisonLoanConflict_Kd)]
+    [InlineData("func take(a: (string, i32)) -> string => \"held\"\nfunc f(a: (string, i32)) -> bool => a.0 == take(a@move)", DiagnosticCode.ComparisonLoanConflict_Kd)]
+    [InlineData("func f(a: (string, i32)) -> bool\n    let moved = a@move\n    return same(a.0, a.0)", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("let value = make().0", DiagnosticCode.Unsupported_Kd)]
+    public void BorrowingDoesNotGrantMove(string source, DiagnosticCode failure)
     {
         var c = MinimalEmissionTest.Analyze(Same + Make + source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == failure);
+        Assert.Contains(c.Problems, x => x.Code == failure);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -127,7 +128,7 @@ public class ElementBorrowOwnerEmissionTest
         }
 
         Assert.False(BodyLowering.ValidateStringFlags(body, function, new int[body.Places.Count + body.Operations.Count]));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Theory]
@@ -138,7 +139,7 @@ public class ElementBorrowOwnerEmissionTest
     public void BorrowOwnersRequireTheirStoragePlan(string defect, string source)
     {
         var c = MinimalEmissionTest.Analyze(Make + source);
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Projections.Count > 0);
         var root = body.Projections[0].Root;
         switch (defect)
@@ -153,10 +154,10 @@ public class ElementBorrowOwnerEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Theory]
@@ -166,7 +167,7 @@ public class ElementBorrowOwnerEmissionTest
     {
         const string Source = "let equal = (label work: do\n    defer => Console.writeLine(\"cleanup\")\n    exit to work (\"held\", 0)\n).0 == \"held\"";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var result = Assert.Single(body.SlotResults);
         var deferred = Assert.Single(body.DeferredPlans, x => body.IsReachable(x.Entry));
@@ -175,11 +176,11 @@ public class ElementBorrowOwnerEmissionTest
         Assert.True((body.GetInputState(id, result.Place) & PlaceState.MustInit) != 0);
         body.OperationStorage[id] = body.Operations[id] with { Kind = kind, Place = result.Place };
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out error));
+        Assert.False(c.WriteIr(writer, out error));
         Assert.Contains("normal delivery", error);
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Theory]
@@ -208,8 +209,8 @@ public class ElementBorrowOwnerEmissionTest
         {
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         var valid = true;
@@ -224,8 +225,8 @@ public class ElementBorrowOwnerEmissionTest
         before = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 128; i++)
         {
-            valid &= c.Ownership.Analyze().IsVerified;
-            valid &= c.Emission.WriteIr(TextWriter.Null, out _);
+            valid &= c.Analyze().IsVerified;
+            valid &= c.WriteIr(TextWriter.Null, out _);
         }
 
         var bytes = GC.GetAllocatedBytesForCurrentThread() - before;

@@ -68,7 +68,7 @@ public sealed class DiagnosticCatalogTest
                 Category="Language"
                 Message="Token {0}"
 
-              + Name="UnsupportedEscape_Kd"
+              + Name="InvalidEscape_Kd"
                 Category="Language"
                 Message="Token {0}"
                 Arguments="token"
@@ -87,7 +87,7 @@ public sealed class DiagnosticCatalogTest
         Assert.Contains(anomalies, static x => x == "IndentationLevelMismatch_Kd: the entry has no category.");
         Assert.Contains(anomalies, static x => x.StartsWith("InvalidCharacter_Kd: the message or label is not a valid template", StringComparison.Ordinal));
         Assert.Contains(anomalies, static x => x == "SemicolonNotAllowed_Kd: Arguments must name each message argument (1), not 0.");
-        Assert.Contains(anomalies, static x => x == "UnsupportedEscape_Kd: a fact is not written as name:Kind.");
+        Assert.Contains(anomalies, static x => x == "InvalidEscape_Kd: a fact is not written as name:Kind.");
         Assert.Contains(anomalies, static x => x == "InvalidAssignment_Kd: the label references a fact that the code does not name.");
         Assert.Contains(anomalies, static x => x == "InvalidIdentifier_Kd: the message takes more than two arguments.");
         Assert.Contains(anomalies, static x => x == "TopLevelKeywordAfterCode_Kd: a message without arguments contains a brace.");
@@ -112,6 +112,17 @@ public sealed class DiagnosticCatalogTest
         Assert.Equal(RepairConditionSet.Take | RepairConditionSet.UsageLegality, transfer.Relevant);
         Assert.Equal("Append @move to transfer x to f(a: T)", transfer.FormatTitle(["x", "f(a: T)"]));
         Assert.Equal("x offers Take and is a Movable Place", RepairConditions.Phrase(RepairCondition.Take, ["x"]));
+        Assert.True(RepairKinds.TryGet(RepairKind.Qualify, out var qualify));
+        Assert.Equal(RepairConditionSet.Selection | RepairConditionSet.UsageLegality, qualify.Relevant);
+        Assert.Equal(RepairConditionSet.UsageLegality, qualify.Conditional);
+        Assert.Equal(Enum.GetValues<RepairCondition>(), RepairConditions.All.ToArray());
+    }
+
+    [Fact]
+    public void ConditionalRepairConditionsCannotAlsoBeMandatory()
+    {
+        var entry = new RepairKindEntry { Name = "Repair.Qualify", Title = "Insert {1} before {0}", Facts = "name:Text,qualifier:Text", Conditions = "Selection", ConditionalConditions = "Selection" };
+        Assert.Equal("Selection is declared more than once.", entry.Prepare());
     }
 
     [Fact]

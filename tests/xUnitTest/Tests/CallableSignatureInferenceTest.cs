@@ -112,8 +112,8 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
             "accept(stop)\nConsole.writeLine(\"alive\")";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.BoundCall?.Target.Name == "accept");
-        Assert.Same(BoundType.Never, call.BoundCall!.TypeArguments[0]);
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallOf()?.Target.Name == "accept");
+        Assert.Same(BoundType.Never, call.CallOf()!.TypeArguments[0]);
         ScalarEmissionTest.EmitFixture("CallableSignatureNever" + common, source, "alive\n");
     }
 
@@ -156,7 +156,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         var path = Path.GetFullPath("callable-signature.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
         c.Binding.ReportDiagnostics();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
@@ -172,7 +172,6 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.Equal("candidate", Assert.Single(error.Related!).Role);
         Assert.Contains("known call signature is () -> i32", error.Note, StringComparison.Ordinal);
         Assert.Contains("requires () -> bool", error.Note, StringComparison.Ordinal);
-        Assert.Null(error.Advice);
         Assert.Null(error.Repairs);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
@@ -195,7 +194,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         const string Source = "func consume<T, F>(action: F) -> T\n    F is Callable<owner, () -> T>\n    return action@move()\nlet value = consume(func [] () => 42)";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -240,10 +239,8 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     public void AResultOnlyUniversalIsInstantiatedToTheOpenRegion(string name, string body)
         => ScalarEmissionTest.EmitFixture("OriginSignatureEvidenceResultOnly" + name, "func constant() -> ref/i32 during s => $abort(\"never\")\nfunc constantOf(n: ref/i32) -> ref/i32 during s => $abort(\"never\")\n" + body + "\nrequire r == 7 else => $abort(\"result only\")", string.Empty);
 
-    // The instantiated open region still takes no later borrow (the located limit), and a universal that a clause bounds by an input
-    // is not result-only, so only a per-call Origin would satisfy the slot: the call stays NoApplicableOverload_Kd (STATUS limit).
+    // A universal bounded by an input is not result-only: this separate signature inference boundary remains located.
     [Theory]
-    [InlineData("    var r = make(constant)\n    let local: i32 = 3\n    r = local@ref\n    Console.writeLine(\"\\(r@follow)\")\n", nameof(DiagnosticCode.UnsupportedBinding_Kd), "r = local@ref")]
     [InlineData("    let r = makeOf(bounded)\n    Console.writeLine(\"\\(r@follow)\")\n", nameof(DiagnosticCode.NoApplicableOverload_Kd), "makeOf(bounded)")]
     public void AResultOnlyInstantiationKeepsItsLimits(string body, string code, string text)
     {
@@ -265,10 +262,10 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         var body = $"func keep<T>({parameters}) -> T => value@move\nvar x: i32 = 4\nlet r = keep({arguments})\n";
         var c = MinimalEmissionTest.Analyze(Len + body + "require r@follow == 4 else => $abort(\"order\")");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => x.BoundCall?.Target.Name == "keep");
-        var slot = call.BoundCall!.TypeArguments[0]!;
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => x.CallOf()?.Target.Name == "keep");
+        var slot = call.CallOf()!.TypeArguments[0]!;
         var borrow = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), static x => x.ToString() == "x@ref");
-        Assert.Same(borrow.BoundType!.Origin, slot.Origin);
+        Assert.Same(borrow.TypeOf()!.Origin, slot.Origin);
         ScalarEmissionTest.EmitFixture("OriginSignatureEvidenceOrder" + reversed, Len + body + "require r@follow == 4 else => $abort(\"order\")", string.Empty);
 
         var source = "func len(n: ref/i32) -> i32 => n@follow\n" + body.Replace("var x", "    var x", StringComparison.Ordinal).Replace("let r", "    let r", StringComparison.Ordinal);
@@ -295,32 +292,44 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Len + "func runOnly<T>(action: (T) -> i32) -> Option<T> => .None\nlet r = runOnly(len)\nlet again = runOnly(len)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(static x => x.BoundCall?.Target.Name == "runOnly").ToArray();
+        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(static x => x.CallOf()?.Target.Name == "runOnly").ToArray();
         Assert.Equal(2, calls.Length);
-        var first = calls[0].BoundCall!.TypeArguments[0]!;
-        var second = calls[1].BoundCall!.TypeArguments[0]!;
+        var first = calls[0].CallOf()!.TypeArguments[0]!;
+        var second = calls[1].CallOf()!.TypeArguments[0]!;
         Assert.Equal((BoundTypeKind.Semantics, SemanticsKind.Ref), (first.Kind, first.Semantics));
         Assert.Equal((OriginKind.Inference, true), (first.Origin!.Kind, first.Origin.Open));
         Assert.NotSame(first.Origin, second.Origin); // Each call site has its own local region.
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
 
         // SPEC 15.3.7, IMPL 21.3: Origin differences alone never duplicate generated code.
         var ir = CompilationTestHelper.WriteIr(c);
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(ir, @"define internal \S+ @__kimi_generic_entry\d+\("));
     }
 
-    // SPEC 15.6.5: an open region holds no Loans, so a later borrow fitted into it would lose its Loan. Such a fit is never accepted:
-    // the spec proves it and leaves it to region inference, so it is the located limit at the value fitted into the region, at an
-    // assignment and at a call argument alike (SPEC 15.6.1: the call is selected by the structural part of its fits).
+    // Local-region inference keeps the actual Loan inserted after a result-only call or at a generic argument.
     [Theory]
-    [InlineData("    var z = runOnly(len)\n    z = .Some(y@ref)\n", nameof(DiagnosticCode.UnsupportedBinding_Kd), ".Some(y@ref)")]
-    [InlineData("    let z = keepSome(len, .Some(y@ref))\n", nameof(DiagnosticCode.UnsupportedBinding_Kd), ".Some(y@ref)")]
-    public void AnOpenRegionTakesNoLaterBorrow(string body, string code, string text)
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AnOpenRegionRetainsLaterBorrows(bool argument)
     {
-        var source = "func runOnly<T>(action: (T) -> i32) -> Option<T> => .None\nfunc keepSome<T>(action: (T) -> i32, value: Option<T>) -> Option<T> => value@move\n" +
-            "func len(n: ref/i32) -> i32 => n@follow\npublic func main() -> ()\n    var y: i32 = 3\n" + body + "    y = 4\n    match z\n        .Some(let v) => Console.writeLine(\"\\(v@follow)\")\n        .None => ()\n";
+        const string Declarations = "func runOnly<T>(action: (T) -> i32) -> Option<T> => .None\nfunc keepSome<T>(action: (T) -> i32, value: Option<T>) -> Option<T> => value@move\nfunc len(n: ref/i32) -> i32 => n@follow\n";
+        var body = argument ? "    let z = keepSome(len, .Some(y@ref))\n" : "    var z = runOnly(len)\n    z = .Some(y@ref)\n";
+        var prefix = Declarations + "public func main() -> ()\n    var y: i32 = 3\n" + body;
+        const string Use = "    match z\n        .Some(let v) => require v@follow == 3 else => $abort(\"value\")\n        .None => $abort(\"none\")\n";
+        var source = prefix + "    y = 4\n" + Use;
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((code, text), (error.Code, Text(source, error.Span)));
+        Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "y = 4"), (error.Code, Text(source, error.Span)));
+        ScalarEmissionTest.EmitFixture("OriginSignatureEvidenceLaterBorrow" + argument, prefix + Use + "    y = 4\n", string.Empty);
+    }
+
+    [Fact]
+    public void AResultOnlyInstantiationAllowsLocalReassignment()
+    {
+        const string Source = "func constant() -> ref/i32 during s => $abort(\"never\")\nfunc make<T>(f: () -> T) -> T => f()\npublic func main()\n    var r = make(constant)\n    let local: i32 = 3\n    r = local@ref\n    require r@follow == 3 else => $abort(\"value\")\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Validate(out _), MinimalEmissionTest.Describe(c, null));
     }
 
     // SPEC 15.3.6, 10.8: when only the argument's own per-call Origin would satisfy the slot (the Function value or Callable proof holds
@@ -339,7 +348,6 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.Equal((nameof(DiagnosticCode.MissingOriginBinding_Kd), call, $"only a per-call Origin of {argument} would satisfy T"), (error.Code, Text(source, error.Span), error.Label));
         var related = Assert.Single(error.Related!);
         Assert.Equal(("argument", argument), (related.Role, Text(source, related.Span)));
-        Assert.Contains("does not borrow its input", error.Advice, StringComparison.Ordinal);
     }
 
     // SPEC 10.8, 10.6: a header that omits its result supplies no evidence for T, which only the waiting body could fix; that is the
@@ -352,7 +360,6 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         c.Binding.ReportDiagnostics();
         var error = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal((nameof(DiagnosticCode.UnboundTypeArgument_Kd), "make(func (n: ref/i32) => n)"), (error.Code, error.Text));
-        Assert.Equal("Write the anonymous function's result Type", error.Advice);
     }
 
     // SPEC 15.3.6: other Constraints still decide applicability, so a slot that the stand-in fails another Constraint for stays
@@ -448,8 +455,8 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 
@@ -465,7 +472,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 
@@ -478,8 +485,8 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 

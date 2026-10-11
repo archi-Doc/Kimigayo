@@ -17,7 +17,7 @@ public class ImplicitReceiverTest
         const string body = "var c = Counter.init()\nc.bump()\nc.bump()\nrequire c.read() == 2 else => $abort(\"bump\")";
         var c = MinimalEmissionTest.Analyze(Counter + body);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
-        Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
+        Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
         ScalarEmissionTest.EmitFixture("ImplicitReceiverBump", Counter + body, string.Empty);
     }
 
@@ -28,7 +28,7 @@ public class ImplicitReceiverTest
     public void AnUnwritableLendingPointCannotSupplyAnExclusiveReceiver(string body)
     {
         var c = MinimalEmissionTest.Analyze(Counter + body);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
 
     [Theory]
@@ -63,7 +63,7 @@ public class ImplicitReceiverTest
         const string body = "let n: i32 = 0\nvar next = func [var n] () -> i32\n    n += 1\n    return n\nlet a = next()\nlet b = next()\nrequire a == 1 and b == 2 else => $abort(\"closure\")";
         var c = MinimalEmissionTest.Analyze(body);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
-        Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
+        Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
         ScalarEmissionTest.EmitFixture("ImplicitReceiverClosure", body, string.Empty);
     }
 
@@ -71,7 +71,7 @@ public class ImplicitReceiverTest
     public void ALetBoundClosureIsNotCopiedForAnExclusiveCall()
     {
         var c = MinimalEmissionTest.Analyze("let n: i32 = 0\nlet tick = func [var n] () -> i32\n    n += 1\n    return n\nlet a = tick()");
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
 
     [Theory]
@@ -106,7 +106,7 @@ public class ImplicitReceiverTest
     public void OverlappingImplicitAcquisitionsAreRejected()
     {
         var c = MinimalEmissionTest.Analyze("var values: Array<i32> = [1]\nvalues.append(values.remove(0))");
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
 
     [Fact]
@@ -114,6 +114,6 @@ public class ImplicitReceiverTest
     {
         var c = MinimalEmissionTest.Analyze("var values: Array<isize> = [1]\nvalues.insert(^0, values.length)\nrequire values.length == 2 else => $abort(\"reservation\")");
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
-        Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
+        Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
     }
 }

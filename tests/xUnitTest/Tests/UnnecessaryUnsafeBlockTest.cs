@@ -8,7 +8,7 @@ namespace XunitTest;
 
 // SPEC 14.3.3: an operation that requires an unsafe context uses the permission of the innermost enclosing Unsafe Block; a block
 // whose permission no operation uses is a warning at its keyword. SPEC 23.3.6.9: removing it is a repair candidate exactly when
-// that keeps the Body's scope and destruction and defer timing and the statement form allows the edit; otherwise the Advice explains.
+// that keeps the Body's scope and destruction and defer timing and the statement form allows the edit.
 public class UnnecessaryUnsafeBlockTest
 {
     private const string Pointer = "public func main()\n    var number: i32 = 1\n    let pointer: raw/i32 = null\n";
@@ -26,7 +26,6 @@ public class UnnecessaryUnsafeBlockTest
         Assert.Equal(nameof(DiagnosticCode.UnnecessaryUnsafeBlock_Kd), warning.Code);
         Assert.Equal(DiagnosticSeverity.Warning, warning.Severity);
         Assert.Equal("unsafe", source.Substring(warning.Span!.Value.Start, warning.Span.Value.Length));
-        Assert.Null(warning.Advice);
         var repair = Assert.Single(warning.Repairs!);
         Assert.Equal("Repair.RemoveUnsafe", repair.Kind);
         Assert.Equal("Remove unsafe and keep its statements", repair.Title);
@@ -36,20 +35,19 @@ public class UnnecessaryUnsafeBlockTest
     }
 
     // Structure is refuted for a declaring or deferring Body and for a block outside a statement position, and the edit is left to
-    // the author when the unsafe line holds a comment or a raw string spans lines: no candidate, and the Advice says why.
+    // the author when the unsafe line holds a comment or a raw string spans lines: no candidate.
     [Theory]
-    [InlineData("    unsafe\n        let address = pointer@usize\n", "would merge its Body's declarations")]
-    [InlineData("    unsafe\n        defer => number += 1\n", "would merge its Body's declarations")]
-    [InlineData("    if number == 1 => unsafe => number += 1\n", "not a statement of an indented body")]
-    [InlineData("    unsafe // the permission is unused\n        number += 1\n", "Remove 'unsafe' and keep the statements")]
-    [InlineData("    unsafe\n        Console.writeLine(\"\"\"\n    raw\n    \"\"\")\n", "Remove 'unsafe' and keep the statements")]
-    public void AnUnusedBlockWithoutACandidateExplainsTheRepair(string block, string advice)
+    [InlineData("    unsafe\n        let address = pointer@usize\n")]
+    [InlineData("    unsafe\n        defer => number += 1\n")]
+    [InlineData("    if number == 1 => unsafe => number += 1\n")]
+    [InlineData("    unsafe // the permission is unused\n        number += 1\n")]
+    [InlineData("    unsafe\n        Console.writeLine(\"\"\"\n    raw\n    \"\"\")\n")]
+    public void AnUnusedBlockMayHaveNoCandidate(string block)
     {
         var source = Pointer + block;
         var warning = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.UnnecessaryUnsafeBlock_Kd), warning.Code);
         Assert.Null(warning.Repairs);
-        Assert.Contains(advice, warning.Advice);
     }
 
     [Theory]

@@ -26,6 +26,24 @@ public sealed partial class Binding
     public ConstraintProof Prove(BoundConstraint constraint, Koto binder, ReadOnlySpan<BoundType?> arguments, Koto context)
         => this.ProveConstraint(this.SubstituteConstraint(constraint, binder, arguments), this.ConstraintScope(context));
 
+    internal BindingScope ConstraintScope(Koto node)
+    {
+        for (Koto? current = node; current is not null; current = current.Parent)
+        {
+            if (current is FunctionKoto { IsPropertyWitness: true, BoundSymbol.Scope: { } bridge })
+            {
+                return bridge; // SPEC 11.4.2: a standard witness bridge's premises are its conformance path's (PropertyWitnessFunction).
+            }
+
+            if (this.scopes.TryGetValue(current, out var scope))
+            {
+                return this.NodeScope(node, scope);
+            }
+        }
+
+        return this.ModuleScope(node);
+    }
+
     private static ConstraintProof NegateProof(ConstraintProof value) => value switch
     {
         ConstraintProof.Proven => ConstraintProof.Refuted,
@@ -47,16 +65,24 @@ public sealed partial class Binding
 
     // Whether a Type depends on a generic input; a Contract's Self counts only with `contractSelf`, since a Contract clause on
     // Self is an obligation of every conformer rather than a closed proposition.
-    private static bool DependentType(BoundType type, bool unresolvedProjection = true, bool contractSelf = false)
+    private static bool DependentType(BoundType type, bool unresolvedProjection = true, bool contractSelf = false, bool includeOrigins = true)
     {
-        if ((type.Kind == BoundTypeKind.Parameter && (contractSelf || !IsContractSelf(type))) || type.Kind is BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || (unresolvedProjection && type.Kind == BoundTypeKind.AssociatedProjection) || type.LengthExpression is not null || (type.Origin is not null && type.Origin.Kind != OriginKind.Static))
+        if ((type.Kind == BoundTypeKind.Parameter && (contractSelf || !IsContractSelf(type))) || type.Kind is BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation || (unresolvedProjection && type.Kind == BoundTypeKind.AssociatedProjection) || type.LengthExpression is not null || (includeOrigins && type.Origin is not null && type.Origin.Kind != OriginKind.Static))
         {
             return true;
         }
 
+        foreach (var length in type.LengthArguments)
+        {
+            if (length is { IsConstant: false })
+            {
+                return true;
+            }
+        }
+
         for (var i = 0; i < type.OriginArguments.Count; i++)
         {
-            if (type.OriginArguments[i].Kind != OriginKind.Static)
+            if (includeOrigins && type.OriginArguments[i].Kind != OriginKind.Static)
             {
                 return true;
             }
@@ -64,7 +90,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            if (DependentType(type.Components[i], unresolvedProjection, contractSelf))
+            if (DependentType(type.Components[i], unresolvedProjection, contractSelf, includeOrigins))
             {
                 return true;
             }
@@ -205,7 +231,7 @@ public sealed partial class Binding
 
         if (proposition.Kind == ConstraintKind.TypeIdentity)
         {
-            if (ReferenceEquals(proposition.Subject, proposition.RequiredType))
+            if (this.SameCompleteType(proposition.Subject!, proposition.RequiredType!))
             {
                 return ConstraintProof.Proven;
             }
@@ -242,10 +268,10 @@ public sealed partial class Binding
         if (proposition.Kind == ConstraintKind.Semantics)
         {
             var subject = proposition.Subject!;
-            if (subject.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication)
+            if (subject.IsAbstract)
             {
                 // SPEC 8.7: a requirement on a Semantics binding is decided by containment of its admitted set.
-                var admitted = this.AdmittedSemantics(subject, scope);
+                var admitted = this.ResultSemantics(subject, scope);
                 return admitted == SemanticsMask.None ? ConstraintProof.Error :
                     (admitted & ~proposition.Mask) == 0 ? ConstraintProof.Proven :
                     (admitted & proposition.Mask) == 0 ? ConstraintProof.Refuted : ConstraintProof.Unknown;
@@ -277,19 +303,6 @@ public sealed partial class Binding
     private BoundConstraint NegateConstraint(BoundConstraint value)
         => value.Kind == ConstraintKind.Not ? value.Left! : value.Negation ??= this.InternConstraint(new(ConstraintKind.Not, left: value));
 
-    private BindingScope ConstraintScope(Koto node)
-    {
-        for (Koto? current = node; current is not null; current = current.Parent)
-        {
-            if (this.scopes.TryGetValue(current, out var scope))
-            {
-                return this.NodeScope(node, scope);
-            }
-        }
-
-        return this.ModuleScope(node);
-    }
-
     private void BindConstraints()
     {
         this.bindingConstraintTypes = true;
@@ -310,13 +323,7 @@ public sealed partial class Binding
                     for (var j = 0; j < function.TypeConstraints.Count; j++)
                     {
                         var clause = (IsKoto)function.TypeConstraints[j];
-                        if (IsRecovery(clause, out _))
-                        {
-                            // The parser reported the prefix (SPEC 7.4); its parts are not judged again, and the clause rests on the Error.
-                            clause.BoundConstraint = this.InternConstraint(new(ConstraintKind.Error));
-                            this.Fail(clause, BindingFailure.InvalidConstraint);
-                        }
-                        else if (this.DeferredConstraint(clause, this.scopes[function]) == (pass != 0))
+                        if (IsRecovery(clause, out _) || this.DeferredConstraint(clause, this.scopes[function]) == (pass != 0))
                         {
                             this.BindConstraint(clause, this.scopes[function]);
                         }
@@ -333,13 +340,7 @@ public sealed partial class Binding
                     for (var j = 0; j < container.ConstraintNodes.Count; j++)
                     {
                         var clause = container.ConstraintNodes[j];
-                        if (IsRecovery(clause, out _))
-                        {
-                            // The parser reported a part of the clause; its parts are not judged again, and the clause rests on the Error.
-                            clause.BoundConstraint = this.InternConstraint(new(ConstraintKind.Error));
-                            this.Fail(clause, BindingFailure.InvalidConstraint);
-                        }
-                        else if (this.DeferredConstraint(clause, this.scopes[container]) == (pass != 0))
+                        if (IsRecovery(clause, out _) || this.DeferredConstraint(clause, this.scopes[container]) == (pass != 0))
                         {
                             this.BindConstraint(clause, this.scopes[container]);
                         }
@@ -352,6 +353,7 @@ public sealed partial class Binding
                 this.RegisterConformances();
                 this.BindCopyDeclarations();
                 this.BindConditionalDeclarations(false);
+                this.RegisterInheritedConformances();
             }
         }
 
@@ -389,6 +391,13 @@ public sealed partial class Binding
                 continue;
             }
 
+            if (!environment.Invalid && !this.ValidateArithmeticDirections(scope, environment))
+            {
+                environment.Invalid = true;
+                changed = true;
+                continue;
+            }
+
             foreach (var fact in environment.Facts)
             {
                 if (this.ProveConstraint(fact, scope) == ConstraintProof.Error)
@@ -410,6 +419,14 @@ public sealed partial class Binding
 
     private void BindConstraint(IsKoto clause, BindingScope scope)
     {
+        if (IsRecovery(clause, out _))
+        {
+            // Every entry path, including conditional premises, depends on the clause's complete syntax.
+            clause.BoundConstraint = this.InternConstraint(new(ConstraintKind.Error));
+            this.Fail(clause, BindingFailure.InvalidConstraint);
+            return;
+        }
+
         if (clause.FormationType is not null && !IsAssociatedRequirement(clause))
         {
             this.Fail(clause, BindingFailure.InvalidConstraint); // SPEC 8.4.3: only a requirement may end with a formation Type.
@@ -424,8 +441,11 @@ public sealed partial class Binding
             : semantics ? symbol!.Pair!.WholeType : symbol?.Kind == BindingSymbolKind.SemanticsTarget ? symbol.Type : this.BindType(clause.Left, bindingScope);
         clause.Left.BoundSymbol = symbol ?? clause.Left.BoundSymbol;
         Complete(clause.Left, subject);
+        var failedSubject = subject is null && (clause.BindingFailure != BindingFailure.None || clause.Left.BindingState == BindingState.Invalid);
         var unresolvedSubject = subject is null && scope.Owner is StructKoto or EnumKoto or ContractKoto && this.HasUnresolvedConstraintSyntax(clause.Left, scope);
-        var requirement = this.BindRequirement(clause.Right, unresolvedSubject ? BoundType.Unit : subject, semantics, bindingScope);
+        // A failed selector supplies no subject. Check the independent requirement syntax, then discard the provisional
+        // proposition; its valid Type or Contract must not become another failure merely because the selector failed.
+        var requirement = this.BindRequirement(clause.Right, unresolvedSubject || failedSubject ? BoundType.Unit : subject, semantics, bindingScope);
         if (AssociatedHead(clause) is OriginApplicationKoto && HasUnsupportedAssociatedIdentity(requirement))
         {
             this.Fail(clause, BindingFailure.Unsupported, true);
@@ -472,6 +492,10 @@ public sealed partial class Binding
         {
             var environment = scope.Constraints ??= new();
             this.AddConstraintFact(environment, requirement);
+            if (requirement.Kind == ConstraintKind.Error && clause.BindingFailure != BindingFailure.None)
+            {
+                this.AddPrerequisite(scope.Owner, clause);
+            }
         }
 
         // Self clauses remain implementation obligations, never assumptions.
@@ -485,14 +509,13 @@ public sealed partial class Binding
             case ParenthesizedKoto parentheses:
                 result = this.BindRequirement(parentheses.Operand, subject, semantics, scope);
                 break;
-            case NotKoto not:
+            case UnaryKoto { Akind: KotoKind.Not } not:
                 result = this.NegateConstraint(this.BindRequirement(not.Operand, subject, semantics, scope));
                 break;
-            case AndKoto or OrKoto:
-                var binary = (BinaryKoto)node;
+            case BinaryKoto { Akind: KotoKind.And or KotoKind.Or } binary:
                 var left = this.BindRequirement(binary.Left, subject, semantics, scope);
                 var right = this.BindRequirement(binary.Right, subject, semantics, scope);
-                result = this.InternConstraint(new(node is AndKoto ? ConstraintKind.And : ConstraintKind.Or, left: left, right: right));
+                result = this.InternConstraint(new(binary.Akind == KotoKind.And ? ConstraintKind.And : ConstraintKind.Or, left: left, right: right));
                 break;
             default:
                 if (subject is null)
@@ -614,7 +637,7 @@ public sealed partial class Binding
 
             positive |= this.AvailableConstraintFact(environment, normalized);
             negative |= this.AvailableConstraintFact(environment, negation);
-            if (environment.HasAssociatedProjection || parameterIdentity)
+            if (environment.HasAssociatedProjection || parameterIdentity || normalized.Kind == ConstraintKind.Callable || normalized is { Kind: ConstraintKind.Not, Left.Kind: ConstraintKind.Callable })
             {
                 foreach (var fact in environment.Facts)
                 {
@@ -624,8 +647,8 @@ public sealed partial class Binding
                     }
 
                     var identity = this.NormalizeProofConstraint(fact, scope);
-                    positive |= ReferenceEquals(identity, normalized);
-                    negative |= ReferenceEquals(identity, negation);
+                    positive |= SameProofPremise(identity, normalized);
+                    negative |= SameProofPremise(identity, negation);
                 }
             }
         }
@@ -640,6 +663,13 @@ public sealed partial class Binding
             ConstraintKind.Or => CombineProof(this.ProveConstraint(proposition.Left!, scope), this.ProveConstraint(proposition.Right!, scope), false),
             _ => !ReferenceEquals(proposition, normalized) && this.JudgeConstraintAtom(proposition, scope) == ConstraintProof.Error ? ConstraintProof.Error : this.JudgeConstraintAtom(normalized, scope),
         };
+        if (structural != ConstraintProof.Error && normalized.Kind is ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Not &&
+            ClauseSubject(normalized) is { } whole && SemanticsPremise(normalized, whole))
+        {
+            // Universal case evidence must judge the whole set: neither disjunct alone need cover every case.
+            structural = this.JudgeConstraintAtom(this.InternConstraint(new(ConstraintKind.Semantics, whole, mask: SemanticsSet(normalized))), scope);
+        }
+
         positive |= structural == ConstraintProof.Proven;
         negative |= structural == ConstraintProof.Refuted;
         if (structural != ConstraintProof.Error && (positive || negative) && UnresolvedConstraintOperand(proposition))
@@ -675,7 +705,7 @@ public sealed partial class Binding
         }
 
         var subject = this.NormalizeProofType(constraint.Subject, scope);
-        var required = constraint.RequiredType is { } type ? this.NormalizeProofType(type, scope) : null;
+        var required = constraint.RequiredType is { } type ? constraint.Kind == ConstraintKind.Callable ? this.CallableContractType(type, scope) : this.NormalizeProofType(type, scope) : null;
         return ReferenceEquals(subject, constraint.Subject) && ReferenceEquals(required, constraint.RequiredType) ? constraint : this.InternConstraint(new(constraint.Kind, subject, required, constraint.Contract, constraint.Mask));
     }
 
@@ -709,7 +739,7 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(components[i], type.Components[i]);
             }
 
-            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, count), type.Length, type.Origin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, type.ClosureContext) : type;
+            return changed ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, count), type.Length, type.Origin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, type.ClosureContext, type.LengthArguments, type.ResultMode) : type;
         }
         finally
         {
@@ -747,7 +777,7 @@ public sealed partial class Binding
 
     // With `skipUnresolved`, a clause whose judgment needs an unbound slot, and that is not otherwise refuted, is not judged (SPEC 10.8):
     // it contributes Proven, so only the clauses that can be judged decide.
-    private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self = null, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengths = default, bool incomplete = false, bool skipUnresolved = false)
+    private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self = null, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengths = default, bool incomplete = false, bool skipUnresolved = false, Koto? slotOwner = null, Koto? failureUse = null)
     {
         var result = ConstraintProof.Proven;
         for (var i = 0; i < clauses.Count; i++)
@@ -771,17 +801,23 @@ public sealed partial class Binding
                 continue;
             }
 
-            var substituted = this.SubstituteConstraint(bound, binder, arguments, lengths, incomplete);
+            var substituted = this.SubstituteConstraint(bound, slotOwner ?? binder, arguments, lengths, incomplete);
             if (declaringType?.Symbol?.Declaration is { } owner)
             {
                 substituted = this.SubstituteConstraint(substituted, owner, (BoundType[])declaringType.Components);
             }
 
             // Associated identities also need normalization for calls without a receiver.
-            var proof = this.ProveConstraint(this.ContractConstraint(substituted, scope, self), scope);
+            substituted = this.ContractConstraint(substituted, scope, self);
+            var proof = this.ProveConstraint(substituted, scope);
             if (skipUnresolved && proof == ConstraintProof.Unknown && substituted.HasUnresolved && !bound.HasUnresolved)
             {
                 proof = ConstraintProof.Proven;
+            }
+
+            if (failureUse is not null)
+            {
+                this.RecordReferenceConstraint(failureUse, constraint, substituted, proof);
             }
 
             result = CombineProof(result, bound.HasUnresolved && proof == ConstraintProof.Proven ? ConstraintProof.Unknown : proof, true);
@@ -792,7 +828,7 @@ public sealed partial class Binding
 
     // SPEC 10.5, 8.7: whether a clause that no unbound slot leaves unresolved is Unknown. Such a proof waits on no argument, so it proves
     // neither applicability nor negation even while a waiting argument is still open.
-    private bool ResolvedClauseUnknown(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self, BoundType? declaringType, ReadOnlySpan<BoundLength?> lengths)
+    private bool ResolvedClauseUnknown(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self, BoundType? declaringType, ReadOnlySpan<BoundLength?> lengths, Koto? slotOwner = null)
     {
         for (var i = 0; i < clauses.Count; i++)
         {
@@ -801,7 +837,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var substituted = this.SubstituteConstraint(bound, binder, arguments, lengths, true);
+            var substituted = this.SubstituteConstraint(bound, slotOwner ?? binder, arguments, lengths, true);
             if (declaringType?.Symbol?.Declaration is { } owner)
             {
                 substituted = this.SubstituteConstraint(substituted, owner, (BoundType[])declaringType.Components);

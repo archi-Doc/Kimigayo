@@ -34,9 +34,9 @@ public class BorrowedDefaultTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.DoesNotContain(c.Ownership.Issues, issue => issue.Failure == OwnershipFailure.Unsupported);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Analysis.IsVerified);
+        Assert.DoesNotContain(c.Problems, issue => issue.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.False(c.Validate(out _));
     }
 
     [Fact]
@@ -54,7 +54,7 @@ public class BorrowedDefaultTest
         const string Source = "func f(x: ref/i32 during a, y: ref/i32 during a = x) -> ref/i32 during a => y\nvar n = 7\nlet r = f(n@ref)\nn = 9\n_ = r@follow";
         var path = Path.GetFullPath("borrowed-default.kimi");
         var c = MinimalEmissionTest.Analyze(Source, path);
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var error = Assert.Single(result.Diagnostics);
@@ -86,10 +86,10 @@ public class BorrowedDefaultTest
         public void WarmReferenceDefaultsAllocateNothing()
         {
             var c = MinimalEmissionTest.Analyze(Nested);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
             var valid = true;
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
             Assert.True(valid);
         }
     }

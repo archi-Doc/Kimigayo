@@ -40,7 +40,7 @@ public sealed class ChildMoveActivationTest
     public void AParentIsUsableAfterItsPlacedChildsLastUse(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     // The write through the parent meets the value that still holds the moved child's Loan, at the write, not at the call.

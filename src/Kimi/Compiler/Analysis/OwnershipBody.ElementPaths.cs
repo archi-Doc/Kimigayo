@@ -107,7 +107,7 @@ public sealed partial class OwnershipBody
 
             var plan = this.Projections[operation.Projection];
             if ((operation.Kind == OwnershipOperationKind.ProjectElement ? plan.Operation :
-                operation.Kind == OwnershipOperationKind.WriteElement ? plan.Write : borrow ? plan.Borrow : plan.Output) != id)
+                operation.Kind == OwnershipOperationKind.WriteElement ? plan.Write : borrow ? operation.LoanMode == LoanRequirement.Uniq ? plan.ReplacementBorrow : plan.Borrow : plan.Output) != id)
             {
                 return false;
             }

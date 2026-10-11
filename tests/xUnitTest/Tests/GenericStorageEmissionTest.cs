@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -9,6 +10,12 @@ public class GenericStorageEmissionTest
 {
     internal const string Box = "struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    public func take(self: Self) -> T => self.value@move\n";
     private const string Choose = "func choose<T>(a: T, b: T, first: bool) -> T => if first => a@move else => b@move\n";
+    private const string Holder = "struct Holder<s/T>\n    public let value: s/T\n    public init(value: s/T) => self.value = value@move\n";
+    private const string Item = "struct Item\n    public let id: i32 = 7\n";
+
+    private const string Anchored = "struct Pair<s/T, U> {a}\n    s is value or valueborrow\n    public let anchor: ref/i32 during a\n    public let value: s/T\n    public let other: s/U during a\n" +
+        "    public init(anchor: ref/i32 during a, value: s/T, other: s/U during a)\n        self.anchor = anchor\n        self.value = value@move\n        self.other = other@move\n";
+
     private const string Token = "struct Token\n    let id: i32\n    public init(id: i32) => self.id = id\n    drop\n        if self.id == 1 => Console.writeLine(\"one\")\n        if self.id == 2 => Console.writeLine(\"two\")\n        if self.id == 3 => Console.writeLine(\"three\")\n        if self.id == 4 => Console.writeLine(\"four\")\n";
 
     public static TheoryData<string, string, string> Fixtures => new()
@@ -28,10 +35,49 @@ public class GenericStorageEmissionTest
         { "MultiField", Token + "struct Pair<T>\n    let first: T\n    let second: T\n    let third: T\n    public init(a: T, b: T, c: T)\n        self.first = a@move\n        self.second = b@move\n        self.third = c@move\n    public func take(self: Self) -> T => self.first@move\ndo\n    let pair = Pair<Token>.init(Token.init(1), Token.init(2), Token.init(3))\n    let first = pair@move.take()\n    Console.writeLine(\"returned\")", "three\ntwo\nreturned\none\n" },
     };
 
+    // SPEC 8.1.1, 8.1.2, 8.10: a struct Field of pair Type stores the instance's Type in every admitted Semantics, the original
+    // `s/T`, an application `s/U` and its conditional slot `s/U during a` alike; each header slot is anchored by a stored Origin.
+    public static TheoryData<string, string, string> PairFixtures => new()
+    {
+        { "Ref", Holder + "let n: i32 = 3\nlet h = Holder<ref/i32>.init(n@ref)\nConsole.writeLine(\"\\(h.value)\")", "3\n" },
+        { "Uniq", Holder + "var n: i32 = 3\nlet h = Holder<uniq/i32>.init(n@uniq)\nConsole.writeLine(\"\\(h.value)\")", "3\n" },
+        { "Owner", Holder + "let h = Holder<i32>.init(4)\nConsole.writeLine(\"\\(h.value)\")", "4\n" },
+        { "Inferred", Holder + "let n: i32 = 3\nlet h = Holder.init(n@ref)\nConsole.writeLine(\"\\(h.value)\")", "3\n" },
+        { "Obj", Item + Holder + "let owner = Kimi.Intrinsics.makeObj(Item.init())\nlet h = Holder<obj/Item>.init(owner@move)\nConsole.writeLine(\"\\(h.value.id)\")", "7\n" },
+        { "ObjRef", Item + Holder + "let owner = Kimi.Intrinsics.makeObj(Item.init())\nlet h = Holder<objref/Item>.init(owner@objref)\nConsole.writeLine(\"\\(h.value.id)\")", "7\n" },
+        { "Raw", Holder + "var n: i32 = 3\nlet h = Holder<raw/i32>.init(n@raw)\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "Destructor", Holder + "    drop\n        Console.writeLine(\"drop\")\ndo\n    let n: i32 = 3\n    let h = Holder<ref/i32>.init(n@ref)\n    Console.writeLine(\"\\(h.value)\")", "3\ndrop\n" },
+        { "UniqWrite", Holder.Replace("    public let value", "    public var value") + "var n: i32 = 3\nvar h = Holder<uniq/i32>.init(n@uniq)\nh.value@follow = 9\nConsole.writeLine(\"\\(h.value)\")\nConsole.writeLine(\"\\(n)\")", "9\n9\n" },
+        { "NestedCapture", Holder.Replace("    public let value", "    s is value or valueborrow\n    public let value") + "let n: i32 = 3\nlet inner = Holder<ref/i32>.init(n@ref)\nlet outer = Holder.init(inner@ref)\nConsole.writeLine(\"\\(outer.value@follow.value)\")\nlet f = func [outer@move] () -> i32 => outer.value@follow.value@follow\nConsole.writeLine(\"\\(f())\")", "3\n3\n" },
+        { "ArrayLiteral", Holder + "let n: i32 = 3\nlet m: i32 = 4\nlet a = Holder<ref/i32>.init(n@ref)\nlet b = Holder<ref/i32>.init(m@ref)\nvar xs = [a@move, b@move]\nConsole.writeLine(\"\\(xs[1].value)\")\nlet c = Holder<ref/i32>.init(n@ref)\nxs.append(c@move)\nConsole.writeLine(\"\\(xs.length)\")", "4\n3\n" },
+        { "Application", Anchored + "let k: i32 = 9\nlet y: i64 = 7\nlet h = Pair<ref/i32, i64>.init(k@ref, k@ref, y@ref)\nlet g = Pair<i32, i64>.init(k@ref, 5, 6)\nvar w: i32 = 1\nvar z: i64 = 8\nlet u = Pair<uniq/i32, i64>.init(k@ref, w@uniq, z@uniq)\nConsole.writeLine(\"\\(h.other) \\(g.other) \\(u.value)\")", "7 6 1\n" },
+        { "OptionField", "struct Holder<s/T>\n    s is value or valueborrow\n    public let value: Option<s/T>\n    public init(value: Option<s/T>) => self.value = value@move\nlet n: i32 = 3\nlet h = Holder<ref/i32>.init(.Some(n@ref))\nlet g = Holder<i32>.init(.None)\nmatch h.value\n    .Some(let v) => Console.writeLine(\"\\(v@follow)\")\n    .None => Console.writeLine(\"none\")\nmatch g.value\n    .Some(let v) => Console.writeLine(\"\\(v)\")\n    .None => Console.writeLine(\"none\")", "3\nnone\n" },
+        { "PairOptionField", "struct Pair<s/T, U> {a}\n    s is value or valueborrow\n    public let anchor: ref/i32 during a\n    public let value: s/T\n    public let other: s/Option<U> during a\n    public init(anchor: ref/i32 during a, value: s/T, other: s/Option<U> during a)\n        self.anchor = anchor\n        self.value = value@move\n        self.other = other@move\nlet k: i32 = 9\nlet y: Option<i64> = .Some(7)\nlet h = Pair<ref/i32, i64>.init(k@ref, k@ref, y@ref)\nlet g = Pair<i32, i64>.init(k@ref, 5, .Some(6))\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "ArrayField", "struct Pair<s/T, U> {a}\n    s is value or valueborrow\n    public let anchor: ref/i32 during a\n    public let value: s/T\n    public let other: Array<s/U during a>\n    public init(anchor: ref/i32 during a, value: s/T, other: Array<s/U during a>)\n        self.anchor = anchor\n        self.value = value@move\n        self.other = other@move\nlet k: i32 = 9\nlet g = Pair<i32, i64>.init(k@ref, 5, [6, 7])\nConsole.writeLine(\"\\(g.other.length)\")", "2\n" },
+        { "NestedField", "struct Pair<s/T, t/U> {a, b}\n    s is value or valueborrow\n    t is value or valueborrow\n    origin b outlives a\n    public let anchor: ref/i32 during a\n    public let anchor2: ref/i32 during b\n    public let value: s/T\n    public let other: t/U\n    public let both: s/(t/i64 during b) during a\n    public init(anchor: ref/i32 during a, anchor2: ref/i32 during b, value: s/T, other: t/U, both: s/(t/i64 during b) during a)\n        self.anchor = anchor\n        self.anchor2 = anchor2\n        self.value = value@move\n        self.other = other@move\n        self.both = both@move\nlet k: i32 = 9\nlet y: i64 = 7\nlet r = y@ref\nlet h = Pair<ref/i32, ref/i32>.init(k@ref, k@ref, k@ref, k@ref, r@ref)\nlet g = Pair<i32, i32>.init(k@ref, k@ref, 5, 6, 8)\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "EnumPayload", "enum Choice<s/T, U> {a}\n    s is owner or ref\n    First(s/T)\n    Second(s/U during a)\nlet y: i64 = 7\nlet c: Choice<ref/i32, i64> = .Second(y@ref)\nlet d: Choice<i32, i64> = .Second(8)\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "ObjectFamily", "struct Node\n    public let n: i32\n    public init(n: i32) => self.n = n\nstruct Pair<s/T, U>\n    s is object\n    U is ObjectPayload\n    public let value: s/T\n    public let other: s/U\n    public init(value: s/T, other: s/U)\n        self.value = value@move\n        self.other = other@move\nlet a = Node.init(1)@obj\nlet b = Node.init(2)@obj\nlet h = Pair<obj/Node, Node>.init(a@move, b@move)\nConsole.writeLine(\"ok\")", "ok\n" },
+    };
+
     [Theory]
     [MemberData(nameof(Fixtures))]
     public void Executes(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("GenericStorage" + name, source, stdout);
+
+    [Theory]
+    [MemberData(nameof(PairFixtures))]
+    public void PairFieldsExecute(string name, string source, string stdout)
+        => ScalarEmissionTest.EmitFixture("GenericStoragePair" + name, source, stdout);
+
+    // The same instances keep the ordinary checks: a Loan the stored reference holds, an escape beyond its Borrow, a bare transfer
+    // and a pair application without an Object Target (SPEC 8.1.2: the slot is present, so its formation needs the target).
+    [Theory]
+    [InlineData(Holder + "var n: i32 = 3\nlet h = Holder<ref/i32>.init(n@ref)\nn = 4\nConsole.writeLine(\"\\(h.value)\")", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
+    [InlineData(Holder + "func leak() -> Holder<ref/i32 during static>\n    let n: i32 = 3\n    let h = Holder<ref/i32>.init(n@ref)\n    return h@move\nlet h = leak()\nConsole.writeLine(\"\\(h.value)\")", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd))]
+    [InlineData("struct Holder<s/T>\n    public let value: s/T\n    public init(value: s/T) => self.value = value\nlet n: i32 = 3\nlet h = Holder<ref/i32>.init(n@ref)\nConsole.writeLine(\"\\(h.value)\")", nameof(DiagnosticCode.TransferRequired_Kd))]
+    [InlineData("struct Holder<s/T, U> {a}\n    let value: s/T\n    let other: s/U during a\nConsole.writeLine(\"unused\")", nameof(DiagnosticCode.UnprovenConstraint_Kd))]
+    public void PairFieldsKeepTheirChecks(string source, string code)
+        => Assert.Equal([code], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
 
     [Theory]
     [InlineData(Box + "let value = Box<string>.init(\"value\")\nConsole.writeLine(value@move.take())")]
@@ -51,7 +97,7 @@ public class GenericStorageEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(valid, c.Ownership.Result.IsVerified);
+        Assert.Equal(valid, c.Analysis.IsVerified);
         if (valid)
         {
             Assert.Contains(c.Ownership.Bodies.SelectMany(x => x.Operations), x => x.Acquisition == AcquisitionKind.CopyOrMove);
@@ -70,9 +116,9 @@ public class GenericStorageEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
 
     [Fact]
@@ -82,7 +128,7 @@ public class GenericStorageEmissionTest
         // joins its owned result through a result slot.
         var c = MinimalEmissionTest.Analyze(Choose + "Console.writeLine(choose(\"a\", \"b\", true))\nlet n = choose<i32>(1, 2, false)\nlet m = choose<i32>(3, 4, true)");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Empty(module.PendingEntries); // Each instance carries its own plan; no entry is left to a shared body.
+        Assert.True(module.IsComplete);
         var instances = Instances(module);
         Assert.Equal(2, instances.Length);
         var instance = Assert.Single(instances, x => x.Abi.Result == "i32");
@@ -101,7 +147,7 @@ public class GenericStorageEmissionTest
         // The constructor's receiver is the call's instantiated Box<type>; take reads its substituted field.
         var c = MinimalEmissionTest.Analyze(Box + $"let b = Box<{type}>.init({value})\nlet v = b@move.take()");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Empty(module.PendingEntries);
+        Assert.True(module.IsComplete);
         var instances = Instances(module);
         Assert.Equal(2, instances.Length);
         Assert.Single(instances, x => x.Abi.ResultSlot && x.Subslots.Count == 1);
@@ -116,7 +162,7 @@ public class GenericStorageEmissionTest
         const string Nested = "func inner<T>(value: T, n: i32) -> i32 => n + 1\nfunc outer<T>(value: T, n: i32) -> i32 => inner<T>(value@move, n)\n";
         var c = MinimalEmissionTest.Analyze(Nested + $"let v = outer<{type}>({value}, 1)");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Empty(module.PendingEntries);
+        Assert.True(module.IsComplete);
         var instances = Instances(module);
         Assert.Equal(2, instances.Length);
         Assert.All(instances, x => Assert.Equal(physical, x.Abi.Parameters[0].Type));
@@ -134,7 +180,7 @@ public class GenericStorageEmissionTest
         // A committed CopyOrMove payload acquisition resolves to the instance's exact Copy or Move (SPEC 21.3.1).
         var c = MinimalEmissionTest.Analyze(Token + $"func wrap<T>(x: T) -> Option<T> => .Some(x@move)\nlet v = wrap<{type}>({value})");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Empty(module.PendingEntries);
+        Assert.True(module.IsComplete);
         var instance = Assert.Single(Instances(module));
         Assert.True(instance.Abi.ResultSlot);
         var generic = c.Ownership.Bodies.Single(x => x.Function.Name == "wrap");
@@ -148,7 +194,7 @@ public class GenericStorageEmissionTest
         // a bounds-checked element address with the substitution's element stride.
         var c = MinimalEmissionTest.Analyze("func weight<T>(value: ref/T) -> i32 => 1\nfunc get<length N, T>(values: ref/[N of T], index: isize) -> i32 => weight<T>(values[index]@ref/T)\nlet values: [2 of i32] = [7, 8]\nlet result = get<2, i32>(values@ref, 0)");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Empty(module.PendingEntries);
+        Assert.True(module.IsComplete);
         var instances = Instances(module);
         Assert.Equal(2, instances.Length);
         var get = Assert.Single(instances, x => x.Instructions.Any(i => i.Opcode == EmissionOpcode.Call));
@@ -165,7 +211,7 @@ public class GenericStorageEmissionTest
         // element address (string stride) and forwards it; no instance keeps a shared entry.
         var c = MinimalEmissionTest.Analyze(GenericForwardingEmissionTest.Weight + "let values: [2 of string] = [\"left\", \"right\"]\nlet n = W.total<2, string>(values@ref)");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Empty(module.PendingEntries);
+        Assert.True(module.IsComplete);
         var total = Assert.Single(Instances(module), x => x.Instructions.Any(i => i.ScalarOperator == "ArrayAddress"));
         var address = Assert.Single(total.Instructions, i => i.ScalarOperator == "ArrayAddress");
         Assert.Equal(WindowsLowering.GetValue(BoundType.String)!.Layout.Stride, address.Representation!.Layout.Stride);
@@ -182,7 +228,7 @@ public class GenericStorageEmissionTest
         const string Counter = "struct Counter\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func add(self: uniq/Self, amount: i32) => self.value += amount\n    public func read(self: ref/Self) -> i32 => self.value\n";
         var c = MinimalEmissionTest.Analyze(Counter + source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Empty(module.PendingEntries);
+        Assert.True(module.IsComplete);
         var instance = Assert.Single(Instances(module));
         Assert.Contains(instance.Instructions, x => x.Opcode == EmissionOpcode.Call);
     }
@@ -195,7 +241,7 @@ public class GenericStorageEmissionTest
         var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone13.kimi")).Replace("\r\n", "\n", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Empty(module.PendingEntries);
+        Assert.True(module.IsComplete);
         Assert.Contains(Instances(module), x => x.Instructions.Any(i => i.Opcode == EmissionOpcode.TransferAggregate && i.Aggregate?.Value.Layout.Size == 16) &&
             x.Instructions.Any(i => i.Opcode == EmissionOpcode.Sequence && i.ScalarOperator == "SliceAddress"));
     }
@@ -206,7 +252,7 @@ public class GenericStorageEmissionTest
         // SPEC 21.3.1: enum Pattern tests inside a generic body inspect the substituted subject Type per instance.
         var c = MinimalEmissionTest.Analyze("func present<T>(items: Slice<T>{source}) -> isize\n    var cursor = items.iterate()\n    var count: isize = 0\n    loop\n        match cursor@uniq.next()\n            .Some(let item) => count = count + 1\n            .None => exit\n    return count\nlet values: [2 of i32] = [4, 5]\nlet n = present(values[..])");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Empty(module.PendingEntries);
+        Assert.True(module.IsComplete);
         Assert.NotEmpty(Instances(module));
     }
 
@@ -219,7 +265,7 @@ public class GenericStorageEmissionTest
         // substituted receiver Type, so the constrained call lowers per instance.
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Empty(module.PendingEntries);
+        Assert.True(module.IsComplete);
         Assert.Contains(Instances(module), x => x.Instructions.Any(i => i.Opcode == EmissionOpcode.Call));
     }
 
@@ -229,7 +275,7 @@ public class GenericStorageEmissionTest
         // SPEC 21.3.1: the try binding of a T payload copies for i32 and moves for string in each instance.
         var c = MinimalEmissionTest.Analyze("func unwrap<T>(x: T?) -> T? => .Some(try x@move)\nlet a = unwrap<i32>(.Some(8))\nlet b = unwrap<string>(.Some(\"owned\"))");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Empty(module.PendingEntries);
+        Assert.True(module.IsComplete);
         Assert.Equal(2, Instances(module).Length);
         var generic = c.Ownership.Bodies.Single(x => x.Function.Name == "unwrap");
         Assert.Contains(generic.Operations, x => x.Kind == OwnershipOperationKind.AcquirePattern && x.Acquisition == AcquisitionKind.CopyOrMove);
@@ -241,9 +287,9 @@ public class GenericStorageEmissionTest
         // SPEC 21.3.5: T -> Box<T> re-enters grow with ever new keys; generation stops with a resource
         // failure, distinguished from semantic and representation errors.
         var c = MinimalEmissionTest.Analyze(Box + "func grow<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => grow<Box<T>>(Box<T>.init(value@move), n - 1)\nlet r = grow<i32>(1, 3)");
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out var error));
+        Assert.False(c.WriteIr(output, out var error));
         Assert.Empty(output.ToString());
         Assert.True(c.Emission.FailureIsResourceLimit, error);
         Assert.Contains("grow", error, StringComparison.Ordinal);
@@ -259,12 +305,12 @@ public class GenericStorageEmissionTest
         {
             var c = MinimalEmissionTest.Analyze(Choose + "let a = choose<i8>(1, 2, true)\nlet b = choose<i16>(1, 2, true)\nlet d = choose<i32>(1, 2, true)");
             using var output = new StringWriter();
-            Assert.False(c.Emission.WriteIr(output, out var error));
+            Assert.False(c.WriteIr(output, out var error));
             Assert.Empty(output.ToString());
             Assert.True(c.Emission.FailureIsResourceLimit, error);
             Assert.Contains("choose", error, StringComparison.Ordinal);
             GenericStoragePlan.SubstitutionSetLimit = 3;
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+            Assert.True(c.WriteIr(TextWriter.Null, out error), error);
         }
         finally
         {
@@ -278,7 +324,7 @@ public class GenericStorageEmissionTest
         var c = MinimalEmissionTest.Analyze("func count<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => count<T>(value@move, n - 1) + 1\nrequire count<i32>(7, 3) == 3 else => $abort(\"recursion\")");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         Assert.False(c.Emission.FailureIsResourceLimit);
-        Assert.Empty(module.PendingEntries);
+        Assert.True(module.IsComplete);
         Assert.Single(Instances(module));
     }
 
@@ -289,7 +335,7 @@ public class GenericStorageEmissionTest
         // string reference; the concrete caller's string borrow also targets the instance entry.
         var c = MinimalEmissionTest.Analyze("func weight<T>(value: ref/T) -> i32 => 1\nfunc forward<T>(value: ref/T) -> i32 => weight<T>(value)\nlet s = \"text\"\nlet n = forward<string>(s)");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Empty(module.PendingEntries);
+        Assert.True(module.IsComplete);
         var instances = Instances(module);
         Assert.Equal(2, instances.Length);
         Assert.All(instances, x => Assert.Equal(["ptr"], x.Abi.Parameters.Select(p => p.Type).ToArray()));
@@ -302,7 +348,7 @@ public class GenericStorageEmissionTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         // The selected body is called directly (SPEC 21.3.4); no transitional entry or shared body remains.
-        Assert.Empty(module.PendingEntries);
+        Assert.True(module.IsComplete);
         var instance = Assert.Single(Instances(module));
         Assert.Equal(["i64"], instance.Abi.Parameters.Select(x => x.Type).ToArray());
         var ir = ScalarEmissionTest.EmitFixture("GenericStorageSelectedSpecialization", Source, string.Empty);
@@ -316,9 +362,9 @@ public class GenericStorageEmissionTest
         var bodies = c.Ownership.Bodies.Count;
         var generic = c.Ownership.Bodies.Single(x => x.Function.Name == "choose");
         var places = generic.Places.ToArray();
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         Assert.Equal(bodies, c.Ownership.Bodies.Count);
-        Assert.Empty(c.Ownership.Issues);
+        Assert.Empty(c.Problems);
         Assert.Equal(places, generic.Places.ToArray());
         Assert.Contains(generic.Places, x => x.Acquisition == AcquisitionKind.CopyOrMove);
     }
@@ -333,7 +379,7 @@ public class GenericStorageEmissionTest
         // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
         // the corrupt projection, cleanup, parameter or acquisition plan is rejected on the ordinary body.
         var c = MinimalEmissionTest.Analyze("struct Box\n    let value: string\n    public init(value: string) => self.value = value@move\n    public func take(self: Self) -> string => self.value@move\nlet b = Box.init(\"text\")\nConsole.writeLine(b@move.take())");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "take");
         if (defect == "projection")
         {
@@ -355,10 +401,10 @@ public class GenericStorageEmissionTest
         }
 
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Fact]
@@ -367,14 +413,14 @@ public class GenericStorageEmissionTest
         var c = MinimalEmissionTest.Analyze(Box + "let b = Box<i32>.init(42)\nrequire b@move.take() == 42 else => $abort(\"value\")");
         for (var i = 0; i < 3; i++)
         {
-            Assert.True(c.Emission.Validate(out var error), error);
+            Assert.True(c.Validate(out var error), error);
             c.Bind();
-            Assert.False(c.Emission.Validate(out _));
+            Assert.False(c.Validate(out _));
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
+            Assert.True(c.Analyze().IsVerified);
         }
 
-        Assert.True(c.Emission.Validate(out var finalError), finalError);
+        Assert.True(c.Validate(out var finalError), finalError);
     }
 
     // Monomorphized generic instances keep the caller-facing entry names.

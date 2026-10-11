@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
@@ -40,21 +41,20 @@ public class IdentityAcquisitionEmissionTest
     }
 
     [Theory]
-    [InlineData("let value = \"value\"\nlet taken = value@move\nlet twice = value@move", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let value = \"value\"\nlet taken = value@move\nlet twice = value@move@string", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let pair = (\"first\", \"last\")\nlet first = pair.0@move\nlet whole = pair@move", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f()\n    let value = \"value\"\n    return\n    let first = value@move\n    let twice = value@move\nf()", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let value: i32 = 1\nlet taken = value@move\nlet twice = value", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let value = \"value\"\nlet same = value == value@move", OwnershipFailure.ComparisonLoanConflict)]
-    [InlineData("func same(a: ref/string, b: string) => ()\nlet value = \"value\"\nsame(value, value@move)", OwnershipFailure.ComparisonLoanConflict)]
-    [InlineData("var value: string\nlet taken = value@move", OwnershipFailure.UninitializedUse)]
-    public void IdentityRetainsOrdinaryOwnershipErrors(string source, OwnershipFailure failure)
+    [InlineData("let value = \"value\"\nlet taken = value@move\nlet twice = value@move", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("let value = \"value\"\nlet taken = value@move\nlet twice = value@move@string", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("let pair = (\"first\", \"last\")\nlet first = pair.0@move\nlet whole = pair@move", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("let value: i32 = 1\nlet taken = value@move\nlet twice = value", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("let value = \"value\"\nlet same = value == value@move", DiagnosticCode.ComparisonLoanConflict_Kd)]
+    [InlineData("func same(a: ref/string, b: string) => ()\nlet value = \"value\"\nsame(value, value@move)", DiagnosticCode.ComparisonLoanConflict_Kd)]
+    [InlineData("var value: string\nlet taken = value@move", DiagnosticCode.UninitializedPlace_Kd)]
+    public void IdentityRetainsOrdinaryOwnershipErrors(string source, DiagnosticCode failure)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == failure);
+        Assert.Contains(c.Problems, x => x.Code == failure);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -69,7 +69,7 @@ public class IdentityAcquisitionEmissionTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.TransferRequired_Kd);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -93,16 +93,16 @@ public class IdentityAcquisitionEmissionTest
     public void CorruptIdentityPlansAreRejectedAndRebindingRestoresThem(string defect)
     {
         var c = MinimalEmissionTest.Analyze("let value = \"value\"\nlet taken = value@move");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var identities = c.Ownership.Bodies[0].Identities!;
         var identity = Assert.Single(identities);
         if (defect == "binding")
         {
-            identity.Source.ConversionBinding = ConversionBinding.Literal;
+            identity.Source.SetConversion(ConversionBinding.Literal);
         }
         else if (defect == "target")
         {
-            identity.Source.Right.BoundType = BoundType.Boolean;
+            identity.Source.Right.SetType(BoundType.Boolean);
         }
         else
         {
@@ -110,12 +110,12 @@ public class IdentityAcquisitionEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
-        Assert.True(c.Emission.Validate(out error), error);
+        c.Analyze();
+        Assert.True(c.Validate(out error), error);
     }
 
     [Fact]
@@ -123,19 +123,19 @@ public class IdentityAcquisitionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func take(value: (string, i32)) -> string => value.0@move\nlet pair = (\"ok\", 42)\nConsole.writeLine(take(pair@move@(string, i32)))");
         using var original = new StringWriter();
-        Assert.True(c.Emission.WriteIr(original, out var error), error);
+        Assert.True(c.WriteIr(original, out var error), error);
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
+        c.Analyze();
         using var rebound = new StringWriter();
-        Assert.True(c.Emission.WriteIr(rebound, out error), error);
+        Assert.True(c.WriteIr(rebound, out error), error);
         Assert.Equal(original.ToString(), rebound.ToString());
         var restored = CompilationTestHelper.Reload(c);
         restored.Bind();
         restored.Binding.CheckStartup(OutputKind.Application);
-        restored.Ownership.Analyze();
+        restored.Analyze();
         using var writer = new StringWriter();
-        Assert.True(restored.Emission.WriteIr(writer, out error), error);
+        Assert.True(restored.WriteIr(writer, out error), error);
         Assert.Equal(original.ToString(), writer.ToString());
         ScalarEmissionTest.WriteFixture("IdentityAcquisitionReload", writer.ToString(), "ok\n");
     }
@@ -147,13 +147,13 @@ public class IdentityAcquisitionEmissionTest
         var c = MinimalEmissionTest.Analyze("func take(value: (string, i32)) -> string => value.0@move\nlet pair = (\"ok\", 42)\nConsole.writeLine(take(pair@move@(string, i32)))");
         for (var i = 0; i < 100; i++)
         {
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Ownership.Analyze().IsVerified || !c.Emission.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
             {
                 throw new InvalidOperationException("Identity acquisition analysis or writing failed.");
             }

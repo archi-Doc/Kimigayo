@@ -37,7 +37,7 @@ public class ErasureOwnedDiagnosticTest
     }
 
     // A bound Type parameter that is not proven Owned leaves the proof Unknown; its member is the Item's bound Type argument, with no
-    // Origin, and the Advice declares the Constraint. A default and a let annotation agree.
+    // Origin. A default and a let annotation agree.
     [Theory]
     [InlineData("func identity<T>(value: T) -> T => value@move\n\nfunc runT<T>(value: T, action: (T) -> T = identity) -> T => action(value@move)\n\n" + Main + "    require runT(4) == 4 else => $abort(\"t\")\n")]
     [InlineData("func identity<T>(value: T) -> T => value@move\n\nfunc runT<T>(value: T) -> T\n    let f: (T) -> T = identity\n    return f(value@move)\n\n" + Main + "    require runT(4) == 4 else => $abort(\"t\")\n")]
@@ -46,7 +46,6 @@ public class ErasureOwnedDiagnosticTest
         var output = DiagnosticCorpus.Check(source);
         var error = Assert.Single(output.Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), DiagnosticCategory.Proof, "identity"), (error.Code, error.Category, Text(source, error.Span)));
-        Assert.Equal("Declare T is Owned on the enclosing declaration, or bind an Owned Type argument", error.Advice);
         var json = JsonSerializer.Serialize(new DiagnosticResult(output.Diagnostics, output.Sources), DiagnosticJsonContext.Default.DiagnosticResult);
         Assert.Contains("{\"name\":\"member\",\"kind\":\"Text\",\"value\":\"1st Type argument\",\"elided\":false}", json, StringComparison.Ordinal);
         Assert.DoesNotContain("\"name\":\"origin\"", json, StringComparison.Ordinal);

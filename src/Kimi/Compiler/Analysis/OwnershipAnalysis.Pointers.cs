@@ -8,7 +8,7 @@ public sealed partial class OwnershipAnalysis
 {
     private bool SupportsPointerValue(Koto source, bool abstractRead = false)
     {
-        var type = this.Concrete(source.BoundType);
+        var type = this.Resolve(source.BoundType, this.Active);
         // SPEC 5.2, 21.3.1: a generic read acquires CopyOrMove without inventing a Loan.
         // The closed ownership plan must still prove a supported pointee representation.
         if (abstractRead && this.instance is null && type?.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection)
@@ -19,9 +19,9 @@ public sealed partial class OwnershipAnalysis
         // Acquisition preserves the complete pointee Type, including its internal Origins. Raw access supplies no
         // new Loan or lifetime; initialized storage and valid Copy/Move permission remain the unsafe caller's obligations.
         return ScalarTypes.Supports(type) || ReferenceTypes.IsPointer(type) || ReferenceTypes.IsBorrow(type) ||
-            (type is not null && ObjectTypes.HandleMode(type) is not null && this.SupportsType(type)) ||
+            (type is not null && type.HandleMode is not null && this.SupportsType(type)) ||
             ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) ||
-            (type is not null && (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function or BoundTypeKind.FunctionItem || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type)));
+            (type is not null && (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function or BoundTypeKind.FunctionItem || AdtDef.IsStruct(type) || AdtDef.IsEnum(type)));
     }
 
     private int PointerAddress(Koto source)
@@ -49,7 +49,7 @@ public sealed partial class OwnershipAnalysis
         // so the rest of the pointee need not be initialized and no Loan is created.
         if (!ElementAccess.TryType(element, out var type, out var position) || !ReferenceEquals(type, element.BoundType))
         {
-            this.Unsupported(element);
+            this.Internal(element);
             return -1;
         }
 
@@ -63,7 +63,7 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        var projected = this.Place(element, this.compilation.Binding.PointerType(type!), OwnershipPlaceKind.Temporary, true);
+        var projected = this.Place(element, this.compilation.Types.Pointer(type!), OwnershipPlaceKind.Temporary, true);
         this.Emit(OwnershipOperationKind.Produce, element, projected);
         this.RegisterTemporary(projected);
         this.SetValue(this.Value(projected), OwnershipValueKind.PointerProject, selector >= 0 ? [pointer] : [pointer, index], constant: selector);
@@ -95,7 +95,7 @@ public sealed partial class OwnershipAnalysis
     private int LoadReferent(Koto source)
     {
         var layers = 0;
-        for (var type = this.Concrete(source.BoundType); type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }; type = this.Concrete(type.Components[0]))
+        for (var type = this.Resolve(source.BoundType, this.Active); type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }; type = this.Resolve(type.Components[0], this.Active))
         {
             layers++;
         }
@@ -129,12 +129,12 @@ public sealed partial class OwnershipAnalysis
     {
         if (layers <= 0)
         {
-            this.Unsupported(source);
+            this.Internal(source);
             return -1;
         }
 
         var loaded = -1;
-        for (var type = referenceType ?? this.Concrete(source.BoundType); layers > 0; layers--)
+        for (var type = referenceType ?? this.Resolve(source.BoundType, this.Active); layers > 0; layers--)
         {
             // An inner layer is read only for its address; the terminal referent is a Copy snapshot.
             if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ||
@@ -150,7 +150,7 @@ public sealed partial class OwnershipAnalysis
             this.Emit(OwnershipOperationKind.Produce, source, loaded);
             this.SetValue(this.Value(loaded), OwnershipValueKind.PointerLoad, [this.Value(pointer)]);
             this.RegisterTemporary(loaded);
-            type = this.Concrete(type.Components[0]);
+            type = this.Resolve(type.Components[0], this.Active);
         }
 
         return loaded;
@@ -167,7 +167,7 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        result = this.Concrete(result)!;
+        result = this.Resolve(result, this.Active)!;
         if (this.compilation.Binding.ImplicitPairAdmitted(source) != SemanticsMask.None &&
             (!this.Substituting || this.ReferenceLayers(source.BoundType, result.Components[0]) == 1))
         {
@@ -180,16 +180,16 @@ public sealed partial class OwnershipAnalysis
         }
 
         var loaded = reference;
-        for (var type = this.Concrete(source.BoundType); ; type = this.Concrete(type.Components[0]))
+        for (var type = this.Resolve(source.BoundType, this.Active); ; type = this.Resolve(type.Components[0], this.Active))
         {
             if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ||
-                this.Concrete(type.Components[0]) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef, Components.Count: 1 } stored)
+                this.Resolve(type.Components[0], this.Active) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef, Components.Count: 1 } stored)
             {
-                this.Unsupported(source);
+                this.Internal(source);
                 return -1;
             }
 
-            var last = ReferenceEquals(this.Concrete(stored.Components[0]), result.Components[0]);
+            var last = ReferenceEquals(this.Resolve(stored.Components[0], this.Active), result.Components[0]);
             var pointer = loaded;
             loaded = this.Place(source, last ? result : stored, OwnershipPlaceKind.Temporary, true, AcquisitionKind.Copy);
             this.Emit(OwnershipOperationKind.Produce, source, loaded);
@@ -205,13 +205,15 @@ public sealed partial class OwnershipAnalysis
     private bool SupportsCopySnapshot(BoundType type, Koto source)
         => this.compilation.Binding.ProveCopy(type, source) == ConstraintProof.Proven &&
         (ReferenceTypes.IsValue(type) || ReferenceEquals(type, BoundType.Unit) ||
-            type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.FunctionItem or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type));
+            type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.FunctionItem or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || AdtDef.IsStruct(type) || AdtDef.IsEnum(type));
 
     // SPEC 5.2.2: a borrow of a raw Place converts its address. The referent is a fresh anchor that no Loan of another Place
     // covers, so accesses through the result, and Reborrows from it, are checked under the result alone.
     private int BorrowRawPlace(Koto source, Koto place, BoundType type)
+        => this.BorrowRawAddress(source, this.PointerAddress(place), type);
+
+    private int BorrowRawAddress(Koto source, int pointer, BoundType type)
     {
-        var pointer = this.PointerAddress(place);
         if (pointer < 0)
         {
             return -1;
@@ -290,7 +292,7 @@ public sealed partial class OwnershipAnalysis
     // selected referent: a Copy snapshot of a proven-Copy stored Type, never a Move.
     private int ReadPlaceCall(InvocationKoto call, AcquisitionKind? acquisition)
     {
-        var stored = this.Concrete(call.BoundType);
+        var stored = this.Resolve(call.BoundType, this.Active);
         if (acquisition == AcquisitionKind.Move || stored is null || !this.SupportsCopySnapshot(stored, call))
         {
             if (acquisition is null && call.BoundType is { } element && this.compilation.Binding.ProveCopy(element, call) != ConstraintProof.Proven)
@@ -387,9 +389,9 @@ public sealed partial class OwnershipAnalysis
     private int WriteReferent(Koto source, ConversionKoto followed)
     {
         var reference = followed.Left;
-        var type = this.Concrete(followed.BoundType);
+        var type = this.Resolve(followed.BoundType, this.Active);
         var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
-        if (this.Concrete(reference.BoundType)?.Semantics != SemanticsKind.Uniq || type is null ||
+        if (this.Resolve(reference.BoundType, this.Active)?.Semantics != SemanticsKind.Uniq || type is null ||
             (operation != KotoKind.Equals && !this.SupportsUpdate(followed, followed.BoundType, operation)))
         {
             this.Unsupported(source);
@@ -455,7 +457,7 @@ public sealed partial class OwnershipAnalysis
     {
         if (target.BoundType?.IsInteger != true)
         {
-            this.Unsupported(source);
+            this.Internal(source);
             return -1;
         }
 

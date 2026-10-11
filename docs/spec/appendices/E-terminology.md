@@ -1,5 +1,9 @@
 # Appendix E. Terminology index
 
+- **Virtual slot / SlotId:** the original public function contract and its bound declaration identity ([definition](../virtual-dispatch.md#2-slot-identity-and-selection)).
+- **Override implementation:** the derived body implementing one inherited slot; it adds no public overload.
+- **Direct base call:** lexical `base.f(...)`, selecting the implementation held by the direct base ([definition](../virtual-dispatch.md#4-direct-base-calls)).
+
 [Specification index](../../SPEC.md)
 
 This index is a reading aid, sorted alphabetically. The linked sections contain the authoritative definitions and restrictions.
@@ -14,7 +18,7 @@ This index is a reading aid, sorted alphabetically. The linked sections contain 
 | Alias | A source-local resolved Container reference that opens direct members or introduces a named Qualifier. | [Source aliases](../18-modules-and-dependencies.md#181-external-references-and-aliases) |
 | API signature | Exposed Types and requirements checked for accessibility, beyond overload identity. | [API signature accessibility](../09-names-signatures-and-access.md#932-api-signature-accessibility) |
 | ArtifactId / TestId / CaseId / SiteId / IssueId | Test artifact, declaration, case, verification site and failure-occurrence identities. | [Test diagnostic identity](../22-core-execution-and-foreign-functions.md#2263-diagnostic-identity) |
-| Associated Type | A complete Type that each conformance fixes through explicit specifications and Type-identity Constraints. It may declare Origin parameters, applied positionally as `LentItem(a)`. | [Associated Types](../08-generics-constraints-and-contracts.md#843-associated-types) |
+| Associated Type | A complete Type that each conformance fixes through explicit specifications, Type-identity Constraints, inherited bindings or bounded declaration inference. It may declare Origin parameters, applied positionally as `LentItem(a)`. | [Associated Types](../08-generics-constraints-and-contracts.md#843-associated-types) |
 | Bare acquisition | Acquisition of an expression written without an explicit `@` operation: a Place is Copied when its Type is proven Copy, a Place storing `uniq`/`objuniq` is Reborrowed in that Semantics, any other Place is rejected and never Moved, and a temporary is transferred as is. At a fixed expected Type, the common adaptation selects the one operation. | [Copy and Move](../03-types-and-values.md#35-copy-and-move) |
 | Binding | Associating source names and operations with declarations and meanings. | [Name resolution](../09-names-signatures-and-access.md#9-names-signatures-and-access) |
 | Binding Identity / Value Instance | A resolved binding / its currently held value. | [Stable bindings](../14-control-flow.md#14101-stable-bindings-and-effective-types) |
@@ -93,7 +97,7 @@ This index is a reading aid, sorted alphabetically. The linked sections contain 
 | Lending point | The storage that a borrow, Reborrow or projection targets, after following standard projections that call no user code. | [Value model](../03-types-and-values.md#34-values-places-and-storage) |
 | Lending rule | A transfer from a Place needs `@move`; a new exclusive borrow needs `@uniq`/`@objuniq`, except for a Receiver Expression; owned temporaries pass, borrow values are Reborrowed at expected Types and stored exclusive references by bare acquisition, without a spelling; `@ref`/`@uniq` always borrow the written slot. | [Movable Places](../15-ownership-and-lifetime-analysis.md#1515-movable-places) |
 | Integer Type / wrapping integer Type / numeric Type | One of the twelve integer Cores under `owner` Semantics / `Wrapping<T>` over an integer Type `T` / an integer, wrapping integer or floating-point Type. Rules for integer Types reach wrapping integer Types only where stated; rules for numeric Types reach all three. | [Primitive cores](../03-types-and-values.md#31-primitive-cores) |
-| Literal-only expression | An untyped integer literal, or a parenthesized, unary, arithmetic, bitwise, shift, from-end `^` or range expression built only from them; it is fitted to Types as a literal, a range boundary by boundary. | [Type inference](../12-expressions.md#1231-type-inference) |
+| Literal-only expression | A Type-inference classification: integer numeric, floating-point numeric, or position/range. Leaves and operators fit the expected Type; position/range forms fit boundary by boundary and are not numeric expressions. | [Type inference](../12-expressions.md#1231-type-inference) |
 | Loan | A borrowed Place, its access mode and its validity region. | [Borrow checking](../15-ownership-and-lifetime-analysis.md#156-borrow-checking) |
 | `Loan<T>` | The compiler-managed zero-sized struct whose Field expresses a borrow dependency without storage; analyzed as storing `T`, it grants no access. | [Variance, Loan requirements and Phantom Origins](../15-ownership-and-lifetime-analysis.md#1535-variance-loan-requirements-and-phantom-origins) |
 | Lookup environment | Declarations and aliases available for lookup in a scope; extensions are a future design. | [Name resolution](../09-names-signatures-and-access.md#9-names-signatures-and-access) |

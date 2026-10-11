@@ -70,7 +70,6 @@ public class FunctionReferenceRankingTest(ITestOutputHelper output)
         Assert.All(error.Related!, x => Assert.Contains("callable signature", x.Label, StringComparison.Ordinal));
         Assert.All(error.Related!, x => Assert.DoesNotContain("…", x.Label, StringComparison.Ordinal));
         Assert.Contains("Results do not rank candidates", error.Note, StringComparison.Ordinal);
-        Assert.Contains("Type annotation", error.Advice, StringComparison.Ordinal);
         Assert.Null(error.Repairs);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
@@ -96,8 +95,8 @@ public class FunctionReferenceRankingTest(ITestOutputHelper output)
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 }

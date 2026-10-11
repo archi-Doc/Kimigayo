@@ -21,7 +21,7 @@ public class Utf8TryWriteTest
     {
         var source = Setup + "_ = $tryWrite(writer@uniq, " + literal + ")\n" + Print;
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Ownership.Result.IsVerified, string.Join("\n", c.Ownership.Issues));
+        Assert.True(c.Analysis.IsVerified, string.Join("\n", c.Problems));
         NativeAllocationAudit.WriteFixture("Utf8TryWrite" + name, source, 0, 0, 0, expected);
     }
 
@@ -42,7 +42,7 @@ public class Utf8TryWriteTest
     {
         var c = MinimalEmissionTest.Analyze(Setup + "_ = $tryWrite(writer@uniq, \"\\(" + expression + ")\")");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
     }
 
     [Trait("Purpose", "Allocation")]
@@ -111,7 +111,7 @@ public class Utf8TryWriteTest
     public void DirectWriteWarningIsIndependentOfDiscardWarning()
     {
         var c = MinimalEmissionTest.Analyze(Setup + "(writer@uniq).write(\"\\(42)\")");
-        var warnings = c.AnalyzeControlFlow(c.Binding.TypeSystem).Warnings;
+        var warnings = c.AnalyzeControlFlow().Warnings;
         Assert.Contains(warnings, x => x.Code == DiagnosticCode.OwningWriteArgument_Kd);
         Assert.Equal(2, warnings.Count);
     }

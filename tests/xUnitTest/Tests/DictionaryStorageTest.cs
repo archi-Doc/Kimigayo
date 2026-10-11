@@ -50,6 +50,6 @@ public class DictionaryStorageTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
     }
 }

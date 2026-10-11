@@ -72,10 +72,10 @@ public class Utf8ConversionTest
     {
         var c = MinimalEmissionTest.Analyze("var bytes = [3 of 0@u8]\nlet result = Text.tryFormat(123, bytes@uniq)\n" + use);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(valid == c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         if (!valid)
         {
-            Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+            Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
         }
     }
 

@@ -108,7 +108,7 @@ public class ResultPremiseTest
         {
             var invalid = MinimalEmissionTest.Analyze(source.Replace("require r@follow@follow", write + "require r@follow@follow", StringComparison.Ordinal));
             Assert.True(invalid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(invalid, null));
-            Assert.Contains(invalid.Ownership.Issues, static issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
+            Assert.Contains(invalid.Problems, static issue => issue.Code.IsLoanConflict());
         }
     }
 
@@ -122,7 +122,7 @@ public class ResultPremiseTest
         ScalarEmissionTest.EmitFixture("ResultPremiseLeakPart", source, "3\n");
         var invalid = MinimalEmissionTest.Analyze(source.Replace("require second@follow", "other = 5\nrequire second@follow", StringComparison.Ordinal));
         Assert.True(invalid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(invalid, null));
-        Assert.Contains(invalid.Ownership.Issues, static issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(invalid.Problems, static issue => issue.Code.IsLoanConflict());
 
         // A fixed caller cannot pass that part off as bounded by the outer input alone: its return is the fit failure.
         var escape = Holder + Leak + "func escape(h: ref/Holder, x: ref/i32) -> ref/i32 during h\n    origin h.a outlives x\n    return leak(p: h, q: x).1\n" + Main;
@@ -144,7 +144,7 @@ public class ResultPremiseTest
         ScalarEmissionTest.EmitFixture("ResultPremiseMethod", source, "7\n");
         var invalid = MinimalEmissionTest.Analyze(source.Replace("        Console.writeLine(\"\\(z@follow@follow)\")", "        other = 4\n        Console.writeLine(\"\\(z@follow@follow)\")", StringComparison.Ordinal));
         Assert.True(invalid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(invalid, null));
-        Assert.Contains(invalid.Ownership.Issues, static issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(invalid.Problems, static issue => issue.Code.IsLoanConflict());
     }
 
     // SPEC 15.3.7, 15.6.1: a fixed caller whose arguments leave the outer Origin free is valid, since the call's Origins satisfy the
@@ -162,7 +162,6 @@ public class ResultPremiseTest
         Assert.Equal("pickInto(p: h, q: x, keep: keep)", Text(source, error.Span));
         Assert.Equal("requires x outlives s, which is not proven", error.Label);
         Assert.Equal(["outlives", "x", "s", "wellFormed"], error.Reason!.Select(static x => x.Value));
-        Assert.Equal("If x always outlives s, add 'origin x outlives s', which changes the public contract", error.Advice);
         Assert.Null(error.Related);
 
         // The console and the language server publish the same record at the call.
@@ -189,7 +188,7 @@ public class ResultPremiseTest
         ScalarEmissionTest.EmitFixture("ResultPremiseItemUses", ItemUses, "30 3\n");
         var conflict = MinimalEmissionTest.Analyze(ItemUses.Replace("require second@follow", "other = 5\nrequire second@follow", StringComparison.Ordinal));
         Assert.True(conflict.Binding.Result.IsComplete, MinimalEmissionTest.Describe(conflict, null));
-        Assert.Contains(conflict.Ownership.Issues, static issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(conflict.Problems, static issue => issue.Code.IsLoanConflict());
 
         var direct = LeakItem + LeakEscape + Main;
         var throughReference = direct.Replace("    let pair = fr(x, local@ref)", "    let g = fr@ref\n    let pair = g(x, local@ref)", StringComparison.Ordinal);
@@ -212,13 +211,13 @@ public class ResultPremiseTest
         Assert.Equal("requires the borrow local@ref outlives static, which is false", call.Label);
         Assert.Equal("wellFormed", call.Reason![3].Value);
 
-        // An unsatisfiable declared relation leaves the one candidate inapplicable, as at a direct call (G56 U3).
+        // Origin conditions belong to the selected Item, at the argument supplying the failed relation.
         var clause = Pin + "func escape() -> ref/i32 during static\n    let local: i32 = 5\n    let fr = pin\n    return fr(local@ref)\n" + Main;
-        var inapplicable = Assert.Single(DiagnosticCorpus.Check(clause).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.NoApplicableOverload_Kd), "fr(local@ref)", "none of 1 candidates applies"), (inapplicable.Code, Text(clause, inapplicable.Span), inapplicable.Label));
-        var candidate = Assert.Single(inapplicable.Related!);
-        Assert.Equal("candidate", candidate.Role);
-        Assert.StartsWith("pin(p: ref/i32)", Text(clause, candidate.Span), StringComparison.Ordinal);
+        var failure = Assert.Single(DiagnosticCorpus.Check(clause).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref"), (failure.Code, Text(clause, failure.Span)));
+        Assert.Equal("requires the borrow local@ref outlives static, which is false", failure.Label);
+        Assert.Equal("declared", failure.Reason!.Single(x => x.Name == "source").Value);
+        Assert.Contains(failure.Related!, x => x.Role == "relation" && Text(clause, x.Span) == "origin p outlives static");
         Assert.True(DiagnosticCorpus.Check(written.Replace("func escape(x: ref/i32) -> ref/i32 during x", "func escape(x: ref/i32) -> i32", StringComparison.Ordinal)
             .Replace("    return pair.1\n", "    return pair.1@follow\n", StringComparison.Ordinal)).Accepted);
     }
@@ -241,7 +240,6 @@ public class ResultPremiseTest
             Assert.Equal(at, Text(source, error.Span));
             Assert.Equal("the clause 'origin p outlives static' requires the omitted Origin of ref/i32 outlives static, which is not proven", error.Label);
             Assert.Equal(["conversion", "the clause 'origin p outlives static'", "outlives", "ref/i32", "static"], error.Reason!.Select(static x => x.Value));
-            Assert.Equal("Write the 1st parameter of the required Type over static, or convert an implementation without that clause", error.Advice);
             var related = Assert.Single(error.Related!);
             Assert.Equal(("origin", "ref/i32"), (related.Role, Text(source, related.Span)));
             Assert.True(DiagnosticCorpus.Check(source.Replace("let g: (ref/i32) ->", "let g: (ref/i32 during static) ->", StringComparison.Ordinal)).Accepted);
@@ -252,7 +250,6 @@ public class ResultPremiseTest
         var result = Assert.Single(DiagnosticCorpus.Check(premise).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.UnprovenOriginContract_Kd), "f"), (result.Code, Text(premise, result.Span)));
         Assert.Equal("the result's well-formedness requires the omitted Origin of ref/i32 outlives static, which is not proven", result.Label);
-        Assert.Equal("Write the 1st parameter of the required Type over static, or convert an implementation whose result Type needs no such relation", result.Advice);
         Assert.True(DiagnosticCorpus.Check(premise.Replace("let g: (ref/i32) ->", "let g: (ref/i32 during static) ->", StringComparison.Ordinal)).Accepted);
 
         // A Callable argument proves the clause too: an Item whose clause the requirement cannot prove fails the Callable proof in its
@@ -263,7 +260,7 @@ public class ResultPremiseTest
         var argument = Assert.Single(DiagnosticCorpus.Check(callable).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), DiagnosticCategory.Proof, "pin@ref"), (argument.Code, argument.Category, Text(callable, argument.Span)));
         Assert.Equal(["F is Callable<(ref/i32) -> ref/i32>", "the clause 'origin p outlives static'", "outlives", "ref/i32", "static"], argument.Reason!.Skip(1).Select(static x => x.Value));
-        Assert.Equal("Pass an implementation without that clause", argument.Advice); // SPEC 8.6: a Callable signature writes no `during`.
+ // SPEC 8.6: a Callable signature writes no `during`.
         Assert.Equal([("constraint", "F is Callable<(ref/i32) -> ref/i32>"), ("origin", "ref/i32")], argument.Related!.Select(x => (x.Role, Text(callable, x.Span))));
         Assert.True(DiagnosticCorpus.Check(callable.Replace(Pin, "func pin(p: ref/i32) -> ref/i32 during p => p\n\n", StringComparison.Ordinal)).Accepted);
     }
@@ -283,8 +280,8 @@ public class ResultPremiseTest
         Assert.Equal((nameof(DiagnosticCode.IncompatibleContractImplementation_Kd), "Self is Leaker"), (error.Code, Text(refused, error.Span)));
     }
 
-    // SPEC 15.3.6, 15.6.1: a meet at the longer end of a fit is decomposed; the record names its failing operand, and the result bound
-    // that Advice offers is the whole meet, so either repair makes the program valid.
+    // SPEC 15.3.6, 15.6.1: a meet at the longer end of a fit is decomposed; the record names its failing operand, and either a premise
+    // for that operand or the whole meet as the result bound makes the program valid.
     [Fact]
     public void AMeetAtTheLongerEndNamesItsFailingOperand()
     {
@@ -294,12 +291,11 @@ public class ResultPremiseTest
         Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "pair.1"), (error.Code, Text(source, error.Span)));
         Assert.Equal("requires h.a outlives x, which is not proven", error.Label);
         Assert.Equal(["outlives", "h.a", "x", "fit", "ref/i32 during x"], error.Reason!.Select(static x => x.Value));
-        Assert.Equal("If h.a always outlives x, add 'origin h.a outlives x', which changes the public contract, or bound the result by (x and h.a)", error.Advice);
         Assert.True(DiagnosticCorpus.Check(source.Replace("    let pair = f(h, x)", "    origin h.a outlives x\n    let pair = f(h, x)", StringComparison.Ordinal)).Accepted);
         Assert.True(DiagnosticCorpus.Check(source.Replace("-> ref/i32 during x\n    let pair", "-> ref/i32 during (x and h.a)\n    let pair", StringComparison.Ordinal)).Accepted);
 
         // A local annotation's fit, which ownership analysis judges, decomposes the meet too, under the premise or the written clause;
-        // it is no result value, so the Advice offers only the premise, which makes the program valid (it showed "(x and h.a)").
+        // it is no result value, so only the premise applies, and it makes the program valid.
         var local = source.Replace("-> ref/i32 during x\n    let pair = f(h, x)\n    return pair.1\n", "-> i32\n    let pair = f(h, x)\n    let k: ref/i32 during x = pair.1\n    return k@follow\n", StringComparison.Ordinal);
         var written = local.Replace("    return (.None, p.item)", "    origin p.a outlives q\n    return (.None, p.item)", StringComparison.Ordinal);
         foreach (var program in new[] { local, written })
@@ -308,7 +304,6 @@ public class ResultPremiseTest
             Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "pair.1"), (record.Code, Text(program, record.Span)));
             Assert.Equal("requires h.a outlives x, which is not proven", record.Label);
             Assert.Equal(["outlives", "h.a", "x", "fit", "ref/i32 during x"], record.Reason!.Select(static x => x.Value));
-            Assert.Equal("If h.a always outlives x, add 'origin h.a outlives x', which changes the public contract", record.Advice);
             Assert.True(DiagnosticCorpus.Check(program.Replace("    let pair = f(h, x)", "    origin h.a outlives x\n    let pair = f(h, x)", StringComparison.Ordinal)).Accepted);
         }
     }
@@ -336,10 +331,9 @@ public class ResultPremiseTest
             Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), shown, start, source), (error.Code, Text(text, error.Span), error.Span!.Value.Start, error.Reason![3].Value));
             var label = error.Label!;
             var relation = label["requires ".Length..label.IndexOf(',', StringComparison.Ordinal)];
-            Assert.Equal($"If {relation.Replace(" outlives ", " always outlives ", StringComparison.Ordinal)}, add 'origin {relation}', which changes the public contract", error.Advice);
         }
 
-        // Both outputs publish every record at that location, and adding each advised premise makes the program valid.
+        // Both outputs publish every record at that location, and adding each failing relation as a premise makes the program valid.
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(new DiagnosticResult(output.Diagnostics, output.Sources), string.Empty);
         Assert.All(relations, x => Assert.Contains($"requires {x}, which is not proven", console.Text, StringComparison.Ordinal));
@@ -351,7 +345,7 @@ public class ResultPremiseTest
         Assert.True(DiagnosticCorpus.Check(repaired).Accepted, string.Join("\n", DiagnosticCorpus.Check(repaired).Diagnostics.Select(static x => $"{x.Code}: {x.Label}")));
     }
 
-    // A Refuted chain and an Unknown one at one location are two records, each with its own code and Advice, the Borrow related.
+    // A Refuted chain and an Unknown one at one location are two records, each with its own code and label, the Borrow related.
     [Fact]
     public void ARefutedAndAnUnknownOperandAtOneLocationAreTwoRecords()
     {
@@ -361,8 +355,6 @@ public class ResultPremiseTest
         Assert.Equal(
             [(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), at, "requires b outlives x, which is not proven"), (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), at, "requires the borrow local@ref outlives x, which is false")],
             output.Select(static x => (x.Code, x.Span!.Value.Start, x.Label)));
-        Assert.Equal("If b always outlives x, add 'origin b outlives x', which changes the public contract", output[0].Advice);
-        Assert.Equal("Return or store an owned value, or a borrow of an input, instead of a borrow of storage that ends with the body", output[1].Advice);
         var related = Assert.Single(output[1].Related!);
         Assert.Equal(("origin", "local@ref"), (related.Role, Text(source, related.Span)));
     }
@@ -370,8 +362,8 @@ public class ResultPremiseTest
     // SPEC 15.6.5: a Binding fit's own record names the failing operand that decides the judgment, and each other failing operand is a
     // record of its own: a Refuted Borrow before an Unknown
     // parameter, whatever their order, under a written clause or the result premise, and also after the Unknown one is proven. It named
-    // the first failing operand, an Unknown `b`, with Advice to add a premise or to bound the result by the meet, which holds the body-local
-    // `local`; neither repair applied. With no body-local operand, both repairs that the Advice offers make the program valid.
+    // the first failing operand, an Unknown `b`. With no body-local operand, a premise for `b` or the meet as the result bound makes the
+    // program valid.
     [Theory]
     [InlineData("    let local: i32 = 3\n    let t = f(b, x, local@ref)\n    return t.0\n", "t.0")]
     [InlineData("    let local: i32 = 3\n    let t = f(local@ref, x, b)\n    return t.0\n", "t.0")]
@@ -387,12 +379,10 @@ public class ResultPremiseTest
         Assert.Equal((at, source.IndexOf("return " + at, StringComparison.Ordinal) + 7), (Text(source, error.Span), error.Span!.Value.Start));
         Assert.Equal("requires the borrow local@ref outlives x, which is false", error.Label);
         Assert.Equal(["outlives", "local@ref", "x", "fit", "ref/i32 during x"], error.Reason!.Select(static x => x.Value));
-        Assert.Equal("Return or store an owned value, or a borrow of an input, instead of a borrow of storage that ends with the body", error.Advice);
         var related = Assert.Single(error.Related!);
         Assert.Equal(("origin", source.IndexOf("local@ref", StringComparison.Ordinal)), (related.Role, related.Span!.Value.Start));
 
-        // SPEC 15.6.1: every failed chain is reported, so an Unknown `b` that no premise proves is its own record at that value (U3-B),
-        // with the premise as Advice and no result bound, since the meet holds the body-local `local`.
+        // SPEC 15.6.1: every failed chain is reported, so an Unknown `b` that no premise proves is its own record at that value (U3-B).
         if (body.Contains("origin b", StringComparison.Ordinal))
         {
             Assert.Single(errors);
@@ -401,7 +391,6 @@ public class ResultPremiseTest
         {
             var other = Assert.Single(errors, static x => x.Code != nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd));
             Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), error.Span, "requires b outlives x, which is not proven"), (other.Code, other.Span, other.Label));
-            Assert.Equal("If b always outlives x, add 'origin b outlives x', which changes the public contract", other.Advice);
         }
 
         var valid = source.Replace("local@ref", "x", StringComparison.Ordinal);
@@ -409,7 +398,6 @@ public class ResultPremiseTest
         {
             var unknown = Assert.Single(DiagnosticCorpus.Check(valid).Diagnostics);
             Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "requires b outlives x, which is not proven"), (unknown.Code, unknown.Label));
-            Assert.Equal("If b always outlives x, add 'origin b outlives x', which changes the public contract, or bound the result by (x and b)", unknown.Advice);
             Assert.True(DiagnosticCorpus.Check(valid.Replace("-> ref/i32 during x\n", "-> ref/i32 during (x and b)\n", StringComparison.Ordinal)).Accepted);
             valid = valid.Replace("    let local: i32 = 3\n", "    origin b outlives x\n    let local: i32 = 3\n", StringComparison.Ordinal);
         }
@@ -449,13 +437,12 @@ public class ResultPremiseTest
             DiagnosticCorpus.Check(annotated).Diagnostics.Select(x => (Text(annotated, x.Span), x.Reason![3].Value)));
 
         // A Function Item converted to a nested Function Type proves its premise from that Type's inputs alone: a per-call input
-        // cannot outlive `b`, and writing it over `b`, as the Advice says, converts.
+        // cannot outlive `b`, and writing it over `b` converts.
         var converted = LeakItem + "func mk(b: ref/i32) -> (ref/i32 during b, ref/i32) -> (Option<ref/(ref/i32) during b>, ref/i32 during b)\n    return leak\n" + Main;
         var conversion = Assert.Single(DiagnosticCorpus.Check(converted).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.UnprovenOriginContract_Kd), "leak"), (conversion.Code, Text(converted, conversion.Span)));
         Assert.Equal("the result's well-formedness requires the omitted Origin of ref/i32 outlives b, which is not proven", conversion.Label);
         Assert.Equal(["conversion", "the result's well-formedness", "outlives", "ref/i32", "b"], conversion.Reason!.Select(static x => x.Value));
-        Assert.Equal("Write the 2nd parameter of the required Type over b, or convert an implementation whose result Type needs no such relation", conversion.Advice);
         Assert.Equal(converted.IndexOf("during b, ref/i32)", StringComparison.Ordinal) + 10, Assert.Single(conversion.Related!).Span!.Value.Start);
         Assert.True(DiagnosticCorpus.Check(converted.Replace("(ref/i32 during b, ref/i32) ->", "(ref/i32 during b, ref/i32 during b) ->", StringComparison.Ordinal)).Accepted);
     }
@@ -468,7 +455,7 @@ public class ResultPremiseTest
         ScalarEmissionTest.EmitFixture("ResultPremiseFunctionPart", FunctionPart, "19 3\n");
         var conflict = MinimalEmissionTest.Analyze(FunctionPart.Replace("require second@follow", "other = 4\nrequire second@follow", StringComparison.Ordinal));
         Assert.True(conflict.Binding.Result.IsComplete, MinimalEmissionTest.Describe(conflict, null));
-        Assert.Contains(conflict.Ownership.Issues, static issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(conflict.Problems, static issue => issue.Code.IsLoanConflict());
     }
 
     // SPEC 7.6.4, 15.3.7: a value call through a generic Function Item enters the instance of its bound arguments, whose result keeps the

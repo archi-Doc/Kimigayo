@@ -17,6 +17,10 @@ public sealed partial class Binding
         SemanticsKind.Owner, SemanticsKind.Ref, SemanticsKind.Uniq, SemanticsKind.Obj, SemanticsKind.Rc, SemanticsKind.Arc, SemanticsKind.ObjRef, SemanticsKind.ObjUniq, SemanticsKind.Raw,
     ];
 
+    // The binders in scope of one PairSlotCondition query, reused, and whether a query is collecting them.
+    private readonly List<PairBinder> pairConditionBinders = new();
+    private bool pairConditionActive;
+
     /// <summary>Appends the Semantics of a mask in bit order, separated.</summary>
     /// <param name="text">The text to append to.</param>
     /// <param name="mask">The Semantics.</param>
@@ -74,8 +78,17 @@ public sealed partial class Binding
     /// <param name="type">A Type.</param>
     /// <returns>Whether <paramref name="type"/> is a pair layer with an invariant admitted Semantics.</returns>
     internal bool InvariantAdmitted(BoundType type)
-        => TryPairLayer(type, out var whole, out _) && whole.Symbol is { Scope: { } scope } &&
-            (this.AdmittedSemantics(whole, scope) & (SemanticsMask.Uniq | SemanticsMask.Obj | SemanticsMask.ObjUniq | SemanticsMask.Raw)) != 0;
+    {
+        const SemanticsMask invariant = SemanticsMask.Uniq | SemanticsMask.Obj | SemanticsMask.ObjUniq | SemanticsMask.Raw;
+        if (type.Kind == BoundTypeKind.SemanticsAdaptation)
+        {
+            // Each child is a complete case Type and enforces its own layer variance.
+            return false;
+        }
+
+        return TryPairLayer(type, out var whole, out _) && whole.Symbol is { Scope: { } scope } &&
+            (this.AdmittedSemantics(whole, scope) & invariant) != 0;
+    }
 
     /// <summary>Gets the outer Origin <c>o</c> of a pair's whole Type (SPEC 8.1.1): one fixed Origin per pair binder, shared by every
     /// occurrence of the original <c>s/T</c>, present only in the admitted borrow cases and never written in source. The whole Type
@@ -103,6 +116,80 @@ public sealed partial class Binding
     internal BoundOrigin? OuterOrigin(BoundType occurrence)
         => occurrence.Origin ?? (occurrence.Kind == BoundTypeKind.Parameter && occurrence.Symbol is { Kind: BindingSymbolKind.SemanticsTarget } target ? this.PairOuterOrigin(target) : null);
 
+    /// <summary>Gets the Semantics-case condition under which a pair layer's outer-Origin slot exists at a use (SPEC 8.1.2, 15.6.5):
+    /// no condition when every admitted case of its binder is a borrow, the binder's bit in the order of <see cref="PairBinders"/> at
+    /// the use when its admitted set mixes borrows with other Semantics, and null when no admitted case is a borrow, so the slot
+    /// never exists. A binder that is not in scope, or beyond the 64th, is <see cref="ulong.MaxValue"/>: a premise under it is never
+    /// usable, and a relation required under it is judged unconditionally.</summary>
+    /// <param name="layer">A Type; only a pair layer has a condition.</param>
+    /// <param name="use">The use whose binders give the bits.</param>
+    /// <returns>The condition, or null when the slot never exists.</returns>
+    internal ulong? PairSlotCondition(BoundType layer, Koto use)
+    {
+        if (!TryPairLayer(layer, out var whole, out _))
+        {
+            return 0;
+        }
+
+        var admitted = this.AdmittedSemantics(whole, this.ConstraintScope(use));
+        if ((admitted & SemanticsMask.Borrow) == 0)
+        {
+            return null;
+        }
+
+        if ((admitted & ~SemanticsMask.Borrow) == 0)
+        {
+            return 0;
+        }
+
+        // A query nested in the collection of the binders, such as a proof of an admitted set, takes its own list.
+        var binders = this.pairConditionBinders.Count == 0 && !this.pairConditionActive ? this.pairConditionBinders : new List<PairBinder>();
+        var outer = this.pairConditionActive;
+        this.pairConditionActive = true;
+        try
+        {
+            this.PairBinders(use, binders);
+            for (var i = 0; i < binders.Count && i < 64; i++)
+            {
+                if (ReferenceEquals(binders[i].Target.WholeType, whole))
+                {
+                    return 1UL << i;
+                }
+            }
+
+            return ulong.MaxValue;
+        }
+        finally
+        {
+            binders.Clear();
+            this.pairConditionActive = outer;
+        }
+    }
+
+    /// <summary>Gets the outer Origin a Type stores at a use and the Semantics case it is stored in (SPEC 8.1.2, 15.6.5): a pair layer's
+    /// slot, the implicit <c>o</c> of an original <c>s/T</c> included, in its binder's borrow cases (<see cref="PairSlotCondition"/>), and
+    /// any other Type's written Origin in every case.</summary>
+    /// <param name="type">A Type, such as a pattern's layer or its substitution at a use.</param>
+    /// <param name="use">The use whose binders give the condition's bits.</param>
+    /// <param name="condition">The Semantics case of the storage, 0 for every case.</param>
+    /// <returns>The stored outer Origin, or null when no case stores one.</returns>
+    internal BoundOrigin? StoredSlot(BoundType type, Koto use, out ulong condition)
+    {
+        condition = 0;
+        if (!type.ContainsPairLayer)
+        {
+            return type.Origin;
+        }
+
+        if (this.PairSlotCondition(type, use) is not { } slot)
+        {
+            return null;
+        }
+
+        condition = slot;
+        return this.OuterOrigin(type);
+    }
+
     /// <summary>Forms the complete Type a Type takes in one Semantics case (SPEC 8.10): every pair layer of a binder in
     /// <paramref name="cases"/> becomes the Type of that binder's Semantics over its direct target with the layer's outer-Origin
     /// slot (<c>U</c> for owner, <c>s/U during o</c> for a borrow, <c>s/U</c> otherwise), other Types map their components, and
@@ -121,6 +208,11 @@ public sealed partial class Binding
         {
             return type.Symbol is { Kind: BindingSymbolKind.SemanticsTarget, Type: { } projection } target && CaseOf(cases, target) is { } semantics
                 ? this.Form(semantics, projection, this.OuterOrigin(type)) : type;
+        }
+
+        if (type.Kind == BoundTypeKind.SemanticsAdaptation && CaseOf(cases, type.Symbol!) is { } selected)
+        {
+            return FamilyCase(type, selected) is { } child ? this.CaseType(child, cases) : type;
         }
 
         if (type.Components.Count == 0)
@@ -144,13 +236,24 @@ public sealed partial class Binding
             }
 
             return changed
-                ? this.InternType(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), type.Length, type.Origin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, type.ClosureContext)
+                ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), type.Length, type.Origin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, type.ClosureContext, type.LengthArguments, type.ResultMode)
                 : type;
         }
         finally
         {
             this.typeScratch.Return(scratch, clearArray: true);
         }
+    }
+
+    // SPEC 3.5, 8.9, 15.1.5: the bare acquisition of a Place storing the Type, taken by value without an operator: a Copy-proven Type
+    // Copies, a pair layer whose every admitted case Copies or Reborrows acquires by case, a stored exclusive reference Reborrows in its
+    // own mode, and any other Place needs an explicit Move; the proof tells an unproven Copy from a refuted one.
+    internal HirAcquire BareAcquire(BoundType type, Koto node, out ConstraintProof proof)
+    {
+        proof = this.ProveCopy(type, node);
+        return proof == ConstraintProof.Proven ? HirAcquire.Copy
+            : TryPairLayer(type, out _, out _) && this.BareAcquisition(type, node, out _) == SemanticsMask.None ? HirAcquire.ByCase
+            : type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } ? HirAcquire.Reborrow : HirAcquire.Move;
     }
 
     /// <summary>Plans the bare acquisition of a pair-layer Place per admitted case (SPEC 3.5, 8.9): a Copy for a shared or raw
@@ -179,11 +282,7 @@ public sealed partial class Binding
         return admitted & ~(reborrow | copy);
     }
 
-    /// <summary>Collects the pair binders in scope of a body (SPEC 8.10): those of its own declaration, of its containers and, for
-    /// a Closure, an accessor or a static initializer, of the enclosing declarations, outer to inner in slot order, each with its
-    /// admitted set.</summary>
-    /// <param name="entry">The body's declaration.</param>
-    /// <param name="binders">The caller-owned list to fill; it is cleared first.</param>
+    // PairBinder.Collect.
     internal void PairBinders(Koto entry, List<PairBinder> binders)
     {
         binders.Clear();
@@ -211,6 +310,9 @@ public sealed partial class Binding
         }
     }
 
+    // The condition of a relation required where a slot exists: a binder without a bit is judged in every case.
+    private static ulong RequiredCondition(ulong? condition) => condition is { } value && value != ulong.MaxValue ? value : 0;
+
     // The Semantics a case gives one binder, or null when the binder is not resolved in it.
     private static SemanticsKind? CaseOf(ReadOnlySpan<PairCase> cases, BindingSymbol target)
     {
@@ -227,5 +329,52 @@ public sealed partial class Binding
 
     // SPEC 8.1.1 table: the complete Type of one case over the direct target; only a safe borrow keeps the outer-Origin slot.
     private BoundType Form(SemanticsKind semantics, BoundType target, BoundOrigin? origin)
-        => semantics == SemanticsKind.Owner ? target : this.InternType(BoundTypeKind.Semantics, null, semantics, [target], origin: IsBorrow(semantics) ? origin : null);
+        => semantics == SemanticsKind.Owner ? target : this.types.Intern(BoundTypeKind.Semantics, null, semantics, [target], origin: IsBorrow(semantics) ? origin : null);
+
+    /// <summary>Binds the outer Origin <c>o</c> of one of <paramref name="binder"/>'s pairs through its Type argument (SPEC 8.1.1,
+    /// 8.1.2): the outer Origin of a borrow binding, nothing for a value binding (static, the identity of a meet, which no exclusive
+    /// slot accepts), and the outer-Origin slot of an abstract binding.</summary>
+    /// <param name="origin">An Origin atom.</param>
+    /// <param name="binder">The declaration whose Type arguments are given.</param>
+    /// <param name="arguments">The Type arguments by slot.</param>
+    /// <returns>The image, or null when <paramref name="origin"/> is no bound <c>o</c> of the binder.</returns>
+    private BoundOrigin? PairOuterImage(BoundOrigin origin, Koto binder, ReadOnlySpan<BoundType?> arguments)
+        => origin is { Kind: OriginKind.Parameter, Slot: < 0, Occurrence: GenericParameterKoto declaration } && ReferenceEquals(origin.Binder, binder) &&
+            declaration.BoundSymbol is { } target && ContainerSlot(binder, target) is >= 0 and var slot && slot < arguments.Length && arguments[slot] is { } bound
+            ? IsBorrow(bound.Semantics) ? bound.Origin ?? BoundOrigin.Static : this.OuterOrigin(bound) ?? BoundOrigin.Static
+            : null;
+
+    /// <summary>Binds every <c>o</c> of <paramref name="binder"/>'s pairs in an Origin, alone or as a meet operand, through the Type
+    /// arguments (SPEC 8.1.1, 8.1.2), keeping the instance when none occurs.</summary>
+    /// <param name="origin">The Origin.</param>
+    /// <param name="binder">The declaration whose Type arguments are given.</param>
+    /// <param name="arguments">The Type arguments by slot.</param>
+    /// <returns>The substituted Origin.</returns>
+    private BoundOrigin SubstitutePairOrigins(BoundOrigin origin, Koto binder, ReadOnlySpan<BoundType?> arguments)
+    {
+        if (origin.Kind != OriginKind.Intersection)
+        {
+            return this.PairOuterImage(origin, binder, arguments) ?? origin;
+        }
+
+        // A meet's operands are atoms; it is rebuilt only when one of them is bound.
+        var bound = false;
+        for (var i = 0; i < origin.Operands.Count && !bound; i++)
+        {
+            bound = this.PairOuterImage(origin.Operands[i], binder, arguments) is not null;
+        }
+
+        if (!bound)
+        {
+            return origin;
+        }
+
+        var result = BoundOrigin.Static;
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            result = this.Meet(result, this.PairOuterImage(origin.Operands[i], binder, arguments) ?? origin.Operands[i]);
+        }
+
+        return result;
+    }
 }

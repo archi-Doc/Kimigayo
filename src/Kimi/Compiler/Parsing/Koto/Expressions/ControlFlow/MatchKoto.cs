@@ -98,66 +98,14 @@ public class MatchKoto : ExpressionKoto
         builder.DecrementIndent();
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        visitor.Visit(this.Expression);
-        for (var armIndex = 0; armIndex < this.arms.Count; armIndex++)
-        {
-            var arm = this.arms[armIndex];
-            visitor.Visit(arm.Pattern);
-            if (arm.Guard is not null)
-            {
-                visitor.Visit(arm.Guard);
-            }
-
-            visitor.Visit(arm.Body);
-        }
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-    {
-        yield return this.Expression;
+        this.Expression = slots.Slot(this.Expression);
         foreach (var arm in this.arms)
         {
-            yield return arm.Pattern;
-            if (arm.Guard is not null)
-            {
-                yield return arm.Guard;
-            }
-
-            yield return arm.Body;
+            arm.Pattern = slots.Slot(arm.Pattern);
+            arm.Guard = slots.Slot(arm.Guard);
+            arm.Body = slots.Slot(arm.Body);
         }
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (this.Expression == oldKoto)
-        {
-            this.Expression = newKoto;
-            return true;
-        }
-
-        foreach (var arm in this.arms)
-        {
-            if (arm.Guard == oldKoto)
-            {
-                arm.Guard = newKoto;
-                return true;
-            }
-
-            if (arm.Pattern == oldKoto)
-            {
-                arm.Pattern = newKoto;
-                return true;
-            }
-
-            if (arm.Body == oldKoto)
-            {
-                arm.Body = newKoto;
-                return true;
-            }
-        }
-
-        return false;
     }
 }

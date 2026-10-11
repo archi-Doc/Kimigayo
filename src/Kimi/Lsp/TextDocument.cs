@@ -148,21 +148,15 @@ internal sealed class TextDocument : IDisposable
         this.text = null;
     }
 
-    private int GetLineStart(int line)
-        => line < this.lineGapStart ? this.lineStarts[line] : this.length - this.lineStarts[line - this.lineGapStart + this.lineGapEnd];
-
-    private char CharAt(int index)
-        => this.buffer[index < this.gapStart ? index : index + this.gapEnd - this.gapStart];
-
     // Compares the text from an offset with a value that ends within the text.
-    private bool TextEquals(int from, ReadOnlySpan<char> value)
+    internal bool TextEquals(int from, ReadOnlySpan<char> value)
     {
         var split = Math.Clamp(this.gapStart - from, 0, value.Length);
         return value[..split].SequenceEqual(this.buffer.AsSpan(from, split)) &&
             value[split..].SequenceEqual(this.buffer.AsSpan(from + split + this.gapEnd - this.gapStart, value.Length - split));
     }
 
-    private bool TryGetOffset(SourcePosition position, out int offset)
+    internal bool TryGetOffset(SourcePosition position, out int offset)
     {
         offset = 0;
         var lineCount = this.LineCount;
@@ -186,6 +180,33 @@ internal sealed class TextDocument : IDisposable
         offset = lineStart + Math.Min(position.Character, lineEnd - lineStart);
         return true;
     }
+
+    // Binary search without moving the line gap or materializing the document text.
+    internal SourcePosition GetPosition(int offset)
+    {
+        var low = 0;
+        var high = this.LineCount;
+        while (low + 1 < high)
+        {
+            var middle = low + ((high - low) >> 1);
+            if (this.GetLineStart(middle) <= offset)
+            {
+                low = middle;
+            }
+            else
+            {
+                high = middle;
+            }
+        }
+
+        return new(low, offset - this.GetLineStart(low));
+    }
+
+    private int GetLineStart(int line)
+        => line < this.lineGapStart ? this.lineStarts[line] : this.length - this.lineStarts[line - this.lineGapStart + this.lineGapEnd];
+
+    private char CharAt(int index)
+        => this.buffer[index < this.gapStart ? index : index + this.gapEnd - this.gapStart];
 
     // Moves the text gap to an offset; only the characters between the old and new place move.
     private void MoveGap(int position)

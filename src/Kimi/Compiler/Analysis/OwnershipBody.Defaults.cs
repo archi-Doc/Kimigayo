@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipBody
 {
-    internal readonly record struct DefaultEvaluation(int Operation, BoundCall Call, int Parameter, int Start);
+    internal readonly record struct DefaultEvaluation(int Operation, CallPlan Call, int Parameter, int Start);
 
     internal List<DefaultEvaluation>? DefaultEvaluations { get; set; }
 
@@ -134,7 +134,7 @@ public sealed partial class OwnershipBody
                         for (var i = 0; i < evaluation.Parameter; i++)
                         {
                             var input = this.DefaultInputs![evaluation.Start + i];
-                            if (NamesResultOrigin(this.Places[operation.Place].Type, this.Places[input.Place].Type))
+                            if (this.NamesResultOrigin(this.Places[operation.Place].Type, this.Places[input.Place].Type))
                             {
                                 work.Add(input.Read);
                             }
@@ -147,7 +147,7 @@ public sealed partial class OwnershipBody
                     // be checked; failure to identify a sole ancestor is not proof that a new Loan cannot escape.
                     for (var entry = id - 1; entry >= 0 && this.Operations[entry] is { Kind: OwnershipOperationKind.CallEntry } input && ReferenceEquals(input.Source, operation.Source); entry--)
                     {
-                        if (input.Place >= 0 && NamesResultOrigin(this.Places[operation.Place].Type, this.Places[input.Place].Type))
+                        if (input.Place >= 0 && this.NamesResultOrigin(this.Places[operation.Place].Type, this.Places[input.Place].Type))
                         {
                             work.Add(entry);
                         }
@@ -214,8 +214,10 @@ public sealed partial class OwnershipBody
     }
 
     // Preorder evaluation intervals preserve the declaration-to-call Type/Origin substitution at each replica of a default.
-    // A nested default substitutes its own call first, then its enclosing defaults, then the body's case or instance.
-    internal List<(int Start, int End, BoundCall Call, int Parent)>? DefaultContexts { get; set; }
+    // A nested default's call is recorded already resolved in its enclosing context, so it composes every enclosing substitution
+    // and one application of it, then the body's case or instance, interprets the replica (Resolve).
+    // Anchor is the root default invocation in this body, whose Constraint scope proves capabilities of the replica's Types.
+    internal List<(int Start, int End, CallPlan Call, int Parent, Koto Anchor)>? DefaultContexts { get; set; }
 
     internal Dictionary<(BindingSymbol Symbol, int Context), int>? DefaultSymbolPlaces { get; set; }
 
@@ -266,31 +268,24 @@ public sealed partial class OwnershipBody
         return context;
     }
 
-    internal BoundType? SubstituteDefaultType(BoundType? type, int context)
-    {
-        while (type is not null && context >= 0)
-        {
-            var entry = this.DefaultContexts![context];
-            type = this.Function.CodeContext.Compilation.Binding.InstantiateStorageType(type, entry.Call);
-            context = entry.Parent;
-        }
+    // An operation's interpretation context, and the context recorded with a Place at its construction.
+    internal InterpretationContext ContextAt(int operation) => new(this.DefaultContextAt(operation));
 
-        return type;
-    }
+    internal InterpretationContext ContextOf(int place) => new(this.Places[place].DefaultContext);
 
-    internal BoundType? ConcreteAt(BoundType? type, int operation)
-        => this.Concrete(this.SubstituteDefaultType(type, this.DefaultContextAt(operation)));
+    // SPEC 8.10: after full default substitution every free generic parameter belongs to this body, so a capability of a Type
+    // resolved inside a default is proved where the outermost omitting call was written; null in the root context.
+    internal Koto? ProofAnchor(InterpretationContext context) => context.IsRoot ? null : this.DefaultContexts![context.Index].Anchor;
 
-    internal BoundCall? CallAt(int operation)
-        => this.Values[operation].Kind == OwnershipValueKind.DefaultCall ? null : this.SubstituteDefaultCall((this.Operations[operation].Source as Parsing.InvocationKoto)?.BoundCall, this.DefaultContextAt(operation));
+    // SPEC 7.2.3, 8.10: declared information is interpreted once per stage, in a fixed order: the context's call, recorded when
+    // its interval began and already composing every enclosing default's substitution, then the body's case or instance.
+    internal BoundType? Resolve(BoundType? type, InterpretationContext context) => this.Concrete(this.SubstituteDefaults(type, context));
 
-    internal BoundCall? SubstituteDefaultCall(BoundCall? call, int context)
-    {
-        for (; call is not null && context >= 0; context = this.DefaultContexts![context].Parent)
-        {
-            call = this.Function.CodeContext.Compilation.Binding.InstantiateDefaultCall(call, this.DefaultContexts![context].Call);
-        }
+    // The default stage alone, for a consumer that applies its own closed call instead of this body's case or instance.
+    internal BoundType? SubstituteDefaults(BoundType? type, InterpretationContext context)
+        => type is null || context.IsRoot ? type : this.Function.CodeContext.Compilation.Binding.InstantiateStorageType(type, this.DefaultContexts![context.Index].Call);
 
-        return call;
-    }
+    // A declared call as interpreted in a context; a call plan that a default context already resolved is never resolved again.
+    internal CallPlan? ResolveCall(CallPlan? call, InterpretationContext context)
+        => call is null || context.IsRoot ? call : this.Function.CodeContext.Compilation.Binding.InstantiateDefaultCall(call, this.DefaultContexts![context.Index].Call);
 }

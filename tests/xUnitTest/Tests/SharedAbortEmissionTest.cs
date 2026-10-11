@@ -27,23 +27,23 @@ public class SharedAbortEmissionTest
     public void RejectsInventedNormalContinuationAndRecovers()
     {
         var c = MinimalEmissionTest.Analyze("func fail(value: ref/bool)\n    $abort(\"stop\")\nlet v = true\nfail(v)");
-        Assert.True(c.Emission.TryPrepare(out _, out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "fail");
         var edge = body.EdgeStorage.FindIndex(x => x.Kind == OwnershipEdgeKind.Abort);
         Assert.True(edge >= 0);
         body.EdgeStorage[edge] = body.Edges[edge] with { Kind = OwnershipEdgeKind.Normal };
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Equal(string.Empty, output.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Fact]
     public void ChangedEntryCannotExecuteCheckingOnlyCode()
     {
         var c = MinimalEmissionTest.Analyze("func fail(value: ref/bool)\n    $abort(\"stop\")\n    Console.writeLine(\"after\")\nlet v = true\nfail(v)");
-        Assert.True(c.Emission.TryPrepare(out _, out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "fail");
         var after = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Produce && x.Source is Kimi.Compiler.Parsing.StringLiteralKoto { Literal: "after" });
         Assert.True(after >= 0);
@@ -51,9 +51,9 @@ public class SharedAbortEmissionTest
         var edge = body.EdgeHeads[0];
         body.EdgeStorage[edge] = body.Edges[edge] with { To = after };
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Equal(string.Empty, output.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 }

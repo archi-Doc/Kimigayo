@@ -103,7 +103,7 @@ public sealed partial class Binding
         }
 
         if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } field &&
-            (StructStorage.IsStruct(field.Left.BoundType) || ObjectTypes.HandleMode(field.Left.BoundType) is not null) &&
+            (AdtDef.IsStruct(field.Left.BoundType) || field.Left.BoundType?.HandleMode is not null) &&
             !IsSpecialField(field, out _) && !Writable(field.Left) && ElementAccess.WritableRoot(field.Left) is null)
         {
             return false; // A mutable field still requires a mutable owning root.
@@ -192,7 +192,7 @@ public sealed partial class Binding
     {
         node = KotoHelper.UnwrapParentheses(node);
         return node.BoundType is null &&
-            (node is NumberLiteralKoto or NullLiteralKoto || node is PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto } ||
+            (node is NullLiteralKoto || KotoHelper.SignedNumber(node, out _) is not null ||
             IsLiteralOnlyOperation(node) || IsLiteralOnlyFromEnd(node) || IsLiteralOnlyRange(node));
     }
 
@@ -209,20 +209,36 @@ public sealed partial class Binding
         => node is RangeKoto range && (range.Start ?? range.End) is not null &&
             (range.Start is null || IsLiteralOnlyPosition(range.Start)) && (range.End is null || IsLiteralOnlyPosition(range.End));
 
-    // SPEC 12.3.1: a built-in unary +/-, arithmetic, bitwise or shift operation whose operands are all integer literals or
-    // literal-only operations; it is fitted to a Type as one literal.
-    private static bool IsLiteralOnlyOperation(Koto node) => node switch
-    {
-        PrefixMinusKoto or PrefixPlusKoto => IsIntegerLiteralOnly(((UnaryKoto)node).Operand),
-        BinaryKoto { Akind: KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash or KotoKind.Percent or KotoKind.Ampersand or KotoKind.Bar or KotoKind.Caret or KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan } binary =>
-            IsIntegerLiteralOnly(binary.Left) && IsIntegerLiteralOnly(binary.Right),
-        _ => false,
-    };
+    // SPEC 12.3.1: one classification serves waiting arguments, defaults and integer-only positions. Numeric classes
+    // never mix; position/range syntax is classified separately. No values are evaluated or Types committed here.
+    private static bool IsLiteralOnlyOperation(Koto node)
+        => node is UnaryKoto or BinaryKoto && NumericLiteralDefault(node) is not null;
 
     private static bool IsIntegerLiteralOnly(Koto node)
+        => ReferenceEquals(NumericLiteralDefault(node), BoundType.I32);
+
+    private static BoundType? NumericLiteralDefault(Koto node)
     {
         node = KotoHelper.UnwrapParentheses(node);
-        return node is NumberLiteralKoto { IsInteger: true } || IsLiteralOnlyOperation(node);
+        if (node is NumberLiteralKoto literal)
+        {
+            return literal.IsInteger ? BoundType.I32 : BoundType.F64;
+        }
+
+        if (node is UnaryKoto { Akind: KotoKind.PrefixMinus or KotoKind.PrefixPlus } sign)
+        {
+            return NumericLiteralDefault(sign.Operand);
+        }
+
+        if (node is BinaryKoto { Akind: KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash or KotoKind.Percent or KotoKind.Ampersand or KotoKind.Bar or KotoKind.Caret or KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan } binary &&
+            NumericLiteralDefault(binary.Left) is { } kind &&
+            (ReferenceEquals(kind, BoundType.I32) || binary.Akind is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash) &&
+            ReferenceEquals(kind, NumericLiteralDefault(binary.Right)))
+        {
+            return kind;
+        }
+
+        return null;
     }
 
     private static BoundType DefaultLiteralType(NumberLiteralKoto literal, BoundType? expected)
@@ -239,7 +255,7 @@ public sealed partial class Binding
     {
         if (type.IsFloatingPoint)
         {
-            return FloatingTypes.TryLiteral(literal, type, negative, out _);
+            return ScalarTypes.TryFloatLiteral(literal, type, negative, out _);
         }
 
         return literal.TryGetIntegerMagnitude(out var magnitude) && FitsIntegerMagnitude(magnitude, type, negative, pointerWidth);
@@ -274,6 +290,10 @@ public sealed partial class Binding
 
     // SPEC 8.4.7.3: a symbolic Type proven PrimitiveInteger has the built-in integer operators; each instance uses the
     // operations of its concrete Type.
+    // A shared literal argument constructs an owner temporary before acquiring its borrow.
+    private static BoundType LiteralInputType(BoundType parameter)
+        => parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } ? parameter.Components[0] : parameter;
+
     private bool IsGenericInteger(BoundType? type, BindingScope scope)
         => type is { Kind: BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection } &&
             this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.PrimitiveInteger)), scope) == ConstraintProof.Proven;
@@ -298,9 +318,7 @@ public sealed partial class Binding
     private BoundType? LiteralDefault(Koto node)
     {
         node = KotoHelper.UnwrapParentheses(node);
-        var number = node as NumberLiteralKoto ?? (node is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)node).Operand as NumberLiteralKoto : null);
-        return number is not null ? DefaultLiteralType(number, null) : IsLiteralOnlyOperation(node) ? BoundType.I32
-            : IsLiteralOnlyFromEnd(node) || IsLiteralOnlyRange(node) ? this.LiteralPositionDefault(node) : null;
+        return NumericLiteralDefault(node) ?? (IsLiteralOnlyFromEnd(node) || IsLiteralOnlyRange(node) ? this.LiteralPositionDefault(node) : null);
     }
 
     private bool FitsInputLiteral(Koto node, BoundType type, BindingScope scope)
@@ -313,34 +331,34 @@ public sealed partial class Binding
             return this.FitsLiteralPosition(node, type, scope);
         }
 
-        if (node is NumberLiteralKoto or PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto } && this.TakesGenericLiterals(type, scope))
+        var number = KotoHelper.SignedNumber(node, out var negative);
+        if (number is not null && this.TakesGenericLiterals(type, scope))
         {
-            return FitsGenericInteger(node as NumberLiteralKoto ?? (NumberLiteralKoto)((UnaryKoto)node).Operand, node is PrefixMinusKoto);
+            return FitsGenericInteger(number, negative);
         }
 
-        if (node is not (PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto }) && IsLiteralOnlyOperation(node))
+        if (number is null && IsLiteralOnlyOperation(node))
         {
             // SPEC 12.3.1: every literal fits the Type its operator propagates and every operator is defined for that Type;
             // a shift count is typed independently of the candidate. A wrapping integer Type has unary - for every argument.
             var integer = this.IsArithmeticInteger(type, scope);
+            var numeric = integer || type.IsFloatingPoint;
             return node switch
             {
-                PrefixMinusKoto negated => integer && !type.IsUnsignedInteger && !this.IsGenericInteger(type, scope) && this.FitsInputLiteral(negated.Operand, type, scope),
-                PrefixPlusKoto plus => integer && this.FitsInputLiteral(plus.Operand, type, scope),
+                UnaryKoto { Akind: KotoKind.PrefixMinus } negated => numeric && !type.IsUnsignedInteger && !this.IsGenericInteger(type, scope) && this.FitsInputLiteral(negated.Operand, type, scope),
+                UnaryKoto { Akind: KotoKind.PrefixPlus } plus => numeric && this.FitsInputLiteral(plus.Operand, type, scope),
                 BinaryKoto { Akind: KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan } shifted => integer && this.FitsInputLiteral(shifted.Left, type, scope),
-                BinaryKoto binary => integer && this.FitsInputLiteral(binary.Left, type, scope) && this.FitsInputLiteral(binary.Right, type, scope),
+                BinaryKoto binary => numeric && this.FitsInputLiteral(binary.Left, type, scope) && this.FitsInputLiteral(binary.Right, type, scope),
                 _ => false,
             };
         }
 
-        return node switch
+        if (number is not null)
         {
-            NumberLiteralKoto number => LiteralCategoryMatches(number, type) && FitsLiteral(number, type, false, this.compilation.PointerWidth),
-            PrefixMinusKoto { Operand: NumberLiteralKoto number } => LiteralCategoryMatches(number, type) && FitsLiteral(number, type, true, this.compilation.PointerWidth),
-            PrefixPlusKoto { Operand: NumberLiteralKoto number } => LiteralCategoryMatches(number, type) && FitsLiteral(number, type, false, this.compilation.PointerWidth),
-            NullLiteralKoto => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw },
-            _ => true,
-        };
+            return LiteralCategoryMatches(number, type) && FitsLiteral(number, type, negative, this.compilation.PointerWidth);
+        }
+
+        return node is not NullLiteralKoto || type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
     }
 
     private BoundType? Join(Koto node, BoundType? a, BoundType? b)
@@ -568,11 +586,6 @@ public sealed partial class Binding
                     this.BindNode(constructor, scope);
                 }
 
-                if (container is not (ContractKoto or StructKoto) && container.Bases.Count != 0)
-                {
-                    return this.Fail(node, BindingFailure.Unsupported, true);
-                }
-
                 if (LengthSlot(container) is { } slot)
                 {
                     this.AddPrerequisite(node, slot); // A slot the parser reported as misplaced explains the failure.
@@ -633,6 +646,8 @@ public sealed partial class Binding
                 return FitsLiteral(number, numberType, false, this.compilation.PointerWidth) ? Complete(node, numberType) : this.Fail(node, BindingFailure.InvalidLiteral);
             case NullLiteralKoto:
                 return expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } ? Complete(node, expected) : this.Fail(node, BindingFailure.MissingType, true);
+            case BaseReferenceKoto baseReference:
+                return this.BindBaseReference(baseReference, scope);
             case IdentifierNameKoto identifier:
                 return this.BindName(identifier, scope);
             case InvocationKoto invocation:
@@ -711,7 +726,7 @@ public sealed partial class Binding
                 var resultType = targetResult?.Expected;
                 if (target is FunctionKoto f)
                 {
-                    resultType = this.symbols.GetValueOrDefault(f)?.Type;
+                    resultType = this.symbols.GetValueOrDefault(f)?.Type ?? resultType;
                 }
                 else if (target is PropertyAccessorKoto a)
                 {
@@ -741,8 +756,12 @@ public sealed partial class Binding
 
                 if (jump is not ContinueKoto)
                 {
-                    targetResult?.Sources.Add(actual);
-                    if (actual is not null && resultType is not null && !this.FitsTypeAt(actual, resultType, node))
+                    if (jump.Parent is not TryKoto)
+                    {
+                        targetResult?.Sources.Add(actual);
+                    }
+
+                    if (actual is not null && resultType is not null && !this.FitsTypeAt(actual, resultType, node) && !this.CheckLocalTypeUse(actual, resultType, jump.Expression ?? jump))
                     {
                         this.FailMismatch(jump, jump.Expression ?? jump, actual, resultType);
                     }
@@ -793,8 +812,10 @@ public sealed partial class Binding
         this.BindNodeCore(name, scope, null);
         if (name.BindingState != BindingState.Resolved || name.BoundSymbol is not { Kind: BindingSymbolKind.Function } group)
         {
+            // SPEC 7.6, 10.5: a value has no Type parameters, so explicit Type arguments select nothing, as at a value call.
             this.BindUnknownChildren(reference, scope);
-            return this.Fail(reference, BindingFailure.Unsupported, true);
+            var resolved = name.BindingState == BindingState.Resolved;
+            return this.Fail(reference, resolved ? BindingFailure.NoApplicableCandidate : BindingFailure.Unsupported, !resolved);
         }
 
         for (var i = 0; i < reference.TypeArguments.Count; i++)
@@ -802,7 +823,12 @@ public sealed partial class Binding
             var syntax = reference.TypeArguments[i];
             if (this.IsLengthArgument(syntax, scope))
             {
-                return this.Fail(reference, BindingFailure.Unsupported, true);
+                if (this.BindLength(syntax, scope) is null)
+                {
+                    return this.CompleteDependent(reference, syntax);
+                }
+
+                continue;
             }
 
             if (this.BindType(syntax, scope) is null)
@@ -849,7 +875,7 @@ public sealed partial class Binding
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             var parameter = function.Parameters[i];
-            this.BindType(parameter.Type, scope);
+            this.symbols[parameter].Type = this.BindType(parameter.Type, scope);
             if (parameter.DefaultValue is { } value)
             {
                 this.defaultBindingDepth++;
@@ -994,7 +1020,13 @@ public sealed partial class Binding
             this.AddTypeClauseObligations(declared, occurrence); // SPEC 15.3.3: the Type's clauses at this use.
         }
 
-        symbol.Type = declared ?? inferred;
+        if (symbol.Kind == BindingSymbolKind.Local && variable.TypeKoto is null && declared is null && inferred is not null)
+        {
+            declared = this.LocalBorrowType(inferred, variable, variable.InitializerKoto!);
+        }
+
+        // An unavailable written Type cannot be replaced by the initializer's Type.
+        symbol.Type = variable.TypeKoto is null ? declared ?? inferred : declared;
         variable.NameKoto.BoundSymbol = symbol;
         Complete(variable.NameKoto, symbol.Type);
         if (variable is PropertyKoto property)
@@ -1053,7 +1085,7 @@ public sealed partial class Binding
             return this.Fail(node, BindingFailure.InvalidAssignment);
         }
 
-        if (symbol.ConditionalDeclaration is not null)
+        if (symbol.ConditionalDeclaration is not null && symbol.Kind != BindingSymbolKind.Function)
         {
             var conditionalType = node is MemberAccessKoto conditionalMember && this.memberSelections.TryGetValue(conditionalMember, out var memberSelection) ? memberSelection.DeclaringType : null;
             var proof = this.ProveMemberConditions(symbol, conditionalType, scope);
@@ -1061,11 +1093,6 @@ public sealed partial class Binding
             {
                 this.RequireConstraint(node, proof, this.capabilityMode);
                 return null;
-            }
-
-            if (symbol.Kind == BindingSymbolKind.Function)
-            {
-                return this.Fail(node, BindingFailure.Unsupported, true);
             }
         }
 
@@ -1097,7 +1124,28 @@ public sealed partial class Binding
 
         if (symbol.Type is null && symbol.Declaration is VariableKoto variable)
         {
-            this.BindVariable(variable, symbol.Scope);
+            if (variable is PropertyKoto)
+            {
+                // Property and storage Types belong to the header. A use never re-enters accessor bodies.
+                var declaration = variable.BoundSymbol!;
+                if (!declaration.HeaderBound && declaration.Resolving)
+                {
+                    this.Fail(variable, BindingFailure.Cycle, true);
+                }
+                else
+                {
+                    this.BindHeader(declaration);
+                }
+
+                if (symbol.Type is null)
+                {
+                    this.Consulted(variable.TypeKoto ?? variable.InitializerKoto ?? variable);
+                }
+            }
+            else
+            {
+                this.BindVariable(variable, symbol.Scope);
+            }
         }
 
         if (symbol.Kind == BindingSymbolKind.Storage && symbol.Scope.Owner is PropertyAccessorKoto storageAccessor)
@@ -1121,7 +1169,8 @@ public sealed partial class Binding
                 if (!ReferenceEquals(symbol.Scope.Owner, specialFunction.BoundSymbol!.Scope.Owner) || !property.IsStored ||
                     (!write && (!property.Getter.IsStandard || (update && !property.Setter.IsStandard))))
                 {
-                    return this.Fail(node, BindingFailure.Unsupported);
+                    // SPEC 6.2.3.4, 11.3.1: construction forbids inherited Field and computed access and custom accessor calls on self.
+                    return this.Fail(node, BindingFailure.InvalidAssignment);
                 }
 
                 return Complete(node, symbol.Type);
@@ -1153,14 +1202,25 @@ public sealed partial class Binding
                     if (!this.AdaptInput(sourceReceiver, required, sourceType, scope, pathSelection.Path, pathSelection.DeclaringType, out var projectedReceiver, out var quality, out var kind, explicitBorrow: update, receiver: true))
                     {
                         // SPEC 11.2: a receiver that only the accessor's wrongly shaped written receiver rejects rests on that declaration.
-                        return this.ReceiverRestsOnAccessorShape(node, operation, sourceReceiver, sourceType, pathSelection.DeclaringType, pathSelection.Path, scope, update) ? null : this.Fail(node, BindingFailure.TypeMismatch);
+                        if (this.ReceiverRestsOnAccessorShape(node, operation, sourceReceiver, sourceType, pathSelection.DeclaringType, pathSelection.Path, scope, update))
+                        {
+                            return null;
+                        }
+
+                        var objectProjection = IsObjectSemantics(sourceType.Semantics);
+                        return this.Fail(node, objectProjection ? BindingFailure.Unsupported : BindingFailure.TypeMismatch, objectProjection);
                     }
 
-                    var compatibility = kind == ArgumentOperationKind.PayloadProjection ? ConstraintProof.Proven : ProjectedReceiverProof(symbol);
+                    var compatibility = kind == ArgumentOperationKind.PayloadProjection ? ConstraintProof.Proven : ProjectedReceiverProof(symbol, operation);
                     this.receiverOperations[node] = new(sourceReceiver, sourceType, projectedReceiver, kind, quality, pathSelection.Path, 0, compatibility);
                 }
 
                 var input = target.Parent is BinaryKoto parentBinary ? parentBinary.Right : target.Parent;
+                if (update && target.Parent is { } updateExpression)
+                {
+                    input = this.PropertyUpdateInput(node, updateExpression);
+                }
+
                 if ((!operation.IsStandard && !this.BindPropertyCall(node, operation, scope, write ? input : null)) ||
                     (update && !property.Setter.IsStandard && (input is null || !this.BindPropertyCall(node, property.Setter, scope, input))) ||
                     (update && (node is not MemberAccessKoto updateMember || !this.BindPropertyUpdate(updateMember, scope))))
@@ -1168,7 +1228,7 @@ public sealed partial class Binding
                     return null;
                 }
 
-                return Complete(node, write ? property.Setter.Input : property.Getter.Result);
+                return Complete(node, write ? this.PropertySetterInput(node) : this.propertyCalls.GetValueOrDefault((node, PropertyAccessorKind.Get))?.BoundType ?? property.Getter.Result);
             }
 
             if (node is MemberAccessKoto stored && sourceReceiver?.BoundType is { } storedSource && this.memberSelections.TryGetValue(stored, out var storageSelection) && storageSelection.Path is not null)
@@ -1188,6 +1248,12 @@ public sealed partial class Binding
             // A parameter's Type is bound with its function's header; a use without a Type consulted it.
             this.Consulted(function.Parameters[slot].Type);
         }
+        else if (type is null && symbol is { Kind: BindingSymbolKind.Parameter, Declaration: PropertyAccessorKoto accessorSyntax })
+        {
+            var accessor = Accessor(accessorSyntax);
+            var annotation = ReferenceEquals(symbol, accessor.SelfSymbol) ? accessorSyntax.ReceiverType : accessorSyntax.ValueType;
+            this.Consulted(annotation ?? accessor.Property.Declaration.TypeKoto ?? accessor.Property.Declaration);
+        }
 
         return Complete(node, type);
     }
@@ -1195,7 +1261,7 @@ public sealed partial class Binding
     private BoundType? RequireType(Koto node, BindingScope scope, BoundType? expected)
     {
         var actual = this.BindNode(node, scope, expected);
-        if (expected is not null && actual is not null && !this.FitsTypeAt(actual, expected, node))
+        if (expected is not null && actual is not null && !this.FitsTypeAt(actual, expected, node) && !this.CheckLocalTypeUse(actual, expected, node))
         {
             this.FailMismatch(node, node, actual, expected);
         }
@@ -1214,6 +1280,11 @@ public sealed partial class Binding
         {
             return unary.Operand is InvocationKoto { Method: IdentifierNameKoto { IdentifierName: "tryWrite" } }
                 ? this.BindTryWrite(unary, scope) : this.BindAbort(unary, scope);
+        }
+
+        if (this.TryArithmetic(unary, scope, out var arithmeticResult))
+        {
+            return arithmeticResult;
         }
 
         if (unary.Akind is KotoKind.PrefixMinus or KotoKind.PrefixPlus && unary.Operand is NumberLiteralKoto number)
@@ -1301,13 +1372,18 @@ public sealed partial class Binding
                 // SPEC 5.2: *p denotes a Place of the pointee Type; the unsafe context is checked by control flow.
                 return ReferenceTypes.IsPointer(operand) ? Complete(unary, operand.Components[0]) : this.Fail(unary, BindingFailure.TypeMismatch);
             default:
-                return this.Fail(unary, BindingFailure.Unsupported, true);
+                return this.Fail(unary, BindingFailure.Internal);
         }
     }
 
     private BoundType? BindBinary(BinaryKoto binary, BindingScope scope, BoundType? expected)
     {
         binary.ComparisonActive = false;
+        if (this.TryArithmetic(binary, scope, out var arithmeticResult))
+        {
+            return arithmeticResult;
+        }
+
         var kind = binary.Akind;
         if (kind is KotoKind.Conversion or KotoKind.As or KotoKind.Is)
         {
@@ -1402,6 +1478,12 @@ public sealed partial class Binding
         }
 
         var result = assignment ? BoundType.Unit : left;
+        if (assignment && kind != KotoKind.Equals && this.PropertySetterInput(KotoHelper.UnwrapParentheses(binary.Left)) is { } setterInput &&
+            !this.FitsTypeAt(left, setterInput, binary))
+        {
+            return this.FailMismatch(binary, binary.Left, left, setterInput);
+        }
+
         if (shift)
         {
             // SPEC 13.3: the shifted operand may be a wrapping integer Type; the count is an integer Type, never a wrapping one.
@@ -1488,7 +1570,7 @@ public sealed partial class Binding
         }
 
         // SPEC 15.6.1: an assignment's Origin part is judged under the premises in scope, such as `origin other outlives anchor`.
-        if (comparison ? !Compatible(right, left) : !this.FitsTypeAt(right, left, binary))
+        if (comparison ? !Compatible(right, left) : !this.FitsTypeAt(right, left, binary) && !this.CheckLocalTypeUse(right, left, binary.Right))
         {
             if (comparison && this.CommonOriginType(left, right) is { } common)
             {
@@ -1542,8 +1624,19 @@ public sealed partial class Binding
             return Complete(binary, result);
         }
 
-        // Every primitive with an arithmetic operator is numeric and handled above; arithmetic on other Types remains deferred.
-        return this.Fail(binary, BindingFailure.Unsupported, true);
+        // SPEC 13.3: the bitwise operators take integers only and have no user extension. SPEC arithmetic Contracts §2, §6: an
+        // operand Type that is neither numeric nor a provider of the operator, such as an unconstrained Type parameter, a Tuple
+        // or a raw pointer product, selects no conformance.
+        if (operation is KotoKind.Ampersand or KotoKind.Bar or KotoKind.Caret)
+        {
+            return this.FailOperand(binary, left, BindingFailure.NonIntegerOperand);
+        }
+
+        var rejected = binary.ArithmeticStorage ??= new();
+        rejected.Active = false;
+        rejected.Candidates.Clear();
+        rejected.Sources.Clear();
+        return this.FailExplained(ref this.arithmeticSelectionFailures, binary, BindingFailure.ArithmeticSelection, new(rejected, left, right, ArithmeticContract(operation), "No proven conformance fits the counterpart structure"));
     }
 
     private BoundType? BindTuple(TupleLiteralKoto tuple, BindingScope scope, BoundType? expected)
@@ -1559,7 +1652,7 @@ public sealed partial class Binding
                 complete &= type is not null;
             }
 
-            return Complete(tuple, complete ? this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, buffer.AsSpan(0, tuple.Elements.Count)) : null);
+            return Complete(tuple, complete ? this.types.Tuple(buffer.AsSpan(0, tuple.Elements.Count)) : null);
         }
         finally
         {

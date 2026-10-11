@@ -85,9 +85,9 @@ public class SealedObjectFinalizationTest
             let clone = Kimi.Intrinsics.clone(second@ref)
             """;
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid);
         NativeAllocationAudit.WriteFixture("SealedObjectMixed", Source, 2, 2, 32, "second\nfirst\n");
     }
@@ -109,7 +109,7 @@ public class SealedObjectFinalizationTest
         var source = atomic ? SharedObjectRuntimeTest.ArcSource(Source) : Source;
         var c = MinimalEmissionTest.Analyze(source);
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid);
         NativeAllocationAudit.WriteFixture("SealedObjectRecursive" + (atomic ? "Arc" : "Rc"), source, 2, 2, 64, "node\nnode\n");
     }

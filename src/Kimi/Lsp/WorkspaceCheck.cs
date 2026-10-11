@@ -305,7 +305,7 @@ internal sealed class WorkspaceCheck
             }
         }
 
-        return CheckService.Run(project, plan.Key.Target, plan.Mode, debug, source, cancellationToken);
+        return CheckService.Run(project, plan.Key.Target, plan.Mode, debug, source, cancellationToken, collectHover: true);
     }
 
     /// <summary>Runs the check to completion; every product goes to the state owner's queue.</summary>
@@ -366,11 +366,11 @@ internal sealed class WorkspaceCheck
         }
     }
 
-    // SPEC 23.4.7: the message, then the label, the text of unsent related locations, omissions, Note, Advice and, for a moved record, its
+    // SPEC 23.4.7: the message, then the label, the text of unsent related locations, omissions, the Note and, for a moved record, its
     // original location, on separate lines.
     private static string Text(CheckDiagnostic diagnostic, DiagnosticSource? moved, List<string>? related)
     {
-        if (diagnostic.Label is null && related is null && diagnostic.Omissions is null && diagnostic.Note is null && diagnostic.Advice is null && moved is null)
+        if (diagnostic.Label is null && related is null && diagnostic.Omissions is null && diagnostic.Note is null && moved is null)
         {
             return diagnostic.Message;
         }
@@ -396,11 +396,6 @@ internal sealed class WorkspaceCheck
             builder.Append("\nnote: ").Append(note);
         }
 
-        if (diagnostic.Advice is { } advice)
-        {
-            builder.Append("\nadvice: ").Append(advice);
-        }
-
         if (moved is not null)
         {
             builder.Append("\nat ").Append(moved.Path);
@@ -422,6 +417,7 @@ internal sealed class WorkspaceCheck
             members.Add(SourceIdentity.FromPath(file));
         }
 
+        var productMembers = new HashSet<SourceIdentity>(members);
         foreach (var test in project.ProjectFile.TestSources)
         {
             try
@@ -439,6 +435,7 @@ internal sealed class WorkspaceCheck
             Path = path,
             Project = project,
             Members = members,
+            ProductMembers = productMembers,
             ProductReferences = References(project.ProjectFile.Dependencies, directory),
             TestReferences = References(project.ProjectFile.TestDependencies, directory),
             HasTestSources = project.ProjectFile.TestSources.Length != 0,

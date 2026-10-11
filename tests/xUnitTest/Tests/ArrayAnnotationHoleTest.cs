@@ -62,7 +62,7 @@ public class ArrayAnnotationHoleTest
     {
         var compilation = MinimalEmissionTest.Analyze(source);
         using var output = new StringWriter();
-        Assert.False(compilation.Emission.WriteIr(output, out _));
+        Assert.False(compilation.WriteIr(output, out _));
     }
 
     [Theory]
@@ -73,8 +73,8 @@ public class ArrayAnnotationHoleTest
         var compilation = MinimalEmissionTest.Analyze(source);
         var variable = compilation.Kotonoha.GeneratedFunction!.Body!.ChildNodes.OfType<VariableKoto>().Single();
         var shape = Assert.IsType<FixedArrayTypeKoto>(variable.TypeKoto);
-        Assert.Equal(2, shape.BoundType!.Length);
-        Assert.Equal(1, shape.BoundType.Components[0].Length);
+        Assert.Equal(2, shape.TypeOf()!.Length);
+        Assert.Equal(1, shape.TypeOf()!.Components[0].Length);
         Assert.True(compilation.Bind().IsComplete);
         var reloaded = CompilationTestHelper.Reload(compilation);
         Assert.True(reloaded.Bind().IsComplete);

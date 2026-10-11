@@ -7,13 +7,30 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // Use the verified declaration mapping, never repeat member lookup at a concrete call.
-    private BoundCall? InstantiateRequirementCall(BoundCall call, BoundCall outer, BoundCall? destination = null)
+    private CallPlan? InstantiateRequirementCall(CallPlan call, CallPlan outer, CallPlan? destination = null)
     {
         var requirement = (FunctionKoto)call.Target.Declaration;
+        if (call.ConformingType is { } open && open.HasAbstractPart)
+        {
+            // SPEC 8.10: substituted into a generic caller, such as a default's replica, a requirement call on a still abstract Type
+            // stays that Type's requirement call, as in the caller's own body; only a closed Type selects its witness. The
+            // intermediate call is reused per inner call, so the result is copied into its own storage.
+            var forwarded = destination ?? new CallPlan();
+            forwarded.Set(call.Target, call.ReturnType, call.Receiver, call.ArgumentToParameter, call.TypeArguments, call.ConformingType, call.DeclaringType, call.Origins, call.InputOrigins, call.ArgumentOperations, call.ReceiverOperation, call.BasePath, call.DefaultArguments, call.LengthArguments);
+            forwarded.TupleOperator = call.TupleOperator;
+            forwarded.RequirementContract = call.RequirementContract;
+            return forwarded;
+        }
+
+        if (requirement.Accessor is not null)
+        {
+            return this.InstantiatePropertyRequirementCall(call, outer, destination);
+        }
+
         var builtin = this.CompilerRequirementTarget(call.Target, call.ConformingType);
         if (builtin.CompilerFunction != CompilerFunctionKind.None)
         {
-            var intrinsic = destination ?? new BoundCall();
+            var intrinsic = destination ?? new CallPlan();
             intrinsic.Set(builtin, call.ReturnType, call.Receiver, call.ArgumentToParameter, call.TypeArguments, call.ConformingType, call.DeclaringType, call.Origins, call.InputOrigins, call.ArgumentOperations, call.ReceiverOperation, call.BasePath, call.DefaultArguments, call.LengthArguments);
             intrinsic.TupleOperator = call.TupleOperator;
             return intrinsic;
@@ -31,8 +48,8 @@ public sealed partial class Binding
 
         if (call.ConformingType is not { } self || this.InstanceReference(call, self, outer) is not { } contract ||
             this.ResolveConformance(self, contract, outer.Target.Declaration, out var path) != ConstraintProof.Proven ||
-            path is not { IsVerified: true } || !path.WitnessMap.TryGetValue(call.Target, out var witness) ||
-            witness.Function is not { BasePath: null } function ||
+            path is not { IsVerified: true } || !path.WitnessMap.TryGetValue(new(call.Target, contract), out var witness) ||
+            witness.Function is not { ObjectCompatibility: ConstraintProof.Proven } function ||
             this.StoredType(function.DeclaringType, self) is not { } declaring)
         {
             return null;
@@ -44,9 +61,9 @@ public sealed partial class Binding
         {
             Translate(function.Origins, origins);
             Translate(function.InputOrigins, inputs);
-            var resolved = destination ?? new BoundCall();
+            var resolved = destination ?? new CallPlan();
             resolved.Set(witness.Implementation, call.ReturnType, call.Receiver, call.ArgumentToParameter, call.TypeArguments, declaringType: declaring, origins: origins.AsSpan(0, function.Origins.Length), inputOrigins: inputs.AsSpan(0, function.InputOrigins.Length), operations: call.ArgumentOperations, receiverOperation: call.ReceiverOperation, lengthArguments: call.LengthArguments, defaults: call.DefaultArguments);
-            return resolved;
+            return this.ProjectWitnessCall(resolved, function.BasePath, declaring) ? resolved : null;
         }
         finally
         {
@@ -64,10 +81,42 @@ public sealed partial class Binding
         }
     }
 
+    // The requirement already acquired and verified its receiver. Its Proven witness lends only the base prefix;
+    // retain that acquisition's Origin and source, and change the physical receiver Type for the selected implementation.
+    private bool ProjectWitnessCall(CallPlan call, BoundMemberPath? path, BoundType declaring)
+    {
+        if (path is null || call.Target.ReceiverIndex < 0)
+        {
+            return true;
+        }
+
+        var operation = call.ReceiverOperation;
+        if (call.Receiver is null)
+        {
+            foreach (var argument in call.ArgumentOperations)
+            {
+                if (argument.ParameterIndex == call.Target.ReceiverIndex)
+                {
+                    operation = argument;
+                    break;
+                }
+            }
+        }
+
+        if (operation.ParameterType is not { Semantics: SemanticsKind.Ref } receiver)
+        {
+            return false; // Exclusive receiver preservation remains OCC-X.
+        }
+
+        var projected = this.types.Reference(SemanticsKind.Ref, declaring, receiver.Origin);
+        call.SetReceiverProjection(operation with { ParameterType = projected, AdaptedType = projected, Kind = ArgumentOperationKind.BaseBorrow, BasePath = path, ObjectCompatibility = ConstraintProof.Proven }, path);
+        return true;
+    }
+
     // SPEC 8.4.9: the Contract reference the call selected, as the instance's Type conforms to it: a Contract without Type
     // arguments is its own reference, and a bound reference has its Type arguments instantiated (`Indexable<Name>`, or
     // `C<E>` read as `C<i32>`). Null when the call recorded none or the instance has no such conformance.
-    private BindingSymbol? InstanceReference(BoundCall call, BoundType self, BoundCall outer)
+    private BindingSymbol? InstanceReference(CallPlan call, BoundType self, CallPlan outer)
     {
         if (call.RequirementContract is not { } recorded)
         {

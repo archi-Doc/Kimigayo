@@ -41,6 +41,11 @@ public sealed class BoundEnumConstruction
 
     internal bool IsValid { get; set; }
 
+    /// <summary>Gets the construction of the enum Case value a node with the Aggregate Op makes, or null for another node.</summary>
+    /// <param name="use">The node.</param>
+    /// <returns>The construction the latest pass selected.</returns>
+    internal static BoundEnumConstruction? Of(Koto use) => use.CodeContext.Compilation.Binding.TryGetEnumConstruction(use, out var construction) ? construction : null;
+
     internal void Set(BoundEnumCase enumeration, BoundType type, ReadOnlySpan<BoundArgumentOperation> operations)
     {
         this.Case = enumeration;
@@ -68,7 +73,7 @@ public sealed partial class Binding
     /// <returns>Whether a valid construction was selected in the latest pass.</returns>
     public bool TryGetEnumConstruction(Koto use, out BoundEnumConstruction? construction)
     {
-        if (this.kimiValid && use.BindingState == BindingState.Resolved && this.enumConstructions.TryGetValue(use, out var plan) && plan.IsValid)
+        if (use.BindingState == BindingState.Resolved && this.enumConstructions.TryGetValue(use, out var plan) && plan.IsValid)
         {
             construction = plan;
             return true;
@@ -334,7 +339,7 @@ public sealed partial class Binding
 
                     this.MatchInputOrigins(pattern, adapted, declaration, origins, []);
                     var inferred = this.SubstituteStoredOrigins(pattern, declaration, origins.AsSpan(0, originCount));
-                    if (!(hint is not null && this.FitsTypeAt(adapted, hint, source)) && !this.Infer(inferred, adapted, declaration, arguments, true))
+                    if (!(hint is not null && (this.FitsTypeAt(adapted, hint, source) || this.CheckLocalTypeUse(adapted, hint, source))) && !this.Infer(inferred, adapted, declaration, arguments, true))
                     {
                         // SPEC 15.6.1: a payload that fits its expected payload Type only structurally fails in its Origin relations, at
                         // the payload value, never as a Type mismatch.
@@ -367,7 +372,7 @@ public sealed partial class Binding
                 }
             }
 
-            var result = this.InternType(slots == 0 ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, enumeration.Owner, SemanticsKind.Owner, ((BoundType[])(object)arguments).AsSpan(0, slots), originArguments: origins.AsSpan(0, originCount));
+            var result = this.types.Intern(slots == 0 ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, enumeration.Owner, SemanticsKind.Owner, ((BoundType[])(object)arguments).AsSpan(0, slots), originArguments: origins.AsSpan(0, originCount));
             if (expected is not null && !FitsType(result, expected))
             {
                 // SPEC 15.6.1: a construction that fits only structurally fails in its Origin relations, never as a Type mismatch.
@@ -376,7 +381,7 @@ public sealed partial class Binding
                     return this.Fail(use, BindingFailure.TypeMismatch);
                 }
 
-                if (!this.FitsTypeAt(result, expected, use))
+                if (!this.FitsTypeAt(result, expected, use) && !this.CheckLocalTypeUse(result, expected, use))
                 {
                     return this.RecordMismatch(use, use, result, expected);
                 }
@@ -386,7 +391,7 @@ public sealed partial class Binding
             {
                 var type = this.StoredType(payload[i].BoundType!, result)!;
                 var operation = operations[i];
-                if (!this.AdaptInput(operation.Source!, type, operation.SourceType!, scope, null, null, out var adapted, out var quality, out var kind) || !this.FitsTypeAt(adapted, type, operation.Source!))
+                if (!this.AdaptInput(operation.Source!, type, operation.SourceType!, scope, null, null, out var adapted, out var quality, out var kind) || (!this.FitsTypeAt(adapted, type, operation.Source!) && !this.CheckLocalTypeUse(adapted, type, operation.Source!)))
                 {
                     return this.Fail(use, BindingFailure.TypeMismatch);
                 }
@@ -483,9 +488,22 @@ public sealed partial class Binding
     {
         for (var node = use.Parent; node is not null; node = node.Parent)
         {
-            if (!this.initializerOrigins.TryGetValue(node, out var declaration) || declaration.State < 2 || declaration.Replacements.Count == 0)
+            if (this.initializerOrigins.TryGetValue(node, out var initializer))
             {
-                continue;
+                Apply(initializer);
+            }
+
+            if (node is VariableKoto && this.originDeclarations.TryGetValue(node, out var local))
+            {
+                Apply(local);
+            }
+        }
+
+        void Apply(OriginDeclaration declaration)
+        {
+            if (declaration.State < 2 || declaration.Replacements.Count == 0)
+            {
+                return;
             }
 
             var source = construction.PayloadOperations;

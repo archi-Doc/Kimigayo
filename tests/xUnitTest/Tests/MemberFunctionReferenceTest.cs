@@ -30,7 +30,7 @@ public class MemberFunctionReferenceTest
     public void TypeQualifiedReferencesTakeTheReceiverAsAnArgument(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         ScalarEmissionTest.EmitFixture("MemberReference" + name, source, string.Empty);
     }
 
@@ -46,7 +46,6 @@ public class MemberFunctionReferenceTest
         var error = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal(nameof(DiagnosticCode.BoundMethodValue_Kd), error.Code);
         Assert.Equal("counter.peek", error.Text);
-        Assert.Contains("Counter.peek", error.Advice, StringComparison.Ordinal);
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
         var record = Assert.Single(result.Diagnostics);
@@ -80,7 +79,7 @@ public class MemberFunctionReferenceTest
     {
         var source = Box + body;
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         ScalarEmissionTest.EmitFixture("MemberReferenceContainer" + name, source, string.Empty);
     }
 
@@ -89,7 +88,7 @@ public class MemberFunctionReferenceTest
     {
         var c = MinimalEmissionTest.Analyze(Box + "let pair = Box<i32>.pair<bool>");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var item = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.GenericsKoto>().Single(x => x.BoundType?.Kind == BoundTypeKind.FunctionItem).BoundType!;
+        var item = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.GenericsKoto>().Single(x => x.TypeOf()?.Kind == BoundTypeKind.FunctionItem).TypeOf()!;
         Assert.Equal(2, item.Components.Count);
         Assert.Same(BoundType.Boolean, item.Components[0]);
         Assert.Equal("Box", item.Components[1].Name);
@@ -100,7 +99,7 @@ public class MemberFunctionReferenceTest
     {
         var source = Box + "let box = Box<i32>.init(item: 5)\nlet get = Box<i32>.get\nlet r = get(box@ref)\nrequire r == 5 else => $abort(\"get\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         ScalarEmissionTest.EmitFixture("MemberReferenceContainerGet", source, string.Empty);
     }
 }

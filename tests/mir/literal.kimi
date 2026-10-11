@@ -1,0 +1,5 @@
+func answer() -> i32 => 42
+func negative() -> i64 => -7
+func ratio() -> f64 => 0.5
+func truth() -> bool => true
+func greeting() -> string => "hi"

@@ -16,11 +16,11 @@ public class DisjointSplitLoanTest(ITestOutputHelper output)
     public void WarmSiblingLoanAnalysisAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze("struct Item\n    public var value: i32 = 1\nvar values: Array<Item> = [Item.init(), Item.init()]\nmatch values.tryGetPairUniq(first: 0, second: 1)\n    .Some((let a, let b))\n        let child = a@follow@ref\n        b.value += child.value\n        a.value += b.value\n    .None => ()");
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(0, AllocationMeasurement.Measure(
             () =>
             {
-                if (!c.Ownership.Analyze().IsVerified)
+                if (!c.Analyze().IsVerified)
                 {
                     throw new InvalidOperationException("Sibling Loan analysis failed.");
                 }
@@ -77,11 +77,11 @@ public class DisjointSplitLoanTest(ITestOutputHelper output)
         const string Source = "struct Item\n    public var value: i32 = 1\nfunc child(value: ref/Item) -> ref/Item during value => value\nvar values: Array<Item> = [Item.init(), Item.init()]\nmatch values.tryGetPairUniq(first: 0, second: 1)\n    .Some((let a, let b))\n        let first = child(a)\n        a.value = 3\n        b.value = 4\n        require first.value == 1 else => $abort(\"child\")\n    .None => ()";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         var error = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal("ComparisonLoanConflict_Kd", error.Code);
         Assert.Equal("a.value", error.Text);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -102,11 +102,11 @@ public class DisjointSplitLoanTest(ITestOutputHelper output)
                 .None => ()
             """);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         var error = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal("ComparisonLoanConflict_Kd", error.Code);
         Assert.Equal(target + ".value", error.Text);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -170,9 +170,9 @@ public class DisjointSplitLoanTest(ITestOutputHelper output)
                 .None => ()
             """);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.False(c.Validate(out _));
     }
 
     [Fact]
@@ -180,7 +180,7 @@ public class DisjointSplitLoanTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze("func invalid(values: ref/Array<i32>)\n    _ = values.tryGetPairUniq(first: 0, second: 1)");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Fact]
@@ -188,8 +188,8 @@ public class DisjointSplitLoanTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze("let pair = label scope: do\n    var values: Array<i32> = [1, 2]\n    exit to scope values.tryGetPairUniq(first: 0, second: 1)\nmatch pair@move\n    .Some((let a, let b))\n        a@follow = 3\n        b@follow = 4\n    .None => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -204,8 +204,8 @@ public class DisjointSplitLoanTest(ITestOutputHelper output)
         var path = Path.GetFullPath("split-child.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        c.Ownership.ReportDiagnostics();
+        Assert.False(c.Analysis.IsVerified);
+        c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         Assert.Equal(independent ? 2 : 1, result.Diagnostics.Length);

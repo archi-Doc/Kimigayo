@@ -18,7 +18,7 @@ public class CallableEffectBoundTest
     public void AcceptsAConfinedClosure()
     {
         var c = MinimalEmissionTest.Analyze(Apply + "public func main() => ()\nfunc entry() -> i32\n    let f = func [] () -> i32 => 12\n    return apply(f@ref)\n");
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]
@@ -26,8 +26,8 @@ public class CallableEffectBoundTest
     {
         var c = MinimalEmissionTest.Analyze(Apply + "group State\n    public var count: i32 = 0\npublic func main() => ()\nfunc entry() -> i32\n    let f = func [] () -> i32 => State.count\n    return apply(f@ref)\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Analyze().IsVerified);
-        c.Ownership.ReportDiagnostics();
+        Assert.False(c.Analyze().IsVerified);
+        c.ReportAnalysis();
         var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Code == "UnsatisfiedEffectBound_Kd");
         Assert.Equal("UnsatisfiedEffectBound_Kd", error.Code);
         Assert.Equal("f@ref", error.Text);
@@ -60,7 +60,7 @@ public class CallableEffectBoundTest
             (bounded ? "        effect confined\n" : string.Empty) + "    return apply(g)\npublic func main() => ()\nfunc entry() -> i32\n    let f = func [] () -> i32 => 8\n    return forward(f@ref)\n";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(bounded, c.Ownership.Result.IsVerified);
+        Assert.Equal(bounded, c.Analysis.IsVerified);
         if (!bounded)
         {
             var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
@@ -76,7 +76,6 @@ public class CallableEffectBoundTest
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal("UnsatisfiedEffectBound_Kd", error.Code);
         Assert.Contains("erasure", error.Label);
-        Assert.Contains("Keep the concrete Function Item or Closure Type", error.Advice);
     }
 
     [Theory]
@@ -87,7 +86,7 @@ public class CallableEffectBoundTest
         var source = Apply + $"group State\n    public var count: i32 = 0\nfunc inner() -> i32 => {body}\nfunc outer() -> i32 => inner()\npublic func main() => ()\nfunc entry() -> i32 => apply(outer)\n";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(valid, c.Ownership.Result.IsVerified);
+        Assert.Equal(valid, c.Analysis.IsVerified);
     }
 
     [Theory]
@@ -100,7 +99,7 @@ public class CallableEffectBoundTest
             $"public func main() => ()\nfunc entry() -> i32\n    let item = Item.init()\n    let f = func [item@move] () -> i32 => item.value\n    return apply(f@{(receiver == "ref" ? "ref" : "move")})\n";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(valid, c.Ownership.Result.IsVerified);
+        Assert.Equal(valid, c.Analysis.IsVerified);
     }
 
     [Fact]
@@ -132,23 +131,20 @@ public class CallableEffectBoundTest
         }
     }
 
+    // With preserves results, excluding the earlier result of the same Callable value needs value identity across replacement,
+    // an implementation limit (reduction regression R1g): the later call is one located Unsupported_Kd.
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, true)]
-    public void EarlierResultsRequirePreservation(bool bounded, bool valid)
+    [InlineData(false)]
+    [InlineData(true)]
+    public void EarlierResultsRequirePreservation(bool bounded)
     {
         var source = "contract Source\n    associate Item\nfunc twice<S,F>(source: uniq/S, next: ref/F) -> (S.Item, S.Item)\n    S is Source\n    F is Callable<(uniq/S) -> S.Item>\n" +
             (bounded ? "        effect preserves results\n" : string.Empty) +
             "    let first = next(source)\n    let second = next(source)\n    return (first@move, second@move)\npublic func main() => ()\n";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(valid, c.Ownership.Result.IsVerified);
-        if (!valid)
+        var diagnostic = AssertSecondCall(source, bounded ? "Unsupported_Kd" : "CallEffectConflict_Kd", "next(source)");
+        if (!bounded)
         {
-            var diagnostic = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-            Assert.Equal("CallEffectConflict_Kd", diagnostic.Code);
             Assert.Contains("Callable Constraint", diagnostic.Message);
-            Assert.Contains("preserves results", diagnostic.Advice);
             Assert.Equal(["call", "loan"], diagnostic.Related!.Select(static r => r.Role));
         }
     }
@@ -165,7 +161,7 @@ public class CallableEffectBoundTest
             $"func forward<G>() -> ()\n    G is Callable<{required}, () -> i32>\n    G is Callable<{premise}, () -> i32>\n        effect confined\n    need<G>()\npublic func main() => ()\n";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(valid, c.Ownership.Result.IsVerified);
+        Assert.Equal(valid, c.Analysis.IsVerified);
     }
 
     [Theory]
@@ -362,8 +358,8 @@ public class CallableEffectBoundTest
     public void WarmRejectedBoundChecksReuseTheirStorage()
     {
         var c = MinimalEmissionTest.Analyze(Apply + "func noisy() -> i32\n    Console.writeLine(\"noisy\")\n    return 0\npublic func main() => _ = apply(noisy)\n");
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Ownership.Analyze()));
+        Assert.False(c.Analysis.IsVerified);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
     }
 
     [Theory]
@@ -394,30 +390,31 @@ public class CallableEffectBoundTest
         var c = MinimalEmissionTest.Analyze(Apply + "public func main() => ()\nfunc entry() -> i32\n    let f = func [] () -> i32 => 12\n    return apply(f@ref)\n");
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 
+    // A replaced value is another callable value, so the guarantee no longer excludes the earlier result; whether the value was
+    // replaced is the same limit as above, while a call through a different value is the specified conflict.
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void ReplacingTheCallableCannotReuseTheEarlierValuesGuarantee(bool replace)
+    [InlineData("    let second = f(source)\n", "Unsupported_Kd", "f(source)")]
+    [InlineData("    f = two@move\n    let second = f(source)\n", "Unsupported_Kd", "f(source)")]
+    [InlineData("    var g = two@move\n    let second = g(source)\n", "CallEffectConflict_Kd", "g(source)")]
+    public void ReplacingTheCallableCannotReuseTheEarlierValuesGuarantee(string second, string code, string call)
     {
         var source = "contract Source\n    associate Item\nfunc twice<S,F>(source: uniq/S, one: F, two: F) -> (S.Item, S.Item)\n    S is Source\n    F is Callable<uniq, (uniq/S) -> S.Item>\n        effect preserves results\n    var f = one@move\n    let first = f(source)\n" +
-            (replace ? "    f = two@move\n" : string.Empty) +
-            "    let second = f(source)\n    return (first@move, second@move)\npublic func main() => ()\n";
-        var records = DiagnosticCorpus.Check(source).Diagnostics;
-        if (!replace)
-        {
-            Assert.Empty(records);
-        }
-        else
-        {
-            Assert.Equal("CallEffectConflict_Kd", Assert.Single(records).Code);
-        }
+            second + "    return (first@move, second@move)\npublic func main() => ()\n";
+        AssertSecondCall(source, code, call);
     }
 
     [Fact]
     public void ConfinedCallbacksRunNatively()
         => ScalarEmissionTest.EmitFixture("CallableEffectsConfined", Apply + "let f = func [] () -> i32 => 19\nrequire apply(f@ref) == 19 else => $abort(\"callback\")\n", string.Empty);
+
+    private static CheckDiagnostic AssertSecondCall(string source, string code, string call)
+    {
+        var diagnostic = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((code, source.LastIndexOf(call, StringComparison.Ordinal), call.Length), (diagnostic.Code, diagnostic.Span!.Value.Start, diagnostic.Span.Value.Length));
+        return diagnostic;
+    }
 }

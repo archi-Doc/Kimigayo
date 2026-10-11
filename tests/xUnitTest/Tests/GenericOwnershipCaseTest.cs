@@ -78,7 +78,7 @@ public class GenericOwnershipCaseTest
 
         if (!rejected)
         {
-            Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         }
     }
 

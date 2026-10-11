@@ -19,7 +19,7 @@ internal sealed partial class BodyLowering
     private int[] slotUses = [];
     private bool hasMatches;
     private OwnershipBody? matchBody;
-    private int matchDefaultContext = -1;
+    private InterpretationContext matchContext = InterpretationContext.Root;
 
     private void PruneMatchStorage(OwnershipBody body, EmissionFunction function, ReadOnlySpan<byte> marks)
     {
@@ -203,7 +203,7 @@ internal sealed partial class BodyLowering
             }
 
             this.matchBody = body;
-            this.matchDefaultContext = body.Places[match.Subject].DefaultContext;
+            this.matchContext = body.ContextOf(match.Subject);
             this.matchPlaces[match.Subject] = 1;
             var initializer = this.subjectInitializers[match.Subject];
             var dispatchEdge = body.EdgeHeads[initializer];
@@ -252,10 +252,6 @@ internal sealed partial class BodyLowering
 
                 this.matchTests[arm.Test] = armIndex;
                 var guarded = binding.Arms[n].Syntax.Guard is not null;
-                if (guarded && !MatchTypes.SupportsGuard(binding, arm.Pattern))
-                {
-                    return Fail("Unsupported guarded Subject Type.", out failure);
-                }
 
                 var unconditional = pattern.Kind is BoundPatternKind.Wildcard or BoundPatternKind.Binding or BoundPatternKind.Unit;
                 var duplicate = false;
@@ -442,7 +438,7 @@ internal sealed partial class BodyLowering
     }
 
     // A Pattern position's matched Type as the lowered body sees it; a monomorphized instance sees its substitution (SPEC 21.3.1).
-    private BoundType Matched(BoundType? type) => SignatureType(this, this.matchBody!.SubstituteDefaultType(type, this.matchDefaultContext))!;
+    private BoundType Matched(BoundType? type) => this.matchBody!.Resolve(type, this.matchContext)!;
 
     private bool PureMatchTest(OwnershipBody body, int id) => body.Values[id].Kind == OwnershipValueKind.None && body.Operations[id].Input == -1 &&
         (body.LoanInputs.Count == 0 || body.LoanInputs[id] == body.LoanStates[id]);
@@ -479,7 +475,7 @@ internal sealed partial class BodyLowering
     private bool LowerMatchOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, out string? failure)
     {
         this.matchBody = body;
-        this.matchDefaultContext = body.DefaultContextAt(id);
+        this.matchContext = body.ContextAt(id);
         failure = null;
         var operation = body.Operations[id];
         if (!this.hasMatches || operation.Place < 0 || this.matchPlaces[operation.Place] != 1 || operation.Source.AttributeChain is not null)
@@ -603,7 +599,7 @@ internal sealed partial class BodyLowering
     private bool ValidateCandidateRead(OwnershipBody body, int id, out string? failure)
     {
         this.matchBody = body;
-        this.matchDefaultContext = body.DefaultContextAt(id);
+        this.matchContext = body.ContextAt(id);
         failure = null;
         var operation = body.Operations[id];
         var index = body.OperationSteps[id];

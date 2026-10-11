@@ -1,0 +1,86 @@
+// User arithmetic: finite Contract selection, shared Non-Copy inputs and ordinary replacement.
+struct Vec2
+    Self is Addable<Self> and Multipliable<f32> and LeftMultipliable<f32> and Negatable
+    associate Addable<Self>.Output is Self
+    associate Multipliable<f32>.Output is Self
+    associate LeftMultipliable<f32>.Output is Self
+    associate Negatable.Output is Self
+    public let x: f32
+    public let y: f32
+
+    public init(x: f32, y: f32)
+        self.x = x
+        self.y = y
+
+    public func added(self: ref/Self, right: ref/Self) -> Self
+        return Self.init(self.x + right.x, self.y + right.y)
+
+    public func multiplied(self: ref/Self, right: ref/f32) -> Self
+        return Self.init(self.x * right, self.y * right)
+
+    public func multipliedFrom(left: ref/f32, self: ref/Self) -> Self
+        return self.multiplied(left)
+
+    public func negated(self: ref/Self) -> Self
+        return Self.init(-self.x, -self.y)
+
+    drop => ()
+
+func sum<T>(left: ref/T, right: ref/T) -> T.(Addable<T>).Output
+    T is Addable<T>
+    return left + right
+
+func apply<F, T>(operation: ref/F, left: ref/T, right: ref/T) -> T
+    F is Callable<(ref/T, ref/T) -> T>
+    return operation(left, right)
+
+func throughValues<T>(left: ref/T, right: ref/T) -> T
+    T is Addable<T> and Owned
+    T.(Addable<T>).Output is T
+    let item = T.added
+    let erased: (ref/T, ref/T) -> T = item
+    _ = item(left, right)
+    _ = apply(item, left, right)
+    return erased(left, right)
+
+struct Quotient
+    Self is Dividable<i32>
+    associate Output is Result<i32, i32>
+    public let dividend: i32
+    public init(dividend: i32) => self.dividend = dividend
+
+    public func divided(self: ref/Self, right: ref/i32) -> Result<i32, i32>
+        require right != 0 else => return .Err(7)
+        return .Ok(self.dividend / right)
+
+func quotient(divisor: i32) -> Result<i32, i32>
+    let value = Quotient.init(84)
+    return .Ok(try (value / divisor))
+
+func doubleFirst(values: uniq/Array<Vec2>)
+    values[0] += values[0]
+
+let original = Vec2.init(2.0, 3.0)
+let added = sum(original, original)
+let scaled = (1.0 + 1.0) * original
+let negative = -original
+let called = throughValues(original, original)
+require added.x == 4.0 and added.y == 6.0 else => $abort("generic sum")
+require scaled.x == 4.0 and scaled.y == 6.0 else => $abort("numeric left")
+require negative.x == -2.0 and negative.y == -3.0 else => $abort("negation")
+require called.x == 4.0 and called.y == 6.0 else => $abort("function values")
+require throughValues(40, 2) == 42 else => $abort("numeric witness")
+Console.writeLine("Shared operators and function values: 4, 6.")
+
+var values: Array<Vec2> = [original@move]
+doubleFirst(values@uniq)
+require values[0].x == 4.0 and values[0].y == 6.0 else => $abort("replacement")
+Console.writeLine("One located element replaced: 4, 6.")
+
+match quotient(2)
+    .Ok(let value) => require value == 42 else => $abort("quotient")
+    .Err(_) => $abort("unexpected failure")
+match quotient(0)
+    .Ok(_) => $abort("unexpected success")
+    .Err(let error) => require error == 7 else => $abort("error")
+Console.writeLine("Explicit Result propagation: 42, error 7.")

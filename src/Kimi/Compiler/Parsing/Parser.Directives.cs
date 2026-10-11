@@ -32,7 +32,13 @@ public static partial class Parser
     /// <param name="reader">The token reader positioned at the excluded item.</param>
     /// <returns>The state that <see cref="EndExcludedRegion"/> restores.</returns>
     internal static ExcludedRegion BeginExcludedRegion(ref TokenReader reader)
-        => BeginExcludedRegion(ref reader, reader.PendingExclusion, reader.DocumentationExcludedStart);
+    {
+        var region = BeginExcludedRegion(ref reader, reader.PendingExclusion, reader.DocumentationExcludedStart);
+        // The target starts after the excluding header, so later prefixes and modifiers belong to it too. Once entered,
+        // ExclusionDepth owns this interval; clearing an item's context must not finish or leak the pending exclusion.
+        reader.IsExcluded = false;
+        return region with { Start = reader.PendingExclusionStart };
+    }
 
     /// <summary>Leaves excluded syntax: its documentation is excluded and its range is recorded for <c>excludedBy</c> (SPEC 19.5, 23.3.6.2).</summary>
     /// <param name="reader">The token reader positioned after the excluded syntax.</param>
@@ -52,8 +58,8 @@ public static partial class Parser
 
     /// <summary>
     /// The arms of one <c>#switch</c> (SPEC 19.3), walked by the item loop of the enclosing owner. <see cref="Begin"/> validates the
-    /// Case Group and enters its arm list; <see cref="TryNextBody"/> leaves the reader at the <see cref="TokenKind.StartBlock"/> of
-    /// each arm body in turn, and the owner parses it as selected or excluded syntax with its own item grammar (SPEC 19.5).
+    /// Case Group and enters its arm list; <see cref="TryNext"/> leaves the reader at each arm body or invalid item segment,
+    /// and the owner parses it with its own item grammar, retaining nothing from excluded or invalid syntax (SPEC 19.5).
     /// </summary>
     internal struct CompileTimeSwitchArms
     {
@@ -81,16 +87,41 @@ public static partial class Parser
             return new(start, selection, BeginCompileTimeSwitchArms(ref reader));
         }
 
-        /// <summary>Moves to the next arm that has a body, leaving the reader at the body's <see cref="TokenKind.StartBlock"/>; the scan
-        /// reported an arm without one.</summary>
+        /// <summary>Moves to the next arm body or invalid item segment; the scan reported invalid placement and missing bodies.</summary>
         /// <param name="reader">The token reader inside the arm list.</param>
         /// <param name="selected">Whether this arm is the one the <c>#switch</c> selects.</param>
         /// <param name="header">The arm header, the excluding directive of an unselected arm.</param>
+        /// <param name="invalidItems">Whether the owner must source-check and discard items up to the next arm or list end.</param>
         /// <returns><see langword="false"/> after the arm list, whose <see cref="TokenKind.EndBlock"/> is then consumed.</returns>
-        internal bool TryNextBody(ref TokenReader reader, out bool selected, out SourceSpan header)
+        internal bool TryNext(ref TokenReader reader, out bool selected, out SourceSpan header, out bool invalidItems)
         {
-            while (this.inArmList && TryNextCompileTimeSwitchArm(ref reader, out header))
+            invalidItems = false;
+            while (this.inArmList)
             {
+                reader.SkipSeparators();
+                if (reader.CurrentTokenKind == TokenKind.EndBlock)
+                {
+                    reader.Advance();
+                    break;
+                }
+
+                if (!reader.CanRead)
+                {
+                    break;
+                }
+
+                if (!IsCompileTimeCaseStart(ref reader))
+                {
+                    selected = false;
+                    header = default;
+                    invalidItems = true;
+                    return true;
+                }
+
+                var start = reader.CurrentTokenRange.Start;
+                reader.Advance(2);
+                SkipCompileTimeHeaderRemainder(ref reader);
+                header = SourceSpan.FromBounds(start, reader.PreviousEnd);
                 var arm = this.next++;
                 if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
                 {
@@ -129,6 +160,25 @@ public static partial class Parser
         }
     }
 
+    /// <summary>Starts recovery of misplaced Case Group items. They establish nothing, without inventing an excluding arm.</summary>
+    /// <param name="reader">The reader at the first misplaced item.</param>
+    /// <returns>The start of the syntax whose documentation must be discarded.</returns>
+    internal static int BeginInvalidSwitchItems(ref TokenReader reader)
+    {
+        reader.ExclusionDepth++;
+        return reader.CurrentTokenRange.Start;
+    }
+
+    /// <summary>Finishes recovery without consuming the next arm or Case Group end.</summary>
+    /// <param name="reader">The reader at that boundary.</param>
+    /// <param name="start">The start returned by <see cref="BeginInvalidSwitchItems"/>.</param>
+    internal static void EndInvalidSwitchItems(ref TokenReader reader, int start)
+    {
+        reader.ClearContext();
+        reader.CodeContext.Documentation?.Exclude(start, reader.PreviousSyntaxEnd, reader.CurrentTokenRange.Start);
+        reader.ExclusionDepth--;
+    }
+
     /// <summary>Reports Attributes left before a directive Block or <c>#switch</c>: no declaration at their indentation follows (SPEC 6.5).</summary>
     /// <param name="reader">The token reader.</param>
     internal static void RejectDirectiveBlockAttributes(ref TokenReader reader)
@@ -145,7 +195,7 @@ public static partial class Parser
     /// <returns>The arm that the <c>#switch</c> would select, independent of enclosing exclusion.</returns>
     /// <remarks>
     /// Header, structure and Condition diagnostics are reported here exactly once; the arm walk that follows
-    /// (<see cref="BeginCompileTimeSwitchArms"/>, <see cref="TryNextCompileTimeSwitchArm"/>) skips headers silently.
+    /// (<see cref="BeginCompileTimeSwitchArms"/>, <see cref="CompileTimeSwitchArms.TryNext"/>) skips arm headers silently.
     /// </remarks>
     private static CompileTimeSwitchSelection ScanCompileTimeSwitch(ref TokenReader reader)
     {
@@ -297,47 +347,6 @@ public static partial class Parser
         return true;
     }
 
-    /// <summary>Moves to the next <c>#case</c> arm of a <c>#switch</c> body, skipping invalid items silently.</summary>
-    /// <param name="reader">The token reader inside the arm list.</param>
-    /// <param name="header">The arm header: the <c>#case</c> keyword through its Condition.</param>
-    /// <returns><see langword="true"/> when an arm header was consumed; <see langword="false"/> after the arm list.</returns>
-    private static bool TryNextCompileTimeSwitchArm(ref TokenReader reader, out SourceSpan header)
-    {
-        while (true)
-        {
-            reader.SkipSeparators();
-            if (reader.CurrentTokenKind == TokenKind.EndBlock)
-            {
-                reader.Advance();
-                header = default;
-                return false;
-            }
-
-            if (!reader.CanRead)
-            {
-                header = default;
-                return false;
-            }
-
-            if (!IsCompileTimeCaseStart(ref reader))
-            {
-                SkipCompileTimeHeaderRemainder(ref reader);
-                if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
-                {
-                    reader.SkipCurrentBlock();
-                }
-
-                continue;
-            }
-
-            var start = reader.CurrentTokenRange.Start;
-            reader.Advance(2);
-            SkipCompileTimeHeaderRemainder(ref reader);
-            header = SourceSpan.FromBounds(start, reader.PreviousEnd);
-            return true;
-        }
-    }
-
     private static bool IsCompileTimeCaseStart(ref TokenReader reader)
         => reader.CurrentTokenKind == TokenKind.Sharp && reader.PeekKind(1) == TokenKind.Case;
 
@@ -415,13 +424,19 @@ public static partial class Parser
     /// <param name="documentationStart">Where documentation exclusion begins when this is the outermost exclusion of the target.</param>
     private static void ExcludeTarget(ref TokenReader reader, SourceSpan directive, int documentationStart)
     {
-        if (!reader.IsExcluded)
+        if (reader.IsExcluded)
+        {
+            // This header is the previous directive's target, never its own. Finish that segment before changing cause.
+            reader.RecordPendingExclusion(reader.PreviousSyntaxEnd);
+        }
+        else
         {
             reader.DocumentationExcludedStart = documentationStart;
         }
 
         reader.IsExcluded = true;
         reader.PendingExclusion = directive;
+        reader.PendingExclusionStart = reader.PreviousSyntaxEnd + 1;
     }
 
     /// <summary>Consumes one syntax item for error recovery, without constructing Koto nodes.</summary>

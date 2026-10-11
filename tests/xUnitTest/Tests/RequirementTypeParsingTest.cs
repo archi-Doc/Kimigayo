@@ -53,10 +53,10 @@ public class RequirementTypeParsingTest
     public void RequirementPrecedenceIsUnchanged()
     {
         var function = ParseTestHelper.ParseSingleFunction("func use<T>(value: T)\n    T is not (i32,) or Box<i32>.C.Element and Copy\n    ()");
-        var root = Assert.IsType<NotKoto>(Assert.IsType<IsKoto>(Assert.Single(function.TypeConstraints)).Right);
-        var either = Assert.IsType<OrKoto>(root.Operand);
+        var root = ParseTestHelper.Unary(KotoKind.Not, Assert.IsType<IsKoto>(Assert.Single(function.TypeConstraints)).Right);
+        var either = ParseTestHelper.Binary(KotoKind.Or, root.Operand);
         Assert.IsType<TupleTypeKoto>(either.Left);
-        var both = Assert.IsType<AndKoto>(either.Right);
+        var both = ParseTestHelper.Binary(KotoKind.And, either.Right);
         var projection = Assert.IsType<MemberAccessKoto>(both.Left);
         Assert.IsType<GenericsKoto>(Assert.IsType<MemberAccessKoto>(projection.Left).Left);
     }
@@ -77,7 +77,7 @@ public class RequirementTypeParsingTest
         if (!valid)
         {
             Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NoApplicableOverload_Kd);
-            Assert.False(c.Emission.Validate(out _));
+            Assert.False(c.Validate(out _));
         }
     }
 
@@ -96,8 +96,8 @@ public class RequirementTypeParsingTest
         Assert.Equal(valid, c.Bind().IsComplete);
         if (!valid)
         {
-            Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.BindingFailure == BindingFailure.Access);
-            Assert.False(c.Emission.Validate(out _));
+            Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.FailureOf() == BindingFailure.Access);
+            Assert.False(c.Validate(out _));
         }
 
         var restored = Compilation.CreateForTest();
@@ -115,7 +115,7 @@ public class RequirementTypeParsingTest
         var c = MinimalEmissionTest.Analyze("public contract C\n    associate Element\nstruct Hidden\npublic struct Box<T>\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func use<T>(value: T)\n        T is Box<Hidden>.C.Element\n        ()");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.FailureOf() == BindingFailure.Access);
     }
 
     [Theory]
@@ -133,7 +133,7 @@ public class RequirementTypeParsingTest
         var tree = ParseTestHelper.Parse(source);
         Assert.True(tree.Compilation.Diagnostics.HasErrors);
         Assert.All(TestDiagnostics.Of(tree), x => Assert.InRange(x.Span.Start, 0, source.Length));
-        Assert.False(MinimalEmissionTest.Analyze(source).Emission.Validate(out _));
+        Assert.False(MinimalEmissionTest.Analyze(source).Validate(out _));
     }
 
     [Trait("Purpose", "Allocation")]

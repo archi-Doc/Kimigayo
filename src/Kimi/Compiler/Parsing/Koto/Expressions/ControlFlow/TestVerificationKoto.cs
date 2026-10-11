@@ -49,39 +49,9 @@ public sealed class TestVerificationKoto : Koto
         builder.Append(")");
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        visitor.Visit(this.Condition);
-        if (this.Message is { } message)
-        {
-            visitor.Visit(message);
-        }
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-    {
-        yield return this.Condition;
-        if (this.Message is { } message)
-        {
-            yield return message;
-        }
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (ReferenceEquals(this.Condition, oldKoto))
-        {
-            this.Condition = newKoto;
-        }
-        else if (ReferenceEquals(this.Message, oldKoto))
-        {
-            this.Message = newKoto;
-        }
-        else
-        {
-            return false;
-        }
-
-        return true;
+        this.Condition = slots.Slot(this.Condition);
+        this.Message = slots.Slot(this.Message);
     }
 }

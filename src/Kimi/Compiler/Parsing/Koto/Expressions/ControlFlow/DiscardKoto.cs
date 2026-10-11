@@ -28,21 +28,8 @@ public sealed class DiscardKoto : Koto
         this.Operand.WriteTo(ref builder);
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor) => visitor.Visit(this.Operand);
-
-    protected override IEnumerable<Koto> GetChildNodes()
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        yield return this.Operand;
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (this.Operand != oldKoto)
-        {
-            return false;
-        }
-
-        this.Operand = newKoto;
-        return true;
+        this.Operand = slots.Slot(this.Operand);
     }
 }

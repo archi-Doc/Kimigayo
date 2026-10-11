@@ -21,7 +21,7 @@ public sealed class PairBarePositionTest
     {
         var c = MinimalEmissionTest.Analyze(definition + "public func main() -> ()\n    var n: i32 = 1\n    _ = f(n" + (definition.Contains("x: T", StringComparison.Ordinal) ? ", 9" : definition.Contains("c: bool", StringComparison.Ordinal) ? ", true" : string.Empty) + ")\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]
@@ -29,16 +29,19 @@ public sealed class PairBarePositionTest
     {
         var source = "func f<s/T>(value: s/T, other: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n    var arr: [2 of s/T] = [value@move, other@move]\n    let e = arr[0]\n    _ = e@follow\npublic func main() -> ()\n    var n: i32 = 1\n    var m: i32 = 2\n    f(n, m)\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics, static x => x.Severity == DiagnosticSeverity.Error);
-        Assert.Equal((nameof(DiagnosticCode.UnsupportedOwnership_Kd), "arr[0]"), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
-        var fact = Assert.Single(error.Reason!);
-        Assert.Equal(("case", "s = uniq"), (fact.Name, fact.Value));
+        Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), "arr[0]", null), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length), error.Reason));
     }
 
-    // SPEC 11.6 of plan C: `@s` on a pair binding does not bind today (STATUS).
+    // SPEC 13.5.5.2: an exclusive short adaptation borrows the written slot, which must be writable.
     [Fact]
-    public void ASemanticsOperationOnAPairBindingDoesNotBind()
+    public void AnExclusiveShorthandNeedsAWritableWrittenSlot()
     {
-        var source = "func f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n    let v = value@s\n    _ = v@follow\npublic func main() -> ()\n    var n: i32 = 1\n    f(n)\n";
-        Assert.Contains(DiagnosticCorpus.Check(source).Diagnostics, static x => x.Code == nameof(DiagnosticCode.InvalidTypeFormation_Kd));
+        var source = "func f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n    let v = value@s\n    _ = v@move\npublic func main() -> ()\n    var n: i32 = 1\n    f(n)\n    f(n@uniq)\n";
+        Assert.Contains(DiagnosticCorpus.Check(source).Diagnostics, static x => x.Code == nameof(DiagnosticCode.InvalidAssignment_Kd));
+        var valid = source.Replace("let v = value@s", "var slot = value@move\n    let v = slot@s", StringComparison.Ordinal);
+        var c = MinimalEmissionTest.Analyze(valid);
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        NativeAllocationAudit.WriteFixture("GenericAdaptationWritableSlot", valid, 0, 0, 0);
     }
 }

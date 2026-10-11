@@ -140,7 +140,7 @@ public class FloatEmissionTest
         // A floating-point literal Pattern is rejected by the parser; Binding's own failures then rest on that Error and are derived.
         Assert.True(c.Binding.Issues.Count != 0 || c.Binding.DerivedIssues.Count != 0, MinimalEmissionTest.Describe(c, null));
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -152,7 +152,7 @@ public class FloatEmissionTest
     public void CorruptFloatPlansFailBeforeWriting(string defect)
     {
         var c = MinimalEmissionTest.Analyze("var a: f32 = 1.25\nlet b = a * 2.0\nif b == 2.5 => Console.writeLine(\"ok\")");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var index = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Constant && x.Constant == 0x3FA00000L);
         Assert.True(index >= 0);
@@ -171,10 +171,10 @@ public class FloatEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        c.Ownership.Analyze();
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        c.Analyze();
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -184,13 +184,13 @@ public class FloatEmissionTest
         var c = MinimalEmissionTest.Analyze("func f(x: f32) -> f32 => -(x * 1_2.5)\nvar a: f32 = 1.25\na = if a > 0.0 => f(a) else => a\nlet pair: (f32, f64) = (a, 1.25)");
         for (var i = 0; i < 100; i++)
         {
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Ownership.Analyze().IsVerified || !c.Emission.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
             {
                 throw new InvalidOperationException("Float analysis or emission failed.");
             }
@@ -206,16 +206,16 @@ public class FloatEmissionTest
         Assert.True(Assert.IsType<NumberLiteralKoto>(field.InitializerKoto).TryGetBasicValue(out _));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
+        c.Analyze();
         Assert.Contains(c.Ownership.Bodies[0].Values, x => x.Kind == OwnershipValueKind.Constant && x.Constant == 0x3F800001L);
         using var original = new StringWriter();
-        Assert.True(c.Emission.WriteIr(original, out var error), error);
+        Assert.True(c.WriteIr(original, out var error), error);
         var restored = CompilationTestHelper.Reload(c);
         restored.Bind();
         restored.Binding.CheckStartup(OutputKind.Application);
-        restored.Ownership.Analyze();
+        restored.Analyze();
         using var roundTrip = new StringWriter();
-        Assert.True(restored.Emission.WriteIr(roundTrip, out error), error);
+        Assert.True(restored.WriteIr(roundTrip, out error), error);
         Assert.Equal(original.ToString(), roundTrip.ToString());
         ScalarEmissionTest.WriteFixture("FloatDoubleRoundingRoundTrip", roundTrip.ToString(), "ok\n");
     }
@@ -223,11 +223,11 @@ public class FloatEmissionTest
     internal static void AssertEmissionSupport(Compilation c, bool expected)
     {
         using var writer = new StringWriter(System.Globalization.CultureInfo.InvariantCulture);
-        Assert.Equal(expected, c.Emission.WriteIr(writer, out var error));
+        Assert.Equal(expected, c.WriteIr(writer, out var error));
         if (expected)
         {
             Assert.True(c.Binding.Result.IsComplete);
-            Assert.True(c.Ownership.Result.IsVerified);
+            Assert.True(c.Analysis.IsVerified);
             Assert.Null(error);
             Assert.NotEmpty(writer.ToString());
         }

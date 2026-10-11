@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text.Json;
+using Kimi.Checking;
 using Kimi.Compiler;
 using Xunit;
 
@@ -23,9 +24,11 @@ public sealed class LspEffectHoverTest : IDisposable
     public void SnapshotDescribesOnlyValidContributingPremises()
     {
         var c = MinimalEmissionTest.Analyze(Source);
-        var record = Assert.Single(c.Binding.CreateCallableEffectHovers(), static x => x.Source.Value.EndsWith("Hello.kimi", StringComparison.Ordinal));
+        var record = Assert.Single(HoverBuilder.CallableEffects(c), static x => x.Source.Value.EndsWith("Hello.kimi", StringComparison.Ordinal));
         Assert.Contains("Call: f()", record.Text);
         Assert.Contains("Available bound: confined", record.Text);
+        Assert.Contains("Callable: F is Callable<() -> i32>", record.Text);
+        Assert.DoesNotContain("BoundType {", record.Text);
         Assert.Contains("Available bound: preserves results", record.Text);
     }
 
@@ -49,7 +52,7 @@ public sealed class LspEffectHoverTest : IDisposable
         Assert.Contains("Call: f()", text);
         Assert.Contains("Available bound: confined", text);
         Assert.Contains("Available bound: preserves results", text);
-        Assert.Contains("Declared by: apply", text);
+        Assert.Contains("Declared by: App.apply", text);
         Assert.Contains("Premise: F is Callable<() -> i32> effect confined", text);
         Assert.Contains("uniq", text);
         Assert.Equal(5, hover.GetProperty("range").GetProperty("start").GetProperty("line").GetInt32());
@@ -61,6 +64,28 @@ public sealed class LspEffectHoverTest : IDisposable
         var updated = await Request(client, main, 4, 11);
         Assert.DoesNotContain("Available bound: confined", updated.GetProperty("contents").GetProperty("value").GetString());
         Assert.Contains("Available bound: preserves results", updated.GetProperty("contents").GetProperty("value").GetString());
+    }
+
+    [Fact]
+    public async Task VirtualHoverPublishesOriginalGuaranteesAndDirectBaseSelection()
+    {
+        const string Text = "open struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n        return 1\nstruct Derived : Base\n    override func read(self: objref/Self) -> i32 => base.read()\nfunc broken() -> i32 => true\npublic func main() => ()\n";
+        Directory.CreateDirectory(this.directory);
+        var main = Path.Combine(this.directory, "main.kimi");
+        File.WriteAllText(main, Text);
+        File.WriteAllText(Path.Combine(this.directory, "App.kimiproj"), $"OutputKind=\"Application\" Targets={{\"{WindowsProfile.Target}\"}}");
+        await using var client = new LspTestClient();
+        await client.InitializeAsync("{\"checkQuietPeriodMs\":1000}");
+        await client.OpenAsync(main, Text);
+        Assert.Equal("TypeMismatch_Kd", Assert.Single((await client.PublishAsync(main)).EnumerateArray()).GetProperty("code").GetString());
+        var offset = Text.Split('\n')[5].IndexOf("base.read", StringComparison.Ordinal) + 5;
+        var hover = await Request(client, main, 5, offset);
+        var body = hover.GetProperty("contents").GetProperty("value").GetString();
+        Assert.Contains("Dispatch: direct base", body);
+        Assert.Contains("Implementation: Base.read", body);
+        Assert.Contains("Available bound: confined", body);
+        Assert.Equal(5, hover.GetProperty("range").GetProperty("start").GetProperty("line").GetInt32());
+        Assert.Equal(offset, hover.GetProperty("range").GetProperty("start").GetProperty("character").GetInt32());
     }
 
     private static async Task<JsonElement> Request(LspTestClient client, string path, int line, int character)

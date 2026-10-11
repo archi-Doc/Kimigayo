@@ -28,9 +28,9 @@ public class ContextualFunctionReferenceTest(ITestOutputHelper output)
         var source = Functions + apply + "require apply(" + arguments + ") == 42 else => $abort(\"item\")";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.BoundCall?.Target.Name == "apply");
-        Assert.Equal(BoundTypeKind.FunctionItem, call.BoundCall!.TypeArguments[1]!.Kind);
-        Assert.All(call.ArgumentNodes, x => Assert.Null(x.ErasedFunctionType));
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallOf()?.Target.Name == "apply");
+        Assert.Equal(BoundTypeKind.FunctionItem, call.CallOf()!.TypeArguments[1]!.Kind);
+        Assert.All(call.ArgumentNodes, x => Assert.Null(x.ErasedTypeOf()));
         ScalarEmissionTest.EmitFixture("ContextualReferenceItem" + actionFirst + owning, source, string.Empty);
     }
 
@@ -124,8 +124,8 @@ public class ContextualFunctionReferenceTest(ITestOutputHelper output)
         const string Source = "func choose<T>(value: T) -> T => value@move\n" + Apply + "require apply(41, choose) == 41 else => $abort(\"generic\")";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.BoundCall?.Target.Name == "apply");
-        Assert.Same(BoundType.I32, Assert.Single(call.BoundCall!.TypeArguments[1]!.Components));
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallOf()?.Target.Name == "apply");
+        Assert.Same(BoundType.I32, Assert.Single(call.CallOf()!.TypeArguments[1]!.Components));
         ScalarEmissionTest.EmitFixture("ContextualReferenceGeneric", Source, string.Empty);
     }
 
@@ -140,8 +140,8 @@ public class ContextualFunctionReferenceTest(ITestOutputHelper output)
             "require select(choose) == 42 else => $abort(\"winner\")";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.BoundCall?.Target.Name == "select");
-        Assert.Equal(1, call.BoundCall!.Target.Declaration is FunctionKoto selected ? selected.Parameters.Count : 0);
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallOf()?.Target.Name == "select");
+        Assert.Equal(1, call.CallOf()!.Target.Declaration is FunctionKoto selected ? selected.Parameters.Count : 0);
         ScalarEmissionTest.EmitFixture("ContextualReferenceDiffering", Source, string.Empty);
     }
 
@@ -152,7 +152,7 @@ public class ContextualFunctionReferenceTest(ITestOutputHelper output)
             "func select<F>(action: ref/F, other: i64 = 0) -> bool\n    F is Callable<(bool) -> bool>\n    return action(false)\nlet result = select(choose)");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.AmbiguousBinding_Kd);
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
 
     // SPEC 7.3.1: waiting slots acquired in different modes violate the group's parameter acquisition shape; the declaration
@@ -167,7 +167,7 @@ public class ContextualFunctionReferenceTest(ITestOutputHelper output)
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ParameterShapeMismatch_Kd);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.AmbiguousBinding_Kd);
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
 
     [Fact]
@@ -175,7 +175,7 @@ public class ContextualFunctionReferenceTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze("func choose(value: bool) -> bool => value\n" + Select + "let result = select(choose)");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
 
     [Fact]
@@ -195,8 +195,8 @@ public class ContextualFunctionReferenceTest(ITestOutputHelper output)
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 }

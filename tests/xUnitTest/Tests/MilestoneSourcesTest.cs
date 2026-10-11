@@ -19,7 +19,7 @@ public class MilestoneSourcesTest
     {
         var readme = File.ReadAllText(Path.Combine(DirectoryPath, "README.md"));
         var rows = Regex.Matches(readme, @"^\| (\d+) \| (YES|NO \(planned\)) \| ([^|]+) \|", RegexOptions.Multiline);
-        Assert.Equal(Enumerable.Range(1, 42), rows.Select(x => int.Parse(x.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture)));
+        Assert.Equal(Enumerable.Range(1, 43), rows.Select(x => int.Parse(x.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture)));
         var baselines = JsonSerializer.Deserialize<Baseline[]>(File.ReadAllText(Path.Combine(DirectoryPath, "stage-baselines.json")))!;
         Assert.Equal(baselines.Length, baselines.Select(x => x.Program).Distinct().Count());
         var pending = baselines.ToDictionary(x => x.Program);
@@ -54,9 +54,8 @@ public class MilestoneSourcesTest
             if (c.Binding.Result.IsComplete)
             {
                 stage = "Ownership";
-                Assert.False(c.Ownership.Analyze().IsVerified, $"Milestone{number} advanced: update its verified stage and README.");
-                c.Ownership.ControlFlow!.ReportDiagnostics();
-                c.Ownership.ReportDiagnostics();
+                Assert.False(c.Analyze().IsVerified, $"Milestone{number} advanced: update its verified stage and README.");
+                c.ReportAnalysis();
             }
 
             var primary = TestDiagnostics.Of(c).First(static x => x.Severity == DiagnosticSeverity.Error);

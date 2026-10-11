@@ -488,6 +488,10 @@ internal static partial class LlvmModuleWriter
                     WriteCall(output, constants, instruction.Callee!, function.GetOperands(instruction), instruction.Operation, function);
                     break;
 
+                case EmissionOpcode.VirtualCall:
+                    WriteVirtualCall(output, constants, function, instruction);
+                    break;
+
                 case EmissionOpcode.TestSnapshot:
                     WriteTestSnapshot(output, function, instruction);
                     break;
@@ -513,7 +517,7 @@ internal static partial class LlvmModuleWriter
                     break;
 
                 case EmissionOpcode.CallValue:
-                    WriteValueCall(output, function, instruction);
+                    WriteValueCall(output, constants, function, instruction);
                     break;
 
                 case EmissionOpcode.ReturnVoid:
@@ -572,7 +576,36 @@ internal static partial class LlvmModuleWriter
         }
     }
 
-    private static void WriteCall(TextWriter output, LlvmConstantPool constants, FunctionAbi callee, ReadOnlySpan<EmissionOperand> operands, int result = -1, EmissionFunction? function = null)
+    // A library record Field at its named layout offset: offset 0 is the record's own address, and a nonzero offset is
+    // reached through `{name}{id}_{offset}`, which DefineField writes before its use.
+    private static void DefineField(TextWriter output, EmissionFunction function, EmissionOperand record, string name, int id, Int128 offset)
+    {
+        if (offset != 0)
+        {
+            output.Write("  ");
+            WriteField(output, function, record, name, id, offset);
+            output.Write(" = getelementptr i8, ptr ");
+            WriteStorageAddress(output, function, record);
+            output.Write(", i64 ");
+            WriteNumber(output, offset);
+            output.Write('\n');
+        }
+    }
+
+    private static void WriteField(TextWriter output, EmissionFunction function, EmissionOperand record, string name, int id, Int128 offset)
+    {
+        if (offset == 0)
+        {
+            WriteStorageAddress(output, function, record);
+            return;
+        }
+
+        Name(output, name, id);
+        output.Write('_');
+        WriteNumber(output, offset);
+    }
+
+    private static void WriteCall(TextWriter output, LlvmConstantPool constants, FunctionAbi callee, ReadOnlySpan<EmissionOperand> operands, int result = -1, EmissionFunction? function = null, bool indirect = false)
     {
         if (callee.Result != WindowsLowering.Unit.ComputationType)
         {
@@ -587,8 +620,16 @@ internal static partial class LlvmModuleWriter
 
         output.Write(callee.Result == WindowsLowering.Unit.ComputationType ? "  call " : "call ");
         output.Write(callee.Result);
-        output.Write(" @");
-        output.Write(callee.Name);
+        if (indirect)
+        {
+            Name(output, " %virtual_entry", result);
+        }
+        else
+        {
+            output.Write(" @");
+            output.Write(callee.Name);
+        }
+
         output.Write('(');
         for (var i = 0; i < operands.Length; i++)
         {
@@ -612,6 +653,9 @@ internal static partial class LlvmModuleWriter
                 case EmissionOperandKind.CallerLocation:
                 case EmissionOperandKind.CallerLocationLength:
                     WriteOperand(output, operand);
+                    break;
+                case EmissionOperandKind.ReturnAddress:
+                    output.Write("%ret");
                     break;
                 case EmissionOperandKind.SlotAddress:
                     WriteSlot(output, function ?? throw new InvalidOperationException("Slot argument without a function."), (int)operand.Value);

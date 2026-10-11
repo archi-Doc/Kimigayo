@@ -97,9 +97,9 @@ public class RecursiveDefaultTest
     {
         const string source = "func grow<T>(n: i32, result: i32 = if n == 0 => 0 else => grow<[1 of T]>(n - 1)) -> i32 => result\n_ = grow<i32>(2)";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out var error));
+        Assert.False(c.WriteIr(output, out var error));
         Assert.Empty(output.ToString());
         Assert.True(c.Emission.FailureIsResourceLimit, error);
     }
@@ -139,16 +139,16 @@ public class RecursiveDefaultTest
         public void RecursiveEvaluatorPlansReuseStorage()
         {
             var c = MinimalEmissionTest.Analyze(Generic + "require f(3, 7) == 7 and f(4, true) else => $abort(\"reuse\")");
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
             var valid = true;
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
             Assert.True(valid);
             var restored = CompilationTestHelper.Reload(c);
             Assert.True(restored.Bind().IsComplete);
             restored.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(restored.Ownership.Analyze().IsVerified);
-            Assert.True(restored.Emission.WriteIr(TextWriter.Null, out error), MinimalEmissionTest.Describe(restored, error));
+            Assert.True(restored.Analyze().IsVerified);
+            Assert.True(restored.WriteIr(TextWriter.Null, out error), MinimalEmissionTest.Describe(restored, error));
         }
     }
 }

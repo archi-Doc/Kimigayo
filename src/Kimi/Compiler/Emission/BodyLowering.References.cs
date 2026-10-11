@@ -117,7 +117,7 @@ internal sealed partial class BodyLowering
                 case OwnershipOperationKind.Produce when value.Kind == OwnershipValueKind.Parameter:
                     if (place.Kind != OwnershipPlaceKind.Parameter || (ulong)value.Constant >= (ulong)body.ParameterCount || id != parameterStart + value.Constant ||
                         !ReferenceEquals(place.Source, body.Function.Parameters[(int)value.Constant].Type) || !ReferenceEquals(operation.Source, place.Source) ||
-                        !ReferenceEquals(type, SignatureType(this, body.Function.Parameters[(int)value.Constant].Type.BoundType)))
+                        !ReferenceEquals(type, body.Resolve(body.Function.Parameters[(int)value.Constant].Type.BoundType, InterpretationContext.Root)))
                     {
                         return Fail("Invalid reference parameter definition.", out failure);
                     }
@@ -175,7 +175,7 @@ internal sealed partial class BodyLowering
 
         // A transferred or Identity-acquired operand (text@move, text@owner/string) is borrowed through the
         // operand's own temporary. Storage authorization is checked after the string plans are prepared.
-        return source.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && ReferenceEquals(source.Source, ElementAccess.ValueSource(operation.Source));
+        return source.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && ReferenceEquals(source.Source, ElementAccess.ValueSource(operation.Source, body, id));
     }
 
     private EmissionOperand ReferenceOperand(OwnershipBody body, int value)

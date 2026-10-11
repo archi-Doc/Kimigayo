@@ -59,7 +59,7 @@ public class AssociatedFormationTest
         var c = MinimalEmissionTest.Analyze("contract C\n    associate Item(a)\nstruct S\n    Self is C\n    associate C.Item(a) is i32 for ref/Self during a");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidConstraint_Kd);
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
 
     [Theory]
@@ -81,5 +81,23 @@ public class AssociatedFormationTest
         var source = "contract C\n    associate Item(a, b) for ref/(ref/i32 during a) during b\nstruct S\n    Self is C\n    associate C.Item(x, y) is i32\nfunc f(x: ref/i32 during a, y: ref/i32 during b) -> S.Item(a, b)\n    " + relation + "\n    return 42";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+    }
+
+    private const string Peek = "public struct Node\n    public let n: i32\ncontract Peek\n    associate Item(a)\n";
+
+    // SPEC 23.3.6.4, 15.3.3, 15.4.4: an identity whose explicit specification does not bind is neither specified nor inferred; the
+    // conformance's completeness and a use's Constraint rest on that specification (F20), while another missing identity still
+    // reports.
+    [Theory]
+    [InlineData(Peek + "struct Holder\n    Self is Peek\n    associate Peek.Item(a) is objref/Node during a\n", new[] { DiagnosticCode.Unsupported_Kd })]
+    [InlineData("contract Peek\n    associate Item(a)\nstruct Holder\n    Self is Peek\n    associate Peek.Item(a) is ref/((i32) -> i32) during a\n", new[] { DiagnosticCode.Unsupported_Kd })]
+    [InlineData(Peek + "struct Holder\n    Self is Peek\n    associate Peek.Item(a) is objref/Node during a\n    public init() => ()\nfunc use<T>(x: ref/T) -> i32\n    T is Peek\n    return 1\nlet h = Holder.init()\nlet n = use(h@ref)\n", new[] { DiagnosticCode.Unsupported_Kd })]
+    [InlineData("contract Source\n    associate Element\nstruct S\n    Self is Source\n    associate Source.Element is ref/i32\n", new[] { DiagnosticCode.MissingOriginBinding_Kd })]
+    [InlineData(Peek + "    associate Other(b)\nstruct Holder\n    Self is Peek\n    associate Peek.Item(a) is objref/Node during a\n", new[] { DiagnosticCode.InvalidAssociatedType_Kd, DiagnosticCode.Unsupported_Kd })]
+    public void AFailedSpecificationIsTheConformancePrerequisite(string source, DiagnosticCode[] codes)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Equal(codes.Order(), c.Binding.Issues.Select(static x => x.Code).Order());
     }
 }

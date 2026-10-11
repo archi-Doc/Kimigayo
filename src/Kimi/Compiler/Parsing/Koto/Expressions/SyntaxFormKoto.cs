@@ -27,6 +27,16 @@ public sealed class SyntaxFormKoto : ExpressionKoto, IOriginClauseOwner
         this.Adopt(children);
     }
 
+    internal SyntaxFormKoto(FunctionKoto constructor)
+        : base(constructor.CodeContext, constructor.SignatureSpan)
+    {
+        this.kind = KotoKind.ConstructorReference;
+        this.prefix = "base";
+        this.separator = ", ";
+        this.suffix = string.Empty;
+        this.children = [];
+    }
+
     /// <inheritdoc/>
     public override KotoKind Akind => this.kind;
 
@@ -62,13 +72,8 @@ public sealed class SyntaxFormKoto : ExpressionKoto, IOriginClauseOwner
         OriginClauses.Write(this, ref builder);
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        visitor.VisitMany(this.children);
+        slots.List(this.children);
     }
-
-    protected override IEnumerable<Koto> GetChildNodes() => this.children;
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-        => ReplaceInList(this.children, oldKoto, newKoto);
 }

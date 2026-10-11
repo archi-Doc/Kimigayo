@@ -51,10 +51,10 @@ internal sealed partial class BodyLowering
         if (operation.Kind != OwnershipOperationKind.Produce || operation.Source is not Parsing.BinaryKoto element ||
             ValueType(body, id) is not { } type || !ReferenceTypes.IsPointer(type) ||
             ValueType(body, address) is not { } containerType || !ReferenceTypes.IsPointer(containerType) ||
-            !ReferenceEquals(SignatureType(this, element.Left.BoundType), containerType.Components[0]) ||
-            !ElementAccess.TryType(element, out var part, out _) || !ReferenceEquals(SignatureType(this, part), type.Components[0]) ||
+            !ReferenceEquals(body.Resolve(element.Left.BoundType, body.ContextAt(id)), containerType.Components[0]) ||
+            !ElementAccess.TryType(element, out var part, out _) || !ReferenceEquals(body.Resolve(part, body.ContextAt(id)), type.Components[0]) ||
             this.aggregateLayouts.Get(containerType.Components[0]) is not { } layout ||
-            (index < 0 ? ElementAccess.PathSelector(element, out _, out _) != position || position < 0 || position >= layout.Count
+            (index < 0 ? ElementAccess.PathSelector(element, out _, out _) != position || position < 0 || position >= layout.StorageCount
                 : value.Constant != -1 || !layout.IsArray || element is not Parsing.IndexKoto || !ReferenceEquals(ValueType(body, index), BoundType.ISize)) ||
             (body.IsReachable(id) && (!this.Dominates(address, id) || (index >= 0 && !this.Dominates(index, id)))))
         {
@@ -72,7 +72,7 @@ internal sealed partial class BodyLowering
         function.AddScalar(
             EmissionOpcode.ElementAddress,
             id,
-            [this.PhysicalOperand(body, address), index < 0 ? new(EmissionOperandKind.Integer, layout.Offset((int)position)) : this.PhysicalOperand(body, index),
+            [this.PhysicalOperand(body, address), index < 0 ? new(EmissionOperandKind.Integer, layout.StorageOffset((int)position)) : this.PhysicalOperand(body, index),
                 new(EmissionOperandKind.Integer, layout.Count), new(EmissionOperandKind.Integer, stride)],
             place: body.Operations.Count + id,
             location: location,
@@ -99,10 +99,11 @@ internal sealed partial class BodyLowering
         // SPEC 7.1.1: a write through a Place call stores through the reference the call returns.
         var pointerType = ValueType(body, address);
         // SPEC 13.7: a field replaced through a reference is stored through the exclusive address of that field.
-        var sourceType = store && ((operation.Source is MemberAccessKoto replaced && ElementAccess.BorrowedPathRoot(replaced) is not null) ||
+        var sourceType = store && ((operation.Source is BinaryKoto inline && ElementAccess.IsSyntax(inline) && ElementAccess.WritableRoot(inline) is not null) ||
+            (operation.Source is MemberAccessKoto replaced && ElementAccess.BorrowedPathRoot(replaced) is not null) ||
             ElementAccess.IsExclusiveArrayElement(operation.Source)) &&
-            ReferenceEquals(SignatureType(this, operation.Source.BoundType), type) ? pointerType
-            : SignatureType(this, ElementAccess.PlaceCallReference(operation.Source) ?? operation.Source.BoundType);
+            ReferenceEquals(body.Resolve(operation.Source.BoundType, body.ContextAt(id)), type) ? pointerType
+            : body.Resolve(ElementAccess.PlaceCallReference(operation.Source) ?? operation.Source.BoundType, body.ContextAt(id));
         // SPEC 3.5.3, 13.5.5.1: a load through a safe reference copies its referent layer by layer, and a
         // referent write stores through a uniq reference; both use the reference value as the address.
         // SPEC 10.2, 3.4.1: a stored ref or uniq reference may be loaded as one reference to the same referent, shared,

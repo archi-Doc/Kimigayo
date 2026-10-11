@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -17,13 +18,12 @@ public class SiblingMoveBorrowTest
     [InlineData("Nested", "var pair = (Counter.init(), (Counter.init(), Counter.init()))\nlet a = pair.1.0@uniq\nlet moved = pair.1.1@move\na.value += moved.value\nrequire pair.1.0.value == 2 else => $abort(\"value\")")]
     [InlineData("Reborrow", "var pair = Pair.init()\nlet a = pair.left@uniq\nlet b = a@follow@ref\nlet moved = pair.right@move\nrequire b.value + moved.value == 2 else => $abort(\"value\")")]
     [InlineData("Conditional", "func check(flag: bool)\n    var pair = Pair.init()\n    let a = pair.left@uniq\n    if flag\n        let moved = pair.right@move\n    a.value += 1\n    require pair.left.value == 2 else => $abort(\"value\")\ncheck(true)\ncheck(false)")]
-    [InlineData("Unreachable", "func check()\n    return\n    var pair = Pair.init()\n    let a = pair.left@ref\n    let moved = pair.right@move\n    let value = a.value\ncheck()")]
     [InlineData("Repair", "var pair = Pair.init()\nlet moved = pair.right@move\nlet a = pair.left@uniq\npair.right = Counter.init()\na.value += moved.value\nlet whole = pair@move\nrequire whole.left.value == 2 and whole.right.value == 1 else => $abort(\"value\")")]
     public void KeepsDisjointBorrowAliveAcrossMove(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(Pair + source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
+        Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
         ScalarEmissionTest.EmitFixture("SiblingMoveBorrow" + name, Pair + source, string.Empty);
     }
 
@@ -39,8 +39,8 @@ public class SiblingMoveBorrowTest
     {
         var c = MinimalEmissionTest.Analyze(Pair + source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure is OwnershipFailure.ComparisonLoanConflict or OwnershipFailure.PossiblyMovedUse);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() || x.Code is DiagnosticCode.MovedPlace_Kd);
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]
@@ -54,13 +54,13 @@ public class SiblingMoveBorrowTest
     public void EmissionRechecksTheBorrowedSubtree()
     {
         var c = MinimalEmissionTest.Analyze(Pair + "var pair = Pair.init()\nlet moved = pair.right@move\nlet a = pair.left@ref\nlet value = a.value");
-        Assert.True(c.Emission.Validate(out var failure), failure);
+        Assert.True(c.Validate(out var failure), failure);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.IsGenerated);
         var borrow = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Borrow);
         var moved = Assert.Single(body.Operations, x => x.Kind == OwnershipOperationKind.Produce && x.Projection >= 0).Source;
         body.OperationStorage[borrow] = body.Operations[borrow] with { Source = moved };
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 }

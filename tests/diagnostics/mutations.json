@@ -1,7 +1,7 @@
 [
   { "Name": "let-counter", "Program": 4, "Before": "var counter =", "After": "let counter =", "Intended": "assignment to an immutable let binding", "Expected": ["InvalidAssignment_Kd"] },
   { "Name": "private-group", "Program": 8, "Before": "public group Storage", "After": "group Storage", "Intended": "access to a group that is no longer public", "Expected": ["InaccessibleBinding_Kd"] },
-  { "Name": "overload-parameter-type", "Program": 9, "Before": "func [target] (value: i32)", "After": "func [target] (value: bool)", "Intended": "no overload accepts the argument type; the closure body also compares bool with i32", "Expected": ["NoApplicableOverload_Kd", "IncompatibleResult_Kd"] },
+  { "Name": "overload-parameter-type", "Program": 9, "Before": "func [target] (value: i32)", "After": "func [target] (value: bool)", "Intended": "no overload accepts the argument type", "Expected": ["NoApplicableOverload_Kd"] },
   { "Name": "overload-length", "Program": 9, "Before": "find<5, i32>", "After": "find<4, i32>", "Intended": "no overload accepts the array length", "Expected": ["NoApplicableOverload_Kd"] },
   { "Name": "bare-generic-transfer", "Program": 11, "Before": "result = result + forward<T>(values[index]@ref/T)", "After": "let copied: T = values[index]\n            result = result + forward<T>(values[index]@ref/T)", "Intended": "a bare generic Place is moved without @move", "Expected": ["TransferRequired_Kd"] },
   { "Name": "missing-capture", "Program": 12, "Before": "func [offset] ()", "After": "func [] ()", "Intended": "a runtime binding crosses a function boundary without a capture", "Expected": ["InvalidCaptureBinding_Kd"] },

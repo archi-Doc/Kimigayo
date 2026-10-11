@@ -3,78 +3,23 @@
 using System.Text;
 using Kimi;
 using Kimi.Compiler;
-using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
 
+// SPEC 14.10.3 checks unreachable source under a type-checking continuation, which this analysis does not provide: it never
+// checks unreachable operations, and a body without another ownership issue reports its first unreachable use of a Local or
+// Parameter as the location-only Unsupported_Kd (SPEC 23.3.6.1).
 public class UnreachableOwnershipTest
 {
+    // A deferred body repeated at its dead scope end performs the use already checked on the reachable exit.
     [Theory]
-    [InlineData("func f(x: i32)\n    loop => ()\n    let y = x")]
-    [InlineData("func f(x: i32)\n    return\n    loop => ()\n    let y = x")]
-    [InlineData("func stop() -> Never => stop()\nfunc f(x: i32)\n    stop()\n    let y = x")]
-    [InlineData("func f() -> i32\n    let x = 3\n    return 0\n    return x")]
-    [InlineData("func f() -> i32\n    let x: i32\n    return 0\n    x = 3\n    return x")]
-    [InlineData("func f() -> i32\n    return 0\n    let x = 3\n    return x")]
-    [InlineData("func f() -> i32\n    let x = 3\n    return 0\n    return 1\n    return x")]
-    [InlineData("func f()\n    let x = 3\n    return\n    return\n    let y = x")]
-    [InlineData("func f()\n    let x = \"s\"\n    return\n    Console.writeLine(x)")]
-    [InlineData("func f()\n    var x = \"s\"\n    Console.writeLine(x)\n    return\n    x = \"again\"\n    Console.writeLine(x)")]
-    [InlineData("func f(c: bool)\n    return\n    let x: i32\n    if c\n        x = 1\n    else\n        x = 2\n    let y = x")]
-    [InlineData("func f(c: bool) -> i32\n    let x = \"s\"\n    return 0\n    require c else\n        Console.writeLine(x)\n        return 1\n        let y = 2\n    Console.writeLine(x)\n    return 2")]
-    [InlineData("func f(c: bool) -> i32\n    let x = \"s\"\n    return 0\n    require c else\n        return 1\n        Console.writeLine(x)\n    require c else => return 2\n    Console.writeLine(x)\n    return 3")]
-    [InlineData("func f(c: bool)\n    let x = \"s\"\n    return\n    if c\n        Console.writeLine(x)\n        return\n        let y = 1\n    Console.writeLine(x)")]
-    [InlineData("func f(c: bool)\n    let x = \"s\"\n    while c\n        return\n        Console.writeLine(x)\n    Console.writeLine(x)")]
-    [InlineData("func f(c: bool)\n    while c\n        let x = \"s\"\n        continue\n        Console.writeLine(x)")]
-    [InlineData("func f()\n    let x = \"s\"\n    loop\n        exit\n        Console.writeLine(x)\n    Console.writeLine(x)")]
-    [InlineData("func f(c: bool)\n    return\n    while c\n        let x = \"s\"\n        Console.writeLine(x)")]
-    [InlineData("func f(c: bool)\n    return\n    let x: i32\n    loop\n        x = 1\n        exit\n    let y = x")]
-    [InlineData("func f()\n    return\n    let x = Option<string>.Some(\"s\")\n    let y = x@move")]
-    [InlineData("func f(c: bool)\n    return\n    let x = Option<string>.Some(\"s\")\n    match x@move\n        .Some(let text) => Console.writeLine(text)\n        .None => ()")]
-    [InlineData("func f(c: bool)\n    let x = \"s\"\n    return\n    match c\n        true\n            Console.writeLine(x)\n            return\n            let y = 1\n        false => ()\n    Console.writeLine(x)")]
-    [InlineData("func f(c: bool)\n    let x = \"s\"\n    return\n    let value = if c => 1 else => 2\n    Console.writeLine(x)")]
-    [InlineData("func f(c: bool) -> string\n    let x = \"s\"\n    return \"first\"\n    require c else => return x@move\n    return x@move")]
-    [InlineData("func f(c: bool)\n    return\n    let x = \"s\"\n    while c\n        continue\n        Console.writeLine(x)\n    Console.writeLine(x)")]
-    [InlineData("func f()\n    return\n    let x = \"s\"\n    loop\n        exit\n        Console.writeLine(x)\n    Console.writeLine(x)")]
-    [InlineData("func f(c: bool)\n    let x = \"s\"\n    return\n    if c\n        return\n        Console.writeLine(x)\n    else if c\n        return\n        Console.writeLine(x)\n    Console.writeLine(x)")]
-    [InlineData("func f()\n    let x = \"s\"\n    defer => loop => ()\n    return\n    Console.writeLine(x)")]
-    [InlineData("func f(c: bool)\n    let x = \"s\"\n    return\n    let value = match c\n        true\n            yield 1\n            Console.writeLine(x)\n        false => 2\n    Console.writeLine(x)")]
-    [InlineData("func f(c: bool)\n    let x = \"s\"\n    return\n    label choice: if c\n        yield to choice\n        Console.writeLine(x)\n    Console.writeLine(x)")]
-    [InlineData("func f()\n    let x = \"s\"\n    return\n    label work: do\n        exit to work\n        Console.writeLine(x)\n    Console.writeLine(x)")]
-    [InlineData("func f()\n    return\n    let x = \"s\"\n    defer => Console.writeLine(x)")]
+    [InlineData("func f()\n    return\n    let y = 1\n    Console.writeLine(\"dead\")")]
     [InlineData("func f()\n    let x = \"s\"\n    defer => Console.writeLine(x)\n    return\n    let y = 1")]
-    public void SupportedCheckingContinuationsVerify(string source)
+    public void DeadSourceWithoutVariableUsesVerifies(string source)
     {
         var c = Parse(source);
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
-    }
-
-    [Theory]
-    [InlineData("func f() -> i32\n    let x: i32\n    return 0\n    return x", OwnershipFailure.UninitializedUse)]
-    [InlineData("func f(x: string) -> string\n    return x\n    return x", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f()\n    let x = \"s\"\n    return\n    _ = x@move\n    Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f()\n    let x = \"s\"\n    return\n    _ = x@move\n    return\n    Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f()\n    let x = 1\n    return\n    x = 2", OwnershipFailure.ReassignedLet)]
-    [InlineData("func f()\n    return\n    let x: i32\n    x = 1\n    x = 2", OwnershipFailure.ReassignedLet)]
-    [InlineData("func f()\n    let x = \"s\"\n    return\n    Console.writeLine(x)\n    x = \"again\"", OwnershipFailure.ReassignedLet)]
-    [InlineData("func f(c: bool)\n    return\n    let x: i32\n    if c\n        x = 1\n    let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("func f(c: bool)\n    return\n    let x = \"s\"\n    if c\n        _ = x@move\n    Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f(c: bool)\n    return\n    let x = \"s\"\n    while c\n        _ = x@move", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f(c: bool)\n    return\n    let x: i32\n    while c\n        x = 1", OwnershipFailure.ReassignedLet)]
-    [InlineData("func f()\n    return\n    let x = Option<string>.Some(\"s\")\n    let y = x@move\n    let z = x@move", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f()\n    let x = \"s\"\n    defer => Console.writeLine(x)\n    return\n    _ = x@move", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f(c: bool)\n    return\n    let x = \"s\"\n    if false => _ = x@move\n    Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f(c: bool)\n    return\n    let x: i32\n    while c\n        x = 1\n        exit\n    let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("func f()\n    let x = \"s\"\n    let result = label work: do\n        exit to work x@move\n        Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f()\n    let x = \"s\"\n    return\n    let value = label work: do\n        exit to work x@move\n        Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f()\n    return\n    let x = Option<string>.Some(\"s\")\n    match x@move\n        .Some(let text)\n            yield\n            _ = text@move\n            Console.writeLine(text)\n        .None => ()", OwnershipFailure.PossiblyMovedUse)]
-    public void CheckingUsesOrdinaryOwnershipDiagnostics(string source, OwnershipFailure failure)
-    {
-        var c = Parse(source);
-        Assert.False(c.Ownership.Analyze().IsVerified);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == failure);
-        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.True(c.Analyze().IsVerified, Describe(c));
     }
 
     [Theory]
@@ -86,51 +31,57 @@ public class UnreachableOwnershipTest
     public void NonCompletingBodiesDoNotRequireSyntheticResults(string source)
     {
         var c = Parse(source);
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
     }
 
     [Theory]
-    [InlineData("func f(x: string)\n    loop\n        Console.writeLine(x)\n        $abort(\"stop\")\n    Console.writeLine(x)")]
-    [InlineData("func f(x: i32)\n    label work: do\n        defer => loop => ()\n        exit to work\n    let y = x")]
-    public void UnseededRegionsRetainTheSafetyGate(string source)
+    [InlineData("func f(x: string)\n    loop\n        Console.writeLine(x)\n        $abort(\"stop\")\n    Console.writeLine(x)\nf(\"s\")", "x", 5)]
+    [InlineData("func f(x: i32)\n    label work: do\n        defer => loop => ()\n        exit to work\n    let y = x\nf(1)", "x", 5)]
+    [InlineData("func f(c: bool, x: i32)\n    var n = 0\n    if c\n        loop\n            n += 1\n    else => return\n    let y = x\nf(true, 1)", "x", 7)]
+    [InlineData("func f(x: i32)\n    loop => return\n    let y = x\nf(1)", "x", 3)]
+    [InlineData("func f()\n    var x = \"s\"\n    return\n    x = \"new\"\n    Console.writeLine(x)\nf()", "x = \"new\"", 4)]
+    [InlineData("var x = 1\nloop\n    x = 2\nlet y = x", "x", 4)]
+    [InlineData("var x = 1\nloop\n    x++\nlet y = x", "x", 4)]
+    [InlineData("func f() => ()\nvar x = 1\nloop\n    f()\nlet y = x", "x", 5)]
+    [InlineData("var x = 1\nloop\n    defer => ()\nlet y = x", "x", 4)]
+    public void FirstDeadLocalUseIsUnsupported(string source, string use, int line)
     {
-        var c = Parse(source);
-        Assert.False(c.Ownership.Analyze().IsVerified);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var issue = Assert.Single(c.Problems);
+        Assert.Equal((DiagnosticCode.Unsupported_Kd, use, line), (issue.Code, c.SyntaxOf(issue.Subject).ToString(), LineOf(source, c.SyntaxOf(issue.Subject).Span.Start)));
     }
 
-    [Fact]
-    public void CheckingStateDoesNotChangeRuntimeStateOrPlans()
+    // Another ownership issue of the body suppresses the Unsupported_Kd of its unreachable uses.
+    [Theory]
+    [InlineData("var n: i32\n    let y = n", DiagnosticCode.UninitializedPlace_Kd, "n")]
+    [InlineData("let n = 1\n    n = 2", DiagnosticCode.ReassignedLet_Kd, "n = 2")]
+    public void LoopLocalUsesStillRequireOrdinaryOwnershipChecks(string body, DiagnosticCode failure, string at)
     {
-        var c = Parse("func f()\n    var x = \"s\"\n    return\n    x = \"new\"\n    Console.writeLine(x)");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
-        var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "f");
-        var local = Assert.Single(body.Places, x => x.Kind == OwnershipPlaceKind.Local);
-        var write = Enumerable.Range(0, body.Operations.Count).Single(i => body.Operations[i] is { Kind: OwnershipOperationKind.Write, Source: BinaryKoto });
-        Assert.False(body.IsReachable(write));
-        Assert.True(body.HasCheckingState(write));
-        Assert.Equal(PlaceState.None, body.GetInputState(write, local.Id));
-        Assert.True(body.GetCheckingInputState(write, local.Id).HasFlag(PlaceState.MustInit));
-        Assert.Equal(PlacementKind.None, body.Operations[write].Placement);
-        Assert.DoesNotContain(body.CleanupSteps, x => x.Operation == write);
-        Assert.All(body.CleanupPlans.Where(x => x.Reason == CleanupReason.Replacement), plan => Assert.True(body.IsReachable(body.Edges[plan.Edge].To)));
-        var cleanupCount = body.CleanupSteps.Count;
-        c.Bind();
-        Assert.False(body.IsVerified);
-        Assert.False(body.HasCheckingState(write));
-        Assert.Equal(PlaceState.None, body.GetCheckingInputState(write, local.Id));
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
-        Assert.Same(body, Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "f"));
-        Assert.Equal(cleanupCount, body.CleanupSteps.Count);
+        var c = MinimalEmissionTest.Analyze("let x = 1\nloop\n    " + body + "\nlet y = x");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var issue = Assert.Single(c.Problems);
+        Assert.Equal((failure, at), (issue.Code, c.SyntaxOf(issue.Subject).ToString()));
+    }
+
+    // A Loan begun inside unreachable code conflicts with a later unreachable operation while the body is built.
+    [Fact]
+    public void DeadCallsStillRejectConflictingArgumentLoans()
+    {
+        const string Source = "func inspect(a: ref/string, b: string) => ()\nfunc f()\n    let x = \"s\"\n    return\n    inspect(x, x@move)\nf()";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var issue = Assert.Single(c.Problems);
+        Assert.Equal((DiagnosticCode.ComparisonLoanConflict_Kd, "x", Source.IndexOf("x@move", StringComparison.Ordinal)), (issue.Code, c.SyntaxOf(issue.Subject).ToString(), c.SyntaxOf(issue.Subject).Span.Start));
     }
 
     [Fact]
     public void DuplicateDeferredSourceDiagnosticsArePublishedOnce()
     {
         var c = Parse("func f()\n    let x = \"s\"\n    defer => Console.writeLine(x)\n    _ = x@move\n    return\n    let y = 1");
-        Assert.False(c.Ownership.Analyze().IsVerified);
-        c.Ownership.ReportDiagnostics();
-        c.Ownership.ReportDiagnostics();
+        Assert.False(c.Analyze().IsVerified);
+        c.ReportAnalysis();
+        c.ReportAnalysis();
         Assert.Single(TestDiagnostics.Of(c));
     }
 
@@ -138,8 +89,11 @@ public class UnreachableOwnershipTest
         => CompilationTestHelper.BindSuccess(source);
 
     private static string Describe(Compilation c)
-        => string.Join("\n", c.Ownership.Issues.Select(x => $"{x.Failure}: {x.Source}")) +
+        => string.Join("\n", c.Problems.Select(x => $"{x.Code}: {c.SyntaxOf(x.Subject)}")) +
             string.Join("\n", c.Ownership.ControlFlow!.Issues.Select(x => x.Message));
+
+    private static int LineOf(string source, int offset)
+        => source.AsSpan(0, offset).Count('\n') + 1;
 
     [TestClass(DisableParallelization = true)]
     [Trait("Purpose", "Allocation")]
@@ -151,25 +105,27 @@ public class UnreachableOwnershipTest
         [InlineData(128)]
         public void WarmCheckingAndBindingAllocateNothing(int count)
         {
-            var source = new StringBuilder("func f(c: bool)\n    return\n");
+            // The dead steps scale the scan; the final dead return repeats the reachable deferred read, so the replica check runs.
+            var source = new StringBuilder("func f()\n    let x = \"s\"\n    defer => Console.writeLine(x)\n    return\n");
             for (var i = 0; i < count; i++)
             {
-                source.Append("    var s").Append(i).Append(" = \"s\"\n    if c\n        Console.writeLine(s").Append(i).Append(")\n    return\n");
+                source.Append("    var s").Append(i).Append(" = \"s\"\n    Console.writeLine(\"s\")\n");
             }
 
+            source.Append("    return\n");
             var c = Parse(source.ToString());
-            Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+            Assert.True(c.Analyze().IsVerified, Describe(c));
             var bindingBytes = AllocationMeasurement.Measure(() => c.Bind());
-            var analysisBytes = AllocationMeasurement.Measure(() => c.Ownership.Analyze());
+            var analysisBytes = AllocationMeasurement.Measure(() => c.Analyze());
             var combinedBytes = AllocationMeasurement.Measure(() =>
             {
                 c.Bind();
-                c.Ownership.Analyze();
+                c.Analyze();
             });
             Assert.True(
                 bindingBytes == 0 && analysisBytes == 0 && combinedBytes == 0,
                 $"Binding: {bindingBytes}; analysis: {analysisBytes}; combined: {combinedBytes}");
-            Assert.True(c.Ownership.Result.IsVerified, Describe(c));
+            Assert.True(c.Analysis.IsVerified, Describe(c));
         }
     }
 }

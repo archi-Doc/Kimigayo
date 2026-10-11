@@ -27,7 +27,7 @@ public class ScalarEmissionTest
         { "BooleanStorage", "var x = true\nlet y = x\nx = not y\nif x != y and y == true => Console.writeLine(\"ok\")", "ok\n", 0 },
         { "Increments", "var x = 3\nlet a = --x\nlet b = x--\nlet c = ++x\nif a == 2 and b == 2 and c == 2 and x == 2 => Console.writeLine(\"ok\")", "ok\n", 0 },
         { "Comparisons", "var x = -3\nlet y = +x\nif y <= -3 and y >= -3 and y != 0 and y > -4 => Console.writeLine(\"ok\")", "ok\n", 0 },
-        { "DeadArithmetic", "var x = 0\nwhile true\n    exit\n    x = 2147483647 + 1\nif x == 0 => Console.writeLine(\"ok\")", "ok\n", 0 },
+        { "DeadArithmetic", "var x = 0\nwhile true\n    exit\n    let y = 2147483647 + 1\nif x == 0 => Console.writeLine(\"ok\")", "ok\n", 0 },
         { "NestedLoops", "var x = 0\nwhile x < 3\n    x += 1\n    var y = 0\n    while true\n        y += 1\n        if y == 2 => exit\n    if x == 2 => continue\n    Console.writeLine(\"tick\")", "tick\ntick\n", 0 },
     };
 
@@ -55,14 +55,14 @@ public class ScalarEmissionTest
     public void WarmScalarAnalysisAndWritingAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Counter);
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         var success = true;
         var bytes = AllocationMeasurement.Measure(
             () =>
             {
-                success &= c.Ownership.Analyze().IsVerified;
-                success &= c.Emission.WriteIr(TextWriter.Null, out _);
+                success &= c.Analyze().IsVerified;
+                success &= c.WriteIr(TextWriter.Null, out _);
             },
             iterations: 128,
             warmupIterations: 100);
@@ -103,7 +103,7 @@ public class ScalarEmissionTest
     public void IncompleteScalarPlansFailBeforeWriting(string mutation)
     {
         var c = MinimalEmissionTest.Analyze("var x = 1\nif x > 0 and true => x = 2");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var write = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Write);
         if (mutation == "missing-value")
@@ -125,7 +125,7 @@ public class ScalarEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out error));
+        Assert.False(c.WriteIr(writer, out error));
         Assert.NotNull(error);
         Assert.Equal(string.Empty, writer.ToString());
     }
@@ -146,14 +146,21 @@ public class ScalarEmissionTest
 
     internal static void WriteFixture(string name, string ir, string stdout, int exit = 0, string? stderr = null, int timeoutMilliseconds = 0)
     {
-        var path = Environment.GetEnvironmentVariable("KIMI_FIXTURE_DIRECTORY") ??
-            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../temp/scalar-fixtures"));
-        Directory.CreateDirectory(path);
+        var path = FixtureDirectory();
         File.WriteAllText(Path.Combine(path, name + ".ll"), ir);
         File.WriteAllText(Path.Combine(path, name + ".stdout"), stdout);
         File.WriteAllText(Path.Combine(path, name + ".exit"), exit.ToString(System.Globalization.CultureInfo.InvariantCulture));
         File.WriteAllText(Path.Combine(path, name + ".timeout"), timeoutMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
         var column = name is "OverflowAdd" or "OverflowNeg" ? 5 : 1;
         File.WriteAllText(Path.Combine(path, name + ".stderr"), stderr ?? (exit == 0 ? string.Empty : $"Hello.kimi:2:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n"));
+    }
+
+    // The native fixture directory of this run; Verify places it in the run's evidence.
+    internal static string FixtureDirectory()
+    {
+        var path = Environment.GetEnvironmentVariable("KIMI_FIXTURE_DIRECTORY") ??
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../temp/scalar-fixtures"));
+        Directory.CreateDirectory(path);
+        return path;
     }
 }

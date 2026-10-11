@@ -13,13 +13,13 @@ public class InternalInvariantTest
     public void CompletionDisagreementIsAnInternalIssue()
     {
         var c = MinimalEmissionTest.Analyze("func f() -> i32 => 1\nlet n = f()");
-        Assert.True(c.Ownership.Result.IsVerified);
+        Assert.True(c.Analysis.IsVerified);
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
         Assert.Empty(body.Issues);
 
         // A construct recorded as completing whose exit the ownership graph never reaches.
         body.RecordCompletion(0, -1, true);
-        body.CheckUnreachable();
+        body.CheckUnreachable(earlierRejected: false);
         var issue = Assert.Single(body.Issues);
         Assert.Equal(OwnershipFailure.Internal, issue.Failure);
         Assert.Same(body.Operations[0].Source, issue.Source);

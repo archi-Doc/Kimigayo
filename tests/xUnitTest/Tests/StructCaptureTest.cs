@@ -33,7 +33,7 @@ public class StructCaptureTest
     {
         var c = MinimalEmissionTest.Analyze(Packet + source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(receiver, Assert.Single(c.Ownership.Bodies, x => x.Function.IsAnonymous).Function.BoundClosure!.Receiver);
+        Assert.Equal(receiver, Assert.Single(c.Ownership.Bodies, x => x.Function.IsAnonymous).Function.ClosureOf()!.Receiver);
         ScalarEmissionTest.WriteFixture("StructCapture" + name, CompilationTestHelper.WriteIr(c), "drop\n");
     }
 
@@ -52,8 +52,8 @@ public class StructCaptureTest
     public void InvalidAcquisitionAndReceiversRemainRejected(string source)
     {
         var c = MinimalEmissionTest.Analyze(Packet + source);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
+        Assert.False(c.Validate(out _));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -69,12 +69,12 @@ public class StructCaptureTest
     public void WarmStructCapturePlansAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Packet + "let packet = Packet.init(\"owned\", 7)\nlet f: () -> i32 = func [packet@move] () => packet.twice\nrequire f() == 14 else => $abort(\"call\")");
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.True(c.Analyze().IsVerified);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid);
     }
 
@@ -93,7 +93,7 @@ public class StructCaptureTest
             var error = Assert.Single(c.Diagnostics.Finalize().Diagnostics);
             Assert.Equal("UnsatisfiedConstraint_Kd", error.Code); // SPEC 15.2.3: an Owned failure is a Constraint failure.
             Assert.Contains("Owned environment", error.Note, StringComparison.Ordinal);
-            Assert.False(c.Emission.Validate(out _));
+            Assert.False(c.Validate(out _));
         }
         else
         {

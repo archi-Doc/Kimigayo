@@ -9,6 +9,20 @@ namespace XunitTest;
 
 internal static class ParseTestHelper
 {
+    internal static void VerifyParents(Koto parent)
+    {
+        foreach (var child in parent.ChildNodes)
+        {
+            Assert.Same(parent, child.Parent);
+            if (parent.CodeContext.SourceDocument is not null)
+            {
+                Assert.Same(parent.CodeContext.SourceDocument, child.CodeContext.SourceDocument);
+            }
+
+            VerifyParents(child);
+        }
+    }
+
     internal static string Unparse(Kotonoha tree)
     {
         var builder = default(IndentedStringBuilder);
@@ -52,4 +66,19 @@ internal static class ParseTestHelper
         => ReferenceEquals(container, container.Kotonoha.RootKoto)
             ? container.Kotonoha.GeneratedFunction?.Body?.Items ?? []
             : container.Members;
+
+    // An operator is a BinaryKoto or UnaryKoto identified by its kind; forms with members of their own have their own classes.
+    internal static BinaryKoto Binary(KotoKind kind, Koto? node)
+    {
+        var binary = Assert.IsType<BinaryKoto>(node);
+        Assert.Equal(kind, binary.Akind);
+        return binary;
+    }
+
+    internal static UnaryKoto Unary(KotoKind kind, Koto? node)
+    {
+        var unary = Assert.IsType<UnaryKoto>(node);
+        Assert.Equal(kind, unary.Akind);
+        return unary;
+    }
 }

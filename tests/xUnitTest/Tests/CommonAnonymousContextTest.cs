@@ -117,7 +117,7 @@ public class CommonAnonymousContextTest(ITestOutputHelper output)
         Assert.False(c.Binding.Result.IsComplete);
         c.Binding.ReportDiagnostics();
         Assert.Equal("AmbiguousBinding_Kd", Assert.Single(TestDiagnostics.Of(c)).Code);
-        Assert.Null(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous).BoundClosure);
+        Assert.Null(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous).ClosureOf());
     }
 
     [Theory]
@@ -142,7 +142,7 @@ public class CommonAnonymousContextTest(ITestOutputHelper output)
         Assert.Equal("2", Assert.Single(error.Reason!).Value);
         Assert.Equal([0, 3], error.Related!.Select(x => x.Range!.Value.Start.Line));
         Assert.Null(error.Repairs);
-        Assert.Null(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous).BoundClosure);
+        Assert.Null(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous).ClosureOf());
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         output.WriteLine(console.Text);
@@ -198,8 +198,8 @@ public class CommonAnonymousContextTest(ITestOutputHelper output)
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 

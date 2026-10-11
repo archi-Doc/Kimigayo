@@ -12,8 +12,8 @@ public class ExternalOriginForwardingTest
     {
         var c = MinimalEmissionTest.Analyze(Source());
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
     }
 
     [Theory]
@@ -26,8 +26,8 @@ public class ExternalOriginForwardingTest
             .Replace("self.left and self.right", origin, StringComparison.Ordinal)
             .Replace("Pair.init(first@ref, second@ref)", "Pair.init(first@ref, " + second + ")", StringComparison.Ordinal));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
     }
 
     [Fact]
@@ -35,7 +35,7 @@ public class ExternalOriginForwardingTest
     {
         var c = MinimalEmissionTest.Analyze(Source().Replace("Found(ref/Cell during source)", "Found(ref/Cell during missing)", StringComparison.Ordinal));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -47,8 +47,8 @@ public class ExternalOriginForwardingTest
         var changed = source.Replace("origin selection.source == self.left and self.right", "origin selection.source == " + origin, StringComparison.Ordinal);
         Assert.NotEqual(source, changed);
         var c = MinimalEmissionTest.Analyze(changed);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -61,8 +61,8 @@ public class ExternalOriginForwardingTest
     {
         var c = MinimalEmissionTest.Analyze(Source().Replace(before, after, StringComparison.Ordinal));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, issue => issue.Code.IsLoanConflict());
+        Assert.False(c.Validate(out _));
     }
 
     [Fact]
@@ -74,18 +74,9 @@ public class ExternalOriginForwardingTest
             .Replace("first.value == 13 and ", string.Empty, StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, issue => issue.Code.IsLoanConflict());
+        Assert.False(c.Validate(out _));
     }
 
-    private static string Source()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Kimigayo.slnx")))
-        {
-            directory = directory.Parent;
-        }
-
-        return File.ReadAllText(Path.Combine(directory!.FullName, "tests", "milestones", "Milestone16.kimi")).Replace("\r\n", "\n", StringComparison.Ordinal);
-    }
+    private static string Source() => Repository.ReadText("tests", "milestones", "Milestone16.kimi");
 }

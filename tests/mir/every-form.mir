@@ -1,0 +1,55 @@
+fn f @0
+  _0: i32 return @0
+  _1: (i32, bool) arg @0
+  _2: s/T arg @0
+  _3: Point var @0
+  _4: isize temp @0
+  _5: Shape var @0
+  _6: [3 of i32] var @0
+  _7: ref/i32 var @0
+  _8: (i32) -> i32 var @0
+  _9: bool temp @0
+  s1: unsafe in s0 @0
+  b0: T Value, Uniq
+  static0: f: i32
+  opaque 0 @0: _3
+  bb0:
+    * StorageLive(_3) @0 s1
+      _4 = const 2_isize @0
+      _0 = Add(copy _1.0, const 1_i32) @0
+      _7 = &_1.0: ref/i32 @0
+      _0 = copy (*_7) @0
+      EndBorrow(_7) @0
+      FakeRead(static0) @0
+      FakeRead((_2@b0)) @0
+      _0 = acquire b0 _2 @0
+      _9 = opaque 0: bool @0
+      _4 = discriminant(_5) @0
+      _4 = len(_6) @0
+      _5 = Adt case 1(const 1_i32, const 1_i32): Shape @0
+      _1 = Tuple(const 1_i32, const true): (i32, bool) @0
+      _6 = FixedArray(const 1_i32, const 1_i32, const 1_i32): [3 of i32] @0
+      _6 = FixedArray(): [3 of i32] @0
+      _3 = Adt(const 1_i32, const 1_i32, const 1_i32): Point @0
+      _0 = copy _6[_4] @0
+      _0 = copy _6[2] @0
+      _0 = copy (_5 as case 1).1 @0
+      _0 = copy _3.base1.0 @0
+      _0 = Neg(copy _0) @0
+      _4 = copy _0 as isize (Integer) @0
+      switch copy _9 [0: bb1, otherwise: bb2] @0
+  bb1:
+      _0 = intrinsic Abort(const "abort") -> ! check bb2 @0
+  bb2:
+      _0 = value copy _8(copy _1.0) -> bb3 @0
+  bb3:
+      drop _3 -> bb4 @0
+  bb4:
+      StorageDead(_3) @0
+      goto bb5 check bb6 @0
+  bb5:
+      return @0
+  bb6:
+      _7 = &uniq two-phase _4: ref/i32 @0
+    * _7 = &raw _4: ref/i32 @1:5 s1
+      unreachable @0

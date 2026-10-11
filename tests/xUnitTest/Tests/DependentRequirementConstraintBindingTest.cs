@@ -26,7 +26,7 @@ public class DependentRequirementConstraintBindingTest
         var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    " + clause + "\npublic func use(value: Target<" + argument + ">)\n    return");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
-        Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target").BindingState);
+        Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target").StateOf());
         Assert.Equal(valid, c.Bind().IsComplete);
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
@@ -50,7 +50,7 @@ public class DependentRequirementConstraintBindingTest
         var c = MinimalEmissionTest.Analyze("public contract Origin\n    associate Item\npublic struct Source\n    Self is Origin\n    associate Origin.Item is " + item + "\npublic struct Target<T>\n    i32 is T.Origin.Item\n    T is Origin\npublic func use(value: Target<Source>)\n    return");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
-        Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target").BindingState);
+        Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target").StateOf());
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 

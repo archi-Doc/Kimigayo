@@ -21,7 +21,6 @@ public class AcquisitionRepairTest
         Assert.Equal(nameof(DiagnosticCode.TransferRequired_Kd), error.Code);
         Assert.Equal("resource", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
         Assert.Equal("resource cannot be read as a Copy value", error.Label);
-        Assert.Null(error.Advice);
         var repair = Assert.Single(error.Repairs!);
         Assert.Equal("Repair.Transfer", repair.Kind);
         Assert.Equal("Append @move to transfer resource to consume", repair.Title);
@@ -59,11 +58,10 @@ public class AcquisitionRepairTest
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics, static x => x.Code == nameof(DiagnosticCode.TransferRequired_Kd));
         Assert.Equal(place, source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
         Assert.Null(error.Repairs);
-        Assert.Contains("offers no Take", error.Advice);
     }
 
     // A field read by value through a borrowed root, as a result or an initializer, is the same bare Place: one record at the
-    // field without a repair. It was UnsupportedOwnership_Kd with UninitializedPlace_Kd at the signature for the result.
+    // field without a repair. It was Unsupported_Kd with UninitializedPlace_Kd at the signature for the result.
     [Theory]
     [InlineData("func first(p: ref/(Resource, i32)) -> Resource => p.0\n", "p.0")]
     [InlineData("func first(p: uniq/(Resource, i32)) -> Resource => p.0\n", "p.0")]
@@ -77,11 +75,10 @@ public class AcquisitionRepairTest
         Assert.Equal(place, source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
         Assert.Equal(place + " cannot be read as a Copy value", error.Label);
         Assert.Null(error.Repairs);
-        Assert.Contains("offers no Take", error.Advice);
     }
 
     // The same holds for a selected referent read by value (SPEC 13.5.5.1): one record at `p@follow`, without the
-    // UnsupportedOwnership_Kd and UninitializedPlace_Kd records it published before.
+    // Unsupported_Kd and UninitializedPlace_Kd records it published before.
     [Theory]
     [InlineData("func first<A>(p: ref/A) -> A => p@follow\n")]
     [InlineData("func first(p: ref/Resource) -> Resource => p@follow\n")]
@@ -94,7 +91,6 @@ public class AcquisitionRepairTest
         Assert.Equal("p@follow", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
         Assert.Equal("p@follow cannot be read as a Copy value", error.Label);
         Assert.Null(error.Repairs);
-        Assert.Contains("offers no Take", error.Advice);
     }
 
     [Theory]
@@ -113,7 +109,6 @@ public class AcquisitionRepairTest
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.TransferRequired_Kd), error.Code);
         Assert.Equal("first", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
-        Assert.Contains("Borrow it with @ref or @uniq", error.Advice);
         var repair = Assert.Single(error.Repairs!);
         Assert.Equal("Append @move to transfer first to the binding second", repair.Title);
         Assert.Equal([RepairCondition.Take], repair.Verified);

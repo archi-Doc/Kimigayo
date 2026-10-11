@@ -24,10 +24,10 @@ public class DefaultOwnershipTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        var issue = Assert.Single(c.Ownership.Issues, x => x.Failure == OwnershipFailure.DefaultArgumentMove);
-        c.Ownership.ReportDiagnostics();
-        Assert.Contains(TestDiagnostics.Of(issue.Source.CodeContext), x => x.Code == nameof(DiagnosticCode.DefaultArgumentMove_Kd) && x.Span == issue.Source.Span);
-        Assert.False(c.Emission.Validate(out _));
+        var issue = Assert.Single(c.Problems, x => x.Code == DiagnosticCode.DefaultArgumentMove_Kd);
+        c.ReportAnalysis();
+        Assert.Contains(TestDiagnostics.Of(c.SyntaxOf(issue.Subject).CodeContext), x => x.Code == nameof(DiagnosticCode.DefaultArgumentMove_Kd) && x.Span == c.SyntaxOf(issue.Subject).Span);
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -41,7 +41,7 @@ public class DefaultOwnershipTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.DefaultArgumentMove);
+        Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.DefaultArgumentMove_Kd);
     }
 
     [Theory]
@@ -60,32 +60,31 @@ public class DefaultOwnershipTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        Assert.True(c.Ownership.Result.ErrorCount > 0, string.Join("\n", c.Ownership.Issues));
-        var issue = Assert.Single(c.Ownership.Issues, x => x.Failure == OwnershipFailure.DefaultArgumentMove);
-        Assert.IsType<IdentifierNameKoto>(issue.Source);
-        Assert.Equal("x", issue.Source.BoundSymbol!.Name);
-        c.Ownership.ReportDiagnostics();
-        var diagnostic = Assert.Single(TestDiagnostics.Of(issue.Source.CodeContext), x => x.Code == nameof(DiagnosticCode.DefaultArgumentMove_Kd));
-        Assert.Equal(issue.Source.Span, diagnostic.Span);
+        Assert.True(c.Analysis.ErrorCount > 0, string.Join("\n", c.Problems));
+        var issue = Assert.Single(c.Problems, x => x.Code == DiagnosticCode.DefaultArgumentMove_Kd);
+        Assert.IsType<IdentifierNameKoto>(c.SyntaxOf(issue.Subject));
+        Assert.Equal("x", c.SyntaxOf(issue.Subject).SymbolOf()!.Name);
+        c.ReportAnalysis();
+        var diagnostic = Assert.Single(TestDiagnostics.Of(c.SyntaxOf(issue.Subject).CodeContext), x => x.Code == nameof(DiagnosticCode.DefaultArgumentMove_Kd));
+        Assert.Equal(c.SyntaxOf(issue.Subject).Span, diagnostic.Span);
         Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
-        Assert.DoesNotContain(TestDiagnostics.Of(issue.Source.CodeContext), x => x.Code == nameof(DiagnosticCode.UnsupportedOwnership_Kd));
-        Assert.False(c.Emission.Validate(out _));
+        Assert.DoesNotContain(TestDiagnostics.Of(c.SyntaxOf(issue.Subject).CodeContext), x => x.Code == nameof(DiagnosticCode.Unsupported_Kd));
+        Assert.False(c.Validate(out _));
     }
 
     // SPEC 7.2.3, 13.5.3: an explicit transfer moves even a Copy prepared argument, and a default closure's `@move` capture entry is
-    // the default's own Move. Each is one DefaultArgumentMove_Kd, at the operand or at the entry, with no unsupported execution beside
-    // it; the Advice copies a Copy argument and never proposes a borrow capture, which a default's result cannot retain.
+    // the default's own Move. Each is one DefaultArgumentMove_Kd, at the operand or at the entry, with no unsupported execution beside it.
     [Theory]
-    [InlineData("func f(x: i32, y: i32 = x@move) -> i32 => x + y\n", "x", "Copy the prepared argument instead, as in x or x@copy")]
-    [InlineData("func f(x: (i32, i32), y: i32 = x.0@move) -> i32 => y\n", "x.0", "Copy the prepared argument instead, as in x.0 or x.0@copy")]
-    [InlineData("func f<T>(x: T, y: T = x@move) -> T\n    T is Copy\n    return y\n", "x", "Copy the prepared argument instead, as in x or x@copy")]
-    [InlineData("func runC(offset: i32, action: (i32) -> i32 = func [offset@move] (x) => x + offset) -> i32 => action(1)\n", "offset@move", "Capture a Copy of the prepared argument instead, as in [offset]")]
-    [InlineData("func runG(text: string, action: () -> () = func [text@move] () => ()) -> () => action()\n", "text@move", "A default closure can neither move nor borrow a preceding argument that is not Copy; build an independent value inside the default and capture that")]
-    public void CopyTransfersOfPreparedSlotsAreDefaultMoves(string declaration, string text, string advice)
+    [InlineData("func f(x: i32, y: i32 = x@move) -> i32 => x + y\n", "x")]
+    [InlineData("func f(x: (i32, i32), y: i32 = x.0@move) -> i32 => y\n", "x.0")]
+    [InlineData("func f<T>(x: T, y: T = x@move) -> T\n    T is Copy\n    return y\n", "x")]
+    [InlineData("func runC(offset: i32, action: (i32) -> i32 = func [offset@move] (x) => x + offset) -> i32 => action(1)\n", "offset@move")]
+    [InlineData("func runG(text: string, action: () -> () = func [text@move] () => ()) -> () => action()\n", "text@move")]
+    public void CopyTransfersOfPreparedSlotsAreDefaultMoves(string declaration, string text)
     {
         var source = declaration + "public func main() => ()\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.DefaultArgumentMove_Kd), text, advice), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty, error.Advice));
+        Assert.Equal((nameof(DiagnosticCode.DefaultArgumentMove_Kd), text), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
     }
 
     [Theory]
@@ -99,7 +98,7 @@ public class DefaultOwnershipTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        Assert.Equal(0, c.Ownership.Result.ErrorCount);
+        Assert.Equal(0, c.Analysis.ErrorCount);
     }
 
     [Fact]
@@ -109,14 +108,14 @@ public class DefaultOwnershipTest
         for (var i = 0; i < 3; i++)
         {
             Assert.True(c.Bind().IsComplete);
-            Assert.False(c.Ownership.Analyze().IsVerified);
-            Assert.Single(c.Ownership.Issues, x => x.Failure == OwnershipFailure.DefaultArgumentMove);
+            Assert.False(c.Analyze().IsVerified);
+            Assert.Single(c.Problems, x => x.Code == DiagnosticCode.DefaultArgumentMove_Kd);
         }
 
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
-        Assert.False(restored.Ownership.Analyze().IsVerified);
-        var issue = Assert.Single(restored.Ownership.Issues, x => x.Failure == OwnershipFailure.DefaultArgumentMove);
-        Assert.NotSame(c.Ownership.Issues[0].Source, issue.Source);
+        Assert.False(restored.Analyze().IsVerified);
+        var issue = Assert.Single(restored.Problems, x => x.Code == DiagnosticCode.DefaultArgumentMove_Kd);
+        Assert.NotSame(c.SyntaxOf(c.Problems[0].Subject), restored.SyntaxOf(issue.Subject));
     }
 }

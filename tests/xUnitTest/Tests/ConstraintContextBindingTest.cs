@@ -20,14 +20,14 @@ public class ConstraintContextBindingTest
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single();
-        var proposition = ((IsKoto)function.TypeConstraints[0]).BoundConstraint!;
+        var proposition = ((IsKoto)function.TypeConstraints[0]).ConstraintOf()!;
         Assert.Equal(ConstraintProof.Error, c.Binding.Prove(proposition, function, [proposition.RequiredType], c.Kotonoha.RootKoto));
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(ConstraintProof.Error, c.Binding.Prove(proposition, function));
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         var restoredFunction = Query(restored);
-        Assert.Equal(ConstraintProof.Error, restored.Binding.Prove(((IsKoto)restoredFunction.TypeConstraints[0]).BoundConstraint!, restoredFunction));
+        Assert.Equal(ConstraintProof.Error, restored.Binding.Prove(((IsKoto)restoredFunction.TypeConstraints[0]).ConstraintOf()!, restoredFunction));
     }
 
     [Theory]
@@ -40,7 +40,7 @@ public class ConstraintContextBindingTest
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         var function = Query(c);
-        Assert.Equal(ConstraintProof.Error, c.Binding.Prove(((IsKoto)function.TypeConstraints[0]).BoundConstraint!, function));
+        Assert.Equal(ConstraintProof.Error, c.Binding.Prove(((IsKoto)function.TypeConstraints[0]).ConstraintOf()!, function));
     }
 
     [Fact]
@@ -49,11 +49,11 @@ public class ConstraintContextBindingTest
         var c = MinimalEmissionTest.Analyze("#Unknown\ngroup Invalid\n    public struct S\ngroup Consumer\n    func query<T>()\n        T is Invalid.S\n        ()");
         var group = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Invalid");
         var function = Query(c);
-        var proposition = ((IsKoto)function.TypeConstraints[0]).BoundConstraint!;
+        var proposition = ((IsKoto)function.TypeConstraints[0]).ConstraintOf()!;
         Assert.Equal(ConstraintProof.Error, c.Binding.Prove(proposition, function));
         Assert.True(group.RemoveAttribute(Assert.IsType<AttributeKoto>(group.AttributeChain)));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Same(proposition, ((IsKoto)function.TypeConstraints[0]).BoundConstraint);
+        Assert.Same(proposition, ((IsKoto)function.TypeConstraints[0]).ConstraintOf());
         Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(proposition, function));
         Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(proposition, function, [proposition.RequiredType], c.Kotonoha.RootKoto));
     }
@@ -64,7 +64,7 @@ public class ConstraintContextBindingTest
         var c = MinimalEmissionTest.Analyze("#Unknown\ngroup Invalid\ngroup Valid\n    public struct S\ngroup Consumer\n    func query<T>()\n        T is Valid.S\n        ()");
         Assert.False(c.Binding.Result.IsComplete);
         var function = Query(c);
-        var proposition = ((IsKoto)function.TypeConstraints[0]).BoundConstraint!;
+        var proposition = ((IsKoto)function.TypeConstraints[0]).ConstraintOf()!;
         Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(proposition, function));
         Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(proposition, function, [proposition.RequiredType], c.Kotonoha.RootKoto));
     }

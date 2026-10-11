@@ -17,7 +17,11 @@ public sealed class ArrayLiteralKoto : ExpressionKoto
     /// <summary>Gets the compile-time length for fill construction, whose sole element is evaluated once.</summary>
     public Koto? FillLength { get; private set; }
 
-    internal BoundLength? FillCount { get; set; }
+    internal BoundLength? FillCount
+    {
+        get => HirTables.PlanOf(this).Plan as BoundLength;
+        set => HirTables.PlanFor(this, value is not null).Plan = value;
+    }
 
     /// <summary>Initializes a new instance of the <see cref="ArrayLiteralKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
@@ -56,38 +60,10 @@ public sealed class ArrayLiteralKoto : ExpressionKoto
         builder.Append(Constants.CloseBracketChar);
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        if (this.FillLength is { } length)
-        {
-            visitor.Visit(length);
-        }
-
-        visitor.VisitMany(this.Elements);
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-    {
-        if (this.FillLength is { } length)
-        {
-            yield return length;
-        }
-
-        foreach (var element in this.Elements)
-        {
-            yield return element;
-        }
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (this.FillLength == oldKoto)
-        {
-            this.FillLength = newKoto;
-            return true;
-        }
-
-        return ReplaceInList(this.Elements, oldKoto, newKoto);
+        this.FillLength = slots.Slot(this.FillLength);
+        slots.List(this.Elements);
     }
 }
 
@@ -164,42 +140,12 @@ public sealed class DictionaryLiteralKoto : ExpressionKoto
         builder.Append(Constants.CloseBracketChar);
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
-    {
-        for (var entryIndex = 0; entryIndex < this.Entries.Count; entryIndex++)
-        {
-            var entry = this.Entries[entryIndex];
-            visitor.Visit(entry.Key);
-            visitor.Visit(entry.Value);
-        }
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
         foreach (var entry in this.Entries)
         {
-            yield return entry.Key;
-            yield return entry.Value;
+            entry.Key = slots.Slot(entry.Key);
+            entry.Value = slots.Slot(entry.Value);
         }
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        foreach (var entry in this.Entries)
-        {
-            if (entry.Key == oldKoto)
-            {
-                entry.Key = newKoto;
-                return true;
-            }
-
-            if (entry.Value == oldKoto)
-            {
-                entry.Value = newKoto;
-                return true;
-            }
-        }
-
-        return false;
     }
 }

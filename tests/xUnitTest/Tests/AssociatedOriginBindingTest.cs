@@ -16,7 +16,7 @@ public class AssociatedOriginBindingTest
         var c = MinimalEmissionTest.Analyze(declarations + "\nfunc f(x: ref/i32 during source) -> S.(C).Item(source) => 42");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
-        Assert.Same(BoundType.I32, function.ReturnType!.BoundType);
+        Assert.Same(BoundType.I32, function.ReturnType!.TypeOf());
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
@@ -32,7 +32,7 @@ public class AssociatedOriginBindingTest
         var c = MinimalEmissionTest.Analyze("contract C\n    associate Item(a) is i32\nstruct S\n    Self is C\nfunc f(x: ref/i32 during source) -> " + result + " => 42");
         Assert.False(c.Binding.Result.IsComplete);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -60,7 +60,7 @@ public class AssociatedOriginBindingTest
     {
         var c = MinimalEmissionTest.Analyze("contract C\n    associate Item(a) is i32\n    func f(self: ref/Self during a) -> " + result + "\nstruct S\n    Self is C\n    public func f(self: ref/Self during b) -> i32 => 42");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var parameters = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<OriginApplicationKoto>().Select(x => x.ArgumentNodes.Single().BoundOrigin).ToArray();
+        var parameters = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<OriginApplicationKoto>().Select(x => x.ArgumentNodes.Single().OriginOf()).ToArray();
         Assert.NotNull(parameters[0]);
         Assert.NotSame(parameters[0], parameters[1]);
     }
@@ -129,7 +129,7 @@ public class AssociatedOriginBindingTest
         const string source = "contract C\n    associate Item(step) is Copy\n    func get(self: ref/Self during step) -> Self.Item(step)\n" +
             "func twice<T>(x: ref/T during b) -> (T.(C).Item(b), T.(C).Item(b))\n    T is C\n    let v = x.get()\n    return (v, v)";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]

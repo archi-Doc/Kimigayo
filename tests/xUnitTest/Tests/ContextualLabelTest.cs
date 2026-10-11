@@ -164,7 +164,6 @@ public class ContextualLabelTest
         Assert.Equal(code, error.Code);
         Assert.Equal(token, error.Text);
         Assert.NotEmpty(error.Label!);
-        Assert.NotEmpty(error.Advice!);
         Assert.Empty(Publish(valid));
         var independent = Publish(source + "\nfunc unrelated() -> i32 => true");
         Assert.Contains(error, independent);
@@ -256,8 +255,7 @@ public class ContextualLabelTest
         var c = MinimalEmissionTest.Analyze(source);
         c.Binding.ReportDiagnostics();
         c.Binding.ReportStartupDiagnostics();
-        c.Ownership.ControlFlow!.ReportDiagnostics();
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         return TestDiagnostics.Of(c, "Hello.kimi").Where(x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error).ToArray();
     }
 }

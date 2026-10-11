@@ -9,13 +9,13 @@ namespace Kimi.Compiler;
 /// inlineBase publishes that storage's element address for the Kimigayo remainder operations.</summary>
 internal sealed partial class BodyLowering
 {
-    private bool LowerFixedStorageOwn(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, BoundCall plan, out string? failure)
+    private bool LowerFixedStorageOwn(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
         failure = null;
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != 1 || call.ArgumentNodes.Count != 1 || plan.ArgumentToParameter.Length != 1 || target.Parameters.Count != 1 ||
             plan.ArgumentOperations[0].Kind != ArgumentOperationKind.Value ||
-            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.FixedArray, LengthExpression: null } array ||
+            body.Resolve(plan.ArgumentOperations[0].ParameterType, InterpretationContext.Root) is not { Kind: BoundTypeKind.FixedArray, LengthExpression: null } array ||
             !this.TryGetArrayElement(array, out var whole))
         {
             return Fail("Fixed-array ownStorage has an unsupported argument plan or array Type.", out failure);
@@ -31,17 +31,17 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        var returnType = SignatureType(this, plan.ReturnType);
-        if (returnType is null || !ReferenceEquals(SignatureType(this, call.BoundType), returnType) || this.aggregateLayouts.Get(returnType) is not { IsArray: false, Fields.Length: 3 } remainder ||
+        var returnType = body.Resolve(plan.ReturnType, InterpretationContext.Root);
+        if (returnType is null || !ReferenceEquals(body.Resolve(call.BoundType, body.ContextAt(id)), returnType) || this.aggregateLayouts.Get(returnType) is not { } remainder ||
             !SlotTypes.IsResult(returnType) || !this.ValidateSlotCallResult(body, id, out failure))
         {
-            return Fail(failure ?? "Fixed-array ownStorage result is not the owning remainder record.", out failure);
+            return Fail(failure ?? "Fixed-array ownStorage result is not a stored record.", out failure);
         }
 
-        // The whole array's layout keys the helper; the remainder record gives the offsets and the storage size.
-        var helper = this.GetArrayHelper(ArrayHelperKind.OwnFixedStorage, whole, remainder: remainder);
+        // The whole array's layout keys the helper; the remainder record gives the named offsets and the storage size.
+        var helper = this.GetArrayHelper(ArrayHelperKind.OwnFixedStorage, whole, remainder: remainder, fields: GetRemainderFields(remainder, returnType, false));
         this.callOperands.Clear();
-        if (remainder.Fields[0].Layout.Size != 0)
+        if (helper.Fields.StorageSize != 0)
         {
             // A zero-sized array has no slot; otherwise its acquired slot is transferred into the remainder.
             var entry = this.parameterArguments[0];

@@ -61,6 +61,18 @@ public enum BindingDeadline : byte
     Instantiation,
 }
 
+/// <summary>The check that discharges an Origin obligation, recorded where the rule that requires it creates it (PLAN G74 U4).</summary>
+public enum OriginDischarge : byte
+{
+    /// <summary>The obligation's one verdict once Binding is final: proven from the premises at its use, or a finite or inferred
+    /// chain judged with region inference (SPEC 15.6.5).</summary>
+    Judgment,
+
+    /// <summary>The well-formedness of a direct borrowed input: its stored Origins outlive the borrow at each call, which judges the
+    /// instantiated input's well-formedness (SPEC 8.1.2, 15.6.4 step 3).</summary>
+    CallBorrows,
+}
+
 /// <summary>A declared slot; a pair consumes one argument and retains its whole type.</summary>
 public sealed class GenericSlot(GenericSlotKind kind, BindingSymbol symbol, BindingSymbol? semantics)
 {
@@ -129,8 +141,11 @@ public sealed class BoundOrigin
 
     internal int TargetSlot { get; init; }
 
-    // SPEC 10.8, 15.3.6: an inferred local region that stands for a known call signature's own Origin in a slot solution. It holds no
-    // Loans and is never displayed; Binder is the argument whose signature supplied it, so each call site has its own region.
+    // A nested anonymous/local Function input is fixed in its enclosing body, never a temporary signature-evidence stand-in.
+    internal bool IsLocalInput { get; init; }
+
+    // SPEC 10.8, 15.3.6: an inferred region, either temporary signature evidence or a body-local omitted Origin.
+    // Its binder and slot give stable identity; local constraints and value flow determine the actual Loans.
     internal bool Open { get; init; }
 
     internal BindingSymbol? BorrowCondition { get; set; }
@@ -138,9 +153,13 @@ public sealed class BoundOrigin
 
 /// <summary>A retained semantic requirement, independent of successful name resolution. An <see cref="BindingObligationKind.OriginOutlives"/>
 /// obligation with <c>Equality</c> requires <c>Longer == Shorter</c>, the relation at an invariant position (SPEC 15.6.1); one with a
-/// <c>Clause</c> is that clause of a Type substituted at the Type occurrence <c>Use</c>, a declared relation (SPEC 15.3.3); one with
-/// <c>WellFormed</c> is a callee's result premise substituted at the call <c>Use</c>, the well-formedness of its result (SPEC 15.3.7).</summary>
-public readonly record struct BindingObligation(BindingObligationKind Kind, Koto Use, BindingDeadline Deadline, BoundType? Type = null, BoundOrigin? Longer = null, BoundOrigin? Shorter = null, BoundLength? Length = null, bool Equality = false, Koto? Clause = null, bool WellFormed = false);
+/// <c>Clause</c> is a substituted declaration clause at its supplying argument or Type occurrence <c>Use</c> (SPEC 15.3.3, 15.6.1); one with
+/// <c>WellFormed</c> is a callee's result premise substituted at the call <c>Use</c>, the well-formedness of its result, or the intrinsic
+/// relation of an input's instantiated Type at that input (SPEC 15.3.7, 15.6.4 step 3), which classifies the record's source and is
+/// discharged by judgment. <c>Discharge</c> names the check responsible for the obligation. <c>Condition</c> is the Semantics case
+/// the relation is required in (SPEC 15.6.5): the pair binders in scope of <c>Use</c> that must all be borrows, as bits of their
+/// order there (<see cref="Binding.PairSlotCondition"/>); its proof may use the premises of exactly those cases.</summary>
+public readonly record struct BindingObligation(BindingObligationKind Kind, Koto Use, BindingDeadline Deadline, BoundType? Type = null, BoundOrigin? Longer = null, BoundOrigin? Shorter = null, BoundLength? Length = null, bool Equality = false, Koto? Clause = null, bool WellFormed = false, OriginDischarge Discharge = OriginDischarge.Judgment, ulong Condition = 0);
 
 internal enum TypePosition : byte
 {
@@ -174,7 +193,7 @@ internal readonly struct CallableInstance
 
     // A direct input whose outer Origin the implementation binds at that input's own position.
     internal bool IsQuantifiedInput(BoundType input, int position)
-        => this.actualBinder is not null && input is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1, OriginArguments.Count: 0, Origin: { Kind: OriginKind.Input, Occurrence: null } origin } &&
+        => this.actualBinder is not null && Binding.IsBorrow(input.Semantics) && input is { Kind: BoundTypeKind.Semantics, Components.Count: 1, OriginArguments.Count: 0, Origin: { Kind: OriginKind.Input, Occurrence: null } origin } &&
             ReferenceEquals(origin.Binder, this.actualBinder) && origin.Slot == position;
 
     internal BoundOrigin Instantiate(BoundOrigin origin)
@@ -256,10 +275,6 @@ internal readonly struct CallableInstance
         }
     }
 }
-
-// One closure call whose result is bound to its receiver (SPEC 15.8.2): the closure, its environment plan, the receiver's Place Origin
-// (none for a Consuming call), whether the result is Copy, and the call.
-internal readonly record struct ReceiverContext(FunctionKoto Function, BoundClosure Closure, BoundOrigin? Receiver, bool Copy, Koto Use);
 
 // CallQualifier: the Type expression qualifies a called member in an expression (SPEC 15.4.4), whose omitted Origin slots the call
 // infers; Member judges them once the member is known.

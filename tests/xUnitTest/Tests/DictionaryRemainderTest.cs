@@ -46,7 +46,7 @@ public class DictionaryRemainderTest
         c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, Probe);
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         ScalarEmissionTest.WriteFixture("DictionaryRemainderShared", CompilationTestHelper.WriteIr(c), "dictionary storage\n");
     }
 
@@ -152,7 +152,7 @@ public class DictionaryRemainderTest
         var source = "func inspect(entries: uniq/Dictionary<i32, string>)\n    var it = entries.iterateUniq()\n    loop\n        match it.next()\n            .Some((let key, let value))\n                " + use +
             "\n            .None => exit\nvar entries: Dictionary<i32, string> = [:]\n_ = entries.tryInsert(1, \"one\")\n_ = entries.tryInsert(2, \"two\")\ninspect(entries@uniq)";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Equal(valid, c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.Equal(valid, c.Binding.Result.IsComplete && c.Analysis.IsVerified);
         if (valid)
         {
             ScalarEmissionTest.WriteFixture("DictionaryRemainderNested", CompilationTestHelper.WriteIr(c), "one\ntwo\n");
@@ -188,8 +188,8 @@ public class DictionaryRemainderTest
         {
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
@@ -197,8 +197,8 @@ public class DictionaryRemainderTest
             var valid = stage switch
             {
                 "Binding" => c.Bind().IsComplete,
-                "Ownership" => c.Ownership.Analyze().IsVerified,
-                _ => c.Emission.WriteIr(TextWriter.Null, out _),
+                "Ownership" => c.Analyze().IsVerified,
+                _ => c.WriteIr(TextWriter.Null, out _),
             };
             if (!valid)
             {
@@ -225,7 +225,7 @@ public class DictionaryRemainderTest
     public void ALiveExclusiveIteratorKeepsTheParentLoan(string use, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("var map: Dictionary<i32, i32> = [:]\n_ = map.tryInsert(1, 10)\nvar it = map.iterateUniq()\n" + use + "\n_ = it.next()");
-        Assert.Equal(valid, c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.Equal(valid, c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
 
     [Theory]
@@ -235,7 +235,7 @@ public class DictionaryRemainderTest
     public void ALiveIteratorKeepsTheDictionaryLoan(string use, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("var map: Dictionary<i32, i32> = [:]\n_ = map.tryInsert(1, 10)\nvar it = map.iterate()\n" + use + "\n_ = it.next()");
-        Assert.Equal(valid, c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.Equal(valid, c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
 
     // The remainder keeps the shared Loan of the Dictionary: an exclusive use of the source before a later step is rejected.
@@ -251,7 +251,7 @@ public class DictionaryRemainderTest
             """);
         c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, "public group StorageProbe\n    public func touch(values: uniq/Dictionary<i32, i32>)\n        var state = Storage.borrowStorage(values@follow@ref)\n        " + use + "\n        _ = Storage.splitFirst(state@uniq)\n");
         var bound = c.Bind().IsComplete;
-        Assert.Equal(valid, bound && c.Binding.CheckStartup(OutputKind.Application).IsComplete && c.Ownership.Analyze().IsVerified);
+        Assert.Equal(valid, bound && c.Binding.CheckStartup(OutputKind.Application).IsComplete && c.Analyze().IsVerified);
     }
 
     // String keys and padded small keys place the key and value at their own layout offsets inside each slot.
@@ -304,7 +304,7 @@ public class DictionaryRemainderTest
         c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, probe);
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         ScalarEmissionTest.WriteFixture("DictionaryRemainderOffsets", CompilationTestHelper.WriteIr(c), "offsets\n");
     }
 }

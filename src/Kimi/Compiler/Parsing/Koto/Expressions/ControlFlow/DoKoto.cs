@@ -32,18 +32,8 @@ public sealed class DoKoto : ExpressionKoto
         this.Body.WriteBranchTo(ref builder);
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor) => visitor.Visit(this.Body);
-
-    protected override IEnumerable<Koto> GetChildNodes() => [this.Body];
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        if (oldKoto != this.Body || newKoto is not CodeBlockKoto body)
-        {
-            return false;
-        }
-
-        this.Body = body;
-        return true;
+        this.Body = slots.Slot(this.Body);
     }
 }

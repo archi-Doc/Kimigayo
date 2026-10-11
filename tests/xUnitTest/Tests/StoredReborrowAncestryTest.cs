@@ -30,7 +30,7 @@ public class StoredReborrowAncestryTest(ITestOutputHelper output)
     {
         var source = Source(storage, read, false);
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
+        Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
         ScalarEmissionTest.EmitFixture("StoredReborrow" + name, source, string.Empty);
     }
 
@@ -41,8 +41,8 @@ public class StoredReborrowAncestryTest(ITestOutputHelper output)
         var path = Path.GetFullPath("stored-reborrow.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Emission.Validate(out _));
-        c.Ownership.ReportDiagnostics();
+        Assert.False(c.Validate(out _));
+        c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var error = Assert.Single(result.Diagnostics);
@@ -77,12 +77,12 @@ public class StoredReborrowAncestryTest(ITestOutputHelper output)
             (conflict ? "left" : "right") + ".value = 9\n    return view.item.value\npublic func main() => ()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(!conflict, c.Ownership.Result.IsVerified);
+        Assert.Equal(!conflict, c.Analysis.IsVerified);
         if (conflict)
         {
-            var error = Assert.Single(c.Ownership.Issues);
-            Assert.Equal(OwnershipFailure.ComparisonLoanConflict, error.Failure);
-            Assert.Equal("left.value", error.Source.ToString());
+            var error = Assert.Single(c.Problems);
+            Assert.True(error.Code.IsLoanConflict(), error.Code.ToString());
+            Assert.Equal("left.value", c.SyntaxOf(error.Subject).ToString());
         }
     }
 
@@ -94,9 +94,9 @@ public class StoredReborrowAncestryTest(ITestOutputHelper output)
         var source = Types + "\nfunc run(left: uniq/Resource, right: uniq/Resource) -> i32\n    let view = (left@follow@ref, right@follow@ref)\n    let seen = view.1.value\n    " + parent + ".value = seen\n    return view.0.value + view.1.value\npublic func main() => ()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var error = Assert.Single(c.Ownership.Issues);
-        Assert.Equal(OwnershipFailure.ComparisonLoanConflict, error.Failure);
-        Assert.Equal(parent + ".value", error.Source.ToString());
+        var error = Assert.Single(c.Problems);
+        Assert.True(error.Code.IsLoanConflict(), error.Code.ToString());
+        Assert.Equal(parent + ".value", c.SyntaxOf(error.Subject).ToString());
     }
 
     [Trait("Purpose", "Allocation")]
@@ -104,10 +104,10 @@ public class StoredReborrowAncestryTest(ITestOutputHelper output)
     public void WarmStoredAncestryAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze(Source("let view = (0, View.init(item@follow@ref))", "view.1.item", false));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid);
     }
 

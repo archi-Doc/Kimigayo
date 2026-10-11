@@ -74,7 +74,6 @@ public sealed class LspProjectDiagnosticTest : IDisposable
         Assert.Equal(0, range.GetProperty("start").GetProperty("line").GetInt32());
         Assert.Equal(start, range.GetProperty("start").GetProperty("character").GetInt32());
         Assert.Equal(start + token.Length, range.GetProperty("end").GetProperty("character").GetInt32());
-        Assert.Contains("advice:", error.GetProperty("message").GetString());
         await client.ChangeAsync(path, 2, LspTestClient.Full(valid));
         Assert.DoesNotContain((await client.PublishAsync(path)).EnumerateArray(), x => x.GetProperty("severity").GetInt32() == 1);
     }

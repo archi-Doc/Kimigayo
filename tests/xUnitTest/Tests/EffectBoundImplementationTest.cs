@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -40,6 +41,9 @@ public class EffectBoundImplementationTest
     [InlineData("struct DeviceSink\n    Self is Sink\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        unsafe\n            let register = 0x40000000@raw/i32\n            *register = value\n        return .Ok(())\n", false)]
     [InlineData("group Native\n    #LibraryImport(\"kernel32\", \"QueryPerformanceCounter\")\n    public unsafe func query(value: raw/i64) -> i32\nstruct ForeignSink\n    Self is Sink\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        let output: raw/i64 = null\n        unsafe => _ = Native.query(output)\n        return .Ok(())\n", false)]
     [InlineData("struct Counter\n    var count: isize = 0\n    public func increment(self: uniq/Self) => self.count += 1\ncontract Tally\n    func add(self: ref/Self, total: uniq/Counter)\n        effect confined\nstruct Adder\n    Self is Tally\n    public func add(self: ref/Self, total: uniq/Counter)\n        total.increment()\n", true)]
+    [InlineData("contract Maker\n    func make(self: ref/Self) -> Array<i32>\n        effect confined\nstruct M\n    Self is Maker\n    var n: i32 = 4\n    public func make(self: ref/Self) -> Array<i32>\n        var result = Array<i32>.init(capacity: 2)\n        result.appendCopies([self.n, self.n][..])\n        return result@move\n", true)]
+    [InlineData("contract Maker\n    func make(self: ref/Self) -> Array<i32>\n        effect confined\nstruct M\n    Self is Maker\n    var n: i32 = 4\n    public func make(self: ref/Self) -> Array<i32>\n        let values: [2 of i32] = [self.n, self.n]\n        return values.slice().toArray()\n", true)]
+    [InlineData("contract Filler\n    func fill(self: ref/Self, values: uniq/Array<i32>)\n        effect confined\nstruct F\n    Self is Filler\n    public func fill(self: ref/Self, values: uniq/Array<i32>)\n        var view = values.sliceUniq()\n        view[0] = 7\n", true)]
     public void ConfinedClassifiesAuthorityByItsSource(string declarations, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(Sink + declarations + Main);
@@ -48,6 +52,80 @@ public class EffectBoundImplementationTest
         {
             Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
         }
+    }
+
+    // SPEC 8.4.10.2, 8.4.10.5: an effect the summary cannot classify yet is one Unsupported_Kd at the conformance: the destructions of
+    // a static initializer other than a constant (reading an immutable static is no environment effect), and a conflict that the
+    // untried exclusion of a virtual slot call producing the item might remove. A virtual call producing no item keeps its violation.
+    [Theory]
+    [InlineData("contract Read\n    func read(self: ref/Self) -> i32\n        effect confined\ngroup G\n    public let value: i32 = 2 + 3\nstruct S\n    Self is Read\n    public func read(self: ref/Self) -> i32 => G.value\n", "Self is Read", nameof(DiagnosticCode.Unsupported_Kd))]
+    [InlineData(Source + "open struct Feed<T>\n    public init() => ()\n    public virtual func next(self: objref/Self) -> Option<T>\n        effect preserves results\n        return .None\nstruct Drain<T>\n    Self is Source\n    associate Source.Item is T\n    var inner: obj/Feed<T>\n    public init() => self.inner = Kimi.Intrinsics.makeObj(Feed<T>.init())\n    public func take(self: uniq/Self) -> Option<T> => self.inner.next()\n", "Self is Source", nameof(DiagnosticCode.Unsupported_Kd))]
+    [InlineData(Source + "contract Step\n    associate Item\n    func step(self: uniq/Self) -> Option<Self.Item>\n        effect preserves results\nopen struct Feed\n    public init() => ()\n    public virtual func next(self: objref/Self) -> Option<i32>\n        effect preserves results\n        return .None\nstruct Drain<J>\n    J is Step\n    Self is Source\n    associate Source.Item is J.Item\n    var inner: J\n    var feed: obj/Feed\n    public func take(self: uniq/Self) -> Option<J.Item>\n        _ = self.feed.next()\n        return self.inner.step()\n", "self.feed.next()", nameof(DiagnosticCode.IncompatibleContractImplementation_Kd))]
+    public void AnUnclassifiedEffectIsAnImplementationLimit(string declarations, string at, string code)
+    {
+        var source = declarations + Main;
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((code, source.IndexOf(at, StringComparison.Ordinal), at.Length), (error.Code, error.Span!.Value.Start, error.Span.Value.Length));
+    }
+
+    // SPEC 8.4.10.2: every compiler function has one effect class. The Storage and Raw families act only on their inputs and the
+    // allocator; Console output and the test temporary directory are environment effects; formatting dispatch is followed to its
+    // witness before classification. A new kind is unclassified until it is placed here.
+    [Fact]
+    public void EveryCompilerFunctionHasOneEffectClass()
+    {
+        foreach (var kind in Enum.GetValues<CompilerFunctionKind>())
+        {
+            var expected = kind switch
+            {
+                CompilerFunctionKind.None => Binding.CompilerFunctionEffect.Unclassified,
+                CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.TestTempDirectory => Binding.CompilerFunctionEffect.Environment,
+                CompilerFunctionKind.WriterWrite or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat => Binding.CompilerFunctionEffect.Formatting,
+                _ => Binding.CompilerFunctionEffect.Inputs,
+            };
+            Assert.True(expected == Binding.ClassifyCompilerFunction(kind), kind.ToString());
+        }
+    }
+
+    // SPEC 4.7.5: the Kimi body of each operation that publishes its summary stays within its row with abstract Type parameters,
+    // under confined and under preserves results; `K` equality is the only parameter-dependent requirement a row publishes, and the
+    // capacity and clear rows publish none at Binding (destructions are checked after ownership analysis). indexUniq lends `uniq/V`
+    // from its exclusive receiver, so its own input access affects the Loans earlier results keep and preserves results never holds.
+    [Fact]
+    public void PublishedOperationBodiesStayWithinTheirRows()
+    {
+        var c = MinimalEmissionTest.Analyze(Main);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var equals = ((ContractKoto)c.Library.GetSymbol(KimiDeclarationId.Equatable)!.Declaration).Members.OfType<FunctionKoto>().Single(static x => x.Name == "equals").SymbolOf();
+        var operations = 0;
+        foreach (var entry in KimiLibraryCatalog.Entries)
+        {
+            if (!entry.PublishedSummary)
+            {
+                continue;
+            }
+
+            var operation = c.Library.GetSymbol(entry.Id)!;
+            Assert.True(KimiLibraryCatalog.PublishesSummary(operation));
+            if (entry.Implementation is { } implementation)
+            {
+                // A bodiless constructor's summary is its linked implementation's, which is checked as its own entry.
+                Assert.Same(c.Library.GetSymbol(implementation), c.Library.ConstructorImplementation(operation));
+                continue;
+            }
+
+            var published = entry.Id is KimiDeclarationId.DictionaryReserve or KimiDeclarationId.DictionaryShrinkToFit or KimiDeclarationId.DictionaryClear or KimiDeclarationId.ArrayRepeatingImplementation or KimiDeclarationId.ArrayCapacityImplementation ? null : equals;
+            foreach (var (confined, preserves) in new[] { (true, false), (false, true) })
+            {
+                var (valid, violation, node) = c.Binding.SummarizePublishedOperation(operation, confined, preserves, published);
+                var lends = preserves && entry.Id == KimiDeclarationId.DictionaryIndexUniq;
+                Assert.True(valid != lends && (!lends || violation == Binding.EffectViolation.ResultLoan), $"{entry.Name} (confined {confined}, preserves {preserves}): {violation} at {node}");
+            }
+
+            operations++;
+        }
+
+        Assert.Equal(10, operations);
     }
 
     // SPEC 8.4.10.2, 22.3.1: a foreign call accesses only what its arguments permit, so preserves results admits it.
@@ -116,7 +194,7 @@ public class EffectBoundImplementationTest
             "    drain.reset(values.iterateUniq())\n    let second = drain.take()\n    match first@move\n        .Some(let item) => item@follow += 1\n        .None => ()\n";
         var c = MinimalEmissionTest.Analyze(Source + Declarations);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         var error = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal((nameof(DiagnosticCode.CallActivationConflict_Kd), "values.iterateUniq()"), (error.Code, error.Text));
     }

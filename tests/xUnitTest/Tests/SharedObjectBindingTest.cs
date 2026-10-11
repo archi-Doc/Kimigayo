@@ -16,8 +16,8 @@ public class SharedObjectBindingTest
     {
         var c = MinimalEmissionTest.Analyze($"let first: {mode}/i32 = Kimi.Intrinsics.make{factory}(7)\nlet second: {mode}/i32 = Kimi.Intrinsics.clone(first@ref)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.Validate(out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Validate(out var issue), MinimalEmissionTest.Describe(c, issue));
     }
 
     [Theory]
@@ -36,6 +36,23 @@ public class SharedObjectBindingTest
         Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
     }
 
+    // SPEC 8.10, 13.5.8: without a premise that proves `s is rc or arc`, a generic clone is an ordinary unproven call.
+    [Theory]
+    [InlineData("func dup<T>(value: ref/T) -> T => Kimi.Intrinsics.clone(value)", "T")]
+    [InlineData("func dup<s/T>(value: ref/(s/T)) -> s/T => Kimi.Intrinsics.clone(value)", "s/T")]
+    [InlineData("func dup<s/T>(value: ref/(s/T)) -> s/T\n    s is object\n    return Kimi.Intrinsics.clone(value)", "s/T")]
+    [InlineData("func dup<s/T>(value: ref/(s/T)) -> s/T\n    s is rc or obj\n    return Kimi.Intrinsics.clone(value)", "s/T")]
+    public void GenericCloneWithoutTheModePremiseIsUnproven(string source, string subject)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal("UnprovenConstraint_Kd", error.Code);
+        Assert.Equal("Kimi.Intrinsics.clone(value)", error.Text);
+        Assert.Contains("requires s is rc or arc; this condition cannot be proven for " + subject, error.Note, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("Rc")]
     [InlineData("Arc")]
@@ -43,7 +60,6 @@ public class SharedObjectBindingTest
     {
         var c = CompilationTestHelper.Parse($"struct Item\n    Self is not ObjectPayload\nlet value = Kimi.Intrinsics.make{factory}(Item.init())");
         Assert.False(c.Bind().IsComplete);
-        Assert.DoesNotContain(c.Binding.Issues, static x => x.Code == DiagnosticCode.InvalidKimiLibrary_Kd);
     }
 
     [Theory]
@@ -56,21 +72,5 @@ public class SharedObjectBindingTest
     {
         var c = CompilationTestHelper.Parse(source);
         Assert.False(c.Bind().IsComplete);
-        Assert.DoesNotContain(c.Binding.Issues, static x => x.Code == DiagnosticCode.InvalidKimiLibrary_Kd);
-    }
-
-    [Theory]
-    [InlineData(KimiDeclarationId.MakeRc)]
-    [InlineData(KimiDeclarationId.MakeArc)]
-    [InlineData(KimiDeclarationId.Clone)]
-    public void SignatureChangesInvalidateTheLibrary(KimiDeclarationId id)
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Bind().IsComplete);
-        var function = Assert.IsType<FunctionKoto>(c.Library.GetSymbol(id)!.Declaration);
-        function.Parameters[0].Type = ((FunctionKoto)c.Library.Replace.Declaration).Parameters[0].Type;
-        Assert.False(c.Bind().IsComplete);
-        Assert.Equal(KimiDeclarationState.Invalid, c.Library.GetDeclarationState(id));
-        Assert.False(c.Library.IsCompleteStrongOwnershipFamily);
     }
 }

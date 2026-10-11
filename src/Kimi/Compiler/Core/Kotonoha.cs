@@ -57,6 +57,10 @@ public sealed partial class Kotonoha
     [IgnoreMember]
     public GroupKoto RootKoto { get; private set; }
 
+    /// <summary>Gets the SyntaxId numbering of this source unit's syntax.</summary>
+    [IgnoreMember]
+    public SyntaxTable Syntax { get; private set; } = new();
+
     /// <summary>
     /// Gets the generated function that owns executable top-level syntax.
     /// </summary>
@@ -71,6 +75,12 @@ public sealed partial class Kotonoha
     [IgnoreMember]
     internal IReadOnlyList<DiagnosticKey>? OmittedDeclarations => this.omittedDeclarations;
 
+    [IgnoreMember]
+    internal string SourceDirectory => this.Url.Length == 0 ? this.Compilation.Project.Directory : Path.IsPathFullyQualified(this.Url) ? Path.GetDirectoryName(this.Url) ?? string.Empty : string.Empty;
+
+    internal string? HoverSourceName(int index)
+        => this.generatedSourceLocations?.ContainsKey(index) == true ? null : Documentation.DocumentationSource.PhysicalLogicalName(this.sourceDocuments[index].Path, this.SourceDirectory);
+
     private List<Documentation.DocumentationSource>? documentationSources;
 
     [IgnoreMember]
@@ -84,7 +94,14 @@ public sealed partial class Kotonoha
     {
         if (documentation is not null)
         {
-            (this.documentationSources ??= new()).Add(documentation);
+            try
+            {
+                (this.documentationSources ??= new()).Add(documentation);
+            }
+            catch (Exception ex) when (this.Compilation.CollectHover && Compilation.OptionalHoverFailure(ex))
+            {
+                this.Compilation.RecordDocumentationFailure(documentation.Source, ex.Message);
+            }
         }
     }
 
@@ -152,6 +169,7 @@ public sealed partial class Kotonoha
         compilation.Diagnostics.InvalidateSyntax(this);
         this.Compilation = compilation;
         this.RootKoto = new(new CodeContext(this), default, default);
+        this.Syntax = new();
         this.GeneratedFunction = null;
         this.documentationSources = null;
 
@@ -252,7 +270,7 @@ public sealed partial class Kotonoha
 
     private void ParseSource(SourceDocument sourceDocument, string? modId = null, int additionOrder = 0)
     {
-        this.Compilation.BeginSourceParsing();
+        this.Compilation.BeginSourceParsing(this);
         var path = sourceDocument.Path;
         var directory = this.Compilation.Project.Directory;
         if (path.Length > 0 && directory.Length > 0)
@@ -262,7 +280,7 @@ public sealed partial class Kotonoha
 
         // One target bound to the document serves the lexer and the parser, so parser recovery can rest on a lexical Error.
         var diagnosticCollection = this.Compilation.Diagnostics.GetOrAddCollection(path, this).For(sourceDocument);
-        var tokenizer = new Tokenizer(diagnosticCollection, sourceDocument) { CollectDocumentation = this.Compilation.CollectDocumentation };
+        var tokenizer = new Tokenizer(diagnosticCollection, sourceDocument) { CollectDocumentation = this.Compilation.CollectDocumentation, OptionalHoverOwner = this.Compilation.CollectHover ? this.Compilation : null };
         var codeContext = new CodeContext(this, diagnosticCollection, sourceDocument);
 
         // Tokenize and parse
@@ -272,7 +290,7 @@ public sealed partial class Kotonoha
             codeContext.Documentation = tokenizer.Documentation;
             var tokenReader = new TokenReader(codeContext, ref tokenizer);
             this.RootKoto.Parse(ref tokenReader);
-            codeContext.Documentation?.SetLocation(this.Compilation.Project.Directory, modId, additionOrder);
+            codeContext.Documentation?.SetLocation(this.SourceDirectory, modId, additionOrder);
             codeContext.Documentation?.Finish(this.Compilation.Diagnostics.HasSyntaxErrors(sourceDocument));
             this.RecordDocumentation(codeContext.Documentation);
         }

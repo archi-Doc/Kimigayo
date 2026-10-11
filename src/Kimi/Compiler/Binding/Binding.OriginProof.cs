@@ -6,7 +6,16 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly HashSet<(BoundOrigin Longer, BoundOrigin Shorter)> originProofPath = new();
+    // Every change to inference, obligation or Origin declaration state; a pure proof request leaves it unchanged.
+    private int originStateVersion;
+
+    // The candidate evaluations in progress (EvaluateCallCandidates): the Origin part of a fit there is the pure answer, since only the
+    // selected candidate's bounds are recorded, after selection (FitsOriginOutlives).
+    private int candidateTrials;
+
+    // Set while a selected call's fits are collected (CollectFitBounds): the Origin part of a fit is then the pure answer, and the
+    // bounds of Origins omitted in open initializers are recorded for that call (FitsOriginOutlives).
+    private bool collectingFits;
 
     // SPEC 15.6.1, 23.3.6.5: whether an Origin obligation is a fit, reported at the value with the source `fit`, rather than the
     // well-formedness of a Type occurrence (RetainInnerOutlives), whose use is that occurrence and whose Type is the inner one, or of a
@@ -15,80 +24,9 @@ public sealed partial class Binding
     internal static bool IsFitObligation(in BindingObligation obligation)
         => obligation.Clause is null && !obligation.WellFormed && (obligation.Type is null || ReferenceEquals(obligation.Type.Origin, obligation.Shorter) || obligation.Use is not TypeKoto);
 
-    internal bool IsVerifiedOriginObligation(in BindingObligation obligation)
-    {
-        if (obligation.Kind == BindingObligationKind.OriginInference && obligation.Longer is { } pending)
-        {
-            // SPEC 15.3.6: an Origin resolved to an open region is that local region; it needs no annotation.
-            return this.OriginAtUse(pending, obligation.Use) is { Kind: not (OriginKind.Inference or OriginKind.Unbound) } or { Open: true };
-        }
-
-        if (obligation.Kind == BindingObligationKind.OriginOutlives && obligation.Longer is { } longer && obligation.Shorter is { } shorter)
-        {
-            return this.ProvesOriginOutlives(longer, shorter, obligation.Use) && (!obligation.Equality || this.ProvesOriginOutlives(shorter, longer, obligation.Use));
-        }
-
-        return false;
-    }
-
-    // SPEC 15.6.1, 15.6.5: the judgment of an Origin obligation's relation; `==` holds when both directions do, and otherwise takes
-    // the worse direction, Refuted before Unknown before Unrepresentable. `reversed` tells that the reverse direction decides it, so
-    // a record names that direction's longer end first.
-    internal OriginJudgment JudgeOriginObligation(in BindingObligation obligation, out bool reversed)
-    {
-        reversed = false;
-        var forward = this.JudgeOriginRelation(obligation.Longer!, obligation.Shorter!, obligation.Use);
-        if (!obligation.Equality || forward == OriginJudgment.Refuted)
-        {
-            return forward;
-        }
-
-        var backward = this.JudgeOriginRelation(obligation.Shorter!, obligation.Longer!, obligation.Use);
-        reversed = Severity(backward) > Severity(forward);
-        return reversed ? backward : forward;
-
-        static int Severity(OriginJudgment judgment) => judgment switch
-        {
-            OriginJudgment.Refuted => 3,
-            OriginJudgment.Unknown => 2,
-            OriginJudgment.Unrepresentable => 1,
-            _ => 0,
-        };
-    }
-
-    // SPEC 15.6.5: an unproven relation fails only when it is Refuted, a finite Origin outliving a fixed one, or Unknown between two
-    // fixed Origins.
-    internal bool OriginRelationFails(BoundOrigin longer, BoundOrigin shorter, Koto use)
-        => this.JudgeOriginRelation(longer, shorter, use) is OriginJudgment.Refuted or OriginJudgment.Unknown;
-
-    // SPEC 15.6.5: Proven by the solver's premises, or because static, which holds no Loan of the body, outlives a finite Origin or
-    // an inferred region; Refuted when a finite Origin must outlive a fixed one; Unknown between fixed Origins. Any other chain with a
-    // finite Origin or an inferred region at one end is Proven by the spec and constrains region inference, which ownership analysis
-    // does not perform: its Loans follow only the Origins written in a holder's Type, so the longer end's Loans, those of a Borrow
-    // or of the body's own inputs, would be lost. Such a chain is Unrepresentable, a located limit.
-    internal OriginJudgment JudgeOriginRelation(BoundOrigin longer, BoundOrigin shorter, Koto use)
-    {
-        if (this.ProvesOriginOutlives(longer, shorter, use))
-        {
-            return OriginJudgment.Proven;
-        }
-
-        longer = this.OriginAtUse(longer, use);
-        shorter = this.OriginAtUse(shorter, use);
-        if (RefutesOriginRelation(longer, shorter))
-        {
-            return OriginJudgment.Refuted;
-        }
-
-        return !FixedOrigin(longer) ? OriginJudgment.Unrepresentable
-            : FixedOrigin(shorter) ? OriginJudgment.Unknown
-            : longer.Kind == OriginKind.Static && shorter.Kind != OriginKind.Anchor ? OriginJudgment.Proven
-            : OriginJudgment.Unrepresentable;
-    }
-
     // SPEC 15.6.5: a fixed Origin is fixed by the body's contract: a signature, parameter or receiver Origin, a projection of one,
     // static, or a meet of them.
-    private static bool FixedOrigin(BoundOrigin origin)
+    internal static bool FixedOrigin(BoundOrigin origin)
     {
         if (origin.Kind == OriginKind.Intersection)
         {
@@ -106,6 +44,64 @@ public sealed partial class Binding
         return origin.Kind is OriginKind.Static or OriginKind.Parameter or OriginKind.Input;
     }
 
+    internal bool IsVerifiedOriginObligation(in BindingObligation obligation)
+    {
+        if (obligation.Kind == BindingObligationKind.OriginInference && obligation.Longer is { } pending)
+        {
+            // SPEC 15.3.6: an Origin resolved to an open region is that local region; it needs no annotation.
+            var resolved = this.OriginAtUse(pending, obligation.Use);
+            return resolved.Kind is not (OriginKind.Inference or OriginKind.Unbound) || IsLocalRegion(resolved);
+        }
+
+        if (obligation.Kind == BindingObligationKind.OriginOutlives && obligation.Longer is { } longer && obligation.Shorter is { } shorter)
+        {
+            return this.ProvesOriginOutlives(longer, shorter, obligation.Use, obligation.Condition) &&
+                (!obligation.Equality || this.ProvesOriginOutlives(shorter, longer, obligation.Use, obligation.Condition));
+        }
+
+        return false;
+    }
+
+    // SPEC 15.6.1, 15.6.5: the judgment of an Origin obligation's relation; `==` holds when both directions do, and otherwise takes
+    // the worse direction, Refuted before Unknown before Unrepresentable. `reversed` tells that the reverse direction decides it, so
+    // a record names that direction's longer end first.
+    internal OriginJudgment JudgeOriginObligation(in BindingObligation obligation, out bool reversed)
+    {
+        reversed = false;
+        var forward = this.JudgeOriginRelation(obligation.Longer!, obligation.Shorter!, obligation.Use, obligation.Condition);
+        if (!obligation.Equality || forward == OriginJudgment.Refuted)
+        {
+            return forward;
+        }
+
+        var backward = this.JudgeOriginRelation(obligation.Shorter!, obligation.Longer!, obligation.Use, obligation.Condition);
+        reversed = Severity(backward) > Severity(forward);
+        return reversed ? backward : forward;
+
+        static int Severity(OriginJudgment judgment) => judgment switch
+        {
+            OriginJudgment.Refuted => 3,
+            OriginJudgment.Unknown => 2,
+            OriginJudgment.Unrepresentable => 1,
+            _ => 0,
+        };
+    }
+
+    // SPEC 15.6.5: an unproven relation fails only when it is Refuted, a finite Origin outliving a fixed one, or Unknown between two
+    // fixed Origins. `condition` is the Semantics case the relation is required in (BindingObligation.Condition).
+    internal bool OriginRelationFails(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
+        => this.JudgeOriginRelation(longer, shorter, use, condition) is OriginJudgment.Refuted or OriginJudgment.Unknown;
+
+    // SPEC 15.6.5: local storage regions carry their source bounds to ownership; a finite-to-local-to-fixed chain is refuted
+    // even in checking code. Fixed contracts still need established premises; finite relations carry their actual Loans
+    // through the same reaching-value graph as inferred local regions.
+    internal OriginJudgment JudgeOriginRelation(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
+    {
+        longer = this.OriginAtUse(longer, use);
+        shorter = this.OriginAtUse(shorter, use);
+        return this.HasRegionBounds(longer) ? this.JudgeLocalRegion(longer, shorter, use, condition) : this.JudgeOriginAtoms(longer, shorter, use, condition);
+    }
+
     private static bool IsWithin(Koto use, Koto declaration)
     {
         for (var current = use; current is not null; current = current.Parent)
@@ -119,21 +115,64 @@ public sealed partial class Binding
         return false;
     }
 
+    private OriginJudgment JudgeOriginAtoms(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
+    {
+        if (IsLocalRegion(shorter))
+        {
+            return OriginJudgment.Proven;
+        }
+
+        if (this.ProvesOriginOutlives(longer, shorter, use, condition))
+        {
+            return OriginJudgment.Proven;
+        }
+
+        longer = this.OriginAtUse(longer, use);
+        shorter = this.OriginAtUse(shorter, use);
+        if (RefutesOriginRelation(longer, shorter))
+        {
+            return OriginJudgment.Refuted;
+        }
+
+        return longer.Kind == OriginKind.Unbound || shorter.Kind == OriginKind.Unbound ? OriginJudgment.Unrepresentable
+            : FixedOrigin(longer) && FixedOrigin(shorter) ? OriginJudgment.Unknown
+            : OriginJudgment.Proven;
+    }
+
     // A local's omitted Origins remain open while its initializer acquires values, whether written in its annotation or
     // in a construction qualifier. Published contracts and subsequent uses of the local never open inference again.
     private OriginDeclaration? OpenInitializerInference(BoundOrigin atom, Koto use)
+        => this.OpenInitializer(atom, use) is { } local ? this.InitializerDeclaration(local) : null;
+
+    // The declaration of the Origins a local's initializer infers, created on its first bound.
+    private OriginDeclaration InitializerDeclaration(VariableKoto local)
     {
+        if (!this.initializerOrigins.TryGetValue(local, out var declaration))
+        {
+            this.initializerOrigins.Add(local, declaration = new(local));
+            this.originStateVersion++;
+        }
+
+        return declaration;
+    }
+
+    // The local whose initializer still infers `atom` at `use` (OpenInitializerInference), by lookup alone: a local whose
+    // declaration does not exist yet is open, since its declaration would start unresolved.
+    private VariableKoto? OpenInitializer(BoundOrigin atom, Koto use)
+    {
+        // A body's stable storage slot is already owned by its declaration. In particular, an enclosing closure initializer
+        // must not solve that slot as one of its own omitted Origins.
+        if (IsLocalRegion(atom))
+        {
+            return null;
+        }
+
         for (var node = atom.Binder; node is not null; node = node.Parent)
         {
             if (node is VariableKoto { InitializerKoto: { } initializer } variable && IsWithin(use, initializer) &&
                 (IsWithin(atom.Binder!, initializer) || (variable.TypeKoto is { } annotation && IsWithin(atom.Binder!, annotation))))
             {
-                if (!this.initializerOrigins.TryGetValue(variable, out var declaration))
-                {
-                    this.initializerOrigins.Add(variable, declaration = new(variable));
-                }
-
-                return declaration.State < 2 ? declaration : null;
+                return this.initializerOrigins.TryGetValue(variable, out var declaration) && declaration.State >= 2 ? null : variable;
             }
         }
 
@@ -159,207 +198,76 @@ public sealed partial class Binding
         return origin;
     }
 
-    private bool ProvesOriginOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use)
+    // SPEC 15.3.6 (PLAN G74): a pure question: whether the premises visible at `use` entail `longer outlives shorter`
+    // (EntailsOrigin). A request leaves inference, obligation and declaration state unchanged, which every request checks
+    // (originStateVersion). `condition` is the Semantics case the relation is required in (SPEC 15.6.5).
+    private bool ProvesOriginOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
+    {
+        var version = this.originStateVersion;
+        longer = this.OriginAtUse(longer, use);
+        shorter = this.OriginAtUse(shorter, use);
+        this.OriginProofMetrics?.Enter(longer, shorter, use, this.originPremiseDepth);
+        var proven = this.EntailsOrigin(longer, shorter, use, condition);
+        if (version != this.originStateVersion)
+        {
+            throw new InvalidOperationException($"The Origin proof of `{longer} outlives {shorter}` changed inference or obligation state (PLAN G74).");
+        }
+
+        return proven;
+    }
+
+    // SPEC 15.4.4 (PLAN G74 U1): the constraint a fit collects. A fit that requires a value to outlive an Origin omitted in a local's
+    // annotation or initializer, while that initializer is still bound, bounds the Origin with the value, and the relation is proven
+    // again once the Origin is resolved; any other requirement is the pure proof. An open region holds no Loans, so a value fitted
+    // into it would lose its Loans: such a fit is never collected here.
+    private bool FitOriginOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
     {
         longer = this.OriginAtUse(longer, use);
         shorter = this.OriginAtUse(shorter, use);
-        if (OriginOutlives(longer, shorter))
+        if (!OriginOutlives(longer, shorter) && shorter is { Kind: OriginKind.Inference, Open: false } && this.OpenInitializerInference(shorter, use) is { } pending)
         {
+            this.BoundInitializerOrigin(pending, shorter, longer, use, condition);
             return true;
         }
 
-        // An open region holds no Loans, so a value fitted into it would lose its Loans: such a fit is never proven here.
-        if (shorter is { Kind: OriginKind.Inference, Open: false } && this.OpenInitializerInference(shorter, use) is { } pending)
-        {
-            // SPEC 15.4.4: an Origin omitted in a local annotation or initializer Type expression is
-            // inferred from the values fitted to it: each one bounds it, and the relation is proven again once the local's
-            // initializer has been bound and the Origin resolved.
-            pending.Replacements[shorter] = pending.Replacements.TryGetValue(shorter, out var previous) ? this.Meet(previous, longer) : longer;
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, longer, shorter));
-            return true;
-        }
-
-        if (!this.originProofPath.Add((longer, shorter)))
-        {
-            return false;
-        }
-
-        try
-        {
-            // A borrow of a complete local Place is usable only while every stored
-            // dependency is valid. Ownership verifies that availability at each use.
-            // This is a premise of borrowing the Place, not a relation declared by
-            // the annotation currently being checked.
-            if (shorter is { Kind: OriginKind.Projection, Binder: VariableKoto variable } &&
-                this.symbols.TryGetValue(variable, out var local) && local.Type is { Semantics: SemanticsKind.Owner or SemanticsKind.Ref or SemanticsKind.Uniq } stored &&
-                !IsWithin(use, variable) && this.ProvesStoredOriginPremise(stored, longer, use))
-            {
-                return true;
-            }
-
-            if (longer.Kind == OriginKind.Intersection)
-            {
-                var all = true;
-                for (var i = 0; i < longer.Operands.Count; i++)
-                {
-                    all &= this.ProvesOriginOutlives(longer.Operands[i], shorter, use);
-                }
-
-                if (all)
-                {
-                    return true;
-                }
-            }
-
-            if (shorter.Kind == OriginKind.Intersection)
-            {
-                for (var i = 0; i < shorter.Operands.Count; i++)
-                {
-                    if (this.ProvesOriginOutlives(longer, shorter.Operands[i], use))
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            for (var node = use; node is not null; node = node.Parent)
-            {
-                if (IsAssociatedRequirement(node) && AssociatedFormationType(node) is { } formation &&
-                    this.ProvesTypeOriginPremise(formation, longer, shorter, use))
-                {
-                    return true;
-                }
-
-                if (this.ProvesAssociatedRequirementRelation(node, longer, shorter, use))
-                {
-                    return true;
-                }
-
-                if (node is FunctionKoto or PropertyAccessorKoto)
-                {
-                    for (var i = 0; i < InputCount(node); i++)
-                    {
-                        if (BoundInputType(node, i) is { } input && this.ProvesTypeOriginPremise(input, longer, shorter, use))
-                        {
-                            return true;
-                        }
-                    }
-
-                    // SPEC 15.3.7: the result Type's intrinsic well-formedness is a premise of the definition (Binding.ResultPremises.cs).
-                    if (!ReferenceEquals(node, this.resultPremiseExcluded) && node is FunctionKoto { IsAnonymous: false, IsConstructor: false, BoundSymbol.Type: { } result } &&
-                        this.ProvesWellFormedPremise(result, longer, shorter, use))
-                    {
-                        return true;
-                    }
-                }
-
-                // Only declaration contracts are assumptions. A field or local relation
-                // being checked must never prove itself.
-                if ((node is not (FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto) && !IsAssociatedRequirement(node)) ||
-                    !this.originDeclarations.TryGetValue(node, out var declaration) || declaration.State != 3)
-                {
-                    continue;
-                }
-
-                foreach (var relation in declaration.Relations)
-                {
-                    if (this.ProvesOriginOutlives(longer, relation.Longer, use) && this.ProvesOriginOutlives(relation.Shorter, shorter, use))
-                    {
-                        return true;
-                    }
-
-                    if (relation.Equality && this.ProvesOriginOutlives(longer, relation.Shorter, use) && this.ProvesOriginOutlives(relation.Longer, shorter, use))
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
-        finally
-        {
-            this.originProofPath.Remove((longer, shorter));
-        }
+        return this.ProvesOriginOutlives(longer, shorter, use, condition);
     }
 
-    private bool ProvesStoredOriginPremise(BoundType type, BoundOrigin longer, Koto use)
+    // SPEC 15.4.4, 10.1: the answer of FitOriginOutlives without its side effects, for applicability. The requirement that a value
+    // outlive an Origin omitted in an open initializer is satisfiable (the asymmetry of plan T4 is kept), and only while a selected
+    // call's fits are collected (collectingFits) is the value recorded as the Origin's bound; any other requirement is the pure proof.
+    private bool FitsOriginOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
     {
-        if (type.Origin is { } origin && this.ProvesOriginOutlives(longer, origin, use))
+        longer = this.OriginAtUse(longer, use);
+        shorter = this.OriginAtUse(shorter, use);
+        if (!OriginOutlives(longer, shorter) && shorter is { Kind: OriginKind.Inference, Open: false } && this.OpenInitializer(shorter, use) is { } local)
         {
+            if (this.collectingFits)
+            {
+                this.CollectInitializerBound(local, shorter, longer, use, condition);
+            }
+
             return true;
         }
 
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (this.ProvesOriginOutlives(longer, type.OriginArguments[i], use))
-            {
-                return true;
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (this.ProvesStoredOriginPremise(type.Components[i], longer, use))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return this.ProvesOriginOutlives(longer, shorter, use, condition);
     }
 
-    private bool ProvesTypeOriginPremise(BoundType type, BoundOrigin longer, BoundOrigin shorter, Koto use)
+    // SPEC 10.1: the Origin part of a fit (FitsTypeCore). During candidate evaluation and while a selected call's fits are collected
+    // it is the pure answer; any other fit records its bounds at once (FitOriginOutlives).
+    private bool FitOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
+        => this.collectingFits || this.candidateTrials != 0 ? this.FitsOriginOutlives(longer, shorter, use, condition) : this.FitOriginOutlives(longer, shorter, use, condition);
+
+    // The collector's record (CollectFitBounds): `bound` bounds the Origin `variable` that `local` omits.
+    private void CollectInitializerBound(VariableKoto local, BoundOrigin variable, BoundOrigin bound, Koto use, ulong condition)
+        => this.BoundInitializerOrigin(this.InitializerDeclaration(local), variable, bound, use, condition);
+
+    // Records `bound` for a local's omitted Origin. A bound required only in some Semantics cases still bounds the Origin in every case.
+    private void BoundInitializerOrigin(OriginDeclaration pending, BoundOrigin variable, BoundOrigin bound, Koto use, ulong condition)
     {
-        if (type.Symbol is { } symbol && this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) && declaration.State == 3)
-        {
-            foreach (var relation in declaration.Relations)
-            {
-                var a = this.SubstituteStoredOrigin(relation.Longer, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
-                var b = this.SubstituteStoredOrigin(relation.Shorter, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
-                if (this.ProvesOriginOutlives(longer, a, use) && this.ProvesOriginOutlives(b, shorter, use))
-                {
-                    return true;
-                }
-
-                if (relation.Equality && this.ProvesOriginOutlives(longer, b, use) && this.ProvesOriginOutlives(a, shorter, use))
-                {
-                    return true;
-                }
-            }
-        }
-
-        if (TryPairLayer(type, out var whole, out var target))
-        {
-            // SPEC 8.1.1, 15.6.1: in the admitted borrow cases a pair layer is a borrow of its target within its outer-Origin slot,
-            // whose well-formedness makes the target's Origins outlive that slot; in the value cases no Type denotes the slot.
-            if ((this.AdmittedSemantics(whole, this.ConstraintScope(use)) & SemanticsMask.Borrow) != 0 && this.OuterOrigin(type) is { } slot &&
-                this.ProvesOriginOutlives(slot, shorter, use) && this.ProvesStoredOriginPremise(target, longer, use))
-            {
-                return true;
-            }
-
-            return this.ProvesTypeOriginPremise(target, longer, shorter, use);
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            var inner = type.Components[i];
-            if ((IsBorrow(type.Semantics) || type.Kind == BoundTypeKind.Slice) && type.Origin is { } outer && this.ProvesOriginOutlives(outer, shorter, use))
-            {
-                if (this.ProvesStoredOriginPremise(inner, longer, use))
-                {
-                    return true;
-                }
-            }
-
-            if (this.ProvesTypeOriginPremise(inner, longer, shorter, use))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        pending.Replacements[variable] = pending.Replacements.TryGetValue(variable, out var previous) ? this.Meet(previous, bound) : bound;
+        this.originStateVersion++;
+        this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, bound, variable, Condition: condition));
     }
 
     private ConstraintProof CheckTypeOriginRelations(BoundType type, BindingScope scope)
@@ -367,6 +275,11 @@ public sealed partial class Binding
         if (type.Symbol is not { } symbol || !this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) || declaration.State != 3)
         {
             return ConstraintProof.Proven;
+        }
+
+        if (declaration.Failure is not null)
+        {
+            return ConstraintProof.Error;
         }
 
         foreach (var relation in declaration.Relations)
@@ -385,7 +298,7 @@ public sealed partial class Binding
     // SPEC 15.3.3, 15.6.1: a Type's own clauses are premises of its definition and obligations of each use, so a local annotation
     // proves them substituted with the Origins its Type binds, also for a Type nested in it. Each is an obligation at the Type
     // occurrence that ownership judges and reports as a declared relation with the Type's clause related; it is never a premise of
-    // the body. A Function Type's inputs are its callee's premises, proven by each call's argument fit, so they are not entered.
+    // the body. A Function Type's inputs are its callee's premises, judged at each call's input (RequireInputPremises), so they are not entered.
     private void AddTypeClauseObligations(BoundType type, Koto occurrence, int depth = 0)
     {
         if (depth > 64)
@@ -423,6 +336,11 @@ public sealed partial class Binding
         if (!this.originDeclarations.TryGetValue(function, out var declaration))
         {
             return true;
+        }
+
+        if (declaration.Failure is not null)
+        {
+            return false;
         }
 
         foreach (var relation in declaration.Relations)
@@ -502,6 +420,14 @@ public sealed partial class Binding
     {
         var use = relation.Syntax;
         var obligation = new BindingObligation(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, relation.Longer, relation.Shorter, Equality: relation.Equality);
+        var resolvedLonger = this.OriginAtUse(relation.Longer, use);
+        var resolvedShorter = this.OriginAtUse(relation.Shorter, use);
+        if (HasLocalRegion(resolvedLonger) || HasLocalRegion(resolvedShorter) || !FixedOrigin(resolvedShorter))
+        {
+            this.AddObligation(obligation with { Longer = resolvedLonger, Shorter = resolvedShorter, Clause = use });
+            return;
+        }
+
         var judgment = this.JudgeOriginObligation(obligation, out var reversed);
         if (judgment == OriginJudgment.Proven)
         {
@@ -514,11 +440,11 @@ public sealed partial class Binding
             return;
         }
 
-        // SPEC 15.3.6: at a contravariant position the principal solution is a lower bound that outlives every other, which this
-        // inference does not choose, so a clause that bounds such an Origin from below is a located limit, not a relation record.
+        // The solved lower candidate still fails a bound: no principal candidate is proven. The local needs an
+        // annotation, not a feature-limit diagnostic; all clauses depending on the same unsolved local share this cause.
         if (!relation.Equality && InferredEnd(relation.Longer) == OriginVariance.Contravariant)
         {
-            this.Fail(use, BindingFailure.Unsupported);
+            this.FailExplained(ref this.principalOriginFailures, declaration.Owner, BindingFailure.MissingOrigin, (resolvedLonger, resolvedShorter, use));
             return;
         }
 

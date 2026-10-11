@@ -9,8 +9,8 @@ namespace Kimi.Compiler;
 /// <summary>SPEC 4.7.2, 4.7.4, 4.7.6: the Array mutation operations lower to runtime capacity routines and per-element helpers over the {buffer, length, capacity} handle.</summary>
 internal sealed partial class BodyLowering
 {
-    private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar, int Remainder, int Option), ArrayHelper> arrayHelpers = new();
-    private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar, int Remainder, int Option), ArrayHelper> arrayHelperCache = new();
+    private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar, int Remainder, int Option, RemainderFields Fields), ArrayHelper> arrayHelpers = new();
+    private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar, int Remainder, int Option, RemainderFields Fields), ArrayHelper> arrayHelperCache = new();
     private bool arrayRuntimeUsed;
 
     private readonly record struct ArrayElement(BoundType Type, ValueLowering Value, AggregateLayout? Layout, bool IsString)
@@ -23,6 +23,13 @@ internal sealed partial class BodyLowering
         internal bool NeedsDestruction => this.IsString || this.Layout?.NeedsDestruction == true;
 
         internal long Stride => this.Value.Layout.Stride;
+    }
+
+    // SPEC 22.1.2.5: the storage boundary writes a remainder record {storage, position, count[, capacity]} by Field name.
+    private static RemainderFields GetRemainderFields(AggregateLayout layout, BoundType type, bool capacity)
+    {
+        var storage = AdtDef.IndexOf(type, "storage");
+        return new(layout.Offset(storage), layout.Offset(type, "position"), layout.Offset(type, "count"), capacity ? layout.Offset(type, "capacity") : 0, layout.Fields[storage].Layout.Size);
     }
 
     // SPEC 4.3: an Array literal's scalar payloads are stored in their own slots so construction can move their bytes into the buffer.
@@ -81,12 +88,12 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    private ArrayHelper GetArrayHelper(ArrayHelperKind kind, in ArrayElement element, AggregateLayout? option = null, AggregateLayout? remainder = null)
+    private ArrayHelper GetArrayHelper(ArrayHelperKind kind, in ArrayElement element, AggregateLayout? option = null, AggregateLayout? remainder = null, RemainderFields fields = default)
     {
-        // A boundary helper also depends on its result and remainder records, so their layout ids join the key and name; the
-        // key holds only ids and constant spellings, so a warm lookup allocates nothing.
+        // A boundary helper also depends on its result and remainder records, so their layout ids and named Field offsets join
+        // the key, and the ids the name; the key holds only numbers and constant spellings, so a warm lookup allocates nothing.
         var key = (kind, element.Layout?.Id ?? -1, element.IsString ? "string" : element.IsScalar ? element.Value.ComputationType : string.Empty,
-            remainder?.Id ?? -1, remainder is null ? -1 : option?.Id ?? -1);
+            remainder?.Id ?? -1, remainder is null ? -1 : option?.Id ?? -1, fields);
         if (this.arrayHelpers.TryGetValue(key, out var existing))
         {
             return existing;
@@ -139,17 +146,17 @@ internal sealed partial class BodyLowering
             ArrayHelperKind.Swap => new(name, unit, [handle, new("i64", "first"), new("i64", "second"), location, length]),
             ArrayHelperKind.BorrowStorage => new(name, unit, [handle, new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
             ArrayHelperKind.OwnStorage => new(name, unit, [new("ptr", "value"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
-            ArrayHelperKind.OwnFixedStorage when remainder!.Fields[0].Layout.Size == 0 => new(name, unit, [new("i64", "count"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
+            ArrayHelperKind.OwnFixedStorage when fields.StorageSize == 0 => new(name, unit, [new("i64", "count"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
             ArrayHelperKind.OwnFixedStorage => new(name, unit, [new("ptr", "value"), new("i64", "count"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
             _ => new(name, unit, [handle, location, length]),
         };
-        var helper = new ArrayHelper(kind, abi, element.Value, element.Layout, element.IsString, option, remainder);
+        var helper = new ArrayHelper(kind, abi, element.Value, element.Layout, element.IsString, option, remainder, fields);
         this.arrayHelperCache[key] = helper;
         this.arrayHelpers.Add(key, helper);
         return helper;
     }
 
-    private bool LowerArrayOperation(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, BoundCall plan, out string? failure)
+    private bool LowerArrayOperation(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -158,7 +165,7 @@ internal sealed partial class BodyLowering
             plan.ReceiverOperation.Kind is not (ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != call.ArgumentNodes.Count || plan.ArgumentToParameter.Length != call.ArgumentNodes.Count ||
             call.ArgumentNodes.Count + 1 != target.Parameters.Count || target.BoundSymbol?.ReceiverIndex != 0 ||
-            SignatureType(this, plan.ReceiverOperation.ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq } receiverType ||
+            body.Resolve(plan.ReceiverOperation.ParameterType, InterpretationContext.Root) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq } receiverType ||
             receiverType.Components[0] is not { Kind: BoundTypeKind.Array } arrayType || !this.TryGetArrayElement(arrayType.Components[0], out var element))
         {
             return Fail("Array operation has an unsupported receiver, argument plan or element Type.", out failure);
@@ -185,8 +192,8 @@ internal sealed partial class BodyLowering
             return Fail("An Array operation has no diagnostic source location.", out failure);
         }
 
-        var returnType = SignatureType(this, plan.ReturnType);
-        if (!ReferenceEquals(SignatureType(this, call.BoundType), returnType) || returnType is null)
+        var returnType = body.Resolve(plan.ReturnType, InterpretationContext.Root);
+        if (!ReferenceEquals(body.Resolve(call.BoundType, body.ContextAt(id)), returnType) || returnType is null)
         {
             return Fail("Array operation result Type does not match its call.", out failure);
         }
@@ -314,7 +321,7 @@ internal sealed partial class BodyLowering
 
     // SPEC 22.1.2.5: borrowStorage and ownStorage transfer the Array handle to a remainder; lend and split
     // publish one pointer-backed capability. The source functions advance the untaken range.
-    private bool LowerStorageOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, BoundCall plan, out string? failure)
+    private bool LowerStorageOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -388,7 +395,7 @@ internal sealed partial class BodyLowering
 
         // A reference parameter is Copied, Reborrowed or borrowed from its Place, and every form supplies the pointer;
         // ownStorage takes the Array's acquired slot.
-        var argumentType = SignatureType(this, plan.ArgumentOperations[0].ParameterType);
+        var argumentType = body.Resolve(plan.ArgumentOperations[0].ParameterType, InterpretationContext.Root);
         var referent = kind == CompilerFunctionKind.StorageOwn ? argumentType : argumentType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var target0] } ? target0 : null;
         if (referent is null || argumentType is null || plan.ArgumentOperations[0].Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) ||
             (kind == CompilerFunctionKind.StorageOwn && plan.ArgumentOperations[0].Kind != ArgumentOperationKind.Value))
@@ -437,28 +444,15 @@ internal sealed partial class BodyLowering
             return Fail("Storage operation argument borrow is unavailable at the call.", out failure);
         }
 
-        var returnType = SignatureType(this, plan.ReturnType);
-        if (returnType is null || !ReferenceEquals(SignatureType(this, call.BoundType), returnType) || this.aggregateLayouts.Get(returnType) is not { } result ||
+        var returnType = body.Resolve(plan.ReturnType, InterpretationContext.Root);
+        if (returnType is null || !ReferenceEquals(body.Resolve(call.BoundType, body.ContextAt(id)), returnType) || this.aggregateLayouts.Get(returnType) is not { } result ||
             !SlotTypes.IsResult(returnType) || !this.ValidateSlotCallResult(body, id, out failure))
         {
             return Fail(failure ?? "Storage operation result is not a stored record.", out failure);
         }
 
-        // The owning helpers and the remainder's drop share the record shape {storage, position, count, capacity}.
-        var remainder = result;
-        if (remainder is not { IsArray: false } || remainder.Fields.Length != 4 || (!owning && remainder.Fields[3].Layout.Size != 0) ||
-            (owning && (remainder.Offset(0) != 0 || remainder.Offset(1) != 8 || remainder.Offset(2) != 16 || remainder.Offset(3) != 24)))
-        {
-            return Fail("Storage operation records do not have the boundary's shape.", out failure);
-        }
-
         this.arrayRuntimeUsed |= owning;
-        var helperKind = kind switch
-        {
-            CompilerFunctionKind.StorageOwn => ArrayHelperKind.OwnStorage,
-            _ => ArrayHelperKind.BorrowStorage,
-        };
-        var helper = this.GetArrayHelper(helperKind, element, remainder: remainder);
+        var helper = this.GetArrayHelper(owning ? ArrayHelperKind.OwnStorage : ArrayHelperKind.BorrowStorage, element, remainder: result, fields: GetRemainderFields(result, returnType, owning));
         this.callOperands.Clear();
         this.callOperands.Add(pointer);
         this.callOperands.Add(new(EmissionOperandKind.SlotAddress, operation.Place));
@@ -467,14 +461,14 @@ internal sealed partial class BodyLowering
     }
 
     // The Kimi caller has initialized the reserved tail. This boundary only publishes its length.
-    private bool LowerArrayLength(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, BoundCall plan, out string? failure)
+    private bool LowerArrayLength(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
         failure = null;
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != 2 || call.ArgumentNodes.Count != 2 || target.Parameters.Count != 2 || plan.ArgumentToParameter.Length != 2 ||
             plan.ArgumentToParameter[0] != 0 || plan.ArgumentToParameter[1] != 1 ||
-            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Array }] } receiver ||
-            !ReferenceEquals(SignatureType(this, plan.ArgumentOperations[1].ParameterType), BoundType.ISize) || !ReferenceEquals(SignatureType(this, call.BoundType), BoundType.Unit) || !ReferenceEquals(SignatureType(this, plan.ReturnType), BoundType.Unit))
+            body.Resolve(plan.ArgumentOperations[0].ParameterType, InterpretationContext.Root) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Array }] } receiver ||
+            !ReferenceEquals(body.Resolve(plan.ArgumentOperations[1].ParameterType, InterpretationContext.Root), BoundType.ISize) || !ReferenceEquals(body.Resolve(call.BoundType, body.ContextAt(id)), BoundType.Unit) || !ReferenceEquals(body.Resolve(plan.ReturnType, InterpretationContext.Root), BoundType.Unit))
         {
             return Fail("Publishing an Array length requires its exclusive handle and isize length.", out failure);
         }
@@ -499,44 +493,7 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    // SPEC 4.7.2, 4.7.4: Array<T>.init(capacity:) zeroes the result handle and reserves the capacity once; the reserve runtime
-    // aborts on a negative capacity, and zero allocates nothing.
-    private bool LowerArrayConstruction(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, BoundCall plan, out string? failure)
-    {
-        failure = null;
-        if (plan.Target.Declaration is not FunctionKoto { IsConstructor: true } target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
-            call.ArgumentNodes.Count != 1 || plan.ArgumentOperations.Length != 1 || plan.ArgumentToParameter.Length != 1 || target.Parameters.Count != 1 ||
-            body.ConcreteAt(call.BoundType, id) is not { Kind: BoundTypeKind.Array } arrayType || !this.TryGetArrayElement(arrayType.Components[0], out var element))
-        {
-            return Fail("Array construction has an unsupported argument plan or element Type.", out failure);
-        }
-
-        if (!this.PrepareCollectionArguments(body, id, call, plan, target, out var complete, out failure))
-        {
-            return false;
-        }
-
-        if (!complete)
-        {
-            return true;
-        }
-
-        var location = -1;
-        if (!this.ScalarArrayArgument(body, id, 0, BoundType.ISize, out var capacity) || (!function.Abi.CallerLocation && !this.TryGetLocation(call, directory, constants, out location)))
-        {
-            return Fail("Array construction capacity or location is unavailable at the call.", out failure);
-        }
-
-        this.arrayRuntimeUsed = true;
-        var handle = new EmissionOperand(EmissionOperandKind.SlotAddress, body.Operations[id].Place);
-        var place = new EmissionOperand(function.Abi.CallerLocation ? EmissionOperandKind.CallerLocation : EmissionOperandKind.ConstantAddress, location);
-        var length = new EmissionOperand(function.Abi.CallerLocation ? EmissionOperandKind.CallerLocationLength : EmissionOperandKind.ConstantLength, location);
-        function.AddCall(id, WindowsLowering.ArrayInit, [handle, place, length]);
-        function.AddCall(id, WindowsLowering.ArrayReserve, [handle, new(EmissionOperandKind.Integer, element.Stride), capacity, place, length]);
-        return true;
-    }
-
-    private bool PrepareCollectionArguments(OwnershipBody body, int id, InvocationKoto call, BoundCall plan, FunctionKoto target, out bool complete, out string? failure)
+    private bool PrepareCollectionArguments(OwnershipBody body, int id, InvocationKoto call, CallPlan plan, FunctionKoto target, out bool complete, out string? failure)
     {
         failure = null;
         Grow(ref this.parameterArguments, target.Parameters.Count);

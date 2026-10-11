@@ -22,8 +22,8 @@ public class SharedObjectAdaptationTest
     public void ObjectReborrowsKeepResultDependencies()
     {
         var c = MinimalEmissionTest.Analyze("struct Item\n    public let id: i32 = 7\nfunc view(value: objuniq/Item) -> objref/Item during value => value\nvar owner = Kimi.Intrinsics.makeObj(Item.init())\nlet result = view(owner@objuniq)\nrequire result.id == 7 else => $abort(\"view\")");
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.Validate(out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Validate(out var issue), MinimalEmissionTest.Describe(c, issue));
     }
 
     [Theory]
@@ -42,8 +42,90 @@ public class SharedObjectAdaptationTest
     [InlineData("arc")]
     public void SharedViewAdaptationDoesNotUpcast(string mode)
     {
-        var c = CompilationTestHelper.Parse($"struct Base\n    public let id: i32 = 7\nstruct Child is Base\nfunc inspect(value: objref/Base) => ()\nfunc run(owner: {mode}/Child) => inspect(owner)");
-        Assert.False(c.Bind().IsComplete);
+        const string Types = "open struct Base\n    public let id: i32 = 7\n    protected init() => ()\nstruct Child: Base\n    public init() => ()\nfunc inspect(value: objref/Base) => ()\n";
+        var argument = CompilationTestHelper.Parse(Types + $"func run(owner: {mode}/Child) => inspect(owner)");
+        Assert.False(argument.Bind().IsComplete);
+        Assert.Equal(DiagnosticCode.NoApplicableOverload_Kd, Assert.Single(argument.Binding.Issues).Code);
+        var annotation = CompilationTestHelper.Parse(Types + $"func run(owner: {mode}/Child)\n    let view: objref/Base = owner");
+        Assert.False(annotation.Bind().IsComplete);
+        Assert.Equal(DiagnosticCode.TypeMismatch_Kd, Assert.Single(annotation.Binding.Issues).Code);
+        Assert.True(CompilationTestHelper.Parse(Types + $"func run(owner: {mode}/Child) => inspect(owner@objref/Base)").Bind().IsComplete);
+    }
+
+    // SPEC 13.5.5.2: @objref and @objuniq borrow an object payload; an operand that is no object has none, as for the typed form.
+    [Theory]
+    [InlineData("struct S\n    public var v: i32 = 0\nlet a = S.init()\nlet b = a@objref", "a@objref")]
+    [InlineData("let a: i32 = 5\nlet b = a@objuniq", "a@objuniq")]
+    [InlineData("struct S\n    public var v: i32 = 0\nlet a = S.init()\nlet b = a@objref/S", "a@objref/S")]
+    public void ObjectBorrowsOfANonObjectAreInvalid(string source, string at)
+    {
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.InvalidAssignment_Kd), at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
+
+    // SPEC 3.6.1, 7.3, 10.2, 13.5.5.1, 13.5.5.2: a temporary handle is materialized like an owned temporary and lends its object or
+    // payload for the operation: explicit and implicit object borrows, payload follows, shared receivers and a moved handle.
+    [Theory]
+    [InlineData("obj")]
+    [InlineData("rc")]
+    [InlineData("arc")]
+    public void TemporaryHandlesLendLikeOwnedPlaces(string mode)
+    {
+        var factory = "make" + char.ToUpperInvariant(mode[0]) + mode[1..];
+        var source = "struct Item\n    public var id: i32 = 7\n    public func read(self: ref/Self) -> i32 => self.id\n    public func look(self: objref/Self) -> i32 => self.id\n" +
+            $"func inspect(v: objref/Item) -> i32 => v.id\nfunc make() -> {mode}/Item => Kimi.Intrinsics.{factory}(Item.init())\n" +
+            "require inspect(make()@objref) == 7 and inspect(make()) == 7 and make().read() == 7 and make().look() == 7 and make()@follow@ref.id == 7 else => $abort(\"lend\")\n" +
+            $"let x = make()@follow@ref.id\nlet h = make()\nrequire x == 7 and inspect(h@move@objref) == 7 and inspect(Item.init()@{mode}@objref) == 7 else => $abort(\"more\")";
+        var c = MinimalEmissionTest.Analyze(source);
+        var valid = c.Validate(out var failure);
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified && valid, MinimalEmissionTest.Describe(c, failure));
+    }
+
+    // SPEC 7.3, 10.2, 15.1.5: a temporary obj lends exclusively when spelled or as a receiver, never implicitly at an argument; rc and arc
+    // lend no exclusive access even for a temporary at count one.
+    [Theory]
+    [InlineData("edit(Kimi.Intrinsics.makeObj(Item.init())@objuniq)\n_ = Kimi.Intrinsics.makeObj(Item.init()).bump()\nKimi.Intrinsics.makeObj(Item.init())@follow@uniq.id = 5\nbumpField(Kimi.Intrinsics.makeObj(Item.init()).id@uniq)", null, null)]
+    [InlineData("edit(Kimi.Intrinsics.makeObj(Item.init()))", "NoApplicableOverload_Kd", "edit(Kimi.Intrinsics.makeObj(Item.init()))")]
+    [InlineData("readMut(Kimi.Intrinsics.makeObj(Item.init())@follow)", "ExclusiveBorrowRequired_Kd", "Kimi.Intrinsics.makeObj(Item.init())@follow")]
+    [InlineData("edit(Kimi.Intrinsics.makeRc(Item.init())@objuniq)", "SharedPathAccess_Kd", "Kimi.Intrinsics.makeRc(Item.init())")]
+    [InlineData("Kimi.Intrinsics.makeArc(Item.init())@follow@uniq.id = 1", "SharedPathAccess_Kd", "Kimi.Intrinsics.makeArc(Item.init())@follow@uniq")]
+    [InlineData("_ = Kimi.Intrinsics.makeRc(Item.init()).bump()", "NoApplicableOverload_Kd", "Kimi.Intrinsics.makeRc(Item.init()).bump()")]
+    public void TemporaryHandlesLendExclusivelyOnlyWithAuthorityAndSpelling(string use, string? code, string? at)
+    {
+        var source = "struct Item\n    public var id: i32 = 7\n    public func bump(self: uniq/Self) -> i32\n        self.id += 1\n        return self.id\n" +
+            "func edit(v: objuniq/Item) => v.id += 10\nfunc readMut(v: uniq/Item) -> i32 => v.id\nfunc bumpField(v: uniq/i32) => v@follow += 1\n" + use;
+        if (code is null)
+        {
+            var c = MinimalEmissionTest.Analyze(source);
+            var valid = c.Validate(out var failure);
+            Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified && valid, MinimalEmissionTest.Describe(c, failure));
+            return;
+        }
+
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((code, at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
+
+    // SPEC 11.2.3: a getter result is a Temporary Place lent only shared, also when it is a handle whose slot an explicit @uniq borrows.
+    [Fact]
+    public void GetterResultHandlesAreLentSharedOnly()
+    {
+        const string Source = "struct Item\n    public var id: i32 = 7\nstruct Holder\n    public computed made: rc/Item\n        get(self: ref/Self) -> rc/Item => Kimi.Intrinsics.makeRc(Item.init())\nfunc take(v: uniq/rc/Item) -> i32 => v.id\nlet h = Holder.init()\nlet a = take(h.made@uniq)";
+        var error = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.InvalidAssignment_Kd), "h.made@uniq"), (error.Code, Source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
+
+    // Temporary handles release at their full-expression boundary, after the call that borrows them, in reverse creation order.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void TemporaryHandleBorrowsReleaseAtTheirBoundary()
+    {
+        const string Source = "struct Item\n    public var id: i32\n    public init(id: i32) => self.id = id\n    public func read(self: ref/Self) -> i32 => self.id\n    public func look(self: objref/Self) -> i32 => self.id\n    drop => Console.writeLine(\"drop\")\n" +
+            "func inspect(v: objref/Item) -> i32 => v.id\nfunc pair(a: objref/Item, b: objref/Item) -> i32\n    Console.writeLine(\"call\")\n    return a.id + b.id\n" +
+            "require inspect(Kimi.Intrinsics.makeRc(Item.init(1))@objref) == 1 else => $abort(\"a\")\nConsole.writeLine(\"a\")\nrequire inspect(Kimi.Intrinsics.makeRc(Item.init(2))) == 2 else => $abort(\"b\")\nConsole.writeLine(\"b\")\n" +
+            "require Kimi.Intrinsics.makeRc(Item.init(3)).read() == 3 else => $abort(\"c\")\nConsole.writeLine(\"c\")\nrequire Kimi.Intrinsics.makeRc(Item.init(4)).look() == 4 else => $abort(\"d\")\nConsole.writeLine(\"d\")\n" +
+            "let n = Kimi.Intrinsics.makeRc(Item.init(5))@follow@ref.id\nConsole.writeLine(\"e\")\nrequire n == 5 and pair(Kimi.Intrinsics.makeRc(Item.init(6))@objref, Kimi.Intrinsics.makeRc(Item.init(7))) == 13 else => $abort(\"f\")";
+        SharedObjectRuntimeTest.WriteModes("TemporaryBorrows", Source, 7, 7, 140, "drop\na\ndrop\nb\ndrop\nc\ndrop\nd\ndrop\ne\ncall\ndrop\ndrop\n");
     }
 
     [Trait("Purpose", "Allocation")]
@@ -73,8 +155,8 @@ public class SharedObjectAdaptationTest
     {
         var c = MinimalEmissionTest.Analyze("struct Item\n    public let id: i32 = 7\nlet owner = Kimi.Intrinsics.makeObj(Item.init())\nlet view: objref/Item = owner\nlet moved = owner@move\nrequire view.id == 7 else => $abort(\"live\")");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
+        Assert.False(c.Validate(out _));
     }
 
     [Fact]

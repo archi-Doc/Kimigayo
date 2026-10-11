@@ -188,9 +188,9 @@ public struct Leaf : Base
 public struct Invalid : Leaf // Error: Leaf is sealed.
 ```
 
-Inheritance preserves the members' declared accessibility and grants no private access. Ordinary function and accessor calls use the implementation selected statically from the receiver's Effective Type, including through concrete Core object views; the Runtime Object Type does not replace that implementation. [Inherited lookup](09-names-signatures-and-access.md#95-qualified-and-inherited-lookup) determines the declaration layer, and [receiver projection](09-names-signatures-and-access.md#951-base-subobject-receiver-projection) supplies eligible instance receivers. Function-value calls keep their own rules.
+Inheritance preserves the members' declared accessibility and grants no private access. Nonvirtual function and accessor calls use the implementation selected statically from the receiver's Effective Type, including through concrete Core object views; the Runtime Object Type does not replace that implementation. [Inherited lookup](09-names-signatures-and-access.md#95-qualified-and-inherited-lookup) determines the declaration layer, and [receiver projection](09-names-signatures-and-access.md#951-base-subobject-receiver-projection) supplies eligible instance receivers. Function-value calls keep their own rules.
 
-**Inherited Names.** A derived struct cannot declare a Value-role member with the same Name as a member of any ancestor that is accessible from the derived declaration. This covers functions, whatever their Signature and whether instance or Type functions, as well as Fields and stored and computed Properties. Neither conditional premises nor overload applicability exempt a declared Name. For a Property, its own access is checked, not an individual accessor's, and protected access is checked with the derived receiver.
+**Inherited Names.** Except for a valid [override](#624-virtual-members-and-overrides), which adds no member or lookup layer, a derived struct cannot declare a Value-role member with the same Name as a member of any ancestor that is accessible from the derived declaration. This covers functions, whatever their Signature and whether instance or Type functions, as well as Fields and stored and computed Properties. Neither conditional premises nor overload applicability exempt a declared Name. For a Property, its own access is checked, not an individual accessor's, and protected access is checked with the derived receiver.
 
 The check runs on the completed declaration set, after environment selection, Mod output and fragment merging, with a valid base graph; a collision is diagnosed at the derived declaration. Same-layer overloads and other namespaces keep their rules. In particular, the receiver-shape rule of [§7.3](07-functions-and-callable-values.md#73-explicit-receivers) compares only the declarations of one layer, because a base and a derived declaration of one accessible Name never coexist. Inaccessible ancestor Names, including private members and internal or private-protected members of another Kotonoha, may be reused. An explicit specialization implements its original function and is not another member; it gains no right to specialize a base member from a derived Container.
 
@@ -198,7 +198,7 @@ The accessible member Names of an open struct, in the Value and Type namespaces,
 
 **Base subobject.** The direct base is one inline owned subobject that logically precedes the structure's directly declared fields. A base subobject keeps its own field identities and construction-completion facts. The compiler still selects physical offsets under the [layout rules](../impl/21-layout-runtime-and-code-generation.md#211-structure-layout-and-abi); logical ordering requires neither flattening nor a fixed ABI. Construction runs the base first (§6.2.3), and destruction runs the derived layer first ([field cleanup](16-scope-exit-and-destruction.md#1632-field-cleanup)). A base subobject cannot be independently Moved, replaced or reconstructed through a base view of a derived value. Whole-value operations keep the exact owning Type and the responsibility for all layers; they cannot slice a derived value. Access to an inherited field still obeys normal permissions and checks the Partial Move restrictions of every containing base and derived layer.
 
-There is no explicit ordinary base-member invocation and no further ordinary conversion between derived and base values. [Object calls](12-expressions.md#1243-object-member-calls) and [explicit object upcasts](13-operators-and-assignment.md#1357-object-upcasts) keep their defined operations. None of these rules imply a CLR-like representation, boxing, garbage collection or value slicing.
+Explicit [base implementation calls](virtual-dispatch.md#4-direct-base-calls) use lexical `self`; no further ordinary conversion between derived and base values is introduced. [Object calls](12-expressions.md#1243-object-member-calls) and [explicit object upcasts](13-operators-and-assignment.md#1357-object-upcasts) keep their defined operations. None of these rules imply a CLR-like representation, boxing, garbage collection or value slicing.
 
 ### 6.2.3. Constructors
 
@@ -226,13 +226,32 @@ let entry = Entry.init("item", 1)
 
 Syntactically, a qualified Type-shaped path followed by `.init(` is always a construction expression. Because `init` is not an ordinary member Name, no ordinary-call parse competes with it. The qualifier may begin with `::` and contain Type arguments. A Name-shaped qualifier such as `value` is accepted syntactically and then resolved by Type lookup; if it identifies only a value, Binding reports an error, with no retry as a value-member call.
 
-`Type.init(arguments)` constructs a fresh owner of exactly `Type`. The structure and all generic arguments are resolved first; then one of its own accessible constructors is selected by ordinary argument mapping and overload comparison. Expected results cannot change that Type or the lookup path. Every generic argument must be supplied unless the qualifier is already fully bound, such as `Self` in a generic structure.
+`Type.init(arguments)` constructs a fresh owner of exactly the resolved construction Type. Resolve the structure declaration and its outer environment first ([§9.6](09-names-signatures-and-access.md#96-type-name-selection)); then select one of its own accessible constructors by the common argument mapping, inference and overload rules. The structure's own Type-argument list may be omitted under [constructor inference](10-overload-resolution-and-inference.md#1081-constructor-type-inference). Existing bindings, including `Self`, an alias or an inherited Container environment, remain fixed. A base constructor's Type is fixed by the declared base. Neither arguments nor an expected result select a different Type declaration or infer an unbound outer Container.
+
+```kimi
+struct Box<T>
+    public let value: T
+    public init(value: T) => self.value = value@move
+
+let number: i32 = 42
+let box = Box.init(number)               // Box<i32>.
+let view = Box.init(number@ref)          // Keeps the dependency on number.
+let nested = Box.init(box@move)          // Box<Box<i32>>.
+let wide: Box<i64> = Box.init(42)         // Fits the untyped literal to i64.
+// let wrong: Box<i64> = Box.init(number) // Error: the input already binds T to i32.
+
+struct Empty<T>
+let empty: Empty<i32> = Empty.init()      // The owner expectation supplies T.
+// let unknown = Empty.init()            // Error: no evidence for T.
+```
+
+A successful inferred construction has the same selected declaration, complete result Type, argument evaluation order, acquisition, construction and destruction as the construction with those Type arguments fixed explicitly, including Types with no direct source spelling. The fixed-binding reference check in §10.8.1 enforces this guarantee; inference adds no runtime operation.
 
 Bare Type-parameter construction, inherited or extension constructors, field-wise or zero-fill fallbacks and ordinary function-call fallback are unavailable. Unknown or inaccessible constructors are errors. `Type.init` is not a function value, and `value.init(...)` cannot reinitialize existing storage. Construction returns an owner value; creating `obj`, `rc` or `arc` requires a separate [Kimi ownership operation](13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing).
 
 #### 6.2.3.3. Evaluation order
 
-After normal argument and default evaluation, fresh Uninitialized construction storage is allocated and the parameters are bound. The base arguments are evaluated in the constructor's parameter and source context, and the selected direct-base constructor runs in its subobject. Omitting the base clause selects an accessible zero-argument invocation, including one whose parameters all have defaults; `: base(...)` in a structure without a base is an error. Exactly one base call occurs; same-Type delegation and repeated base initialization are unavailable. This dedicated operation may call protected base constructors without an ordinary instance receiver.
+After normal argument and default evaluation, fresh Uninitialized construction storage is allocated and the parameters are bound. The base arguments are evaluated in the constructor's parameter and source context, and the selected direct-base constructor runs in its subobject. Omitting the base clause selects, by ordinary selection (§10) with no arguments, an accessible base constructor, including one whose parameters all have defaults; `: base(...)` in a structure without a base is an error. Exactly one base call occurs; same-Type delegation and repeated base initialization are unavailable. This dedicated operation may call protected base constructors without an ordinary instance receiver.
 
 Base construction completes first. Then this layer's Field declaration initializers are evaluated in logical declaration order, and then the constructor body executes. Declaration initializers keep their own declaration-site environments and cannot reference constructor parameters or `self`. Base arguments may reference constructor parameters but cannot access `self`. No constructor silently initializes a field with zero, null or an element Type's default constructor. The Origins required by stored arguments and by the completed base must be represented by the constructed Type's declared Origin contract and inferred under ordinary lifetime constraints; hidden or invented Origins cannot make a construction valid.
 
@@ -250,31 +269,32 @@ Constructors have no recoverable-failure return or exception mechanism. For fall
 
 #### 6.2.3.6. Implicit constructor
 
-After merging, one public zero-parameter constructor is synthesized if and only if there is no selected explicit constructor, every own Field has an initializer, and any base has an accessible zero-argument invocation. Its effective access is the Type's, and its implicit Unit body follows the normal initialization and completion rules. Empty structs meet the field condition. Otherwise no implicit constructor exists, and the Type itself remains valid. Any selected explicit or generated constructor, even a private one, suppresses synthesis; no memberwise constructor is added. Synthesis depends on declarations, not on initializer validity: resulting errors are reported normally, and generic obligations are retained until instantiation.
+After merging, one zero-parameter constructor is synthesized if and only if no explicit or generated constructor is selected, every own Field has an initializer, and, for a structure with a base, the omitted base clause of §6.2.3.3 selects a base constructor. Empty structs meet the Field condition. Any selected explicit or generated constructor, even a private one, suppresses synthesis; no memberwise constructor is added.
+
+The base selection is ordinary selection (§10) over the direct base's constructors with no arguments. It is made from the derived declaration, where protected base constructors are accessible, under the derived declaration's Constraints, and a Refuted premise makes only its own candidate inapplicable. If no candidate applies or the selection is ambiguous, no implicit constructor exists, and the Type itself remains valid. If the selection cannot be decided because a candidate premise is Unknown there (§8.4.8.2), it is unproven and no implicit constructor exists: a construction of the Type reports the unproven premise, and a synthesis in a derived structure or an explicit omitted-base call that depends on this absence is a derived problem with that premise as its prerequisite (§23.3.6.4). If the base declaration is invalid, or the structure's `: BaseType` clause has Constraints that are not Proven, the decision depends on that failure.
+
+The synthesized constructor has the Type's effective access and behaves as `init() => ()` with an omitted base clause, following the normal initialization and completion rules; an error of its base call is reported at the structure's `: BaseType` clause (§6.2.2). Synthesis depends on declarations, not on the validity of initializers, defaults or the selected base call. The synthesized constructor of a generic structure is a generic definition (§8.10), and only its Deferred Obligations wait for instantiation. A Kimi Type whose representation the compiler manages has no implicit constructor (§22.1).
+
+```kimi
+public open struct Counter
+    protected var count: i32 = 0
+    protected init() => ()
+
+public struct Tally : Counter        // Synthesized: public init() selects the protected base constructor.
+
+public open struct Choice
+    public init(first: i32 = 1) => ()
+    public init(second: bool = true) => ()
+
+public struct Picked : Choice        // Valid without a constructor: both base constructors apply.
+
+let tally = Tally.init()
+// let picked = Picked.init()       // Error: Picked has no constructor.
+```
 
 ### 6.2.4. Virtual members and overrides
 
-**Extension design; not active.** This section owns the proposed virtual/override semantics and their interaction with runtime Contracts. Current declarations use the static selection and inherited-Name rule of §6.2.2, and unavailable modifiers are diagnosed under §2.5.1.
-
-An overridable declaration and each override require explicit designation. The original declaration identifies the slot; equal Names or Signatures never create one implicitly. Only a valid explicit override would be exempt from the inherited-Name prohibition. Existing ordinary members do not become virtual.
-
-An override preserves the Shared/Exclusive receiver kind and, after normalization and receiver-Self correspondence, the parameter and result Types. No covariant result is added. Labels, name-omission permissions and defaults follow the statically selected declaration. An override cannot strengthen public premises or input-Origin requirements, or weaken result lifetime guarantees; compatibility follows the existing proof rules.
-
-The target and each overridden accessor must be accessible. Their declared access is preserved, except that a protected-internal member overridden in another Kotonoha is declared protected there. Private members, and internal or private-protected members outside their Kotonoha, are ineligible. This grants no permission to expose inaccessible API Types.
-
-Initial virtual calls are safe: each virtual implementation and override, including its implementation family, independently requires [ObjectCallCompatible Proven](12-expressions.md#1244-object-receiver-compatibility), and a failure is a declaration error even without object call sites. This is an explicit guarantee, unlike an ordinary member's inferred public status. A base body's proof cannot validate an override.
-
-Static lookup selects the declaration, overload, access, labels and public contract. Runtime dispatch selects only that slot's implementation for the Dynamic Type; it never repeats lookup or adds derived-only overloads.
-
-```text
-Animal.reset: explicit Exclusive virtual slot
-    ├─ Dog.reset mutates permitted state -> valid override
-    └─ Cat.reset replaces all of self    -> invalid override declaration
-```
-
-With [runtime Contracts](08-generics-constraints-and-contracts.md#85-runtime-contracts), a retained requirement mapping follows the corresponding valid override. Every mapped requirement is rechecked at that override's declaration, and an incompatible override is rejected rather than silently losing conformance or Supports. Runtime Contract Views remain a separate extension owned by §8.5.
-
-Before this design is introduced, declaration spellings, eligible members, receivers and generics, accessor designation, abstract construction restrictions, explicit base-implementation calls, and slot and metadata information for separate compilation must be settled together. The design adds no active syntax or fixed ABI.
+The normative [virtual dispatch detail](virtual-dispatch.md) defines `virtual func`, `override func`, slot identity and inherited contracts, `base.f(...)`, receiver completeness, effects, Contract witnesses and semantic records. Static selection fixes the public slot; the Dynamic Type selects only its implementation. Ordinary members remain nonvirtual.
 
 ## 6.3. Enums
 

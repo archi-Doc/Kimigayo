@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -21,7 +22,7 @@ public class ReturnedPartBorrowTest
     {
         var c = MinimalEmissionTest.Analyze(Prefix + source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
+        Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
         ScalarEmissionTest.EmitFixture("ReturnedPartBorrow" + name, Prefix + source, string.Empty);
     }
 
@@ -36,8 +37,8 @@ public class ReturnedPartBorrowTest
     {
         var c = MinimalEmissionTest.Analyze(Prefix + source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure is OwnershipFailure.ComparisonLoanConflict or OwnershipFailure.PossiblyMovedUse);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() || x.Code is DiagnosticCode.MovedPlace_Kd);
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -47,7 +48,7 @@ public class ReturnedPartBorrowTest
         var c = MinimalEmissionTest.Analyze(Prefix + "var pair = Pair.init()\nlet a = relay(pair.left@uniq)\nlet moved = pair.right@move\na.value += moved.value");
         void Analyze()
         {
-            if (!c.Ownership.Analyze().IsVerified)
+            if (!c.Analyze().IsVerified)
             {
                 throw new InvalidOperationException("Returned part Loan failed.");
             }
@@ -60,9 +61,9 @@ public class ReturnedPartBorrowTest
 
         Assert.Equal(0, AllocationMeasurement.Measure(Analyze));
         Assert.True(c.Bind().IsComplete);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Analyze();
-        Assert.True(c.Emission.Validate(out var failure), failure);
+        Assert.True(c.Validate(out var failure), failure);
     }
 }

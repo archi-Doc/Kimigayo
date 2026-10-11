@@ -19,12 +19,12 @@ public class CallSignatureFormationBindingTest
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take(value: " + type + ") -> " + type + " => value\n    func call(value: " + type + ") => take(value)");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Null(Call(c).BoundCall);
+        Assert.Null(Call(c).CallOf());
         Assert.False(c.Bind().IsComplete);
-        Assert.Null(Call(c).BoundCall);
+        Assert.Null(Call(c).CallOf());
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
-        Assert.Null(Call(restored).BoundCall);
+        Assert.Null(Call(restored).CallOf());
     }
 
     [Fact]
@@ -32,7 +32,7 @@ public class CallSignatureFormationBindingTest
     {
         var c = MinimalEmissionTest.Analyze("#Unknown\ngroup Invalid\n    public func take() => ()\ngroup Consumer\n    func call() => Invalid.take()");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Null(Call(c).BoundCall);
+        Assert.Null(Call(c).CallOf());
     }
 
     [Theory]
@@ -43,7 +43,7 @@ public class CallSignatureFormationBindingTest
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take(value: " + type + ") -> " + type + " => value@move\n    func call(value: " + type + ") => take(value@move)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.NotNull(Call(c).BoundCall);
+        Assert.NotNull(Call(c).CallOf());
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
@@ -52,7 +52,7 @@ public class CallSignatureFormationBindingTest
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take<U>(value: Box<U>)\n        U is i32\n        ()\n    func call(value: Box<i32>) => take(value@move)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.NotNull(Call(c).BoundCall);
+        Assert.NotNull(Call(c).CallOf());
     }
 
     [Fact]
@@ -60,7 +60,7 @@ public class CallSignatureFormationBindingTest
     {
         var c = MinimalEmissionTest.Analyze("#Unknown\ngroup Invalid\ngroup Consumer\n    func take() => ()\n    func call() => take()");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.NotNull(Call(c).BoundCall);
+        Assert.NotNull(Call(c).CallOf());
     }
 
     [Fact]
@@ -69,15 +69,15 @@ public class CallSignatureFormationBindingTest
         var c = MinimalEmissionTest.Analyze("group Target\n    public func take() => ()\ngroup Consumer\n    func call() => Target.take()");
         Assert.True(c.Binding.Result.IsComplete);
         var call = Call(c);
-        var plan = call.BoundCall;
+        var plan = call.CallOf();
         Assert.NotNull(plan);
         c.Kotonoha.AddSource(new SourceDocument("marker.kimi", "#Unknown\ngroup Target"));
         Assert.False(c.Bind().IsComplete);
-        Assert.Null(call.BoundCall);
+        Assert.Null(call.CallOf());
         var target = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target");
         Assert.True(target.RemoveAttribute(Assert.IsType<AttributeKoto>(target.AttributeChain)));
         Assert.True(c.Bind().IsComplete);
-        Assert.Same(plan, call.BoundCall);
+        Assert.Same(plan, call.CallOf());
     }
 
     [Trait("Purpose", "Allocation")]

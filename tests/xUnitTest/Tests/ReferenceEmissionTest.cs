@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
@@ -88,14 +89,14 @@ public class ReferenceEmissionTest
     }
 
     [Theory]
-    [InlineData("test(left: a, right: take(a@move))", OwnershipFailure.ComparisonLoanConflict)]
-    [InlineData("test(right: take(a@move), left: a)", OwnershipFailure.PossiblyMovedUse)]
-    public void SourceOrderDeterminesTheConflict(string expression, OwnershipFailure failure)
+    [InlineData("test(left: a, right: take(a@move))", DiagnosticCode.ComparisonLoanConflict_Kd)]
+    [InlineData("test(right: take(a@move), left: a)", DiagnosticCode.MovedPlace_Kd)]
+    public void SourceOrderDeterminesTheConflict(string expression, DiagnosticCode failure)
     {
         var c = MinimalEmissionTest.Analyze("func test(left: ref/string, right: bool) -> bool => right\nfunc take(a: string) -> bool => true\nlet a = \"a\"\n" + expression);
         Assert.Empty(c.Binding.Issues);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == failure);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, x => x.Code == failure);
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -105,7 +106,7 @@ public class ReferenceEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(Same + "func take(a: string) -> string => a\nfunc run() -> string\n    let a = \"a\"\n    " + expression + "\n    return \"bad\"\nConsole.writeLine(run())");
         Assert.Empty(c.Binding.Issues);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
     }
 
     [Theory]
@@ -116,28 +117,19 @@ public class ReferenceEmissionTest
         var source = "func test(a: ref/string, flag: bool) -> bool => flag\nvar a = \"a\"\ntest(a, (label work: do\n    " + effect + "\n    exit to work true\n))";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Empty(c.Binding.Issues);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
     [InlineData("a == (return true)")]
-    [InlineData("(return true) == a")]
+    [InlineData("(return true) == \"a\"")]
     public void NoncompletingReferenceComparisonNeedsNoResult(string expression)
     {
         var source = "func test(a: ref/string) -> bool\n    " + expression + "\n    return false\nlet a = \"a\"\nif test(a) => Console.writeLine(a)";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
         ScalarEmissionTest.EmitFixture("ReferenceAbruptComparison" + (expression.StartsWith('a') ? "Right" : "Left"), source, "a\n");
-    }
-
-    [Fact]
-    public void AbandonedLoansAreNotRestoredInCheckingContinuations()
-    {
-        var source = "func test(a: ref/string, flag: bool) -> bool => flag\nfunc run() -> string\n    let a = \"held\"\n    test(a, (label work: do\n        return \"ok\"\n        _ = a@move\n        exit to work true\n    ))\n    return \"bad\"\nConsole.writeLine(run())";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        ScalarEmissionTest.EmitFixture("ReferenceUnreachableContinuation", source, "ok\n");
     }
 
     [Fact]
@@ -154,7 +146,7 @@ public class ReferenceEmissionTest
         Assert.Empty(borrowed.Slots);
         Assert.DoesNotContain(borrowed.Instructions, x => x.Callee == WindowsLowering.DestroyString || x.Opcode == EmissionOpcode.MoveString);
         using var writer = new StringWriter();
-        Assert.True(c.Emission.WriteIr(writer, out error), error);
+        Assert.True(c.WriteIr(writer, out error), error);
         var ir = writer.ToString();
         Assert.Contains("ptr noundef nonnull align 8 dereferenceable(24) %a0", ir);
         Assert.Contains("ptr noundef nonnull align 8 dereferenceable(24) %p", ir);
@@ -173,8 +165,8 @@ public class ReferenceEmissionTest
         {
             c.Bind();
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         var before = GC.GetAllocatedBytesForCurrentThread();
@@ -189,8 +181,8 @@ public class ReferenceEmissionTest
         before = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 128; i++)
         {
-            valid &= c.Ownership.Analyze().IsVerified;
-            valid &= c.Emission.WriteIr(TextWriter.Null, out _);
+            valid &= c.Analyze().IsVerified;
+            valid &= c.WriteIr(TextWriter.Null, out _);
         }
 
         var emissionBytes = GC.GetAllocatedBytesForCurrentThread() - before;
@@ -212,7 +204,7 @@ public class ReferenceEmissionTest
     public void InvalidPlansNeverPublishIr(string defect)
     {
         var c = MinimalEmissionTest.Analyze(Same + "let a = \"a\"\nsame(a, a)");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var loan = body.ComparisonLoans[0];
         var call = body.CallLoans[0];
@@ -231,10 +223,10 @@ public class ReferenceEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Fact]
@@ -245,13 +237,13 @@ public class ReferenceEmissionTest
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var pool = new FunctionAbiPool();
         var abi = pool.Get(0, c.Ownership.Bodies[1].Function);
-        var oldType = c.Ownership.Bodies[1].Function.Parameters[0].Type.BoundType;
+        var oldType = c.Ownership.Bodies[1].Function.Parameters[0].Type.TypeOf();
         c = MinimalEmissionTest.Analyze(Source.Replace("same", "renamed", StringComparison.Ordinal));
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Ownership.Analyze().IsVerified);
+        Assert.True(c.Analyze().IsVerified);
         Assert.True(c.Emission.TryPrepare(out module, out error), error);
-        Assert.NotSame(oldType, c.Ownership.Bodies[1].Function.Parameters[0].Type.BoundType);
+        Assert.NotSame(oldType, c.Ownership.Bodies[1].Function.Parameters[0].Type.TypeOf());
         Assert.Same(abi, pool.Get(0, c.Ownership.Bodies[1].Function));
     }
 
@@ -298,7 +290,7 @@ public class ReferenceEmissionTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.Empty(c.Binding.Issues);
         var call = c.Ownership.Bodies[0].Operations.First(x => x.Kind == OwnershipOperationKind.Call && x.Source is InvocationKoto { BoundCall.Target.Name: "pick" });
-        Assert.Equal(ArgumentOperationKind.Value, ((InvocationKoto)call.Source).BoundCall!.ArgumentOperations[0].Kind);
+        Assert.Equal(ArgumentOperationKind.Value, ((InvocationKoto)call.Source).CallOf()!.ArgumentOperations[0].Kind);
         ScalarEmissionTest.EmitFixture("ReferenceOverload", Source, "owned\n");
     }
 

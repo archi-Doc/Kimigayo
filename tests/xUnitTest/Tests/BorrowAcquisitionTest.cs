@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -34,40 +35,35 @@ public class BorrowAcquisitionTest
     public void RejectsInvalidCaptureEntries(string source, string failure)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure.ToString() == failure);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf().ToString() == failure);
     }
 
     // DIAGNOSTICS.md §10: a rejected entry is located at the entry and names the initialization it stands for; an omitted
     // list names the capture; an Exclusive call of a let closure names the callee.
     [Theory]
-    [InlineData("var number: i32 = 1\nlet r = number@uniq\nvar bump = func [r@uniq] () => r@follow@follow += 1\nbump()", "InvalidAssignment_Kd", "r@uniq", "r cannot be written", "slot of the let binding r", "Declare the binding with var")]
-    [InlineData("let text = \"owned\"\nlet keep = func [text] () => ()\nkeep()", "TransferRequired_Kd", "text", "text cannot be read as a Copy value", "let text = text", null)]
-    [InlineData("var number: i32 = 1\nlet r = number@uniq\nlet bump = func [r] () => r@follow += 1\nbump()", "InvalidAssignment_Kd", "bump", "bump cannot be written", "Exclusive", "var to call it")]
-    [InlineData("var number: i32 = 1\nlet r = number@uniq\nvar bump = func () => r@follow += 1\nbump()", "TransferRequired_Kd", "func () => r@follow += 1", "r cannot be read as a Copy value", "omitted capture list", "[r] to Reborrow")]
-    [InlineData("let text = \"owned\"\nlet keep = func () => Console.writeLine(text)\nkeep()", "TransferRequired_Kd", "func () => Console.writeLine(text)", "text cannot be read as a Copy value", "omitted capture list", "[text@move]")]
-    public void ExplainsRejectedCaptures(string source, string code, string text, string label, string note, string? advice)
+    [InlineData("var number: i32 = 1\nlet r = number@uniq\nvar bump = func [r@uniq] () => r@follow@follow += 1\nbump()", "InvalidAssignment_Kd", "r@uniq", "r cannot be written", "slot of the let binding r", false)]
+    [InlineData("let text = \"owned\"\nlet keep = func [text] () => ()\nkeep()", "TransferRequired_Kd", "text", "text cannot be read as a Copy value", "let text = text", true)]
+    [InlineData("var number: i32 = 1\nlet r = number@uniq\nlet bump = func [r] () => r@follow += 1\nbump()", "InvalidAssignment_Kd", "bump", "bump cannot be written", "Exclusive", false)]
+    [InlineData("var number: i32 = 1\nlet r = number@uniq\nvar bump = func () => r@follow += 1\nbump()", "TransferRequired_Kd", "func () => r@follow += 1", "r cannot be read as a Copy value", "omitted capture list", false)]
+    [InlineData("let text = \"owned\"\nlet keep = func () => Console.writeLine(text)\nkeep()", "TransferRequired_Kd", "func () => Console.writeLine(text)", "text cannot be read as a Copy value", "omitted capture list", false)]
+    public void ExplainsRejectedCaptures(string source, string code, string text, string label, string note, bool candidates)
     {
         var c = MinimalEmissionTest.Analyze(source);
         c.Binding.ReportDiagnostics();
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
         Assert.Equal(code, error.Code);
         Assert.Equal(text, error.Text);
         Assert.Equal(label, error.Label);
         Assert.Contains(note, error.Note);
-        if (advice is null)
+        if (candidates)
         {
-            // SPEC 23.3.6.9: a bare entry offers the transfer and the borrow as candidates at the entry, and no Advice repeats them.
-            Assert.Null(error.Advice);
+            // SPEC 23.3.6.9: a bare entry offers the transfer and the borrow as candidates at the entry.
             Assert.Equal(["Repair.Transfer", "Repair.Borrow"], error.Repairs!.Select(static x => x.Kind));
             Assert.Contains("[text@move]", UnnecessaryUnsafeBlockTest.Apply(source, error.Repairs![0].Edits), StringComparison.Ordinal);
             Assert.Contains("[text@ref]", UnnecessaryUnsafeBlockTest.Apply(source, error.Repairs[1].Edits), StringComparison.Ordinal);
             Assert.Equal([Kimi.Diagnostics.RepairCondition.Take], error.Repairs[0].Verified);
             Assert.Empty(error.Repairs[1].Verified);
-        }
-        else
-        {
-            Assert.Contains(advice, error.Advice);
         }
     }
 
@@ -95,7 +91,7 @@ public class BorrowAcquisitionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
     }
 
     [Theory]
@@ -103,5 +99,5 @@ public class BorrowAcquisitionTest
     [InlineData("func f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    let local = value\n    _ = local")]
     [InlineData("let text = \"owned\"\nlet copy = text")]
     public void RejectsBareAcquisitionWithoutPlan(string source)
-        => Assert.Contains(MinimalEmissionTest.Analyze(source).Ownership.Issues, static x => x.Failure == OwnershipFailure.TransferRequired);
+        => Assert.Contains(MinimalEmissionTest.Analyze(source).Problems, static x => x.Code == DiagnosticCode.TransferRequired_Kd);
 }

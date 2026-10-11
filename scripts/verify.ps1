@@ -22,6 +22,9 @@
 #   ./scripts/verify.ps1 -Mode Session -Configuration Debug
 # Native O0/O2 coverage is independent of the compiler configuration and is unchanged.
 #
+# -Pipeline mir (R3-R5) runs every compiler process of the run with KIMI_PIPELINE=mir; the default is legacy.
+#   ./scripts/verify.ps1 -Class XunitTest.PipelineSwitchTest -Pipeline mir
+#
 # Tests run up to -TestParallel collections at a time (default up to 4), respecting disabled
 # parallelization on test classes. Use -TestParallel 1 for serial execution.
 # Unit -TestPurpose Functional/Allocation narrows a focused check; Session always runs both.
@@ -34,6 +37,7 @@
 param(
     [ValidateSet('Unit', 'Session')] [string] $Mode = 'Unit',
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release',
+    [ValidateSet('legacy', 'mir')] [string] $Pipeline = 'legacy',
     [string[]] $Class = @(),
     [string[]] $Method = @(),
     [ValidateSet('All', 'Functional', 'Allocation')] [string] $TestPurpose = 'All',
@@ -56,6 +60,9 @@ if ($Mode -eq 'Session' -and $TestPurpose -ne 'All') { throw 'Session verificati
 . (Join-Path $PSScriptRoot 'verification-inputs.ps1')
 $Class = @($Class | ForEach-Object { ConvertTo-KimiTestPattern $_ })
 $Method = @($Method | ForEach-Object { ConvertTo-KimiTestPattern $_ -Method })
+$Pipeline = $Pipeline.ToLowerInvariant()
+$previousPipeline = $env:KIMI_PIPELINE
+$env:KIMI_PIPELINE = $Pipeline # Tests, fixtures and milestone harnesses inherit it.
 $repo = Split-Path -Parent $PSScriptRoot
 $buildTarget = if ($Mode -eq 'Session') { 'Kimigayo.slnx' } else { 'tests/xUnitTest/xUnitTest.csproj' }
 $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss-fff')
@@ -258,7 +265,7 @@ if (-not $failed -and $Fixtures.Count -gt 0) {
         $line = Select-String -LiteralPath $log -Pattern 'Passed [1-9]\d* native' | Select-Object -Last 1
         Add-Step "native $pattern" ($ok -and $null -ne $line) "$(if ($line) { $line.Line.Trim() } else { 'see log' }); $log" $timer.Elapsed.TotalSeconds
         if (Test-Path -LiteralPath $fixtureDirectory) {
-            Get-ChildItem -LiteralPath $fixtureDirectory -Filter $pattern -File | Get-FileHash | ForEach-Object { $hashes.Add("$($_.Hash),$([IO.Path]::GetFileName($_.Path))") }
+            Get-ChildItem -LiteralPath $fixtureDirectory -Filter $pattern -File | Where-Object Extension -EQ '.ll' | Get-FileHash | ForEach-Object { $hashes.Add("$($_.Hash),$([IO.Path]::GetFileName($_.Path))") }
         }
     }
 
@@ -306,7 +313,8 @@ if ($null -ne $beforeInputs) {
         Add-Step 'input stability' $false $_.Exception.Message $timer.Elapsed.TotalSeconds
     }
 }
-[ordered]@{ mode = $Mode; configuration = $Configuration; buildTarget = $buildTarget; testPurpose = $TestPurpose; head = $head; dirty = $dirty; inputStability = $inputStability; started = $stamp; workDirectory = $work; toolchainVerification = $toolchainVerification; testParallel = $TestParallel; nativeParallel = $NativeParallel; milestoneParallel = $Parallel; seconds = [Math]::Round($totalTimer.Elapsed.TotalSeconds, 3); steps = $steps } |
+$env:KIMI_PIPELINE = $previousPipeline
+[ordered]@{ mode = $Mode; configuration = $Configuration; pipeline = $Pipeline; buildTarget = $buildTarget; testPurpose = $TestPurpose; head = $head; dirty = $dirty; inputStability = $inputStability; started = $stamp; workDirectory = $work; toolchainVerification = $toolchainVerification; testParallel = $TestParallel; nativeParallel = $NativeParallel; milestoneParallel = $Parallel; seconds = [Math]::Round($totalTimer.Elapsed.TotalSeconds, 3); steps = $steps } |
     ConvertTo-Json -Depth 4 | Set-Content (Join-Path $evidence 'summary.json')
 Write-Host "Evidence: $evidence (HEAD $head$(if ($dirty) { ', uncommitted changes' }))"
 if ($failed) { exit 1 }

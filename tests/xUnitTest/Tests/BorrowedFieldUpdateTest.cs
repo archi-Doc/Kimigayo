@@ -31,7 +31,7 @@ public class BorrowedFieldUpdateTest
     {
         const string Source = Counter + "func locate(p: uniq/Counter) -> uniq/Counter during p\n    Console.writeLine(\"receiver\")\n    return p\nfunc amount() -> i32\n    Console.writeLine(\"rhs\")\n    return 2\nvar counter = Counter.init()\nlocate(counter@uniq).value = amount()\nlocate(counter@uniq).value += amount()\nlet before = locate(counter@uniq).value++\nrequire before == 4 else => $abort(\"result\")\nrequire counter.value == 5 else => $abort(\"value\")";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
+        Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
         // SPEC 13.7.2: simple and compound assignments run the right-hand side before locating the receiver.
         ScalarEmissionTest.EmitFixture("BorrowedFieldUpdateOrder", Source, "rhs\nreceiver\nrhs\nreceiver\nreceiver\n");
     }
@@ -45,7 +45,7 @@ public class BorrowedFieldUpdateTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -54,9 +54,9 @@ public class BorrowedFieldUpdateTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.NotEmpty(c.Ownership.Issues);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Analysis.IsVerified);
+        Assert.NotEmpty(c.Problems);
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -75,15 +75,15 @@ public class BorrowedFieldUpdateTest
     {
         var c = MinimalEmissionTest.Analyze("func change(pair: uniq/(i32, bool))\n    pair.0 += 1\n    pair.0++\nvar pair: (i32, bool) = (40, true)\nchange(pair@uniq)\nrequire pair.0 == 42 else => $abort(\"value\")");
         using var original = new StringWriter();
-        Assert.True(c.Emission.WriteIr(original, out var error), error);
+        Assert.True(c.WriteIr(original, out var error), error);
         var restored = CompilationTestHelper.Reload(c);
         for (var i = 0; i < 2; i++)
         {
             Assert.True(restored.Bind().IsComplete);
             Assert.True(restored.Binding.CheckStartup(OutputKind.Application).IsComplete);
-            Assert.True(restored.Ownership.Analyze().IsVerified);
+            Assert.True(restored.Analyze().IsVerified);
             using var output = new StringWriter();
-            Assert.True(restored.Emission.WriteIr(output, out error), error);
+            Assert.True(restored.WriteIr(output, out error), error);
             Assert.Equal(original.ToString(), output.ToString());
         }
     }

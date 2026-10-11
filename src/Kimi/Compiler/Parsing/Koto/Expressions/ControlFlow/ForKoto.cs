@@ -25,17 +25,29 @@ public sealed class ForKoto : ExpressionKoto
     /// <summary>Gets a value indicating whether the bindings use tuple syntax.</summary>
     public bool IsTupleBinding { get; private set; }
 
-    // SPEC 14.6.1: bit i is set when slot i is written "var Name"; a bare Name is a let binding.
-    private readonly ulong mutableSlots;
+    // SPEC 14.6.1: element i is set when slot i is written "var Name"; a bare Name is a let binding. Null when no slot is.
+    private readonly bool[]? mutableSlots;
 
     /// <summary>Gets or sets the Subject mode selected by the outermost operation of the iterable (SPEC 15.1.6).</summary>
-    internal SubjectMode Mode { get; set; }
+    internal SubjectMode Mode
+    {
+        get => (SubjectMode)HirTables.PlanOf(this).Mode;
+        set => HirTables.PlanFor(this, value != SubjectMode.Shared).Mode = (byte)value;
+    }
 
     /// <summary>Gets or sets the owning user protocol entry, outside the source tree.</summary>
-    internal InvocationKoto? EntryCall { get; set; }
+    internal InvocationKoto? EntryCall
+    {
+        get => HirTables.PlanOf(this).Second as InvocationKoto;
+        set => HirTables.PlanFor(this, value is not null).Second = value;
+    }
 
     /// <summary>Gets or sets the calls and item decomposition of a user protocol loop.</summary>
-    internal BoundIteration? Iteration { get; set; }
+    internal BoundIteration? Iteration
+    {
+        get => HirTables.PlanOf(this).Plan as BoundIteration;
+        set => HirTables.PlanFor(this, value is not null).Plan = value;
+    }
 
     /// <summary>Initializes a new instance of the <see cref="ForKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
@@ -44,7 +56,7 @@ public sealed class ForKoto : ExpressionKoto
     /// <param name="iterable">The expression that supplies values.</param>
     /// <param name="body">The loop body.</param>
     /// <param name="isTupleBinding">Whether the bindings use tuple syntax.</param>
-    /// <param name="mutableSlots">The bit set of slots declared with <c>var</c>.</param>
+    /// <param name="mutableSlots">Per slot, whether it is declared with <c>var</c>; null when none is.</param>
     public ForKoto(
         ref TokenReader reader,
         SourceSpan range,
@@ -52,7 +64,7 @@ public sealed class ForKoto : ExpressionKoto
         Koto iterable,
         CodeBlockKoto body,
         bool isTupleBinding,
-        ulong mutableSlots = 0)
+        bool[]? mutableSlots = null)
         : base(ref reader, range)
     {
         this.bindings = bindings;
@@ -69,14 +81,14 @@ public sealed class ForKoto : ExpressionKoto
     /// <summary>Gets whether the slot at <paramref name="index"/> is a reassignable iteration local (SPEC 14.6.1).</summary>
     /// <param name="index">The slot index.</param>
     /// <returns>Whether the slot was written <c>var Name</c>.</returns>
-    public bool IsMutableSlot(int index) => index >= 0 && index < 64 && ((this.mutableSlots >> index) & 1) != 0;
+    public bool IsMutableSlot(int index) => this.mutableSlots is { } slots && (uint)index < (uint)slots.Length && slots[index];
 
     /// <summary>Gets whether <paramref name="binding"/> is one of this loop's reassignable iteration locals.</summary>
     /// <param name="binding">A binding declared by this loop.</param>
     /// <returns>Whether the binding was written <c>var Name</c>.</returns>
     public bool IsMutableSlot(IdentifierNameKoto binding)
     {
-        if (this.mutableSlots == 0)
+        if (this.mutableSlots is null)
         {
             return false;
         }
@@ -130,53 +142,17 @@ public sealed class ForKoto : ExpressionKoto
         this.Body.WriteBranchTo(ref builder);
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        for (var bindingIndex = 0; bindingIndex < this.bindings.Count; bindingIndex++)
+        slots.List(this.bindings);
+        this.Iterable = slots.Slot(this.Iterable);
+        this.Body = slots.Slot(this.Body);
+        if (slots.Replaced)
         {
-            var binding = this.bindings[bindingIndex];
-            visitor.Visit(binding);
+            // Synthetic calls and arms retain source children; a syntax edit must not reuse the old entry or body.
+            this.Iteration?.Decomposition.Reset(null);
+            this.EntryCall = null;
+            this.Iteration = null;
         }
-
-        visitor.Visit(this.Iterable);
-        visitor.Visit(this.Body);
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-    {
-        foreach (var binding in this.bindings)
-        {
-            yield return binding;
-        }
-
-        yield return this.Iterable;
-        yield return this.Body;
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (oldKoto is IdentifierNameKoto && ReplaceInList(this.bindings, oldKoto, newKoto))
-        {
-            // The replacement slot is adopted by ReplaceChild after the cached protocol is retired below.
-        }
-        else if (this.Iterable == oldKoto)
-        {
-            this.Iterable = newKoto;
-        }
-        else if (this.Body == oldKoto && newKoto is CodeBlockKoto block)
-        {
-            this.Body = block;
-        }
-        else
-        {
-            return false;
-        }
-
-        // Synthetic calls and arms retain source children; a syntax edit must not reuse the old entry or body.
-        this.Iteration?.Decomposition.Reset(null);
-        this.EntryCall = null;
-        this.Iteration = null;
-
-        return true;
     }
 }

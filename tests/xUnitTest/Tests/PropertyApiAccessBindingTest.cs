@@ -22,9 +22,9 @@ public class PropertyApiAccessBindingTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var property = Assert.Single(c.Binding.Issues, x => x.Node is PropertyKoto && x.Node.BindingFailure == BindingFailure.Access);
-        Assert.False(((PropertyKoto)property.Node).BoundSymbol!.Property!.IsVerified);
-        Assert.False(c.Emission.Validate(out _));
+        var property = Assert.Single(c.Binding.Issues, x => x.Node is PropertyKoto && x.Node.FailureOf() == BindingFailure.Access);
+        Assert.False(((PropertyKoto)property.Node).SymbolOf()!.Property!.IsVerified);
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -50,10 +50,10 @@ public class PropertyApiAccessBindingTest
         var c = MinimalEmissionTest.Analyze($"internal struct Hidden\n{access} contract Api\n    property item: Hidden has get");
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         var property = Assert.Single(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api").Members.OfType<PropertyKoto>());
-        Assert.Equal(valid, property.BoundSymbol!.Property!.IsVerified);
+        Assert.Equal(valid, property.SymbolOf()!.Property!.IsVerified);
         if (!valid)
         {
-            Assert.Equal(BindingFailure.Access, property.BindingFailure);
+            Assert.Equal(BindingFailure.Access, property.FailureOf());
         }
     }
 
@@ -68,7 +68,7 @@ public class PropertyApiAccessBindingTest
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         if (!valid)
         {
-            Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+            Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         }
     }
 
@@ -98,11 +98,11 @@ public class PropertyApiAccessBindingTest
         var replacement = Assert.Single(valid.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api").Members.OfType<PropertyKoto>());
         Assert.True(KotoHelper.Replace(container, original, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(replacement.BoundSymbol!.Property!.IsVerified);
+        Assert.True(replacement.SymbolOf()!.Property!.IsVerified);
         Assert.True(KotoHelper.Replace(container, replacement, original));
         Assert.False(c.Bind().IsComplete);
-        Assert.Equal(BindingFailure.Access, original.BindingFailure);
-        Assert.False(original.BoundSymbol!.Property!.IsVerified);
+        Assert.Equal(BindingFailure.Access, original.FailureOf());
+        Assert.False(original.SymbolOf()!.Property!.IsVerified);
     }
 
     [Trait("Purpose", "Allocation")]

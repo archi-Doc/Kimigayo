@@ -64,7 +64,7 @@ public class EnumBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var invocation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single();
         Assert.True(c.Binding.TryGetEnumConstruction(invocation, out var plan));
-        Assert.Null(invocation.BoundCall);
+        Assert.Null(invocation.CallOf());
         Assert.Equal(0, plan!.Case.Ordinal);
         Assert.Equal(AcquisitionKind.CopyOrMove, plan.Acquisitions[0]);
         Assert.Equal(AcquisitionKind.Move, plan.Acquisitions[1]);
@@ -81,9 +81,9 @@ public class EnumBindingTest
         var c = CompilationTestHelper.ParseSuccess("var a: Option<i32>\nvar b: Option<string>\nvar r: Result<i32, i32>");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var variables = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().ToArray();
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(variables[0].BoundType!, variables[0]));
-        Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveCopy(variables[1].BoundType!, variables[1]));
-        Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveCopy(variables[2].BoundType!, variables[2]));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(variables[0].TypeOf()!, variables[0]));
+        Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveCopy(variables[1].TypeOf()!, variables[1]));
+        Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveCopy(variables[2].TypeOf()!, variables[2]));
     }
 
     [Theory]
@@ -158,30 +158,6 @@ public class EnumBindingTest
     }
 
     [Theory]
-    [InlineData(KimiDeclarationId.Option)]
-    [InlineData(KimiDeclarationId.Result)]
-    public void CoreShapeMutationIsRejected(KimiDeclarationId id)
-    {
-        var c = CompilationTestHelper.ParseSuccess("let x: Option<i32> = .Some(1)");
-        Assert.True(c.Bind().IsComplete, Describe(c));
-        var symbol = c.Library.GetSymbol(id)!;
-        c.Library.Kotonoha.CreateCodeContext().Parse((EnumKoto)symbol.Declaration, "Extra");
-        Assert.False(c.Bind().IsComplete);
-        Assert.Equal(KimiDeclarationState.Invalid, c.Library.GetDeclarationState(id));
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidKimiLibrary_Kd);
-    }
-
-    [Fact]
-    public void RepeatedCoreEnumHeaderInvalidatesCatalogEntry()
-    {
-        var c = CompilationTestHelper.ParseSuccess("let x: Option<i32> = .Some(1)");
-        Assert.True(c.Bind().IsComplete, Describe(c));
-        c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, "public enum Option<T>");
-        Assert.False(c.Bind().IsComplete);
-        Assert.Equal(KimiDeclarationState.Invalid, c.Library.GetDeclarationState(KimiDeclarationId.Option));
-    }
-
-    [Theory]
     [InlineData("func f(x: Option<i32>) => ()\nf(.Some(1))", true)]
     [InlineData("func f(x: Option<i32>) => ()\nf(.None)", true)]
     [InlineData("func f(x: Option<Option<i8>>) => ()\nf(.Some(.Some(127)))", true)]
@@ -196,7 +172,7 @@ public class EnumBindingTest
         var c = CompilationTestHelper.ParseSuccess(source);
         Assert.Equal(valid, c.Bind().IsComplete);
         var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().First();
-        Assert.Equal(valid, call.BoundCall is not null);
+        Assert.Equal(valid, call.CallOf() is not null);
         if (!valid)
         {
             Assert.DoesNotContain(KotoTree.Walk(c.Kotonoha.RootKoto), x => c.Binding.TryGetEnumConstruction(x, out _));
@@ -208,8 +184,8 @@ public class EnumBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess("let x: Option<i32> = .Some(1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.True(c.Ownership.Analyze().IsVerified);
+        Assert.False(c.Analysis.IsVerified);
+        Assert.True(c.Analyze().IsVerified);
     }
 
     [Theory]

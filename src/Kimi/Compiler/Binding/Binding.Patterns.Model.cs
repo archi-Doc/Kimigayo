@@ -95,6 +95,17 @@ public sealed class BoundMatch
     /// <summary>Gets or sets the Subject mode: the access that the Subject Place grants (SPEC 15.1.6).</summary>
     internal SubjectMode Mode { get; set; }
 
+    /// <summary>Gets the Pattern plan (PatternPlan, plan 5.3) the current pass made for a match or a try, or the Some/None decomposition
+    /// of a for loop over a user iteration entry, whose positions bind its iteration bindings; null for another node or loop.</summary>
+    /// <param name="node">The match, try or for loop.</param>
+    /// <returns>The plan, or null.</returns>
+    internal static BoundMatch? Of(Koto node) => node switch
+    {
+        MatchKoto match => match.CodeContext.Compilation.Binding.TryGetMatch(match, out var plan) ? plan : null,
+        ForKoto { Iteration.Decomposition: { IsCurrent: true } decomposition } => decomposition,
+        _ => null,
+    };
+
     internal void Reset(MatchKoto? syntax)
     {
         this.Syntax = syntax!;

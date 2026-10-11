@@ -101,7 +101,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
         foreach (var comment in Assert.Single(tree.DocumentationSources).Comments)
         {
             var published = tree.Compilation.Binding.GetDocumentation(comment.Declaration!, true);
-            Assert.True(published.Count == 1, $"{comment.GetText().Text}: {comment.Declaration?.Akind}, {comment.Declaration?.BoundSymbol}");
+            Assert.True(published.Count == 1, $"{comment.GetText().Text}: {comment.Declaration?.Akind}, {comment.Declaration?.SymbolOf()}");
             Assert.Same(comment, published[0]);
         }
     }
@@ -157,9 +157,9 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
             }
 
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
+            Assert.True(c.Analyze().IsVerified);
             using var writer = new StringWriter();
-            Assert.True(c.Emission.WriteIr(writer, out var error), error);
+            Assert.True(c.WriteIr(writer, out var error), error);
             return writer.ToString();
         }
     }

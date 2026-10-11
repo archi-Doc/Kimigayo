@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Parsing;
+
 namespace Kimi.Compiler;
 
 #pragma warning disable SA1402, CS1591 // Compiler-owned identity vocabulary.
@@ -37,7 +39,6 @@ public enum CompilerFunctionKind : byte
     ArrayClear,
     ArrayShrinkToFit,
     ArraySwap,
-    ArrayWithCapacity,
     TextFixed,
     TextHeap,
     TextWriter,
@@ -68,6 +69,7 @@ public enum CompilerFunctionKind : byte
     BuiltinFormat,
     BuiltinEquals,
     BuiltinCompare,
+    BuiltinArithmetic,
     StorageBorrowShared,
     StorageBorrowExclusive,
     StorageOwn,
@@ -94,4 +96,133 @@ public enum CompilerFunctionKind : byte
     RawRelease,
     RawInitialize,
     RawSlice,
+}
+
+/// <summary>A compiler intrinsic (plan 5.8): an operation Kimigayo cannot express, which MIR calls as an <c>Intrinsic</c> callee and the
+/// backend generates. <see cref="IntrinsicKind"/> is another concept, the compiler-known Contracts.</summary>
+internal enum IntrinsicId : byte
+{
+    None,
+    RawAllocate, // Memory (SPEC 5.6, 22.1.2.5).
+    RawRelease,
+    RawInitialize,
+    RawSlice,
+    TryAllocateBytes,
+    MoveBytes, // A byte copy whose ranges may overlap.
+    Stride, // Type facts (SPEC 22.1.2.5, IMPL 21.2.2); destroying the values of a cleanup-free T generates nothing.
+    DestroyValues,
+    ReinterpretLoan, // shareLoan and lendLoan (SPEC 22.1.2.5).
+    Abort, // $abort (SPEC 17.3).
+    Fail, // A fixed SPEC 22.5.4 code.
+    WriteStdout, // SPEC 22.4, 22.5.
+    FormatFloat, // Formatting (utf8-formatting 1): Ryu, the erased entry Text.writer makes, the erased reserve, i128 until Kimigayo formats it.
+    ErasedWriter,
+    ErasedReserve,
+    FormatInteger128,
+    MakeObj, // Handles (IMPL 21.2.3, SPEC 13.6); the Weak operations come with P35.
+    MakeRc,
+    MakeArc,
+    Clone,
+    TypeTest,
+    TestObserve, // Tests (SPEC 22.6.1, testing profile).
+    TestMessage,
+    TestRequireAbort,
+    TestRecordValue,
+    TestPhaseEnter,
+    TestPhaseLeave,
+    TestTempDirectory,
+    StaticEnsure, // SPEC 22.2.3.
+}
+
+/// <summary>How a call of a compiler function is served (plan 5.8).</summary>
+internal enum DispositionKind : byte
+{
+    Body, // A Kimigayo body: the declaration's own, or for a compiler function the body R8 writes, which until then the backend serves from the legacy runtime helpers.
+    Intrinsic, // An IntrinsicId; Fail carries its fixed SPEC 22.5.4 code.
+    Shim, // A built-in witness (formatting, equality, comparison, arithmetic), whose body the backend generates for its instance.
+}
+
+/// <summary>The intrinsic table (plan 5.8): the one disposition of each <see cref="CompilerFunctionKind"/>.</summary>
+/// <param name="Kind">How the call is served.</param>
+/// <param name="Id">The intrinsic of an Intrinsic disposition.</param>
+/// <param name="Code">The SPEC 22.5.4 code of <see cref="IntrinsicId.Fail"/>.</param>
+internal readonly record struct IntrinsicDisposition(DispositionKind Kind, IntrinsicId Id = IntrinsicId.None, string? Code = null)
+{
+    internal static IntrinsicDisposition Of(CompilerFunctionKind kind) => kind switch
+    {
+        CompilerFunctionKind.None or CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or
+            CompilerFunctionKind.Swap or CompilerFunctionKind.ArrayReserve or CompilerFunctionKind.ArrayAppend or CompilerFunctionKind.ArrayInsert or CompilerFunctionKind.ArrayPop or
+            CompilerFunctionKind.ArrayRemove or CompilerFunctionKind.ArrayClear or CompilerFunctionKind.ArrayShrinkToFit or CompilerFunctionKind.ArraySwap or
+            CompilerFunctionKind.TextFixed or CompilerFunctionKind.TextHeap or CompilerFunctionKind.TextUtf8 or CompilerFunctionKind.TextValidateUtf8 or CompilerFunctionKind.TextToString or
+            CompilerFunctionKind.TextTryFormat or CompilerFunctionKind.TextRelease or CompilerFunctionKind.FixedBufferBytes or CompilerFunctionKind.FixedBufferText or
+            CompilerFunctionKind.FixedBufferValidate or CompilerFunctionKind.FixedBufferClear or CompilerFunctionKind.FixedBufferReserve or CompilerFunctionKind.FixedBufferIntoText or
+            CompilerFunctionKind.HeapBufferBytes or CompilerFunctionKind.HeapBufferText or CompilerFunctionKind.HeapBufferValidate or CompilerFunctionKind.HeapBufferClear or
+            CompilerFunctionKind.HeapBufferReserve or CompilerFunctionKind.HeapBufferIntoString or CompilerFunctionKind.WindowPush or CompilerFunctionKind.WindowAppend or
+            CompilerFunctionKind.WindowLimit or CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterWrite or CompilerFunctionKind.WriterStatus or
+            CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive or CompilerFunctionKind.StorageOwn or CompilerFunctionKind.StorageBorrowDictionary or
+            CompilerFunctionKind.StorageBorrowDictionaryExclusive or CompilerFunctionKind.StorageOwnDictionary or CompilerFunctionKind.StorageKeyAt or CompilerFunctionKind.StorageValueAt or
+            CompilerFunctionKind.StorageBorrowFixedShared or CompilerFunctionKind.StorageBorrowFixedExclusive or CompilerFunctionKind.StorageOwnFixed or
+            CompilerFunctionKind.StorageDictionaryLayout or CompilerFunctionKind.StoragePlaceDictionaryEntry or CompilerFunctionKind.StorageBorrowUniqSlice or
+            CompilerFunctionKind.StorageSetArrayLength => default,
+        CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.BuiltinArithmetic => new(DispositionKind.Shim),
+        CompilerFunctionKind.Abort => Intrinsic(IntrinsicId.Abort),
+        CompilerFunctionKind.MakeObj => Intrinsic(IntrinsicId.MakeObj),
+        CompilerFunctionKind.MakeRc => Intrinsic(IntrinsicId.MakeRc),
+        CompilerFunctionKind.MakeArc => Intrinsic(IntrinsicId.MakeArc),
+        CompilerFunctionKind.Clone => Intrinsic(IntrinsicId.Clone),
+        CompilerFunctionKind.TestTempDirectory => Intrinsic(IntrinsicId.TestTempDirectory),
+        CompilerFunctionKind.TextWriter => Intrinsic(IntrinsicId.ErasedWriter),
+        CompilerFunctionKind.StorageTryAllocateBytes => Intrinsic(IntrinsicId.TryAllocateBytes),
+        CompilerFunctionKind.StorageTransferBytes => Intrinsic(IntrinsicId.MoveBytes),
+        CompilerFunctionKind.RawAllocate => Intrinsic(IntrinsicId.RawAllocate),
+        CompilerFunctionKind.RawRelease => Intrinsic(IntrinsicId.RawRelease),
+        CompilerFunctionKind.RawInitialize => Intrinsic(IntrinsicId.RawInitialize),
+        CompilerFunctionKind.RawSlice => Intrinsic(IntrinsicId.RawSlice),
+        CompilerFunctionKind.StorageIndexBounds => Fail("KIMI_E_INDEX_BOUNDS"),
+        CompilerFunctionKind.StorageMissingDictionaryKey => Fail("KIMI_E_MISSING_KEY"),
+        CompilerFunctionKind.StorageArgumentOutOfRange => Fail("KIMI_E_ARG_RANGE"),
+        CompilerFunctionKind.StorageCountOverflow => Fail("KIMI_E_INT_OVERFLOW"),
+        CompilerFunctionKind.StorageAllocationSizeExceeded => Fail("KIMI_E_ALLOC_SIZE"),
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
+
+    // The builder-only rows (R3 decision 5): the existing compiler function that serves a built-in form, whose own row is its disposition
+    // (a Body R8 writes over the representation structs, which the legacy helpers serve until then); None where MIR states the form itself
+    // (Len, Len == 0, the ResolvedRange aggregate) or, for Capacity, the backend reads the handle's capacity Field until R8.
+    internal static CompilerFunctionKind Serving(BuiltinForm form) => form switch
+    {
+        BuiltinForm.ArrayLiteral => CompilerFunctionKind.ArrayAppend, // Each element into the empty Array, after ArrayReserve of their count.
+        BuiltinForm.Slice => CompilerFunctionKind.RawSlice, // From the start its range resolves to against Len.
+        BuiltinForm.DirectBuffer => CompilerFunctionKind.TextFixed, // Over a stack region where the instance bounds the writes, else Text.heap.
+        _ => CompilerFunctionKind.None,
+    };
+
+    // The built-in form of a published node: a sequence's metadata by its member, a dynamic Array literal, a built-in slicing (an Index
+    // whose Place is a value) and a direct interpolation.
+    internal static BuiltinForm FormOf(Koto node) => HirTables.Op(node) switch
+    {
+        HirOp.PrimitiveOp when node is MemberAccessKoto member => Binding.SequenceMember(member),
+        HirOp.Aggregate when node is ArrayLiteralKoto { BoundType.Kind: BoundTypeKind.Array } => BuiltinForm.ArrayLiteral,
+        HirOp.Index when HirTables.PlaceOf(node).Kind == HirPlaceKind.Value => BuiltinForm.Slice,
+        HirOp.Interpolation when ExpansionPlan.Of(node) is { Direct: true } => BuiltinForm.DirectBuffer,
+        _ => BuiltinForm.None,
+    };
+
+    private static IntrinsicDisposition Intrinsic(IntrinsicId id) => new(DispositionKind.Intrinsic, id);
+
+    private static IntrinsicDisposition Fail(string code) => new(DispositionKind.Intrinsic, IntrinsicId.Fail, code);
+}
+
+/// <summary>A built-in form with neither a call Binding selected nor an intrinsic of its own (R3 decision 5):
+/// <see cref="IntrinsicDisposition.FormOf"/> gives a node's, <see cref="IntrinsicDisposition.Serving"/> its builder-only row.</summary>
+internal enum BuiltinForm : byte
+{
+    None,
+    Length, // A sequence's length (SPEC 4.6.1).
+    IsEmpty,
+    Indices, // The ResolvedRange from 0 to the length (SPEC 4.6.3).
+    Capacity, // An Array's or a Dictionary's capacity (SPEC 4.7.4).
+    ArrayLiteral, // An Array literal (SPEC 4.7.4, 12.3.2).
+    Slice, // A built-in range indexing of a sequence (SPEC 4.6.1, 4.6.5).
+    DirectBuffer, // An interpolation passed directly to writeLine (utf8-formatting 6.1).
 }

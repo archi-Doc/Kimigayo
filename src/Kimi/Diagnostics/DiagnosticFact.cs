@@ -133,13 +133,12 @@ internal readonly struct DiagnosticKey : IEquatable<DiagnosticKey>
 /// <param name="First">The first message argument, captured as a value.</param>
 /// <param name="Second">The second message argument, captured as a value.</param>
 /// <param name="Note">A Note formed from the facts.</param>
-/// <param name="Advice">Conditional advice formed from the facts.</param>
 /// <param name="DerivedFrom">The check keys of the unmet prerequisites.</param>
 /// <param name="Evidence">The code's evidence facts, captured as values, or <see langword="null"/> when the report has none.</param>
 /// <param name="Related">Locations the recorder relates to the problem, such as the candidates of a failed selection.</param>
 /// <param name="Repairs">The repair candidates the recorder offers (SPEC 23.3.6.9), validated and ordered at the recording boundary, or <see langword="null"/> for none.</param>
 internal readonly record struct DiagnosticFact(
-    DiagnosticCode Code, DiagnosticKey Key, int Source, int Start, int Length, object? First, object? Second, string? Note, string? Advice, DiagnosticKey[]? DerivedFrom,
+    DiagnosticCode Code, DiagnosticKey Key, int Source, int Start, int Length, object? First, object? Second, string? Note, DiagnosticKey[]? DerivedFrom,
     object?[]? Evidence = null, DiagnosticRelatedFact[]? Related = null, DiagnosticRepairFact[]? Repairs = null);
 
 /// <summary>One edit of a repair candidate as recorded: a span of a recorded input and its replacement (SPEC 23.3.6.9).</summary>

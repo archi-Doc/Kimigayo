@@ -50,7 +50,7 @@ internal sealed class DefaultGenerationPlan
         for (var i = 0; i < parameters.Length; i++)
         {
             var type = binding.InstantiateStorageType(function.Parameters[i].Type.BoundType!, call);
-            if (type is null || !FunctionAbi.SupportsParameter(type, layouts))
+            if (type is null || !FunctionAbi.Supports(type, layouts))
             {
                 failure = "Default evaluator input has no concrete representation.";
                 return null;
@@ -151,13 +151,13 @@ internal sealed class DefaultGenerationPlan
         return new(name, FunctionAbi.ResultType(result, layouts)!, parameters, resultSlot: resultSlot);
     }
 
-    internal sealed class Entry(FunctionKoto function, int parameter, BoundCall call, BoundType[] parameters, BoundType result, FunctionAbi abi)
+    internal sealed class Entry(FunctionKoto function, int parameter, CallPlan call, BoundType[] parameters, BoundType result, FunctionAbi abi)
     {
         internal FunctionKoto Function { get; } = function;
 
         internal int Parameter { get; } = parameter;
 
-        internal BoundCall Call { get; set; } = call;
+        internal CallPlan Call { get; set; } = call;
 
         internal BoundType[] Parameters { get; } = parameters;
 

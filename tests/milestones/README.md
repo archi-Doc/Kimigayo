@@ -1,6 +1,6 @@
 # Language milestones
 
-Forty-two independent programs are planned from the current [SPEC](../../docs/SPEC.md).
+Forty-three independent programs are planned from the current [SPEC](../../docs/SPEC.md).
 Every program has a source file; programs 34–39 were authored on 2026-09-27 and Program 40 on 2026-10-03.
 They are staged compiler implementation targets. Execution evidence and support
 boundaries are recorded in [STATUS.md](../../docs/STATUS.md); expected output alone is
@@ -127,8 +127,8 @@ authoring correction re-spelled the pending program 36:
 | 21 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections (harness added 2026-09-23) |
 | 22 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections (the InfiniteLayout rejection added 2026-09-23); [evidence](../../docs/dev/PLAN_HISTORY.md#program22-completion) |
 | 23 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (67 checks/configuration) | DONE | Unchanged target, name/value/compound/restricted-read/setter-Type variants and required rejections pass; focused lifetime/projection/Move tests and both full suites pass. Earlier-program harness scope was reduced by the user. |
-| 24 | YES | FAIL | FAIL (prior Debug/Release, O0/O2 probes) | NOT_RUN | TODO | Current Binding first reports `UnsupportedBinding_Kd` at required `value.item` (a Contract Property requirement read through a generic receiver); ownership-bearing setters/getters and Contract Property calls remain. |
-| 25 | YES | PASS | FAIL (prior Debug/Release native probes) | NOT_RUN | IN_PROGRESS | Current Binding passes; ownership analysis stops at inherited `value.count` with `UnsupportedOwnership_Kd`. Explicit base construction and layered destruction have focused native coverage. |
+| 24 | YES | PASS | PASS (Release, O0/O2) | PASS | DONE (2026-10-07) | Original source exercises Non-Copy replacement, borrowed getter results, standard borrow witnesses and owned receiver consumption. Focused ownership/permission tests and warm compiler measurements accompany Session evidence in PLAN. |
+| 25 | YES | PASS | PASS (Release, O0/O2) | PASS (focused projection checks) | IN_PROGRESS | Original-source harness, inherited storage, omitted base calls, derived implicit constructors, qualification diagnostics, shared inherited requirement dispatch, inherited standard Property bridges, shared base methods/getters and allocation reuse pass. Remaining: exclusive receiver projections (OCC-X). |
 | 26 | YES | PASS | PASS (Release, O0/O2) | PASS (Release) | DONE | Completed 2026-10-05 by user decision with recorded gaps: the unchanged source passes its original-source harness; the held follow-ups (PLAN G75, G76, G77) and the located limits (N25b, N26b, N27b, N27c, N24, LR, `T.compare`) are listed in the PLAN P26 row, and their behavior is in STATUS. [P26 completion](../../docs/dev/PLAN_HISTORY.md#p26-completion). |
 | 27 | YES | PASS | PASS (Debug, O0/O2) | PASS (Debug) | DONE | 97 Debug harness checks (`artifacts/verify/20260926-154051-101-unit-m27-harness1`): the program, 12 variants (Index/Range/ResolvedRange keys, try-prefixed operations, saved bounds reapplied, bounds Aborts) and 11 rejections. [P27 completion](../../docs/dev/PLAN_HISTORY.md#p27-completion). Re-spelled 2026-09-30 for P41 (`FromEnd<i32>` and `Range<S, E>` in place of `Index`/`IndexRange`); the re-spelled harness passes in Release (`artifacts/verify/20260929-163311-215-unit-p41-u45`). |
 | 28 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (43 checks per configuration) | DONE | Completed 2026-09-29. The unchanged target executes through user `IntoIterable`/`Iterator` calls, with owned item cleanup, continue/exit, generic Option extraction and retained external references; the harness also checks exhaustion, empty enumeration, return, unnamed items and five rejection variants. Every standard collection now iterates through Kimigayo entries over `Kimi.Storage` (Array, Dictionary, fixed array, Slice), with LendingIterator, the `Kimi.Iteration` adapters and associated families. Session `artifacts/verify/20260929-132623-627-session-p28-completion` passes the Debug/Release suites and the harnesses of every completed program. |
@@ -138,14 +138,15 @@ authoring correction re-spelled the pending program 36:
 | 32 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | DONE: unchanged target, O0/O2 UTF-8/NUL/empty/numeric/failure variants and required rejections pass through `test-milestone32.ps1`; runtime costs and full-session regressions pass. [Evidence](../../docs/dev/PLAN_HISTORY.md#program32-completion). |
 | 33 | YES | FAIL | FAIL (prior Debug/Release native probes) | NOT_RUN | IN_PROGRESS | Re-spelled 2026-09-25 and 2026-09-26 (`@follow` payload borrows, `@move` transfer). Current Binding first stops at refinement-dependent `view.extra` with `UnresolvedBinding_Kd`. Explicit base construction, concrete runtime Type tests and complete dynamic destruction have focused native coverage. |
 | 34 | YES | PASS | PASS (Release, O0/O2) | PASS | IN_PROGRESS | The unchanged source executes through its original-source harness (2026-10-04, U5). rc/arc creation, clone, shared views and final release are verified; dependent handle updates are verified by G70/U6 (2026-10-06). The milestone completion review and all-prior-program harness condition remain in PLAN U7. |
-| 35 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `UnsupportedBinding_Kd` at `Weak` in `Weak<rc/Node>`: `Weak` and the Weak/cyclic intrinsics are cataloged without declarations (PLAN G4). |
-| 36 | YES | PASS | NOT_RUN | NOT_RUN | IN_PROGRESS | Authored 2026-09-27; re-spelled 2026-10-04 (authoring correction: `Resource.drop` gains the `2 =>` arm). Binding passes; ownership analysis stops at the static group `Registry` with `UnsupportedOwnership_Kd` (static stored Properties are not analyzed or generated). |
+| 35 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `Unsupported_Kd` at `Weak` in `Weak<rc/Node>`: `Weak` and the Weak/cyclic intrinsics are cataloged without declarations (PLAN G4). |
+| 36 | YES | PASS | NOT_RUN | NOT_RUN | IN_PROGRESS | Authored 2026-09-27; re-spelled 2026-10-04 (authoring correction: `Resource.drop` gains the `2 =>` arm). Binding passes; ownership analysis stops at the static group `Registry` with `Unsupported_Kd` (static stored Properties are not analyzed or generated). |
 | 37 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-09-27. The unchanged target, five variants (two views, alternate threshold, early stop, out-of-range removal Abort) and four rejections pass 47 harness checks in Debug and Release (`test-milestone37.ps1`, `artifacts/verify/20260926-201111-530-session-p39-pair-layers`). `WorkloadCostTest` observes three heap allocations for the workload and logarithmic allocations for a scaled workload. Harness re-spelled 2026-09-30 for P41: the out-of-range removal Aborts at the `removeAt` call of the Kimigayo entry in `Array.kimi`. |
-| 38 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `UnsupportedBinding_Kd` at `Weak` in `Weak<rc/Lamp>` in the static registry (PLAN G4); payload follow through a refined view and the custom setter through an owning handle report later `TypeMismatch_Kd` diagnostics (P33–P35 scope). Device, Lamp and Sensor bind. |
+| 38 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `Unsupported_Kd` at `Weak` in `Weak<rc/Lamp>` in the static registry (PLAN G4); payload follow through a refined view and the custom setter through an owning handle report later `TypeMismatch_Kd` diagnostics (P33–P35 scope). Device, Lamp and Sensor bind. |
 | 39 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored 2026-09-27 per SPEC §13.5.5.1 (pair layers) and completed the same day; the two constructions were re-spelled with their Type arguments (G24). The unchanged re-spelled target, two variants and four rejections pass 29 harness checks in Debug and Release (`test-milestone39.ps1`, `artifacts/verify/20260926-225920-160-session-p39-completion`). |
 | 40 | YES | PASS | PASS (Release, O0/O2) | PASS | DONE | Completed 2026-10-04 with unchanged source; sibling fields, calls and stored exclusive references keep their split identities. Session `20261003-154434-122-session-p40-u1-u2-session` passes all 34 completed harnesses ([Milestone 40](#milestone-40-disjoint-exclusive-element-access)). |
 | 41 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-09-30 per SPEC §4.6 (positions and ranges, P41); Session `20260929-171813-572-session-p41-completion`. The unchanged target, nine variants (wide positions, direct and saved ranges, expected boundary Types, closed iteration below the maximum, Array positions, and four Aborts) and seven rejections pass 77 Release harness checks (`test-milestone41.ps1`, `artifacts/verify/20260929-171515-671-unit-p41-program`); see [Milestone 41](#milestone-41-positions-and-ranges). |
 | 42 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-10-01 per SPEC §3.1.1.1, §13.3 and §13.5.4 (wrapping integers, integer results and conversions, P42). The unchanged target passes the original-source harness at O0 and O2 (`test-milestone42.ps1`); the separate checks are the P42 unit tests; see [Milestone 42](#milestone-42-wrapping-integers-integer-results-and-conversions). |
+| 43 | YES | PASS | PASS (Release) | PASS (Release) | IN_PROGRESS | Arithmetic Contracts: Non-Copy operators, numeric-left literals, generic witnesses and Function values, borrowed element replacement and explicit Result propagation; original-source harness `test-milestone43.ps1`. |
 
 [Restructuring audit](../../docs/dev/PLAN_HISTORY.md#programs38-restructure) records source/DLL
 identities and exact commands: Release compiler/test-project build PASS with zero
@@ -1375,7 +1376,7 @@ not expose a Move or exclusive borrow. `Parcel.intoResult()` consumes its receiv
 (an accessor receiver is always shared for `get`, SPEC §11.2) and returns its owned
 field, whose destruction responsibility transfers to `owned`.
 
-Expected stdout (specification-derived; native execution is blocked):
+Expected stdout (original-source Release, O0/O2 harness):
 
 ```text
 Setter entered.
@@ -1412,7 +1413,7 @@ base slot, and the inherited Type function keeps its declaring identity. Moving
 the complete derived value transfers both layers; cleanup runs derived `drop`,
 derived Fields, base `drop`, then base Fields, exactly once.
 
-Expected stdout (specification-derived; native execution is blocked):
+Expected stdout (original-source O0/O2 harness):
 
 ```text
 Base field initialized.
@@ -1640,7 +1641,7 @@ growth-transfer bounds, failed shrink preservation and representable capacity
 limits; repeated shared views allocate no storage, and warm Binding, ownership,
 validation, emission and whole-pipeline probes allocate zero bytes. Zero-sized
 elements and shared string iteration, which are outside the verified generation
-boundary, are rejected by ownership analysis with `UnsupportedOwnership_Kd`.
+boundary, are rejected by ownership analysis with `Unsupported_Kd`.
 
 Focus: [Array operations](../../docs/spec/04-arrays-indexing-and-slices.md#472-array-operations),
 [capacity](../../docs/spec/04-arrays-indexing-and-slices.md#474-capacity-and-allocation),

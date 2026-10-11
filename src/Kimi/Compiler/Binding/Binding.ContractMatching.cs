@@ -6,22 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(BoundConformancePath Conformance, BindingSymbol Requirement), BindingScope> witnessScopes = new();
-
-    // SPEC 8.4.2: an inherited requirement's path is registered under the ancestor as the refining Contract names it,
-    // which is a bound reference when the parent takes Type arguments (Indexable<isize> under UniqIndexable<isize>).
-    private static BindingSymbol RequirementAncestor(BoundContract shape, BindingSymbol owner)
-    {
-        for (var i = 0; i < shape.Ancestors.Count; i++)
-        {
-            if (ReferenceEquals(shape.Ancestors[i].Declaration, owner.Declaration))
-            {
-                return shape.Ancestors[i];
-            }
-        }
-
-        return owner;
-    }
+    private readonly Dictionary<(BoundConformancePath Conformance, BoundRequirement Requirement), BindingScope> witnessScopes = new();
 
     private static bool SameGenericShape(FunctionKoto requirement, FunctionKoto implementation)
     {
@@ -153,11 +138,40 @@ public sealed partial class Binding
         return true;
     }
 
+    // SPEC 12.4.4.1, 23.3.6.1: a witness whose ObjectCallCompatible status is not computed leaves the verification Unknown; it is the
+    // conformance's limit (Unsupported) only when nothing else is unproven.
+    private static ConstraintProof UnsupportedProof(BoundConformancePath path, ConstraintProof proof)
+    {
+        path.Unsupported &= proof == ConstraintProof.Proven;
+        return path.Unsupported ? ConstraintProof.Unknown : proof;
+    }
+
     private ConstraintProof VerifyConformance(BoundConformancePath conformance, ConstraintProof? inheritedProof = null)
     {
+        // A limit is the fact of a completed verification; an early or in-progress answer has none (ResolveConformance).
+        if (!conformance.Checking)
+        {
+            conformance.Unsupported = false;
+        }
+
+        if (this.collectingAssociated is not null && this.associatedInference.TryGetValue(conformance.Type, out var batch) && batch.State != 2)
+        {
+            return ConstraintProof.Unknown; // Type-value scheduling never certifies a collecting definition.
+        }
+
+        if (conformance.InheritedFrom is not null)
+        {
+            return this.VerifyInheritedConformance(conformance);
+        }
+
         if (conformance.Identity.Invalid || conformance.Invalid || conformance.Declaration.BindingState == BindingState.Invalid || conformance.Scope.Parent?.Constraints?.Invalid == true || InvalidDeclarationContext(conformance.Contract.Declaration) || InvalidDeclarationContext(conformance.Type.Declaration))
         {
             conformance.IsVerified = false;
+            if (conformance.Invalid && this.partPrerequisites.ContainsKey(conformance.Use))
+            {
+                this.failedConformance ??= conformance; // A use rests on a conformance that rests on its specification.
+            }
+
             return ConstraintProof.Error;
         }
 
@@ -178,16 +192,23 @@ public sealed partial class Binding
         }
 
         conformance.Checking = true;
+        this.conformanceChecks++;
         conformance.WitnessStorage.Clear();
         conformance.WitnessMap.Clear();
         conformance.PropertyWitnessStorage.Clear();
         conformance.PropertyWitnessMap.Clear();
+        var completed = false;
         try
         {
             var shape = conformance.Contract.Contract!;
             var scope = conformance.Scope;
             var self = this.ContractType(this.SelfType(conformance.Type), scope);
             var declarationProof = this.CheckClosedDeclarationConstraints((DeclarationContainerKoto)conformance.Type.Declaration);
+            if (!this.ValidArithmeticConformance(conformance, self))
+            {
+                return ConstraintProof.Error;
+            }
+
             if (conformance.Premises is { } premises)
             {
                 for (var p = 0; p < premises.Operands.Length; p++)
@@ -209,10 +230,32 @@ public sealed partial class Binding
             }
 
             var proof = declarationProof;
+            IsKoto? specification = null;
             for (var i = 0; i < shape.AssociatedTypes.Count; i++)
             {
                 if (!conformance.AssociatedStorage.TryGetValue(shape.AssociatedTypes[i], out var associated))
                 {
+                    var identity = shape.AssociatedTypes[i];
+                    if (this.SpecificationPart(conformance, identity) is { } part)
+                    {
+                        // SPEC 23.3.6.4: an identity whose explicit specification did not bind is never inferred; its absence rests on
+                        // that specification, while every other missing identity still reports.
+                        specification ??= part;
+                        continue;
+                    }
+
+                    if (this.InferenceHole(conformance, identity))
+                    {
+                        var binding = this.associatedBindings[(conformance.RootPath, identity)];
+                        if (binding.Problem is InferenceProblem.Missing or InferenceProblem.Ambiguous)
+                        {
+                            return Invalid(binding.Problem == InferenceProblem.Missing ? BindingFailure.MissingImplementation : BindingFailure.Ambiguous);
+                        }
+
+                        this.inferenceFailures.TryAdd(conformance.Use, (identity, binding));
+                        return Invalid(BindingFailure.AssociatedInference);
+                    }
+
                     return Invalid(BindingFailure.InvalidAssociatedType);
                 }
 
@@ -230,6 +273,11 @@ public sealed partial class Binding
                     // Projection normalization may erase an invalid constructed qualifier.
                     proof = CombineProof(proof, this.CheckTypeConstraints(inputs[input], formationScope), true);
                 }
+            }
+
+            if (specification is not null)
+            {
+                return RestOnSpecification(specification);
             }
 
             if (inheritedProof is { } inheritedResult)
@@ -272,7 +320,7 @@ public sealed partial class Binding
                     return ConstraintProof.Unknown;
                 }
 
-                var clauseScope = this.AssociatedFormationScope(conformance, shape.ClauseStorage[i].BoundSymbol, scope);
+                var clauseScope = this.AssociatedFormationScope(conformance, this.AssociatedIdentity(shape.ClauseStorage[i].Left.BoundType, shape.Symbol), scope);
                 proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, clauseScope, self), clauseScope), true);
             }
 
@@ -285,12 +333,12 @@ public sealed partial class Binding
                     {
                         if (clause.BindingState == BindingState.Invalid)
                         {
-                            return Invalid(BindingFailure.InvalidAssociatedType);
+                            return RestOnSpecification(clause);
                         }
 
-                        if (clause.BoundConstraint is { } constraint && shape.AssociatedStorage.Contains(clause.BoundSymbol!))
+                        if (clause.BoundConstraint is { } constraint && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && shape.SeenRequirements.Contains(identity))
                         {
-                            var clauseScope = this.AssociatedFormationScope(conformance, clause.BoundSymbol, scope);
+                            var clauseScope = this.AssociatedFormationScope(conformance, identity, scope);
                             proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, clauseScope, self), clauseScope), true);
                         }
                     }
@@ -299,41 +347,27 @@ public sealed partial class Binding
 
             for (var i = 0; i < container.Members.Count; i++)
             {
-                if (container.Members[i] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && shape.AssociatedStorage.Contains(clause.BoundSymbol!) &&
+                if (container.Members[i] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && shape.SeenRequirements.Contains(identity) &&
                     SpecifiesContract(clause, conformance.Contract))
                 {
                     if (clause.BindingState == BindingState.Invalid)
                     {
-                        return Invalid(BindingFailure.InvalidAssociatedType);
+                        return RestOnSpecification(clause);
                     }
 
-                    var clauseScope = this.AssociatedFormationScope(conformance, clause.BoundSymbol, scope);
+                    var clauseScope = this.AssociatedFormationScope(conformance, identity, scope);
                     proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, clauseScope, self), clauseScope), true);
                 }
             }
 
             for (var i = 0; i < shape.Requirements.Count; i++)
             {
-                var requirement = shape.Requirements[i];
-                if (!ReferenceEquals(requirement.Scope.Owner, conformance.Contract.Declaration))
+                var identity = shape.Requirements[i];
+                var requirement = identity.Symbol;
+                if (!ReferenceEquals(identity.Contract, conformance.Contract))
                 {
-                    var ancestor = this.conformancePaths[(conformance.Type, RequirementAncestor(shape, requirement.Scope.Owner.BoundSymbol!), conformance.Declaration, conformance.RootContract)];
-                    if (ancestor.GetImplementation(requirement) is { } inherited)
-                    {
-                        var inheritedWitness = ancestor.WitnessMap[requirement];
-                        conformance.WitnessStorage.Add(inheritedWitness);
-                        conformance.WitnessMap.Add(requirement, inheritedWitness);
-                        for (var w = 0; w < ancestor.PropertyWitnessStorage.Count; w++)
-                        {
-                            var operation = ancestor.PropertyWitnessStorage[w];
-                            if (ReferenceEquals(operation.Requirement.Property.Symbol, requirement))
-                            {
-                                conformance.PropertyWitnessStorage.Add(operation);
-                                conformance.PropertyWitnessMap.Add((requirement, operation.Requirement.Kind), operation);
-                            }
-                        }
-                    }
-                    else
+                    var ancestor = this.conformancePaths[(conformance.Type, identity.Contract, conformance.Declaration, conformance.RootContract)];
+                    if (!CopyRequirementWitness(ancestor, conformance, identity))
                     {
                         proof = CombineProof(proof, ConstraintProof.Unknown, true);
                     }
@@ -358,49 +392,25 @@ public sealed partial class Binding
                     return ConstraintProof.Unknown;
                 }
 
-                BindingSymbol? selected = null;
-                var matches = 0;
-                var pending = false;
-                var selection = this.LookupTypeMember(self, requirement.Name, scope, self);
-                if (selection.Ambiguous)
+                var match = this.IdentifyRequirement(conformance, identity, self);
+                if (match.State == RequirementMatchState.Ambiguous)
                 {
                     return Invalid(BindingFailure.Ambiguous);
                 }
 
-                pending |= selection.Pending;
-                for (var candidate = selection.Member; candidate is not null; candidate = candidate.Next)
-                {
-                    if (candidate.Declaration is not FunctionKoto implementation || !this.Accessible(candidate, scope, receiverType: self))
-                    {
-                        continue;
-                    }
-
-                    this.BindHeader(candidate);
-                    var match = this.MatchesRequirement(function, implementation, self, scope, selection);
-                    pending |= match is null;
-                    if (match == true)
-                    {
-                        matches++;
-                        selected = candidate;
-                    }
-                }
-
-                if (matches > 1)
-                {
-                    return Invalid(BindingFailure.Ambiguous);
-                }
-
-                if (pending)
+                if (match.State == RequirementMatchState.Pending)
                 {
                     proof = CombineProof(proof, ConstraintProof.Unknown, true);
                     continue;
                 }
 
-                if (selected is null)
+                if (match.State == RequirementMatchState.Missing)
                 {
                     return Invalid(BindingFailure.MissingImplementation);
                 }
 
+                var selected = match.Member!;
+                var selection = match.Selection;
                 var compatibility = this.CompatibleRequirement(conformance, function, (FunctionKoto)selected.Declaration, self, scope, selection);
                 if (compatibility is ConstraintProof.Error or ConstraintProof.Refuted)
                 {
@@ -408,17 +418,21 @@ public sealed partial class Binding
                 }
 
                 proof = CombineProof(proof, compatibility, true);
-                var witness = new BoundWitness(requirement, selected, this.FunctionWitness(conformance, requirement));
+                var witness = new BoundWitness(identity, selected, this.FunctionWitness(conformance, identity));
                 conformance.WitnessStorage.Add(witness);
-                conformance.WitnessMap.Add(requirement, witness);
+                conformance.WitnessMap.Add(identity, witness);
             }
 
+            proof = UnsupportedProof(conformance, proof);
             conformance.IsVerified = proof == ConstraintProof.Proven;
+            completed = true;
             return proof;
         }
         finally
         {
             conformance.Checking = false;
+            conformance.Unsupported &= completed; // An interrupted verification records no limit.
+            this.conformanceChecks--;
         }
 
         ConstraintProof Invalid(BindingFailure failure)
@@ -427,15 +441,26 @@ public sealed partial class Binding
             this.Fail(conformance.Use, failure);
             return ConstraintProof.Error;
         }
+
+        // SPEC 23.3.6.4: the conformance rests on a specification that did not bind or failed. It may fail only later, as its formation
+        // at the Definition deadline, so the link is kept whatever its state is now and settled at publication; the failure is derived
+        // only when the specification has failed (IsDerived).
+        ConstraintProof RestOnSpecification(IsKoto clause)
+        {
+            this.partPrerequisites[conformance.Use] = clause;
+            (this.specificationLinks ??= new()).Add(conformance.Use);
+            return Invalid(BindingFailure.InvalidAssociatedType);
+        }
     }
 
     private bool? MatchesRequirement(FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope, MemberSelection selection)
     {
-        if (implementation.IsSpecialization || !SameGenericShape(requirement, implementation) || requirement.Parameters.Count != implementation.Parameters.Count)
+        if (implementation.IsSpecialization || !SameGenericShape(requirement, implementation) || requirement.Parameters.Count != implementation.Parameters.Count || ResultModeOf(requirement.ReturnType) != ResultModeOf(implementation.ReturnType))
         {
             return false;
         }
 
+        var pending = false;
         for (var i = 0; i < requirement.Parameters.Count; i++)
         {
             var a = requirement.Parameters[i];
@@ -447,7 +472,8 @@ public sealed partial class Binding
 
             if (a.Type.BoundType is not { } required || b.Type.BoundType is not { } actual)
             {
-                return null;
+                pending = true;
+                continue;
             }
 
             required = this.ContractType(required, scope, self);
@@ -463,16 +489,24 @@ public sealed partial class Binding
             actual = this.MemberType(actual, selection.DeclaringType)!;
             if (actual is null)
             {
-                return null;
+                pending = true;
+                continue;
             }
 
-            if (!SignatureEquals(required, this.ContractType(actual, scope), requirement, implementation))
+            actual = this.ContractType(actual, scope);
+            if (this.PendingAssociatedType(required) || this.PendingAssociatedType(actual))
+            {
+                pending = true;
+                continue;
+            }
+
+            if (!SignatureEquals(required, actual, requirement, implementation))
             {
                 return false;
             }
         }
 
-        return true;
+        return pending ? null : true;
     }
 
     private ConstraintProof CompatibleRequirement(BoundConformancePath conformance, FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope, MemberSelection selection)
@@ -488,16 +522,14 @@ public sealed partial class Binding
             return formation;
         }
 
-        // SPEC 7.1.1, 8.4.5: result modes are matched; an exclusive Place may satisfy a shared Place requirement, never the
-        // reverse, and a Place result never matches a value result.
-        if (requirement.ReturnType is PlaceResultKoto requiredPlace
-            ? implementation.ReturnType is not PlaceResultKoto providedPlace || (requiredPlace.IsExclusive && !providedPlace.IsExclusive)
-            : implementation.ReturnType is PlaceResultKoto)
+        // SPEC 7.1.1, 8.4.5: the retained identification preserves the result category and mode.
+        if (ResultModeOf(requirement.ReturnType) != ResultModeOf(implementation.ReturnType))
         {
             return ConstraintProof.Error;
         }
 
-        var key = (conformance, requirement.BoundSymbol!);
+        var identity = new BoundRequirement(requirement.BoundSymbol!, conformance.Contract);
+        var key = (conformance, identity);
         if (!this.witnessScopes.TryGetValue(key, out var premises))
         {
             this.witnessScopes.Add(key, premises = new(requirement));
@@ -569,13 +601,19 @@ public sealed partial class Binding
             }
 
             proof = CombineProof(proof, this.CompareCallableContracts(new(requirement), new(implementation), premises, self, selection.DeclaringType, arguments, origins, inputs, selection.Path), true);
-            var witness = this.FunctionWitness(conformance, requirement.BoundSymbol!);
+            var witness = this.FunctionWitness(conformance, identity);
             witness.DeclaringType = selection.DeclaringType!;
             witness.BasePath = selection.Path;
             witness.RequirementReceiver = requirement.BoundSymbol!.ReceiverIndex is var receiverIndex && receiverIndex >= 0 ? this.ContractType(requirement.Parameters[receiverIndex].Type.BoundType!, premises, self) : null;
             witness.ImplementationReceiver = implementation.BoundSymbol!.ReceiverIndex is var implementationIndex && implementationIndex >= 0 ? this.CallType(implementation.Parameters[implementationIndex].Type.BoundType!, implementation, arguments, premises, null, origins, inputs, selection.DeclaringType) : null;
             witness.SetOrigins(origins.AsSpan(0, implementation.Origins.Count), inputs.AsSpan(0, InputOriginCount(implementation)));
             witness.ObjectCompatibility = selection.Path is not null && receiverIndex >= 0 ? ProjectedReceiverProof(implementation.BoundSymbol!) : ConstraintProof.Proven;
+            if (witness.ObjectCompatibility == ConstraintProof.Unknown)
+            {
+                conformance.Unsupported = true; // SPEC 12.4.4.1: OCC-X (UnsupportedProof).
+                return proof;
+            }
+
             return CombineProof(proof, witness.ObjectCompatibility, true);
         }
         finally

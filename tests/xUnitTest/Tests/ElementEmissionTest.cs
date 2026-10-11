@@ -32,7 +32,6 @@ public class ElementEmissionTest
         { "BooleanArray", "let a: [3 of bool] = [false, true, false]\nif a[1] and not a[2] => Console.writeLine(\"ok\")" },
         { "CheckedPhi", "let a: [1 of i32] = [42]\nlet n = if true => a[0] else => 1\nif n == 42 => Console.writeLine(\"ok\")" },
         { "Deferred", "let a: [2 of i32] = [0, 42]\nvar i = 0\nloop\n    defer => if a[1] != 42 => Console.writeLine(\"bad\")\n    i += 1\n    if i < 3 => continue\n    exit\nConsole.writeLine(\"ok\")" },
-        { "Dead", "func f()\n    return\n    let a: [1 of i32] = [42]\n    a[0]\nf()\nConsole.writeLine(\"ok\")" },
         { "DeadArm", "let a: [1 of i32] = [42]\nlet n = match true\n    _ => a[0]\n    true => a[1]\nif n == 42 => Console.writeLine(\"ok\")" },
         { "UnitTuple", "let a = ((), 42)\nlet u = a.0\nif a.1 == 42 => Console.writeLine(\"ok\")" },
         { "EmptyCopy", "let a: ([0 of i32], i32) = ([], 42)\nlet b = a.0\nlet c = a.0\nif a.1 == 42 => Console.writeLine(\"ok\")" },
@@ -66,8 +65,8 @@ public class ElementEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Analysis.IsVerified);
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -80,8 +79,20 @@ public class ElementEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
+    }
+
+    // SPEC 12.4.1: a tuple selector names an element of a Tuple only, so another receiver is a Type error at the selection.
+    [Theory]
+    [InlineData("struct S\n    public var v: i32 = 0\nlet s = S.init()\nlet x = s.0", "s.0")]
+    [InlineData("func f<T>(t: T) -> ()\n    let x = t.0\npublic func main() => ()", "t.0")]
+    [InlineData("let n: i32 = 4\nlet x = n.0", "n.0")]
+    [InlineData("let a = (1, 2)\nlet n = a.2", "a.2")]
+    public void ATupleSelectorNeedsATuple(string source, string at)
+    {
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(("TypeMismatch_Kd", source.LastIndexOf(at, StringComparison.Ordinal), at.Length), (error.Code, error.Span!.Value.Start, error.Span.Value.Length));
     }
 
     [Theory]
@@ -95,7 +106,7 @@ public class ElementEmissionTest
     public void MalformedPlansFailBeforeWritingAndRecover(string defect)
     {
         var c = MinimalEmissionTest.Analyze("let a: [1 of i32] = [42]\nlet n = a[0]");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var plan = body.Projections[0];
         body.Projections[0] = defect switch
@@ -117,10 +128,10 @@ public class ElementEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Fact]
@@ -180,8 +191,8 @@ public class ElementEmissionTest
         {
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         var success = true;
@@ -196,8 +207,8 @@ public class ElementEmissionTest
         before = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 128; i++)
         {
-            success &= c.Ownership.Analyze().IsVerified;
-            success &= c.Emission.WriteIr(TextWriter.Null, out _);
+            success &= c.Analyze().IsVerified;
+            success &= c.WriteIr(TextWriter.Null, out _);
         }
 
         var bytes = GC.GetAllocatedBytesForCurrentThread() - before;

@@ -22,7 +22,7 @@ public sealed partial class OwnershipBody
         {
             var operation = this.Operations[id];
             var value = this.Values[id];
-            if (operation.Kind is not (OwnershipOperationKind.UpdateBorrowed or OwnershipOperationKind.StorePointer) || value.Count == 0)
+            if ((!operation.IsWholeUpdate && operation.Kind != OwnershipOperationKind.StorePointer) || value.Count == 0)
             {
                 continue;
             }
@@ -36,15 +36,14 @@ public sealed partial class OwnershipBody
 
             var target = this.StoredReferent(pointer, holder);
             var incoming = operation.Kind == OwnershipOperationKind.StorePointer ? operation.Place : operation.Input;
-            var kind = (operation.Source as InvocationKoto)?.BoundCall?.Target.CompilerFunction;
-            var swap = operation.Kind == OwnershipOperationKind.UpdateBorrowed && kind == CompilerFunctionKind.Swap;
+            var swap = operation.Kind == OwnershipOperationKind.SwapBorrowed;
             if (swap)
             {
                 var otherPointer = this.ValueOperands[value.Start + 1];
                 incoming = this.StoredReferent(otherPointer, incoming);
             }
 
-            var result = operation.Kind == OwnershipOperationKind.UpdateBorrowed && kind == CompilerFunctionKind.Exchange ? operation.Place : -1;
+            var result = operation.Kind == OwnershipOperationKind.ExchangeBorrowed ? operation.Place : -1;
             this.contentUpdates.Add(new(id, target, incoming, result, storage, swap));
             this.RegisterContentSlot(target, storage, count);
             if (swap)
@@ -69,8 +68,13 @@ public sealed partial class OwnershipBody
             // An opaque referent is represented by its reference holder. Its outer storage Loan survives writes through it;
             // only the stored Type's internal dependencies participate in replacing contents (SPEC 15.7.3).
             var holder = this.Places[place].Type;
-            if (root == place || (!ReferenceEquals(holder, storage) && holder.Origin is { } origin && this.OriginNamesRoot(origin, root)) || (this.IsExclusiveBorrowInput(root)
-                ? NamedOriginRequirement(storage, this.Places[root].Type.Origin!) == LoanRequirement.None
+            if (!this.IsExclusiveBorrowInput(root) && this.Function.CodeContext.Compilation.Binding.HasRegionBounds(holder))
+            {
+                continue; // Local-region content transfers use the same per-value CFG flow as direct writes.
+            }
+
+            if (root == place || (!Binding.FitsStructuralPart(holder, storage) && holder.Origin is { } origin && this.OriginNamesRoot(origin, root)) || (this.IsExclusiveBorrowInput(root)
+                ? this.NamedOriginRequirement(storage, this.Places[root].Type.Origin!) == LoanRequirement.None
                 : this.borrowDependencies[(place * count) + root] == LoanRequirement.None))
             {
                 continue;
@@ -137,14 +141,6 @@ public sealed partial class OwnershipBody
             if (edge.Kind != OwnershipEdgeKind.Abort)
             {
                 Add(edge.From, edge.To);
-            }
-        }
-
-        for (var from = 0; from < this.Operations.Count; from++)
-        {
-            for (var e = this.checkingBorrowHeads[from]; e >= 0; e = this.checkingBorrowEdges[e].Next)
-            {
-                Add(from, this.checkingBorrowEdges[e].To);
             }
         }
 
@@ -236,7 +232,7 @@ public sealed partial class OwnershipBody
         return fallback;
     }
 
-    // All paths to this use must pass the recorded call without a later write. Back edges and checking continuations count.
+    // All paths to this use must pass the recorded call without a later write. Back edges count.
     private bool ContentsUnchangedSince(int holder, int definition, int before)
     {
         this.contentVisited.AsSpan(0, this.Operations.Count).Clear();
@@ -266,7 +262,7 @@ public sealed partial class OwnershipBody
                     return false;
                 }
 
-                if (this.Operations[predecessor].Kind is OwnershipOperationKind.StorePointer or OwnershipOperationKind.UpdateBorrowed &&
+                if ((this.Operations[predecessor].Kind == OwnershipOperationKind.StorePointer || this.Operations[predecessor].IsWholeUpdate) &&
                     this.Values[predecessor] is { Count: > 0 } update && this.ContentOwner(this.ValueOperands[update.Start], -1, throughLoads: false) == holder)
                 {
                     return false; // An in-place write of a stored part can also replace its exclusive capability.

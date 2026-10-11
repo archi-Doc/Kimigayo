@@ -80,7 +80,7 @@ public sealed partial class Binding
             return null;
         }
 
-        var type = this.InternType(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [element], length.IsConstant ? length.Value : 0, lengthExpression: length.IsConstant ? null : length);
+        var type = this.types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [element], length.IsConstant ? length.Value : 0, lengthExpression: length.IsConstant ? null : length);
         return Complete(fill, type);
     }
 
@@ -118,7 +118,7 @@ public sealed partial class Binding
             return this.Fail(literal, BindingFailure.TypeMismatch);
         }
 
-        return Complete(literal, complete ? this.InternType(expected.Kind, expected.Symbol, expected.Semantics, [element ?? expected.Components[0]], expected.Kind == BoundTypeKind.FixedArray ? literal.Elements.Count : expected.Length) : null);
+        return Complete(literal, complete ? this.types.Intern(expected.Kind, expected.Symbol, expected.Semantics, [element ?? expected.Components[0]], expected.Kind == BoundTypeKind.FixedArray ? literal.Elements.Count : expected.Length) : null);
     }
 
     private void InferArrayAnnotation(Koto syntax, Koto initializer, BindingScope scope)
@@ -195,7 +195,7 @@ public sealed partial class Binding
         }
 
         var length = IsArrayHole(array.Length) ? this.inferredArrayLengths.GetValueOrDefault(array.Length) : this.BindLength(array.Length, scope);
-        return this.InternType(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [element], length is null ? -1 : length.IsConstant ? length.Value : 0, lengthExpression: length is { IsConstant: false } ? length : null);
+        return this.types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [element], length is null ? -1 : length.IsConstant ? length.Value : 0, lengthExpression: length is { IsConstant: false } ? length : null);
     }
 
     private bool InferArrayLength(FixedArrayTypeKoto array, BoundLength length, Koto source)
@@ -229,7 +229,7 @@ public sealed partial class Binding
         }
 
         var element = this.CompleteArrayExpectation(expected.Components[0], actual.Components[0]);
-        return this.InternType(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [element], expected.Length < 0 ? actual.Length : expected.Length, lengthExpression: expected.Length < 0 ? actual.LengthExpression : expected.LengthExpression);
+        return this.types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [element], expected.Length < 0 ? actual.Length : expected.Length, lengthExpression: expected.Length < 0 ? actual.LengthExpression : expected.LengthExpression);
     }
 
     // SPEC 4.3: without a fixed-array expectation an independent literal constructs an Array whose element Type is the
@@ -257,7 +257,7 @@ public sealed partial class Binding
             this.RequireType(literal.Elements[i], scope, element);
         }
 
-        return Complete(literal, this.InternType(BoundTypeKind.Array, this.Library.DynamicArray, SemanticsKind.Owner, [element]));
+        return Complete(literal, this.types.Intern(BoundTypeKind.Array, this.Library.DynamicArray, SemanticsKind.Owner, [element]));
     }
 
     // Arrays and Dictionary keys/values use the same bounded evidence rule: complete Types establish the expectation;

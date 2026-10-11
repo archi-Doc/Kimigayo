@@ -4,7 +4,7 @@ namespace Kimi.Compiler.Parsing;
 
 /// <summary>
 /// A form of syntax the parser can expect at a position or find where it is not permitted (docs/dev/DIAGNOSTICS.md §4.4).
-/// Each value is a requirement of the Syntax partition, <c>Syntax.&lt;Form&gt;</c>, whose phrase and advice come from
+/// Each value is a requirement of the Syntax partition, <c>Syntax.&lt;Form&gt;</c>, whose phrase comes from
 /// <c>DiagnosticRequirement.tinyhand</c>; a reporting site chooses a value and never writes text.
 /// </summary>
 public enum SyntaxForm : ushort
@@ -263,4 +263,13 @@ public enum SyntaxForm : ushort
 
     /// <summary>The indented arm list of a match, which is not an executable body (SPEC 14.2, 14.8).</summary>
     MatchArms,
+
+    /// <summary>A virtual or override modifier outside a function declaration.</summary>
+    VirtualModifier,
+
+    /// <summary>The 'is' between a Constraint subject and its requirement.</summary>
+    IsKeyword,
+
+    /// <summary>An integer literal, constant Name or parenthesized integer expression used as an array length.</summary>
+    ArrayLength,
 }

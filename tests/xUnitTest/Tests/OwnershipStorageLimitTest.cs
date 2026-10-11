@@ -16,30 +16,30 @@ public class OwnershipStorageLimitTest(ITestOutputHelper output)
     public void ConcreteInstanceLimitsRemainResourceFailuresAndRecover()
     {
         var c = MinimalEmissionTest.Analyze("func identity<T>(value: T) -> T => value@move\nidentity((20, 22))");
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var initial), initial);
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var initial), initial);
         var previous = OwnershipStorage.ByteLimit;
         try
         {
             // Reuse the fully prepared instance; retained arrays must not bypass a later request's limit.
             OwnershipStorage.ByteLimit = 8;
             using var writer = new StringWriter();
-            Assert.False(c.Emission.WriteIr(writer, out var failure));
+            Assert.False(c.WriteIr(writer, out var failure));
             Assert.Empty(writer.ToString());
             Assert.True(c.Emission.FailureIsResourceLimit, failure);
             Assert.Contains("ownership", failure!, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("8", failure, StringComparison.Ordinal);
-            Assert.True(c.Ownership.Result.IsVerified);
-            Assert.Empty(c.Ownership.Issues);
+            Assert.True(c.Analysis.IsVerified);
+            Assert.Empty(c.Problems);
         }
         finally
         {
             OwnershipStorage.ByteLimit = previous;
         }
 
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var recovered), recovered);
+        Assert.True(c.WriteIr(TextWriter.Null, out var recovered), recovered);
         Assert.False(c.Emission.FailureIsResourceLimit);
-        Assert.Empty(c.Ownership.Issues);
+        Assert.Empty(c.Problems);
     }
 
     [Fact]
@@ -66,13 +66,13 @@ public class OwnershipStorageLimitTest(ITestOutputHelper output)
         {
             // Repeat after full-size preparation: retained capacity must never bypass the logical limit.
             OwnershipStorage.ByteLimit = 4096;
-            Assert.False(c.Ownership.Analyze().IsVerified);
+            Assert.False(c.Analyze().IsVerified);
             var issue = Assert.Single(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.StorageLimit);
             Assert.True(issue.RequiredBytes > 4096);
             Assert.Equal(4096, issue.LimitBytes);
             Assert.Contains("func check()", issue.Source.ToString(), StringComparison.Ordinal);
-            Assert.False(c.Emission.Validate(out _));
-            c.Ownership.ReportDiagnostics();
+            Assert.False(c.Validate(out _));
+            c.ReportAnalysis();
             c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
             var result = c.Diagnostics.Finalize();
             var error = Assert.Single(result.Diagnostics, static x => x.Code == "OwnershipStorageLimit_Kd");
@@ -93,7 +93,7 @@ public class OwnershipStorageLimitTest(ITestOutputHelper output)
             var sent = WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, true)[identity];
             Assert.Contains(sent, x => x.Range == error.Display!.Range && x.Message.Contains("4096", StringComparison.Ordinal));
 
-            Assert.False(c.Ownership.Analyze().IsVerified);
+            Assert.False(c.Analyze().IsVerified);
             Assert.Equal(issue, Assert.Single(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.StorageLimit));
         }
         finally
@@ -101,7 +101,7 @@ public class OwnershipStorageLimitTest(ITestOutputHelper output)
             OwnershipStorage.ByteLimit = previous;
         }
 
-        Assert.Equal(!independent, c.Ownership.Analyze().IsVerified);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.StorageLimit);
+        Assert.Equal(!independent, c.Analyze().IsVerified);
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.OwnershipStorageLimit_Kd);
     }
 }

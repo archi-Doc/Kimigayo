@@ -8,7 +8,7 @@ This is the index of the Kimigayo language specification; the chapter files unde
 
 | Part | Status |
 | --- | --- |
-| Chapters 1–19, 22 and 24, the [Documentation Markdown profile](spec/documentation-markdown.md) and the [UTF-8 formatting profile](spec/utf8-formatting.md) | Normative language rules. |
+| Chapters 1–19, 22 and 24, the [Documentation Markdown profile](spec/documentation-markdown.md), the [UTF-8 formatting profile](spec/utf8-formatting.md), [arithmetic Contracts](spec/arithmetic-contracts.md) and the [virtual dispatch detail](spec/virtual-dispatch.md) | Normative language rules. |
 | Chapter 23 | Normative contracts of the compiler services (check foundation, Language Server Protocol, Compiler Server Protocol). They govern tools and never change language validity. |
 | Appendix C | Pointer to the separate implementation status; not part of the language. |
 | Appendix D | Index of deferred designs and boundaries; the owning sections remain authoritative. |
@@ -35,15 +35,16 @@ Implementation coverage is recorded separately ([Appendix C](#appendix-c-impleme
 
 - [6. Declarations and containers](spec/06-declarations-and-containers.md)
 - [7. Functions and callable values](spec/07-functions-and-callable-values.md)
-- [8. Generics, constraints, and contracts](spec/08-generics-constraints-and-contracts.md)
+- [8. Generics, constraints, and contracts](spec/08-generics-constraints-and-contracts.md): [bounded associated-Type inference](spec/associated-type-inference.md), frozen declaration premises, retained implementation identification and complete public bindings.
 - [9. Names, signatures, and access](spec/09-names-signatures-and-access.md)
-- [10. Overload resolution and inference](spec/10-overload-resolution-and-inference.md)
+- [10. Overload resolution and inference](spec/10-overload-resolution-and-inference.md): common inference, conditional acquisition contracts and [constructor Type inference](spec/10-overload-resolution-and-inference.md#1081-constructor-type-inference).
 - [11. Properties](spec/11-properties.md)
 
 ### Part IV. Expressions and control flow
 
 - [12. Expressions](spec/12-expressions.md)
 - [13. Operators and assignment](spec/13-operators-and-assignment.md)
+  - [Arithmetic Contracts](spec/arithmetic-contracts.md): ordinary and numeric-left providers, associated Output, shared acquisition, requirement function values and compound writeback.
   - [Pair layers](spec/13-operators-and-assignment.md#pair-layers): a pair `s/T` or `s/U` whose admitted set lies in `value or valueborrow` is a safe value-reference layer that may or may not exist; `@follow` selects its direct target, and every operation applies the rule of each admitted Semantics, taking the weakest capability and mode and keeping each case's dependencies conditionally.
   - [Integer results](spec/13-operators-and-assignment.md#133-arithmetic-bitwise-and-shift-operators) and [wrapping integers](spec/03-types-and-values.md#3111-wrapping-integer-types): one rule computes the mathematical result; an integer Type Aborts on an unrepresentable result, `Wrapping<T>` wraps, and undefined inputs Abort for both. [Numeric, wrapping and bit conversions](spec/13-operators-and-assignment.md#1354-numeric-conversions-and-literals): `@Type` never wraps, `@wrap<U>` wraps, `@bits<U>` reinterprets bits, and direct literals convert once from their exact value.
 - [14. Control flow](spec/14-control-flow.md)
@@ -51,7 +52,7 @@ Implementation coverage is recorded separately ([Appendix C](#appendix-c-impleme
 
 ### Part V. Ownership, cleanup, and failure
 
-- [15. Ownership and lifetime analysis](spec/15-ownership-and-lifetime-analysis.md)
+- [15. Ownership and lifetime analysis](spec/15-ownership-and-lifetime-analysis.md): actual Loans, contract destinations and parent recovery at calls (§15.6.4).
   - [Lending rule](spec/15-ownership-and-lifetime-analysis.md#1515-movable-places): [bare acquisition](spec/03-types-and-values.md#35-copy-and-move) Copies a proven-Copy Place, Reborrows a stored exclusive reference in its own Semantics and never Moves, and `@move` is the only transfer. A new exclusive borrow of an owned Place or temporary needs `@uniq`/`@objuniq`, except for a [Receiver Expression](spec/07-functions-and-callable-values.md#73-explicit-receivers), which is acquired implicitly. `@ref`/`@uniq` borrow the written slot, and `@follow` selects the referent. At a fixed expected Type, the [common adaptation](spec/10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types) shared-borrows a readable Place storing `U` (never a reference or handle slot) or an owner temporary for an expected `ref/U`, Reborrows a borrow value, yields one shared reference through nested reference layers and value-reads a reference chain ending in a read Type (a Scalar, position or range Type, [§3.5.3](spec/03-types-and-values.md#353-value-read)). Overload resolution never chooses how a bare Place argument is acquired: the functions of one Name acquire corresponding parameters of overlapping Types in one mode ([parameter acquisition shape](spec/07-functions-and-callable-values.md#731-parameter-acquisition-shape)), so the Name and the position fix it.
   - [Subject rule](spec/15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime): a `match` or `for` Subject is acquired as written, like any other expression, except that a bare Place is borrowed in place. The Subject mode is Shared for a shared borrow or a `ref`/`objref` value, Exclusive for an exclusive borrow or a `uniq`/`objuniq` value, and ByValue for an owned value, such as a temporary, `E@copy` or `E@move` of an owned Place; a transferred or returned reference keeps its own mode. Shared and exclusive paths bind `ref/T` and `uniq/T`, an owned Subject transfers its parts, and guard candidates are `ref/T`.
   - [Call borrow reservations](spec/15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations): reservation, preparation, activation and abandoned calls.
@@ -73,7 +74,8 @@ Chapter 20 (compilation configuration), Chapter 21 (layout, runtime metadata and
 
 - [23. Compiler services](spec/23-compiler-services.md)
   - [Check foundation](spec/23-compiler-services.md#233-check-foundation): check units, the shared check entry, outcomes and acceptance, input identity, revisions and diagnostics (categories, records, source tables, prerequisites and suppression, limits, order, rendering, the JSON document of `kimi check --Format json` and [repair candidates](spec/23-compiler-services.md#23369-repair-candidates) with their closed conditions).
-  - [Language Server Protocol](spec/23-compiler-services.md#234-language-server-protocol): `kimi lsp` transport, document synchronization, discovery, units, change detection, scheduling, publication, [code actions](spec/23-compiler-services.md#2348-code-actions) and settings.
+  - [Language Server Protocol](spec/23-compiler-services.md#234-language-server-protocol): `kimi lsp` transport, document synchronization, discovery, units, change detection, scheduling, publication, [code actions](spec/23-compiler-services.md#2348-code-actions), [Hover](spec/lsp-hover.md) and settings.
+    - Hover includes declaration containers/source attribution, local and parameter Type composition, and built-in `@` operation explanations, under the same snapshot, agreement and resource-limit contracts.
   - [Compiler Server Protocol](spec/23-compiler-services.md#235-compiler-server-protocol): purpose, the provided foundation and the requirements of the future protocol.
 
 ### Part VIII. Asynchronous execution

@@ -32,6 +32,13 @@ public sealed class TextDocumentClientCapabilities
     public PublishDiagnosticsClientCapabilities? PublishDiagnostics { get; set; }
 
     public CodeActionClientCapabilities? CodeAction { get; set; }
+
+    public HoverClientCapabilities? Hover { get; set; }
+}
+
+public sealed class HoverClientCapabilities
+{
+    public string[]? ContentFormat { get; set; }
 }
 
 /// <summary>The client's code action support; <c>codeActionLiteralSupport</c> is read as presence (SPEC 23.4.8).</summary>
@@ -196,7 +203,7 @@ public sealed class CodeActionParams
     public CodeActionContext Context { get; set; } = new();
 }
 
-/// <summary>The position at which the client requests the checked effect description.</summary>
+/// <summary>The position at which the client requests checked declaration and documentation information.</summary>
 public sealed class HoverParams
 {
     public TextDocumentIdentifier TextDocument { get; set; } = new();
@@ -204,7 +211,7 @@ public sealed class HoverParams
     public SourcePosition Position { get; set; }
 }
 
-/// <summary>A checked, plain-text effect description with its source range.</summary>
+/// <summary>A Markdown or plaintext Hover description with its representative token range.</summary>
 public sealed class HoverResult
 {
     public HoverContent Contents { get; set; } = new();
@@ -282,7 +289,7 @@ public sealed class PublishDiagnosticsParams
 /// <param name="Severity">The severity.</param>
 /// <param name="Code">The code.</param>
 /// <param name="Source">The source, <c>kimigayo</c>.</param>
-/// <param name="Message">The message with its label, Note, Advice and the text of unsent related locations.</param>
+/// <param name="Message">The message with its label, Note and the text of unsent related locations.</param>
 /// <param name="RelatedInformation">The related locations sent as locations, when the client declares support.</param>
 public sealed record LspDiagnostic(SourceRange Range, int Severity, string Code, string Source, string Message, LspRelatedInformation[]? RelatedInformation = null)
 {

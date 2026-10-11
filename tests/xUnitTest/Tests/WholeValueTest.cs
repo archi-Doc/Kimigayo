@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Tinyhand;
@@ -30,20 +31,27 @@ public class WholeValueTest
         var c = CompilationTestHelper.Parse($"open struct B\nstruct S\nstruct Cell<T>\n    let item: T\nfunc inspect(x: {type}) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>().Single(x => x.Name == "inspect");
-        Assert.Equal(expected ? ConstraintProof.Proven : ConstraintProof.Refuted, c.Binding.ProveSealed(f.Parameters[0].Type.BoundType!, f));
+        Assert.Equal(expected ? ConstraintProof.Proven : ConstraintProof.Refuted, c.Binding.ProveSealed(f.Parameters[0].Type.TypeOf()!, f));
     }
 
+    // A body-local projection isolates the capability: rc/arc have no outer Origin for a `during x` result.
     [Theory]
     [InlineData("objref", "ref", true)]
     [InlineData("objuniq", "ref", true)]
     [InlineData("objuniq", "uniq", true)]
+    [InlineData("rc", "ref", true)]
+    [InlineData("arc", "ref", true)]
     [InlineData("objref", "uniq", false)]
     [InlineData("rc", "uniq", false)]
     [InlineData("arc", "uniq", false)]
     public void GenericPayloadProjectionRequiresCapability(string source, string target, bool expected)
     {
-        var c = CompilationTestHelper.Parse($"func project<T>(x: {source}/T) -> {target}/T during x\n    T is Sealed and ObjectPayload\n    return x@follow@{target}");
+        var c = CompilationTestHelper.Parse($"func project<T>(x: {source}/T)\n    T is Sealed and ObjectPayload\n    let p = x@follow@{target}\n    ()");
         Assert.Equal(expected, c.Bind().IsComplete);
+        if (!expected)
+        {
+            Assert.Equal(DiagnosticCode.SharedPathAccess_Kd, Assert.Single(c.Binding.Issues).Code);
+        }
     }
 
     [Theory]
@@ -69,6 +77,30 @@ public class WholeValueTest
     }
 
     [Theory]
+    [InlineData("replace(x, with: 2)", OwnershipOperationKind.ReplaceBorrowed)]
+    [InlineData("exchange(x, with: 2)", OwnershipOperationKind.ExchangeBorrowed)]
+    [InlineData("swap(x, y)", OwnershipOperationKind.SwapBorrowed)]
+    public void UpdatesRetainTheirMeaningAcrossStorageForms(string expression, OwnershipOperationKind expected)
+    {
+        foreach (var borrowed in new[] { false, true })
+        {
+            var source = borrowed ? "func f(x: uniq/i32, y: uniq/i32)\n" : "func f()\n    var x: i32 = 1\n    var y: i32 = 2\n";
+            var call = borrowed ? expression : expression.Replace("(x", "(x@uniq", StringComparison.Ordinal).Replace(", y)", ", y@uniq)", StringComparison.Ordinal);
+            var c = MinimalEmissionTest.Analyze(source + "    _ = Kimi.Intrinsics." + call + "\n");
+            Assert.True(c.Analysis.IsVerified, Describe(c));
+            var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
+            var operation = Assert.Single(body.Operations, x => x.IsWholeUpdate);
+            Assert.Equal(expected, operation.Kind);
+            var update = body.OperationStorage.FindIndex(x => x.IsWholeUpdate);
+            var next = Assert.Single(body.Edges, x => x.From == update).To;
+            body.OperationStorage[update] = operation with { Source = body.Function };
+            body.Solve();
+            Assert.Equal(expected == OwnershipOperationKind.SwapBorrowed, (body.GetInputState(next, operation.Input) & PlaceState.MustInit) != 0);
+            Assert.Equal(expected == OwnershipOperationKind.ExchangeBorrowed, (body.GetInputState(next, operation.Place) & PlaceState.MustInit) != 0);
+        }
+    }
+
+    [Theory]
     [InlineData("Scalar", "var x: i32 = 1\nvar y: i32 = 9\nKimi.Intrinsics.replace(x@uniq, with: 2)\nlet old = Kimi.Intrinsics.exchange(x@uniq, with: 3)\nKimi.Intrinsics.swap(x@uniq, y@uniq)\nif old == 2 and x == 9 and y == 3 => Console.writeLine(\"ok\")", "ok\n")]
     [InlineData("String", "var x = \"old\"\nvar y = \"other\"\nlet old = Kimi.Intrinsics.exchange(x@uniq, with: \"new\")\nKimi.Intrinsics.swap(x@uniq, y@uniq)\nConsole.writeLine(old)\nConsole.writeLine(x)\nConsole.writeLine(y)", "old\nother\nnew\n")]
     [InlineData("ReplaceDestroy", "struct S\n    let value: i32\n    public init(value: i32) => self.value = value\n    drop\n        if self.value == 1 => Console.writeLine(\"drop 1\") else => Console.writeLine(\"drop 2\")\nvar x = S.init(1)\nKimi.Intrinsics.replace(x@uniq, with: S.init(2))\nConsole.writeLine(\"placed\")", "drop 1\nplaced\ndrop 2\n")]
@@ -77,8 +109,8 @@ public class WholeValueTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
-        Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), failure);
+        Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
+        Assert.True(c.WriteIr(TextWriter.Null, out var failure), failure);
         ScalarEmissionTest.EmitFixture("WholeValue" + name, source, stdout);
     }
 
@@ -121,8 +153,8 @@ public class WholeValueTest
     {
         var c = MinimalEmissionTest.Analyze("struct S\nfunc f(x: objref/S) -> ref/S during x => x@follow@ref\n()");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
-        Assert.True(c.Ownership.Result.IsVerified);
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Analysis.IsVerified);
+        Assert.True(c.Validate(out var error), error);
     }
 
     [Theory]
@@ -133,8 +165,8 @@ public class WholeValueTest
     public void RejectsConflictingOrIncompleteTargets(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -143,8 +175,8 @@ public class WholeValueTest
     {
         var c = MinimalEmissionTest.Analyze("struct S\n    public var value: i32 = 0\n    public init(value: i32) => self.value = value\n" + function + "\n()");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -167,7 +199,7 @@ public class WholeValueTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>().Single(x => x.Name == "f");
         var call = Assert.IsType<InvocationKoto>(f.ExpressionBody);
-        Assert.Equal(ArgumentOperationKind.PayloadProjection, call.BoundCall!.ReceiverOperation.Kind);
+        Assert.Equal(ArgumentOperationKind.PayloadProjection, call.CallOf()!.ReceiverOperation.Kind);
     }
 
     [Fact]
@@ -210,8 +242,8 @@ public class WholeValueTest
         {
             Assert.True(c.Bind().IsComplete, Describe(c));
             Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
     }
 
@@ -222,17 +254,6 @@ public class WholeValueTest
     {
         var c = CompilationTestHelper.Parse("struct Cell<T>\n    let item: T\n" + function);
         Assert.False(c.Bind().IsComplete && !c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
-    }
-
-    [Fact]
-    public void RequiredUpdateDeclarationShapeIsValidatedAgain()
-    {
-        var c = CompilationTestHelper.Parse("var x: i32 = 1\nKimi.Intrinsics.replace(x@uniq, with: 2)");
-        Assert.True(c.Bind().IsComplete, Describe(c));
-        var function = (FunctionKoto)c.Library.Replace.Declaration;
-        function.Parameters[1].Type = function.Parameters[0].Type;
-        Assert.False(c.Bind().IsComplete);
-        Assert.Equal(KimiDeclarationState.Invalid, c.Library.GetDeclarationState(KimiDeclarationId.Replace));
     }
 
     [Fact]

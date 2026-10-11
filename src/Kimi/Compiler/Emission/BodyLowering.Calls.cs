@@ -85,24 +85,26 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    internal IReadOnlyDictionary<BoundCall, GenericStoragePlan.CallEntry>? GenericCalls { get; set; }
+    internal IReadOnlyDictionary<CallPlan, GenericStoragePlan.CallEntry>? GenericCalls { get; set; }
 
-    internal IReadOnlyDictionary<BoundCall, FunctionAbi>? FormattingCalls { get; set; }
+    internal IReadOnlyDictionary<CallPlan, FunctionAbi>? FormattingCalls { get; set; }
 
-    internal IReadOnlyDictionary<BoundCall, FunctionAbi>? ComparisonCalls { get; set; }
+    internal IReadOnlyDictionary<CallPlan, FunctionAbi>? ComparisonCalls { get; set; }
 
     internal IReadOnlyDictionary<BoundComparison, FunctionAbi>? ComparisonHelpers { get; set; }
 
-    internal IReadOnlyDictionary<BoundCall, ObjectCall>? ObjectCalls { get; set; }
+    internal IReadOnlyDictionary<CallPlan, ObjectCall>? ObjectCalls { get; set; }
 
     internal IReadOnlyDictionary<BoundType, int>? ObjectRuntimeTypes { get; set; }
 
     internal DefaultGenerationPlan? Defaults { get; set; }
 
+    internal CompilerFunctionAdapters? CompilerEntries { get; set; }
+
     internal void ClearFunctionContext()
     {
         this.matchBody = null;
-        this.matchDefaultContext = -1;
+        this.matchContext = InterpretationContext.Root;
         this.functions = null;
         this.GenericCalls = null;
         this.FormattingCalls = null;
@@ -119,7 +121,7 @@ internal sealed partial class BodyLowering
     private bool CannotCompleteCall(InvocationKoto call) => !this.flow!.Nodes[call].CanCompleteNormally;
 
     // A forwarded generic call inside a monomorphized instance binds to the callee's own instance entry (SPEC 21.3.1).
-    private GenericStoragePlan.CallEntry? ForwardedEntry(BoundCall call)
+    private GenericStoragePlan.CallEntry? ForwardedEntry(CallPlan call)
     {
         if (this.instanceEntry is not { } entry)
         {
@@ -150,11 +152,6 @@ internal sealed partial class BodyLowering
             return this.LowerArrayOperation(library, body, function, constants, directory, id, arrayCall, arrayPlan, out failure);
         }
 
-        if (operation.Source is InvocationKoto constructionCall && original is { Target.CompilerFunction: CompilerFunctionKind.ArrayWithCapacity } constructionPlan)
-        {
-            return this.LowerArrayConstruction(body, function, constants, directory, id, constructionCall, constructionPlan, out failure);
-        }
-
         var generic = original is { } bound ? this.GenericCalls?.GetValueOrDefault(bound) ?? this.ForwardedEntry(bound) : null;
         var directIndex = original is not null && this.instanceEntry?.ConcreteCalls is not null ? Array.IndexOf(this.instanceEntry.Template.DirectCalls, original) : -1;
         var resolved = directIndex >= 0 ? this.instanceEntry!.ConcreteCalls![directIndex] : original;
@@ -171,28 +168,57 @@ internal sealed partial class BodyLowering
 
         var formatting = resolved?.Target.CompilerFunction is >= CompilerFunctionKind.TextFixed and <= CompilerFunctionKind.BuiltinFormat;
         var comparison = resolved?.Target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare;
+        var arithmetic = resolved?.Target.CompilerFunction == CompilerFunctionKind.BuiltinArithmetic;
         var clone = resolved?.Target.CompilerFunction == CompilerFunctionKind.Clone;
-        var intrinsic = formatting || comparison || clone;
+        var intrinsic = formatting || comparison || arithmetic || clone;
         if (operation.Source is not InvocationKoto { AttributeChain: null } call || resolved is not { } plan ||
             (!intrinsic && generic is null && creation is null && plan.TypeArguments.Length != 0) ||
             plan.Target.Declaration is not FunctionKoto target || plan.ArgumentOperations.Length != call.ArgumentNodes.Count ||
-            plan.ArgumentToParameter.Length != call.ArgumentNodes.Count || call.ArgumentNodes.Count + plan.DefaultArguments.Length + (plan.Receiver is null ? 0 : 1) != target.Parameters.Count ||
-            !ReferenceEquals(body.ConcreteAt(ElementAccess.PlaceCallReference(call) ?? call.BoundType, id), SignatureType(this, plan.ReturnType)) || SignatureType(this, plan.ReturnType) is not { } returnType ||
-            !ReferenceTypes.StorageMatches(intrinsic ? SignatureType(this, plan.ReturnType) : generic?.Result ?? creation?.Result ?? (target.IsConstructor ? plan.DeclaringType : target.BoundSymbol?.Type), returnType))
+            plan.ArgumentToParameter.Length != call.ArgumentNodes.Count || call.ArgumentNodes.Count + plan.DefaultArguments.Length + (plan.Receiver is null ? 0 : 1) != target.Parameters.Count)
         {
-            return Fail("A call needs unsupported callee, argument acquisition or result lowering.", out failure);
+            return Fail("A call needs unsupported callee or argument acquisition lowering.", out failure);
+        }
+
+        if (body.Resolve(plan.ReturnType, InterpretationContext.Root) is not { } returnType ||
+            !ReferenceEquals(body.Resolve(ElementAccess.PlaceCallReference(call) ?? call.BoundType, body.ContextAt(id)), returnType))
+        {
+            return Fail($"Call {library.PresentedTarget(plan.Target).Name} has inconsistent expression and retained result Types: {Binding.DiagnosticTypeName(call.BoundType ?? (object)"unresolved")} / {Binding.DiagnosticTypeName(plan.ReturnType)}.", out failure);
+        }
+
+        if (!ReferenceTypes.StorageMatches(intrinsic ? returnType : generic?.Result ?? creation?.Result ?? (target.IsConstructor ? plan.DeclaringType : target.BoundSymbol?.Type), returnType))
+        {
+            return Fail($"Call {library.PresentedTarget(plan.Target).Name} has incompatible implementation and result storage: {Binding.DiagnosticTypeName(target.BoundSymbol?.Type ?? (object)"unresolved")} / {Binding.DiagnosticTypeName(returnType)}.", out failure);
         }
 
         var runtime = formatting || clone || ReferenceEquals(plan.Target, library.WriteLine) || ReferenceEquals(plan.Target, library.Abort) || ReferenceEquals(plan.Target, library.GetSymbol(KimiDeclarationId.TestTempDirectory));
-        if (clone && (plan.ArgumentOperations.Length != 1 || SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Semantics: SemanticsKind.Ref, Components.Count: 1 } borrowedHandle ||
+        if (clone && (plan.ArgumentOperations.Length != 1 || body.Resolve(plan.ArgumentOperations[0].ParameterType, InterpretationContext.Root) is not { Semantics: SemanticsKind.Ref, Components.Count: 1 } borrowedHandle ||
             !ReferenceTypes.StorageMatches(borrowedHandle.Components[0], returnType)))
         {
             return Fail("Strong clone requires a shared handle-slot borrow with the same result mode and payload.", out failure);
         }
 
         // A selected explicit specialization (SPEC 21.3.4) is called directly; its ABI is the entry's ABI.
-        var callee = clone ? ObjectTypes.HandleMode(returnType)?.Counting switch { ObjectCountingStep.NonAtomic => WindowsLowering.CloneRc, ObjectCountingStep.Atomic => WindowsLowering.CloneArc, _ => null }
+        var callee = clone ? returnType.HandleMode?.Counting switch { ObjectCountingStep.NonAtomic => WindowsLowering.CloneRc, ObjectCountingStep.Atomic => WindowsLowering.CloneArc, _ => null }
             : runtime ? WindowsLowering.GetCompilerFunction(plan.Target.CompilerFunction) : creation?.Physical.Abi ?? generic?.Selected ?? generic?.Abi ?? this.functions!.GetValueOrDefault(target);
+        var virtualSlot = -1;
+        var virtualReceiver = -1;
+        if (target.IsVirtual)
+        {
+            if (plan.Kind != CalleeKind.Virtual || this.Virtuals is null)
+            {
+                return Fail("A virtual call has no verified slot selection.", out failure);
+            }
+
+            if (plan.VirtualIsDirect)
+            {
+                callee = plan.VirtualImplementation is { } implementation ? this.Virtuals.Entry(implementation, plan.VirtualImplementingType) : null;
+            }
+            else if (!this.Virtuals.TrySlot(target, callee, out virtualSlot, out virtualReceiver))
+            {
+                return Fail("A virtual call has no physical slot and receiver mapping.", out failure);
+            }
+        }
+
         if (plan.Target.CompilerFunction == CompilerFunctionKind.WriterWrite && call.Parent is InterpolatedStringKoto { Formatting: { } formattingRoot } &&
             call.ArgumentNodes.Count == 2 && call.ArgumentNodes[1] is StringLiteralKoto && this.EstimateFormatting(formattingRoot).Capacity == 0)
         {
@@ -204,7 +230,7 @@ internal sealed partial class BodyLowering
             callee = userFormat;
         }
 
-        if (callee is null && !comparison)
+        if (callee is null && !comparison && !arithmetic)
         {
             return Fail("Call target has no selected implementation ABI.", out failure);
         }
@@ -223,12 +249,13 @@ internal sealed partial class BodyLowering
                 ? new BoundArgumentOperation(omitted.Expression, omitted.Expression.BoundType, omitted.ParameterType, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: parameter)
                 : plan.ArgumentOperations[i];
             var sourceArgument = i < 0 ? plan.Receiver! : isDefault ? omitted.Expression : call.ArgumentNodes[i];
-            var parameterType = body.ConcreteAt(acquisition.ParameterType, id);
+            // The call plan is already resolved in the call's context (CallAt); only the body's root stage remains (SPEC 8.10).
+            var parameterType = body.Resolve(acquisition.ParameterType, InterpretationContext.Root);
             if ((uint)parameter >= (uint)target.Parameters.Count || this.parameterArguments[parameter] != -1 ||
                 !ReferenceEquals(acquisition.Source, sourceArgument) ||
                 (isDefault && (parameter <= previousDefault || !ReferenceEquals(target.Parameters[parameter].DefaultValue, omitted.Expression) ||
                     !ReferenceEquals(omitted.Parameter.Scope.Owner, target))) ||
-                acquisition.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection or ArgumentOperationKind.ReferenceRead) || acquisition.ParameterIndex != parameter ||
+                acquisition.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.BaseBorrow or ArgumentOperationKind.PayloadProjection or ArgumentOperationKind.ReferenceRead) || acquisition.ParameterIndex != parameter ||
                 !ReferenceTypes.StorageMatches(intrinsic ? parameterType : generic?.Parameters[parameter] ?? creation?.Payload ?? target.Parameters[parameter].Type.BoundType, parameterType) ||
                 (acquisition.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead) && !ReferenceTypes.IsString(parameterType) && !ReferenceTypes.IsBorrow(parameterType)))
             {
@@ -257,10 +284,11 @@ internal sealed partial class BodyLowering
             var entry = this.arguments[cursor++];
             var place = body.Operations[entry].Place;
             var type = body.Places[place].Type;
-            // SPEC 15.4.4: an instance fits the argument to an Origin this body's local initializer inferred through the substituted bound.
-            var fitted = this.instance is { } instanceCall && acquisition.ParameterType is { } declared ? this.instanceBinding!.InstantiateInferredType(declared, parameterType, instanceCall) : parameterType;
             if (!ReferenceEquals(body.Operations[entry].Source, call) ||
-                (fitted is not { } required || !call.CodeContext.Compilation.Binding.FitsTypeAt(type, required, call)))
+                (parameterType is not { } required || (!call.CodeContext.Compilation.Binding.FitsVerifiedTypeAt(type, required, call) &&
+                !(acquisition is { Kind: ArgumentOperationKind.BaseBorrow, BasePath: not null } &&
+                type is { Semantics: SemanticsKind.Ref, Components.Count: 1 } && required is { Semantics: SemanticsKind.Ref, Components.Count: 1 } &&
+                ReferenceEquals(required.Components[0], plan.DeclaringType) && AdtDef.IsOrInherits(type.Components[0], required.Components[0])))))
             {
                 return Fail("Call entry does not match its argument Type or call.", out failure);
             }
@@ -275,13 +303,15 @@ internal sealed partial class BodyLowering
                 // The instantiated parameter Type was matched against the callee's entry above; a
                 // monomorphized instance forwards its ref/T parameter as the substituted string reference.
                 if (!ReferenceTypes.IsString(parameterType) || !this.ValidateReferenceUse(body, entry, id) ||
-                    !ReferenceEquals(acquisition.Source, sourceArgument) || !ReferenceEquals(SignatureType(this, acquisition.SourceType), SignatureType(this, sourceArgument.BoundType)))
+                    !ReferenceEquals(acquisition.Source, sourceArgument) ||
+                    !ReferenceEquals(body.Resolve(acquisition.SourceType, InterpretationContext.Root), body.Resolve(sourceArgument.BoundType, isDefault ? InterpretationContext.Root : body.ContextAt(id))))
                 {
                     return Fail("Reference argument lacks its call-wide Loan or Origin substitution.", out failure);
                 }
 
                 var root = this.referenceRoots[entry];
-                var sourceType = body.ConcreteAt(isDefault && acquisition.SourceType is { } declaredSource ? call.CodeContext.Compilation.Binding.InstantiateStorageType(declaredSource, plan) : acquisition.SourceType, id);
+                var sourceType = isDefault && acquisition.SourceType is { } declaredSource
+                    ? body.Resolve(call.CodeContext.Compilation.Binding.InstantiateStorageType(declaredSource, plan), body.ContextAt(id)) : body.Resolve(acquisition.SourceType, InterpretationContext.Root);
                 if (acquisition.Kind == ArgumentOperationKind.Borrow
                     ? this.callLoanPlans[id] < 0 || body.Values[root].Kind != OwnershipValueKind.Borrow || !ReferenceEquals(body.ComparisonLoans[body.LoanStates[root]].Call, call) ||
                         !ReferenceEquals(body.Operations[root].Source, OwnershipAnalysis.BorrowedArgumentSource(sourceArgument))
@@ -318,11 +348,16 @@ internal sealed partial class BodyLowering
             return this.LowerBuiltinComparison(body, function, plan, id, out failure);
         }
 
+        if (arithmetic)
+        {
+            return this.LowerBuiltinArithmetic(body, function, constants, directory, plan, id, out failure);
+        }
+
         this.callOperands.Clear();
         long writerKind = -1;
         EmissionOperand writerDispatch = default;
         if (plan.Target.CompilerFunction == CompilerFunctionKind.TextWriter &&
-            !this.PrepareWriterDispatch(library, plan, function, returnType, out writerKind, out writerDispatch, out failure))
+            !this.PrepareWriterDispatch(plan, function, returnType, out writerKind, out writerDispatch, out failure))
         {
             return false;
         }
@@ -363,7 +398,7 @@ internal sealed partial class BodyLowering
             if (formatting && physical.Kind == AbiParameterKind.Context && plan.Target.CompilerFunction is CompilerFunctionKind.TextFixed or CompilerFunctionKind.TextTryFormat)
             {
                 var destination = plan.Target.CompilerFunction == CompilerFunctionKind.TextFixed ? 0 : 1;
-                if (SignatureType(this, plan.ArgumentOperations[destination].ParameterType) is not { Components.Count: 1 } borrowed ||
+                if (body.Resolve(plan.ArgumentOperations[destination].ParameterType, InterpretationContext.Root) is not { Components.Count: 1 } borrowed ||
                     borrowed.Components[0] is not { Kind: BoundTypeKind.FixedArray, Length: >= 0 } array)
                 {
                     return Fail("Fixed buffer requires a concrete initialized byte array.", out failure);
@@ -433,7 +468,7 @@ internal sealed partial class BodyLowering
         }
         else
         {
-            function.AddCall(id, callee, CollectionsMarshal.AsSpan(this.callOperands));
+            function.AddCall(id, callee, CollectionsMarshal.AsSpan(this.callOperands), virtualSlot, virtualReceiver);
         }
 
         this.formattingRuntimeUsed |= formatting;

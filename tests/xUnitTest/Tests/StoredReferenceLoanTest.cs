@@ -21,9 +21,9 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
         var source = "func run(value: uniq/i32" + origin + ")\n    let child = value@follow@uniq\n    let snapshot: i32 = " + read + "\n    child@follow = 99";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -45,7 +45,7 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
         var path = Path.GetFullPath("parent-read.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.True(c.Binding.Result.IsComplete);
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         Assert.Equal(independent ? 2 : 1, result.Diagnostics.Length);
@@ -92,9 +92,9 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
         var source = "func change(value: uniq/i32) => value@follow = 99\nfunc run(value: uniq/i32" + origin + ")\n    let found = value@follow@ref\n    change(value)\n    require found == 42 else => $abort(\"value\")";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.Contains(c.Ownership.Issues, static x => x.Code == Kimi.DiagnosticCode.CallActivationConflict_Kd);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.False(c.Analysis.IsVerified);
+        Assert.Contains(c.Problems, static x => x.Code == Kimi.DiagnosticCode.CallActivationConflict_Kd);
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
 
     [Theory]
@@ -125,8 +125,8 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
         var source = "func change(value: uniq/i32) => value@follow = 99\nfunc run(value: uniq/i32 during a)\n    " + acquisition + "\n    " + mutation + "\n    require found == 42 else => $abort(\"value\")";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.False(c.Analysis.IsVerified);
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
 
     [Fact]
@@ -142,8 +142,8 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
         const string source = "var entries = [1: 42]\nvar iterator = entries.iterateUniq()\nmatch iterator.next()\n    .Some((let key, let value))\n        let child = value@follow@ref\n        value@follow = 99\n        require child == 42 and key == 1 else => $abort(\"child\")\n    .None => $abort(\"missing\")";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
 
     [Theory]
@@ -155,7 +155,7 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
             (independent ? "    change(value)\n" : string.Empty) + "    require found == 42 else => $abort(\"value\")";
         var path = Path.GetFullPath("retained-loan.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         Assert.Equal(independent ? 2 : 1, result.Diagnostics.Length);
@@ -195,7 +195,7 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
             }
         }
 
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -207,9 +207,9 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze("func run(value: uniq/i32 during a)\n    let found = value@follow@" + mode + "\n    require found == 42 else => $abort(\"value\")\n    value@follow = 99");
         for (var i = 0; i < 8; i++)
         {
-            Assert.True(c.Ownership.Analyze().IsVerified);
+            Assert.True(c.Analyze().IsVerified);
         }
 
-        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Ownership.Analyze()));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
     }
 }

@@ -70,7 +70,6 @@ public enum OwnershipOperationKind : byte
     Deliver,
     Branch,
     Exit,
-    Unsupported,
     PayloadPlacement,
     CompleteConstruction,
     InitializeSubject,
@@ -86,7 +85,9 @@ public enum OwnershipOperationKind : byte
     CheckReceiverField,
     WriteBorrowedField,
     UpdateTarget,
-    UpdateBorrowed,
+    ReplaceBorrowed,
+    ExchangeBorrowed,
+    SwapBorrowed,
     TestObserve,
     TestMessage,
     TestAbort,
@@ -111,7 +112,6 @@ public enum CleanupAction : byte
     Skip,
     Destroy,
     Conditional,
-    Unsupported,
 }
 
 public enum CleanupReason : byte
@@ -159,6 +159,7 @@ public enum OwnershipFailure : byte
     // published effect bound of its Contract.
     EffectBound,
     CallableEffectBound,
+    VirtualEffectBound,
 
     // SPEC 4.6.1, 15.1.3: an element is moved only through a static Move Path: a nonnegative integer-literal index within an
     // owned fixed array.
@@ -179,6 +180,8 @@ public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type
     internal int DeferredExecution { get; init; } = -1;
 
     internal int DefaultContext { get; init; } = -1;
+
+    internal bool CleanupObservesBorrows { get; init; }
 }
 
 /// <summary>One CFG program point; Place/Input are IDs in its body's Place table.</summary>
@@ -192,6 +195,8 @@ public readonly record struct OwnershipOperation(OwnershipOperationKind Kind, Ko
         OwnershipOperationKind.Borrow or OwnershipOperationKind.UpdateTarget => PlaceUseKind.Borrow,
         _ => PlaceUseKind.None,
     };
+
+    internal bool IsWholeUpdate => this.Kind is OwnershipOperationKind.ReplaceBorrowed or OwnershipOperationKind.ExchangeBorrowed or OwnershipOperationKind.SwapBorrowed;
 }
 
 public readonly record struct OwnershipEdge(int From, int To, OwnershipEdgeKind Kind, int Next);
@@ -224,7 +229,7 @@ public readonly record struct OwnershipLending(Koto Input, Koto Call);
 // enumeration (SPEC 8.10, 23.3.6.4); empty outside a case run and once every case found the problem.
 public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1, int Reservation = -1, bool Activation = false, Koto? LoanSource = null,
     string? StorageTable = null, long RequiredBytes = 0, long LimitBytes = 0, int Capture = -1, Koto? Related = null,
-    OwnershipLending? Input = null, OwnershipLending? ConflictingReservation = null, BoundType? OperationType = null, BindingObligation? Obligation = null,
+    OwnershipLending? Input = null, OwnershipLending? ConflictingReservation = null, BindingObligation? Obligation = null,
     Koto? Borrow = null, int BorrowCapture = -1, string? Destroyed = null, Koto? DestroyedTemporary = null, ulong Cases = 0)
 {
     public DiagnosticCode Code => this.Failure switch
@@ -245,17 +250,17 @@ public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failu
         OwnershipFailure.Internal => DiagnosticCode.InternalInvariant_Kd,
         OwnershipFailure.EffectBound => DiagnosticCode.IncompatibleContractImplementation_Kd,
         OwnershipFailure.CallableEffectBound => DiagnosticCode.UnsatisfiedEffectBound_Kd,
+        OwnershipFailure.VirtualEffectBound => DiagnosticCode.UnsatisfiedEffectBound_Kd,
         OwnershipFailure.StaticMovePathRequired => DiagnosticCode.StaticMovePathRequired_Kd,
         OwnershipFailure.CallEffectConflict => DiagnosticCode.CallEffectConflict_Kd,
         OwnershipFailure.StorageLimit => DiagnosticCode.OwnershipStorageLimit_Kd,
         OwnershipFailure.CaseLimit => DiagnosticCode.OwnershipCaseLimit_Kd,
-        OwnershipFailure.Unsupported when this.OperationType is not null => DiagnosticCode.UnsupportedIntegerOperation_Kd,
-        _ => DiagnosticCode.UnsupportedOwnership_Kd,
+        _ => DiagnosticCode.Unsupported_Kd,
     };
 }
 
 /// <summary>Verification of the supported ownership subset, never an executable-emission certificate.</summary>
-public readonly record struct OwnershipResult(bool IsVerified, int BodyCount, int ErrorCount, int UnsupportedCount);
+public readonly record struct OwnershipResult(bool IsVerified, int BodyCount, int ErrorCount);
 
 /// <summary>Reusable per-body CFG and plans. The next analysis replaces its contents.</summary>
 public sealed partial class OwnershipBody
@@ -292,10 +297,6 @@ public sealed partial class OwnershipBody
     internal readonly List<OwnershipCallReservation> CallReservations = new();
     internal readonly List<int> LoanInputs = new();
     internal readonly List<int> LoanStates = new();
-    internal readonly List<int> OperationRegions = new();
-    internal readonly List<OwnershipCheckingRegion> CheckingRegions = new();
-    internal readonly List<OwnershipCheckingSeed> CheckingSeeds = new();
-    internal readonly List<OwnershipCheckingReplay> CheckingReplays = new();
     internal readonly Dictionary<BindingSymbol, int> SymbolPlaces = new(ReferenceEqualityComparer.Instance);
     internal int ReceiverBase = -1;
     internal bool[] Reachable = [];
@@ -361,7 +362,7 @@ public sealed partial class OwnershipBody
     internal List<int>? Anchors { get; set; }
 
     /// <summary>Gets or sets the closed call whose substitution this instance plan carries; null for a source body (SPEC 21.3.1).</summary>
-    internal BoundCall? Instance { get; set; }
+    internal CallPlan? Instance { get; set; }
 
     internal Binding? InstanceBinding { get; set; }
 
@@ -370,15 +371,24 @@ public sealed partial class OwnershipBody
 
     public bool IsReachable(int operation) => this.Reachable[operation];
 
-    // A declared Type as this body's plan sees it: a case run sees its case Types and an instance plan its closed substitution.
-    internal BoundType? Concrete(BoundType? type)
-        => type is null ? type : this.Instance is not null ? this.InstanceBinding!.InstantiateStorageType(type, this.Instance)
-        : this.Cases.IsEmpty ? type : this.InstanceBinding!.CaseType(type, this.Cases.Span);
-
     // A case or instance plan carries its substitution from the start, so every phase that reads a declared Type through
     // Concrete, from building and solving to lowering, sees the substituted Type.
-    internal void Reset(FunctionKoto function, BoundCall? instance, Binding? instanceBinding, ReadOnlySpan<PairCase> cases = default, ulong caseBit = 0)
+    internal OwnershipTransfers TransfersAt(int operation)
     {
+        var entry = this.Operations[operation];
+        return OwnershipFlow.FlowOf(entry.Kind) switch
+        {
+            OwnershipFlow.OperationFlow.Construction => OwnershipFlow.Transfers(this.Constructions[this.OperationSteps[operation]]),
+            OwnershipFlow.OperationFlow.Decomposition => OwnershipFlow.Transfers(this.Decompositions[this.OperationSteps[operation]], decompose: true),
+            OwnershipFlow.OperationFlow.DictionaryEntry => new(entry.Place, entry.Input, 2, SourceStep: this.OperationSteps[operation] - entry.Input),
+            _ => OwnershipFlow.Transfers(entry),
+        };
+    }
+
+    internal void Reset(FunctionKoto function, CallPlan? instance, Binding? instanceBinding, ReadOnlySpan<PairCase> cases = default, ulong caseBit = 0)
+    {
+        this.ResetResolvedCalls();
+        this.ResetCleanupEffects();
         this.Function = function;
         this.DefaultParameter = -1;
         this.Instance = instance;
@@ -438,12 +448,6 @@ public sealed partial class OwnershipBody
         this.LoanStates.Clear();
         this.reportedIssues.Clear();
         this.reservedElementWrites?.Clear();
-        this.OperationRegions.Clear();
-        this.CheckingRegions.Clear();
-        this.CheckingSeeds.Clear();
-        this.CheckingReplays.Clear();
-        this.CheckingRegions.Add(new(-1, -1)); // Region zero is ordinary source flow.
-        this.checkingSolved = false;
         this.ResetCompletion();
         this.SymbolPlaces.Clear();
     }
@@ -488,42 +492,21 @@ public sealed partial class OwnershipBody
     // inconsistency that only a Debug build would notice.
     internal bool Invariant(bool condition, Koto? source = null)
     {
-        if (!condition && !this.HasUnsupportedIssue())
+        if (!condition && this.IssueStorage.Count == 0)
         {
-            // A graph left partial at an unsupported construct is not evidence of an implementation fault.
+            // A graph left partial where an earlier issue stopped it is not evidence of an implementation fault.
             this.ReportIssue(new(source ?? this.Function, OwnershipFailure.Internal));
         }
 
         return condition;
     }
 
-    private bool HasUnsupportedIssue()
-    {
-        for (var i = 0; i < this.IssueStorage.Count; i++)
-        {
-            if (this.IssueStorage[i].Failure == OwnershipFailure.Unsupported)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    // The root stage of Resolve: a case run sees its case Types and an instance plan its closed substitution. Every consumer
+    // names its interpretation context through Resolve (SPEC 7.2.3, 8.10).
+    private BoundType? Concrete(BoundType? type)
+        => type is null ? type : this.Instance is not null ? this.InstanceBinding!.InstantiateStorageType(type, this.Instance)
+        : this.Cases.IsEmpty ? type : this.InstanceBinding!.CaseType(type, this.Cases.Span);
 }
-
-// A checking-only seed edge. Its source is replayed after its containing region
-// converges; it never enters EdgeStorage or contributes a runtime predecessor.
-// Target is null for function-terminal paths. MixedTargets permits local checking;
-// constituent seeds retain their own effects when crossing an extent boundary.
-// CaughtTarget marks a source continuation after a transfer to a checking scope.
-// Its post-cleanup normal arrival is tracked separately; Target stays unchanged.
-internal readonly record struct OwnershipCheckingRegion(int Seed, int Entry, int SeedStart = 0, int SeedCount = 0, Koto? Target = null, bool MixedTargets = false, int Replay = -1, Koto? CaughtTarget = null);
-
-internal readonly record struct OwnershipCheckingSeed(int Operation, Koto? Target, int Replay = -1, Koto? CaughtTarget = null);
-
-// A proven closed checking path, applied to one constituent state before joining.
-// Previous links are strictly older; storage is reused across analysis passes.
-internal readonly record struct OwnershipCheckingReplay(int Entry, int End, int Previous, bool Graph = false);
 
 // Values use their defining operation ID; Input on OwnershipOperation remains a Place ID.
 internal enum OwnershipValueKind : byte
@@ -584,7 +567,7 @@ internal enum SequenceOperation : byte
     Read,
 }
 
-internal readonly record struct OwnershipSequence(int Operation, SequenceOperation Kind, int Receiver, int Projection = -1, int Index = -1, int End = -1);
+internal readonly record struct OwnershipSequence(int Operation, SequenceOperation Kind, int Receiver, int Projection = -1, int Index = -1, int End = -1, int Address = -1);
 
 // Start/Count address PhiInputs for Phi, otherwise ValueOperands.
 // Constant holds the signed-extended N-bit integer payload, or the logical index for Parameter.
@@ -621,7 +604,7 @@ internal readonly record struct OwnershipResultArrival(int Edge, int Write);
 // Includes secured results whose cleanup prevents arrival.
 internal readonly record struct OwnershipResultWrite(int Operation, int Declare);
 
-// Persistent stack links preserve independent branch and checking-region environments.
+// Persistent stack links preserve independent branch environments.
 // Calls, comparisons, guard inspection and element access share the same lexical chain.
 // Read anchors acquisition: Read/Borrow, LocateReceiver for storage protection,
 // and final ProjectElement for an exclusive write.
@@ -634,15 +617,15 @@ internal readonly record struct OwnershipCallLoans(int Call, int Result, int End
 // The value an input of a requirement call designates: a root Place, possibly through its first Field; a negative root when
 // unknown. Two live exclusive values are disjoint, and shared aliases only read, so effects reach another value only through
 // the same root or a dependency between roots.
-internal readonly record struct OwnershipValueIdentity(int Root, BindingSymbol? Field, Koto? CallablePath = null);
+internal readonly record struct OwnershipValueIdentity(int Root, BindingSymbol? Field);
 
 // SPEC 8.4.10.4: a generic requirement call reaches, in Mode, every Loan that the Origins of one abstract input Type may denote
 // (the Region) through Input. Preserves holds when an available bound excludes the earlier results of the same requirement on
 // the same receiver.
-internal readonly record struct OwnershipRequirementEffect(int Call, int Region, LoanRequirement Mode, object Requirement, OwnershipValueIdentity Input, OwnershipValueIdentity Receiver, bool Preserves);
+internal readonly record struct OwnershipRequirementEffect(int Call, int Region, LoanRequirement Mode, object Requirement, OwnershipValueIdentity Input, OwnershipValueIdentity Receiver, bool Preserves, BindingSymbol? Contract = null);
 
 // SPEC 8.4.10.4: the result of a generic requirement call may keep, in Mode, Loans of a Region its call reached through Input.
-internal readonly record struct OwnershipRequirementResult(int Call, int Result, int Region, LoanRequirement Mode, object Requirement, OwnershipValueIdentity Input, OwnershipValueIdentity Receiver);
+internal readonly record struct OwnershipRequirementResult(int Call, int Result, int Region, LoanRequirement Mode, object Requirement, OwnershipValueIdentity Input, OwnershipValueIdentity Receiver, BindingSymbol? Contract = null);
 
 internal readonly record struct OwnershipStringComparison(int Operation, int Left, int Right, int LeftLoan, int RightLoan, int LeftValue = -1, int RightValue = -1);
 
@@ -652,7 +635,7 @@ internal readonly record struct OwnershipStringComparison(int Operation, int Lef
 // Borrow identifies a Read/Borrow that replaces location protection with an element Loan without acquisition.
 // Path/PathDepth identify the longest static prefix in this same projection table;
 // Selector is the decoded literal element index, or -1 for a non-static selector.
-internal readonly record struct OwnershipProjection(int Operation, int Root, int Parent, int Index, int Element, int Loan, int Output = -1, int Write = -1, int Update = -1, int Exclusive = -1, int Path = -1, int PathDepth = 0, int Selector = -1, int Borrow = -1);
+internal readonly record struct OwnershipProjection(int Operation, int Root, int Parent, int Index, int Element, int Loan, int Output = -1, int Write = -1, int Update = -1, int Exclusive = -1, int Path = -1, int PathDepth = 0, int Selector = -1, int Borrow = -1, int ReplacementBorrow = -1);
 
 // A completed numeric update links one projection's Copy and store to its calculation/result.
 internal readonly record struct OwnershipElementUpdate(int Projection, int Right, int Computation, int Result);

@@ -1,6 +1,7 @@
 // The catalog of repair candidate kinds (SPEC 23.3.6.9), one entry per RepairKind in catalog order. Title is a template over
 // the candidate's facts ({0}, {1}, ...); Facts names each fact as name:Kind like a code's Arguments, and a candidate supplies all
-// of them; Conditions lists the relevant conditions (Take, ExclusiveAccess, UsageLegality, Structure) that a recorder judges
+// of them; Conditions lists mandatory conditions; ConditionalConditions lists conditions whose relevance the recorder decides.
+// The vocabulary is Take, ExclusiveAccess, UsageLegality, Structure and Selection; a relevant condition is judged
 // verified or required, withholding the candidate when one is refuted. A consistency test keeps this table equal to RepairKind.
 
   + Name="Repair.Transfer"
@@ -35,3 +36,9 @@
 
   + Name="Repair.ExplicitDiscard"
     Title="Discard the result explicitly with _ ="
+
+  + Name="Repair.Qualify"
+    Title="Insert {1} before {0}"
+    Facts="name:Text,qualifier:Text"
+    Conditions="Selection"
+    ConditionalConditions="UsageLegality"

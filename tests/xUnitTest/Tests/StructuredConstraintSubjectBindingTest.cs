@@ -56,7 +56,7 @@ public class StructuredConstraintSubjectBindingTest
         var c = MinimalEmissionTest.Analyze(Source(clause));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Equal(BindingState.Invalid, Target(c).BindingState);
+        Assert.Equal(BindingState.Invalid, Target(c).StateOf());
         Assert.False(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
@@ -87,7 +87,7 @@ public class StructuredConstraintSubjectBindingTest
         var c = MinimalEmissionTest.Analyze("internal struct Hidden\n    Self is Copy\n" + Source(clause));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
     }
 
     [Theory]

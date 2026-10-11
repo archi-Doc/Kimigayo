@@ -25,7 +25,7 @@ public sealed class ConditionalCaptureTest
         var capture = Assert.Single(closure.Captures);
         Assert.Equal(CaptureAcquisition.Bare, capture.Environment.CaptureAcquisition);
         Assert.Equal(SemanticsKind.Ref, closure.Receiver); // Reading through the capture is Shared in every case.
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public sealed class ConditionalCaptureTest
         var c = MinimalEmissionTest.Analyze(Body.Replace("{0}", "var", StringComparison.Ordinal));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(SemanticsKind.Uniq, Closure(c).Receiver);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
 
         var errors = DiagnosticCorpus.Check(Body.Replace("{0}", "let", StringComparison.Ordinal)).Diagnostics;
         Assert.NotEmpty(errors);
@@ -56,5 +56,5 @@ public sealed class ConditionalCaptureTest
     }
 
     private static BoundClosure Closure(Compilation c)
-        => Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous).BoundClosure!;
+        => Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous).ClosureOf()!;
 }

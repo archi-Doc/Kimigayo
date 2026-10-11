@@ -101,7 +101,7 @@ public class BorrowOriginSuffixTest
     {
         var tree = ParseTestHelper.ParseSuccess($"let result = x@{target} / y");
         var declaration = Assert.IsType<FieldKoto>(Assert.Single(tree.GeneratedFunction!.Body!.Items));
-        var division = Assert.IsType<SlashKoto>(declaration.InitializerKoto);
+        var division = ParseTestHelper.Binary(KotoKind.Slash, declaration.InitializerKoto);
         var adaptation = Assert.IsType<ConversionKoto>(division.Left);
         Assert.Equal(target, adaptation.Right.ToString());
         Assert.Equal("y", division.Right.ToString());
@@ -136,26 +136,26 @@ public class BorrowOriginSuffixTest
     }
 
     [Theory]
-    [InlineData("func f(x: i32) -> ref/i32 during x => x@ref", "declared schema slot")]
-    [InlineData("func f<s/T>(x: s/T)\n    s is ref\n    let y = x@s{a}/T", "outer Origin must be inferred")]
-    [InlineData("func f(x: i32) => x@ref{a}/i32", "outer Origin must be inferred")]
-    [InlineData("func f<T>(x: ref/i32 during a, y: ref/i32 during b)\n    T is ref/i32 during a and b\n    ()", "intersection requires parentheses")]
-    [InlineData("struct View {source}\n    let item: ref/i32 during source\nfunc f<T>(x: ref/i32 during a, view: View{v})\n    T is ref/i32 during a and v.source\n    ()", "intersection requires parentheses")]
+    [InlineData("func f(x: i32) -> ref/i32 during x => x@ref", null)]
+    [InlineData("func f<s/T>(x: s/T)\n    s is ref\n    let y = x@s{a}/T", null)]
+    [InlineData("func f(x: i32) => x@ref{a}/i32", null)]
+    [InlineData("func f<T>(x: ref/i32 during a, y: ref/i32 during b)\n    T is ref/i32 during a and b\n    ()", null)]
+    [InlineData("struct View {source}\n    let item: ref/i32 during source\nfunc f<T>(x: ref/i32 during a, view: View{v})\n    T is ref/i32 during a and v.source\n    ()", null)]
     [InlineData("func f(x: ref/i32? during a) -> ref/i32\n    return match x\n        .Some(let value) => value@follow\n        .None => $abort(\"empty\")", "omitted result Origin is static")]
     [InlineData("struct V {source}\n    let value: ref/i32 during source\nfunc f(view: V, x: ref/i32? during view.source) -> ref/i32\n    return match x\n        .Some(let value) => value@follow\n        .None => $abort(\"empty\")", "omitted result Origin is static")]
-    public void InvalidUsesKeepTheirFailureAndExplainTheOriginRule(string source, string hint)
+    public void InvalidUsesKeepTheirFailure(string source, string? note)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         var failures = c.Binding.Issues.ToArray();
         c.Binding.ReportDiagnostics();
         var messages = TestDiagnostics.Of(c, "Hello.kimi").Select(x => x.Explanation).ToArray();
-        Assert.True(messages.Any(x => x.Contains(hint, StringComparison.Ordinal)), string.Join("\n", messages));
+        Assert.True(note is null || messages.Any(x => x.Contains(note, StringComparison.Ordinal)), string.Join("\n", messages));
         Assert.Equal(failures, c.Binding.Issues);
     }
 
     [Theory]
-    [InlineData("func f(x: ref/i32) -> ref/i32\n    during x\n    return x", "same line", "Type's line")]
+    [InlineData("func f(x: ref/i32) -> ref/i32\n    during x\n    return x", "own line", "own line")]
     [InlineData("func f(x: ref/i32 during a and b) => ()", "parentheses", "parentheses")]
     [InlineData("func f(x: ref/i32 from a) => ()", "during", "during")]
     [InlineData("func f<T>(x: ref/i32 during a)\n    T is Box<ref/i32 during a and b>\n    ()", "parentheses in Type arguments", "parentheses")]
@@ -192,9 +192,9 @@ public class BorrowOriginSuffixTest
         var c = MinimalEmissionTest.Analyze(Source);
         var function = Assert.Single(ParseTestHelper.GetChildren(c.Kotonoha.RootKoto).OfType<FunctionKoto>());
         var field = Assert.IsType<FieldKoto>(Assert.Single(function.Body!.Items));
-        var division = Assert.IsType<SlashKoto>(field.InitializerKoto);
+        var division = ParseTestHelper.Binary(KotoKind.Slash, field.InitializerKoto);
         var conversion = Assert.IsType<ConversionKoto>(division.Left);
-        Assert.Equal(BindingSymbolKind.Type, conversion.Right.BoundSymbol?.Kind);
+        Assert.Equal(BindingSymbolKind.Type, conversion.Right.SymbolOf()?.Kind);
         c.Binding.ReportDiagnostics();
         Assert.DoesNotContain(TestDiagnostics.Of(c, "Hello.kimi"), d => d.Message.Contains("brace borrow", StringComparison.Ordinal));
     }

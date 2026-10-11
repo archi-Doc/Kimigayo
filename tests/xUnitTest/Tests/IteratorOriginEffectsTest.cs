@@ -180,7 +180,7 @@ public class IteratorOriginEffectsTest
     public void AWrapperWithUnboundedInnerEffectsIsRejected(string wrapper)
     {
         var c = MinimalEmissionTest.Analyze(wrapper);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
         MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
@@ -220,7 +220,7 @@ public class IteratorOriginEffectsTest
         var source = Counter + wrapper + "var hold = Hold<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match hold.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
             "require sum == 6 else => $abort(\"hold\")\nConsole.writeLine(\"held\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     // G28: an item held across effects executes, and the effects run once per step.
@@ -269,7 +269,7 @@ public class IteratorOriginEffectsTest
             "            .None => return .None\n";
         var c = MinimalEmissionTest.Analyze(source);
         MinimalEmissionTest.AssertEffectBoundRejected(c);
-        Assert.All(c.Binding.Issues.Select(x => x.Code).Concat(c.Ownership.Issues.Select(x => x.Code)), code => Assert.Equal(DiagnosticCode.IncompatibleContractImplementation_Kd, code));
+        Assert.All(c.Binding.Issues.Select(x => x.Code).Concat(c.Problems.Select(x => x.Code)), code => Assert.Equal(DiagnosticCode.IncompatibleContractImplementation_Kd, code));
     }
 
     // G28: a nested pattern destroys only its untransferred parts: the isize position is Copy and the value is transferred,
@@ -343,7 +343,7 @@ public class IteratorOriginEffectsTest
     public void ALoopMayContinueWithItsReinitializedItem()
     {
         var c = MinimalEmissionTest.Analyze(LoopRetry + "            attempt = self.inner.next()\n            if self.retries > 1 => continue\n            self.retries += 0\n");
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     // A `continue` that leaves a match arm drops the payload bound there.
@@ -393,7 +393,7 @@ public class IteratorOriginEffectsTest
     public void BothBranchesMayTransferTheItem()
     {
         var c = MinimalEmissionTest.Analyze(Branch + "            return first@move\n        else\n            self.skipped += 1\n            return first@move\n");
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     // A branch that leaves while holding the item, or a fall-through path left without a later transfer, destroys it.
@@ -425,7 +425,7 @@ public class IteratorOriginEffectsTest
     public void AnArmValueStoringThePayloadIsAccepted()
     {
         var c = MinimalEmissionTest.Analyze(Pick + "            .Some(let item) => .Some(item@move)\n            .None => .None\n        return result@move\n");
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     // An arm that yields another value, or a match result left to its scope, destroys the payload.
@@ -458,7 +458,7 @@ public class IteratorOriginEffectsTest
     public void AMatchDeliveringTheItemIsAccepted(string tail)
     {
         var c = MinimalEmissionTest.Analyze(Choose + tail);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     // A branch that delivers another value leaves the item to its scope.

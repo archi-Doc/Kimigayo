@@ -204,7 +204,7 @@ public class IntegerRangeTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var r = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.VariableKoto>().Single(x => x.NameKoto.IdentifierName == "r");
-        Assert.Equal(expected, Render(r.NameKoto.BoundType!));
+        Assert.Equal(expected, Render(r.NameKoto.TypeOf()!));
 
         static string Render(BoundType type)
             => type.Components.Count == 0 ? type.Symbol?.Name ?? type.Name : (type.Symbol?.Name ?? type.Name) + "<" + string.Join(", ", type.Components.Select(Render)) + ">";

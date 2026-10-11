@@ -45,31 +45,7 @@ public sealed class DocumentationMarkdown
         }
 
         var parameters = new List<DocumentationMarkdownParameter>();
-        var generics = declaration is FunctionKoto function ? function.GenericArguments : declaration is DeclarationContainerKoto container ? container.GenericParameterNodes : [];
-        foreach (var generic in generics)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            parameters.Add(new(generic.Identifier));
-            if (generic.SemanticsParameter is { } semantics)
-            {
-                parameters.Add(new(semantics));
-            }
-        }
-
-        var origins = declaration is FunctionKoto callable ? callable.Origins : declaration is DeclarationContainerKoto type ? type.OriginNames : declaration is PropertyAccessorKoto accessor ? accessor.Origins : [];
-        foreach (var origin in origins)
-        {
-            parameters.Add(new(origin));
-        }
-
-        if (declaration is FunctionKoto f)
-        {
-            for (var index = 0; index < f.Parameters.Count; index++)
-            {
-                parameters.Add(new(f.Parameters[index].ExternalName, index == f.BoundSymbol!.ReceiverIndex));
-            }
-        }
-
+        AddParameters(declaration, parameters, cancellationToken);
         return this.Document.ClassifyItems(CollectionsMarshal.AsSpan(parameters), cancellationToken);
     }
 
@@ -120,6 +96,41 @@ public sealed class DocumentationMarkdown
         if (this.Comment.Declaration is FunctionKoto { Modifier: var modifier } && modifier.HasFlag(ModifierKind.Unsafe) && !hasSafety)
         {
             yield return new(this.Comment.Source, this.Comment.Span, "MissingSafetyDocumentation");
+        }
+    }
+
+    internal static DocumentationMarkdownParameter[] Parameters(Koto declaration, CancellationToken cancellationToken = default)
+    {
+        var parameters = new List<DocumentationMarkdownParameter>();
+        AddParameters(declaration, parameters, cancellationToken);
+        return parameters.ToArray();
+    }
+
+    private static void AddParameters(Koto declaration, List<DocumentationMarkdownParameter> parameters, CancellationToken cancellationToken)
+    {
+        var generics = declaration is FunctionKoto function ? function.GenericArguments : declaration is DeclarationContainerKoto container ? container.GenericParameterNodes : [];
+        foreach (var generic in generics)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            parameters.Add(new(generic.Identifier));
+            if (generic.SemanticsParameter is { } semantics)
+            {
+                parameters.Add(new(semantics));
+            }
+        }
+
+        var origins = declaration is FunctionKoto callable ? callable.Origins : declaration is DeclarationContainerKoto type ? type.OriginNames : declaration is PropertyAccessorKoto accessor ? accessor.Origins : [];
+        foreach (var origin in origins)
+        {
+            parameters.Add(new(origin));
+        }
+
+        if (declaration is FunctionKoto f)
+        {
+            for (var index = 0; index < f.Parameters.Count; index++)
+            {
+                parameters.Add(new(f.Parameters[index].ExternalName, index == f.BoundSymbol!.ReceiverIndex));
+            }
         }
     }
 }

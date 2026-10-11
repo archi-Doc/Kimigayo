@@ -26,7 +26,7 @@ public class BorrowingIterableContractTest
             source = source.Replace("\nmatch cursor.next()", "\nvalues = Values.init()\nmatch cursor.next()", StringComparison.Ordinal);
             var c = MinimalEmissionTest.Analyze(source);
             Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-            Assert.False(c.Ownership.Result.IsVerified);
+            Assert.False(c.Analysis.IsVerified);
         }
         else
         {

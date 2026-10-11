@@ -63,8 +63,8 @@ public class CallReservationTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Cell + body);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
-        Assert.True(c.Ownership.Result.IsVerified, name + "\n" + string.Join('\n', c.Ownership.Issues));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), name + ": " + error);
+        Assert.True(c.Analysis.IsVerified, name + "\n" + string.Join('\n', c.Problems));
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), name + ": " + error);
         ScalarEmissionTest.EmitFixture("CallReservation" + name, Cell + body, string.Empty);
     }
 
@@ -80,7 +80,7 @@ public class CallReservationTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(Cell + body);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ExclusiveBorrowRequired_Kd);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -106,9 +106,9 @@ public class CallReservationTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Cell + body);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
-        Assert.False(c.Ownership.Result.IsVerified, body);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Analysis.IsVerified, body);
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -120,7 +120,7 @@ public class CallReservationTest(ITestOutputHelper output)
     public void RejectsCorruptedReservationPlans(string mutation)
     {
         var c = MinimalEmissionTest.Analyze(Cell + "var c = Cell.init()\nset(c@uniq, read(c))");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = Assert.Single(c.Ownership.Bodies, x => x.CallReservations.Count != 0);
         var reservation = body.CallReservations[0];
         switch (mutation)
@@ -143,10 +143,10 @@ public class CallReservationTest(ITestOutputHelper output)
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -156,7 +156,7 @@ public class CallReservationTest(ITestOutputHelper output)
         var source = Cell + "func use<T>(c: T, n: i32) => require n == 1 else => $abort(\"read\")\nvar c = Cell.init()\nuse(c@uniq, read(c))";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.True(c.Ownership.Result.IsVerified);
+        Assert.True(c.Analysis.IsVerified);
         NativeAllocationAudit.WriteFixture("CallReservationGenericReference", source, 0, 0, 0);
     }
 
@@ -214,7 +214,7 @@ public class CallReservationTest(ITestOutputHelper output)
     [Theory]
     [InlineData("var values = [1, 2, 3]\nvar it = values.iterateUniq()\nvalues.append(4)\nlet n = it.next()", "values.append(4)", null, "var it", "`values` implicitly borrowed exclusively as the receiver of `append`")]
     [InlineData("var values = [1, 2, 3]\nvar it = values.iterateUniq()\n(values).append(4)\nlet n = it.next()", "(values).append(4)", null, "var it", "`(values)` implicitly borrowed exclusively as the receiver of `append`")]
-    [InlineData("var table = Dictionary<i32, i32>.init()\nvar it = table.iterateUniq()\ntable.clear()\nlet n = it.next()", "table.clear()", null, "var it", "`table` implicitly borrowed exclusively as the receiver of `clear`")]
+    [InlineData("var table: Dictionary<i32, i32> = [:]\nvar it = table.iterateUniq()\ntable.clear()\nlet n = it.next()", "table.clear()", null, "var it", "`table` implicitly borrowed exclusively as the receiver of `clear`")]
     [InlineData(Drain + "public func main()\n    var values = [1, 2, 3]\n    var drain = Drain<ArrayUniqIterator<i32>>.init(values.iterateUniq())\n    let first = drain.take()\n    drain.reset(values.iterateUniq())\n    let second = drain.take()\n    match first@move\n        .Some(let item) => item@follow += 1\n        .None => ()", "values.iterateUniq()", "values.iterateUniq())\n    let second", "var drain", "`values` implicitly borrowed exclusively as the receiver of `iterateUniq`")]
     [InlineData(Drain + "var values = [1, 2, 3]\nvar drain = Drain<ArrayUniqIterator<i32>>.init(values.iterateUniq())\ndrain.reset(values.iterateUniq())\nlet second = drain.take()", "values.iterateUniq()", "values.iterateUniq())\nlet second", "var drain", "`values` implicitly borrowed exclusively as the receiver of `iterateUniq`")]
     [InlineData(Drain + "func replace<J>(drain: uniq/Drain<J>, fresh: J)\n    J is Iterator\n    drain.reset(fresh@move)\nvar values = [1, 2, 3]\nvar drain = Drain<ArrayUniqIterator<i32>>.init(values.iterateUniq())\nreplace(drain@uniq, values.iterateUniq())\nlet second = drain.take()", "values.iterateUniq()", "values.iterateUniq())\nlet second", "var drain", "`values` implicitly borrowed exclusively as the receiver of `iterateUniq`")]
@@ -227,14 +227,14 @@ public class CallReservationTest(ITestOutputHelper output)
     // input keeps the Note naming the implicit acquisition.
     [Theory]
     [InlineData("func consume<I>(it: I) -> i32 => 4\nvar values = [1, 2, 3]\nvar it = values.iterateUniq()\nvalues.append(consume(it@move))", "values", "values.append", "var it", "`values` implicitly borrowed exclusively as the receiver of `append`")]
-    [InlineData("func consume<I>(it: I) -> i32 => 4\nvar table = Dictionary<i32, i32>.init()\nvar it = table.iterateUniq()\ntable.insertOrReplace(consume(it@move), 1)", "table", "table.insert", "var it", "`table` implicitly borrowed exclusively as the receiver of `insertOrReplace`")]
+    [InlineData("func consume<I>(it: I) -> i32 => 4\nvar table: Dictionary<i32, i32> = [:]\nvar it = table.iterateUniq()\ntable.insertOrReplace(consume(it@move), 1)", "table", "table.insert", "var it", "`table` implicitly borrowed exclusively as the receiver of `insertOrReplace`")]
     public void AnImplicitReceiverMeetingALoanEndingDuringPreparationConflictsAtTheInput(string body, string input, string at, string holder, string note)
         => this.AssertOneConflict(Cell + body, "ComparisonLoanConflict_Kd", input, "This operation conflicts with an active loan", note, related: holder, at: at);
 
     // The valid counterparts: every holder of the Loan is last used before the receiver is acquired again.
     [Theory]
     [InlineData("var values = [1, 2, 3]\nvar it = values.iterateUniq()\nlet n = it.next()\nvalues.append(4)")]
-    [InlineData("var table = Dictionary<i32, i32>.init()\nvar it = table.iterateUniq()\nlet n = it.next()\ntable.clear()")]
+    [InlineData("var table: Dictionary<i32, i32> = [:]\nvar it = table.iterateUniq()\nlet n = it.next()\ntable.clear()")]
     [InlineData(Drain + "public func main()\n    var values = [1, 2, 3]\n    var drain = Drain<ArrayUniqIterator<i32>>.init(values.iterateUniq())\n    let first = drain.take()\n    match first@move\n        .Some(let item) => item@follow += 1\n        .None => ()\n    var again = Drain<ArrayUniqIterator<i32>>.init(values.iterateUniq())\n    let second = again.take()")]
     [InlineData(Keeper + "var s = Store.init()\nvar keeper = Keeper.init(s.lend())\nlet n = keeper.peek()\nvar again = Keeper.init(s.lend())\nlet m = again.peek()")]
     public void AReceiverLoanEndingBeforeTheCallIsAccepted(string body)
@@ -247,7 +247,7 @@ public class CallReservationTest(ITestOutputHelper output)
         var source = Cell + Drain + "var values = [1, 2, 3]\nvar other = [4, 5]\nvar it = other.iterateUniq()\nvar drain = Drain<ArrayUniqIterator<i32>>.init(values.iterateUniq())\ndrain.reset(values.iterateUniq())\nother.append(6)\nlet n = it.next()\nlet m = drain.take()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         var errors = TestDiagnostics.Of(c);
         Assert.Equal(2, errors.Length);
         Assert.All(errors, static x => Assert.Equal("CallActivationConflict_Kd", x.Code));
@@ -296,6 +296,16 @@ public class CallReservationTest(ITestOutputHelper output)
     public void SeparateOrSharedInputsAreAccepted(string body)
         => AssertAccepted(Cell + body);
 
+    // SPEC 15.6.2, 15.6.7: a write during preparation to a path disjoint from the reservation is valid, but the element-write
+    // check rejects it before the plan is complete: an implementation limit, one Unsupported_Kd at the written path.
+    [Fact]
+    public void AWriteDisjointFromTheReservationIsAnImplementationLimit()
+    {
+        var source = Cell + "var pair = (Cell.init(), Cell.init())\nset(pair.0@uniq, (label scope: do\n    pair.1.value = 2\n    exit to scope 3\n))\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(("Unsupported_Kd", source.IndexOf("pair.1.value", StringComparison.Ordinal), "pair.1.value".Length), (error.Code, error.Span!.Value.Start, error.Span.Value.Length));
+    }
+
     // Two independent overlaps keep one record each.
     [Fact]
     public void IndependentOverlapsKeepTheirOwnRecords()
@@ -303,7 +313,7 @@ public class CallReservationTest(ITestOutputHelper output)
         var source = Cell + Both + Change + "var c = Cell.init()\nvar d = Cell.init()\nboth(c@uniq, c@uniq)\nset(d@uniq, change(d@uniq))";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         var errors = TestDiagnostics.Of(c);
         Assert.Equal(2, errors.Length);
         Assert.All(errors, static x => Assert.Equal("CallReservationConflict_Kd", x.Code));
@@ -315,15 +325,15 @@ public class CallReservationTest(ITestOutputHelper output)
     public void WarmReservationAnalysisAndEmissionAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Cell + "var c = Cell.init()\nset(c@uniq, read(c))");
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
 
         var success = true;
         var bytes = AllocationMeasurement.Measure(
             () =>
             {
-                success &= c.Ownership.Analyze().IsVerified;
-                success &= c.Emission.WriteIr(TextWriter.Null, out _);
+                success &= c.Analyze().IsVerified;
+                success &= c.WriteIr(TextWriter.Null, out _);
             },
             iterations: 128,
             warmupIterations: 100);
@@ -340,18 +350,18 @@ public class CallReservationTest(ITestOutputHelper output)
     public void RejectsPermissionAndDefaultEscapes(string body)
     {
         var c = MinimalEmissionTest.Analyze(Cell + body);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
+        Assert.False(c.Validate(out _));
     }
 
     private static void AssertAccepted(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
-        Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
-        c.Ownership.ReportDiagnostics();
+        Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
+        c.ReportAnalysis();
         Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
     }
 
     // One published Error at the expected range with one related location and its Note, in the console and in both
@@ -362,8 +372,8 @@ public class CallReservationTest(ITestOutputHelper output)
         var path = Path.GetFullPath("reservation-conflict.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
-        Assert.False(c.Ownership.Result.IsVerified);
-        c.Ownership.ReportDiagnostics();
+        Assert.False(c.Analysis.IsVerified);
+        c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var error = Assert.Single(result.Diagnostics);
@@ -420,6 +430,6 @@ public class CallReservationTest(ITestOutputHelper output)
             }
         }
 
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 }

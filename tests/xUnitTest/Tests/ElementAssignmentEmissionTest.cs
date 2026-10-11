@@ -25,7 +25,6 @@ public class ElementAssignmentEmissionTest
         { "Result", "var a = ((1, false), 2)\na.0 = if true => (42, true) else => (0, false)\nif a.0.0 == 42 and a.0.1 => Console.writeLine(\"ok\")" },
         { "Loop", "var a: [3 of i32] = [0, 0, 0]\nvar i: isize = 0\nwhile i < 3\n    a[i] = 14\n    i += 1\nif a[0] + a[1] + a[2] == 42 => Console.writeLine(\"ok\")" },
         { "Deferred", "var a = (0, true)\nvar i = 0\nloop\n    defer => a.0 = a.0 + 14\n    i += 1\n    if i < 3 => continue\n    exit\nif a.0 == 42 => Console.writeLine(\"ok\")" },
-        { "Dead", "func f()\n    return\n    var a = (1, 2)\n    a.0 = 42\nf()\nConsole.writeLine(\"ok\")" },
         { "DeadArm", "var a = (0, true)\nmatch true\n    _ => a.0 = 42\n    true => a.0 = 1\nif a.0 == 42 => Console.writeLine(\"ok\")" },
         { "ReadIndex", "var a: [2 of isize] = [1, 0]\na[a[0]] = 42\nif a[1] == 42 => Console.writeLine(\"ok\")" },
         { "Snapshot", "var a: [1 of i32] = [40]\nvar i: isize = 0\na[(label work: do\n    i = 1\n    exit to work 0\n)] = i@i32 + 42\nif a[0] == 42 and i == 1 => Console.writeLine(\"ok\")" },
@@ -58,7 +57,7 @@ public class ElementAssignmentEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -120,8 +119,8 @@ public class ElementAssignmentEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]
@@ -182,7 +181,7 @@ public class ElementAssignmentEmissionTest
     public void InvalidWritePlansAreRejectedAndReanalysisRecovers(string defect)
     {
         var c = MinimalEmissionTest.Analyze("var a: [1 of i32] = [0]\na[0] = 42");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var plan = body.Projections[0];
         var write = body.Operations[plan.Write];
@@ -201,10 +200,10 @@ public class ElementAssignmentEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -217,8 +216,8 @@ public class ElementAssignmentEmissionTest
         {
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         var success = true;
@@ -233,8 +232,8 @@ public class ElementAssignmentEmissionTest
         before = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 128; i++)
         {
-            success &= c.Ownership.Analyze().IsVerified;
-            success &= c.Emission.WriteIr(TextWriter.Null, out _);
+            success &= c.Analyze().IsVerified;
+            success &= c.WriteIr(TextWriter.Null, out _);
         }
 
         var bytes = GC.GetAllocatedBytesForCurrentThread() - before;

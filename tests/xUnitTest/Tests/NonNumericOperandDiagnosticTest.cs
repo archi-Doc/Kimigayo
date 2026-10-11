@@ -34,9 +34,8 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(["operand", "operator"], error.Reason!.Select(static x => x.Name));
         Assert.Equal(["string", "+"], error.Reason!.Select(static x => x.Value));
         Assert.Equal(Note, error.Note);
-        Assert.Equal("If the strings are to be joined, write the interpolated literal \"\\(first)\\(second)\" in place of first + second" + Building, error.Advice);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Empty(c.Ownership.Issues);
+        Assert.Empty(c.Problems);
     }
 
     // The operand Type and the operator are the facts; only a string operand is told about interpolation.
@@ -65,22 +64,34 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(nameof(DiagnosticCode.NonNumericOperand_Kd), error.Code);
         Assert.Equal($"{type} has no {op}", error.Label);
         Assert.Equal(type == "string" ? Note : null, error.Note);
-        Assert.Null(error.Advice);
+    }
+
+    // SPEC 13.3 and arithmetic Contracts §2, §6: a bitwise operand that is no integer names the integer requirement, and an
+    // arithmetic operand Type that neither is numeric nor provides the operator, such as an unconstrained or Position Type
+    // parameter or a Tuple, selects no conformance; both are Language errors at the operation.
+    [Theory]
+    [InlineData("struct S\n    public var v: i32 = 0\nlet a = S.init()\nlet v = a & a", "a & a", nameof(DiagnosticCode.NonIntegerOperand_Kd))]
+    [InlineData("func add<T>(a: T, b: T) -> T => a + b\npublic func main() => ()", "a + b", nameof(DiagnosticCode.ArithmeticSelection_Kd))]
+    [InlineData("func add<P>(a: P, b: P) -> P\n    P is Position\n    return a + b\npublic func main() => ()", "a + b", nameof(DiagnosticCode.ArithmeticSelection_Kd))]
+    [InlineData("var a = (1, 2)\na += (3, 4)", "a += (3, 4)", nameof(DiagnosticCode.ArithmeticSelection_Kd))]
+    public void AnOperandWithoutTheOperatorIsALanguageError(string source, string at, string code)
+    {
+        var error = Assert.Single(Errors(Analyze(source)));
+        Assert.Equal((code, at), (error.Code, error.Text));
     }
 
     [Theory]
-    [InlineData("var log = \"start\"\nlog += \"!\"", "log += \"!\"", "log = \"\\(log)!\"")]
-    [InlineData("var a = (\"a\", true)\na.0 += \"b\"", "a.0 += \"b\"", "a.0 = \"\\(a.0)b\"")]
-    [InlineData("func append(p: raw/string)\n    unsafe => *p += \"x\"\npublic func main() => ()", "*p += \"x\"", "*p = \"\\(*p)x\"")]
-    [InlineData("var log = \"start\"\nlog += \"\\(1)!\"", "log += \"\\(1)!\"", "log = \"\\(log)\\(1)!\"")]
-    [InlineData("var log = \"start\"\nlet tail = \"!\"\nlog += tail", "log += tail", "log = \"\\(log)\\(tail)\"")]
-    public void CompoundUpdatesAdviseTheReplacementAssignment(string source, string text, string replacement)
+    [InlineData("var log = \"start\"\nlog += \"!\"", "log += \"!\"")]
+    [InlineData("var a = (\"a\", true)\na.0 += \"b\"", "a.0 += \"b\"")]
+    [InlineData("func append(p: raw/string)\n    unsafe => *p += \"x\"\npublic func main() => ()", "*p += \"x\"")]
+    [InlineData("var log = \"start\"\nlog += \"\\(1)!\"", "log += \"\\(1)!\"")]
+    [InlineData("var log = \"start\"\nlet tail = \"!\"\nlog += tail", "log += tail")]
+    public void CompoundUpdatesAreReportedAtTheUpdate(string source, string text)
     {
         var error = Assert.Single(Errors(Analyze(source)));
         Assert.Equal(nameof(DiagnosticCode.NonNumericOperand_Kd), error.Code);
         Assert.Equal("string has no +=", error.Label);
         Assert.Equal(text, error.Text);
-        Assert.Equal($"If text is to be appended to {text[..text.IndexOf(" +=", StringComparison.Ordinal)]}, assign a new string: {replacement}{Building}", error.Advice);
     }
 
     // SPEC 13.4 reads a string comparison through its layers; the operator rule judges a string operand the same way, and two
@@ -93,25 +104,22 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
         var error = Assert.Single(Errors(Analyze(source)));
         Assert.Equal(nameof(DiagnosticCode.NonNumericOperand_Kd), error.Code);
         Assert.Equal($"{type} has no +", error.Label);
-        Assert.Contains("\"\\(a)\\(b)\" in place of a + b", error.Advice, StringComparison.Ordinal);
     }
 
-    // A chain reports once, at its innermost join, and the Advice is the one literal that joins every operand in order:
-    // escaped and interpolated literals contribute their content, every other operand an interpolation.
+    // A chain reports once, at its innermost join, with literal, interpolated and other operands, in a compound update and in a defer.
     [Theory]
-    [InlineData("let v = first + \" and \" + second + \"!\"", "first + \" and \"", "\"\\(first) and \\(second)!\" in place of first + \" and \" + second + \"!\"")]
-    [InlineData("let v = first + (second + \"!\")", "second + \"!\"", "\"\\(first)\\(second)!\" in place of first + (second + \"!\")")]
-    [InlineData("let v = \"x\\(first)\" + second", "\"x\\(first)\" + second", "\"x\\(first)\\(second)\" in place of \"x\\(first)\" + second")]
-    [InlineData("let v = \"\"\"raw\"\"\" + second", "\"\"\"raw\"\"\" + second", "\"\\(\"\"\"raw\"\"\")\\(second)\" in place of \"\"\"raw\"\"\" + second")]
-    [InlineData("let v = \"a\" + \"b\"", "\"a\" + \"b\"", "\"ab\" in place of \"a\" + \"b\"")]
-    [InlineData("var log = \"start\"\nlog += first + second", "first + second", "assign a new string: log = \"\\(log)\\(first)\\(second)\"")]
-    [InlineData("var flag = true\nloop\n    defer => first + second\n    if flag => exit\n    continue", "first + second", "\"\\(first)\\(second)\" in place of first + second")]
-    public void ChainsReportOnceAndAdviseOneLiteral(string source, string text, string advice)
+    [InlineData("let v = first + \" and \" + second + \"!\"", "first + \" and \"")]
+    [InlineData("let v = first + (second + \"!\")", "second + \"!\"")]
+    [InlineData("let v = \"x\\(first)\" + second", "\"x\\(first)\" + second")]
+    [InlineData("let v = \"\"\"raw\"\"\" + second", "\"\"\"raw\"\"\" + second")]
+    [InlineData("let v = \"a\" + \"b\"", "\"a\" + \"b\"")]
+    [InlineData("var log = \"start\"\nlog += first + second", "first + second")]
+    [InlineData("var flag = true\nloop\n    defer => first + second\n    if flag => exit\n    continue", "first + second")]
+    public void ChainsReportOnce(string source, string text)
     {
         var error = Assert.Single(Errors(Analyze(Strings + source)));
         Assert.Equal(nameof(DiagnosticCode.NonNumericOperand_Kd), error.Code);
         Assert.Equal(text, error.Text);
-        Assert.Contains(advice, error.Advice, StringComparison.Ordinal);
     }
 
     // A numeric left operand keeps the operand mismatch: the Types differ, and that is the fact.
@@ -137,10 +145,10 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(2, Errors(compilation).Length);
     }
 
-    // The repairs the Advice names are accepted, verified and executed: the interpolated literal, the replacement assignment
+    // The written repairs are accepted, verified and executed: the interpolated literal, the replacement assignment
     // and text built in a HeapBuffer.
     [Fact]
-    public void TheAdvisedRepairsAreAcceptedAndExecute()
+    public void TheWrittenRepairsAreAcceptedAndExecute()
     {
         const string Join = Strings + "let joined = \"\\(first)\\(second)\"\nvar log = \"start\"\nlog = \"\\(log)!\"\nConsole.writeLine(joined)\nConsole.writeLine(log)\nConsole.writeLine(first)";
         const string Build = """
@@ -160,7 +168,7 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
         {
             var c = MinimalEmissionTest.Analyze(source);
             Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-            Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         }
 
         ScalarEmissionTest.EmitFixture("StringJoinInterpolation", Join, "Hello, world\nstart!\nHello, \n");
@@ -168,7 +176,7 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
     }
 
     [Fact]
-    public void CliAndLspCarryTheAdvice()
+    public void CliAndLspCarryTheLabel()
     {
         var path = Path.GetFullPath("Hello.kimi");
         var c = Analyze(Strings + "let joined = first + second", path);
@@ -179,8 +187,7 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains("Hello.kimi:3:14", console.Text, StringComparison.Ordinal);
         Assert.Contains("^^^^^^^^^^^^^^ string has no +", console.Text, StringComparison.Ordinal);
-        Assert.Contains("\"\\(first)\\(second)\" in place of first + second", console.Text, StringComparison.Ordinal);
-        Assert.DoesNotContain("UnsupportedOwnership", console.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Unsupported_Kd", console.Text, StringComparison.Ordinal);
         Assert.DoesNotContain("TypeMismatch", console.Text, StringComparison.Ordinal);
         output.WriteLine(console.Text);
         var identity = SourceIdentity.FromPath(path);
@@ -190,7 +197,6 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
             Assert.Equal(error.Display!.Range, sent.Range);
             Assert.Equal(error.Code, sent.Code);
             Assert.Contains(error.Message, sent.Message, StringComparison.Ordinal);
-            Assert.Contains("in place of first + second", sent.Message, StringComparison.Ordinal);
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
     }
@@ -203,8 +209,7 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(source, path);
         c.Binding.ReportDiagnostics();
         c.Binding.ReportStartupDiagnostics();
-        c.Ownership.ControlFlow?.ReportDiagnostics();
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         return c;
     }
 }

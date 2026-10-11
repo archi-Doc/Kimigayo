@@ -37,7 +37,6 @@ public sealed class ParameterShapeTest(ITestOutputHelper output)
         Assert.Equal(parameter, error.Text);
         Assert.Equal($"{correspondence} is acquired {mode} here and {other} there", error.Label);
         Assert.Equal(conservative, error.Note is not null);
-        Assert.Contains("sorted/sort", error.Advice, StringComparison.Ordinal);
         var result = c.Diagnostics.Finalize();
         var record = Assert.Single(result.Diagnostics, static x => x.Severity == DiagnosticSeverity.Error);
         Assert.Equal(DiagnosticCategory.Language, record.Category);
@@ -105,7 +104,6 @@ public sealed class ParameterShapeTest(ITestOutputHelper output)
         if (errors.Length != 0)
         {
             Assert.Equal("f", errors[0].Text);
-            Assert.Contains("A.f", errors[0].Advice, StringComparison.Ordinal);
             Assert.DoesNotContain(c.Diagnostics.Finalize().Diagnostics, static x => x.Code == nameof(DiagnosticCode.PrerequisiteUnavailable_Kd));
         }
     }
@@ -118,7 +116,6 @@ public sealed class ParameterShapeTest(ITestOutputHelper output)
         var error = Assert.Single(Errors(c));
         Assert.Equal(nameof(DiagnosticCode.ParameterShapeMismatch_Kd), error.Code);
         Assert.Equal("read", error.Text);
-        Assert.Null(error.Advice);
     }
 
     // SPEC 8.4.2: requirements inherited by refinement join the refining Contract's group.
@@ -156,7 +153,6 @@ public sealed class ParameterShapeTest(ITestOutputHelper output)
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains("^^^^^^^^^^ position 0 of an unbound call is acquired Exclusive here and ByValue there", console.Text, StringComparison.Ordinal);
         Assert.Contains("bump takes position 0 of an unbound call as Score", console.Text, StringComparison.Ordinal);
-        Assert.Contains(record.Advice!, console.Text, StringComparison.Ordinal);
         output.WriteLine(console.Text);
         var identity = SourceIdentity.FromPath(path);
         var check = new CheckOutput(CheckOutcome.Completed, false, TestPresence.No, result);

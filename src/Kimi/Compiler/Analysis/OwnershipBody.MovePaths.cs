@@ -29,7 +29,7 @@ public sealed partial class OwnershipBody
             return PlaceState.None;
         }
 
-        this.LoadInput(operation, false);
+        this.LoadInput(operation);
         return this.State(place);
     }
 
@@ -40,17 +40,30 @@ public sealed partial class OwnershipBody
             return PlaceState.None;
         }
 
-        this.LoadInput(operation, false);
+        this.LoadInput(operation);
         return this.ElementState(projection, receiver);
     }
 
     // The cleanup collector loads one converged snapshot, then reads every sparse
     // remainder from it without replaying the block separately for each element.
-    internal void LoadPathInput(int operation) => this.LoadInput(operation, false);
+    internal void LoadPathInput(int operation) => this.LoadInput(operation);
 
     internal PlaceState CurrentPathState(int path) => this.PathState(path);
 
     internal PlaceState CurrentRemainderState(int path) => this.State(this.PathSlot(path));
+
+    internal bool CurrentBaseComplete(int path, int fields)
+    {
+        for (var child = this.movePaths[path].Child; child >= 0; child = this.movePaths[child].Next)
+        {
+            if (this.movePaths[child].Selector < fields && (this.CurrentPathState(child) & PlaceState.MustInit) == 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     internal bool IsPathWithin(int path, int ancestor)
     {
@@ -106,10 +119,11 @@ public sealed partial class OwnershipBody
             {
                 path = this.movePaths.Count;
                 this.movePathIndex.Add(key, path);
-                // Like the root's Place Type, a part's Type is the closed one in an instance plan; lowering lays it out.
+                // Like the root's Place Type, a part's Type is the analyzed one: its declared Type in the context of the operation that
+                // located it, closed in an instance plan; lowering lays it out.
                 var owner = this.movePaths[parent];
                 var type = this.Operations[plan.Operation].Source.BoundType!;
-                this.movePaths.Add(new(plan.Root, parent, plan.Selector, this.Concrete(type) ?? type));
+                this.movePaths.Add(new(plan.Root, parent, plan.Selector, this.Resolve(type, this.ContextAt(plan.Operation)) ?? type));
                 this.movePaths[parent] = owner with { Children = owner.Children + 1 };
                 this.movePathOrder.Add((parent, -plan.Selector, path));
             }
@@ -247,7 +261,7 @@ public sealed partial class OwnershipBody
 
 internal readonly record struct MovePath(int Root, int Parent, int Selector, BoundType Type, int Child = -1, int Next = -1, int Children = 0)
 {
-    internal int Count => this.Type.Kind == BoundTypeKind.FixedArray ? (int)this.Type.Length : this.Type.Kind == BoundTypeKind.Tuple ? this.Type.Components.Count : StructStorage.Count(this.Type);
+    internal int Count => this.Type.Kind == BoundTypeKind.FixedArray ? (int)this.Type.Length : this.Type.Kind == BoundTypeKind.Tuple ? this.Type.Components.Count : AdtDef.StorageCount(this.Type);
 
-    internal bool HasRemainder => this.Children < this.Count || this.Count == 0 || this.Type.StoredBase is not null;
+    internal bool HasRemainder => this.Children < this.Count || this.Count == 0 || AdtDef.Base(this.Type) is not null;
 }

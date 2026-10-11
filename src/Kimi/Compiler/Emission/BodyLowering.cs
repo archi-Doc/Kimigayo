@@ -18,6 +18,8 @@ internal sealed partial class BodyLowering
 {
     internal Dictionary<BoundProperty, FunctionAbi>? StaticGetters { get; set; }
 
+    internal VirtualGenerationPlan? Virtuals { get; set; }
+
     private const byte NormalMark = 1;
     private const byte AbortMark = 2;
     private const byte CleanupMark = 4;
@@ -32,7 +34,7 @@ internal sealed partial class BodyLowering
     private int[] deliveries = [];
     private int pointerWidth;
     private Binding? instanceBinding;
-    private BoundCall? instance;
+    private CallPlan? instance;
     private GenericStoragePlan.CallEntry? instanceEntry;
 
     internal BodyLowering()
@@ -43,7 +45,7 @@ internal sealed partial class BodyLowering
 
     // Selects the closed call whose substitution the lowered generic body's signature uses (SPEC 21.3.1);
     // the entry binds the body's forwarded generic calls to their own instances.
-    internal void SetInstance(Binding? binding, BoundCall? call, GenericStoragePlan.CallEntry? entry)
+    internal void SetInstance(Binding? binding, CallPlan? call, GenericStoragePlan.CallEntry? entry)
     {
         this.instanceBinding = binding;
         this.instance = call;
@@ -102,9 +104,17 @@ internal sealed partial class BodyLowering
         return false;
     }
 
-    // Declared signature Types of the lowered body; a monomorphized instance sees its substitution.
-    private static BoundType? SignatureType(BodyLowering? lowering, BoundType? type)
-        => type is null || lowering?.instance is not { } call ? type : lowering.instanceBinding!.InstantiateStorageType(type, call);
+    // The lowered function's own declared Types (SPEC 21.3.1) are interpreted in the root context, which only the closed call of
+    // a monomorphized instance substitutes; a Type inside a default interval is resolved through its ownership body instead.
+    private BoundType? Resolve(BoundType? type, InterpretationContext context)
+    {
+        if (!context.IsRoot)
+        {
+            throw new InvalidOperationException("A lowering-level Type has no default context; resolve it through its ownership body.");
+        }
+
+        return type is null || this.instance is not { } call ? type : this.instanceBinding!.InstantiateStorageType(type, call);
+    }
 
     private bool MarkDeferredPlans(OwnershipBody body, Span<byte> marks)
     {
@@ -305,19 +315,9 @@ internal sealed partial class BodyLowering
             return valid;
         }
 
-        if (operation.Kind == OwnershipOperationKind.UpdateBorrowed)
+        if (operation.IsWholeUpdate)
         {
             return this.LowerBorrowedUpdate(body, function, constants, projectDirectory, index, out failure);
-        }
-
-        if (operation.Kind == OwnershipOperationKind.UpdateTarget)
-        {
-            failure = null;
-            return operation.Place >= 0 && body.Places[operation.Place].Mutable &&
-                operation.LoanMode == LoanRequirement.Uniq && body.LoanStates[index] >= 0 &&
-                body.ComparisonLoans[body.LoanStates[index]].Read == index &&
-                (!body.IsReachable(index) || (body.GetInputState(index, operation.Place) & PlaceState.MustInit) != 0)
-                ? true : Fail("Whole-value target requires an initialized complete Place and exclusive Loan.", out failure);
         }
 
         if (operation.Kind is OwnershipOperationKind.InitializeReceiverField or OwnershipOperationKind.CheckReceiverField)
@@ -514,7 +514,7 @@ internal sealed partial class BodyLowering
                     return Fail("Cleanup is conditional, mismatched or unsupported.", out failure);
                 }
 
-                if (operation.Place >= 0 && (IsScalar(body.Places[operation.Place].Type) || ReferenceTypes.IsString(body.Places[operation.Place].Type)))
+                if (operation.Place >= 0 && (IsScalar(body.Places[operation.Place].Type) || ReferenceTypes.IsString(body.Places[operation.Place].Type) || ReferenceEquals(body.Places[operation.Place].Type, BoundType.Unit)))
                 {
                     break;
                 }
@@ -524,8 +524,7 @@ internal sealed partial class BodyLowering
                     return Fail("Conditional non-scalar destruction is not implemented.", out failure);
                 }
 
-                // Unit has no value and no destructor; its verified cleanup has no physical output.
-                if (step.Action == CleanupAction.Destroy && !(operation.Place >= 0 && ReferenceEquals(body.Places[operation.Place].Type, BoundType.Unit)))
+                if (step.Action == CleanupAction.Destroy)
                 {
                     return Fail("Destruction needs unsupported Type lowering.", out failure);
                 }

@@ -61,29 +61,9 @@ public sealed partial class Binding
         }
     }
 
-    // The Contract, as a bound reference when it takes Type arguments, that declares a requirement reached through a shape.
-    private static BindingSymbol RequirementReference(BoundContract shape, BindingSymbol requirement)
-    {
-        var owner = requirement.Scope.Owner;
-        if (ReferenceEquals(shape.Symbol.Declaration, owner))
-        {
-            return shape.Symbol;
-        }
-
-        for (var i = 0; i < shape.Ancestors.Count; i++)
-        {
-            if (ReferenceEquals(shape.Ancestors[i].Declaration, owner))
-            {
-                return shape.Ancestors[i];
-            }
-        }
-
-        return shape.Symbol;
-    }
-
     private BindingSymbol? RequirementMember(MemberAccessKoto member, BindingScope scope, BoundType type, bool typeAccess)
     {
-        if (!FormattingTypes.IsBuiltin(type) && !ComparisonTypes.IsComposite(type) && type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection) && type.Symbol?.Declaration is not ContractKoto)
+        if (!FormattingTypes.IsBuiltin(type) && !ComparisonTypes.IsComposite(type) && !this.IsGenericWrapping(type, scope) && type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection) && type.Symbol?.Declaration is not ContractKoto)
         {
             return null;
         }
@@ -100,6 +80,8 @@ public sealed partial class Binding
         group.Active = true;
         group.TypeAccess = typeAccess;
         group.PropertyRequirement = false;
+        group.Properties.Clear();
+        group.PropertyContracts.Clear();
         if (FormattingTypes.IsBuiltin(type) && this.Library.GetSymbol(KimiDeclarationId.Utf8Format)?.Contract is { } formatting)
         {
             Add(formatting);
@@ -145,11 +127,29 @@ public sealed partial class Binding
             Add(position);
         }
 
+        // Numeric witnesses are requirements under generic evidence, not named numeric members.
+        if (this.IsGenericInteger(type, scope) || this.IsGenericWrapping(type, scope))
+        {
+            for (var id = KimiDeclarationId.Addable; id <= KimiDeclarationId.RemainderProvider; id++)
+            {
+                if (TypeSpelling(member.Right) == ArithmeticContracts.Method(id))
+                {
+                    Add(this.ArithmeticReference(id, type).Contract!);
+                    break;
+                }
+            }
+
+            if (this.IsGenericWrapping(type, scope) && TypeSpelling(member.Right) == "negated")
+            {
+                Add(this.ArithmeticReference(KimiDeclarationId.Negatable, type).Contract!);
+            }
+        }
+
         // Expand the proved contracts of this referenced receiver only, as for an explicit associated
         // projection. Inherited signatures can depend on their refining contract's associated identities.
-        for (var i = 0; i < group.Contracts.Count; i++)
+        for (var i = 0; i < group.Contracts.Count + group.PropertyContracts.Count; i++)
         {
-            var contract = group.Contracts[i];
+            var contract = i < group.Contracts.Count ? group.Contracts[i] : group.PropertyContracts[i - group.Contracts.Count];
             if (this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: contract)), scope) == ConstraintProof.Proven)
             {
                 this.AddContractPremises(contract.Contract!, type, scope);
@@ -184,6 +184,19 @@ public sealed partial class Binding
             return null;
         }
 
+        if (group.Properties.Count != 0 && group.Members.Count == 0)
+        {
+            group.Active = false;
+            if (group.Properties.Count == 1 && !typeAccess)
+            {
+                return group.Properties[0];
+            }
+
+            // SPEC 11.4: a Property requirement is instance-only, so a Type names none; several identities are not implemented.
+            this.Fail(member, typeAccess ? BindingFailure.MissingName : BindingFailure.Unsupported, true);
+            return null;
+        }
+
         group.Active = group.Members.Count != 0;
         return group.Active ? group.Members[0] : null;
 
@@ -198,15 +211,21 @@ public sealed partial class Binding
             {
                 // SPEC 8.4.9: one requirement reached through distinct bound references (Indexable<isize>, Indexable<Name>)
                 // is one candidate per reference; a refinement reaches the same reference as its ancestor.
-                var requirement = members[i];
-                if (requirement.Declaration is FunctionKoto && group.Seen.Add((requirement, RequirementReference(shape, requirement))))
+                var identity = members[i];
+                var requirement = identity.Symbol;
+                if (requirement.Declaration is FunctionKoto && group.Seen.Add(identity))
                 {
                     group.Members.Add(requirement);
-                    group.Contracts.Add(shape.Symbol);
+                    group.Contracts.Add(identity.Contract);
                 }
                 else if (requirement.Kind == BindingSymbolKind.Property)
                 {
                     group.PropertyRequirement = true;
+                    if (group.Seen.Add(identity))
+                    {
+                        group.Properties.Add(requirement);
+                        group.PropertyContracts.Add(identity.Contract);
+                    }
                 }
             }
         }
@@ -214,7 +233,7 @@ public sealed partial class Binding
 
     private BoundType? CallType(BoundType type, FunctionKoto function, BoundType?[] arguments, BindingScope scope, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengths = default)
     {
-        if (this.MemberType(type, declaringType) is not { } memberType)
+        if (this.CallMemberPattern(type, function, declaringType) is not { } memberType)
         {
             return null;
         }
@@ -225,13 +244,13 @@ public sealed partial class Binding
             type = this.ContractType(type, scope, self);
         }
 
-        var result = this.SubstituteType(type, function, arguments, lengths);
+        var result = this.SubstituteType(type, CallSlotOwner(function), arguments, lengths);
         if (result is not null)
         {
             for (var i = 0; i < function.Parameters.Count && i < inputs.Length; i++)
             {
                 if (function.Parameters[i].Type.BoundType?.Origin is { BorrowCondition: { } selector } &&
-                    ContainerSlot(function, selector) is var slot && slot >= 0 && slot < arguments.Length &&
+                    ContainerSlot(CallSlotOwner(function), selector) is var slot && slot >= 0 && slot < arguments.Length &&
                     arguments[slot] is { Semantics: not SemanticsKind.Parameter } binding && !IsBorrow(binding.Semantics))
                 {
                     inputs[i] = BoundOrigin.Static;
@@ -252,7 +271,11 @@ public sealed partial class Binding
         /// <summary>Gets the Contract, a bound reference where it takes Type arguments, that supplied each member.</summary>
         internal List<BindingSymbol> Contracts { get; } = new();
 
-        internal HashSet<(BindingSymbol Requirement, BindingSymbol Contract)> Seen { get; } = new();
+        internal List<BindingSymbol> Properties { get; } = new();
+
+        internal List<BindingSymbol> PropertyContracts { get; } = new();
+
+        internal HashSet<BoundRequirement> Seen { get; } = new();
 
         internal BoundType Self { get; set; } = null!;
 
@@ -260,8 +283,7 @@ public sealed partial class Binding
 
         internal bool TypeAccess { get; set; }
 
-        /// <summary>Gets or sets a value indicating whether a Property requirement matched the name; its use through a
-        /// generic receiver is not yet implemented (P24).</summary>
+        /// <summary>Gets or sets a value indicating whether a Property requirement matched the name.</summary>
         internal bool PropertyRequirement { get; set; }
     }
 

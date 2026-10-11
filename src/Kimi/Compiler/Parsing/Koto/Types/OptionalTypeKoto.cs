@@ -51,21 +51,8 @@ public sealed class OptionalTypeKoto : TypeKoto
         annotated?.WriteOriginTo(ref builder);
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor) => visitor.Visit(this.Type);
-
-    protected override IEnumerable<Koto> GetChildNodes()
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        yield return this.Type;
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (this.Type != oldKoto)
-        {
-            return false;
-        }
-
-        this.Type = newKoto;
-        return true;
+        this.Type = slots.Slot(this.Type);
     }
 }

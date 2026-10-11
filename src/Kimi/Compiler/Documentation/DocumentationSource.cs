@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Checking;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -12,11 +13,14 @@ namespace Kimi.Compiler.Documentation;
 public sealed class DocumentationSource
 {
     private readonly List<DocumentationComment> comments = new();
+    private readonly Compilation? optionalOwner;
     private bool hasParseErrors;
+    private bool failed;
 
-    internal DocumentationSource(SourceDocument source)
+    internal DocumentationSource(SourceDocument source, Compilation? optionalOwner = null)
     {
         this.Source = source;
+        this.optionalOwner = optionalOwner;
         this.Comments = this.comments.AsReadOnly();
     }
 
@@ -34,6 +38,59 @@ public sealed class DocumentationSource
 
     /// <summary>Gets source-ordered comments, including unassociated candidates.</summary>
     public IReadOnlyList<DocumentationComment> Comments { get; }
+
+    internal static DocumentationSource? FromCandidates(SourceDocument document, ReadOnlySpan<Candidate> candidates, Compilation? optionalOwner = null)
+    {
+        if (candidates.IsEmpty)
+        {
+            return null;
+        }
+
+        try
+        {
+            var result = new DocumentationSource(document, optionalOwner);
+            result.comments.EnsureCapacity(candidates.Length);
+            foreach (var candidate in candidates)
+            {
+                result.comments.Add(new(result, candidate.Span, candidate.Indent, candidate.Recognized));
+            }
+
+            return result;
+        }
+        catch (Exception ex) when (optionalOwner is not null && Compilation.OptionalHoverFailure(ex))
+        {
+            optionalOwner.RecordDocumentationFailure(document, ex.Message);
+            return null;
+        }
+    }
+
+    // Snapshot lexical candidates before parsing assigns declarations or suppresses ranges. These values may be
+    // shared with another compilation; mutable comments and their source/declaration owners may not.
+    internal Candidate[] CaptureCandidates()
+    {
+        try
+        {
+            var result = new Candidate[this.comments.Count];
+            for (var i = 0; i < result.Length; i++)
+            {
+                var comment = this.comments[i];
+                result[i] = new(comment.Span, comment.Indent, comment.IsRecognized);
+            }
+
+            return result;
+        }
+        catch (Exception ex) when (this.optionalOwner is not null && Compilation.OptionalHoverFailure(ex))
+        {
+            this.Fail(ex);
+            return [];
+        }
+    }
+
+    /// <summary>An immutable lexical range, independent of declaration selection and compilation ownership.</summary>
+    /// <param name="Span">The source range.</param>
+    /// <param name="Indent">The indentation before the comment prefix.</param>
+    /// <param name="Recognized">Whether the prefix occupies an admitted position.</param>
+    internal readonly record struct Candidate(SourceSpan Span, int Indent, bool Recognized);
 
     internal void AddLine(int start, int end)
     {
@@ -75,6 +132,62 @@ public sealed class DocumentationSource
     }
 
     internal void SetLocation(string projectDirectory, string? modId = null, int additionOrder = 0)
+        => this.Collect((projectDirectory, modId, additionOrder), static (source, value) => source.SetLocationCore(value.projectDirectory, value.modId, value.additionOrder));
+
+    internal void Merge(DocumentationSource nested)
+        => this.Collect(nested, static (source, value) => source.MergeCore(value));
+
+    internal void Suppress(SourceSpan span, bool excluded = false)
+        => this.Collect((span, excluded), static (source, value) => source.SuppressCore(value.span, value.excluded));
+
+    internal void Finish(bool parseErrors)
+        => this.Collect(parseErrors, static (source, value) => source.FinishCore(value));
+
+    internal void Exclude(int start, int syntaxEnd, int nextToken)
+        => this.Collect((start, syntaxEnd, nextToken), static (source, value) => source.ExcludeCore(value.start, value.syntaxEnd, value.nextToken));
+
+    internal void Associate(Koto declaration, SourceSpan header, AttributeKoto? attributes, ReadOnlySpan<Token> tokens)
+    {
+        if (this.failed)
+        {
+            return;
+        }
+
+        try
+        {
+            this.AssociateCore(declaration, header, attributes, tokens);
+        }
+        catch (Exception ex) when (this.optionalOwner is not null && Compilation.OptionalHoverFailure(ex))
+        {
+            this.Fail(ex);
+        }
+    }
+
+    private void Collect<T>(T value, Action<DocumentationSource, T> collect)
+    {
+        if (this.failed)
+        {
+            return;
+        }
+
+        try
+        {
+            collect(this, value);
+        }
+        catch (Exception ex) when (this.optionalOwner is not null && Compilation.OptionalHoverFailure(ex))
+        {
+            this.Fail(ex);
+        }
+    }
+
+    private void Fail(Exception ex)
+    {
+        this.failed = true;
+        this.comments.Clear();
+        this.optionalOwner!.RecordDocumentationFailure(this.Source, ex.Message);
+    }
+
+    private void SetLocationCore(string projectDirectory, string? modId, int additionOrder)
     {
         this.ModId = modId;
         this.AdditionOrder = additionOrder;
@@ -85,7 +198,28 @@ public sealed class DocumentationSource
         }
     }
 
-    internal void Merge(DocumentationSource nested)
+    internal static string? PhysicalLogicalName(string path, string projectDirectory)
+    {
+        if (path.StartsWith(SourceIdentity.BuiltInPrefix, StringComparison.Ordinal) || path.Contains("://", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        if (Path.IsPathFullyQualified(path))
+        {
+            if (!Path.IsPathFullyQualified(projectDirectory))
+            {
+                return null;
+            }
+
+            var relative = Path.GetRelativePath(projectDirectory, path);
+            return Path.IsPathRooted(relative) ? null : relative.Replace('\\', '/');
+        }
+
+        return Path.IsPathRooted(path) ? null : path.Replace('\\', '/');
+    }
+
+    private void MergeCore(DocumentationSource nested)
     {
         // Interpolation expressions are lexed by the parser. Insert their
         // source-ordered ranges without retaining either token buffer.
@@ -101,7 +235,7 @@ public sealed class DocumentationSource
         }
     }
 
-    internal void Suppress(SourceSpan span, bool excluded = false)
+    private void SuppressCore(SourceSpan span, bool excluded)
     {
         var index = this.FindBefore(span.Start) + 1;
         for (; index < this.comments.Count && this.comments[index].Span.Start < span.End; index++)
@@ -115,7 +249,7 @@ public sealed class DocumentationSource
         }
     }
 
-    internal void Finish(bool parseErrors)
+    private void FinishCore(bool parseErrors)
     {
         this.hasParseErrors |= parseErrors;
         if (parseErrors)
@@ -128,7 +262,7 @@ public sealed class DocumentationSource
         }
     }
 
-    internal void Exclude(int start, int syntaxEnd, int nextToken)
+    private void ExcludeCore(int start, int syntaxEnd, int nextToken)
     {
         this.Suppress(SourceSpan.FromBounds(start, Math.Max(start, syntaxEnd)), excluded: true);
         // Layout tokens point at the next syntax. Include trailing comments only
@@ -144,7 +278,7 @@ public sealed class DocumentationSource
         }
     }
 
-    internal void Associate(Koto declaration, SourceSpan header, AttributeKoto? attributes, ReadOnlySpan<Token> tokens)
+    private void AssociateCore(Koto declaration, SourceSpan header, AttributeKoto? attributes, ReadOnlySpan<Token> tokens)
     {
         var headerStart = header.Start;
         var tokenIndex = 0;
@@ -171,7 +305,8 @@ public sealed class DocumentationSource
             if (token.Kind == TokenKind.Identifier)
             {
                 var spelling = this.Source.AsSpan().Slice(token.Span.Start, token.Length);
-                isPrefix = spelling.SequenceEqual("unsafe") || spelling.SequenceEqual("specialize");
+                isPrefix = spelling.SequenceEqual("unsafe") || spelling.SequenceEqual("specialize") ||
+                    (declaration is FunctionKoto && (spelling.SequenceEqual("virtual") || spelling.SequenceEqual("override")));
             }
 
             if (!isPrefix)
@@ -335,14 +470,19 @@ public sealed class DocumentationComment
             return existing;
         }
 
-        // Measure once, then fill exact arrays and the string in place: no
-        // builder, growing lists or intermediate copies.
-        var (lineCount, textLength) = this.ScanLines(default, null, null);
+        var created = Extract(this.Source, this.Span, this.Indent);
+        return Interlocked.CompareExchange(ref this.text, created, null) ?? created;
+    }
+
+    internal static DocumentationText Extract(SourceDocument source, SourceSpan range, int indent)
+    {
+        // Both documentation publishing and detached editor inputs use this one normalization path.
+        var (lineCount, textLength) = ScanLines(source, range, indent, default, null, null);
         var textOffsets = new int[lineCount];
         var sourceOffsets = new int[lineCount];
-        var normalized = string.Create(textLength, (this, textOffsets, sourceOffsets), static (span, state) => state.Item1.ScanLines(span, state.textOffsets, state.sourceOffsets));
-        var created = new DocumentationText(this.Source, normalized, textOffsets, sourceOffsets);
-        return Interlocked.CompareExchange(ref this.text, created, null) ?? created;
+        var normalized = string.Create(textLength, (source, range, indent, textOffsets, sourceOffsets), static (span, state) =>
+            ScanLines(state.source, state.range, state.indent, span, state.textOffsets, state.sourceOffsets));
+        return new(source, normalized, textOffsets, sourceOffsets);
     }
 
     /// <summary>Writes canonical comment prefixes without changing the extracted text.</summary>
@@ -390,13 +530,13 @@ public sealed class DocumentationComment
 
     // Walks the comment lines. With null outputs it only measures; otherwise it
     // fills the normalized text and both offset tables in the same order.
-    private (int Lines, int Length) ScanLines(Span<char> output, int[]? textOffsets, int[]? sourceOffsets)
+    private static (int Lines, int Length) ScanLines(SourceDocument document, SourceSpan range, int indent, Span<char> output, int[]? textOffsets, int[]? sourceOffsets)
     {
-        var source = this.Source.SourceText;
-        var position = this.Span.Start;
+        var source = document.SourceText;
+        var position = range.Start;
         var lines = 0;
         var length = 0;
-        while (position <= this.Span.End)
+        while (position <= range.End)
         {
             if (lines > 0)
             {
@@ -406,11 +546,11 @@ public sealed class DocumentationComment
                 }
 
                 length++;
-                position += this.Indent;
+                position += indent;
             }
 
             position += 3;
-            if (position < this.Span.End && source[position] == ' ')
+            if (position < range.End && source[position] == ' ')
             {
                 position++;
             }
@@ -423,7 +563,7 @@ public sealed class DocumentationComment
 
             lines++;
             var end = position;
-            while (end < this.Span.End && source[end] is not ('\r' or '\n'))
+            while (end < range.End && source[end] is not ('\r' or '\n'))
             {
                 end++;
             }
@@ -434,7 +574,7 @@ public sealed class DocumentationComment
             }
 
             length += end - position;
-            if (end == this.Span.End)
+            if (end == range.End)
             {
                 break;
             }

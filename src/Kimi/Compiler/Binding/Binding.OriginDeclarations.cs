@@ -15,6 +15,7 @@ public sealed partial class Binding
     private readonly Dictionary<Koto, OriginDeclaration> initializerOrigins = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Koto, List<string>> discoveredOrigins = new(ReferenceEqualityComparer.Instance);
     private OriginRewriteVisitor? originRewriteVisitor;
+    private Dictionary<Koto, (BoundOrigin First, BoundOrigin Second, Koto Clause)>? principalOriginFailures;
 
     private static Koto? OriginOwner(Koto node)
     {
@@ -74,9 +75,39 @@ public sealed partial class Binding
         if (!this.originDeclarations.TryGetValue(owner, out var declaration))
         {
             this.originDeclarations.Add(owner, declaration = new(owner));
+            this.originStateVersion++;
         }
 
         return declaration;
+    }
+
+    private bool PartialOriginContractReady(FunctionKoto function)
+    {
+        if (!this.originDeclarations.TryGetValue(function, out var declaration))
+        {
+            return true;
+        }
+
+        var clauses = OriginClauses.Get(function);
+        for (var i = 0; i < clauses.Count; i++)
+        {
+            var clause = clauses[i];
+            if (Pending(clause.Left) || Pending(clause.Right))
+            {
+                return false;
+            }
+        }
+
+        return true;
+
+        bool Pending(Koto syntax) => syntax switch
+        {
+            IdentifierNameKoto name => declaration.Sets.TryGetValue(name.IdentifierName, out var set) && set.BoundType is null,
+            ParenthesizedKoto parentheses => Pending(parentheses.Operand),
+            MemberAccessKoto member => Pending(member.Left),
+            BinaryKoto binary => Pending(binary.Left) || Pending(binary.Right),
+            _ => false,
+        };
     }
 
     private void PrepareOriginDeclarations()
@@ -98,7 +129,6 @@ public sealed partial class Binding
         }
 
         this.absentSlotProjections?.Clear();
-        this.absentSlotFunctions?.Clear();
 
         for (var i = 0; i < this.nodes.Count; i++)
         {
@@ -250,6 +280,7 @@ public sealed partial class Binding
 
         declaration.Scope = scope;
         declaration.State = 1;
+        this.originStateVersion++;
         foreach (var entry in declaration.Sets)
         {
             for (var current = scope; current is not null; current = current.Parent)
@@ -330,7 +361,7 @@ public sealed partial class Binding
                         nameNode.BoundSymbol = parameter;
                     }
 
-                    carrier = BoundInputType(current.Owner, i) ?? (InputType(current.Owner, i) is { } syntax ? this.BindType(syntax, current) : null);
+                    carrier = this.BoundInputType(current.Owner, i) ?? (InputType(current.Owner, i) is { } syntax ? this.BindType(syntax, current) : null);
                     return true;
                 }
             }
@@ -440,11 +471,47 @@ public sealed partial class Binding
             var clause = clauses[i];
             var a = this.BindOrigin(clause.Left, declaration.Scope!);
             var b = this.BindOrigin(clause.Right, declaration.Scope!);
-            if (a is not null && b is not null)
+            var recovered = IsRecovery(clause, out _);
+            if (recovered || a is null || b is null)
+            {
+                // A guessed operator or unavailable operand supplies no equality, outlives edge or elision evidence.
+                if (recovered)
+                {
+                    this.Fail(clause, BindingFailure.InvalidOrigin);
+                }
+                else
+                {
+                    this.CompleteDependent(clause, a is null ? clause.Left : clause.Right);
+                }
+
+                if (declaration.Owner.BindingFailure == BindingFailure.None)
+                {
+                    this.Fail(declaration.Owner, BindingFailure.InvalidOrigin);
+                    this.AddPrerequisite(declaration.Owner, clause);
+                }
+
+                declaration.Failure ??= clause;
+            }
+            else
             {
                 declaration.Relations.Add(new(a, b, clause.IsEquality, clause));
                 clause.BindingState = BindingState.Resolved;
             }
+        }
+
+        if (declaration.Failure is { } failure)
+        {
+            // The contract is unavailable. In particular, its missing relations cannot justify defaulting a result to
+            // static, or supply premises through the valid-looking subset of the same rejected declaration.
+            declaration.Relations.Clear();
+            declaration.State = 3;
+            this.originStateVersion++;
+            foreach (var pending in declaration.Pending)
+            {
+                this.CompleteDependent(pending.Use, failure);
+            }
+
+            return;
         }
 
         // Equalities are substitutions before result defaulting. Revisit equations after
@@ -476,6 +543,7 @@ public sealed partial class Binding
                 if (Flexibility(a) != 0 && !Contains(b, a))
                 {
                     declaration.Replacements[a] = b;
+                    this.originStateVersion++;
                     changed = true;
                 }
             }
@@ -487,6 +555,7 @@ public sealed partial class Binding
         }
 
         declaration.State = 2; // Further omission performs the established position rule.
+        this.originStateVersion++;
         foreach (var pending in declaration.Pending)
         {
             var origin = this.ResolveOrigin(pending.Origin, declaration);
@@ -546,6 +615,7 @@ public sealed partial class Binding
             if (completed is not null && !ReferenceEquals(completed, origin))
             {
                 declaration.Replacements[origin] = completed;
+                this.originStateVersion++;
             }
         }
 
@@ -564,6 +634,7 @@ public sealed partial class Binding
         }
 
         declaration.State = 3;
+        this.originStateVersion++;
 
         int Flexibility(BoundOrigin origin)
         {
@@ -606,6 +677,20 @@ public sealed partial class Binding
         }
     }
 
+    // Queried only after an Origin fit failed: structural Type failures and refuted lifetime relations stay independent.
+    private Koto? FailedOriginEnvironment(Koto use)
+    {
+        for (var owner = use; owner is not null; owner = owner.Parent)
+        {
+            if (this.originDeclarations.TryGetValue(owner, out var declaration) && declaration.Failure is { } failure)
+            {
+                return failure;
+            }
+        }
+
+        return null;
+    }
+
     private BoundType RewriteOrigins(BoundType type, OriginDeclaration declaration)
     {
         if (!type.CarriesOrigin)
@@ -627,7 +712,7 @@ public sealed partial class Binding
                 arguments[i] = this.ResolveOrigin(type.OriginArguments[i], declaration);
             }
 
-            return this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, type.Origin is { } origin ? this.ResolveOrigin(origin, declaration) : null, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext);
+            return this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, type.Origin is { } origin ? this.ResolveOrigin(origin, declaration) : null, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments, type.ResultMode);
         }
         finally
         {
@@ -640,6 +725,12 @@ public sealed partial class Binding
     {
         declaration.Scope = scope;
         declaration.State = 3;
+        this.originStateVersion++;
+        foreach (var replacement in declaration.Replacements)
+        {
+            this.RecordRegionBound(this.ResolveOrigin(replacement.Value, declaration), replacement.Key, declaration.Owner);
+        }
+
         for (var i = this.obligations.Count - 1; i >= 0; i--)
         {
             var obligation = this.obligations[i];
@@ -661,6 +752,7 @@ public sealed partial class Binding
         }
 
         OriginDeclaration? declaration = null;
+        var localSlot = -1;
         Match(declared, actual, OriginVariance.Covariant);
         if (declaration is null)
         {
@@ -669,11 +761,12 @@ public sealed partial class Binding
 
         if (declaration.Inferred is { Count: > 0 } inferred)
         {
-            this.MeetLocalUpperBounds(declaration, inferred);
+            this.SolveLocalBounds(declaration, inferred);
         }
 
         declaration.Scope = scope;
         declaration.State = 3;
+        this.originStateVersion++;
         var visitor = this.originRewriteVisitor ??= new(this);
         visitor.Declaration = declaration;
         visitor.Visit(owner.TypeKoto!);
@@ -720,13 +813,29 @@ public sealed partial class Binding
 
         void Bind(BoundOrigin pending, BoundOrigin value, OriginVariance polarity)
         {
-            if (pending.Kind == OriginKind.Inference)
+            if (pending.Kind == OriginKind.Inference && !IsLocalRegion(pending))
             {
                 declaration ??= this.OriginDeclarationFor(owner);
-                declaration.Replacements[pending] = declaration.Replacements.TryGetValue(pending, out var previous) ? this.Meet(previous, value) : value;
+                if (IsMutableDeclaration(owner))
+                {
+                    var region = declaration.Replacements.TryGetValue(pending, out var previous) && IsLocalRegion(previous)
+                        ? previous : this.LocalRegionSlot(owner, localSlot--);
+                    declaration.Replacements[pending] = region;
+                    this.originStateVersion++;
+                    if (!ReferenceEquals(value, pending))
+                    {
+                        this.AddOriginFit(value, region, declared, owner.InitializerKoto!, polarity);
+                    }
+                }
+                else
+                {
+                    declaration.Replacements[pending] = declaration.Replacements.TryGetValue(pending, out var previous) ? this.Meet(previous, value) : value;
+                    this.originStateVersion++;
+                }
+
                 if (declaration.Relations.Count != 0)
                 {
-                    // Only a local's own clauses read the variance (MeetLocalUpperBounds, JudgeDeclaredRelation).
+                    // Local clauses use this composed variance when solving their bounds.
                     var inferred = declaration.Inferred ??= new(ReferenceEqualityComparer.Instance);
                     inferred[pending] = inferred.TryGetValue(pending, out var seen) && seen != polarity ? OriginVariance.Invariant : polarity;
                 }
@@ -734,26 +843,50 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.3.6, 15.4.4: an omitted Origin at a covariant position of a local's Type is the meet of all its upper bounds, so a clause
-    // `origin y outlives x.s` bounds the inferred x.s together with the initializer, instead of requiring y to outlive the initializer's
-    // Origin. The meet only shrinks, so the passes reach a fixed point independent of clause order.
-    private void MeetLocalUpperBounds(OriginDeclaration declaration, Dictionary<BoundOrigin, OriginVariance> inferred)
+    // SPEC 15.3.6, 15.4.4: covariant positions meet upper bounds; contravariant positions select an existing
+    // lower bound proven to outlive the others. Repeated passes propagate dependent slots without inventing unions.
+    private void SolveLocalBounds(OriginDeclaration declaration, Dictionary<BoundOrigin, OriginVariance> inferred)
     {
         for (var pass = 0; pass <= declaration.Relations.Count; pass++)
         {
             var changed = false;
             foreach (var relation in declaration.Relations)
             {
-                if (relation.Equality || !inferred.TryGetValue(relation.Shorter, out var variance) || variance != OriginVariance.Covariant ||
+                if (relation.Equality)
+                {
+                    continue;
+                }
+
+                if (inferred.TryGetValue(relation.Longer, out var lowerVariance) && lowerVariance == OriginVariance.Contravariant &&
+                    declaration.Replacements.TryGetValue(relation.Longer, out var lowerCandidate) && !IsLocalRegion(lowerCandidate))
+                {
+                    var lower = this.ResolveOrigin(relation.Shorter, declaration);
+                    if (!this.ProvesOriginOutlives(lowerCandidate, lower, relation.Syntax) && this.ProvesOriginOutlives(lower, lowerCandidate, relation.Syntax))
+                    {
+                        declaration.Replacements[relation.Longer] = lower;
+                        this.originStateVersion++;
+                        changed = true;
+                    }
+                }
+
+                if (!inferred.TryGetValue(relation.Shorter, out var variance) || variance != OriginVariance.Covariant ||
                     !declaration.Replacements.TryGetValue(relation.Shorter, out var current))
                 {
                     continue;
                 }
 
-                var met = this.Meet(current, this.ResolveOrigin(relation.Longer, declaration));
+                var longer = this.ResolveOrigin(relation.Longer, declaration);
+                if (IsLocalRegion(current))
+                {
+                    this.AddObligation(new(BindingObligationKind.OriginOutlives, relation.Syntax, BindingDeadline.BodyOrigins, null, longer, current, Clause: relation.Syntax));
+                    continue;
+                }
+
+                var met = this.Meet(current, longer);
                 if (!ReferenceEquals(met, current))
                 {
                     declaration.Replacements[relation.Shorter] = met;
+                    this.originStateVersion++;
                     changed = true;
                 }
             }
@@ -808,6 +941,8 @@ public sealed partial class Binding
 
         internal int State { get; set; }
 
+        internal Koto? Failure { get; set; }
+
         internal Dictionary<string, TypeSemanticsKoto> Sets { get; } = new(StringComparer.Ordinal);
 
         internal Dictionary<BoundOrigin, BoundOrigin> Replacements { get; } = new(ReferenceEqualityComparer.Instance);
@@ -823,6 +958,7 @@ public sealed partial class Binding
         internal void Reset()
         {
             this.State = 0;
+            this.Failure = null;
             this.Scope = null;
             this.Sets.Clear();
             this.Replacements.Clear();

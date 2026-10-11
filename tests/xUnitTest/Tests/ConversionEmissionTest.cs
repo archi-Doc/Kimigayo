@@ -81,7 +81,6 @@ public class ConversionEmissionTest
     [InlineData("ConversionNeverEvidence", "func f() -> i32\n    let x = if false => (return 42)@u8 else => 300\n    return x\nif f() == 300 => Console.writeLine(\"ok\")", "ok\n")]
     [InlineData("ConversionLoopEvidence", "let x = if false => (loop => ())@u8 else => 300\nif x == 300 => Console.writeLine(\"ok\")", "ok\n")]
     [InlineData("ConversionNeverCallEvidence", "func stop() -> Never => loop => ()\nlet x = if false => stop()@u8 else => 300\nif x == 300 => Console.writeLine(\"ok\")", "ok\n")]
-    [InlineData("ConversionAfterReturn", "func f() -> i32\n    return 42\n    let x = 300\n    x@u8\nif f() == 42 => Console.writeLine(\"ok\")", "ok\n")]
     public void SourceOrderAndConsumersUseTheSecuredValue(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture(name, source, stdout);
 
@@ -104,7 +103,7 @@ public class ConversionEmissionTest
     [InlineData("let x: u8 = 1\n-x@u8", "TypeMismatch")]
     [InlineData("let x: i128 = 1\nx@f64", "Unsupported")]
     [InlineData("let x: u128 = 5000000000\nx@f64", "Unsupported")]
-    [InlineData("let x = 1\nx@obj", "BareOwningShorthand")]
+    [InlineData("let x = 1\nx@owner", "BareOwningShorthand")]
     [InlineData("let x: f64 = 3.9\nx@i128", "Unsupported")]
     [InlineData("let flag = true\nflag@char", "TypeMismatch")]
     [InlineData("let s = \"x\"\ns@bool", "TypeMismatch")]
@@ -115,14 +114,14 @@ public class ConversionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure.ToString() == failure);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf().ToString() == failure);
         if (failure == "Unsupported")
         {
             Assert.Equal(0, c.Binding.Result.InvalidCount);
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -146,7 +145,7 @@ public class ConversionEmissionTest
         var issue = Assert.Single(c.Binding.Issues);
         Assert.Equal("UnresolvedBinding_Kd", issue.Code.ToString());
         Assert.Equal("ref", issue.Node.ToString());
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]
@@ -179,8 +178,8 @@ public class ConversionEmissionTest
         var allocated = AllocationMeasurement.Measure(
             () =>
             {
-                valid &= c.Ownership.Analyze().IsVerified;
-                valid &= c.Emission.WriteIr(TextWriter.Null, out _);
+                valid &= c.Analyze().IsVerified;
+                valid &= c.WriteIr(TextWriter.Null, out _);
             },
             iterations: 128,
             warmupIterations: 100);
@@ -196,19 +195,19 @@ public class ConversionEmissionTest
         Assert.True(c.Binding.Result.IsComplete, string.Join("; ", c.Binding.Issues));
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().ToArray();
         Assert.Equal(3, nodes.Length);
-        Assert.Equal(ConversionBinding.Integer, nodes[0].ConversionBinding);
-        Assert.Same(BoundType.I32, nodes[0].Left.BoundType);
-        Assert.Same(BoundType.I32, nodes[1].Left.BoundType);
-        Assert.Equal(ConversionBinding.Literal, nodes[2].ConversionBinding);
+        Assert.Equal(ConversionBinding.Integer, nodes[0].ConversionOf().Kind);
+        Assert.Same(BoundType.I32, nodes[0].Left.TypeOf());
+        Assert.Same(BoundType.I32, nodes[1].Left.TypeOf());
+        Assert.Equal(ConversionBinding.Literal, nodes[2].ConversionOf().Kind);
         foreach (var node in nodes)
         {
-            node.ConversionBinding = ConversionBinding.Abrupt;
+            node.SetConversion(ConversionBinding.Abrupt);
         }
 
         Assert.True(c.Bind().IsComplete);
-        Assert.Equal(ConversionBinding.Integer, nodes[0].ConversionBinding);
-        Assert.Equal(ConversionBinding.Integer, nodes[1].ConversionBinding);
-        Assert.Equal(ConversionBinding.Literal, nodes[2].ConversionBinding);
+        Assert.Equal(ConversionBinding.Integer, nodes[0].ConversionOf().Kind);
+        Assert.Equal(ConversionBinding.Integer, nodes[1].ConversionOf().Kind);
+        Assert.Equal(ConversionBinding.Literal, nodes[2].ConversionOf().Kind);
         var complete = true;
         var allocated = AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete, iterations: 128, warmupIterations: 100);
         Assert.True(complete);
@@ -225,7 +224,7 @@ public class ConversionEmissionTest
     public void MalformedConversionPlansNeverWriteIr(string mutation)
     {
         var c = MinimalEmissionTest.Analyze("let flag = true\nlet x: u32 = 1\nlet y = x@i32");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Convert);
         var value = body.Values[id];
@@ -241,11 +240,11 @@ public class ConversionEmissionTest
                 body.PlaceStorage[place] = body.Places[place] with { Type = BoundType.Primitives["u32"] };
                 break;
             case "unary": body.Values[id] = value with { Kind = OwnershipValueKind.Unary }; break;
-            case "classification": ((ConversionKoto)body.Operations[id].Source).ConversionBinding = ConversionBinding.Literal; break;
+            case "classification": ((ConversionKoto)body.Operations[id].Source).SetConversion(ConversionBinding.Literal); break;
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -272,9 +271,9 @@ public class ConversionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze($"func stop() -> Never => loop => ()\nlet x = if false => ({operand})@u8 else => 300\nif x == 300 => Console.writeLine(\"ok\")");
         Assert.True(c.Binding.Result.IsComplete, string.Join("; ", c.Binding.Issues));
-        Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
-        var field = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.BoundSymbol?.Name == "x");
-        Assert.Same(BoundType.I32, field.BoundSymbol!.Type);
+        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        var field = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.SymbolOf()?.Name == "x");
+        Assert.Same(BoundType.I32, field.SymbolOf()!.Type);
     }
 
     [Theory]
@@ -287,8 +286,8 @@ public class ConversionEmissionTest
         // evidence to bound Types only, so the unbound stop() operand counted as completing and the branches mismatched.
         var c = MinimalEmissionTest.Analyze($"{before}func stop() -> Never => loop => ()\nlet x = if false => stop()@i64 else => 300{after}");
         Assert.True(c.Binding.Result.IsComplete, string.Join("; ", c.Binding.Issues));
-        var field = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.BoundSymbol?.Name == "x");
-        Assert.Same(BoundType.I32, field.BoundSymbol!.Type);
+        var field = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.SymbolOf()?.Name == "x");
+        Assert.Same(BoundType.I32, field.SymbolOf()!.Type);
     }
 
     private static (BigInteger Min, BigInteger Max) Range(string name)

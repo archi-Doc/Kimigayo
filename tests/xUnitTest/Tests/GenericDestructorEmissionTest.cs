@@ -166,12 +166,12 @@ public class GenericDestructorEmissionTest
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    let value: T\n    let tag: i32\n    public init(value: T)\n        self.value = value@move\n        self.tag = 1\n    drop\n        if self.tag == 1 => Console.writeLine(\"tag\")\nlet a = Box<i8>.init(7)\nlet b = Box<i64>.init(8)");
         for (var i = 0; i < 16; i++)
         {
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Emission.WriteIr(TextWriter.Null, out var error))
+            if (!c.WriteIr(TextWriter.Null, out var error))
             {
                 throw new InvalidOperationException(error);
             }
@@ -187,11 +187,11 @@ public class GenericDestructorEmissionTest
         {
             var c = MinimalEmissionTest.Analyze("struct Box<T>\n    let value: T\n    drop => ()\nfunc a(value: Box<i8>) => ()\nfunc b(value: Box<i16>) => ()\nfunc c(value: Box<i32>) => ()\npublic func main() => ()");
             using var output = new StringWriter();
-            Assert.False(c.Emission.WriteIr(output, out var error));
+            Assert.False(c.WriteIr(output, out var error));
             Assert.Empty(output.ToString());
             Assert.True(c.Emission.FailureIsResourceLimit, error);
             GenericStoragePlan.SubstitutionSetLimit = 3;
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+            Assert.True(c.WriteIr(TextWriter.Null, out error), error);
         }
         finally
         {
@@ -205,9 +205,9 @@ public class GenericDestructorEmissionTest
     public void GrowingDestructorContextsAreResourceDiagnosed(string argument)
     {
         var c = MinimalEmissionTest.Analyze($"struct Grow<T>\n    let pointer: raw/T\n    public init() => self.pointer = null\n    drop\n        let next = Grow<{argument}>.init()\nlet value = Grow<i32>.init()");
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out var error));
+        Assert.False(c.WriteIr(output, out var error));
         Assert.Empty(output.ToString());
         Assert.True(c.Emission.FailureIsResourceLimit, error);
         Assert.Contains("grows", error, StringComparison.Ordinal);
@@ -218,9 +218,9 @@ public class GenericDestructorEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    drop\n        let moved = self.value@move\n        let again = self.value@move\nlet value = Box<i32>.init(7)");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.True(c.Ownership.Result.ErrorCount > 0);
+        Assert.True(c.Analysis.ErrorCount > 0);
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
     }
 }

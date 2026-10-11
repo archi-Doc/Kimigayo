@@ -287,6 +287,19 @@ GeneralLiteral:
         return true;
     }
 
+    // Called after the tokenizer recognized a digit following a Dot. Tuple indices have no fraction, exponent,
+    // base prefix or separator, but share the malformed name-continuation boundary of ordinary numbers (SPEC 2.6).
+    internal static bool ScanTupleIndex(ReadOnlySpan<char> text, out int length)
+    {
+        var i = 1;
+        while (i < text.Length && (uint)(text[i] - '0') <= 9u)
+        {
+            i++;
+        }
+
+        return FinishNumberLiteral(text, i, out length);
+    }
+
     private static bool AccumulateTruncated(ReadOnlySpan<char> digits, long count, ref long index, ref UInt128 magnitude)
     {
         foreach (var c in digits)

@@ -249,10 +249,16 @@ public sealed partial class Binding
         for (var i = 0; i < match.Arms.Count; i++)
         {
             var arm = match.Arms[i];
-            if (plan.Pending && arm.Guard is null)
+            if (plan.Pending)
             {
                 // Implicit shared inspection needs candidate/body Loan semantics before
                 // the ordinary expression binder may use these Pattern bindings.
+                if (arm.Guard is { } pendingGuard)
+                {
+                    this.MarkUnsupportedTree(pendingGuard);
+                    this.Fail(pendingGuard, BindingFailure.Unsupported, true);
+                }
+
                 this.MarkUnsupportedTree(arm.Body);
                 this.Fail(arm.Body, BindingFailure.Unsupported, true);
                 pendingBody = true;
@@ -261,16 +267,6 @@ public sealed partial class Binding
 
             if (arm.Guard is { } guard)
             {
-                if (plan.Pending || !MatchTypes.SupportsGuard(plan, plan.Arms[i].Pattern))
-                {
-                    this.MarkUnsupportedTree(guard);
-                    this.MarkUnsupportedTree(arm.Body);
-                    this.Fail(guard, BindingFailure.Unsupported, true);
-                    this.Fail(arm.Body, BindingFailure.Unsupported, true);
-                    pendingBody = true;
-                    continue;
-                }
-
                 var guardType = this.BindNode(guard, this.scopes[guard], BoundType.Boolean);
                 pendingBody |= guardType is null;
                 if (guardType is not null && !Compatible(guardType, BoundType.Boolean))
@@ -334,13 +330,13 @@ public sealed partial class Binding
             // SPEC 15.1.6, 15.6.2: a stored exclusive reference reached through a shared layer is shared-Reborrowed.
             var origin = type.Origin is { } stored ? this.Meet(this.PlaceOrigin(expression), stored) : this.PlaceOrigin(expression);
             var semantics = type.Semantics == SemanticsKind.Uniq ? SemanticsKind.Ref : SemanticsKind.ObjRef;
-            borrow = this.InternType(BoundTypeKind.Semantics, null, semantics, [type.Components[0]], origin: origin);
+            borrow = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [type.Components[0]], origin: origin);
             return borrow;
         }
 
         if (type.Semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc)
         {
-            borrow = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [type], origin: this.PlaceOrigin(expression));
+            borrow = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [type], origin: this.PlaceOrigin(expression));
             return borrow;
         }
 
@@ -421,7 +417,7 @@ public sealed partial class Binding
                 // with shared or exclusive access binds ref/T or uniq/T, also for a Copy T. A whole-Subject binding
                 // of a reference-valued Subject copies that reference and never selects the internal slot.
                 symbol.Type = access == PatternAccessMode.Owned ? matched
-                    : this.InternType(BoundTypeKind.Semantics, null, access == PatternAccessMode.Shared ? SemanticsKind.Ref : SemanticsKind.Uniq, [matched], origin: origin);
+                    : this.types.Intern(BoundTypeKind.Semantics, null, access == PatternAccessMode.Shared ? SemanticsKind.Ref : SemanticsKind.Uniq, [matched], origin: origin);
                 symbol.BindsReference = access != PatternAccessMode.Owned || (parent < 0 && plan.Mode != SubjectMode.ByValue);
                 binding.Operands[0].BoundSymbol = symbol;
                 Complete(binding.Operands[0], matched);
@@ -431,8 +427,8 @@ public sealed partial class Binding
                     // SPEC 14.8.3: a guard candidate is a shared reference to its Place whatever the mode and Copy capability.
                     var candidateOrigin = this.OriginAtom(CandidateOriginBinder(candidate), OriginKind.Projection, candidate.Slot);
                     candidate.Type = parent < 0 && matched is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
-                        ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [matched.Components[0]], origin: matched.Origin ?? candidateOrigin)
-                        : this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [matched], origin: candidateOrigin);
+                        ? this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [matched.Components[0]], origin: matched.Origin ?? candidateOrigin)
+                        : this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [matched], origin: candidateOrigin);
                     position = position with { CandidateSymbol = candidate };
                 }
 
@@ -556,15 +552,16 @@ public sealed partial class Binding
     private bool TryPatternLiteral(Koto syntax, BoundType type, out PatternLiteral literal)
     {
         literal = default;
-        var number = syntax as NumberLiteralKoto ?? (syntax as PrefixMinusKoto)?.Operand as NumberLiteralKoto;
-        if (number is not null)
+        // A number or a negated number; TryDictionaryLiteralKey unwraps a key's unary + before this.
+        var negative = syntax.Akind == KotoKind.PrefixMinus;
+        if ((negative ? ((UnaryKoto)syntax).Operand : syntax) is NumberLiteralKoto number)
         {
-            if (!number.IsInteger || !number.TryGetIntegerMagnitude(out var magnitude) || !FitsIntegerMagnitude(magnitude, type, syntax is PrefixMinusKoto, this.compilation.PointerWidth))
+            if (!number.IsInteger || !number.TryGetIntegerMagnitude(out var magnitude) || !FitsIntegerMagnitude(magnitude, type, negative, this.compilation.PointerWidth))
             {
                 return false;
             }
 
-            literal = new(PatternLiteralKind.Integer, magnitude, syntax is PrefixMinusKoto && magnitude != 0);
+            literal = new(PatternLiteralKind.Integer, magnitude, negative && magnitude != 0);
             Complete(number, type);
             return true;
         }
@@ -682,7 +679,7 @@ public sealed partial class Binding
             }
         }
 
-        var caseCount = subject.Symbol?.Declaration is EnumKoto declaration && this.storageShapes.TryGetValue(declaration, out var shape) ? shape.CaseCount : 0;
+        var caseCount = subject.Symbol?.Declaration is EnumKoto { BoundSymbol.Adt: { } shape } ? shape.Cases.Length : 0;
         for (var i = 0; i < caseCount; i++)
         {
             plan.CaseCoverage.Add(0);

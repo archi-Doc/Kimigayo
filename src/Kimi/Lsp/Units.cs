@@ -53,6 +53,9 @@ internal sealed class LoadedProject : DerivedItem
     /// <summary>Gets the members: the discovered sources plus the <c>TestSources</c>.</summary>
     public HashSet<SourceIdentity> Members { get; init; } = [];
 
+    /// <summary>Gets the ordinary sources selected by Product units, excluding TestSources-only members.</summary>
+    public HashSet<SourceIdentity> ProductMembers { get; init; } = [];
+
     /// <summary>Gets the project files of the product dependencies.</summary>
     public string[] ProductReferences { get; init; } = [];
 

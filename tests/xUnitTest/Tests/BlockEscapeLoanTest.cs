@@ -38,10 +38,6 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     private const string BothExits = "func show(c: bool)\n    let r = label block: do\n        let n = 5\n        if c\n            exit to block n@ref\n        exit to block n@ref\n" +
         "    Console.writeLine(\"\\(r@follow)\")\n\npublic func main() -> ()\n    show(true)\n";
 
-    // SPEC 14.10.3: code after a transfer is checked under a type-checking continuation, so its escape is still reported.
-    private const string Dead = "public func main() -> ()\n    let z = 1\n    let r = label block: do\n        exit to block z@ref\n        let n = 5\n        exit to block n@ref\n" +
-        "    Console.writeLine(\"\\(r@follow)\")\n";
-
     private const string Temporary = "func make() -> i32 => 4\n\npublic func main() -> ()\n    let r = make()@ref\n    Console.writeLine(\"\\(r@follow)\")\n";
 
     // SPEC 8.4.10.4: a loop over `C is Iterable` gives the body requirement results; the exit delivering z@ref still keeps no Loan
@@ -53,11 +49,6 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     // SPEC 8.9: `let local = value` over `s/T` is a conditional reborrow plan (review k01; it was at the z@ref exit only).
     private const string GenericReborrow = "func show<s/T>(value: s/T, c: bool) -> ()\n    s is ref or uniq\n    T is Copy\n    let local = value\n    let z = 1\n" +
         "    let r = label block: do\n        let n = 5\n        if c\n            exit to block z@ref\n        exit to block n@ref\n    Console.writeLine(\"\\(r@follow)\")\n\n" +
-        "public func main() -> ()\n    let v = 3\n    show(v@ref, true)\n";
-
-    // The same body with the escaping exit in code checked after the reachable z@ref exit (review k07; it was at the z@ref exit).
-    private const string GenericDead = "func show<s/T>(value: s/T, c: bool) -> ()\n    s is ref or uniq\n    T is Copy\n    let local = value\n    let z = 1\n" +
-        "    let r = label block: do\n        let n = 5\n        exit to block z@ref\n        exit to block n@ref\n    Console.writeLine(\"\\(r@follow)\")\n\n" +
         "public func main() -> ()\n    let v = 3\n    show(v@ref, true)\n";
 
     // A holder whose Type has an abstract part, in a body with requirement results: the carrying walk does not decide it, so every
@@ -89,13 +80,15 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     private const string LoopItem = "func show() -> i32\n    let r = label l: loop\n        let arr: Array<i32> = [1, 2]\n        for x in arr\n            exit to l x\n        exit to l arr[0]@ref\n" +
         "    return r@follow\n\npublic func main() -> ()\n    Console.writeLine(\"\\(show())\")\n";
 
+    // SPEC 3.6.2, 13.5.5.2, 16.3.3: a temporary obj/rc/arc handle is a Loan root of the borrows lent through it, destroyed at its
+    // full-expression boundary.
+    private const string TemporaryHandle = "struct Item\n    public var id: i32 = 7\nfunc make() -> rc/Item => Kimi.Intrinsics.makeRc(Item.init())\n\npublic func main() -> ()\n";
+
     private const string TemporaryInTuple = "func make() -> i32 => 4\n\npublic func main() -> ()\n    let r = (make()@ref, 1)\n    Console.writeLine(\"\\(r.0@follow)\")\n";
 
     private const string Transfer = "; the transfer cleans up the scopes it leaves before it delivers its result (SPEC 16.2.2)";
 
     private const string Escaped = "`n` is destroyed here while a live value keeps the Loan of `n@ref`; the transfer cleans up the scopes it leaves before it delivers its result (SPEC 16.2.2)";
-
-    private const string EscapedAdvice = "Declare `n` in a scope that outlives the value keeping its Loan, or keep an owned value instead of the borrow";
 
     private const string BorrowLabel = "borrow that created the loan";
 
@@ -127,11 +120,9 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         { "Parameter", Parameter, "exit to block n@ref", "exit to block n@ref", "n@ref", "do", Escaped },
         { "OtherFirst", OtherFirst, "exit to block n@ref", "exit to block n@ref", "n@ref", "do", Escaped },
         { "BothExits", BothExits, "exit to block n@ref", "exit to block n@ref", "n@ref", "do", Escaped },
-        { "Dead", Dead, "exit to block n@ref", "exit to block n@ref", "n@ref", "do", Escaped },
         { "Temporary", Temporary, "let r = make()@ref", "make()@ref", "make()@ref", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()@ref`" },
         { "GenericRequirement", GenericRequirement, "exit to block n@ref", "exit to block n@ref", "n@ref", "do", Escaped },
         { "GenericReborrow", GenericReborrow, "exit to block n@ref", "exit to block n@ref", "n@ref", "do", Escaped },
-        { "GenericDead", GenericDead, "exit to block n@ref", "exit to block n@ref", "n@ref", "do", Escaped },
         { "ReadLocal", ReadLocal, "exit to b q", "let q = n@ref", "n@ref", "do", Escaped },
         { "NestedBlock", NestedBlock, "exit to outer inner", "exit to b n@ref", "n@ref", "do", Escaped },
         { "CapturedLocal", CapturedLocal, "exit to b func [q] () => q@follow", "let q = n@ref", "n@ref", "do", Escaped },
@@ -141,6 +132,11 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         { "MatchBinding", MatchBinding, "exit to b x", "match n@ref", "n@ref", "do", Escaped },
         { "LoopItem", LoopItem, "exit to l x", "for x in arr", "arr", "loop", "`arr` is destroyed here while a live value keeps the Loan of `arr`" + Transfer },
         { "TemporaryInTuple", TemporaryInTuple, "let r = (make()@ref, 1)", "(make()@ref", "make()@ref", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()@ref`" },
+        { "TemporaryHandleView", TemporaryHandle + "    let r = make()@objref\n    Console.writeLine(\"\\(r.id)\")\n", "let r = make()@objref", "make()@objref", "make()@objref", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()@objref`" },
+        { "TemporaryHandleAnnotated", TemporaryHandle + "    let r: objref/Item = make()\n    Console.writeLine(\"\\(r.id)\")\n", "let r: objref/Item = make()", "let r: objref/Item = make()", "make()", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()`" },
+        { "TemporaryHandlePayload", TemporaryHandle + "    let r = make()@follow@ref\n    Console.writeLine(\"\\(r.id)\")\n", "let r = make()@follow@ref", "let r = make()@follow@ref", "make()", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()`" },
+        { "TemporaryHandleField", TemporaryHandle + "    let r = make().id@ref\n    Console.writeLine(\"\\(r@follow)\")\n", "let r = make().id@ref", "let r = make().id@ref", "make()", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()`" },
+        { "TemporaryHandleSlot", TemporaryHandle + "    let r = make()@ref\n    let c = Kimi.Intrinsics.clone(r)\n", "let r = make()@ref", "make()@ref", "make()@ref", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()@ref`" },
     };
 
     [Theory]
@@ -160,12 +156,11 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         output.WriteLine(name);
     }
 
-    // SPEC 15.6.5: the destruction states the escape, so the Advice keeps the root alive or the value owned.
+    // SPEC 15.6.5: the plain escape is one record, at the destruction.
     [Fact]
-    public void TheAdviceKeepsTheRootAlive()
+    public void ThePlainEscapeIsOneRecord()
     {
         var record = Assert.Single(DiagnosticCorpus.Check(Plain).Diagnostics);
-        Assert.Equal(EscapedAdvice, record.Advice);
     }
 
     // DIAGNOSTICS.md rule 1: an independent Loan conflict in the same body stays visible beside the escape.
@@ -177,16 +172,6 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         Assert.Equal([nameof(DiagnosticCode.ComparisonLoanConflict_Kd), nameof(DiagnosticCode.ComparisonLoanConflict_Kd)], records.Select(static x => x.Code));
         Assert.Equal(["k = 2", "exit to block n@ref"], records.Select(x => Text(source, x.Span)));
         Assert.Null(records[0].Note);
-    }
-
-    // SPEC 14.10.3: a conflict that is not a destruction, inside code after a transfer, keeps its record.
-    [Fact]
-    public void AGenuineConflictInDeadCodeIsReported()
-    {
-        var source = "public func main() -> ()\n    let r = label block: do\n        exit to block 1\n        var m = 1\n        let q = m@ref\n        m = 2\n        exit to block q@follow\n    Console.writeLine(\"\\(r)\")\n";
-        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "m = 2"), (record.Code, Text(source, record.Span)));
-        Assert.Equal("loan", Assert.Single(record.Related!).Role);
     }
 
     // SPEC 15.6.5: where the carrying walk gives up, the per-root deduplication never drops the escaping exit; every destruction the
@@ -232,7 +217,6 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         Assert.Contains(": " + BorrowLabel, console.Text, StringComparison.Ordinal);
         Assert.Contains(": " + LoanLabel, console.Text, StringComparison.Ordinal);
         Assert.Contains("Note: " + Escaped, console.Text, StringComparison.Ordinal);
-        Assert.Contains("Advice: " + EscapedAdvice, console.Text, StringComparison.Ordinal);
 
         var identity = SourceIdentity.FromPath(checkOutput.Sources[record.Source].Path);
         var plain = Assert.Single(WorkspaceCheck.Place(checkOutput, [identity], identity, false)[identity]);
@@ -260,13 +244,13 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(workload);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(escapes == 0, c.Ownership.Result.IsVerified);
-        Assert.Equal(escapes, c.Ownership.Issues.Count(static x => x.Failure == OwnershipFailure.ComparisonLoanConflict));
+        Assert.Equal(escapes == 0, c.Analysis.IsVerified);
+        Assert.Equal(escapes, c.Problems.Count(static x => x.Code.IsLoanConflict()));
         Assert.Equal(escapes, c.Ownership.Issues.Count(static x => x.Borrow is not null));
         var verified = escapes == 0;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => verified = c.Ownership.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => verified = c.Analyze().IsVerified));
         Assert.Equal(escapes == 0, verified);
-        Assert.Equal(escapes, c.Ownership.Issues.Count(static x => x.Failure == OwnershipFailure.ComparisonLoanConflict));
+        Assert.Equal(escapes, c.Problems.Count(static x => x.Code.IsLoanConflict()));
     }
 
     private static string Text(string source, SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;

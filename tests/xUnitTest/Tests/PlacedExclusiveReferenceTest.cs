@@ -23,7 +23,7 @@ public sealed class PlacedExclusiveReferenceTest
     {
         var c = MinimalEmissionTest.Analyze(Run + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Code == DiagnosticCode.PlacementActivationConflict_Kd);
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.PlacementActivationConflict_Kd);
     }
 
     [Theory]
@@ -33,16 +33,15 @@ public sealed class PlacedExclusiveReferenceTest
     public void APlacementWithoutALiveChildIsAccepted(string body)
     {
         var c = MinimalEmissionTest.Analyze(Run + body);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]
-    public void TheConflictNamesThePlacementAndAdvisesTheOrder()
+    public void TheConflictNamesThePlacement()
     {
         var result = DiagnosticCorpus.Check(Run + "    var entries = [1: c@move, 2: b@move]\n    entries[2]@follow = 42\n    entries[1]@follow = 7\npublic func main()\n    var value = 0\n    run(value@uniq)\n");
         var record = Assert.Single(result.Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.PlacementActivationConflict_Kd), record.Code);
         Assert.Contains("is acquired exclusively where the literal places it", record.Note, StringComparison.Ordinal);
-        Assert.StartsWith("End the use of the Reborrow child", record.Advice, StringComparison.Ordinal);
     }
 }

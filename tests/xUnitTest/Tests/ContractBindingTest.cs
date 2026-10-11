@@ -15,9 +15,9 @@ public class ContractBindingTest
         var c = CompilationTestHelper.ParseSuccess("contract C\n    property item: i32 has get\nstruct S\n    Self is C\n    public let item: i32");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var type = Container(c, "S");
-        var contract = Container(c, "C").BoundSymbol!;
-        var conformance = Assert.IsType<BoundConformance>(c.Binding.GetConformance(type.BoundType!, contract));
-        var property = Assert.IsType<PropertyKoto>(Assert.Single(type.Members)).BoundSymbol!.Property!;
+        var contract = Container(c, "C").SymbolOf()!;
+        var conformance = Assert.IsType<BoundConformance>(c.Binding.GetConformance(type.TypeOf()!, contract));
+        var property = Assert.IsType<PropertyKoto>(Assert.Single(type.Members)).SymbolOf()!.Property!;
         Assert.True(conformance.IsVerified);
         Assert.True(property.IsVerified);
 
@@ -25,9 +25,9 @@ public class ContractBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(conformance.IsVerified);
         Assert.False(property.IsVerified);
-        Assert.Null(c.Binding.GetConformance(type.BoundType!, contract));
+        Assert.Null(c.Binding.GetConformance(type.TypeOf()!, contract));
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.Same(conformance, c.Binding.GetConformance(type.BoundType!, contract));
+        Assert.Same(conformance, c.Binding.GetConformance(type.TypeOf()!, contract));
         Assert.True(conformance.IsVerified);
         Assert.True(property.IsVerified);
     }
@@ -37,11 +37,11 @@ public class ContractBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess("contract C\n    func read(self: ref/Self) -> i32\nstruct S\n    Self is C\n    public func read(self: ref/Self) -> i32 => 1");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var contract = Container(c, "C").BoundSymbol!;
-        var type = Container(c, "S").BoundType!;
+        var contract = Container(c, "C").SymbolOf()!;
+        var type = Container(c, "S").TypeOf()!;
         var mapping = Assert.IsType<BoundConformance>(c.Binding.GetConformance(type, contract));
         var witness = Assert.Single(mapping.Witnesses);
-        Assert.Same(Assert.Single(contract.Contract!.Requirements), witness.Requirement);
+        Assert.Equal(Assert.Single(contract.Contract!.Requirements), witness.Identity);
         Assert.Equal("read", witness.Implementation.Name);
         Assert.NotSame(witness.Requirement, witness.Implementation);
     }
@@ -75,10 +75,10 @@ public class ContractBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess("contract A\n    func f()\ncontract B: A\ncontract C: A\ncontract D: B, C\nstruct S\n    Self is D\n    Self is A\n    public func f() => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var d = Container(c, "D").BoundSymbol!.Contract!;
+        var d = Container(c, "D").SymbolOf()!.Contract!;
         Assert.Single(d.Requirements);
         Assert.Equal(3, d.Ancestors.Count);
-        Assert.Same(Container(c, "A").BoundSymbol!.Contract!.Requirements[0], d.Requirements[0]);
+        Assert.Equal(Container(c, "A").SymbolOf()!.Contract!.Requirements[0], d.Requirements[0]);
     }
 
     [Theory]
@@ -96,15 +96,15 @@ public class ContractBindingTest
     [InlineData("associate Element is i32", "i32", true)]
     [InlineData("associate C.Element is i32", "i32", true)]
     [InlineData("associate C.Element is string", "i32", false)]
-    [InlineData("", "i32", false)]
+    [InlineData("", "i32", true)]
     [InlineData("associate C.Element is ref/i32 during static", "i32", false)]
-    public void AssociatedIdentityIsExplicitAndPrecedesMatching(string specification, string result, bool valid)
+    public void AssociatedIdentityUsesExplicitOrBoundedDeclarationEvidence(string specification, string result, bool valid)
     {
         var c = CompilationTestHelper.ParseSuccess($"contract C\n    associate Element\n    func read() -> Element\nstruct S\n    Self is C\n    {specification}\n    public func read() -> {result} => 1");
         Assert.Equal(valid, c.Bind().IsComplete);
         if (valid)
         {
-            Assert.Equal("i32", Assert.Single(c.Binding.GetConformance(Container(c, "S").BoundType!, Container(c, "C").BoundSymbol!)!.AssociatedTypes).Value.Name);
+            Assert.Equal("i32", Assert.Single(c.Binding.GetConformance(Container(c, "S").TypeOf()!, Container(c, "C").SymbolOf()!)!.AssociatedTypes).Value.Name);
         }
     }
 
@@ -166,11 +166,11 @@ public class ContractBindingTest
         var c = CompilationTestHelper.ParseSuccess("contract C\n    func empty() -> Self\nfunc make<T>() -> T\n    T is C\n    return T.empty()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        Assert.NotNull(call.BoundCall);
-        Assert.Equal(BoundTypeKind.Parameter, call.BoundCall.ConformingType!.Kind);
-        Assert.Same(Container(c, "C").BoundSymbol!.Contract!.Requirements[0], call.BoundCall.Target);
-        Assert.Same(call.BoundCall.ConformingType, call.BoundType);
-        Assert.Null(call.BoundCall.Receiver);
+        Assert.NotNull(call.CallOf());
+        Assert.Equal(BoundTypeKind.Parameter, call.CallOf()!.ConformingType!.Kind);
+        Assert.Equal(Container(c, "C").SymbolOf()!.Contract!.Requirements[0], new(call.CallOf()!.Target, call.CallOf()!.RequirementContract!));
+        Assert.Same(call.CallOf()!.ConformingType, call.TypeOf());
+        Assert.Null(call.CallOf()!.Receiver);
     }
 
     [Theory]
@@ -182,8 +182,8 @@ public class ContractBindingTest
         var c = CompilationTestHelper.ParseSuccess($"contract C\n    associate Element\n    func read(self: ref/Self) -> Element\nfunc readOne<T>(source: ref/T) -> {result}\n    {constraints}\n    return source.read()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        Assert.NotNull(call.BoundCall!.Receiver);
-        Assert.Equal(BoundTypeKind.Parameter, call.BoundCall.ConformingType!.Kind);
+        Assert.NotNull(call.CallOf()!.Receiver);
+        Assert.Equal(BoundTypeKind.Parameter, call.CallOf()!.ConformingType!.Kind);
     }
 
     [Fact]
@@ -236,7 +236,7 @@ public class ContractBindingTest
         var c = CompilationTestHelper.ParseSuccess("contract C\n    func f(x: ref/i32 during a, y: ref/i32 during a) -> ref/i32 during a\nfunc call<T>(x: ref/i32, y: ref/i32) -> ref/i32 during (x and y)\n    T is C\n    return T.f(x, y)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        Assert.Equal(OriginKind.Intersection, call.BoundType!.Origin!.Kind);
+        Assert.Equal(OriginKind.Intersection, call.TypeOf()!.Origin!.Kind);
     }
 
     [Fact]
@@ -252,7 +252,7 @@ public class ContractBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess("contract A\n    func f(x: i32)\ncontract B\n    func f(y: i32)\ncontract C: A, B");
         Assert.False(c.Bind().IsComplete);
-        Assert.Equal(BindingState.Invalid, Container(c, "C").BindingState);
+        Assert.Equal(BindingState.Invalid, Container(c, "C").StateOf());
     }
 
     [Fact]
@@ -260,7 +260,7 @@ public class ContractBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess("contract A\n    associate E is i32\ncontract B: A\n    Self.A.E is string");
         Assert.False(c.Bind().IsComplete);
-        Assert.Equal(BindingState.Invalid, Container(c, "B").BindingState);
+        Assert.Equal(BindingState.Invalid, Container(c, "B").StateOf());
     }
 
     [Fact]
@@ -275,9 +275,9 @@ public class ContractBindingTest
 
     [Theory]
     [InlineData("i32", true)]
-    [InlineData("T", false)]
-    [InlineData("ref/i32 during static", false)]
-    public void GenericAssociatedBindingsMustProveTheirCoreRole(string binding, bool valid)
+    [InlineData("T", true)]
+    [InlineData("ref/i32 during static", true)]
+    public void GenericAssociatedBindingsRetainCompleteTypes(string binding, bool valid)
     {
         var c = CompilationTestHelper.ParseSuccess($"contract C\n    associate E\nstruct S<T>\n    Self is C\n    associate C.E is {binding}");
         Assert.Equal(valid, c.Bind().IsComplete);
@@ -324,7 +324,7 @@ public class ContractBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess("contract C\n    func f()\nstruct S\n    Self is C\n    public func f() => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var mapping = c.Binding.GetConformance(Container(c, "S").BoundType!, Container(c, "C").BoundSymbol!)!;
+        var mapping = c.Binding.GetConformance(Container(c, "S").TypeOf()!, Container(c, "C").SymbolOf()!)!;
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "struct S\n    public func f() => ()");
         Assert.False(c.Bind().IsComplete);
         Assert.False(mapping.IsVerified);
@@ -345,12 +345,14 @@ public class ContractBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.AmbiguousBinding_Kd);
     }
 
+    // SPEC 23.3.6.4: the cyclic specifications are invalid, and the conformance's completeness rests on them (G34-8).
     [Fact]
     public void AssociatedIdentityCyclesCannotValidateAnImplementation()
     {
         var c = CompilationTestHelper.ParseSuccess("contract C\n    associate E\n    associate F\nstruct S\n    Self is C\n    associate C.E is S.C.F\n    associate C.F is S.C.E");
         Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidAssociatedType_Kd);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidConstraint_Kd && x.Node.ToString() == "associate C.E is S.C.F");
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidAssociatedType_Kd);
     }
 
     [Fact]
@@ -378,7 +380,7 @@ public class ContractBindingTest
         Assert.Equal(valid, c.Bind().IsComplete);
         if (valid)
         {
-            Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(Container(c, "S").BoundType!, Container(c, "S")));
+            Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(Container(c, "S").TypeOf()!, Container(c, "S")));
         }
     }
 
@@ -411,7 +413,7 @@ public class ContractBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess("contract C\n    func f(x: i32) -> i32\nstruct S\n    Self is C\n    public func f(x: i32 = 1) -> i32 => x\nfunc call<T>() -> i32\n    T is C\n    return T.f()");
         Assert.False(c.Bind().IsComplete);
-        Assert.NotNull(c.Binding.GetConformance(Container(c, "S").BoundType!, Container(c, "C").BoundSymbol!));
+        Assert.NotNull(c.Binding.GetConformance(Container(c, "S").TypeOf()!, Container(c, "C").SymbolOf()!));
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NoApplicableOverload_Kd);
     }
 
@@ -423,8 +425,8 @@ public class ContractBindingTest
         var c = CompilationTestHelper.ParseSuccess("contract C\n    func f() -> ref/i32 during a\nfunc call<T>()\n    T is C\n    T.f()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        Assert.NotNull(call.BoundCall);
-        var origin = call.BoundType!.Origin!;
+        Assert.NotNull(call.CallOf());
+        var origin = call.TypeOf()!.Origin!;
         Assert.Equal((OriginKind.Inference, true), (origin.Kind, origin.Open));
         Assert.Same(call, origin.Binder);
     }
@@ -434,12 +436,12 @@ public class ContractBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess("contract C\n    func f()\nstruct S\n    Self is C");
         c.Binding.Bind(BindingMode.Provisional);
-        var shape = Container(c, "C").BoundSymbol!.Contract;
+        var shape = Container(c, "C").SymbolOf()!.Contract;
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "struct S\n    public func f() => ()");
         Assert.True(c.Binding.Bind(BindingMode.Final).IsComplete, Describe(c));
-        Assert.Same(shape, Container(c, "C").BoundSymbol!.Contract);
-        var mapping = c.Binding.GetConformance(Container(c, "S").BoundType!, Container(c, "C").BoundSymbol!)!;
-        Assert.Same(mapping.Witnesses[0].Implementation, mapping.GetImplementation(mapping.Witnesses[0].Requirement));
+        Assert.Same(shape, Container(c, "C").SymbolOf()!.Contract);
+        var mapping = c.Binding.GetConformance(Container(c, "S").TypeOf()!, Container(c, "C").SymbolOf()!)!;
+        Assert.Same(mapping.Witnesses[0].Implementation, mapping.GetImplementation(mapping.Witnesses[0].Identity));
     }
 
     [Fact]

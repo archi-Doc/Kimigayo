@@ -1,6 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Tinyhand;
 using Xunit;
 
@@ -13,10 +15,10 @@ public class BorrowStructEmissionTest
     [Fact]
     public void Milestone5()
     {
-        var source = File.ReadAllText(Path.Combine(FindRoot(), "tests", "milestones", "Milestone5.kimi"));
+        var source = File.ReadAllText(Path.Combine(Repository.Root, "tests", "milestones", "Milestone5.kimi"));
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
-        Assert.True(c.Ownership.Result.IsVerified, c.Ownership.Result + "\nObligations: " + string.Join('\n', c.Binding.Obligations) + "\n" + string.Join('\n', c.Ownership.Issues) + "\nFlow: " + string.Join('\n', c.Ownership.ControlFlow!.Issues) + "\nPending: " + string.Join('\n', c.Ownership.ControlFlow.PendingBinding));
+        Assert.True(c.Analysis.IsVerified, c.Analysis + "\nObligations: " + string.Join('\n', c.Binding.Obligations) + "\n" + string.Join('\n', c.Problems) + "\nFlow: " + string.Join('\n', c.Ownership.ControlFlow!.Issues) + "\nPending: " + string.Join('\n', c.Ownership.ControlFlow.PendingBinding));
         ScalarEmissionTest.EmitFixture("BorrowStructMilestone5", source, "Borrowed sum is 55.\nView destroyed; counter is still 55.\nFinal value is 56.\nCounter destroyed.\nDone.\n");
     }
 
@@ -39,8 +41,29 @@ public class BorrowStructEmissionTest
     public void RejectsInvalidConstruction(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified && !c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified && !c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
+        Assert.False(c.Validate(out _));
+    }
+
+    // SPEC 6.2.3.6, 22.1: a construction of a Type without constructors is one Language absence at T.init whose Note names the reason:
+    // an own Field without an initializer (related), a Kimi Type whose representation the compiler manages, or a Type that is no
+    // structure. Generic Wrapping<T> no longer receives a synthesized constructor that generation cannot lower.
+    [Theory]
+    [InlineData("struct S\n    let n: i32\nlet s = S.init()", "S.init", "S has no constructor: its Field n has no initializer")]
+    [InlineData("open struct Base\n    public var count: i32 = 1\nstruct Leaf: Base\n    public let extra: i32\nlet x = Leaf.init()", "Leaf.init", "Leaf has no constructor: its Field extra has no initializer")]
+    [InlineData("enum E\n    A\n    B\nlet e = E.init()", "E.init", "E declares no constructor")]
+    [InlineData("let x = Option<i32>.init()", "Option<i32>.init", "Option<i32> declares no constructor")]
+    [InlineData("func make<T>() -> i32\n    let x = T.init()\n    return 1\nlet y = make<i32>()", "T.init", "The Type parameter T declares no constructor")]
+    [InlineData("let x = Wrapping<i32>.init()", "Wrapping<i32>.init", "Wrapping<i32> is a Kimi Type whose representation the compiler manages")]
+    [InlineData("func make<T>() -> Wrapping<T>\n    T is PrimitiveInteger\n    return Wrapping<T>.init()\nlet w = make<i32>()", "Wrapping<T>.init", "Wrapping<T> is a Kimi Type whose representation the compiler manages")]
+    [InlineData("let x = Slice<i32>.init()", "Slice<i32>.init", "Slice<i32> is a Kimi Type whose representation the compiler manages")]
+    [InlineData("let x = Dictionary<i32, i32>.init()", "Dictionary<i32, i32>.init", "Dictionary<i32, i32> is a Kimi Type whose representation the compiler manages")]
+    public void AConstructionWithoutAConstructorIsOneLanguageAbsence(string source, string at, string note)
+    {
+        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnresolvedBinding_Kd), DiagnosticCategory.Language, at), (record.Code, record.Category, source.Substring(record.Span!.Value.Start, record.Span.Value.Length)));
+        Assert.StartsWith(note, record.Note, StringComparison.Ordinal);
+        Assert.Equal(note.Contains("Field", StringComparison.Ordinal) ? "no initializer" : null, record.Related?.SingleOrDefault()?.Label);
     }
 
     [Theory]
@@ -50,13 +73,13 @@ public class BorrowStructEmissionTest
     [InlineData("counter = Counter.init()")]
     public void DestructorKeepsStoredLoanAlive(string statement)
     {
-        var milestone = File.ReadAllText(Path.Combine(FindRoot(), "tests", "milestones", "Milestone5.kimi"));
+        var milestone = File.ReadAllText(Path.Combine(Repository.Root, "tests", "milestones", "Milestone5.kimi"));
         Assert.Contains("// Mutating or moving counter here", milestone);
         var source = milestone.Replace("// Mutating or moving counter here", statement + "\n        // Mutating or moving counter here");
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -77,8 +100,8 @@ public class BorrowStructEmissionTest
     public void RejectsInvalidBorrow(string body)
     {
         var c = MinimalEmissionTest.Analyze(Counter + body);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified && !c.Diagnostics.HasSyntaxErrors(c.Kotonoha), body);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified && !c.Diagnostics.HasSyntaxErrors(c.Kotonoha), body);
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -100,19 +123,8 @@ public class BorrowStructEmissionTest
         {
             Assert.True(c.Bind().IsComplete);
             Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
-    }
-
-    private static string FindRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Kimigayo.slnx")))
-        {
-            directory = directory.Parent;
-        }
-
-        return directory!.FullName;
     }
 }

@@ -6,7 +6,7 @@ Implement the target milestone of [docs/dev/PLAN.md](../PLAN.md) with verified, 
 
 - **Plan:** `docs/dev/PLAN.md` (§4 milestone order, §5 completion conditions, §6 next actions, §7 open issues).
 - **Target:** the milestone or track stage (for example `D2a`) named by the request; otherwise the target that PLAN §6 assigns. A paused milestone is not a target until PLAN resumes it.
-- **Diagnostics:** when a unit adds or changes a diagnostic, a check that reports diagnostics, recovery or suppression, or diagnostic publication, follow the Diagnostic Development Workflow of `AGENTS.md` (detail in `docs/dev/DIAGNOSTICS.md` §10).
+- **Diagnostics:** during ordinary implementation, create or update simple diagnostic information following [AGENTS.md](../../../AGENTS.md#diagnostic-development). Apply the full [Diagnostic Development Workflow](../DIAGNOSTIC_WORKFLOW.md) only when the user explicitly requests it or a detailed diagnostic review; diagnostic changes and bug reports alone do not activate it.
 - **Constraints:** follow `AGENTS.md`. Minimize allocations on hot paths and remove unnecessary code, but correctness and progress come first.
 - **Permissions:** commit each verified unit. Milestone Program sources are immutable by default: change one only to re-spell it for a SPEC revision or an authoring correction where the source contradicts its own specification-derived output (recorded in `tests/milestones/README.md`), or with the user's approval. Creating or completing the target milestone's harness (`src/backend/windows-x64/test-milestone<N>.ps1`) is always allowed. Draft files and NativeAOT tests need explicit instruction.
 
@@ -34,6 +34,7 @@ reproducer (a failing test or program variant)
 
 - Keep units small enough to verify in minutes. Split large work into committed steps that each keep the tree green.
 - Unit verification covers only the related tests, native fixtures and harnesses. Do not run the full Debug/Release suites per unit.
+- For the final unit, Session may replace the separate Unit run when it covers every required check against the same source/configuration; follow [VERIFICATION.md](../VERIFICATION.md#feedback-and-completion), then commit, associate evidence and push.
 - Never edit sources while a build or `scripts/verify.ps1` run is in progress. `scripts/verify.ps1` isolates fixtures by run and configuration; direct test invocations still share `temp/scalar-fixtures` unless `KIMI_FIXTURE_DIRECTORY` is set.
 - Write test source strings in C# with the Edit tool; shell heredocs corrupt backslashes.
 
@@ -56,8 +57,8 @@ reproducer (a failing test or program variant)
 ## 5. Session end
 
 1. The duration covers unit work only. Stop starting units when it has elapsed; finish or cleanly revert the current unit.
-2. Then run `./scripts/verify.ps1 -Mode Session [-Fixtures ...] [-Milestone <completed programs>]` once; it may run past the duration.
-3. Update the documents briefly, then commit:
+2. Prepare affected source and documentation before running `./scripts/verify.ps1 -Mode Session [-Fixtures ...] [-Milestone <required programs>]` once; it may run past the duration. When this also verifies the last Unit, include all its required fixtures, milestones and additional checks. Do not repeat a successful final Session whose inputs and coverage still match.
+3. Complete PLAN/history bookkeeping, then commit, associate Unit/Session evidence and push. Other documentation changes belong before verification; subsequent changes to covered inputs require reverification:
    - **docs/dev/PLAN.md:** §3 position (the session's target, HEAD, test count), milestone and track states, §6 next three actions, §7 issues. Mark a milestone DONE only when every PLAN §5 condition holds, and a track stage only when its own completion condition holds.
    - **docs/dev/PLAN_HISTORY.md:** one table row for the session (date, what changed, result).
    - **docs/STATUS.md:** only if a support boundary changed; state it in one or two sentences.

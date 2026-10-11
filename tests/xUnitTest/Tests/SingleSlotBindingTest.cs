@@ -38,8 +38,8 @@ public class SingleSlotBindingTest
         var c = MinimalEmissionTest.Analyze(View + "func identity(x: V<i32> during a) -> V<i32> during a => x@move");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "identity");
-        var input = function.Parameters[0].Type.BoundType!;
-        var result = function.ReturnType!.BoundType!;
+        var input = function.Parameters[0].Type.TypeOf()!;
+        var result = function.ReturnType!.TypeOf()!;
         Assert.Same(Assert.Single(input.OriginArguments), Assert.Single(result.OriginArguments));
         Assert.Equal(SemanticsKind.Owner, result.Semantics);
     }

@@ -43,7 +43,11 @@ public sealed class TryKoto : MatchKoto
 
     internal ReturnKoto Failure { get; }
 
-    internal bool SemanticsIndexed { get; set; }
+    internal bool SemanticsIndexed
+    {
+        get => HirTables.PlanOf(this).Flag;
+        set => HirTables.PlanFor(this, value).Flag = value;
+    }
 
     internal void SelectOption(bool option)
     {

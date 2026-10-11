@@ -26,10 +26,10 @@ public class ParameterNameDefaultTest
     {
         var c = MinimalEmissionTest.Analyze("func f(" + parameter + ") -> i32 => x\n" + call);
         Assert.Equal(accepted, c.Binding.Result.IsComplete);
-        Assert.Equal(accepted, c.Emission.Validate(out _));
+        Assert.Equal(accepted, c.Validate(out _));
         if (accepted)
         {
-            Assert.Equal(defaults, Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall!.DefaultArguments.Length);
+            Assert.Equal(defaults, Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).CallOf()!.DefaultArguments.Length);
         }
     }
 
@@ -44,7 +44,7 @@ public class ParameterNameDefaultTest
     {
         var c = MinimalEmissionTest.Analyze("func f(" + parameter + ") -> i32 => local\n" + call);
         Assert.Equal(accepted, c.Binding.Result.IsComplete);
-        Assert.Equal(accepted, c.Emission.Validate(out _));
+        Assert.Equal(accepted, c.Validate(out _));
     }
 
     [Theory]
@@ -69,7 +69,7 @@ public class ParameterNameDefaultTest
     {
         var c = MinimalEmissionTest.Analyze("func f(" + parameters + ") -> i32 => a + b\n" + call);
         Assert.Equal(accepted, c.Binding.Result.IsComplete);
-        Assert.Equal(accepted, c.Emission.Validate(out _));
+        Assert.Equal(accepted, c.Validate(out _));
     }
 
     [Theory]
@@ -136,10 +136,10 @@ public class ParameterNameDefaultTest
         var parent = original.Parent!;
         Assert.True(KotoHelper.Replace(parent, original, replacement));
         Assert.False(c.Bind().IsComplete);
-        Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => Assert.Null(x.BoundCall));
+        Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => Assert.Null(x.CallOf()));
         Assert.True(KotoHelper.Replace(parent, replacement, original));
         Assert.True(c.Bind().IsComplete);
-        Assert.Equal(new[] { 0, 1 }, KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => x.BoundCall!.DefaultArguments.Length));
+        Assert.Equal(new[] { 0, 1 }, KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => x.CallOf()!.DefaultArguments.Length));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -157,7 +157,7 @@ public class ParameterNameDefaultTest
         tree.OnDeserialized(restored);
         Assert.True(restored.Bind().IsComplete);
         var function = KotoTree.Walk(tree.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
-        Assert.Equal(1, function.PositionalParameterCount);
+        Assert.Equal(1, restored.Semantics.PositionalParameterCount(function));
         Assert.Null(function.Parameters[0].DefaultValue);
         Assert.Equal(1, function.NameBoundaryIndex);
         Assert.NotNull(function.Parameters[1].DefaultValue);
@@ -199,8 +199,8 @@ public class ParameterNameDefaultTest
         var c = MinimalEmissionTest.Analyze("func f(x: i32 ! y: i32 = x + 1) -> i32 => y\nf(3)");
         void Verify()
         {
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         for (var i = 0; i < 100; i++)

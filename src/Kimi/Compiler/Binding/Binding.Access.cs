@@ -166,13 +166,13 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (clause.IsAssociatedConstraint && owner is not ContractKoto && clause.BoundSymbol is { } associated)
+            if (clause.IsAssociatedConstraint && owner is not ContractKoto && this.AssociatedIdentity(clause.Left.BoundType) is { } associated)
             {
                 var type = scope.ConformancePath?.Type ?? owner.BoundSymbol;
                 for (var p = 0; p < this.activeConformancePaths.Count; p++)
                 {
                     var path = this.activeConformancePaths[p];
-                    if (!ReferenceEquals(path.Type, type) || !path.Contract.Contract!.AssociatedStorage.Contains(associated) ||
+                    if (!ReferenceEquals(path.Type, type) || !path.Contract.Contract!.SeenRequirements.Contains(associated) ||
                         (scope.ConformancePath is { } declaringPath && !ReferenceEquals(path.RootPath, declaringPath.RootPath)))
                     {
                         continue;
@@ -411,7 +411,7 @@ public sealed partial class Binding
         return false;
     }
 
-    private bool Accessible(BindingSymbol symbol, BindingScope use, ModifierKind? operationAccess = null, BoundType? receiverType = null)
+    private bool Accessible(BindingSymbol symbol, BindingScope use, ModifierKind? operationAccess = null, BoundType? receiverType = null, bool declarationOnly = false)
     {
         if (symbol.CompilerFunction == CompilerFunctionKind.TestTempDirectory && (!this.compilation.IsTestBuild || !TestDefinition.IsTestOnly(use.Owner)))
         {
@@ -424,7 +424,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (ReferenceEquals(symbol, this.Library.Module) || symbol.Intrinsic != IntrinsicKind.None || symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.TypeParameter or BindingSymbolKind.LengthParameter or BindingSymbolKind.AssociatedType || symbol.Declaration is FunctionKoto { IsRequirement: true })
+        if (ReferenceEquals(symbol, this.Library.Module) || symbol.Intrinsic != IntrinsicKind.None || symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.TypeParameter or BindingSymbolKind.LengthParameter or BindingSymbolKind.AssociatedType || symbol.Declaration is FunctionKoto { IsRequirement: true } or PropertyKoto { IsContractRequirement: true })
         {
             return true;
         }
@@ -463,7 +463,7 @@ public sealed partial class Binding
                     if (scope.Owner is StructKoto derived && this.DerivesFrom(derived.BoundSymbol, owner.BoundSymbol!))
                     {
                         var instance = ReferenceEquals(current, symbol) && (symbol.ReceiverIndex >= 0 || symbol.Kind == BindingSymbolKind.Property);
-                        protectedAccess |= !instance || (receiverType is not null && this.DerivesFrom(EffectiveCore(receiverType).Symbol, derived.BoundSymbol!));
+                        protectedAccess |= declarationOnly || !instance || (receiverType is not null && this.DerivesFrom(EffectiveCore(receiverType).Symbol, derived.BoundSymbol!));
                         if (protectedAccess)
                         {
                             break;

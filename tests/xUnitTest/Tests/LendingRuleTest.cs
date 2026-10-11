@@ -38,20 +38,20 @@ public class LendingRuleTest
     {
         var c = MinimalEmissionTest.Analyze("struct Item\n    public var value: i32 = 3\n    drop => ()\nfunc borrow(item: ref/Item) -> ref/Item during item => item\nfunc take(item: Item) => ()\nvar item = Item.init()\nlet view = borrow(item@ref)\ntake(item@move)\nlet a = view.value\nlet b = view.value\nlet c = view.value\nrequire a + b + c == 9 else => $abort(\"sum\")");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var issue = Assert.Single(c.Ownership.Issues);
-        Assert.Equal(OwnershipFailure.ComparisonLoanConflict, issue.Failure);
-        Assert.Equal("item@move", issue.Source.Parent?.ToString()); // Reported at the Move, not at the reads of view.
+        var issue = Assert.Single(c.Problems);
+        Assert.True(issue.Code.IsLoanConflict(), issue.Code.ToString());
+        Assert.Equal("item@move", c.SyntaxOf(issue.Subject).Parent?.ToString()); // Reported at the Move, not at the reads of view.
     }
 
     [Theory]
-    [InlineData("var values: [2 of i32] = [1, 2]\nfor value in values\n    values = [3, 4]", OwnershipFailure.ComparisonLoanConflict)]
-    [InlineData("let number = 1\nlet taken = number@move\nlet again = number", OwnershipFailure.PossiblyMovedUse)]
-    public void OwnershipRejectsConflictingAndMovedPlaces(string source, OwnershipFailure failure)
+    [InlineData("var values: [2 of i32] = [1, 2]\nfor value in values\n    values = [3, 4]", DiagnosticCode.ComparisonLoanConflict_Kd)]
+    [InlineData("let number = 1\nlet taken = number@move\nlet again = number", DiagnosticCode.MovedPlace_Kd)]
+    public void OwnershipRejectsConflictingAndMovedPlaces(string source, DiagnosticCode failure)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == failure);
+        Assert.False(c.Analysis.IsVerified);
+        Assert.Contains(c.Problems, x => x.Code == failure);
     }
 
     [Theory]

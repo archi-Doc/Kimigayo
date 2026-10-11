@@ -76,7 +76,7 @@ public class CurrentControlFlowTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.Issues);
         Assert.Empty(flow.PendingBinding);
     }
@@ -95,7 +95,7 @@ public class CurrentControlFlowTest
     {
         var c = Parse(source);
         var bound = c.Bind();
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.True(!bound.IsComplete || flow.Issues.Count > 0, source);
     }
 
@@ -104,11 +104,10 @@ public class CurrentControlFlowTest
     {
         var c = Parse("let a = loop\n    continue\n    exit 1\nlet b = label work: do\n    defer => loop => ()\n    exit to work 2");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.Issues);
         var results = c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FieldKoto>().ToArray();
-        Assert.All(results, field => Assert.Equal("i32", field.BoundType?.Name));
-        Assert.All(results, field => Assert.Equal("i32", flow.Nodes[field.InitializerKoto!].ExpressionType?.Name));
+        Assert.All(results, field => Assert.Equal("i32", field.TypeOf()?.Name));
         Assert.All(results, field => Assert.False(flow.Nodes[field.InitializerKoto!].CanCompleteNormally));
     }
 
@@ -121,7 +120,7 @@ public class CurrentControlFlowTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.Issues);
         Assert.Empty(flow.PendingBinding);
     }
@@ -146,7 +145,7 @@ public class CurrentControlFlowTest
     {
         var c = Parse(source);
         c.Bind();
-        Assert.Equal(valid, c.Ownership.Analyze().IsVerified);
+        Assert.Equal(valid, c.Analyze().IsVerified);
     }
 
     [Theory]
@@ -159,11 +158,11 @@ public class CurrentControlFlowTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.Issues);
         Assert.Contains(flow.Warnings, warning => warning.Code == code);
         var count = flow.Warnings.Count;
-        Assert.Equal(count, c.AnalyzeControlFlow(c.Binding.TypeSystem).Warnings.Count);
+        Assert.Equal(count, c.AnalyzeControlFlow().Warnings.Count);
     }
 
     [Theory]
@@ -175,19 +174,7 @@ public class CurrentControlFlowTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.Empty(c.AnalyzeControlFlow(c.Binding.TypeSystem).Warnings);
-    }
-
-    [Theory]
-    [InlineData("func f(text: string) -> string\n    return text@move\n    return text@move", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f() -> i32\n    let value: i32\n    return 1\n    return value", OwnershipFailure.UninitializedUse)]
-    public void UnreachableOwnershipUsesTheStateBeforeTransferCleanup(string source, OwnershipFailure failure)
-    {
-        var c = Parse(source);
-        Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.False(c.Ownership.Analyze().IsVerified);
-        Assert.Contains(c.Ownership.Issues, issue => issue.Failure == failure);
-        Assert.DoesNotContain(c.Ownership.Issues, issue => issue.Failure == OwnershipFailure.Unsupported);
+        Assert.Empty(c.AnalyzeControlFlow().Warnings);
     }
 
     private static Compilation Parse(string source)

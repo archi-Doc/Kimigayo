@@ -17,7 +17,9 @@ public sealed partial class LlvmEmitter
     private readonly FunctionAbiPool signatures = new();
     private readonly GenericStoragePlan generics = new();
     private readonly ObjectGenerationPlan objects = new();
+    private readonly VirtualGenerationPlan virtuals = new();
     private readonly DefaultGenerationPlan defaults = new();
+    private readonly CompilerFunctionAdapters compilerEntries = new();
     private readonly Dictionary<FunctionKoto, FunctionAbi> functions = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundProperty, FunctionAbi> staticGetters = new(ReferenceEqualityComparer.Instance);
     private readonly List<StaticScalarEntry> staticEntries = new();
@@ -44,7 +46,7 @@ public sealed partial class LlvmEmitter
     /// <summary>Gets a value indicating whether the last failure exceeded a generation resource limit (SPEC 21.3.5: generic contexts, instance ownership storage or inline layout depth, size or count), not a semantic or representation obligation.</summary>
     public bool FailureIsResourceLimit => this.resourceLimit;
 
-    internal BoundCall? FailureInstance { get; private set; }
+    internal CallPlan? FailureInstance { get; private set; }
 
     /// <summary>Writes inspection IR after checking the latest analysis. Does not certify a published artifact or native execution.</summary>
     /// <param name="writer">The caller-owned output.</param>
@@ -92,6 +94,8 @@ public sealed partial class LlvmEmitter
         this.generics.Clear();
         this.defaults.Clear();
         this.lowering.Defaults = this.defaults;
+        this.compilerEntries.Begin(c, module, this.lowering, this.generics, this.objects);
+        this.lowering.CompilerEntries = this.compilerEntries;
         try
         {
             var destructorOrdinal = 0;
@@ -175,6 +179,15 @@ public sealed partial class LlvmEmitter
 
             this.lowering.StaticGetters = this.staticGetters;
 
+            if (!this.virtuals.Begin(c, module, this.functions, this.generics, this.lowering.AggregateLayouts))
+            {
+                failure = "Virtual table entries do not match the verified slot correspondence and ABI.";
+                return false;
+            }
+
+            this.lowering.Virtuals = this.virtuals;
+            this.objects.Virtuals = this.virtuals;
+
             module.DictionaryAppendSlot = this.functions.GetValueOrDefault(c.Library.DictionaryAppendSlot);
             module.DictionaryInitialize = this.functions.GetValueOrDefault(c.Library.DictionaryInitialize);
             module.DictionaryClearLinks = this.functions.GetValueOrDefault(c.Library.DictionaryClearLinks);
@@ -225,7 +238,7 @@ public sealed partial class LlvmEmitter
 
             // Destructors can introduce further closed local Types. Drain their ordinary generic entries
             // to a fixed point, after each body has finished using the reusable layout scratch storage.
-            while (this.generics.HasPendingSourceCalls || this.defaults.HasPending || module.PendingEntries.Count != 0)
+            while (this.generics.HasPendingSourceCalls || this.defaults.HasPending || this.generics.HasPendingImplementations)
             {
                 if (!this.LowerDefaults(c, module, out failure) ||
                     !this.generics.PrepareSourceCalls(c, module, this.lowering.AggregateLayouts, out failure) ||
@@ -240,14 +253,12 @@ public sealed partial class LlvmEmitter
             if (c.IsTestBuild)
             {
                 module.TestRuntime = Testing.TestRuntime.Create(c.Tests, this.functions);
-                module.Complete();
-                return true;
+                return module.Complete(out failure);
             }
 
             if (c.Binding.Startup.OutputKind == OutputKind.Library)
             {
-                module.Complete();
-                return true;
+                return module.Complete(out failure);
             }
 
             if (!this.functions.TryGetValue(c.Binding.Startup.Function!, out var entry))
@@ -260,12 +271,16 @@ public sealed partial class LlvmEmitter
             start.AddCall(-1, entry, []);
             start.AddCall(-1, WindowsLowering.Exit, [new(EmissionOperandKind.Integer, 0)]);
             start.Add(EmissionOpcode.Unreachable, -1);
-            module.Complete();
-            return true;
+            return module.Complete(out failure);
         }
         finally
         {
-            this.resourceLimit |= this.defaults.ResourceLimitExceeded;
+            this.resourceLimit |= this.defaults.ResourceLimitExceeded || this.generics.ResourceLimitExceeded;
+            if (!module.IsComplete && this.virtuals.Failure is { } virtualFailure)
+            {
+                failure = virtualFailure;
+            }
+
             // Never retain a previous parse through the active declaration-to-ABI map.
             if (!module.IsComplete && this.lowering.AggregateLayouts.ResourceLimitFailure is { } limit)
             {
@@ -279,12 +294,15 @@ public sealed partial class LlvmEmitter
                 failure = storageLimit;
             }
 
+            this.compilerEntries.Clear();
             this.functions.Clear();
             this.staticGetters.Clear();
             this.generics.Clear();
             c.Ownership.ClearInstances(preserveFailure: true);
             this.objects.Complete();
             this.objects.Clear();
+            this.virtuals.Complete();
+            this.virtuals.Clear();
             this.lowering.ClearFunctionContext();
             this.lowering.AggregateLayouts.ClearDestructors();
             if (!module.IsComplete)
@@ -399,17 +417,17 @@ public sealed partial class LlvmEmitter
     private bool LowerInstances(Compilation c, EmissionModule module, out string? failure)
     {
         failure = null;
-        foreach (var (call, entry) in this.generics.Calls)
+        // A factory Item or a direct base call can discover descriptor dependencies while lowering.
+        // The next worklist pass prepares their object calls before lowering the appended entries.
+        var count = this.generics.Entries.Count;
+        for (var index = this.generics.LoweredCount; index < count; index++)
         {
-            // A selected explicit specialization (SPEC 21.3.4) is never pending; a reused entry is lowered once.
-            if (!module.PendingEntries.Contains(entry))
-            {
-                continue;
-            }
-
+            var entry = this.generics.Entries[index];
+            var call = entry.Context!;
             var lowered = false;
             this.generics.ExpansionParent = entry;
-            if (c.Ownership.AnalyzeInstance(entry.Template.Body, call) is { } body)
+            if (c.Ownership.AnalyzeInstance(entry.Template.Body, call) is { } body &&
+                this.objects.PrepareBodyCalls(c, module, this.lowering.AggregateLayouts, body, out failure))
             {
                 var function = module.AddFunction(entry.Abi, exported: false);
                 this.lowering.SetInstance(c.Binding, call, entry);
@@ -426,7 +444,7 @@ public sealed partial class LlvmEmitter
                 {
                     module.NeedsStringComparison |= function.NeedsStringComparison;
                     this.lowering.RegisterAggregates(module);
-                    module.PendingEntries.Remove(entry);
+                    this.generics.LoweredCount++;
                 }
                 else
                 {
@@ -465,7 +483,7 @@ public sealed partial class LlvmEmitter
         }
     }
 
-    private Koto? FindInstanceSite(BoundCall call, GenericStoragePlan.CallEntry entry)
+    private Koto? FindInstanceSite(CallPlan call, GenericStoragePlan.CallEntry entry)
     {
         var root = entry;
         while (root.Parent is { } parent)
@@ -490,7 +508,8 @@ public sealed partial class LlvmEmitter
     }
 
     private bool SkipGenerated(OwnershipBody body)
-        => body.Function.IsGenerated && !ReferenceEquals(body.Function, this.compilation.Binding.Startup.Function);
+        => (body.Function.IsGenerated && !ReferenceEquals(body.Function, this.compilation.Binding.Startup.Function)) ||
+            this.compilation.Binding.IsInapplicableVirtualBody(body.Function);
 
     private string? CheckInputs()
     {
@@ -501,8 +520,7 @@ public sealed partial class LlvmEmitter
             return "Emission requires the verified windows-x64-v1 target and DataLayout.";
         }
 
-        if (!c.Binding.Result.IsComplete || !c.Ownership.SupportsOriginObligations() || !c.Library.ValidateDeclarations() || !c.Library.ValidateBoundDeclarations() ||
-            !startup.IsComplete || !c.Ownership.Result.IsVerified)
+        if (!c.Binding.Result.IsComplete || !startup.IsComplete || !c.Ownership.Result.IsVerified)
         {
             return "Emission requires current final Binding, startup, control-flow and ownership verification without errors.";
         }
@@ -558,8 +576,8 @@ public sealed partial class LlvmEmitter
 
             if (function.BoundSymbol?.Scope.Owner is StructKoto && !function.IsConstructor && !function.IsDestructor &&
                 function.BoundSymbol.ReceiverIndex >= 0 && !ReferenceTypes.IsStruct(function.Parameters[function.BoundSymbol.ReceiverIndex].Type.BoundType) &&
-                !ObjectTypes.IsBorrow(function.Parameters[function.BoundSymbol.ReceiverIndex].Type.BoundType) &&
-                !StructStorage.IsStruct(function.Parameters[function.BoundSymbol.ReceiverIndex].Type.BoundType))
+                function.Parameters[function.BoundSymbol.ReceiverIndex].Type.BoundType is not { IsObjectBorrow: true } &&
+                !AdtDef.IsStruct(function.Parameters[function.BoundSymbol.ReceiverIndex].Type.BoundType))
             {
                 return "Ordinary structure methods need receiver/call lowering outside this subset.";
             }
@@ -576,7 +594,7 @@ public sealed partial class LlvmEmitter
             for (var i = 0; i < function.Parameters.Count; i++)
             {
                 var parameter = function.Parameters[i];
-                if (!FunctionAbi.SupportsParameter(parameter.Type.BoundType, this.lowering.AggregateLayouts) ||
+                if (!FunctionAbi.Supports(parameter.Type.BoundType, this.lowering.AggregateLayouts) ||
                     (ReferenceTypes.IsString(parameter.Type.BoundType) && parameter.Type.BoundType!.Origin is null))
                 {
                     return "Parameters require verified value, owned-slot or shared-string representations.";

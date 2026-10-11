@@ -40,7 +40,7 @@
   ```
 
 - **Proposed fix:** Reject Origin names that appear only in the result, and require member signatures to reference Type slots in a qualified form such as `self.source`.
-- **Why not applied:** A result-only Origin chosen by the caller is part of the Origin design; `static` cannot replace it when the result contains `T` or is exclusive (§3.3.6, §15.4.3). Names resolve lexically without hiding, adding a slot is already an API change (§15.3.7), and constructors have no `self`. Misspellings are handled by diagnostics that explain the introduced Origin and suggest similar names.
+- **Why not applied:** A result-only Origin chosen by the caller is part of the Origin design; `static` cannot replace it when the result contains `T` or is exclusive (§3.3.6, §15.4.3). Names resolve lexically without hiding, adding a slot is already an API change (§15.3.7), and constructors have no `self`. A misspelling is still reported where it matters: the relation it fails names the introduced Origin as an end (§23.3.6.5).
 
 ## A string concatenation operator
 
@@ -50,12 +50,12 @@
   ```kimi
   let first = "Hello, "
   let second = "world"
-  let s1 = first + second       // Error: + requires numeric operands
+  let s1 = first + second       // Error: string arithmetic is prohibited
   let s2 = "\(first)\(second)"  // Owning string; first and second are borrowed
   ```
 
 - **Proposed fix:** Keep `+` and `+=` for strings and define them as a strict desugaring to interpolation: `a + b` as `"\(a)\(b)"` and `t += v` as `t = "\(t)\(v)"`.
-- **Why not applied:** The desugaring keeps two forms of one operation (Principle 1). A chain `a + b + c` either allocates per step or needs a special fold that one interpolated literal performs by construction, and `+=` would hide the replacement of the whole string behind an update spelling (§13.7.2). Text built in steps belongs to `Text.HeapBuffer` and `Utf8Writer`, whose allocation and failure behavior are stated. The operators are removed instead (§13.3), and the diagnostic names the interpolated literal that joins the same operands in the same order.
+- **Why not applied:** The desugaring keeps two forms of one operation (Principle 1). A chain `a + b + c` either allocates per step or needs a special fold that one interpolated literal performs by construction, and `+=` would hide the replacement of the whole string behind an update spelling (§13.7.2). Text built in steps belongs to `Text.HeapBuffer` and `Utf8Writer`, whose allocation and failure behavior are stated. The operators are removed instead (§13.3), and the interpolated literal is the one form that joins strings.
 
 ## Exclusive or owning accessor receivers
 
@@ -86,17 +86,18 @@
 - **Example:**
 
   ```kimi
-  func marker() -> i32 => 1
+  group Outer
+      func marker() -> i32 => 1
 
-  open struct Base
-      public var count: i32 = 0
+      open struct Base
+          public var count: i32 = 0
 
-      public func marker() -> i32 => 25
+          public func marker() -> i32 => 25
 
-  struct Derived : Base
-      func first(self) -> i32 => marker() // Error: lookup stops at the inherited Base.marker; write Self.marker()
-      func second(self) -> i32 => count   // Error: an inherited instance member; write self.count
-      func total(self) -> i32 => self.count + Self.marker()
+      struct Derived : Base
+          func first(self) -> i32 => marker() // Error: lookup stops at the inherited Base.marker; write Self.marker()
+          func second(self) -> i32 => count   // Error: an inherited instance member; write self.count
+          func total(self) -> i32 => self.count + Self.marker()
   ```
 
 - **Proposed fix:** Search the base layers at lookup stage 2, one layer at a time, so that an unqualified Name inside a derived struct selects the inherited declaration: `marker()` would call `Base.marker`, and a bare nested Type Name would name the inherited Type.
@@ -176,9 +177,92 @@
 - **Proposed fix:** Let the task slot distinguish overloads, as parameter count does.
 - **Why not applied:** A forgotten `task;` would then silently select the blocking variant instead of reporting a missing task argument, and one operation would have two forms (Principle 1). As with receiver shapes (§7.3), one function group has one task-slot shape (§24.2.3), so a call's need for the task argument follows from its Name; code without a task uses `Async.run` at its boundary.
 
+## A separate Hover scheduler or mandatory asynchronous renderer
+
+- **Problem:** Hover must remain available while diagnostic checks wait, without repeating expensive comment rendering or delaying server events unnecessarily.
+- **Example:** An edit changes a declaration comment but leaves diagnostics empty. A renderer driven only by diagnostic notifications would never refresh it; starting a new check on every Hover would bypass the quiet period.
+- **Proposed fix:** Add a Hover-specific interval, advance checks on requests, remove caching, or require asynchronous rendering before measuring it.
+- **Why not applied:** SPEC §23.4.11 shares check scheduling and refreshes on adoption/revalidation independently of notifications. One labeled previous set bridges pending checks. Synchronous, bounded requests reuse strict agreement and rendering results; cache removal adds repeated work, and mandatory asynchronous jobs add state before a measured need. Later concurrency changes require actual responsiveness evidence. Setting-specific fields are not merged, mandatory contract/effect evidence is not truncated, and display text is not a machine semantic API.
+
 ## Running full CI before integration into main
 
 - **Problem:** The full build and test workflow is expensive. Additional triggers repeat that work while changes are still being developed.
 - **Example:** A push to `dev`, a pull request update, and its merge into `main` can each run the same full test suite.
 - **Proposed fix:** Run `.github/workflows/test.yml` on `dev` pushes, pull requests, or manual dispatch as well as `main` pushes.
 - **Why not applied:** The extra runs add substantial test load. Keep this workflow restricted to pushes to `main`, including merge updates. Do not add `dev`, pull request, or manual triggers. Local verification remains part of the implementation workflow.
+
+## Instance-evaluated generic defaults
+
+- **Problem:** An omitted generic default is checked once at its declaration and evaluated again inline in each caller (§7.2.3, §8.10). Every declared Type, call and acquisition of that inline replica must be interpreted in the replica's own context, or it disagrees with the declaration check.
+- **Example:**
+
+  ```kimi
+  group Helpers
+      public func evaluate<T>(a: T, same: bool = a.equals(a)) -> bool
+          T is Equatable
+          return same
+
+  Console.writeLine("\(Helpers.evaluate(4))")   // The replica's `a.equals` is the call with T = i32
+  ```
+
+- **Proposed fix:** Evaluate generic defaults as instantiated plans or instance evaluator functions, removing the per-operation default stage of interpretation.
+- **Why not applied:** Inline replicas keep the specified evaluation order, prepared-slot protections and cleanup. Each replica operation and Place records one interpretation context whose composed substitution and proof anchor resolve declared information once, and a generated matrix checks that every placement agrees with an ordinary generic body. Reconsider only when a consumer cannot obtain its context from an operation, Place or plan record; one context needs more than one proof environment; a defect needs analysis to be re-run rather than a context selected; or a fixed-condition measurement regresses beyond run-to-run variation that bounded context reuse cannot remove.
+
+## Pair-slot premises in every Semantics case
+
+- **Problem:** A pair layer's outer-Origin slot exists only in its binder's admitted cases that have an outer Origin (§8.1.2), so a generic body must judge its relations per case (§15.6.5). One premise set for every case would be simpler.
+- **Example:**
+
+  ```kimi
+  func pick<s/T>(b: ref/Box<s/T during a> during c, x: ref/i32 during a) -> ref/i32 during c
+      s is owner or ref
+      return x // Error: a outlives c holds only in the ref case.
+  ```
+
+- **Proposed fix:** Treat the slot's relations, such as `a outlives c` above, as premises in every admitted case.
+- **Why not applied:** It is unsound. In the `owner` case nothing stores `a` in `b`, so the call `pick(b, m@ref)` with a local `m` would return a reference to `m` as one that outlives `c`; through a Function Item value call such a program read a dead local (§8.1.2, §8.10, §15.3.7).
+
+## A borrow-only uniq pair follow bounded by its slot alone
+
+- **Problem:** Following a pair layer under `s is uniq` could take the layer's outer-Origin slot alone as the result's Origin, which is simpler than meeting every borrow the path reaches.
+- **Example:**
+
+  ```kimi
+  func detach<s/T>(b: uniq/Box<s/T during a> during c) -> uniq/T during a
+      s is uniq
+      return b.item@follow@uniq // Error: the result also depends on c.
+  ```
+
+- **Proposed fix:** Give the follow the slot `a` alone.
+- **Why not applied:** The concrete `uniq` follow meets every reaching borrow (§15.5, §15.6.3): `uniq/Box<uniq/i32 during a> during c` cannot return `uniq/i32 during a`, because the result would outlive the exclusive borrow `c` it was reached through. A generic body is never weaker than its concrete case (§8.10).
+
+## A conditional implicit constructor over an Unknown base premise
+
+- **Problem:** When the omitted base call of a derived structure's implicit constructor depends on a premise that is Unknown at the derived declaration, no implicit constructor exists (§6.2.3.6), although one would be valid in every instantiation where the premise holds.
+- **Example:**
+
+  ```kimi
+  public open struct Base<T>
+      public init()
+          T is Copy
+          ()
+
+  public struct Derived<T> : Base<T> // No implicit constructor: `T is Copy` is Unknown here.
+  ```
+
+- **Proposed fix:** Synthesize `init()` conditionally, existing only in the instantiations where the base premise holds.
+- **Why not applied:** The condition would be a hidden premise that no declaration states (Principle 3), and a member that appears only in some instantiations contradicts definition-time checking (§8.4.8.2, §8.10). An explicit constructor with the Constraint expresses the same thing in source.
+
+## Constructor delegation, whole-`self` placement or a factory for library constructors
+
+- **Problem:** A Kimi constructor of a compiler-managed Type, such as `Array<T>.init(repeating:count:)`, must build its value from another constructor and representation operations, but a constructor body can neither delegate to another constructor nor place a whole `self`.
+- **Example:**
+
+  ```kimi
+  public init(! repeating: T, count: isize)
+      T is Copy
+      self = Array<T>.init(capacity: count) // Not Kimigayo: whole-self placement.
+  ```
+
+- **Proposed fix:** Add constructor delegation or whole-`self` placement, admit them only in the Kimi library, or spell the operation as a factory function such as `Array.repeating(value, count:)`.
+- **Why not applied:** Delegation and whole-`self` placement would add a second construction path for every structure (§6.2.3.3, §6.2.3.4). A factory splits infallible construction from `init` (§6.2.3.5, STYLE §5.2) and loses constructor inference (§10.8.1). A rule available only to the Kimi library would be a language rule user code cannot use. The compiler instead supplies the constructor's definition with an identical contract (§22.1), which no user Type can obtain.

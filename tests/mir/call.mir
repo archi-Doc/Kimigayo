@@ -1,0 +1,53 @@
+fn top-level#0 @2
+  _0: () return @2
+  _1: () temp @26 s1
+  s1: lexical in s0 @3
+  bb0:
+      StorageLive(_1) @26 s1
+    * _1 = run() -> bb1 @26 s1
+  bb1:
+      StorageDead(_1) @26 s1
+      _0 = const () @3 s1
+      return @3
+fn first @4
+  _0: i32 return @4
+  _1: i32 arg a @4
+  _2: i32 arg b @4
+  bb0:
+    * _0 = copy _1 @8
+      return @8
+fn twice @9
+  _0: i32 return @9
+  _1: i32 arg x @9
+  bb0:
+    * _0 = first(copy _1, const 2_i32) -> bb1 @12
+  bb1:
+      return @12
+fn nothing @16
+  _0: () return @16
+  _1: () temp @17
+  bb0:
+      StorageLive(_1) @17
+    * _1 = const () @17
+      StorageDead(_1) @17
+      _0 = const () @17
+      return @17
+fn run @18
+  _0: () return @18
+  _1: () temp @20 s1
+  _2: () temp @22 s1
+  _3: i32 temp @23 s1
+  s1: lexical in s0 @19
+  bb0:
+      StorageLive(_1) @20 s1
+    * _1 = nothing() -> bb1 @20 s1
+  bb1:
+      StorageDead(_1) @20 s1
+      StorageLive(_2) @22 s1
+      StorageLive(_3) @23 s1
+    * _3 = twice(const 1_i32) -> bb2 @23 s1
+  bb2:
+      StorageDead(_3) @23 s1
+      StorageDead(_2) @22 s1
+      _0 = const () @19 s1
+      return @19

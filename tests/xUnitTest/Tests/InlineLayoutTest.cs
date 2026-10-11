@@ -49,7 +49,7 @@ public class InlineLayoutTest
         source.Append("func f(s: S70) -> i32 => 1\nConsole.writeLine(\"deep\")\n");
         var c = MinimalEmissionTest.Analyze(source.ToString());
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
-        Assert.False(c.Emission.TryPrepare(out _, out var error));
+        Assert.False(c.Validate(out var error));
         Assert.True(c.Emission.FailureIsResourceLimit, error);
     }
 
@@ -61,8 +61,8 @@ public class InlineLayoutTest
     {
         var c = MinimalEmissionTest.Analyze($"func inspect(value: {type}) -> i32 => 1\nConsole.writeLine(\"finite\")");
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Emission.TryPrepare(out _, out var error));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Validate(out var error));
         Assert.True(c.Emission.FailureIsResourceLimit, error);
         Assert.Contains("2147483647", error);
     }
@@ -72,8 +72,8 @@ public class InlineLayoutTest
     {
         var c = MinimalEmissionTest.Analyze("enum Big\n    A([2147483647 of u8])\n    B\nfunc inspect(value: Big) -> i32 => 1\nConsole.writeLine(\"finite\")");
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Emission.TryPrepare(out _, out var error));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Validate(out var error));
         Assert.True(c.Emission.FailureIsResourceLimit, error);
         Assert.Contains("2147483647", error);
     }

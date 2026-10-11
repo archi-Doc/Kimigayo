@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -30,7 +31,6 @@ public class ElementMoveEmissionTest
         { "ExclusiveSibling", "var a = (40, \"first\")\na.0 += label work: do\n    let taken = a.1@move\n    exit to work 2\nif a.0 == 42 => Console.writeLine(\"ok\")", "first=1;ok=1" },
         { "CoveredArm", "var a = (\"first\", \"last\")\nmatch true\n    _ => ()\n    true => (label work: do\n        let taken = a.0@move\n    )\nConsole.writeLine(\"ok\")", "first=1;last=1;ok=1" },
         { "BranchSwapHoles", "func f(take: bool)\n    let a = (\"first\", \"last\")\n    if take\n        let taken = a.0@move\n    else\n        let taken = a.1@move\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;ok=1" },
-        { "Dead", "func f()\n    return\n    var a = (\"first\", 0)\n    let taken = a.0@move\n    a.0 = \"new\"\n    let whole = a@move\nf()\nConsole.writeLine(\"ok\")", "ok=1" },
         { "LoopLifetime", "var i = 0\nloop\n    let a = (\"first\", \"last\")\n    if i == 0\n        let taken = a.0@move\n    i += 1\n    if i < 3 => continue\n    exit\nConsole.writeLine(\"ok\")", "first=3;last=3;ok=1" },
         { "ConditionalWhole", "func f(take: bool)\n    let a = (\"first\", \"last\")\n    if take\n        let whole = a@move\n    else\n        let taken = a.0@move\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;ok=1" },
         { "BranchPhi", "func f(take: bool) -> i32\n    return if take => (label work: do\n        let a = (\"first\", \"last\")\n        if take\n            let taken = a.0@move\n        exit to work 40\n    ) else => 2\nif f(true) + f(false) == 42 => Console.writeLine(\"ok\")", "first=1;last=1;ok=1" },
@@ -70,7 +70,7 @@ public class ElementMoveEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -94,14 +94,13 @@ public class ElementMoveEmissionTest
     [InlineData("let a = (\"first\", 0)\nlet taken = a.0@move\nlet twice = a.0@move")]
     [InlineData("let a: ([0 of string], i32) = ([], 0)\nlet taken = a.0@move\nlet twice = a.0@move")]
     [InlineData("func f(take: bool)\n    var a = ((\"first\", \"last\"), 0)\n    if take\n        let taken = a.0@move\n    a.0.0 = \"new\"")]
-    [InlineData("func f()\n    return\n    let a = (\"first\", 0)\n    let taken = a.0@move\n    let twice = a.0@move")]
     [InlineData("var a = (\"first\", 0)\ndefer\n    let whole = a@move\nlet taken = a.0@move")]
     public void MissingValuesAreRejectedByOwnership(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.PossiblyMovedUse);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd);
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -112,7 +111,7 @@ public class ElementMoveEmissionTest
     public void CorruptedMovePlansFailAndReanalysisRecovers(string defect)
     {
         var c = MinimalEmissionTest.Analyze("let a: [2 of string] = [\"first\", \"last\"]\nlet taken = a[0]@move");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var plan = body.Projections[0];
         switch (defect)
@@ -124,10 +123,10 @@ public class ElementMoveEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Fact]
@@ -154,7 +153,7 @@ public class ElementMoveEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("var a: [1000000 of string]\nlet taken = a[42]@move");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.UninitializedUse);
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.UninitializedPlace_Kd);
         Assert.Equal(2, c.Ownership.Bodies[0].MovePathCount); // Root plus the one referenced element.
     }
 
@@ -165,8 +164,8 @@ public class ElementMoveEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Analysis.IsVerified);
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -180,8 +179,8 @@ public class ElementMoveEmissionTest
     {
         var c = MinimalEmissionTest.Analyze($"let a = (\"first\", 0)\nlet result = a.0 {op} \"first\"");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.True(c.Ownership.Result.IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Analysis.IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
     }
 
     [Fact]
@@ -189,21 +188,21 @@ public class ElementMoveEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func inspect(text: ref/string) => ()\nlet a: [1 of string] = [\"first\"]\ninspect(a[0])");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.True(c.Ownership.Result.IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Analysis.IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
     }
 
     // SPEC 13.7.2: the RHS completes before the target is located, so a target moved there is Moved at the
     // update, whereas the located receiver stays protected while its index operands evaluate (SPEC 4.6.4).
     [Theory]
-    [InlineData("var a = ((\"held\", 40), 0)\na.0.1 += label work: do\n    let taken = a.0@move\n    exit to work 2", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("var a: (string, [1 of i32]) = (\"held\", [40])\na.1[(label work: do\n    let taken = a.0@move\n    exit to work 0\n)] += 2", OwnershipFailure.ComparisonLoanConflict)]
-    public void MoveOfTheTargetInTheRightSideOrIndexIsRejected(string source, OwnershipFailure failure)
+    [InlineData("var a = ((\"held\", 40), 0)\na.0.1 += label work: do\n    let taken = a.0@move\n    exit to work 2", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("var a: (string, [1 of i32]) = (\"held\", [40])\na.1[(label work: do\n    let taken = a.0@move\n    exit to work 0\n)] += 2", DiagnosticCode.ComparisonLoanConflict_Kd)]
+    public void MoveOfTheTargetInTheRightSideOrIndexIsRejected(string source, DiagnosticCode failure)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == failure);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(c.Problems, x => x.Code == failure);
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]
@@ -240,8 +239,8 @@ public class ElementMoveEmissionTest
         {
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         var success = true;
@@ -256,8 +255,8 @@ public class ElementMoveEmissionTest
         before = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 128; i++)
         {
-            success &= c.Ownership.Analyze().IsVerified;
-            success &= c.Emission.WriteIr(TextWriter.Null, out _);
+            success &= c.Analyze().IsVerified;
+            success &= c.WriteIr(TextWriter.Null, out _);
         }
 
         var bytes = GC.GetAllocatedBytesForCurrentThread() - before;

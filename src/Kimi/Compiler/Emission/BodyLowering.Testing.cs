@@ -37,7 +37,7 @@ internal sealed partial class BodyLowering
                         var type = ValueType(body, input);
                         if (type is not null && IsScalar(type) && WindowsLowering.GetValue(type) is { } representation)
                         {
-                            var kind = ReferenceEquals(type, BoundType.Boolean) ? 1 : FloatingTypes.Supports(type) ? 4 : ScalarTypes.Signed(type) ? 2 : 3;
+                            var kind = ReferenceEquals(type, BoundType.Boolean) ? 1 : type.IsFloatingPoint ? 4 : ScalarTypes.Signed(type) ? 2 : 3;
                             function.AddScalar(EmissionOpcode.TestSnapshot, id, [Operand(body, input)], representation.ComputationType, place: side, location: kind, representation: representation);
                         }
                     }

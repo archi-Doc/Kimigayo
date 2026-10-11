@@ -155,7 +155,7 @@ Custom and computed accessors declare their input and result Types explicitly; o
 | Static `get`/`set` | None | None | Any written receiver |
 | Explicit Contract requirement `get`/`set` | As the instance rows | As the instance rows | As the instance rows |
 
-The error is reported once per accessor declaration at the written receiver Type, with the Property header as a related location; its Reason states the accessor kind, the written Semantics and the required shape. Its Advice moves the operation into a function that keeps the written receiver, Origins and body (`func name(self: R) -> T`, or `func name(self: R, value: U) -> ()` for a setter), named by §4.7.1; it never proposes another receiver Type, because a body valid for an owning or object receiver need not be valid for a value receiver, and a body valid for a shared receiver need not be valid for an exclusive one. The body is checked with the written receiver, so the declaration error adds no body errors, and the Property stays in member lookup; a use that fails only because of this error is derived from it (§23.3.6.4). Stored custom accessors already have these shapes; the rule gives computed accessors and explicit requirement signatures the same ones.
+The error is reported once per accessor declaration at the written receiver Type, with the Property header as a related location; its Reason states the accessor kind, the written Semantics and the required shape. The body is checked with the written receiver, so the declaration error adds no body errors, and the Property stays in member lookup; a use that fails only because of this error is derived from it (§23.3.6.4). Stored custom accessors already have these shapes; the rule gives computed accessors and explicit requirement signatures the same ones.
 
 A stored instance custom `get` uses `self: ref/Self` and returns the storage Type `T`, which must be Copy. A custom `set` uses `self: uniq/Self, value: T` and returns Unit. The static forms are `get() -> T` and `set(value: T) -> ()`.
 
@@ -396,7 +396,7 @@ Compatible custom and computed accessors implement calls directly. Calls through
 | Shared receiver -> `ref/F` | Authorized shared slot borrow |
 | Exclusive receiver, input `F` -> Unit | Accessible `var` standard `set` |
 
-Every bridge is checked against the receiver, Property permissions, Origins, Loans and premises. Storage borrows cannot outlive receiver or slot validity, and copied references keep their original dependencies. Hidden storage behind a custom `get` is unavailable. Other conversions, projections and reborrows need compatible explicit accessors and are never synthesized.
+Every bridge is checked against the receiver, Property permissions, Origins, Loans and premises. Storage borrows cannot outlive receiver or slot validity, and copied references keep their original dependencies. Hidden storage behind a custom `get` is unavailable. Other conversions, projections and reborrows need compatible explicit accessors and are never synthesized. For a Property inherited along a base path, a bridge takes the requirement receiver over the conforming Type and reaches the Field by standard projection (§11.1.2), forming no base-subobject receiver projection (§9.5.1); it is checked and executed under the premises of its conformance path, including conformance conditions and the substituted premises of an inherited path.
 
 ```text
 Requirement + selected Property + Type/Origin substitutions + base path

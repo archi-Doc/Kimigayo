@@ -99,7 +99,7 @@ public class ControlFlowConformanceTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, source + "\n" + string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node)));
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.True(flow.Issues.Count == 0, source + "\n" + string.Join("\n", flow.Issues.Select(x => x.Message)));
         Assert.Empty(flow.PendingBinding);
     }
@@ -132,11 +132,28 @@ public class ControlFlowConformanceTest
     [InlineData("func f()\n    label lbl: do => exit to lbl 1")]
     [InlineData("func f()\n    label lbl: loop\n        exit to lbl 1")]
     [InlineData("let v = label lbl: loop\n    exit to lbl 1\n    exit to lbl \"x\"")]
+    [InlineData("let x = if true => 1")]
+    [InlineData("let x: i32 = if true => ()")]
+    [InlineData("let x: i32 = if true\n    1")]
+    [InlineData("let x = if true\n    1\nelse => 2")]
+    [InlineData("let x = if true\n    1\nelse\n    yield 2")]
+    [InlineData("func f() -> i32\n    if false\n        return \"text\"\n    return 1")]
+    [InlineData("func f()\n    if false\n        return \"text\"\n    return 1")]
+    [InlineData("loop\n    if false\n        exit\n    exit 1")]
+    [InlineData("let x: i32 = loop\n    if false\n        exit \"text\"")]
+    [InlineData("let x = if false => \"text\"\nelse => 1")]
+    [InlineData("for x in [1, 2]\n    if false\n        exit 1")]
+    [InlineData("let x = match true\n    true => 1")]
+    [InlineData("func f() -> i32\n    return loop\n        if false\n            exit \"text\"")]
+    [InlineData("func f() -> i32\n    return 1\n    1 + \"text\"")]
+    [InlineData("let x: Never = loop\n    if false\n        exit 1")]
+    [InlineData("func f() -> i8\n    if false\n        return 128\n    return 1")]
+    [InlineData("loop\n    if false\n        exit loop\n            exit \"text\"\n    exit 1")]
     public void RejectsInvalidResultsAndTargets(string source)
     {
         var c = Parse(source);
         var bound = c.Bind();
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.True(!bound.IsComplete || flow.Issues.Count > 0, source);
     }
 
@@ -149,7 +166,7 @@ public class ControlFlowConformanceTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, source + "\n" + string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node)));
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.Issues);
         Assert.Equal(warns, flow.Warnings.Any(warning => warning.Message.Contains("effect-free")));
     }

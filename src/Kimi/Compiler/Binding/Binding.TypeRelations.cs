@@ -28,6 +28,11 @@ public sealed partial class Binding
 
     internal bool FitsTypeAt(BoundType actual, BoundType expected, Koto use) => FitsTypeCore(actual, expected, this, use);
 
+    // Lowering rechecks the already verified contract without adding constraints or reopening inference.
+    internal bool FitsVerifiedTypeAt(BoundType actual, BoundType expected, Koto use)
+        => this.FitsTypeAt(actual, expected, use) || ((actual.CarriesOrigin || expected.CarriesOrigin) &&
+            this.FitsStructurallyAt(actual, expected, use) && this.FailedOriginRelation(actual, expected, use, OriginVariance.Covariant, verified: true) is null);
+
     internal bool FitsStructurallyAt(BoundType actual, BoundType expected, Koto use) => FitsTypeCore(actual, expected, this, use, structural: true);
 
     // Only Origin restriction is inferred here. No Core conversion or common base search is
@@ -39,9 +44,9 @@ public sealed partial class Binding
             return left;
         }
 
-        if (left.Kind == BoundTypeKind.Primitive || right.Kind == BoundTypeKind.Primitive || left.Kind != right.Kind || left.Symbol != right.Symbol || left.Semantics != right.Semantics || left.Length != right.Length ||
-            !ReferenceEquals(left.LengthExpression, right.LengthExpression) || !ReferenceEquals(left.ClosureContext, right.ClosureContext) || left.Components.Count != right.Components.Count ||
-            left.OriginArguments.Count != right.OriginArguments.Count || (left.Origin is null) != (right.Origin is null))
+        if (left.Kind == BoundTypeKind.Primitive || right.Kind == BoundTypeKind.Primitive || left.Kind != right.Kind || left.ResultMode != right.ResultMode || left.Symbol != right.Symbol || left.Semantics != right.Semantics || left.Length != right.Length ||
+            !ReferenceEquals(left.LengthExpression, right.LengthExpression) || !ReferenceEquals(left.ClosureContext, right.ClosureContext) || !left.LengthArguments.AsSpan().SequenceEqual(right.LengthArguments) || left.Components.Count != right.Components.Count ||
+            left.OriginArguments.Count != right.OriginArguments.Count || ((left.Origin is null) != (right.Origin is null) && !InactiveOuterOrigin(left, this, null)))
         {
             return null;
         }
@@ -73,7 +78,7 @@ public sealed partial class Binding
                 origins[i] = this.Meet(left.OriginArguments[i], right.OriginArguments[i]);
             }
 
-            var result = this.InternType(left.Kind, left.Symbol, left.Semantics, components.AsSpan(0, left.Components.Count), left.Length, left.Origin is { } a ? this.Meet(a, right.Origin!) : null, origins.AsSpan(0, left.OriginArguments.Count), left.LengthExpression, left.ClosureContext);
+            var result = this.types.Intern(left.Kind, left.Symbol, left.Semantics, components.AsSpan(0, left.Components.Count), left.Length, !InactiveOuterOrigin(left, this, null) && left.Origin is { } a ? this.Meet(a, right.Origin!) : null, origins.AsSpan(0, left.OriginArguments.Count), left.LengthExpression, left.ClosureContext, left.LengthArguments, left.ResultMode);
             return FitsType(left, result) && FitsType(right, result) ? result : null;
         }
         finally
@@ -83,6 +88,19 @@ public sealed partial class Binding
         }
     }
 
+    // How a fit treats the outer Origins of two Types of one shape (FitOuterOrigins).
+    private enum OuterOriginFit : byte
+    {
+        // Nothing to relate: equal Origins, a slot that no admitted case stores, or an unformed pair layer.
+        None,
+
+        // `longer` outlives `shorter` in the pair slot's Semantics cases.
+        Relation,
+
+        // A difference in presence that no relation explains.
+        Mismatch,
+    }
+
     // `own` is the declaration whose own per-call inputs the root actual signature names (SPEC 8.6); a nested Function Type's own
     // syntax binds its inputs. `skipOrigin` leaves the outer Origin to an instantiation that already fixed it; `instance` is the
     // SPEC 15.3.5: the layers invariant in their target: an exclusive borrow, a writable object handle, a raw pointer, and a pair
@@ -90,6 +108,22 @@ public sealed partial class Binding
     // Semantics. A comparison without a Binding sees only the concrete layers.
     private static bool IsInvariantLayer(BoundType type, Binding? binding)
         => type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw || (binding is not null && binding.InvariantAdmitted(type));
+
+    // SPEC 8.1.2: a pair's conditional outer Origin participates only in admitted borrow cases. Internal Origins remain checked.
+    private static bool InactiveOuterOrigin(BoundType type, Binding? binding, Koto? use)
+    {
+        if (!TryAdaptationSelector(type, out var whole) || whole.Symbol is not { } selector)
+        {
+            return false;
+        }
+
+        binding ??= selector.Declaration.CodeContext.Compilation.Binding;
+        var scope = use is null ? selector.Scope : binding.ConstraintScope(use);
+        // An owner application preserves the target's borrow Origin, not the application's conditional slot.
+        var semantics = type.Kind == BoundTypeKind.SemanticsAdaptation ? binding.ResultSemantics(type, scope)
+            : binding.AdmittedSemantics(whole, scope);
+        return (semantics & SemanticsMask.Borrow) == 0;
+    }
 
     // Callable comparison whose per-call Origins the parts are compared under; `structural` treats Origin bindings as equal outside
     // Function Types, and `everywhere` inside them too.
@@ -106,13 +140,13 @@ public sealed partial class Binding
         }
 
         var inferredLength = expected.Kind == BoundTypeKind.FixedArray && expected.Length < 0;
-        if (actual.Kind != expected.Kind || actual.Semantics != expected.Semantics || !ReferenceEquals(actual.Symbol, expected.Symbol) || !ReferenceEquals(actual.ClosureContext, expected.ClosureContext) || (!inferredLength && (actual.Length != expected.Length || !ReferenceEquals(actual.LengthExpression, expected.LengthExpression))) || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count)
+        if (actual.Kind != expected.Kind || actual.ResultMode != expected.ResultMode || actual.Semantics != expected.Semantics || !ReferenceEquals(actual.Symbol, expected.Symbol) || !ReferenceEquals(actual.ClosureContext, expected.ClosureContext) || !actual.LengthArguments.AsSpan().SequenceEqual(expected.LengthArguments) || (!inferredLength && (actual.Length != expected.Length || !ReferenceEquals(actual.LengthExpression, expected.LengthExpression))) || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count)
         {
             return false;
         }
 
-        if (!skipOrigin && !ReferenceEquals(actual.Origin, expected.Origin) && (actual.Origin is null || expected.Origin is null ||
-            (!structural && (!OriginFits(actual.Origin, expected.Origin) || (invariant && !OriginFits(expected.Origin, actual.Origin))))))
+        if (!skipOrigin && FitOuterOrigins(actual, expected, binding, use, out var longer, out var shorter) is var outer && outer != OuterOriginFit.None &&
+            (outer == OuterOriginFit.Mismatch || (!structural && (!OriginFits(longer, shorter, SlotCondition(actual, binding, use)) || (invariant && !OriginFits(shorter, longer, SlotCondition(actual, binding, use)))))))
         {
             return false;
         }
@@ -170,9 +204,49 @@ public sealed partial class Binding
 
         return true;
 
-        bool OriginFits(BoundOrigin a, BoundOrigin b) => instance.Actual is not null ? InstanceOutlives(a, b, instance, binding, use, 0) :
-            binding is null ? OriginOutlives(a, b) : binding.ProvesOriginOutlives(a, b, use!);
+        bool OriginFits(BoundOrigin a, BoundOrigin b, ulong condition = 0) => instance.Actual is not null ? InstanceOutlives(a, b, instance, binding, use, 0) :
+            binding is null ? OriginOutlives(a, b) : binding.FitOrigin(a, b, use!, condition);
     }
+
+    // SPEC 8.1.2, 15.6.1: the outer Origins of a fit's two Types of one shape. Two written Origins relate. Two pair layers of one binder
+    // relate their slots, the implicit `o` of an original `s/T` included, so the original `W` fits `s/T during a` when `o` outlives `a`. A
+    // pair layer that stores no slot although a borrow case is admitted is unformed: its formation failure is recorded where it is
+    // declared, so the fit derives from that failure instead of adding a mismatch. Any other difference in presence is structural.
+    // Without a Binding no failure is visible, so only written Origins relate and every other difference stays a mismatch.
+    // FitsTypeCore, CheckTypeUse, CollectCallRelations and FailedOriginRelation share this one decision.
+    private static OuterOriginFit FitOuterOrigins(BoundType actual, BoundType expected, Binding? binding, Koto? use, out BoundOrigin longer, out BoundOrigin shorter)
+    {
+        longer = shorter = null!;
+        if (ReferenceEquals(actual.Origin, expected.Origin) || InactiveOuterOrigin(actual, binding, use))
+        {
+            return OuterOriginFit.None;
+        }
+
+        if (actual.Origin is { } a && expected.Origin is { } b)
+        {
+            longer = a;
+            shorter = b;
+            return OuterOriginFit.Relation;
+        }
+
+        if (binding is null || !TryPairLayer(actual, out _, out _))
+        {
+            return OuterOriginFit.Mismatch;
+        }
+
+        if (binding.OuterOrigin(actual) is not { } slot || binding.OuterOrigin(expected) is not { } other)
+        {
+            return OuterOriginFit.None;
+        }
+
+        longer = slot;
+        shorter = other;
+        return OuterOriginFit.Relation;
+    }
+
+    // SPEC 15.6.5: a pair layer's slot exists only in its binder's borrow cases, whose premises the relation may use.
+    private static ulong SlotCondition(BoundType actual, Binding? binding, Koto? use)
+        => binding is not null && use is not null && actual.ContainsPairLayer ? RequiredCondition(binding.PairSlotCondition(actual, use)) : 0;
 
     // A signature whose inputs are fresh per-call borrows and whose result has no Origin or one over those inputs alone.
     private static bool PerCallShape(BoundType signature, Koto? own, bool any = false)
@@ -260,7 +334,7 @@ public sealed partial class Binding
             return true;
         }
 
-        return binding is null ? OriginOutlives(a, b) : binding.ProvesOriginOutlives(a, b, use!);
+        return binding is null ? OriginOutlives(a, b) : binding.FitOrigin(a, b, use!);
     }
 
     // SPEC 10.7, 15.6.1, 23.3.6.5: the first member of a conversion whose Origin part fails under the call-time instantiation: the n-th
@@ -347,12 +421,13 @@ public sealed partial class Binding
     // every position nested in it, such as the slots of a Type argument stored through `uniq/T` or read by `(T) -> i32`.
     private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use, OriginVariance polarity = OriginVariance.Covariant)
     {
-        if (polarity == OriginVariance.Contravariant ? this.FitsTypeAt(expected, actual, use) : FitsTypeCore(actual, expected, this, use, polarity == OriginVariance.Invariant))
+        if (!HasLocalRegion(actual) && !HasLocalRegion(expected) &&
+            (polarity == OriginVariance.Contravariant ? this.FitsTypeAt(expected, actual, use) : FitsTypeCore(actual, expected, this, use, polarity == OriginVariance.Invariant)))
         {
             return true;
         }
 
-        if (actual.Kind != expected.Kind || actual.Semantics != expected.Semantics || actual.Symbol != expected.Symbol || actual.Length != expected.Length || !ReferenceEquals(actual.LengthExpression, expected.LengthExpression) || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count || actual.Kind == BoundTypeKind.Primitive)
+        if (actual.Kind != expected.Kind || actual.ResultMode != expected.ResultMode || actual.Semantics != expected.Semantics || actual.Symbol != expected.Symbol || actual.Length != expected.Length || !ReferenceEquals(actual.LengthExpression, expected.LengthExpression) || !actual.LengthArguments.AsSpan().SequenceEqual(expected.LengthArguments) || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count || actual.Kind == BoundTypeKind.Primitive)
         {
             return false;
         }
@@ -362,14 +437,13 @@ public sealed partial class Binding
             return false; // SPEC 10.7, 15.6.1: a conversion compares whole contracts, so its failure is one record (RecordMismatch).
         }
 
-        if (!ReferenceEquals(actual.Origin, expected.Origin))
+        switch (FitOuterOrigins(actual, expected, this, use, out var longer, out var shorter))
         {
-            if (actual.Origin is null || expected.Origin is null)
-            {
+            case OuterOriginFit.Mismatch:
                 return false;
-            }
-
-            this.AddOriginFit(actual.Origin, expected.Origin, expected, use, polarity);
+            case OuterOriginFit.Relation:
+                this.AddOriginFit(longer, shorter, expected, use, polarity, SlotCondition(actual, this, use));
+                break;
         }
 
         for (var i = 0; i < actual.OriginArguments.Count; i++)
@@ -386,7 +460,7 @@ public sealed partial class Binding
         {
             if (IsInvariantLayer(actual, this))
             {
-                if (!ReferenceEquals(actual.Components[i], expected.Components[i]))
+                if (!this.CheckTypeUse(actual.Components[i], expected.Components[i], use, OriginVariance.Invariant))
                 {
                     return false;
                 }
@@ -406,14 +480,20 @@ public sealed partial class Binding
     }
 
     // One Origin position of a fit by its variance: `actual` outlives `expected` at a covariant position, the reverse at a contravariant
-    // one, and `==` otherwise; `type` is the expected Type at that position, the record's destination.
-    private void AddOriginFit(BoundOrigin actual, BoundOrigin expected, BoundType type, Koto use, OriginVariance variance)
+    // one, and `==` otherwise; `type` is the expected Type at that position, the record's destination, and `condition` the Semantics
+    // case the position exists in.
+    private void AddOriginFit(BoundOrigin actual, BoundOrigin expected, BoundType type, Koto use, OriginVariance variance, ulong condition = 0)
         => this.AddObligation(variance == OriginVariance.Contravariant
-            ? new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, type, expected, actual)
-            : new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, type, actual, expected, Equality: variance != OriginVariance.Covariant));
+            ? new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, type, expected, actual, Condition: condition)
+            : new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, type, actual, expected, Equality: variance != OriginVariance.Covariant, Condition: condition));
 
     private BoundType DirectTarget(BoundType whole)
     {
+        if (whole.Kind == BoundTypeKind.SemanticsAdaptation)
+        {
+            return this.TransformFamily(whole, FamilyTransform.Target);
+        }
+
         if (whole.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication)
         {
             return whole.Components[0];
@@ -421,7 +501,7 @@ public sealed partial class Binding
 
         if (whole.Kind == BoundTypeKind.Parameter)
         {
-            return whole.Symbol!.Kind == BindingSymbolKind.SemanticsTarget ? whole.Symbol.Type! : this.InternType(BoundTypeKind.TargetProjection, whole.Symbol, SemanticsKind.Owner, []);
+            return whole.Symbol!.Kind == BindingSymbolKind.SemanticsTarget ? whole.Symbol.Type! : this.types.Intern(BoundTypeKind.TargetProjection, whole.Symbol, SemanticsKind.Owner, []);
         }
 
         return whole;
@@ -430,6 +510,19 @@ public sealed partial class Binding
     private BoundType? SubstituteType(BoundType type, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths = default)
     {
         var slot = type.Symbol is { } parameter ? ContainerSlot(binder, parameter) : -1;
+        if (type.Kind == BoundTypeKind.SemanticsAdaptation && slot >= 0 && slot < arguments.Length && arguments[slot] is { } selection)
+        {
+            if (selection.Kind == BoundTypeKind.SemanticsAdaptation)
+            {
+                return this.SubstituteFamilyArgument(type, binder, arguments, lengths, slot, selection);
+            }
+
+            if (selection.Kind != BoundTypeKind.Parameter && selection.Semantics != SemanticsKind.Parameter)
+            {
+                return FamilyCase(type, selection.Semantics) is { } child ? this.SubstituteType(child, binder, arguments, lengths) : null;
+            }
+        }
+
         if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection && slot >= 0)
         {
             if ((uint)slot >= (uint)arguments.Length)
@@ -444,22 +537,24 @@ public sealed partial class Binding
             }
 
             var projected = type.Kind == BoundTypeKind.TargetProjection ? this.DirectTarget(whole) : whole;
-            if (type.Origin is { } replacement && (IsBorrow(projected.Semantics) || projected.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication))
+            if (type.Origin is { } replacement && (IsBorrow(projected.Semantics) || projected.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation))
             {
                 // SPEC 8.1.2: the annotation binds the outer-Origin slot of a borrow binding; a value binding keeps no slot,
                 // and an abstract binding keeps it conditional.
-                projected = this.WithOrigins(projected, replacement, (BoundOrigin[])projected.OriginArguments);
+                projected = this.WithOrigins(projected, this.SubstitutePairOrigins(replacement, binder, arguments), (BoundOrigin[])projected.OriginArguments);
             }
 
             return projected;
         }
 
-        if (type.Components.Count == 0)
+        if (type.Components.Count == 0 && type.LengthArguments.Length == 0 && !type.CarriesOrigin)
         {
             return type;
         }
 
         var scratch = this.RentTypes(type.Components.Count);
+        var itemLengths = this.lengthScratch.Rent(type.LengthArguments.Length);
+        BoundOrigin[]? origins = null;
         try
         {
             var length = type.Length;
@@ -480,6 +575,18 @@ public sealed partial class Binding
             }
 
             var changed = length != type.Length || !ReferenceEquals(expression, type.LengthExpression);
+            for (var i = 0; i < type.LengthArguments.Length; i++)
+            {
+                var argument = type.LengthArguments[i];
+                itemLengths[i] = argument is null || lengths.IsEmpty ? argument : this.SubstituteLength(argument, binder, lengths);
+                if (argument is not null && (itemLengths[i] is null || (itemLengths[i]!.IsConstant && !this.ValidLength(itemLengths[i]!.Value))))
+                {
+                    return null;
+                }
+
+                changed |= !ReferenceEquals(argument, itemLengths[i]);
+            }
+
             for (var i = 0; i < type.Components.Count; i++)
             {
                 var substituted = this.SubstituteType(type.Components[i], binder, arguments, lengths);
@@ -492,7 +599,7 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(substituted, type.Components[i]);
             }
 
-            if (type.Kind == BoundTypeKind.SemanticsApplication && slot >= 0)
+            if (type.Kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation && slot >= 0)
             {
                 if ((uint)slot >= (uint)arguments.Length)
                 {
@@ -505,35 +612,51 @@ public sealed partial class Binding
                     return null;
                 }
 
-                if (whole.Kind == BoundTypeKind.Parameter)
+                if (type.Kind == BoundTypeKind.SemanticsAdaptation)
                 {
-                    return this.InternType(BoundTypeKind.SemanticsApplication, whole.Symbol, SemanticsKind.Parameter, scratch.AsSpan(0, 1), origin: type.Origin);
+                    var family = this.TypeFamily(type.Symbol!, (SemanticsMask)type.Length, scratch.AsSpan(0, type.Components.Count));
+                    return family.Kind == BoundTypeKind.SemanticsAdaptation ? this.SubstituteFamily(family, whole) : family;
                 }
 
-                if (whole.Semantics == SemanticsKind.Owner)
-                {
-                    return scratch[0];
-                }
-
-                // s/U applies only the kind; it never inherits the original pair's outer Origin.
-                return this.InternType(BoundTypeKind.Semantics, null, whole.Semantics, scratch.AsSpan(0, 1), origin: IsBorrow(whole.Semantics) ? type.Origin : null);
+                return this.ApplySemantics(whole, scratch[0], type.Origin is { } slotOrigin ? this.SubstitutePairOrigins(slotOrigin, binder, arguments) : null);
             }
 
-            var origin = type.Origin;
-            if (origin is { Kind: OriginKind.Parameter, Occurrence: GenericParameterKoto declaration } && ReferenceEquals(origin.Binder, binder) &&
-                declaration.BoundSymbol is { } target && ContainerSlot(binder, target) is >= 0 and var pair && pair < arguments.Length && arguments[pair] is { } bound)
+            // SPEC 8.1.1, 8.1.2: every `o` of the binder's pairs, as an outer Origin, a meet operand or an Origin argument, is bound
+            // through its Type argument.
+            var origin = type.Origin is { } outer ? this.SubstitutePairOrigins(outer, binder, arguments) : null;
+            changed |= !ReferenceEquals(origin, type.Origin);
+            for (var i = 0; i < type.OriginArguments.Count; i++)
             {
-                // SPEC 8.1.1, 8.1.2: the pair's outer Origin `o` is bound through its Type argument: the outer Origin of a borrow
-                // binding, nothing for a value binding (static, which no exclusive slot accepts); an abstract binding keeps its own `o`.
-                origin = IsBorrow(bound.Semantics) ? bound.Origin ?? BoundOrigin.Static : this.OuterOrigin(bound) ?? BoundOrigin.Static;
-                changed |= !ReferenceEquals(origin, type.Origin);
+                var argument = this.SubstitutePairOrigins(type.OriginArguments[i], binder, arguments);
+                if (origins is null && !ReferenceEquals(argument, type.OriginArguments[i]))
+                {
+                    origins = this.originScratch.Rent(type.OriginArguments.Count);
+                    for (var j = 0; j < i; j++)
+                    {
+                        origins[j] = type.OriginArguments[j];
+                    }
+                }
+
+                if (origins is not null)
+                {
+                    origins[i] = argument;
+                }
             }
 
-            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), length, origin, (BoundOrigin[])type.OriginArguments, expression, type.ClosureContext) : type;
+            changed |= origins is not null;
+            return changed
+                ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), length, origin, origins is null ? (BoundOrigin[])type.OriginArguments : origins.AsSpan(0, type.OriginArguments.Count), expression, type.ClosureContext, itemLengths.AsSpan(0, type.LengthArguments.Length), type.ResultMode)
+                : type;
         }
         finally
         {
+            if (origins is not null)
+            {
+                this.originScratch.Return(origins, clearArray: true);
+            }
+
             this.typeScratch.Return(scratch, clearArray: true);
+            this.lengthScratch.Return(itemLengths, clearArray: true);
         }
     }
 }

@@ -180,7 +180,7 @@ internal static partial class LlvmModuleWriter
                     WriteArrayBorrow(output, helper);
                     break;
                 case ArrayHelperKind.OwnStorage:
-                    WriteArrayOwn(output);
+                    WriteArrayOwn(output, helper);
                     break;
                 case ArrayHelperKind.OwnFixedStorage:
                     WriteFixedOwn(output, helper);
@@ -312,43 +312,62 @@ internal static partial class LlvmModuleWriter
     // SPEC 22.1.2.5: the remainder records the buffer and the whole length as its untaken range {storage, position, count}.
     private static void WriteArrayBorrow(TextWriter output, ArrayHelper helper)
     {
-        var remainder = helper.Remainder ?? throw new InvalidOperationException("Storage borrow needs its remainder layout.");
-        output.Write("  %buffer = load ptr, ptr %handle, align 8\n  %storage_slot = getelementptr i8, ptr %result, i64 ");
-        WriteNumber(output, remainder.Offset(0));
-        output.Write("\n  store ptr %buffer, ptr %storage_slot, align 8\n  %position_slot = getelementptr i8, ptr %result, i64 ");
-        WriteNumber(output, remainder.Offset(1));
-        output.Write("\n  store i64 0, ptr %position_slot, align 8\n  %count_slot = getelementptr i8, ptr %result, i64 ");
-        WriteNumber(output, remainder.Offset(2));
-        output.Write("\n  store i64 %length, ptr %count_slot, align 8\n  ret void\n");
+        output.Write("  %buffer = load ptr, ptr %handle, align 8\n");
+        WriteRemainderField(output, "storage", helper.Fields.Storage, "ptr %buffer");
+        WriteRemainderField(output, "position", helper.Fields.Position, "i64 0");
+        WriteRemainderField(output, "count", helper.Fields.Count, "i64 %length");
+        output.Write("  ret void\n");
     }
 
     // SPEC 22.1.2.5: ownStorage transfers the handle {buffer, length, capacity} into the owning remainder
     // {storage, position 0, count length, capacity}; the consumed Array slot is not read again.
-    private static void WriteArrayOwn(TextWriter output)
+    private static void WriteArrayOwn(TextWriter output, ArrayHelper helper)
     {
-        output.Write("  %buffer = load ptr, ptr %value, align 8\n  %length_ptr = getelementptr i8, ptr %value, i64 8\n  %length = load i64, ptr %length_ptr, align 8\n  %capacity_ptr = getelementptr i8, ptr %value, i64 16\n  %capacity = load i64, ptr %capacity_ptr, align 8\n" +
-            "  store ptr %buffer, ptr %result, align 8\n  %position_slot = getelementptr i8, ptr %result, i64 8\n  store i64 0, ptr %position_slot, align 8\n  %count_slot = getelementptr i8, ptr %result, i64 16\n  store i64 %length, ptr %count_slot, align 8\n  %capacity_slot = getelementptr i8, ptr %result, i64 24\n  store i64 %capacity, ptr %capacity_slot, align 8\n  ret void\n");
+        output.Write("  %buffer = load ptr, ptr %value, align 8\n  %length_ptr = getelementptr i8, ptr %value, i64 8\n  %length = load i64, ptr %length_ptr, align 8\n  %capacity_ptr = getelementptr i8, ptr %value, i64 16\n  %capacity = load i64, ptr %capacity_ptr, align 8\n");
+        if (helper.Fields.Storage == 0)
+        {
+            output.Write("  store ptr %buffer, ptr %result, align 8\n");
+        }
+        else
+        {
+            WriteRemainderField(output, "storage", helper.Fields.Storage, "ptr %buffer");
+        }
+
+        WriteRemainderField(output, "position", helper.Fields.Position, "i64 0");
+        WriteRemainderField(output, "count", helper.Fields.Count, "i64 %length");
+        WriteRemainderField(output, "capacity", helper.Fields.Capacity, "i64 %capacity");
+        output.Write("  ret void\n");
     }
 
     // Moves the consumed fixed array into the remainder's inline storage and opens its whole range (SPEC 22.1.2.5).
     private static void WriteFixedOwn(TextWriter output, ArrayHelper helper)
     {
-        var remainder = helper.Remainder ?? throw new InvalidOperationException("Fixed-array ownStorage needs its remainder layout.");
-        var size = remainder.Fields[0].Layout.Size;
-        if (size != 0)
+        if (helper.Fields.StorageSize != 0)
         {
             output.Write("  %storage_slot = getelementptr i8, ptr %result, i64 ");
-            WriteNumber(output, remainder.Offset(0));
+            WriteNumber(output, helper.Fields.Storage);
             output.Write("\n  call void @llvm.memcpy.p0.p0.i64(ptr %storage_slot, ptr %value, i64 ");
-            WriteNumber(output, size);
+            WriteNumber(output, helper.Fields.StorageSize);
             output.Write(", i1 false)\n");
         }
 
-        output.Write("  %position_slot = getelementptr i8, ptr %result, i64 ");
-        WriteNumber(output, remainder.Offset(1));
-        output.Write("\n  store i64 0, ptr %position_slot, align 8\n  %count_slot = getelementptr i8, ptr %result, i64 ");
-        WriteNumber(output, remainder.Offset(2));
-        output.Write("\n  store i64 %count, ptr %count_slot, align 8\n  ret void\n");
+        WriteRemainderField(output, "position", helper.Fields.Position, "i64 0");
+        WriteRemainderField(output, "count", helper.Fields.Count, "i64 %count");
+        output.Write("  ret void\n");
+    }
+
+    // Stores `value` into the remainder Field `name` of the helper's result record at its named layout offset.
+    private static void WriteRemainderField(TextWriter output, string name, int offset, string value)
+    {
+        output.Write("  %");
+        output.Write(name);
+        output.Write("_slot = getelementptr i8, ptr %result, i64 ");
+        WriteNumber(output, offset);
+        output.Write("\n  store ");
+        output.Write(value);
+        output.Write(", ptr %");
+        output.Write(name);
+        output.Write("_slot, align 8\n");
     }
 
     // Moves an acquired payload slot into the next element of a literal whose capacity was reserved (SPEC 4.3).

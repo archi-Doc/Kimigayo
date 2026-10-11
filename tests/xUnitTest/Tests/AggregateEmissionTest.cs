@@ -55,8 +55,8 @@ public class AggregateEmissionTest
         var allocated = AllocationMeasurement.Measure(
             () =>
             {
-                valid &= c.Ownership.Analyze().IsVerified;
-                valid &= c.Emission.WriteIr(TextWriter.Null, out _);
+                valid &= c.Analyze().IsVerified;
+                valid &= c.WriteIr(TextWriter.Null, out _);
             },
             iterations: 128,
             warmupIterations: 100);
@@ -73,7 +73,7 @@ public class AggregateEmissionTest
     public void InvalidAggregatePlansDoNotWriteIr(string mutation)
     {
         var c = MinimalEmissionTest.Analyze("var value = (\"a\", 1)\nif true => value@move\nvalue = (\"b\", 2)");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var construction = body.ConstructionStorage[0];
         if (mutation == "count")
@@ -95,7 +95,7 @@ public class AggregateEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Equal(string.Empty, writer.ToString());
     }
 
@@ -121,7 +121,7 @@ public class AggregateEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out var error));
+        Assert.False(c.WriteIr(writer, out var error));
         Assert.False(string.IsNullOrEmpty(error));
         Assert.Equal(string.Empty, writer.ToString());
     }

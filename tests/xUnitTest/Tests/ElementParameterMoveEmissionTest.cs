@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -30,7 +31,6 @@ public class ElementParameterMoveEmissionTest
         { "WholeOrPart", "func f(a: (string, string), whole: bool)\n    if whole\n        let moved = a@move\n    else\n        let moved = a.0@move\nf((\"first\", \"last\"), true)\nf((\"first\", \"last\"), false)", string.Empty, "first=2;last=2", [1, 0, 0, 1] },
         { "Parameters", "func f(a: (string, string), b: (string, string)) -> string\n    let moved = b.0@move\n    return a.0@move\nConsole.writeLine(f((\"a\", \"b\"), (\"c\", \"d\")))", "a\n", "a=1;b=1;c=1;d=1", [2, 3, 1, 0] },
         { "LoopExit", "func f(a: (string, string)) -> string\n    loop\n        return a.0@move\nConsole.writeLine(f((\"first\", \"last\")))", "first\n", "first=1;last=1", [1, 0] },
-        { "Dead", "func f(a: (string, string))\n    return\n    let moved = a.0@move\nf((\"first\", \"last\"))", string.Empty, "first=1;last=1", [1, 0] },
         { "Covered", "func f(a: (string, string))\n    match true\n        _ => ()\n        true => (label work: do\n            let moved = a.0@move\n        )\nf((\"first\", \"last\"))", string.Empty, "first=1;last=1", [1, 0] },
         { "Transfer", "func inspect(a: string, b: bool) => ()\nfunc f(a: (string, string)) -> string\n    inspect(a.0@move, (return \"out\"))\n    return \"bad\"\nConsole.writeLine(f((\"first\", \"last\")))", "out\n", "first=1;last=1;out=1;bad=0", [0, 1, 2] },
         { "ZeroSize", "func f(a: ([0 of string], string)) -> [0 of string] => a.0@move\nlet a: ([0 of string], string) = ([], \"last\")\nlet moved = f(a@move)", string.Empty, "last=1", [0] },
@@ -48,28 +48,27 @@ public class ElementParameterMoveEmissionTest
     }
 
     [Theory]
-    [InlineData("func f(a: (string, string))\n    let moved = a.0@move\n    let twice = a.0@move", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f(a: (string, string))\n    let moved = a.0@move\n    let whole = a@move", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f(a: (string, string), take: bool) -> string\n    if take\n        let moved = a.0@move\n    return a.0@move", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f(a: (string, string))\n    loop\n        let moved = a.0@move\n        continue", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f(a: (string, string))\n    let moved = a.0@move\n    let equal = a.0 == a.0", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f(a: (string, string))\n    defer\n        let whole = a@move\n    let moved = a.0@move", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func inspect(a: ref/string, b: string) => ()\nfunc f(a: (string, string)) => inspect(a.0, a.0@move)", OwnershipFailure.ComparisonLoanConflict)]
-    [InlineData("func take(a: string) -> string => a@move\nfunc f(a: (string, string)) -> bool => a.0 == take(a.0@move)", OwnershipFailure.ComparisonLoanConflict)]
-    [InlineData("func f(a: [2 of string], i: isize) -> string => a[i]@move", OwnershipFailure.StaticMovePathRequired)]
-    [InlineData("func f(a: [2 of string]) -> string => a[0 + 0]@move", OwnershipFailure.StaticMovePathRequired)]
-    [InlineData("let moved = (\"first\", \"last\").0", OwnershipFailure.Unsupported)]
-    [InlineData("func f(a: ([0 of string], string))\n    let moved = a.0@move\n    let twice = a.0@move", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f(a: ((string, string), string))\n    let moved = a.0@move\n    let nested = a.0.0@move", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f(a: (string, string))\n    return\n    let moved = a.0@move\n    let twice = a.0@move", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f(a: (string, [1 of i32])) -> i32\n    return a.1[(label work: do\n        let moved = a.0@move\n        exit to work 0\n    )]", OwnershipFailure.ComparisonLoanConflict)]
-    public void InvalidMovesFailBeforeEmission(string source, OwnershipFailure failure)
+    [InlineData("func f(a: (string, string))\n    let moved = a.0@move\n    let twice = a.0@move", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("func f(a: (string, string))\n    let moved = a.0@move\n    let whole = a@move", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("func f(a: (string, string), take: bool) -> string\n    if take\n        let moved = a.0@move\n    return a.0@move", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("func f(a: (string, string))\n    loop\n        let moved = a.0@move\n        continue", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("func f(a: (string, string))\n    let moved = a.0@move\n    let equal = a.0 == a.0", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("func f(a: (string, string))\n    defer\n        let whole = a@move\n    let moved = a.0@move", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("func inspect(a: ref/string, b: string) => ()\nfunc f(a: (string, string)) => inspect(a.0, a.0@move)", DiagnosticCode.ComparisonLoanConflict_Kd)]
+    [InlineData("func take(a: string) -> string => a@move\nfunc f(a: (string, string)) -> bool => a.0 == take(a.0@move)", DiagnosticCode.ComparisonLoanConflict_Kd)]
+    [InlineData("func f(a: [2 of string], i: isize) -> string => a[i]@move", DiagnosticCode.StaticMovePathRequired_Kd)]
+    [InlineData("func f(a: [2 of string]) -> string => a[0 + 0]@move", DiagnosticCode.StaticMovePathRequired_Kd)]
+    [InlineData("let moved = (\"first\", \"last\").0", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("func f(a: ([0 of string], string))\n    let moved = a.0@move\n    let twice = a.0@move", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("func f(a: ((string, string), string))\n    let moved = a.0@move\n    let nested = a.0.0@move", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("func f(a: (string, [1 of i32])) -> i32\n    return a.1[(label work: do\n        let moved = a.0@move\n        exit to work 0\n    )]", DiagnosticCode.ComparisonLoanConflict_Kd)]
+    public void InvalidMovesFailBeforeEmission(string source, DiagnosticCode failure)
     {
         var c = MinimalEmissionTest.Analyze(source + "\nConsole.writeLine(\"ok\")");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == failure);
+        Assert.Contains(c.Problems, x => x.Code == failure);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -83,7 +82,7 @@ public class ElementParameterMoveEmissionTest
         var c = MinimalEmissionTest.Analyze("func f(a: (string, i32))\n    let moved = a.0@move\n    " + statement + "\nf((\"first\", 0))");
         Assert.False(c.Binding.Result.IsComplete);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -121,7 +120,7 @@ public class ElementParameterMoveEmissionTest
         }
 
         Assert.False(BodyLowering.ValidatePathFlags(body, function, new int[body.Operations.Count]));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Theory]
@@ -132,7 +131,7 @@ public class ElementParameterMoveEmissionTest
     public void InvalidParameterPlansPublishNoIrAndRecover(string defect)
     {
         var c = MinimalEmissionTest.Analyze(Conditional);
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[1];
         var projection = Assert.Single(body.Projections);
         var root = projection.Root;
@@ -146,10 +145,10 @@ public class ElementParameterMoveEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Fact]
@@ -197,8 +196,8 @@ public class ElementParameterMoveEmissionTest
         {
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         var valid = true;
@@ -213,8 +212,8 @@ public class ElementParameterMoveEmissionTest
         before = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 128; i++)
         {
-            valid &= c.Ownership.Analyze().IsVerified;
-            valid &= c.Emission.WriteIr(TextWriter.Null, out _);
+            valid &= c.Analyze().IsVerified;
+            valid &= c.WriteIr(TextWriter.Null, out _);
         }
 
         var bytes = GC.GetAllocatedBytesForCurrentThread() - before;

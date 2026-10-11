@@ -32,10 +32,10 @@ public class ConversionReadTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Last();
         var expected = type.StartsWith("Wrapping<", StringComparison.Ordinal) ? BoundType.WrappingOf(BoundType.Primitives[type[9..^1]]) : BoundType.Primitives[type];
-        Assert.Same(expected, conversion.BoundType);
-        Assert.Equal(binding, conversion.ConversionBinding.ToString());
+        Assert.Same(expected, conversion.TypeOf());
+        Assert.Equal(binding, conversion.ConversionOf().Kind.ToString());
         Assert.True(c.Binding.ReadsReferent(conversion.Left));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
     }
 
     [Fact]

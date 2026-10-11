@@ -56,7 +56,7 @@ public sealed partial class Binding
     }
 
     // SPEC 21.3.1: a generic `tryResolve` requirement call on an integer instantiates the witness at that integer Type.
-    private BoundCall? InstantiateIntegerPosition(BoundCall call, BoundType self, BoundCall? destination)
+    private CallPlan? InstantiateIntegerPosition(CallPlan call, BoundType self, CallPlan? destination)
     {
         if (this.IntegerPositionWitness() is not { Declaration: FunctionKoto witness } target ||
             !this.scopes.TryGetValue(witness, out var scope) || !scope.Types.TryGetValue("I", out var parameter) || parameter.Slot < 0)
@@ -72,7 +72,7 @@ public sealed partial class Binding
             // SPEC 8.8.3: the call holds every generic slot, a Type slot with a null length, so that the explicit
             // specializations of the witness (such as `tryResolve<i32>`) are selected.
             types[parameter.Slot] = self;
-            var resolved = destination ?? new BoundCall();
+            var resolved = destination ?? new CallPlan();
             resolved.Set(target, call.ReturnType, call.Receiver, call.ArgumentToParameter, types.AsSpan(0, count), origins: call.Origins, inputOrigins: call.InputOrigins, operations: call.ArgumentOperations, receiverOperation: call.ReceiverOperation, defaults: call.DefaultArguments, lengthArguments: lengths.AsSpan(0, count));
             return resolved;
         }

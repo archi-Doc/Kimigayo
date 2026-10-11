@@ -7,7 +7,11 @@ namespace Kimi.Compiler;
 
 #pragma warning disable SA1402, CS1591 // Retained closure conversion and capture vocabulary.
 
-public readonly record struct BoundCapture(BindingSymbol Source, BindingSymbol Environment);
+public readonly record struct BoundCapture(BindingSymbol Source, BindingSymbol Environment)
+{
+    // How the entry initializes its environment binding (SPEC 7.6.2), as the HIR Adjust column states acquisitions.
+    internal HirAdjust Adjust => HirAdjust.Of(this.Environment.CaptureAcquisition);
+}
 
 /// <summary>A retained capture environment, signature and minimum call receiver.</summary>
 public sealed class BoundClosure
@@ -28,6 +32,10 @@ public sealed class BoundClosure
     internal List<BoundCapture> Storage { get; } = new();
 
     internal List<BindingSymbol> SymbolPool { get; } = new();
+
+    // The closure definition (ClosureDef, plan 5.3) of an anonymous function Binding resolved; its substitution is TyCtxt.SubstOfClosure of
+    // its Type.
+    internal static BoundClosure? Of(FunctionKoto function) => function.BoundClosure;
 }
 
 // A capture name repeated by a later entry or by a parameter (Parameter), at Later, and the entry it repeats, at Earlier (SPEC 7.6.2).
@@ -40,6 +48,28 @@ internal readonly record struct CaptureListFailure(CaptureRepeat[] Repeats, Capt
 public sealed partial class Binding
 {
     private ClosureEffects? closureEffects;
+
+    // Header probes supply omitted inputs without committing parameter bindings or visiting the body. A written
+    // result's elision depends on those inputs, so it is rebound for each fixed context and at commitment.
+    private FunctionKoto? closureHeader;
+    private BoundType? closureHeaderInputs;
+
+    private BoundType? ClosureResultType(FunctionKoto function, BoundType inputs, BindingScope scope)
+    {
+        var previous = this.closureHeader;
+        var previousInputs = this.closureHeaderInputs;
+        this.closureHeader = function;
+        this.closureHeaderInputs = inputs;
+        try
+        {
+            return function.ReturnType is { } result ? this.BindType(result, scope) : null;
+        }
+        finally
+        {
+            this.closureHeader = previous;
+            this.closureHeaderInputs = previousInputs;
+        }
+    }
 
     // Set only while TryCandidate asks whether a rejected candidate applies once its closure argument's minimum receiver is permitted.
     private bool permitClosureReceivers;
@@ -207,7 +237,6 @@ public sealed partial class Binding
                 code,
                 note: note,
                 evidence: [name],
-                advice: repeat.Parameter ? $"Rename the parameter, or remove the capture entry {name} if the body needs only the argument" : $"Remove the repeated entry {name}",
                 span: repeat.Later,
                 relatedSpans: [("declaration", function, repeat.Earlier, "capture entry")],
                 condition: (ushort)i);
@@ -320,14 +349,14 @@ public sealed partial class Binding
                 types[i] = parameter;
             }
 
-            var result = function.ReturnType is { } written ? this.BindType(written, scope) : restated.Components[1];
+            var result = function.ReturnType is not null ? this.ClosureResultType(function, inputs, scope) : restated.Components[1];
             if (result is null)
             {
                 return this.Fail(function, BindingFailure.TypeMismatch);
             }
 
-            var parameters = count == 0 ? BoundType.Unit : this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, types.AsSpan(0, count));
-            return this.FailMismatch(function, function, this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result]), expected);
+            var parameters = count == 0 ? BoundType.Unit : this.types.Tuple(types.AsSpan(0, count));
+            return this.FailMismatch(function, function, this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result], resultMode: ResultModeOf(function.ReturnType)), expected);
         }
         finally
         {
@@ -337,7 +366,7 @@ public sealed partial class Binding
 
     private bool ClosureSignatureFits(FunctionKoto function, BoundType expected, bool openResult = false)
     {
-        if (expected.Kind != BoundTypeKind.Function)
+        if (expected.Kind != BoundTypeKind.Function || ResultModeOf(function.ReturnType) != expected.ResultMode)
         {
             return false;
         }
@@ -366,7 +395,7 @@ public sealed partial class Binding
             }
         }
 
-        return openResult || function.ReturnType is null || ReferenceEquals(this.BindType(function.ReturnType, scope), expected.Components[1]);
+        return openResult || function.ReturnType is null || ReferenceEquals(this.ClosureResultType(function, inputs, scope), expected.Components[1]);
     }
 
     private BoundType? BindClosure(FunctionKoto function, BindingScope scope, BoundType? expected, bool openResult = false)
@@ -424,14 +453,14 @@ public sealed partial class Binding
         }
 
         // SPEC 7.6.2: an environment holds any Type with slot storage, including enums (Option, Result), Arrays, Dictionaries,
-        // Slices and raw pointers.
+        // Slices, object Views and raw pointers. All safe borrows use the same representation boundary.
         if (!(ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) ||
                 (function.ClosureStorage?.EnvironmentType is not null && (type.Kind == BoundTypeKind.Parameter || SlotTypes.IsResult(type) ||
-                    ReferenceTypes.IsStorage(type) || ReferenceTypes.IsPointer(type)))))
+                    ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type)))))
         {
             if (entry is { } written)
             {
-                this.FailExplained(ref this.captureFailures, function, BindingFailure.Unsupported, (written, type, null));
+                this.FailExplained(ref this.unsupportedSpans, function, BindingFailure.Unsupported, written.Span);
             }
             else
             {
@@ -486,18 +515,16 @@ public sealed partial class Binding
             case Constants.MoveOperation:
                 environment.CaptureAcquisition = CaptureAcquisition.Move;
                 return null;
-            case null when this.ProveCopy(type, function) == ConstraintProof.Proven:
-                environment.CaptureAcquisition = CaptureAcquisition.Copy;
-                return null;
-            case null when TryPairLayer(type, out _, out _) && this.BareAcquisition(type, function, out _) == SemanticsMask.None:
-                // SPEC 8.9: every admitted case Copies or Reborrows; each case run and instance acquires as its case Type does.
-                environment.CaptureAcquisition = CaptureAcquisition.Bare;
-                return null;
-            case null when type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 }:
-                environment.CaptureAcquisition = CaptureAcquisition.Reborrow;
-                return null;
             case null:
-                return BindingFailure.TransferRequired;
+                // SPEC 8.9: by case, each case run and instance acquires as its case Type does.
+                var bare = this.BareAcquire(type, function, out _);
+                if (bare == HirAcquire.Move)
+                {
+                    return BindingFailure.TransferRequired;
+                }
+
+                environment.CaptureAcquisition = bare == HirAcquire.Copy ? CaptureAcquisition.Copy : bare == HirAcquire.ByCase ? CaptureAcquisition.Bare : CaptureAcquisition.Reborrow;
+                return null;
         }
 
         var exclusive = capture.Operation == Constants.UniqKeyword;
@@ -507,7 +534,7 @@ public sealed partial class Binding
         }
 
         var binder = source.Declaration ?? function;
-        environment.Type = this.InternType(BoundTypeKind.Semantics, null, exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, [type], origin: this.OriginAtom(binder, OriginKind.Projection, SymbolOriginSlot(source)));
+        environment.Type = this.types.Intern(BoundTypeKind.Semantics, null, exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, [type], origin: this.OriginAtom(binder, OriginKind.Projection, SymbolOriginSlot(source)));
         environment.CaptureAcquisition = exclusive ? CaptureAcquisition.ExclusiveSlotBorrow : CaptureAcquisition.SharedSlotBorrow;
         return null;
     }
@@ -522,13 +549,22 @@ public sealed partial class Binding
         plan.ExclusiveReborrow = false;
         var symbol = this.symbols[function];
         // The declaration identity distinguishes environments with identical storage.
-        plan.EnvironmentType = this.InternType(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, []);
-        symbol.Type = function.ReturnType is { } annotation ? this.BindType(annotation, scope) : openResult ? null : expected?.Components[1];
+        plan.EnvironmentType = this.types.Intern(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, []);
         symbol.HeaderBound = true;
+        var originDeclaration = this.BeginOriginDeclaration(function, scope);
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             this.symbols[function.Parameters[i]].Type = expected is not null && function.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType } inferred
                 ? Complete(inferred, expected.Components[0].Components[i]) : this.BindType(function.Parameters[i].Type, scope);
+        }
+
+        symbol.Type = function.ReturnType is { } annotation
+            ? expected is null ? this.BindType(annotation, scope) : this.ClosureResultType(function, expected.Components[0], scope)
+            : openResult ? null : expected?.Components[1];
+        this.CompleteOriginDeclaration(originDeclaration);
+        for (var i = 0; i < function.Parameters.Count; i++)
+        {
+            this.symbols[function.Parameters[i]].Type = function.Parameters[i].Type.BoundType;
         }
 
         if (function.Captures is { } captures)
@@ -574,23 +610,38 @@ public sealed partial class Binding
 
         if (function.Body is { } block)
         {
-            // Unannotated block results still need the general result-inference pass.
             if (symbol.Type is null)
             {
-                return this.Fail(function, BindingFailure.Unsupported);
+                // The function owns its result context; nested functions and defer bodies keep their own boundaries.
+                // Survey independent return evidence before binding, then include structural end Unit in the same join.
+                var context = this.BeginResult(function, scope, null);
+                this.BindNode(block, scope);
+                symbol.Type = this.FinishResult(function, context);
             }
-
-            this.BindNode(block, scope);
+            else
+            {
+                this.BindNode(block, scope);
+            }
         }
         else if (function.ExpressionBody is { } expression)
         {
             var result = this.RequireType(expression, scope, symbol.Type);
             symbol.Type ??= result;
+            if (function.ReturnType is PlaceResultKoto place && !ReferenceEquals(result, BoundType.Never))
+            {
+                var placeItem = expression is CodeBlockKoto { IsExpressionBody: true, Items.Count: 1 } single ? single.Items[0] : expression;
+                this.CheckPlaceResultOperand(placeItem, place, ReferenceEquals(placeItem, expression) ? function : expression);
+            }
         }
 
         if (symbol.Type is null)
         {
             return Complete(function, null);
+        }
+
+        if (function.ReturnType is null && (expected is null || openResult))
+        {
+            symbol.Type = this.ResolveLocalResultOrigins(symbol.Type);
         }
 
         var buffer = this.typeScratch.Rent(Math.Max(function.Parameters.Count, plan.Storage.Count));
@@ -606,14 +657,14 @@ public sealed partial class Binding
                 buffer[i] = input;
             }
 
-            var inputs = function.Parameters.Count == 0 ? BoundType.Unit : this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, ((BoundType[])(object)buffer).AsSpan(0, function.Parameters.Count));
-            plan.Signature = this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, symbol.Type]);
+            var inputs = function.Parameters.Count == 0 ? BoundType.Unit : this.types.Tuple(((BoundType[])(object)buffer).AsSpan(0, function.Parameters.Count));
+            plan.Signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, symbol.Type], resultMode: ResultModeOf(function.ReturnType));
             for (var i = 0; i < plan.Storage.Count; i++)
             {
                 buffer[i] = plan.Storage[i].Environment.Type!;
             }
 
-            plan.EnvironmentType = this.InternType(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, ((BoundType[])(object)buffer).AsSpan(0, plan.Storage.Count));
+            plan.EnvironmentType = this.types.Intern(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, ((BoundType[])(object)buffer).AsSpan(0, plan.Storage.Count));
         }
         finally
         {
@@ -625,7 +676,7 @@ public sealed partial class Binding
         {
             // SPEC 15.8.2, 15.6.1: a result inferred from the body that borrows the call's own storage (a parameter, a body local,
             // or an environment binding the call consumes) cannot outlive the call; the relation is Refuted at that Borrow.
-            return this.FailExplained(ref this.originRelations, function, BindingFailure.OriginRelation, new(function.ExpressionBody ?? function, local, this.CallResultOrigin(function), false, null, true));
+            return this.FailExplained(ref this.originRelations, function, BindingFailure.OriginRelation, new(function.ExpressionBody ?? function.Body ?? (Koto)function, local, this.CallResultOrigin(function), false, null, true));
         }
 
         return Complete(function, plan.EnvironmentType);
@@ -689,7 +740,7 @@ public sealed partial class Binding
                 while (use.Parent is ParenthesizedKoto ||
                     (use.Parent is IndexKoto index && ReferenceEquals(index.Left, use) && use.BoundType?.Kind == BoundTypeKind.FixedArray) ||
                     (use.Parent is MemberAccessKoto part && ReferenceEquals(part.Left, use) &&
-                        (use.BoundType?.Kind == BoundTypeKind.Tuple || (StructStorage.IsStruct(use.BoundType) && part.BoundSymbol?.Property?.IsStored == true && !IsGetterResult(part)))))
+                        (use.BoundType?.Kind == BoundTypeKind.Tuple || (AdtDef.IsStruct(use.BoundType) && part.BoundSymbol?.Property?.IsStored == true && !IsGetterResult(part)))))
                 {
                     // Reading or updating a captured stored part obtains that part's authority, not a whole-value Move.
                     use = use.Parent;
@@ -697,7 +748,7 @@ public sealed partial class Binding
 
                 var valueCall = use.Parent as InvocationKoto;
                 var called = valueCall?.BoundValueCall;
-                var receiver = called is not null && ReferenceEquals(called.Receiver, use);
+                var receiver = called is not null && ReferenceEquals(called.CalleeValue, use);
                 var memberCall = use.Parent is MemberAccessKoto { Parent: InvocationKoto { BoundCall: { } selected } } member &&
                     ReferenceEquals(member.Left, use) && ReferenceEquals(selected.Receiver, use) ? selected :
                     use.Parent is MemberAccessKoto property && ReferenceEquals(property.Left, use)
@@ -718,10 +769,6 @@ public sealed partial class Binding
 
                 var memberBorrow = memberOperation.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection;
                 // A Copy payload Field read lends the captured handle; it does not consume that handle (SPEC 3.4.1).
-                var fieldRead = ObjectTypes.HandleMode(use.BoundType) is not null && use.Parent is MemberAccessKoto field &&
-                    ReferenceEquals(field.Left, use) && field.BoundSymbol?.Property?.IsStored == true &&
-                    field.BoundType is { } fieldType && binding.ProveCopy(fieldType, this.function) == ConstraintProof.Proven && !this.UsesReferentExclusively(field);
-                var exclusiveReference = use.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 };
                 if ((use.Parent is BinaryKoto assignment && assignment.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals && ReferenceEquals(assignment.Left, use)) ||
                     use.Parent is UnaryKoto { Akind: KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement } ||
                     (receiver && called!.ReceiverKind == SemanticsKind.Uniq) || (memberBorrow && memberOperation.ParameterType?.Semantics == SemanticsKind.Uniq) ||
@@ -751,27 +798,6 @@ public sealed partial class Binding
             }
 
             node.VisitChildren(this);
-        }
-
-        private static bool InspectedValue(Koto use)
-        {
-            if (ReferenceEquals(use.BoundType, BoundType.String) && use.Parent is BinaryKoto { Akind: KotoKind.EqualsEquals or KotoKind.ExclamationEquals or KotoKind.LessThan or KotoKind.LessThanEquals or KotoKind.GreaterThan or KotoKind.GreaterThanEquals })
-            {
-                return true;
-            }
-
-            if (use.Parent is InvocationKoto { BoundCall: { } call })
-            {
-                foreach (var argument in call.ArgumentOperations)
-                {
-                    if (ReferenceEquals(argument.Source, use) && argument.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow)
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
         }
 
         // SPEC 7.6.3: a capture used in a way that needs it, or the referent of a captured exclusive reference, exclusively:
@@ -815,7 +841,8 @@ public sealed partial class Binding
                 target.Parent is UnaryKoto { Akind: KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement } ||
                 target.Parent is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq } ||
                 (target.Parent is MemberAccessKoto { Parent: InvocationKoto { BoundCall: { } selectedCall } } receiverAccess && ReferenceEquals(receiverAccess.Left, target) &&
-                    ReferenceEquals(selectedCall.Receiver, target) && selectedCall.ReceiverOperation.ParameterType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq);
+                    ReferenceEquals(selectedCall.Receiver, target) && selectedCall.ReceiverOperation.ParameterType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq) ||
+                (target.Parent is InvocationKoto { BoundValueCall: { ReceiverKind: SemanticsKind.Uniq } valueCall } && ReferenceEquals(valueCall.CalleeValue, target));
         }
     }
 

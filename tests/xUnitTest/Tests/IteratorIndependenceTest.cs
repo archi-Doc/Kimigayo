@@ -31,7 +31,7 @@ public class IteratorIndependenceTest
     {
         const string source = "struct Cursor {source}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during source\n    let value: ref/i32 during source\n    var count: i32 = 0\n    public func next(self: uniq/Self) -> Option<ref/i32 during source>\n        self.count += 1\n        return .Some(self.value)";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]
@@ -143,7 +143,7 @@ public class IteratorIndependenceTest
         var source = "struct Cleanup {source, step}\n    origin source outlives step\n    let cursor: uniq/(Cursor during source) during step\n    public init(cursor: uniq/(Cursor during source) during step) => self.cursor = cursor@move\n    drop => " + operation + "\nstruct Cursor {source}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during source\n    public let value: uniq/i32 during source\n    public var count: i32 = 0\n    public func next(self: uniq/Self) -> Option<ref/i32 during source>\n        do\n            let cleanup = Cleanup.init(self)\n        return .Some(self.value)";
         var c = MinimalEmissionTest.Analyze(source);
         // A destructor runs only where ownership analysis plans its cleanup, so its effects are judged after that analysis.
-        var rejected = c.Binding.Issues.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd) || c.Ownership.Issues.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        var rejected = c.Binding.Issues.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd) || c.Problems.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
         Assert.True(valid != rejected, MinimalEmissionTest.Describe(c, null));
     }
 
@@ -174,15 +174,15 @@ public class IteratorIndependenceTest
         {
             Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Ownership.Analyze().IsVerified || !c.Emission.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
             {
                 throw new InvalidOperationException("Independent iterator compilation failed.");
             }

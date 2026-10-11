@@ -378,6 +378,8 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         {
             this.Kotonoha.ClearGeneratedFunction();
         }
+
+        this.CodeContext.Compilation.NoteSyntaxEdit(this);
     }
 
     /// <summary>Writes this Declaration Container and all nested Declaration Containers as source text.</summary>
@@ -519,7 +521,6 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         {
             TokenKind.Struct => new StructKoto(codeContext, state, range),
             TokenKind.Enum => new EnumKoto(codeContext, state, range),
-            TokenKind.Extension => new ExtensionKoto(codeContext, state, range),
             TokenKind.Contract => new ContractKoto(codeContext, state, range),
             _ => new GroupKoto(codeContext, state, range),
         };
@@ -612,11 +613,6 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         this.ParseMemberItems(ref reader, ref state);
     }
 
-    /// <summary>Consumes an unimplemented Declaration Container body without producing members.</summary>
-    /// <param name="reader">The token reader at the body's <see cref="TokenKind.StartBlock"/>; a Container parses only a body.</param>
-    protected static void SkipUnimplementedBody(ref TokenReader reader)
-        => reader.SkipCurrentBlock();
-
     /// <summary>Consumes the opening block token when the caller left it for the Declaration Container parser.</summary>
     /// <param name="reader">The token reader.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -625,12 +621,13 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
     /// <summary>Consumes declaration trivia and detects the end of the current Declaration Container body.</summary>
     /// <param name="reader">The token reader.</param>
+    /// <param name="stopAtCaseGroupBoundary">Whether Case Group recovery must leave its next arm or end unconsumed.</param>
     /// <returns><see langword="true"/> when another declaration is available.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    protected static bool TryBeginDeclaration(ref TokenReader reader)
+    protected static bool TryBeginDeclaration(ref TokenReader reader, bool stopAtCaseGroupBoundary = false)
     {
         bool isEnd;
-        while (Parser.ConsumeAttributeAndModifier(ref reader, out isEnd, allowCompileTimeDirectives: true))
+        while (Parser.ConsumeAttributeAndModifier(ref reader, out isEnd, allowCompileTimeDirectives: true, stopAtCaseGroupBoundary))
         {
             Parser.SkipUnavailableDeclaration(ref reader);
         }
@@ -658,11 +655,14 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         if (tokenKind == TokenKind.Extension)
         {
-            reader.Unexpected(SyntaxForm.ExtensionDeclaration, token.Span);
+            // `extension` is reserved (SPEC 2.5): the declaration is skipped with its body.
+            Parser.OmitDeclaration(ref reader, reader.Unexpected(SyntaxForm.ExtensionDeclaration, token.Span));
+            return true;
         }
 
         reader.Advance();
         var state = reader.TakeContext();
+        var nameSpan = reader.CurrentTokenRange;
         var declaration = Parser.ParseDeclarationContainerHeader(ref reader, tokenKind);
         if (declaration.Name is null)
         {
@@ -673,6 +673,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         var container = this.GetOrAddDeclarationContainer(declaration.Name, tokenKind, state, token.Span, declaration.GenericArguments?.Count ?? 0, reader.CodeContext);
         reader.Document(container, SourceSpan.FromBounds(token.Span.Start, reader.PreviousSyntaxEnd), state.AttributeKoto);
+        reader.Hover(container, nameSpan);
         container.AddHeader(tokenKind, state.ModifierKind, declaration.GenericArguments, declaration.Origins, state.AttributeKoto);
         container.SetBases(declaration.Bases);
 
@@ -841,6 +842,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                 IsDestructor = true,
             };
             reader.Document(destructor, token.Span, context.AttributeKoto);
+            reader.Hover(destructor, token.Span);
 
             // drop accepts a common Body, without modifiers or attributes (SPEC 16.3).
             if (context.ModifierKind.Judged() != ModifierKind.NoModifier || context.AttributeKoto is not null)
@@ -898,140 +900,35 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     protected virtual void WriteTypeConstraintTo(IsKoto constraint, ref IndentedStringBuilder builder)
         => constraint.WriteTo(ref builder);
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        if (this.bases is { } bases)
+        slots.List(this.bases);
+        slots.List(this.genericArguments);
+        slots.List(this.typeConstraints);
+        slots.List(this.kotoList);
+
+        // A nested container is replaced where its lookup by name exists, by one that declares no second container of its name and
+        // arity; the lookup is then rebuilt.
+        if (slots.Replacement is DeclarationContainerKoto replacement && (this.NestedContainerTable is null || this.DeclaresAgain(replacement, slots.Original)))
         {
-            for (var i = 0; i < bases.Length; i++)
-            {
-                visitor.Visit(bases[i]);
-            }
+            return;
         }
 
-        if (this.genericArguments is { } genericArguments)
+        var replaced = slots.Replaced;
+        slots.List(this.nestedContainers);
+        if (replaced || !slots.Replaced || this.NestedContainerTable is not { } nested)
         {
-            for (var i = 0; i < genericArguments.Count; i++)
-            {
-                visitor.Visit(genericArguments[i]);
-            }
+            return;
         }
 
-        if (this.typeConstraints is { } typeConstraints)
+        ((DeclarationContainerKoto)slots.Original!).nextArity = null;
+        nested.Clear();
+        foreach (var candidate in this.nestedContainers!)
         {
-            for (var i = 0; i < typeConstraints.Count; i++)
-            {
-                visitor.Visit(typeConstraints[i]);
-            }
+            nested.TryGetValue(candidate.Name, out var previous);
+            candidate.nextArity = previous as DeclarationContainerKoto;
+            nested.AddOrUpdate(candidate.Name, candidate);
         }
-
-        if (this.kotoList is { } kotoList)
-        {
-            for (var i = 0; i < kotoList.Count; i++)
-            {
-                visitor.Visit(kotoList[i]);
-            }
-        }
-
-        if (this.nestedContainers is { } nestedContainers)
-        {
-            for (var i = 0; i < nestedContainers.Count; i++)
-            {
-                visitor.Visit(nestedContainers[i]);
-            }
-        }
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-    {
-        if (this.bases is not null)
-        {
-            foreach (var type in this.bases)
-            {
-                yield return type;
-            }
-        }
-
-        if (this.genericArguments is not null)
-        {
-            foreach (var argument in this.genericArguments)
-            {
-                yield return argument;
-            }
-        }
-
-        if (this.typeConstraints is not null)
-        {
-            foreach (var constraint in this.typeConstraints)
-            {
-                yield return constraint;
-            }
-        }
-
-        if (this.kotoList is not null)
-        {
-            foreach (var koto in this.kotoList)
-            {
-                yield return koto;
-            }
-        }
-
-        if (this.nestedContainers is not null)
-        {
-            foreach (var container in this.nestedContainers)
-            {
-                yield return container;
-            }
-        }
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (ReplaceInList(this.bases, oldKoto, newKoto))
-        {
-            return true;
-        }
-
-        if (ReplaceInList(this.kotoList, oldKoto, newKoto))
-        {
-            return true;
-        }
-
-        if (oldKoto is TypeKoto && ReplaceInList(this.genericArguments, oldKoto, newKoto))
-        {
-            return true;
-        }
-
-        if (oldKoto is IsKoto && ReplaceInList(this.typeConstraints, oldKoto, newKoto))
-        {
-            return true;
-        }
-
-        if (this.NestedContainerTable is { } nested && this.nestedContainers is { } containers &&
-            oldKoto is DeclarationContainerKoto oldContainer && newKoto is DeclarationContainerKoto newContainer && containers.Contains(oldContainer))
-        {
-            foreach (var candidate in containers)
-            {
-                if (!ReferenceEquals(candidate, oldContainer) && candidate.Name == newContainer.Name &&
-                    (candidate.TokenKind != newContainer.TokenKind || candidate.GenericParameterNodes.Count == newContainer.GenericParameterNodes.Count))
-                {
-                    return false;
-                }
-            }
-
-            ReplaceInList(containers, oldContainer, newContainer);
-            oldContainer.nextArity = null;
-            nested.Clear();
-            foreach (var candidate in containers)
-            {
-                nested.TryGetValue(candidate.Name, out var previous);
-                candidate.nextArity = previous as DeclarationContainerKoto;
-                nested.AddOrUpdate(candidate.Name, candidate);
-            }
-
-            return true;
-        }
-
-        return false;
     }
 
     /// <summary>Warns when a member comes after a later kind of member, at the member's first token.</summary>
@@ -1048,6 +945,22 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         }
 
         current = next;
+    }
+
+    // Whether a nested container other than the replaced one declares the replacement's name with another kind or the same arity.
+    private bool DeclaresAgain(DeclarationContainerKoto replacement, Koto? original)
+    {
+        for (var i = 0; i < this.NestedContainers.Count; i++)
+        {
+            var candidate = this.NestedContainers[i];
+            if (!ReferenceEquals(candidate, original) && candidate.Name == replacement.Name &&
+                (candidate.TokenKind != replacement.TokenKind || candidate.GenericParameterNodes.Count == replacement.GenericParameterNodes.Count))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>Gets or creates a directly nested container.</summary>
@@ -1087,13 +1000,14 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <summary>Parses member declarations through the end of the current block.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="state">The member state of the enclosing body, shared by its directive targets and arms.</param>
+    /// <param name="stopAtCaseGroupBoundary">Whether Case Group recovery must leave its next arm or end unconsumed.</param>
     /// <remarks>
     /// Directive targets and arms are parsed by this same loop (SPEC 19.5): selected syntax goes into this container, and
     /// excluded syntax into a detached container of the same kind, so it registers nothing here but keeps source order.
     /// </remarks>
-    private void ParseMemberItems(ref TokenReader reader, ref MemberParseState state)
+    private void ParseMemberItems(ref TokenReader reader, ref MemberParseState state, bool stopAtCaseGroupBoundary = false)
     {
-        while (TryBeginDeclaration(ref reader))
+        while (TryBeginDeclaration(ref reader, stopAtCaseGroupBoundary))
         {
             if (reader.IsExcluded)
             {
@@ -1118,9 +1032,16 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         if (Parser.IsCompileTimeSwitchStart(ref reader))
         {
             var arms = Parser.CompileTimeSwitchArms.Begin(ref reader);
-            while (arms.TryNextBody(ref reader, out var selected, out var header))
+            while (arms.TryNext(ref reader, out var selected, out var header, out var invalidItems))
             {
-                if (selected)
+                if (invalidItems)
+                {
+                    var owner = this.ExcludedOwner(ref reader, ref state);
+                    var start = Parser.BeginInvalidSwitchItems(ref reader);
+                    owner.ParseMemberItems(ref reader, ref state, stopAtCaseGroupBoundary: true);
+                    Parser.EndInvalidSwitchItems(ref reader, start);
+                }
+                else if (selected)
                 {
                     reader.Advance();
                     this.ParseMemberItems(ref reader, ref state);
@@ -1197,19 +1118,13 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             }
 
             var constraint = Parser.ParseTypeConstraint(ref reader, finishLine: false);
-            if (constraint is not null && reader.IsCurrentIdentifier("when"))
+            if (reader.IsCurrentIdentifier("when"))
             {
                 reader.Advance();
                 var conditions = new List<Koto>();
                 do
                 {
-                    var condition = Parser.ParseTypeConstraint(ref reader, finishLine: false);
-                    if (condition is null)
-                    {
-                        break;
-                    }
-
-                    conditions.Add(condition);
+                    conditions.Add(Parser.ParseTypeConstraint(ref reader, finishLine: false));
                 }
                 while (reader.TryConsume(TokenKind.Comma));
                 var span = SourceSpan.FromBounds(constraint.Span.Start, conditions.Count == 0 ? constraint.Span.End : conditions[^1].Span.End);

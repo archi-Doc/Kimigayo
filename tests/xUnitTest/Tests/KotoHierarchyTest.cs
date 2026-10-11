@@ -17,20 +17,15 @@ public class KotoHierarchyTest
         var group = Assert.IsType<GroupKoto>(root.GetOrAddDeclarationContainer("Group", TokenKind.Group, default, default));
         var structure = Assert.IsType<StructKoto>(root.GetOrAddDeclarationContainer("Struct", TokenKind.Struct, default, default));
         var enumeration = Assert.IsType<EnumKoto>(root.GetOrAddDeclarationContainer("Enum", TokenKind.Enum, default, default));
-        var extension = Assert.IsType<ExtensionKoto>(root.GetOrAddDeclarationContainer("Target", TokenKind.Extension, default, default));
         var contract = Assert.IsType<ContractKoto>(root.GetOrAddDeclarationContainer("Contract", TokenKind.Contract, default, default));
 
         Assert.Equal(typeof(DeclarationContainerKoto), typeof(GroupKoto).BaseType);
         Assert.Equal(typeof(DeclarationContainerKoto), typeof(StructKoto).BaseType);
         Assert.Equal(typeof(DeclarationContainerKoto), typeof(EnumKoto).BaseType);
-        Assert.Equal(typeof(DeclarationContainerKoto), typeof(ExtensionKoto).BaseType);
         Assert.Equal(typeof(DeclarationContainerKoto), typeof(ContractKoto).BaseType);
 
         Assert.False(group.IsInstantiable);
         Assert.True(group.HasStaticMembersOnly);
-        Assert.False(extension.IsInstantiable);
-        Assert.True(extension.HasStaticMembersOnly);
-        Assert.Equal("Target", extension.Target);
 
         Assert.True(structure.IsInstantiable);
         Assert.True(enumeration.IsInstantiable);
@@ -83,9 +78,9 @@ public class KotoHierarchyTest
             field.ChildNodes,
             child => Assert.IsType<IdentifierNameKoto>(child),
             child => Assert.IsAssignableFrom<TypeKoto>(child),
-            child => Assert.IsType<PlusKoto>(child));
+            child => ParseTestHelper.Binary(KotoKind.Plus, child));
 
-        var addition = Assert.IsType<PlusKoto>(field.InitializerKoto);
+        var addition = ParseTestHelper.Binary(KotoKind.Plus, field.InitializerKoto);
         Assert.Equal(2, addition.ChildNodes.Count());
         Assert.All(addition.ChildNodes, child => Assert.Same(addition, child.Parent));
     }
@@ -114,7 +109,7 @@ public class KotoHierarchyTest
         Assert.Collection(
             body.Items,
             item => Assert.IsType<FieldKoto>(item),
-            item => Assert.IsType<PlusEqualsKoto>(item),
+            item => ParseTestHelper.Binary(KotoKind.PlusEquals, item),
             item => Assert.IsType<IfKoto>(item),
             item => Assert.IsType<ReturnKoto>(item),
             item => Assert.IsType<FunctionKoto>(item));
@@ -222,8 +217,7 @@ public class KotoHierarchyTest
         var enumeration = Assert.IsType<EnumKoto>(GetDeclarationContainer(root, "Choice"));
         Assert.Empty(enumeration.Members);
 
-        var extension = Assert.IsType<ExtensionKoto>(GetDeclarationContainer(root, "Target"));
-        Assert.Empty(extension.Members);
+        Assert.DoesNotContain(root.NestedDeclarationContainers, static x => x.Name == "Target");
 
         var contract = Assert.IsType<ContractKoto>(GetDeclarationContainer(root, "ComparableContract"));
         Assert.Equal(2, contract.TypeConstraints.Count);

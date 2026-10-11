@@ -11,16 +11,15 @@ public sealed partial class OwnershipAnalysis
     private bool TryScalarLiteral(Koto source, out Int128 value)
     {
         // An instance fits a literal of a generic integer Type to its concrete Type (SPEC 8.4.7.3).
-        var type = this.Concrete(source.BoundType);
-        if (FloatingTypes.Supports(type))
+        var type = this.Resolve(source.BoundType, this.Active);
+        if (type is { IsFloatingPoint: true })
         {
-            var success = FloatingTypes.TryLiteral(source, out var bits);
+            var success = ScalarTypes.TryFloatLiteral(source, out var bits);
             value = bits;
             return success;
         }
 
-        var negative = source is PrefixMinusKoto;
-        var number = source is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)source).Operand as NumberLiteralKoto : source as NumberLiteralKoto;
+        var number = KotoHelper.SignedNumber(source, out var negative);
         if (number is { IsInteger: true } && number.TryGetIntegerMagnitude(out var magnitude))
         {
             return ScalarTypes.TryLiteral(type, magnitude, negative, this.compilation.PointerWidth, out value);
@@ -132,7 +131,7 @@ public sealed partial class OwnershipAnalysis
 
     private int ComputeUpdate(Koto source, BoundType? type, int previous, int right, KotoKind operation)
     {
-        if (operation is KotoKind.Slash or KotoKind.Percent && ScalarTypes.Width(this.Concrete(type), this.compilation.PointerWidth) == 128)
+        if (operation is KotoKind.Slash or KotoKind.Percent && ScalarTypes.Width(this.Resolve(type, this.Active), this.compilation.PointerWidth) == 128)
         {
             this.Unsupported(source); // SPEC 8.4.7.3, IMPL 21.5.3: a generic integer instance's 128-bit division.
         }
@@ -172,7 +171,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         // Binding fits a directly signed literal once, including each signed minimum.
-        if (unary is PrefixMinusKoto or PrefixPlusKoto && unary.Operand is NumberLiteralKoto)
+        if (KotoHelper.SignedNumber(unary, out _) is not null)
         {
             return this.Temporary(unary);
         }
@@ -221,7 +220,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         var output = this.Temporary(unary);
-        if (unary.Akind == KotoKind.PrefixPlus && FloatingTypes.Supports(unary.BoundType))
+        if (unary.Akind == KotoKind.PrefixPlus && unary.BoundType is { IsFloatingPoint: true })
         {
             this.SetValue(this.Value(output), OwnershipValueKind.Alias, [input]);
             return output;
@@ -231,8 +230,9 @@ public sealed partial class OwnershipAnalysis
         return output;
     }
 
-    private int ConversionValue(ConversionKoto conversion)
+    private int ConversionValue(ConversionKoto conversion, ConversionBinding? selected = null)
     {
+        var operation = selected ?? conversion.ConversionBinding;
         if (conversion.FoldedConstant is { } folded)
         {
             // SPEC 13.5.4.2: a direct literal converted at compile time is a constant of the target Type; the literal itself,
@@ -243,21 +243,21 @@ public sealed partial class OwnershipAnalysis
         }
 
         // SPEC 13.5.3: a transfer consumes its Place by Move even when the Type is Copy; a temporary passes its ownership.
-        var transfer = conversion.ConversionBinding == ConversionBinding.Transfer;
-        var identity = conversion.ConversionBinding == ConversionBinding.Identity || transfer;
+        var transfer = operation == ConversionBinding.Transfer;
+        var identity = operation == ConversionBinding.Identity || transfer;
         var input = this.Expression(conversion.Left, identity ? PlaceUseKind.Consume : PlaceUseKind.Read, transfer ? AcquisitionKind.Move : null);
-        if (conversion.ConversionBinding == ConversionBinding.None)
+        if (operation == ConversionBinding.None)
         {
             this.Unsupported(conversion);
             return -1;
         }
 
-        if (input < 0 || conversion.ConversionBinding == ConversionBinding.Abrupt)
+        if (input < 0 || operation == ConversionBinding.Abrupt)
         {
             return -1;
         }
 
-        if (conversion.ConversionBinding == ConversionBinding.Literal)
+        if (operation == ConversionBinding.Literal)
         {
             return input;
         }
@@ -271,7 +271,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         var output = this.Temporary(conversion);
-        var marker = conversion.ConversionBinding switch
+        var marker = operation switch
         {
             ConversionBinding.Wrap => OwnershipValue.WrapConversion,
             ConversionBinding.Bits => OwnershipValue.BitConversion,

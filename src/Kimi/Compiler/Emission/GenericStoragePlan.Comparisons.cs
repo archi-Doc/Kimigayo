@@ -6,19 +6,19 @@ namespace Kimi.Compiler;
 
 internal sealed partial class GenericStoragePlan
 {
-    private readonly Dictionary<BoundCall, FunctionAbi> comparisonCalls = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<CallPlan, FunctionAbi> comparisonCalls = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundComparison, FunctionAbi> comparisonHelpers = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundComparison, (FunctionAbi Abi, FunctionAbi[] Children)> comparisonStorage = new(ReferenceEqualityComparer.Instance);
 
-    internal IReadOnlyDictionary<BoundCall, FunctionAbi> ComparisonCalls => this.comparisonCalls;
+    internal IReadOnlyDictionary<CallPlan, FunctionAbi> ComparisonCalls => this.comparisonCalls;
 
     internal IReadOnlyDictionary<BoundComparison, FunctionAbi> ComparisonHelpers => this.comparisonHelpers;
 
-    private bool PrepareComparison(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall site, out string? failure, int depth = 0)
+    internal bool PrepareComparison(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, CallPlan site, out string? failure, int depth = 0, bool includeScalar = false)
     {
         failure = null;
         if (site.Target.CompilerFunction is not (CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare) ||
-            !ComparisonTypes.IsComposite(site.ConformingType) || this.comparisonCalls.ContainsKey(site))
+            (!includeScalar && !ComparisonTypes.IsComposite(site.ConformingType)) || this.comparisonCalls.ContainsKey(site))
         {
             return true;
         }

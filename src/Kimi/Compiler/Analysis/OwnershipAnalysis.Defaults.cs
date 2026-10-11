@@ -13,7 +13,10 @@ public sealed partial class OwnershipAnalysis
     private int defaultDepth;
     private int defaultContext = -1;
 
-    private void PrepareDefaults(BoundCall plan, int mark)
+    // The builder's active interpretation context: the innermost default being evaluated, or the root.
+    private InterpretationContext Active => new(this.defaultContext);
+
+    private void PrepareDefaults(Koto call, CallPlan plan, int mark)
     {
         if (plan.DefaultArguments.IsEmpty || plan.Target.Declaration is not FunctionKoto target)
         {
@@ -88,7 +91,7 @@ public sealed partial class OwnershipAnalysis
                     var contexts = this.body.DefaultContexts ??= new();
                     var previousContext = this.defaultContext;
                     var context = contexts.Count;
-                    contexts.Add((this.body.Operations.Count, int.MaxValue, plan, previousContext));
+                    contexts.Add((this.body.Operations.Count, int.MaxValue, plan, previousContext, previousContext < 0 ? call : contexts[previousContext].Anchor));
                     this.defaultContext = context;
                     try
                     {
@@ -97,7 +100,7 @@ public sealed partial class OwnershipAnalysis
                     finally
                     {
                         var entry = contexts[context];
-                        contexts[context] = (entry.Start, this.body.Operations.Count, entry.Call, entry.Parent);
+                        contexts[context] = entry with { End = this.body.Operations.Count };
                         this.defaultContext = previousContext;
                     }
                 }
@@ -118,11 +121,12 @@ public sealed partial class OwnershipAnalysis
 
     // SPEC 7.2.3: an evaluator only inspects the slots already acquired by the pending call. It takes no ownership of them;
     // its one normal result becomes the next pending argument. Recursive evaluator entries are registered before their bodies.
-    private int EvaluateDefault(BoundCall call, int parameter, Koto expression)
+    private int EvaluateDefault(CallPlan call, int parameter, Koto expression)
     {
         var inputs = this.body.DefaultInputs ??= new();
         var evaluations = this.body.DefaultEvaluations ??= new();
         var start = inputs.Count;
+        var inputStart = this.body.CallInputCount;
         for (var i = 0; i < parameter; i++)
         {
             var place = this.defaultPlaces[i];
@@ -136,16 +140,18 @@ public sealed partial class OwnershipAnalysis
             this.SetValue(read, OwnershipValueKind.DefaultRead, [], constant: inputs.Count);
             this.placeValues[place] = value;
             inputs.Add((place, value, read));
+            this.body.RecordCallInput(read, i, null);
         }
 
         var invoke = this.Emit(OwnershipOperationKind.Call, expression);
+        this.body.RecordCall(invoke, new(inputStart, parameter, null, CallResultSource.PreparedOrigins));
         this.Connect(invoke, this.abortExit, OwnershipEdgeKind.Abort);
-        var type = this.Concrete(this.compilation.Binding.InstantiateStorageType(((FunctionKoto)call.Target.Declaration).Parameters[parameter].Type.BoundType!, call))!;
+        var type = this.Resolve(this.compilation.Binding.InstantiateStorageType(((FunctionKoto)call.Target.Declaration).Parameters[parameter].Type.BoundType!, call), this.Active)!;
         var result = this.Place(expression, type, OwnershipPlaceKind.Temporary, false);
         var produce = this.Emit(OwnershipOperationKind.Produce, expression, result);
         this.body.OperationStorage[invoke] = this.body.Operations[invoke] with { Place = result };
         this.SetValue(invoke, OwnershipValueKind.DefaultCall, [], constant: evaluations.Count);
-        evaluations.Add(new(invoke, this.body.SubstituteDefaultCall(call, this.defaultContext)!, parameter, start));
+        evaluations.Add(new(invoke, call, parameter, start)); // The call plan is already resolved in the active context.
         if (ScalarResult(type) || ReferenceTypes.IsString(type))
         {
             this.SetValue(produce, OwnershipValueKind.Alias, [invoke]);

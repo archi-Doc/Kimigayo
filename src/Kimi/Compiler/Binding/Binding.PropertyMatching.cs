@@ -9,10 +9,10 @@ public sealed partial class Binding
     private readonly Dictionary<(BoundConformancePath Conformance, BoundAccessor Requirement), BoundOrigin[]> propertyWitnessInputs = new();
     private readonly Dictionary<(BoundConformancePath Conformance, BoundAccessor Requirement), BoundOrigin[]> propertyWitnessOrigins = new();
 
-    private ConstraintProof VerifyPropertyRequirement(BoundConformancePath conformance, BoundProperty requirement, BoundType self, BindingScope scope)
+    private ConstraintProof VerifyPropertyRequirement(BoundConformancePath conformance, BoundProperty requirement, BoundType self, BindingScope scope, MemberSelection? retained = null)
     {
         this.BindHeader(requirement.Symbol);
-        var selection = this.LookupTypeMember(self, requirement.Symbol.Name, scope, self);
+        var selection = retained ?? this.LookupTypeMember(self, requirement.Symbol.Name, scope, self);
         if (selection.Pending)
         {
             return ConstraintProof.Unknown;
@@ -42,9 +42,9 @@ public sealed partial class Binding
 
         if (proof is ConstraintProof.Proven or ConstraintProof.Unknown)
         {
-            var witness = new BoundWitness(requirement.Symbol, implementation.Symbol);
+            var witness = new BoundWitness(new(requirement.Symbol, conformance.Contract), implementation.Symbol);
             conformance.WitnessStorage.Add(witness);
-            conformance.WitnessMap.Add(requirement.Symbol, witness);
+            conformance.WitnessMap.Add(witness.Identity, witness);
         }
 
         return proof;
@@ -67,6 +67,7 @@ public sealed partial class Binding
         var input = requirement.Input is { } requiredInput ? this.ContractType(requiredInput, scope, self) : null;
         var kind = PropertyWitnessKind.AccessorCall;
         BoundOrigin[] inputOrigins = [];
+        BoundOrigin[] originBindings = [];
         ConstraintProof proof;
         if (!implementation.IsStandard)
         {
@@ -84,6 +85,7 @@ public sealed partial class Binding
             }
 
             Array.Clear(origins);
+            originBindings = origins;
             Array.Clear(inputOrigins);
             proof = this.CompareCallableContracts(new(requirement), new(implementation), scope, self, selection.DeclaringType, [], origins, inputOrigins, selection.Path);
         }
@@ -125,10 +127,16 @@ public sealed partial class Binding
 
         if (proof == ConstraintProof.Proven)
         {
-            var objectProof = kind == PropertyWitnessKind.AccessorCall && selection.Path is not null ? ProjectedReceiverProof(implementation.Property.Symbol) : ConstraintProof.Proven;
-            var witness = new BoundPropertyWitness(requirement, implementation, kind, receiver, input, result, selection.DeclaringType!, inputOrigins, selection.Path, objectProof);
+            var objectProof = kind == PropertyWitnessKind.AccessorCall && selection.Path is not null ? ProjectedReceiverProof(implementation.Property.Symbol, implementation) : ConstraintProof.Proven;
+            var witness = new BoundPropertyWitness(requirement, implementation, kind, receiver, input, result, selection.DeclaringType!, inputOrigins, selection.Path, objectProof) { Origins = originBindings, Contract = conformance.Contract };
             conformance.PropertyWitnessStorage.Add(witness);
-            conformance.PropertyWitnessMap.Add((requirement.Property.Symbol, requirement.Kind), witness);
+            conformance.PropertyWitnessMap.Add((witness.Identity, requirement.Kind), witness);
+            if (objectProof == ConstraintProof.Unknown)
+            {
+                conformance.Unsupported = true; // SPEC 12.4.4.1: OCC-X (UnsupportedProof).
+                return proof;
+            }
+
             proof = CombineProof(proof, objectProof, true);
         }
 

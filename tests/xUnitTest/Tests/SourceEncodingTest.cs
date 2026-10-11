@@ -55,6 +55,30 @@ public class SourceEncodingTest
     }
 
     [Fact]
+    public void SurrogateValidationCoversVectorBoundariesAndTails()
+    {
+        for (var offset = 0; offset < 40; offset++)
+        {
+            var prefix = "// " + new string('a', offset);
+            foreach (var scalar in new[] { "\uD7FF", "\uE000", "😀", "😀😀" })
+            {
+                var valid = Compilation.CreateForTest();
+                valid.Kotonoha.AddSource(new SourceDocument("valid.kimi", prefix + scalar));
+                Assert.Empty(TestDiagnostics.Of(valid));
+            }
+
+            foreach (var invalid in new[] { "\uD800", "\uDC00", "\uDFFF", "\uD800a", "😀\uD800" })
+            {
+                var c = Compilation.CreateForTest();
+                c.Kotonoha.AddSource(new SourceDocument("bad.kimi", prefix + invalid));
+                var error = Assert.Single(TestDiagnostics.Of(c));
+                Assert.Equal(nameof(DiagnosticCode.InvalidSourceEncoding_Kd), error.Code);
+                Assert.Equal(new SourceSpan(prefix.Length + (invalid.StartsWith("😀", StringComparison.Ordinal) ? 2 : 0), 1), error.Span);
+            }
+        }
+    }
+
+    [Fact]
     public void ProjectBuildReportsInvalidUtf8FileAsAnError()
     {
         var compilation = Compilation.CreateForTest();

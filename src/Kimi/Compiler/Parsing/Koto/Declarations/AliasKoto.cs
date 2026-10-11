@@ -75,25 +75,8 @@ public sealed class AliasKoto : DeclarationKoto
         OriginClauses.Write(this, ref builder);
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        base.VisitChildrenCore(visitor);
-        if (this.TargetSyntax is { } target)
-        {
-            visitor.Visit(target);
-        }
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-    {
-        foreach (var child in base.GetChildNodes())
-        {
-            yield return child;
-        }
-
-        if (this.TargetSyntax is { } target)
-        {
-            yield return target;
-        }
+        slots.Fixed(this.TargetSyntax);
     }
 }

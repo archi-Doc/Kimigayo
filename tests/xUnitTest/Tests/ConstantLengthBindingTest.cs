@@ -25,7 +25,7 @@ public class ConstantLengthBindingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var array = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FixedArrayTypeKoto>());
-        Assert.Equal(expected, array.BoundType!.Length);
+        Assert.Equal(expected, array.TypeOf()!.Length);
     }
 
     [Theory]
@@ -46,21 +46,22 @@ public class ConstantLengthBindingTest
     [InlineData("let N = true\nlet row: [N of u8]")]
     [InlineData("group Dimensions\n    public let N: i32 = 4\n        get() -> i32 => storage\nfunc f(row: [Dimensions.N of u8]) => ()")]
     [InlineData("group Dimensions\n    public let N: i32 = M\n    public let M: i32 = N\nfunc f(row: [Dimensions.N of u8]) => ()")]
-    [InlineData("struct S\n    let N: i32\n    func f(self: ref/Self)\n        let row: [N of u8]")]
+    [InlineData("struct S\n    let N: i32\n    func f(self: ref/Self)\n        let row: [self.N of u8]")]
     public void NonconstantOrInvalidArithmeticCannotFormLengths(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, issue => issue.Node.BindingFailure == BindingFailure.InvalidTypeFormation);
+        Assert.Contains(c.Binding.Issues, issue => issue.Node.FailureOf() == BindingFailure.InvalidTypeFormation);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
     [Theory]
     [InlineData("let row: [N of u8]\nlet N = 4", "N", "UnresolvedBinding_Kd")]
-    [InlineData("group Dimensions\n    private let N = 4\nfunc f(row: [Dimensions.N of u8]) => ()", "Dimensions.N", "UnresolvedBinding_Kd")]
+    [InlineData("group Dimensions\n    private let N = 4\nfunc f(row: [Dimensions.N of u8]) => ()", "Dimensions.N", "InaccessibleBinding_Kd")]
     [InlineData("group Dimensions\n    public let N: i32 = 4\n        private get\nfunc f(row: [Dimensions.N of u8]) => ()", "Dimensions.N", "InaccessibleBinding_Kd")]
+    [InlineData("struct S\n    let N: i32\n    func f(self: ref/Self)\n        let row: [N of u8]", "N", "QualificationRequired_Kd")]
     public void UnavailableLengthNamesKeepTheLookupCause(string source, string text, string code)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -70,7 +71,7 @@ public class ConstantLengthBindingTest
         Assert.Equal(code, error.Code);
         Assert.Equal(text, error.Text);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -92,7 +93,7 @@ public class ConstantLengthBindingTest
         var c = MinimalEmissionTest.Analyze("group Dimensions\n    private let Width: isize = 4\n    public func f<length N>(row: [(N + Width) of u8]) => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var array = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FixedArrayTypeKoto>());
-        var expression = array.BoundType!.LengthExpression!;
+        var expression = array.TypeOf()!.LengthExpression!;
         Assert.Equal(KotoKind.Plus, expression.Operation);
         var constant = expression.Left!.IsConstant ? expression.Left : expression.Right!;
         Assert.Equal(4, constant.Value);
@@ -125,7 +126,7 @@ public class ConstantLengthBindingTest
         {
             var invalid = MinimalEmissionTest.Analyze(declaration + $"let row: [({expression}) of u8]");
             Assert.False(invalid.Binding.Result.IsComplete);
-            Assert.Contains(invalid.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.InvalidTypeFormation);
+            Assert.Contains(invalid.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.InvalidTypeFormation);
         }
     }
 
@@ -135,13 +136,13 @@ public class ConstantLengthBindingTest
         var c = MinimalEmissionTest.Analyze("let N: isize = 2\nlet row: [N of u8]");
         var variable = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "N");
         var array = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FixedArrayTypeKoto>());
-        var oldType = array.BoundType;
+        var oldType = array.TypeOf();
         var replacementSource = MinimalEmissionTest.Analyze("3");
         var replacement = Assert.Single(KotoTree.Walk(replacementSource.Kotonoha.RootKoto).OfType<NumberLiteralKoto>());
         Assert.True(KotoHelper.Replace(variable, variable.InitializerKoto!, replacement));
         Assert.True(c.Bind().IsComplete);
-        Assert.Equal(3, array.BoundType!.Length);
-        Assert.NotSame(oldType, array.BoundType);
+        Assert.Equal(3, array.TypeOf()!.Length);
+        Assert.NotSame(oldType, array.TypeOf());
     }
 
     [Trait("Purpose", "Allocation")]
@@ -150,13 +151,13 @@ public class ConstantLengthBindingTest
     {
         var c = MinimalEmissionTest.Analyze("let N: isize = 2\nlet row: [N of string] = [\"one\", \"two\"]\nConsole.writeLine(row[1])");
         using var original = new StringWriter();
-        Assert.True(c.Emission.WriteIr(original, out var error), error);
+        Assert.True(c.WriteIr(original, out var error), error);
         var restored = CompilationTestHelper.Reload(c);
         restored.Bind();
         restored.Binding.CheckStartup(OutputKind.Application);
-        restored.Ownership.Analyze();
+        restored.Analyze();
         using var writer = new StringWriter();
-        Assert.True(restored.Emission.WriteIr(writer, out error), error);
+        Assert.True(restored.WriteIr(writer, out error), error);
         Assert.Equal(original.ToString(), writer.ToString());
         ScalarEmissionTest.WriteFixture("ConstantLengthReload", writer.ToString(), "two\n");
 

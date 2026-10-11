@@ -16,6 +16,23 @@ public sealed partial class OwnershipBody
         _ => false,
     };
 
+    /// <summary>Gets whether a value call's receiver Place is the temporary borrow that lends its callee: a shared borrow of a common
+    /// Function value in a field or element, or the complete payload of an object callee borrowed in the call's receiver mode (SPEC 7.3,
+    /// 7.6.3, 13.5.5.1).</summary>
+    /// <param name="place">The receiver Place.</param>
+    /// <param name="receiver">The plan's receiver Type where the call reads it.</param>
+    /// <param name="plan">The value call.</param>
+    /// <returns>Whether the Place lends the callee.</returns>
+    internal static bool IsBorrowedCallableReceiver(OwnershipPlace place, BoundType receiver, CallPlan plan)
+    {
+        var payload = plan.ReceiverOperation.Kind == ArgumentOperationKind.PayloadProjection;
+        var callee = payload && (receiver.HandleMode is not null || receiver.IsObjectBorrow) ? receiver.Components[0] : receiver;
+        return place.Kind == OwnershipPlaceKind.Temporary && callee.Kind != BoundTypeKind.Semantics &&
+            place.Type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } borrow && ReferenceEquals(borrow.Components[0], callee) &&
+            (payload ? borrow.Semantics == plan.ReceiverKind && plan.ReceiverKind is SemanticsKind.Ref or SemanticsKind.Uniq
+                : borrow.Semantics == SemanticsKind.Ref && plan.ReceiverKind == SemanticsKind.Ref && callee.Kind == BoundTypeKind.Function);
+    }
+
     internal bool ConflictsWithLoan(int id, int loanId, int activation = -1)
     {
         var operation = this.Operations[id];
@@ -169,7 +186,7 @@ public sealed partial class OwnershipBody
                 loan.Mode != LoanRequirement.Ref || loan.Projection != -1 || this.Operations[loan.Read].Place != loan.Place ||
                 (loan.Guard < 0 && this.Places[loan.Place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter) &&
                     ((!loan.Access && loan.Call is null && this.Places[loan.Place].Type.Kind != BoundTypeKind.Function) || this.Places[loan.Place].Kind is not (OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result))) ||
-                (loan.Access ? loan.Call is not null || loan.Guard != -1 || (this.Places[loan.Place].Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary) && !StructStorage.IsStruct(this.Places[loan.Place].Type))
+                (loan.Access ? loan.Call is not null || loan.Guard != -1 || (this.Places[loan.Place].Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary) && !AdtDef.IsStruct(this.Places[loan.Place].Type))
                     : loan.Guard < 0 && !ReferenceEquals(this.Places[loan.Place].Type, BoundType.String) && this.Places[loan.Place].Type.Kind != BoundTypeKind.Function) ||
                 this.LoanStates[loan.Read] != i || this.LoanInputs[loan.Read] != loan.Parent)
             {
@@ -235,55 +252,23 @@ public sealed partial class OwnershipBody
 
         foreach (var edge in this.EdgeStorage)
         {
-            // A checking-only tail can point at a runtime join without arriving there.
-            if (edge.Kind != OwnershipEdgeKind.Abort && (this.IsReachable(edge.From) || (!this.IsReachable(edge.To) && this.OperationRegions[edge.From] == this.OperationRegions[edge.To])) &&
-                this.LoanStates[edge.From] != this.LoanInputs[edge.To])
+            // Unreachable source starts without Loans and may point at a join it never arrives at.
+            if (edge.Kind != OwnershipEdgeKind.Abort && this.IsReachable(edge.From) && this.LoanStates[edge.From] != this.LoanInputs[edge.To])
             {
                 return false;
-            }
-        }
-
-        foreach (var region in this.CheckingRegions)
-        {
-            if (region.Seed >= 0 && region.Entry >= 0 && region.SeedCount == 0 && !this.CheckingSeedLoansMatch(region.Seed, region.Replay, region.Entry))
-            {
-                return false;
-            }
-
-            for (var i = 0; region.Entry >= 0 && i < region.SeedCount; i++)
-            {
-                var seed = this.CheckingSeeds[region.SeedStart + i];
-                if (!this.CheckingSeedLoansMatch(seed.Operation, seed.Replay, region.Entry))
-                {
-                    return false;
-                }
             }
         }
 
         return true;
     }
 
-    private bool CheckingSeedLoansMatch(int operation, int replay, int entry)
-    {
-        if (replay < -1 || replay >= this.CheckingReplays.Count)
-        {
-            return false;
-        }
-
-        // Replay includes guard cleanup. The original seed can still carry a
-        // protection that was ended before this checking-only arrival.
-        var end = replay < 0 ? operation : this.CheckingReplays[replay].End;
-        return (uint)end < (uint)this.LoanStates.Count && (uint)entry < (uint)this.LoanInputs.Count &&
-            this.LoanStates[end] == this.LoanInputs[entry];
-    }
-
-    // The receiver Place has the plan's Type, or is the temporary shared borrow of a common Function value in a field or element.
-    private bool CallableReceiverType(int place, BoundValueCall plan)
+    // The receiver Place has the plan's Type or lends its callee (IsBorrowedCallableReceiver). The analyzed Place Type is compared with
+    // the plan's declared receiver Type interpreted where the Loan reads it (SPEC 8.10).
+    private bool CallableReceiverType(int place, CallPlan plan, int read)
     {
         var type = this.Places[place].Type;
-        var receiver = this.Concrete(plan.ReceiverType);
-        return ReferenceEquals(type, receiver) || (receiver?.Kind == BoundTypeKind.Function && this.Places[place].Kind == OwnershipPlaceKind.Temporary &&
-            type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } && ReferenceEquals(type.Components[0], receiver));
+        var receiver = this.Resolve(plan.CalleeType, this.ContextAt(read));
+        return ReferenceEquals(type, receiver) || (receiver is not null && IsBorrowedCallableReceiver(this.Places[place], receiver, plan));
     }
 
     private bool ValidCallableLoan(int index)
@@ -294,7 +279,7 @@ public sealed partial class OwnershipBody
             (uint)loan.Place < (uint)this.Places.Count && (uint)loan.Read < (uint)this.Operations.Count && loan.Parent < index && loan.Depth > 0 &&
             loan.Call is null && loan.Guard == -1 && !loan.Access && loan.Projection == -1 &&
             this.Operations[loan.Read].Kind == OwnershipOperationKind.Read && this.Operations[loan.Read].Place == loan.Place &&
-            ReferenceEquals(this.Operations[loan.Read].Source, plan.Receiver) && this.CallableReceiverType(loan.Place, plan) &&
+            ReferenceEquals(this.Operations[loan.Read].Source, plan.CalleeValue) && this.CallableReceiverType(loan.Place, plan, loan.Read) &&
             (loan.Mode != LoanRequirement.Uniq || this.Places[loan.Place].Type.Semantics == SemanticsKind.Uniq || this.Places[loan.Place].Mutable) &&
             this.LoanInputs[loan.Read] == loan.Parent && this.LoanStates[loan.Read] == index &&
             (loan.Parent < 0 || this.ComparisonLoans[loan.Parent].Depth <= loan.Depth) &&
@@ -395,9 +380,9 @@ public sealed partial class OwnershipBody
             return arm.GuardEntry + 1 == loan.Read && ReferenceEquals(this.Operations[loan.Read].Source, this.Operations[arm.GuardEntry].Source);
         }
 
-        // Only a new candidate read in a transfer-seeded checking region may
-        // establish replacement protection after the original Loan has ended.
-        return !this.IsReachable(loan.Read) && this.OperationRegions[loan.Read] > 0 &&
+        // Only a new candidate read in unreachable source may establish
+        // replacement protection after the original Loan has ended.
+        return !this.IsReachable(loan.Read) &&
             (uint)arm.GuardLoan < (uint)index && this.ComparisonLoans[arm.GuardLoan].Depth == loan.Depth &&
             this.OperationSteps[loan.Read] == loan.Guard && this.Operations[loan.Read].Input >= 0 &&
             this.Values[loan.Read].Kind is OwnershipValueKind.Borrow or OwnershipValueKind.PatternProjection;

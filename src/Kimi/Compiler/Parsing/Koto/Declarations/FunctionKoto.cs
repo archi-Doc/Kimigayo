@@ -35,6 +35,8 @@ public sealed record class FunctionParameterKoto
     /// <summary>Gets the written external name's span for syntax evidence.</summary>
     internal SourceSpan ExternalNameSpan { get; init; }
 
+    internal SourceSpan InternalNameSpan { get; init; }
+
     /// <summary>Initializes a new instance of the <see cref="FunctionParameterKoto"/> class.</summary>
     /// <param name="externalName">The caller-facing name.</param>
     /// <param name="internalName">The body-facing name.</param>
@@ -67,11 +69,19 @@ public sealed class FunctionKoto : DeclarationKoto
     /// <summary>Gets the function modifiers.</summary>
     public ModifierKind Modifier { get; private set; }
 
+    /// <summary>Gets a value indicating whether this declaration introduces a virtual slot.</summary>
+    public bool IsVirtual => (this.Modifier & ModifierKind.Virtual) != 0;
+
+    /// <summary>Gets a value indicating whether this declaration supplies an inherited slot's implementation.</summary>
+    public bool IsOverride => (this.Modifier & ModifierKind.Override) != 0;
+
     /// <summary>Gets the function name.</summary>
     public string Name { get; private set; } = string.Empty;
 
     /// <summary>Gets the parsed signature span before the function's span is extended by its body.</summary>
     internal SourceSpan SignatureSpan { get; }
+
+    internal SourceSpan DispatchModifierSpan { get; }
 
     // Anonymous bodies also inherit their enclosing function's substitution through every environment boundary.
     internal bool RequiresInstantiation => !this.IsSpecialization &&
@@ -86,36 +96,8 @@ public sealed class FunctionKoto : DeclarationKoto
     /// <summary>Gets the written parameter index after the ! boundary, or -1 when absent.</summary>
     public int NameBoundaryIndex { get; internal set; } = -1;
 
-    /// <summary>Gets normalized K after Binding, or -1 for an unverified specialization.</summary>
-    public int PositionalParameterCount
-    {
-        get
-        {
-            if (this.IsSpecialization)
-            {
-                return this.Kotonoha.Compilation.Binding.GetSpecializationOriginal(this)?.PositionalParameterCount ?? -1;
-            }
-
-            var limit = this.NameBoundaryIndex < 0 ? this.Parameters.Count : this.NameBoundaryIndex;
-            var receiver = this.BoundSymbol?.ReceiverIndex ?? -1;
-            return limit - (receiver >= 0 && receiver < limit ? 1 : 0);
-        }
-    }
-
     internal bool AllowsPositionalArgument(int index)
         => index == this.BoundSymbol?.ReceiverIndex || this.NameBoundaryIndex < 0 || index < this.NameBoundaryIndex;
-
-    internal int MaxPositionalArguments(bool boundReceiver)
-    {
-        var limit = this.NameBoundaryIndex < 0 ? this.Parameters.Count : this.NameBoundaryIndex;
-        var receiver = this.BoundSymbol?.ReceiverIndex ?? -1;
-        if (receiver == limit)
-        {
-            limit++;
-        }
-
-        return limit - (boundReceiver && receiver >= 0 && receiver < limit ? 1 : 0);
-    }
 
     internal int FindParameter(string name)
     {
@@ -237,7 +219,44 @@ public sealed class FunctionKoto : DeclarationKoto
     /// <summary>Gets the base constructor initializer.</summary>
     public InvocationKoto? BaseInitializer { get; private set; }
 
-    internal BoundClosure? ClosureStorage { get; set; }
+    private InvocationKoto? implicitBaseInitializer;
+
+    /// <summary>Gets a value indicating whether this is a structure's synthesized constructor (SPEC 6.2.3.6).</summary>
+    internal bool IsImplicitConstructor { get; }
+
+    /// <summary>Gets a value indicating whether <see cref="BaseInitializer"/> is the retained call of an omitted base clause.</summary>
+    internal bool HasOmittedBaseInitializer => this.BaseInitializer is not null && ReferenceEquals(this.BaseInitializer, this.implicitBaseInitializer);
+
+    internal void PrepareBaseInitializer()
+    {
+        if (this.BaseInitializer is not null && !ReferenceEquals(this.BaseInitializer, this.implicitBaseInitializer))
+        {
+            return;
+        }
+
+        this.BaseInitializer = null;
+        if (this.IsConstructor && this.Parent is StructKoto { Bases: [var clause, ..] })
+        {
+            if (this.implicitBaseInitializer is null)
+            {
+                var target = new SyntaxFormKoto(this);
+                this.implicitBaseInitializer = new(this, target, []);
+                target.Parent = this.implicitBaseInitializer;
+            }
+
+            // A synthesized constructor's base call is located at the structure's base clause (SPEC 6.2.2), in that clause's
+            // fragment; its target keeps an empty span.
+            this.implicitBaseInitializer.CodeContext = this.IsImplicitConstructor ? clause.CodeContext : this.CodeContext;
+            this.implicitBaseInitializer.Span = this.IsImplicitConstructor ? clause.Span : this.SignatureSpan;
+            this.SetBaseInitializer(this.implicitBaseInitializer);
+        }
+    }
+
+    internal BoundClosure? ClosureStorage
+    {
+        get => HirTables.PlanOf(this).Plan as BoundClosure;
+        set => HirTables.PlanFor(this, value is not null).Plan = value;
+    }
 
     /// <summary>Gets or sets the end of the header, the closing parenthesis of the parameter list (SPEC 23.3.6.5 relates a closure end there).</summary>
     internal int HeaderEnd { get; set; }
@@ -317,6 +336,7 @@ public sealed class FunctionKoto : DeclarationKoto
     {
         this.SetAttributeChain(context.AttributeKoto);
         this.Modifier = context.ModifierKind;
+        this.DispatchModifierSpan = context.DispatchModifierSpan;
         this.Name = name;
         this.SignatureSpan = range;
         this.genericArguments = genericArguments;
@@ -352,6 +372,7 @@ public sealed class FunctionKoto : DeclarationKoto
     {
         this.Name = "init";
         this.IsConstructor = true;
+        this.IsImplicitConstructor = true;
         this.Modifier = ModifierKind.Public;
         this.Parent = owner;
         this.Body = new CodeBlockKoto(owner.CodeContext) { Parent = this };
@@ -375,9 +396,32 @@ public sealed class FunctionKoto : DeclarationKoto
         {
             this.parameters.Add(new("value", "value", new IdentifierNameKoto(accessor.Declaration, "value"), null));
         }
+
+        foreach (var parameter in this.parameters)
+        {
+            this.AttachParameter(parameter);
+        }
     }
 
     internal BoundAccessor? Accessor { get; }
+
+    internal bool IsPropertyWitness { get; private set; }
+
+    internal void SetPropertyWitnessBody(Koto expression, BoundType result)
+    {
+        if (!this.IsPropertyWitness)
+        {
+            this.ReturnType = new IdentifierNameKoto(expression, "result") { Parent = this };
+        }
+
+        this.IsPropertyWitness = true;
+        this.IsRequirement = false;
+        this.Body = null;
+        this.ExpressionBody = expression;
+        expression.Parent = this;
+        this.ReturnType!.BoundType = result;
+        this.ReturnType.BindingState = BindingState.Resolved;
+    }
 
     // An execution view of a static initializer, retaining its original syntax and source location.
     internal FunctionKoto(BoundProperty property)
@@ -418,8 +462,87 @@ public sealed class FunctionKoto : DeclarationKoto
 
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
+        => this.WriteDeclarationTo(ref builder, headerOnly: false);
+
+    /// <summary>Writes the published signature without bodies or default expressions.</summary>
+    /// <param name="builder">The output.</param>
+    internal void WriteHeaderTo(ref IndentedStringBuilder builder)
+        => this.WriteDeclarationTo(ref builder, headerOnly: true);
+
+    internal void RefreshStaticInitializer()
     {
-        if (this.IsGenerated)
+        this.ExpressionBody = this.StaticInitializer!.Declaration.InitializerKoto;
+        this.ReturnType = this.StaticInitializer.Declaration.TypeKoto;
+        this.BoundSymbol!.Type = this.StaticInitializer.Type;
+        this.BindingState = BindingState.Resolved;
+    }
+
+    internal void RefreshAccessor()
+    {
+        var accessor = this.Accessor!;
+        this.Body = accessor.Declaration!.Body as CodeBlockKoto;
+        this.ExpressionBody = this.Body is null ? accessor.Declaration.Body : null;
+        if (!this.IsPropertyWitness)
+        {
+            this.ReturnType = accessor.Declaration.ReturnType;
+        }
+
+        for (var i = 0; i < this.Parameters.Count; i++)
+        {
+            this.Parameters[i].Type.BoundType = i == 0 && accessor.Receiver is not null ? accessor.Receiver : accessor.Input;
+            this.Parameters[i].Type.BindingState = BindingState.Resolved;
+        }
+    }
+
+    /// <summary>Adds top-level syntax to this generated function.</summary>
+    /// <param name="item">The syntax node to add.</param>
+    internal void AddGeneratedItem(Koto item)
+    {
+        if (!this.IsGenerated || this.Body is null)
+        {
+            throw new InvalidOperationException();
+        }
+
+        this.Body.AddLast(item);
+    }
+
+    protected override void ForEachChildSlot(ref ChildSlots slots)
+    {
+        this.BaseInitializer = slots.Slot(this.BaseInitializer);
+        slots.List(this.typeConstraints);
+        slots.List(this.effectBounds);
+        slots.List(this.genericArguments);
+        for (var i = 0; this.parameters is { } parameters && i < parameters.Count; i++)
+        {
+            var parameter = parameters[i];
+            parameter.AttributeChain = slots.Slot(parameter.AttributeChain);
+            parameter.Type = slots.Slot(parameter.Type);
+            parameter.DefaultValue = slots.Slot(parameter.DefaultValue);
+        }
+
+        this.ReturnType = slots.Slot(this.ReturnType);
+        this.Body = slots.Slot(this.Body);
+        this.ExpressionBody = slots.Slot(this.ExpressionBody);
+    }
+
+    private void AttachParameter(FunctionParameterKoto parameter)
+    {
+        Koto parent = this;
+        var attribute = parameter.AttributeChain;
+        while (attribute is not null)
+        {
+            attribute.Parent = parent;
+            parent = attribute;
+            attribute = attribute.AttributeChain;
+        }
+
+        parameter.Type.Parent = this;
+        this.Adopt(parameter.DefaultValue);
+    }
+
+    private void WriteDeclarationTo(ref IndentedStringBuilder builder, bool headerOnly)
+    {
+        if (this.IsGenerated && !headerOnly)
         {
             this.Body?.WriteTo(ref builder);
             return;
@@ -468,6 +591,12 @@ public sealed class FunctionKoto : DeclarationKoto
 
         if (this.IsDestructor)
         {
+            if (headerOnly)
+            {
+                OriginClauses.Write(this, ref builder);
+                return;
+            }
+
             if (this.ExpressionBody is not null)
             {
                 builder.Append(" => ");
@@ -498,7 +627,7 @@ public sealed class FunctionKoto : DeclarationKoto
         }
 
         var multilineParameters = false;
-        if (this.parameters is { } declaredParameters)
+        if (!headerOnly && this.parameters is { } declaredParameters)
         {
             for (var i = 0; i < declaredParameters.Count; i++)
             {
@@ -558,7 +687,14 @@ public sealed class FunctionKoto : DeclarationKoto
                 if (parameter.DefaultValue is not null)
                 {
                     builder.Append(" = ");
-                    parameter.DefaultValue.WriteTo(ref builder);
+                    if (headerOnly)
+                    {
+                        builder.Append("<default omitted>");
+                    }
+                    else
+                    {
+                        parameter.DefaultValue.WriteTo(ref builder);
+                    }
                 }
             }
         }
@@ -570,7 +706,7 @@ public sealed class FunctionKoto : DeclarationKoto
         }
 
         builder.Append(')');
-        if (this.BaseInitializer is not null)
+        if (!headerOnly && this.BaseInitializer is not null && !ReferenceEquals(this.BaseInitializer, this.implicitBaseInitializer))
         {
             builder.Append(" : ");
             this.BaseInitializer.WriteTo(ref builder);
@@ -582,7 +718,7 @@ public sealed class FunctionKoto : DeclarationKoto
             this.ReturnType.WriteTo(ref builder);
         }
 
-        if (this.ExpressionBody is not null)
+        if (!headerOnly && this.ExpressionBody is not null)
         {
             builder.Append(" => ");
             this.ExpressionBody.WriteTo(ref builder);
@@ -604,239 +740,16 @@ public sealed class FunctionKoto : DeclarationKoto
                 builder.AppendLine();
             }
 
-            this.Body?.WriteTo(ref builder);
+            if (!headerOnly)
+            {
+                this.Body?.WriteTo(ref builder);
+            }
+
             builder.DecrementIndent();
         }
-        else
+        else if (!headerOnly)
         {
             this.Body?.WriteIndentedTo(ref builder);
         }
-    }
-
-    internal void RefreshStaticInitializer()
-    {
-        this.ExpressionBody = this.StaticInitializer!.Declaration.InitializerKoto;
-        this.ReturnType = this.StaticInitializer.Declaration.TypeKoto;
-        this.BoundSymbol!.Type = this.StaticInitializer.Type;
-        this.BindingState = BindingState.Resolved;
-    }
-
-    internal void RefreshAccessor()
-    {
-        var accessor = this.Accessor!;
-        this.Body = accessor.Declaration!.Body as CodeBlockKoto;
-        this.ExpressionBody = this.Body is null ? accessor.Declaration.Body : null;
-        this.ReturnType = accessor.Declaration.ReturnType;
-        for (var i = 0; i < this.Parameters.Count; i++)
-        {
-            this.Parameters[i].Type.BoundType = i == 0 && accessor.Receiver is not null ? accessor.Receiver : accessor.Input;
-            this.Parameters[i].Type.BindingState = BindingState.Resolved;
-        }
-    }
-
-    /// <summary>Adds top-level syntax to this generated function.</summary>
-    /// <param name="item">The syntax node to add.</param>
-    internal void AddGeneratedItem(Koto item)
-    {
-        if (!this.IsGenerated || this.Body is null)
-        {
-            throw new InvalidOperationException();
-        }
-
-        this.Body.AddLast(item);
-    }
-
-    protected override void VisitChildrenCore(KotoVisitor visitor)
-    {
-        if (this.BaseInitializer is not null)
-        {
-            visitor.Visit(this.BaseInitializer);
-        }
-
-        if (this.typeConstraints is not null)
-        {
-            for (var constraintIndex = 0; constraintIndex < this.typeConstraints.Count; constraintIndex++)
-            {
-                var constraint = this.typeConstraints[constraintIndex];
-                visitor.Visit(constraint);
-            }
-        }
-
-        visitor.VisitMany(this.effectBounds);
-
-        if (this.genericArguments is not null)
-        {
-            for (var argumentIndex = 0; argumentIndex < this.genericArguments.Count; argumentIndex++)
-            {
-                var argument = this.genericArguments[argumentIndex];
-                visitor.Visit(argument);
-            }
-        }
-
-        if (this.parameters is not null)
-        {
-            for (var parameterIndex = 0; parameterIndex < this.parameters.Count; parameterIndex++)
-            {
-                var parameter = this.parameters[parameterIndex];
-                if (parameter.AttributeChain is not null)
-                {
-                    visitor.Visit(parameter.AttributeChain);
-                }
-
-                visitor.Visit(parameter.Type);
-                if (parameter.DefaultValue is not null)
-                {
-                    visitor.Visit(parameter.DefaultValue);
-                }
-            }
-        }
-
-        if (this.ReturnType is not null)
-        {
-            visitor.Visit(this.ReturnType);
-        }
-
-        if (this.Body is not null)
-        {
-            visitor.Visit(this.Body);
-        }
-
-        if (this.ExpressionBody is not null)
-        {
-            visitor.Visit(this.ExpressionBody);
-        }
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-    {
-        if (this.BaseInitializer is not null)
-        {
-            yield return this.BaseInitializer;
-        }
-
-        if (this.typeConstraints is not null)
-        {
-            foreach (var constraint in this.typeConstraints)
-            {
-                yield return constraint;
-            }
-        }
-
-        if (this.effectBounds is not null)
-        {
-            foreach (var effect in this.effectBounds)
-            {
-                yield return effect;
-            }
-        }
-
-        if (this.genericArguments is not null)
-        {
-            foreach (var argument in this.genericArguments)
-            {
-                yield return argument;
-            }
-        }
-
-        if (this.parameters is not null)
-        {
-            foreach (var parameter in this.parameters)
-            {
-                if (parameter.AttributeChain is not null)
-                {
-                    yield return parameter.AttributeChain;
-                }
-
-                yield return parameter.Type;
-                if (parameter.DefaultValue is not null)
-                {
-                    yield return parameter.DefaultValue;
-                }
-            }
-        }
-
-        if (this.ReturnType is not null)
-        {
-            yield return this.ReturnType;
-        }
-
-        if (this.Body is not null)
-        {
-            yield return this.Body;
-        }
-
-        if (this.ExpressionBody is not null)
-        {
-            yield return this.ExpressionBody;
-        }
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (this.BaseInitializer == oldKoto && newKoto is InvocationKoto initializer)
-        {
-            this.BaseInitializer = initializer;
-            return true;
-        }
-
-        if (this.ExpressionBody == oldKoto)
-        {
-            this.ExpressionBody = newKoto;
-            return true;
-        }
-
-        if (this.Body == oldKoto && newKoto is CodeBlockKoto block)
-        {
-            this.Body = block;
-            return true;
-        }
-
-        if (this.ReturnType == oldKoto)
-        {
-            this.ReturnType = newKoto;
-            return true;
-        }
-
-        if (this.parameters is not null)
-        {
-            foreach (var parameter in this.parameters)
-            {
-                if (parameter.AttributeChain == oldKoto && newKoto is AttributeKoto attribute)
-                {
-                    parameter.AttributeChain = attribute;
-                    return true;
-                }
-
-                if (parameter.Type == oldKoto)
-                {
-                    parameter.Type = newKoto;
-                    return true;
-                }
-
-                if (parameter.DefaultValue == oldKoto)
-                {
-                    parameter.DefaultValue = newKoto;
-                    return true;
-                }
-            }
-        }
-
-        return ReplaceInList(this.typeConstraints, oldKoto, newKoto) || ReplaceInList(this.effectBounds, oldKoto, newKoto) ||
-            (oldKoto is TypeKoto && newKoto is TypeKoto && ReplaceInList(this.genericArguments, oldKoto, newKoto));
-    }
-
-    private void AttachParameter(FunctionParameterKoto parameter)
-    {
-        Koto parent = this;
-        var attribute = parameter.AttributeChain;
-        while (attribute is not null)
-        {
-            attribute.Parent = parent;
-            parent = attribute;
-            attribute = attribute.AttributeChain;
-        }
-
-        parameter.Type.Parent = this;
-        this.Adopt(parameter.DefaultValue);
     }
 }

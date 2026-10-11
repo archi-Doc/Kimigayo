@@ -31,8 +31,8 @@ public class CallAdaptationTest
     {
         var c = MinimalEmissionTest.Analyze("let n: i32 = 1\nlet r: ref/(i32, i32) = (n, 2)\nlet value = r@follow");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.False(c.Analysis.IsVerified);
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
 
     [Theory]
@@ -82,7 +82,7 @@ public class CallAdaptationTest
     public void CorrectAcquisitionPasses(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Trait("Purpose", "Allocation")]

@@ -123,7 +123,7 @@ public class ParseBenchmark
         try
         {
             // Measure lexing and parsing, without adding each invocation to the module's serialization history.
-            this.compilation.BeginSourceParsing();
+            this.compilation.BeginSourceParsing(kotonoha);
             tokenizer.ReadAll();
             var reader = new TokenReader(codeContext, ref tokenizer);
             kotonoha.RootKoto.Parse(ref reader);

@@ -33,7 +33,7 @@ public class RangeIndexParseTest
         Assert.Same(last, fromEnd.Parent);
 
         Assert.IsType<FromEndIndexKoto>(fields["end"].InitializerKoto);
-        Assert.IsType<CaretKoto>(fields["xor"].InitializerKoto);
+        ParseTestHelper.Binary(KotoKind.Caret, fields["xor"].InitializerKoto);
     }
 
     [Fact]
@@ -76,11 +76,11 @@ public class RangeIndexParseTest
             """);
 
         var range = Assert.IsType<RangeKoto>(fields["value"].InitializerKoto);
-        Assert.IsType<PlusKoto>(range.Start);
-        Assert.IsType<OrKoto>(range.End);
+        ParseTestHelper.Binary(KotoKind.Plus, range.Start);
+        ParseTestHelper.Binary(KotoKind.Or, range.End);
         Assert.IsType<RangeKoto>(fields["stored"].InitializerKoto);
 
-        var assignment = Assert.IsType<EqualsKoto>(fields["assigned"].InitializerKoto);
+        var assignment = ParseTestHelper.Binary(KotoKind.Equals, fields["assigned"].InitializerKoto);
         Assert.IsType<RangeKoto>(assignment.Right);
     }
 

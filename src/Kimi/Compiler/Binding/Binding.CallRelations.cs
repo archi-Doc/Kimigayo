@@ -118,7 +118,43 @@ public sealed partial class Binding
             this.JudgeCallFit(selected, operations, argumentCount, i);
         }
 
-        if (this.originDeclarations.TryGetValue(selected, out var declaration))
+        for (var i = 0; i <= argumentCount; i++)
+        {
+            this.RequireInputPremises(operations[i]);
+        }
+
+        this.JudgeCallClauses(call, selected, operations, argumentCount, origins, inputs, declaringType);
+        this.PublishCallRelations();
+        this.CollectFitBounds(operations, argumentCount);
+    }
+
+    // SPEC 15.4.4, 10.7: the bounds that a selected call's fits give the Origins omitted in open initializers at the Function Type
+    // positions that CollectCallRelations leaves to applicability. Applicability compares such a position as a whole contract and
+    // finds the Origin satisfiable (FitsOriginOutlives); the same fit of each selected input, collected at its source as the call's
+    // judgment is, records the value as the Origin's bound.
+    private void CollectFitBounds(ReadOnlySpan<BoundArgumentOperation> operations, int argumentCount)
+    {
+        this.collectingFits = true;
+        try
+        {
+            for (var i = 0; i <= argumentCount; i++)
+            {
+                if (operations[i] is { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter } && adapted.CarriesOrigin)
+                {
+                    _ = this.FitsStructurallyAt(adapted, parameter, at);
+                }
+            }
+        }
+        finally
+        {
+            this.collectingFits = false;
+        }
+    }
+
+    private void JudgeCallClauses(InvocationKoto call, FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, int argumentCount, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType)
+    {
+        var binder = selected.Accessor?.Binder ?? selected;
+        if (this.originDeclarations.TryGetValue(binder, out var declaration))
         {
             foreach (var relation in declaration.Relations)
             {
@@ -130,8 +166,6 @@ public sealed partial class Binding
             }
         }
 
-        this.PublishCallRelations();
-
         BoundOrigin Substitute(BoundOrigin origin)
         {
             if (declaringType?.Symbol is { } owner)
@@ -139,7 +173,8 @@ public sealed partial class Binding
                 origin = this.SubstituteStoredOrigin(origin, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments);
             }
 
-            return this.SubstituteStoredOrigin(origin, selected, origins.AsSpan(0, selected.BoundSymbol?.Schema?.Origins.Count ?? 0), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(selected))));
+            var originCount = selected.Accessor?.Declaration?.Origins.Count ?? selected.BoundSymbol?.Schema?.Origins.Count ?? 0;
+            return this.SubstituteStoredOrigin(origin, binder, origins.AsSpan(0, originCount), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(binder))));
         }
     }
 
@@ -153,7 +188,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < more!.Count; i++)
         {
-            ReportOriginRelation(node, more[i], requirement, OriginRelationCode(more[i]), this.BorrowOriginHint(node), (ushort)(i + 1));
+            ReportOriginRelation(node, more[i], requirement, OriginRelationCode(more[i]), this.OmittedResultNote(node), (ushort)(i + 1));
         }
     }
 
@@ -162,7 +197,7 @@ public sealed partial class Binding
     {
         var operation = operations[index];
         if (operation is not { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter } || ReferenceEquals(adapted, parameter) ||
-            !adapted.CarriesOrigin || !parameter.CarriesOrigin)
+            !adapted.StoresOrigin || !parameter.StoresOrigin)
         {
             return;
         }
@@ -193,9 +228,10 @@ public sealed partial class Binding
             pattern = null;
         }
 
-        if (actual.Origin is { } longer && expected.Origin is { } shorter)
+        if (FitOuterOrigins(actual, expected, this, context.At, out var longer, out var shorter) == OuterOriginFit.Relation)
         {
-            this.JudgeCallPosition(context.At, longer, shorter, invariant, pattern?.Origin, null, context: context, slot: slot);
+            // SPEC 8.1.2, 15.6.5: a pair layer's slot, `o` included, exists only in its binder's borrow cases.
+            this.JudgeCallPosition(context.At, longer, shorter, invariant, pattern is null ? null : this.OuterOrigin(pattern), null, context: context, slot: slot, condition: SlotCondition(actual, this, context.At));
         }
 
         var exclusive = IsInvariantLayer(actual, this);
@@ -246,25 +282,34 @@ public sealed partial class Binding
 
     // SPEC 15.6.5: judges `longer outlives shorter` (and the reverse for `==`) at `at`. A meet at the longer end decomposes, so each
     // failing operand is its own record (SPEC 15.3.6).
-    private void JudgeCallPosition(Koto at, BoundOrigin longer, BoundOrigin shorter, bool equality, BoundOrigin? variable, Koto? clause, bool declared = false, in CallFit context = default, BoundType? slot = null)
+    private void JudgeCallPosition(Koto at, BoundOrigin longer, BoundOrigin shorter, bool equality, BoundOrigin? variable, Koto? clause, bool declared = false, in CallFit context = default, BoundType? slot = null, bool wellFormed = false, ulong condition = 0)
     {
         if (ReferenceEquals(longer, shorter))
         {
             return;
         }
 
-        if (!equality && longer.Kind == OriginKind.Intersection && !this.ProvesOriginOutlives(longer, shorter, at))
+        if (!equality && longer.Kind == OriginKind.Intersection && !this.FitOriginOutlives(longer, shorter, at, condition))
         {
             for (var i = 0; i < longer.Operands.Count; i++)
             {
-                this.JudgeCallPosition(at, longer.Operands[i], shorter, false, variable, clause, declared, context, slot);
+                this.JudgeCallPosition(at, longer.Operands[i], shorter, false, variable, clause, declared, context, slot, wellFormed, condition);
             }
 
             return;
         }
 
-        var forward = this.ProvesOriginOutlives(longer, shorter, at) ? OriginJudgment.Proven : this.JudgeOriginRelation(longer, shorter, at);
-        var backward = !equality || this.ProvesOriginOutlives(shorter, longer, at) ? OriginJudgment.Proven : this.JudgeOriginRelation(shorter, longer, at);
+        // Complete initializer-owned holes before deferring finite constraints to the body graph.
+        var forwardProven = this.FitOriginOutlives(longer, shorter, at, condition);
+        var backwardProven = !equality || this.FitOriginOutlives(shorter, longer, at, condition);
+        if (!FixedOrigin(longer) || !FixedOrigin(shorter))
+        {
+            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, longer, shorter, Equality: equality, Clause: declared ? clause : null, WellFormed: wellFormed, Condition: condition));
+            return; // Local bounds are judged after every assignment and selected call has contributed its constraints.
+        }
+
+        var forward = forwardProven ? OriginJudgment.Proven : this.JudgeOriginRelation(longer, shorter, at, condition);
+        var backward = backwardProven ? OriginJudgment.Proven : this.JudgeOriginRelation(shorter, longer, at, condition);
         if (forward is OriginJudgment.Refuted or OriginJudgment.Unknown || backward is OriginJudgment.Refuted or OriginJudgment.Unknown)
         {
             // An equality fails as one `==` record; a fresh Origin or a Type slot fixed by another input relates that input (SPEC 15.6.1,
@@ -273,19 +318,19 @@ public sealed partial class Binding
                 : variable is not null ? this.EqualitySource(context, variable, shorter)
                 : slot is not null ? SlotEqualitySource(context, slot, shorter) : null;
             var refuted = forward == OriginJudgment.Refuted || backward == OriginJudgment.Refuted;
-            this.callRelationScratch.Add((at, new(at, longer, shorter, equality, declared ? null : context.Parameter, refuted, declared ? clause : null, Substituted: declared, FixedBy: fixedBy)));
+            this.callRelationScratch.Add((at, new(at, longer, shorter, equality, declared ? null : context.Parameter, refuted, declared ? clause : null, Substituted: declared, FixedBy: fixedBy, WellFormed: wellFormed)));
             return;
         }
 
         // A chain between body Origins needs region inference over Loan edges: ownership reports it as the located limit at `at`.
         if (forward == OriginJudgment.Unrepresentable)
         {
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, longer, shorter));
+            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, longer, shorter, WellFormed: wellFormed, Condition: condition));
         }
 
         if (backward == OriginJudgment.Unrepresentable)
         {
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, shorter, longer));
+            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, shorter, longer, WellFormed: wellFormed, Condition: condition));
         }
     }
 
@@ -327,6 +372,19 @@ public sealed partial class Binding
         }
 
         return null;
+    }
+
+    private bool HasCallRelation(Koto node)
+    {
+        for (var i = 0; i < this.callRelationScratch.Count; i++)
+        {
+            if (ReferenceEquals(this.callRelationScratch[i].Node, node))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // Fails each node with its first record and keeps the others for publication with it.

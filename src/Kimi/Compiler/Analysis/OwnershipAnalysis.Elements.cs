@@ -11,7 +11,7 @@ public sealed partial class OwnershipAnalysis
     private int WriteBorrowedArrayElement(Koto source, IndexKoto target)
     {
         var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
-        var type = this.Concrete(target.BoundType);
+        var type = this.Resolve(target.BoundType, this.Active);
         if (type is null || (operation != KotoKind.Equals && !this.SupportsUpdate(target, target.BoundType, operation)))
         {
             this.Unsupported(source);
@@ -24,7 +24,7 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        var address = this.BorrowStruct(target, this.compilation.Binding.Reference(SemanticsKind.Uniq, target.BoundType!, ElementAccess.AccessType(target.Left, true)!.Origin));
+        var address = this.BorrowStruct(target, this.compilation.Types.Reference(SemanticsKind.Uniq, target.BoundType!, ElementAccess.AccessType(target.Left, true)!.Origin));
         var pointer = this.Value(address);
         if (pointer < 0)
         {
@@ -64,6 +64,12 @@ public sealed partial class OwnershipAnalysis
         }
 
         var plan = this.body.Projections[projection];
+        if (ReferenceEquals(source.BoundType, BoundType.String) && plan.Path != projection && ElementAccess.SupportsBorrowRoot(this.body.Places[plan.Root]))
+        {
+            this.Unsupported(source); // PLAN G59: a string below a runtime-selected element needs the owned projection route.
+            return -1;
+        }
+
         if (!ReferenceEquals(source.BoundType, BoundType.String) || plan.Path != projection ||
             !ElementAccess.SupportsBorrowRoot(this.body.Places[plan.Root]))
         {
@@ -83,6 +89,22 @@ public sealed partial class OwnershipAnalysis
         return call is null ? plan.Root : this.RegisterTemporary(result);
     }
 
+    private int BorrowElementAddress(BinaryKoto source, int projection, BoundType type)
+    {
+        if (projection < 0)
+        {
+            return -1;
+        }
+
+        var plan = this.body.Projections[projection];
+        var result = this.Place(source, type, OwnershipPlaceKind.Temporary, false);
+        var exclusive = type.Semantics == SemanticsKind.Uniq;
+        var borrow = this.Emit(OwnershipOperationKind.Borrow, source, plan.Root, result, loanMode: exclusive ? LoanRequirement.Uniq : LoanRequirement.Ref, projection: projection);
+        this.SetValue(borrow, OwnershipValueKind.Address, [], constant: plan.Root);
+        this.body.Projections[projection] = exclusive ? plan with { ReplacementBorrow = borrow } : plan with { Borrow = borrow };
+        return this.RegisterTemporary(result);
+    }
+
     private int UpdateElement(Koto source, BinaryKoto target)
     {
         var operation = ElementAccess.UpdateOperator(source.Akind);
@@ -94,7 +116,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         // SPEC 13.7.2: the RHS is secured before the element is located and read. A transfer in the RHS
-        // leaves a checking continuation; the target is still checked there.
+        // leaves the target unreachable.
         var right = source is BinaryKoto binary ? this.Value(this.Expression(binary.Right)) : 0;
         if (right < 0)
         {
@@ -255,7 +277,7 @@ public sealed partial class OwnershipAnalysis
             {
                 if (this.body.Places[result].Acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove &&
                     this.body.Operations[this.body.Projections[ancestor].Operation].Source is BinaryKoto path &&
-                    path.Left.BoundType is { } owner && StructStorage.Destructor(owner) is not null)
+                    path.Left.BoundType is { } owner && AdtDef.HasDestructorOnPath(owner, path.BoundSymbol))
                 {
                     this.Unsupported(source); // No partial Move through any drop-bearing ancestor.
                 }
@@ -297,7 +319,7 @@ public sealed partial class OwnershipAnalysis
 
         var index = source is IndexKoto keyed ? this.Value(this.SelectionKey(keyed, root, parent, PlaceUseKind.Read)) : -1;
         if (this.defaultFunction is not null && source is IndexKoto keyedRead &&
-            this.body.Operations[^1] is { Kind: OwnershipOperationKind.Read } read && ReferenceEquals(read.Source, ElementAccess.ValueSource(ElementAccess.KeySyntax(keyedRead))))
+            this.body.Operations[^1] is { Kind: OwnershipOperationKind.Read } read && ReferenceEquals(read.Source, ElementAccess.ValueSource(ElementAccess.KeySyntax(keyedRead), this.body, this.body.Operations.Count - 1)))
         {
             // Prepared scalar reads retain their acquired value for subsequent uses.
             // The index plan also needs this declaration-side read's source identity.
@@ -311,7 +333,7 @@ public sealed partial class OwnershipAnalysis
 
         if (!ElementAccess.TryType(source, out _, out var element))
         {
-            this.Unsupported(source);
+            this.Internal(source);
             return -1;
         }
 

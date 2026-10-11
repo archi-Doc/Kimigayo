@@ -32,7 +32,7 @@ public sealed partial class OwnershipAnalysis
 
     private int ResultPlace(Koto source)
     {
-        var stored = SlotTypes.IsResult(this.Concrete(source.BoundType)); // An instance stores a substituted owned result.
+        var stored = SlotTypes.IsResult(this.Resolve(source.BoundType, this.Active)); // An instance stores a substituted owned result.
         var place = stored && this.defaultContext < 0 && this.body.SlotResultPlaces.TryGetValue(source, out var shared) ? shared : this.Temporary(source, false);
         if (stored && this.defaultContext < 0)
         {

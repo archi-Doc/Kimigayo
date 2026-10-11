@@ -69,39 +69,9 @@ public sealed class EffectBoundKoto : Koto
     internal static string Spelling(EffectBoundKind bound)
         => bound == EffectBoundKind.Confined ? Constants.ConfinedKeyword : Constants.PreservesKeyword + " " + Constants.ResultsKeyword;
 
-    /// <inheritdoc/>
-    protected override IEnumerable<Koto> GetChildNodes()
-        => this.Selector is null ? [] : this.Name is null ? [this.Selector] : [this.Selector, this.Name];
-
-    /// <inheritdoc/>
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        if (this.Selector is not null)
-        {
-            visitor.Visit(this.Selector);
-        }
-
-        if (this.Name is not null)
-        {
-            visitor.Visit(this.Name);
-        }
-    }
-
-    /// <inheritdoc/>
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (ReferenceEquals(this.Selector, oldKoto))
-        {
-            this.Selector = newKoto;
-            return true;
-        }
-
-        if (ReferenceEquals(this.Name, oldKoto))
-        {
-            this.Name = newKoto;
-            return true;
-        }
-
-        return false;
+        this.Selector = slots.Slot(this.Selector);
+        this.Name = slots.Slot(this.Name);
     }
 }

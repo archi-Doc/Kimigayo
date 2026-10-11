@@ -34,8 +34,8 @@ public class ConstraintBindingTest
         c.Bind();
         var context = Function(c, "context");
         var queryFunction = Function(c, "query");
-        var proposition = ((IsKoto)queryFunction.TypeConstraints[0]).BoundConstraint!;
-        Assert.Equal(expected, c.Binding.Prove(proposition, queryFunction, [context.Parameters[0].Type.BoundType], context));
+        var proposition = ((IsKoto)queryFunction.TypeConstraints[0]).ConstraintOf()!;
+        Assert.Equal(expected, c.Binding.Prove(proposition, queryFunction, [context.Parameters[0].Type.TypeOf()], context));
     }
 
     [Theory]
@@ -99,8 +99,8 @@ public class ConstraintBindingTest
         c.Bind();
         var query = Function(c, "query");
         var context = Function(c, "context");
-        var constraint = ((IsKoto)query.TypeConstraints[0]).BoundConstraint!;
-        Assert.Equal(ConstraintProof.Unknown, c.Binding.Prove(constraint, query, [context.Parameters[0].Type.BoundType], context));
+        var constraint = ((IsKoto)query.TypeConstraints[0]).ConstraintOf()!;
+        Assert.Equal(ConstraintProof.Unknown, c.Binding.Prove(constraint, query, [context.Parameters[0].Type.TypeOf()], context));
         Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(constraint, query, [constraint.RequiredType], context));
     }
 
@@ -114,7 +114,7 @@ public class ConstraintBindingTest
         var c = Parse((reverse ? b + a : a + b) + "let result = f(1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single();
-        Assert.Empty(((FunctionKoto)call.BoundSymbol!.Declaration).GenericArguments);
+        Assert.Empty(((FunctionKoto)call.SymbolOf()!.Declaration).GenericArguments);
     }
 
     [Fact]
@@ -133,7 +133,7 @@ public class ConstraintBindingTest
         var c = Parse("struct Box<T>\n    T is i32\n    let value: T\nfunc f<U>(value: U)\n    U is i32 or Box<string>\n    ()");
         Assert.False(c.Bind().IsComplete);
         var function = Function(c, "f");
-        Assert.Equal(ConstraintProof.Error, c.Binding.Prove(((IsKoto)function.TypeConstraints[0]).BoundConstraint!, function));
+        Assert.Equal(ConstraintProof.Error, c.Binding.Prove(((IsKoto)function.TypeConstraints[0]).ConstraintOf()!, function));
     }
 
     [Fact]
@@ -173,6 +173,54 @@ public class ConstraintBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
     }
 
+    // SPEC 8.10: a composite clause that a caller's premises cannot prove reports the subject named by its operands.
+    [Theory]
+    [InlineData("s is ref or uniq", "s is borrow")]
+    [InlineData("s is not owner and not obj", "s is owner or borrow")]
+    public void CompositeClausesReportTheirSubjectAtTheCall(string required, string premise)
+    {
+        var source = $"func need<s/T>(value: ref/(s/T))\n    {required}\n    ()\nfunc outer<s/T>(value: ref/(s/T))\n    {premise}\n    need(value)";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal("UnprovenConstraint_Kd", error.Code);
+        Assert.Equal("need(value)", error.Text);
+        Assert.Contains($"requires {required}; this condition cannot be proven for s/T", error.Note, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("func need<T>(value: ref/T)\n    T is Copy or Owned\n    ()\nfunc outer<T>(value: ref/T) => need(value)", "need(value)", "T is Copy or Owned", "T")]
+    [InlineData("func need<T>(value: ref/T)\n    T is Copy and Owned\n    ()\nfunc outer<T>(value: ref/T) => need(value)", "need(value)", "T is Copy and Owned", "T")]
+    [InlineData("func need<T>(value: ref/T)\n    T is not Copy\n    ()\nfunc outer<T>(value: ref/T) => need(value)", "need(value)", "T is not Copy", "T")]
+    [InlineData("contract Describe\n    func describe(self: ref/Self) -> i64\nstruct Box<T>\n    var value: T\n    Self is Describe when T is Copy and Owned\n        public func describe(self: ref/Self) -> i64 => 1\nfunc outer<T>(b: ref/Box<T>) -> i64 => b.describe()", "b.describe()", "T is Copy and Owned", "T")]
+    public void CompositeContractClausesReportTheirSubjectAtTheUse(string source, string use, string clause, string subject)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal("UnprovenConstraint_Kd", error.Code);
+        Assert.Equal(use, error.Text);
+        Assert.Contains($"requires {clause}; this condition cannot be proven for {subject}", error.Note, StringComparison.Ordinal);
+    }
+
+    // SPEC 8.7, 10.5: a candidate refuted by a composite clause names the subject that its operands share.
+    [Theory]
+    [InlineData("func need<s/T>(value: ref/(s/T))\n    s is rc or arc\n    ()\nfunc outer<s/T>(value: ref/(s/T))\n    s is borrow\n    need(value)", "s is rc or arc", "s/T")]
+    [InlineData("func need<T>(value: ref/T)\n    T is not Copy or Owned\n    ()\nlet x = 1\nneed(x)", "T is not Copy or Owned", "i32")]
+    // SPEC 8.4.4: a refuted operand keeps its cause.
+    [InlineData("contract Same\n    func same(self: ref/Self, other: ref/Self) -> bool\nopen struct Shape\n    Self is Same\n    public init() => ()\n    public func same(self: ref/Self, other: ref/Self) -> bool => true\nstruct Circle: Shape\n    public init() => ()\nfunc need<T>(value: ref/T)\n    T is Same and Owned\n    ()\nlet c = Circle.init()\nneed(c)", "T is Same and Owned", "Circle. The retained implementation Shape.same keeps Shape as Self")]
+    public void RefutedCompositeCandidatesNameTheirSubject(string source, string clause, string subject)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal("NoApplicableOverload_Kd", error.Code);
+        Assert.Contains($"requires {clause}; this condition is refuted for {subject}", error.Note, StringComparison.Ordinal);
+    }
+
     // SPEC 7.4: a member function may constrain its declaring Type's parameters (a conditional member).
     [Fact]
     public void AMemberFunctionCanConstrainItsDeclaringTypeParameter()
@@ -189,7 +237,7 @@ public class ConstraintBindingTest
         var c = Parse("contract C\nstruct S\n    Self is C\nstruct N\nfunc absent<T>(x: T)\n    T is not C\n    ()\nfunc use() => absent(N.init())");
         Assert.True(c.Bind().IsComplete);
         var s = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
-        Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(s.ConstraintNodes[0].BoundConstraint!, s));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(s.ConstraintNodes[0].ConstraintOf()!, s));
     }
 
     // SPEC 8.7, 8.4.8.4: a primitive's conformances are fixed, so its absence from any other Contract is Refuted; a negative
@@ -231,10 +279,10 @@ public class ConstraintBindingTest
         var c = Parse("func f<T>(x: T)\n    T is Missing\n    ()");
         c.Bind();
         var clause = (IsKoto)Function(c, "f").TypeConstraints[0];
-        Assert.Equal(ConstraintKind.Error, clause.BoundConstraint!.Kind);
+        Assert.Equal(ConstraintKind.Error, clause.ConstraintOf()!.Kind);
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "struct Missing");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.Equal(ConstraintKind.TypeIdentity, clause.BoundConstraint!.Kind);
+        Assert.Equal(ConstraintKind.TypeIdentity, clause.ConstraintOf()!.Kind);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -247,9 +295,9 @@ public class ConstraintBindingTest
             Assert.True(c.Binding.Bind(BindingMode.Final).IsComplete, Describe(c));
         }
 
-        var proposition = ((IsKoto)Function(c, "f").TypeConstraints[0]).BoundConstraint;
+        var proposition = ((IsKoto)Function(c, "f").TypeConstraints[0]).ConstraintOf();
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
-        Assert.Same(proposition, ((IsKoto)Function(c, "f").TypeConstraints[0]).BoundConstraint);
+        Assert.Same(proposition, ((IsKoto)Function(c, "f").TypeConstraints[0]).ConstraintOf());
     }
 
     private static Compilation Parse(string source, bool allowParserErrors = false)

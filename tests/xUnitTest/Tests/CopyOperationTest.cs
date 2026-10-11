@@ -9,8 +9,8 @@ using static XunitTest.ParseTestHelper;
 
 namespace XunitTest;
 
-/// <summary>SPEC 13.5.3: E@copy Copies a proven-Copy value and never transfers or borrows. The bare owning shorthands
-/// @owner, @obj, @rc and @arc are not operations; complete targets such as @owner/T keep their acquisitions.</summary>
+/// <summary>SPEC 13.5.3: E@copy Copies a proven-Copy value and never transfers or borrows. Bare @owner remains invalid;
+/// object adaptations and complete targets keep the ordinary acquisition rules.</summary>
 public class CopyOperationTest
 {
     private const string Point =
@@ -60,9 +60,9 @@ public class CopyOperationTest
         var c = MinimalEmissionTest.Analyze("var n: i32 = 1\nlet a = n@copy\nn = 2\nlet b = n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Single();
-        Assert.Equal(ConversionBinding.Identity, conversion.ConversionBinding);
-        Assert.Equal(BoundType.I32, conversion.BoundType);
-        Assert.True(c.Ownership.Result.IsVerified, string.Join("\n", c.Ownership.Issues));
+        Assert.Equal(ConversionBinding.Identity, conversion.ConversionOf().Kind);
+        Assert.Equal(BoundType.I32, conversion.TypeOf());
+        Assert.True(c.Analysis.IsVerified, string.Join("\n", c.Problems));
     }
 
     [Fact]
@@ -83,15 +83,18 @@ public class CopyOperationTest
     [InlineData("let n: i32 = 1\nlet m = n@owner", DiagnosticCode.BareOwningShorthand_Kd)]
     [InlineData("let text = \"a\"\nlet m = text@move@owner", DiagnosticCode.BareOwningShorthand_Kd)]
     [InlineData("let n: i32 = 1\nlet m = n@((owner))", DiagnosticCode.BareOwningShorthand_Kd)]
-    [InlineData("struct Node\n    public var v: i32 = 0\nlet h = Kimi.Intrinsics.makeObj(Node.init())\nlet g = h@obj", DiagnosticCode.BareOwningShorthand_Kd)]
-    [InlineData("struct Node\n    public var v: i32 = 0\nfunc f(h: rc/Node)\n    let g = h@rc", DiagnosticCode.BareOwningShorthand_Kd)]
-    [InlineData("struct Node\n    public var v: i32 = 0\nfunc f(h: arc/Node)\n    let g = h@arc", DiagnosticCode.BareOwningShorthand_Kd)]
+    [InlineData("struct Node\n    public var v: i32 = 0\nlet h = Kimi.Intrinsics.makeObj(Node.init())\nlet g = h@obj", DiagnosticCode.TransferRequired_Kd)]
+    [InlineData("struct Node\n    public var v: i32 = 0\nfunc f(h: rc/Node)\n    let g = h@rc", DiagnosticCode.TransferRequired_Kd)]
+    [InlineData("struct Node\n    public var v: i32 = 0\nfunc f(h: arc/Node)\n    let g = h@arc", DiagnosticCode.TransferRequired_Kd)]
+    [InlineData("struct Node\n    public var v: i32 = 0\nfunc take(h: rc/Node) => ()\nfunc f(h: rc/Node) => take(h)", DiagnosticCode.TransferRequired_Kd)]
+    [InlineData("struct Node\n    public var v: i32 = 0\nfunc f(h: rc/Node)\n    let alias = h@copy", DiagnosticCode.NonCopyOperand_Kd)]
+    [InlineData("struct Node\n    public var v: i32 = 0\nfunc f(h: arc/Node)\n    let alias = h@copy", DiagnosticCode.NonCopyOperand_Kd)]
     public void InvalidCopiesAndBareOwningShorthandsAreDiagnosed(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -102,7 +105,7 @@ public class CopyOperationTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), x => x.ConversionBinding == ConversionBinding.Identity);
+        Assert.Contains(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), x => x.ConversionOf().Kind == ConversionBinding.Identity);
     }
 
     [Fact]

@@ -44,7 +44,7 @@ public sealed class DiagnosticOwnerTest
         var document = new SourceDocument("main.kimi", "value");
         var target = c.Kotonoha.DiagnosticCollection;
         var key = target.KeyOf(document, new(0, 5), document, DiagnosticRequirement.Binding(BindingFailure.MissingName));
-        target.Report(DiagnosticPartition.Binding, key, new(0, 5), DiagnosticCode.UnresolvedBinding_Kd, null, null, null, null, null, document);
+        target.Report(DiagnosticPartition.Binding, key, new(0, 5), DiagnosticCode.UnresolvedBinding_Kd, null, null, null, null, document);
         c.Kotonoha.DiagnosticCollection.Add(new(0, 5), DiagnosticCode.IndentationLevelMismatch_Kd, sourceDocument: document);
         c.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, "App.kimiproj", note: "kept");
         Assert.True(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Binding));
@@ -186,7 +186,7 @@ public sealed class DiagnosticOwnerTest
         var document = new SourceDocument("main.kimi", "consume(resource)\n");
         var target = owner.GetOrAddCollection("main.kimi").For(document);
         var key = new DiagnosticKey(null, 0, 8, 8, DiagnosticRequirement.Ownership(OwnershipFailure.TransferRequired));
-        target.Report(DiagnosticPartition.Ownership, key, new(8, 8), DiagnosticCode.TransferRequired_Kd, null, null, null, null, null, document, repairs:
+        target.Report(DiagnosticPartition.Ownership, key, new(8, 8), DiagnosticCode.TransferRequired_Kd, null, null, null, null, document, repairs:
             [new(RepairKind.Transfer, ["resource", "consume(value: Resource)"], [target.Edit(new(16, 0), "@move")], RepairConditionSet.Take, RepairConditionSet.UsageLegality)]);
         var result = owner.Finalize();
 
@@ -231,10 +231,10 @@ public sealed class DiagnosticOwnerTest
         Assert.Equal("a note", record.Note);
 
         var key = new DiagnosticKey(null, 0, 0, 1, DiagnosticRequirement.Startup);
-        target.Report(DiagnosticPartition.Startup, key, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null, null);
-        var exception = Assert.Throws<DiagnosticContractException>(() => { target.Report(DiagnosticPartition.Startup, key, new(1, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null, null); });
+        target.Report(DiagnosticPartition.Startup, key, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null);
+        var exception = Assert.Throws<DiagnosticContractException>(() => { target.Report(DiagnosticPartition.Startup, key, new(1, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null); });
         Assert.Equal(DiagnosticFault.ConflictingProblem, exception.Fault);
-        exception = Assert.Throws<DiagnosticContractException>(() => { target.Report(DiagnosticPartition.Startup, key, new(0, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, null, null); });
+        exception = Assert.Throws<DiagnosticContractException>(() => { target.Report(DiagnosticPartition.Startup, key, new(0, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, null); });
         Assert.Equal(DiagnosticFault.InvalidArgument, exception.Fault);
     }
 
@@ -252,7 +252,7 @@ public sealed class DiagnosticOwnerTest
         var first = Key(8);
         var second = new DiagnosticKey(null, 0, 8, 1, DiagnosticRequirement.Emission);
         Derive(first, [second]);
-        target.Report(DiagnosticPartition.Emission, second, new(8, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, [first], null);
+        target.Report(DiagnosticPartition.Emission, second, new(8, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, [first], null);
 
         // The chain resolves to the direct error; the unresolved mark and the cycle are published.
         var result = owner.Finalize(DiagnosticPartition.Input, DiagnosticPartition.Emission);
@@ -268,7 +268,7 @@ public sealed class DiagnosticOwnerTest
         DiagnosticKey Key(int start) => new(null, 0, start, 1, DiagnosticRequirement.Startup);
 
         void Derive(DiagnosticKey key, DiagnosticKey[] prerequisites)
-            => target.Report(DiagnosticPartition.Startup, key, new(key.Start, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, prerequisites, null);
+            => target.Report(DiagnosticPartition.Startup, key, new(key.Start, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, prerequisites, null);
     }
 
     [Fact]
@@ -278,8 +278,8 @@ public sealed class DiagnosticOwnerTest
         var target = owner.GetOrAddCollection("main.kimi").For(new SourceDocument("main.kimi", "abc"));
         var first = new DiagnosticKey(new object(), 0, 0, 1, DiagnosticRequirement.Startup);
         var second = new DiagnosticKey(new object(), 0, 0, 1, DiagnosticRequirement.Startup);
-        target.Report(DiagnosticPartition.Startup, first, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null, null);
-        target.Report(DiagnosticPartition.Startup, second, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null, null);
+        target.Report(DiagnosticPartition.Startup, first, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null);
+        target.Report(DiagnosticPartition.Startup, second, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null);
         Assert.Equal(DiagnosticFault.UndefinedOrder, Assert.Throws<DiagnosticContractException>(() => owner.Finalize()).Fault);
     }
 
@@ -294,12 +294,12 @@ public sealed class DiagnosticOwnerTest
         var target = owner.GetOrAddCollection("main.kimi").For(document);
         var common = new string('A', 120);
         var mismatch = target.KeyOf(document, new(0, 5), document, DiagnosticRequirement.Binding(BindingFailure.TypeMismatch));
-        target.Report(DiagnosticPartition.Binding, mismatch, new(0, 5), DiagnosticCode.TypeMismatch_Kd, null, null, null, null, null, document, [$"Pair<{common}, i32>", $"Pair<{common}, bool>"]);
+        target.Report(DiagnosticPartition.Binding, mismatch, new(0, 5), DiagnosticCode.TypeMismatch_Kd, null, null, null, null, document, [$"Pair<{common}, i32>", $"Pair<{common}, bool>"]);
 
         // A derived problem spanning many lines with more prerequisites than the limit.
         var prerequisites = Enumerable.Range(0, 10).Select(i => new DiagnosticKey(null, 0, i * 6, 5, DiagnosticRequirement.Syntax)).ToArray();
         var derived = target.KeyOf(document, new(6, 60), document, DiagnosticRequirement.Startup);
-        target.Report(DiagnosticPartition.Startup, derived, new(6, 60), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, prerequisites, document);
+        target.Report(DiagnosticPartition.Startup, derived, new(6, 60), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, prerequisites, document);
         owner.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, "App.kimiproj", note: new string('x', 1000));
 
         var records = owner.Finalize(DiagnosticPartition.Input, DiagnosticPartition.Startup).Diagnostics;

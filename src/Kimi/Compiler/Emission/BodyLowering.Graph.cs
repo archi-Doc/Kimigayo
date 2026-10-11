@@ -24,17 +24,11 @@ internal sealed partial class BodyLowering
     private static ArithmeticCheckKind ClassifyCheck(OwnershipValue value, BoundType? type, ConversionPlan conversion) => value.Kind == OwnershipValueKind.Convert
         ? conversion.Checked && value.Constant != OwnershipValue.PositionConversion ? conversion.Operator == "fptrunc" ? ArithmeticCheckKind.FloatingConversion : ArithmeticCheckKind.Conversion : ArithmeticCheckKind.None
         : value.Kind == OwnershipValueKind.PointerProject && value.Count == 2 ? ArithmeticCheckKind.Bounds // A computed index into a raw array Place (SPEC 5.2).
-        : FloatingTypes.Supports(type) || ReferenceTypes.IsPointer(type) ? ArithmeticCheckKind.None : value.Kind switch
+        : type is { IsFloatingPoint: true } || ReferenceTypes.IsPointer(type) ? ArithmeticCheckKind.None : value.Kind switch
     {
         OwnershipValueKind.Binary when value.Operator is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan => ArithmeticCheckKind.Shift,
-        OwnershipValueKind.Binary when value.Operator == KotoKind.Slash && type is not null && ScalarTypes.Signed(type) => type.IsWrappingInteger ? ArithmeticCheckKind.WrappingDivision : ArithmeticCheckKind.Division,
-        OwnershipValueKind.Binary when value.Operator is KotoKind.Slash or KotoKind.Percent => ArithmeticCheckKind.DivisionZero,
+        OwnershipValueKind.Binary or OwnershipValueKind.Unary when type is not null => NumericArithmetic.Check(value.Operator, type),
 
-        // SPEC 13.3: a wrapping integer Type has no unrepresentable result, so its +, -, * and negation carry no check.
-        OwnershipValueKind.Binary when value.Operator is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk => type?.IsWrappingInteger == true ? ArithmeticCheckKind.None : ArithmeticCheckKind.Overflow,
-        OwnershipValueKind.Unary when value.Operator == KotoKind.PrefixMinus => type?.IsWrappingInteger == true ? ArithmeticCheckKind.None : ArithmeticCheckKind.Overflow,
-
-        // An element of a fixed array borrowed through a reference takes a bounds-checked address (SPEC 4.6.9).
         OwnershipValueKind.Address when value.Count == 2 => ArithmeticCheckKind.Bounds,
         _ => ArithmeticCheckKind.None,
     };
@@ -286,7 +280,7 @@ internal sealed partial class BodyLowering
                 }
             }
 
-            if ((value.Layout.Size != 0 || StructStorage.IsStruct(place.Type) || addressRequired) && function.SlotAddresses[p].Kind == EmissionOperandKind.SlotAddress && function.SlotAddresses[p].Value == p && (!IsScalar(place.Type) || place.Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Subject || this.IsMaterializedScalar(p) || this.IsArrayPayload(body, p)))
+            if ((value.Layout.Size != 0 || AdtDef.IsStruct(place.Type) || addressRequired) && function.SlotAddresses[p].Kind == EmissionOperandKind.SlotAddress && function.SlotAddresses[p].Value == p && (!IsScalar(place.Type) || place.Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Subject || this.IsMaterializedScalar(p) || this.IsArrayPayload(body, p)))
             {
                 function.Slots.Add(new(p, value));
             }
@@ -422,7 +416,7 @@ internal sealed partial class BodyLowering
                 }
 
                 if (body.Operations[cursor].Kind is OwnershipOperationKind.Deliver or OwnershipOperationKind.TestAbort ||
-                    (body.Operations[cursor].Kind == OwnershipOperationKind.Call && ReferenceEquals(SignatureType(this, body.Operations[cursor].Source.BoundType), BoundType.Never)))
+                    (body.Operations[cursor].Kind == OwnershipOperationKind.Call && ReferenceEquals(body.Resolve(body.Operations[cursor].Source.BoundType, body.ContextAt(cursor)), BoundType.Never)))
                 {
                     break;
                 }
@@ -479,7 +473,7 @@ internal sealed partial class BodyLowering
             return Fail("Scalar expression attributes need explicit lowering support.", out failure);
         }
 
-        var type = operation.Place >= 0 ? body.Places[operation.Place].Type : SignatureType(this, operation.Source.BoundType);
+        var type = operation.Place >= 0 ? body.Places[operation.Place].Type : body.Resolve(operation.Source.BoundType, body.ContextAt(id));
         if (operation.Kind == OwnershipOperationKind.Branch && value.Kind == OwnershipValueKind.None)
         {
             return true;
@@ -629,7 +623,7 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        if (FloatingTypes.Supports(operandType))
+        if (operandType.IsFloatingPoint)
         {
             return this.LowerFloating(body, function, id, type!, operandType, out failure);
         }
@@ -644,10 +638,8 @@ internal sealed partial class BodyLowering
 
         // SPEC 13.3: wrapping arithmetic is the plain instruction without nsw/nuw; checked arithmetic names its overflow intrinsic.
         var wrapping = operandType.IsWrappingInteger;
-        var op = value.Operator switch
+        var op = NumericArithmetic.Instruction(value.Operator, operandType) ?? value.Operator switch
         {
-            KotoKind.Plus => wrapping ? "add" : signed ? "sadd" : "uadd", KotoKind.Minus or KotoKind.PrefixMinus => wrapping ? "sub" : signed ? "ssub" : "usub", KotoKind.Asterisk => wrapping ? "mul" : signed ? "smul" : "umul",
-            KotoKind.Slash => signed ? "sdiv" : "udiv", KotoKind.Percent => signed ? "srem" : "urem",
             KotoKind.Ampersand => "and", KotoKind.Bar => "or", KotoKind.Caret => "xor",
             KotoKind.LessThanLessThan => "shl", KotoKind.GreaterThanGreaterThan => signed ? "ashr" : "lshr",
             KotoKind.EqualsEquals => "eq", KotoKind.ExclamationEquals => "ne",

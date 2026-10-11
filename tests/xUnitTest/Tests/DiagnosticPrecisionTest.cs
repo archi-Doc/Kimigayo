@@ -26,14 +26,14 @@ public class DiagnosticPrecisionTest
         Assert.True(c.Binding.Issues.Count == 3, string.Join("\n", c.Binding.Issues));
         Assert.Equal(2, c.Binding.Issues.Count(x => x.Code == Kimi.DiagnosticCode.UnresolvedBinding_Kd));
         Assert.Single(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.TypeMismatch_Kd);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     // DIAGNOSTICS.md rule 3: an implementation limit is Unsupported where it is met; a check that rests on a failed Type
     // (expected Type, candidate signature, generic Name) is derived and published only through that failure.
     [Theory]
     [InlineData("struct S\n    public let v: [2 of i32]\n    public init() => self.v = [1, 2]\nfunc set(s: uniq/S)\n    s.v[0] = 5\npublic func main() => ()", "InvalidAssignment_Kd", "s.v[0]")]
-    [InlineData("func f(w: Weak<i32>) -> i32 => 0\npublic func main() => ()", "UnsupportedBinding_Kd", "Weak")]
+    [InlineData("func f(w: Weak<i32>) -> i32 => 0\npublic func main() => ()", "Unsupported_Kd", "Weak")]
     [InlineData("public func main()\n    let r = Kimi.Intrinsics.nothing(1)", "UnresolvedBinding_Kd", "Kimi.Intrinsics.nothing")]
     [InlineData("func f(w: Missing<i32>) -> i32 => 0\npublic func main() => ()", "UnresolvedBinding_Kd", "Missing")]
     [InlineData("public func main()\n    let w: Option<Missing> = .None", "UnresolvedBinding_Kd", "Missing")]
@@ -57,9 +57,9 @@ public class DiagnosticPrecisionTest
     {
         var c = MinimalEmissionTest.Analyze($"func set(a: uniq/{type})\n    {update}\npublic func main() => ()");
         c.Binding.ReportDiagnostics();
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         Assert.Empty(TestDiagnostics.Of(c));
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
     }
 
     // SPEC 23.3.6.2: a mismatch names both Types, a write names its target, each at the smallest syntax that shows it.
@@ -82,7 +82,6 @@ public class DiagnosticPrecisionTest
         var error = Assert.Single(PublishedErrors(MinimalEmissionTest.Analyze(source)));
         Assert.Equal(text, error.Text);
         Assert.Equal(label, error.Label);
-        Assert.Equal(error.Code == nameof(Kimi.DiagnosticCode.InvalidAssignment_Kd), error.Advice == "Declare the binding with var to assign it again");
     }
 
     // SPEC 23.3.6.2: a failed selection counts and relates the candidates it considered.
@@ -155,7 +154,7 @@ public class DiagnosticPrecisionTest
         Assert.True(errors.Length != 0, detail);
         Assert.True(errors.All(x => mutation.Expected.Contains(x.Code)), detail);
         Assert.True(mutation.Expected.All(code => errors.Any(x => x.Code == code)), detail);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     // SPEC 23.3.6.4: syntax that failed to parse, including a token the lexer rejected, is the prerequisite of every check of
@@ -273,8 +272,7 @@ public class DiagnosticPrecisionTest
     {
         c.Binding.ReportDiagnostics();
         c.Binding.ReportStartupDiagnostics();
-        c.Ownership.ControlFlow!.ReportDiagnostics();
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         return [.. TestDiagnostics.Of(c).Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error)];
     }
 }

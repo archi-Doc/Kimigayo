@@ -8,32 +8,8 @@ public sealed partial class OwnershipAnalysis
 {
     private int comparisonDepth;
 
-    private int CurrentLoanHead
-    {
-        get
-        {
-            var point = this.current;
-            if (point < 0 && this.checkingRegion > 0)
-            {
-                var region = this.body.CheckingRegions[this.checkingRegion];
-                var replay = region.Replay;
-                point = region.Seed;
-                if (region.SeedCount > 0)
-                {
-                    var seed = this.body.CheckingSeeds[region.SeedStart];
-                    point = seed.Operation;
-                    replay = seed.Replay;
-                }
-
-                if (replay >= 0)
-                {
-                    point = this.body.CheckingReplays[replay].End;
-                }
-            }
-
-            return (uint)point < (uint)this.body.LoanStates.Count ? this.body.LoanStates[point] : -1;
-        }
-    }
+    // Unreachable source (current < 0) starts with no active comparison Loans.
+    private int CurrentLoanHead => (uint)this.current < (uint)this.body.LoanStates.Count ? this.body.LoanStates[this.current] : -1;
 
     /// <summary>Gets the Place syntax a string argument borrows.</summary>
     /// <param name="argument">The written argument.</param>
@@ -100,8 +76,10 @@ public sealed partial class OwnershipAnalysis
 
     private int BorrowArgument(InvocationKoto call, BoundArgumentOperation argument)
     {
+        // The source's declared Type is interpreted in the active context: a default's replica binds a generic slot to string.
         var source = BorrowedArgumentSource(argument.Source!);
-        if (source is MemberAccessKoto field && ReferenceEquals(field.BoundType, BoundType.String) && ElementAccess.BorrowedPathRoot(field) is not null)
+        var stored = this.Resolve(source.BoundType, this.Active);
+        if (source is MemberAccessKoto field && ReferenceEquals(stored, BoundType.String) && ElementAccess.BorrowedPathRoot(field) is not null)
         {
             // A string field reached through a reference, such as a shared iteration binding, is
             // reborrowed from that referent (SPEC 15.6.3); its owner stays protected by the reference's Loan.
@@ -110,13 +88,15 @@ public sealed partial class OwnershipAnalysis
 
         if (source is BinaryKoto element && ElementAccess.IsSyntax(element))
         {
-            return this.BorrowStringElement(element, call, argument.ParameterType, out _);
+            // PLAN G59: a string selected at a runtime index is lent through its Place route.
+            return ElementAccess.IsRuntimeElementPlace(element) ? this.BorrowStruct(source, argument.ParameterType!)
+                : this.BorrowStringElement(element, call, argument.ParameterType, out _);
         }
 
-        if (!ReferenceEquals(source.BoundType, BoundType.String))
+        if (!ReferenceEquals(stored, BoundType.String))
         {
             this.Expression(source, PlaceUseKind.Read);
-            this.Unsupported(source);
+            this.Internal(source);
             return -1;
         }
 

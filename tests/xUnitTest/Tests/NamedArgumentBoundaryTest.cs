@@ -80,7 +80,7 @@ public class NamedArgumentBoundaryTest
     {
         var c = MinimalEmissionTest.Analyze("func f" + parameters + " -> i32 => a + b + c\n" + call);
         Assert.Equal(accepted, c.Binding.Result.IsComplete);
-        Assert.Equal(accepted, c.Emission.Validate(out _));
+        Assert.Equal(accepted, c.Validate(out _));
     }
 
     [Theory]
@@ -96,7 +96,7 @@ public class NamedArgumentBoundaryTest
         var c = MinimalEmissionTest.Analyze("struct S\n    public func f(" + parameters + ") -> i32 => x\nfunc use(s: ref/S) -> i32 => " + bound + " + " + unbound);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         var f = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
-        Assert.Equal(k, f.PositionalParameterCount);
+        Assert.Equal(k, c.Semantics.PositionalParameterCount(f));
     }
 
     [Theory]
@@ -112,7 +112,7 @@ public class NamedArgumentBoundaryTest
     {
         var c = MinimalEmissionTest.Analyze("func f(self: i32 ! other: i32) -> i32 => self + other\nfunc g(a => b: i32 ! b => a: i32) -> i32 => a + b\nf(1, other: 2)\ng(1, b: 2)");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         Assert.False(MinimalEmissionTest.Analyze("func f(! self: i32) => ()\nf(1)").Binding.Result.IsComplete);
     }
 
@@ -125,8 +125,8 @@ public class NamedArgumentBoundaryTest
         Assert.Equal(accepted, c.Binding.Result.IsComplete);
         if (accepted)
         {
-            var selected = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single().BoundCall!.Target;
-            Assert.Equal("A", selected.Scope.Owner.BoundSymbol!.Name);
+            var selected = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single().CallOf()!.Target;
+            Assert.Equal("A", selected.Scope.Owner.SymbolOf()!.Name);
         }
     }
 
@@ -137,7 +137,7 @@ public class NamedArgumentBoundaryTest
         Assert.True(c.Binding.Result.IsComplete);
         var specialized = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsSpecialization);
         Assert.Equal(-1, specialized.NameBoundaryIndex);
-        Assert.Equal(1, specialized.PositionalParameterCount);
+        Assert.Equal(1, c.Semantics.PositionalParameterCount(specialized));
     }
 
     [Fact]
@@ -149,10 +149,10 @@ public class NamedArgumentBoundaryTest
         Assert.Equal(2, calls.Length);
         for (var i = 0; i < calls.Length; i++)
         {
-            var plan = calls[i].BoundCall!;
+            var plan = calls[i].CallOf()!;
             var target = Assert.IsType<FunctionKoto>(plan.Target.Declaration);
-            Assert.Equal("B", plan.Target.Scope.Owner.BoundSymbol!.Name);
-            Assert.Equal(0, target.PositionalParameterCount);
+            Assert.Equal("B", plan.Target.Scope.Owner.SymbolOf()!.Name);
+            Assert.Equal(0, c.Semantics.PositionalParameterCount(target));
             Assert.Equal("external", target.Parameters[0].ExternalName);
             Assert.Single(plan.DefaultArguments.ToArray());
             Assert.Same(target.Parameters[0].DefaultValue, plan.DefaultArguments[0].Expression);
@@ -169,7 +169,7 @@ public class NamedArgumentBoundaryTest
 
     [Fact]
     public void AcquiresInSourceOrderAndCleansUpInParameterOrder()
-        => ScalarEmissionTest.EmitFixture("NameBoundaryCleanup", "struct Item\n    let id: i32\n    public init(id: i32)\n        self.id = id\n    drop\n        if id == 1 => Console.writeLine(\"first\") else => Console.writeLine(\"second\")\nfunc make(id: i32) -> Item\n    if id == 1 => Console.writeLine(\"first\") else => Console.writeLine(\"second\")\n    return Item.init(id)\nfunc f(first: Item ! second: Item) => Console.writeLine(\"body\")\nf(second: make(2), first: make(1))", "second\nfirst\nbody\nsecond\nfirst\n");
+        => ScalarEmissionTest.EmitFixture("NameBoundaryCleanup", "struct Item\n    let id: i32\n    public init(id: i32)\n        self.id = id\n    drop\n        if self.id == 1 => Console.writeLine(\"first\") else => Console.writeLine(\"second\")\nfunc make(id: i32) -> Item\n    if id == 1 => Console.writeLine(\"first\") else => Console.writeLine(\"second\")\n    return Item.init(id)\nfunc f(first: Item ! second: Item) => Console.writeLine(\"body\")\nf(second: make(2), first: make(1))", "second\nfirst\nbody\nsecond\nfirst\n");
 
     [Fact]
     public void ConstructorBaseArgumentsUseCallSyntaxWithoutABoundary()
@@ -192,7 +192,7 @@ public class NamedArgumentBoundaryTest
         Assert.True(c.Binding.Result.IsComplete);
         foreach (var call in KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>())
         {
-            Assert.Equal(Enumerable.Range(0, count).Reverse(), call.BoundCall!.ArgumentToParameter.ToArray());
+            Assert.Equal(Enumerable.Range(0, count).Reverse(), call.CallOf()!.ArgumentToParameter.ToArray());
         }
 
         for (var i = 0; i < 100; i++)

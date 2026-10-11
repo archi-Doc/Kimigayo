@@ -13,6 +13,31 @@ namespace Kimi.Compiler;
 internal sealed record AggregateLayout(int Id, ValueLowering Value, ValueLowering[] Fields, AggregateLayout?[] Children, int Count, bool IsArray, bool NeedsDestruction, int Destructor = -1, AggregateLayout[]? Cases = null, int PayloadOffset = 0, bool FunctionHandle = false, ObjectHandleMode? ObjectHandle = null, bool CLayout = false, AggregateLayout? Base = null, string? CollectionDrop = null, string? GenericDestructor = null, int? ObjectPayloadDrop = null)
 {
     internal int Offset(int index) => this.IsArray ? checked(index * this.Fields[0].Layout.Stride) : this.Value.Layout.FieldOffsets.Span[index];
+
+    // Generated code addresses a Kimi library record Field by its declared name, at the offset of this layout of `type`.
+    internal int Offset(BoundType type, string name) => this.Offset(AdtDef.IndexOf(type, name));
+
+    internal int StorageCount { get; } = Count + (Base?.StorageCount ?? 0);
+
+    internal AggregateLayout StorageLayer(ref int index)
+    {
+        var layer = this;
+        while (layer.Base is { } parent)
+        {
+            var count = parent.StorageCount;
+            if (index >= count)
+            {
+                index -= count;
+                break;
+            }
+
+            layer = parent;
+        }
+
+        return layer;
+    }
+
+    internal int StorageOffset(int index) => this.StorageLayer(ref index).Offset(index);
 }
 
 /// <summary>Interns physical shapes independently of bound Type and Origin identities.</summary>
@@ -174,7 +199,7 @@ internal sealed class AggregateLayoutPool
 
     private AggregateLayout? GetCore(BoundType type, int depth)
     {
-        if (EnumStorage.IsEnum(type))
+        if (AdtDef.IsEnum(type))
         {
             return this.GetEnum(type, depth);
         }
@@ -190,7 +215,7 @@ internal sealed class AggregateLayoutPool
             return this.resolved[type] = this.functionHandle;
         }
 
-        if (ObjectTypes.HandleMode(type) is { } mode)
+        if (type.HandleMode is { } mode)
         {
             if (this.SealedObjectHandle(type.Components[0], mode, depth) is { } sealedHandle)
             {
@@ -227,11 +252,11 @@ internal sealed class AggregateLayoutPool
             return this.resolved[type] = handle;
         }
 
-        var structure = StructStorage.IsStruct(type);
+        var structure = AdtDef.IsStruct(type);
         var cLayout = false;
         if (structure)
         {
-            for (var attribute = StructStorage.Declaration(type)!.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
+            for (var attribute = AdtDef.Declaration(type)!.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
             {
                 if (attribute.LayoutMode == "C")
                 {
@@ -259,8 +284,9 @@ internal sealed class AggregateLayoutPool
             return this.ExceedLimit(type);
         }
 
-        var baseLayout = structure && type.StoredBase is { } parent ? this.Get(parent, depth + 1) : null;
-        if (structure && type.StoredBase is not null && baseLayout is null)
+        var parent = structure ? AdtDef.Base(type) : null;
+        var baseLayout = parent is null ? null : this.Get(parent, depth + 1);
+        if (parent is not null && baseLayout is null)
         {
             return this.resolved[type] = null;
         }
@@ -268,15 +294,15 @@ internal sealed class AggregateLayoutPool
         var start = this.fields.Count;
         var array = type.Kind == BoundTypeKind.FixedArray;
         // A Function Item's Components are its bound generic arguments, not stored fields.
-        var fieldCount = sequence ? (type.Kind == BoundTypeKind.Dictionary ? 7 : type.Kind == BoundTypeKind.Array ? 3 : 2) : structure ? StructStorage.Count(type) :
+        var fieldCount = sequence ? (type.Kind == BoundTypeKind.Dictionary ? 7 : type.Kind == BoundTypeKind.Array ? 3 : 2) : structure ? AdtDef.Count(type) :
             type.Kind == BoundTypeKind.FunctionItem ? 0 : type.Components.Count;
         var count = array ? (int)type.Length : fieldCount;
-        if (cLayout && (fieldCount == 0 || StructStorage.Declaration(type) is not { Bases.Count: 0 } declaration || (declaration.Modifier & ModifierKind.Open) != 0))
+        if (cLayout && (fieldCount == 0 || AdtDef.Declaration(type) is not { Bases.Count: 0 } declaration || (declaration.Modifier & ModifierKind.Open) != 0))
         {
             return this.resolved[type] = null;
         }
 
-        var body = StructStorage.Destructor(type);
+        var body = AdtDef.Destructor(type);
         var destructor = body is not null ? this.destructors.GetValueOrDefault(body, -1) : -1;
         var genericDestructor = body is not null && GenericStoragePlan.IsGeneric(body) ? this.InstantiateDestructor?.Invoke(type) : null;
         if (destructor < 0 && genericDestructor is null && body is not null)
@@ -288,7 +314,7 @@ internal sealed class AggregateLayoutPool
         {
             for (var i = 0; i < fieldCount; i++)
             {
-                var component = sequence ? BoundType.ISize : structure ? StructStorage.FieldType(type, i)! : type.Components[i];
+                var component = sequence ? BoundType.ISize : structure ? AdtDef.FieldType(type, i)! : type.Components[i];
                 AggregateLayout? child;
                 if (component.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary)
                 {
@@ -455,7 +481,7 @@ internal sealed class AggregateLayoutPool
         }
 
         if (type.Origin is not null ||
-            type.OriginArguments.Count != (type.Symbol?.Schema?.Origins.Count ?? 0) || type.StoredCases is not { Length: > 0 } types)
+            type.OriginArguments.Count != (type.Symbol?.Schema?.Origins.Count ?? 0) || AdtDef.CaseTypes(type) is not { Length: > 0 } types)
         {
             return null;
         }

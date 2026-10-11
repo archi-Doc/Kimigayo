@@ -12,7 +12,7 @@ public sealed partial class Binding
         if (syntax.Operand is not InvocationKoto { Method: IdentifierNameKoto { IdentifierName: "abort" }, ArgumentNodes.Count: 1 } call ||
             call.GetArgumentLabel(0) is not null)
         {
-            return this.Fail(syntax, BindingFailure.Unsupported);
+            return this.Fail(syntax, BindingFailure.Internal); // The parser reports any other operand as a recovery.
         }
 
         var argument = call.ArgumentNodes[0];

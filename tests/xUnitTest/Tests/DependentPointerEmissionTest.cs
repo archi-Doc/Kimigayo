@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -28,7 +29,7 @@ public class DependentPointerEmissionTest
         var source = "func read(pointer: raw/(" + type + ")) -> " + type + "\n    unsafe => return (*pointer)@move\nfunc replace(pointer: raw/(" + type + "), value: " + type + ")\n    unsafe => *pointer = value@move\npublic func main() => ()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         CompilationTestHelper.WriteIr(c);
     }
 
@@ -57,7 +58,7 @@ public class DependentPointerEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func read(pointer: raw/(ref/i32 during a)) -> ref/i32 during static\n    unsafe => return *pointer");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Fact]
@@ -65,8 +66,8 @@ public class DependentPointerEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("var value = 42\nlet entries = [1: value@ref]\nfor (key, item) in entries@move\n    value = 99\n    require item == 42 else => $abort(\"reference\")");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -83,8 +84,8 @@ public class DependentPointerEmissionTest
         {
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         for (var i = 0; i < 8; i++)

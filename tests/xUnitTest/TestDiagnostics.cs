@@ -13,13 +13,12 @@ namespace XunitTest;
 /// <param name="Span">The primary span; the default value without a span.</param>
 /// <param name="Text">The source text under the primary span, or <see langword="null"/> without a source.</param>
 /// <param name="Note">The Note.</param>
-/// <param name="Advice">The Advice.</param>
 /// <param name="Label">The label of the primary span.</param>
 /// <param name="Repairs">The repair candidates (SPEC 23.3.6.9), or <see langword="null"/> for none.</param>
-internal sealed record TestDiagnostic(string Code, DiagnosticSeverity Severity, string Message, string? Path, SourceSpan Span, string? Text, string? Note, string? Advice, string? Label = null, RepairCandidate[]? Repairs = null)
+internal sealed record TestDiagnostic(string Code, DiagnosticSeverity Severity, string Message, string? Path, SourceSpan Span, string? Text, string? Note, string? Label = null, RepairCandidate[]? Repairs = null)
 {
-    /// <summary>Gets the message, Note and Advice on separate lines, for tests that look for an explanation wherever it is placed.</summary>
-    public string Explanation => string.Join('\n', new[] { this.Message, this.Note, this.Advice }.Where(static x => x is not null));
+    /// <summary>Gets the message and Note on separate lines, for tests that look for an explanation wherever it is placed.</summary>
+    public string Explanation => string.Join('\n', new[] { this.Message, this.Note }.Where(static x => x is not null));
 
     /// <summary>Gets the candidates as kind, title, edits relative to the primary span and judged conditions (SPEC 23.3.6.9), fixed when the
     /// record is collected, so two records of one problem compare equal wherever the source text shifts (docs/dev/DIAGNOSTICS.md §9.3)
@@ -28,7 +27,7 @@ internal sealed record TestDiagnostic(string Code, DiagnosticSeverity Severity, 
 
     public bool Equals(TestDiagnostic? other)
         => other is not null && this.Code == other.Code && this.Severity == other.Severity && this.Message == other.Message && this.Path == other.Path && this.Span == other.Span &&
-            this.Text == other.Text && this.Note == other.Note && this.Advice == other.Advice && this.Label == other.Label && this.RepairSummary == other.RepairSummary;
+            this.Text == other.Text && this.Note == other.Note && this.Label == other.Label && this.RepairSummary == other.RepairSummary;
 
     public override int GetHashCode()
         => HashCode.Combine(this.Code, this.Severity, this.Message, this.Path, this.Span, this.Text, this.Label);
@@ -87,7 +86,7 @@ internal static class TestDiagnostics
 
             var span = diagnostic.Span ?? default;
             var text = diagnostic.Span is { } primary && source is not null && owner.FindDocument(source) is { } document ? document.SourceText.Substring(primary.Start, primary.Length) : null;
-            records.Add(new(diagnostic.Code, diagnostic.Severity, diagnostic.Message, source, span, text, diagnostic.Note, diagnostic.Advice, diagnostic.Label, diagnostic.Repairs) { RepairSummary = TestDiagnostic.Summarize(diagnostic.Repairs, span.Start) });
+            records.Add(new(diagnostic.Code, diagnostic.Severity, diagnostic.Message, source, span, text, diagnostic.Note, diagnostic.Label, diagnostic.Repairs) { RepairSummary = TestDiagnostic.Summarize(diagnostic.Repairs, span.Start) });
         }
 
         return records.ToArray();

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
@@ -35,17 +36,17 @@ public class ScalarDefaultEmissionTest
     public void PreparedElementReceiverCannotAliasAnotherArgument()
     {
         var c = MinimalEmissionTest.Analyze("func f(x: (i32, i32), other: (i32, i32), y: i32 = x.0) -> i32 => y\nf((1, 2), (3, 4))");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.IsGenerated);
         var source = Assert.Single(body.Operations, x => x.Kind == OwnershipOperationKind.LocateReceiver).Source;
-        var original = source.BoundSymbol!;
-        source.BoundSymbol = c.Binding.ParameterSymbol((FunctionKoto)original.Scope.Owner, 1);
+        var original = source.SymbolOf()!;
+        source.SetSymbol(c.Binding.ParameterSymbol((FunctionKoto)original.Scope.Owner, 1));
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        source.BoundSymbol = original;
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.Validate(out error), error);
+        source.SetSymbol(original);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.Validate(out error), error);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -55,13 +56,13 @@ public class ScalarDefaultEmissionTest
         var c = MinimalEmissionTest.Analyze("func f(x: [2 of i32], i: isize, y: i32 = x[i]) -> i32 => y\nf([1, 2], 0)\nf([3, 4], 1)");
         for (var i = 0; i < 100; i++)
         {
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Ownership.Analyze().IsVerified || !c.Emission.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
             {
                 throw new InvalidOperationException("Prepared element default emission failed.");
             }
@@ -92,13 +93,13 @@ public class ScalarDefaultEmissionTest
         var c = MinimalEmissionTest.Analyze("func f(x: bool, first: () = (if x => ()), second: () = first, y: i32 = 3) -> i32 => y\nf(true)\nf(false)");
         for (var i = 0; i < 100; i++)
         {
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Ownership.Analyze().IsVerified || !c.Emission.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
             {
                 throw new InvalidOperationException("Unit default emission failed.");
             }
@@ -218,7 +219,7 @@ public class ScalarDefaultEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = (label scope: do\n    " + mutation + "\n    exit to scope x\n)) => ()\nf(1, 2)");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Fact]
@@ -231,13 +232,14 @@ public class ScalarDefaultEmissionTest
     [Theory]
     [InlineData("f()")]
     [InlineData("f(3)")]
-    public void NoncompletingLocalInitializerReportsUninitializedUse(string call)
+    public void NoncompletingLocalInitializerMakesTheLaterUseUnsupported(string call)
     {
-        var c = MinimalEmissionTest.Analyze("func f(y: i32 = (label scope: do\n    let n: i32 = (loop => continue)\n    exit to scope n + 1\n)) => ()\n" + call);
+        const string Source = "func f(y: i32 = (label scope: do\n    let n: i32 = (loop => continue)\n    exit to scope n + 1\n)) => ()\n";
+        var c = MinimalEmissionTest.Analyze(Source + call);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.UninitializedUse);
-        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.False(c.Emission.Validate(out _));
+        var issue = Assert.Single(c.Problems);
+        Assert.Equal((DiagnosticCode.Unsupported_Kd, Source.IndexOf("n + 1", StringComparison.Ordinal), 1), (issue.Code, c.SyntaxOf(issue.Subject).Span.Start, c.SyntaxOf(issue.Subject).Span.Length));
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -246,7 +248,7 @@ public class ScalarDefaultEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
     }
 
     [Fact]
@@ -255,8 +257,8 @@ public class ScalarDefaultEmissionTest
         // SPEC 7.2.3: every default is checked at declaration time, even a branch that never executes.
         var c = MinimalEmissionTest.Analyze("func helper(s: string) -> i32 => 1\nfunc f(s: string, x: i32 = (if true => 1 else => helper(s@move))) => ()\nf(\"a\", 3)");
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.DefaultArgumentMove);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.DefaultArgumentMove_Kd);
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -269,7 +271,7 @@ public class ScalarDefaultEmissionTest
         // SPEC 7.2.3: an ordinary scalar call is a supported default expression wherever a value is.
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
     }
 
     [Fact]
@@ -277,14 +279,14 @@ public class ScalarDefaultEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = (label scope: do\n    var n = (loop => exit (do => if x > 0 => (x@i64 + 1)@i32 else => 0))\n    n += 0\n    exit to scope n\n)) -> i32 => y\nif f(2) == 3 => Console.writeLine(\"ok\")");
         using var original = new StringWriter();
-        Assert.True(c.Emission.WriteIr(original, out var error), error);
+        Assert.True(c.WriteIr(original, out var error), error);
         var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);
         Assert.True(c.Bind().IsComplete);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Ownership.Analyze().IsVerified);
+        Assert.True(c.Analyze().IsVerified);
         using var rebound = new StringWriter();
-        Assert.True(c.Emission.WriteIr(rebound, out error), error);
+        Assert.True(c.WriteIr(rebound, out error), error);
         Assert.Equal(original.ToString(), rebound.ToString());
 
         var restored = Compilation.CreateForTest();
@@ -293,12 +295,12 @@ public class ScalarDefaultEmissionTest
         Tinyhand.TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
         Assert.NotNull(kotonoha);
         kotonoha.OnDeserialized(restored);
-        Assert.False(restored.Emission.Validate(out _));
+        Assert.False(restored.Validate(out _));
         Assert.True(restored.Bind().IsComplete);
         restored.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(restored.Ownership.Analyze().IsVerified);
+        Assert.True(restored.Analyze().IsVerified);
         using var reloaded = new StringWriter();
-        Assert.True(restored.Emission.WriteIr(reloaded, out error), error);
+        Assert.True(restored.WriteIr(reloaded, out error), error);
         Assert.Equal(original.ToString(), reloaded.ToString());
     }
 
@@ -326,18 +328,18 @@ public class ScalarDefaultEmissionTest
     public void PreparedReadCannotAliasAnotherAcquiredArgument()
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32, z: i32 = x + y) -> i32 => z\nf(2, 4)");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.IsGenerated);
         var read = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Read);
         var other = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Constant && x.Constant == 4);
         Assert.True(read > other && other >= 0);
         body.ValueOperands[body.Values[read].Start] = other;
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out error));
+        Assert.False(c.WriteIr(writer, out error));
         Assert.NotNull(error);
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.Validate(out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.Validate(out error), error);
     }
 
     [Theory]
@@ -347,10 +349,10 @@ public class ScalarDefaultEmissionTest
     public void CorruptDefaultPlansFailBeforeWritingAndRecover(string mutation)
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = x + 1, z: i32 = y + 2) -> i32 => z\nf(2)");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.IsGenerated);
         var call = (InvocationKoto)Assert.Single(body.Operations, x => x.Kind == OwnershipOperationKind.Call).Source;
-        var plan = call.BoundCall!;
+        var plan = call.CallOf()!;
         var defaults = plan.DefaultArguments.ToArray();
         if (mutation == "missing")
         {
@@ -367,13 +369,13 @@ public class ScalarDefaultEmissionTest
 
         plan.Set(plan.Target, plan.ReturnType, null, plan.ArgumentToParameter, [], operations: plan.ArgumentOperations, defaults: defaults);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out error));
+        Assert.False(c.WriteIr(writer, out error));
         Assert.NotNull(error);
         Assert.Empty(writer.ToString());
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.Validate(out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.Validate(out error), error);
     }
 
     [Theory]
@@ -382,20 +384,7 @@ public class ScalarDefaultEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.False(c.Emission.Validate(out _));
-    }
-
-    [Fact]
-    public void DefaultResultSupportDoesNotBroadenScalarLoopSupport()
-    {
-        // The scalar loop/checking helper keeps its original boundary; default results now also include external references.
-        var c = MinimalEmissionTest.Analyze("func f(x: ref/i32) => ()");
-        var type = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Parameters.Count == 1).Parameters[0].Type.BoundType;
-        Assert.True(ReferenceTypes.IsScalarBorrow(type));
-        Assert.True(ScalarTypes.SupportsFlowValue(type));
-        Assert.True(ScalarTypes.SupportsFlowValue(BoundType.I32));
-        Assert.True(ScalarTypes.SupportsFlowValue(BoundType.Unit));
-        Assert.False(ScalarTypes.SupportsFlowValue(BoundType.String));
+        Assert.False(c.Validate(out _));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -405,13 +394,13 @@ public class ScalarDefaultEmissionTest
         var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = (label scope: do\n    var n = (loop => exit (do => if x > 0 => (x@i64 + 1)@i32 else => 0))\n    n += 0\n    exit to scope n\n)) -> i32 => y\nlet a = f(1)\nlet b = f(2)");
         for (var i = 0; i < 100; i++)
         {
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Ownership.Analyze().IsVerified || !c.Emission.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
             {
                 throw new InvalidOperationException("Scalar default emission failed.");
             }

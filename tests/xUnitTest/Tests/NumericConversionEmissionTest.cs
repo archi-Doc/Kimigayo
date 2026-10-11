@@ -116,8 +116,8 @@ public class NumericConversionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.InvalidLiteral);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.InvalidLiteral);
+        Assert.False(c.Validate(out _));
     }
 
     // SPEC 13.5.4.2: a direct floating-point literal converted to an integer Type is truncated toward zero from its exact decimal
@@ -146,11 +146,11 @@ public class NumericConversionEmissionTest
         var c = MinimalEmissionTest.Analyze($"let w = {expression}");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>());
-        Assert.Same(BoundType.Primitives[type], conversion.BoundType);
-        Assert.Same(BoundType.Primitives[type], Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<NumberLiteralKoto>()).BoundType);
-        Assert.Equal(ConversionBinding.Literal, conversion.ConversionBinding);
-        Assert.Equal(Int128.Parse(payload, CultureInfo.InvariantCulture), Assert.NotNull(conversion.FoldedConstant));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        Assert.Same(BoundType.Primitives[type], conversion.TypeOf());
+        Assert.Same(BoundType.Primitives[type], Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<NumberLiteralKoto>()).TypeOf());
+        Assert.Equal(ConversionBinding.Literal, conversion.ConversionOf().Kind);
+        Assert.Equal(Int128.Parse(payload, CultureInfo.InvariantCulture), Assert.NotNull(conversion.ConversionOf().Folded));
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
     }
 
     [Theory]
@@ -169,12 +169,12 @@ public class NumericConversionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.InvalidLiteral);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.InvalidLiteral);
         c.Binding.ReportDiagnostics();
         var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
         Assert.Equal("InvalidNumericLiteral_Kd", error.Code);
         Assert.Contains(note, error.Note);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Fact]
@@ -197,7 +197,7 @@ public class NumericConversionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Fact]
@@ -222,26 +222,26 @@ public class NumericConversionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze($"let x: {sourceType} = {value}\nlet y = x@{targetType}\nConsole.writeLine(\"ok\")");
         using var original = new StringWriter();
-        Assert.True(c.Emission.WriteIr(original, out var error), error);
+        Assert.True(c.WriteIr(original, out var error), error);
         var body = c.Ownership.Bodies[0];
         var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Convert);
         var conversion = Assert.IsType<ConversionKoto>(body.Operations[id].Source);
-        conversion.ConversionBinding = ConversionBinding.Integer;
+        conversion.SetConversion(ConversionBinding.Integer);
         using var failed = new StringWriter();
-        Assert.False(c.Emission.WriteIr(failed, out _));
+        Assert.False(c.WriteIr(failed, out _));
         Assert.Empty(failed.ToString());
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
+        c.Analyze();
         using var rebound = new StringWriter();
-        Assert.True(c.Emission.WriteIr(rebound, out error), error);
+        Assert.True(c.WriteIr(rebound, out error), error);
         Assert.Equal(original.ToString(), rebound.ToString());
         var restored = CompilationTestHelper.Reload(c);
         restored.Bind();
         restored.Binding.CheckStartup(OutputKind.Application);
-        restored.Ownership.Analyze();
+        restored.Analyze();
         using var writer = new StringWriter();
-        Assert.True(restored.Emission.WriteIr(writer, out error), error);
+        Assert.True(restored.WriteIr(writer, out error), error);
         Assert.Equal(original.ToString(), writer.ToString());
         ScalarEmissionTest.WriteFixture("NumericConvertReload" + name, writer.ToString(), "ok\n");
     }
@@ -253,13 +253,13 @@ public class NumericConversionEmissionTest
         var c = MinimalEmissionTest.Analyze("func convert(x: f64) -> u64 => x@f32@u64\nlet x = 5000000000@f64\nlet y = convert(x)@f32\nif y > 0.0 => Console.writeLine(\"ok\")");
         for (var i = 0; i < 100; i++)
         {
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Ownership.Analyze().IsVerified || !c.Emission.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
             {
                 throw new InvalidOperationException("Numeric conversion analysis or writing failed.");
             }

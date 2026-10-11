@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -23,7 +24,7 @@ public class CollectionCaptureTest
     public void CollectionsAndEnumsAreCaptured(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         ScalarEmissionTest.EmitFixture("CollectionCapture" + name, source, string.Empty);
     }
 
@@ -32,7 +33,7 @@ public class CollectionCaptureTest
     {
         var c = MinimalEmissionTest.Analyze("var a: Array<i32> = [1, 2, 3]\nlet g = func [a@ref] () => a.length\na.append(4)\nrequire g() == 4 else => $abort(\"g\")");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
     }
 
     [Fact]
@@ -40,6 +41,6 @@ public class CollectionCaptureTest
     {
         var c = MinimalEmissionTest.Analyze("enum Mode\n    Fast(i32)\n    Slow\nlet m: Mode = .Fast(3)\nlet f = func () -> i32\n    match m\n        .Fast(let n) => return n\n        .Slow => return 0\nlet r = f()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.TransferRequired);
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.TransferRequired_Kd);
     }
 }

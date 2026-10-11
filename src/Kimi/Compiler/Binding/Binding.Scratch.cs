@@ -19,6 +19,20 @@ public sealed partial class Binding
         private readonly List<Buffer> buffers = new();
         private int depth;
 
+        internal int RetainedCapacity
+        {
+            get
+            {
+                var count = 0;
+                foreach (var buffer in this.buffers)
+                {
+                    count += buffer.Values.Length;
+                }
+
+                return count;
+            }
+        }
+
         internal T[] Rent(int count)
         {
             if (count == 0)
