@@ -38,7 +38,7 @@ public class AggregateArgumentInferenceTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(BindingFailure.Ambiguous, call.FailureOf());
         Assert.Null(call.CallOf());
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -69,7 +69,7 @@ public class AggregateArgumentInferenceTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(BindingFailure.NoApplicableCandidate, call.FailureOf());
         Assert.Null(call.CallOf());
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]

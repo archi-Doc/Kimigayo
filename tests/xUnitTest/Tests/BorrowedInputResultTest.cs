@@ -33,9 +33,9 @@ public class BorrowedInputResultTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var issue = Assert.Single(c.Ownership.Issues);
-        Assert.Equal(OwnershipFailure.ComparisonLoanConflict, issue.Failure);
-        Assert.False(c.Emission.Validate(out _));
+        var issue = Assert.Single(c.Problems);
+        Assert.True(issue.Code.IsLoanConflict(), issue.Code.ToString());
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -47,7 +47,7 @@ public class BorrowedInputResultTest
     public void ResultsMayEndBeforeTheInputsLoansAreReleased(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         ScalarEmissionTest.EmitFixture("BorrowedInputResult" + name, source, string.Empty);
     }
 
@@ -56,7 +56,7 @@ public class BorrowedInputResultTest
     {
         // SPEC 15.6.2: without a call result over the root, a borrow of the Scalar part does not hold the stored reference's Loan.
         var c = MinimalEmissionTest.Analyze("var n = 7\nlet item = (n@ref, 5)\nlet x = item.1@ref\nn = 9\nrequire x == 5 else => $abort(\"part\")");
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -64,9 +64,9 @@ public class BorrowedInputResultTest
     public void WarmOwnershipOverBorrowedInputResultsAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze(Holder + Free + "var n = 7\nlet h = H.init(item: n@ref)\nlet r = h.get()\nlet s = get(h@ref)\nrequire r == 7 and s == 7 else => $abort(\"read\")\nn = 9");
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 }

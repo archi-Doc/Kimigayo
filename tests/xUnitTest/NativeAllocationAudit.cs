@@ -11,7 +11,7 @@ internal static class NativeAllocationAudit
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var writer = new StringWriter();
-        Assert.True(c.Emission.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
         var ir = writer.ToString();
         ir = (transformIr is null ? ir : transformIr(ir))
             .Replace("call ptr @HeapAlloc(", "call ptr @audit_alloc(", StringComparison.Ordinal)

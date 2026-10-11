@@ -27,7 +27,7 @@ public class DictionaryBindingTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]

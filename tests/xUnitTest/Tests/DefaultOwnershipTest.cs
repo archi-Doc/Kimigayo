@@ -24,10 +24,10 @@ public class DefaultOwnershipTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        var issue = Assert.Single(c.Ownership.Issues, x => x.Failure == OwnershipFailure.DefaultArgumentMove);
-        c.Ownership.ReportDiagnostics();
-        Assert.Contains(TestDiagnostics.Of(issue.Source.CodeContext), x => x.Code == nameof(DiagnosticCode.DefaultArgumentMove_Kd) && x.Span == issue.Source.Span);
-        Assert.False(c.Emission.Validate(out _));
+        var issue = Assert.Single(c.Problems, x => x.Code == DiagnosticCode.DefaultArgumentMove_Kd);
+        c.ReportAnalysis();
+        Assert.Contains(TestDiagnostics.Of(c.SyntaxOf(issue.Subject).CodeContext), x => x.Code == nameof(DiagnosticCode.DefaultArgumentMove_Kd) && x.Span == c.SyntaxOf(issue.Subject).Span);
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -41,7 +41,7 @@ public class DefaultOwnershipTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.DefaultArgumentMove);
+        Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.DefaultArgumentMove_Kd);
     }
 
     [Theory]
@@ -60,16 +60,16 @@ public class DefaultOwnershipTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        Assert.True(c.Ownership.Result.ErrorCount > 0, string.Join("\n", c.Ownership.Issues));
-        var issue = Assert.Single(c.Ownership.Issues, x => x.Failure == OwnershipFailure.DefaultArgumentMove);
-        Assert.IsType<IdentifierNameKoto>(issue.Source);
-        Assert.Equal("x", issue.Source.SymbolOf()!.Name);
-        c.Ownership.ReportDiagnostics();
-        var diagnostic = Assert.Single(TestDiagnostics.Of(issue.Source.CodeContext), x => x.Code == nameof(DiagnosticCode.DefaultArgumentMove_Kd));
-        Assert.Equal(issue.Source.Span, diagnostic.Span);
+        Assert.True(c.Analysis.ErrorCount > 0, string.Join("\n", c.Problems));
+        var issue = Assert.Single(c.Problems, x => x.Code == DiagnosticCode.DefaultArgumentMove_Kd);
+        Assert.IsType<IdentifierNameKoto>(c.SyntaxOf(issue.Subject));
+        Assert.Equal("x", c.SyntaxOf(issue.Subject).SymbolOf()!.Name);
+        c.ReportAnalysis();
+        var diagnostic = Assert.Single(TestDiagnostics.Of(c.SyntaxOf(issue.Subject).CodeContext), x => x.Code == nameof(DiagnosticCode.DefaultArgumentMove_Kd));
+        Assert.Equal(c.SyntaxOf(issue.Subject).Span, diagnostic.Span);
         Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
-        Assert.DoesNotContain(TestDiagnostics.Of(issue.Source.CodeContext), x => x.Code == nameof(DiagnosticCode.Unsupported_Kd));
-        Assert.False(c.Emission.Validate(out _));
+        Assert.DoesNotContain(TestDiagnostics.Of(c.SyntaxOf(issue.Subject).CodeContext), x => x.Code == nameof(DiagnosticCode.Unsupported_Kd));
+        Assert.False(c.Validate(out _));
     }
 
     // SPEC 7.2.3, 13.5.3: an explicit transfer moves even a Copy prepared argument, and a default closure's `@move` capture entry is
@@ -98,7 +98,7 @@ public class DefaultOwnershipTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        Assert.Equal(0, c.Ownership.Result.ErrorCount);
+        Assert.Equal(0, c.Analysis.ErrorCount);
     }
 
     [Fact]
@@ -108,14 +108,14 @@ public class DefaultOwnershipTest
         for (var i = 0; i < 3; i++)
         {
             Assert.True(c.Bind().IsComplete);
-            Assert.False(c.Ownership.Analyze().IsVerified);
-            Assert.Single(c.Ownership.Issues, x => x.Failure == OwnershipFailure.DefaultArgumentMove);
+            Assert.False(c.Analyze().IsVerified);
+            Assert.Single(c.Problems, x => x.Code == DiagnosticCode.DefaultArgumentMove_Kd);
         }
 
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
-        Assert.False(restored.Ownership.Analyze().IsVerified);
-        var issue = Assert.Single(restored.Ownership.Issues, x => x.Failure == OwnershipFailure.DefaultArgumentMove);
-        Assert.NotSame(c.Ownership.Issues[0].Source, issue.Source);
+        Assert.False(restored.Analyze().IsVerified);
+        var issue = Assert.Single(restored.Problems, x => x.Code == DiagnosticCode.DefaultArgumentMove_Kd);
+        Assert.NotSame(c.SyntaxOf(c.Problems[0].Subject), restored.SyntaxOf(issue.Subject));
     }
 }

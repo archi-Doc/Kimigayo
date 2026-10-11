@@ -41,22 +41,22 @@ public class ConditionalContinuationTest
                 c = CompilationTestHelper.Reload(c);
                 Assert.True(c.Bind().IsComplete);
                 Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-                c.Ownership.Analyze();
+                c.Analyze();
             }
 
-            Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
             var body = Assert.Single(c.Ownership.Bodies, b => b.Function.Name == "f");
             var calls = Enumerable.Range(0, body.Operations.Count).Where(i => body.Operations[i].Source is InvocationKoto).ToArray();
             Assert.NotEmpty(calls);
             Assert.All(calls, i => Assert.False(body.IsReachable(i)));
             c.Bind();
             Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out _));
             Assert.Equal(0, AllocationMeasurement.Measure(() =>
             {
-                c.Ownership.Analyze();
-                c.Emission.WriteIr(TextWriter.Null, out _);
+                c.Analyze();
+                c.WriteIr(TextWriter.Null, out _);
             }));
         }
     }

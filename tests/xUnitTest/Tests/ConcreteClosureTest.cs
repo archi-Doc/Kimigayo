@@ -34,7 +34,7 @@ public class ConcreteClosureTest
         var closure = Assert.Single(c.Ownership.Bodies, x => x.Function.IsAnonymous).Function.ClosureOf()!;
         Assert.Equal(BoundTypeKind.Closure, closure.EnvironmentType!.Kind);
         Assert.Equal(receiver, closure.Receiver);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var outputIr = CompilationTestHelper.WriteIr(c);
     }
 
@@ -84,9 +84,9 @@ public class ConcreteClosureTest
     public void RejectsInvalidAcquisition(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
     }
 

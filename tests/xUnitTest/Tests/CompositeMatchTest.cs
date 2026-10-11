@@ -39,7 +39,7 @@ public class CompositeMatchTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.True(c.Ownership.Analyze().IsVerified, string.Join("; ", c.Ownership.Issues));
+        Assert.True(c.Analyze().IsVerified, string.Join("; ", c.Problems));
     }
 
     [Theory]
@@ -49,7 +49,7 @@ public class CompositeMatchTest
     public void InvalidNestedPatternsAreRejected(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analyze().IsVerified);
     }
 
     [Theory]
@@ -63,7 +63,7 @@ public class CompositeMatchTest
     {
         const string Source = "enum E<T>\n    A(T)\n    B\nlet x: E<(i32, bool)> = .A((7, true))\nlet y = match x@move\n    .A((let n, true)) if n > 0 => n\n    .A(_) => 0\n    .B => -1";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Matches.Count != 0);
         var read = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Read && x.Source.SymbolOf()?.Kind == BindingSymbolKind.PatternCandidate);
         switch (defect)
@@ -91,12 +91,12 @@ public class CompositeMatchTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.Validate(out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.Validate(out error), error);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -106,7 +106,7 @@ public class CompositeMatchTest
         const string Source = "enum E<T>\n    A(T)\n    B\nlet x: E<(i32, bool)> = .A((7, true))\nmatch x@move\n    .A((let n, true)) if n == 7 => Console.writeLine(\"ok\")\n    .A(_) => ()\n    .B => ()";
         var c = MinimalEmissionTest.Analyze(Source);
         using var original = new StringWriter();
-        Assert.True(c.Emission.WriteIr(original, out var error), error);
+        Assert.True(c.WriteIr(original, out var error), error);
         var restored = Compilation.CreateForTest();
         Assert.True(restored.Prepare(WindowsProfile.Target));
         var tree = restored.Kotonoha;
@@ -115,14 +115,14 @@ public class CompositeMatchTest
         tree.OnDeserialized(restored);
         Assert.True(restored.Bind().IsComplete);
         restored.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(restored.Ownership.Analyze().IsVerified);
+        Assert.True(restored.Analyze().IsVerified);
         using var writer = new StringWriter();
-        Assert.True(restored.Emission.WriteIr(writer, out error), error);
+        Assert.True(restored.WriteIr(writer, out error), error);
         Assert.Equal(original.ToString(), writer.ToString());
         ScalarEmissionTest.WriteFixture("CompositePatternReload", writer.ToString(), "ok\n");
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Ownership.Analyze()));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
         Assert.True(c.Emission.TryPrepare(out var module, out error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() => module.WriteIr(TextWriter.Null)));
     }

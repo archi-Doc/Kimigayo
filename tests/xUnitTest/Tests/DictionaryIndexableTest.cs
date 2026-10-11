@@ -11,7 +11,7 @@ public class DictionaryIndexableTest
     public void SubscriptsSelectTheSameSourceEntries()
     {
         var c = MinimalEmissionTest.Analyze("var values = [1: 42]\nvalues[1] = 43\nrequire values[1] == 43 else => $abort(\"value\")");
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.GetSymbol(KimiDeclarationId.DictionaryIndex)!.Declaration));
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.GetSymbol(KimiDeclarationId.DictionaryIndexUniq)!.Declaration));
         ScalarEmissionTest.WriteFixture("DictionaryIndexableSubscript", CompilationTestHelper.WriteIr(c), string.Empty);
@@ -110,8 +110,8 @@ public class DictionaryIndexableTest
     {
         var c = MinimalEmissionTest.Analyze("var values = [1: 42]\n" + use);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.Contains(c.Ownership.Issues, issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.False(c.Analysis.IsVerified);
+        Assert.Contains(c.Problems, issue => issue.Code.IsLoanConflict());
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
@@ -41,7 +42,7 @@ public class ArrayInferenceEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -59,11 +60,11 @@ public class ArrayInferenceEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("let source: [1 of string] = [\"value\"]\nlet row: [1 of _] = source@move\nlet twice = source@move");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.PossiblyMovedUse);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd);
+        Assert.False(c.Validate(out _));
         var bare = MinimalEmissionTest.Analyze("let source: [1 of string] = [\"value\"]\nlet row: [1 of _] = source");
-        Assert.Contains(bare.Ownership.Issues, x => x.Failure == OwnershipFailure.TransferRequired);
-        Assert.False(bare.Emission.Validate(out _));
+        Assert.Contains(bare.Problems, x => x.Code == DiagnosticCode.TransferRequired_Kd);
+        Assert.False(bare.Validate(out _));
     }
 
     [Fact]
@@ -71,23 +72,23 @@ public class ArrayInferenceEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("let value: u8 = 2\nlet row: [2 of _] = [1, value]\nif row[0] == 1 => Console.writeLine(\"ok\")");
         using var original = new StringWriter();
-        Assert.True(c.Emission.WriteIr(original, out var error), error);
+        Assert.True(c.WriteIr(original, out var error), error);
         var variable = c.Kotonoha.GeneratedFunction!.Body!.ChildNodes.OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "row");
         var array = Assert.IsType<FixedArrayTypeKoto>(variable.TypeKoto);
         array.ElementType.SetType(BoundType.String);
         Assert.True(c.Bind().IsComplete);
         Assert.Same(BoundType.Primitives["u8"], array.ElementType.TypeOf());
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
+        c.Analyze();
         using var rebound = new StringWriter();
-        Assert.True(c.Emission.WriteIr(rebound, out error), error);
+        Assert.True(c.WriteIr(rebound, out error), error);
         Assert.Equal(original.ToString(), rebound.ToString());
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
         restored.Binding.CheckStartup(OutputKind.Application);
-        restored.Ownership.Analyze();
+        restored.Analyze();
         using var writer = new StringWriter();
-        Assert.True(restored.Emission.WriteIr(writer, out error), error);
+        Assert.True(restored.WriteIr(writer, out error), error);
         Assert.Equal(original.ToString(), writer.ToString());
         ScalarEmissionTest.WriteFixture("ArrayInferenceReload", writer.ToString(), "ok\n");
     }

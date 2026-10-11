@@ -127,8 +127,8 @@ public class ComparisonOperatorTest
             let invalid = value == take(value@move)
             """);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.False(c.Analysis.IsVerified);
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
     }
 
     [Fact]

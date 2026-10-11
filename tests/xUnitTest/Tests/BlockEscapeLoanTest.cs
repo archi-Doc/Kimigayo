@@ -244,13 +244,13 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(workload);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(escapes == 0, c.Ownership.Result.IsVerified);
-        Assert.Equal(escapes, c.Ownership.Issues.Count(static x => x.Failure == OwnershipFailure.ComparisonLoanConflict));
+        Assert.Equal(escapes == 0, c.Analysis.IsVerified);
+        Assert.Equal(escapes, c.Problems.Count(static x => x.Code.IsLoanConflict()));
         Assert.Equal(escapes, c.Ownership.Issues.Count(static x => x.Borrow is not null));
         var verified = escapes == 0;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => verified = c.Ownership.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => verified = c.Analyze().IsVerified));
         Assert.Equal(escapes == 0, verified);
-        Assert.Equal(escapes, c.Ownership.Issues.Count(static x => x.Failure == OwnershipFailure.ComparisonLoanConflict));
+        Assert.Equal(escapes, c.Problems.Count(static x => x.Code.IsLoanConflict()));
     }
 
     private static string Text(string source, SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;

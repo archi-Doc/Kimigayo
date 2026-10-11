@@ -41,9 +41,9 @@ public class ArrayBindingTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         using var output = new StringWriter();
-        Assert.True(c.Emission.WriteIr(output, out var error), error);
+        Assert.True(c.WriteIr(output, out var error), error);
         Assert.NotEmpty(output.ToString());
     }
 
@@ -69,7 +69,7 @@ public class ArrayBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Task + source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var outputIr = CompilationTestHelper.WriteIr(c);
     }
 
@@ -98,8 +98,8 @@ public class ArrayBindingTest
     {
         var c = MinimalEmissionTest.Analyze("let nested = [[1], [2]]");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified);
-        Assert.True(c.Emission.Validate(out _));
+        Assert.True(c.Analysis.IsVerified);
+        Assert.True(c.Validate(out _));
     }
 
     // SPEC 4.7.4: the typed empty literal is a zeroed handle that allocates nothing; destruction releases the buffer.
@@ -114,7 +114,7 @@ public class ArrayBindingTest
     public void EmptyHandleIsZeroedAndReleasedThroughTheRuntime()
     {
         var c = MinimalEmissionTest.Analyze("var values: Array<i32> = []\nrequire values.length == 0 else => $abort(\"empty\")");
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var ir = CompilationTestHelper.WriteIr(c);
         Assert.Contains("call void @__kimi_array_init(ptr %", ir);
         Assert.Contains("call void @__kimi_array_free(ptr %", ir);
@@ -135,7 +135,7 @@ public class ArrayBindingTest
     {
         var c = MinimalEmissionTest.Analyze("var values: Array<i32> = []\n" + statement);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var ir = CompilationTestHelper.WriteIr(c);
     }
 
@@ -214,7 +214,7 @@ public class ArrayBindingTest
         // SPEC 4.3: the literal is fitted to the candidate's Array, not first defaulted.
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]

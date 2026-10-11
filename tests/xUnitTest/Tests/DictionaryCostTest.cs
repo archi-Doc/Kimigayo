@@ -91,8 +91,8 @@ public class DictionaryCostTest
         {
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         var bytes = AllocationMeasurement.Measure(() =>
@@ -105,7 +105,7 @@ public class DictionaryCostTest
                 }
 
                 c.Binding.CheckStartup(OutputKind.Application);
-                if (!c.Ownership.Analyze().IsVerified || !c.Emission.WriteIr(TextWriter.Null, out _))
+                if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
                 {
                     throw new InvalidOperationException("Dictionary compilation failed.");
                 }
@@ -116,9 +116,9 @@ public class DictionaryCostTest
             var valid = stage switch
             {
                 "Binding" => c.Bind().IsComplete,
-                "Ownership" => c.Ownership.Analyze().IsVerified,
-                "Validation" => c.Emission.Validate(out _),
-                _ => c.Emission.WriteIr(TextWriter.Null, out _),
+                "Ownership" => c.Analyze().IsVerified,
+                "Validation" => c.Validate(out _),
+                _ => c.WriteIr(TextWriter.Null, out _),
             };
             if (!valid)
             {

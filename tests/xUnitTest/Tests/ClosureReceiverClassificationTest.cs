@@ -24,7 +24,7 @@ public class ClosureReceiverClassificationTest
     public void BorrowingBodiesAreNotConsuming(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         ScalarEmissionTest.EmitFixture("ClosureReceiver" + name, source, string.Empty);
     }
 
@@ -33,7 +33,7 @@ public class ClosureReceiverClassificationTest
     {
         const string Source = Bag + "let b = Bag.init([1, 2], .None)\nlet take = func [b@move] () -> Array<i32> => b.items@move\nlet items = take@move()\nrequire items.length == 2 else => $abort(\"take\")";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous);
         Assert.Equal(SemanticsKind.Owner, closure.ClosureOf()!.Receiver);
     }
@@ -89,7 +89,7 @@ public class ClosureReceiverClassificationTest
     public void ObjectCalleesSupplyOnlyTheirPayloadAuthority(string source, string code, string at, string? note, bool authority)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((code, at), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
         if (note is not null)

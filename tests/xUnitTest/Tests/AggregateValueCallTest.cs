@@ -75,9 +75,9 @@ public class AggregateValueCallTest
     public void NonCopyArgumentsRequireAvailableOwnedAcquisition(string calls)
     {
         var c = MinimalEmissionTest.Analyze("let callback = func (value: (string, i32)) => ()\nlet f: ((string, i32)) -> () = callback\nlet value = (\"text\", 42)\n" + calls);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
     }
 
@@ -88,7 +88,7 @@ public class AggregateValueCallTest
         const string Source = "let callback = func (value: (i32, i32)) -> (i32, i32) => value\nlet f: ((i32, i32)) -> (i32, i32) = callback\nf((20, 22))";
         var c = MinimalEmissionTest.Analyze(Source);
         var valid = true;
-        var allocated = AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _));
+        var allocated = AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(0, allocated);
     }

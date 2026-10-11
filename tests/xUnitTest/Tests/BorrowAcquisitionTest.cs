@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -49,7 +50,7 @@ public class BorrowAcquisitionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         c.Binding.ReportDiagnostics();
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
         Assert.Equal(code, error.Code);
         Assert.Equal(text, error.Text);
@@ -90,7 +91,7 @@ public class BorrowAcquisitionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
     }
 
     [Theory]
@@ -98,5 +99,5 @@ public class BorrowAcquisitionTest
     [InlineData("func f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    let local = value\n    _ = local")]
     [InlineData("let text = \"owned\"\nlet copy = text")]
     public void RejectsBareAcquisitionWithoutPlan(string source)
-        => Assert.Contains(MinimalEmissionTest.Analyze(source).Ownership.Issues, static x => x.Failure == OwnershipFailure.TransferRequired);
+        => Assert.Contains(MinimalEmissionTest.Analyze(source).Problems, static x => x.Code == DiagnosticCode.TransferRequired_Kd);
 }

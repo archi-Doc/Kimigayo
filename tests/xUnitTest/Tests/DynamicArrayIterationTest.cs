@@ -73,8 +73,8 @@ public class DynamicArrayIterationTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
 }

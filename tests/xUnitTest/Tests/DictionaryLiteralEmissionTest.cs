@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -121,8 +122,8 @@ public class DictionaryLiteralEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("let value = \"owned\"\nlet entries = [1: value@move]\nlet again = value@move");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.PossiblyMovedUse);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.MovedPlace_Kd);
+        Assert.False(c.Validate(out _));
     }
 
     [Fact]
@@ -130,8 +131,8 @@ public class DictionaryLiteralEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("let value = 1\nlet entries = [1: value@ref]");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Validate(out var error), error);
     }
 
     [Fact]
@@ -144,11 +145,11 @@ public class DictionaryLiteralEmissionTest
         var loaded = CompilationTestHelper.Reload(c);
         Assert.True(loaded.Bind().IsComplete);
         loaded.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(loaded.Ownership.Analyze().IsVerified);
+        Assert.True(loaded.Analyze().IsVerified);
         Assert.Equal(original, CompilationTestHelper.WriteIr(loaded));
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Ownership.Analyze().IsVerified);
+        Assert.True(c.Analyze().IsVerified);
         Assert.Equal(original, CompilationTestHelper.WriteIr(c));
     }
 
@@ -169,13 +170,13 @@ public class DictionaryLiteralEmissionTest
         {
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Bind().IsComplete || !c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Ownership.Analyze().IsVerified || !c.Emission.WriteIr(TextWriter.Null, out _))
+            if (!c.Bind().IsComplete || !c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
             {
                 throw new InvalidOperationException("Dictionary literal compilation failed.");
             }

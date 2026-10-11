@@ -66,7 +66,7 @@ public class DictionaryLibraryTest
     public void RemovalResultCompilesFromOrdinarySource()
     {
         var c = MinimalEmissionTest.Analyze("var entries = [1: 42]\nmatch entries.remove(1)\n    .Some((let key, let value)) => require key == 1 and value == 42 else => $abort(\"removed\")\n    .None => $abort(\"missing\")\nrequire entries.length == 0 else => $abort(\"length\")");
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var function = c.Library.GetSymbol(KimiDeclarationId.DictionaryRemove);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
@@ -80,7 +80,7 @@ public class DictionaryLibraryTest
     public void ClearingCompilesFromOrdinarySource()
     {
         var c = MinimalEmissionTest.Analyze("var entries = [1: 42]\nentries.clear()\nrequire entries.length == 0 and entries.capacity >= 1 else => $abort(\"clear\")");
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var function = c.Library.GetSymbol(KimiDeclarationId.DictionaryClear);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
@@ -92,7 +92,7 @@ public class DictionaryLibraryTest
     public void LookupCompilesFromOrdinarySource()
     {
         var c = MinimalEmissionTest.Analyze("var entries = [1: 42]\nmatch entries.tryGet(1)\n    .Some(let value) => require value == 42 else => $abort(\"value\")\n    .None => $abort(\"missing\")");
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var function = c.Library.GetSymbol(KimiDeclarationId.DictionaryTryGet);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
@@ -109,7 +109,7 @@ public class DictionaryLibraryTest
     public void InsertionCompilesFromOrdinarySource(KimiDeclarationId id, string name, string valueType, string source)
     {
         var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, " + valueType + "> = [:]\n" + source);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var function = c.Library.GetSymbol(id);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
@@ -127,7 +127,7 @@ public class DictionaryLibraryTest
     public void CapacityOperationsCompileFromOrdinarySource(KimiDeclarationId id, string name, string source)
     {
         var c = MinimalEmissionTest.Analyze("var entries = [1: 2]\n" + source);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var function = c.Library.GetSymbol(id);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);

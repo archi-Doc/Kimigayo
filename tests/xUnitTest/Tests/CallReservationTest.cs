@@ -63,8 +63,8 @@ public class CallReservationTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Cell + body);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
-        Assert.True(c.Ownership.Result.IsVerified, name + "\n" + string.Join('\n', c.Ownership.Issues));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), name + ": " + error);
+        Assert.True(c.Analysis.IsVerified, name + "\n" + string.Join('\n', c.Problems));
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), name + ": " + error);
         ScalarEmissionTest.EmitFixture("CallReservation" + name, Cell + body, string.Empty);
     }
 
@@ -80,7 +80,7 @@ public class CallReservationTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(Cell + body);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ExclusiveBorrowRequired_Kd);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -106,9 +106,9 @@ public class CallReservationTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Cell + body);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
-        Assert.False(c.Ownership.Result.IsVerified, body);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Analysis.IsVerified, body);
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -120,7 +120,7 @@ public class CallReservationTest(ITestOutputHelper output)
     public void RejectsCorruptedReservationPlans(string mutation)
     {
         var c = MinimalEmissionTest.Analyze(Cell + "var c = Cell.init()\nset(c@uniq, read(c))");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = Assert.Single(c.Ownership.Bodies, x => x.CallReservations.Count != 0);
         var reservation = body.CallReservations[0];
         switch (mutation)
@@ -143,10 +143,10 @@ public class CallReservationTest(ITestOutputHelper output)
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -156,7 +156,7 @@ public class CallReservationTest(ITestOutputHelper output)
         var source = Cell + "func use<T>(c: T, n: i32) => require n == 1 else => $abort(\"read\")\nvar c = Cell.init()\nuse(c@uniq, read(c))";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.True(c.Ownership.Result.IsVerified);
+        Assert.True(c.Analysis.IsVerified);
         NativeAllocationAudit.WriteFixture("CallReservationGenericReference", source, 0, 0, 0);
     }
 
@@ -247,7 +247,7 @@ public class CallReservationTest(ITestOutputHelper output)
         var source = Cell + Drain + "var values = [1, 2, 3]\nvar other = [4, 5]\nvar it = other.iterateUniq()\nvar drain = Drain<ArrayUniqIterator<i32>>.init(values.iterateUniq())\ndrain.reset(values.iterateUniq())\nother.append(6)\nlet n = it.next()\nlet m = drain.take()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         var errors = TestDiagnostics.Of(c);
         Assert.Equal(2, errors.Length);
         Assert.All(errors, static x => Assert.Equal("CallActivationConflict_Kd", x.Code));
@@ -313,7 +313,7 @@ public class CallReservationTest(ITestOutputHelper output)
         var source = Cell + Both + Change + "var c = Cell.init()\nvar d = Cell.init()\nboth(c@uniq, c@uniq)\nset(d@uniq, change(d@uniq))";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         var errors = TestDiagnostics.Of(c);
         Assert.Equal(2, errors.Length);
         Assert.All(errors, static x => Assert.Equal("CallReservationConflict_Kd", x.Code));
@@ -325,15 +325,15 @@ public class CallReservationTest(ITestOutputHelper output)
     public void WarmReservationAnalysisAndEmissionAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Cell + "var c = Cell.init()\nset(c@uniq, read(c))");
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
 
         var success = true;
         var bytes = AllocationMeasurement.Measure(
             () =>
             {
-                success &= c.Ownership.Analyze().IsVerified;
-                success &= c.Emission.WriteIr(TextWriter.Null, out _);
+                success &= c.Analyze().IsVerified;
+                success &= c.WriteIr(TextWriter.Null, out _);
             },
             iterations: 128,
             warmupIterations: 100);
@@ -350,18 +350,18 @@ public class CallReservationTest(ITestOutputHelper output)
     public void RejectsPermissionAndDefaultEscapes(string body)
     {
         var c = MinimalEmissionTest.Analyze(Cell + body);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
+        Assert.False(c.Validate(out _));
     }
 
     private static void AssertAccepted(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
-        Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
-        c.Ownership.ReportDiagnostics();
+        Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
+        c.ReportAnalysis();
         Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
     }
 
     // One published Error at the expected range with one related location and its Note, in the console and in both
@@ -372,8 +372,8 @@ public class CallReservationTest(ITestOutputHelper output)
         var path = Path.GetFullPath("reservation-conflict.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
-        Assert.False(c.Ownership.Result.IsVerified);
-        c.Ownership.ReportDiagnostics();
+        Assert.False(c.Analysis.IsVerified);
+        c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var error = Assert.Single(result.Diagnostics);
@@ -430,6 +430,6 @@ public class CallReservationTest(ITestOutputHelper output)
             }
         }
 
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 }

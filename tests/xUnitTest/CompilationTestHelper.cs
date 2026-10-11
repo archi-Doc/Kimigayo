@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Tinyhand;
 using Xunit;
@@ -63,4 +64,12 @@ internal static class CompilationTestHelper
 
         return writer.ToString();
     }
+
+    // The problem codes of a Comparison Loan conflict: the conflicting access decides the code (OwnershipIssue.Code).
+    internal static bool IsLoanConflict(this DiagnosticCode code)
+        => code is DiagnosticCode.ComparisonLoanConflict_Kd or DiagnosticCode.CallReservationConflict_Kd or DiagnosticCode.CallActivationConflict_Kd or DiagnosticCode.PlacementActivationConflict_Kd;
+
+    // The problem codes of an unproven Origin obligation: what is unproven decides the code (OwnershipIssue.Code).
+    internal static bool IsUnprovenOrigin(this DiagnosticCode code)
+        => code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd or DiagnosticCode.UnprovenConstraint_Kd;
 }

@@ -32,9 +32,9 @@ public class ClosureResultOriginTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.False(c.Validate(out _));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -71,7 +71,7 @@ public class ClosureResultOriginTest
     {
         var c = MinimalEmissionTest.Analyze(Captured + "let erased: () -> ref/i32 = f\nerased()");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     // SPEC 7.6.4, 15.6.1, 23.3.6.5: a common Function value cannot return a borrow of its hidden environment receiver, so the erasure of
@@ -104,7 +104,7 @@ public class ClosureResultOriginTest
         var c = MinimalEmissionTest.Analyze("func bad() -> ref/i32 during static\n    let n = 7\n    let values: [1 of ref/i32] = [n@ref]\n    let f = func [values] () => values[0]\n    return f()\nbad()");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Failure == BindingFailure.Unsupported);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -116,8 +116,8 @@ public class ClosureResultOriginTest
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid);
         Assert.Equal(expected, CompilationTestHelper.WriteIr(c));
     }

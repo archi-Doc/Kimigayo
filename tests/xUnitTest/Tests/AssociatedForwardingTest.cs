@@ -74,7 +74,7 @@ public class AssociatedForwardingTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code.ToString() == diagnostic);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -101,7 +101,7 @@ public class AssociatedForwardingTest
     public void MilestoneOwnershipIsVerified()
     {
         var c = MinimalEmissionTest.Analyze(MilestoneSource);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]

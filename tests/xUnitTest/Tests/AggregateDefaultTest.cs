@@ -50,10 +50,10 @@ public class AggregateDefaultTest
         public void WarmFunctionFactoryDefaultsAllocateNothing()
         {
             var c = MinimalEmissionTest.Analyze(FunctionFactory);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
             var valid = true;
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
             Assert.True(valid);
         }
 
@@ -61,10 +61,10 @@ public class AggregateDefaultTest
         public void WarmAggregateCopiesAllocateNothing()
         {
             var c = MinimalEmissionTest.Analyze(Point + "func f(p: Point, action: () -> i32 = func [p] () => p.x + p.y) -> i32 => action()\nrequire f(Point.init(2, 3)) == 5 else => $abort(\"copy\")");
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
             var valid = true;
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
             Assert.True(valid);
         }
     }

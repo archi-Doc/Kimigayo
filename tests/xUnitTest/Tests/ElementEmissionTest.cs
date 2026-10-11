@@ -65,8 +65,8 @@ public class ElementEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Analysis.IsVerified);
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -79,7 +79,7 @@ public class ElementEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -106,7 +106,7 @@ public class ElementEmissionTest
     public void MalformedPlansFailBeforeWritingAndRecover(string defect)
     {
         var c = MinimalEmissionTest.Analyze("let a: [1 of i32] = [42]\nlet n = a[0]");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var plan = body.Projections[0];
         body.Projections[0] = defect switch
@@ -128,10 +128,10 @@ public class ElementEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Fact]
@@ -191,8 +191,8 @@ public class ElementEmissionTest
         {
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         var success = true;
@@ -207,8 +207,8 @@ public class ElementEmissionTest
         before = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 128; i++)
         {
-            success &= c.Ownership.Analyze().IsVerified;
-            success &= c.Emission.WriteIr(TextWriter.Null, out _);
+            success &= c.Analyze().IsVerified;
+            success &= c.WriteIr(TextWriter.Null, out _);
         }
 
         var bytes = GC.GetAllocatedBytesForCurrentThread() - before;

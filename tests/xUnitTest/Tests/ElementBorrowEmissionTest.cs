@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -79,7 +80,7 @@ public class ElementBorrowEmissionTest
     [InlineData("func inspect(a: ref/string, b: bool) => ()\nvar a = (\"first\", 0)\ninspect(a.0, (label work: do\n    let nested = same(a.0, a.0)\n    a.0 = \"new\"\n    exit to work nested\n))")]
     [InlineData("var a: (string, [1 of i32]) = (\"first\", [0])\nlet x = a.1[(label work: do\n    let equal = same(a.0, a.0)\n    a.0 = \"new\"\n    exit to work 0\n)]")]
     public void OverlappingLoansAreRejected(string source)
-        => Reject(Same + source, OwnershipFailure.ComparisonLoanConflict);
+        => Reject(Same + source, DiagnosticCode.ComparisonLoanConflict_Kd);
 
     [Theory]
     [InlineData("let a = (\"first\", 0)\nlet taken = a.0@move\nlet equal = a.0 == \"first\"")]
@@ -87,13 +88,13 @@ public class ElementBorrowEmissionTest
     [InlineData("let a = ((\"first\", \"last\"), 0)\nlet taken = a.0@move\nlet equal = same(a.0.0, a.0.0)")]
     [InlineData("func f(take: bool)\n    let a = (\"first\", 0)\n    if take\n        let taken = a.0@move\n    let equal = same(a.0, a.0)")]
     public void MissingElementsAreRejected(string source)
-        => Reject(Same + source, OwnershipFailure.PossiblyMovedUse);
+        => Reject(Same + source, DiagnosticCode.MovedPlace_Kd);
 
     [Theory]
     [InlineData("var a: (string, i32)\nlet equal = same(a.0, a.0)")]
     [InlineData("var a: [1 of string]\nlet equal = a[0] == \"first\"")]
     public void UnconstructedReceiversAreRejected(string source)
-        => Reject(Same + source, OwnershipFailure.UninitializedUse);
+        => Reject(Same + source, DiagnosticCode.UninitializedPlace_Kd);
 
     // SPEC 3.4.1, 4.6.9, 5.4, 10.2: an owned fixed-array element at a runtime index, and a stored part below an element of an Array,
     // a Slice or such a fixed array, owned or reached through references, is borrowed in place through the element's own borrow:
@@ -149,7 +150,7 @@ public class ElementBorrowEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(Item + Pt + Bank + Bump + source + "\npublic func main() => ()");
         Assert.Contains(c.Binding.Issues, static x => x.Code == Kimi.DiagnosticCode.SharedPathAccess_Kd);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     // SPEC 3.4.1, 15.1.3: a runtime index proves no initialized element, so a fixed array with a moved element lends none.
@@ -158,8 +159,8 @@ public class ElementBorrowEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(Item + Bump + "var ys: [2 of Item] = [Item.init(\"a\", 41), Item.init(\"b\", 2)]\nlet taken = ys[1]@move\nlet i: isize = 0\nbump(ys[i].n@uniq)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.PossiblyMovedUse);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.MovedPlace_Kd);
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     // SPEC 15.6.2, 15.6.3, 15.6.7: a part borrow keeps its Array borrowed while it is live: resizing, clearing, moving or replacing
@@ -174,8 +175,8 @@ public class ElementBorrowEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(Item + "var xs: Array<Item> = [Item.init(\"a\", 1), Item.init(\"b\", 2)]\n" + use);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(code, Assert.Single(c.Ownership.Issues).Code.ToString());
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Equal(code, Assert.Single(c.Problems).Code.ToString());
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     // SPEC 3.4.1, 10.2, 15.6.2: element routes compose: nested Field, Tuple and Array projections select one Place, a stored reference
@@ -198,8 +199,8 @@ public class ElementBorrowEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(Item + Bank + source + "\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal("CallActivationConflict_Kd", Assert.Single(c.Ownership.Issues).Code.ToString());
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Equal("CallActivationConflict_Kd", Assert.Single(c.Problems).Code.ToString());
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     // SPEC 15.6.2: element indices prove no disjointness, so exclusive borrows of parts of two elements conflict exactly as exclusive
@@ -210,8 +211,8 @@ public class ElementBorrowEmissionTest
         static string[] Codes(string use)
         {
             var c = MinimalEmissionTest.Analyze(Item + "var xs: Array<Item> = [Item.init(\"a\", 1), Item.init(\"b\", 2)]\n" + use);
-            Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
-            return c.Ownership.Issues.Select(static x => x.Code.ToString()).ToArray();
+            Assert.False(c.WriteIr(TextWriter.Null, out _));
+            return c.Problems.Select(static x => x.Code.ToString()).ToArray();
         }
 
         var parts = Codes("func two(a: uniq/i32, b: uniq/i32) => a@follow += b@follow\ntwo(xs[0].n@uniq, xs[1].n@uniq)");
@@ -238,7 +239,7 @@ public class ElementBorrowEmissionTest
         var outcomes = new[] { first, second }.Select(static use =>
         {
             var c = MinimalEmissionTest.Analyze(Prefix + use);
-            return (Failures: string.Join(",", c.Ownership.Issues.Select(static x => x.Failure)), Emitted: c.Emission.WriteIr(TextWriter.Null, out _));
+            return (Failures: string.Join(",", c.Problems.Select(static x => x.Code)), Emitted: c.WriteIr(TextWriter.Null, out _));
         }).ToArray();
         Assert.Equal(outcomes[0], outcomes[1]);
         Assert.Equal(stdout is not null, outcomes[0].Emitted);
@@ -256,7 +257,7 @@ public class ElementBorrowEmissionTest
     public void ABorrowOfATemporaryReadOfItsSelectionFailsBeforeOutputAndRecovers(LoanRequirement mode)
     {
         var c = MinimalEmissionTest.Analyze(SharedCopyPart);
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(static x => x.Operations.Any(static o => o.Kind == OwnershipOperationKind.Borrow && o.Source is Kimi.Compiler.Parsing.MemberAccessKoto));
         var borrow = Enumerable.Range(0, body.Operations.Count).Single(i => body.Operations[i] is { Kind: OwnershipOperationKind.Borrow, Source: Kimi.Compiler.Parsing.MemberAccessKoto });
         var part = body.Operations[borrow];
@@ -264,10 +265,10 @@ public class ElementBorrowEmissionTest
         body.OperationStorage[borrow] = part with { LoanMode = mode };
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Theory]
@@ -335,7 +336,7 @@ public class ElementBorrowEmissionTest
     public void CorruptedElementRoutesFailBeforeOutputAndRecover(string defect)
     {
         var c = MinimalEmissionTest.Analyze(Item + Bump + "var xs: Array<Item> = [Item.init(\"a\", 41)]\nbump(xs[0].n@uniq)\nvar ys: [2 of i32] = [1, 2]\nlet i: isize = 0\nbump(ys[i]@uniq)");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(static x => x.Operations.Any(static o => o is { Kind: OwnershipOperationKind.Borrow, Source: Kimi.Compiler.Parsing.MemberAccessKoto }));
         var part = Enumerable.Range(0, body.Operations.Count).Single(i => body.Operations[i] is { Kind: OwnershipOperationKind.Borrow, Source: Kimi.Compiler.Parsing.MemberAccessKoto });
         var fixedElement = Enumerable.Range(0, body.Operations.Count).Single(i => body.Operations[i] is { Kind: OwnershipOperationKind.Borrow, LoanMode: LoanRequirement.Uniq, Source: Kimi.Compiler.Parsing.IndexKoto index } && index.Left.TypeOf() is { Kind: BoundTypeKind.FixedArray });
@@ -351,10 +352,10 @@ public class ElementBorrowEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     // SPEC 15.6.3: an edit that moves a part borrow to another Array removes its conflict, and the reverse edit restores it; each
@@ -363,7 +364,7 @@ public class ElementBorrowEmissionTest
     public void EditedPartBorrowsReanalyzeFromTheCurrentSource()
     {
         var c = MinimalEmissionTest.Analyze(Item + Bump + "var xs: Array<Item> = [Item.init(\"a\", 41)]\nvar ys: Array<Item> = [Item.init(\"b\", 1)]\nlet r = xs[0].n@ref\nbump(xs[0].n@uniq)\nConsole.writeLine(\"\\(r@follow)\")\nlet other = ys[0].n");
-        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.False(c.Analysis.IsVerified);
         var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.ConversionKoto>().Single(static x => x.ToString() == "xs[0].n@uniq");
         var borrowed = conversion.Left;
         var read = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.MemberAccessKoto>().Single(static x => x.ToString() == "ys[0].n");
@@ -374,13 +375,13 @@ public class ElementBorrowEmissionTest
             Assert.True(KotoHelper.Replace(conversion, borrowed, read) && KotoHelper.Replace(declaration, read, borrowed));
             Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
             Assert.True(KotoHelper.Replace(conversion, read, borrowed) && KotoHelper.Replace(declaration, borrowed, read));
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.False(c.Ownership.Analyze().IsVerified);
-            Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+            Assert.False(c.Analyze().IsVerified);
+            Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
         }
     }
 
@@ -400,7 +401,7 @@ public class ElementBorrowEmissionTest
     public void CorruptedBorrowPlansFailBeforeOutputAndRecover(string defect)
     {
         var c = MinimalEmissionTest.Analyze(Same + "let a: [2 of string] = [\"held\", \"sibling\"]\nlet equal = same(a[0], a[0])\nlet inspected = a[1] == a[1]");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var plan = body.Projections[0];
         var loan = body.LoanStates[plan.Borrow];
@@ -424,10 +425,10 @@ public class ElementBorrowEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -440,8 +441,8 @@ public class ElementBorrowEmissionTest
         {
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         var success = true;
@@ -456,8 +457,8 @@ public class ElementBorrowEmissionTest
         before = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 128; i++)
         {
-            success &= c.Ownership.Analyze().IsVerified;
-            success &= c.Emission.WriteIr(TextWriter.Null, out _);
+            success &= c.Analyze().IsVerified;
+            success &= c.WriteIr(TextWriter.Null, out _);
         }
 
         var bytes = GC.GetAllocatedBytesForCurrentThread() - before;
@@ -475,14 +476,14 @@ public class ElementBorrowEmissionTest
             "var ps: Array<Pt> = [Pt.init(41)]\nset(ps@uniq)\nlet bank = Bank.init([Item.init(\"a\", 7)])\nlet n = first(bank@ref)");
         var parts = MinimalEmissionTest.Analyze(Item + Bump + "var xs: Array<Item> = [Item.init(\"a\", 41)]\nbump(xs[0].n@uniq)\nlet name = xs[0].name@ref\nConsole.writeLine(name)\n" +
             "var ys: [2 of Item] = [Item.init(\"a\", 41), Item.init(\"b\", 2)]\nlet i: isize = 0\nbump(ys[i].n@uniq)\nConsole.writeLine(ys[i].name)");
-        Assert.True(parts.Emission.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(parts.WriteIr(TextWriter.Null, out var error), error);
         var success = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            success &= shared.Ownership.Analyze().IsVerified;
-            success &= referenced.Ownership.Analyze().IsVerified;
-            success &= parts.Ownership.Analyze().IsVerified;
-            success &= parts.Emission.WriteIr(TextWriter.Null, out _);
+            success &= shared.Analyze().IsVerified;
+            success &= referenced.Analyze().IsVerified;
+            success &= parts.Analyze().IsVerified;
+            success &= parts.WriteIr(TextWriter.Null, out _);
         }));
         Assert.True(success);
     }
@@ -498,22 +499,22 @@ public class ElementBorrowEmissionTest
     public void WarmElementPlaceWorkloadsAllocateNothing(string axis)
     {
         var c = MinimalEmissionTest.Analyze(Verification.VerificationWorkloads.ElementPlaces(axis, 8));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid);
     }
 
-    private static void Reject(string source, OwnershipFailure failure)
+    private static void Reject(string source, DiagnosticCode failure)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == failure);
+        Assert.Contains(c.Problems, x => x.Code == failure);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 }

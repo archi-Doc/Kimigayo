@@ -32,7 +32,7 @@ public class AssociatedOriginBindingTest
         var c = MinimalEmissionTest.Analyze("contract C\n    associate Item(a) is i32\nstruct S\n    Self is C\nfunc f(x: ref/i32 during source) -> " + result + " => 42");
         Assert.False(c.Binding.Result.IsComplete);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -129,7 +129,7 @@ public class AssociatedOriginBindingTest
         const string source = "contract C\n    associate Item(step) is Copy\n    func get(self: ref/Self during step) -> Self.Item(step)\n" +
             "func twice<T>(x: ref/T during b) -> (T.(C).Item(b), T.(C).Item(b))\n    T is C\n    let v = x.get()\n    return (v, v)";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]

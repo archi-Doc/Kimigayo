@@ -167,7 +167,7 @@ public class DivisionEmissionTest
     public void MismatchedDivisionPlansFailBeforeWriting(bool wrongKind)
     {
         var c = MinimalEmissionTest.Analyze("let b = true\nvar x = 7\nlet y = x / 2");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var id = body.Values.FindIndex(x => x.Operator == KotoKind.Slash);
         if (wrongKind)
@@ -181,7 +181,7 @@ public class DivisionEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -269,14 +269,14 @@ public class DivisionEmissionTest
     public void WarmDivisionAnalysisAndWritingAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Snapshot);
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         var success = true;
         var bytes = AllocationMeasurement.Measure(
             () =>
             {
-                success &= c.Ownership.Analyze().IsVerified;
-                success &= c.Emission.WriteIr(TextWriter.Null, out _);
+                success &= c.Analyze().IsVerified;
+                success &= c.WriteIr(TextWriter.Null, out _);
             },
             iterations: 128,
             warmupIterations: 100);

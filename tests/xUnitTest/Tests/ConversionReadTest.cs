@@ -35,7 +35,7 @@ public class ConversionReadTest
         Assert.Same(expected, conversion.TypeOf());
         Assert.Equal(binding, conversion.ConversionOf().Kind.ToString());
         Assert.True(c.Binding.ReadsReferent(conversion.Left));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
     }
 
     [Fact]

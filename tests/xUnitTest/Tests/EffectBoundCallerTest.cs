@@ -22,7 +22,7 @@ public class EffectBoundCallerTest
     {
         var c = MinimalEmissionTest.Analyze(Source + declarations + Main);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
         if (at is not null)
         {
@@ -45,7 +45,7 @@ public class EffectBoundCallerTest
     {
         var c = MinimalEmissionTest.Analyze(Source + declarations + Main);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     // SPEC 4.7.5, 8.4.10.4: only a Kimi operation's published summary replaces the unbounded model; a user generic function keeps it,
@@ -57,7 +57,7 @@ public class EffectBoundCallerTest
     {
         var c = MinimalEmissionTest.Analyze(declarations + Main);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
         Assert.Equal((nameof(DiagnosticCode.CallEffectConflict_Kd), at), (error.Code, error.Text));
     }
@@ -68,7 +68,7 @@ public class EffectBoundCallerTest
     {
         var c = MinimalEmissionTest.Analyze("func twice<I>(source: uniq/I) -> ()\n    I is LendingIterator\n    let first = source.next()\n    let second = source.next()\n    _ = first@move\n    _ = second@move\n" + Main);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
         Assert.Equal(nameof(DiagnosticCode.CallActivationConflict_Kd), error.Code);
     }
@@ -89,14 +89,14 @@ public class EffectBoundCallerTest
     public void WarmRequirementEffectAnalysisDoesNotAllocate()
     {
         var c = MinimalEmissionTest.Analyze(Source + "func takeTwoStable<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)\n    S is StableSource\n    let first = source.take()\n    let second = source.take()\n    return (first@move, second@move)\n" + Main);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         for (var i = 0; i < 4; i++)
         {
-            c.Ownership.Analyze();
+            c.Analyze();
         }
 
         var verified = true;
-        var allocated = AllocationMeasurement.Measure(() => verified &= c.Ownership.Analyze().IsVerified);
+        var allocated = AllocationMeasurement.Measure(() => verified &= c.Analyze().IsVerified);
         Assert.True(verified);
         Assert.Equal(0, allocated);
     }

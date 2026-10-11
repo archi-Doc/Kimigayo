@@ -40,8 +40,8 @@ public class DependentDictionaryLiteralTest(ITestOutputHelper output)
         // other than the receiver that names those Origins prevents the descent (SPEC 15.6.3).
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
 
     [Theory]
@@ -53,9 +53,9 @@ public class DependentDictionaryLiteralTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Analysis.IsVerified);
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.False(c.Validate(out _));
     }
 
     [Fact]
@@ -95,8 +95,8 @@ public class DependentDictionaryLiteralTest(ITestOutputHelper output)
 
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public class DependentDictionaryLiteralTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze("func run(value: uniq/i32 during a)\n    let entries = [1: value@move]\n    let again = value@move");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.PossiblyMovedUse);
+        Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.MovedPlace_Kd);
     }
 
     [Fact]
@@ -112,7 +112,7 @@ public class DependentDictionaryLiteralTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze("func make() -> Dictionary<i32, ref/i32 during static>\n    let value = 42\n    return [1: value@ref]");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Fact]
@@ -122,7 +122,7 @@ public class DependentDictionaryLiteralTest(ITestOutputHelper output)
         var path = Path.GetFullPath("literal-loan.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.True(c.Binding.Result.IsComplete);
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var error = Assert.Single(result.Diagnostics);
@@ -156,8 +156,8 @@ public class DependentDictionaryLiteralTest(ITestOutputHelper output)
         {
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         for (var i = 0; i < 8; i++)
@@ -170,7 +170,7 @@ public class DependentDictionaryLiteralTest(ITestOutputHelper output)
         var loaded = CompilationTestHelper.Reload(c);
         Assert.True(loaded.Bind().IsComplete);
         loaded.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(loaded.Ownership.Analyze().IsVerified);
+        Assert.True(loaded.Analyze().IsVerified);
         Assert.Equal(original, CompilationTestHelper.WriteIr(loaded));
     }
 }

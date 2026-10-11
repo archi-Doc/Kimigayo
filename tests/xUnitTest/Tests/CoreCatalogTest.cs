@@ -80,8 +80,8 @@ public class CoreCatalogTest
         Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Ownership.Analyze().IsVerified, string.Join('\n', c.Ownership.Issues));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Analyze().IsVerified, string.Join('\n', c.Problems));
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
     }
 
     [Fact]

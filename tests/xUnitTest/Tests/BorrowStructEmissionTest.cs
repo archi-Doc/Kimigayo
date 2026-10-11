@@ -18,7 +18,7 @@ public class BorrowStructEmissionTest
         var source = File.ReadAllText(Path.Combine(Repository.Root, "tests", "milestones", "Milestone5.kimi"));
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
-        Assert.True(c.Ownership.Result.IsVerified, c.Ownership.Result + "\nObligations: " + string.Join('\n', c.Binding.Obligations) + "\n" + string.Join('\n', c.Ownership.Issues) + "\nFlow: " + string.Join('\n', c.Ownership.ControlFlow!.Issues) + "\nPending: " + string.Join('\n', c.Ownership.ControlFlow.PendingBinding));
+        Assert.True(c.Analysis.IsVerified, c.Analysis + "\nObligations: " + string.Join('\n', c.Binding.Obligations) + "\n" + string.Join('\n', c.Problems) + "\nFlow: " + string.Join('\n', c.Ownership.ControlFlow!.Issues) + "\nPending: " + string.Join('\n', c.Ownership.ControlFlow.PendingBinding));
         ScalarEmissionTest.EmitFixture("BorrowStructMilestone5", source, "Borrowed sum is 55.\nView destroyed; counter is still 55.\nFinal value is 56.\nCounter destroyed.\nDone.\n");
     }
 
@@ -41,8 +41,8 @@ public class BorrowStructEmissionTest
     public void RejectsInvalidConstruction(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified && !c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified && !c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
+        Assert.False(c.Validate(out _));
     }
 
     // SPEC 6.2.3.6, 22.1: a construction of a Type without constructors is one Language absence at T.init whose Note names the reason:
@@ -78,8 +78,8 @@ public class BorrowStructEmissionTest
         var source = milestone.Replace("// Mutating or moving counter here", statement + "\n        // Mutating or moving counter here");
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -100,8 +100,8 @@ public class BorrowStructEmissionTest
     public void RejectsInvalidBorrow(string body)
     {
         var c = MinimalEmissionTest.Analyze(Counter + body);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified && !c.Diagnostics.HasSyntaxErrors(c.Kotonoha), body);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified && !c.Diagnostics.HasSyntaxErrors(c.Kotonoha), body);
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -123,8 +123,8 @@ public class BorrowStructEmissionTest
         {
             Assert.True(c.Bind().IsComplete);
             Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
     }
 }

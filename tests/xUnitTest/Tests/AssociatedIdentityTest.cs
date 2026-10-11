@@ -92,7 +92,7 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
             "func copy<T>(value: T.(C<" + projected + ">).Item(a), marker: ref/T during a)\n    T is Q\n    let duplicate = value\nlet present = 1";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(valid == c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]

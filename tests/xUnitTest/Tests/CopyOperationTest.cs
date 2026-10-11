@@ -62,7 +62,7 @@ public class CopyOperationTest
         var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Single();
         Assert.Equal(ConversionBinding.Identity, conversion.ConversionOf().Kind);
         Assert.Equal(BoundType.I32, conversion.TypeOf());
-        Assert.True(c.Ownership.Result.IsVerified, string.Join("\n", c.Ownership.Issues));
+        Assert.True(c.Analysis.IsVerified, string.Join("\n", c.Problems));
     }
 
     [Fact]
@@ -94,7 +94,7 @@ public class CopyOperationTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]

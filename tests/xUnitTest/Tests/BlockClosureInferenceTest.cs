@@ -50,7 +50,7 @@ public sealed class BlockClosureInferenceTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous);
         Assert.Same(never ? BoundType.Never : BoundType.Unit, closure.SymbolOf()!.Type);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]
@@ -75,7 +75,7 @@ public sealed class BlockClosureInferenceTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous);
         Assert.Same(BoundType.I32, closure.SymbolOf()!.Type);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]
@@ -90,7 +90,7 @@ public sealed class BlockClosureInferenceTest
         var error = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), error.Code);
         Assert.Equal("n@ref", error.Text);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -100,9 +100,9 @@ public sealed class BlockClosureInferenceTest
     {
         var c = MinimalEmissionTest.Analyze("let f = func [] (a: ref/i32, b: ref/i32, flag: bool)\n    if flag => return a\n    return b\nvar a: i32 = 4\nvar b: i32 = 7\nlet r = f(a@ref, b@ref, false)\n" + owner + " = 9\n_ = r@follow");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]
@@ -134,7 +134,7 @@ public sealed class BlockClosureInferenceTest
     public void EditingTheBodyInvalidatesItsInferredContract()
     {
         var c = MinimalEmissionTest.Analyze("let f = func [] ()\n    return 1\nlet n: i32 = f()");
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous);
         var donor = MinimalEmissionTest.Analyze("let f = func [] ()\n    return \"s\"");
         var replacement = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous);
@@ -142,7 +142,7 @@ public sealed class BlockClosureInferenceTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Bind().IsComplete);
         Assert.Same(BoundType.String, closure.SymbolOf()!.Type);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -156,8 +156,8 @@ public sealed class BlockClosureInferenceTest
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 }

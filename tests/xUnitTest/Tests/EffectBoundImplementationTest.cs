@@ -194,7 +194,7 @@ public class EffectBoundImplementationTest
             "    drain.reset(values.iterateUniq())\n    let second = drain.take()\n    match first@move\n        .Some(let item) => item@follow += 1\n        .None => ()\n";
         var c = MinimalEmissionTest.Analyze(Source + Declarations);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         var error = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal((nameof(DiagnosticCode.CallActivationConflict_Kd), "values.iterateUniq()"), (error.Code, error.Text));
     }

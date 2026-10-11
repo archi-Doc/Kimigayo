@@ -26,7 +26,7 @@ public class ConstructorTypeInferenceTest
         Assert.True(plan.TypeArguments.IsEmpty);
         Assert.Equal(name, Assert.Single(plan.DeclaringType!.Components).Name);
         Assert.Same(plan.DeclaringType, call.TypeOf());
-        Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
     }
 
     [Theory]
@@ -122,7 +122,7 @@ public class ConstructorTypeInferenceTest
     {
         var c = MinimalEmissionTest.Analyze(Box + use);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
     }
 
     [Theory]
@@ -144,7 +144,7 @@ public class ConstructorTypeInferenceTest
         var source = "struct View<T>{source}\n    public let value: ref/T during source\n    public init(value: ref/T during source) => self.value = value\nlet n: i32 = 42\nlet view = View" + (explicitType ? "<i32>" : string.Empty) + ".init(n@ref)\nrequire view.value@follow == 42 else => $abort(\"loan\")";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         ScalarEmissionTest.EmitFixture("ConstructorStoredLoan" + explicitType, source, string.Empty);
     }
 
@@ -198,8 +198,8 @@ public class ConstructorTypeInferenceTest
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 }

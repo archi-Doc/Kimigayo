@@ -108,8 +108,8 @@ public class BuiltinArithmeticContractTest
         var declarations = Source[..Source.IndexOf("require sum", StringComparison.Ordinal)];
         var c = MinimalEmissionTest.Analyze(declarations + "let value: " + type + " = 6\nlet result = quotient(value, 2)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out var failure));
+        Assert.True(c.Analysis.IsVerified);
+        Assert.False(c.WriteIr(TextWriter.Null, out var failure));
         Assert.Contains("128-bit division", failure, StringComparison.Ordinal);
     }
 
@@ -141,8 +141,8 @@ public class BuiltinArithmeticContractTest
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid);
     }
 }

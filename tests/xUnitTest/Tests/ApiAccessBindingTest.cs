@@ -27,7 +27,7 @@ public class ApiAccessBindingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]

@@ -53,7 +53,7 @@ public class ConstantLengthBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, issue => issue.Node.FailureOf() == BindingFailure.InvalidTypeFormation);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -71,7 +71,7 @@ public class ConstantLengthBindingTest
         Assert.Equal(code, error.Code);
         Assert.Equal(text, error.Text);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -151,13 +151,13 @@ public class ConstantLengthBindingTest
     {
         var c = MinimalEmissionTest.Analyze("let N: isize = 2\nlet row: [N of string] = [\"one\", \"two\"]\nConsole.writeLine(row[1])");
         using var original = new StringWriter();
-        Assert.True(c.Emission.WriteIr(original, out var error), error);
+        Assert.True(c.WriteIr(original, out var error), error);
         var restored = CompilationTestHelper.Reload(c);
         restored.Bind();
         restored.Binding.CheckStartup(OutputKind.Application);
-        restored.Ownership.Analyze();
+        restored.Analyze();
         using var writer = new StringWriter();
-        Assert.True(restored.Emission.WriteIr(writer, out error), error);
+        Assert.True(restored.WriteIr(writer, out error), error);
         Assert.Equal(original.ToString(), writer.ToString());
         ScalarEmissionTest.WriteFixture("ConstantLengthReload", writer.ToString(), "two\n");
 

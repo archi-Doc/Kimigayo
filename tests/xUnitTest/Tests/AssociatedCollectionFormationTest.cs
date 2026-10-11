@@ -17,7 +17,7 @@ public class AssociatedCollectionFormationTest
         var source = "contract C\n    associate Item(a, b) is Slice<ref/i32 during a> during b\nstruct S\n    Self is C\nfunc f(x: ref/i32 during a, y: ref/i32 during b) -> S.Item(a, b)\n    " + relation + "\n    $abort(\"unused\")";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public class AssociatedCollectionFormationTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(!conflict, c.Ownership.Result.IsVerified);
+        Assert.Equal(!conflict, c.Analysis.IsVerified);
         if (!conflict)
         {
             ScalarEmissionTest.EmitFixture(name, source, stdout);

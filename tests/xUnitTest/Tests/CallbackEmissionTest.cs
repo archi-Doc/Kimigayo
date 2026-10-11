@@ -98,8 +98,8 @@ public class CallbackEmissionTest
     public void OptionCapturesAreEnvironmentBindings(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.Validate(out var failure), failure);
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Validate(out var failure), failure);
     }
 
     [Theory]
@@ -124,9 +124,9 @@ public class CallbackEmissionTest
     public void RejectsInvalidClosures(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
     }
 
@@ -176,8 +176,8 @@ public class CallbackEmissionTest
         var path = Path.GetFullPath("value-receiver-conflict.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
-        Assert.False(c.Ownership.Result.IsVerified);
-        c.Ownership.ReportDiagnostics();
+        Assert.False(c.Analysis.IsVerified);
+        c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var error = Assert.Single(c.Diagnostics.Finalize().Diagnostics);
         Assert.Equal("CallActivationConflict_Kd", error.Code);
@@ -186,7 +186,7 @@ public class CallbackEmissionTest
         Assert.Equal("loan", loan.Role);
         Assert.StartsWith(retained, source.Substring(loan.Span!.Value.Start, loan.Span.Value.Length), StringComparison.Ordinal);
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -196,16 +196,16 @@ public class CallbackEmissionTest
         const string Source = "let n: i32 = 6\nlet f: () -> i32 = func [n] () => n\nf()";
         var c = MinimalEmissionTest.Analyze(Source);
         using var first = new StringWriter();
-        Assert.True(c.Emission.WriteIr(first, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.WriteIr(first, out var failure), MinimalEmissionTest.Describe(c, failure));
         for (var i = 0; i < 20; i++)
         {
             Assert.True(c.Bind().IsComplete);
-            Assert.True(c.Ownership.Analyze().IsVerified);
+            Assert.True(c.Analyze().IsVerified);
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Ownership.Analyze()));
+        Assert.True(c.Analyze().IsVerified);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
         var restored = Compilation.CreateForTest();
         Assert.True(restored.Prepare(WindowsProfile.Target));
         var tree = restored.Kotonoha;
@@ -214,9 +214,9 @@ public class CallbackEmissionTest
         tree.OnDeserialized(restored);
         Assert.True(restored.Bind().IsComplete);
         restored.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(restored.Ownership.Analyze().IsVerified);
+        Assert.True(restored.Analyze().IsVerified);
         using var second = new StringWriter();
-        Assert.True(restored.Emission.WriteIr(second, out failure), MinimalEmissionTest.Describe(restored, failure));
+        Assert.True(restored.WriteIr(second, out failure), MinimalEmissionTest.Describe(restored, failure));
         Assert.Equal(first.ToString(), second.ToString());
     }
 
@@ -228,7 +228,7 @@ public class CallbackEmissionTest
     public void CorruptCallbackPlansAreRejected(string defect)
     {
         var c = MinimalEmissionTest.Analyze("let n: i32 = 6\nlet f: (i32) -> bool = func [n] (v: i32) => v == n\nf(6)");
-        Assert.True(c.Emission.Validate(out var failure), failure);
+        Assert.True(c.Validate(out var failure), failure);
         var body = c.Ownership.Bodies.Single(x => x.Values.Any(v => v.Kind == OwnershipValueKind.Closure));
         var create = body.OperationStorage.FindIndex(x => x.Source is FunctionKoto created && created.ClosureOf() is not null && x.Kind == OwnershipOperationKind.Produce);
         var closure = ((FunctionKoto)body.Operations[create].Source).ClosureOf()!;
@@ -255,11 +255,11 @@ public class CallbackEmissionTest
         }
 
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.Validate(out failure), failure);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.Validate(out failure), failure);
     }
 }

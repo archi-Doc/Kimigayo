@@ -67,7 +67,7 @@ public class CallablePlaceResultTest
         var source = Shared + declaration + "\nvar a: Array<string> = [\"a\"]\n" + use;
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -79,9 +79,9 @@ public class CallablePlaceResultTest
         var source = Exclusive + declaration + "\nvar a: Array<i32> = [1]\nlet view = f(a@uniq)@ref\nf(a@uniq) = 42\nConsole.writeLine(\"\\(view@follow)\")";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]
@@ -119,8 +119,8 @@ public class CallablePlaceResultTest
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 
@@ -173,12 +173,12 @@ public class CallablePlaceResultTest
     {
         const string Source = "func slot(n: ref/i32) -> place ref/i32 => n@follow\nlet f: (ref/i32) -> place ref/i32 = slot";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
         var original = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionTypeKoto>().Single();
         var donor = MinimalEmissionTest.Analyze(Source.Replace("let f: (ref/i32) -> place ref/i32", "let f: (ref/i32) -> ref/i32", StringComparison.Ordinal));
         var changed = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionTypeKoto>().Single();
         Assert.True(KotoHelper.Replace(original.Parent!, original, changed));
         Assert.False(c.Bind().IsComplete);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 }

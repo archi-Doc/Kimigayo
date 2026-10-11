@@ -28,10 +28,10 @@ public class AssociatedLendingStepTest
         var source = Declarations + "var iterator = Counter.init()\nlet first = " + next + "\nlet second = " + next + "\nlet observed: i32 = first\nlet another: i32 = second";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.NotEmpty(c.Ownership.Issues);
+        Assert.False(c.Analysis.IsVerified);
+        Assert.NotEmpty(c.Problems);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -53,10 +53,10 @@ public class AssociatedLendingStepTest
         var next = generic ? "advance(iterator@uniq)" : "iterator.next()";
         var source = Declarations + "func escape() -> ref/i32 during static\n    var iterator = Counter.init()\n    return " + next + "\nlet item = escape()\nlet observed: i32 = item";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.True(c.Binding.Issues.Count != 0 || c.Ownership.Issues.Count != 0, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Analysis.IsVerified);
+        Assert.True(c.Binding.Issues.Count != 0 || c.Problems.Count != 0, MinimalEmissionTest.Describe(c, null));
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -70,15 +70,15 @@ public class AssociatedLendingStepTest
         {
             Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Ownership.Analyze().IsVerified || !c.Emission.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
             {
                 throw new InvalidOperationException("Lending compilation failed.");
             }

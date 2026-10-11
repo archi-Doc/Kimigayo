@@ -36,8 +36,8 @@ public class ConstructorInferenceCompositionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
     }
 
     [Theory]

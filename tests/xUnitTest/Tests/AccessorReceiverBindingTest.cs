@@ -27,7 +27,7 @@ public class AccessorReceiverBindingTest
         var accessor = (PropertyAccessorKoto)issue.Node;
         Assert.NotNull(accessor.ReceiverType!.TypeOf());
         Assert.False(((PropertyKoto)accessor.Parent!).SymbolOf()!.Property!.IsVerified);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     // SPEC 11.2: a function keeps every receiver form, while a computed getter reads through ref/Self only; the Core of a

@@ -50,7 +50,7 @@ public class BitConversionTest
         Assert.Same(expected, conversion.TypeOf());
         Assert.Equal(ConversionBinding.Bits, conversion.ConversionOf().Kind);
         Assert.Equal((Int128)payload, Assert.NotNull(conversion.ConversionOf().Folded));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
     }
 
     [Fact]

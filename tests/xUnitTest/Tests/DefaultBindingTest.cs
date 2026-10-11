@@ -24,7 +24,7 @@ public class DefaultBindingTest
         Assert.Empty(flow.Issues);
         Assert.Empty(flow.PendingBinding);
         Assert.True(KotoHelper.IsValueContext(value));
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
     }
 
     [Theory]
@@ -41,7 +41,7 @@ public class DefaultBindingTest
         Assert.Null(KotoHelper.ResolveTransferTarget(jump));
         var flow = c.Ownership.ControlFlow!;
         Assert.Contains(flow.Issues, x => ReferenceEquals(x.Node, jump) && x.Message.Contains("No valid target for " + keyword, StringComparison.Ordinal));
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Fact]
@@ -96,7 +96,7 @@ public class DefaultBindingTest
         Assert.Same(function.Parameters[1].DefaultValue, omitted.Expression);
         Assert.Same(c.Binding.ParameterSymbol(function, 0), omitted.Expression.SymbolOf());
         Assert.Same(BoundType.I32, omitted.ParameterType);
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
     }
 
     [Theory]
@@ -251,15 +251,15 @@ public class DefaultBindingTest
         // generic signatures remain outside the executable subset.
         if (source.Contains("<T>", StringComparison.Ordinal))
         {
-            Assert.False(c.Emission.Validate(out _));
+            Assert.False(c.Validate(out _));
         }
         else if (source.Contains("\nf(", StringComparison.Ordinal))
         {
-            Assert.True(c.Emission.Validate(out var error), error);
+            Assert.True(c.Validate(out var error), error);
         }
         else
         {
-            Assert.False(c.Emission.Validate(out _)); // No executable startup expression.
+            Assert.False(c.Validate(out _)); // No executable startup expression.
         }
     }
 
@@ -273,7 +273,7 @@ public class DefaultBindingTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Fact]

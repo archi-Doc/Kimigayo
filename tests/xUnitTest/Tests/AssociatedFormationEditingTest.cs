@@ -18,14 +18,14 @@ public class AssociatedFormationEditingTest
         var source = "contract C\n    associate Item(a)" + (capability ? " is Copy" : string.Empty) + " for " + (nested ? "(ref/i32 during a, i32)" : "ref/i32 during a") + "\nstruct S\n    Self is C\n    associate C.Item(a) is i32\nfunc f() -> S.Item(static) => 42\nrequire f() == 42 else => $abort(\"value\")";
         var c = MinimalEmissionTest.Analyze(source);
         using var output = new StringWriter();
-        Assert.True(c.Emission.WriteIr(output, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.WriteIr(output, out var error), MinimalEmissionTest.Describe(c, error));
         var original = Formation(c.Kotonoha.RootKoto, nested);
         var parent = original.Parent!;
         var donor = ParseTestHelper.ParseSuccess(source.Replace("ref/i32 during a", "uniq/i32 during a", StringComparison.Ordinal));
         var replacement = Formation(donor.RootKoto, nested);
         Assert.True(KotoHelper.Replace(parent, original, replacement));
         output.GetStringBuilder().Clear();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
         Assert.False(c.Bind().IsComplete);
         Assert.True(KotoHelper.Replace(parent, replacement, original));

@@ -38,8 +38,8 @@ public class ArraySortTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         c.Binding.ReportDiagnostics();
-        c.Ownership.ReportDiagnostics();
-        Assert.False(c.Emission.Validate(out _));
+        c.ReportAnalysis();
+        Assert.False(c.Validate(out _));
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == code);
     }
 
@@ -117,6 +117,6 @@ public class ArraySortTest
         c.Binding.ReportDiagnostics();
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(TestDiagnostics.Of(c), static x => x.Code == "NoApplicableOverload_Kd");
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 }

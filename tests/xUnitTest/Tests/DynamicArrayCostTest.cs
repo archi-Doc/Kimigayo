@@ -45,7 +45,7 @@ public class DynamicArrayCostTest
     public void RepeatingConstructionCompilesOnlyItsImplementationLoop(bool used)
     {
         var c = MinimalEmissionTest.Analyze(used ? "let values = Array<i32>.init(repeating: 1, count: 3)\nrequire values[2] == 1 else => $abort(\"value\")" : "let values = Array<i32>.init(capacity: 3)\nrequire values.length == 0 else => $abort(\"value\")");
-        Assert.True(c.Emission.TryPrepare(out _, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Validate(out var failure), MinimalEmissionTest.Describe(c, failure));
         var implementation = c.Library.GetSymbol(KimiDeclarationId.ArrayRepeatingImplementation)!.Declaration;
         Assert.Equal(used, c.Ownership.Bodies.Any(body => ReferenceEquals(body.Function, implementation)));
         var ir = CompilationTestHelper.WriteIr(c);
@@ -166,11 +166,11 @@ public class DynamicArrayCostTest
         {
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
-        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Emission.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.WriteIr(TextWriter.Null, out _)));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -187,8 +187,8 @@ public class DynamicArrayCostTest
         {
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
@@ -201,7 +201,7 @@ public class DynamicArrayCostTest
                 }
 
                 c.Binding.CheckStartup(OutputKind.Application);
-                if (!c.Ownership.Analyze().IsVerified || !c.Emission.WriteIr(TextWriter.Null, out _))
+                if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
                 {
                     throw new InvalidOperationException("Array warm compilation failed.");
                 }
@@ -212,9 +212,9 @@ public class DynamicArrayCostTest
             var valid = stage switch
             {
                 "Binding" => c.Bind().IsComplete,
-                "Ownership" => c.Ownership.Analyze().IsVerified,
-                "Validation" => c.Emission.Validate(out _),
-                _ => c.Emission.WriteIr(TextWriter.Null, out _),
+                "Ownership" => c.Analyze().IsVerified,
+                "Validation" => c.Validate(out _),
+                _ => c.WriteIr(TextWriter.Null, out _),
             };
             if (!valid)
             {
@@ -228,7 +228,7 @@ public class DynamicArrayCostTest
     {
         var c = MinimalEmissionTest.Analyze("var values: Array<string> = [\"before\"]\nlet first = values@uniq.remove(0)\nConsole.writeLine(first)");
         using var initial = new StringWriter();
-        Assert.True(c.Emission.WriteIr(initial, out var error), error);
+        Assert.True(c.WriteIr(initial, out var error), error);
         Assert.Contains("@__kimi_array_remove_string", initial.ToString());
         var replacement = MinimalEmissionTest.Analyze("var values: Array<i32> = [20, 22]\nrequire values[0] + values[1] == 42 else => $abort(\"values\")\nvalues@uniq.clear()");
         var bytes = Tinyhand.TinyhandSerializer.Serialize(replacement.Kotonoha);
@@ -238,9 +238,9 @@ public class DynamicArrayCostTest
         tree!.OnDeserialized(c);
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Ownership.Analyze().IsVerified);
+        Assert.True(c.Analyze().IsVerified);
         using var output = new StringWriter();
-        Assert.True(c.Emission.WriteIr(output, out error), error);
+        Assert.True(c.WriteIr(output, out error), error);
         var ir = output.ToString();
         Assert.DoesNotContain("@__kimi_array_remove_string", ir);
         Assert.DoesNotContain("@__kimi_array_place_string", ir);

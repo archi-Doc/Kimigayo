@@ -60,7 +60,7 @@ public sealed class PipelineSwitchTest
         var problem = Assert.Single(c.Problems);
         Assert.Equal(DiagnosticCode.Unsupported_Kd, problem.Code);
         Assert.Equal("next()", c.SyntaxOf(problem.Subject).ToString());
-        Assert.Equal(new AnalysisResult(false, c.Ownership.Result.BodyCount, 1), c.Analysis);
+        Assert.Equal((false, 1), (c.Analysis.IsVerified, c.Analysis.ErrorCount));
         c.ReportAnalysis();
         var record = Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error);
         Assert.Equal(("Unsupported_Kd", "next()"), (record.Code, record.Text));
@@ -70,6 +70,42 @@ public sealed class PipelineSwitchTest
 
         c.Pipeline = CompilerPipeline.Legacy;
         Assert.Equal((diagnostics, ir), Check(c));
+    }
+
+    // Tests read a failure that OwnershipIssue.Code maps to several codes through one helper each: its codes are exactly the images
+    // of that failure, whatever the issue's other facts.
+    [Fact]
+    public void TheMultiCodeHelpersAreTheOwnershipMapping()
+    {
+        var c = CompilationTestHelper.Parse("f(1)");
+        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().First();
+        BindingObligation[] obligations =
+        [
+            new(BindingObligationKind.OriginOutlives, call, default, Longer: new(OriginKind.Projection), Shorter: BoundOrigin.Static),
+            new(BindingObligationKind.OriginOutlives, call, default, Longer: BoundOrigin.Static, Shorter: BoundOrigin.Static),
+            new(BindingObligationKind.TypeRole, call, default),
+        ];
+        var images = new Dictionary<OwnershipFailure, HashSet<DiagnosticCode>>();
+        foreach (var failure in Enum.GetValues<OwnershipFailure>())
+        {
+            foreach (var source in new Koto[] { call, c.Kotonoha.RootKoto })
+            {
+                foreach (var obligation in obligations.Cast<BindingObligation?>().Append(null))
+                {
+                    for (var facts = 0; facts < 4; facts++)
+                    {
+                        var code = new OwnershipIssue(source, failure, Reservation: (facts & 1) - 1, Activation: facts >= 2, Obligation: obligation).Code;
+                        Assert.Equal(failure == OwnershipFailure.ComparisonLoanConflict, code.IsLoanConflict());
+                        Assert.Equal(failure == OwnershipFailure.UnprovenOrigin, code.IsUnprovenOrigin());
+                        images.TryAdd(failure, []);
+                        images[failure].Add(code);
+                    }
+                }
+            }
+        }
+
+        Assert.Equal(4, images[OwnershipFailure.ComparisonLoanConflict].Count);
+        Assert.Equal(3, images[OwnershipFailure.UnprovenOrigin].Count);
     }
 
     private static (string Diagnostics, string Ir) Check(Compilation c)

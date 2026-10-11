@@ -19,7 +19,7 @@ public class ConstraintProjectionApiAccessBindingTest
         var c = MinimalEmissionTest.Analyze("contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\n" + declaration);
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.FailureOf() == BindingFailure.Access);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -196,7 +196,7 @@ public class ConstraintProjectionApiAccessBindingTest
         if (!valid)
         {
             Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.FailureOf() == BindingFailure.Access);
-            Assert.False(c.Emission.Validate(out _));
+            Assert.False(c.Validate(out _));
         }
     }
 }

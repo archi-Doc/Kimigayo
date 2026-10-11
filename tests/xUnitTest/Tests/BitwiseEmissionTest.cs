@@ -150,7 +150,7 @@ public class BitwiseEmissionTest
     public void InvalidOperatorPlansFailBeforeWritingAndRecover(KotoKind op, bool boolean)
     {
         var c = MinimalEmissionTest.Analyze("let b = true\nlet x = 1 << 2");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var id = body.Values.FindIndex(x => x.Operator == KotoKind.LessThanLessThan);
         body.Values[id] = body.Values[id] with { Operator = op };
@@ -165,10 +165,10 @@ public class BitwiseEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        c.Ownership.Analyze();
-        Assert.True(c.Emission.Validate(out error), error);
+        c.Analyze();
+        Assert.True(c.Validate(out error), error);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -180,8 +180,8 @@ public class BitwiseEmissionTest
         var allocated = AllocationMeasurement.Measure(
             () =>
             {
-                valid &= c.Ownership.Analyze().IsVerified;
-                valid &= c.Emission.WriteIr(TextWriter.Null, out _);
+                valid &= c.Analyze().IsVerified;
+                valid &= c.WriteIr(TextWriter.Null, out _);
             },
             iterations: 128,
             warmupIterations: 100);

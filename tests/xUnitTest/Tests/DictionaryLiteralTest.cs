@@ -44,7 +44,7 @@ public class DictionaryLiteralTest
         var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
         Assert.NotEmpty(errors);
         Assert.DoesNotContain(errors, static x => x.Code is nameof(DiagnosticCode.Unsupported_Kd) or nameof(DiagnosticCode.PrerequisiteUnavailable_Kd));
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]

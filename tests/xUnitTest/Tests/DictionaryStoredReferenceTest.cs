@@ -37,11 +37,11 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
         var path = Path.GetFullPath("optional-tuple-slot.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict && x.Source.ToString() == "entries.clear()");
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Source.ToString() == "item.0" || x.Source.ToString() == "item.0@follow");
-        Assert.False(c.Emission.Validate(out _));
-        c.Ownership.ReportDiagnostics();
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject).ToString() == "entries.clear()");
+        Assert.DoesNotContain(c.Problems, x => c.SyntaxOf(x.Subject).ToString() == "item.0" || c.SyntaxOf(x.Subject).ToString() == "item.0@follow");
+        Assert.False(c.Validate(out _));
+        c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         Assert.Equal(independent ? 2 : 1, result.Diagnostics.Length);
@@ -93,9 +93,9 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
         var source = Header + "    let found = " + child + "\n    " + access + "\n    require found == 42 else => $abort(\"value\")";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -106,9 +106,9 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
         var source = "var value = 42\nvar entries = [1: value@uniq]\nlet child = entries[1]@follow@" + mode + "\n" + access + "\nrequire child == 42 else => $abort(\"value\")";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -132,10 +132,10 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
         var source = Header + "    let view = entries@ref\n    let found = view[1]@follow@ref\n    " + mutation + "\n    require found == 42 else => $abort(\"value\")";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.Contains(c.Ownership.Issues, x => x.Source.ToString()!.Contains("entries[1]", StringComparison.Ordinal));
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Analysis.IsVerified);
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.Contains(c.Problems, x => c.SyntaxOf(x.Subject).ToString()!.Contains("entries[1]", StringComparison.Ordinal));
+        Assert.False(c.Validate(out _));
     }
 
     // SPEC 15.6.4: a referent stored in a Dictionary stays borrowed from the store until the Dictionary's last use, also on the
@@ -218,10 +218,10 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
         const string source = "func store(target: uniq/Dictionary<i32, uniq/i32 during a>, value: uniq/i32 during a)\n    _ = target.tryInsert(1, value@move)\nfunc run(value: uniq/i32 during a)\n    var entries: Dictionary<i32, uniq/i32 during a> = [:]\n    store(entries@uniq, value@move)\n    let found = entries[1]@follow@ref\n    entries[1]@follow = 99\n    require found == 42 else => $abort(\"value\")";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
         var valid = MinimalEmissionTest.Analyze(source.Replace("    entries[1]@follow = 99\n", string.Empty, StringComparison.Ordinal));
-        Assert.True(valid.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(valid, null));
+        Assert.True(valid.Analysis.IsVerified, MinimalEmissionTest.Describe(valid, null));
     }
 
     [Theory]
@@ -233,7 +233,7 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
             (independent ? "    change(entries[1])\n" : string.Empty) + "    require found == 42 else => $abort(\"value\")";
         var path = Path.GetFullPath("stored-dictionary-loan.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         Assert.Equal(independent ? 2 : 1, result.Diagnostics.Length);
@@ -284,9 +284,9 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
             : Header + "    let found = entries[1]@follow@ref\n    entries.clear()\n    require found == 42 else => $abort(\"value\")");
         for (var i = 0; i < 8; i++)
         {
-            Assert.True(c.Ownership.Analyze().IsVerified);
+            Assert.True(c.Analyze().IsVerified);
         }
 
-        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Ownership.Analyze()));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
     }
 }

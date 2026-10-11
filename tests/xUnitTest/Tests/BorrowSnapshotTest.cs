@@ -15,10 +15,10 @@ public class BorrowSnapshotTest
     {
         var source = VerificationWorkloads.LivePartLoans(count);
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
+        Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
         void Analyze()
         {
-            if (!c.Ownership.Analyze().IsVerified)
+            if (!c.Analyze().IsVerified)
             {
                 throw new InvalidOperationException("Live part Loans failed.");
             }

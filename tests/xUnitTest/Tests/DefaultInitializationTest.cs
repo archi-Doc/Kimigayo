@@ -46,12 +46,12 @@ public class DefaultInitializationTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.UninitializedUse);
-        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
-        c.Ownership.ReportDiagnostics();
-        var issue = c.Ownership.Issues.First(x => x.Failure == OwnershipFailure.UninitializedUse);
-        Assert.Contains(TestDiagnostics.Of(issue.Source.CodeContext), x => x.Code == nameof(DiagnosticCode.UninitializedPlace_Kd) && x.Span == issue.Source.Span);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.UninitializedPlace_Kd);
+        Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
+        c.ReportAnalysis();
+        var issue = c.Problems.First(x => x.Code == DiagnosticCode.UninitializedPlace_Kd);
+        Assert.Contains(TestDiagnostics.Of(c.SyntaxOf(issue.Subject).CodeContext), x => x.Code == nameof(DiagnosticCode.UninitializedPlace_Kd) && x.Span == c.SyntaxOf(issue.Subject).Span);
+        Assert.False(c.Validate(out _));
     }
 
 #if DEBUG
@@ -74,21 +74,21 @@ public class DefaultInitializationTest
             c = CompilationTestHelper.Reload(c);
             Assert.True(c.Bind().IsComplete);
             Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-            Assert.Equal(!invalid, c.Ownership.Analyze().IsVerified);
-            Assert.Equal(!invalid, c.Emission.Validate(out _));
+            Assert.Equal(!invalid, c.Analyze().IsVerified);
+            Assert.Equal(!invalid, c.Validate(out _));
             if (invalid)
             {
-                Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
+                Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
             }
 
-            var allocated = AllocationMeasurement.Measure(() => c.Ownership.Analyze());
+            var allocated = AllocationMeasurement.Measure(() => c.Analyze());
             Assert.Equal(0, allocated);
-            Assert.Equal(!invalid, c.Ownership.Result.IsVerified);
+            Assert.Equal(!invalid, c.Analysis.IsVerified);
             c.Bind();
-            Assert.False(c.Emission.Validate(out _));
+            Assert.False(c.Validate(out _));
             Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-            Assert.Equal(!invalid, c.Ownership.Analyze().IsVerified);
-            Assert.Equal(!invalid, c.Emission.Validate(out _));
+            Assert.Equal(!invalid, c.Analyze().IsVerified);
+            Assert.Equal(!invalid, c.Validate(out _));
         }
     }
 }

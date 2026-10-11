@@ -29,8 +29,8 @@ public class ContextualClosureTest(ITestOutputHelper output)
     public void CommonConversionPreservesCaptureAndReceiverRules(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -88,12 +88,12 @@ public class ContextualClosureTest(ITestOutputHelper output)
     public void WarmContextualBindingAndEmissionReuseTheirPlans()
     {
         var c = MinimalEmissionTest.Analyze("let text = \"owned\"\nlet f: () -> bool = func [text@move] () => text == \"owned\"\nrequire f() else => $abort(\"call\")");
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.True(c.Analyze().IsVerified);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid);
     }
 

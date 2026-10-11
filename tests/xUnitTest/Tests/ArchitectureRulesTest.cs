@@ -42,6 +42,16 @@ public class ArchitectureRulesTest
     [InlineData("Operator Koto subclasses", "src/Kimi/Compiler/Parsing/Koto/Expressions", "*.cs", @"\bclass\s+\w+\s*:\s*(?:Binary|Unary)Koto\b", 9)]
     [InlineData("Child walks other than ForEachChildSlot", "src/Kimi/Compiler", "*.cs", @"\b(?:VisitChildrenCore|GetChildNodes|ReplaceChildCore|ReplaceInList)\b", 0)]
     [InlineData("Semantic auto-properties on Koto classes", "src/Kimi/Compiler/Parsing/Koto", "*.cs", @"\b(?:Bound[A-Z]\w*|BindingSymbol|CallPlan)\??\s+\w+\s*\{\s*get;\s*(?:(?:internal|private|protected)\s+)?set;\s*\}", 7)]
+
+    // R3 U6: tests run and read analysis and generation through the Compilation entry points. The old path's structure is read only
+    // where no entry point carries it, until the stage that replaces it: dump goldens (R4), the MIR emission (R5, R6).
+    [InlineData("Test calls of the old analysis and generation entry points", "tests/xUnitTest", "*.cs", @"\.Ownership\.(?:Analyze|Result|ReportDiagnostics)\b|\.Emission\.(?:WriteIr|Validate)\b|\.Emission\.TryPrepare\(out _,", 1509)]
+    [InlineData("Test reads of ownership issues (facts a Problem lacks)", "tests/xUnitTest", "*.cs", @"\.Ownership\.Issues\b", 249)]
+    [InlineData("Test reads of ownership bodies (R4 dump goldens)", "tests/xUnitTest", "*.cs", @"\.Ownership\.Bodies\b", 258)]
+    [InlineData("Test reads of control-flow structure (R4 dump goldens)", "tests/xUnitTest", "*.cs", @"\.Ownership\.ControlFlow\b", 43)]
+    [InlineData("Test inspections of a prepared emission module (R5)", "tests/xUnitTest", "*.cs", @"\.Emission\.TryPrepare\(out (?!_,)", 119)]
+    [InlineData("Test reads of instance analysis (R5, R6)", "tests/xUnitTest", "*.cs", @"\b(?:Failed|Failure|Analyze)Instance\b", 11)]
+    [InlineData("Test reads of generation failure facts without an entry point", "tests/xUnitTest", "*.cs", @"\.Emission\.(?:FailureIsResourceLimit|ReportFailure)\b", 21)]
     public void SourcePatternDoesNotGrow(string rule, string directory, string pattern, string regex, int limit)
     {
         var expression = new Regex(regex);

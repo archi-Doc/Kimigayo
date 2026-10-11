@@ -115,7 +115,7 @@ public class CharEmissionTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.NotEmpty(c.Binding.Issues);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -129,16 +129,16 @@ public class CharEmissionTest
     public void InvalidOrChangedConstantPlansFailBeforeWriting(long value)
     {
         var c = MinimalEmissionTest.Analyze("let c = 'A'\nif c == 'A' => Console.writeLine(\"ok\")");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var index = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Constant && x.Constant == 'A');
         Assert.True(index >= 0);
         body.Values[index] = body.Values[index] with { Constant = value };
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Theory]
@@ -148,7 +148,7 @@ public class CharEmissionTest
     public void CharacterPlansCannotMasqueradeAsIntegerPlans(string defect)
     {
         var c = MinimalEmissionTest.Analyze("let c = 'A'\nif c < 'B' => Console.writeLine(\"ok\")");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var index = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Constant && x.Constant == 'A');
         var operation = body.Operations[index];
@@ -167,7 +167,7 @@ public class CharEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -180,7 +180,7 @@ public class CharEmissionTest
     public void InvalidCharacterPatternPlansFailBeforeWriting(string defect)
     {
         var c = MinimalEmissionTest.Analyze("match 'A'\n    'B' => ()\n    _ => Console.writeLine(\"ok\")");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var match = c.Ownership.Bodies[0].Matches[0].Binding;
         var pattern = match.PositionStorage[0];
         match.PositionStorage[0] = defect switch
@@ -192,12 +192,12 @@ public class CharEmissionTest
             _ => pattern with { MatchedType = BoundType.Boolean },
         };
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        c.Analyze();
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -207,13 +207,13 @@ public class CharEmissionTest
         var c = MinimalEmissionTest.Analyze(Guard + "\nlet aggregate = ('A', (true, '😀'))");
         for (var i = 0; i < 100; i++)
         {
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Ownership.Analyze().IsVerified || !c.Emission.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
             {
                 throw new InvalidOperationException("Character analysis or emission failed.");
             }

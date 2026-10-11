@@ -157,9 +157,9 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
             }
 
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
+            Assert.True(c.Analyze().IsVerified);
             using var writer = new StringWriter();
-            Assert.True(c.Emission.WriteIr(writer, out var error), error);
+            Assert.True(c.WriteIr(writer, out var error), error);
             return writer.ToString();
         }
     }

@@ -42,8 +42,8 @@ public class DictionaryIterationTest
         var source = "var entries: Dictionary<i32, i32> = [:]\n_ = entries.tryInsert(1, 2)\nfor (key, value) in entries\n    " + mutation + "\n    require key + value == 3 else => $abort(\"borrow\")";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -171,7 +171,7 @@ public class DictionaryIterationTest
         var source = owning ? Source.Replace("in entries\n", "in entries@move\n", StringComparison.Ordinal) : Source.Replace("= stored\n", "= stored@follow\n", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 }

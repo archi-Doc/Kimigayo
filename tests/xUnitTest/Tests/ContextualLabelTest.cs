@@ -255,8 +255,7 @@ public class ContextualLabelTest
         var c = MinimalEmissionTest.Analyze(source);
         c.Binding.ReportDiagnostics();
         c.Binding.ReportStartupDiagnostics();
-        c.Ownership.ControlFlow!.ReportDiagnostics();
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         return TestDiagnostics.Of(c, "Hello.kimi").Where(x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error).ToArray();
     }
 }

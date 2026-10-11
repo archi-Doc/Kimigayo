@@ -28,6 +28,6 @@ public class AssociatedCapabilityOriginTest
     {
         var c = MinimalEmissionTest.Analyze(Concrete + "var value = 42\nlet result = read(value@ref)\nvalue = 7\nrequire result == 42 else => $abort(\"loan\")");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.False(c.Analysis.IsVerified);
     }
 }

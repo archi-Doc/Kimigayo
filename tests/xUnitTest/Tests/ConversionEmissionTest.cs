@@ -121,7 +121,7 @@ public class ConversionEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -145,7 +145,7 @@ public class ConversionEmissionTest
         var issue = Assert.Single(c.Binding.Issues);
         Assert.Equal("UnresolvedBinding_Kd", issue.Code.ToString());
         Assert.Equal("ref", issue.Node.ToString());
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]
@@ -178,8 +178,8 @@ public class ConversionEmissionTest
         var allocated = AllocationMeasurement.Measure(
             () =>
             {
-                valid &= c.Ownership.Analyze().IsVerified;
-                valid &= c.Emission.WriteIr(TextWriter.Null, out _);
+                valid &= c.Analyze().IsVerified;
+                valid &= c.WriteIr(TextWriter.Null, out _);
             },
             iterations: 128,
             warmupIterations: 100);
@@ -224,7 +224,7 @@ public class ConversionEmissionTest
     public void MalformedConversionPlansNeverWriteIr(string mutation)
     {
         var c = MinimalEmissionTest.Analyze("let flag = true\nlet x: u32 = 1\nlet y = x@i32");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Convert);
         var value = body.Values[id];
@@ -244,7 +244,7 @@ public class ConversionEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -271,7 +271,7 @@ public class ConversionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze($"func stop() -> Never => loop => ()\nlet x = if false => ({operand})@u8 else => 300\nif x == 300 => Console.writeLine(\"ok\")");
         Assert.True(c.Binding.Result.IsComplete, string.Join("; ", c.Binding.Issues));
-        Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
         var field = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.SymbolOf()?.Name == "x");
         Assert.Same(BoundType.I32, field.SymbolOf()!.Type);
     }

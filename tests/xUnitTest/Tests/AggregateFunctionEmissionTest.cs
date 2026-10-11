@@ -146,7 +146,7 @@ public class AggregateFunctionEmissionTest
 
         Assert.Empty(module.GetFunction(0).Slots);
         var invalid = MinimalEmissionTest.Analyze(Source + "\necho(empty@move)");
-        Assert.False(invalid.Ownership.Result.IsVerified);
+        Assert.False(invalid.Analysis.IsVerified);
     }
 
     [Fact]
@@ -192,15 +192,15 @@ public class AggregateFunctionEmissionTest
     {
         var source = zero ? "func echo(value: [0 of string]) -> [0 of string] => value@move\nlet empty: [0 of string] = []\necho(empty@move)" : Echo + "echo((\"a\", 1))";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var call = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call);
         body.OperationStorage[call + 1] = body.Operations[call + 1] with { Kind = OwnershipOperationKind.Read };
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Theory]
@@ -211,7 +211,7 @@ public class AggregateFunctionEmissionTest
     public void InconsistentFunctionPlansAreRejectedAndRecover(string defect)
     {
         var c = MinimalEmissionTest.Analyze(Echo + "echo((\"a\", 1))");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var call = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call);
         if (defect == "result")
@@ -237,10 +237,10 @@ public class AggregateFunctionEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Fact]
@@ -272,8 +272,8 @@ public class AggregateFunctionEmissionTest
         {
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         var success = true;
@@ -288,8 +288,8 @@ public class AggregateFunctionEmissionTest
         before = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 128; i++)
         {
-            success &= c.Ownership.Analyze().IsVerified;
-            success &= c.Emission.WriteIr(TextWriter.Null, out _);
+            success &= c.Analyze().IsVerified;
+            success &= c.WriteIr(TextWriter.Null, out _);
         }
 
         var bytes = GC.GetAllocatedBytesForCurrentThread() - before;

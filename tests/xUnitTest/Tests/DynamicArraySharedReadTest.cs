@@ -53,7 +53,7 @@ public class DynamicArraySharedReadTest
         var c = MinimalEmissionTest.Analyze(Task + source);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Bodies.SelectMany(x => x.Issues), x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -65,7 +65,7 @@ public class DynamicArraySharedReadTest
         var c = MinimalEmissionTest.Analyze(Task + "var values: Array<Task> = [Task.init(42)]\nlet item = values[0]@ref\n" + mutation + "\nlet id = item.id");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Bodies.SelectMany(x => x.Issues), x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -91,7 +91,7 @@ public class DynamicArraySharedReadTest
     public void AnElementReadNeverTransfersItsNonCopyPayload(string use)
     {
         var c = MinimalEmissionTest.Analyze(Task + "let values: Array<Task> = [Task.init(42)]\n" + use);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 }

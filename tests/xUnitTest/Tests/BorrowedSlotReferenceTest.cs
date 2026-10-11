@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -30,7 +31,7 @@ public class BorrowedSlotReferenceTest
     public void TheSlotIsBorrowedInPlace()
     {
         var c = MinimalEmissionTest.Analyze("func pick(p: ref/(ref/i32 during a, i32)) -> ref/(ref/i32 during a) during p => p.0@ref\nvar value = 1\nlet t = (value@ref, 2)\nlet r = pick(t@ref)\nrequire r == 1 else => $abort(\"slot\")");
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var pick = Assert.Single(c.Ownership.Bodies, static body => body.Function.Name == "pick");
         Assert.Contains(pick.Operations, static operation => operation.Kind == OwnershipOperationKind.Borrow && operation.Source.ToString() == "p.0");
         // No temporary holds a copy of the stored `ref/i32` for the borrow.
@@ -54,8 +55,8 @@ public class BorrowedSlotReferenceTest
     {
         var c = MinimalEmissionTest.Analyze("func pick(p: ref/(ref/i32 during a, i32)) -> ref/(ref/i32 during a) during p => p.0@ref\nvar value = 1\n" + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict && x.Source.ToString() == conflict);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject).ToString() == conflict);
+        Assert.False(c.Validate(out _));
     }
 }

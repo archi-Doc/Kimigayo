@@ -73,7 +73,7 @@ public class ContextualCaptureTest
             "    public func outer(self: ref/Self) -> i32\n        let read = func [self] () => (func () => self.count)()\n        return read()\n\n" +
             "var c = Counter.init(1)\nConsole.writeLine(\"\\(c.bump())\")\nConsole.writeLine(\"\\(c.peek())\")\nConsole.writeLine(\"\\(c.outer())\")\nlet value = 4\nlet add = func () => value + 1\nConsole.writeLine(\"\\(add())\")";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         ScalarEmissionTest.EmitFixture("ContextualCaptureExplicit", Source, "3\n3\n3\n5\n");
     }
 }

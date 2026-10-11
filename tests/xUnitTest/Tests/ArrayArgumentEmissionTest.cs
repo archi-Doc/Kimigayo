@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
@@ -38,7 +39,7 @@ public class ArrayArgumentEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -60,8 +61,8 @@ public class ArrayArgumentEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func use(x: [1 of string]) => ()\nfunc use(x: [1 of i32]) => ()\nlet value = \"moved\"\nuse([value@move])\nConsole.writeLine(value)");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.PossiblyMovedUse);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd);
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -80,15 +81,15 @@ public class ArrayArgumentEmissionTest
         const string Source = "func use(x: [1 of i8]) => Console.writeLine(\"wrong\")\nfunc use(x: [1 of u8]) => Console.writeLine(\"ok\")\nuse([255])";
         var c = MinimalEmissionTest.Analyze(Source);
         using var original = new StringWriter();
-        Assert.True(c.Emission.WriteIr(original, out var error), error);
+        Assert.True(c.WriteIr(original, out var error), error);
         var restored = CompilationTestHelper.Reload(c);
         for (var i = 0; i < 2; i++)
         {
             Assert.True(restored.Bind().IsComplete);
             restored.Binding.CheckStartup(OutputKind.Application);
-            restored.Ownership.Analyze();
+            restored.Analyze();
             using var output = new StringWriter();
-            Assert.True(restored.Emission.WriteIr(output, out error), error);
+            Assert.True(restored.WriteIr(output, out error), error);
             Assert.Equal(original.ToString(), output.ToString());
         }
 

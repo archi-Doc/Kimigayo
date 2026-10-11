@@ -159,10 +159,10 @@ public class AggregateResultEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
     }
 
     [Theory]
@@ -177,14 +177,14 @@ public class AggregateResultEmissionTest
         }
 
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var result = Assert.Single(body.SlotResults);
         var deferred = Assert.Single(body.DeferredPlans, x => body.IsReachable(x.Entry));
         var write = body.OperationStorage.FindIndex(deferred.Entry, deferred.End - deferred.Entry, x => x.Kind == OwnershipOperationKind.Write);
         Assert.True(write >= 0);
         body.OperationStorage[write] = body.OperationStorage[write] with { Input = result.Place };
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out error));
+        Assert.False(c.WriteIr(TextWriter.Null, out error));
         Assert.Contains("normal delivery", error);
     }
 
@@ -197,8 +197,8 @@ public class AggregateResultEmissionTest
         {
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         var valid = true;
@@ -213,8 +213,8 @@ public class AggregateResultEmissionTest
         before = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 128; i++)
         {
-            valid &= c.Ownership.Analyze().IsVerified;
-            valid &= c.Emission.WriteIr(TextWriter.Null, out _);
+            valid &= c.Analyze().IsVerified;
+            valid &= c.WriteIr(TextWriter.Null, out _);
         }
 
         var bytes = GC.GetAllocatedBytesForCurrentThread() - before;

@@ -34,7 +34,7 @@ public class BorrowedTupleProjectionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]
@@ -42,8 +42,8 @@ public class BorrowedTupleProjectionTest
     {
         var c = MinimalEmissionTest.Analyze(Counter + "var pair = (Counter.init(), true)\nlet view = pair@ref\nlet item = view.0@ref\npair = (Counter.init(), false)\nlet value = item.value");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -55,8 +55,8 @@ public class BorrowedTupleProjectionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Analysis.IsVerified);
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]
@@ -78,17 +78,17 @@ public class BorrowedTupleProjectionTest
         {
             Assert.True(c.Bind().IsComplete);
             Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-            Assert.True(c.Ownership.Analyze().IsVerified);
+            Assert.True(c.Analyze().IsVerified);
             using var output = new StringWriter();
-            Assert.True(c.Emission.WriteIr(output, out var error), error);
+            Assert.True(c.WriteIr(output, out var error), error);
             Assert.Equal(original, output.ToString());
         }
 
         var bytes = AllocationMeasurement.Measure(
             () =>
             {
-                c.Ownership.Analyze();
-                c.Emission.WriteIr(TextWriter.Null, out _);
+                c.Analyze();
+                c.WriteIr(TextWriter.Null, out _);
             },
             iterations: 16,
             warmupIterations: 32);

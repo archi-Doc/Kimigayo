@@ -145,7 +145,7 @@ public class CurrentControlFlowTest
     {
         var c = Parse(source);
         c.Bind();
-        Assert.Equal(valid, c.Ownership.Analyze().IsVerified);
+        Assert.Equal(valid, c.Analyze().IsVerified);
     }
 
     [Theory]

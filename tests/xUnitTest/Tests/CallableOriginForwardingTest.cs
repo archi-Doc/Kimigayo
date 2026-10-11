@@ -55,7 +55,7 @@ public class CallableOriginForwardingTest
         var c = MinimalEmissionTest.Analyze("func accept(f: (ref/i32) -> i32) => ()\nfunc forward(f: (" + input + ") -> i32) => accept(f@move)");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, static x => x.Failure == BindingFailure.NoApplicableCandidate);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     private const string Main = "public func main() => ()\n";
@@ -164,7 +164,7 @@ public class CallableOriginForwardingTest
             "let f: (ref/i32) -> i32 = callback\nlet value = 42\ninvoke(f@move, value@ref)";
         var c = MinimalEmissionTest.Analyze(Source);
         var valid = true;
-        var allocated = AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _));
+        var allocated = AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(0, allocated);
     }

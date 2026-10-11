@@ -18,7 +18,7 @@ public class CallableEffectBoundTest
     public void AcceptsAConfinedClosure()
     {
         var c = MinimalEmissionTest.Analyze(Apply + "public func main() => ()\nfunc entry() -> i32\n    let f = func [] () -> i32 => 12\n    return apply(f@ref)\n");
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]
@@ -26,8 +26,8 @@ public class CallableEffectBoundTest
     {
         var c = MinimalEmissionTest.Analyze(Apply + "group State\n    public var count: i32 = 0\npublic func main() => ()\nfunc entry() -> i32\n    let f = func [] () -> i32 => State.count\n    return apply(f@ref)\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Analyze().IsVerified);
-        c.Ownership.ReportDiagnostics();
+        Assert.False(c.Analyze().IsVerified);
+        c.ReportAnalysis();
         var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Code == "UnsatisfiedEffectBound_Kd");
         Assert.Equal("UnsatisfiedEffectBound_Kd", error.Code);
         Assert.Equal("f@ref", error.Text);
@@ -60,7 +60,7 @@ public class CallableEffectBoundTest
             (bounded ? "        effect confined\n" : string.Empty) + "    return apply(g)\npublic func main() => ()\nfunc entry() -> i32\n    let f = func [] () -> i32 => 8\n    return forward(f@ref)\n";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(bounded, c.Ownership.Result.IsVerified);
+        Assert.Equal(bounded, c.Analysis.IsVerified);
         if (!bounded)
         {
             var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
@@ -86,7 +86,7 @@ public class CallableEffectBoundTest
         var source = Apply + $"group State\n    public var count: i32 = 0\nfunc inner() -> i32 => {body}\nfunc outer() -> i32 => inner()\npublic func main() => ()\nfunc entry() -> i32 => apply(outer)\n";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(valid, c.Ownership.Result.IsVerified);
+        Assert.Equal(valid, c.Analysis.IsVerified);
     }
 
     [Theory]
@@ -99,7 +99,7 @@ public class CallableEffectBoundTest
             $"public func main() => ()\nfunc entry() -> i32\n    let item = Item.init()\n    let f = func [item@move] () -> i32 => item.value\n    return apply(f@{(receiver == "ref" ? "ref" : "move")})\n";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(valid, c.Ownership.Result.IsVerified);
+        Assert.Equal(valid, c.Analysis.IsVerified);
     }
 
     [Fact]
@@ -161,7 +161,7 @@ public class CallableEffectBoundTest
             $"func forward<G>() -> ()\n    G is Callable<{required}, () -> i32>\n    G is Callable<{premise}, () -> i32>\n        effect confined\n    need<G>()\npublic func main() => ()\n";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(valid, c.Ownership.Result.IsVerified);
+        Assert.Equal(valid, c.Analysis.IsVerified);
     }
 
     [Theory]
@@ -358,8 +358,8 @@ public class CallableEffectBoundTest
     public void WarmRejectedBoundChecksReuseTheirStorage()
     {
         var c = MinimalEmissionTest.Analyze(Apply + "func noisy() -> i32\n    Console.writeLine(\"noisy\")\n    return 0\npublic func main() => _ = apply(noisy)\n");
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Ownership.Analyze()));
+        Assert.False(c.Analysis.IsVerified);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
     }
 
     [Theory]
@@ -390,7 +390,7 @@ public class CallableEffectBoundTest
         var c = MinimalEmissionTest.Analyze(Apply + "public func main() => ()\nfunc entry() -> i32\n    let f = func [] () -> i32 => 12\n    return apply(f@ref)\n");
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 

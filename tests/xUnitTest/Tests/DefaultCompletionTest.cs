@@ -25,7 +25,7 @@ public class DefaultCompletionTest
         Assert.Equal(supplied, flow.Nodes[invocation].CanCompleteNormally);
         var function = (FunctionKoto)invocation.CallOf()!.Target.Declaration;
         Assert.True(flow.Nodes[function].CanCompleteNormally);
-        Assert.True(c.Ownership.Analyze().IsVerified);
+        Assert.True(c.Analyze().IsVerified);
     }
 
     [Theory]
@@ -78,7 +78,7 @@ public class DefaultCompletionTest
         var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.PendingBinding);
         Assert.Empty(flow.Issues);
-        Assert.True(c.Ownership.Analyze().IsVerified);
+        Assert.True(c.Analyze().IsVerified);
     }
 
     private static Compilation Parse(string source)

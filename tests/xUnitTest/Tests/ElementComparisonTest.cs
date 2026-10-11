@@ -87,6 +87,6 @@ public class ElementComparisonTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var node = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single();
         Assert.False(c.Binding.TryGetAdaptation(node, out _));
-        Assert.True(c.Ownership.Result.IsVerified);
+        Assert.True(c.Analysis.IsVerified);
     }
 }
