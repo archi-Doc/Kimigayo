@@ -12,6 +12,7 @@ fn pick @4
   _4: () temp @16 s1
   _5: bool temp @17 s1
   _6: Never temp @19 s1
+  _7: bool temp @20 s1
   s1: lexical in s0 @7
   bb0:
     * _2 = copy _1 @10 s1
@@ -19,9 +20,10 @@ fn pick @4
     * _5 = copy _2 @18 s1
       _3 = move _5 @16 s1
       _4 = const () @16 s1
-    * goto bb1 check bb2 @19 s1
+    * _7 = copy _2 @20 s1
+      goto bb1 check bb2 @19 s1
   bb1:
-      _0 = copy _2 @19 s1
+      _0 = move _7 @19 s1
       return @19 s1
   bb2:
       unreachable @7

@@ -189,6 +189,7 @@ public sealed class MirValidatorTest
         Assign(shape, MirRvalue.Aggregate(MirAggregateKind.Adt, Operands(one, one), 2, types.Shape, 1));
         Assign(pairs, MirRvalue.Aggregate(MirAggregateKind.Tuple, Operands(one, Const(MirConstKind.Bool, BoundType.Boolean, 1)), 2, tuple));
         Assign(array, MirRvalue.Aggregate(MirAggregateKind.FixedArray, Operands(one, one, one), 3, types.Array));
+        Assign(array, MirRvalue.Aggregate(MirAggregateKind.FixedArray, Operands(), 0, types.Array)); // SPEC 4.3.4 noinit: no element stored.
         Assign(point, MirRvalue.Aggregate(MirAggregateKind.Adt, Operands(one, one, one), 3, types.Point));
         Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(array, MirProjectionKind.Index, index.Root)))));
         Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(array, MirProjectionKind.ConstIndex, 2)))));

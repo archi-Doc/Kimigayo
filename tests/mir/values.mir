@@ -67,15 +67,15 @@ fn logic @95
   _2: bool arg b @95
   bb0:
     * _0 = copy _1 @101
-      switch copy _0 [0: bb2, otherwise: bb1] @100
+      switch copy _0 [0: bb2, otherwise: bb1] @101
   bb1:
       _0 = copy _2 @102
-      goto bb2 @100
+      goto bb2 @102
   bb2:
-      switch copy _0 [0: bb3, otherwise: bb4] @99
+      switch copy _0 [0: bb3, otherwise: bb4] @100
   bb3:
       _0 = Not(copy _1) proven @103
-      goto bb4 @99
+      goto bb4 @103
   bb4:
       return @99
 fn aggregates @105
@@ -109,11 +109,11 @@ fn metadata @145
   bb0:
     * _3 = len((*_1)) @157
       _0 = Eq(move _3, const 0_isize) proven @156
-      switch copy _0 [0: bb2, otherwise: bb1] @155
+      switch copy _0 [0: bb2, otherwise: bb1] @156
   bb1:
       _4 = len(_2) @161
       _0 = Eq(const 0_isize, move _4) proven @161
-      goto bb2 @155
+      goto bb2 @161
   bb2:
       return @155
 fn replace @164

@@ -1,0 +1,32 @@
+struct Box
+    var value: string
+struct Counter
+    var count: i32
+    public func bump(self: uniq/Self, by: i32)
+        self.count = self.count + by
+func consume(box: Box) => ()
+func stop() -> Never
+    loop => ()
+func take(a: i32, b: i32) -> i32 => a + b
+func consumedThenReturned(flag: bool, box: Box) -> i32
+    do
+        if flag
+            consume(box@move)
+            return 1
+        return 2
+    consume(box@move)
+    return 3
+func returnThenExit() -> i32
+    label work: do
+        return 1
+        exit to work
+    return 2
+func divergingArgument(n: i32) -> i32
+    return take(n, stop())
+func divergingCondition(n: i32) -> i32
+    while stop()
+        return 1
+    return n
+func abandoned(counter: uniq/Counter, n: i32) -> i32
+    counter.bump(if n > 0 => return 1 else => n)
+    return 0

@@ -109,6 +109,8 @@ internal sealed partial class MirBuilder(Compilation compilation)
         var body = this.body = this.program.Begin(key, SourceRef.Of(declaration));
         (this.declaration, this.scope, this.statementStart) = (declaration, 0, false);
         this.locals.Clear();
+        this.targets.Clear();
+        this.targets.Add(new(declaration, new(0), -1, -1, 0, false)); // A return's target.
         PairBinder.Collect(declaration, body.Binders);
         body.AddLocal(new(result, MirLocalKind.Return, this.Info(declaration, true)));
         for (var position = 0; function is not null && Slot(function, position, out var slot); position++)
@@ -138,7 +140,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
 
         this.Result(new(0), value, value);
         var end = this.Info(value);
-        body.Terminate(this.current, HirTables.CompletionOf(value) == HirCompletion.Diverges ? MirTerminator.Unreachable(end) : MirTerminator.Return(end));
+        body.Terminate(this.current, Completes(value) ? MirTerminator.Return(end) : MirTerminator.Unreachable(end));
         this.validator.Validate(body, this.program.Findings);
     }
 
@@ -184,11 +186,11 @@ internal sealed partial class MirBuilder(Compilation compilation)
         }
     }
 
-    // SPEC 14.2: a block's items in a scope of their own, the last one its result.
-    private void Block(MirPlace destination, CodeBlockKoto block)
+    // SPEC 14.2: a block's items in a scope of their own (an unsafe block's, SPEC 14.3.3), the last one its result.
+    private void Block(MirPlace destination, CodeBlockKoto block, MirScopeKind kind = MirScopeKind.Lexical)
     {
         var outer = this.scope;
-        this.scope = (ushort)this.body.AddScope(outer, MirScopeKind.Lexical, SourceRef.Of(block));
+        this.scope = (ushort)this.body.AddScope(outer, kind, SourceRef.Of(block));
         var items = block.Items;
         for (var i = 0; i < items.Count - 1; i++)
         {
@@ -220,18 +222,6 @@ internal sealed partial class MirBuilder(Compilation compilation)
         this.locals[symbol] = local;
     }
 
-    // SPEC 14.10.3, plan 5.6.3: a return evaluates its operand, then branches: at run time to the block that stores the result and returns,
-    // for the checks to the code after it.
-    private void Return(JumpKoto jump)
-    {
-        var value = jump.Expression is { } expression ? this.Operand(expression, this.body.Locals[0].Type) : this.UnitOperand();
-        var (exit, next) = (this.body.AddBlock(), this.body.AddBlock());
-        this.body.Terminate(this.current, MirTerminator.Goto(exit, this.Info(jump), next));
-        this.body.Push(exit, MirStatement.Assign(new(0), MirRvalue.Use(this.body.AddOperand(value)), this.Info(jump)));
-        this.body.Terminate(exit, MirTerminator.Return(this.Info(jump)));
-        this.current = next;
-    }
-
     // The one way a form without a building rule is built (plan 5.4, 6.2): a located record, merged by location, and an Opaque value in
     // its place.
     private void Unsupported(Koto node, MirPlace destination)
@@ -248,7 +238,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         (this.collector ??= new(this)).Visit(node);
         var site = this.body.AddOpaque(SourceRef.Of(node), CollectionsMarshal.AsSpan(this.roots));
         this.body.Push(this.current, MirStatement.Assign(destination, MirRvalue.Opaque(this.body.TypeOf(destination) ?? BoundType.Unit, site), this.Info(node)));
-        if (HirTables.CompletionOf(node) == HirCompletion.Diverges)
+        if (!Completes(node))
         {
             var next = this.body.AddBlock();
             this.body.Terminate(this.current, MirTerminator.Unreachable(this.Info(node), next));

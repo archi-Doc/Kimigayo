@@ -135,11 +135,20 @@ internal sealed partial class MirBuilder
         static int Inherited(BoundType type) => AdtDef.Base(type) is { } parent ? AdtDef.StorageCount(parent) : 0;
     }
 
-    // SPEC 4.6.1, 15.1.3: a built-in element at an integer position, a ConstIndex where the position is a constant (in range: its PlaceShape).
+    // SPEC 4.6.1, 15.1.3: a built-in element at an integer position, a ConstIndex where the position is a constant (in range: its PlaceShape);
+    // SPEC 5.3: a raw pointer's p[n] is *(p + n).
     private MirPlace Element(IndexKoto index, HirPlaceKind kind)
     {
         var sequence = this.Place(index.Left);
         var position = this.Operand(index.Right);
+        if (this.body.TypeOf(sequence) is { Semantics: SemanticsKind.Raw } pointer)
+        {
+            var (offset, start) = (this.Temp(pointer, index), this.body.AddOperand(MirOperand.Copy(sequence)));
+            this.body.AddOperand(position);
+            this.Set(offset, MirRvalue.Binary(MirBinaryOp.Add, start, true), index);
+            return this.body.Project(offset, MirProjectionKind.Deref, 0);
+        }
+
         if (kind == HirPlaceKind.ConstIndex && position.Kind == MirOperandKind.Const)
         {
             return this.body.Project(sequence, MirProjectionKind.ConstIndex, (int)this.body.Consts[position.Arg].Bits);

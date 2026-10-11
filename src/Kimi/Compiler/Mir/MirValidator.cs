@@ -267,16 +267,14 @@ internal sealed class MirValidator
             return binder;
         }
 
-        private static bool IsReference(BoundType? type)
-            => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq } || PairBinderOf(type) is not null;
-
         // Whether a range of a table lies within it.
         private static bool InRange(int start, int count, int length) => start >= 0 && count >= 0 && start <= length - count;
 
         private static bool IsSequence(BoundType type) => type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary || ReferenceEquals(type, BoundType.String);
 
         // The operands an rvalue has: one or two, as many as its Type's elements, Fields (the base first) or Case payload, or captures; -1
-        // when an aggregate's kind and Type disagree. A fixed array of a generic length is counted by its instance.
+        // when an aggregate's kind and Type disagree. A fixed array of a generic length is counted by its instance, and one built from no
+        // operand stores no element (SPEC 4.3.4 noinit).
         private static int Arity(in MirRvalue rvalue)
         {
             var type = rvalue.Type;
@@ -288,7 +286,7 @@ internal sealed class MirValidator
                 {
                     MirAggregateKind.Tuple when type?.Kind == BoundTypeKind.Tuple => type.Components.Count,
                     MirAggregateKind.Closure when type?.Kind == BoundTypeKind.Closure => type.Components.Count,
-                    MirAggregateKind.FixedArray when type?.Kind == BoundTypeKind.FixedArray => type.LengthExpression is null && type.Length >= 0 ? (int)type.Length : rvalue.Count,
+                    MirAggregateKind.FixedArray when type?.Kind == BoundTypeKind.FixedArray => type.LengthExpression is null && type.Length >= 0 && rvalue.Count > 0 ? (int)type.Length : rvalue.Count,
                     MirAggregateKind.Adt when AdtDef.IsStruct(type) => AdtDef.Count(type!) + (AdtDef.Base(type!) is null ? 0 : 1),
                     MirAggregateKind.Adt when type is not null && AdtDef.CaseTypes(type) is { } cases => (uint)rvalue.Arg < (uint)cases.Length ? cases[rvalue.Arg].Components.Count : -1,
                     _ => -1,
@@ -330,7 +328,7 @@ internal sealed class MirValidator
                 case MirStatementKind.StorageLive or MirStatementKind.StorageDead when local.Type is null || local.Kind is not (MirLocalKind.Var or MirLocalKind.Temp):
                     this.Report(MirViolation.StorageLocal);
                     break;
-                case MirStatementKind.EndBorrow when !IsReference(local.Type):
+                case MirStatementKind.EndBorrow when !MirTypes.IsReference(local.Type):
                     this.Report(MirViolation.EndBorrowLocal);
                     break;
                 case MirStatementKind.Assign when !this.Rvalue(statement.Rvalue):

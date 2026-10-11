@@ -27,7 +27,7 @@ internal sealed partial class MirBuilder
     // takes it for its parameter's Type, passed by parameter slot, the receiver first. A compiler function is its intrinsic where the table
     // gives one (IntrinsicDisposition; Fail with its fixed code), a direct base call the implementation the virtual selection names, and a
     // place result the reference the call returns. A call of a Never function or a diverging intrinsic has no runtime successor and
-    // continues for the checks (SPEC 14.10).
+    // continues for the checks (SPEC 14.10); a call whose operand does not complete enters no callee (SPEC 15.6.7).
     private void Call(MirPlace destination, CallPlan call, Koto node, Koto? first = null)
     {
         var function = call.Kind == CalleeKind.Value ? null : call.Target;
@@ -40,12 +40,15 @@ internal sealed partial class MirBuilder
             return;
         }
 
-        var value = function is null ? this.Operand(call.ReceiverOperation.Source ?? call.CalleeValue, null, true) : default;
-        var start = this.arguments.Count;
+        var source = call.ReceiverOperation.Source ?? call.CalleeValue;
+        var value = function is null ? this.Operand(source, null, true) : default;
+        var (start, completes) = (this.arguments.Count, function is not null || Completes(source));
         CollectionsMarshal.SetCount(this.arguments, start + count);
+        CollectionsMarshal.AsSpan(this.arguments)[start..].Clear(); // No stale operand reads as pending (Transfer).
         if (receiver is not null)
         {
             this.arguments[start] = this.Operand(receiver, call.ReceiverOperation.AdaptedType ?? call.ReceiverOperation.ParameterType, true);
+            completes &= Completes(receiver);
         }
 
         for (var pass = first is null ? 1 : 0; pass < 2; pass++)
@@ -55,8 +58,15 @@ internal sealed partial class MirBuilder
                 if (ReferenceEquals(argument.Source, first) == (pass == 0))
                 {
                     this.arguments[start + Position(function, argument.ParameterIndex)] = this.Operand(argument.Source!, argument.AdaptedType ?? argument.ParameterType, true);
+                    completes &= Completes(argument.Source!);
                 }
             }
+        }
+
+        if (!completes)
+        {
+            this.arguments.RemoveRange(start, count);
+            return;
         }
 
         var disposition = function is null ? default : IntrinsicDisposition.Of(function.CompilerFunction);

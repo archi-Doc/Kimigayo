@@ -29,6 +29,7 @@ fn f @0
       _5 = Adt case 1(const 1_i32, const 1_i32): Shape @0
       _1 = Tuple(const 1_i32, const true): (i32, bool) @0
       _6 = FixedArray(const 1_i32, const 1_i32, const 1_i32): [3 of i32] @0
+      _6 = FixedArray(): [3 of i32] @0
       _3 = Adt(const 1_i32, const 1_i32, const 1_i32): Point @0
       _0 = copy _6[_4] @0
       _0 = copy _6[2] @0

@@ -50,8 +50,32 @@ internal sealed partial class MirBuilder
             case HirOp.Call:
                 this.Call(destination, node);
                 break;
-            case HirOp.Jump when ReferenceEquals(HirTables.PlanOf(node).Plan, this.declaration):
-                this.Return((JumpKoto)node);
+            case HirOp.Jump or HirOp.Continue:
+                this.Transfer(destination, (JumpKoto)node);
+                break;
+            case HirOp.If:
+                this.If(destination, (IfKoto)node);
+                break;
+            case HirOp.Loop:
+                this.Loop(destination, (LoopKoto)node);
+                break;
+            case HirOp.While:
+                this.While(destination, (WhileKoto)node);
+                break;
+            case HirOp.Do:
+                this.Do(destination, (DoKoto)node);
+                break;
+            case HirOp.Require: // A statement: it leaves no value.
+                this.Require((RequireKoto)node);
+                break;
+            case HirOp.Unsafe:
+                this.Block(destination, ((UnsafeBlockKoto)node).Body, MirScopeKind.Unsafe);
+                break;
+            case HirOp.Discard: // SPEC 14.2.4: the operand acquired by bare acquisition into a temp, destroyed with the statement's.
+                this.Assign(this.Temp(((DiscardKoto)node).Operand), ((DiscardKoto)node).Operand);
+                break;
+            case HirOp.NoInit: // SPEC 4.3.4: the array constructed from no operand, its elements not stored.
+                this.Set(destination, MirRvalue.Aggregate(MirAggregateKind.FixedArray, this.body.Operands.Length, 0, this.body.TypeOf(destination)!), node);
                 break;
             case HirOp.PrimitiveOp:
                 this.Primitive(destination, node, TypeOf(node));
@@ -232,15 +256,15 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 13.3: `and` and `or` evaluate the right operand only where the left does not decide the result: the left into the destination,
-    // then a switch on it to the right operand or past it.
+    // then the branch on it to the right operand or past it.
     private void Logical(MirPlace destination, BinaryKoto logical)
     {
         this.Assign(destination, logical.Left);
         var (right, join, and) = (this.body.AddBlock(), this.body.AddBlock(), logical.Akind == KotoKind.And);
-        this.body.Terminate(this.current, MirTerminator.SwitchInt(MirOperand.Copy(destination), this.body.AddCase(0, and ? join : right), 1, and ? right : join, this.Info(logical)));
+        this.Branch(destination, logical.Left, and ? join : right, and ? right : join);
         this.current = right;
         this.Assign(destination, logical.Right);
-        this.body.Terminate(this.current, MirTerminator.Goto(join, this.Info(logical)));
+        this.Join(join, logical.Right);
         this.current = join;
     }
 
@@ -361,7 +385,7 @@ internal sealed partial class MirBuilder
         var value = this.Temp(assignment.Left);
         this.Assign(value, assignment.Right);
         var target = this.Place(assignment.Left);
-        if (MirTypes.MayNeedDrop(this.body.TypeOf(target)))
+        if (Completes(assignment) && MirTypes.MayNeedDrop(this.body.TypeOf(target)))
         {
             var next = this.body.AddBlock();
             this.body.Terminate(this.current, MirTerminator.Drop(target, next, this.Info(assignment)));
@@ -429,7 +453,14 @@ internal sealed partial class MirBuilder
 
     private BoundType? TypeOf(in MirOperand operand) => operand.Kind == MirOperandKind.Const ? this.body.Consts[operand.Arg].Type : this.body.TypeOf(operand.Place);
 
-    private void Set(MirPlace destination, in MirRvalue rvalue, Koto node) => this.body.Push(this.current, MirStatement.Assign(destination, rvalue, this.Info(node)));
+    // An rvalue assigned at a node; a node that does not complete has no value to assign (SPEC 15.6.7: its operand diverged).
+    private void Set(MirPlace destination, in MirRvalue rvalue, Koto node)
+    {
+        if (Completes(node))
+        {
+            this.body.Push(this.current, MirStatement.Assign(destination, rvalue, this.Info(node)));
+        }
+    }
 
     private void Use(MirPlace destination, in MirOperand operand, Koto node) => this.Set(destination, MirRvalue.Use(this.body.AddOperand(operand)), node);
 

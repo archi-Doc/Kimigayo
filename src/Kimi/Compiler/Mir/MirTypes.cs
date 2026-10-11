@@ -22,6 +22,13 @@ internal static class MirTypes
         _ => ReferenceEquals(type, BoundType.String) || AdtDef.Destructor(type) is not null || Stored(type, depth, false),
     });
 
+    /// <summary>Gets whether a value of a Type is a reference whose Loans an EndBorrow ends: a ref, uniq, objref or objuniq, or a pair layer.</summary>
+    /// <param name="type">The Type.</param>
+    /// <returns>Whether the value is a reference.</returns>
+    internal static bool IsReference(BoundType? type)
+        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq } ||
+            (TyCtxt.Layer(type, out _, out var binder) is var _ && binder is not null);
+
     /// <summary>Gets whether a value of a Type holds a raw pointer, an rc handle or a Weak of one at any depth, so that reading it from an
     /// immutable static obtains authority from the environment (SPEC 8.4.10.2); a referent reached through the value counts too.</summary>
     /// <param name="type">The Type.</param>
