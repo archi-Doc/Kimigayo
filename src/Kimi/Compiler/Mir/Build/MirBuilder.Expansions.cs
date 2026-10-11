@@ -23,7 +23,9 @@ internal sealed partial class MirBuilder
     // its isize positions from start to end instead, checked, without an iterator value.
     private void For(MirPlace destination, ForKoto loop)
     {
-        var (plan, entry, step) = (BoundMatch.Of(loop), CallPlan.Of(loop), CallPlan.Of(loop, 1));
+        var plan = BoundMatch.Of(loop);
+        var entry = CallPlan.Of(loop);
+        var step = CallPlan.Of(loop, 1);
         if (HirTables.Meaning(loop) is null || (plan is null) != (entry is null) || (plan is not null && step is null))
         {
             this.Opaque(loop, destination); // Binding rejected its Subject or its bindings.
@@ -41,7 +43,10 @@ internal sealed partial class MirBuilder
         this.locals[HirTables.Symbol(step.Receiver!)!] = iterator.Root;
         var head = this.body.AddBlock();
         this.body.Terminate(this.current, MirTerminator.Goto(head, this.Info(loop)));
-        var (after, start, none, tail) = (this.Open(loop, destination, head), this.selected.Count, this.body.AddBlock(), this.body.AddBlock());
+        var after = this.Open(loop, destination, head);
+        var start = this.selected.Count;
+        var none = this.body.AddBlock();
+        var tail = this.body.AddBlock();
         this.current = head;
         var iteration = this.OpenScope(false);
         var subject = this.Temp(step.ReturnType, loop, MirLocalRole.Subject);
@@ -66,10 +71,14 @@ internal sealed partial class MirBuilder
         var type = TypeOf(loop.Iterable);
         var range = this.Temp(MirTypes.IsReference(type) ? type.Components[0] : type, loop.Iterable);
         this.Assign(range, loop.Iterable);
-        var (position, end, test) = (this.Temp(BoundType.ISize, loop), this.Temp(BoundType.ISize, loop), this.Temp(BoundType.Boolean, loop));
+        var position = this.Temp(BoundType.ISize, loop);
+        var end = this.Temp(BoundType.ISize, loop);
+        var test = this.Temp(BoundType.Boolean, loop);
         this.Use(position, MirOperand.Copy(this.Bound(range, "start")), loop);
         this.Use(end, MirOperand.Copy(this.Bound(range, "end")), loop);
-        var (head, step, done) = (this.body.AddBlock(), this.body.AddBlock(), this.body.AddBlock());
+        var head = this.body.AddBlock();
+        var step = this.body.AddBlock();
+        var done = this.body.AddBlock();
         this.body.Terminate(this.current, MirTerminator.Goto(head, this.Info(loop)));
         var after = this.Open(loop, destination, step);
         this.current = head;
@@ -100,8 +109,17 @@ internal sealed partial class MirBuilder
 
         for (var i = 0; plan is null && i < loop.Bindings.Count; i++)
         {
-            var (name, symbol) = (loop.Bindings[i], HirTables.Symbol(loop.Bindings[i])!);
-            this.locals[symbol] = this.Live(this.body.AddLocal(new(BoundType.ISize, MirLocalKind.Var, this.Info(name, true), loop.IsMutableSlot(i), symbol.Name)), this.lexical);
+            var name = loop.Bindings[i];
+            var symbol = HirTables.Symbol(loop.Bindings[i])!;
+            this.locals[symbol] = this.Live(
+                this.body.AddLocal(
+                    new(
+                    BoundType.ISize,
+                    MirLocalKind.Var,
+                    this.Info(name, true),
+                    loop.IsMutableSlot(i),
+                    symbol.Name)),
+                this.lexical);
             this.Use(new(this.locals[symbol]), MirOperand.Copy(position), name);
         }
 
@@ -119,7 +137,9 @@ internal sealed partial class MirBuilder
     private void Update(MirPlace destination, Koto node)
     {
         var (target, right) = node is BinaryKoto update ? (update.Left, update.Right) : (((UnaryKoto)node).Operand, null);
-        var (plan, arithmetic, mark) = (ExpansionPlan.Of(node)!.Value, CallPlan.Of(node), this.located.Count);
+        var plan = ExpansionPlan.Of(node)!.Value;
+        var arithmetic = CallPlan.Of(node);
+        var mark = this.located.Count;
         if (plan.Second is not null && plan.Evaluated < 0)
         {
             this.Unsupported(node, destination); // A setter without the argument the update computes.
@@ -128,7 +148,8 @@ internal sealed partial class MirBuilder
 
         var value = right is null ? MirOperand.Const(this.body.Const(new(MirConstKind.Integer, TypeOf(target), 1))) : this.Secure(this.Operand(right), right);
         var accessor = plan.First ?? plan.Second; // A Property's accessors take its receiver, located once; a static Property's have none.
-        var (storage, receiver) = (accessor is null ? this.Place(target) : default, accessor is null || HirTables.ResOf(target) == HirRes.Static ? null : (target as MemberAccessKoto)?.Left);
+        var storage = accessor is null ? this.Place(target) : default;
+        var receiver = accessor is null || HirTables.ResOf(target) == HirRes.Static ? null : (target as MemberAccessKoto)?.Left;
         if (receiver is not null)
         {
             this.located.Add((receiver, this.Place(receiver)));
@@ -144,12 +165,18 @@ internal sealed partial class MirBuilder
         {
             // A receiver both accessors take keeps the setter's acquisition as its Adjust; the getter takes it as its own operation does
             // (shared, SPEC 11.2): in place by that adaptation, or by its bare acquisition (a stored reference Copied).
-            var (given, operand) = (plan.Second is null ? null : receiver, default(MirOperand));
+            var given = plan.Second is null ? null : receiver;
+            var operand = default(MirOperand);
             foreach (ref readonly var argument in getter.ArgumentOperations)
             {
                 if (given is not null && ReferenceEquals(argument.Source, given) && HirAdjust.Of(argument) is var adaptation)
                 {
-                    operand = this.Acquire(new(adaptation == HirAdaptation.None ? HirAcquire.ByCase : HirAcquire.None, adaptation), this.located[mark].Place, argument.AdaptedType ?? argument.ParameterType, true, given);
+                    operand = this.Acquire(
+                        new(adaptation == HirAdaptation.None ? HirAcquire.ByCase : HirAcquire.None, adaptation),
+                        this.located[mark].Place,
+                        argument.AdaptedType ?? argument.ParameterType,
+                        true,
+                        given);
                 }
             }
 
@@ -170,8 +197,18 @@ internal sealed partial class MirBuilder
         }
         else
         {
-            var kind = right is null ? (node.Akind is KotoKind.PrefixPlusPlus or KotoKind.PostfixIncrement ? KotoKind.Plus : KotoKind.Minus) : KotoHelper.CompoundOperation(node.Akind);
-            var (op, operands) = (BinaryOp(kind)!.Value, this.body.AddOperand(MirOperand.Copy(read)));
+            KotoKind kind;
+            if (right is null)
+            {
+                kind = node.Akind is KotoKind.PrefixPlusPlus or KotoKind.PostfixIncrement ? KotoKind.Plus : KotoKind.Minus;
+            }
+            else
+            {
+                kind = KotoHelper.CompoundOperation(node.Akind);
+            }
+
+            var op = BinaryOp(kind)!.Value;
+            var operands = this.body.AddOperand(MirOperand.Copy(read));
             this.body.AddOperand(value);
             this.Set(result, MirRvalue.Binary(op, operands, this.Proven(op, this.body.TypeOf(read)!, value)), node);
         }
@@ -183,7 +220,13 @@ internal sealed partial class MirBuilder
 
         if (plan.Second is { } setter)
         {
-            this.Call(right is null ? this.Temp(BoundType.Unit, node) : destination, setter, node, null, setter.ArgumentOperations[plan.Evaluated].Source, MirOperand.Move(result));
+            this.Call(
+                right is null ? this.Temp(BoundType.Unit, node) : destination,
+                setter,
+                node,
+                null,
+                setter.ArgumentOperations[plan.Evaluated].Source,
+                MirOperand.Move(result));
         }
         else if (arithmetic is not null)
         {
@@ -204,7 +247,8 @@ internal sealed partial class MirBuilder
     // serves (R3 decision 5) of the elements from the address of element start, any address for none (SPEC 5.6).
     private void Slice(MirPlace destination, IndexKoto index)
     {
-        var (sequence, range) = (this.Place(index.Left), HirTables.Op(index.Right) == HirOp.Range ? index.Right as RangeKoto : null);
+        var sequence = this.Place(index.Left);
+        var range = HirTables.Op(index.Right) == HirOp.Range ? index.Right as RangeKoto : null;
         var length = this.Length(sequence, index);
         var zero = MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize)));
         MirPlace start, last;
@@ -216,7 +260,8 @@ internal sealed partial class MirBuilder
         else
         {
             var resolved = this.Follow(ExpansionPlan.Of(index)?.First is { } key ? this.Resolve(key, index, sequence) : this.Place(index.Right), 16);
-            (start, last) = (this.Position(MirOperand.Copy(this.Bound(resolved, "start")), index), this.Position(MirOperand.Copy(this.Bound(resolved, "end")), index));
+            (start, last) = (this.Position(MirOperand.Copy(this.Bound(resolved, "start")), index),
+                this.Position(MirOperand.Copy(this.Bound(resolved, "end")), index));
         }
 
         if (!Completes(index))
@@ -224,7 +269,10 @@ internal sealed partial class MirBuilder
             return;
         }
 
-        var (test, count, fail, closed) = (this.Temp(BoundType.Boolean, index), this.Temp(BoundType.ISize, index), this.body.AddBlock(), range?.IsInclusive == true);
+        var test = this.Temp(BoundType.Boolean, index);
+        var count = this.Temp(BoundType.ISize, index);
+        var fail = this.body.AddBlock();
+        var closed = range?.IsInclusive == true;
         this.Compare(test, MirBinaryOp.Le, zero, MirOperand.Copy(start), fail, index);
         this.Compare(test, MirBinaryOp.Le, MirOperand.Copy(start), MirOperand.Copy(last), fail, index);
         this.Compare(test, closed ? MirBinaryOp.Lt : MirBinaryOp.Le, MirOperand.Copy(last), MirOperand.Copy(length), fail, index);
@@ -241,10 +289,25 @@ internal sealed partial class MirBuilder
 
         var element = TypeOf(index).Components[0];
         var pointer = this.Temp(compilation.Types.Pointer(element), index);
-        var (some, empty, join) = (this.body.AddBlock(), this.body.AddBlock(), this.body.AddBlock());
+        var some = this.body.AddBlock();
+        var empty = this.body.AddBlock();
+        var join = this.body.AddBlock();
         this.body.Terminate(this.current, MirTerminator.SwitchInt(MirOperand.Copy(count), this.body.AddCase(0, empty), 1, some, this.Info(index)));
-        this.body.Push(some, MirStatement.Assign(pointer, this.Ref(this.body.Project(sequence, MirProjectionKind.Index, start.Root), this.body.TypeOf(pointer)!, false), this.Info(index)));
-        this.body.Push(empty, MirStatement.Assign(pointer, MirRvalue.Use(this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, this.body.TypeOf(pointer)!))))), this.Info(index)));
+        this.body.Push(
+            some,
+            MirStatement.Assign(
+            pointer,
+            this.Ref(
+            this.body.Project(sequence, MirProjectionKind.Index, start.Root),
+            this.body.TypeOf(pointer)!,
+            false),
+            this.Info(index)));
+        this.body.Push(
+            empty,
+            MirStatement.Assign(
+            pointer,
+            MirRvalue.Use(this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, this.body.TypeOf(pointer)!))))),
+            this.Info(index)));
         this.body.Terminate(some, MirTerminator.Goto(join, this.Info(index)));
         this.body.Terminate(empty, MirTerminator.Goto(join, this.Info(index)));
         var at = this.arguments.Count;
@@ -265,15 +328,19 @@ internal sealed partial class MirBuilder
         }
 
         var operand = this.Operand(offset);
-        var (x, zero) = (this.Position(operand, offset), MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize))));
-        if (Completes(node) && (operand.Kind != MirOperandKind.Const || this.body.Consts[operand.Arg].Bits < 0 || this.body.Consts[operand.Arg].Bits > int.MaxValue))
+        var x = this.Position(operand, offset);
+        var zero = MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize)));
+        if (Completes(node) && (operand.Kind != MirOperandKind.Const || this.body.Consts[operand.Arg].Bits < 0 ||
+            this.body.Consts[operand.Arg].Bits > int.MaxValue))
         {
-            var (test, fail) = (this.Temp(BoundType.Boolean, node), this.body.AddBlock());
+            var test = this.Temp(BoundType.Boolean, node);
+            var fail = this.body.AddBlock();
             this.Compare(test, MirBinaryOp.Le, zero, MirOperand.Copy(x), fail, node);
             this.Fail(fail, "KIMI_E_INDEX_BOUNDS", node);
         }
 
-        var (position, operands) = (this.Temp(BoundType.ISize, node), this.body.AddOperand(MirOperand.Copy(length)));
+        var position = this.Temp(BoundType.ISize, node);
+        var operands = this.body.AddOperand(MirOperand.Copy(length));
         this.body.AddOperand(MirOperand.Copy(x));
         this.Set(position, MirRvalue.Binary(MirBinaryOp.Sub, operands, true), node);
         return position;
@@ -283,7 +350,9 @@ internal sealed partial class MirBuilder
     // that length: the receiver is not evaluated again.
     private MirPlace Resolve(CallPlan key, IndexKoto index, MirPlace sequence)
     {
-        var (length, result, evaluated) = (this.Length(sequence, index), this.Temp(key.ReturnType, index), ExpansionPlan.Of(index)!.Value.Evaluated);
+        var length = this.Length(sequence, index);
+        var result = this.Temp(key.ReturnType, index);
+        var evaluated = ExpansionPlan.Of(index)!.Value.Evaluated;
         this.Call(result, key, index, null, evaluated < 0 ? null : key.ArgumentOperations[evaluated].Source, MirOperand.Copy(length));
         return result;
     }
@@ -322,8 +391,14 @@ internal sealed partial class MirBuilder
             return;
         }
 
-        var (mark, start, done, first) = (this.located.Count, this.formatTypes.Count, this.body.AddBlock(), node is InterpolatedStringKoto ? 2 : 0);
-        var (storage, bytes, writer, unit) = (CallPlan.Of(node, first)!.ArgumentOperations[0].Source!, 0L, default(MirPlace), default(MirPlace));
+        var mark = this.located.Count;
+        var start = this.formatTypes.Count;
+        var done = this.body.AddBlock();
+        var first = node is InterpolatedStringKoto ? 2 : 0;
+        var storage = CallPlan.Of(node, first)!.ArgumentOperations[0].Source!;
+        var bytes = 0L;
+        var writer = default(MirPlace);
+        var unit = default(MirPlace);
         if (first == 0)
         {
             var operand = ((InvocationKoto)((MacroKoto)node).Operand).ArgumentNodes[0];
@@ -350,7 +425,8 @@ internal sealed partial class MirBuilder
                 }
             }
 
-            var (buffer, adapter) = (this.Temp(CallPlan.Of(node)!.ReturnType, node), CallPlan.Of(node, 1)!);
+            var buffer = this.Temp(CallPlan.Of(node)!.ReturnType, node);
+            var adapter = CallPlan.Of(node, 1)!;
             this.Estimate(buffer, IntrinsicId.FormatBuffer, bytes, start, this.arguments.Count, node);
             (writer, unit) = (this.Temp(adapter.ReturnType, node), this.Temp(BoundType.Unit, node));
             this.Call(writer, adapter, node, null, adapter.ArgumentOperations[0].Source, this.Borrow(SemanticsKind.Uniq, buffer, node));
@@ -361,13 +437,15 @@ internal sealed partial class MirBuilder
         {
             if (first > 0)
             {
-                var (count, at) = (Bytes(write), this.arguments.Count);
+                var count = Bytes(write);
+                var at = this.arguments.Count;
                 (later, values) = count < 0 ? (later, values + 1) : (later - count, values);
                 this.arguments.Add(this.Borrow(SemanticsKind.Uniq, writer, node));
                 this.Estimate(unit, IntrinsicId.FormatHint, later, values, at, node);
             }
 
-            var (result, discriminant) = (this.Temp(write.ReturnType, node), this.Temp(BoundType.ISize, node));
+            var result = this.Temp(write.ReturnType, node);
+            var discriminant = this.Temp(BoundType.ISize, node);
             this.Call(result, write, node, null, first > 0 ? storage : null, first > 0 ? this.Borrow(SemanticsKind.Uniq, writer, node) : default);
             if (Completes(write.ArgumentOperations[1].Source!))
             {
@@ -402,7 +480,12 @@ internal sealed partial class MirBuilder
     private void Estimate(MirPlace destination, IntrinsicId id, long bytes, int from, int at, Koto node)
     {
         this.arguments.Add(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize, bytes))));
-        this.arguments.Add(MirOperand.Const(this.body.Const(new(MirConstKind.TypeToken, compilation.Types.Tuple(CollectionsMarshal.AsSpan(this.formatTypes)[from..])))));
+        this.arguments.Add(
+            MirOperand.Const(
+            this.body.Const(
+            new(
+            MirConstKind.TypeToken,
+            compilation.Types.Tuple(CollectionsMarshal.AsSpan(this.formatTypes)[from..])))));
         if (id != IntrinsicId.FormatHint)
         {
             this.arguments.Add(MirOperand.Const(this.body.Const(new(MirConstKind.Bool, BoundType.Boolean, ExpansionPlan.Of(node)!.Value.Direct ? 1 : 0))));
@@ -455,12 +538,23 @@ internal sealed partial class MirBuilder
         this.Set(destination, MirRvalue.Aggregate(MirAggregateKind.FixedArray, this.body.Operands.Length, 0, type), dictionary);
         foreach (var entry in dictionary.Entries)
         {
-            var (key, value, link, test, fail, start) = (this.Temp(type.Components[0], entry.Key), this.Temp(type.Components[1], entry.Value), this.Temp(BoundType.ISize, entry.Key), this.Temp(BoundType.Boolean, entry.Key), this.body.AddBlock(), this.arguments.Count);
+            var key = this.Temp(type.Components[0], entry.Key);
+            var value = this.Temp(type.Components[1], entry.Value);
+            var link = this.Temp(BoundType.ISize, entry.Key);
+            var test = this.Temp(BoundType.Boolean, entry.Key);
+            var fail = this.body.AddBlock();
+            var start = this.arguments.Count;
             this.Assign(key, entry.Key);
             this.arguments.Add(this.Borrow(SemanticsKind.Ref, destination, entry.Key));
             this.arguments.Add(this.Borrow(SemanticsKind.Ref, key, entry.Key));
             this.Invoke(link, new(MirCalleeKind.Fn, find.Target, compilation.Types.SubstOf(find)), start, entry.Key);
-            this.Compare(test, MirBinaryOp.Eq, MirOperand.Copy(link), MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize))), fail, entry.Key);
+            this.Compare(
+                test,
+                MirBinaryOp.Eq,
+                MirOperand.Copy(link),
+                MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize))),
+                fail,
+                entry.Key);
             this.Fail(fail, "KIMI_E_DUPLICATE_KEY", entry.Key);
             this.Assign(value, entry.Value);
             var handle = this.Temp(layout, entry.Value);

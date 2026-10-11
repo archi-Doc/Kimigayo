@@ -24,6 +24,8 @@ internal sealed class CodeRulesSource(Compilation compilation, SyntaxTree tree, 
 
     internal SyntaxNode Root { get; } = tree.GetRoot(cancellation);
 
+    internal SourceText Text => this.text;
+
     internal SemanticModel Semantics => this.semantics ??= compilation.GetSemanticModel(tree);
 
     internal List<CodeRuleObservation>? Observations { get; private set; }
@@ -63,9 +65,24 @@ internal sealed class CodeRulesSource(Compilation compilation, SyntaxTree tree, 
             return;
         }
 
-        this.Observations ??= [];
-        this.Observations.Add(new CodeRuleObservation(
-            new CodeRuleKey(rule, anchor == "file" ? path : this.Scope(node), anchor), path, node.GetLocation(), value, limit));
+        this.AddObservation(rule, anchor == "file" ? path : this.Scope(node), anchor, node.GetLocation(), value, limit);
+    }
+
+    internal void RecordLine(CodeRule rule, TextLine line, int limit)
+    {
+        var position = line.Start;
+        while (position < line.End && char.IsWhiteSpace(this.text[position]))
+        {
+            position++;
+        }
+
+        var node = this.Root.FindToken(position).Parent!;
+        while (node.Parent is not null && !node.Span.Contains(position))
+        {
+            node = node.Parent;
+        }
+
+        this.AddObservation(rule, this.Scope(node), this.LineAnchor(line.LineNumber), Location.Create(tree, line.Span), line.Span.Length, limit);
     }
 
     internal string Scope(SyntaxNode node)
@@ -158,6 +175,12 @@ internal sealed class CodeRulesSource(Compilation compilation, SyntaxTree tree, 
     }
 
     private static void HashByte(ref ulong hash, byte value) => hash = unchecked((hash ^ value) * 1099511628211UL);
+
+    private void AddObservation(CodeRule rule, string scope, string anchor, Location location, int value, int limit)
+    {
+        this.Observations ??= [];
+        this.Observations.Add(new CodeRuleObservation(new CodeRuleKey(rule, scope, anchor), path, location, value, limit));
+    }
 
     private string? Identity(SyntaxNode declaration)
     {

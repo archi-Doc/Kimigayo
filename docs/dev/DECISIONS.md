@@ -140,6 +140,34 @@ rules that result from them.
   150–220 test lines; compiler areas zero tokens/lines. Verify aliases, inferred/derived types, patterns, boundaries,
   header stability, snapshots and actual csc time. Later enforcement changes remain separate units.
 
+- **CR-A5** (planning session, two independent designs compared and reviewed). CodeRulesDensity owns KR3001–3003
+  in the existing file walk. Physical lines use the existing SourceText once; only over-limit lines find a token.
+  Exclude a whole line only inside one multiline literal/text token, preserving checks in interpolation holes.
+  CodeRulesSource owns line scope, location and hash through the same observation append as syntax observations.
+  Reject a precomputed literal-span table, a second parse/walker and separate baseline or hash implementations.
+  The outermost conditional before a callable boundary owns one observation; stop a bounded descendant search at
+  the first nested conditional and prune anonymous/local functions. Reject observing each inner node then deduplicating.
+  Computed deconstruction covers only flat var declarations of new locals and tuple-literal values; existing writes,
+  discards and nested designations do not qualify. Simple operands are names, literals, this/default and member chains.
+  Parentheses are transparent for both tuple and simple-operand recognition through one unwrap operation; retain the
+  complete declaration anchor. Review found that separate shape checks would otherwise both flag and hide calculations.
+  Mir rewrites preserve left-to-right evaluation, short-circuiting and target types; retain conditions to avoid changing
+  KR1006 identities. Delete dense parallel declarations/nested conditionals, format long lines, then initialize KR3
+  outside Mir only. Both designs chose these owners; expected 130–180 analyzer lines and 120–180 test lines, Mir token
+  reduction from split declarations with reference-line growth. Prove semantic/HIR/MIR, diagnostics and representative
+  IR equality, review every changed MIR expression and measure cumulative analyzer time before completion.
+  Actual Report exposed null JSON cells: Select-Object cannot project ordered-dictionary keys as properties. Both
+  script row producers now publish PSCustomObject rows, preserving ordered keys and the single merge/write path.
+  Independent review chose this producer fix over another export adapter; test the public JSON and TSV roundtrips.
+  The first cumulative timing exceeded 10% (3.617 s / 35.862 s). Keep the failed measurement and remove unnecessary
+  declaration symbol queries at the existing owner: syntax-layer declarations need only the Supports check, and a
+  predefined declared type cannot be a syntax-keyed collection; predefined types other than bool cannot be either
+  kind of violation. Remaining method/local-function/property declarations retain the original semantic name and
+  return-type check, including explicit interface implementations; reject
+  copying the name rule into a syntax filter. Aliases, inferred types, user types and constraints keep the existing
+  declared-symbol path. Independent review accepted this bounded syntax filter over new symbol caches or weakening
+  rules. Re-measure and rerun the unit on the changed inputs.
+
 ## R2b (2026-10-11, main session, as recommended)
 
 - **R2b-D1** `BoundType` stays the Type representation until R7; `TyCtxt` owns interning and `Subst` converts.

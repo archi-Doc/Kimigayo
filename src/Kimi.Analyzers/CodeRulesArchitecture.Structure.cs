@@ -159,7 +159,14 @@ internal sealed partial class CodeRulesArchitecture
     private void CheckDeclaration(CodeRulesSource source, SyntaxNode node, Layer? layer, CancellationToken cancellation)
     {
         var anchor = DeclarationAnchor(node);
-        if (anchor is null)
+        if (anchor is null || (anchor is PredefinedTypeSyntax predefined && !predefined.Keyword.IsKind(SyntaxKind.BoolKeyword)))
+        {
+            return;
+        }
+
+        var collection = layer is null || layer != this.syntaxLayer;
+        if ((!collection || anchor is PredefinedTypeSyntax) &&
+            node is not (BaseMethodDeclarationSyntax or LocalFunctionStatementSyntax or BasePropertyDeclarationSyntax))
         {
             return;
         }
@@ -188,7 +195,7 @@ internal sealed partial class CodeRulesArchitecture
             source.RecordMember(Gate, node, symbol, 1, 0);
         }
 
-        if (layer is null || layer != this.syntaxLayer)
+        if (collection)
         {
             this.CheckCollection(source, anchor, type);
         }

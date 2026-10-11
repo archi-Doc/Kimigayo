@@ -324,5 +324,7 @@ The user adopted `Proposals/2026-10-10 Compiler Size Reduction and Single MIR Pl
   BoundArgumentOperation. Koto's existing current-Binding predicate moved to HirTables without changing behavior.
   A4 maps §4.1 KR1004–1006/KR1008 and the two §3.9 ratchets to CodeRulesArchitecture.Structure and the initialized
   baseline (DECISIONS CR-A4); declared symbols cover explicit and inferred bindings through one path.
-  Open: A5–A8 implementation, remaining operational verification (§6), and the
+  A5 maps §4.3 to CodeRulesDensity and the shared source/Report pipeline (DECISIONS CR-A5), removes Mir density
+  violations in evaluation order and initializes 2,115 density keys outside Mir. No language behavior is changed.
+  Open: A6–A8 implementation, remaining operational verification (§6), and the
   later-stage scope extensions (§6.4). Future policy corrections belong in the owning architecture/decision documents.

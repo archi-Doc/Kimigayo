@@ -20,7 +20,8 @@ internal sealed partial class MirBuilder
         var after = this.Open(conditional, destination);
         for (var i = 0; i < conditional.Branches.Count; i++)
         {
-            var (then, next) = (this.body.AddBlock(), this.body.AddBlock());
+            var then = this.body.AddBlock();
+            var next = this.body.AddBlock();
             var test = this.Test(conditional.Branches[i].Condition, next, then);
             this.Enter(then, test);
             this.Arm(destination, conditional.Branches[i].Body, after);
@@ -44,7 +45,8 @@ internal sealed partial class MirBuilder
     // the code after it is checked from the head (plan 5.6.3).
     private void Loop(MirPlace destination, LoopKoto loop)
     {
-        var (head, start) = (this.body.AddBlock(), this.body.AddBlock());
+        var head = this.body.AddBlock();
+        var start = this.body.AddBlock();
         this.body.Terminate(this.current, MirTerminator.Goto(head, this.Info(loop)));
         var after = this.Open(loop, destination, head);
         this.current = start;
@@ -56,7 +58,9 @@ internal sealed partial class MirBuilder
     // SPEC 14.6.1: the condition before each iteration; a false one completes the while with Unit, as an exit does.
     private void While(MirPlace destination, WhileKoto loop)
     {
-        var (head, start, done) = (this.body.AddBlock(), this.body.AddBlock(), this.body.AddBlock());
+        var head = this.body.AddBlock();
+        var start = this.body.AddBlock();
+        var done = this.body.AddBlock();
         this.body.Terminate(this.current, MirTerminator.Goto(head, this.Info(loop)));
         var after = this.Open(loop, destination, head);
         this.current = head;
@@ -80,7 +84,8 @@ internal sealed partial class MirBuilder
     // SPEC 14.11: the failure body runs where the condition is false and has no successor, at run time or for the checks (SPEC 14.10.3).
     private void Require(RequireKoto require)
     {
-        var (fail, pass) = (this.body.AddBlock(), this.body.AddBlock());
+        var fail = this.body.AddBlock();
+        var pass = this.body.AddBlock();
         var test = this.Test(require.Condition, fail, pass);
         this.Enter(fail, test);
         this.Statement(require.ElseBody);
@@ -94,7 +99,8 @@ internal sealed partial class MirBuilder
     // that does not complete leaves no transfer.
     private void Transfer(JumpKoto jump)
     {
-        var (plan, index) = (HirTables.PlanOf(jump).Plan, this.targets.Count - 1);
+        var plan = HirTables.PlanOf(jump).Plan;
+        var index = this.targets.Count - 1;
         while (index >= 0 && !ReferenceEquals(this.targets[index].Node, plan))
         {
             index--;
@@ -106,8 +112,14 @@ internal sealed partial class MirBuilder
             return;
         }
 
-        var (operand, continues) = (jump.Expression, jump is ContinueKoto);
-        var value = continues ? default : operand is null ? this.UnitOperand() : this.Operand(operand, this.body.TypeOf(this.targets[index].Destination));
+        var operand = jump.Expression;
+        var continues = jump is ContinueKoto;
+        MirOperand value = default;
+        if (!continues)
+        {
+            value = operand is null ? this.UnitOperand() : this.Operand(operand, this.body.TypeOf(this.targets[index].Destination));
+        }
+
         if (operand is not null && !Completes(operand))
         {
             return;
@@ -130,7 +142,8 @@ internal sealed partial class MirBuilder
         }
 
         target.Reached |= !continues;
-        var (info, place) = (this.Info(jump), target.Destination);
+        var info = this.Info(jump);
+        var place = target.Destination;
         var entry = this.Exit(target.Depth, continues ? target.Continue : target.Break);
         if (!continues)
         {
@@ -166,7 +179,9 @@ internal sealed partial class MirBuilder
     // (testRequireAbort), which has no successor; $expect continues with Unit either way. Its test phases are the backend's (plan 5.6.7).
     private void Verification(MirPlace destination, TestVerificationKoto verification)
     {
-        var (failed, after, site) = (this.body.AddBlock(), this.body.AddBlock(), SourceRef.Of(verification));
+        var failed = this.body.AddBlock();
+        var after = this.body.AddBlock();
+        var site = SourceRef.Of(verification);
         var location = MirOperand.Const(this.body.Const(new(MirConstKind.Location, BoundType.I32, ((long)site.Module << 32) | (uint)site.Id)));
         var issue = this.Temp(BoundType.Primitives["i64"], verification);
         var test = this.Test(verification.Condition, failed, after, observe: (issue, location));
@@ -174,7 +189,8 @@ internal sealed partial class MirBuilder
         if (verification.Message is { } message)
         {
             var temporaries = this.OpenScope(false);
-            var (text, start) = (this.Temp(message), this.arguments.Count);
+            var text = this.Temp(message);
+            var start = this.arguments.Count;
             this.Assign(text, message);
             if (Completes(message))
             {
@@ -207,11 +223,19 @@ internal sealed partial class MirBuilder
     // ends in each successor (Enter). A match guard's candidates (SPEC 14.8.3) are shared borrows of the Places its Pattern selected among
     // its temporaries, pending so that a transfer ends them, and the Subject is read after their cleanup: it stays protected until then. A
     // verification observes the bool before that cleanup (SPEC 17.5.2).
-    private MirPlace Test(Koto condition, int whenFalse, int whenTrue, BoundMatch? plan = null, int pattern = 0, int start = 0, (MirPlace Issue, MirOperand Site)? observe = null)
+    private MirPlace Test(
+        Koto condition,
+        int whenFalse,
+        int whenTrue,
+        BoundMatch? plan = null,
+        int pattern = 0,
+        int start = 0,
+        (MirPlace Issue, MirOperand Site)? observe = null)
     {
         var tested = this.OpenScope(false);
         var test = this.Temp(BoundType.Boolean, condition);
-        var (temporaries, mark) = (this.OpenScope(false), this.arguments.Count);
+        var temporaries = this.OpenScope(false);
+        var mark = this.arguments.Count;
         for (var i = pattern; plan is not null && i < plan.Positions[pattern].End; i++)
         {
             if (plan.Positions[i] is { CandidateSymbol: { Type: { } type } candidate, Source: var source })
@@ -247,7 +271,10 @@ internal sealed partial class MirBuilder
     private void Branch(MirPlace test, Koto condition, int whenFalse, int whenTrue)
     {
         var info = this.Info(condition);
-        this.body.Terminate(this.current, Completes(condition) ? MirTerminator.SwitchInt(MirOperand.Copy(test), this.body.AddCase(0, whenFalse), 1, whenTrue, info) : MirTerminator.Goto(whenTrue, info, whenFalse));
+        var terminator = Completes(condition)
+            ? MirTerminator.SwitchInt(MirOperand.Copy(test), this.body.AddCase(0, whenFalse), 1, whenTrue, info)
+            : MirTerminator.Goto(whenTrue, info, whenFalse);
+        this.body.Terminate(this.current, terminator);
     }
 
     // A body whose value its construct takes, then the join after the construct.

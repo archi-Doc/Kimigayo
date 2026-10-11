@@ -54,7 +54,7 @@ function Get-KimiCodeRulesObservations($Results) {
         else {
             $paths = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
             $null = $paths.Add($p.path)
-            $rows.Add($key, [ordered]@{ rule = $p.rule; scope = $p.scope; anchor = $p.anchor; value = $value; path = $p.path; paths = $paths; allowed = $p.baselineAllowed -ceq 'true' })
+            $rows.Add($key, [pscustomobject][ordered]@{ rule = $p.rule; scope = $p.scope; anchor = $p.anchor; value = $value; path = $p.path; paths = $paths; allowed = $p.baselineAllowed -ceq 'true' })
         }
     }
     return ,$rows
@@ -68,7 +68,7 @@ function Get-KimiCodeRulesBaseline([string] $Path) {
         # This file was already validated by the completed analyzer report.
         if ($parts.Count -ne 5) { throw 'Malformed baseline row.' }
         $rows.Add("$($parts[1])`t$($parts[0])`t$($parts[2])",
-            [ordered]@{ rule = $parts[0]; scope = $parts[1]; anchor = $parts[2]; value = [int]$parts[3]; path = $parts[4] })
+            [pscustomobject][ordered]@{ rule = $parts[0]; scope = $parts[1]; anchor = $parts[2]; value = [int]$parts[3]; path = $parts[4] })
     }
     return ,$rows
 }

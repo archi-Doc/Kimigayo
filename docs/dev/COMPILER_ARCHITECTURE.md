@@ -114,6 +114,9 @@ analyzer pipeline. Its .Structure concern implements KR1004–1006 and KR1008 (C
 declared symbols, creations use their resolved type, and generic constraints have one cycle-safe expansion.
 Pattern tests use semantic matched/compared/input types; wrapper patterns and casts add no tests. Catch anchors exclude
 the body. Configuration lists use commas: Roslyn treats semicolons as inline comments (CR-A3).
+`CodeRulesDensity` owns KR3001–3003 in the same syntax walk (CR-A5). A physical line is excluded only when wholly
+inside a multiline literal/text token; interpolation holes remain checked. The outermost conditional before a
+callable boundary owns the observation. Parentheses are transparent when classifying new-local tuple values.
 
 | Rules | Contract |
 | --- | --- |

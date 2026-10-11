@@ -12,8 +12,9 @@ namespace Kimi.Compiler.Mir;
 
 /// <summary>The MIR builder (plan P6, R3 shadow): once per Binding pass it publishes the HIR, builds one body for each definition the
 /// HIR names (<see cref="HirOp.Body"/>: a function, an accessor, a static's initializer; a <see cref="HirOp.Closure"/>) and validates it.
-/// It reads syntax children, the HIR columns and plans and <see cref="TyCtxt"/> only. A form no rule builds goes through <see cref="Unsupported(Koto, MirPlace)"/>, and building
-/// continues; an Error node of Binding becomes a derived Opaque. The program, its bodies and the builder's scratch are reused, so a warm
+/// It reads syntax children, the HIR columns and plans and <see cref="TyCtxt"/> only. A form no rule builds goes through
+/// <see cref="Unsupported(Koto, MirPlace)"/>, and building continues; an Error node of Binding becomes a derived Opaque.
+/// The program, its bodies and the builder's scratch are reused, so a warm
 /// rebuild allocates nothing.</summary>
 /// <param name="compilation">The compilation.</param>
 internal sealed partial class MirBuilder(Compilation compilation)
@@ -113,7 +114,16 @@ internal sealed partial class MirBuilder(Compilation compilation)
             switch (node)
             {
                 case FunctionKoto function: // A module's top-level statements have no symbol (SPEC 22.2.1).
-                    var kind = function.IsAnonymous ? MirBodyKind.Closure : TestDefinition.Marker(function) is null ? MirBodyKind.Fn : MirBodyKind.Test;
+                    MirBodyKind kind;
+                    if (function.IsAnonymous)
+                    {
+                        kind = MirBodyKind.Closure;
+                    }
+                    else
+                    {
+                        kind = TestDefinition.Marker(function) is null ? MirBodyKind.Fn : MirBodyKind.Test;
+                    }
+
                     var result = function.IsAnonymous ? symbol?.Type ?? BoundType.Unit : TypeOf(node);
                     this.Body(new(symbol, kind, symbol is null ? table.Module : 0), node, symbol, result, (Koto?)function.Body ?? function.ExpressionBody!);
                     break;
@@ -150,12 +160,31 @@ internal sealed partial class MirBuilder(Compilation compilation)
         PairBinder.Collect(declaration, body.Binders);
         var self = !template && declaration is FunctionKoto { IsConstructor: true } constructor ? AdtDef.ReceiverType(constructor) : null;
         body.AddLocal(new(self ?? result, MirLocalKind.Return, this.Info(declaration, true)));
-        this.receiver = self is not null ? 0 : function is null ? -1 : template ? ((uint)function.ReceiverIndex < (uint)key.Index ? function.ReceiverIndex + 1 : -1)
-            : function.ReceiverIndex >= 0 || CallPlan.Parameter(function, -1) is not null ? 1 : -1;
+        if (self is not null)
+        {
+            this.receiver = 0;
+        }
+        else if (function is null)
+        {
+            this.receiver = -1;
+        }
+        else if (template)
+        {
+            this.receiver = (uint)function.ReceiverIndex < (uint)key.Index ? function.ReceiverIndex + 1 : -1;
+        }
+        else
+        {
+            this.receiver = function.ReceiverIndex >= 0 || CallPlan.Parameter(function, -1) is not null ? 1 : -1;
+        }
+
         for (var i = 0; template && i < key.Index; i++)
         {
             var parameter = CallPlan.Parameter(function!, i)!;
-            this.locals[parameter] = this.Argument(compilation.Types.Reference(SemanticsKind.Ref, parameter.Type ?? BoundType.Unit), parameter.Name, parameters, MirLocalRole.PreparedInput);
+            this.locals[parameter] = this.Argument(
+                compilation.Types.Reference(SemanticsKind.Ref, parameter.Type ?? BoundType.Unit),
+                parameter.Name,
+                parameters,
+                MirLocalRole.PreparedInput);
         }
 
         if (self is not null)
@@ -164,7 +193,10 @@ internal sealed partial class MirBuilder(Compilation compilation)
         }
         else if (declaration is FunctionKoto { IsAnonymous: true } closure && BoundClosure.Of(closure) is { EnvironmentType: { } environment } plan)
         {
-            this.receiver = this.Argument(plan.Receiver == SemanticsKind.Owner ? environment : compilation.Types.Reference(plan.Receiver, environment), null, parameters);
+            this.receiver = this.Argument(
+                plan.Receiver == SemanticsKind.Owner ? environment : compilation.Types.Reference(plan.Receiver, environment),
+                null,
+                parameters);
         }
 
         for (var position = self is null ? 0 : 1; !template && function is not null && Slot(function, position, out var slot); position++)
@@ -197,7 +229,8 @@ internal sealed partial class MirBuilder(Compilation compilation)
         this.CloseScope(temporaries);
         this.CloseScope(parameters);
         // A default's value that does not complete goes on to its return, the call that takes it, for the checks only (SPEC 14.10.3).
-        var (end, check) = (this.Info(value), template && !Completes(value) ? body.AddBlock() : -1);
+        var end = this.Info(value);
+        var check = template && !Completes(value) ? body.AddBlock() : -1;
         body.Terminate(this.current, Completes(value) ? MirTerminator.Return(end) : MirTerminator.Unreachable(end, check));
         if (check >= 0)
         {
@@ -341,7 +374,15 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private void Let(VariableKoto variable)
     {
         var symbol = HirTables.Symbol(variable)!;
-        var local = this.Live(this.body.AddLocal(new(symbol.Type ?? BoundType.Unit, MirLocalKind.Var, this.Info(variable, true), variable.VariableKind == VariableKind.Var, symbol.Name)), this.lexical);
+        var local = this.Live(
+            this.body.AddLocal(
+                new(
+                symbol.Type ?? BoundType.Unit,
+                MirLocalKind.Var,
+                this.Info(variable, true),
+                variable.VariableKind == VariableKind.Var,
+                symbol.Name)),
+            this.lexical);
         if (variable.InitializerKoto is { } initializer)
         {
             this.Assign(new(local), initializer);
@@ -376,7 +417,12 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private void Site(Koto node, MirPlace destination, bool completes)
     {
         var site = this.body.AddOpaque(SourceRef.Of(node), CollectionsMarshal.AsSpan(this.roots));
-        this.body.Push(this.current, MirStatement.Assign(destination, MirRvalue.Opaque(this.body.TypeOf(destination) ?? BoundType.Unit, site), this.Info(node)));
+        this.body.Push(
+            this.current,
+            MirStatement.Assign(
+            destination,
+            MirRvalue.Opaque(this.body.TypeOf(destination) ?? BoundType.Unit, site),
+            this.Info(node)));
         if (!completes)
         {
             var next = this.body.AddBlock();

@@ -34,7 +34,16 @@ internal sealed partial class MirBuilder
         (this.walker ??= new(this)).Visit(decl.Expression);
         for (int i = start, end = this.edges.Count; i < end; i++)
         {
-            var low = this.visited.TryGetValue(this.edges[i], out var next) ? (this.omissions[next].Open ? next : index) : this.omissions[this.Visit(this.edges[i])].Low;
+            int low;
+            if (this.visited.TryGetValue(this.edges[i], out var next))
+            {
+                low = this.omissions[next].Open ? next : index;
+            }
+            else
+            {
+                low = this.omissions[this.Visit(this.edges[i])].Low;
+            }
+
             ref var node = ref CollectionsMarshal.AsSpan(this.omissions)[index];
             (node.Low, node.Recursive) = (Math.Min(node.Low, low), node.Recursive || this.edges[i] == decl);
         }
@@ -63,7 +72,8 @@ internal sealed partial class MirBuilder
     // A default's template, MirDefKey(function, DefaultTemplate, index); one with an Opaque value or a finding failed.
     private void Template(int index)
     {
-        var (decl, findings) = (this.omissions[index].Decl, this.program.Findings.Count);
+        var decl = this.omissions[index].Decl;
+        var findings = this.program.Findings.Count;
         if (HirTables.Symbol(decl.Function) is { } function && decl.Parameter(decl.Index) is { } type)
         {
             this.Body(new(function, MirBodyKind.DefaultTemplate, decl.Index), decl.Function, function, type, decl.Expression);
@@ -95,7 +105,8 @@ internal sealed partial class MirBuilder
             var slot = this.Temp(omitted.ParameterType, node, MirLocalRole.PendingSlot, omitted.Parameter.Name);
             var template = this.visited.TryGetValue(decl, out var index) ? this.omissions[index] : default;
             var limit = template is { Body: { } copy, Recursive: false } && this.body.Statements.Length + copy.Statements.Length > ExpansionLimit;
-            var (at, completes) = (this.arguments.Count, Completes(decl.Expression));
+            var at = this.arguments.Count;
+            var completes = Completes(decl.Expression);
             if (!template.Recursive && (template.Body is null || template.Failed || limit))
             {
                 this.roots.Clear();
@@ -147,18 +158,38 @@ internal sealed partial class MirBuilder
     // or callee the call does not instantiate is unsupported at the call.
     private void Inline(MirBody template, Subst? subst, int at, MirPlace slot, Koto node)
     {
-        var (map, failed, after) = (this.folded, false, this.body.AddBlock());
+        var map = this.folded;
+        var failed = false;
+        var after = this.body.AddBlock();
         map.Clear();
         foreach (ref readonly var scope in template.Scopes)
         {
-            map.Add(map.Count == 0 ? this.body.AddScope(this.scope, MirScopeKind.Inlined, SourceRef.Of(node)) : this.body.AddScope(map[scope.Outer], scope.Kind, scope.Source));
+            map.Add(
+                map.Count == 0 ? this.body.AddScope(this.scope, MirScopeKind.Inlined, SourceRef.Of(node)) : this.body.AddScope(
+                map[scope.Outer],
+                scope.Kind,
+                scope.Source));
         }
 
         var locals = map.Count;
         for (var i = 0; i < template.Locals.Length; i++)
         {
             var local = template.Locals[i];
-            map.Add(i == 0 ? slot.Root : local.Kind == MirLocalKind.Arg ? this.arguments[at + i - 1].Place.Root : this.body.AddLocal(local with { Type = FoldType(local.Type), Source = FoldInfo(local.Source) }));
+            int mapped;
+            if (i == 0)
+            {
+                mapped = slot.Root;
+            }
+            else if (local.Kind == MirLocalKind.Arg)
+            {
+                mapped = this.arguments[at + i - 1].Place.Root;
+            }
+            else
+            {
+                mapped = this.body.AddLocal(local with { Type = FoldType(local.Type), Source = FoldInfo(local.Source) });
+            }
+
+            map.Add(mapped);
         }
 
         var blocks = map.Count;
@@ -169,7 +200,8 @@ internal sealed partial class MirBuilder
 
         for (var b = 0; b < template.Blocks.Length; b++)
         {
-            var (block, start) = (template.Blocks[b], this.arguments.Count);
+            var block = template.Blocks[b];
+            var start = this.arguments.Count;
             this.current = map[blocks + b];
             foreach (ref readonly var statement in template.Statements.Slice(block.Start, block.Count))
             {
@@ -178,12 +210,20 @@ internal sealed partial class MirBuilder
             }
 
             var terminator = block.Terminator;
-            var (call, operand) = (terminator.Kind == MirTerminatorKind.Call, terminator.Kind == MirTerminatorKind.SwitchInt || terminator.Callee.Kind == MirCalleeKind.Value ? FoldOperand(terminator.Operand) : default);
+            var call = terminator.Kind == MirTerminatorKind.Call;
+            var operand = terminator.Kind == MirTerminatorKind.SwitchInt || terminator.Callee.Kind == MirCalleeKind.Value
+                ? FoldOperand(terminator.Operand) : default;
             for (var i = 0; call && i < terminator.Count; i++)
             {
                 var argument = template.Operands[terminator.Start + i]; // staticEnsure's operand is a static's index in its body.
-                this.arguments.Add(terminator.Callee is { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.StaticEnsure }
-                    ? MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize, ~FoldPlace(new(~(int)template.Consts[argument.Arg].Bits)).Root))) : FoldOperand(argument));
+                this.arguments.Add(
+                    terminator.Callee is { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.StaticEnsure }
+                    ? MirOperand.Const(
+                        this.body.Const(
+                        new(
+                        MirConstKind.Integer,
+                        BoundType.ISize,
+                        ~FoldPlace(new(~(int)template.Consts[argument.Arg].Bits)).Root))) : FoldOperand(argument));
             }
 
             var first = call ? this.Flush(start) : this.body.Cases.Length;
@@ -197,12 +237,23 @@ internal sealed partial class MirBuilder
             var place = call || terminator.Kind == MirTerminatorKind.Drop ? FoldPlace(terminator.Place) : default;
             var copied = terminator with
             {
-                Source = FoldInfo(terminator.Source), Target = Target(terminator.Target), CheckTarget = Target(terminator.CheckTarget), Operand = operand, Start = first,
+                Source = FoldInfo(terminator.Source), Target = Target(terminator.Target), CheckTarget = Target(terminator.CheckTarget),
+                Operand = operand, Start = first,
                 Place = place, Callee = terminator.Callee with { Subst = composed ?? terminator.Callee.Subst },
             };
             // The copy keeps a Drop where its instance's Type may need one (MirTypes.MayNeedDrop, the rule every Drop is built by).
             var kept = terminator.Kind != MirTerminatorKind.Drop || MirTypes.MayNeedDrop(this.body.TypeOf(place));
-            this.body.Terminate(this.current, terminator.Kind == MirTerminatorKind.Return ? MirTerminator.Goto(after, copied.Source) : kept ? copied : MirTerminator.Goto(copied.Target, copied.Source));
+            var continuation = copied;
+            if (terminator.Kind == MirTerminatorKind.Return)
+            {
+                continuation = MirTerminator.Goto(after, copied.Source);
+            }
+            else if (!kept)
+            {
+                continuation = MirTerminator.Goto(copied.Target, copied.Source);
+            }
+
+            this.body.Terminate(this.current, continuation);
         }
 
         this.current = after;
@@ -234,7 +285,8 @@ internal sealed partial class MirBuilder
             var prefix = FoldPlace(place with { Projection = row.Prefix });
             return row.Kind switch
             {
-                MirProjectionKind.PairLayer => TyCtxt.Layer(this.body.TypeOf(prefix), out _, out _) is var kind and not HirPlaceKind.Value ? this.Layer(prefix, kind) : prefix,
+                MirProjectionKind.PairLayer => TyCtxt.Layer(this.body.TypeOf(prefix), out _, out _) is var kind and not HirPlaceKind.Value
+                    ? this.Layer(prefix, kind) : prefix,
                 MirProjectionKind.Index => this.body.Project(prefix, row.Kind, map[locals + row.Arg]),
                 _ => this.body.Project(prefix, row.Kind, row.Arg),
             };
@@ -263,7 +315,14 @@ internal sealed partial class MirBuilder
 
     // A node of the omission graph: its default, Tarjan's low link, whether its component is open, whether it is recursive, and its
     // template, whether that failed and the prepared parameters it reads.
-    private record struct Omission(DefaultDecl Decl, int Low, bool Open = true, bool Recursive = false, MirBody? Body = null, bool Failed = false, ulong Reads = 0);
+    private record struct Omission(
+        DefaultDecl Decl,
+        int Low,
+        bool Open = true,
+        bool Recursive = false,
+        MirBody? Body = null,
+        bool Failed = false,
+        ulong Reads = 0);
 
     // The defaults the calls of a default omit, appended to the edges; a Closure's body is a body of its own.
     private sealed class Edges(MirBuilder builder) : KotoVisitor

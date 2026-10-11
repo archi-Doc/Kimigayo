@@ -26,11 +26,14 @@ internal sealed partial class MirBuilder
         var scope = this.OpenScope(false);
         var subject = this.Temp(plan.SubjectBorrow ?? TypeOf(match.Expression), match.Expression, MirLocalRole.Subject);
         this.Assign(subject, match.Expression);
-        var (after, start) = (this.Open(match, destination), this.selected.Count);
+        var after = this.Open(match, destination);
+        var start = this.selected.Count;
         CollectionsMarshal.SetCount(this.selected, start + plan.Positions.Count);
         for (var i = 0; i < plan.Arms.Count; i++)
         {
-            var (arm, next, outer) = (plan.Arms[i], this.body.AddBlock(), this.scope);
+            var arm = plan.Arms[i];
+            var next = this.body.AddBlock();
+            var outer = this.scope;
             var guard = arm.Syntax.Guard;
             if (!this.Pattern(plan, arm.Pattern, subject, start, next) && guard is null)
             {
@@ -39,7 +42,8 @@ internal sealed partial class MirBuilder
 
             if (guard is not null)
             {
-                var (rejected, accepted) = (this.body.AddBlock(), this.body.AddBlock());
+                var rejected = this.body.AddBlock();
+                var accepted = this.body.AddBlock();
                 this.scope = (ushort)this.body.AddScope(outer, MirScopeKind.Guard, SourceRef.Of(guard));
                 var test = this.Test(guard, rejected, accepted, plan, arm.Pattern, start);
                 this.Enter(rejected, test);
@@ -68,19 +72,26 @@ internal sealed partial class MirBuilder
     // to right; a mismatch goes on to the next arm. Whether it tested anything.
     private bool Pattern(BoundMatch plan, int index, MirPlace place, int start, int next)
     {
-        var (position, tested) = (plan.Positions[index], false);
+        var position = plan.Positions[index];
+        var tested = false;
         this.selected[start + index] = place;
         place = this.Follow(place, position.ImplicitFollows);
         if (position.Kind == BoundPatternKind.Literal)
         {
-            var (literal, value, operand) = (position.Literal, this.Temp(BoundType.Boolean, position.Source), MirOperand.Copy(place));
+            var literal = position.Literal;
+            var value = this.Temp(BoundType.Boolean, position.Source);
+            var operand = MirOperand.Copy(place);
             if (literal.Kind == PatternLiteralKind.String)
             {
                 operand = this.Borrow(SemanticsKind.Ref, place, position.Source);
             }
 
-            var (operands, magnitude) = (this.body.AddOperand(operand), (Int128)literal.Magnitude);
-            this.body.AddOperand(MirOperand.Const(this.body.Const(literal.Kind switch
+            var operands = this.body.AddOperand(operand);
+            var magnitude = (Int128)literal.Magnitude;
+            this.body.AddOperand(
+                MirOperand.Const(
+                this.body.Const(
+                literal.Kind switch
             {
                 PatternLiteralKind.String => new(MirConstKind.String, BoundType.String, Value: literal.Text),
                 PatternLiteralKind.Boolean => new(MirConstKind.Bool, BoundType.Boolean, magnitude),
@@ -122,7 +133,9 @@ internal sealed partial class MirBuilder
         {
             if (plan.Positions[i] is { BodySymbol: { } symbol, Source: var binding })
             {
-                var (type, adjust, place) = (symbol.Type ?? BoundType.Unit, HirTables.AdjustOf(binding), this.selected[start + i]);
+                var type = symbol.Type ?? BoundType.Unit;
+                var adjust = HirTables.AdjustOf(binding);
+                var place = this.selected[start + i];
                 var mutable = binding is SyntaxFormKoto { IsMutablePattern: true } || (binding is IdentifierNameKoto name && loop?.IsMutableSlot(name) == true);
                 var local = this.Live(this.body.AddLocal(new(type, MirLocalKind.Var, this.Info(binding, true), mutable, symbol.Name)), this.lexical);
                 this.Use(new(local), this.Acquire(adjust, place, type, false, binding, new(local)), binding);

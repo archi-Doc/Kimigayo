@@ -180,6 +180,8 @@ public class CodeRulesArchitectureTest
             values[Key("layer.hidden")] = "src/Kimi/Compiler/Binding/";
             values[Key("deny_layers.use")] = "hidden";
             values[Key("allow_types.use")] = "System.String";
+            values[Key("scope.density.exclude")] = "src/Kimi/";
+            values[Key("scope.accretion.exclude")] = "src/Kimi/";
             configure?.Invoke(values);
         });
 

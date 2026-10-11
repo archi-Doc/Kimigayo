@@ -58,6 +58,14 @@ try {
     $observed = Get-KimiCodeRulesObservations @($observation, $observation)
     Equal $observed.Count 1
     Equal @($observed.Values)[0].value 61
+    $inventory = $observed.Values | Select-Object rule,scope,anchor,value,path,allowed | ConvertTo-Json | ConvertFrom-Json
+    Equal $inventory.rule 'KR2006'
+    Equal $inventory.scope 'T:C'
+    Equal $inventory.anchor 'member:M:C.M'
+    Equal $inventory.value 61
+    Equal ($inventory.value -is [long] -or $inventory.value -is [int]) $true
+    Equal $inventory.path 'src/Kimi/C.cs'
+    Equal $inventory.allowed $true
     $empty = Get-KimiCodeRulesBaseline $baseline
     $initial = Update-KimiCodeRulesBaseline $empty $observed Initialize @('KR2006') ''
     Write-KimiCodeRulesBaseline $baseline $initial
@@ -72,6 +80,7 @@ try {
     Equal @($accepted.Values)[0].value 62
     $p.baselineAllowed = 'false'
     $forbidden = Get-KimiCodeRulesObservations @($observation)
+    Equal ($forbidden.Values | Select-Object allowed | ConvertTo-Json | ConvertFrom-Json).allowed $false
     Reject { Update-KimiCodeRulesBaseline $initial $forbidden Accept @('KR2006') 'src/Kimi/C.cs' } 'forbidden'
     $none = Get-KimiCodeRulesObservations @()
     $deleted = Update-KimiCodeRulesBaseline $initial $none Prune @() ''

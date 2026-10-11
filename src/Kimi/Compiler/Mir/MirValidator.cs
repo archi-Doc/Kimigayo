@@ -106,9 +106,13 @@ internal sealed class MirValidator
             changed = false;
             foreach (ref readonly var statement in body.Statements)
             {
-                if (statement is { Kind: MirStatementKind.Assign, Place: { Projection: 0, Root: >= 0 and var root }, Rvalue: var rvalue } && root < locals.Length && locals[root].Kind == MirLocalKind.Temp &&
-                    !this.unknown[root] && (rvalue.Kind == MirRvalueKind.Opaque || (rvalue is { Kind: MirRvalueKind.Use or MirRvalueKind.UnaryOp } or { Kind: MirRvalueKind.BinaryOp, Op: < (byte)MirBinaryOp.Eq } &&
-                    (uint)rvalue.Start < (uint)operands.Length && operands[rvalue.Start] is { Kind: not MirOperandKind.Const, Place.Root: >= 0 and var read } && read < locals.Length && this.unknown[read])))
+                if (statement is { Kind: MirStatementKind.Assign, Place: { Projection: 0, Root: >= 0 and var root }, Rvalue: var rvalue } &&
+                    root < locals.Length && locals[root].Kind == MirLocalKind.Temp &&
+                    !this.unknown[root] && (rvalue.Kind == MirRvalueKind.Opaque ||
+                        (rvalue is { Kind: MirRvalueKind.Use or MirRvalueKind.UnaryOp } or { Kind: MirRvalueKind.BinaryOp, Op: < (byte)MirBinaryOp.Eq } &&
+                        (uint)rvalue.Start < (uint)operands.Length &&
+                        operands[rvalue.Start] is { Kind: not MirOperandKind.Const, Place.Root: >= 0 and var read } &&
+                        read < locals.Length && this.unknown[read])))
                 {
                     this.unknown[root] = changed = true;
                 }
@@ -171,7 +175,9 @@ internal sealed class MirValidator
             {
                 this.Report(MirViolation.Const);
             }
-            else if (operand.Kind == MirOperandKind.PairAcquire && this.IsValid(operand.Place) && !body.Binds(operand.Arg, PairBinderOf(body.TypeOf(operand.Place))))
+            else if (operand.Kind == MirOperandKind.PairAcquire && this.IsValid(operand.Place) && !body.Binds(
+                operand.Arg,
+                PairBinderOf(body.TypeOf(operand.Place))))
             {
                 this.Report(MirViolation.Binder);
             }
@@ -213,7 +219,8 @@ internal sealed class MirValidator
                 ref readonly var local = ref locals[i];
                 this.At(local.Source);
                 arguments &= i == 0 || local.Kind == MirLocalKind.Arg;
-                if (local.Type is null || local.Kind > MirLocalKind.DropFlag || (local.Kind == MirLocalKind.Return) != (i == 0) || (local.Kind == MirLocalKind.Arg && !arguments))
+                if (local.Type is null || local.Kind > MirLocalKind.DropFlag || (local.Kind == MirLocalKind.Return) != (i == 0) ||
+                    (local.Kind == MirLocalKind.Arg && !arguments))
                 {
                     this.Report(MirViolation.Local);
                 }
@@ -309,7 +316,9 @@ internal sealed class MirValidator
         // Whether a range of a table lies within it.
         private static bool InRange(int start, int count, int length) => start >= 0 && count >= 0 && start <= length - count;
 
-        private static bool IsSequence(BoundType type) => type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary || ReferenceEquals(type, BoundType.String);
+        private static bool IsSequence(BoundType type)
+            => type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary ||
+                ReferenceEquals(type, BoundType.String);
 
         // An integer Type, or one whose instance decides it (SPEC 8.4.7.3: a PrimitiveInteger T, Wrapping<T>).
         private static bool Integral(BoundType type) => type.HasIntegerArithmetic || type.HasAbstractPart;
@@ -333,8 +342,20 @@ internal sealed class MirValidator
 
         // The Type a body gives in _0: its function's result (a constructor's object), a default template's parameter's or a static's; none
         // for the top-level statements, which have no symbol.
-        private static BoundType? Result(MirDefKey key) => key.Decl is not { } decl ? null : key.Kind == MirBodyKind.StaticInit ? decl.Type
-            : TyCtxt.Signature(decl, null, key.Kind == MirBodyKind.DefaultTemplate ? key.Index : -1, out _);
+        private static BoundType? Result(MirDefKey key)
+        {
+            if (key.Decl is not { } decl)
+            {
+                return null;
+            }
+
+            if (key.Kind == MirBodyKind.StaticInit)
+            {
+                return decl.Type;
+            }
+
+            return TyCtxt.Signature(decl, null, key.Kind == MirBodyKind.DefaultTemplate ? key.Index : -1, out _);
+        }
 
         // The operands an rvalue has: one or two, as many as its Type's elements, Fields (the base first) or Case payload, or captures; -1
         // when an aggregate's kind and Type disagree. A fixed array of a generic length is counted by its instance, and one built from no
@@ -350,10 +371,12 @@ internal sealed class MirValidator
                 {
                     MirAggregateKind.Tuple when type?.Kind == BoundTypeKind.Tuple => type.Components.Count,
                     MirAggregateKind.Closure when type?.Kind == BoundTypeKind.Closure => type.Components.Count,
-                    MirAggregateKind.FixedArray when type?.Kind == BoundTypeKind.FixedArray => type.LengthExpression is null && type.Length >= 0 && rvalue.Count > 0 ? (int)type.Length : rvalue.Count,
+                    MirAggregateKind.FixedArray when type?.Kind == BoundTypeKind.FixedArray => type.LengthExpression is null && type.Length >= 0 &&
+                        rvalue.Count > 0 ? (int)type.Length : rvalue.Count,
                     MirAggregateKind.FixedArray when type?.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary => 0,
                     MirAggregateKind.Adt when AdtDef.IsStruct(type) => AdtDef.Count(type!) + (AdtDef.Base(type!) is null ? 0 : 1),
-                    MirAggregateKind.Adt when type is not null && AdtDef.CaseTypes(type) is { } cases => (uint)rvalue.Arg < (uint)cases.Length ? cases[rvalue.Arg].Components.Count : -1,
+                    MirAggregateKind.Adt when type is not null && AdtDef.CaseTypes(type) is { } cases => (uint)rvalue.Arg < (uint)cases.Length
+                        ? cases[rvalue.Arg].Components.Count : -1,
                     _ => -1,
                 },
                 _ => 0,
@@ -370,17 +393,28 @@ internal sealed class MirValidator
         }
 
         private readonly bool IsValid(MirPlace place)
-            => (place.Root >= 0 ? place.Root < body.Locals.Length : ~place.Root < body.Statics.Length) && (uint)place.Projection < (uint)body.Projections.Length;
+            => (place.Root >= 0 ? place.Root < body.Locals.Length : ~place.Root < body.Statics.Length) &&
+                (uint)place.Projection < (uint)body.Projections.Length;
 
-        private readonly bool Admits(BoundType? type, in MirProjection row) => row.Type is not null && ReferenceEquals(row.Type, body.ProjectedType(type, row.Kind, row.Arg));
+        private readonly bool Admits(BoundType? type, in MirProjection row) => row.Type is not null && ReferenceEquals(
+            row.Type,
+            body.ProjectedType(type, row.Kind, row.Arg));
 
         private readonly BoundType? TypeOf(in MirOperand operand)
-            => operand.Kind == MirOperandKind.Const ? ((uint)operand.Arg < (uint)body.Consts.Length ? body.Consts[operand.Arg].Type : null)
-                : this.IsValid(operand.Place) && !(operand.Place.Root >= 0 && unknown[operand.Place.Root]) ? body.TypeOf(operand.Place) : null;
+        {
+            if (operand.Kind == MirOperandKind.Const)
+            {
+                return (uint)operand.Arg < (uint)body.Consts.Length ? body.Consts[operand.Arg].Type : null;
+            }
+
+            return this.IsValid(operand.Place) && !(operand.Place.Root >= 0 && unknown[operand.Place.Root]) ? body.TypeOf(operand.Place) : null;
+        }
 
         // SPEC 8.3: Types agree (MirTypes.Agree) as they are, or as the body's premises make them (TyCtxt.Premised): E and S under `E is S`.
         private readonly bool Agrees(BoundType? expected, BoundType? actual)
-            => MirTypes.Agree(expected, actual) || (body.Key.Decl is { } definition && MirTypes.Agree(TyCtxt.Premised(definition, expected!), TyCtxt.Premised(definition, actual!)));
+            => MirTypes.Agree(expected, actual) || (body.Key.Decl is { } definition && MirTypes.Agree(
+                TyCtxt.Premised(definition, expected!),
+                TyCtxt.Premised(definition, actual!)));
 
         private readonly void Agree(BoundType? expected, BoundType? actual)
         {
@@ -395,8 +429,17 @@ internal sealed class MirValidator
         private readonly BoundType? Component(in MirRvalue rvalue, int index) => (MirAggregateKind)rvalue.Op switch
         {
             MirAggregateKind.FixedArray => rvalue.Type!.Components[0],
-            MirAggregateKind.Adt when AdtDef.IsEnum(rvalue.Type) => body.ProjectedType(body.ProjectedType(rvalue.Type, MirProjectionKind.Downcast, rvalue.Arg), MirProjectionKind.Field, index),
-            MirAggregateKind.Adt when AdtDef.Base(rvalue.Type!) is { } parent => index == 0 ? parent : body.ProjectedType(rvalue.Type, MirProjectionKind.Field, index - 1),
+            MirAggregateKind.Adt when AdtDef.IsEnum(rvalue.Type) => body.ProjectedType(
+                body.ProjectedType(
+                    rvalue.Type,
+                    MirProjectionKind.Downcast,
+                    rvalue.Arg),
+                MirProjectionKind.Field,
+                index),
+            MirAggregateKind.Adt when AdtDef.Base(rvalue.Type!) is { } parent => index == 0 ? parent : body.ProjectedType(
+                rvalue.Type,
+                MirProjectionKind.Field,
+                index - 1),
             _ => body.ProjectedType(rvalue.Type, MirProjectionKind.Field, index),
         };
 
@@ -413,7 +456,8 @@ internal sealed class MirValidator
             var local = place.Projection == 0 && (uint)place.Root < (uint)body.Locals.Length ? body.Locals[place.Root] : default;
             switch (statement.Kind)
             {
-                case MirStatementKind.StorageLive or MirStatementKind.StorageDead when local.Type is null || local.Kind is not (MirLocalKind.Var or MirLocalKind.Temp):
+                case MirStatementKind.StorageLive or MirStatementKind.StorageDead when local.Type is null ||
+                    local.Kind is not (MirLocalKind.Var or MirLocalKind.Temp):
                     this.Report(MirViolation.StorageLocal);
                     break;
                 case MirStatementKind.EndBorrow when !MirTypes.IsReference(local.Type):
@@ -473,7 +517,9 @@ internal sealed class MirValidator
         private void Types(in MirRvalue rvalue, BoundType? destination)
         {
             var operands = body.Operands.Slice(rvalue.Start, rvalue.Count);
-            var (op, first, second) = ((MirBinaryOp)rvalue.Op, operands.Length > 0 ? this.TypeOf(operands[0]) : null, operands.Length > 1 ? this.TypeOf(operands[1]) : null);
+            var op = (MirBinaryOp)rvalue.Op;
+            var first = operands.Length > 0 ? this.TypeOf(operands[0]) : null;
+            var second = operands.Length > 1 ? this.TypeOf(operands[1]) : null;
             var place = rvalue.Kind == MirRvalueKind.Ref && this.IsValid(rvalue.Place) ? body.TypeOf(rvalue.Place) : null;
             var (type, admitted) = rvalue.Kind switch
             {
@@ -487,8 +533,14 @@ internal sealed class MirValidator
                 }),
                 MirRvalueKind.Discriminant or MirRvalueKind.Len => (BoundType.ISize, true),
                 MirRvalueKind.Cast => (rvalue.Type, first is null || rvalue.Type is null || Casts((MirCastKind)rvalue.Op, first, rvalue.Type)),
-                MirRvalueKind.Ref => (rvalue.Type, place is null || (rvalue.Type is { Kind: BoundTypeKind.Semantics, Components: [var referent] } reference && this.Agrees(referent, place) &&
-                    (MirRefKind)rvalue.Op switch { MirRefKind.Shared => reference.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef, MirRefKind.Raw => reference.Semantics == SemanticsKind.Raw, _ => MirTypes.IsExclusive(reference) })),
+                MirRvalueKind.Ref => (rvalue.Type, place is null ||
+                    (rvalue.Type is { Kind: BoundTypeKind.Semantics, Components: [var referent] } reference && this.Agrees(referent, place) &&
+                    (MirRefKind)rvalue.Op switch
+                    {
+                        MirRefKind.Shared => reference.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef,
+                        MirRefKind.Raw => reference.Semantics == SemanticsKind.Raw,
+                        _ => MirTypes.IsExclusive(reference),
+                    })),
                 _ => (rvalue.Type, true),
             };
 
@@ -522,7 +574,8 @@ internal sealed class MirValidator
 
             var blocks = (uint)body.Blocks.Length;
             var valid = (terminator.Kind != MirTerminatorKind.SwitchInt || InRange(terminator.Start, terminator.Count, body.Cases.Length)) &&
-                (terminator.Kind != MirTerminatorKind.Call || terminator.Target >= -1) && (terminator.CheckTarget == -1 || (uint)terminator.CheckTarget < blocks);
+                (terminator.Kind != MirTerminatorKind.Call || terminator.Target >= -1) && (terminator.CheckTarget == -1 ||
+                    (uint)terminator.CheckTarget < blocks);
             for (var i = 0; valid && i < MirUses.Successors(terminator); i++)
             {
                 valid = (uint)MirUses.Successor(body, terminator, i) < blocks;
@@ -540,7 +593,8 @@ internal sealed class MirValidator
             }
 
             // SPEC 14.7: a branch tests a bool, an integer or a discriminant; a Return gives _0, of the body's result.
-            if (terminator.Kind == MirTerminatorKind.SwitchInt && this.TypeOf(terminator.Operand) is { } tested && !tested.IsInteger && !ReferenceEquals(tested, BoundType.Boolean))
+            if (terminator.Kind == MirTerminatorKind.SwitchInt && this.TypeOf(terminator.Operand) is { } tested && !tested.IsInteger &&
+                !ReferenceEquals(tested, BoundType.Boolean))
             {
                 this.Report(MirViolation.Operation);
             }
@@ -597,7 +651,9 @@ internal sealed class MirValidator
         // Function Type its inputs and result. A call that diverges writes no destination.
         private void Signature(in MirTerminator call)
         {
-            var (function, subst, template) = (call.Callee.Symbol, call.Callee.Subst, call.Callee.Kind == MirCalleeKind.Fn ? call.Callee.Arg - 1 : -1);
+            var function = call.Callee.Symbol;
+            var subst = call.Callee.Subst;
+            var template = call.Callee.Kind == MirCalleeKind.Fn ? call.Callee.Arg - 1 : -1;
             var value = function is null ? Terminal(this.TypeOf(call.Operand)) : null;
             if (function is null && value is not { Kind: BoundTypeKind.Function, Components: [_, _] })
             {
@@ -606,7 +662,15 @@ internal sealed class MirValidator
 
             var count = 0;
             var result = function is null ? value!.Components[1] : TyCtxt.Signature(function, subst, template, out count);
-            count = function is null ? value!.Components[0].Components.Count : template < 0 ? count : template;
+            if (function is null)
+            {
+                count = value!.Components[0].Components.Count;
+            }
+            else if (template >= 0)
+            {
+                count = template;
+            }
+
             if (count != call.Count)
             {
                 this.Report(MirViolation.Arity);
@@ -616,7 +680,16 @@ internal sealed class MirValidator
             for (var i = 0; i < count; i++)
             {
                 var actual = this.TypeOf(body.Operands[call.Start + i]);
-                var expected = function is null ? value!.Components[0].Components[i] : TyCtxt.Signature(function, subst, template < 0 ? MirCallee.Slot(function, i) : i, out _);
+                BoundType? expected;
+                if (function is null)
+                {
+                    expected = value!.Components[0].Components[i];
+                }
+                else
+                {
+                    expected = TyCtxt.Signature(function, subst, template < 0 ? MirCallee.Slot(function, i) : i, out _);
+                }
+
                 if (template < 0 || actual is null || actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [_] })
                 {
                     this.Agree(expected, template < 0 ? actual : actual?.Components[0]);

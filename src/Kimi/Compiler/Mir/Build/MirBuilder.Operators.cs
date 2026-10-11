@@ -51,7 +51,13 @@ internal sealed partial class MirBuilder
                 break;
             case UnaryKoto { Akind: KotoKind.PrefixMinus or KotoKind.Not } unary:
                 var negate = unary.Akind == KotoKind.PrefixMinus;
-                this.Set(destination, MirRvalue.Unary(negate ? MirUnaryOp.Neg : MirUnaryOp.Not, this.body.AddOperand(this.Operand(unary.Operand)), !negate || type.IsFloatingPoint || type.IsWrappingInteger), node);
+                this.Set(
+                    destination,
+                    MirRvalue.Unary(
+                    negate ? MirUnaryOp.Neg : MirUnaryOp.Not,
+                    this.body.AddOperand(this.Operand(unary.Operand)),
+                    !negate || type.IsFloatingPoint || type.IsWrappingInteger),
+                    node);
                 break;
             default:
                 this.Unsupported(node, destination);
@@ -92,7 +98,9 @@ internal sealed partial class MirBuilder
         {
             var start = this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize))));
             this.body.AddOperand(MirOperand.Move(length));
-            this.Set(destination, form == BuiltinForm.IsEmpty ? MirRvalue.Binary(MirBinaryOp.Eq, start, true) : MirRvalue.Aggregate(MirAggregateKind.Adt, start, 2, TypeOf(member)), member);
+            var value = form == BuiltinForm.IsEmpty ? MirRvalue.Binary(MirBinaryOp.Eq, start, true)
+                : MirRvalue.Aggregate(MirAggregateKind.Adt, start, 2, TypeOf(member));
+            this.Set(destination, value, member);
         }
     }
 
@@ -101,7 +109,9 @@ internal sealed partial class MirBuilder
     private void Logical(MirPlace destination, BinaryKoto logical)
     {
         this.Assign(destination, logical.Left);
-        var (right, join, and) = (this.body.AddBlock(), this.body.AddBlock(), logical.Akind == KotoKind.And);
+        var right = this.body.AddBlock();
+        var join = this.body.AddBlock();
+        var and = logical.Akind == KotoKind.And;
         this.Branch(destination, logical.Left, and ? join : right, and ? right : join);
         this.current = right;
         this.Assign(destination, logical.Right);
@@ -118,7 +128,15 @@ internal sealed partial class MirBuilder
         var binding = (ConversionBinding)HirTables.PlanOf(conversion).Mode;
         if (HirTables.PlanOf(conversion).Folded is { } folded)
         {
-            this.Use(destination, MirOperand.Const(this.body.Const(new(type.IsFloatingPoint ? MirConstKind.Float : MirConstKind.Integer, type, folded))), conversion);
+            this.Use(
+                destination,
+                MirOperand.Const(
+                this.body.Const(
+                new(
+                type.IsFloatingPoint ? MirConstKind.Float : MirConstKind.Integer,
+                type,
+                folded))),
+                conversion);
         }
         else if (binding is ConversionBinding.Literal or ConversionBinding.Abrupt)
         {
@@ -131,7 +149,8 @@ internal sealed partial class MirBuilder
         else
         {
             // SPEC 13.5.7: an upcast to a view of another Semantics borrows its operand's payload in the view's mode, then changes the view.
-            var borrowed = HirTables.AdjustOf(conversion.Left).Adaptation is HirAdaptation.SharedBorrow or HirAdaptation.ExclusiveBorrow && TypeOf(conversion.Left).Components is [var payload]
+            var borrowed = HirTables.AdjustOf(conversion.Left).Adaptation is HirAdaptation.SharedBorrow or HirAdaptation.ExclusiveBorrow &&
+                TypeOf(conversion.Left).Components is [var payload]
                 ? compilation.Types.Reference(type.Semantics, payload) : null;
             var operand = this.Operand(conversion.Left, borrowed);
             var source = this.TypeOf(operand) ?? type;
@@ -141,7 +160,8 @@ internal sealed partial class MirBuilder
                 ConversionBinding.Bits => MirCastKind.Bits,
                 ConversionBinding.ObjectUpcast => MirCastKind.Upcast,
                 ConversionBinding.Pointer => source.Semantics == SemanticsKind.Raw ? MirCastKind.Pointer : MirCastKind.IntToPointer,
-                _ => source.IsFloatingPoint == type.IsFloatingPoint ? source.IsFloatingPoint ? MirCastKind.Floating : MirCastKind.Integer : MirCastKind.Numeric,
+                _ when source.IsFloatingPoint == type.IsFloatingPoint => source.IsFloatingPoint ? MirCastKind.Floating : MirCastKind.Integer,
+                _ => MirCastKind.Numeric,
             };
 
             // IMPL 21.5.3: an integer conversion whose source range lies within its target's checks nothing (T and Wrapping<T>, u8@u32,
@@ -164,11 +184,13 @@ internal sealed partial class MirBuilder
     // quotient, -1; a shift count below the left operand's width.
     private bool Proven(MirBinaryOp op, BoundType type, in MirOperand right)
     {
-        var literal = right.Kind == MirOperandKind.Const && this.body.Consts[right.Arg].Kind == MirConstKind.Integer ? this.body.Consts[right.Arg].Bits : (Int128?)null;
+        var literal = right.Kind == MirOperandKind.Const && this.body.Consts[right.Arg].Kind == MirConstKind.Integer
+            ? this.body.Consts[right.Arg].Bits : (Int128?)null;
         return op switch
         {
             MirBinaryOp.Add or MirBinaryOp.Sub or MirBinaryOp.Mul => type.IsFloatingPoint || type.IsWrappingInteger || type.Semantics == SemanticsKind.Raw,
-            MirBinaryOp.Div or MirBinaryOp.Rem => type.IsFloatingPoint || (literal is { } divisor && divisor != 0 && (divisor != -1 || op == MirBinaryOp.Rem || !type.IsInteger || type.IsUnsignedInteger)),
+            MirBinaryOp.Div or MirBinaryOp.Rem => type.IsFloatingPoint || (literal is { } divisor && divisor != 0 && (divisor != -1 ||
+                op == MirBinaryOp.Rem || !type.IsInteger || type.IsUnsignedInteger)),
             MirBinaryOp.Shl or MirBinaryOp.Shr => literal is { } count && count >= 0 && count < this.Width(type, out _),
             _ => true,
         };
@@ -180,7 +202,16 @@ internal sealed partial class MirBuilder
     {
         var integer = type.Underlying;
         signed = !integer.IsUnsignedInteger;
-        return integer is not { IsInteger: true, Kind: BoundTypeKind.Primitive } ? 0 : integer.Name is "isize" or "usize" ? compilation.PointerWidth
-            : int.TryParse(integer.Name.AsSpan(1), NumberStyles.None, CultureInfo.InvariantCulture, out var width) ? width : 0;
+        if (integer is not { IsInteger: true, Kind: BoundTypeKind.Primitive })
+        {
+            return 0;
+        }
+
+        if (integer.Name is "isize" or "usize")
+        {
+            return compilation.PointerWidth;
+        }
+
+        return int.TryParse(integer.Name.AsSpan(1), NumberStyles.None, CultureInfo.InvariantCulture, out var width) ? width : 0;
     }
 }

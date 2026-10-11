@@ -130,13 +130,15 @@ internal sealed partial class MirBuilder
         var adjust = HirTables.AdjustOf(node);
         if (adjust is { Acquire: HirAcquire.Temporary or HirAcquire.None, Adaptation: HirAdaptation.None })
         {
-            return HirTables.Op(node) == HirOp.Literal && this.Literal(node) is var constant and >= 0 ? MirOperand.Const(constant) : MirOperand.Move(this.Value(node, into));
+            return HirTables.Op(node) == HirOp.Literal && this.Literal(node) is var constant and >= 0 ? MirOperand.Const(constant)
+                : MirOperand.Move(this.Value(node, into));
         }
 
         if (adjust.Acquire == HirAcquire.Unset || adjust.Adaptation == HirAdaptation.StorageProjection || (adjust.Adaptation == HirAdaptation.BaseBorrow &&
             expected?.Components is not [_]) || (adjust.Adaptation == HirAdaptation.Erasure && expected is null))
         {
-            return MirOperand.Move(this.Unsupported(node, false, expected)); // An Error proof left the acquisition unset; a projected receiver's storage is its Field's (Member).
+            // An Error proof left the acquisition unset; a projected receiver's storage is its Field's (Member).
+            return MirOperand.Move(this.Unsupported(node, false, expected));
         }
 
         return this.Acquire(adjust, adjust.Acquire == HirAcquire.Temporary ? this.Value(node) : this.Place(node), expected, input, node, into);
@@ -150,7 +152,8 @@ internal sealed partial class MirBuilder
     // expected Type names. An implicit exclusive borrow of a call's input is two-phase: reserved here, activated at the Call (SPEC 15.6.7).
     private MirOperand Acquire(HirAdjust adjust, MirPlace place, BoundType? expected, bool input, Koto node, MirPlace? into = null)
     {
-        var (adaptation, type) = (adjust.Adaptation, this.body.TypeOf(place) ?? BoundType.Unit);
+        var adaptation = adjust.Adaptation;
+        var type = this.body.TypeOf(place) ?? BoundType.Unit;
         var target = expected?.Components is [var referent] ? referent : null;
         switch (adaptation)
         {
@@ -167,7 +170,11 @@ internal sealed partial class MirBuilder
                 return MirOperand.Copy(this.Follow(place, 16, expected));
             case HirAdaptation.Erasure: // SPEC 7.6.4: of the value its ordinary acquisition gives.
                 var source = this.Acquire(adjust with { Adaptation = HirAdaptation.None }, place, null, input, node);
-                return this.Temporary(expected!, MirRvalue.Cast(MirCastKind.Erasure, this.body.AddOperand(source), expected!) with { Proven = true }, node, into);
+                return this.Temporary(
+                    expected!,
+                    MirRvalue.Cast(MirCastKind.Erasure, this.body.AddOperand(source), expected!) with { Proven = true },
+                    node,
+                    into);
             case HirAdaptation.ReferenceRead:
                 place = this.Follow(place, 16, target);
                 break;
@@ -176,7 +183,9 @@ internal sealed partial class MirBuilder
                 break;
         }
 
-        var reference = expected ?? compilation.Types.Reference(adaptation == HirAdaptation.ExclusiveBorrow ? SemanticsKind.Uniq : SemanticsKind.Ref, this.body.TypeOf(place) ?? BoundType.Unit);
+        var reference = expected ?? compilation.Types.Reference(
+            adaptation == HirAdaptation.ExclusiveBorrow ? SemanticsKind.Uniq : SemanticsKind.Ref,
+            this.body.TypeOf(place) ?? BoundType.Unit);
         return this.Temporary(reference, this.Ref(place, reference, input), node, into);
     }
 
@@ -185,8 +194,22 @@ internal sealed partial class MirBuilder
     // address); an exclusive borrow of a call's input is two-phase, reserved here and activated at the Call (SPEC 15.6.7).
     private MirRvalue Ref(MirPlace place, BoundType reference, bool input)
     {
-        var kind = reference.Semantics == SemanticsKind.Raw ? MirRefKind.Raw : !MirTypes.IsExclusive(reference) ? MirRefKind.Shared : input ? MirRefKind.TwoPhaseUniq : MirRefKind.Uniq;
-        var (referent, depth) = (reference.Components is [var target] ? target : null, 0);
+        MirRefKind kind;
+        if (reference.Semantics == SemanticsKind.Raw)
+        {
+            kind = MirRefKind.Raw;
+        }
+        else if (!MirTypes.IsExclusive(reference))
+        {
+            kind = MirRefKind.Shared;
+        }
+        else
+        {
+            kind = input ? MirRefKind.TwoPhaseUniq : MirRefKind.Uniq;
+        }
+
+        var referent = reference.Components is [var target] ? target : null;
+        var depth = 0;
         place = referent is null ? place : this.Follow(place, 16, referent);
         for (var layer = this.body.TypeOf(place); referent is not null && layer is not null && !MirTypes.Agree(layer, referent); layer = AdtDef.Base(layer))
         {
@@ -229,7 +252,8 @@ internal sealed partial class MirBuilder
         var elements = node switch
         {
             TupleLiteralKoto tuple => tuple.Elements,
-            ArrayLiteralKoto array when type is { Kind: BoundTypeKind.FixedArray } && (array.FillLength is null || type.LengthExpression is null) => array.Elements,
+            ArrayLiteralKoto array when type is { Kind: BoundTypeKind.FixedArray } && (array.FillLength is null || type.LengthExpression is null) =>
+                array.Elements,
             _ => null,
         };
         if (construction is null && elements is null)
@@ -268,7 +292,17 @@ internal sealed partial class MirBuilder
             this.arguments.Add(this.Operand(payload.Source!, payload.AdaptedType ?? payload.ParameterType));
         }
 
-        var (kind, count) = (construction is not null ? MirAggregateKind.Adt : node is TupleLiteralKoto ? MirAggregateKind.Tuple : MirAggregateKind.FixedArray, this.arguments.Count - start);
+        MirAggregateKind kind;
+        if (construction is not null)
+        {
+            kind = MirAggregateKind.Adt;
+        }
+        else
+        {
+            kind = node is TupleLiteralKoto ? MirAggregateKind.Tuple : MirAggregateKind.FixedArray;
+        }
+
+        var count = this.arguments.Count - start;
         this.Set(destination, MirRvalue.Aggregate(kind, this.Flush(start), count, type, construction?.Case.Ordinal ?? 0), node);
     }
 
@@ -276,7 +310,8 @@ internal sealed partial class MirBuilder
     // of its source binding (Bound) as its entry acquires it, the Closure value their aggregate. A source not bound here is unsupported.
     private void Closure(MirPlace destination, FunctionKoto closure)
     {
-        var (captures, start) = (BoundClosure.Of(closure)!.Captures, this.arguments.Count);
+        var captures = BoundClosure.Of(closure)!.Captures;
+        var start = this.arguments.Count;
         for (var i = 0; i < captures.Count; i++)
         {
             var type = captures[i].Environment.Type ?? BoundType.Unit;
@@ -339,7 +374,8 @@ internal sealed partial class MirBuilder
             StringLiteralKoto text => new(MirConstKind.String, type, Value: text.Literal),
             UnitLiteralKoto => new(MirConstKind.Unit, type),
             NullLiteralKoto => new(MirConstKind.Integer, type),
-            _ => HirTables.PlanOf(node).Folded is { } value ? new(type.IsFloatingPoint ? MirConstKind.Float : MirConstKind.Integer, type, value) : null,
+            _ when HirTables.PlanOf(node).Folded is { } value => new(type.IsFloatingPoint ? MirConstKind.Float : MirConstKind.Integer, type, value),
+            _ => null,
         };
 
         return constant is { } known ? this.body.Const(known) : -1;
@@ -358,7 +394,8 @@ internal sealed partial class MirBuilder
         return first;
     }
 
-    private BoundType? TypeOf(in MirOperand operand) => operand.Kind == MirOperandKind.Const ? this.body.Consts[operand.Arg].Type : this.body.TypeOf(operand.Place);
+    private BoundType? TypeOf(in MirOperand operand) => operand.Kind == MirOperandKind.Const ? this.body.Consts[operand.Arg].Type
+        : this.body.TypeOf(operand.Place);
 
     // An rvalue assigned at a node; a node that does not complete has no value to assign (SPEC 15.6.7: its operand diverged).
     private void Set(MirPlace destination, in MirRvalue rvalue, Koto node)
@@ -388,7 +425,8 @@ internal sealed partial class MirBuilder
         => new(this.Live(this.body.AddLocal(new(type, MirLocalKind.Temp, this.Info(node, true), Name: name, Role: role)), this.temporaries));
 
     // The place given where it has the Type, else a new temp of it.
-    private MirPlace Temp(BoundType type, Koto node, MirPlace? into) => into is { } place && ReferenceEquals(this.body.TypeOf(place), type) ? place : this.Temp(type, node);
+    private MirPlace Temp(BoundType type, Koto node, MirPlace? into) => into is { } place && ReferenceEquals(this.body.TypeOf(place), type) ? place
+        : this.Temp(type, node);
 
     // An Unsupported form, or a derived one, in a temp of the Type its consumer expects, else of its own.
     private MirPlace Unsupported(Koto node, bool derived = false, BoundType? type = null)

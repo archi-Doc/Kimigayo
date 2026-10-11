@@ -19,6 +19,9 @@ member and enum policies once per compilation (KR1001–1003); CodeRulesArchitec
 [CodeRulesArchitecture.Structure](../../src/Kimi.Analyzers/CodeRulesArchitecture.Structure.cs) owns collection
 declarations/creations, Supports gates, MIR syntax dispatch and catch boundaries (KR1004–1006, KR1008);
 CodeRulesStructureTest covers their semantic forms, exclusions and shared baseline identities.
+[CodeRulesDensity](../../src/Kimi.Analyzers/CodeRulesDensity.cs) owns physical lines, nested conditionals and computed
+new-local deconstructions (KR3001–3003), sharing the file walk and source identities; CodeRulesDensityTest covers
+literal/interpolation boundaries, callable boundaries, evaluation shapes and baseline growth.
 Suppression checks
 live in CodeRulesAnalyzer.Suppression.cs. CodeRules*Test classes share CodeRulesTestHelper; the real-csc regression is
 tests/scripts/CodeRulesCompilerTest.ps1. Operational commands and the shared SARIF reader are described in

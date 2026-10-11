@@ -53,9 +53,11 @@ internal static class MirTypes
             return true;
         }
 
-        var agree = (left.CarriesOrigin || right.CarriesOrigin) && left.Kind == right.Kind && left.Semantics == right.Semantics && ReferenceEquals(left.Symbol, right.Symbol) &&
+        var agree = (left.CarriesOrigin || right.CarriesOrigin) && left.Kind == right.Kind && left.Semantics == right.Semantics &&
+            ReferenceEquals(left.Symbol, right.Symbol) &&
             left.Length == right.Length && ReferenceEquals(left.LengthExpression, right.LengthExpression) && left.ResultMode == right.ResultMode &&
-            ReferenceEquals(left.ClosureContext, right.ClosureContext) && left.Components.Count == right.Components.Count && left.LengthArguments.AsSpan().SequenceEqual(right.LengthArguments);
+            ReferenceEquals(left.ClosureContext, right.ClosureContext) && left.Components.Count == right.Components.Count &&
+                left.LengthArguments.AsSpan().SequenceEqual(right.LengthArguments);
         for (var i = 0; agree && i < left.Components.Count; i++)
         {
             agree = Agree(left.Components[i], right.Components[i]);
@@ -70,7 +72,8 @@ internal static class MirTypes
     /// <param name="depth">The walk's depth; past 32 the answer is yes.</param>
     /// <returns>Whether the value holds raw authority.</returns>
     internal static bool HoldsRaw(BoundType? type, int depth = 0)
-        => type is not null && (depth > 32 || type.Semantics is SemanticsKind.Raw or SemanticsKind.Rc || Any(type.Components, depth, true) || Stored(type, depth, true));
+        => type is not null && (depth > 32 || type.Semantics is SemanticsKind.Raw or SemanticsKind.Rc || Any(type.Components, depth, true) ||
+            Stored(type, depth, true));
 
     private static bool Any(IReadOnlyList<BoundType> types, int depth, bool raw)
     {

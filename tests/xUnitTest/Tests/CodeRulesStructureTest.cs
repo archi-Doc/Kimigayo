@@ -97,6 +97,27 @@ public class CodeRulesStructureTest
     }
 
     [Theory]
+    [InlineData("src/Kimi/Compiler/Parsing/Fixture.cs")]
+    [InlineData("src/Kimi/Compiler/Lexing/Fixture.cs")]
+    public async Task SyntaxLayerStillChecksAliasedBoolOperations(string path)
+    {
+        const string source = "using B = System.Boolean; class C { B SupportsCall() => true; B SupportsValue => true; void M() { B SupportsLocal() => true; } }";
+        var diagnostics = await Analyze(source, path);
+        Assert.Equal(3, diagnostics.Length);
+        Assert.All(diagnostics, x => Assert.Equal("KR1005", x.Id));
+    }
+
+    [Fact]
+    public async Task ExplicitImplementationsKeepTheDeclaredSymbolName()
+    {
+        const string source = "interface SupportsContract { bool M(); bool P { get; } bool this[int i] { get; } } " +
+            "class C : SupportsContract { bool SupportsContract.M() => true; bool SupportsContract.P => true; bool SupportsContract.this[int i] => true; }";
+        var diagnostics = await Analyze(source);
+        Assert.Equal(3, diagnostics.Length);
+        Assert.All(diagnostics, x => Assert.Equal("KR1005", x.Id));
+    }
+
+    [Theory]
     [InlineData("return value is Koto;", 1)]
     [InlineData("return value is IdentifierNameKoto found;", 1)]
     [InlineData("return value is IdentifierNameKoto { };", 1)]
@@ -209,7 +230,11 @@ public class CodeRulesStructureTest
     {
         var compilation = CodeRulesTestHelper.Compilation((source, path));
         Assert.DoesNotContain(compilation.GetDiagnostics(), x => x.Severity == DiagnosticSeverity.Error);
-        var diagnostics = await CodeRulesTestHelper.Analyze(compilation, CodeRulesTestHelper.Options(mode, baseline));
+        var diagnostics = await CodeRulesTestHelper.Analyze(compilation, CodeRulesTestHelper.Options(mode, baseline, config =>
+        {
+            config["kimi_code_rules.scope.density.exclude"] = "src/Kimi/";
+            config["kimi_code_rules.scope.accretion.exclude"] = "src/Kimi/";
+        }));
         if (mode == "Report")
         {
             Assert.Single(diagnostics, x => x.Id == "KR9000");

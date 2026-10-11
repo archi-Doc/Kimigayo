@@ -38,20 +38,40 @@ internal readonly record struct MirOperand(MirOperandKind Kind, MirPlace Place, 
 /// <see cref="Op"/> is a Ref's <see cref="MirRefKind"/>, an operator's <see cref="MirBinaryOp"/> or <see cref="MirUnaryOp"/>, a Cast's
 /// <see cref="MirCastKind"/> or an aggregate's <see cref="MirAggregateKind"/>; <see cref="Arg"/> is an Adt aggregate's Case ordinal or an
 /// Opaque's site; <see cref="Type"/> is a Ref's reference Type, a Cast's target Type or an aggregate's or Opaque's Type.</summary>
-internal readonly record struct MirRvalue(MirRvalueKind Kind, byte Op = 0, MirPlace Place = default, int Start = 0, int Count = 0, int Arg = 0, BoundType? Type = null, bool Proven = false)
+internal readonly record struct MirRvalue(
+    MirRvalueKind Kind,
+    byte Op = 0,
+    MirPlace Place = default,
+    int Start = 0,
+    int Count = 0,
+    int Arg = 0,
+    BoundType? Type = null,
+    bool Proven = false)
 {
     internal static MirRvalue Use(int operand) => new(MirRvalueKind.Use, Start: operand, Count: 1);
 
     internal static MirRvalue Ref(MirRefKind kind, MirPlace place, BoundType type) => new(MirRvalueKind.Ref, (byte)kind, place, Type: type);
 
     // The two operands from the first.
-    internal static MirRvalue Binary(MirBinaryOp op, int operands, bool proven) => new(MirRvalueKind.BinaryOp, (byte)op, Start: operands, Count: 2, Proven: proven);
+    internal static MirRvalue Binary(MirBinaryOp op, int operands, bool proven) => new(
+        MirRvalueKind.BinaryOp,
+        (byte)op,
+        Start: operands,
+        Count: 2,
+        Proven: proven);
 
     internal static MirRvalue Unary(MirUnaryOp op, int operand, bool proven) => new(MirRvalueKind.UnaryOp, (byte)op, Start: operand, Count: 1, Proven: proven);
 
     internal static MirRvalue Cast(MirCastKind kind, int operand, BoundType type) => new(MirRvalueKind.Cast, (byte)kind, Start: operand, Count: 1, Type: type);
 
-    internal static MirRvalue Aggregate(MirAggregateKind kind, int start, int count, BoundType type, int ordinal = 0) => new(MirRvalueKind.Aggregate, (byte)kind, default, start, count, ordinal, type);
+    internal static MirRvalue Aggregate(MirAggregateKind kind, int start, int count, BoundType type, int ordinal = 0) => new(
+        MirRvalueKind.Aggregate,
+        (byte)kind,
+        default,
+        start,
+        count,
+        ordinal,
+        type);
 
     internal static MirRvalue Discriminant(MirPlace place) => new(MirRvalueKind.Discriminant, Place: place);
 
@@ -78,9 +98,25 @@ internal readonly record struct MirCallee(MirCalleeKind Kind, BindingSymbol? Sym
 
     // SPEC 7.3: a call passes its callee's parameters receiver first (the self parameter at its written slot), then the others in slot order:
     // the slot an argument position passes, and its inverse.
-    internal static int Slot(BindingSymbol function, int position) => function.ReceiverIndex is var receiver && (receiver < 0 || position > receiver) ? position : position == 0 ? receiver : position - 1;
+    internal static int Slot(BindingSymbol function, int position)
+    {
+        if (function.ReceiverIndex is var receiver && (receiver < 0 || position > receiver))
+        {
+            return position;
+        }
 
-    internal static int Position(BindingSymbol? function, int slot) => (function?.ReceiverIndex ?? -1) is var receiver && (receiver < 0 || slot > receiver) ? slot : slot == receiver ? 0 : slot + 1;
+        return position == 0 ? receiver : position - 1;
+    }
+
+    internal static int Position(BindingSymbol? function, int slot)
+    {
+        if ((function?.ReceiverIndex ?? -1) is var receiver && (receiver < 0 || slot > receiver))
+        {
+            return slot;
+        }
+
+        return slot == receiver ? 0 : slot + 1;
+    }
 }
 
 /// <summary>A terminator. <see cref="Target"/> is a Goto's, Drop's or Call's successor (-1: the Call diverges) or a SwitchInt's
@@ -88,13 +124,31 @@ internal readonly record struct MirCallee(MirCalleeKind Kind, BindingSymbol? Sym
 /// Call's arguments are of <see cref="MirBody.Operands"/>. <see cref="Operand"/> is a SwitchInt's operand or a Value callee,
 /// <see cref="Place"/> a Call's destination or the dropped Place, and <see cref="CheckTarget"/> the block only the checks reach
 /// (-1: none). A new block's terminator is a Goto without a target until it is terminated.</summary>
-internal readonly record struct MirTerminator(MirTerminatorKind Kind, SourceInfo Source, int Target = -1, int CheckTarget = -1, MirOperand Operand = default, MirPlace Place = default, int Start = 0, int Count = 0, MirCallee Callee = default)
+internal readonly record struct MirTerminator(
+    MirTerminatorKind Kind,
+    SourceInfo Source,
+    int Target = -1,
+    int CheckTarget = -1,
+    MirOperand Operand = default,
+    MirPlace Place = default,
+    int Start = 0,
+    int Count = 0,
+    MirCallee Callee = default)
 {
     internal static MirTerminator Goto(int target, SourceInfo source, int check = -1) => new(MirTerminatorKind.Goto, source, target, check);
 
-    internal static MirTerminator SwitchInt(MirOperand operand, int start, int count, int otherwise, SourceInfo source) => new(MirTerminatorKind.SwitchInt, source, otherwise, Operand: operand, Start: start, Count: count);
+    internal static MirTerminator SwitchInt(MirOperand operand, int start, int count, int otherwise, SourceInfo source) =>
+        new(MirTerminatorKind.SwitchInt, source, otherwise, Operand: operand, Start: start, Count: count);
 
-    internal static MirTerminator Call(MirCallee callee, int start, int count, MirPlace destination, int target, SourceInfo source, int check = -1, MirOperand value = default)
+    internal static MirTerminator Call(
+        MirCallee callee,
+        int start,
+        int count,
+        MirPlace destination,
+        int target,
+        SourceInfo source,
+        int check = -1,
+        MirOperand value = default)
         => new(MirTerminatorKind.Call, source, target, check, value, destination, start, count, callee);
 
     internal static MirTerminator Drop(MirPlace place, int target, SourceInfo source) => new(MirTerminatorKind.Drop, source, target, Place: place);
@@ -108,16 +162,24 @@ internal readonly record struct MirTerminator(MirTerminatorKind Kind, SourceInfo
 internal record struct MirBlock(int Start, int Count, MirTerminator Terminator);
 
 /// <summary>A local: local 0 is the Return local, the Arg locals follow it (the receiver first), then Var, Temp and DropFlag locals.</summary>
-internal readonly record struct MirLocal(BoundType Type, MirLocalKind Kind, SourceInfo Source, bool Mutable = false, string? Name = null, MirLocalRole Role = MirLocalRole.None);
+internal readonly record struct MirLocal(
+    BoundType Type,
+    MirLocalKind Kind,
+    SourceInfo Source,
+    bool Mutable = false,
+    string? Name = null,
+    MirLocalRole Role = MirLocalRole.None);
 
-/// <summary>A scope of the body; scope 0 is the body's own, and the scope a scope is in (<see cref="Outer"/>) precedes it. An Inlined scope's source is its call.</summary>
+/// <summary>A scope of the body; scope 0 is the body's own, and the scope a scope is in (<see cref="Outer"/>) precedes it. An Inlined scope's source
+/// is its call.</summary>
 internal readonly record struct MirScope(int Outer, MirScopeKind Kind, SourceRef Source);
 
 /// <summary>A constant; interned, so equal constants share one id.</summary>
 internal readonly record struct MirConst(MirConstKind Kind, BoundType Type, Int128 Bits = default, object? Value = null);
 
-/// <summary>An interned projection step: its <see cref="Prefix"/>, the chain it extends (0: the root), its kind and argument (a Field index, a base depth, an index
-/// local, a constant position, a Case ordinal or a pair binder's index) and the Type it selects (null when its base does not admit it).
+/// <summary>An interned projection step: its <see cref="Prefix"/>, the chain it extends (0: the root), its kind and argument (a Field index,
+/// a base depth, an index local, a constant position, a Case ordinal or a pair binder's index) and the Type it selects
+/// (null when its base does not admit it).
 /// Chains are independent of their roots, so equal prefixes share ids.</summary>
 internal readonly record struct MirProjection(int Prefix, MirProjectionKind Kind, int Arg, BoundType? Type);
 
@@ -199,7 +261,14 @@ internal sealed class MirBody
     /// <param name="place">A Place of the body.</param>
     /// <returns>The Type, or null when a projection is not admitted.</returns>
     internal BoundType? TypeOf(MirPlace place)
-        => place.Projection != 0 ? this.projections[place.Projection].Type : place.Root >= 0 ? this.locals[place.Root].Type : this.statics[~place.Root].Type;
+    {
+        if (place.Projection != 0)
+        {
+            return this.projections[place.Projection].Type;
+        }
+
+        return place.Root >= 0 ? this.locals[place.Root].Type : this.statics[~place.Root].Type;
+    }
 
     /// <summary>Gets the Type a projection selects from a Place of a Type (plan 5.4), the one rule the builder interns projections by and the
     /// validator checks them against.</summary>
@@ -220,10 +289,19 @@ internal sealed class MirBody
                     return this.Binds(arg, binder) ? below : null;
                 }
 
-                return binder is null && !ReferenceEquals(below, type) ? below : type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } ? pointee : null;
+                if (binder is null && !ReferenceEquals(below, type))
+                {
+                    return below;
+                }
+
+                return type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } ? pointee : null;
             case MirProjectionKind.Field:
-                return type?.Kind is BoundTypeKind.Tuple or BoundTypeKind.Closure ? ((uint)arg < (uint)type.Components.Count ? type.Components[arg] : null)
-                    : AdtDef.IsStruct(type) && (uint)arg < (uint)AdtDef.Count(type!) ? AdtDef.FieldType(type!, arg) : null;
+                if (type?.Kind is BoundTypeKind.Tuple or BoundTypeKind.Closure)
+                {
+                    return (uint)arg < (uint)type.Components.Count ? type.Components[arg] : null;
+                }
+
+                return AdtDef.IsStruct(type) && (uint)arg < (uint)AdtDef.Count(type!) ? AdtDef.FieldType(type!, arg) : null;
             case MirProjectionKind.Base:
                 for (var depth = arg; depth > 0 && type is not null; depth--)
                 {
@@ -247,7 +325,8 @@ internal sealed class MirBody
     /// <param name="binder">The index in <see cref="Binders"/>.</param>
     /// <param name="target">The pair layer's binder.</param>
     /// <returns>Whether the index names that binder.</returns>
-    internal bool Binds(int binder, BindingSymbol? target) => target is not null && (uint)binder < (uint)this.Binders.Count && ReferenceEquals(this.Binders[binder].Target, target);
+    internal bool Binds(int binder, BindingSymbol? target) => target is not null && (uint)binder < (uint)this.Binders.Count &&
+        ReferenceEquals(this.Binders[binder].Target, target);
 
     /// <summary>Starts the body over for a definition: every table empty but the body's scope and the empty projection chain.</summary>
     /// <param name="key">The definition.</param>

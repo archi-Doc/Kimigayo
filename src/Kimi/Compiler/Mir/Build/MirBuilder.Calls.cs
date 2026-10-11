@@ -43,27 +43,41 @@ internal sealed partial class MirBuilder
         var function = call.Kind == CalleeKind.Value ? null : call.Target;
         var receiver = function is null ? null : call.Receiver;
         var count = function is null ? call.Signature.Components[0].Components.Count : ((FunctionKoto)function.Declaration).Parameters.Count;
-        var direct = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true } ? call.VirtualImplementation is { } implementation ? HirTables.Symbol(implementation) : null : function;
-        if (call.ArgumentOperations.Length + call.DefaultArguments.Length + (receiver is null ? 0 : 1) != count || (receiver is not null && function!.ReceiverIndex < 0) ||
+        var direct = function;
+        if (call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true })
+        {
+            direct = call.VirtualImplementation is { } implementation ? HirTables.Symbol(implementation) : null;
+        }
+
+        if (call.ArgumentOperations.Length + call.DefaultArguments.Length + (receiver is null ? 0 : 1) != count ||
+            (receiver is not null && function!.ReceiverIndex < 0) ||
             (direct is null && function is not null))
         {
             this.Unsupported(node, destination); // A plan whose operations do not cover the parameters (an expansion supplies them).
             return;
         }
 
-        var (source, pending, subst) = (call.ReceiverOperation.Source ?? call.CalleeValue, this.arguments.Count, compilation.Types.SubstOf(call));
+        var source = call.ReceiverOperation.Source ?? call.CalleeValue;
+        var pending = this.arguments.Count;
+        var subst = compilation.Types.SubstOf(call);
         if (function is null)
         {
             this.arguments.Add(this.Operand(source, call.ReceiverOperation.AdaptedType, true)); // The callee value, pending while the arguments are evaluated.
         }
 
-        var (start, completes, defaults) = (this.arguments.Count, function is not null || Completes(source), !call.DefaultArguments.IsEmpty);
+        var start = this.arguments.Count;
+        var completes = function is not null || Completes(source);
+        var defaults = !call.DefaultArguments.IsEmpty;
         CollectionsMarshal.SetCount(this.arguments, start + count);
         CollectionsMarshal.AsSpan(this.arguments)[start..].Clear(); // No stale operand reads as pending (Transfer).
         if (receiver is not null)
         {
             // A direct base call's receiver is its implementation's (the selection adapted it to the slot's declaring Type).
-            var parameter = ReferenceEquals(direct, function) ? call.ReceiverOperation.ParameterType : TyCtxt.Signature(direct!, subst, direct!.ReceiverIndex, out _);
+            var parameter = ReferenceEquals(direct, function) ? call.ReceiverOperation.ParameterType : TyCtxt.Signature(
+                direct!,
+                subst,
+                direct!.ReceiverIndex,
+                out _);
             var slot = defaults ? this.Slot(parameter, receiver) : (MirPlace?)null;
             var operand = this.Operand(receiver, ReferenceEquals(direct, function) ? call.ReceiverOperation.AdaptedType ?? parameter : parameter, true, slot);
             this.arguments[start] = slot is { } place ? this.Pending(place, operand, receiver) : operand;
@@ -77,8 +91,15 @@ internal sealed partial class MirBuilder
                 if (ReferenceEquals(argument.Source, first) == (pass == 0))
                 {
                     var slot = defaults ? this.Slot(argument.ParameterType, argument.Source!) : (MirPlace?)null;
-                    var operand = ReferenceEquals(argument.Source, given) ? value : this.Operand(argument.Source!, argument.AdaptedType ?? argument.ParameterType, true, slot);
-                    this.arguments[start + MirCallee.Position(function, argument.ParameterIndex)] = slot is { } place ? this.Pending(place, operand, argument.Source!) : operand;
+                    var operand = ReferenceEquals(argument.Source, given) ? value : this.Operand(
+                        argument.Source!,
+                        argument.AdaptedType ?? argument.ParameterType,
+                        true,
+                        slot);
+                    this.arguments[start + MirCallee.Position(function, argument.ParameterIndex)] = slot is { } place ? this.Pending(
+                        place,
+                        operand,
+                        argument.Source!) : operand;
                     completes &= Completes(argument.Source!);
                 }
             }
@@ -104,8 +125,15 @@ internal sealed partial class MirBuilder
             _ => new MirCallee(MirCalleeKind.Fn, direct, subst),
         };
 
-        var result = call.ResultMode == FunctionResultMode.Value || ReferenceEquals(this.body.TypeOf(destination), call.ReturnType) ? destination : this.Temp(call.ReturnType, node);
-        this.Invoke(result, callee, start, node, ReferenceEquals(call.ReturnType, BoundType.Never) || MirDescriptors.Of(disposition.Id).Diverges, function is null ? this.arguments[pending] : default);
+        var result = call.ResultMode == FunctionResultMode.Value || ReferenceEquals(this.body.TypeOf(destination), call.ReturnType) ? destination
+            : this.Temp(call.ReturnType, node);
+        this.Invoke(
+            result,
+            callee,
+            start,
+            node,
+            ReferenceEquals(call.ReturnType, BoundType.Never) || MirDescriptors.Of(disposition.Id).Diverges,
+            function is null ? this.arguments[pending] : default);
         this.arguments.RemoveRange(pending, start - pending);
     }
 
@@ -113,8 +141,19 @@ internal sealed partial class MirBuilder
     // only (SPEC 14.10).
     private void Invoke(MirPlace destination, in MirCallee callee, int start, Koto node, bool diverges = false, in MirOperand value = default)
     {
-        var (operands, next) = (this.Flush(start), this.body.AddBlock());
-        this.body.Terminate(this.current, MirTerminator.Call(callee, operands, this.body.Operands.Length - operands, destination, diverges ? -1 : next, this.Info(node), diverges ? next : -1, value));
+        var operands = this.Flush(start);
+        var next = this.body.AddBlock();
+        this.body.Terminate(
+            this.current,
+            MirTerminator.Call(
+            callee,
+            operands,
+            this.body.Operands.Length - operands,
+            destination,
+            diverges ? -1 : next,
+            this.Info(node),
+            diverges ? next : -1,
+            value));
         this.current = next;
     }
 
@@ -122,9 +161,11 @@ internal sealed partial class MirBuilder
     // under the substitution of its declaring Type's instance and its Type arguments.
     private void Serve(MirPlace destination, CompilerFunctionKind kind, BoundType? declaring, ReadOnlySpan<BoundType?> types, int start, Koto node)
     {
-        var (function, disposition) = (compilation.Library.Function(kind)!, IntrinsicDisposition.Of(kind));
+        var function = compilation.Library.Function(kind)!;
+        var disposition = IntrinsicDisposition.Of(kind);
         var subst = compilation.Types.Synthesized(function, declaring, types);
-        this.Invoke(destination, disposition.Kind == DispositionKind.Intrinsic ? MirCallee.Intrinsic(disposition.Id, subst) : new(MirCalleeKind.Fn, function, subst), start, node);
+        var callee = disposition.Kind == DispositionKind.Intrinsic ? MirCallee.Intrinsic(disposition.Id, subst) : new(MirCalleeKind.Fn, function, subst);
+        this.Invoke(destination, callee, start, node);
     }
 
     // SPEC 17.3: a block that fails with a fixed SPEC 22.5.4 code (an expansion's check), without a successor.

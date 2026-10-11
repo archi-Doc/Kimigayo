@@ -53,7 +53,8 @@ internal sealed partial class MirBuilder
     // One layer of a Place: a Deref (of a reference, an object handle or, explicitly, a raw pointer), or the PairLayer of the binder its
     // pair layer names (TyCtxt.Layer).
     private MirPlace Layer(MirPlace place, HirPlaceKind kind)
-        => kind == HirPlaceKind.PairLayer ? this.body.Project(place, MirProjectionKind.PairLayer, this.Binder(this.body.TypeOf(place))) : this.body.Project(place, MirProjectionKind.Deref, 0);
+        => kind == HirPlaceKind.PairLayer ? this.body.Project(place, MirProjectionKind.PairLayer, this.Binder(this.body.TypeOf(place)))
+            : this.body.Project(place, MirProjectionKind.Deref, 0);
 
     // The index in the body's binders of the binder a pair layer Type names; -1 for another Type.
     private int Binder(BoundType? type)
@@ -71,7 +72,10 @@ internal sealed partial class MirBuilder
     // SPEC 3.4.1, 13.5.5.1: up to count of the layers its Type's selection follows implicitly, stopping at a Place of the target Type.
     private MirPlace Follow(MirPlace place, int count, BoundType? target = null)
     {
-        for (; count > 0 && !(target is not null && MirTypes.Agree(this.body.TypeOf(place), target)) && TyCtxt.Layer(this.body.TypeOf(place), out _, out _) is var kind and not HirPlaceKind.Value; count--)
+        for (; count > 0 && !(target is not null && MirTypes.Agree(this.body.TypeOf(place), target)) && TyCtxt.Layer(
+            this.body.TypeOf(place),
+            out _,
+            out _) is var kind and not HirPlaceKind.Value; count--)
         {
             place = this.Layer(place, kind);
         }
@@ -99,8 +103,15 @@ internal sealed partial class MirBuilder
 
     // SPEC 11.1, 11.2, 11.3.2: a stored Property's storage, which its standard accessors and its accessors' `storage` read and write: a static
     // Property's slot, or the Property's Field of its receiver's Place.
-    private MirPlace Storage(BindingSymbol property, MirPlace? receiver, Koto node) => HirTables.ResOf(property.Declaration!) == HirRes.Static ? this.Static(property, node)
-        : receiver is { } place ? this.Field(this.Follow(place, 16), property, node) : this.Unsupported(node);
+    private MirPlace Storage(BindingSymbol property, MirPlace? receiver, Koto node)
+    {
+        if (HirTables.ResOf(property.Declaration!) == HirRes.Static)
+        {
+            return this.Static(property, node);
+        }
+
+        return receiver is { } place ? this.Field(this.Follow(place, 16), property, node) : this.Unsupported(node);
+    }
 
     // The Place of a local or a parameter, in a default template a prepared parameter's slot its p_i references (SPEC 7.2.3), or in a
     // Closure's body of an environment binding: its capture's Field of the environment the receiver reaches (SPEC 7.6.2); null for another
@@ -134,7 +145,8 @@ internal sealed partial class MirBuilder
             return this.Unsupported(node, true);
         }
 
-        var (place, start) = (this.StaticRoot(symbol), this.arguments.Count);
+        var place = this.StaticRoot(symbol);
+        var start = this.arguments.Count;
         this.arguments.Add(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize, ~place.Root))));
         this.Invoke(this.Temp(BoundType.Unit, node), MirCallee.Intrinsic(IntrinsicId.StaticEnsure), start, node);
         return place;
@@ -158,7 +170,8 @@ internal sealed partial class MirBuilder
     // (the receiver's StorageProjection) and the Field's own index there.
     private MirPlace Field(MirPlace receiver, BindingSymbol? field, Koto node)
     {
-        var (type, position) = (this.body.TypeOf(receiver), -1);
+        var type = this.body.TypeOf(receiver);
+        var position = -1;
         if (type is null || !AdtDef.FindField(type, field, out _, out position))
         {
             return this.Unsupported(node, position >= 0); // A Field whose stored Type Binding could not substitute is derived from that error.
@@ -170,7 +183,10 @@ internal sealed partial class MirBuilder
             type = AdtDef.Base(type)!;
         }
 
-        return this.body.Project(depth == 0 ? receiver : this.body.Project(receiver, MirProjectionKind.Base, depth), MirProjectionKind.Field, position - Inherited(type));
+        return this.body.Project(
+            depth == 0 ? receiver : this.body.Project(receiver, MirProjectionKind.Base, depth),
+            MirProjectionKind.Field,
+            position - Inherited(type));
 
         static int Inherited(BoundType type) => AdtDef.Base(type) is { } parent ? AdtDef.StorageCount(parent) : 0;
     }
@@ -179,16 +195,20 @@ internal sealed partial class MirBuilder
     // PlaceShape), at a written ^x the length minus x, or at another key's resolution; SPEC 5.3: a raw pointer's p[n] is *(p + n).
     private MirPlace Element(IndexKoto index, HirPlaceKind kind)
     {
-        var (sequence, key) = (this.Place(index.Left), ExpansionPlan.Of(index)?.First);
+        var sequence = this.Place(index.Left);
+        var key = ExpansionPlan.Of(index)?.First;
         if (key is not null || HirTables.Op(index.Right) == HirOp.Range)
         {
-            return this.body.Project(sequence, MirProjectionKind.Index, (key is null ? this.Boundary(index.Right, this.Length(sequence, index)) : this.Resolve(key, index, sequence)).Root);
+            var body = this.body;
+            var resolved = key is null ? this.Boundary(index.Right, this.Length(sequence, index)) : this.Resolve(key, index, sequence);
+            return body.Project(sequence, MirProjectionKind.Index, resolved.Root);
         }
 
         var position = this.Operand(index.Right);
         if (this.body.TypeOf(sequence) is { Semantics: SemanticsKind.Raw } pointer)
         {
-            var (offset, start) = (this.Temp(pointer, index), this.body.AddOperand(MirOperand.Copy(sequence)));
+            var offset = this.Temp(pointer, index);
+            var start = this.body.AddOperand(MirOperand.Copy(sequence));
             this.body.AddOperand(position);
             this.Set(offset, MirRvalue.Binary(MirBinaryOp.Add, start, true), index);
             return this.body.Project(offset, MirProjectionKind.Deref, 0);
@@ -210,7 +230,17 @@ internal sealed partial class MirBuilder
         var local = this.Temp(BoundType.ISize, node);
         var operand = this.body.AddOperand(position);
         var wraps = this.Width(type, out _) is var width and > 0 && width <= compilation.PointerWidth;
-        this.Set(local, ReferenceEquals(type, BoundType.ISize) ? MirRvalue.Use(operand) : MirRvalue.Cast(wraps ? MirCastKind.Wrap : MirCastKind.Integer, operand, BoundType.ISize) with { Proven = wraps }, node);
+        MirRvalue value;
+        if (ReferenceEquals(type, BoundType.ISize))
+        {
+            value = MirRvalue.Use(operand);
+        }
+        else
+        {
+            value = MirRvalue.Cast(wraps ? MirCastKind.Wrap : MirCastKind.Integer, operand, BoundType.ISize) with { Proven = wraps };
+        }
+
+        this.Set(local, value, node);
         return local;
     }
 

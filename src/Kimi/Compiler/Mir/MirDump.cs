@@ -70,7 +70,9 @@ internal static class MirDump
         for (var i = 1; i < body.Scopes.Length; i++)
         {
             var scope = body.Scopes[i];
-            Source(text.Append("  s").Append(i).Append(": ").Append(scope.Kind.ToString().ToLowerInvariant()).Append(" in s").Append(scope.Outer), scope.Source).Append('\n');
+            Source(
+                text.Append("  s").Append(i).Append(": ").Append(scope.Kind.ToString().ToLowerInvariant()).Append(" in s").Append(scope.Outer),
+                scope.Source).Append('\n');
         }
 
         for (var i = 0; i < body.Binders.Count; i++)
@@ -113,9 +115,12 @@ internal static class MirDump
         }
     }
 
-    private static StringBuilder Source(StringBuilder text, SourceRef source) => text.Append(source.Module == 0 ? " @" : $" @{source.Module}:").Append(source.Id);
+    private static StringBuilder Source(StringBuilder text, SourceRef source) => text.Append(source.Module == 0 ? " @" : $" @{source.Module}:")
+        .Append(source.Id);
 
-    private static void Info(StringBuilder text, SourceInfo info) => Source(text, info.Syntax).Append(info.Scope == 0 ? string.Empty : $" s{info.Scope}").Append('\n');
+    private static void Info(StringBuilder text, SourceInfo info) => Source(text, info.Syntax).Append(
+        info.Scope == 0 ? string.Empty
+        : $" s{info.Scope}").Append('\n');
 
     private static string Type(BoundType? type) => type is null ? "?" : TyCtxt.Name(type);
 
@@ -135,7 +140,14 @@ internal static class MirDump
                 Operand(text, body, body.Operands[rvalue.Start]);
                 break;
             case MirRvalueKind.Ref:
-                text.Append((MirRefKind)rvalue.Op switch { MirRefKind.Uniq => "&uniq ", MirRefKind.TwoPhaseUniq => "&uniq two-phase ", MirRefKind.Raw => "&raw ", _ => "&" });
+                text.Append(
+                    (MirRefKind)rvalue.Op switch
+                    {
+                        MirRefKind.Uniq => "&uniq ",
+                        MirRefKind.TwoPhaseUniq => "&uniq two-phase ",
+                        MirRefKind.Raw => "&raw ",
+                        _ => "&",
+                    });
                 Place(text, body, rvalue.Place).Append(": ").Append(Type(rvalue.Type));
                 break;
             case MirRvalueKind.BinaryOp or MirRvalueKind.UnaryOp:
@@ -143,7 +155,8 @@ internal static class MirDump
                 Operands(text, body, rvalue.Start, rvalue.Count).Append(rvalue.Proven ? " proven" : string.Empty);
                 break;
             case MirRvalueKind.Cast:
-                Operand(text, body, body.Operands[rvalue.Start]).Append(" as ").Append(Type(rvalue.Type)).Append(" (").Append((MirCastKind)rvalue.Op).Append(rvalue.Proven ? ") proven" : ")");
+                Operand(text, body, body.Operands[rvalue.Start]).Append(" as ").Append(Type(rvalue.Type)).Append(" (").Append((MirCastKind)rvalue.Op)
+                    .Append(rvalue.Proven ? ") proven" : ")");
                 break;
             case MirRvalueKind.Aggregate:
                 text.Append((MirAggregateKind)rvalue.Op).Append(rvalue.Type is { } adt && AdtDef.IsEnum(adt) ? $" case {rvalue.Arg}" : string.Empty);
@@ -167,12 +180,17 @@ internal static class MirDump
                 break;
             case MirTerminatorKind.SwitchInt:
                 Operand(text.Append("switch "), body, terminator.Operand).Append(" [");
-                text.AppendJoin(string.Empty, body.Cases.Slice(terminator.Start, terminator.Count).ToArray().Select(static x => FormattableString.Invariant($"{x.Value}: bb{x.Target}, ")));
+                text.AppendJoin(
+                    string.Empty,
+                    body.Cases.Slice(terminator.Start, terminator.Count).ToArray().Select(
+                    static x =>
+                    FormattableString.Invariant($"{x.Value}: bb{x.Target}, ")));
                 text.Append("otherwise: bb").Append(terminator.Target).Append(']');
                 break;
             case MirTerminatorKind.Call:
                 var callee = terminator.Callee;
-                Place(text, body, terminator.Place).Append(" = ").Append(callee.Kind switch
+                Place(text, body, terminator.Place).Append(" = ").Append(
+                    callee.Kind switch
                 {
                     MirCalleeKind.Fn => callee.Arg > 0 ? $"{callee.Symbol?.Name}#{callee.Arg - 1}" : callee.Symbol?.Name,
                     MirCalleeKind.Virtual => $"virtual slot {callee.Arg} {callee.Symbol?.Name}",
@@ -225,10 +243,14 @@ internal static class MirDump
                 return constant.Kind switch
                 {
                     MirConstKind.Integer => text.Append(constant.Bits.ToString(CultureInfo.InvariantCulture)).Append('_').Append(Type(constant.Type)),
-                    MirConstKind.Float => text.Append("0x").Append(((ulong)constant.Bits).ToString("x", CultureInfo.InvariantCulture)).Append('_').Append(Type(constant.Type)),
+                    MirConstKind.Float => text.Append("0x").Append(((ulong)constant.Bits).ToString("x", CultureInfo.InvariantCulture)).Append('_')
+                        .Append(Type(constant.Type)),
                     MirConstKind.Bool => text.Append(constant.Bits != 0 ? "true" : "false"),
                     MirConstKind.Unit => text.Append("()"),
-                    MirConstKind.String => text.Append('"').Append(((string?)constant.Value)?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n")).Append('"'),
+                    MirConstKind.String => text.Append('"').Append(
+                        ((string?)constant.Value)?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace(
+                        "\n",
+                        "\\n")).Append('"'),
                     MirConstKind.Location => Source(text.Append("location"), new((ushort)(constant.Bits >> 32), (int)(constant.Bits & uint.MaxValue))),
                     _ => text.Append(constant.Kind == MirConstKind.FnItem ? "fn " : "type ").Append(Type(constant.Type)),
                 };
@@ -248,7 +270,16 @@ internal static class MirDump
         }
 
         var row = body.Projections[place.Projection];
-        Place(text.Append(row.Kind switch { MirProjectionKind.Deref => "(*", MirProjectionKind.Downcast or MirProjectionKind.PairLayer => "(", _ => string.Empty }), body, place with { Projection = row.Prefix });
+        Place(
+            text.Append(
+                row.Kind switch
+                {
+                    MirProjectionKind.Deref => "(*",
+                    MirProjectionKind.Downcast or MirProjectionKind.PairLayer => "(",
+                    _ => string.Empty,
+                }),
+            body,
+            place with { Projection = row.Prefix });
         return row.Kind switch
         {
             MirProjectionKind.Deref => text.Append(')'),

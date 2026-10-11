@@ -52,6 +52,7 @@ public sealed partial class CodeRulesAnalyzer : DiagnosticAnalyzer
             var layer = architecture.FileLayer(context.Tree);
             var checkArchitecture = config.Applies(CodeRule.Find("KR1001")!, path);
             var checkDispatch = config.Applies(CodeRule.Find("KR1006")!, path);
+            var checkDensity = config.Applies(CodeRule.Find("KR3001")!, path);
             foreach (var node in source.Root.DescendantNodes(x => x is not DocumentationCommentTriviaSyntax, descendIntoTrivia: true))
             {
                 context.CancellationToken.ThrowIfCancellationRequested();
@@ -77,6 +78,16 @@ public sealed partial class CodeRulesAnalyzer : DiagnosticAnalyzer
                 {
                     architecture.CheckDispatch(source, node, context.CancellationToken);
                 }
+
+                if (checkDensity)
+                {
+                    CodeRulesDensity.CheckNode(source, node);
+                }
+            }
+
+            if (checkDensity)
+            {
+                CodeRulesDensity.CheckLines(source, config, context.CancellationToken);
             }
 
             if (source.Observations is { Count: > 0 } observations)
