@@ -35,6 +35,9 @@ Suppression checks
 live in CodeRulesAnalyzer.Suppression.cs. CodeRules*Test classes share CodeRulesTestHelper; the real-csc regression is
 tests/scripts/CodeRulesCompilerTest.ps1, including MSBuild stale-Report/Prune and Verify regressions. Operational commands and the shared SARIF reader are described in
 [VERIFICATION](VERIFICATION.md#code-rules).
+`scripts/code-rules-report.ps1` owns the shared Report build, SARIF validation and keyed baseline operations.
+`scripts/code-rules-approval.ps1` compares Git trailers/blobs and complete annotation Reports for verify-commit;
+`tests/scripts/CodeRulesApprovalTest.ps1` covers the approval policy and actual Git trailer parsing.
 
 The main path is source input → Koto syntax → Binding → control-flow/ownership analysis → physical emission model → LLVM IR → native tools. Checking stops after the front end; generation and native execution have separate entry points.
 

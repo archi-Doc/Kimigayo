@@ -1,4 +1,23 @@
 # Code-rules SARIF validation and baseline reconciliation. The analyzer alone computes keys and observed values.
+function Invoke-KimiCodeRulesReport([string] $Root, [string] $Evidence) {
+    $null = [IO.Directory]::CreateDirectory($Evidence)
+    $sarif = Join-Path $Evidence 'code-rules.sarif'
+    $before = Get-KimiVerificationInputs $Root
+    $before | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $Evidence 'inputs-before.json')
+    # Keep Report's stale-entry warning available to Prune; MSBuild otherwise promotes it after csc has emitted SARIF.
+    & dotnet build (Join-Path $Root 'src/Kimi/Kimi.csproj') --no-restore --no-incremental -c Release --disable-build-servers -m:1 -warnaserror -warnnotaserror:KR9002 -p:EmitCompilerGeneratedFiles=false -p:KimiCodeRulesMode=Report "-p:KimiCodeRulesLog=$sarif" *> (Join-Path $Evidence 'build.log')
+    if ($LASTEXITCODE -ne 0) { throw "Report build failed; see $Evidence" }
+    $after = Get-KimiVerificationInputs $Root
+    $after | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $Evidence 'inputs-after.json')
+    Assert-KimiVerificationInputsStable $before $after
+    $results = Read-KimiCodeRulesSarif $sarif $Root -RequireComplete
+    $observed = Get-KimiCodeRulesObservations $results
+    $observed.Values | Select-Object rule, scope, anchor, value, path, allowed, kind, reason, limit, stage | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $Evidence 'observations.json')
+    $results | Where-Object ruleId -CEQ 'KR9001' | Group-Object { $_.properties.customProperties.rule + ' ' + ($_.properties.customProperties.path -replace '^src/Kimi/([^/]+/[^/]+).*', '$1') } |
+        Select-Object Name, Count | Format-Table | Out-String | Set-Content -LiteralPath (Join-Path $Evidence 'summary.txt')
+    return [pscustomobject]@{ inputs = $before; observations = $observed }
+}
+
 function Test-KimiProtectedDiagnostic([string] $Id) {
     return $Id -cmatch '^KR[0-9]{4}$' -or $Id -cin @('IDE0051', 'IDE0052', 'IDE0060')
 }

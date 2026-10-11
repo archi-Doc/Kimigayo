@@ -307,7 +307,7 @@ The user adopted `Proposals/2026-10-10 Compiler Size Reduction and Single MIR Pl
 
 ## 2026-10-12 — Code Rules Analyzer
 
-- `Proposals/2026-10-11 Code Rules Analyzer.md`: 一部取り込み (A0, owner instruction 2026-10-12).
+- `Changes/2026-10-11 Code Rules Analyzer.md`: 取り込み済み (A0–A8, owner instruction 2026-10-12).
   Integrated policy: §§1.2–1.4, 3.2–3.7, 4 and 9 map to COMPILER_ARCHITECTURE's Structure limits and Code rules;
   the decision is DECISIONS CR-A0. Before intake, the owner narrowed §4.3 KR3003 to all-new-local `var (...)`
   declarations; existing-variable assignments and their capture/dependency analysis were removed because exceptions
@@ -336,5 +336,8 @@ The user adopted `Proposals/2026-10-10 Compiler Size Reduction and Single MIR Pl
   pure arguments are removed. Frozen-text name correction: FormatCapacity is the current FormatBuffer intrinsic;
   LegacyRuntimeHelpers does not yet exist and its future producer must add the R8 annotation. Invalid transitional
   uses share KR9005; out-of-scope exceptions are invalid rather than omitted from the approval inventory.
-  Open: A8 implementation, final A7 operational verification (§6), and the
-  later-stage scope extensions (§6.4). Future policy corrections belong in the owning architecture/decision documents.
+  A8 maps §3.6's approval comparison to verify-commit and the shared complete-Report producer (DECISIONS CR-A8);
+  §7's process rules map to AGENTS and VERIFICATION. A7's final operational checks and unchanged outputs are
+  recorded in PLAN_HISTORY and its evidence. All §6.4 later-stage obligations transfer to COMPILER_ARCHITECTURE's
+  Code rules and stage ledger; R4 remains unstarted. The frozen proposal moves unchanged to Changes. Future policy
+  corrections belong in the owning architecture/decision documents; closure does not widen language support.

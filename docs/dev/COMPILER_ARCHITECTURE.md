@@ -84,7 +84,7 @@ Analyzer A1, each entry file begins with the component's contract (AGENTS). Path
 ## Structure limits
 
 Members and files outside the old Analysis/Emission paths stay within these limits, which the owner decided on
-2026-10-11 for the [Code Rules Analyzer](../../draft/Proposals/2026-10-11%20Code%20Rules%20Analyzer.md) (its §9).
+2026-10-11 for the [Code Rules Analyzer](../../draft/Changes/2026-10-11%20Code%20Rules%20Analyzer.md) (its §9).
 
 | Measure | Limit |
 | --- | --- |
@@ -100,12 +100,12 @@ Members and files outside the old Analysis/Emission paths stay within these limi
 A member or file already over a limit may not get worse; split it by responsibility before it grows. An exception to
 the statement or nesting limit states its reason and bound in the code. Mir and the Backend take no baseline: their
 violations are fixed, except syntax-class decisions in the MIR builder, which reach 0 by the end of R6. The analyzer
-(units A0–A8, before R4) turns these limits into build errors over a shrinking baseline; until then review applies them.
+(units A0–A8, before R4) enforces these limits as build errors over a shrinking baseline.
 
 ## Code rules
 
 The owner authorized intake and implementation of the Code Rules Analyzer on 2026-10-12 (DECISIONS CR-A0).
-The following rules are enforced by A2–A7; A8 adds the commit approval comparison.
+The following rules are enforced by A2–A7; A8 enforces commit approval comparison.
 Kimi.Analyzers owns C# rules for `src/Kimi`; compiler behavior, tests, Benchmark and Playground are outside that scope.
 Generated code is excluded. Old Analysis/Emission files receive KR1 and the built-in unused-code rules only.
 
@@ -148,6 +148,10 @@ measurement and their single annotation. Unannotated partial measurements at or 
 KR1001–1003 and KR1007 never have baselines; extend their scope only after the newly covered violations reach zero.
 KR1002's UnwrapParentheses prohibition expands outside Parsing/Binding at R7 exit.
 Syntax's prohibition on the Binding type expands to the whole Binding layer at R6 exit.
+At R5, add the Backend layer and forbid System.Linq.Enumerable in Mir analyses and Backend, rewriting existing
+Mir LINQ uses first. From R5, the owner decides whether to extend these rules to tests/xUnitTest. R8 restores
+IntrinsicId's cap to 30. At every stage exit, obtain a fresh Report for owner review of baseline, exceptions and
+transitional declarations; their inventory does not by itself authorize changes.
 
 Only statement and nesting limits admit CodeRuleException, with an explicit bound and nonempty reason; an exception
 and baseline cannot cover the same member/rule. Invalid targets/rules, out-of-scope exceptions, duplicates, empty reasons,

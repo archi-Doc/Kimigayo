@@ -25,7 +25,7 @@ rules that result from them.
     per-phase performance budgets; per-session goal metrics, the sequencing of R7 and R8 with milestone work, and lighter
     commit records.
 - **Q2 Code Rules Analyzer** (2026-10-11, owner). The
-  [proposal](../../draft/Proposals/2026-10-11%20Code%20Rules%20Analyzer.md) §9: rules KR1xxx–KR3xxx and the built-in unused-code
+  [proposal](../../draft/Changes/2026-10-11%20Code%20Rules%20Analyzer.md) §9: rules KR1xxx–KR3xxx and the built-in unused-code
   rules as build errors over a shrinking baseline, units A0–A8 after R3 and before R4. The limits are in
   COMPILER_ARCHITECTURE (structure limits).
 - **Q3 Compiler allocations** (2026-10-11, owner, AGENTS `8071549f`). An allocation in the compiler is allowed when it
@@ -243,6 +243,23 @@ rules that result from them.
   semantic candidate rule is added. Reject merely repeating timing and defer the separate conditional-expression
   traversal optimization. Existing token-count, directive, suppression and complete-inventory comparisons verify
   equivalence; matched Enforce measurement decides the gain. Expected net growth is below 20 analyzer lines.
+
+- **CR-A8** (planning session, two independent designs compared and reviewed). verify-commit owns approval orchestration
+  after exact verified-input matching; code-rules-approval owns Git trailer validation and relaxation comparison.
+  A real Code-Rules-Approved trailer names an approver, calendar date and reason. Without one, compare the exact
+  first parent and target: any globalconfig blob change, new/increased baseline key, new/increased exception or
+  postponed existing transitional key requires approval. Pruning, reduced bounds, earlier stages and partial-file
+  moves do not. Review still rejects removing only an attribute or renaming to evade policy.
+  Reuse baseline keys and the analyzer's complete annotation inventory. Extract the ordinary Report build into
+  code-rules-report's Invoke-KimiCodeRulesReport; both the command and commit audit use it. No second attribute
+  parser, source-change allowlist or historical report cache. The no-trailer audit builds fresh Reports in isolated
+  detached worktrees for both commits, verifies input stability and exact Git blobs, retains failure evidence and
+  validates cleanup paths. Missing/older/incomplete reports fail. A valid trailer bypasses only this comparison,
+  never Unit/Session input association. Reject the local text-diff patch (aliases, constants and partial moves) and
+  a cached snapshot protocol (more provenance state for infrequent commit checks). Two additional Report builds
+  occur only at unapproved commit association, outside ordinary compilation. Expected tooling growth is about
+  130 lines plus tests, deleting the command's duplicate build block; compiler tokens and product allocations do
+  not change.
 
 ## R2b (2026-10-11, main session, as recommended)
 

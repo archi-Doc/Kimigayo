@@ -55,6 +55,18 @@ they never enter the baseline. Missing or older annotation-inventory markers are
 command retains MSBuild warnaserror but exempts KR9002 from logger promotion so Prune can read stale-entry warnings.
 Verify's KR9002 is an analyzer error and remains fatal (DECISIONS CR-A6b).
 
+At each reduction-stage exit, obtain Report and have the owner review its baseline, exceptions and transitional
+inventory. Report does not replace Unit or Session verification. Record approval in the actual Git trailer:
+`Code-Rules-Approved: <approver> <yyyy-MM-dd>: <reason>`.
+verify-commit first matches the verified inputs, then requires that trailer for any globalconfig change,
+new/increased baseline key, new/increased exception or postponed existing transitional key. Pruning, reduced bounds,
+earlier stages and partial-file moves need no approval. A valid trailer bypasses only the approval comparison.
+Without one, the audit builds fresh complete Reports of the exact first parent and target in isolated detached
+worktrees, using the same Report function as code-rules.ps1. Both reports, input manifests and failure logs stay in
+the Verify evidence directory. Missing or incomplete inventories fail; no cached report or text-based attribute
+parser substitutes for the analyzer (DECISIONS CR-A8). Script policy regressions are CodeRulesApprovalTest.ps1;
+the no-trailer commit association exercises the full two-build path.
+
 Run CodeRulesReportTest.ps1 for the shared reader/update operations, and CodeRulesCompilerTest.ps1 after a Release
 analyzer build when suppression or analyzer build integration changes. The latter retains actual-csc logs for pragma,
 member/type/assembly/alias/unconditional attributes, NoWarn, editorconfig/globalconfig and built-in suppression. Full

@@ -186,7 +186,7 @@ try {
 }
 catch { Add-Step 'input manifest' $false $_.Exception.Message $timer.Elapsed.TotalSeconds }
 if (-not $failed) {
-    foreach ($scriptTest in @('VerificationSelectionTest', 'VerificationInputsTest', 'CodeRulesReportTest')) {
+    foreach ($scriptTest in @('VerificationSelectionTest', 'VerificationInputsTest', 'CodeRulesReportTest', 'CodeRulesApprovalTest')) {
         $timer = Start-Step $scriptTest
         $log = Join-Path $evidence "$scriptTest.log"
         $ok = Invoke-Script { & (Join-Path $repo "tests/scripts/$scriptTest.ps1") } $log
