@@ -579,22 +579,22 @@ fn isLeaf @214
       StorageDead(_2) @218
       return @218
 fn init @221
-  _0: () return @221
-  _1: Base arg self @221
+  _0: Base return @221
+  _1: () temp @223
   s1: lexical in s0 @223
   bb0:
-    * _0 = const () @223 s1
+      StorageLive(_1) @223
+    * _1 = const () @223 s1
+      StorageDead(_1) @223
       return @223
 fn init @222
-  _0: () return @222
-  _1: Leaf arg self @222
-  _2: Base temp @225
+  _0: Leaf return @222
+  _1: () temp @226
   s1: lexical in s0 @226
-  opaque 0 @225:
   bb0:
-      StorageLive(_2) @225
-      _2 = opaque 0: Base @225
-    * _0 = const () @226 s1
-      StorageDead(_2) @225
+      StorageLive(_1) @226
+    * _0.base1 = init() -> bb1 @225
+  bb1:
+    * _1 = const () @226 s1
+      StorageDead(_1) @226
       return @226
-unsupported @225

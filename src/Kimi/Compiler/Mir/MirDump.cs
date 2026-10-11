@@ -43,8 +43,9 @@ internal static class MirDump
     /// <param name="text">The output.</param>
     internal static void Write(MirBody body, StringBuilder text)
     {
-        text.Append(body.Key.Kind.ToString().ToLowerInvariant()).Append(' ').Append(body.Key.Decl?.Name ?? "top-level");
-        if (body.Key.Kind is MirBodyKind.Closure or MirBodyKind.DefaultTemplate || body.Key.Decl is null)
+        var name = body.Key.Decl?.Name ?? "top-level"; // A Closure has no name.
+        text.Append(body.Key.Kind.ToString().ToLowerInvariant()).Append(name.Length == 0 ? string.Empty : " ").Append(name);
+        if (body.Key.Kind == MirBodyKind.DefaultTemplate || body.Key.Decl is null)
         {
             text.Append('#').Append(body.Key.Index);
         }

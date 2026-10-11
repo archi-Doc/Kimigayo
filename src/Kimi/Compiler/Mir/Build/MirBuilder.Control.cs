@@ -160,10 +160,55 @@ internal sealed partial class MirBuilder
 
     private bool IsTemp(MirPlace place) => place is { Projection: 0, Root: >= 0 } && this.body.Locals[place.Root].Kind == MirLocalKind.Temp;
 
+    // SPEC 17.5: a verification's condition secured as a bool and observed at its site (testObserve of the bool and the site's location,
+    // which TestCatalog numbers, giving the failure's issue) before its temporaries are cleaned up; on false its message, evaluated and
+    // recorded for the issue (testMessage of a shared view) with its own temporaries cleaned up, then for $require the case's Abort
+    // (testRequireAbort), which has no successor; $expect continues with Unit either way. Its test phases are the backend's (plan 5.6.7).
+    private void Verification(MirPlace destination, TestVerificationKoto verification)
+    {
+        var (failed, after, site) = (this.body.AddBlock(), this.body.AddBlock(), SourceRef.Of(verification));
+        var location = MirOperand.Const(this.body.Const(new(MirConstKind.Location, BoundType.I32, ((long)site.Module << 32) | (uint)site.Id)));
+        var issue = this.Temp(BoundType.Primitives["i64"], verification);
+        var test = this.Test(verification.Condition, failed, after, observe: (issue, location));
+        this.Enter(failed, test);
+        if (verification.Message is { } message)
+        {
+            var temporaries = this.OpenScope(false);
+            var (text, start) = (this.Temp(message), this.arguments.Count);
+            this.Assign(text, message);
+            if (Completes(message))
+            {
+                var view = compilation.Types.Reference(SemanticsKind.Ref, TypeOf(message));
+                this.arguments.Add(MirOperand.Copy(issue));
+                this.arguments.Add(this.Temporary(view, MirRvalue.Ref(MirRefKind.Shared, text, view), message));
+                this.Invoke(this.Temp(BoundType.Unit, message), MirCallee.Intrinsic(IntrinsicId.TestMessage), start, message);
+            }
+
+            this.CloseScope(temporaries);
+        }
+
+        if (verification.IsRequire)
+        {
+            var start = this.arguments.Count;
+            this.arguments.Add(MirOperand.Copy(issue));
+            this.arguments.Add(location);
+            this.Invoke(this.Temp(BoundType.Never, verification), MirCallee.Intrinsic(IntrinsicId.TestRequireAbort), start, verification, true);
+            this.body.Terminate(this.current, MirTerminator.Unreachable(this.Info(verification)));
+        }
+        else
+        {
+            this.Join(after, verification.Message ?? verification.Condition);
+        }
+
+        this.Enter(after, test);
+        this.Unit(destination, verification);
+    }
+
     // SPEC 14.2.3, 3.6.2: a condition evaluated once into a bool, its temporaries cleaned up, then the branch on the bool, whose storage
     // ends in each successor (Enter). A match guard's candidates (SPEC 14.8.3) are shared borrows of the Places its Pattern selected among
-    // its temporaries, pending so that a transfer ends them, and the Subject is read after their cleanup: it stays protected until then.
-    private MirPlace Test(Koto condition, int whenFalse, int whenTrue, BoundMatch? plan = null, int pattern = 0, int start = 0)
+    // its temporaries, pending so that a transfer ends them, and the Subject is read after their cleanup: it stays protected until then. A
+    // verification observes the bool before that cleanup (SPEC 17.5.2).
+    private MirPlace Test(Koto condition, int whenFalse, int whenTrue, BoundMatch? plan = null, int pattern = 0, int start = 0, (MirPlace Issue, MirOperand Site)? observe = null)
     {
         var tested = this.OpenScope(false);
         var test = this.Temp(BoundType.Boolean, condition);
@@ -180,6 +225,13 @@ internal sealed partial class MirBuilder
         }
 
         this.Assign(test, condition);
+        if (observe is (var issue, var site) && Completes(condition))
+        {
+            this.arguments.Add(MirOperand.Copy(test));
+            this.arguments.Add(site);
+            this.Invoke(issue, MirCallee.Intrinsic(IntrinsicId.TestObserve), this.arguments.Count - 2, condition);
+        }
+
         this.arguments.RemoveRange(mark, this.arguments.Count - mark);
         this.CloseScope(temporaries);
         if (plan is not null)

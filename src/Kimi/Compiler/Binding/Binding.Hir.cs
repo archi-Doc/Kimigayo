@@ -187,8 +187,9 @@ public sealed partial class Binding
                     return position;
                 case ForKoto loop:
                     return ReferenceEquals(node, loop.Iterable) || ReferenceEquals(node, loop.Body) || ReferenceEquals(node, loop.Iteration?.Receiver) ? position : HirPosition.None;
-                case InvocationKoto call:
-                    return ReferenceEquals(node, call.Method) && CallPlan.Of(call)?.Kind != CalleeKind.Value ? position | HirPosition.Covered : position;
+                case InvocationKoto call: // A value call's callee is evaluated unless its receiver operation takes what the callee reaches.
+                    return ReferenceEquals(node, call.Method) && (CallPlan.Of(call) is not { Kind: CalleeKind.Value } plan ||
+                        (plan.ReceiverOperation.Source is { } source && !ReferenceEquals(source, node))) ? position | HirPosition.Covered : position;
                 case MacroKoto macro:
                     return macro.Formatting is null ? position : position | HirPosition.Covered;
                 case GenericsKoto generics:
@@ -258,7 +259,7 @@ public sealed partial class Binding
             NoInitKoto => HirOp.NoInit,
             TestVerificationKoto => HirOp.TestVerification,
             FieldKoto => HirOp.Let,
-            FunctionKoto => HirOp.Closure,
+            FunctionKoto closure => BoundClosure.Of(closure) is null ? HirOp.Unset : HirOp.Closure, // Without its definition (ClosureDef).
             IsKoto { IsRuntimeTest: true } => HirOp.RuntimeTypeTest,
             IndexKoto index => (binding.IndexerCall(index, false) ?? binding.IndexerCall(index, true) ?? binding.ViewRangeCall(index)) is null ? HirOp.Index : HirOp.Call,
             RangeKoto or FromEndIndexKoto => CallPlan.Of(node) is null ? HirOp.Range : HirOp.Call,
@@ -471,16 +472,19 @@ public sealed partial class Binding
         // A body or operand that supplies its construct's value (SPEC 14.9).
         private void Result(Koto? source) => this.Take(source is not null && KotoHelper.IsValueContext(source) ? source : null);
 
-        // A consumed child: an adaptation Binding recorded at the node itself (at its fixed expected Type, or as a receiver) wins over its
-        // consumer's operation. A Place adapted or used in place is not acquired, an adapted value is a Temporary, and an unadapted one taken
-        // by value is acquired by the bare rule. A built-in operator's operand that is not Copy, a comparison's, is inspected through a shared
-        // Loan from its evaluation instead (SPEC 13.4): a Place in place, a value other than a literal in its temporary.
+        // A consumed child: an adaptation Binding recorded at the node itself (at its fixed expected Type, or as a receiver; an erasure to its
+        // Function Type, SPEC 7.6.4) wins over its consumer's operation. A Place adapted or used in place is not acquired, an adapted value is
+        // a Temporary, and an unadapted one taken by value, or erased, is acquired by the bare rule. A built-in operator's operand that is not
+        // Copy, a comparison's, is inspected through a shared Loan from its evaluation instead (SPEC 13.4): a Place in place, a value other
+        // than a literal in its temporary.
         private void Take(Koto? child, HirAdaptation adaptation = HirAdaptation.None, bool inPlace = false, bool inspect = false)
         {
             if (child is not null)
             {
-                adaptation = binding.adaptations.TryGetValue(child, out var recorded) ? HirAdjust.Of(recorded, child.BoundType) : adaptation;
-                var acquire = adaptation != HirAdaptation.None || inPlace ? this.IsPlace(child) ? HirAcquire.None : HirAcquire.Temporary : this.Bare(child);
+                adaptation = binding.adaptations.TryGetValue(child, out var recorded) ? HirAdjust.Of(recorded, child.BoundType)
+                    : HirTables.ErasedType(child) is not null ? HirAdaptation.Erasure : adaptation;
+                var acquire = adaptation is not (HirAdaptation.None or HirAdaptation.Erasure) || inPlace ? this.IsPlace(child) ? HirAcquire.None : HirAcquire.Temporary
+                    : this.Bare(child);
                 if (inspect && adaptation == HirAdaptation.None && (acquire is HirAcquire.Move or HirAcquire.Reborrow or HirAcquire.ByCase ||
                     (acquire == HirAcquire.Temporary && child is not StringLiteralKoto && child.BoundType is { } type && binding.ProveCopy(type, child) != ConstraintProof.Proven)))
                 {

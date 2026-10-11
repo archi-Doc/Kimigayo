@@ -1,0 +1,7 @@
+func helper(x: i32) -> i32 => x + 1
+#Test
+func sample()
+    let text = "message"
+    $expect(helper(1) == 2)
+    $expect(helper(2) == 3, message: text)
+    $require(helper(3) > 0, message: "fail")

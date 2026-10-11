@@ -14,7 +14,8 @@ internal sealed partial class BodyLowering
     {
         failure = null;
         var operation = body.Operations[id];
-        if (operation.Source is not TestVerificationKoto { SiteId: >= 0 } node || !TestDefinition.IsIncluded(node) || !TestDefinition.IsTestOnly(node))
+        if (operation.Source is not TestVerificationKoto node || node.CodeContext.Compilation.Tests.SiteOf(SourceRef.Of(node)) is not (>= 0 and var site) ||
+            !TestDefinition.IsIncluded(node) || !TestDefinition.IsTestOnly(node))
         {
             return Fail("Verification requires a verified test site.", out failure);
         }
@@ -27,7 +28,7 @@ internal sealed partial class BodyLowering
                     return !body.IsReachable(id) || Fail("Verification lacks a secured condition.", out failure);
                 }
 
-                function.AddCall(id, TestObserve, [Operand(body, Input(body, id, 0)), new(EmissionOperandKind.Integer, node.SiteId)]);
+                function.AddCall(id, TestObserve, [Operand(body, Input(body, id, 0)), new(EmissionOperandKind.Integer, site)]);
                 var condition = Definition(body, Input(body, id, 0));
                 if (body.Values[condition] is { Kind: OwnershipValueKind.Binary, Operator: KotoKind.EqualsEquals or KotoKind.ExclamationEquals or KotoKind.LessThan or KotoKind.LessThanEquals or KotoKind.GreaterThan or KotoKind.GreaterThanEquals })
                 {
@@ -53,7 +54,7 @@ internal sealed partial class BodyLowering
                 function.AddCall(id, TestMessage, [new(EmissionOperandKind.Value, operation.Input), new(EmissionOperandKind.SlotAddress, operation.Place)]);
                 break;
             case OwnershipOperationKind.TestAbort:
-                function.AddCall(id, TestAbort, [new(EmissionOperandKind.Value, operation.Input), new(EmissionOperandKind.Integer, node.SiteId)]);
+                function.AddCall(id, TestAbort, [new(EmissionOperandKind.Value, operation.Input), new(EmissionOperandKind.Integer, site)]);
                 function.Add(EmissionOpcode.Unreachable, id);
                 break;
         }

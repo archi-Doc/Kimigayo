@@ -1,0 +1,21 @@
+group Registry
+    public var hits: i32 = 0
+    public let limit: i32 = Registry.seed() + 1
+    public func seed() -> i32 => 4
+open struct Device
+    public var level: i32
+        set(value: i32) -> ()
+            require value >= 0 else => $abort("range")
+            storage = value
+    public computed doubled: i32
+        get() -> i32 => self.level * 2
+    public virtual func describe(self: objref/Self) -> i32 => self.level
+    public init(level: i32)
+        self.level = level
+struct Lamp : Device
+    public init() : base(1) => ()
+    override func describe(self: objref/Self) -> i32 => base.describe() + 1
+func use(device: uniq/Device) -> i32
+    device.level = 30
+    Registry.hits += 1
+    return device.doubled + Registry.limit + Registry.hits

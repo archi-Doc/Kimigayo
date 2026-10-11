@@ -4,12 +4,13 @@
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>The key of a MIR body (R3 decision 6): its definition's symbol, which body of it and the index of a Closure or default
-/// template (0 otherwise). A module's top-level statements (SPEC 22.2.1) have no symbol; their index is the module's ordinal. R7's
-/// declaration table replaces the symbol.</summary>
+/// <summary>The key of a MIR body (R3 decision 6): its definition's symbol (a Closure's own, an accessor's the function its calls
+/// target), which body of it and the index of a default template (0 otherwise), so that a callee's symbol and its declaration name its
+/// body. A module's top-level statements (SPEC 22.2.1) have no symbol; their index is the module's ordinal. R7's declaration table
+/// replaces the symbol.</summary>
 /// <param name="Decl">The definition, or null for a module's top-level statements.</param>
 /// <param name="Kind">The body of the definition.</param>
-/// <param name="Index">The index of a Closure or default template, or the module of top-level statements.</param>
+/// <param name="Index">The index of a default template, or the module of top-level statements.</param>
 internal readonly record struct MirDefKey(BindingSymbol? Decl, MirBodyKind Kind, int Index = 0);
 
 /// <summary>The MIR bodies of a compilation by <see cref="MirDefKey"/>, with the records their construction and validation made.

@@ -8,12 +8,12 @@ namespace Kimi.Compiler.Mir;
 // Calls (SPEC 7.3).
 internal sealed partial class MirBuilder
 {
-    // A node's call (CallPlan.Of; a Property read's getter; a user or view index's selected call, SPEC 4.6.9). Not built yet: a
-    // constructor's (U13) and omitted defaults (U14).
+    // A node's call (CallPlan.Of; a Property read's getter; a user or view index's selected call, SPEC 4.6.9); a constructor's builds its
+    // object in the destination (SPEC 6.2.3.2). Not built yet: omitted defaults (U14).
     private void Call(MirPlace destination, Koto node)
     {
         var call = ExpansionPlan.Of(node)?.Second ?? CallPlan.Of(node)!;
-        if (!call.DefaultArguments.IsEmpty || (call.Kind != CalleeKind.Value && CallPlan.Parameter(call.Target, -1) is not null))
+        if (!call.DefaultArguments.IsEmpty)
         {
             this.Unsupported(node, destination);
             return;
@@ -43,7 +43,7 @@ internal sealed partial class MirBuilder
         var (source, pending) = (call.ReceiverOperation.Source ?? call.CalleeValue, this.arguments.Count);
         if (function is null)
         {
-            this.arguments.Add(this.Operand(source, null, true)); // The callee value, pending while the arguments are evaluated.
+            this.arguments.Add(this.Operand(source, call.ReceiverOperation.AdaptedType, true)); // The callee value, pending while the arguments are evaluated.
         }
 
         var (start, completes) = (this.arguments.Count, function is not null || Completes(source));
@@ -83,7 +83,7 @@ internal sealed partial class MirBuilder
         var callee = disposition.Kind == DispositionKind.Intrinsic ? MirCallee.Intrinsic(disposition.Id, subst) : call.Kind switch
         {
             CalleeKind.Requirement => new(MirCalleeKind.Requirement, function, subst, Contract: call.RequirementContract),
-            CalleeKind.Virtual when ReferenceEquals(direct, function) => new(MirCalleeKind.Virtual, function, subst),
+            CalleeKind.Virtual when !call.VirtualIsDirect => new(MirCalleeKind.Virtual, function, subst),
             CalleeKind.Value => new(MirCalleeKind.Value),
             _ => new MirCallee(MirCalleeKind.Fn, direct, subst),
         };

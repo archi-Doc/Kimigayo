@@ -77,6 +77,12 @@ internal sealed partial class MirBuilder
             case HirOp.Require: // A statement: it leaves no value.
                 this.Require((RequireKoto)node);
                 break;
+            case HirOp.TestVerification:
+                this.Verification(destination, (TestVerificationKoto)node);
+                break;
+            case HirOp.Closure:
+                this.Closure(destination, (FunctionKoto)node);
+                break;
             case HirOp.Unsafe:
                 this.Block(destination, ((UnsafeBlockKoto)node).Body, MirScopeKind.Unsafe);
                 break;
@@ -145,55 +151,49 @@ internal sealed partial class MirBuilder
         }
     }
 
-    // A node's value as its consumer takes it (plan: Adjust to operand): a Place Copied, moved, acquired by its pair layer's case or, a
-    // stored exclusive reference, Reborrowed in its own mode (SPEC 15.1.5); a literal as its constant, another value through a temp; an
-    // adapted Place or value as Adapt supplies it for the expected Type, a call's input as the call's (input).
+    // A node's value as its consumer takes it (plan: Adjust to operand): a literal as its constant, another value through a temp, a Place,
+    // or a value held in a temp, as Acquire takes it for the expected Type, a call's input as the call's (input).
     private MirOperand Operand(Koto node, BoundType? expected = null, bool input = false)
     {
         var adjust = HirTables.AdjustOf(node);
-        if (adjust.Adaptation != HirAdaptation.None)
+        if (adjust is { Acquire: HirAcquire.Temporary or HirAcquire.None, Adaptation: HirAdaptation.None })
         {
-            return this.Adapt(node, adjust, expected, input);
+            return HirTables.Op(node) == HirOp.Literal && this.Literal(node) is var constant and >= 0 ? MirOperand.Const(constant) : MirOperand.Move(this.Value(node));
         }
 
-        switch (adjust.Acquire)
+        if (adjust.Acquire == HirAcquire.Unset || adjust.Adaptation == HirAdaptation.StorageProjection || (adjust.Adaptation == HirAdaptation.BaseBorrow &&
+            expected?.Components is not [_]) || (adjust.Adaptation == HirAdaptation.Erasure && expected is null))
         {
-            case HirAcquire.Copy or HirAcquire.Move or HirAcquire.ByCase:
-                return this.Acquire(adjust.Acquire, this.Place(node));
-            case HirAcquire.Reborrow:
-                return this.Temporary(TypeOf(node), MirRvalue.Ref(MirRefKind.Uniq, this.body.Project(this.Place(node), MirProjectionKind.Deref, 0), TypeOf(node)), node);
-            case HirAcquire.Temporary or HirAcquire.None:
-                return HirTables.Op(node) == HirOp.Literal && this.Literal(node) is var constant and >= 0 ? MirOperand.Const(constant) : MirOperand.Move(this.Value(node));
-            default: // An Error proof left the acquisition unset.
-                return MirOperand.Move(this.Unsupported(node));
+            return MirOperand.Move(this.Unsupported(node)); // An Error proof left the acquisition unset; a projected receiver's storage is its Field's (Member).
         }
+
+        return this.Acquire(adjust, adjust.Acquire == HirAcquire.Temporary ? this.Value(node) : this.Place(node), expected, input, node);
     }
 
-    // A Place Copied, moved or acquired as its pair layer's case decides.
-    private MirOperand Acquire(HirAcquire acquire, MirPlace place)
-        => acquire == HirAcquire.ByCase ? MirOperand.PairAcquire(this.Binder(this.body.TypeOf(place)), place) : new(acquire == HirAcquire.Copy ? MirOperandKind.Copy : MirOperandKind.Move, place);
-
-    // SPEC 10.2: an adapted Place, or value in a temp: the Scalar its reference layers end in, Copied; a Closure or function item erased to
-    // its Function Type; else a reference, of the expected Type or the one its mode forms, to the Place itself (a shared or exclusive
-    // borrow), to the referent its layers reach (ReferenceRead), to an object handle's payload or to the base the expected Type names. An
-    // implicit exclusive borrow of a call's input is two-phase: reserved here, activated at the Call (SPEC 15.6.7).
-    private MirOperand Adapt(Koto node, HirAdjust adjust, BoundType? expected, bool input)
+    // A Place as an acquisition and an adaptation take it: Copied, moved, acquired by its pair layer's case or, a stored exclusive
+    // reference, Reborrowed in its own mode (SPEC 15.1.5). SPEC 10.2: adapted, the Scalar its reference layers end in, Copied; a Closure or
+    // function item erased to its Function Type; else a reference, of the expected Type or the one its mode forms, to the Place itself (a
+    // shared or exclusive borrow), to the referent its layers reach (ReferenceRead), to an object handle's payload or to the base the
+    // expected Type names. An implicit exclusive borrow of a call's input is two-phase: reserved here, activated at the Call (SPEC 15.6.7).
+    private MirOperand Acquire(HirAdjust adjust, MirPlace place, BoundType? expected, bool input, Koto node)
     {
-        var adaptation = adjust.Adaptation;
+        var (adaptation, type) = (adjust.Adaptation, this.body.TypeOf(place) ?? BoundType.Unit);
         var target = expected?.Components is [var referent] ? referent : null;
-        if (adaptation == HirAdaptation.StorageProjection || (adaptation == HirAdaptation.BaseBorrow && target is null) ||
-            (adaptation == HirAdaptation.Erasure && (expected is null || adjust.Acquire != HirAcquire.Temporary)))
-        {
-            return MirOperand.Move(this.Unsupported(node)); // A projected receiver's storage is its Field's (Member).
-        }
-
-        var place = adjust.Acquire == HirAcquire.Temporary ? this.Value(node) : this.Place(node);
         switch (adaptation)
         {
+            case HirAdaptation.None:
+                return adjust.Acquire switch
+                {
+                    HirAcquire.ByCase => MirOperand.PairAcquire(this.Binder(type), place),
+                    HirAcquire.Reborrow => this.Temporary(type, MirRvalue.Ref(MirRefKind.Uniq, this.body.Project(place, MirProjectionKind.Deref, 0), type), node),
+                    HirAcquire.Copy => MirOperand.Copy(place),
+                    _ => MirOperand.Move(place),
+                };
             case HirAdaptation.ReferentRead:
                 return MirOperand.Copy(this.Follow(place, 16, expected));
-            case HirAdaptation.Erasure:
-                return this.Temporary(expected!, MirRvalue.Cast(MirCastKind.Erasure, this.body.AddOperand(MirOperand.Move(place)), expected!) with { Proven = true }, node);
+            case HirAdaptation.Erasure: // SPEC 7.6.4: of the value its ordinary acquisition gives.
+                var source = this.Acquire(adjust with { Adaptation = HirAdaptation.None }, place, null, input, node);
+                return this.Temporary(expected!, MirRvalue.Cast(MirCastKind.Erasure, this.body.AddOperand(source), expected!) with { Proven = true }, node);
             case HirAdaptation.ReferenceRead:
                 place = this.Follow(place, 16, target);
                 break;
@@ -203,7 +203,7 @@ internal sealed partial class MirBuilder
             case HirAdaptation.BaseBorrow:
                 place = this.Follow(place, 16);
                 var depth = 0;
-                for (var type = this.body.TypeOf(place); type is not null && !ReferenceEquals(type, target); type = AdtDef.Base(type))
+                for (var layer = this.body.TypeOf(place); layer is not null && !ReferenceEquals(layer, target); layer = AdtDef.Base(layer))
                 {
                     depth++;
                 }
@@ -212,7 +212,8 @@ internal sealed partial class MirBuilder
                 break;
         }
 
-        var exclusive = adaptation == HirAdaptation.ExclusiveBorrow || (adaptation is HirAdaptation.ReferenceRead or HirAdaptation.BaseBorrow && expected?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq);
+        var exclusive = adaptation == HirAdaptation.ExclusiveBorrow || (adaptation is HirAdaptation.ReferenceRead or HirAdaptation.BaseBorrow or HirAdaptation.PayloadProjection &&
+            expected?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq);
         var reference = expected ?? compilation.Types.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, this.body.TypeOf(place) ?? BoundType.Unit);
         return this.Temporary(reference, MirRvalue.Ref(!exclusive ? MirRefKind.Shared : input ? MirRefKind.TwoPhaseUniq : MirRefKind.Uniq, place, reference), node);
     }
@@ -376,7 +377,8 @@ internal sealed partial class MirBuilder
         var start = this.arguments.Count;
         for (var i = 0; i < elements?.Count; i++)
         {
-            this.arguments.Add(this.Operand(elements![i]));
+            var element = type.Kind == BoundTypeKind.Tuple ? i : 0; // The element's Type, which a Type Binding rejected may not have.
+            this.arguments.Add(this.Operand(elements![i], element < type.Components.Count ? type.Components[element] : null));
         }
 
         // SPEC 4.3.3: a fill construction acquires its value once, even for length 0, and copies it into each element.
@@ -399,15 +401,35 @@ internal sealed partial class MirBuilder
 
         foreach (ref readonly var payload in construction is null ? default : construction.PayloadOperations)
         {
-            this.arguments.Add(this.Operand(payload.Source!));
+            this.arguments.Add(this.Operand(payload.Source!, payload.AdaptedType ?? payload.ParameterType));
         }
 
         var (kind, count) = (construction is not null ? MirAggregateKind.Adt : node is TupleLiteralKoto ? MirAggregateKind.Tuple : MirAggregateKind.FixedArray, this.arguments.Count - start);
         this.Set(destination, MirRvalue.Aggregate(kind, this.Flush(start), count, type, construction?.Case.Ordinal ?? 0), node);
     }
 
+    // SPEC 7.6.1, 7.6.2: creating a Closure evaluates its captures, not its body: each environment binding, in entry order, from the Place
+    // of its source binding (Bound) as its entry acquires it, the Closure value their aggregate. A source not bound here is unsupported.
+    private void Closure(MirPlace destination, FunctionKoto closure)
+    {
+        var (captures, start) = (BoundClosure.Of(closure)!.Captures, this.arguments.Count);
+        for (var i = 0; i < captures.Count; i++)
+        {
+            var type = captures[i].Environment.Type ?? BoundType.Unit;
+            if (this.Bound(captures[i].Source) is not { } place)
+            {
+                this.Unsupported(closure, place = this.Temp(type, closure));
+            }
+
+            this.arguments.Add(this.Acquire(captures[i].Adjust, place, type, false, closure));
+        }
+
+        this.Set(destination, MirRvalue.Aggregate(MirAggregateKind.Closure, this.Flush(start), captures.Count, TypeOf(closure)), closure);
+    }
+
     // SPEC 13.7.1: the value secured first, then the target located, its old value dropped where its Type may need it, and the value placed;
-    // a target that is not a Place is a Property's, whose setter (its last call, after any getter) takes the value, evaluated first.
+    // a target that is not a Place is a Property's, whose setter (its last call, after any getter) takes the value, evaluated first. An
+    // assignment to a target Binding rejected is derived from that error.
     private void Replace(MirPlace destination, BinaryKoto assignment)
     {
         if (HirTables.PlaceOf(assignment.Left).Kind is HirPlaceKind.Unset or HirPlaceKind.Value)
@@ -415,6 +437,10 @@ internal sealed partial class MirBuilder
             if ((CallPlan.Of(assignment.Left, 1) ?? CallPlan.Of(assignment.Left)) is { } setter)
             {
                 this.Call(destination, setter, assignment, assignment.Right);
+            }
+            else if (HirTables.Op(assignment.Left) == HirOp.Error)
+            {
+                this.Opaque(assignment, destination);
             }
             else
             {

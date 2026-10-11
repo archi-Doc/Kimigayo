@@ -33,8 +33,6 @@ public sealed class TestVerificationKoto : Koto
     /// <summary>Gets the optional lazy message.</summary>
     public Koto? Message { get; private set; }
 
-    internal int SiteId { get; set; } = -1;
-
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {

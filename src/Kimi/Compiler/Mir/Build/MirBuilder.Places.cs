@@ -8,9 +8,6 @@ namespace Kimi.Compiler.Mir;
 // through the Layers its consumer follows.
 internal sealed partial class MirBuilder
 {
-    // Whether the body has an argument, its receiver where a Field of the implicit self or a capture reaches one (local 1).
-    private bool Receiving => this.body.Locals.Length > 1 && this.body.Locals[1].Kind == MirLocalKind.Arg;
-
     // The one operand of a group, a borrow, a conversion or a Deref.
     private static Koto Child(Koto node) => node switch { LabeledKoto label => label.Target, BinaryKoto binary => binary.Left, _ => ((UnaryKoto)node).Operand };
 
@@ -82,36 +79,53 @@ internal sealed partial class MirBuilder
         return place;
     }
 
-    // A name by its Res: a local or parameter, a static after its first-access check, a capture in the environment the Closure's receiver
-    // reaches, or a Field of the receiver argument (an accessor's storage, SPEC 11.2).
+    // A name by its Res: a local, parameter or environment binding, a static after its first-access check, or a Field of the receiver
+    // (an accessor's storage, SPEC 11.2).
     private MirPlace Named(Koto node)
     {
         var symbol = HirTables.Symbol(node);
         switch (HirTables.ResOf(node))
         {
-            case HirRes.Local or HirRes.Param when symbol is not null && this.locals.TryGetValue(symbol, out var local):
-                return new(local);
+            case HirRes.Local or HirRes.Param or HirRes.Capture when symbol is not null && this.Bound(symbol) is { } place:
+                return place;
             case HirRes.Static when symbol is not null:
                 return this.Static(symbol, node);
-            case HirRes.Capture when this.Receiving && this.declaration is FunctionKoto { IsAnonymous: true } closure && BoundClosure.Of(closure) is { } captures:
-                var index = captures.Captures.Count - 1;
-                while (index >= 0 && !ReferenceEquals(captures.Captures[index].Environment, symbol))
-                {
-                    index--;
-                }
-
-                return index < 0 ? this.Unsupported(node) : this.body.Project(this.Follow(new(1), 16), MirProjectionKind.Field, index);
-            case HirRes.Field when symbol is not null && this.Receiving:
-                return this.Field(this.Follow(new(1), 16), symbol.Kind == BindingSymbolKind.Storage ? HirTables.Symbol(symbol.Declaration) : symbol, node);
+            case HirRes.Field when symbol is not null && this.receiver >= 0:
+                return this.Field(this.Follow(new(this.receiver), 16), symbol.Kind == BindingSymbolKind.Storage ? HirTables.Symbol(symbol.Declaration) : symbol, node);
             default:
                 return this.Unsupported(node); // A prepared parameter of a default (U14).
         }
     }
 
+    // The Place of a local or a parameter, or in a Closure's body of an environment binding: its capture's Field of the environment the
+    // receiver reaches (SPEC 7.6.2); null for another symbol.
+    private MirPlace? Bound(BindingSymbol symbol)
+    {
+        if (this.locals.TryGetValue(symbol, out var local))
+        {
+            return new(local);
+        }
+
+        var captures = this.receiver > 0 && this.declaration is FunctionKoto { IsAnonymous: true } closure ? BoundClosure.Of(closure)?.Captures : null;
+        var index = (captures?.Count ?? 0) - 1;
+        while (index >= 0 && !ReferenceEquals(captures![index].Environment, symbol))
+        {
+            index--;
+        }
+
+        return index < 0 ? null : this.body.Project(this.Follow(new(this.receiver), 16), MirProjectionKind.Field, index);
+    }
+
     // SPEC 22.2.3, plan 5.6.6: a static's Place, after the check of its state that initializes it at its first access, staticEnsure of its
-    // slot in the body's statics.
+    // slot in the body's statics, which names its initializer's body; a static whose declaration Binding rejected has none, and its use is
+    // derived from that error.
     private MirPlace Static(BindingSymbol symbol, Koto node)
     {
+        if (HirTables.Op(symbol.Declaration!) != HirOp.Body)
+        {
+            return this.Unsupported(node, true);
+        }
+
         var (place, start) = (this.StaticRoot(symbol), this.arguments.Count);
         this.arguments.Add(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize, ~place.Root))));
         this.Invoke(this.Temp(BoundType.Unit, node), MirCallee.Intrinsic(IntrinsicId.StaticEnsure), start, node);

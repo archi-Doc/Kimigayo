@@ -295,7 +295,7 @@ internal sealed partial class MirBuilder
         var start = this.arguments.Count;
         foreach (var element in array.Elements)
         {
-            this.arguments.Add(this.Operand(element));
+            this.arguments.Add(this.Operand(element, type.Components[0]));
         }
 
         var (count, view) = (this.arguments.Count - start, compilation.Types.Reference(SemanticsKind.Uniq, type));

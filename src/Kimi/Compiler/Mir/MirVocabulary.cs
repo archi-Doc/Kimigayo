@@ -173,10 +173,10 @@ internal enum MirScopeKind : byte
 internal enum MirBodyKind : byte
 {
     Fn,
-    Closure, // The index-th closure of the definition.
-    Getter,
+    Closure, // A Closure's body, keyed by the Closure's own symbol.
+    Getter, // An accessor's, keyed by the function its calls target.
     Setter,
     StaticInit,
     DefaultTemplate, // The template of the index-th parameter's default (plan 5.6.2).
-    Test,
+    Test, // A #Test function's, which only the test entry calls.
 }

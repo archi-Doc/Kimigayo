@@ -14,7 +14,8 @@ namespace XunitTest;
 public sealed class MirBuildTest(ITestOutputHelper output)
 {
     // V9: builds every body of the corpus and counts the bodies, those with an Opaque value and the Unsupported records per HirOp; with
-    // KIMI_MIR_CENSUS naming a file, writes the census there as TSV. Every built body is valid.
+    // KIMI_MIR_CENSUS naming a file, writes the census there as TSV. Every built body is valid, and every static a body reaches through
+    // staticEnsure and every Closure it creates has its body (plan 5.6.6).
     [Fact]
     public void CorpusBuildsValidBodies()
     {
@@ -29,6 +30,20 @@ public sealed class MirBuildTest(ITestOutputHelper output)
             int[] counts = [0, 0, 0, 0];
             foreach (var body in program.Bodies)
             {
+                foreach (var block in body.Blocks)
+                {
+                    var ensured = block.Terminator is not { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.StaticEnsure } } ensure ||
+                        program[new(body.Statics[(int)body.Consts[body.Operands[ensure.Start].Arg].Bits].Symbol, MirBodyKind.StaticInit)] is not null;
+                    Assert.True(ensured, $"{name}: a static without its initializer");
+                }
+
+                foreach (var statement in body.Statements)
+                {
+                    var defined = statement.Rvalue is not { Kind: MirRvalueKind.Aggregate, Op: (byte)MirAggregateKind.Closure, Type: var closure } ||
+                        program[new(closure!.Symbol, MirBodyKind.Closure)] is not null;
+                    Assert.True(defined, $"{name}: a Closure without its body");
+                }
+
                 if (body.Source.Module == module.Syntax.Module)
                 {
                     counts[0]++;
@@ -67,26 +82,28 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.True(totals[0] > 500, $"{totals[0]} bodies");
     }
 
-    // The same compilation builds the same MIR, fresh or after a warm rebind, and a fresh compilation of the same source does too.
+    // The same compilation builds the same MIR, fresh or after a warm rebind, and a fresh compilation of the same source does too; Milestone38
+    // keeps Opaque values where Binding rejected it.
     [Fact]
     public void BuildIsDeterministic()
     {
-        var first = Dump(SemanticSnapshotTest.Bind("milestone/Milestone26").Compilation);
-        var (c, _) = SemanticSnapshotTest.Bind("milestone/Milestone26");
+        var first = Dump(SemanticSnapshotTest.Bind("milestone/Milestone38").Compilation);
+        var (c, _) = SemanticSnapshotTest.Bind("milestone/Milestone38");
         Assert.Equal(first, Dump(c));
         c.Binding.Bind(BindingMode.Final);
         Assert.Equal(first, Dump(c));
         Assert.Contains("opaque", first, StringComparison.Ordinal);
     }
 
-    // Plan 6.2: a form without a building rule is one record at its location, however many bodies meet it, and an Opaque value naming the
-    // locals its syntax touches; Binding's Error is a derived Opaque without a record; building goes on after both. The omitted default
-    // stays unbuilt until the default templates (R3 U14).
+    // Plan 6.2: a form without a building rule is one record at its location, however many bodies meet it (a Field initializer's, built
+    // into each constructor), and an Opaque value naming the locals its syntax touches; Binding's Error is a derived Opaque without a
+    // record; building goes on after both. The omitted default stays unbuilt until the default templates (R3 U14).
     [Fact]
     public void UnsupportedFormsAreOpaqueAtOneRecord()
     {
-        var c = Compile("struct Point\n    public var x: i32 = 7\n    public init() => ()\n    public init(y: i32) => ()\n" +
-            "func scale(x: i32, factor: i32 = 2) -> i32 => x * factor\nfunc f(a: i32, b: i32) -> i32\n    let c = scale(a + b)\n    return b\nfunc g() -> i32 => missing\n");
+        var c = Compile("group G\n    public func scale(x: i32, factor: i32 = 2) -> i32 => x * factor\n" +
+            "struct Point\n    public var x: i32 = G.scale(7)\n    public init() => ()\n    public init(y: i32) => ()\n" +
+            "func f(a: i32, b: i32) -> i32\n    let c = G.scale(a + b)\n    return b\nfunc g() -> i32 => missing\n");
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var bodies = program.Bodies.ToArray().Where(static x => x.Key.Decl?.Name is "f" or "g").ToDictionary(static x => x.Key.Decl!.Name);
@@ -95,7 +112,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.Equal([1, 2], compare.OpaqueRoots.ToArray());
         Assert.Contains(compare.Blocks.ToArray(), static x => x.Terminator.Kind == MirTerminatorKind.Return);
 
-        var field = c.SyntaxOf(Assert.Single(program.Unsupported, x => x.Module == 0 && c.SyntaxOf(x) is PropertyKoto));
+        var field = c.SyntaxOf(Assert.Single(program.Unsupported, x => x.Module == 0 && c.SyntaxOf(x).ToString() == "G.scale(7)"));
         Assert.Equal(2, program.Bodies.ToArray().Count(x => x.OpaqueSites.ToArray().Any(y => ReferenceEquals(c.SyntaxOf(y.Source), field))));
         var error = bodies["g"];
         Assert.Equal(HirOp.Error, HirTables.Op(c.SyntaxOf(error.OpaqueSites[0].Source)));
@@ -156,13 +173,14 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         }));
     }
 
-    internal static Compilation Compile(string source)
+    internal static Compilation Compile(string source, bool test = false)
     {
         var c = Compilation.CreateForTest();
+        c.IsTestBuild = test;
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
         c.Bind();
-        c.Binding.CheckStartup(OutputKind.Application);
+        _ = test ? c.Binding.CheckTestStartup() : c.Binding.CheckStartup(OutputKind.Application);
         return c;
     }
 

@@ -1,0 +1,19 @@
+group G
+    public func seed() -> i32 => 3
+open struct Base
+    public var count: i32 = G.seed()
+    public let name: string
+    protected init(name: string)
+        self.name = name@move
+struct Leaf : Base
+    public var extra: i32 = 7
+    public init(name: string, extra: i32) : base(name@move)
+        self.extra = extra
+struct Plain
+    public var x: i32 = 1
+func make() -> i32
+    let leaf = Leaf.init("a", 2)
+    let plain = Plain.init()
+    let shared = Kimi.Intrinsics.makeObj<Leaf>(Leaf.init("b", 3))
+    let counted = Kimi.Intrinsics.makeRc(Plain.init())
+    return leaf.extra + plain.x
