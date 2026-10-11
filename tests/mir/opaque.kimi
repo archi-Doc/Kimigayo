@@ -1,4 +1,6 @@
 func sum(a: i32, b: i32) -> i32
-    let c = a + b
+    let c = match a
+        0 => b
+        _ => a
     return c
 func fail() -> i32 => missing

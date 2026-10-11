@@ -10,6 +10,7 @@ namespace XunitTest;
 /// <summary>The MIR dump goldens (R3 V10): each program of <c>tests/mir</c> dumps the MIR of its module as its <c>.mir</c> file says, and a
 /// body with every statement, rvalue, terminator, operand and projection form as <c>every-form.mir</c> says. <c>KIMI_MIR_GOLDEN=write</c>
 /// writes the goldens instead.</summary>
+[Collection(nameof(MirValidatorTest))]
 public sealed class MirDumpTest
 {
     public static TheoryData<string> Programs

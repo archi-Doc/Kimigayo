@@ -7,7 +7,7 @@ namespace Kimi.Compiler.Mir;
 
 /// <summary>The MIR builder (plan P6, R3 shadow): once per Binding pass it publishes the HIR, builds one body for each definition the
 /// HIR names (<see cref="HirOp.Body"/>: a function, an accessor, a static's initializer) and validates it. It reads syntax children,
-/// the HIR columns and plans and <see cref="TyCtxt"/> only. A form no rule builds goes through <see cref="Unsupported"/>, and building
+/// the HIR columns and plans and <see cref="TyCtxt"/> only. A form no rule builds goes through <see cref="Unsupported(Koto, MirPlace)"/>, and building
 /// continues; an Error node of Binding becomes a derived Opaque. The program, its bodies and the builder's scratch are reused, so a warm
 /// rebuild allocates nothing.</summary>
 /// <param name="compilation">The compilation.</param>
@@ -217,7 +217,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     // for the checks to the code after it.
     private void Return(JumpKoto jump)
     {
-        var value = jump.Expression is { } expression ? this.Operand(expression) : this.UnitOperand();
+        var value = jump.Expression is { } expression ? this.Operand(expression, this.body.Locals[0].Type) : this.UnitOperand();
         var (exit, next) = (this.body.AddBlock(), this.body.AddBlock());
         this.body.Terminate(this.current, MirTerminator.Goto(exit, this.Info(jump), next));
         this.body.Push(exit, MirStatement.Assign(new(0), MirRvalue.Use(this.body.AddOperand(value)), this.Info(jump)));
@@ -249,15 +249,21 @@ internal sealed partial class MirBuilder(Compilation compilation)
         }
     }
 
-    // The locals and parameters a replaced node's syntax names (their Res), the roots of its Opaque site.
+    // The locals, parameters and statics a replaced node's syntax names (their Res), the roots of its Opaque site.
     private sealed class Roots(MirBuilder builder) : KotoVisitor
     {
         public override void Visit(Koto node)
         {
-            if (HirTables.ResOf(node) is HirRes.Local or HirRes.Param && HirTables.Symbol(node) is { } symbol && builder.locals.TryGetValue(symbol, out var local) &&
-                !builder.roots.Contains(local))
+            var root = HirTables.Symbol(node) is not { } symbol ? 0 : HirTables.ResOf(node) switch
             {
-                builder.roots.Add(local);
+                HirRes.Local or HirRes.Param when builder.locals.TryGetValue(symbol, out var local) => local,
+                HirRes.Static => builder.StaticRoot(symbol).Root,
+                _ => 0,
+            };
+
+            if (root != 0 && !builder.roots.Contains(root))
+            {
+                builder.roots.Add(root);
             }
 
             node.VisitChildren(this);

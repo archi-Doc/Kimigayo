@@ -223,7 +223,7 @@ internal static class MirUses
                 Effect(row.Effects, -1, ref visitor);
                 break;
             case MirRvalueKind.Cast:
-                Effect((MirCastKind)rvalue.Op switch { MirCastKind.IntToPointer => MirEffect.IntToPointer, MirCastKind.Integer or MirCastKind.Numeric when !rvalue.Proven => row.Effects, _ => MirEffect.None }, -1, ref visitor);
+                Effect((MirCastKind)rvalue.Op switch { MirCastKind.IntToPointer => MirEffect.IntToPointer, MirCastKind.Integer or MirCastKind.Floating or MirCastKind.Numeric when !rvalue.Proven => row.Effects, _ => MirEffect.None }, -1, ref visitor);
                 break;
             case MirRvalueKind.Opaque:
                 Effect(row.Effects, rvalue.Arg, ref visitor);

@@ -85,7 +85,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
     public void UnsupportedFormsAreOpaqueAtOneRecord()
     {
         var c = Compile("struct Point\n    public var x: i32 = 7\n    public init() => ()\n    public init(y: i32) => ()\n" +
-            "func f(a: i32, b: i32) -> i32\n    let c = a < b\n    return b\nfunc g() -> i32 => missing\n");
+            "func f(a: i32, b: i32) -> i32\n    let c = match a\n        0 => b\n        _ => a\n    return b\nfunc g() -> i32 => missing\n");
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var bodies = program.Bodies.ToArray().Where(static x => x.Key.Decl?.Name is "f" or "g").ToDictionary(static x => x.Key.Decl!.Name);

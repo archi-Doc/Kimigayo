@@ -9,21 +9,21 @@ fn sum @4
   _1: i32 arg a @4
   _2: i32 arg b @4
   _3: i32 var c @9 s1
-  _4: Never temp @14 s1
+  _4: Never temp @17 s1
   s1: lexical in s0 @8
   opaque 0 @11: _1 _2
   bb0:
     * _3 = opaque 0: i32 @11 s1
-    * goto bb1 check bb2 @14 s1
+    * goto bb1 check bb2 @17 s1
   bb1:
-      _0 = copy _3 @14 s1
-      return @14 s1
+      _0 = copy _3 @17 s1
+      return @17 s1
   bb2:
       unreachable @8
-fn fail @16
-  _0: i32 return @16
-  opaque 0 @18:
+fn fail @19
+  _0: i32 return @19
+  opaque 0 @21:
   bb0:
-    * _0 = opaque 0: i32 @18
-      return @18
+    * _0 = opaque 0: i32 @21
+      return @21
 unsupported @11

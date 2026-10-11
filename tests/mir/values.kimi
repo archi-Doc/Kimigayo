@@ -1,0 +1,32 @@
+enum Shape
+    Dot
+    Line(i32, i32)
+
+func arithmetic(a: i32, w: Wrapping<u32>) -> i32
+    let q = a / 2
+    let r = a % -1
+    let s = a << 3
+    let n = -a
+    let m = w + w
+    return q + r + s + n
+func conversions(a: i32, f: f64, b: u8) -> i64
+    let wide = b@u32
+    let narrow = a@u8
+    let float = a@f64
+    let back = f@i32
+    let wrapped = a@wrap<u8>
+    let folded = 3.9@i32
+    return a@i64
+func logic(a: bool, b: bool) -> bool => a and b or not a
+func aggregates(x: i32) -> Shape
+    let pair = (x, true)
+    let fixed: [3 of i32] = [x, 2, 3]
+    let zeros: [4 of u8] = [4 of 0]
+    let dot = Shape.Dot
+    return Shape.Line(x, pair.0)
+func metadata(values: ref/Array<i32>, items: Slice<i32>) -> bool => values.length == 0 and items.isEmpty
+func replace(first: string, second: string) -> string
+    var held = first@move
+    held = second@move
+    let view = held@ref
+    return held@move

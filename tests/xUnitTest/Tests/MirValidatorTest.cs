@@ -12,6 +12,7 @@ namespace XunitTest;
 /// <summary>The descriptor table and the MIR validator (plan 5.4, 14-5): every kind has a row; <see cref="MirUses"/> reports what a
 /// location uses and its effects by the rows; a body that every rule accepts has no finding, and each rule rejects a body that breaks only
 /// it, at the syntax of what breaks it; a warm validation allocates nothing.</summary>
+[Collection(nameof(MirValidatorTest))] // Its fixture's TyCtxt, which MirDumpTest shares, is not thread-safe.
 public sealed class MirValidatorTest
 {
     private static readonly SourceInfo At = default;

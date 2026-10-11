@@ -136,7 +136,7 @@ internal static class MirDump
                 Operands(text, body, rvalue.Start, rvalue.Count).Append(rvalue.Proven ? " proven" : string.Empty);
                 break;
             case MirRvalueKind.Cast:
-                Operand(text, body, body.Operands[rvalue.Start]).Append(" as ").Append(Type(rvalue.Type)).Append(" (").Append((MirCastKind)rvalue.Op).Append(')');
+                Operand(text, body, body.Operands[rvalue.Start]).Append(" as ").Append(Type(rvalue.Type)).Append(" (").Append((MirCastKind)rvalue.Op).Append(rvalue.Proven ? ") proven" : ")");
                 break;
             case MirRvalueKind.Aggregate:
                 text.Append((MirAggregateKind)rvalue.Op).Append(rvalue.Type is { } adt && AdtDef.IsEnum(adt) ? $" case {rvalue.Arg}" : string.Empty);

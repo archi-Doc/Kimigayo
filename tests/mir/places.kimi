@@ -1,0 +1,21 @@
+open struct Base
+    public var count: i32
+    protected init(count: i32) => self.count = count
+
+struct Derived : Base
+    public var extra: i32
+    public init(count: i32, extra: i32) : base(count)
+        self.extra = extra
+
+group Counters
+    public var hits: i32 = 0
+
+func fields(d: ref/Derived, t: (i32, bool)) -> i32 => d.count + d.extra + t.0
+func elements(a: [3 of i32], i: isize, n: u8) -> i32 => a[1] + a[i] + a[n]
+func follow(p: ref/i32, q: uniq/i32) -> i32
+    let value: i32 = p
+    q@follow = value
+    return q@follow
+func count() -> i32
+    Counters.hits = Counters.hits + 1
+    return Counters.hits
