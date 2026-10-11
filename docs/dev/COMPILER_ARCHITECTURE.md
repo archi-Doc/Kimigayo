@@ -109,8 +109,11 @@ The following are adopted design rules; build enforcement is introduced by A2–
 Kimi.Analyzers owns C# rules for `src/Kimi`; compiler behavior, tests, Benchmark and Playground are outside that scope.
 Generated code is excluded. Old Analysis/Emission files receive KR1 and the built-in unused-code rules only.
 
-`CodeRulesArchitecture` owns the resolved dependency/member/vocabulary policy and publishes observations through the
-shared analyzer pipeline. Configuration lists use commas: Roslyn treats semicolons as inline comments (CR-A3).
+`CodeRulesArchitecture` owns resolved dependency/member/vocabulary policy and structural checks through the shared
+analyzer pipeline. Its .Structure concern implements KR1004–1006 and KR1008 (CR-A4): collection declarations use
+declared symbols, creations use their resolved type, and generic constraints have one cycle-safe expansion.
+Pattern tests use semantic matched/compared/input types; wrapper patterns and casts add no tests. Catch anchors exclude
+the body. Configuration lists use commas: Roslyn treats semicolons as inline comments (CR-A3).
 
 | Rules | Contract |
 | --- | --- |

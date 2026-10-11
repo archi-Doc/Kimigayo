@@ -111,6 +111,6 @@ public class CodeRulesSourceTest
         var method = source.Root.DescendantNodes().OfType<MethodDeclarationSyntax>().Single();
         var canonical = "string M ( ) => @\"é😀\nx\" ;";
         var hash = Encoding.UTF8.GetBytes(canonical).Aggregate(14695981039346656037UL, (value, next) => unchecked((value ^ next) * 1099511628211UL));
-        Assert.Equal("node:" + hash.ToString("x16"), source.NodeAnchor(method));
+        Assert.Equal("node:" + hash.ToString("x16"), source.NodeAnchor(method.DescendantTokens()));
     }
 }

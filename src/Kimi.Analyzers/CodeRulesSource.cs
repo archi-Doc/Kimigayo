@@ -99,11 +99,18 @@ internal sealed class CodeRulesSource(Compilation compilation, SyntaxTree tree, 
         return anchors[local];
     }
 
-    internal string NodeAnchor(SyntaxNode node)
+    internal void RecordMember(CodeRule rule, SyntaxNode declaration, ISymbol symbol, int value, int limit)
+    {
+        this.identities ??= new();
+        this.identities[declaration] = symbol.GetDocumentationCommentId();
+        this.Record(rule, declaration, value, limit, this.MemberAnchor(declaration));
+    }
+
+    internal string NodeAnchor(IEnumerable<SyntaxToken> tokens)
     {
         var hash = 14695981039346656037UL;
         var first = true;
-        foreach (var token in node.DescendantTokens())
+        foreach (var token in tokens)
         {
             if (token.IsMissing || token.IsKind(SyntaxKind.EndOfFileToken))
             {

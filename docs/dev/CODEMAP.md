@@ -16,6 +16,9 @@ diagnostics; [CodeRulesSource](../../src/Kimi.Analyzers/CodeRulesSource.cs) owns
 [CodeRulesBaseline](../../src/Kimi.Analyzers/CodeRulesBaseline.cs) performs the final sorted merge.
 [CodeRulesArchitecture](../../src/Kimi.Analyzers/CodeRulesArchitecture.cs) resolves declaration layers and dependency,
 member and enum policies once per compilation (KR1001–1003); CodeRulesArchitectureTest exercises semantic references.
+[CodeRulesArchitecture.Structure](../../src/Kimi.Analyzers/CodeRulesArchitecture.Structure.cs) owns collection
+declarations/creations, Supports gates, MIR syntax dispatch and catch boundaries (KR1004–1006, KR1008);
+CodeRulesStructureTest covers their semantic forms, exclusions and shared baseline identities.
 Suppression checks
 live in CodeRulesAnalyzer.Suppression.cs. CodeRules*Test classes share CodeRulesTestHelper; the real-csc regression is
 tests/scripts/CodeRulesCompilerTest.ps1. Operational commands and the shared SARIF reader are described in

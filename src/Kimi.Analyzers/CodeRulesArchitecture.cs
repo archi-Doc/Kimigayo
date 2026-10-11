@@ -1,6 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns resolved dependency, member and closed-vocabulary policy for one compilation.
+// Owns resolved dependency, member, vocabulary and structural policy for one compilation.
 // Input: validated configuration and source symbols. Output: observations through the common baseline pipeline.
 // File layers, all partial declaration layers and configured type identities are resolved once, then read concurrently.
 // Must not infer a layer from a namespace, stringify each reference or maintain a second diagnostic/baseline pipeline.
@@ -12,7 +12,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Kimi.Analyzers;
 
-internal sealed class CodeRulesArchitecture
+internal sealed partial class CodeRulesArchitecture
 {
     private static readonly CodeRule Dependency = CodeRule.Find("KR1001")!;
     private static readonly CodeRule Member = CodeRule.Find("KR1002")!;
@@ -22,11 +22,28 @@ internal sealed class CodeRulesArchitecture
     private readonly HashSet<string> globalMembers = new(StringComparer.Ordinal);
     private readonly CodeRulesConfiguration config;
 
-    private CodeRulesArchitecture(CodeRulesConfiguration config) => this.config = config;
+    private CodeRulesArchitecture(Compilation compilation, CodeRulesConfiguration config)
+    {
+        this.config = config;
+        if (compilation.GetTypeByMetadataName("Kimi.Compiler.Parsing.Koto") is { } syntax)
+        {
+            this.syntaxTypes.Add(syntax);
+        }
+
+        this.syntaxKind = compilation.GetTypeByMetadataName("Kimi.Compiler.Parsing.KotoKind");
+        this.exceptionType = compilation.GetTypeByMetadataName("System.Exception");
+        foreach (var name in new[] { "System.Collections.Generic.IDictionary`2", "System.Collections.Generic.IReadOnlyDictionary`2", "System.Collections.Generic.ISet`1", "System.Runtime.CompilerServices.ConditionalWeakTable`2" })
+        {
+            if (compilation.GetTypeByMetadataName(name) is { } type)
+            {
+                this.collections.Add(type);
+            }
+        }
+    }
 
     internal static CodeRulesArchitecture Read(Compilation compilation, CodeRulesConfiguration config, List<Diagnostic> errors, List<Diagnostic> notices, List<List<CodeRuleObservation>> batches, CancellationToken cancellation)
     {
-        var result = new CodeRulesArchitecture(config);
+        var result = new CodeRulesArchitecture(compilation, config);
         var layers = new Dictionary<string, Layer>(StringComparer.Ordinal);
         var paths = new HashSet<string>(StringComparer.Ordinal);
         foreach (var pair in config.Lists)
@@ -154,6 +171,7 @@ internal sealed class CodeRulesArchitecture
             result.files.Add(tree, owner);
         }
 
+        layers.TryGetValue("syntax", out result.syntaxLayer);
         result.Index(compilation.Assembly.GlobalNamespace, cancellation);
         result.CheckVocabularies(compilation, errors, notices, batches, cancellation);
         return result;
@@ -167,12 +185,18 @@ internal sealed class CodeRulesArchitecture
     {
         if (node is SimpleNameSyntax name)
         {
-            if (AttributeName(name) || ((layer is null || !layer.HasReferences) && !this.globalMembers.Contains(name.Identifier.ValueText)))
+            var collection = layer is null || layer != this.syntaxLayer ? CollectionCreation(name) : null;
+            if (AttributeName(name) || (collection is null && (layer is null || !layer.HasReferences) && !this.globalMembers.Contains(name.Identifier.ValueText)))
             {
                 return;
             }
 
-            this.CheckReference(source, name, source.Semantics.GetSymbolInfo(name, cancellation).Symbol, layer);
+            var symbol = source.Semantics.GetSymbolInfo(name, cancellation).Symbol;
+            this.CheckReference(source, name, symbol, layer);
+            if (collection is not null)
+            {
+                this.CheckCollection(source, collection, symbol is IAliasSymbol alias ? alias.Target as ITypeSymbol : symbol as ITypeSymbol);
+            }
         }
         else if (node is MemberDeclarationSyntax or VariableDeclaratorSyntax && this.globalMembers.Count != 0)
         {
@@ -183,13 +207,15 @@ internal sealed class CodeRulesArchitecture
                     var symbol = source.Semantics.GetDeclaredSymbol(node, cancellation);
                     if (MemberType(symbol) is not null && symbol is not INamedTypeSymbol)
                     {
-                        source.Record(Member, node, 1, 0, source.NodeAnchor(node));
+                        source.Record(Member, node, 1, 0, source.NodeAnchor(node.DescendantTokens()));
                     }
 
                     break;
                 }
             }
         }
+
+        this.CheckStructure(source, node, layer, cancellation);
     }
 
     internal void CheckReference(CodeRulesSource source, SyntaxNode node, ISymbol? symbol, Layer? layer)
@@ -212,13 +238,13 @@ internal sealed class CodeRulesArchitecture
 
         if (layer is not null && this.Forbidden(type.OriginalDefinition, layer))
         {
-            source.Record(Dependency, node, 1, 0, source.NodeAnchor(node));
+            source.Record(Dependency, node, 1, 0, source.NodeAnchor(node.DescendantTokens()));
         }
 
         if (symbol is not INamedTypeSymbol && (this.globalMembers.Contains(symbol!.Name) ||
             (layer is not null && layer.Members.TryGetValue(symbol.Name, out var owners) && InFamily(type, owners))))
         {
-            source.Record(Member, node, 1, 0, source.NodeAnchor(node));
+            source.Record(Member, node, 1, 0, source.NodeAnchor(node.DescendantTokens()));
         }
     }
 
@@ -360,7 +386,7 @@ internal sealed class CodeRulesArchitecture
                 {
                     var source = new CodeRulesSource(compilation, declaration.SyntaxTree, path, cancellation);
                     var node = declaration.GetSyntax(cancellation);
-                    source.Record(Vocabulary, node, count, limit, source.NodeAnchor(node));
+                    source.Record(Vocabulary, node, count, limit, source.NodeAnchor(node.DescendantTokens()));
                     batches.Add(source.Observations!);
                 }
             }

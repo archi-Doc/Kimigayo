@@ -111,6 +111,35 @@ rules that result from them.
   transitive return-type allowance. The other two missed references were Koto's Binding-state decision, moved to its
   existing fact owner in the separate behavior-preserving CR-A3a commit. Neither repair creates a new language rule.
 
+- **CR-A4** (planning session, two independent designs compared and reviewed). Extend CodeRulesArchitecture in
+  .Structure with KR1004/1005/1006/1008, retaining one file walk and the existing observation/baseline pipeline.
+  Resolve Koto, KotoKind, collection definitions and System.Exception once per compilation. After out/pattern tests
+  exposed one declaration-ownership gap twice, both independent revisions replace the complete-type classifier with
+  declared symbols for all collection declarations. A variable declaration owns its shared type once; designations,
+  parameters (including inferred lambdas), foreach and members own their bindings/return type. Generic arguments,
+  typeof and alias definitions are not declarations. A3's SimpleName symbol still supplies explicit creation types;
+  implicit creations own their inferred type. Count declaration and creation separately, once each even if several
+  interfaces match. A designation uses its immediate declaration/pattern's type syntax, or its own syntax if absent,
+  never an outer pattern's type. Syntax-layer declarations are exempt; no collection-name approximation.
+  Actual Roslyn 4.14 tests contradict its XML description: parameter BaseType/AllInterfaces omit constrained types.
+  Both independent refinements choose ConstraintClosure only for nonempty type-parameter constraints: one local list
+  is the work queue and result, with a visited set at insertion. Consume published ConstraintTypes, then reuse named
+  InFamily and collection-interface checks. Named types allocate no traversal state. Reject recursive constraint
+  inference, delegate/iterator allocation per reference and a retained cache. Cover chained and cyclic constraints.
+  The declaration check shares one symbol for collection type and Supports return checks. CodeRulesSource.RecordMember
+  publishes that symbol's identity only when observing a violation; delete eager ResolveDeclaration caching. Ordinary
+  locals never enter the identity cache. Reject separate explicit/inferred declaration rules or a per-node fact table.
+  Atomic patterns own actual dispatch tests, including switch arms/cases; is/as expressions also count. Logical
+  pattern wrappers, var/discard captures and casts do not add tests. KotoKind comparisons use semantic operand types.
+  Catch checks first exclude configured boundaries and filters, then match bare catch or exact System.Exception.
+  Change NodeAnchor's input to a token sequence: callers select ordinary nodes or body-free catch headers; retain one
+  streaming UTF-8 FNV implementation. Reject a hash mode/optional parameter or a wrapper without semantics.
+  Both designs chose this existing owner; reject a second analyzer, per-node symbol cache and post-report deduplication.
+  Delete the two migrated regex rows; compare their 96/13 subsets and explain semantic inventory differences.
+  Initialize only these four rules through the complete Report path. Expected delta: 250–350 analyzer lines,
+  150–220 test lines; compiler areas zero tokens/lines. Verify aliases, inferred/derived types, patterns, boundaries,
+  header stability, snapshots and actual csc time. Later enforcement changes remain separate units.
+
 ## R2b (2026-10-11, main session, as recommended)
 
 - **R2b-D1** `BoundType` stays the Type representation until R7; `TyCtxt` owns interning and `Subst` converts.
