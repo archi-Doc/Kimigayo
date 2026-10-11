@@ -58,7 +58,7 @@ public class VirtualGenericDispatchTest(ITestOutputHelper output)
         var path = Path.GetFullPath("virtual-growing-table.kimi");
         var c = MinimalEmissionTest.Analyze(DependencyProgram("Next<T>"), path);
         using var ir = new StringWriter();
-        Assert.False(c.Emission.WriteIr(ir, out var failure));
+        Assert.False(c.WriteIr(ir, out var failure));
         Assert.Empty(ir.ToString());
         Assert.True(c.Emission.FailureIsResourceLimit, failure);
         Assert.Contains("substitutions", failure, StringComparison.Ordinal);
@@ -102,9 +102,9 @@ public class VirtualGenericDispatchTest(ITestOutputHelper output)
     public void WarmClosedTablesReuseGenericEntries()
     {
         var c = MinimalEmissionTest.Analyze(Hierarchy + "let a = Leaf<i32>.init()@obj\nrequire a.nested() == 132 else => $abort(\"dispatch\")");
-        Assert.True(c.Emission.Validate(out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Validate(out var failure), MinimalEmissionTest.Describe(c, failure));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid);
     }
 

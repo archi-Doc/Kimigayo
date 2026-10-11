@@ -56,7 +56,7 @@ public class UniqSliceTest(ITestOutputHelper output)
         var source = "func consume<T>(value: T)\n    T is Owned\n    ()\nvar values = [1, 2]\n" +
             (view ? "var view = values.sliceUniq()\nconsume(view@move)" : "consume(values@move)");
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Equal(!view, c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Equal(!view, c.WriteIr(TextWriter.Null, out _));
         if (view)
         {
             Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
@@ -94,7 +94,7 @@ public class UniqSliceTest(ITestOutputHelper output)
     public void RegionsDoNotSplitAuthorityOrExposeWritableMetadata(string use)
     {
         var c = MinimalEmissionTest.Analyze("var values = [1, 2]\nvar view = values.sliceUniq(..1)\n" + use + "\nrequire view.length == 1 else => $abort(\"view\")");
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -156,9 +156,9 @@ public class UniqSliceTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze("var values = [1, 2]\nvar view = values.sliceUniq()\n" + child + "\n" + conflict + "\n" + use);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Analysis.IsVerified);
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -172,8 +172,8 @@ public class UniqSliceTest(ITestOutputHelper output)
     public void UnsupportedAcquisitionsDoNotGainAuthority(string use)
     {
         var c = MinimalEmissionTest.Analyze("var values = [1, 2]\n" + use);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
 
     [Fact]
@@ -181,7 +181,7 @@ public class UniqSliceTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze("var values: Array<i32> = []\nvar view = values.sliceUniq()\nvalues.append(1)\nrequire view.isEmpty else => $abort(\"empty\")");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
     }
 
     [Theory]
@@ -204,7 +204,7 @@ public class UniqSliceTest(ITestOutputHelper output)
             {
                 valid &= c.Bind().IsComplete;
                 c.Binding.CheckStartup(OutputKind.Application);
-                valid &= c.Ownership.Analyze().IsVerified && c.Emission.WriteIr(TextWriter.Null, out _);
+                valid &= c.Analyze().IsVerified && c.WriteIr(TextWriter.Null, out _);
             }, iterations: 8, warmupIterations: 8);
         Assert.Equal(0, bytes);
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));

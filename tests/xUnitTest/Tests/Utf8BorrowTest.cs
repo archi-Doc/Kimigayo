@@ -16,7 +16,7 @@ public class Utf8BorrowTest
     {
         var c = MinimalEmissionTest.Analyze(Fixed + "let result = " + view + "\n_ = storage[0]\n_ = result@move");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
     }
 
     [Theory]
@@ -25,7 +25,7 @@ public class Utf8BorrowTest
     public void ViewLastUseReleasesSource(string view)
     {
         var c = MinimalEmissionTest.Analyze(Fixed + "let result = " + view + "\n_ = result@move\n_ = storage[0]");
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]
@@ -42,7 +42,7 @@ public class Utf8BorrowTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
     }
 
     [Trait("Purpose", "Allocation")]
@@ -68,6 +68,6 @@ public class Utf8BorrowTest
     {
         var c = MinimalEmissionTest.Analyze(Fixed + "match (buffer@move).intoText()\n    .Ok(let view)\n        let copy = view\n        " + use.Replace("\n", "\n        ", StringComparison.Ordinal) + "\n    .Err(_) => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(valid, c.Ownership.Result.IsVerified);
+        Assert.Equal(valid, c.Analysis.IsVerified);
     }
 }

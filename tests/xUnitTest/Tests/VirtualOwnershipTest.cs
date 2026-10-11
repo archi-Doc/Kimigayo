@@ -19,10 +19,10 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Shared);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Ownership.Bodies, x => x.Function.IsVirtual);
         Assert.Contains(c.Ownership.Bodies, x => x.Function.IsOverride);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
     }
 
     [Fact]
@@ -30,7 +30,7 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Shared.Replace("-> i32 => 2", "-> i32\n        let text = \"value\"\n        let moved = text@move\n        Console.writeLine(text)\n        return 2", StringComparison.Ordinal));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(DiagnosticCode.MovedPlace_Kd, Assert.Single(c.Ownership.Issues).Code);
+        Assert.Equal(DiagnosticCode.MovedPlace_Kd, Assert.Single(c.Problems).Code);
     }
 
     [Theory]
@@ -43,12 +43,12 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
         var source = "struct Noisy\n    public init() => ()\n    drop => Console.writeLine(\"drop\")\nopen struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n" + original + "\nstruct Derived : Base\n    override func read(self: objref/Self) -> i32\n" + implementation + "\n()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Ownership.Issues).Code);
-        c.Ownership.ReportDiagnostics();
+        Assert.False(c.Analysis.IsVerified);
+        Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Problems).Code);
+        c.ReportAnalysis();
         Assert.Contains("confined", Assert.Single(TestDiagnostics.Of(c)).Label!, StringComparison.Ordinal);
         var quiet = MinimalEmissionTest.Analyze(source.Replace("Console.writeLine(\"drop\")", "()", StringComparison.Ordinal));
-        Assert.True(quiet.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(quiet, null));
+        Assert.True(quiet.Analysis.IsVerified, MinimalEmissionTest.Describe(quiet, null));
     }
 
     [Theory]
@@ -59,8 +59,8 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
         var source = "open struct Base\n    public var value: i32 = 1\n    public virtual func view(self: objref/Self) -> ref/i32 => self.value@ref\nstruct Derived : Base\n    public var tail: i32 = 2\n    public init() => ()\nvar owner = Derived.init()@obj\nlet borrowed = owner.view()\n" + update + "\n_ = borrowed";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(!conflict, c.Ownership.Result.IsVerified);
-        Assert.Equal(conflict, c.Ownership.Issues.Any(x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd));
+        Assert.Equal(!conflict, c.Analysis.IsVerified);
+        Assert.Equal(conflict, c.Problems.Any(x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd));
     }
 
     [Fact]
@@ -78,8 +78,8 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
         const string Source = "struct Noisy\n    public init() => ()\n    drop => Console.writeLine(\"drop\")\nopen struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n        _ = Noisy.init()\n        return 1\n()";
         var path = Path.GetFullPath("virtual-cleanup-bound.kimi");
         var c = MinimalEmissionTest.Analyze(Source, path);
-        Assert.Single(c.Ownership.Issues);
-        c.Ownership.ReportDiagnostics();
+        Assert.Single(c.Problems);
+        c.ReportAnalysis();
         var shown = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal("UnsatisfiedEffectBound_Kd", shown.Code);
         Assert.Contains("confined", shown.Label!, StringComparison.Ordinal);
@@ -101,8 +101,8 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
         Assert.True(KotoHelper.Replace(drop, drop.ExpressionBody!, changed.ExpressionBody!));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        c.Ownership.ReportDiagnostics();
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        c.ReportAnalysis();
         Assert.Empty(TestDiagnostics.Of(c));
     }
 
@@ -113,9 +113,9 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
     public void WarmCleanupObligationsReuseTheirSummary(string operation, bool accepted)
     {
         var c = MinimalEmissionTest.Analyze("struct Item\n    public init() => ()\n    drop => " + operation + "\nopen struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n        _ = Item.init()\n        return 1\n()");
-        Assert.Equal(accepted, c.Ownership.Result.IsVerified);
+        Assert.Equal(accepted, c.Analysis.IsVerified);
         var consistent = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => consistent &= c.Ownership.Analyze().IsVerified == accepted, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => consistent &= c.Analyze().IsVerified == accepted, iterations: 64, warmupIterations: 32));
         Assert.True(consistent);
     }
 
@@ -124,9 +124,9 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
     public void WarmSharedBodyCheckingReusesOwnershipStorage()
     {
         var c = MinimalEmissionTest.Analyze(Shared);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var verified = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => verified &= c.Ownership.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => verified &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
         Assert.True(verified);
     }
 }

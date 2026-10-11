@@ -20,7 +20,7 @@ public class VirtualOverrideBindingTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze("open struct Base\n    " + (original.Length == 0 ? "public func other() => ()" : original) + "\nstruct Derived : Base\n    " + implementation + "\n()");
         c.Binding.ReportDiagnostics();
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "MissingOverrideTarget_Kd");
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]

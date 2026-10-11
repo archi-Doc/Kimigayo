@@ -105,10 +105,10 @@ public class RequirementFunctionItemTest
     {
         var c = MinimalEmissionTest.Analyze(ConfinedProgram(bounded, erased));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(bounded && !erased, c.Ownership.Result.IsVerified);
+        Assert.Equal(bounded && !erased, c.Analysis.IsVerified);
         if (!bounded || erased)
         {
-            Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Ownership.Issues).Code);
+            Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Problems).Code);
         }
     }
 
@@ -116,14 +116,14 @@ public class RequirementFunctionItemTest
     public void ChangedPremisesRevokeTheStoredItemGuarantee()
     {
         var c = MinimalEmissionTest.Analyze(ConfinedProgram(true, false));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var donor = MinimalEmissionTest.Analyze(ConfinedProgram(false, false));
         var original = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), f => f.Name.ToString() == "use");
         var changed = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), f => f.Name.ToString() == "use");
         Assert.True(KotoHelper.Replace(original.Parent!, original, changed));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Analyze().IsVerified);
-        Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Ownership.Issues).Code);
+        Assert.False(c.Analyze().IsVerified);
+        Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Problems).Code);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -135,8 +135,8 @@ public class RequirementFunctionItemTest
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid);
     }
 
@@ -153,8 +153,8 @@ public class RequirementFunctionItemTest
         const string Program = "contract Source\n    associate Item\n    func take(self: uniq/Self, other: uniq/i32) -> Self.Item\n        effect confined\n        effect preserves results\nfunc accept<F, T>(operation: ref/F)\n    T is Source\n    F is Callable<(uniq/T, uniq/i32) -> T.Item>\n        effect preserves results\n    ()\nfunc use<T>()\n    T is Source\n    let operation = T.take\n    accept(operation)\npublic func main() => ()";
         var c = MinimalEmissionTest.Analyze(Program);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Ownership.Issues).Code);
+        Assert.False(c.Analysis.IsVerified);
+        Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Problems).Code);
     }
 
     [Fact]

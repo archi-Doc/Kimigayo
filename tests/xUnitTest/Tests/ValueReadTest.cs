@@ -53,7 +53,7 @@ public class ValueReadTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var result = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "r");
         Assert.Equal(SemanticsKind.Owner, result.NameKoto.TypeOf()?.Semantics);
     }
@@ -88,7 +88,7 @@ public class ValueReadTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var result = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "r");
         Assert.Equal(SemanticsKind.Ref, result.NameKoto.TypeOf()?.Semantics);
-        Assert.Contains(c.Ownership.Issues, x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
     }
 
     // A Copy struct is not a read Type: a reference to it is not read at a by-value parameter.

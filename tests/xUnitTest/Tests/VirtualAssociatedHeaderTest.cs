@@ -18,7 +18,7 @@ public class VirtualAssociatedHeaderTest
         var source = Prefix + derived + "    public init() => ()\n    override func read(self: objref/Self, value: ref/i32) -> i32 => value@follow\n" +
             (concrete ? "let owner = Derived.init()@obj\nlet n = 7\nrequire owner.read(n@ref) == 7 else => $abort(\"projection\")\nlet item = Derived.read\nrequire item(owner@objref/Base<Entry>, n@ref) == 7 else => $abort(\"item\")\nlet erased: (objref/Base<Entry>, ref/i32) -> i32 = Derived.read\nrequire erased(owner@objref/Base<Entry>, n@ref) == 7 else => $abort(\"erased\")" : "()");
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         if (concrete)
         {
             ScalarEmissionTest.EmitFixture("VirtualAssociatedClosed", source, string.Empty);
@@ -59,7 +59,7 @@ public class VirtualAssociatedHeaderTest
         var derived = concrete ? "struct Derived : Base<Entry>\n    override func read(self: objref/Self, value: ref/i32) -> i32 => value@follow\n"
             : "struct Derived<U> : Base<U>\n    override func read(self: objref/Self, value: ref/U.Element) -> i32 => value@follow\n";
         var c = MinimalEmissionTest.Analyze(Contract + Base + derived + "()");
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]
@@ -75,7 +75,7 @@ public class VirtualAssociatedHeaderTest
         var derived = $"struct Derived<U> : Base<U>\n    override func read(self: objref/Self, value: ref/{element}) -> {element} => value@follow\n";
         var c = MinimalEmissionTest.Analyze(Contract + (reversed ? derived + Base : Base + derived) + "()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var implementation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsOverride);
         Assert.True(c.Binding.TryGetVirtualOverride(implementation, out _));
     }
@@ -109,7 +109,7 @@ public class VirtualAssociatedHeaderTest
     {
         var source = "contract First\n    associate Element\ncontract Second\n    associate Element\nopen struct Base<T>\n    public virtual func read(self: objref/Self, value: i32) -> T.First.Element\n        T is First\n        $abort(\"unused\")\n    public virtual func read(self: objref/Self, value: bool) -> T.Second.Element\n        T is Second\n        $abort(\"unused\")\nstruct Derived<U> : Base<U>\n    override func read(self: objref/Self, value: i32) -> U.Element => $abort(\"unused\")\n()";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]

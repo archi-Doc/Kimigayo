@@ -106,7 +106,7 @@ public class VirtualModuleTest(ITestOutputHelper output)
         // This is a support-boundary regression, not a language rejection or a completed positive case.
         var c = ModuleBindingTest.Create(Derived + "public func main()\n    let value = Derived.init()@obj\n    _ = Lib.Api.call(value@objref)", ConformingLibrary());
         Assert.False(c.Bind().IsComplete);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]
@@ -178,8 +178,8 @@ public class VirtualModuleTest(ITestOutputHelper output)
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.True(c.Analyze().IsVerified);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid);
     }
 
@@ -198,7 +198,7 @@ public class VirtualModuleTest(ITestOutputHelper output)
     {
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         return CompilationTestHelper.WriteIr(c);
     }
 }

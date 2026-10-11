@@ -19,7 +19,7 @@ public class UnreachableOwnershipTest
     public void DeadSourceWithoutVariableUsesVerifies(string source)
     {
         var c = Parse(source);
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
     }
 
     [Theory]
@@ -31,7 +31,7 @@ public class UnreachableOwnershipTest
     public void NonCompletingBodiesDoNotRequireSyntheticResults(string source)
     {
         var c = Parse(source);
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
     }
 
     [Theory]
@@ -48,20 +48,20 @@ public class UnreachableOwnershipTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var issue = Assert.Single(c.Ownership.Issues);
-        Assert.Equal((DiagnosticCode.Unsupported_Kd, use, line), (issue.Code, issue.Source.ToString(), LineOf(source, issue.Source.Span.Start)));
+        var issue = Assert.Single(c.Problems);
+        Assert.Equal((DiagnosticCode.Unsupported_Kd, use, line), (issue.Code, c.SyntaxOf(issue.Subject).ToString(), LineOf(source, c.SyntaxOf(issue.Subject).Span.Start)));
     }
 
     // Another ownership issue of the body suppresses the Unsupported_Kd of its unreachable uses.
     [Theory]
-    [InlineData("var n: i32\n    let y = n", OwnershipFailure.UninitializedUse, "n")]
-    [InlineData("let n = 1\n    n = 2", OwnershipFailure.ReassignedLet, "n = 2")]
-    public void LoopLocalUsesStillRequireOrdinaryOwnershipChecks(string body, OwnershipFailure failure, string at)
+    [InlineData("var n: i32\n    let y = n", DiagnosticCode.UninitializedPlace_Kd, "n")]
+    [InlineData("let n = 1\n    n = 2", DiagnosticCode.ReassignedLet_Kd, "n = 2")]
+    public void LoopLocalUsesStillRequireOrdinaryOwnershipChecks(string body, DiagnosticCode failure, string at)
     {
         var c = MinimalEmissionTest.Analyze("let x = 1\nloop\n    " + body + "\nlet y = x");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var issue = Assert.Single(c.Ownership.Issues);
-        Assert.Equal((failure, at), (issue.Failure, issue.Source.ToString()));
+        var issue = Assert.Single(c.Problems);
+        Assert.Equal((failure, at), (issue.Code, c.SyntaxOf(issue.Subject).ToString()));
     }
 
     // A Loan begun inside unreachable code conflicts with a later unreachable operation while the body is built.
@@ -71,17 +71,17 @@ public class UnreachableOwnershipTest
         const string Source = "func inspect(a: ref/string, b: string) => ()\nfunc f()\n    let x = \"s\"\n    return\n    inspect(x, x@move)\nf()";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var issue = Assert.Single(c.Ownership.Issues);
-        Assert.Equal((DiagnosticCode.ComparisonLoanConflict_Kd, "x", Source.IndexOf("x@move", StringComparison.Ordinal)), (issue.Code, issue.Source.ToString(), issue.Source.Span.Start));
+        var issue = Assert.Single(c.Problems);
+        Assert.Equal((DiagnosticCode.ComparisonLoanConflict_Kd, "x", Source.IndexOf("x@move", StringComparison.Ordinal)), (issue.Code, c.SyntaxOf(issue.Subject).ToString(), c.SyntaxOf(issue.Subject).Span.Start));
     }
 
     [Fact]
     public void DuplicateDeferredSourceDiagnosticsArePublishedOnce()
     {
         var c = Parse("func f()\n    let x = \"s\"\n    defer => Console.writeLine(x)\n    _ = x@move\n    return\n    let y = 1");
-        Assert.False(c.Ownership.Analyze().IsVerified);
-        c.Ownership.ReportDiagnostics();
-        c.Ownership.ReportDiagnostics();
+        Assert.False(c.Analyze().IsVerified);
+        c.ReportAnalysis();
+        c.ReportAnalysis();
         Assert.Single(TestDiagnostics.Of(c));
     }
 
@@ -89,7 +89,7 @@ public class UnreachableOwnershipTest
         => CompilationTestHelper.BindSuccess(source);
 
     private static string Describe(Compilation c)
-        => string.Join("\n", c.Ownership.Issues.Select(x => $"{x.Failure}: {x.Source}")) +
+        => string.Join("\n", c.Problems.Select(x => $"{x.Code}: {c.SyntaxOf(x.Subject)}")) +
             string.Join("\n", c.Ownership.ControlFlow!.Issues.Select(x => x.Message));
 
     private static int LineOf(string source, int offset)
@@ -114,18 +114,18 @@ public class UnreachableOwnershipTest
 
             source.Append("    return\n");
             var c = Parse(source.ToString());
-            Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+            Assert.True(c.Analyze().IsVerified, Describe(c));
             var bindingBytes = AllocationMeasurement.Measure(() => c.Bind());
-            var analysisBytes = AllocationMeasurement.Measure(() => c.Ownership.Analyze());
+            var analysisBytes = AllocationMeasurement.Measure(() => c.Analyze());
             var combinedBytes = AllocationMeasurement.Measure(() =>
             {
                 c.Bind();
-                c.Ownership.Analyze();
+                c.Analyze();
             });
             Assert.True(
                 bindingBytes == 0 && analysisBytes == 0 && combinedBytes == 0,
                 $"Binding: {bindingBytes}; analysis: {analysisBytes}; combined: {combinedBytes}");
-            Assert.True(c.Ownership.Result.IsVerified, Describe(c));
+            Assert.True(c.Analysis.IsVerified, Describe(c));
         }
     }
 }

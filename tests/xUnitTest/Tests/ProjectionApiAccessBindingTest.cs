@@ -17,7 +17,7 @@ public class ProjectionApiAccessBindingTest
         var c = MinimalEmissionTest.Analyze($"{contractAccess} contract C\n    associate Element\n{typeAccess} struct S\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func expose(value: S.C.Element) => ()");
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Binding.Issues, x => x.Node is FunctionKoto { Name: "expose" } && x.Node.FailureOf() == BindingFailure.Access);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -85,7 +85,7 @@ public class ProjectionApiAccessBindingTest
         var c = MinimalEmissionTest.Analyze("struct Hidden\npublic contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is Hidden\npublic group Api\n    public func expose(value: S.C.Element) => ()");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.FailureOf() == BindingFailure.Access);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -147,6 +147,6 @@ public class ProjectionApiAccessBindingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Binding.Issues, x => x.Node is FunctionKoto { Name: "expose" } && x.Node.FailureOf() == BindingFailure.Access);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 }

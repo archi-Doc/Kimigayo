@@ -178,7 +178,7 @@ public class PatternBindingTest
     {
         var c = Parse("func valueOrZero(value: Option<i32>) -> i32\n    return match value\n        .Some(let n) => n\n        .None => 0");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var result = c.Ownership.Analyze();
+        var result = c.Analyze();
         Assert.True(result.IsVerified);
     }
 

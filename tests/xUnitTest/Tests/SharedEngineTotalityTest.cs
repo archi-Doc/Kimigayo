@@ -36,8 +36,8 @@ public class SharedEngineTotalityTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure is OwnershipFailure.Unsupported or OwnershipFailure.Internal);
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
+        Assert.DoesNotContain(c.Problems, static x => x.Code is DiagnosticCode.Unsupported_Kd or DiagnosticCode.InternalInvariant_Kd);
 
         // DIAGNOSTICS.md §10: the record is located at the conflicting access and relates the holder retaining the Loan.
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);

@@ -63,9 +63,9 @@ public class OwnedStoredReferenceTest
     {
         var c = MinimalEmissionTest.Analyze(Calls + "var value = 42\nlet item = (value@uniq, 7)\n" + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict && (activation is null || x.Activation == activation));
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     // SPEC 15.6.7: the slot borrow and the loaded reference of a reserved stored-reference argument are reserved with it, so
@@ -90,7 +90,7 @@ public class OwnedStoredReferenceTest
             (write ? "poke" : "inspect") + "(item.0))\nvar value = 42\nrun(value@uniq)";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(!write, c.Ownership.Result.IsVerified);
+        Assert.Equal(!write, c.Analysis.IsVerified);
         if (write)
         {
             // Both preparations reserve the same stored referent; report their overlap at the second lending point.
@@ -112,9 +112,9 @@ public class OwnedStoredReferenceTest
         const string helpers = "func twice(target: uniq/i32, other: uniq/i32) => target@follow = 1\nfunc take(t: (uniq/i32 during a, i32)) -> i32 => 1\nfunc poke(t: uniq/i32) -> i32\n    t@follow = 3\n    return 1\n";
         var c = MinimalEmissionTest.Analyze(Reserved + helpers + "var value = 42\nlet item = (value@uniq, 7)\n" + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict && x.Activation == activation);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     // SPEC 15.6.2: a borrow of a part reaches only that part's referent; a Scalar part does not depend on the reference
@@ -132,9 +132,9 @@ public class OwnedStoredReferenceTest
     {
         var c = MinimalEmissionTest.Analyze("var value = 42\nlet item = (value@uniq, 5)\nlet child = item.0@follow@uniq\nlet whole = item@ref\nlet read: i32 = whole.0@follow\nchild@follow = 1");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict && x.Source.ToString() == "whole.0");
-        Assert.False(c.Emission.Validate(out _));
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject).ToString() == "whole.0");
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -144,9 +144,9 @@ public class OwnedStoredReferenceTest
     {
         var c = MinimalEmissionTest.Analyze("func run(value: uniq/i32 during a)\n    " + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict && x.Source.ToString() == conflict);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject).ToString() == conflict);
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -159,10 +159,10 @@ public class OwnedStoredReferenceTest
     {
         var c = MinimalEmissionTest.Analyze("var value = 42\nvar item = (value@uniq, 7)\n" + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict && x.Source.ToString() == conflict);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Analysis.IsVerified);
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject).ToString() == conflict);
+        Assert.False(c.Validate(out _));
     }
 
     [Fact]
@@ -170,8 +170,8 @@ public class OwnedStoredReferenceTest
     {
         var c = MinimalEmissionTest.Analyze("var value = 42\nlet item = (value@uniq, 7)\nlet moved = item@move\nitem.0@follow = 99");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.PossiblyMovedUse && x.Source.ToString() == "item.0");
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd && c.SyntaxOf(x.Subject).ToString() == "item.0");
     }
 
     [Fact]
@@ -179,10 +179,10 @@ public class OwnedStoredReferenceTest
     {
         var c = MinimalEmissionTest.Analyze("var value = 42\nlet item = (value@ref, 7)\nitem.0@follow = 99");
         c.Binding.ReportDiagnostics();
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         var error = Assert.Single(c.Diagnostics.Finalize(rejected: true).Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.SharedPathAccess_Kd), error.Code);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     // SPEC 3.4, 13.5.5.1: a referent selected through a reference to a stored exclusive reference (`uniq/uniq/i32`,
@@ -210,10 +210,10 @@ public class OwnedStoredReferenceTest
     {
         var c = MinimalEmissionTest.Analyze("var value = 1\n" + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.Equal(conflict, c.Ownership.Issues.First(static x => x.Failure == OwnershipFailure.ComparisonLoanConflict).Source.ToString());
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Analysis.IsVerified);
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.Equal(conflict, c.SyntaxOf(c.Problems.First(static x => x.Code.IsLoanConflict()).Subject).ToString());
+        Assert.False(c.Validate(out _));
     }
 
     // SPEC 3.3.6: a shared borrow of a slot holding an exclusive reference (`ref/uniq/i32`) has only shared access to the
@@ -236,9 +236,9 @@ public class OwnedStoredReferenceTest
     {
         var c = MinimalEmissionTest.Analyze("var value = 1\n" + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.Equal(conflict, c.Ownership.Issues.First(static x => x.Failure == OwnershipFailure.ComparisonLoanConflict).Source.ToString());
-        Assert.False(c.Emission.Validate(out _));
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.Equal(conflict, c.SyntaxOf(c.Problems.First(static x => x.Code.IsLoanConflict()).Subject).ToString());
+        Assert.False(c.Validate(out _));
     }
 
     [Fact]
@@ -246,10 +246,10 @@ public class OwnedStoredReferenceTest
     {
         var c = MinimalEmissionTest.Analyze("var value = 1\nvar t = (value@uniq, 2)\nlet r = t.0@ref\nr@follow@follow = 5");
         c.Binding.ReportDiagnostics();
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         var error = Assert.Single(c.Diagnostics.Finalize(rejected: true).Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.SharedPathAccess_Kd), error.Code);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -259,9 +259,9 @@ public class OwnedStoredReferenceTest
         var c = MinimalEmissionTest.Analyze("func run(value: uniq/i32 during a)\n    let item = (value@move, 7)\n    item.0@follow += 1\n    let child = item.0@follow@ref\n    require child == 43 else => $abort(\"value\")");
         for (var i = 0; i < 8; i++)
         {
-            Assert.True(c.Ownership.Analyze().IsVerified);
+            Assert.True(c.Analyze().IsVerified);
         }
 
-        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Ownership.Analyze()));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
     }
 }

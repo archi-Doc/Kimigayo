@@ -147,8 +147,8 @@ public class SharedSubjectTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.False(c.Analysis.IsVerified);
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
     }
 
     [Theory]
@@ -169,7 +169,7 @@ public class SharedSubjectTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.PossiblyMovedUse);
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd);
     }
 
     [Theory]
@@ -198,8 +198,8 @@ public class SharedSubjectTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.False(c.Analysis.IsVerified);
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
     }
 
     // SPEC 14.6.2: a borrowed Slice selects its entry at the referent through the reference; the handle is not read first.
@@ -209,7 +209,7 @@ public class SharedSubjectTest
         var c = MinimalEmissionTest.Analyze("func total(values: ref/Slice<i32>) -> i32\n    var sum: i32 = 0\n    for v in values\n        sum += v\n    return sum");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.False(c.Binding.ReadsReferent(FindIterable(c)));
-        Assert.True(c.Ownership.Result.IsVerified);
+        Assert.True(c.Analysis.IsVerified);
     }
 
     [Fact]

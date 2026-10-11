@@ -57,9 +57,9 @@ public class VirtualDispatchTest
     public void WarmTableAndDispatchGenerationReuseTheirStorage()
     {
         var c = MinimalEmissionTest.Analyze(Hierarchy + "let c = C.init(3)@obj\nlet f: (objref/A, i32) -> i32 = C.value\nrequire f(c@objref/A, 2) == 35 else => $abort(\"erased\")");
-        Assert.True(c.Emission.Validate(out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Validate(out var failure), MinimalEmissionTest.Describe(c, failure));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid);
     }
 
@@ -73,10 +73,10 @@ public class VirtualDispatchTest
         var donor = MinimalEmissionTest.Analyze(Source.Replace("-> i32 => 2", "-> i32 => 9", StringComparison.Ordinal));
         var changed = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsOverride);
         Assert.True(KotoHelper.Replace(original, original.ExpressionBody!, changed.ExpressionBody!));
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         ScalarEmissionTest.WriteFixture("VirtualDispatchAfterEdit", CompilationTestHelper.WriteIr(c), "9\n", 0);
     }
 }

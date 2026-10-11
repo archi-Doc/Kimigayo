@@ -107,7 +107,7 @@ public class Utf8ReserveEffectTest
     public void AmbientOrUnknownEffectsInvalidateTheConformance(string prefix, string operation)
     {
         var c = Analyze(prefix, operation);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
         MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
@@ -172,7 +172,7 @@ public class Utf8ReserveEffectTest
         else
         {
             Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-            Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         }
     }
 

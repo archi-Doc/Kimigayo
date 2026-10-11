@@ -16,13 +16,13 @@ public class TestExecutionAnalysisTest
     {
         var c = Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         c.Tests.Discover(c);
         Assert.Single(c.Tests.Cases);
         Assert.NotEmpty(c.Tests.Sites);
         Assert.Null(c.Binding.Startup.Function);
         var output = new StringWriter();
-        Assert.True(c.Emission.WriteIr(output, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.WriteIr(output, out var error), MinimalEmissionTest.Describe(c, error));
         Assert.Contains("@__kimi_test_observe", output.ToString());
     }
 
@@ -50,9 +50,9 @@ public class TestExecutionAnalysisTest
     {
         var c = Analyze("#Test\nfunc sample()\n    " + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         c.Tests.Discover(c);
-        Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
     }
 
     [Theory]
@@ -75,7 +75,7 @@ public class TestExecutionAnalysisTest
     {
         var c = Analyze("#Test\nfunc sample()\n    let text = \"message\"\n    $" + operation + "(true, message: text@move)\n    Console.writeLine(text)");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Equal(verified, c.Ownership.Result.IsVerified);
+        Assert.Equal(verified, c.Analysis.IsVerified);
     }
 
     [Fact]
@@ -87,9 +87,9 @@ public class TestExecutionAnalysisTest
         c.Kotonoha.AddSource(new SourceDocument("Helpers.kimi", "func helper<T>(x: T)\n    $expect(false, message: \"shared\")\n    $require(true)\n#Test\nfunc sample() => helper(1)", isTestOnly: true));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         c.Binding.CheckTestStartup();
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         c.Tests.Discover(c);
-        Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
     }
 
     [Theory]
@@ -111,15 +111,15 @@ public class TestExecutionAnalysisTest
     public void ModeChangesInvalidatePriorCertificates()
     {
         var c = Analyze("Console.writeLine(\"product\")\n#Test\nfunc sample() => $expect(true)");
-        Assert.True(c.Ownership.Result.IsVerified);
+        Assert.True(c.Analysis.IsVerified);
         c.IsTestBuild = false;
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.False(c.Analysis.IsVerified);
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Ownership.Analyze().IsVerified);
+        Assert.True(c.Analyze().IsVerified);
         var output = new StringWriter();
-        Assert.True(c.Emission.WriteIr(output, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.WriteIr(output, out var error), MinimalEmissionTest.Describe(c, error));
         Assert.DoesNotContain("__kimi_test_observe", output.ToString());
     }
 
@@ -131,7 +131,7 @@ public class TestExecutionAnalysisTest
         c.Kotonoha.AddSource(new SourceDocument("Tests.kimi", source));
         c.Bind();
         c.Binding.CheckTestStartup();
-        c.Ownership.Analyze();
+        c.Analyze();
         return c;
     }
 }

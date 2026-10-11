@@ -40,7 +40,7 @@ public class ReferenceLayerAdaptationTest
     {
         // The Copied inner reference no longer depends on the array slot; replacing the whole array afterwards is valid.
         var c = MinimalEmissionTest.Analyze("let x = \"a\"\nvar names: [1 of ref/string] = [x@ref]\nlet view: ref/string = names[0]\nnames = [x@ref]\nConsole.writeLine(view)");
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public class ReferenceLayerAdaptationTest
         // Reborrowing through a uniq layer keeps that layer's Loan: the owner cannot be replaced while the view lives.
         var c = MinimalEmissionTest.Analyze(Node + "var first = Node.init(1)\nlet nodes: [1 of uniq/Node] = [first@uniq]\nlet view: ref/Node = nodes[0]\nfirst = Node.init(5)\nlet id = validate(view)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.False(c.Analysis.IsVerified);
     }
 
     [Theory]

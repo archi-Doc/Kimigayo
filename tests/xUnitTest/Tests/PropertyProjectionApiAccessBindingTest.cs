@@ -18,7 +18,7 @@ public class PropertyProjectionApiAccessBindingTest
         var property = Property(c);
         Assert.Equal(BindingFailure.Access, property.FailureOf());
         Assert.False(property.SymbolOf()!.Property!.IsVerified);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -30,7 +30,7 @@ public class PropertyProjectionApiAccessBindingTest
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Binding.Issues, x => x.Node is PropertyAccessorKoto && x.Node.FailureOf() == BindingFailure.Access);
         Assert.False(Property(c).SymbolOf()!.Property!.IsVerified);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -201,7 +201,7 @@ public class PropertyProjectionApiAccessBindingTest
         {
             Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access &&
                 (accessor ? x.Node is PropertyAccessorKoto : x.Node is PropertyKoto));
-            Assert.False(c.Emission.Validate(out _));
+            Assert.False(c.Validate(out _));
         }
     }
 

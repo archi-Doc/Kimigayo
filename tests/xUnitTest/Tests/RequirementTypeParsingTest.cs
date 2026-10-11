@@ -77,7 +77,7 @@ public class RequirementTypeParsingTest
         if (!valid)
         {
             Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NoApplicableOverload_Kd);
-            Assert.False(c.Emission.Validate(out _));
+            Assert.False(c.Validate(out _));
         }
     }
 
@@ -97,7 +97,7 @@ public class RequirementTypeParsingTest
         if (!valid)
         {
             Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.FailureOf() == BindingFailure.Access);
-            Assert.False(c.Emission.Validate(out _));
+            Assert.False(c.Validate(out _));
         }
 
         var restored = Compilation.CreateForTest();
@@ -133,7 +133,7 @@ public class RequirementTypeParsingTest
         var tree = ParseTestHelper.Parse(source);
         Assert.True(tree.Compilation.Diagnostics.HasErrors);
         Assert.All(TestDiagnostics.Of(tree), x => Assert.InRange(x.Span.Start, 0, source.Length));
-        Assert.False(MinimalEmissionTest.Analyze(source).Emission.Validate(out _));
+        Assert.False(MinimalEmissionTest.Analyze(source).Validate(out _));
     }
 
     [Trait("Purpose", "Allocation")]

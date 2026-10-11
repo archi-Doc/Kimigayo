@@ -104,9 +104,9 @@ public class SharedObjectOwnershipTest(ITestOutputHelper output)
             (destructor ? "()" : "require copy.value == 7 else => $abort(\"read\")");
         var c = MinimalEmissionTest.Analyze(atomic ? SharedObjectRuntimeTest.ArcSource(source) : source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.False(c.Validate(out _));
     }
 
     // SPEC 3.6.2, 8.10: a generic definition is judged with the temporary handle's Loan before any instance exists.
@@ -198,7 +198,7 @@ public class SharedObjectOwnershipTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         c.Binding.ReportDiagnostics();
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var console = new DiagnosticContractTest.DiagnosticConsole();
@@ -229,9 +229,9 @@ public class SharedObjectOwnershipTest(ITestOutputHelper output)
     {
         var path = Path.GetFullPath("shared-object-ownership.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
         c.Binding.ReportDiagnostics();
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         return c.Diagnostics.Finalize();
     }

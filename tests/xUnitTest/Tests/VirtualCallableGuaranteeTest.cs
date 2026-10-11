@@ -17,7 +17,7 @@ public class VirtualCallableGuaranteeTest(ITestOutputHelper output)
         const string Source = "open struct Base\n    public virtual func identity(self: objref/Self) -> objref/Self\n        effect confined\n        return self\nfunc accept<F>(f: ref/F) -> ()\n    F is Callable<(objref/Base) -> objref/Base>\n        effect preserves results\n    return\npublic func main() => accept(Base.identity)";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]
@@ -30,10 +30,10 @@ public class VirtualCallableGuaranteeTest(ITestOutputHelper output)
         var source = "open struct Base\n    public virtual func identity(value: " + mode + "/i32, self: objref/Self) -> ref/i32 during value\n        effect confined\n" + (slotPreserves ? "        effect preserves results\n" : string.Empty) + "        return value\nfunc accept<F>(f: ref/F) -> ()\n    F is Callable<(" + mode + "/i32, objref/Base) -> ref/i32>\n        effect preserves results\n    return\npublic func main() => accept(Base.identity)";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(valid, c.Ownership.Result.IsVerified);
+        Assert.Equal(valid, c.Analysis.IsVerified);
         if (!valid)
         {
-            Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Ownership.Issues).Code);
+            Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Problems).Code);
         }
     }
 
@@ -45,10 +45,10 @@ public class VirtualCallableGuaranteeTest(ITestOutputHelper output)
         var source = ConfinedProgram(bounded);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(bounded, c.Ownership.Result.IsVerified);
+        Assert.Equal(bounded, c.Analysis.IsVerified);
         if (!bounded)
         {
-            Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Ownership.Issues).Code);
+            Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Problems).Code);
         }
     }
 
@@ -56,7 +56,7 @@ public class VirtualCallableGuaranteeTest(ITestOutputHelper output)
     public void AChangedSlotRevokesTheItemGuarantee()
     {
         var c = MinimalEmissionTest.Analyze(ConfinedProgram(true));
-        Assert.True(c.Ownership.Result.IsVerified);
+        Assert.True(c.Analysis.IsVerified);
         var original = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsVirtual);
         var donor = MinimalEmissionTest.Analyze(ConfinedProgram(false));
         var changed = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsVirtual);
@@ -64,8 +64,8 @@ public class VirtualCallableGuaranteeTest(ITestOutputHelper output)
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Analyze().IsVerified);
-        Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Ownership.Issues).Code);
+        Assert.False(c.Analyze().IsVerified);
+        Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Problems).Code);
     }
 
     [Fact]
@@ -74,8 +74,8 @@ public class VirtualCallableGuaranteeTest(ITestOutputHelper output)
         const string Source = "open struct Base<T>\n    public virtual func identity(value: uniq/i32, self: objref/Self) -> ref/i32 during value\n        effect confined\n        effect preserves results\n        return value\nfunc accept<T,F>(f: ref/F) -> ()\n    F is Callable<(uniq/i32, objref/Base<T>) -> ref/i32>\n        effect preserves results\n    return\nfunc use<T>() => accept(Base<T>.identity)\npublic func main() => ()";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Ownership.Issues).Code);
+        Assert.False(c.Analysis.IsVerified);
+        Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Problems).Code);
     }
 
     [Fact]
@@ -83,7 +83,7 @@ public class VirtualCallableGuaranteeTest(ITestOutputHelper output)
     {
         var path = Path.GetFullPath("virtual-item-effects.kimi");
         var c = MinimalEmissionTest.Analyze(ConfinedProgram(false), path);
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         var shown = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal("UnsatisfiedEffectBound_Kd", shown.Code);
         Assert.Equal("Base.read", shown.Text);
@@ -114,9 +114,9 @@ public class VirtualCallableGuaranteeTest(ITestOutputHelper output)
     public void WarmItemChecksReuseContractOperands(bool bounded)
     {
         var c = MinimalEmissionTest.Analyze(ConfinedProgram(bounded));
-        Assert.Equal(bounded, c.Ownership.Result.IsVerified);
+        Assert.Equal(bounded, c.Analysis.IsVerified);
         var consistent = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => consistent &= c.Ownership.Analyze().IsVerified == bounded, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => consistent &= c.Analyze().IsVerified == bounded, iterations: 64, warmupIterations: 32));
         Assert.True(consistent);
     }
 

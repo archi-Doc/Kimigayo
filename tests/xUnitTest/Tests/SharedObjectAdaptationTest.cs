@@ -22,8 +22,8 @@ public class SharedObjectAdaptationTest
     public void ObjectReborrowsKeepResultDependencies()
     {
         var c = MinimalEmissionTest.Analyze("struct Item\n    public let id: i32 = 7\nfunc view(value: objuniq/Item) -> objref/Item during value => value\nvar owner = Kimi.Intrinsics.makeObj(Item.init())\nlet result = view(owner@objuniq)\nrequire result.id == 7 else => $abort(\"view\")");
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.Validate(out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Validate(out var issue), MinimalEmissionTest.Describe(c, issue));
     }
 
     [Theory]
@@ -77,8 +77,8 @@ public class SharedObjectAdaptationTest
             "require inspect(make()@objref) == 7 and inspect(make()) == 7 and make().read() == 7 and make().look() == 7 and make()@follow@ref.id == 7 else => $abort(\"lend\")\n" +
             $"let x = make()@follow@ref.id\nlet h = make()\nrequire x == 7 and inspect(h@move@objref) == 7 and inspect(Item.init()@{mode}@objref) == 7 else => $abort(\"more\")";
         var c = MinimalEmissionTest.Analyze(source);
-        var valid = c.Emission.Validate(out var failure);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified && valid, MinimalEmissionTest.Describe(c, failure));
+        var valid = c.Validate(out var failure);
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified && valid, MinimalEmissionTest.Describe(c, failure));
     }
 
     // SPEC 7.3, 10.2, 15.1.5: a temporary obj lends exclusively when spelled or as a receiver, never implicitly at an argument; rc and arc
@@ -97,8 +97,8 @@ public class SharedObjectAdaptationTest
         if (code is null)
         {
             var c = MinimalEmissionTest.Analyze(source);
-            var valid = c.Emission.Validate(out var failure);
-            Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified && valid, MinimalEmissionTest.Describe(c, failure));
+            var valid = c.Validate(out var failure);
+            Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified && valid, MinimalEmissionTest.Describe(c, failure));
             return;
         }
 
@@ -155,8 +155,8 @@ public class SharedObjectAdaptationTest
     {
         var c = MinimalEmissionTest.Analyze("struct Item\n    public let id: i32 = 7\nlet owner = Kimi.Intrinsics.makeObj(Item.init())\nlet view: objref/Item = owner\nlet moved = owner@move\nrequire view.id == 7 else => $abort(\"live\")");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
+        Assert.False(c.Validate(out _));
     }
 
     [Fact]

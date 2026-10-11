@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -47,8 +48,8 @@ public class RequireContinuationTest
     {
         var c = MinimalEmissionTest.Analyze(Stop + "func f(c: bool)\n    var x: i32\n    require c else\n        x = 1\n        return\n    let y = x\nf(true)");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.UninitializedUse);
-        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.UninitializedPlace_Kd);
+        Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
 
     private static string Source(string declaration, string require, string tail, string use, bool condition)

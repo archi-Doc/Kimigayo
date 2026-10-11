@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -22,7 +23,7 @@ public class SiblingMoveBorrowTest
     {
         var c = MinimalEmissionTest.Analyze(Pair + source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
+        Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
         ScalarEmissionTest.EmitFixture("SiblingMoveBorrow" + name, Pair + source, string.Empty);
     }
 
@@ -38,8 +39,8 @@ public class SiblingMoveBorrowTest
     {
         var c = MinimalEmissionTest.Analyze(Pair + source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure is OwnershipFailure.ComparisonLoanConflict or OwnershipFailure.PossiblyMovedUse);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() || x.Code is DiagnosticCode.MovedPlace_Kd);
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]
@@ -53,13 +54,13 @@ public class SiblingMoveBorrowTest
     public void EmissionRechecksTheBorrowedSubtree()
     {
         var c = MinimalEmissionTest.Analyze(Pair + "var pair = Pair.init()\nlet moved = pair.right@move\nlet a = pair.left@ref\nlet value = a.value");
-        Assert.True(c.Emission.Validate(out var failure), failure);
+        Assert.True(c.Validate(out var failure), failure);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.IsGenerated);
         var borrow = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Borrow);
         var moved = Assert.Single(body.Operations, x => x.Kind == OwnershipOperationKind.Produce && x.Projection >= 0).Source;
         body.OperationStorage[borrow] = body.Operations[borrow] with { Source = moved };
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 }

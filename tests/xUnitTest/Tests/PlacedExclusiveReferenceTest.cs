@@ -23,7 +23,7 @@ public sealed class PlacedExclusiveReferenceTest
     {
         var c = MinimalEmissionTest.Analyze(Run + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Code == DiagnosticCode.PlacementActivationConflict_Kd);
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.PlacementActivationConflict_Kd);
     }
 
     [Theory]
@@ -33,7 +33,7 @@ public sealed class PlacedExclusiveReferenceTest
     public void APlacementWithoutALiveChildIsAccepted(string body)
     {
         var c = MinimalEmissionTest.Analyze(Run + body);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]

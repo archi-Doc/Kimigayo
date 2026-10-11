@@ -156,7 +156,7 @@ public sealed class SemanticSnapshotTest
             }
 
             var program = mir ? c.BuildMir() : null;
-            c.Ownership.Analyze();
+            c.Analyze();
             if (program is not null)
             {
                 MirDump.Write(program, module.Syntax.Module, dump);
@@ -245,7 +245,7 @@ public sealed class SemanticSnapshotTest
             }
 
             var text = this.text;
-            var (binding, startup, ownership) = (compilation.Binding.Result, compilation.Binding.Startup, compilation.Ownership.Result);
+            var (binding, startup, ownership) = (compilation.Binding.Result, compilation.Binding.Startup, compilation.Analysis);
             text.Append("= binding ").Append(binding.Mode).Append(' ').Append(binding.ResolvedCount).Append('/').Append(binding.UnresolvedCount).Append('/').Append(binding.InvalidCount)
                 .Append(" startup ").Append(startup.Kind).Append(' ').Append(startup.IsComplete).Append(' ').Append(Location(startup.Function))
                 .Append(" ownership ").Append(ownership.IsVerified).Append(' ').Append(ownership.BodyCount).Append('/').Append(ownership.ErrorCount).Append('\n');

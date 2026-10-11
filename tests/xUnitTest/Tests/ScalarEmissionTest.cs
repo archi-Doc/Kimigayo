@@ -55,14 +55,14 @@ public class ScalarEmissionTest
     public void WarmScalarAnalysisAndWritingAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Counter);
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         var success = true;
         var bytes = AllocationMeasurement.Measure(
             () =>
             {
-                success &= c.Ownership.Analyze().IsVerified;
-                success &= c.Emission.WriteIr(TextWriter.Null, out _);
+                success &= c.Analyze().IsVerified;
+                success &= c.WriteIr(TextWriter.Null, out _);
             },
             iterations: 128,
             warmupIterations: 100);
@@ -103,7 +103,7 @@ public class ScalarEmissionTest
     public void IncompleteScalarPlansFailBeforeWriting(string mutation)
     {
         var c = MinimalEmissionTest.Analyze("var x = 1\nif x > 0 and true => x = 2");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var write = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Write);
         if (mutation == "missing-value")
@@ -125,7 +125,7 @@ public class ScalarEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out error));
+        Assert.False(c.WriteIr(writer, out error));
         Assert.NotNull(error);
         Assert.Equal(string.Empty, writer.ToString());
     }

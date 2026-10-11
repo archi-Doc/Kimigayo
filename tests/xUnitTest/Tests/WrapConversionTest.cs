@@ -53,7 +53,7 @@ public class WrapConversionTest
             Assert.Equal((Int128)payload, folded);
         }
 
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
     }
 
     [Fact]
@@ -111,7 +111,7 @@ public class WrapConversionTest
     public void InvalidFormsAreRejected(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]

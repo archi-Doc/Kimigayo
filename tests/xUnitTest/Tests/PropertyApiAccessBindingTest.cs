@@ -24,7 +24,7 @@ public class PropertyApiAccessBindingTest
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var property = Assert.Single(c.Binding.Issues, x => x.Node is PropertyKoto && x.Node.FailureOf() == BindingFailure.Access);
         Assert.False(((PropertyKoto)property.Node).SymbolOf()!.Property!.IsVerified);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]

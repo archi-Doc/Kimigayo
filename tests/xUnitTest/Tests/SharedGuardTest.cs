@@ -35,13 +35,13 @@ public class SharedGuardTest
         var c = MinimalEmissionTest.Analyze(Source);
         for (var i = 0; i < 8; i++)
         {
-            Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Ownership.Analyze().IsVerified || !c.Emission.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
             {
                 throw new InvalidOperationException("Shared guard verification failed.");
             }
@@ -155,15 +155,15 @@ public class SharedGuardTest
         var source = "var text = \"hello\"\nmatch text\n    " + pattern + " if (label check: do\n        " + mutation + "\n        exit to check false\n    ) => ()\n    _ => ()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]
     public void ANewCandidateBorrowCannotEscapeItsGuard()
     {
         var c = MinimalEmissionTest.Analyze("func get(value: ref/(string, i32)) -> ref/string during value\n    match value\n        (let text, _) if (return text) => ()\n        (_, _) => ()\n    $abort(\"none\")");
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
         Assert.False(c.Binding.Result.IsComplete);
     }
 }

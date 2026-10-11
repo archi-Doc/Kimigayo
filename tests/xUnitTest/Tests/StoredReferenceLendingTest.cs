@@ -33,10 +33,10 @@ public class StoredReferenceLendingTest
         var source = Declarations + "var value = 40\nvar cursor = Cursor.init(value@uniq)\nlet first = " + next + "\nlet second = " + next + "\nmatch first\n    .Some(let item) => Console.writeLine(\"first\")\n    .None => ()\n_ = second";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.Contains(c.Ownership.Issues, issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.False(c.Analysis.IsVerified);
+        Assert.Contains(c.Problems, issue => issue.Code.IsLoanConflict());
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
     }
 
@@ -64,8 +64,8 @@ public class StoredReferenceLendingTest
         {
             var c = MinimalEmissionTest.Analyze(source);
             Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-            Assert.Contains(c.Ownership.Issues, issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
-            Assert.DoesNotContain(c.Ownership.Issues, issue => issue.Failure == OwnershipFailure.Unsupported);
+            Assert.Contains(c.Problems, issue => issue.Code.IsLoanConflict());
+            Assert.DoesNotContain(c.Problems, issue => issue.Code == DiagnosticCode.Unsupported_Kd);
         }
         else
         {

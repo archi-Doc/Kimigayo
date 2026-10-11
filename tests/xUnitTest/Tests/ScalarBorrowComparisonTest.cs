@@ -26,8 +26,8 @@ public class ScalarBorrowComparisonTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
-        Assert.True(c.Ownership.Result.IsVerified, string.Join("\n", c.Ownership.Issues.Select(x => $"{x.Failure}: {x.Source}")));
-        Assert.True(c.Emission.TryPrepare(out _, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Analysis.IsVerified, string.Join("\n", c.Problems.Select(x => $"{x.Code}: {c.SyntaxOf(x.Subject)}")));
+        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
         ScalarEmissionTest.EmitFixture("ScalarBorrowComparison" + name, source, name is "Local" or "Mixed" ? string.Empty : "ok\n");
     }
 

@@ -67,7 +67,7 @@ public class UserArithmeticOperatorTest
         var program = "struct Value\n    Self is LeftAddable<i32>\n    associate Output is i32\n    public func addedFrom(left: ref/i32, self: ref/Self) -> i32 => left + 1\nfunc bump(value: uniq/i32) -> Value\n    value@follow += 1\n    return Value.init()\nvar number = 40\nlet result = number" + (copied ? "@copy" : string.Empty) + " + bump(number@uniq)\nrequire result == 41 and number == 41 else => $abort(\"order\")";
         var c = MinimalEmissionTest.Analyze(program);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(copied, c.Ownership.Result.IsVerified);
+        Assert.Equal(copied, c.Analysis.IsVerified);
         if (copied)
         {
             ScalarEmissionTest.EmitFixture("UserArithmeticCopiedLeft", program, string.Empty);
@@ -214,14 +214,14 @@ public class UserArithmeticOperatorTest
     public void AnEditedProviderCannotReuseItsPreviousOperatorSelection()
     {
         var c = MinimalEmissionTest.Analyze(Declarations + "\nlet value = Value.init()\nlet result = value + 2");
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var original = Assert.Single(c.Kotonoha.RootKoto.NestedContainers.OfType<StructKoto>());
         var donor = MinimalEmissionTest.Analyze("struct Value\n    public let value: i32 = 40\nlet value = Value.init()");
         var changed = Assert.Single(donor.Kotonoha.RootKoto.NestedContainers.OfType<StructKoto>());
         Assert.True(KotoHelper.Replace(original.Parent!, original, changed));
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.ArithmeticSelection_Kd);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]
@@ -233,7 +233,7 @@ public class UserArithmeticOperatorTest
         var error = Assert.Single(c.Binding.Issues);
         Assert.Equal(DiagnosticCode.UnprovenOriginRelation_Kd, error.Code);
         Assert.Equal("self.value@ref", error.Node.ToString());
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure is OwnershipFailure.Unsupported or OwnershipFailure.Internal);
+        Assert.DoesNotContain(c.Problems, static x => x.Code is DiagnosticCode.Unsupported_Kd or DiagnosticCode.InternalInvariant_Kd);
     }
 
     [Fact]
@@ -259,8 +259,8 @@ public class UserArithmeticOperatorTest
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid);
     }
 }

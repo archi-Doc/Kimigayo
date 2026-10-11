@@ -29,7 +29,7 @@ public class PositionContractTest
     {
         var c = MinimalEmissionTest.Analyze("func twice<P>(p: P) -> bool\n    P is Position\n    let a = p\n    let b = p\n    Console.writeLine(\"\\(a)\")\n    return a == b\n()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]

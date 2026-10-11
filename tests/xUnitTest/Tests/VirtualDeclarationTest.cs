@@ -45,7 +45,7 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
         Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.Unsupported_Kd, x.Code));
         Assert.Equal(receiver == "objref" ? 0 : 2, c.Binding.Issues.Count);
         Assert.Equal(receiver == "objref", c.Binding.Result.IsComplete);
-        Assert.Equal(receiver == "objref", c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Equal(receiver == "objref", c.WriteIr(TextWriter.Null, out _));
         Assert.Equal(2, KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Count(x => x.IsVirtual || x.IsOverride));
     }
 
@@ -79,7 +79,7 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
         Assert.Equal(expected, diagnostic.Span.Start);
         Assert.Contains(fact, diagnostic.Label!, StringComparison.Ordinal);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
         output.WriteLine(diagnostic.Explanation + "\n" + diagnostic.Label);
     }
 

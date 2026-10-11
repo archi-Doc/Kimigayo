@@ -21,7 +21,7 @@ public class VirtualApplicabilityDefinitionTest(ITestOutputHelper output)
         var source = Program(block, type, "2") + "let owner = Derived.init()@obj\nrequire owner.first() == 1 and owner.last() == 3 else => $abort(\"slots\")\n" +
             (applicable ? "require owner.read() == 2 else => $abort(\"override\")" : "()");
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
         var descriptor = Assert.Single(module.Objects);
         Assert.Equal(3, descriptor.VirtualSlots.Length);
@@ -43,7 +43,7 @@ public class VirtualApplicabilityDefinitionTest(ITestOutputHelper output)
         var source = Program(false, "string", body, statement: body.Contains('\n')) + (ownership ? "()" : "let independent = absent\n");
         var c = MinimalEmissionTest.Analyze(source);
         c.Binding.ReportDiagnostics();
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         var records = TestDiagnostics.Of(c);
         Assert.Contains(records, x => x.Code == code);
         if (ownership)
@@ -56,7 +56,7 @@ public class VirtualApplicabilityDefinitionTest(ITestOutputHelper output)
         }
 
         Assert.DoesNotContain(records, x => x.Code is "Unsupported_Kd" or "CheckFaulted_Kd");
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -109,12 +109,12 @@ public class VirtualApplicabilityDefinitionTest(ITestOutputHelper output)
     public void InapplicableDefinitionsReuseAllPhases()
     {
         var c = MinimalEmissionTest.Analyze(Program(false, "string", "2") + "let owner = Derived.init()@obj\nrequire owner.last() == 3 else => $abort(\"slot\")");
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid);
     }
 

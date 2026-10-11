@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -14,24 +15,24 @@ public class OwnershipJoinTest
     {
         var c = MinimalEmissionTest.Analyze(Source());
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
     }
 
     [Theory]
-    [InlineData("    else\n        current = Item.init(12)\n", "", OwnershipFailure.UninitializedUse)]
-    [InlineData("            current = Item.init(20)", "            // current = Item.init(20)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("            consume(current@move, initial + 1)", "            consume(current@move, initial + 1)\n            let invalid = current.value", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("        current.value = current.value + 1", "        current.value = current.value + 1\n        consume(current@move, initial + 1)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("            total = total + selected.value", "            current.value = 99\n            total = total + selected.value", OwnershipFailure.ComparisonLoanConflict)]
-    public void RejectsInvalidJoin(string before, string after, OwnershipFailure failure)
+    [InlineData("    else\n        current = Item.init(12)\n", "", DiagnosticCode.UninitializedPlace_Kd)]
+    [InlineData("            current = Item.init(20)", "            // current = Item.init(20)", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("            consume(current@move, initial + 1)", "            consume(current@move, initial + 1)\n            let invalid = current.value", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("        current.value = current.value + 1", "        current.value = current.value + 1\n        consume(current@move, initial + 1)", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("            total = total + selected.value", "            current.value = 99\n            total = total + selected.value", DiagnosticCode.ComparisonLoanConflict_Kd)]
+    public void RejectsInvalidJoin(string before, string after, DiagnosticCode failure)
     {
         var source = Source();
         Assert.Contains(before, source, StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source.Replace(before, after, StringComparison.Ordinal));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, issue => issue.Failure == failure);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, issue => issue.Code == failure);
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -47,7 +48,7 @@ public class OwnershipJoinTest
         {
             var source = Pair + "    let selected" + annotation + " = " + expression + "\n    let n = selected.value\n    a.value = n\n    b.value = n\ninspect(true)\ninspect(false)";
             var c = MinimalEmissionTest.Analyze(source);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
             var body = Assert.Single(c.Ownership.Bodies, b => b.Function.Name == "inspect");
             var selected = Assert.Single(body.Places, p => p.Source is Kimi.Compiler.Parsing.FieldKoto field && field.NameKoto.ToString() == "selected");
             Assert.Equal(OriginKind.Intersection, selected.Type.Origin!.Kind);
@@ -56,8 +57,8 @@ public class OwnershipJoinTest
             {
                 var invalid = MinimalEmissionTest.Analyze(source.Replace("    let n =", "    " + owner + ".value = 99\n    let n =", StringComparison.Ordinal));
                 Assert.True(invalid.Binding.Result.IsComplete);
-                Assert.Contains(invalid.Ownership.Issues, issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
-                Assert.False(invalid.Emission.Validate(out _));
+                Assert.Contains(invalid.Problems, issue => issue.Code.IsLoanConflict());
+                Assert.False(invalid.Validate(out _));
             }
         }
     }
@@ -67,13 +68,13 @@ public class OwnershipJoinTest
     {
         var c = MinimalEmissionTest.Analyze(Pair + "    let selected = label choose: do\n        let local = Cell.init()\n        exit to choose if c => a@ref else => local@ref\n    let n = selected.value\ninspect(true)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(c.Problems, issue => issue.Code.IsLoanConflict());
 
         // SPEC 15.6.5, 16.2.2: one record, at the exit whose cleanup destroys `local`, never also at the join or the later use.
         var conflict = Assert.Single(c.Ownership.Issues);
         Assert.Equal((OwnershipFailure.ComparisonLoanConflict, "local"), (conflict.Failure, conflict.Destroyed));
         Assert.IsType<Kimi.Compiler.Parsing.ExitKoto>(conflict.Source);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -84,7 +85,7 @@ public class OwnershipJoinTest
     {
         var c = MinimalEmissionTest.Analyze(Pair + "    let selected: " + annotation + " = if c => " + first + " else => " + second + "\ninspect(true)");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     // SPEC 14.9.1, 15.6.1: a join of a body-local Borrow with a fixed source waits for every source and takes their meet, so
@@ -101,7 +102,7 @@ public class OwnershipJoinTest
         ScalarEmissionTest.EmitFixture("OwnershipJoinLocalFixed" + name, source, stdout);
         var invalid = MinimalEmissionTest.Analyze(source.Replace("    return r@follow", "    n = 6\n    return r@follow", StringComparison.Ordinal).Replace("    let n = 5", "    var n = 5", StringComparison.Ordinal));
         Assert.True(invalid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(invalid, null));
-        Assert.Contains(invalid.Ownership.Issues, static issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(invalid.Problems, static issue => issue.Code.IsLoanConflict());
     }
 
     // SPEC 15.4.4, 15.6.5: the declaration owns one inferred slot; each assigned value retains its own Loan.
@@ -113,7 +114,7 @@ public class OwnershipJoinTest
     public void CheckedValuesRejectLostOriginDependency()
     {
         var c = MinimalEmissionTest.Analyze(Pair + "    let selected = if c => a@ref else => b@ref\n    let n = selected.value\ninspect(true)");
-        Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
         var body = Assert.Single(c.Ownership.Bodies, b => b.Function.Name == "inspect");
         var phi = body.Values.FindIndex(value => value.Kind == OwnershipValueKind.Phi);
         var incoming = body.PhiInputs[body.Values[phi].Start].Value;
@@ -122,7 +123,7 @@ public class OwnershipJoinTest
         body.PlaceStorage[place] = body.Places[place] with { Type = narrowed };
         body.Operations[phi].Source.SetType(narrowed);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Equal(string.Empty, writer.ToString());
     }
 

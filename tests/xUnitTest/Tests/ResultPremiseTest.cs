@@ -108,7 +108,7 @@ public class ResultPremiseTest
         {
             var invalid = MinimalEmissionTest.Analyze(source.Replace("require r@follow@follow", write + "require r@follow@follow", StringComparison.Ordinal));
             Assert.True(invalid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(invalid, null));
-            Assert.Contains(invalid.Ownership.Issues, static issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
+            Assert.Contains(invalid.Problems, static issue => issue.Code.IsLoanConflict());
         }
     }
 
@@ -122,7 +122,7 @@ public class ResultPremiseTest
         ScalarEmissionTest.EmitFixture("ResultPremiseLeakPart", source, "3\n");
         var invalid = MinimalEmissionTest.Analyze(source.Replace("require second@follow", "other = 5\nrequire second@follow", StringComparison.Ordinal));
         Assert.True(invalid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(invalid, null));
-        Assert.Contains(invalid.Ownership.Issues, static issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(invalid.Problems, static issue => issue.Code.IsLoanConflict());
 
         // A fixed caller cannot pass that part off as bounded by the outer input alone: its return is the fit failure.
         var escape = Holder + Leak + "func escape(h: ref/Holder, x: ref/i32) -> ref/i32 during h\n    origin h.a outlives x\n    return leak(p: h, q: x).1\n" + Main;
@@ -144,7 +144,7 @@ public class ResultPremiseTest
         ScalarEmissionTest.EmitFixture("ResultPremiseMethod", source, "7\n");
         var invalid = MinimalEmissionTest.Analyze(source.Replace("        Console.writeLine(\"\\(z@follow@follow)\")", "        other = 4\n        Console.writeLine(\"\\(z@follow@follow)\")", StringComparison.Ordinal));
         Assert.True(invalid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(invalid, null));
-        Assert.Contains(invalid.Ownership.Issues, static issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(invalid.Problems, static issue => issue.Code.IsLoanConflict());
     }
 
     // SPEC 15.3.7, 15.6.1: a fixed caller whose arguments leave the outer Origin free is valid, since the call's Origins satisfy the
@@ -188,7 +188,7 @@ public class ResultPremiseTest
         ScalarEmissionTest.EmitFixture("ResultPremiseItemUses", ItemUses, "30 3\n");
         var conflict = MinimalEmissionTest.Analyze(ItemUses.Replace("require second@follow", "other = 5\nrequire second@follow", StringComparison.Ordinal));
         Assert.True(conflict.Binding.Result.IsComplete, MinimalEmissionTest.Describe(conflict, null));
-        Assert.Contains(conflict.Ownership.Issues, static issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(conflict.Problems, static issue => issue.Code.IsLoanConflict());
 
         var direct = LeakItem + LeakEscape + Main;
         var throughReference = direct.Replace("    let pair = fr(x, local@ref)", "    let g = fr@ref\n    let pair = g(x, local@ref)", StringComparison.Ordinal);
@@ -455,7 +455,7 @@ public class ResultPremiseTest
         ScalarEmissionTest.EmitFixture("ResultPremiseFunctionPart", FunctionPart, "19 3\n");
         var conflict = MinimalEmissionTest.Analyze(FunctionPart.Replace("require second@follow", "other = 4\nrequire second@follow", StringComparison.Ordinal));
         Assert.True(conflict.Binding.Result.IsComplete, MinimalEmissionTest.Describe(conflict, null));
-        Assert.Contains(conflict.Ownership.Issues, static issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(conflict.Problems, static issue => issue.Code.IsLoanConflict());
     }
 
     // SPEC 7.6.4, 15.3.7: a value call through a generic Function Item enters the instance of its bound arguments, whose result keeps the

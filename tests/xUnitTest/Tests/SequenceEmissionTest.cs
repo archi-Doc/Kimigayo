@@ -74,7 +74,7 @@ public class SequenceEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -86,8 +86,8 @@ public class SequenceEmissionTest
         {
             c.Bind();
             c.Binding.CheckStartup(OutputKind.Application);
-            c.Ownership.Analyze();
-            Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+            c.Analyze();
+            Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
         }
     }
 
@@ -99,7 +99,7 @@ public class SequenceEmissionTest
     public void MalformedSequencePlansFailAndRecover(string defect)
     {
         var c = MinimalEmissionTest.Analyze("let a: [2 of i32] = [1, 2]\nlet b: [2 of i32] = [3, 4]\nlet s = a[..]\nfor i in s.indices => s[i]");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var index = body.Sequences.FindIndex(x => x.Kind == (defect == "index" ? SequenceOperation.Read : SequenceOperation.Slice));
         var plan = body.Sequences[index];
@@ -111,9 +111,9 @@ public class SequenceEmissionTest
             _ => plan with { Index = -1 },
         };
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 }

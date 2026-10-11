@@ -28,7 +28,7 @@ public class PropertyRecoveryTest(ITestOutputHelper output)
         Assert.False(property.IsVerified);
         Assert.All(KotoTree.Walk(property.Declaration).OfType<IdentifierNameKoto>().Where(static x => x.IdentifierName == "storage"), static x => Assert.Null(x.TypeOf()));
         this.AssertRecords(c, ["UnresolvedBinding_Kd", "TypeMismatch_Kd"]);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
         Assert.False(c.Bind().IsComplete);
         this.AssertRecords(c, ["UnresolvedBinding_Kd", "TypeMismatch_Kd"]);
     }

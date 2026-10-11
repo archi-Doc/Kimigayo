@@ -30,7 +30,7 @@ public class RawAddressTest
         var source = Point + "public func main()\n    " + body;
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var address = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(static x => x.NameKoto.IdentifierName == "address");
         Assert.Equal(type, Text(address.TypeOf()!));
         Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
@@ -52,7 +52,7 @@ public class RawAddressTest
     public void TheAddressChecksItsPlaceLikeAnImmediatelyEndingBorrow(string body)
     {
         var c = MinimalEmissionTest.Analyze("public func main()\n    " + body);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
 
     // SPEC 5.4, 8.4.10.2: in an effect summary the address is an access to its Place, an environment effect only on a mutable static.

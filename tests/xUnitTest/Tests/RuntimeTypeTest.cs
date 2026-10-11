@@ -332,10 +332,10 @@ public class RuntimeTypeTest
     {
         var c = CompilationTestHelper.ParseSuccess("struct Dog\nfunc f(x: objref/Dog) -> bool => x is not Dog");
         AssertBound(c);
-        Assert.True(c.Ownership.Analyze().IsVerified);
+        Assert.True(c.Analyze().IsVerified);
         var test = Test(c);
-        Assert.Empty(c.Ownership.Issues);
-        Assert.DoesNotContain(c.Ownership.Issues, issue => issue.Source == test.Right);
+        Assert.Empty(c.Problems);
+        Assert.DoesNotContain(c.Problems, issue => c.SyntaxOf(issue.Subject) == test.Right);
         var body = Assert.Single(c.Ownership.Bodies, body => body.Function.Name == "f");
         Assert.Single(body.Operations, op => op.Source == test.Left && op.Kind == OwnershipOperationKind.Borrow);
         Assert.DoesNotContain(body.Operations, op => op.Source == test.Right);
@@ -347,7 +347,7 @@ public class RuntimeTypeTest
     {
         var c = CompilationTestHelper.ParseSuccess("struct Dog\nfunc obtain(s: string) -> obj/Dog => obtain(s@move)\nfunc f(s: string) -> bool => obtain(s@move) is Dog");
         AssertBound(c);
-        c.Ownership.Analyze();
+        c.Analyze();
         var test = Test(c);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "f");
         Assert.Single(body.Operations, op => op.Source == test.Left && op.Kind == OwnershipOperationKind.Call);

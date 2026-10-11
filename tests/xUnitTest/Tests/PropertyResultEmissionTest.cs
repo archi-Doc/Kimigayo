@@ -78,7 +78,7 @@ public class PropertyResultEmissionTest
         var source = OwnershipPropertyEmissionTest.Resource + Holder + "let h = Holder.init(Resource.init(1))\nlet view = h.fresh@ref\n_ = view.id";
         var path = Path.GetFullPath("property-result.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var record = Assert.Single(result.Diagnostics);
@@ -102,12 +102,12 @@ public class PropertyResultEmissionTest
     public void GetterPipelineReusesOriginAndStoragePlans()
     {
         var c = MinimalEmissionTest.Analyze(OwnershipPropertyEmissionTest.Resource + Holder + "let h = Holder.init(Resource.init(1))\nlet view = h.view\n_ = view.id\n_ = h.fresh");
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid);
     }
 }

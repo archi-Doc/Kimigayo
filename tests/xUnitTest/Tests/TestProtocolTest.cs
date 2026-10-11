@@ -121,7 +121,7 @@ public class TestProtocolTest
     private static TestOutcome Create()
     {
         var compilation = TestExecutionAnalysisTest.Analyze("#Test\nfunc sample() => $expect(false, message: \"message\")");
-        Assert.True(compilation.Ownership.Result.IsVerified);
+        Assert.True(compilation.Analysis.IsVerified);
         compilation.Tests.Discover(compilation);
         return new(compilation.Tests.Cases[0], compilation.Tests);
     }

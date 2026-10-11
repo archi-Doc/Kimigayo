@@ -32,8 +32,8 @@ public class SharedResultEmissionTest
         // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
         // the corrupt result arrival is rejected on the ordinary body that owns it.
         var c = MinimalEmissionTest.Analyze("func pick(value: ref/bool, flag: bool, n: i32) -> i32 => if flag => n + 1 else => n - 1\nlet v = true\nlet r = pick(v, true, 2)");
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.TryPrepare(out _, out var error), error);
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Validate(out var error), error);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Values.Any(v => v.Kind == OwnershipValueKind.Phi));
         var phi = body.Values.First(x => x.Kind == OwnershipValueKind.Phi);
         var input = body.PhiInputs[phi.Start];
@@ -45,9 +45,9 @@ public class SharedResultEmissionTest
             _ => input with { Write = -1 },
         };
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Equal(string.Empty, output.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 }

@@ -26,7 +26,7 @@ public class ParameterNameDefaultTest
     {
         var c = MinimalEmissionTest.Analyze("func f(" + parameter + ") -> i32 => x\n" + call);
         Assert.Equal(accepted, c.Binding.Result.IsComplete);
-        Assert.Equal(accepted, c.Emission.Validate(out _));
+        Assert.Equal(accepted, c.Validate(out _));
         if (accepted)
         {
             Assert.Equal(defaults, Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).CallOf()!.DefaultArguments.Length);
@@ -44,7 +44,7 @@ public class ParameterNameDefaultTest
     {
         var c = MinimalEmissionTest.Analyze("func f(" + parameter + ") -> i32 => local\n" + call);
         Assert.Equal(accepted, c.Binding.Result.IsComplete);
-        Assert.Equal(accepted, c.Emission.Validate(out _));
+        Assert.Equal(accepted, c.Validate(out _));
     }
 
     [Theory]
@@ -69,7 +69,7 @@ public class ParameterNameDefaultTest
     {
         var c = MinimalEmissionTest.Analyze("func f(" + parameters + ") -> i32 => a + b\n" + call);
         Assert.Equal(accepted, c.Binding.Result.IsComplete);
-        Assert.Equal(accepted, c.Emission.Validate(out _));
+        Assert.Equal(accepted, c.Validate(out _));
     }
 
     [Theory]
@@ -199,8 +199,8 @@ public class ParameterNameDefaultTest
         var c = MinimalEmissionTest.Analyze("func f(x: i32 ! y: i32 = x + 1) -> i32 => y\nf(3)");
         void Verify()
         {
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         for (var i = 0; i < 100; i++)

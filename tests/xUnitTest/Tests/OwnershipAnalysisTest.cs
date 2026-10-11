@@ -29,27 +29,27 @@ public class OwnershipAnalysisTest
     public void SupportedProgramsVerify(string source)
     {
         var c = Parse(source);
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
     }
 
     [Theory]
-    [InlineData("let s: string\nConsole.writeLine(s)", OwnershipFailure.UninitializedUse)]
-    [InlineData("let s = \"a\"\n_ = s@move\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"a\"\n_ = s@move\nif s == \"x\"\n    ()", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"a\"\nlet taken = s", OwnershipFailure.TransferRequired)]
-    [InlineData("let s = \"a\"\ns = \"b\"", OwnershipFailure.ReassignedLet)]
-    [InlineData("let s = \"a\"\nConsole.writeLine(s)\ns = \"b\"", OwnershipFailure.ReassignedLet)]
-    [InlineData("func f(c: bool)\n    var s: string\n    if c\n        s = \"a\"\n    Console.writeLine(s)", OwnershipFailure.UninitializedUse)]
-    [InlineData("func f(c: bool)\n    let s = \"a\"\n    if c\n        _ = s@move\n    Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f(c: bool)\n    let s: string\n    if c\n        s = \"a\"\n    s = \"b\"", OwnershipFailure.ReassignedLet)]
-    [InlineData("func f(c: bool)\n    let s = \"a\"\n    while c\n        _ = s@move", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f(c: bool)\n    let s: string\n    while c\n        s = \"a\"", OwnershipFailure.ReassignedLet)]
-    [InlineData("let s: string\nif true\n    s = \"a\"\nConsole.writeLine(s)", OwnershipFailure.UninitializedUse)]
-    public void StateErrorsAreDiagnosedAfterConvergence(string source, OwnershipFailure failure)
+    [InlineData("let s: string\nConsole.writeLine(s)", DiagnosticCode.UninitializedPlace_Kd)]
+    [InlineData("let s = \"a\"\n_ = s@move\nConsole.writeLine(s)", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("let s = \"a\"\n_ = s@move\nif s == \"x\"\n    ()", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("let s = \"a\"\nlet taken = s", DiagnosticCode.TransferRequired_Kd)]
+    [InlineData("let s = \"a\"\ns = \"b\"", DiagnosticCode.ReassignedLet_Kd)]
+    [InlineData("let s = \"a\"\nConsole.writeLine(s)\ns = \"b\"", DiagnosticCode.ReassignedLet_Kd)]
+    [InlineData("func f(c: bool)\n    var s: string\n    if c\n        s = \"a\"\n    Console.writeLine(s)", DiagnosticCode.UninitializedPlace_Kd)]
+    [InlineData("func f(c: bool)\n    let s = \"a\"\n    if c\n        _ = s@move\n    Console.writeLine(s)", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("func f(c: bool)\n    let s: string\n    if c\n        s = \"a\"\n    s = \"b\"", DiagnosticCode.ReassignedLet_Kd)]
+    [InlineData("func f(c: bool)\n    let s = \"a\"\n    while c\n        _ = s@move", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("func f(c: bool)\n    let s: string\n    while c\n        s = \"a\"", DiagnosticCode.ReassignedLet_Kd)]
+    [InlineData("let s: string\nif true\n    s = \"a\"\nConsole.writeLine(s)", DiagnosticCode.UninitializedPlace_Kd)]
+    public void StateErrorsAreDiagnosedAfterConvergence(string source, DiagnosticCode failure)
     {
         var c = Parse(source);
-        Assert.False(c.Ownership.Analyze().IsVerified);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == failure);
+        Assert.False(c.Analyze().IsVerified);
+        Assert.Contains(c.Problems, x => x.Code == failure);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidAssignment_Kd);
     }
 
@@ -58,9 +58,9 @@ public class OwnershipAnalysisTest
     public void UnsupportedOwnershipCannotBecomeVerified(string source)
     {
         var c = Parse(source);
-        var result = c.Ownership.Analyze();
+        var result = c.Analyze();
         Assert.False(result.IsVerified);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
         Assert.All(c.Ownership.Bodies, x => Assert.False(x.IsVerified));
     }
 
@@ -68,7 +68,7 @@ public class OwnershipAnalysisTest
     public void OwnedDefaultsNowVerifyThroughTheOrdinaryPipeline()
     {
         var c = Parse("func f(x: string = \"x\") => ()\nf()");
-        var result = c.Ownership.Analyze();
+        var result = c.Analyze();
         Assert.True(result.IsVerified, Describe(c));
         Assert.All(c.Ownership.Bodies, static body => Assert.True(body.IsVerified));
     }
@@ -77,8 +77,8 @@ public class OwnershipAnalysisTest
     public void ImplicitBorrowIsRecordedAndChecksMovedState()
     {
         var c = Parse("func show(s: ref/string) => ()\nlet s = \"a\"\n_ = s@move\nshow(s)");
-        c.Ownership.Analyze();
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.PossiblyMovedUse);
+        c.Analyze();
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd);
         Assert.Contains(Body(c).Operations, x => x.Use == PlaceUseKind.Borrow);
     }
 
@@ -88,14 +88,14 @@ public class OwnershipAnalysisTest
     public void UnknownCopyIsCheckedAtTheGenericDefinition(string source, bool valid)
     {
         var c = Parse(source);
-        var result = c.Ownership.Analyze();
+        var result = c.Analyze();
         Assert.True(valid == result.IsVerified, Describe(c));
         // The Copy-unproven parameter Place stays CopyOrMove; its x@move transfer is checked as a Move (SPEC 13.5.3).
         Assert.Contains(c.Ownership.Bodies.SelectMany(x => x.Places), x => x.Kind == OwnershipPlaceKind.Parameter && x.Acquisition == AcquisitionKind.CopyOrMove);
         Assert.Contains(c.Ownership.Bodies.SelectMany(x => x.Operations), x => x.Kind == OwnershipOperationKind.Consume && x.Acquisition == AcquisitionKind.Move);
         if (!valid)
         {
-            Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.PossiblyMovedUse);
+            Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd);
         }
     }
 
@@ -108,9 +108,9 @@ public class OwnershipAnalysisTest
         Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
         var bound = c.Bind().IsComplete;
-        Assert.False(bound && c.Ownership.Analyze().IsVerified);
+        Assert.False(bound && c.Analyze().IsVerified);
         Assert.True(
-            c.Binding.Issues.Any(x => x.Code == DiagnosticCode.TransferRequired_Kd) || c.Ownership.Issues.Any(x => x.Failure == OwnershipFailure.TransferRequired),
+            c.Binding.Issues.Any(x => x.Code == DiagnosticCode.TransferRequired_Kd) || c.Problems.Any(x => x.Code == DiagnosticCode.TransferRequired_Kd),
             string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")) + Describe(c));
     }
 
@@ -118,7 +118,7 @@ public class OwnershipAnalysisTest
     public void ConditionalReplacementUsesPostRhsState()
     {
         var c = Parse("func f(c: bool)\n    var s: string\n    if c\n        s = \"a\"\n    s = \"b\"\n    s = s@move");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
         var s = body.Places.Single(x => x.Source is FieldKoto f && f.NameKoto.IdentifierName == "s");
         var writes = body.Operations.Where(x => x.Kind == OwnershipOperationKind.Write && x.Place == s.Id).ToArray();
@@ -134,7 +134,7 @@ public class OwnershipAnalysisTest
     public void ExitCleanupFollowsDeclarationOrderAndSkipsMovedValues()
     {
         var c = Parse("func f(first: string, second: string)\n    let a = \"a\"\n    let b: string\n    b = \"b\"\n    _ = a@move\n    return");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
         var plan = body.CleanupPlans.First(x => x.Reason == CleanupReason.Return && x.Edge >= 0 && body.IsReachable(body.Edges[x.Edge].From));
         var steps = body.CleanupSteps.Skip(plan.Start).Take(plan.Count).Where(x => body.Places[x.Place].Kind != OwnershipPlaceKind.Temporary).ToArray();
@@ -146,7 +146,7 @@ public class OwnershipAnalysisTest
     public void ReturnDuringLaterArgumentCleansEarlierTemporaryBeforeCalleeEntry()
     {
         var c = Parse("func makeText() -> string => \"a\"\nfunc f(a: string, b: i32) => ()\nfunc use(c: bool)\n    f(makeText(), if c => return else => 1)");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "use");
         var value = body.Places.Single(x => x.Kind == OwnershipPlaceKind.Temporary && x.Source is InvocationKoto call && call.CallOf()!.Target.Name == "makeText");
         Assert.Contains(body.CleanupSteps, x => x.Place == value.Id && x.Action == CleanupAction.Destroy && body.Operations[x.Operation].Source is ReturnKoto);
@@ -158,7 +158,7 @@ public class OwnershipAnalysisTest
     public void ReturnSecuresTheResultBeforeCleanupAndDelivery()
     {
         var c = Parse("func f(s: string) -> string\n    return s@move");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
         var operations = body.Operations.ToArray();
         var secure = Array.FindIndex(operations, x => x.Kind == OwnershipOperationKind.Write && body.Places[x.Place].Kind == OwnershipPlaceKind.Result);
@@ -178,7 +178,7 @@ public class OwnershipAnalysisTest
     {
         var source = "func makeText() -> string => \"outer\"\nfunc consume(a: string, b: i32) => ()\nfunc use(c: bool)\n    consume(\n        makeText(),\n        if c\n            let inner = \"inner\"\n            return\n        else => 1\n    )";
         var c = Parse(source.Replace("\n", newline) + (trailingNewline ? newline : string.Empty));
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "use");
         var steps = body.CleanupSteps.Where(x => x.Action == CleanupAction.Destroy && body.Operations[x.Operation].Source is ReturnKoto).ToArray();
         var inner = Array.FindIndex(steps, x => x.Source is FieldKoto);
@@ -190,23 +190,23 @@ public class OwnershipAnalysisTest
     public void RebindInvalidatesAllVerification()
     {
         var c = Parse("let s = \"a\"\nConsole.writeLine(s)");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         var old = Body(c);
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "let other: string\nConsole.writeLine(other)");
         c.Bind();
-        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.False(c.Analysis.IsVerified);
         Assert.False(old.IsVerified);
         Assert.Empty(c.Ownership.Bodies);
-        Assert.False(c.Ownership.Analyze().IsVerified);
+        Assert.False(c.Analyze().IsVerified);
     }
 
     [Fact]
     public void BorrowedArgumentDoesNotMoveItsSource()
     {
         var c = Parse("func show(s: ref/string) => ()\nlet s = \"a\"\nshow(s)\nshow(s)");
-        c.Ownership.Analyze();
-        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure != OwnershipFailure.Unsupported);
-        Assert.Empty(c.Ownership.Issues);
+        c.Analyze();
+        Assert.DoesNotContain(c.Problems, x => x.Code != DiagnosticCode.Unsupported_Kd);
+        Assert.Empty(c.Problems);
         Assert.DoesNotContain(Body(c).Operations, x => x.Kind == OwnershipOperationKind.CallEntry && Body(c).Places[x.Place].Kind != OwnershipPlaceKind.Temporary);
     }
 
@@ -214,7 +214,7 @@ public class OwnershipAnalysisTest
     public void BodylessRequirementsAreNotOwnershipBodies()
     {
         var c = Parse("contract Named\n    func name(self: ref/Self) -> i32\nConsole.writeLine(\"x\")");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         Assert.DoesNotContain(c.Ownership.Bodies, x => x.Function.IsRequirement);
     }
 
@@ -222,7 +222,7 @@ public class OwnershipAnalysisTest
     public void InputStatesReplayWithinBlocks()
     {
         var c = Parse("func f(c: bool)\n    let s = \"a\"\n    if c\n        _ = s@move\n    let t = 1");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
         var s = body.Places.Single(x => x.Source is FieldKoto { NameKoto.IdentifierName: "s" }).Id;
         var consume = body.Operations.ToList().FindIndex(x => x.Kind == OwnershipOperationKind.Consume && x.Place == s);
@@ -257,14 +257,14 @@ public class OwnershipAnalysisTest
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
-        Assert.False(c.Ownership.Analyze().IsVerified);
+        Assert.False(c.Analyze().IsVerified);
     }
 
     [Fact]
     public void StaticStringTemporaryHasCleanupResponsibility()
     {
         var c = Parse("\"discarded\"");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         var body = Body(c);
         var literal = Assert.Single(body.Places, x => x.Source is StringLiteralKoto);
         Assert.Equal(OwnershipPlaceKind.Temporary, literal.Kind);
@@ -275,7 +275,7 @@ public class OwnershipAnalysisTest
     public void BranchMoveMakesExitCleanupConditional()
     {
         var c = Parse("func f(c: bool)\n    let s = \"a\"\n    if c\n        _ = s@move");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
         var local = body.Places.Single(x => x.Kind == OwnershipPlaceKind.Local);
         Assert.Contains(body.CleanupSteps, x => x.Place == local.Id && x.Action == CleanupAction.Conditional);
@@ -285,7 +285,7 @@ public class OwnershipAnalysisTest
     public void ScalarSelfAssignmentReplacesTheCopiedOldValue()
     {
         var c = Parse("var x = 1\nx = x");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         var body = Body(c);
         var write = body.Operations.Last(x => x.Kind == OwnershipOperationKind.Write);
         Assert.Equal(PlacementKind.Replacement, write.Placement);
@@ -296,7 +296,7 @@ public class OwnershipAnalysisTest
     public void LoopTransferCleansInnerLocalAndKeepsOuterLocal()
     {
         var c = Parse("func f(c: bool)\n    let outer = \"a\"\n    while c\n        let inner = \"b\"\n        continue\n    Console.writeLine(outer)");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, Describe(c));
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
         var plan = Assert.Single(body.CleanupPlans, x => x.Reason == CleanupReason.LoopTransfer);
         var local = Assert.Single(body.CleanupSteps.Skip(plan.Start).Take(plan.Count), x => body.Places[x.Place].Kind == OwnershipPlaceKind.Local);
@@ -323,7 +323,7 @@ public class OwnershipAnalysisTest
         => CompilationTestHelper.BindSuccess(source);
 
     private static string Describe(Compilation c)
-        => string.Join("\n", c.Ownership.Issues.Select(x => $"{x.Failure}: {x.Source} {x.Source.GetType().Name} {x.Source.TypeOf()?.Kind}")) +
+        => string.Join("\n", c.Problems.Select(x => $"{x.Code}: {c.SyntaxOf(x.Subject)} {c.SyntaxOf(x.Subject).GetType().Name} {c.SyntaxOf(x.Subject).TypeOf()?.Kind}")) +
             string.Join("\n", c.Ownership.ControlFlow?.Issues.Select(x => x.Message) ?? []) +
             string.Join("\n", c.Ownership.ControlFlow?.PendingBinding.Select(x => $"pending: {x}") ?? []);
 
@@ -347,7 +347,7 @@ public class OwnershipAnalysisTest
             for (var i = 0; i < 8; i++)
             {
                 c.Bind();
-                Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+                Assert.True(c.Analyze().IsVerified, Describe(c));
             }
 
             var phases = new long[16];
@@ -359,7 +359,7 @@ public class OwnershipAnalysisTest
                     c.Bind();
                     phases[phase++] = GC.GetAllocatedBytesForCurrentThread() - before;
                     before = GC.GetAllocatedBytesForCurrentThread();
-                    c.Ownership.Analyze();
+                    c.Analyze();
                     phases[phase++] = GC.GetAllocatedBytesForCurrentThread() - before;
                 },
                 4);

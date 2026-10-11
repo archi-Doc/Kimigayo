@@ -50,7 +50,7 @@ public class VirtualConditionalDispatchTest(ITestOutputHelper output)
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.Span.Start >= valid.Length);
         using var ir = new StringWriter();
-        Assert.False(c.Emission.WriteIr(ir, out _));
+        Assert.False(c.WriteIr(ir, out _));
         Assert.Empty(ir.ToString());
     }
 
@@ -125,10 +125,10 @@ public class VirtualConditionalDispatchTest(ITestOutputHelper output)
         var original = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsVirtual);
         var changed = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsVirtual);
         Assert.True(KotoHelper.Replace(original, original.TypeConstraints[0], changed.TypeConstraints[0]));
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Ownership.Analyze().IsVerified);
+        Assert.True(c.Analyze().IsVerified);
         Assert.True(c.Emission.TryPrepare(out var after, out failure), failure);
         Assert.NotNull(Assert.Single(after.Objects).VirtualSlots[0]);
         Assert.Null(previousTable[0]); // Previously published physical records are not mutated.
@@ -152,9 +152,9 @@ public class VirtualConditionalDispatchTest(ITestOutputHelper output)
     public void WarmApplicabilityAndHolesReuseTheirStorage(bool block)
     {
         var c = MinimalEmissionTest.Analyze(Program(block));
-        Assert.True(c.Emission.Validate(out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Validate(out var failure), MinimalEmissionTest.Describe(c, failure));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid);
     }
 

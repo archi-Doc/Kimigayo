@@ -19,7 +19,7 @@ public class SyntaxEditInvalidationTest
     public void AFieldEditOutsideCallablesRevokesTheAnalysis()
     {
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
         var field = Field(c);
         var donor = Field(MinimalEmissionTest.Analyze(Source.Replace("public var f: i32", "public var f: string", StringComparison.Ordinal)));
         Assert.True(KotoHelper.Replace(field, field.TypeKoto!, donor.TypeKoto!));
@@ -31,7 +31,7 @@ public class SyntaxEditInvalidationTest
     public void AnArgumentEditRevokesTheAnalysis()
     {
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
         var call = Call(c);
         // Detach a donor argument by swapping another throwaway node into its slot.
         var donor = Call(MinimalEmissionTest.Analyze(Source.Replace("return twice(s.f)", "return twice(3)", StringComparison.Ordinal)));
@@ -40,7 +40,7 @@ public class SyntaxEditInvalidationTest
         Assert.True(KotoHelper.Replace(donor, replacement, filler));
         call.ReplaceArgument(0, replacement);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.False(c.Analysis.IsVerified);
     }
 
     // A synthesized call bound by an earlier pass is not reused once an edit removes its role: after `var box` becomes

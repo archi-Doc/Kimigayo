@@ -16,8 +16,8 @@ public class SharedObjectBindingTest
     {
         var c = MinimalEmissionTest.Analyze($"let first: {mode}/i32 = Kimi.Intrinsics.make{factory}(7)\nlet second: {mode}/i32 = Kimi.Intrinsics.clone(first@ref)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.Validate(out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Validate(out var issue), MinimalEmissionTest.Describe(c, issue));
     }
 
     [Theory]

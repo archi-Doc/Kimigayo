@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Tinyhand;
 using Xunit;
@@ -40,9 +41,9 @@ public class StructEmissionTest
         Assert.True(!c.Diagnostics.HasErrors, string.Join("\n", TestDiagnostics.Of(c)));
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         Assert.True(
-            !c.Diagnostics.HasSyntaxErrors(c.Kotonoha) && c.Ownership.Result.IsVerified &&
+            !c.Diagnostics.HasSyntaxErrors(c.Kotonoha) && c.Analysis.IsVerified &&
                 !c.Binding.Obligations.Any(x => !ReferenceEquals(x.Use.CodeContext.Kotonoha, c.Library.Kotonoha)),
-            $"SourceErrors={c.Diagnostics.HasSyntaxErrors(c.Kotonoha)}; ownership={c.Ownership.Result}; obligations={string.Join(';', c.Binding.Obligations)}");
+            $"SourceErrors={c.Diagnostics.HasSyntaxErrors(c.Kotonoha)}; ownership={c.Analysis}; obligations={string.Join(';', c.Binding.Obligations)}");
         ScalarEmissionTest.EmitFixture("Struct" + name, source, stdout);
     }
 
@@ -68,9 +69,9 @@ public class StructEmissionTest
     public void RejectsInvalidStructOperations(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified && !c.Diagnostics.HasErrors);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified && !c.Diagnostics.HasErrors);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -83,7 +84,7 @@ public class StructEmissionTest
         var c = MinimalEmissionTest.Analyze("struct S\n    var value: i32\n    public init()\n        " + body + "\nlet s = S.init()");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.UninitializedUse);
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.UninitializedPlace_Kd);
     }
 
     // A missing field is one record per exit that completes construction: at the constructor's signature for the normal end,
@@ -105,7 +106,7 @@ public class StructEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(Resource + "func take(value: Resource) => ()\nlet value = Resource.init()\ntake(value@move)\nlet n = value.value");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.PossiblyMovedUse);
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd);
     }
 
     [Fact]
@@ -143,16 +144,16 @@ public class StructEmissionTest
         {
             Assert.True(c.Bind().IsComplete);
             Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         var success = true;
         var allocated = AllocationMeasurement.Measure(
             () =>
             {
-                success &= c.Ownership.Analyze().IsVerified;
-                success &= c.Emission.WriteIr(TextWriter.Null, out _);
+                success &= c.Analyze().IsVerified;
+                success &= c.WriteIr(TextWriter.Null, out _);
             },
             iterations: 128,
             warmupIterations: 100);

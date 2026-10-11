@@ -87,7 +87,7 @@ public class WholeValueTest
             var source = borrowed ? "func f(x: uniq/i32, y: uniq/i32)\n" : "func f()\n    var x: i32 = 1\n    var y: i32 = 2\n";
             var call = borrowed ? expression : expression.Replace("(x", "(x@uniq", StringComparison.Ordinal).Replace(", y)", ", y@uniq)", StringComparison.Ordinal);
             var c = MinimalEmissionTest.Analyze(source + "    _ = Kimi.Intrinsics." + call + "\n");
-            Assert.True(c.Ownership.Result.IsVerified, Describe(c));
+            Assert.True(c.Analysis.IsVerified, Describe(c));
             var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
             var operation = Assert.Single(body.Operations, x => x.IsWholeUpdate);
             Assert.Equal(expected, operation.Kind);
@@ -109,8 +109,8 @@ public class WholeValueTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
-        Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), failure);
+        Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
+        Assert.True(c.WriteIr(TextWriter.Null, out var failure), failure);
         ScalarEmissionTest.EmitFixture("WholeValue" + name, source, stdout);
     }
 
@@ -153,8 +153,8 @@ public class WholeValueTest
     {
         var c = MinimalEmissionTest.Analyze("struct S\nfunc f(x: objref/S) -> ref/S during x => x@follow@ref\n()");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
-        Assert.True(c.Ownership.Result.IsVerified);
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Analysis.IsVerified);
+        Assert.True(c.Validate(out var error), error);
     }
 
     [Theory]
@@ -165,8 +165,8 @@ public class WholeValueTest
     public void RejectsConflictingOrIncompleteTargets(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -175,8 +175,8 @@ public class WholeValueTest
     {
         var c = MinimalEmissionTest.Analyze("struct S\n    public var value: i32 = 0\n    public init(value: i32) => self.value = value\n" + function + "\n()");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -242,8 +242,8 @@ public class WholeValueTest
         {
             Assert.True(c.Bind().IsComplete, Describe(c));
             Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
     }
 

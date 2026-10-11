@@ -125,10 +125,10 @@ public class RequirementIdentityTest(ITestOutputHelper output)
             "    let first = source.take(firstKey)\n    let second = source.take(secondKey)\n    return (first@move, second@move)\nlet present = 1";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(valid == c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(valid == c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         if (!valid)
         {
-            c.Ownership.ReportDiagnostics();
+            c.ReportAnalysis();
             Assert.Equal("CallEffectConflict_Kd", Assert.Single(TestDiagnostics.Of(c)).Code);
         }
     }

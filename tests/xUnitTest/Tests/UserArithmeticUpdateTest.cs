@@ -79,8 +79,8 @@ public class UserArithmeticUpdateTest
         var source = Counter + "\nfunc add(values: uniq/" + type + ")\n    let saved = values[0]@ref\n    values[0] += values[0]\n    require saved.value == 21 else => $abort(\"live child\")\nvar values: " + type + " = [Counter.init(21)]\nadd(values@uniq)";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure is OwnershipFailure.Internal or OwnershipFailure.Unsupported);
+        Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+        Assert.DoesNotContain(c.Problems, static x => x.Code is DiagnosticCode.InternalInvariant_Kd or DiagnosticCode.Unsupported_Kd);
     }
 
     [Fact]
@@ -88,8 +88,8 @@ public class UserArithmeticUpdateTest
     {
         var c = MinimalEmissionTest.Analyze(Counter + "\nvar values: Array<Counter> = [Counter.init(21)]\nlet saved = values[0]@ref\nvalues[0] += values[0]\nrequire saved.value == 21 else => $abort(\"saved element\")");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure is OwnershipFailure.Internal or OwnershipFailure.Unsupported);
+        Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+        Assert.DoesNotContain(c.Problems, static x => x.Code is DiagnosticCode.InternalInvariant_Kd or DiagnosticCode.Unsupported_Kd);
     }
 
     [Theory]
@@ -107,9 +107,9 @@ public class UserArithmeticUpdateTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         if (overwrite)
         {
-            Assert.Contains(c.Ownership.Issues, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
-            Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure is OwnershipFailure.Internal or OwnershipFailure.Unsupported);
-            c.Ownership.ReportDiagnostics();
+            Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+            Assert.DoesNotContain(c.Problems, static x => x.Code is DiagnosticCode.InternalInvariant_Kd or DiagnosticCode.Unsupported_Kd);
+            c.ReportAnalysis();
             c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
             var result = c.Diagnostics.Finalize(rejected: true);
             var error = Assert.Single(result.Diagnostics);
@@ -161,8 +161,8 @@ public class UserArithmeticUpdateTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         if (destructor)
         {
-            Assert.Contains(c.Ownership.Issues, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
-            Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure is OwnershipFailure.Internal or OwnershipFailure.Unsupported);
+            Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+            Assert.DoesNotContain(c.Problems, static x => x.Code is DiagnosticCode.InternalInvariant_Kd or DiagnosticCode.Unsupported_Kd);
         }
         else
         {
@@ -183,8 +183,8 @@ public class UserArithmeticUpdateTest
     {
         var c = MinimalEmissionTest.Analyze(Counter + "\nvar total = Counter.init(21)\nlet saved = total@ref\ntotal += total\nrequire saved.value == 21 else => $abort(\"saved\")");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.Contains(c.Ownership.Issues, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+        Assert.False(c.Analysis.IsVerified);
+        Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -204,8 +204,8 @@ public class UserArithmeticUpdateTest
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid);
     }
 }

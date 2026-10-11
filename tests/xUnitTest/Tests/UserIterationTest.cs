@@ -45,7 +45,7 @@ public class UserIterationTest
         Assert.Same(BoundType.Boolean, loop.Bindings[0].TypeOf());
         Assert.Same(loop.Iterable, Assert.IsType<MemberAccessKoto>(loop.IterationOf().Entry!.Method).Left);
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         var outputIr = CompilationTestHelper.WriteIr(c);
     }
 
@@ -60,7 +60,7 @@ public class UserIterationTest
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Same(loop.Body, loop.IterationOf().Plan!.Decomposition.Arms[0].Syntax.Body);
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         var outputIr = CompilationTestHelper.WriteIr(c);
     }
 
@@ -78,8 +78,8 @@ public class UserIterationTest
         {
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         var success = true;
@@ -94,14 +94,14 @@ public class UserIterationTest
         before = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 128; i++)
         {
-            success &= c.Ownership.Analyze().IsVerified;
+            success &= c.Analyze().IsVerified;
         }
 
         var ownershipBytes = GC.GetAllocatedBytesForCurrentThread() - before;
         before = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 128; i++)
         {
-            success &= c.Emission.WriteIr(TextWriter.Null, out _);
+            success &= c.WriteIr(TextWriter.Null, out _);
         }
 
         var generationBytes = GC.GetAllocatedBytesForCurrentThread() - before;
@@ -147,8 +147,8 @@ public class UserIterationTest
     {
         var c = MinimalEmissionTest.Analyze("func count<B>(batch: B)\n    B is IntoIterable\n    for _ in batch@move => ()\n    let again = batch@move");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.Contains(c.Ownership.Issues, x => x.Code == DiagnosticCode.MovedPlace_Kd);
+        Assert.False(c.Analysis.IsVerified);
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd);
     }
 
     [Fact]
@@ -283,10 +283,10 @@ public class UserIterationTest
     public void ConsumingEntryPreservesMoveAndLoanChecks(string source)
     {
         var c = MinimalEmissionTest.Analyze(Counter + Three + source);
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.Contains(c.Ownership.Issues, x => x.Code is DiagnosticCode.MovedPlace_Kd or DiagnosticCode.ComparisonLoanConflict_Kd);
+        Assert.False(c.Analysis.IsVerified);
+        Assert.Contains(c.Problems, x => x.Code is DiagnosticCode.MovedPlace_Kd or DiagnosticCode.ComparisonLoanConflict_Kd);
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
     }
 

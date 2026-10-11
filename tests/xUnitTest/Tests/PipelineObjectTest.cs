@@ -49,9 +49,9 @@ public class PipelineObjectTest
     public void RejectsInvalidAcquisition(string source)
     {
         var c = MinimalEmissionTest.Analyze(Counter + source);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
     }
 }
