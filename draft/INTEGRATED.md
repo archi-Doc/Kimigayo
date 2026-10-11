@@ -316,5 +316,7 @@ The user adopted `Proposals/2026-10-10 Compiler Size Reduction and Single MIR Pl
   A0 measurements are recorded in PLAN_HISTORY and its evidence directory.
   A1 integrates §5 into COMPILER_ARCHITECTURE's token caps, AGENTS and CompilerSizeBudgetTest (DECISIONS CR-A1);
   §5 is now frozen. Q1's entry-file contracts are recorded with their canonical components.
-  Open: A2–A8 implementation, operational verification (§6), and the
+  A2 maps §3's configuration, identities, baseline reconciliation, suppression and complete-report workflow to
+  Kimi.Analyzers, CODEMAP and VERIFICATION (DECISIONS CR-A2). It introduces no KR1–KR3 detection.
+  Open: A3–A8 implementation, remaining operational verification (§6), and the
   later-stage scope extensions (§6.4). Future policy corrections belong in the owning architecture/decision documents.

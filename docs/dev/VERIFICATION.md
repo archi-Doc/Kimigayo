@@ -29,6 +29,33 @@ Keep the selected checks and their results in the commit and `artifacts/verify/`
 because a non-documentation file changed. Performance changes retain the measurement requirements below. NativeAOT
 still requires explicit instruction.
 
+## Code rules
+
+Kimi.csproj references Kimi.Analyzers as a private analyzer; other projects do not inherit it. The globalconfig is
+also an AdditionalFile, alongside the baseline TSV. KimiCodeRulesMode defaults to Enforce. Verify always sets Verify
+and KimiCodeRulesLog (a Kimi-only SARIF 2.1 output); do not set a solution-wide ErrorLog or use Report for verification.
+The shared SARIF reader rejects analyzer exceptions and suppressed KR/IDE0051/IDE0052/IDE0060 diagnostics, including
+suppressed KR9004. CodeRulesConfigurationTest keeps built-in severities out of other configuration files.
+
+| Command | Effect |
+| --- | --- |
+| `pwsh scripts/code-rules.ps1 -Report` | Fresh Release analysis, rule/area counts and observations under artifacts/verify |
+| `pwsh scripts/code-rules.ps1 -Prune` | Reduce existing bounds and delete absent/ineffective rows; never add or raise |
+| `pwsh scripts/code-rules.ps1 -Accept -Rule KR2006 -Path src/Kimi/Compiler/Binding/Binding.cs` | Accept observed keys at the specified file (or directory ending in /); requires owner approval |
+| `pwsh scripts/code-rules.ps1 -Initialize -Rule KR3001,KR3002,KR3003` | Introduce the specified rules' observed keys in their implementation unit; reject replacement of existing keys |
+
+Every operation uses a new nonincremental build and SARIF path. Before writing, it requires a successful build,
+exactly one completion marker with nonzero tree count, matching raw-byte configuration/baseline checksums and
+unchanged source/configuration/NuGet manifests. Keys and final observed values come only from the analyzer. Baselines
+are written atomically in ordinal scope/rule/anchor order. A complete report with no over-limit occurrence deletes
+that row, including a measurement now at or below the ordinary limit (DECISIONS CR-A2).
+
+Run CodeRulesReportTest.ps1 for the shared reader/update operations, and CodeRulesCompilerTest.ps1 after a Release
+analyzer build when suppression or analyzer build integration changes. The latter retains actual-csc logs for pragma,
+member/type/assembly/alias/unconditional attributes, NoWarn, editorconfig/globalconfig and built-in suppression. Full
+Session covers the in-memory rule tests; it also runs the cheap report-script regressions. Stage exits and milestone
+completion require Report for owner review; rule introduction adds its rule tests and required behavior snapshots.
+
 ## Feedback and completion
 
 During edits, build the test project incrementally and run the relevant methods. These commands do not establish warning-free completion:

@@ -6,6 +6,8 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <IsAotCompatible>true</IsAotCompatible>
+    <KimiCodeRulesMode Condition="'$(KimiCodeRulesMode)' == ''">Enforce</KimiCodeRulesMode>
+    <ErrorLog Condition="'$(KimiCodeRulesLog)' != ''">$(KimiCodeRulesLog),version=2.1</ErrorLog>
 
     <PackageId>Kimigayo</PackageId>
     <Authors>archi-Doc</Authors>
@@ -24,6 +26,12 @@
 
   <ItemGroup>
     <AdditionalFiles Include="..\stylecop.json" Link="stylecop.json" />
+    <AdditionalFiles Include="CodeRules.globalconfig" />
+    <AdditionalFiles Include="CodeRules.baseline.tsv" />
+    <GlobalAnalyzerConfigFiles Include="CodeRules.globalconfig" />
+    <CompilerVisibleProperty Include="KimiRepositoryRoot" />
+    <CompilerVisibleProperty Include="KimiCodeRulesMode" />
+    <ProjectReference Include="../Kimi.Analyzers/Kimi.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>

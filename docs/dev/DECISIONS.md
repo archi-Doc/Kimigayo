@@ -50,6 +50,29 @@ rules that result from them.
   the budget test; A2 moves it into the analyzer source owner and deletes the test copy. Reject a shared utility project
   for this single operation. Only aggregate totals survive each file; no syntax-tree cache or whole-compiler tree graph.
 
+- **CR-A2** (planning session, two independent designs compared). CodeRulesAnalyzer owns one compilation's immutable
+  configuration, file-local observations and one completion sort/merge with the baseline. Choose flat file batches,
+  published once, over concurrent dictionaries per key: fewer allocations, locks and state owners. CodeRule owns the
+  catalogue; CodeRulesConfiguration normalizes repository paths; CodeRulesSource owns counts and anchors;
+  CodeRulesBaseline owns matching and stale rows.
+  Move A1's counter into CodeRulesSource and delete its test copy. Pass the one globalconfig as both analyzer config
+  and AdditionalFile, using SourceText's byte checksum and algorithm; scripts share one SARIF reader with Verify.
+  Resolve suppression attributes semantically, including aliases; do not maintain an alias-name approximation.
+  Actual SDK 10.0.401 csc tests retained suppressed KR/IDE0052 records, including member/type/assembly and unconditional
+  attributes, and preserved BOM/CRLF checksums (A2 premise evidence). No fallback for incomplete Report or bad config.
+  Observe over-limit measurements only. A completely observed baseline row whose measurement no longer exceeds its
+  ordinary limit is redundant and is pruned, rather than retaining a smaller ineffective bound or resolving every
+  member's symbol. Report absence as absence, never as a measured zero. This normalizes proposal §3.5's minimum rule;
+  later approved lower limits do not restore deleted rows. Required exception/suppression checks are independent.
+  KimiCodeRulesLog sets ErrorLog only in Kimi.csproj, with SARIF 2.1 in the project: a solution-wide ErrorLog is
+  overwritten by later projects, and an unescaped command-line comma is an MSBuild property separator. Keep one
+  shared SARIF reader for reporting and Verify. Initialize requires the newly introduced rule IDs and cannot replace
+  existing keys. Static descriptor fields satisfy Roslyn release tracking; catalogue rows reference them without
+  repeating IDs or messages. LocalOwner chooses the closest declaration with a documentation ID, cached with source
+  identities; collection and name paths share that decision. This includes field declarators in initializers and
+  excludes unrelated members from top-level collisions. A declaration without an ID is not a file identity.
+  Incomplete declarations produce no member anchor; a successful compiler build remains mandatory for Report use.
+
 ## R2b (2026-10-11, main session, as recommended)
 
 - **R2b-D1** `BoundType` stays the Type representation until R7; `TyCtxt` owns interning and `Subst` converts.

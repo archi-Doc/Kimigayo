@@ -9,6 +9,15 @@ Compiler source-size caps and their token-counting regression are in
 [COMPILER_ARCHITECTURE](COMPILER_ARCHITECTURE.md#baseline). One scan checks all areas and the C# total; LLVM templates
 retain their separate line cap.
 
+Code-rule enforcement belongs to [Kimi.Analyzers](../../src/Kimi.Analyzers/CodeRulesAnalyzer.cs): one compilation
+coordinator and file-local observation batches. [CodeRule](../../src/Kimi.Analyzers/CodeRule.cs) owns the catalogue and
+diagnostics; [CodeRulesSource](../../src/Kimi.Analyzers/CodeRulesSource.cs) owns token counts and stable source identities;
+[CodeRulesConfiguration](../../src/Kimi.Analyzers/CodeRulesConfiguration.cs) reads options once, and
+[CodeRulesBaseline](../../src/Kimi.Analyzers/CodeRulesBaseline.cs) performs the final sorted merge. Suppression checks
+live in CodeRulesAnalyzer.Suppression.cs. CodeRules*Test classes share CodeRulesTestHelper; the real-csc regression is
+tests/scripts/CodeRulesCompilerTest.ps1. Operational commands and the shared SARIF reader are described in
+[VERIFICATION](VERIFICATION.md#code-rules).
+
 The main path is source input → Koto syntax → Binding → control-flow/ownership analysis → physical emission model → LLVM IR → native tools. Checking stops after the front end; generation and native execution have separate entry points.
 
 Phase and dependency rules, the canonical component of each concern, structure limits and the compiler reduction stage ledger are in [COMPILER_ARCHITECTURE.md](COMPILER_ARCHITECTURE.md); the design decisions behind them are in [DECISIONS.md](DECISIONS.md).

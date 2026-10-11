@@ -1,0 +1,18 @@
+is_global = true
+
+# Code rules A2 foundation. Detection is introduced by A3-A7.
+kimi_code_rules.stage = R4
+kimi_code_rules.scope.accretion.exclude = src/Kimi/Compiler/Analysis/;src/Kimi/Compiler/Emission/
+kimi_code_rules.scope.density.exclude = src/Kimi/Compiler/Analysis/;src/Kimi/Compiler/Emission/
+kimi_code_rules.scope.syntax_dispatch.include = src/Kimi/Compiler/Mir/Build/
+kimi_code_rules.catch_boundaries = src/Kimi/Unit/;src/Kimi/Lsp/;src/Kimi/Testing/
+
+kimi_code_rules.max_line_length = 160
+kimi_code_rules.max_parameters = 6
+kimi_code_rules.max_optional_parameters = 2
+kimi_code_rules.max_out_parameters = 1
+kimi_code_rules.max_bool_parameters = 1
+kimi_code_rules.max_statements = 60
+kimi_code_rules.max_nesting_depth = 4
+kimi_code_rules.max_logical_operands = 4
+kimi_code_rules.max_file_tokens = 5000

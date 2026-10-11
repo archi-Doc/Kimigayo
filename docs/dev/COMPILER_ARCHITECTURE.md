@@ -121,6 +121,8 @@ Generated code is excluded. Old Analysis/Emission files receive KR1 and the buil
 One baseline row identifies a rule, its innermost named Type (file for file-wide records), and a member, local-function,
 node or line anchor. Member/file measurements cannot rise above the greater of the ordinary limit and their recorded
 value; node/line counts cannot rise. Partial-file moves preserve Type-scoped keys. Obsolete entries must be pruned.
+Only over-limit measurements need observations. A complete Report with no such occurrence makes its baseline row
+redundant and Prune deletes it (CR-A2); absence is not reported as a measured zero.
 KR1001–1003 and KR1007 never have baselines; extend their scope only after the newly covered violations reach zero.
 KR1002's UnwrapParentheses prohibition expands outside Parsing/Binding at R7 exit.
 Syntax's prohibition on the Binding type expands to the whole Binding layer at R6 exit.
