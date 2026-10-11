@@ -99,13 +99,13 @@ internal sealed partial class MirBuilder
 
     // A node's value as its consumer takes it (plan: Adjust to operand): a Place Copied, moved, acquired by its pair layer's case or, a
     // stored exclusive reference, Reborrowed in its own mode (SPEC 15.1.5); a literal as its constant, another value through a temp; an
-    // adapted Place or value as Adapt supplies it for the expected Type.
-    private MirOperand Operand(Koto node, BoundType? expected = null)
+    // adapted Place or value as Adapt supplies it for the expected Type, a call's input as the call's (input).
+    private MirOperand Operand(Koto node, BoundType? expected = null, bool input = false)
     {
         var adjust = HirTables.AdjustOf(node);
         if (adjust.Adaptation != HirAdaptation.None)
         {
-            return this.Adapt(node, adjust, expected);
+            return this.Adapt(node, adjust, expected, input);
         }
 
         switch (adjust.Acquire)
@@ -126,8 +126,9 @@ internal sealed partial class MirBuilder
 
     // SPEC 10.2: an adapted Place, or value in a temp: the Scalar its reference layers end in, Copied; a Closure or function item erased to
     // its Function Type; else a reference, of the expected Type or the one its mode forms, to the Place itself (a shared or exclusive
-    // borrow), to the referent its layers reach (ReferenceRead), to an object handle's payload or to the base the expected Type names.
-    private MirOperand Adapt(Koto node, HirAdjust adjust, BoundType? expected)
+    // borrow), to the referent its layers reach (ReferenceRead), to an object handle's payload or to the base the expected Type names. An
+    // implicit exclusive borrow of a call's input is two-phase: reserved here, activated at the Call (SPEC 15.6.7).
+    private MirOperand Adapt(Koto node, HirAdjust adjust, BoundType? expected, bool input)
     {
         var adaptation = adjust.Adaptation;
         var target = expected?.Components is [var referent] ? referent : null;
@@ -164,7 +165,7 @@ internal sealed partial class MirBuilder
 
         var exclusive = adaptation == HirAdaptation.ExclusiveBorrow || (adaptation is HirAdaptation.ReferenceRead or HirAdaptation.BaseBorrow && expected?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq);
         var reference = expected ?? compilation.Types.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, this.body.TypeOf(place) ?? BoundType.Unit);
-        return this.Temporary(reference, MirRvalue.Ref(exclusive ? MirRefKind.Uniq : MirRefKind.Shared, place, reference), node);
+        return this.Temporary(reference, MirRvalue.Ref(!exclusive ? MirRefKind.Shared : input ? MirRefKind.TwoPhaseUniq : MirRefKind.Uniq, place, reference), node);
     }
 
     // An rvalue in a new temp of its Type, moved.
@@ -339,13 +340,21 @@ internal sealed partial class MirBuilder
         this.Set(destination, MirRvalue.Aggregate(kind, this.Flush(start), count, type, construction?.Case.Ordinal ?? 0), node);
     }
 
-    // SPEC 13.7.1: the value secured first, then the target located, its old value dropped where its Type may need it, and the value placed.
-    // A target that is not a Place is a setter's call (U8).
+    // SPEC 13.7.1: the value secured first, then the target located, its old value dropped where its Type may need it, and the value placed;
+    // a target that is not a Place is a Property's, whose setter (its last call, after any getter) takes the value, evaluated first.
     private void Replace(MirPlace destination, BinaryKoto assignment)
     {
         if (HirTables.PlaceOf(assignment.Left).Kind is HirPlaceKind.Unset or HirPlaceKind.Value)
         {
-            this.Unsupported(assignment, destination);
+            if ((CallPlan.Of(assignment.Left, 1) ?? CallPlan.Of(assignment.Left)) is { } setter)
+            {
+                this.Call(destination, setter, assignment, assignment.Right);
+            }
+            else
+            {
+                this.Unsupported(assignment, destination);
+            }
+
             return;
         }
 

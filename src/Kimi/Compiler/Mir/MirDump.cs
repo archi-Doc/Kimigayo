@@ -170,6 +170,7 @@ internal static class MirDump
                     MirCalleeKind.Fn => callee.Symbol?.Name,
                     MirCalleeKind.Virtual => $"virtual slot {callee.Arg} {callee.Symbol?.Name}",
                     MirCalleeKind.Intrinsic => $"intrinsic {(IntrinsicId)callee.Arg}",
+                    MirCalleeKind.Requirement when callee.Contract is { } contract => $"requirement {callee.Symbol?.Name} of {contract.Name}",
                     _ => $"{callee.Kind.ToString().ToLowerInvariant()} {callee.Symbol?.Name}",
                 });
 

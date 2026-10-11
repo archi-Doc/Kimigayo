@@ -58,6 +58,13 @@ internal sealed partial class MirBuilder(Compilation compilation)
         return position < ((FunctionKoto)function.Declaration).Parameters.Count + (special ? 1 : 0);
     }
 
+    // The argument position of a parameter slot a call passes, Slot's inverse for a function without a constructor's or destructor's self.
+    private static int Position(BindingSymbol? function, int slot)
+    {
+        var receiver = function?.ReceiverIndex ?? -1;
+        return receiver < 0 || slot > receiver ? slot : slot == receiver ? 0 : slot + 1;
+    }
+
     // The syntax of a node, its scope and whether it starts a source statement, which the first statement or terminator built for the
     // source statement takes; a local does not take it.
     private SourceInfo Info(Koto node, bool local = false)
