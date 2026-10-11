@@ -61,7 +61,7 @@ public class ObjectViewCaptureTest(ITestOutputHelper output)
         var path = Path.GetFullPath("object-view-capture.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
         c.Binding.ReportDiagnostics();
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var record = Assert.Single(result.Diagnostics, x => x.Code == "ComparisonLoanConflict_Kd");
@@ -87,12 +87,12 @@ public class ObjectViewCaptureTest(ITestOutputHelper output)
     public void WarmObjectViewCapturesReuseBindingOwnershipAndEmissionPlans()
     {
         var c = MinimalEmissionTest.Analyze(Cell + Shared);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid);
     }
 }

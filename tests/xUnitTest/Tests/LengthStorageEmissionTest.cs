@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -58,11 +59,11 @@ public class LengthStorageEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.True(c.Ownership.Result.ErrorCount > 0);
-        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.False(c.Analysis.IsVerified);
+        Assert.True(c.Analysis.ErrorCount > 0);
+        Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -81,8 +82,8 @@ public class LengthStorageEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func count<length N, T>(a: ref/[N of T]) -> isize => a.length\nlet a: [2 of i32]\ncount(a@ref)");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.UninitializedUse);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.UninitializedPlace_Kd);
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -95,7 +96,7 @@ public class LengthStorageEmissionTest
         // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
         // the corrupt length-metadata plan is rejected on the ordinary body that owns it.
         var c = MinimalEmissionTest.Analyze("func count(a: ref/[2 of i32], b: ref/[2 of i32]) -> isize\n    let ignored = b.length\n    return a.length\nlet a: [2 of i32] = [1, 2]\ncount(a@ref, a@ref)");
-        Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "count");
         var index = body.Sequences.Count - 1;
         var sequence = body.Sequences[index];
@@ -116,10 +117,10 @@ public class LengthStorageEmissionTest
         }
 
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -128,7 +129,7 @@ public class LengthStorageEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(Keep + "let a = keep<2, i32>([4, 9])\nrequire a[1] == 9 else => $abort(\"reload\")");
         using var original = new StringWriter();
-        Assert.True(c.Emission.WriteIr(original, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.WriteIr(original, out var error), MinimalEmissionTest.Describe(c, error));
         var restored = Compilation.CreateForTest();
         Assert.True(restored.Prepare(WindowsProfile.Target));
         var tree = restored.Kotonoha;
@@ -137,9 +138,9 @@ public class LengthStorageEmissionTest
         tree.OnDeserialized(restored);
         Assert.True(restored.Bind().IsComplete);
         restored.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(restored.Ownership.Analyze().IsVerified);
+        Assert.True(restored.Analyze().IsVerified);
         using var writer = new StringWriter();
-        Assert.True(restored.Emission.WriteIr(writer, out error), error);
+        Assert.True(restored.WriteIr(writer, out error), error);
         Assert.Equal(original.ToString(), writer.ToString());
         ScalarEmissionTest.WriteFixture("LengthStorageReload", writer.ToString(), string.Empty);
         // Measure the new length-call path independently of existing require-expression
@@ -149,8 +150,8 @@ public class LengthStorageEmissionTest
         {
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.Validate(out _));
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.Validate(out _));
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
@@ -163,7 +164,7 @@ public class LengthStorageEmissionTest
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Ownership.Analyze().IsVerified)
+            if (!c.Analyze().IsVerified)
             {
                 throw new InvalidOperationException("Length storage ownership failed.");
             }

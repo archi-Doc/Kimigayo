@@ -24,10 +24,10 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         var source = FixedCall(named, live);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(!live, c.Ownership.Result.IsVerified);
+        Assert.Equal(!live, c.Analysis.IsVerified);
         if (live)
         {
-            Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+            Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
         }
         else
         {
@@ -51,10 +51,10 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
             (conflict ? "    z@follow = 42\n" : string.Empty) + "    return holder@follow\n";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified == !conflict, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified == !conflict, MinimalEmissionTest.Describe(c, null));
         if (conflict)
         {
-            Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+            Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
         }
         else
         {
@@ -77,7 +77,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         {
             var c = MinimalEmissionTest.Analyze(source);
             Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-            Assert.True(c.Ownership.Result.IsVerified == !live, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Analysis.IsVerified == !live, MinimalEmissionTest.Describe(c, null));
         }
     }
 
@@ -91,7 +91,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
             (live ? "    z@follow = 42\n    return r@follow\n" : "    r@follow = 42\n    return z@follow\n");
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified == !live, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified == !live, MinimalEmissionTest.Describe(c, null));
         if (!live)
         {
             source += "var z: i32 = 41\nlet x: i32 = 7\nrequire use(z@uniq, x@ref, pass) == 42 else => $abort(\"opaque\")";
@@ -110,7 +110,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
             "    var holder: ref/i32 during x = x\n    store(holder@uniq, z@follow@ref)\n    " + tail;
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified == valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified == valid, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]
@@ -125,7 +125,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
             (conflict ? "    z@follow = 42\n    return result@follow\n" : "    return result@follow\n");
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified == !conflict, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified == !conflict, MinimalEmissionTest.Describe(c, null));
         if (!conflict)
         {
             source += "var z: i32 = 41\nlet x: i32 = 7\nrequire use(z@uniq, x@ref) == 41 else => $abort(\"reload\")";
@@ -143,7 +143,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
             "    let r = first((z@follow@ref, w@follow@ref))\n    " + (conflict ? "z" : "w") + "@follow = 42\n    return r@follow\n";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified == !conflict, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified == !conflict, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]
@@ -160,7 +160,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
             "    var holder: ref/i32 during x = x\n    " + tail;
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified == valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified == valid, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]
@@ -172,7 +172,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
             .Replace("z@follow = 42", "let snapshot = z@follow", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
     }
 
     [Theory]
@@ -187,7 +187,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
             "    let r = pass(" + (mode == "ref" ? "z@follow@ref" : "z") + ")\n    " + tail;
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified == valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified == valid, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]
@@ -196,7 +196,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         var source = FixedCall(true, false).Replace("    r@follow = 42\n    return z@follow", "    func read(b: uniq/i32 during x) -> ref/i32 during x => b@follow@ref\n    let child = read(r)\n    let seen = r@follow\n    return child@follow + seen", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict && x.Source.ToString() == "r");
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict() && c.SyntaxOf(x.Subject).ToString() == "r");
     }
 
     [Theory]
@@ -212,7 +212,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
             : source.Replace("b: uniq/i32 during x)", "b: uniq/i32 during x, unused: i32 = 1)", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified == !live, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified == !live, MinimalEmissionTest.Describe(c, null));
         if (!live)
         {
             source += "var z: i32 = 41\nlet x: i32 = 7\nrequire use(z@uniq, x@ref) == 42 else => $abort(\"instantiated\")";
@@ -239,7 +239,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
             " = x\n    z@follow = 42\n    return " + first + "@follow\n";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified == valid, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified == valid, MinimalEmissionTest.Describe(c, null));
         if (valid)
         {
             source += "var z: i32 = 41\nlet x: i32 = 7\nrequire use(z@uniq, x@ref) == 7 else => $abort(\"replacement\")";
@@ -258,7 +258,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
             (conflict ? "        z@follow = 42\n" : string.Empty) + "    z@follow = 42\n    return z@follow\n";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified == !conflict, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified == !conflict, MinimalEmissionTest.Describe(c, null));
         if (!conflict)
         {
             source += "var z: i32 = 41\nlet x: i32 = 7\nrequire use(z@uniq, x@ref) == 42 else => $abort(\"destruction\")";
@@ -276,7 +276,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
             "    let r = choose(z@follow@ref, w@follow@ref)\n    " + (first ? "z" : "w") + "@follow = 42\n    return r@follow\n";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
     }
 
     [Fact]
@@ -293,8 +293,8 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
             Assert.True(KotoHelper.Replace(call, call.ArgumentNodes[0], input));
             Assert.True(c.Bind().IsComplete);
             Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-            Assert.Equal(!keep, c.Ownership.Analyze().IsVerified);
-            Assert.Equal(!keep, c.Emission.WriteIr(TextWriter.Null, out _));
+            Assert.Equal(!keep, c.Analyze().IsVerified);
+            Assert.Equal(!keep, c.WriteIr(TextWriter.Null, out _));
         }
     }
 
@@ -306,11 +306,11 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
     {
         var source = FixedCall(named, false) + "\npublic func main() => ()";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
         Assert.True(valid);
     }
 
@@ -324,9 +324,9 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         var source = LocalChild(annotation, true, mode);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -363,7 +363,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         var path = Path.GetFullPath("fixed-origin-retention.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.True(c.Binding.Result.IsComplete);
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var error = Assert.Single(result.Diagnostics);
@@ -408,7 +408,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified == !live, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified == !live, iterations: 64, warmupIterations: 32));
         Assert.True(valid);
     }
 
@@ -418,7 +418,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         var source = LocalChild(true, true, "ref") + "\npublic func main() => ()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.False(c.Analysis.IsVerified);
         var local = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "y");
         foreach (var parent in new[] { false, true })
         {
@@ -427,8 +427,8 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
             Assert.True(KotoHelper.Replace(local, local.InitializerKoto!, initializer));
             Assert.True(c.Bind().IsComplete);
             Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-            Assert.Equal(!parent, c.Ownership.Analyze().IsVerified);
-            Assert.Equal(!parent, c.Emission.WriteIr(TextWriter.Null, out _));
+            Assert.Equal(!parent, c.Analyze().IsVerified);
+            Assert.Equal(!parent, c.WriteIr(TextWriter.Null, out _));
         }
     }
 

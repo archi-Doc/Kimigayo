@@ -72,8 +72,8 @@ public class ElementPathEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func get(a: [2 of i32]) -> i32 => a[0]\nvar a: [2 of i32] = [40, 2]\nvar i: isize = 0\n" + expression);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
     }
 
     [Theory]
@@ -83,8 +83,8 @@ public class ElementPathEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
     }
 
     // A Loan that outlives the RHS still conflicts with the exclusive element access, and the located
@@ -99,9 +99,9 @@ public class ElementPathEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("var a: [2 of i32] = [40, 2]\nvar i: isize = 0\n" + expression);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -117,7 +117,7 @@ public class ElementPathEmissionTest
     public void CorruptedPathPlansFailBeforeOutputAndRecover(string defect)
     {
         var c = MinimalEmissionTest.Analyze("var a: [2 of i32] = [40, 2]\na[0] += a[1]");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         // SPEC 13.7.2: the RHS read a[1] is located first, then the updated element a[0].
         var plan = body.Projections[0];
@@ -138,10 +138,10 @@ public class ElementPathEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -154,8 +154,8 @@ public class ElementPathEmissionTest
         {
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         var success = true;
@@ -170,8 +170,8 @@ public class ElementPathEmissionTest
         before = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 128; i++)
         {
-            success &= c.Ownership.Analyze().IsVerified;
-            success &= c.Emission.WriteIr(TextWriter.Null, out _);
+            success &= c.Analyze().IsVerified;
+            success &= c.WriteIr(TextWriter.Null, out _);
         }
 
         var bytes = GC.GetAllocatedBytesForCurrentThread() - before;

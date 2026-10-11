@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -16,8 +17,8 @@ public class EnumLocalOriginTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.Validate(out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Validate(out var issue), MinimalEmissionTest.Describe(c, issue));
     }
 
     [Theory]
@@ -27,7 +28,7 @@ public class EnumLocalOriginTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -43,9 +44,9 @@ public class EnumLocalOriginTest
     {
         var c = MinimalEmissionTest.Analyze("struct Item\n    public let id: i32 = 7\nlet owner = Kimi.Intrinsics.makeObj(Item.init())\nlet value: Option<objref/Item> = .Some(owner)\nlet moved = owner@move\nmatch value@copy\n    .Some(let view)\n        require view.id == 7 else => $abort(\"view\")\n    .None => $abort(\"missing\")");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
+        Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.False(c.Validate(out _));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -60,7 +61,7 @@ public class EnumLocalOriginTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
         Assert.True(valid);
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(expected, CompilationTestHelper.WriteIr(c));
     }
 
@@ -69,7 +70,7 @@ public class EnumLocalOriginTest
     {
         var c = MinimalEmissionTest.Analyze("struct Item\n    public let id: i32 = 7\nlet owner = Kimi.Intrinsics.makeObj(Item.init())\nlet value = Option.Some(owner@objref)\nmatch value\n    .Some(let view)\n        require view.id == 7 else => $abort(\"view\")\n    .None => $abort(\"missing\")");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.WriteIr(new StringWriter(), out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.WriteIr(new StringWriter(), out var issue), MinimalEmissionTest.Describe(c, issue));
     }
 }

@@ -28,8 +28,8 @@ public class OwnedAggregateContinuationTest
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Empty(c.Binding.Issues);
         Assert.Empty(c.Ownership.ControlFlow!.Issues);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Validate(out var error), error);
     }
 
     [Fact]

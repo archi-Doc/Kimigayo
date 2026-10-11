@@ -21,7 +21,7 @@ public class OptionalTryDiscardTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
-        Assert.True(c.Ownership.Result.IsVerified, Describe(c));
+        Assert.True(c.Analysis.IsVerified, Describe(c));
     }
 
     [Theory]
@@ -46,7 +46,7 @@ public class OptionalTryDiscardTest
     public void ExecutesBothPaths(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, Describe(c));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, Describe(c));
         ScalarEmissionTest.EmitFixture("OptionalTry" + name, source + "\nConsole.writeLine(\"ok\")", "ok\n");
     }
 
@@ -62,7 +62,7 @@ public class OptionalTryDiscardTest
     public void RejectsInvalidPropagation(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
 
     [Theory]
@@ -102,7 +102,7 @@ public class OptionalTryDiscardTest
     public void ExecutesCombinations(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, Describe(c));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, Describe(c));
         ScalarEmissionTest.EmitFixture("OptionalTry" + name, source + "\nConsole.writeLine(\"ok\")", "ok\n");
     }
 
@@ -154,8 +154,8 @@ public class OptionalTryDiscardTest
         {
             Assert.True(c.Bind().IsComplete, Describe(c));
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
-            Assert.True(c.Emission.Validate(out var error), error);
+            Assert.True(c.Analyze().IsVerified, Describe(c));
+            Assert.True(c.Validate(out var error), error);
         }
     }
 
@@ -200,7 +200,7 @@ public class OptionalTryDiscardTest
     public void PreservesInferenceOwnershipAndBindingRules(string source, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Equal(valid, c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified && !c.Diagnostics.HasErrors);
+        Assert.Equal(valid, c.Binding.Result.IsComplete && c.Analysis.IsVerified && !c.Diagnostics.HasErrors);
     }
 
     [Theory]
@@ -221,7 +221,7 @@ public class OptionalTryDiscardTest
     public void GenericWarningsAreIssuedAtDefinitionOnce()
     {
         var c = MinimalEmissionTest.Analyze("func process<T>(x: Result<T, i32>) -> Result<(), i32>\n    try x@move\n    return .Ok(())\n_ = process<()>(.Ok(()))\n_ = process<i32>(.Ok(1))");
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, Describe(c));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, Describe(c));
         var warning = Assert.Single(c.AnalyzeControlFlow().Warnings);
         Assert.Equal(3, warning.Priority);
         Assert.IsType<TryKoto>(warning.Node);
@@ -314,7 +314,7 @@ public class OptionalTryDiscardTest
     private static void EmitChecked(string name, string source, string expected)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, Describe(c));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, Describe(c));
         ScalarEmissionTest.EmitFixture(name, source, expected);
     }
 

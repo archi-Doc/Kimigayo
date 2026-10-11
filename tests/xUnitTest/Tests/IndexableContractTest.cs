@@ -78,9 +78,9 @@ public class IndexableContractTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
 
     // SPEC 8.4.9, 4.6.9: Indexable<isize> and Indexable<Name> are distinct conformances with their own Element, specified
@@ -151,8 +151,8 @@ public class IndexableContractTest
             {
                 Assert.True(c.Bind().IsComplete);
                 c.Binding.CheckStartup(OutputKind.Application);
-                Assert.True(c.Ownership.Analyze().IsVerified);
-                Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+                Assert.True(c.Analyze().IsVerified);
+                Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
             }
 
             var success = true;
@@ -167,14 +167,14 @@ public class IndexableContractTest
             before = GC.GetAllocatedBytesForCurrentThread();
             for (var i = 0; i < 128; i++)
             {
-                success &= c.Ownership.Analyze().IsVerified;
+                success &= c.Analyze().IsVerified;
             }
 
             var ownership = GC.GetAllocatedBytesForCurrentThread() - before;
             before = GC.GetAllocatedBytesForCurrentThread();
             for (var i = 0; i < 128; i++)
             {
-                success &= c.Emission.WriteIr(TextWriter.Null, out _);
+                success &= c.WriteIr(TextWriter.Null, out _);
             }
 
             Assert.True(success);

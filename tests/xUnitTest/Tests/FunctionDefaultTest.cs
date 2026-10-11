@@ -103,7 +103,7 @@ public class FunctionDefaultTest
     public void ACaptureOfAnotherPreparedArgumentFailsGeneration()
     {
         var c = MinimalEmissionTest.Analyze("func run(k: i32, j: i32, action: (i32) -> i32 = func [k] (x) => x + k) -> i32 => action(j)\nrequire run(1, 2) == 3 else => $abort(\"k\")");
-        Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
         var body = c.Ownership.Bodies.Single(static x => x.Operations.Any(static o => o.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Consume && o.Source is FunctionKoto { IsAnonymous: true }));
         var capture = body.OperationStorage.FindIndex(static x => x.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Consume && x.Source is FunctionKoto { IsAnonymous: true });
         var call = body.OperationStorage.FindIndex(static x => x.Kind == OwnershipOperationKind.Call && x.Source is InvocationKoto { BoundCall.DefaultArguments.IsEmpty: false });
@@ -114,9 +114,9 @@ public class FunctionDefaultTest
         var produced = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Produce && x.Place == other);
         body.OperationStorage[capture] = body.Operations[capture] with { Place = other };
         body.ValueOperands[body.Values[capture].Start] = produced;
-        Assert.False(c.Emission.Validate(out _));
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.Validate(out error), error);
+        Assert.False(c.Validate(out _));
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.Validate(out error), error);
     }
 
     // Each omission creates and releases its own environment, and only the selected arm allocates.
@@ -236,7 +236,7 @@ public class FunctionDefaultTest
         }
         else
         {
-            c.Ownership.ReportDiagnostics();
+            c.ReportAnalysis();
         }
 
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
@@ -262,15 +262,15 @@ public class FunctionDefaultTest
         for (var i = 0; i < 3; i++)
         {
             Assert.True(c.Bind().IsComplete);
-            Assert.False(c.Ownership.Analyze().IsVerified);
-            Assert.Single(c.Ownership.Issues, x => x.Failure == OwnershipFailure.TransferRequired);
-            Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure is OwnershipFailure.Unsupported or OwnershipFailure.Internal or OwnershipFailure.PossiblyMovedUse);
+            Assert.False(c.Analyze().IsVerified);
+            Assert.Single(c.Problems, x => x.Code == DiagnosticCode.TransferRequired_Kd);
+            Assert.DoesNotContain(c.Problems, x => x.Code is DiagnosticCode.Unsupported_Kd or DiagnosticCode.InternalInvariant_Kd or DiagnosticCode.MovedPlace_Kd);
         }
 
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
-        Assert.False(restored.Ownership.Analyze().IsVerified);
-        Assert.Single(restored.Ownership.Issues, x => x.Failure == OwnershipFailure.TransferRequired);
+        Assert.False(restored.Analyze().IsVerified);
+        Assert.Single(restored.Problems, x => x.Code == DiagnosticCode.TransferRequired_Kd);
     }
 
     // Generic defaults are checked in the declaration without requiring any concrete call.
@@ -283,7 +283,7 @@ public class FunctionDefaultTest
         Assert.Contains(text, source, StringComparison.Ordinal);
         Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
         var c = MinimalEmissionTest.Analyze(declaration);
-        Assert.True(c.Ownership.Result.IsVerified, string.Join("\n", c.Ownership.Issues));
+        Assert.True(c.Analysis.IsVerified, string.Join("\n", c.Problems));
     }
 
     [Theory]
@@ -297,20 +297,20 @@ public class FunctionDefaultTest
     {
         var c = MinimalEmissionTest.Analyze(Steps + Heap + "func run(offset: i32, a: (i32) -> i32 = inc, b: (i32) -> i32 = func [offset] (x) => x + offset) -> i32 => b(a(1))\nrequire run(10) == 12 and runE(1, 2) == 3 else => $abort(\"plans\")");
         using var original = new StringWriter();
-        Assert.True(c.Emission.WriteIr(original, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.True(c.WriteIr(original, out var error), MinimalEmissionTest.Describe(c, error));
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Ownership.Analyze().IsVerified);
+        Assert.True(c.Analyze().IsVerified);
         using var rebound = new StringWriter();
-        Assert.True(c.Emission.WriteIr(rebound, out error), error);
+        Assert.True(c.WriteIr(rebound, out error), error);
         Assert.Equal(original.ToString(), rebound.ToString());
 
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
         restored.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(restored.Ownership.Analyze().IsVerified);
+        Assert.True(restored.Analyze().IsVerified);
         using var reloaded = new StringWriter();
-        Assert.True(restored.Emission.WriteIr(reloaded, out error), error);
+        Assert.True(restored.WriteIr(reloaded, out error), error);
         Assert.Equal(original.ToString(), reloaded.ToString());
     }
 
@@ -321,13 +321,13 @@ public class FunctionDefaultTest
         var c = MinimalEmissionTest.Analyze(Steps + Heap + "func run(offset: i32, a: (i32) -> i32 = inc, b: (i32) -> i32 = func [offset] (x) => x + offset) -> i32 => b(a(1))\nrequire run(10) == 12 and runE(1, 2) == 3 else => $abort(\"warm\")");
         for (var i = 0; i < 100; i++)
         {
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Ownership.Analyze().IsVerified || !c.Emission.WriteIr(TextWriter.Null, out _))
+            if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
             {
                 throw new InvalidOperationException("Function default emission failed.");
             }

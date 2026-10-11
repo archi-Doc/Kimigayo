@@ -58,8 +58,8 @@ public class OriginProofScalingTest
         c.Binding.OriginProofMetrics = metrics;
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
-        var codes = c.Binding.Issues.Select(static x => x.Code.ToString()).Concat(c.Ownership.Issues.Select(static x => x.Code.ToString()));
+        c.Analyze();
+        var codes = c.Binding.Issues.Select(static x => x.Code.ToString()).Concat(c.Problems.Select(static x => x.Code.ToString()));
         Assert.Equal(code is null ? [] : [code], codes.Distinct());
         Assert.NotEqual(0, metrics.Closures);
         Assert.Equal(0, metrics.BoundViolations);

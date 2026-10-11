@@ -23,13 +23,13 @@ public class OriginObligationVerdictTest
         var (c, metrics) = Analyze(OriginProofWorkloads.Create(family, 2));
         var count = c.Binding.Result.IsComplete ? c.Binding.Obligations.Count : 0; // Ownership analyzes only a complete Binding.
         Assert.Equal(count, metrics.Verdicts);
-        Assert.Equal(code is null, c.Ownership.Result.IsVerified);
-        c.Ownership.ReportDiagnostics();
+        Assert.Equal(code is null, c.Analysis.IsVerified);
+        c.ReportAnalysis();
         Assert.Equal(count, metrics.Verdicts);
 
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
+        c.Analyze();
         Assert.Equal(2 * count, metrics.Verdicts);
     }
 
@@ -42,7 +42,7 @@ public class OriginObligationVerdictTest
         var calls = c.Binding.Obligations.Where(static x => x.Discharge == OriginDischarge.CallBorrows && x.Shorter?.Binder is FunctionKoto { Name: "g" }).ToArray();
         Assert.Equal(2, calls.Length); // The Holder inputs h1 and h2.
         Assert.All(calls, static x => Assert.Equal(OriginKind.Input, x.Shorter!.Kind));
-        Assert.True(c.Ownership.Result.IsVerified);
+        Assert.True(c.Analysis.IsVerified);
     }
 
     // PLAN G74 U4: a rebind invalidates the verdicts, so nothing is verified until the analysis runs again.
@@ -50,12 +50,12 @@ public class OriginObligationVerdictTest
     public void ARebindInvalidatesTheVerdicts()
     {
         var (c, _) = Analyze(OriginProofWorkloads.Create("valid", 1));
-        Assert.True(c.Ownership.Result.IsVerified);
+        Assert.True(c.Analysis.IsVerified);
         c.Bind();
-        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.False(c.Analysis.IsVerified);
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
-        Assert.True(c.Ownership.Result.IsVerified);
+        c.Analyze();
+        Assert.True(c.Analysis.IsVerified);
     }
 
     private static (Compilation Compilation, OriginProofMetrics Metrics) Analyze(string source)
@@ -67,7 +67,7 @@ public class OriginObligationVerdictTest
         c.Binding.OriginProofMetrics = metrics;
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
+        c.Analyze();
         return (c, metrics);
     }
 }

@@ -33,6 +33,6 @@ public class MemberThroughLayersTest
     public void TheOuterLoansStayActiveWhileTheSelectionIsUsed()
     {
         var c = MinimalEmissionTest.Analyze(P + "var a = P.init(1, \"a\")\nvar views: [1 of uniq/P] = [a@uniq]\nfor v in views@uniq\n    let name: ref/string = v.name@ref\n    views = [a@uniq]\n    Console.writeLine(name)");
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
 }

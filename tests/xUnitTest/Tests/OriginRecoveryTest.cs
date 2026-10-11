@@ -38,7 +38,7 @@ public class OriginRecoveryTest(ITestOutputHelper output)
         var function = ParseTestHelper.GetChildren(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f");
         Assert.Null(function.Parameters[0].Type.TypeOf());
         Assert.NotEqual(BindingState.Resolved, function.Parameters[0].Type.StateOf());
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
         ParseTestHelper.VerifyParents(c.Kotonoha.RootKoto);
         c.Bind();
         c.Binding.ReportDiagnostics();
@@ -62,7 +62,7 @@ public class OriginRecoveryTest(ITestOutputHelper output)
         Assert.NotEqual(OriginJudgment.Proven, c.Binding.JudgeOriginRelation(function.Parameters[0].Type.TypeOf()!.Origin!, function.Parameters[1].Type.TypeOf()!.Origin!, function));
         Assert.NotEqual(BindingState.Resolved, clause.StateOf());
         Assert.NotNull(clause.CodeContext.RecoveryCause(clause));
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
         c.Bind();
         c.Binding.ReportDiagnostics();
         Assert.Equal(errors, c.Diagnostics.Finalize(rejected: true).Diagnostics);
@@ -132,7 +132,7 @@ public class OriginRecoveryTest(ITestOutputHelper output)
         Assert.Equal(new SourceSpan(Source.IndexOf("sorce", StringComparison.Ordinal), 5), errors[0].Span);
         Assert.Equal(new SourceSpan(Source.IndexOf("local@ref", StringComparison.Ordinal), 9), errors[1].Span);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
         c.Bind();
         c.Binding.ReportDiagnostics();
         Assert.Equal(errors, c.Diagnostics.Finalize(rejected: true).Diagnostics);

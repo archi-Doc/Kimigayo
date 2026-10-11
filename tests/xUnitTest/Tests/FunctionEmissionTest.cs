@@ -127,7 +127,7 @@ public class FunctionEmissionTest
     public void MalformedFunctionPlansFailBeforeWritingAndRecover(string mutation)
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32) -> i32\n    var y = x\n    defer => y = 9\n    return y\nif f(3) == 3 => Console.writeLine(\"ok\")");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var f = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "f");
         var caller = Assert.Single(c.Ownership.Bodies, x => x.Function.IsGenerated);
         var call = caller.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call && x.Place >= 0);
@@ -168,13 +168,13 @@ public class FunctionEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out error));
+        Assert.False(c.WriteIr(writer, out error));
         Assert.NotNull(error);
         Assert.Empty(writer.ToString());
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
-        Assert.True(c.Emission.Validate(out error), MinimalEmissionTest.Describe(c, error));
+        c.Analyze();
+        Assert.True(c.Validate(out error), MinimalEmissionTest.Describe(c, error));
     }
 
     [Theory]
@@ -195,7 +195,7 @@ public class FunctionEmissionTest
         Assert.Same(old.Abi, abi);
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
+        c.Analyze();
         Assert.Same(abi, pool.Get(0, function));
         Assert.Equal("__kimi_f0", abi.Name);
         var changed = MinimalEmissionTest.Analyze("func renamed(x: bool) -> bool => x\n()");
@@ -213,8 +213,8 @@ public class FunctionEmissionTest
         var allocated = AllocationMeasurement.Measure(
             () =>
             {
-                valid &= c.Ownership.Analyze().IsVerified;
-                valid &= c.Emission.WriteIr(TextWriter.Null, out _);
+                valid &= c.Analyze().IsVerified;
+                valid &= c.WriteIr(TextWriter.Null, out _);
             },
             iterations: 128,
             warmupIterations: 100);

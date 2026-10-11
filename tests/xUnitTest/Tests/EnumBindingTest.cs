@@ -184,8 +184,8 @@ public class EnumBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess("let x: Option<i32> = .Some(1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.True(c.Ownership.Analyze().IsVerified);
+        Assert.False(c.Analysis.IsVerified);
+        Assert.True(c.Analyze().IsVerified);
     }
 
     [Theory]

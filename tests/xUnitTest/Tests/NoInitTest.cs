@@ -143,14 +143,14 @@ public class NoInitTest(ITestOutputHelper output)
     public void ReadBeforeWriteHasNoExtraCompilerState(string use)
     {
         var c = MinimalEmissionTest.Analyze("unsafe\n    var values: [2 of bool] = noinit\n    " + use);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error ?? MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error ?? MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]
     public void OrdinaryAnnotationOnlyStorageStillNeedsWholeConstruction()
     {
         var c = MinimalEmissionTest.Analyze("var values: [2 of i32]\nvalues[0] = 1");
-        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.False(c.Analysis.IsVerified);
     }
 
     [Fact]
@@ -168,7 +168,7 @@ public class NoInitTest(ITestOutputHelper output)
             {
                 ok &= c.Bind().IsComplete;
                 c.Binding.CheckStartup(OutputKind.Application);
-                ok &= c.Ownership.Analyze().IsVerified && c.Emission.WriteIr(TextWriter.Null, out _);
+                ok &= c.Analyze().IsVerified && c.WriteIr(TextWriter.Null, out _);
             }, iterations: 8, warmupIterations: 8);
         Assert.True(ok);
         Assert.Equal(0, bytes);

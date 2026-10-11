@@ -54,9 +54,8 @@ public class MilestoneSourcesTest
             if (c.Binding.Result.IsComplete)
             {
                 stage = "Ownership";
-                Assert.False(c.Ownership.Analyze().IsVerified, $"Milestone{number} advanced: update its verified stage and README.");
-                c.Ownership.ControlFlow!.ReportDiagnostics();
-                c.Ownership.ReportDiagnostics();
+                Assert.False(c.Analyze().IsVerified, $"Milestone{number} advanced: update its verified stage and README.");
+                c.ReportAnalysis();
             }
 
             var primary = TestDiagnostics.Of(c).First(static x => x.Severity == DiagnosticSeverity.Error);

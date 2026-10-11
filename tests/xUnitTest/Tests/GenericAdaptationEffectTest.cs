@@ -25,7 +25,7 @@ public class GenericAdaptationEffectTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         if (valid)
         {
-            Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         }
         else
         {
@@ -51,7 +51,7 @@ public class GenericAdaptationEffectTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         if (valid)
         {
-            Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         }
         else
         {
@@ -77,7 +77,7 @@ public class GenericAdaptationEffectTest
         }
         else
         {
-            Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         }
     }
 }

@@ -32,13 +32,13 @@ public class OwnedLendingIterationTest
     {
         var c = MinimalEmissionTest.Analyze(Source + "var values = Values.init()\nfor _ in values@move => ()\nlet again = values@move");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.False(c.Analysis.IsVerified);
     }
 
     [Fact]
     public void AnOwnedLentItemCannotEscapeTheIterator()
     {
         var c = MinimalEmissionTest.Analyze(Source + "func escape() -> ref/i32 during static\n    for item in Values.init()\n        return item\n    $abort(\"empty\")");
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
 }

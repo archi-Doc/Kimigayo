@@ -38,14 +38,14 @@ public class EnumEmissionTest
     public void ConstructionPlanMustMatchItsCaseAndPayload(bool wrongCase)
     {
         var c = MinimalEmissionTest.Analyze("enum E\n    A(i32)\n    B(i32)\nlet a: E = .A(1)\nlet b: E = .B(2)");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Constructions.Count == 2);
         var first = body.Constructions[0];
         body.ConstructionStorage[0] = wrongCase ? first with { Case = body.Constructions[1].Case } : first with { PayloadStart = body.Constructions[1].PayloadStart };
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.Validate(out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.Validate(out error), error);
     }
 }

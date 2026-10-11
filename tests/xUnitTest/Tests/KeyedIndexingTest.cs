@@ -166,7 +166,7 @@ public class KeyedIndexingTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Code == code);
+        Assert.Contains(c.Problems, x => x.Code == code);
     }
 
     // SPEC 15.1.3: an explicit Move without a static Move Path is one Language error, and the rejected Move takes nothing, so
@@ -176,10 +176,10 @@ public class KeyedIndexingTest
     {
         var c = MinimalEmissionTest.Analyze("var names: [2 of string] = [\"a\", \"b\"]\nlet n: isize = 0\nlet a = names[n]@move\nlet b = names[0@isize]@move\nlet d = names[1 + 0]@move\nlet e = names[2]@move");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(4, c.Ownership.Issues.Count);
-        Assert.All(c.Ownership.Issues, static x => Assert.Equal(DiagnosticCode.StaticMovePathRequired_Kd, x.Code));
+        Assert.Equal(4, c.Problems.Count);
+        Assert.All(c.Problems, static x => Assert.Equal(DiagnosticCode.StaticMovePathRequired_Kd, x.Code));
 
         var valid = MinimalEmissionTest.Analyze("var names: [2 of string] = [\"a\", \"b\"]\nlet a = names[(0)]@move\nlet b = names[0x1]@move");
-        Assert.True(valid.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(valid, null));
+        Assert.True(valid.Analysis.IsVerified, MinimalEmissionTest.Describe(valid, null));
     }
 }

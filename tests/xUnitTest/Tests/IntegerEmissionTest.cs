@@ -100,7 +100,7 @@ public class IntegerEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Equal(bound, c.Binding.Result.IsComplete);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -126,15 +126,15 @@ public class IntegerEmissionTest
     public void NoncanonicalConstantPlansAreRejectedBeforeLlvmCanTruncate(string type, long bits)
     {
         var c = MinimalEmissionTest.Analyze($"let x: {type} = 1");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Constant);
         body.Values[id] = body.Values[id] with { Constant = bits };
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        c.Ownership.Analyze();
-        Assert.True(c.Emission.Validate(out error), error);
+        c.Analyze();
+        Assert.True(c.Validate(out error), error);
     }
 
     [Fact]
@@ -191,8 +191,8 @@ public class IntegerEmissionTest
         var allocated = AllocationMeasurement.Measure(
             () =>
             {
-                valid &= c.Ownership.Analyze().IsVerified;
-                valid &= c.Emission.WriteIr(TextWriter.Null, out _);
+                valid &= c.Analyze().IsVerified;
+                valid &= c.WriteIr(TextWriter.Null, out _);
             },
             iterations: 128,
             warmupIterations: 100);
@@ -204,14 +204,14 @@ public class IntegerEmissionTest
     public void SameLlvmWidthDoesNotPermitMixedLanguageTypesInPhi()
     {
         var c = MinimalEmissionTest.Analyze("let u: u8 = 1\nlet y: i8 = if true => 1 else => 2");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
         var phi = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Phi);
         var unsigned = Enumerable.Range(0, body.Values.Count).First(i => body.Values[i].Kind == OwnershipValueKind.Constant && body.Places[body.Operations[i].Place].Type == BoundType.Primitives["u8"]);
         var index = body.Values[phi].Start;
         body.PhiInputs[index] = body.PhiInputs[index] with { Value = unsigned };
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
     }
 
@@ -219,14 +219,14 @@ public class IntegerEmissionTest
     public void PointerWidthMustMatchTheEmissionProfile()
     {
         var c = MinimalEmissionTest.Analyze("let n: usize = 1");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var property = typeof(Compilation).GetProperty(nameof(Compilation.IrTarget))!;
         var original = c.IrTarget;
         try
         {
             property.SetValue(c, original with { PointerWidth = 32 });
             using var writer = new StringWriter();
-            Assert.False(c.Emission.WriteIr(writer, out _));
+            Assert.False(c.WriteIr(writer, out _));
             Assert.Empty(writer.ToString());
         }
         finally
@@ -234,7 +234,7 @@ public class IntegerEmissionTest
             property.SetValue(c, original);
         }
 
-        Assert.True(c.Emission.Validate(out error), error);
+        Assert.True(c.Validate(out error), error);
     }
 
     private static void Abort(string name, string source, string reason, int line, int column)

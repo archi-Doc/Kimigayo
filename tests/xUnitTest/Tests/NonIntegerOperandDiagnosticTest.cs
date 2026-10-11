@@ -31,7 +31,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(["f64", "%="], error.Reason!.Select(static x => x.Value));
         Assert.Null(error.Note);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Empty(c.Ownership.Issues);
+        Assert.Empty(c.Problems);
     }
 
     // Every integer-only operator and form on a floating-point operand: plain, compound, prefix and postfix, through a reference
@@ -144,7 +144,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
             """;
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]
@@ -174,7 +174,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
             """;
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         ScalarEmissionTest.EmitFixture("IntegerOperandRepairs", Source, "magnitude\n8\n");
     }
 
@@ -218,8 +218,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(source, path);
         c.Binding.ReportDiagnostics();
         c.Binding.ReportStartupDiagnostics();
-        c.Ownership.ControlFlow?.ReportDiagnostics();
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         return c;
     }
 }

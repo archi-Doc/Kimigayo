@@ -20,7 +20,7 @@ public class OriginProjectionOwnershipTest
     {
         var c = MinimalEmissionTest.Analyze(View + function + "public func main() => ()\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     // The caller still keeps the Loan the slot carries through the moved value.
@@ -31,8 +31,8 @@ public class OriginProjectionOwnershipTest
             "public func main()\n    var number = 1\n    let view = View<i32>.init(number@ref)\n    let moved = single(view@move)\n    number = 2\n    let n = moved.data@follow\n";
         var c = MinimalEmissionTest.Analyze(View + Main);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        c.Ownership.ReportDiagnostics();
+        Assert.False(c.Analysis.IsVerified);
+        c.ReportAnalysis();
         Assert.Contains(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.ComparisonLoanConflict_Kd) && x.Text == "number = 2");
     }
 
@@ -51,6 +51,6 @@ public class OriginProjectionOwnershipTest
             "public func main()\n    var number = 1\n    let view = View<i32>.init(number@ref)\n    let moved = single(view@move)\n    let n = moved.data@follow\n    number = 2\n";
         var c = MinimalEmissionTest.Analyze(View + Main);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 }

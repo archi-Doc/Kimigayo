@@ -26,8 +26,8 @@ public class ModuleBindingTest
         if (expected)
         {
             Assert.True(compilation.Binding.CheckStartup(OutputKind.Application).IsComplete);
-            Assert.True(compilation.Ownership.Analyze().IsVerified);
-            Assert.True(compilation.Emission.Validate(out var failure), failure);
+            Assert.True(compilation.Analyze().IsVerified);
+            Assert.True(compilation.Validate(out var failure), failure);
         }
     }
 
@@ -52,7 +52,7 @@ public class ModuleBindingTest
         compilation.Binding.CheckStartup(OutputKind.Application);
         if (bound)
         {
-            Assert.Equal(owned, compilation.Ownership.Analyze().IsVerified);
+            Assert.Equal(owned, compilation.Analyze().IsVerified);
         }
     }
 
@@ -71,7 +71,7 @@ public class ModuleBindingTest
         var compilation = Create("public func main() => Lib.Api.value()", "public group Api\n    public func value() => ()\n    #Test\n    public func test() => TestOnly.missing()");
         Assert.True(compilation.Bind().IsComplete);
         Assert.True(compilation.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(compilation.Ownership.Analyze().IsVerified);
+        Assert.True(compilation.Analyze().IsVerified);
         compilation.Kotonoha.AddSource(new SourceDocument("bad.kimi", "public func bad() => Lib.Api.test()"));
         Assert.False(compilation.Bind().IsComplete);
     }
@@ -90,7 +90,7 @@ public class ModuleBindingTest
         var compilation = Create("public func main() => Lib.Api.value()", "public group Api\n    public func value() => Child.Api.value()", "public group Api\n    public func value() => ()");
         Assert.True(compilation.Bind().IsComplete);
         Assert.True(compilation.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(compilation.Ownership.Analyze().IsVerified);
+        Assert.True(compilation.Analyze().IsVerified);
         compilation.Kotonoha.AddSource(new SourceDocument("bad.kimi", "public func bad() => Child.Api.value()"));
         Assert.False(compilation.Bind().IsComplete);
     }
@@ -101,14 +101,14 @@ public class ModuleBindingTest
         var compilation = Create("public func main() => Lib.Api.value()", "public group Api\n    public func value() => ()");
         Assert.True(compilation.Bind().IsComplete);
         compilation.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(compilation.Ownership.Analyze().IsVerified);
+        Assert.True(compilation.Analyze().IsVerified);
         Assert.True(compilation.Bind().IsComplete);
-        Assert.False(compilation.Ownership.Result.IsVerified);
+        Assert.False(compilation.Analysis.IsVerified);
         compilation.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(compilation.Ownership.Analyze().IsVerified);
+        Assert.True(compilation.Analyze().IsVerified);
         compilation.SourceModules[1].AddSource(new SourceDocument("bad.kimi", "public func broken() => missing()"));
         Assert.False(compilation.Bind().IsComplete);
-        Assert.False(compilation.Ownership.Analyze().IsVerified);
+        Assert.False(compilation.Analyze().IsVerified);
     }
 
     [Fact]
@@ -121,7 +121,7 @@ public class ModuleBindingTest
         });
         Assert.True(compilation.Bind().IsComplete, string.Join("; ", compilation.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")) + " | " + string.Join("; ", compilation.SourceModules.SelectMany(x => TestDiagnostics.Of(x)).Select(x => x.ToString())));
         Assert.True(compilation.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(compilation.Ownership.Analyze().IsVerified);
+        Assert.True(compilation.Analyze().IsVerified);
     }
 
     [Theory]
@@ -162,7 +162,7 @@ public class ModuleBindingTest
         var compilation = Create(aliases + "\npublic func main()\n    choose(1@i32)\n    choose(true)", "public group First\n    public func choose(value: i32) => ()\npublic group Second\n    public func choose(value: bool) => ()");
         Assert.True(compilation.Bind().IsComplete);
         compilation.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(compilation.Ownership.Analyze().IsVerified);
+        Assert.True(compilation.Analyze().IsVerified);
         Assert.True(compilation.Bind().IsComplete);
     }
 
@@ -194,7 +194,7 @@ public class ModuleBindingTest
 
         Assert.True(compilation.Bind().IsComplete);
         Assert.True(compilation.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(compilation.Ownership.Analyze().IsVerified);
+        Assert.True(compilation.Analyze().IsVerified);
     }
 
     [Theory]
@@ -220,7 +220,7 @@ public class ModuleBindingTest
         var compilation = Create("public func main() => value()", "public group Api\n    public func value() => ()", configure: (root, _) => root.Alias = ["Lib.Api"]);
         void Analyze()
         {
-            if (!compilation.Bind().IsComplete || !compilation.Binding.CheckStartup(OutputKind.Application).IsComplete || !compilation.Ownership.Analyze().IsVerified)
+            if (!compilation.Bind().IsComplete || !compilation.Binding.CheckStartup(OutputKind.Application).IsComplete || !compilation.Analyze().IsVerified)
             {
                 throw new InvalidOperationException("Module analysis failed.");
             }
@@ -917,7 +917,7 @@ public class ModuleBindingTest
         var c = Create("alias A => Lib.Api\npublic func main() => A.value()", "public group Api\n    public func value() => writeLine(\"library\")", configure: (_, library) => library.Alias = ["Kimi.Console"]);
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Ownership.Analyze().IsVerified);
+        Assert.True(c.Analyze().IsVerified);
         c.SourceModules[1].AddSource(new SourceDocument("Generated.kimi", "group Generated\n    func output() => Console.writeLine(\"generated\")"));
         Assert.True(c.Bind().IsComplete);
     }

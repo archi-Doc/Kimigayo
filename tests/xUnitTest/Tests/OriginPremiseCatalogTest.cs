@@ -158,7 +158,7 @@ public class OriginPremiseCatalogTest
         c.Binding.OriginProofMetrics = metrics;
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
-        return (c.Binding.Issues.Select(static x => x.Code.ToString()).Concat(c.Ownership.Issues.Select(static x => x.Code.ToString())).ToArray(), metrics);
+        c.Analyze();
+        return (c.Binding.Issues.Select(static x => x.Code.ToString()).Concat(c.Problems.Select(static x => x.Code.ToString())).ToArray(), metrics);
     }
 }

@@ -17,7 +17,7 @@ public class EnumProjectionAccessBindingTest
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -117,7 +117,7 @@ public class EnumProjectionAccessBindingTest
         if (!valid)
         {
             Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
-            Assert.False(c.Emission.Validate(out _));
+            Assert.False(c.Validate(out _));
         }
 
         return c;

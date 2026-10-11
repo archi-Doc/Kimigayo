@@ -61,7 +61,7 @@ public class ObjectRuntimeTest
         var c = MinimalEmissionTest.Analyze(Declarations + "\n" + operation);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.NotEmpty(c.Binding.Issues);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]
@@ -96,7 +96,7 @@ public class ObjectRuntimeTest
             """;
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(c.Problems, issue => issue.Code.IsLoanConflict());
     }
 
     [Trait("Purpose", "Allocation")]
@@ -178,7 +178,7 @@ public class ObjectRuntimeTest
             """;
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Contains(c.Problems, issue => issue.Code.IsLoanConflict());
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 }

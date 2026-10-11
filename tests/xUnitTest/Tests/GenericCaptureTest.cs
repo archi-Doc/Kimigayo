@@ -70,9 +70,9 @@ public class GenericCaptureTest
     {
         var source = "func invalid<T>(value: T)\n    let action = func " + capture + " () => _ = value\n    action()\ninvalid(42)";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
         c.Binding.ReportDiagnostics();
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "TransferRequired_Kd");
     }
 
@@ -82,7 +82,7 @@ public class GenericCaptureTest
     {
         var c = MinimalEmissionTest.Analyze(Take + "require take(42) == 42 else => $abort(\"warm\")\nConsole.writeLine(take(\"string\"))");
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 }

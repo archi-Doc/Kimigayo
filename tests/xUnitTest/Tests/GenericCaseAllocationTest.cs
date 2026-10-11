@@ -18,13 +18,13 @@ public sealed class GenericCaseAllocationTest
         {
             Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
             c.Binding.CheckStartup(Kimi.Compiler.OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         }
 
         var success = true;
         var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete, iterations: 128, warmupIterations: 100);
         c.Binding.CheckStartup(Kimi.Compiler.OutputKind.Application);
-        var bytes = AllocationMeasurement.Measure(() => success &= c.Ownership.Analyze().IsVerified, iterations: 128, warmupIterations: 100);
+        var bytes = AllocationMeasurement.Measure(() => success &= c.Analyze().IsVerified, iterations: 128, warmupIterations: 100);
         Assert.True(success);
         Assert.Equal(0, bindingBytes);
         Assert.Equal(0, bytes);

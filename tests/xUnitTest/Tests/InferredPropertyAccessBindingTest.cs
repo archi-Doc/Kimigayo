@@ -87,7 +87,7 @@ public class InferredPropertyAccessBindingTest
         if (!valid)
         {
             Assert.Equal(BindingFailure.Access, property.FailureOf());
-            Assert.False(c.Emission.Validate(out _));
+            Assert.False(c.Validate(out _));
         }
 
         return c;

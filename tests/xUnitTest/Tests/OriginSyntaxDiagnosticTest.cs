@@ -59,7 +59,7 @@ public sealed class OriginSyntaxDiagnosticTest(ITestOutputHelper output)
         c.Binding.ReportDiagnostics();
         var result = c.Diagnostics.Finalize(rejected: true);
         Assert.Equal(["LegacyBorrowOrigin_Kd", "TypeMismatch_Kd"], result.Diagnostics.Select(static x => x.Code));
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
         c.Bind();
         c.Binding.ReportDiagnostics();
         Assert.Equal(result, c.Diagnostics.Finalize(rejected: true));
@@ -175,7 +175,7 @@ public sealed class OriginSyntaxDiagnosticTest(ITestOutputHelper output)
         c.Binding.ReportDiagnostics();
         var result = c.Diagnostics.Finalize(rejected: true);
         Assert.Equal(["DuplicateBorrowOrigin_Kd", "TypeMismatch_Kd"], result.Diagnostics.Select(static x => x.Code));
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
         c.Bind();
         c.Binding.ReportDiagnostics();
         Assert.Equal(result, c.Diagnostics.Finalize(rejected: true));

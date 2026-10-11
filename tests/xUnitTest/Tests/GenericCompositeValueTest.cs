@@ -83,9 +83,9 @@ public class GenericCompositeValueTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.False(c.Analysis.IsVerified);
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
     }
 
@@ -96,7 +96,7 @@ public class GenericCompositeValueTest
     public void RejectsCorruptOwnershipPlansAndRecovers(string defect)
     {
         var c = MinimalEmissionTest.Analyze(Fixtures.First().Data.Item2);
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Matches.Count != 0);
         if (defect == "acquisition")
         {
@@ -113,10 +113,10 @@ public class GenericCompositeValueTest
         }
 
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.Validate(out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.Validate(out error), error);
     }
 
     [Fact]
@@ -137,7 +137,7 @@ public class GenericCompositeValueTest
     {
         var c = MinimalEmissionTest.Analyze(Fixtures.First().Data.Item2);
         using var before = new StringWriter();
-        Assert.True(c.Emission.WriteIr(before, out var error), error);
+        Assert.True(c.WriteIr(before, out var error), error);
         var restored = Compilation.CreateForTest();
         Assert.True(restored.Prepare(WindowsProfile.Target));
         var tree = restored.Kotonoha;
@@ -146,9 +146,9 @@ public class GenericCompositeValueTest
         tree.OnDeserialized(restored);
         Assert.True(restored.Bind().IsComplete);
         restored.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(restored.Ownership.Analyze().IsVerified);
+        Assert.True(restored.Analyze().IsVerified);
         using var after = new StringWriter();
-        Assert.True(restored.Emission.WriteIr(after, out error), error);
+        Assert.True(restored.WriteIr(after, out error), error);
         Assert.Equal(before.ToString(), after.ToString());
         ScalarEmissionTest.WriteFixture("GenericCompositeReload", after.ToString(), "received\ntwo\none\n");
     }

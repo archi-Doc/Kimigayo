@@ -75,16 +75,16 @@ public class GeneralDefaultTest
         {
             const string source = "func f(x: obj/i32 = Kimi.Intrinsics.makeObj(3), a: Array<i32> = [1, 2], d: Dictionary<i32, i32> = [1: 4]) -> i32 => x@follow + a[0] + d[1]\nrequire f() == 8 else => $abort(\"defaults\")";
             var c = MinimalEmissionTest.Analyze(source);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+            Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
             var valid = true;
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
             Assert.True(valid);
             var restored = CompilationTestHelper.Reload(c);
             Assert.True(restored.Bind().IsComplete);
             restored.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(restored.Ownership.Analyze().IsVerified);
-            Assert.True(restored.Emission.WriteIr(TextWriter.Null, out failure), MinimalEmissionTest.Describe(restored, failure));
+            Assert.True(restored.Analyze().IsVerified);
+            Assert.True(restored.WriteIr(TextWriter.Null, out failure), MinimalEmissionTest.Describe(restored, failure));
         }
     }
 

@@ -80,7 +80,7 @@ public class NamedArgumentBoundaryTest
     {
         var c = MinimalEmissionTest.Analyze("func f" + parameters + " -> i32 => a + b + c\n" + call);
         Assert.Equal(accepted, c.Binding.Result.IsComplete);
-        Assert.Equal(accepted, c.Emission.Validate(out _));
+        Assert.Equal(accepted, c.Validate(out _));
     }
 
     [Theory]
@@ -112,7 +112,7 @@ public class NamedArgumentBoundaryTest
     {
         var c = MinimalEmissionTest.Analyze("func f(self: i32 ! other: i32) -> i32 => self + other\nfunc g(a => b: i32 ! b => a: i32) -> i32 => a + b\nf(1, other: 2)\ng(1, b: 2)");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         Assert.False(MinimalEmissionTest.Analyze("func f(! self: i32) => ()\nf(1)").Binding.Result.IsComplete);
     }
 

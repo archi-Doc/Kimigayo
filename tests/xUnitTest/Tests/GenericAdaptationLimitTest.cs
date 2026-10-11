@@ -25,13 +25,13 @@ public class GenericAdaptationLimitTest
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         if (valid)
         {
-            Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), failure);
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.WriteIr(TextWriter.Null, out var failure), failure);
             return;
         }
 
         Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), static conversion => Assert.Null(conversion.ConversionOf().Adaptation));
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
         c.Binding.ReportDiagnostics();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);

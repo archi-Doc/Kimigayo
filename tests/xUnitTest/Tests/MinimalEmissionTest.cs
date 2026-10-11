@@ -60,9 +60,9 @@ public class MinimalEmissionTest
     public void EmitsCheckedLiteralCall(string source)
     {
         var c = Analyze(source);
-        Assert.True(c.Emission.Validate(out var error), Describe(c, error));
+        Assert.True(c.Validate(out var error), Describe(c, error));
         using var writer = new StringWriter(CultureInfo.InvariantCulture);
-        Assert.True(c.Emission.WriteIr(writer, out error), error);
+        Assert.True(c.WriteIr(writer, out error), error);
         var ir = writer.ToString();
         Assert.Contains("%kimi.string = type { ptr, i64, i8 }", ir);
         Assert.Contains("define void @__kimi_start() noreturn #0", ir);
@@ -96,13 +96,13 @@ public class MinimalEmissionTest
     public void RebindingInvalidatesEmissionUntilAnalysisRunsAgain()
     {
         var c = Analyze("Console.writeLine(\"a\")");
-        Assert.True(c.Emission.Validate(out var error), Describe(c, error));
+        Assert.True(c.Validate(out var error), Describe(c, error));
         c.Bind();
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.False(c.Emission.Validate(out _));
-        c.Ownership.Analyze();
-        Assert.True(c.Emission.Validate(out error), Describe(c, error));
+        Assert.False(c.Validate(out _));
+        c.Analyze();
+        Assert.True(c.Validate(out error), Describe(c, error));
     }
 
     [Theory]
@@ -113,7 +113,7 @@ public class MinimalEmissionTest
     public void AppendingSourceInvalidatesFinalAnalysisBeforeEmission(bool directContext, bool valid)
     {
         var c = Analyze("Console.writeLine(\"original\")");
-        Assert.True(c.Emission.Validate(out var error), Describe(c, error));
+        Assert.True(c.Validate(out var error), Describe(c, error));
         var source = new SourceDocument("Added.kimi", valid ? "func added() -> i32 => 7" : "func added() -> i32 => missing");
         if (directContext)
         {
@@ -125,17 +125,17 @@ public class MinimalEmissionTest
         }
 
         using var writer = new StringWriter(CultureInfo.InvariantCulture);
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Equal(string.Empty, writer.ToString());
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Binding.Startup.IsComplete);
-        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.False(c.Analysis.IsVerified);
         Assert.Throws<InvalidOperationException>(() => c.Binding.CheckBound());
-        Assert.Throws<InvalidOperationException>(() => c.Ownership.Analyze());
+        Assert.Throws<InvalidOperationException>(() => c.Analyze());
         Assert.Equal(valid, c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
-        Assert.Equal(valid, c.Emission.Validate(out error));
+        c.Analyze();
+        Assert.Equal(valid, c.Validate(out error));
         if (valid)
         {
             Assert.Contains(c.Ownership.Bodies, x => x.Function.Name == "added");
@@ -148,7 +148,7 @@ public class MinimalEmissionTest
     public void ReloadingSourceInvalidatesFinalAnalysisEvenForAnEmptySnapshot(bool empty)
     {
         var c = Analyze("Console.writeLine(\"original\")");
-        Assert.True(c.Emission.Validate(out _));
+        Assert.True(c.Validate(out _));
         var snapshot = empty ? Compilation.CreateForTest().Kotonoha : c.Kotonoha;
         var restored = c.Kotonoha;
         TinyhandSerializer.DeserializeObject(TinyhandSerializer.Serialize(snapshot), ref restored);
@@ -156,14 +156,14 @@ public class MinimalEmissionTest
         Assert.Same(c.Kotonoha, restored);
         restored.OnDeserialized(c);
         using var writer = new StringWriter(CultureInfo.InvariantCulture);
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Equal(string.Empty, writer.ToString());
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.False(c.Analysis.IsVerified);
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
-        Assert.Equal(!empty, c.Emission.Validate(out _));
+        c.Analyze();
+        Assert.Equal(!empty, c.Validate(out _));
     }
 
     [Theory]
@@ -185,9 +185,9 @@ public class MinimalEmissionTest
         Assert.True(c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
+        c.Analyze();
         using var writer = new StringWriter(CultureInfo.InvariantCulture);
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Equal(string.Empty, writer.ToString());
     }
 
@@ -204,10 +204,10 @@ public class MinimalEmissionTest
         Assert.False(c.Diagnostics.HasSyntaxErrors(added));
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
-        Assert.False(c.Emission.Validate(out _));
+        c.Analyze();
+        Assert.False(c.Validate(out _));
         c.Diagnostics.InvalidateSyntax(c.Kotonoha);
-        Assert.True(c.Emission.Validate(out var error), Describe(c, error));
+        Assert.True(c.Validate(out var error), Describe(c, error));
     }
 
     [Fact]
@@ -219,8 +219,8 @@ public class MinimalEmissionTest
         Assert.Equal(DiagnosticSeverity.Warning, Assert.Single(TestDiagnostics.Of(c, "Added.kimi")).Severity);
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
-        Assert.True(c.Emission.Validate(out var error), Describe(c, error));
+        c.Analyze();
+        Assert.True(c.Validate(out var error), Describe(c, error));
     }
 
     [Fact]
@@ -228,7 +228,7 @@ public class MinimalEmissionTest
     {
         var c = Analyze("\n::Kimi.Console.writeLine(\"x\")", "日本\\file.kimi");
         using var writer = new StringWriter(CultureInfo.InvariantCulture);
-        Assert.True(c.Emission.WriteIr(writer, out var error), error);
+        Assert.True(c.WriteIr(writer, out var error), error);
         const string Expected = "\\u{65E5}\\u{672C}\\\\file.kimi:2:1";
         var escaped = string.Concat(Encoding.ASCII.GetBytes(Expected).Select(x => $"\\{x:X2}"));
         Assert.Contains($"@__kimi_location = private unnamed_addr constant [{Expected.Length} x i8] c\"{escaped}\"", writer.ToString());
@@ -242,12 +242,12 @@ public class MinimalEmissionTest
         var c = Analyze("Console.writeLine(\"a\")");
         for (var i = 0; i < 100; i++)
         {
-            Assert.True(c.Emission.Validate(out var error), Describe(c, error));
+            Assert.True(c.Validate(out var error), Describe(c, error));
         }
 
         // The helper retires the thread's allocation context before measuring (see AllocationMeasurement).
         var valid = true;
-        var allocated = AllocationMeasurement.Measure(() => valid &= c.Emission.Validate(out _), 128);
+        var allocated = AllocationMeasurement.Measure(() => valid &= c.Validate(out _), 128);
         Assert.True(valid);
         Assert.Equal(0, allocated);
     }
@@ -258,7 +258,7 @@ public class MinimalEmissionTest
     {
         var c = Analyze("Console.writeLine(\"a\")");
         var valid = true;
-        var allocated = AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 128, warmupIterations: 100);
+        var allocated = AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 128, warmupIterations: 100);
         Assert.True(valid);
         Assert.Equal(0, allocated);
     }
@@ -317,7 +317,7 @@ public class MinimalEmissionTest
         {
             var c = Analyze(source, path);
             using var writer = new StreamWriter(Path.Combine(directory, name + ".ll"), false, new UTF8Encoding(false));
-            Assert.True(c.Emission.WriteIr(writer, out var error), Describe(c, error));
+            Assert.True(c.WriteIr(writer, out var error), Describe(c, error));
         }
     }
 
@@ -343,6 +343,6 @@ public class MinimalEmissionTest
     // for the destructions the implementation's bodies actually perform (their planned cleanups).
     internal static void AssertEffectBoundRejected(Compilation c)
         => Assert.True(
-            c.Binding.Issues.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd) || c.Ownership.Issues.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd),
+            c.Binding.Issues.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd) || c.Problems.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd),
             Describe(c, null));
 }

@@ -20,7 +20,7 @@ public class OriginPremiseLifecycleTest
     {
         var source = OriginProofWorkloads.Create("proven", 4);
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var obligations = c.Binding.Obligations.Count;
         var storage = c.Binding.OriginPremiseStorage;
         Assert.False(storage.Retains);
@@ -34,12 +34,12 @@ public class OriginPremiseLifecycleTest
         {
             Assert.True(KotoHelper.Replace(clause.Parent!, clause, replacement));
             Reanalyze(c);
-            Assert.Contains(DiagnosticCode.UnprovenOriginRelation_Kd, c.Binding.Issues.Select(static x => x.Code).Concat(c.Ownership.Issues.Select(static x => x.Code)));
+            Assert.Contains(DiagnosticCode.UnprovenOriginRelation_Kd, c.Binding.Issues.Select(static x => x.Code).Concat(c.Problems.Select(static x => x.Code)));
             Assert.Equal((storage.Environments, storage.Nodes, storage.Edges, false), c.Binding.OriginPremiseStorage);
 
             Assert.True(KotoHelper.Replace(replacement.Parent!, replacement, clause));
             Reanalyze(c);
-            Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
             Assert.Equal(obligations, c.Binding.Obligations.Count);
             Assert.Equal((storage.Environments, storage.Nodes, storage.Edges, false), c.Binding.OriginPremiseStorage);
         }
@@ -58,7 +58,7 @@ public class OriginPremiseLifecycleTest
             foreach (var (c, verified) in new[] { (accepted, true), (rejected, false), (small, true) })
             {
                 Reanalyze(c);
-                Assert.Equal(verified, c.Ownership.Result.IsVerified);
+                Assert.Equal(verified, c.Analysis.IsVerified);
                 Assert.False(c.Binding.OriginPremiseStorage.Retains);
             }
         }
@@ -83,14 +83,14 @@ public class OriginPremiseLifecycleTest
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Ownership.Analyze()));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
     }
 
     private static void Reanalyze(Compilation c)
     {
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
+        c.Analyze();
     }
 
     private static OriginRelationKoto Clause(string source, FunctionKoto function, string text)

@@ -24,7 +24,7 @@ public class GenericIdentityAdaptationTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze($"func keep<T>(value: T) -> T\n    T is Copy\n    return value@{target}\n()");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -36,8 +36,8 @@ public class GenericIdentityAdaptationTest(ITestOutputHelper output)
     public void AProvenOwnerUsesOrdinaryIdentityAcquisition(string capability, string target)
     {
         var c = MinimalEmissionTest.Analyze($"func keep<T>(value: T) -> T\n    T is Copy and {capability}\n    return value@{target}\nlet number = 7\nlet kept = keep(number)\nrequire kept == number else => $abort(\"identity\")");
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
     }
 
     [Theory]
@@ -49,7 +49,7 @@ public class GenericIdentityAdaptationTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze($"func keep<s/T, U>(value: U) -> U\n    s is owner\n    U is Copy\n    return value@{target}\n()");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]
@@ -81,8 +81,8 @@ public class GenericIdentityAdaptationTest(ITestOutputHelper output)
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         if (valid)
         {
-            Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
         }
         else
         {
@@ -118,7 +118,7 @@ public class GenericIdentityAdaptationTest(ITestOutputHelper output)
                 output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
             }
 
-            Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+            Assert.False(c.WriteIr(TextWriter.Null, out _));
         }
     }
 

@@ -51,7 +51,7 @@ public class EmissionPlanTest
     public void UnsupportedOrIncompleteLoweringNeverWritesFallbackIr(string mutation)
     {
         var c = MinimalEmissionTest.Analyze("Console.writeLine(\"a\")");
-        Assert.True(c.Emission.Validate(out _)); // Exercise reuse after a previously successful plan.
+        Assert.True(c.Validate(out _)); // Exercise reuse after a previously successful plan.
         var body = c.Ownership.Bodies.Single(x => ReferenceEquals(x.Function, c.Kotonoha.GeneratedFunction));
         var firstEdge = body.EdgeHeads[0];
         // Mutate the continuation after argument acquisition, preserving the converged
@@ -94,7 +94,7 @@ public class EmissionPlanTest
         }
 
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out var error));
+        Assert.False(c.WriteIr(output, out var error));
         Assert.NotNull(error);
         Assert.Equal(string.Empty, output.ToString());
         Assert.False(c.Emission.TryPrepare(out var rejected, out _));
@@ -109,9 +109,9 @@ public class EmissionPlanTest
         using var before = new StringWriter();
         first.WriteIr(before);
         c.Bind();
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
+        c.Analyze();
         Assert.True(c.Emission.TryPrepare(out var second, out var error), error);
         Assert.Same(first, second);
         using var after = new StringWriter();

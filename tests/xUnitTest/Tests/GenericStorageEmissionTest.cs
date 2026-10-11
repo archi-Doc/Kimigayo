@@ -97,7 +97,7 @@ public class GenericStorageEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(valid, c.Ownership.Result.IsVerified);
+        Assert.Equal(valid, c.Analysis.IsVerified);
         if (valid)
         {
             Assert.Contains(c.Ownership.Bodies.SelectMany(x => x.Operations), x => x.Acquisition == AcquisitionKind.CopyOrMove);
@@ -116,9 +116,9 @@ public class GenericStorageEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
 
     [Fact]
@@ -287,9 +287,9 @@ public class GenericStorageEmissionTest
         // SPEC 21.3.5: T -> Box<T> re-enters grow with ever new keys; generation stops with a resource
         // failure, distinguished from semantic and representation errors.
         var c = MinimalEmissionTest.Analyze(Box + "func grow<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => grow<Box<T>>(Box<T>.init(value@move), n - 1)\nlet r = grow<i32>(1, 3)");
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out var error));
+        Assert.False(c.WriteIr(output, out var error));
         Assert.Empty(output.ToString());
         Assert.True(c.Emission.FailureIsResourceLimit, error);
         Assert.Contains("grow", error, StringComparison.Ordinal);
@@ -305,12 +305,12 @@ public class GenericStorageEmissionTest
         {
             var c = MinimalEmissionTest.Analyze(Choose + "let a = choose<i8>(1, 2, true)\nlet b = choose<i16>(1, 2, true)\nlet d = choose<i32>(1, 2, true)");
             using var output = new StringWriter();
-            Assert.False(c.Emission.WriteIr(output, out var error));
+            Assert.False(c.WriteIr(output, out var error));
             Assert.Empty(output.ToString());
             Assert.True(c.Emission.FailureIsResourceLimit, error);
             Assert.Contains("choose", error, StringComparison.Ordinal);
             GenericStoragePlan.SubstitutionSetLimit = 3;
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+            Assert.True(c.WriteIr(TextWriter.Null, out error), error);
         }
         finally
         {
@@ -362,9 +362,9 @@ public class GenericStorageEmissionTest
         var bodies = c.Ownership.Bodies.Count;
         var generic = c.Ownership.Bodies.Single(x => x.Function.Name == "choose");
         var places = generic.Places.ToArray();
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         Assert.Equal(bodies, c.Ownership.Bodies.Count);
-        Assert.Empty(c.Ownership.Issues);
+        Assert.Empty(c.Problems);
         Assert.Equal(places, generic.Places.ToArray());
         Assert.Contains(generic.Places, x => x.Acquisition == AcquisitionKind.CopyOrMove);
     }
@@ -379,7 +379,7 @@ public class GenericStorageEmissionTest
         // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
         // the corrupt projection, cleanup, parameter or acquisition plan is rejected on the ordinary body.
         var c = MinimalEmissionTest.Analyze("struct Box\n    let value: string\n    public init(value: string) => self.value = value@move\n    public func take(self: Self) -> string => self.value@move\nlet b = Box.init(\"text\")\nConsole.writeLine(b@move.take())");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "take");
         if (defect == "projection")
         {
@@ -401,10 +401,10 @@ public class GenericStorageEmissionTest
         }
 
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
     [Fact]
@@ -413,14 +413,14 @@ public class GenericStorageEmissionTest
         var c = MinimalEmissionTest.Analyze(Box + "let b = Box<i32>.init(42)\nrequire b@move.take() == 42 else => $abort(\"value\")");
         for (var i = 0; i < 3; i++)
         {
-            Assert.True(c.Emission.Validate(out var error), error);
+            Assert.True(c.Validate(out var error), error);
             c.Bind();
-            Assert.False(c.Emission.Validate(out _));
+            Assert.False(c.Validate(out _));
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
+            Assert.True(c.Analyze().IsVerified);
         }
 
-        Assert.True(c.Emission.Validate(out var finalError), finalError);
+        Assert.True(c.Validate(out var finalError), finalError);
     }
 
     // Monomorphized generic instances keep the caller-facing entry names.

@@ -90,8 +90,8 @@ public class ObjectCreationAdaptationTest(ITestOutputHelper output)
         }
         else
         {
-            Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), failure);
+            Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.WriteIr(TextWriter.Null, out var failure), failure);
         }
     }
 
@@ -105,8 +105,8 @@ public class ObjectCreationAdaptationTest(ITestOutputHelper output)
         NativeAllocationAudit.WriteFixture("ObjectCreationLoan" + mode, source, 1, 1, 24);
         var invalid = MinimalEmissionTest.Analyze(source.Replace("require h.value", "n = 8\nrequire h.value", StringComparison.Ordinal));
         Assert.True(invalid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(invalid, null));
-        Assert.False(invalid.Ownership.Result.IsVerified);
-        Assert.False(invalid.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(invalid.Analysis.IsVerified);
+        Assert.False(invalid.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -136,7 +136,7 @@ public class ObjectCreationAdaptationTest(ITestOutputHelper output)
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -149,8 +149,8 @@ public class ObjectCreationAdaptationTest(ITestOutputHelper output)
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Single();
         Assert.Same(BoundType.Never, conversion.TypeOf());
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), failure);
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.WriteIr(TextWriter.Null, out var failure), failure);
     }
 
     [Fact]
@@ -201,8 +201,8 @@ public class ObjectCreationAdaptationTest(ITestOutputHelper output)
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(CompilerFunctionKind.MakeRc, conversion.ConversionOf().Creation!.CallOf()!.Target.CompilerFunction);
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), failure);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.WriteIr(TextWriter.Null, out var failure), failure);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -211,12 +211,12 @@ public class ObjectCreationAdaptationTest(ITestOutputHelper output)
     {
         const string Source = "func box<T>(value: T) -> rc/T\n    T is ObjectPayload\n    return value@move@rc\nlet n = box(7)\nlet b = box(true)\nlet direct = 1@obj";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 }

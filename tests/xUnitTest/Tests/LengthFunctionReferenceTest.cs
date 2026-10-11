@@ -88,7 +88,7 @@ public sealed class LengthFunctionReferenceTest
         c.Binding.ReportDiagnostics();
         Assert.Equal(nameof(DiagnosticCode.InvalidTypeFormation_Kd), Assert.Single(TestDiagnostics.Of(c)).Code);
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
     }
 
@@ -102,7 +102,7 @@ public sealed class LengthFunctionReferenceTest
         Assert.False(c.Binding.Result.IsComplete);
         c.Binding.ReportDiagnostics();
         Assert.Equal(nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), Assert.Single(TestDiagnostics.Of(c)).Code);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]
@@ -110,14 +110,14 @@ public sealed class LengthFunctionReferenceTest
     {
         const string Source = Keep + "let f = keep<2, i32>\n_ = f([4, 7])";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
         var reference = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<GenericsKoto>().Single();
         var donor = MinimalEmissionTest.Analyze(Source.Replace("keep<2, i32>", "keep<3, i32>", StringComparison.Ordinal));
         var replacement = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<GenericsKoto>().Single();
         Assert.True(KotoHelper.Replace(reference.Parent!, reference, replacement));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Bind().IsComplete);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
@@ -142,8 +142,8 @@ public sealed class LengthFunctionReferenceTest
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 }

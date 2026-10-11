@@ -57,7 +57,7 @@ public class GenericFunctionReferenceTest
     public void GenericReferencesEnterTheirBoundInstance(string name, string source, string stdout)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         ScalarEmissionTest.EmitFixture("GenericReference" + name, source, stdout);
     }
 
@@ -211,7 +211,7 @@ public class GenericFunctionReferenceTest
         Assert.Contains("Owned bound generic arguments", error.Note, StringComparison.Ordinal);
 
         var proven = MinimalEmissionTest.Analyze(Make + "func outer(x: ref/i32) -> i32\n    origin x outlives static\n    let h: (ref/i32 during x) -> ref/i32 during x = " + reference + "\n    return h(x)@follow\nConsole.writeLine(\"ok\")");
-        Assert.True(proven.Binding.Result.IsComplete && proven.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(proven, null));
+        Assert.True(proven.Binding.Result.IsComplete && proven.Analyze().IsVerified, MinimalEmissionTest.Describe(proven, null));
         Assert.Contains("define", CompilationTestHelper.WriteIr(proven), StringComparison.Ordinal); // Generation accepts what check accepts.
     }
 
@@ -249,7 +249,7 @@ public class GenericFunctionReferenceTest
     public void ReferenceSlotCounterpartsAreAccepted(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     // SPEC 10.6: the record's cause is its own; an independent error stays visible and a use of the annotated binding adds none.
@@ -279,7 +279,7 @@ public class GenericFunctionReferenceTest
     public void ExplicitTypeArgumentsSelectTheReference(string name, string source, string stdout)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         ScalarEmissionTest.EmitFixture("GenericReferenceExplicit" + name, source, stdout);
     }
 
@@ -357,8 +357,8 @@ public class GenericFunctionReferenceTest
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 

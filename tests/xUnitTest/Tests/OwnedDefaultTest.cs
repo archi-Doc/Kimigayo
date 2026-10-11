@@ -43,10 +43,10 @@ public class OwnedDefaultTest
         public void WarmOwnedPreparationAllocatesNothing()
         {
             var c = MinimalEmissionTest.Analyze(CopyText + "func f(x: string, y: string = copyText(x)) => Console.writeLine(y)\nf(\"prepared\")");
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+            Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
             var valid = true;
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
-            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
             Assert.True(valid);
         }
     }

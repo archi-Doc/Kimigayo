@@ -59,7 +59,7 @@ public class NumericReplacementTest
         Assert.True(KotoHelper.Replace(conversion, conversion.Left, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         c.Binding.CheckStartup(OutputKind.Application);
-        Assert.True(c.Ownership.Analyze().IsVerified);
+        Assert.True(c.Analyze().IsVerified);
         var ir = CompilationTestHelper.WriteIr(c);
         ScalarEmissionTest.WriteFixture("NumericReplacement" + name, ir, "ok\n");
         var written = c.Kotonoha.GeneratedFunction!.Body!.ToString();
@@ -81,7 +81,7 @@ public class NumericReplacementTest
         Assert.True(KotoHelper.Replace(variable, old, Variable(donor).InitializerKoto!));
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.InvalidLiteral && x.Node.Span == old.Span);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
     }
 
     [Fact]

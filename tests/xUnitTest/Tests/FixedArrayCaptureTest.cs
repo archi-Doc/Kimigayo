@@ -41,8 +41,8 @@ public class FixedArrayCaptureTest
     public void InvalidAcquisitionAndErasureRemainRejected(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
+        Assert.False(c.Validate(out _));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -75,9 +75,9 @@ public class FixedArrayCaptureTest
     public void WarmArrayCaptureEmissionAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze("let values: [2 of string] = [\"first\", \"last\"]\nlet f: () -> bool = func [values@move] () => values[0] == \"first\"\nrequire f() else => $abort(\"call\")");
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
+        Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid);
     }
 

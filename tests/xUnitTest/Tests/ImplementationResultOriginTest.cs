@@ -23,7 +23,7 @@ public class ImplementationResultOriginTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Empty + "specialize func empty<i32>() -> Option<ref/i32" + annotation + "> => .None\nlet value = empty<i32>()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var implementation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsSpecialization);
         Assert.Equal(OriginKind.Parameter, implementation.SymbolOf()!.Type!.Components[0].Origin!.Kind);
     }
@@ -45,7 +45,7 @@ public class ImplementationResultOriginTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Empty + "specialize func empty<i32>() -> Option<ref/i32>\n    let value: Option<ref/i32 during fresh> = .None\n    return value@move\nlet value = empty<i32>()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]
@@ -55,7 +55,7 @@ public class ImplementationResultOriginTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Empty + "specialize func empty<i32>() -> Option<ref/i32" + annotation + "> => .None\n()");
         Assert.Contains(c.Binding.Issues, x => x.Code == expected);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]
@@ -68,7 +68,7 @@ public class ImplementationResultOriginTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze("func empty<T>(x: ref/T) -> Option<ref/T during fresh> => .None\nspecialize func empty<i32>(x: ref/i32) -> Option<ref/i32> => .Some(x)\n()");
         c.Binding.ReportDiagnostics();
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "UnprovenOriginRelation_Kd");
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]

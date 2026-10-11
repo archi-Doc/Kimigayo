@@ -65,7 +65,7 @@ public class ObjectPayloadReadTest(ITestOutputHelper output)
         var source = "let owner = Kimi.Intrinsics.makeObj(\"text\")\nlet value = owner@follow" + (borrow ? "@ref" : string.Empty) + "\nConsole.writeLine(value)";
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var console = new DiagnosticContractTest.DiagnosticConsole();
@@ -74,7 +74,7 @@ public class ObjectPayloadReadTest(ITestOutputHelper output)
         if (borrow)
         {
             Assert.Empty(result.Diagnostics);
-            Assert.True(c.Emission.Validate(out var failure), failure);
+            Assert.True(c.Validate(out var failure), failure);
             return;
         }
 
@@ -82,7 +82,7 @@ public class ObjectPayloadReadTest(ITestOutputHelper output)
         Assert.Equal("TransferRequired_Kd", error.Code);
         Assert.Equal("owner@follow", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
         Assert.Null(error.Repairs);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
         var identity = SourceIdentity.FromPath(path);
         foreach (var related in new[] { false, true })
         {
@@ -98,9 +98,9 @@ public class ObjectPayloadReadTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze("var owner = Kimi.Intrinsics.makeObj(7)\nlet view = owner@objuniq\nlet snapshot = owner@follow\n_ = view@move");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.False(c.Validate(out _));
     }
 
     // SPEC 13.5.5.1: exclusive payload access needs exclusive authority along the whole path, also to an objuniq view.
@@ -109,7 +109,7 @@ public class ObjectPayloadReadTest(ITestOutputHelper output)
     {
         var source = "struct Counter\n    public var n: i32 = 0\n    public func bump(self: uniq/Self) => self.n += 1\nvar h = Kimi.Intrinsics.makeObj(Counter.init())\nlet u = h@objuniq\nlet r = u@ref\nr@follow.bump()";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Validate(out _));
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.NoApplicableOverload_Kd), "r@follow.bump()"), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
     }
@@ -119,10 +119,10 @@ public class ObjectPayloadReadTest(ITestOutputHelper output)
     public void WarmPayloadReadPlansAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("let owner = Kimi.Intrinsics.makeRc(7)\nrequire owner@follow == 7 else => $abort(\"read\")");
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid);
     }
 }

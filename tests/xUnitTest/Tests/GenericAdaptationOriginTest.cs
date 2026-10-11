@@ -19,7 +19,7 @@ public class GenericAdaptationOriginTest
         NativeAllocationAudit.WriteFixture("GenericAdaptationLoan" + mode, source, 1, 1, 24);
         var invalid = MinimalEmissionTest.Analyze(source.Replace("require handle.value", "number = 8\nrequire handle.value", StringComparison.Ordinal));
         Assert.True(invalid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(invalid, null));
-        Assert.False(invalid.Ownership.Result.IsVerified);
-        Assert.False(invalid.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(invalid.Analysis.IsVerified);
+        Assert.False(invalid.WriteIr(TextWriter.Null, out _));
     }
 }

@@ -28,9 +28,9 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
 
         var path = Path.GetFullPath("generic-generation.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out var failure));
+        Assert.False(c.WriteIr(writer, out var failure));
         Assert.Empty(writer.ToString());
         Assert.False(c.Emission.FailureIsResourceLimit);
         Assert.Equal("i128", c.Emission.FailureInstance!.TypeArguments[0]!.Name);
@@ -38,8 +38,8 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
         Assert.NotNull(refused);
         var issue = Assert.Single(refused.IssueStorage);
         Assert.Equal(OwnershipFailure.Unsupported, issue.Failure);
-        Assert.True(c.Ownership.Result.IsVerified);
-        Assert.Empty(c.Ownership.Issues);
+        Assert.True(c.Analysis.IsVerified);
+        Assert.Empty(c.Problems);
         c.Emission.ReportFailure(failure);
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(DiagnosticPartition.Input, DiagnosticPartition.Emission, rejected: true);
@@ -62,7 +62,7 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
 
-        Assert.False(c.Emission.Validate(out var repeated));
+        Assert.False(c.Validate(out var repeated));
         Assert.Same(refused, c.Ownership.FailedInstance);
         Assert.Equal(failure, repeated);
         c.Bind();
@@ -74,7 +74,7 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
     {
         var source = WideDivision.Replace("10@i128", "10@i64", StringComparison.Ordinal) + "\nrequire result == 5 else => $abort(\"result\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.Validate(out var failure), failure);
+        Assert.True(c.Validate(out var failure), failure);
         Assert.Null(c.Ownership.FailedInstance);
         Assert.Null(c.Emission.FailureInstance);
         ScalarEmissionTest.EmitFixture("GenericGenerationDiagnosticValid", source, string.Empty);
@@ -84,12 +84,12 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
     public void TypeAndLengthSlotsAppearOnceInDeclarationOrder()
     {
         var c = MinimalEmissionTest.Analyze("func pick<length N, T>(values: [N of i32], value: T) -> T => value@move\nlet result = pick([1, 2], (20, 22))");
-        Assert.True(c.Emission.Validate(out var initial), initial);
+        Assert.True(c.Validate(out var initial), initial);
         var previous = OwnershipStorage.ByteLimit;
         try
         {
             OwnershipStorage.ByteLimit = 8;
-            Assert.False(c.Emission.Validate(out var failure));
+            Assert.False(c.Validate(out var failure));
             c.Emission.ReportFailure(failure);
             var error = Assert.Single(TestDiagnostics.Of(c));
             Assert.Contains("pick<2, (i32, i32)>", error.Note!, StringComparison.Ordinal);
@@ -104,8 +104,8 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
     public void IndependentUnsupportedOperationsRetainSeparateLocations()
     {
         var c = MinimalEmissionTest.Analyze(WideDivision.Replace("    return value / 2", "    let first = value / 2\n    return value % 2", StringComparison.Ordinal));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Emission.Validate(out var failure));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Validate(out var failure));
         c.Emission.ReportFailure(failure);
         var errors = TestDiagnostics.Of(c);
         Assert.Equal(2, errors.Length);
@@ -117,12 +117,12 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
     public void InstanceStorageLimitsKeepResourceFactsAndRecover()
     {
         var c = MinimalEmissionTest.Analyze("func identity<T>(value: T) -> T => value@move\nlet result = identity((20, 22))");
-        Assert.True(c.Emission.Validate(out var initial), initial);
+        Assert.True(c.Validate(out var initial), initial);
         var previous = OwnershipStorage.ByteLimit;
         try
         {
             OwnershipStorage.ByteLimit = 8;
-            Assert.False(c.Emission.Validate(out var failure));
+            Assert.False(c.Validate(out var failure));
             Assert.True(c.Emission.FailureIsResourceLimit);
             c.Emission.ReportFailure(failure);
             var error = Assert.Single(c.Diagnostics.Finalize(DiagnosticPartition.Input, DiagnosticPartition.Emission, rejected: true).Diagnostics);
@@ -131,15 +131,15 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
             Assert.Contains(error.Reason!, x => x.Name == "limitBytes" && x.Value == "8");
             Assert.Contains("identity<(i32, i32)>", error.Note!, StringComparison.Ordinal);
             Assert.Equal("instantiation", Assert.Single(error.Related!).Role);
-            Assert.True(c.Ownership.Result.IsVerified);
-            Assert.Empty(c.Ownership.Issues);
+            Assert.True(c.Analysis.IsVerified);
+            Assert.Empty(c.Problems);
         }
         finally
         {
             OwnershipStorage.ByteLimit = previous;
         }
 
-        Assert.True(c.Emission.Validate(out var recovered), recovered);
+        Assert.True(c.Validate(out var recovered), recovered);
         Assert.Null(c.Ownership.FailedInstance);
         Assert.Null(c.Emission.FailureInstance);
         Assert.False(c.Emission.FailureIsResourceLimit);
@@ -152,7 +152,7 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(WideDivision.Replace("10@i128", "10@i64", StringComparison.Ordinal));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid);
         Assert.Null(c.Ownership.FailedInstance);
         Assert.Null(c.Emission.FailureInstance);

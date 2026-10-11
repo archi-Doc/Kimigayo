@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -96,8 +97,8 @@ public class NestedCollectionTest
         {
             Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
         for (var i = 0; i < 32; i++)
@@ -113,8 +114,8 @@ public class NestedCollectionTest
     {
         var c = MinimalEmissionTest.Analyze("let inner = [1: 2]\nlet values = [1: inner@move]\nlet again = inner@move");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.PossiblyMovedUse);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Problems, static x => x.Code == DiagnosticCode.MovedPlace_Kd);
+        Assert.False(c.Validate(out _));
     }
 
     [Theory]
@@ -124,9 +125,9 @@ public class NestedCollectionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Analysis.IsVerified);
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.False(c.Validate(out _));
     }
 
     [Fact]
@@ -135,8 +136,8 @@ public class NestedCollectionTest
         const string source = "func use(first: uniq/Dictionary<i32, i32>, second: uniq/Dictionary<i32, i32>) => ()\nvar values = [[1: 2], [3: 4]]\nuse(values[0]@uniq, values[1]@uniq)";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.False(c.Analysis.IsVerified);
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.False(c.Validate(out _));
     }
 }

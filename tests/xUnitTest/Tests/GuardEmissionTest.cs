@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
@@ -81,8 +82,8 @@ public class GuardEmissionTest
         var allocated = AllocationMeasurement.Measure(
             () =>
             {
-                valid &= c.Ownership.Analyze().IsVerified;
-                valid &= c.Emission.WriteIr(TextWriter.Null, out _);
+                valid &= c.Analyze().IsVerified;
+                valid &= c.WriteIr(TextWriter.Null, out _);
             },
             iterations: 128,
             warmupIterations: 100);
@@ -131,7 +132,7 @@ public class GuardEmissionTest
     public void MalformedGuardPlansFailBeforeWriting(string defect)
     {
         var c = MinimalEmissionTest.Analyze("func echo(text: string) -> string => text@move\nmatch 1\n    let n if echo(\"a\") == \"a\" and n == 1 => ()\n    _ => ()");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Matches.Count != 0);
         var arm = body.MatchArms[0];
         if (defect == "candidate")
@@ -151,10 +152,10 @@ public class GuardEmissionTest
         }
 
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.False(c.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.Validate(out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.Validate(out error), error);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -167,7 +168,7 @@ public class GuardEmissionTest
         var allocated = AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 100, warmupIterations: 100);
         Assert.True(valid);
         Assert.Equal(0, allocated);
-        c.Ownership.Analyze();
+        c.Analyze();
         Assert.Same(candidate, c.Ownership.Bodies[0].Matches[0].Binding.Positions[0].CandidateSymbol);
     }
 
@@ -219,9 +220,9 @@ public class GuardEmissionTest
         var source = "let text = \"a\"\nmatch 1\n    _ if (label check: do\n        _ = text@move\n        exit to check false\n    ) => ()\n" + (covered ? "    _ => ()\n" : string.Empty) + "    _ => Console.writeLine(text)";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.True(c.Ownership.Result.ErrorCount > 0);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.PossiblyMovedUse);
+        Assert.False(c.Analysis.IsVerified);
+        Assert.True(c.Analysis.ErrorCount > 0);
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd);
     }
 
     [Fact]

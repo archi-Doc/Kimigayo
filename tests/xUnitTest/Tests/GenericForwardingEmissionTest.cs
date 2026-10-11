@@ -99,7 +99,7 @@ public class GenericForwardingEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
     }
 
@@ -115,7 +115,7 @@ public class GenericForwardingEmissionTest
     public void RejectsCorruptPlanAndRecovers(string defect)
     {
         var c = MinimalEmissionTest.Analyze("func weight(value: ref/i32) -> i32 => 2\nfunc total(values: ref/[1 of i32]) -> i32 => weight(values[0]@ref/i32)\nlet values: [1 of i32] = [7]\nlet result = total(values@ref)");
-        Assert.True(c.Emission.Validate(out var error), error);
+        Assert.True(c.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "total");
         var sequence = body.Sequences.FindIndex(x => x.Kind == SequenceOperation.Borrow);
         Assert.True(sequence >= 0);
@@ -130,9 +130,9 @@ public class GenericForwardingEmissionTest
         }
 
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.Validate(out error), error);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.Validate(out error), error);
     }
 }

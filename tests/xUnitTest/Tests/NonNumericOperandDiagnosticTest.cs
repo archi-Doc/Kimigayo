@@ -35,7 +35,7 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(["string", "+"], error.Reason!.Select(static x => x.Value));
         Assert.Equal(Note, error.Note);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Empty(c.Ownership.Issues);
+        Assert.Empty(c.Problems);
     }
 
     // The operand Type and the operator are the facts; only a string operand is told about interpolation.
@@ -168,7 +168,7 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
         {
             var c = MinimalEmissionTest.Analyze(source);
             Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-            Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         }
 
         ScalarEmissionTest.EmitFixture("StringJoinInterpolation", Join, "Hello, world\nstart!\nHello, \n");
@@ -209,8 +209,7 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(source, path);
         c.Binding.ReportDiagnostics();
         c.Binding.ReportStartupDiagnostics();
-        c.Ownership.ControlFlow?.ReportDiagnostics();
-        c.Ownership.ReportDiagnostics();
+        c.ReportAnalysis();
         return c;
     }
 }

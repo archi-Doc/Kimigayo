@@ -62,7 +62,7 @@ public class GenericAdaptationTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
     [Fact]
@@ -83,8 +83,8 @@ public class GenericAdaptationTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>());
         Assert.Same(BoundType.Never, conversion.TypeOf());
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), failure);
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.WriteIr(TextWriter.Null, out var failure), failure);
     }
 
     [Theory]
@@ -114,7 +114,7 @@ public class GenericAdaptationTest
         const string Source = "func inspect<s/T>(value: s/T) -> ()\n    s is obj or ref\n    T is ObjectPayload\n    _ = value@move@s\n" +
             "let number = 7\ninspect(number@ref)\ninspect<obj/i32>(8@obj)\nrequire number == 7 else => $abort(\"slot\")";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), x => x.ConversionOf().Adaptation is not null);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "inspect");
         var type = body.Resolve(conversion.TypeOf(), InterpretationContext.Root)!;
@@ -162,7 +162,7 @@ public class GenericAdaptationTest
         const string Source = "func box<s/T>() -> s/i32\n    s is owner or object\n    return 7@s\n" +
             "let plain = box<i32>()\nlet first = box<obj/i32>()\nlet second = box<rc/i32>()\nlet third = box<arc/i32>()";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
         var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>());
         var invalid = MinimalEmissionTest.Analyze(Source.Replace("7@s", "7@s/i64", StringComparison.Ordinal));
         var donor = Assert.Single(KotoTree.Walk(invalid.Kotonoha.RootKoto).OfType<ConversionKoto>());
@@ -170,15 +170,15 @@ public class GenericAdaptationTest
         Assert.Null(conversion.ConversionOf().Adaptation);
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.WriteIr(TextWriter.Null, out _));
 
         var restored = MinimalEmissionTest.Analyze(Source);
         donor = Assert.Single(KotoTree.Walk(restored.Kotonoha.RootKoto).OfType<ConversionKoto>());
         Assert.True(KotoHelper.Replace(conversion, conversion.Right, donor.Right));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.WriteIr(TextWriter.Null, out failure), MinimalEmissionTest.Describe(c, failure));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -186,12 +186,12 @@ public class GenericAdaptationTest
     public void RepeatedCaseBindingOwnershipAndGenerationAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(AdaptationWorkloads.Single);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 }

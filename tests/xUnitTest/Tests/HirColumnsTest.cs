@@ -287,7 +287,7 @@ public sealed class HirColumnsTest
         {
             var (c, module) = SemanticSnapshotTest.Bind(name);
             HirTables.Publish(c);
-            c.Ownership.Analyze();
+            c.Analyze();
             var operations = new Dictionary<Koto, SortedSet<string>>(ReferenceEqualityComparer.Instance);
             foreach (var operation in c.Ownership.Bodies.SelectMany(static x => x.Operations))
             {
