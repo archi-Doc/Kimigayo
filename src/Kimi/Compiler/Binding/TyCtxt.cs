@@ -187,6 +187,10 @@ internal sealed class TyCtxt(Binding binding, KimiLibrary library)
     // The substitution that binds none of a binder's slots: its own body's.
     internal Subst Identity(Koto binder) => this.Intern(binder.BoundSymbol!, null, null, [], [], [], []);
 
+    // A call the MIR builder synthesizes, of the function serving a built-in form (R3 decision 5): its declaring Type's instance and its Type
+    // arguments; its Origins are the analyses' to relate.
+    internal Subst Synthesized(BindingSymbol target, BoundType? declaring, ReadOnlySpan<BoundType?> types) => this.Intern(target, null, declaring, types, [], [], []);
+
     // SPEC 8.3, 8.6: a declared Type in the instance a substitution makes, which Binding's storage instantiation computes until R7 moves it
     // here; the identity keeps the Type.
     internal BoundType? Apply(BoundType type, Subst subst)

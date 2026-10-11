@@ -274,7 +274,7 @@ internal sealed class MirValidator
 
         // The operands an rvalue has: one or two, as many as its Type's elements, Fields (the base first) or Case payload, or captures; -1
         // when an aggregate's kind and Type disagree. A fixed array of a generic length is counted by its instance, and one built from no
-        // operand stores no element (SPEC 4.3.4 noinit).
+        // operand stores no element (SPEC 4.3.4 noinit); an Array or a Dictionary is built from none, the empty collection (SPEC 12.3.2).
         private static int Arity(in MirRvalue rvalue)
         {
             var type = rvalue.Type;
@@ -287,6 +287,7 @@ internal sealed class MirValidator
                     MirAggregateKind.Tuple when type?.Kind == BoundTypeKind.Tuple => type.Components.Count,
                     MirAggregateKind.Closure when type?.Kind == BoundTypeKind.Closure => type.Components.Count,
                     MirAggregateKind.FixedArray when type?.Kind == BoundTypeKind.FixedArray => type.LengthExpression is null && type.Length >= 0 && rvalue.Count > 0 ? (int)type.Length : rvalue.Count,
+                    MirAggregateKind.FixedArray when type?.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary => 0,
                     MirAggregateKind.Adt when AdtDef.IsStruct(type) => AdtDef.Count(type!) + (AdtDef.Base(type!) is null ? 0 : 1),
                     MirAggregateKind.Adt when type is not null && AdtDef.CaseTypes(type) is { } cases => (uint)rvalue.Arg < (uint)cases.Length ? cases[rvalue.Arg].Components.Count : -1,
                     _ => -1,

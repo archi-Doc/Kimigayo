@@ -65,6 +65,9 @@ internal sealed partial class MirBuilder
             case HirOp.Loop:
                 this.Loop(destination, (LoopKoto)node);
                 break;
+            case HirOp.For:
+                this.For(destination, (ForKoto)node);
+                break;
             case HirOp.While:
                 this.While(destination, (WhileKoto)node);
                 break;
@@ -106,6 +109,18 @@ internal sealed partial class MirBuilder
                 break;
             case HirOp.Assign:
                 this.Replace(destination, (BinaryKoto)node);
+                break;
+            case HirOp.CompoundAssign:
+                this.Update(destination, node);
+                break;
+            case HirOp.Index when HirTables.PlaceOf(node).Kind == HirPlaceKind.Value: // A built-in range selection.
+                this.Slice(destination, (IndexKoto)node);
+                break;
+            case HirOp.DictionaryLiteral:
+                this.Dictionary(destination, (DictionaryLiteralKoto)node);
+                break;
+            case HirOp.Interpolation:
+                this.Format(destination, node);
                 break;
             case HirOp.Error: // Binding reported it; its value is derived.
                 this.Opaque(node, destination);
@@ -241,17 +256,26 @@ internal sealed partial class MirBuilder
 
     // SPEC 4.6.1, 4.6.3: a sequence's length, whether it is empty (its length equals 0) and its indices (the ResolvedRange of start 0 and
     // end its length), from Len of the receiver; of a Utf8Slice, the one struct Binding serves as a sequence (SequenceMember), Len of its
-    // byte Slice. An Array's or a Dictionary's capacity has no MIR form until R8's representation structs.
+    // byte Slice. SPEC 4.7.4: an Array's or a Dictionary's capacity is the temporary intrinsic Capacity of a shared view of the handle
+    // (owner decision 2026-10-11) until R8's representation structs make it a Field read.
     private void Metadata(MirPlace destination, MemberAccessKoto member)
     {
         var form = IntrinsicDisposition.FormOf(member);
-        if (form is not (BuiltinForm.Length or BuiltinForm.IsEmpty or BuiltinForm.Indices))
+        if (form is not (BuiltinForm.Length or BuiltinForm.IsEmpty or BuiltinForm.Indices or BuiltinForm.Capacity))
         {
             this.Unsupported(member, destination);
             return;
         }
 
         var sequence = this.Place(member.Left);
+        if (form == BuiltinForm.Capacity)
+        {
+            var (view, start) = (compilation.Types.Reference(SemanticsKind.Ref, this.body.TypeOf(sequence)!), this.arguments.Count);
+            this.arguments.Add(this.Temporary(view, MirRvalue.Ref(MirRefKind.Shared, sequence, view), member));
+            this.Invoke(destination, MirCallee.Intrinsic(IntrinsicId.Capacity), start, member);
+            return;
+        }
+
         if (AdtDef.IsStruct(this.body.TypeOf(sequence)))
         {
             sequence = this.body.Project(sequence, MirProjectionKind.Field, AdtDef.IndexOf(this.body.TypeOf(sequence)!, "value"));
@@ -327,9 +351,15 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 3.2, 4.3.2, 6.4: a Tuple, a fixed array or an enum Case value from its operands in order, an enum's payloads as its construction
-    // acquires them. A dynamic Array literal is the calls of its built-in form (U8); a fill of a length its instance decides is not built.
+    // acquires them; a dynamic Array literal the calls of its built-in form (Collection). A fill of a length its instance decides is not built.
     private void Aggregate(MirPlace destination, Koto node, BoundType type)
     {
+        if (node is ArrayLiteralKoto { FillLength: null } literal && type.Kind == BoundTypeKind.Array)
+        {
+            this.Collection(destination, literal, type);
+            return;
+        }
+
         var construction = BoundEnumConstruction.Of(node);
         var elements = node switch
         {
@@ -396,16 +426,21 @@ internal sealed partial class MirBuilder
 
         var value = this.Temp(assignment.Left);
         this.Assign(value, assignment.Right);
-        var target = this.Place(assignment.Left);
-        if (Completes(assignment) && MirTypes.MayNeedDrop(this.body.TypeOf(target)))
+        this.Overwrite(this.Place(assignment.Left), MirOperand.Move(value), assignment);
+        this.Unit(destination, assignment);
+    }
+
+    // SPEC 13.7.1: a target's old value dropped where its Type may need it (A2 elaborates a moved one away), then the value placed.
+    private void Overwrite(MirPlace target, in MirOperand value, Koto node)
+    {
+        if (Completes(node) && MirTypes.MayNeedDrop(this.body.TypeOf(target)))
         {
             var next = this.body.AddBlock();
-            this.body.Terminate(this.current, MirTerminator.Drop(target, next, this.Info(assignment)));
+            this.body.Terminate(this.current, MirTerminator.Drop(target, next, this.Info(node)));
             this.current = next;
         }
 
-        this.Use(target, MirOperand.Move(value), assignment);
-        this.Unit(destination, assignment);
+        this.Use(target, value, node);
     }
 
     // IMPL 21.5.3: whether an operation cannot Abort: it checks nothing (a comparison, a bit operation, or an operation of a floating-point,

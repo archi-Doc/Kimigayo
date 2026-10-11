@@ -116,15 +116,16 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 15.1.6: the selected arm's body locals, left to right, from the Places its binding positions selected, each as its Adjust
-    // acquires it: Copied, moved, by case, or borrowed in the mode its path grants.
-    private void Bind(BoundMatch plan, int pattern, int start)
+    // acquires it: Copied, moved, by case, or borrowed in the mode its path grants; a for loop's are its iteration bindings (SPEC 14.6.1).
+    private void Bind(BoundMatch plan, int pattern, int start, ForKoto? loop = null)
     {
         for (var i = pattern; i < plan.Positions[pattern].End; i++)
         {
-            if (plan.Positions[i] is { BodySymbol: { } symbol, Source: SyntaxFormKoto binding })
+            if (plan.Positions[i] is { BodySymbol: { } symbol, Source: var binding })
             {
                 var (type, adjust, place) = (symbol.Type ?? BoundType.Unit, HirTables.AdjustOf(binding), this.selected[start + i]);
-                var local = this.Live(this.body.AddLocal(new(type, MirLocalKind.Var, this.Info(binding, true), binding.IsMutablePattern, symbol.Name)), this.lexical);
+                var mutable = binding is SyntaxFormKoto { IsMutablePattern: true } || (binding is IdentifierNameKoto name && loop?.IsMutableSlot(name) == true);
+                var local = this.Live(this.body.AddLocal(new(type, MirLocalKind.Var, this.Info(binding, true), mutable, symbol.Name)), this.lexical);
                 var value = adjust.Adaptation == HirAdaptation.None ? MirRvalue.Use(this.body.AddOperand(this.Acquire(adjust.Acquire, place)))
                     : MirRvalue.Ref(adjust.Adaptation == HirAdaptation.ExclusiveBorrow ? MirRefKind.Uniq : MirRefKind.Shared, place, type);
                 this.Set(new(local), value, binding);

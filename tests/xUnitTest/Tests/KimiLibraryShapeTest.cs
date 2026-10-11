@@ -254,7 +254,7 @@ public class KimiLibraryShapeTest
     }
 
     // Plan 5.8: the intrinsic table gives every compiler function one disposition; an intrinsic serves at most one of them, except Fail,
-    // which carries a fixed SPEC 22.5.4 code; there are at most 30 intrinsics.
+    // which carries a fixed SPEC 22.5.4 code; there are at most 30 intrinsics, and the temporary Capacity (owner approval 2026-10-11) until R8.
     [Fact]
     public void EveryCompilerFunctionHasOneDisposition()
     {
@@ -270,7 +270,7 @@ public class KimiLibraryShapeTest
         var served = rows.Select(static x => x.Row.Id).Where(static x => x is not (IntrinsicId.None or IntrinsicId.Fail)).ToArray();
         Assert.Equal(served.Distinct(), served);
         Assert.Equal(DispositionKind.Body, IntrinsicDisposition.Of(CompilerFunctionKind.None).Kind);
-        Assert.True(Enum.GetValues<IntrinsicId>().Length <= 30);
+        Assert.True(Enum.GetValues<IntrinsicId>().Length <= 31);
     }
 
     // R3 decision 5: the builder-only rows serve a dynamic Array literal, a built-in slicing and a direct interpolation as existing compiler

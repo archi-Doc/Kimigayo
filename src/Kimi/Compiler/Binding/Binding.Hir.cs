@@ -102,6 +102,11 @@ public sealed partial class Binding
 
             (this.parent, this.parentOp, this.position) = (node, op, position);
             node.VisitChildren(this);
+            if (node is ForKoto { Iteration: { } iteration } && op == HirOp.For)
+            {
+                this.Visit(iteration.Receiver); // The step's receiver, the iterator local the loop declares (SPEC 14.6.2).
+            }
+
             (this.parent, this.parentOp, this.position, this.defaultCount, this.exclusive) = (parent, parentOp, outer, defaults, exclusive);
         }
 
@@ -181,7 +186,7 @@ public sealed partial class Binding
 
                     return position;
                 case ForKoto loop:
-                    return ReferenceEquals(node, loop.Iterable) || ReferenceEquals(node, loop.Body) ? position : HirPosition.None;
+                    return ReferenceEquals(node, loop.Iterable) || ReferenceEquals(node, loop.Body) || ReferenceEquals(node, loop.Iteration?.Receiver) ? position : HirPosition.None;
                 case InvocationKoto call:
                     return ReferenceEquals(node, call.Method) && CallPlan.Of(call)?.Kind != CalleeKind.Value ? position | HirPosition.Covered : position;
                 case MacroKoto macro:
@@ -543,8 +548,9 @@ public sealed partial class Binding
             return layers;
         }
 
-        // A bare Place (SPEC 3.5), a raw Place (SPEC 5.2) or a static.
-        private bool IsPlace(Koto child) => IsBarePlace(child) || ElementAccess.IsRawPlace(child) || this.ResOf(KotoHelper.UnwrapParentheses(child)) == HirRes.Static;
+        // A bare Place (SPEC 3.5), a raw Place (SPEC 5.2), a static, or the storage a formatting plan prepared (its buffer, its writer).
+        private bool IsPlace(Koto child) => IsBarePlace(child) || ElementAccess.IsRawPlace(child) || child is FormattingKoto { Operation: FormattingOperation.Storage } ||
+            this.ResOf(KotoHelper.UnwrapParentheses(child)) == HirRes.Static;
 
         // SPEC 15.1.6: a Subject is acquired as written, but a bare Place is borrowed in place: its stored exclusive reference Reborrowed, a
         // stored exclusive reference reached through a shared layer read as one shared reference, and any other Place borrowed in its mode.

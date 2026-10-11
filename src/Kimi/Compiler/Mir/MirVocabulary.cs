@@ -125,7 +125,7 @@ internal enum MirAggregateKind : byte
 {
     Tuple,
     Adt, // A struct (its base first, then its own Fields) or the Case its ordinal names.
-    FixedArray,
+    FixedArray, // A fixed array from its elements; an Array or a Dictionary from none, the empty collection its literal's calls fill.
     Closure, // A Closure environment from its captures.
 }
 

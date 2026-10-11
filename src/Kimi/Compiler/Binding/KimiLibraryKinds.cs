@@ -132,6 +132,7 @@ internal enum IntrinsicId : byte
     TestPhaseLeave,
     TestTempDirectory,
     StaticEnsure, // SPEC 22.2.3.
+    Capacity, // Temporary (owner, 2026-10-11): an Array's or a Dictionary's capacity (SPEC 4.7.4) until R8 makes it a Field read.
 }
 
 /// <summary>How a call of a compiler function is served (plan 5.8).</summary>
@@ -188,7 +189,7 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
 
     // The builder-only rows (R3 decision 5): the existing compiler function that serves a built-in form, whose own row is its disposition
     // (a Body R8 writes over the representation structs, which the legacy helpers serve until then); None where MIR states the form itself
-    // (Len, Len == 0, the ResolvedRange aggregate) or, for Capacity, the backend reads the handle's capacity Field until R8.
+    // (Len, Len == 0, the ResolvedRange aggregate) or, for Capacity, the temporary IntrinsicId.Capacity reads it until R8.
     internal static CompilerFunctionKind Serving(BuiltinForm form) => form switch
     {
         BuiltinForm.ArrayLiteral => CompilerFunctionKind.ArrayAppend, // Each element into the empty Array, after ArrayReserve of their count.

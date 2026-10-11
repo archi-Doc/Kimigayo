@@ -206,11 +206,11 @@ internal sealed partial class MirBuilder
         this.Join(after, body);
     }
 
-    // An iteration: the body for its effect, then back to the head.
+    // An iteration: the body for its effect, then back to the head, through the cleanup of the iteration's scopes as a continue goes.
     private void Iterate(Koto body, int head)
     {
         this.Statement(body);
-        this.Join(head, body);
+        this.Join(this.Exit(this.targets[^1].Depth, head), body);
     }
 
     // The end of a body: a runtime edge to the block where the body completes, else only its check-only continuation ends there (plan

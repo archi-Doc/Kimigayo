@@ -8,12 +8,12 @@ namespace Kimi.Compiler.Mir;
 // Calls (SPEC 7.3).
 internal sealed partial class MirBuilder
 {
-    // A node's call (CallPlan.Of; a Property read's getter). Not built yet: a constructor's (U13), omitted defaults (U14) and the calls of
-    // an expansion (U12).
+    // A node's call (CallPlan.Of; a Property read's getter; a user or view index's selected call, SPEC 4.6.9). Not built yet: a
+    // constructor's (U13) and omitted defaults (U14).
     private void Call(MirPlace destination, Koto node)
     {
-        var call = CallPlan.Of(node)!;
-        if (ExpansionPlan.Of(node) is not null || !call.DefaultArguments.IsEmpty || (call.Kind != CalleeKind.Value && CallPlan.Parameter(call.Target, -1) is not null))
+        var call = ExpansionPlan.Of(node)?.Second ?? CallPlan.Of(node)!;
+        if (!call.DefaultArguments.IsEmpty || (call.Kind != CalleeKind.Value && CallPlan.Parameter(call.Target, -1) is not null))
         {
             this.Unsupported(node, destination);
             return;
@@ -24,11 +24,11 @@ internal sealed partial class MirBuilder
 
     // SPEC 7.3, 7.6.3: a call of the function, requirement, virtual slot or callable value Binding selected: a value call's callee in its
     // receiver mode, the receiver, then the arguments in their order (an assignment's secured value first, SPEC 13.7.1), each as its Adjust
-    // takes it for its parameter's Type, passed by parameter slot, the receiver first. A compiler function is its intrinsic where the table
-    // gives one (IntrinsicDisposition; Fail with its fixed code), a direct base call the implementation the virtual selection names, and a
-    // place result the reference the call returns. A call of a Never function or a diverging intrinsic has no runtime successor and
+    // takes it for its parameter's Type or as the value an expansion evaluated for it (given), passed by parameter slot, the receiver first.
+    // A compiler function is its intrinsic where the table gives one (IntrinsicDisposition; Fail with its fixed code), a direct base call
+    // the implementation the virtual selection names, and a place result the reference the call returns. A call of a Never function or a diverging intrinsic has no runtime successor and
     // continues for the checks (SPEC 14.10); a call whose operand does not complete enters no callee (SPEC 15.6.7).
-    private void Call(MirPlace destination, CallPlan call, Koto node, Koto? first = null)
+    private void Call(MirPlace destination, CallPlan call, Koto node, Koto? first = null, Koto? given = null, in MirOperand value = default)
     {
         var function = call.Kind == CalleeKind.Value ? null : call.Target;
         var receiver = function is null ? null : call.Receiver;
@@ -36,7 +36,7 @@ internal sealed partial class MirBuilder
         var direct = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true } ? call.VirtualImplementation is { } implementation ? HirTables.Symbol(implementation) : null : function;
         if (call.ArgumentOperations.Length + (receiver is null ? 0 : 1) != count || (receiver is not null && function!.ReceiverIndex < 0) || (direct is null && function is not null))
         {
-            this.Unsupported(node, destination); // An expansion supplies the other arguments (U12).
+            this.Unsupported(node, destination); // A plan whose operations do not cover the parameters (an expansion supplies them).
             return;
         }
 
@@ -61,7 +61,7 @@ internal sealed partial class MirBuilder
             {
                 if (ReferenceEquals(argument.Source, first) == (pass == 0))
                 {
-                    this.arguments[start + Position(function, argument.ParameterIndex)] = this.Operand(argument.Source!, argument.AdaptedType ?? argument.ParameterType, true);
+                    this.arguments[start + Position(function, argument.ParameterIndex)] = ReferenceEquals(argument.Source, given) ? value : this.Operand(argument.Source!, argument.AdaptedType ?? argument.ParameterType, true);
                     completes &= Completes(argument.Source!);
                 }
             }
@@ -79,8 +79,6 @@ internal sealed partial class MirBuilder
             this.arguments.Add(MirOperand.Const(this.body.Const(new(MirConstKind.String, BoundType.String, Value: disposition.Code))));
         }
 
-        var (operands, value) = (this.Flush(start), function is null ? this.arguments[pending] : default);
-        this.arguments.RemoveRange(pending, start - pending);
         var subst = compilation.Types.SubstOf(call);
         var callee = disposition.Kind == DispositionKind.Intrinsic ? MirCallee.Intrinsic(disposition.Id, subst) : call.Kind switch
         {
@@ -91,10 +89,35 @@ internal sealed partial class MirBuilder
         };
 
         var result = call.ResultMode == FunctionResultMode.Value || ReferenceEquals(this.body.TypeOf(destination), call.ReturnType) ? destination : this.Temp(call.ReturnType, node);
-        var diverges = ReferenceEquals(call.ReturnType, BoundType.Never) || MirDescriptors.Of(disposition.Id).Diverges;
-        var next = this.body.AddBlock();
-        this.body.Terminate(this.current, MirTerminator.Call(callee, operands, this.body.Operands.Length - operands, result, diverges ? -1 : next, this.Info(node), diverges ? next : -1, value));
+        this.Invoke(result, callee, start, node, ReferenceEquals(call.ReturnType, BoundType.Never) || MirDescriptors.Of(disposition.Id).Diverges, function is null ? this.arguments[pending] : default);
+        this.arguments.RemoveRange(pending, start - pending);
+    }
+
+    // A Call terminator of a callee on the operands pushed since start, into the destination; one that diverges continues for the checks
+    // only (SPEC 14.10).
+    private void Invoke(MirPlace destination, in MirCallee callee, int start, Koto node, bool diverges = false, in MirOperand value = default)
+    {
+        var (operands, next) = (this.Flush(start), this.body.AddBlock());
+        this.body.Terminate(this.current, MirTerminator.Call(callee, operands, this.body.Operands.Length - operands, destination, diverges ? -1 : next, this.Info(node), diverges ? next : -1, value));
         this.current = next;
+    }
+
+    // A call the builder synthesizes of the compiler function serving a built-in form (R3 decision 5) on the operands pushed since start,
+    // under the substitution of its declaring Type's instance and its Type arguments.
+    private void Serve(MirPlace destination, CompilerFunctionKind kind, BoundType? declaring, ReadOnlySpan<BoundType?> types, int start, Koto node)
+    {
+        var (function, disposition) = (compilation.Library.Function(kind)!, IntrinsicDisposition.Of(kind));
+        var subst = compilation.Types.Synthesized(function, declaring, types);
+        this.Invoke(destination, disposition.Kind == DispositionKind.Intrinsic ? MirCallee.Intrinsic(disposition.Id, subst) : new(MirCalleeKind.Fn, function, subst), start, node);
+    }
+
+    // SPEC 17.3: a block that fails with a fixed SPEC 22.5.4 code (an expansion's check), without a successor.
+    private void Fail(int block, string code, Koto node)
+    {
+        var (current, start) = (this.current, this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.String, BoundType.String, Value: code)))));
+        this.current = block;
+        this.body.Terminate(block, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.Fail), start, 1, this.Temp(BoundType.Never, node), -1, this.Info(node)));
+        this.current = current;
     }
 
     // SPEC 13.6.1: a runtime Type test is the intrinsic typeTest of a shared view of the handle's payload and the target Type's token; an
@@ -106,11 +129,10 @@ internal sealed partial class MirBuilder
         {
             var payload = this.body.Project(handle, MirProjectionKind.Deref, 0);
             var view = compilation.Types.Reference(SemanticsKind.ObjRef, this.body.TypeOf(payload) ?? BoundType.Unit);
-            var start = this.body.AddOperand(this.Temporary(view, MirRvalue.Ref(MirRefKind.Shared, payload, view), test));
-            this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.TypeToken, TypeOf(test.Right)))));
-            var next = this.body.AddBlock();
-            this.body.Terminate(this.current, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.TypeTest), start, 2, destination, next, this.Info(test)));
-            this.current = next;
+            var start = this.arguments.Count;
+            this.arguments.Add(this.Temporary(view, MirRvalue.Ref(MirRefKind.Shared, payload, view), test));
+            this.arguments.Add(MirOperand.Const(this.body.Const(new(MirConstKind.TypeToken, TypeOf(test.Right)))));
+            this.Invoke(destination, MirCallee.Intrinsic(IntrinsicId.TypeTest), start, test);
         }
     }
 }
