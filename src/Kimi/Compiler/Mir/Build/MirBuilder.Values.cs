@@ -74,6 +74,9 @@ internal sealed partial class MirBuilder
             case HirOp.Discard: // SPEC 14.2.4: the operand acquired by bare acquisition into a temp, destroyed with the statement's.
                 this.Assign(this.Temp(((DiscardKoto)node).Operand), ((DiscardKoto)node).Operand);
                 break;
+            case HirOp.Defer: // SPEC 16.1: registered here, built where its scope is left.
+                this.Register(Cleanup.Defer, -1, node, this.lexical);
+                break;
             case HirOp.NoInit: // SPEC 4.3.4: the array constructed from no operand, its elements not stored.
                 this.Set(destination, MirRvalue.Aggregate(MirAggregateKind.FixedArray, this.body.Operands.Length, 0, this.body.TypeOf(destination)!), node);
                 break;
@@ -470,7 +473,7 @@ internal sealed partial class MirBuilder
 
     private MirPlace Temp(Koto node) => this.Temp(TypeOf(node), node);
 
-    private MirPlace Temp(BoundType type, Koto node) => new(this.body.AddLocal(new(type, MirLocalKind.Temp, this.Info(node, true))));
+    private MirPlace Temp(BoundType type, Koto node) => new(this.Live(this.body.AddLocal(new(type, MirLocalKind.Temp, this.Info(node, true))), this.temporaries));
 
     // An Unsupported form, or a derived one, in a temp.
     private MirPlace Unsupported(Koto node, bool derived = false)

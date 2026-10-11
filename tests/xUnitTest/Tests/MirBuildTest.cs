@@ -92,7 +92,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         var compare = bodies["f"];
         Assert.True(compare.HasOpaque);
         Assert.Equal([1, 2], compare.OpaqueRoots.ToArray());
-        Assert.Equal(MirTerminatorKind.Return, compare.Blocks.ToArray().Last(static x => x.Terminator.Kind != MirTerminatorKind.Unreachable).Terminator.Kind);
+        Assert.Contains(compare.Blocks.ToArray(), static x => x.Terminator.Kind == MirTerminatorKind.Return);
 
         var field = c.SyntaxOf(Assert.Single(program.Unsupported, x => x.Module == 0 && c.SyntaxOf(x) is PropertyKoto));
         Assert.Equal(2, program.Bodies.ToArray().Count(x => x.OpaqueSites.ToArray().Any(y => ReferenceEquals(c.SyntaxOf(y.Source), field))));
@@ -114,6 +114,45 @@ public sealed class MirBuildTest(ITestOutputHelper output)
             c.BuildMir();
         }));
         Assert.Equal((bodies, version + 16), (c.BuildMir().Bodies.Length, c.BuildMir().Version)); // Eight warm-up and eight measured rebuilds.
+    }
+
+    // V11, plan 5.6.4: N defers, then N returns that each leave all of them, build each defer once per target (one drop tree shared by
+    // the returns, and the normal end), so the MIR and its cold build's allocation grow linearly with N, and a warm rebuild allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void DropTreesScaleLinearly()
+    {
+        var (sizes, work, allocated) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
+        Compilation c = null!;
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            var text = new StringBuilder("func touch(n: i32) => ()\nfunc work(flag: bool) -> i32\n");
+            for (var n = 0; n < sizes[i]; n++)
+            {
+                text.Append("    defer => touch(").Append(n).Append(")\n");
+            }
+
+            for (var n = 0; n < sizes[i]; n++)
+            {
+                text.Append("    if flag => return ").Append(n).Append('\n');
+            }
+
+            c = Compile(text.Append("    return -1\n").ToString());
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "work");
+            allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
+            work[i] = body.Blocks.Length + body.Statements.Length;
+            Assert.Equal(sizes[i] * 2, body.Blocks.ToArray().Count(static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "touch" }));
+        }
+
+        output.WriteLine($"N {string.Join(", ", sizes)}: MIR size {string.Join(", ", work)}, cold build allocation {string.Join(", ", allocated)}");
+        Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"MIR size {string.Join(", ", work)}");
+        Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold build allocation {string.Join(", ", allocated)}");
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Binding.Bind(BindingMode.Final);
+            c.BuildMir();
+        }));
     }
 
     internal static Compilation Compile(string source)

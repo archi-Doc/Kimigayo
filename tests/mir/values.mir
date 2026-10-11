@@ -19,19 +19,52 @@ fn arithmetic @13
   _11: i32 temp @49 s1
   s1: lexical in s0 @20
   bb0:
+      StorageLive(_3) @21 s1
     * _3 = Div(copy _1, const 2_i32) proven @23 s1
+      StorageLive(_4) @26 s1
     * _4 = Rem(copy _1, const -1_i32) proven @28 s1
+      StorageLive(_5) @32 s1
     * _5 = Shl(copy _1, const 3_i32) proven @34 s1
+      StorageLive(_6) @37 s1
     * _6 = Neg(copy _1) @39 s1
+      StorageLive(_7) @41 s1
     * _7 = Add(copy _2, copy _2) proven @43 s1
+      StorageLive(_8) @46 s1
+      StorageLive(_9) @47 s1
+      StorageLive(_10) @48 s1
+      StorageLive(_11) @49 s1
     * _11 = Add(copy _3, copy _4) @49 s1
       _10 = Add(move _11, copy _5) @48 s1
       _9 = Add(move _10, copy _6) @47 s1
-      goto bb1 check bb2 @46 s1
+      goto bb4 check bb5 @46 s1
   bb1:
-      _0 = move _9 @46 s1
-      return @46 s1
+      return @13
   bb2:
+      StorageDead(_7) @41 s1
+      StorageDead(_6) @37 s1
+      StorageDead(_5) @32 s1
+      StorageDead(_4) @26 s1
+      StorageDead(_3) @21 s1
+      goto bb1 @13
+  bb3:
+      StorageDead(_11) @49 s1
+      StorageDead(_10) @48 s1
+      StorageDead(_9) @47 s1
+      StorageDead(_8) @46 s1
+      goto bb2 @13
+  bb4:
+      _0 = move _9 @46 s1
+      goto bb3 @46 s1
+  bb5:
+      StorageDead(_11) @49 s1
+      StorageDead(_10) @48 s1
+      StorageDead(_9) @47 s1
+      StorageDead(_8) @46 s1
+      StorageDead(_7) @41 s1
+      StorageDead(_6) @37 s1
+      StorageDead(_5) @32 s1
+      StorageDead(_4) @26 s1
+      StorageDead(_3) @21 s1
       unreachable @20
 fn conversions @54
   _0: i64 return @54
@@ -48,18 +81,48 @@ fn conversions @54
   _11: i64 temp @92 s1
   s1: lexical in s0 @59
   bb0:
+      StorageLive(_4) @60 s1
     * _4 = copy _3 as u32 (Integer) proven @62 s1
+      StorageLive(_5) @65 s1
     * _5 = copy _1 as u8 (Integer) @67 s1
+      StorageLive(_6) @70 s1
     * _6 = copy _1 as f64 (Numeric) proven @72 s1
+      StorageLive(_7) @75 s1
     * _7 = copy _2 as i32 (Numeric) @77 s1
+      StorageLive(_8) @80 s1
     * _8 = copy _1 as u8 (Wrap) proven @82 s1
+      StorageLive(_9) @86 s1
     * _9 = const 3_i32 @88 s1
+      StorageLive(_10) @91 s1
+      StorageLive(_11) @92 s1
     * _11 = copy _1 as i64 (Integer) proven @92 s1
-      goto bb1 check bb2 @91 s1
+      goto bb4 check bb5 @91 s1
   bb1:
-      _0 = move _11 @91 s1
-      return @91 s1
+      return @54
   bb2:
+      StorageDead(_9) @86 s1
+      StorageDead(_8) @80 s1
+      StorageDead(_7) @75 s1
+      StorageDead(_6) @70 s1
+      StorageDead(_5) @65 s1
+      StorageDead(_4) @60 s1
+      goto bb1 @54
+  bb3:
+      StorageDead(_11) @92 s1
+      StorageDead(_10) @91 s1
+      goto bb2 @54
+  bb4:
+      _0 = move _11 @91 s1
+      goto bb3 @91 s1
+  bb5:
+      StorageDead(_11) @92 s1
+      StorageDead(_10) @91 s1
+      StorageDead(_9) @86 s1
+      StorageDead(_8) @80 s1
+      StorageDead(_7) @75 s1
+      StorageDead(_6) @70 s1
+      StorageDead(_5) @65 s1
+      StorageDead(_4) @60 s1
       unreachable @59
 fn logic @95
   _0: bool return @95
@@ -89,16 +152,40 @@ fn aggregates @105
   _7: Shape temp @137 s1
   s1: lexical in s0 @108
   bb0:
+      StorageLive(_2) @109 s1
     * _2 = Tuple(copy _1, const true): (i32, bool) @111 s1
+      StorageLive(_3) @114 s1
     * _3 = FixedArray(copy _1, const 2_i32, const 3_i32): [3 of i32] @119 s1
+      StorageLive(_4) @123 s1
     * _4 = FixedArray(const 0_u8, const 0_u8, const 0_u8, const 0_u8): [4 of u8] @128 s1
+      StorageLive(_5) @131 s1
     * _5 = Adt case 0(): Shape @133 s1
+      StorageLive(_6) @136 s1
+      StorageLive(_7) @137 s1
     * _7 = Adt case 1(copy _1, copy _2.0): Shape @137 s1
-      goto bb1 check bb2 @136 s1
+      goto bb4 check bb5 @136 s1
   bb1:
-      _0 = move _7 @136 s1
-      return @136 s1
+      return @105
   bb2:
+      StorageDead(_5) @131 s1
+      StorageDead(_4) @123 s1
+      StorageDead(_3) @114 s1
+      StorageDead(_2) @109 s1
+      goto bb1 @105
+  bb3:
+      StorageDead(_7) @137 s1
+      StorageDead(_6) @136 s1
+      goto bb2 @105
+  bb4:
+      _0 = move _7 @136 s1
+      goto bb3 @136 s1
+  bb5:
+      StorageDead(_7) @137 s1
+      StorageDead(_6) @136 s1
+      StorageDead(_5) @131 s1
+      StorageDead(_4) @123 s1
+      StorageDead(_3) @114 s1
+      StorageDead(_2) @109 s1
       unreachable @108
 fn metadata @145
   _0: bool return @145
@@ -107,14 +194,18 @@ fn metadata @145
   _3: isize temp @157
   _4: isize temp @161
   bb0:
+      StorageLive(_3) @157
     * _3 = len((*_1)) @157
       _0 = Eq(move _3, const 0_isize) proven @156
       switch copy _0 [0: bb2, otherwise: bb1] @156
   bb1:
+      StorageLive(_4) @161
       _4 = len(_2) @161
       _0 = Eq(const 0_isize, move _4) proven @161
       goto bb2 @161
   bb2:
+      StorageDead(_4) @161
+      StorageDead(_3) @157
       return @155
 fn replace @164
   _0: string return @164
@@ -128,17 +219,59 @@ fn replace @164
   _8: string temp @185 s1
   s1: lexical in s0 @168
   bb0:
+      StorageLive(_3) @169 s1
     * _3 = move _1 @172 s1
+      StorageLive(_4) @174 s1
+      StorageLive(_5) @175 s1
     * _5 = move _2 @177 s1
       drop _3 -> bb1 @174 s1
   bb1:
       _3 = move _5 @174 s1
       _4 = const () @174 s1
-    * _6 = &_3: ref/string @181 s1
-    * _8 = move _3 @186 s1
-      goto bb2 check bb3 @184 s1
+      drop _5 -> bb2 @175 s1
   bb2:
-      _0 = move _8 @184 s1
-      return @184 s1
+      StorageDead(_5) @175 s1
+      StorageDead(_4) @174 s1
+      StorageLive(_6) @179 s1
+    * _6 = &_3: ref/string @181 s1
+      StorageLive(_7) @184 s1
+      StorageLive(_8) @185 s1
+    * _8 = move _3 @186 s1
+      goto bb11 check bb12 @184 s1
   bb3:
+      return @164
+  bb4:
+      drop _2 -> bb5 @164
+  bb5:
+      drop _1 -> bb6 @164
+  bb6:
+      goto bb3 @164
+  bb7:
+      StorageDead(_6) @179 s1
+      drop _3 -> bb8 @169 s1
+  bb8:
+      StorageDead(_3) @169 s1
+      goto bb4 @164
+  bb9:
+      drop _8 -> bb10 @185 s1
+  bb10:
+      StorageDead(_8) @185 s1
+      StorageDead(_7) @184 s1
+      goto bb7 @164
+  bb11:
+      _0 = move _8 @184 s1
+      goto bb9 @184 s1
+  bb12:
+      drop _8 -> bb13 @185 s1
+  bb13:
+      StorageDead(_8) @185 s1
+      StorageDead(_7) @184 s1
+      StorageDead(_6) @179 s1
+      drop _3 -> bb14 @169 s1
+  bb14:
+      StorageDead(_3) @169 s1
+      drop _2 -> bb15 @164
+  bb15:
+      drop _1 -> bb16 @164
+  bb16:
       unreachable @168

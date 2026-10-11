@@ -103,23 +103,34 @@ internal sealed partial class MirBuilder(Compilation compilation)
         }
     }
 
-    // A body: _0 of the result Type, the arguments with the receiver first, the value into _0, then Return where the value completes.
+    // A body: _0 of the result Type, the arguments with the receiver first (an owned one dropped when the body is left, SPEC 16.2.1), the
+    // value into _0 with its temporaries, then Return where the value completes.
     private void Body(MirDefKey key, Koto declaration, BindingSymbol? function, BoundType result, Koto value)
     {
         var body = this.body = this.program.Begin(key, SourceRef.Of(declaration));
         (this.declaration, this.scope, this.statementStart) = (declaration, 0, false);
         this.locals.Clear();
         this.targets.Clear();
-        this.targets.Add(new(declaration, new(0), -1, -1, 0, false)); // A return's target.
+        this.targets.Add(new(declaration, new(0), -1, -1, 0, 0, false)); // A return's target.
+        (this.temporaries, this.lexical, this.scopeIds) = (-1, -1, 0);
+        this.scopes.Clear();
+        this.registrations.Clear();
+        this.trees.Clear();
+        var parameters = this.OpenScope(true);
         PairBinder.Collect(declaration, body.Binders);
         body.AddLocal(new(result, MirLocalKind.Return, this.Info(declaration, true)));
         for (var position = 0; function is not null && Slot(function, position, out var slot); position++)
         {
             var parameter = CallPlan.Parameter(function, slot)!;
             this.locals[parameter] = body.AddLocal(new(parameter.Type ?? BoundType.Unit, MirLocalKind.Arg, this.Info(declaration, true), Name: parameter.Name));
+            if (MirTypes.MayNeedDrop(parameter.Type))
+            {
+                this.Register(Cleanup.Drop, body.Locals.Length - 1, null, parameters);
+            }
         }
 
         this.current = body.AddBlock();
+        var temporaries = this.OpenScope(false);
         if (declaration is FunctionKoto { IsConstructor: true } constructor)
         {
             // SPEC 6.2.3: the base completes first, then this layer's Field initializers run; U13 builds both into the constructor.
@@ -139,15 +150,19 @@ internal sealed partial class MirBuilder(Compilation compilation)
         }
 
         this.Result(new(0), value, value);
+        this.CloseScope(temporaries);
+        this.CloseScope(parameters);
         var end = this.Info(value);
         body.Terminate(this.current, Completes(value) ? MirTerminator.Return(end) : MirTerminator.Unreachable(end));
         this.validator.Validate(body, this.program.Findings);
     }
 
-    // A block item for its effect: a local's declaration, or a value into a temp; a declaration builds nothing here.
+    // A block item for its effect, its temporaries ending with it (SPEC 3.6.2): a local's declaration, or a value into a temp; a declaration
+    // builds nothing here.
     private void Statement(Koto item)
     {
         this.statementStart = true;
+        var temporaries = this.OpenScope(false);
         switch (HirTables.Op(item))
         {
             case HirOp.Syntax or HirOp.Body:
@@ -160,6 +175,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
                 break;
         }
 
+        this.CloseScope(temporaries);
         this.statementStart = false;
     }
 
@@ -186,11 +202,13 @@ internal sealed partial class MirBuilder(Compilation compilation)
         }
     }
 
-    // SPEC 14.2: a block's items in a scope of their own (an unsafe block's, SPEC 14.3.3), the last one its result.
+    // SPEC 14.2, 16.2: a block's items in a scope of their own (an unsafe block's, SPEC 14.3.3), the last one its result; the locals and
+    // defers it registers are cleaned up when it is left. Its last item's temporaries are its enclosing statement's (SPEC 3.6.2).
     private void Block(MirPlace destination, CodeBlockKoto block, MirScopeKind kind = MirScopeKind.Lexical)
     {
         var outer = this.scope;
         this.scope = (ushort)this.body.AddScope(outer, kind, SourceRef.Of(block));
+        var lexical = this.OpenScope(true);
         var items = block.Items;
         for (var i = 0; i < items.Count - 1; i++)
         {
@@ -206,6 +224,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
             this.Unit(destination, block);
         }
 
+        this.CloseScope(lexical);
         this.scope = outer;
     }
 
@@ -213,7 +232,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private void Let(VariableKoto variable)
     {
         var symbol = HirTables.Symbol(variable)!;
-        var local = this.body.AddLocal(new(symbol.Type ?? BoundType.Unit, MirLocalKind.Var, this.Info(variable, true), variable.VariableKind == VariableKind.Var, symbol.Name));
+        var local = this.Live(this.body.AddLocal(new(symbol.Type ?? BoundType.Unit, MirLocalKind.Var, this.Info(variable, true), variable.VariableKind == VariableKind.Var, symbol.Name)), this.lexical);
         if (variable.InitializerKoto is { } initializer)
         {
             this.Assign(new(local), initializer);

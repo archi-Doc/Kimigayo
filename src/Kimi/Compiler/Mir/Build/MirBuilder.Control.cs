@@ -21,10 +21,10 @@ internal sealed partial class MirBuilder
         for (var i = 0; i < conditional.Branches.Count; i++)
         {
             var (then, next) = (this.body.AddBlock(), this.body.AddBlock());
-            this.Test(conditional.Branches[i].Condition, next, then);
-            this.current = then;
+            var test = this.Test(conditional.Branches[i].Condition, next, then);
+            this.Enter(then, test);
             this.Arm(destination, conditional.Branches[i].Body, after);
-            this.current = next;
+            this.Enter(next, test);
         }
 
         if (conditional.ElseBody is { } other)
@@ -47,7 +47,8 @@ internal sealed partial class MirBuilder
         var (head, start) = (this.body.AddBlock(), this.body.AddBlock());
         this.body.Terminate(this.current, MirTerminator.Goto(head, this.Info(loop)));
         var after = this.Open(loop, destination, head);
-        this.Iterate(start, loop.Body, head);
+        this.current = start;
+        this.Iterate(loop.Body, head);
         var exits = this.Close(after) && Completes(loop);
         this.body.Terminate(head, MirTerminator.Goto(start, this.Info(loop), exits ? -1 : after));
     }
@@ -59,9 +60,10 @@ internal sealed partial class MirBuilder
         this.body.Terminate(this.current, MirTerminator.Goto(head, this.Info(loop)));
         var after = this.Open(loop, destination, head);
         this.current = head;
-        this.Test(loop.Condition, done, start);
-        this.Iterate(start, loop.Body, head);
-        this.current = done;
+        var test = this.Test(loop.Condition, done, start);
+        this.Enter(start, test);
+        this.Iterate(loop.Body, head);
+        this.Enter(done, test);
         this.Unit(destination, loop);
         this.body.Terminate(done, MirTerminator.Goto(after, this.Info(loop)));
         this.Close(after);
@@ -79,16 +81,17 @@ internal sealed partial class MirBuilder
     private void Require(RequireKoto require)
     {
         var (fail, pass) = (this.body.AddBlock(), this.body.AddBlock());
-        this.Test(require.Condition, fail, pass);
-        this.current = fail;
+        var test = this.Test(require.Condition, fail, pass);
+        this.Enter(fail, test);
         this.Statement(require.ElseBody);
         this.body.Terminate(this.current, MirTerminator.Unreachable(this.Info(require)));
-        this.current = pass;
+        this.Enter(pass, test);
     }
 
     // SPEC 14.5, 16.2.2, 15.6.7: a transfer evaluates and secures its operand, ends the borrows of the calls it abandons (its operands
-    // pending since its target began), then branches: at run time to its result's placement and on to the target its plan row names, for
-    // the checks to the code after it. An operand that does not complete leaves no transfer.
+    // pending since its target began), then branches: at run time to its result's placement and on through its target's drop tree to the
+    // target its plan row names (a function's return block, built at its first return), for the checks to the code after it. An operand
+    // that does not complete leaves no transfer.
     private void Transfer(MirPlace destination, JumpKoto jump)
     {
         var (plan, index) = (HirTables.PlanOf(jump).Plan, this.targets.Count - 1);
@@ -121,15 +124,24 @@ internal sealed partial class MirBuilder
             }
         }
 
-        var (exit, next) = (this.body.AddBlock(), this.body.AddBlock());
-        this.body.Terminate(this.current, MirTerminator.Goto(exit, this.Info(jump), next));
-        if (!continues)
+        if (target.Break < 0)
         {
-            this.body.Push(exit, MirStatement.Assign(target.Destination, MirRvalue.Use(this.body.AddOperand(value)), this.Info(jump)));
+            this.body.Terminate(target.Break = this.body.AddBlock(), MirTerminator.Return(new(SourceRef.Of(this.declaration), 0, false)));
         }
 
-        this.body.Terminate(exit, target.Break < 0 ? MirTerminator.Return(this.Info(jump)) : MirTerminator.Goto(continues ? target.Continue : target.Break, this.Info(jump)));
         target.Reached |= !continues;
+        var (info, place) = (this.Info(jump), target.Destination);
+        var entry = this.Exit(target.Depth, continues ? target.Continue : target.Break);
+        if (!continues)
+        {
+            var placement = this.body.AddBlock();
+            this.body.Push(placement, MirStatement.Assign(place, MirRvalue.Use(this.body.AddOperand(value)), info with { StatementStart = false }));
+            this.body.Terminate(placement, MirTerminator.Goto(entry, info with { StatementStart = false }));
+            entry = placement;
+        }
+
+        var next = this.body.AddBlock();
+        this.body.Terminate(this.current, MirTerminator.Goto(entry, info, next));
         this.current = next;
     }
 
@@ -148,12 +160,18 @@ internal sealed partial class MirBuilder
 
     private bool IsTemp(MirPlace place) => place is { Projection: 0, Root: >= 0 } && this.body.Locals[place.Root].Kind == MirLocalKind.Temp;
 
-    // SPEC 14.2.3: a condition evaluated once into a bool, then the branch on it.
-    private void Test(Koto condition, int whenFalse, int whenTrue)
+    // SPEC 14.2.3, 3.6.2: a condition evaluated once into a bool, its temporaries cleaned up, then the branch on the bool, whose storage
+    // ends in each successor (Enter).
+    private MirPlace Test(Koto condition, int whenFalse, int whenTrue)
     {
+        var tested = this.OpenScope(false);
         var test = this.Temp(BoundType.Boolean, condition);
+        var temporaries = this.OpenScope(false);
         this.Assign(test, condition);
+        this.CloseScope(temporaries);
         this.Branch(test, condition, whenFalse, whenTrue);
+        this.CloseScope(tested, false);
+        return test;
     }
 
     // The branch on a tested bool; a condition that does not complete has no value, and the checks continue into both successors.
@@ -170,10 +188,9 @@ internal sealed partial class MirBuilder
         this.Join(after, body);
     }
 
-    // An iteration: the body from its start for its effect, then back to the head.
-    private void Iterate(int start, Koto body, int head)
+    // An iteration: the body for its effect, then back to the head.
+    private void Iterate(Koto body, int head)
     {
-        this.current = start;
         this.Statement(body);
         this.Join(head, body);
     }
@@ -190,7 +207,7 @@ internal sealed partial class MirBuilder
     private int Open(Koto node, MirPlace destination, int next = -1)
     {
         var after = this.body.AddBlock();
-        this.targets.Add(new(node, destination, after, next, this.arguments.Count, false));
+        this.targets.Add(new(node, destination, after, next, this.arguments.Count, this.scopes.Count, false));
         return after;
     }
 
@@ -203,7 +220,8 @@ internal sealed partial class MirBuilder
         return reached;
     }
 
-    // A construct a transfer may target (SPEC 14.5.2): where its result goes, the block after it (-1: the function returns), its next
-    // iteration's block, the pending operands below its transfers, and whether an exit or a yield reached it.
-    private record struct Target(Koto Node, MirPlace Destination, int Break, int Continue, int Mark, bool Reached);
+    // A construct a transfer may target (SPEC 14.5.2): where its result goes, the block after it (-1: the function's return block, not built
+    // yet), its next iteration's block, the pending operands below its transfers, the open scopes around it, and whether an exit or a
+    // yield reached it.
+    private record struct Target(Koto Node, MirPlace Destination, int Break, int Continue, int Mark, int Depth, bool Reached);
 }

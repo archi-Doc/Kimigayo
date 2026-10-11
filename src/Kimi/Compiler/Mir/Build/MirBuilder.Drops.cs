@@ -1,0 +1,167 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+using System.Runtime.InteropServices;
+using Kimi.Compiler.Parsing;
+
+namespace Kimi.Compiler.Mir;
+
+// Scopes and drop trees (SPEC 16, plan 5.6.4). A Var or Temp local lives from its StorageLive to its StorageDead, a value whose Type may
+// need drop (MirTypes.MayNeedDrop) is dropped first, and a defer runs where its scope is left. Each open scope keeps its registrations in
+// order: a block its locals and defers, a statement or a condition its temporaries, the body its parameters. The normal end of a scope
+// cleans them up in reverse order; a transfer leaves through the drop tree of its target, whose node for a scope's first registrations
+// and the rest of the tree is built once and shared by every exit that reaches it (rustc's drop tree), a defer body included.
+internal sealed partial class MirBuilder
+{
+    private readonly List<DropScope> scopes = []; // The open scopes, innermost last.
+    private readonly List<Registration> registrations = []; // Every registration of the body, each scope's linked from its last.
+    private readonly Dictionary<(int Scope, int Count, int Next), int> trees = new(); // The node of a scope's first Count registrations, then Next.
+    private readonly List<int> pending = []; // The registrations a drop tree is building nodes for, a stack nested builds share.
+    private int temporaries; // The innermost scope of temporaries: a statement's, a condition's or the body value's.
+    private int lexical; // The innermost block's scope, or the body's.
+    private int scopeIds;
+
+    private enum Cleanup : byte
+    {
+        StorageDead,
+        Drop,
+        Defer,
+    }
+
+    // Opens a scope of a block's locals and defers, or of temporaries.
+    private int OpenScope(bool block)
+    {
+        this.scopes.Add(new(++this.scopeIds, -1, 0, this.temporaries, this.lexical));
+        if (block)
+        {
+            this.lexical = this.scopes.Count - 1;
+        }
+        else
+        {
+            this.temporaries = this.scopes.Count - 1;
+        }
+
+        return this.scopes.Count - 1;
+    }
+
+    // Closes the innermost scope, cleaning its registrations up in reverse order from the current block, unless its owner cleans them up
+    // where it continues (a test's bool).
+    private void CloseScope(int index, bool clean = true)
+    {
+        var scope = this.scopes[index];
+        for (var at = clean ? scope.Last : -1; at >= 0; at = this.registrations[at].Prev)
+        {
+            this.Clean(this.registrations[at]);
+        }
+
+        (this.temporaries, this.lexical) = (scope.Temporaries, scope.Lexical);
+        this.scopes.RemoveAt(index);
+    }
+
+    // A cleanup the scope at an index runs when it is left.
+    private void Register(Cleanup kind, int local, Koto? defer, int index)
+    {
+        ref var scope = ref CollectionsMarshal.AsSpan(this.scopes)[index];
+        this.registrations.Add(new(kind, local, defer, this.scope, scope.Last));
+        (scope.Last, scope.Count) = (this.registrations.Count - 1, scope.Count + 1);
+    }
+
+    // A Var or Temp local whose storage begins here and ends with the scope at an index, which drops its value first where it may need drop.
+    private int Live(int local, int index)
+    {
+        this.body.Push(this.current, MirStatement.Of(MirStatementKind.StorageLive, new(local), this.body.Locals[local].Source));
+        this.Register(Cleanup.StorageDead, local, null, index);
+        if (MirTypes.MayNeedDrop(this.body.Locals[local].Type))
+        {
+            this.Register(Cleanup.Drop, local, null, index);
+        }
+
+        return local;
+    }
+
+    // The entry of the drop tree from the open scopes above a depth to a target: each scope's registrations in reverse, the innermost scope
+    // first (plan 5.6.4). The node of a scope's registrations before the same rest is built once and shared: a later exit sees as many
+    // registrations or more, so it builds the ones registered since the last node and goes on to that node.
+    private int Exit(int depth, int target)
+    {
+        var current = this.current;
+        for (var index = depth; index < this.scopes.Count; index++)
+        {
+            var scope = this.scopes[index];
+            var (mark, count, at, next) = (this.pending.Count, scope.Count, scope.Last, target);
+            while (count > 0 && !this.trees.TryGetValue((scope.Id, count, target), out next))
+            {
+                this.pending.Add(at);
+                (at, count) = (this.registrations[at].Prev, count - 1);
+            }
+
+            next = count == 0 ? target : next;
+            if (this.pending.Count > mark)
+            {
+                var node = this.current = this.body.AddBlock();
+                this.trees.Add((scope.Id, scope.Count, target), node);
+                for (var i = mark; i < this.pending.Count; i++)
+                {
+                    this.Clean(this.registrations[this.pending[i]]);
+                }
+
+                this.body.Terminate(this.current, MirTerminator.Goto(next, this.body.Locals[0].Source));
+                (next, this.current) = (node, current);
+                this.pending.RemoveRange(mark, this.pending.Count - mark);
+            }
+
+            target = next;
+        }
+
+        return target;
+    }
+
+    // One registration's cleanup from the current block; building goes on in it, or after a Drop or a defer in the block after it.
+    private void Clean(in Registration registration)
+    {
+        var source = registration.Local < 0 ? default : this.body.Locals[registration.Local].Source;
+        switch (registration.Kind)
+        {
+            case Cleanup.StorageDead:
+                this.body.Push(this.current, MirStatement.Of(MirStatementKind.StorageDead, new(registration.Local), source));
+                break;
+            case Cleanup.Drop:
+                var next = this.body.AddBlock();
+                this.body.Terminate(this.current, MirTerminator.Drop(new(registration.Local), next, source));
+                this.current = next;
+                break;
+            default:
+                this.Deferred(registration);
+                break;
+        }
+    }
+
+    // SPEC 16.1: a defer body where its scope is left, built once per target of the drop tree it is in (plan 5.6.4), in the scope that
+    // registered it; an exit to it goes on with the cleanup after it, and a body that does not complete goes on there for the checks only.
+    private void Deferred(in Registration registration)
+    {
+        var (scope, start, defer, next) = (this.scope, this.statementStart, (DeferredBlockKoto)registration.Defer!, this.body.AddBlock());
+        (this.scope, this.statementStart) = (registration.Scope, false);
+        var depth = this.scopes.Count;
+        var temporaries = this.OpenScope(false);
+        var result = this.Temp(BoundType.Unit, defer);
+        this.targets.Add(new(defer, result, next, -1, this.arguments.Count, depth, false));
+        this.Block(result, defer.Body, MirScopeKind.Deferred);
+        this.targets.RemoveAt(this.targets.Count - 1);
+        this.CloseScope(temporaries);
+        this.Join(next, defer.Body);
+        (this.scope, this.statementStart, this.current) = (scope, start, next);
+    }
+
+    // SPEC 14.2.3: building goes on in a test's successor, where the tested bool's storage ends.
+    private void Enter(int block, MirPlace test)
+    {
+        this.current = block;
+        this.body.Push(block, MirStatement.Of(MirStatementKind.StorageDead, test, this.body.Locals[test.Root].Source));
+    }
+
+    // An open scope: its id, its last registration and their count, and the innermost scopes of temporaries and of a block around it.
+    private record struct DropScope(int Id, int Last, int Count, int Temporaries, int Lexical);
+
+    // A cleanup: its kind, the local it ends or drops or the defer it runs, the scope it was registered in, and its scope's previous one.
+    private readonly record struct Registration(Cleanup Kind, int Local, Koto? Defer, ushort Scope, int Prev);
+}
