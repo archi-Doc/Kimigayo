@@ -1,8 +1,8 @@
 # Kimigayo verification entry point. Evidence goes to artifacts/verify/<timestamp>-<mode>[-<name>]/.
 #
 # Unit mode (per implementation unit): Kimi + tests Release build with warnings as errors, the selected xUnit
-# classes/methods, then native O0/O2 execution of the fixtures those tests regenerated and the
-# selected milestone harnesses.
+# classes/methods joined with the common compiler checks (CompilerSizeBudgetTest, ArchitectureRulesTest),
+# then native O0/O2 execution of the fixtures those tests regenerated and the selected milestone harnesses.
 #   ./scripts/verify.ps1 -Class XunitTest.ForeignEmissionTest -Fixtures 'ForeignPointer*.ll'
 #   ./scripts/verify.ps1 -Class XunitTest.IterationAdapterTest -Fixtures 'IterationAdapter*.ll','LendingIterator*.ll'
 #   ./scripts/verify.ps1 -Method XunitTest.ForeignEmissionTest.PointerSubplacesAccessOnlyTheirStoredParts
@@ -58,8 +58,8 @@ $ErrorActionPreference = 'Stop'
 if ($Mode -eq 'Session' -and $TestPurpose -ne 'All') { throw 'Session verification must include functional and allocation regressions (-TestPurpose All).' }
 . (Join-Path $PSScriptRoot 'verification-selection.ps1')
 . (Join-Path $PSScriptRoot 'verification-inputs.ps1')
-$Class = @($Class | ForEach-Object { ConvertTo-KimiTestPattern $_ })
-$Method = @($Method | ForEach-Object { ConvertTo-KimiTestPattern $_ -Method })
+$Class = @(Join-KimiCommonTestSelections @($Class | ForEach-Object { ConvertTo-KimiTestPattern $_ }))
+$Method = @(Join-KimiCommonTestSelections @($Method | ForEach-Object { ConvertTo-KimiTestPattern $_ -Method }) -Method)
 $Pipeline = $Pipeline.ToLowerInvariant()
 $previousPipeline = $env:KIMI_PIPELINE
 $env:KIMI_PIPELINE = $Pipeline # Tests, fixtures and milestone harnesses inherit it.

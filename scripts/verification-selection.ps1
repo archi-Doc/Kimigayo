@@ -23,6 +23,20 @@ function Get-KimiTestAlternatives([string] $Pattern, [switch] $Method) {
     }
 }
 
+# The common compiler checks every Unit test selection includes (docs/dev/VERIFICATION.md, verification scope).
+$KimiCommonTestClasses = @('XunitTest.CompilerSizeBudgetTest', 'XunitTest.ArchitectureRulesTest')
+
+function Join-KimiCommonTestSelections([string[]] $Selection, [switch] $Method) {
+    # Class selections are ORed, method selections are ORed and the two groups intersect, so the common classes
+    # join each nonempty group (methods as Class.*) to remain a union with the caller's selection.
+    if ($Selection.Count -eq 0) { return }
+    $Selection
+    foreach ($common in $KimiCommonTestClasses) {
+        $pattern = if ($Method) { "$common.*" } else { $common }
+        if ($Selection -notcontains $pattern) { $pattern }
+    }
+}
+
 function Assert-KimiTestSelections([string[]] $Class, [string[]] $Method, [string[]] $DiscoveredMethods) {
     $classes = @($DiscoveredMethods | ForEach-Object { $_.Substring(0, $_.LastIndexOf('.')) } | Sort-Object -Unique)
     foreach ($selection in $Class) {

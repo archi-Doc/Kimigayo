@@ -20,7 +20,7 @@ an executable change does not make that change documentation-only.
 | Change | Completion checks |
 | --- | --- |
 | Documentation only | Review diffs and affected references. Do not run builds, tests, native fixtures or milestone harnesses. |
-| Compiler, Kimi library or compiler tests | Unit verification of the related checks plus the common `CompilerSizeBudgetTest` and `ArchitectureRulesTest` (library changes add `KimiLibraryShapeTest`), with relevant native fixtures and milestones, all selected explicitly; a successful Session at the end of the working session. |
+| Compiler, Kimi library or compiler tests | Unit verification of the related checks (library changes add `KimiLibraryShapeTest`) with relevant native fixtures and milestones, all selected explicitly, plus the common `CompilerSizeBudgetTest` and `ArchitectureRulesTest` that Verify adds; a successful Session at the end of the working session. |
 | Benchmark or Playground code | Session verification, including the whole-solution build, before completion; execute the affected scenario or relevant fixed-condition measurements. |
 | Verification scripts, CI or other tooling | Related script regressions and affected build/execution paths. Native-runner changes require `NativeFixtureRunnerTest.ps1`. Changes affecting the managed build or test pipeline also require Session. A local check does not certify a hosted CI run. |
 | VS Code extension, including its build/distribution scripts | Follow [the extension instructions](../../src/kimi-ext/AGENTS.md). |
@@ -49,16 +49,17 @@ dotnet build tests/xUnitTest/xUnitTest.csproj --no-restore --no-incremental -c R
 At Unit completion, `scripts/verify.ps1` builds the test project and its Kimi dependency non-incrementally with warnings as errors. At Session completion it builds the entire solution, including Benchmark and Playground, then runs all managed regressions. The existing analyzer check is retained in both modes. Changes to Benchmark or Playground need the Session build before completion. Neither mode runs NativeAOT.
 
 ```powershell
-./scripts/verify.ps1 -Class CompilerSizeBudgetTest,ArchitectureRulesTest,DeferredEmissionTest -Fixtures 'Deferred*.ll'
+./scripts/verify.ps1 -Class DeferredEmissionTest -Fixtures 'Deferred*.ll'
 ./scripts/verify.ps1 -Class XunitTest.DeferredEmissionTest -TestPurpose Allocation
 ./scripts/verify.ps1 -Mode Session
 ```
 
-Verify does not add the common compiler checks; select them with the related ones. Purpose-filtered runs such as the
-allocation example supplement, rather than replace, the remaining required checks. Commit each unit after its checks
-pass, associate the evidence (below) and push; run the final Session at the end of the working session. Ordinary Verify
-does not check native-toolchain identity: check it at setup/update or with `-VerifyToolchain`. CLI tests use
-`run --no-build` for built CLI artifacts, except when testing automatic builds.
+Unit Verify adds the common compiler checks `CompilerSizeBudgetTest` and `ArchitectureRulesTest` to every class or
+method selection, once; the purpose filter applies to them too. Purpose-filtered runs such as the allocation example
+supplement, rather than replace, the remaining required checks. Commit each unit after its checks pass, associate the
+evidence (below) and push; run the final Session at the end of the working session. Ordinary Verify does not check
+native-toolchain identity: check it at setup/update or with `-VerifyToolchain`. CLI tests use `run --no-build` for
+built CLI artifacts, except when testing automatic builds.
 
 For the last unit, a successful Session can replace a separate Unit run if it verifies the same source/configuration
 and covers every required Unit check. Session runs all managed regressions, but native fixtures and milestones still
@@ -72,11 +73,11 @@ inputs invalidate their evidence and require reverification. PLAN/history bookke
 
 Verify accepts both `ClassName` / `ClassName.Method` and their fully qualified forms; short names use the repository's `XunitTest` namespace. A wildcard `*` may occur at the beginning or end. Invalid pattern syntax is rejected before building. Verify expands outer selections to include nested `AllocationTests`, so focused selections retain their allocation coverage.
 
-After the build, Unit verification discovers methods from that exact assembly, checks **every** requested class and method, and records the effective selection in `selected-methods.json` before running tests. A misspelled selector cannot be hidden by another selector that matches. Class selections are ORed, method selections are ORed, and those two groups intersect; the runner also applies the purpose filter. Discovery never checks an older assembly against newly edited test sources. Both zero-method and zero-executed-test selections fail.
+After the build, Unit verification discovers methods from that exact assembly, checks **every** requested class and method, and records the effective selection in `selected-methods.json` before running tests. A misspelled selector cannot be hidden by another selector that matches. Class selections are ORed, method selections are ORed, and those two groups intersect; the runner also applies the purpose filter. The common checks join each nonempty group, as `Class.*` among methods, so they add to the selection rather than narrowing it. Discovery never checks an older assembly against newly edited test sources. Both zero-method and zero-executed-test selections fail.
 
 `-Pipeline mir` (R3–R5; default `legacy`) sets `KIMI_PIPELINE` for every compiler process of the run, the tests, fixtures and milestone harnesses, and records the pipeline in `summary.json`.
 
-`-TestPurpose All` is the default; `Functional` and `Allocation` restrict deliberate Unit checks. Session rejects either restriction. Select relevant native fixtures and milestones explicitly as before. Selector rules and optional allocation companions are regression-checked by `./tests/scripts/VerificationSelectionTest.ps1`.
+`-TestPurpose All` is the default; `Functional` and `Allocation` restrict deliberate Unit checks. Session rejects either restriction. Select relevant native fixtures and milestones explicitly as before. Selector rules, the common checks and optional allocation companions are regression-checked by `./tests/scripts/VerificationSelectionTest.ps1`.
 
 ## Source identity and commit association
 

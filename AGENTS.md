@@ -82,7 +82,7 @@ Write in English. Each document owns the following; keep changes consistent with
 | Change | Required verification |
 | --- | --- |
 | Documentation only | Diff and reference review; no builds, tests or native verification. |
-| Compiler, Kimi library or compiler tests | Unit verification of the related checks plus the common `CompilerSizeBudgetTest` and `ArchitectureRulesTest` (library changes add `KimiLibraryShapeTest`), all selected explicitly, and a successful Session at the end of the working session. |
+| Compiler, Kimi library or compiler tests | Unit verification of the explicitly selected related checks (library changes add `KimiLibraryShapeTest`) plus the common `CompilerSizeBudgetTest` and `ArchitectureRulesTest`, which Verify adds, and a successful Session at the end of the working session. |
 | Benchmark / Playground | Session, including the whole-solution build, plus relevant execution or measurements. |
 | Verification scripts, CI or tooling | Affected workflow checks under [verification scope](docs/dev/VERIFICATION.md#verification-scope). |
 | VS Code extension, including build/distribution scripts | [Extension AGENTS](src/kimi-ext/AGENTS.md). |
