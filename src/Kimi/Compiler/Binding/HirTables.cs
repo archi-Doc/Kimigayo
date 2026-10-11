@@ -29,6 +29,7 @@ internal struct HirTables
     internal HirCompletion[]? Completions;
     internal HirAdjust[]? Adjusts;
     internal HirPlace[]? Places;
+    internal List<DefaultDecl>? Defaults; // The parameter defaults the latest publish evaluated, in walk order: the MIR's default templates.
 
     /// <summary>The plan rows from 1 to <see cref="PlanCount"/>; a node gets one at its first plan write and keeps it across passes.</summary>
     internal PlanRow[] Plans;

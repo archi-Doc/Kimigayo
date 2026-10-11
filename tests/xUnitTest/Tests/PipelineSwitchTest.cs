@@ -12,8 +12,8 @@ namespace XunitTest;
 /// only the mir pipeline publishes the MIR's records and marks the compiler identity, and the legacy output does not depend on it.</summary>
 public sealed class PipelineSwitchTest
 {
-    // An omitted default argument is built by the default templates (R3 U14); until then it is the MIR's one Unsupported record here.
-    private const string Source = "func next(x: i32 = 1) -> i32 => x\nlet value = next()\n";
+    // A fill of a length its instance decides is the MIR's one Unsupported record here, a form no R3 unit builds.
+    private const string Source = "func filled<length N>(value: i32) -> [N of i32] => [N of value]\nlet values = filled<2>(1)\n";
 
     // The default is the pipeline KIMI_PIPELINE names, legacy when unset; any other value is a configuration error, not a fallback.
     [Fact]
@@ -59,11 +59,11 @@ public sealed class PipelineSwitchTest
         Assert.False(c.Analyze().IsVerified);
         var problem = Assert.Single(c.Problems);
         Assert.Equal(DiagnosticCode.Unsupported_Kd, problem.Code);
-        Assert.Equal("next()", c.SyntaxOf(problem.Subject).ToString());
+        Assert.Equal("[N of value]", c.SyntaxOf(problem.Subject).ToString());
         Assert.Equal((false, 1), (c.Analysis.IsVerified, c.Analysis.ErrorCount));
         c.ReportAnalysis();
         var record = Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error);
-        Assert.Equal(("Unsupported_Kd", "next()"), (record.Code, record.Text));
+        Assert.Equal(("Unsupported_Kd", "[N of value]"), (record.Code, record.Text));
         Assert.False(c.WriteIr(TextWriter.Null, out var failure));
         Assert.Contains("MIR", failure);
         Assert.False(c.Validate(out _));

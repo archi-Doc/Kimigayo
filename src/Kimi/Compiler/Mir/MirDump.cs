@@ -10,7 +10,8 @@ namespace Kimi.Compiler.Mir;
 /// <c>@id</c> (<c>@module:id</c> outside module 0), and its scope (<c>s1</c>) when it is not the body's; <c>*</c> marks where a source
 /// statement starts. Types are spelled as diagnostics spell them (<see cref="TyCtxt.Name"/>). Places: <c>(*p)</c> Deref,
 /// <c>p.0</c> Field, <c>p.base1</c> Base, <c>p[_3]</c> Index, <c>p[2]</c> ConstIndex, <c>(p as case 1)</c> Downcast and <c>(p@b0)</c>
-/// PairLayer; borrows <c>&amp;</c>, <c>&amp;uniq</c>, <c>&amp;uniq two-phase</c> and <c>&amp;raw</c>; an Opaque value <c>opaque 0: T</c>.</summary>
+/// PairLayer; borrows <c>&amp;</c>, <c>&amp;uniq</c>, <c>&amp;uniq two-phase</c> and <c>&amp;raw</c>; an Opaque value <c>opaque 0: T</c>; a default
+/// template, as a body and as a callee, <c>f#1</c>.</summary>
 internal static class MirDump
 {
     /// <summary>Writes the bodies of one module, then the construction records and validator findings located there.</summary>
@@ -27,9 +28,9 @@ internal static class MirDump
             }
         }
 
-        foreach (var site in program.Unsupported.Where(x => x.Module == module))
+        foreach (var record in program.Records.Where(x => x.Subject.Module == module))
         {
-            Source(text.Append("unsupported"), site).Append('\n');
+            Source(text.Append(record.Code == DiagnosticCode.Unsupported_Kd ? "unsupported" : record.Code.ToString()), record.Subject).Append('\n');
         }
 
         foreach (var finding in program.Findings.Where(x => x.Subject.Module == module))
@@ -168,7 +169,7 @@ internal static class MirDump
                 var callee = terminator.Callee;
                 Place(text, body, terminator.Place).Append(" = ").Append(callee.Kind switch
                 {
-                    MirCalleeKind.Fn => callee.Symbol?.Name,
+                    MirCalleeKind.Fn => callee.Arg > 0 ? $"{callee.Symbol?.Name}#{callee.Arg - 1}" : callee.Symbol?.Name,
                     MirCalleeKind.Virtual => $"virtual slot {callee.Arg} {callee.Symbol?.Name}",
                     MirCalleeKind.Intrinsic => $"intrinsic {(IntrinsicId)callee.Arg}",
                     MirCalleeKind.Requirement when callee.Contract is { } contract => $"requirement {callee.Symbol?.Name} of {contract.Name}",

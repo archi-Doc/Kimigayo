@@ -19,7 +19,7 @@ internal readonly record struct MirDefKey(BindingSymbol? Decl, MirBodyKind Kind,
 internal sealed class MirProgram
 {
     private readonly Dictionary<MirDefKey, MirBody> bodies = new();
-    private readonly HashSet<SourceRef> reported = new();
+    private readonly HashSet<Problem> reported = new();
     private MirBody[] pool = [];
     private int count;
 
@@ -29,9 +29,9 @@ internal sealed class MirProgram
     /// <summary>Gets or sets the Binding pass the bodies were built from (0: none).</summary>
     internal ulong Version { get; set; }
 
-    /// <summary>Gets the located Unsupported records of construction, one per location (plan 6.2), which the <c>mir</c> pipeline
-    /// publishes as <c>Unsupported_Kd</c>.</summary>
-    internal List<SourceRef> Unsupported { get; } = [];
+    /// <summary>Gets the located records of construction, one per code and location, which the <c>mir</c> pipeline publishes: an
+    /// Unsupported form's <c>Unsupported_Kd</c> (plan 6.2) and the default expansion limit's <c>DefaultExpansionLimit_Kd</c> (Resource).</summary>
+    internal List<Problem> Records { get; } = [];
 
     /// <summary>Gets the validator's findings, which the <c>mir</c> pipeline publishes as <c>InternalInvariant_Kd</c>.</summary>
     internal List<MirFinding> Findings { get; } = [];
@@ -42,18 +42,19 @@ internal sealed class MirProgram
     {
         this.bodies.Clear();
         this.reported.Clear();
-        this.Unsupported.Clear();
+        this.Records.Clear();
         this.Findings.Clear();
         this.count = 0;
     }
 
-    /// <summary>Records an Unsupported form at its location, once however many bodies meet it.</summary>
-    /// <param name="site">The form's syntax.</param>
-    internal void Report(SourceRef site)
+    /// <summary>Records a problem of construction at its location, once however many bodies meet it.</summary>
+    /// <param name="site">The syntax.</param>
+    /// <param name="code">An Unsupported form, or the default expansion limit.</param>
+    internal void Report(SourceRef site, DiagnosticCode code = DiagnosticCode.Unsupported_Kd)
     {
-        if (this.reported.Add(site))
+        if (this.reported.Add(new(code, site)))
         {
-            this.Unsupported.Add(site);
+            this.Records.Add(new(code, site));
         }
     }
 

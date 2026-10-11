@@ -170,8 +170,9 @@ internal sealed partial class MirBuilder
         return this.Acquire(adjust, adjust.Acquire == HirAcquire.Temporary ? this.Value(node) : this.Place(node), expected, input, node);
     }
 
-    // A Place as an acquisition and an adaptation take it: Copied, moved, acquired by its pair layer's case or, a stored exclusive
-    // reference, Reborrowed in its own mode (SPEC 15.1.5). SPEC 10.2: adapted, the Scalar its reference layers end in, Copied; a Closure or
+    // A Place as an acquisition and an adaptation take it: Copied, moved, acquired by its pair layer's case (SPEC 8.9; where its Type
+    // decides the case, as in a default's copy, Copied or Reborrowed as that Type is) or, a stored exclusive reference, Reborrowed in its
+    // own mode (SPEC 15.1.5). SPEC 10.2: adapted, the Scalar its reference layers end in, Copied; a Closure or
     // function item erased to its Function Type; else a reference, of the expected Type or the one its mode forms, to the Place itself (a
     // shared or exclusive borrow), to the referent its layers reach (ReferenceRead), to an object handle's payload or to the base the
     // expected Type names. An implicit exclusive borrow of a call's input is two-phase: reserved here, activated at the Call (SPEC 15.6.7).
@@ -184,8 +185,9 @@ internal sealed partial class MirBuilder
             case HirAdaptation.None:
                 return adjust.Acquire switch
                 {
-                    HirAcquire.ByCase => MirOperand.PairAcquire(this.Binder(type), place),
-                    HirAcquire.Reborrow => this.Temporary(type, MirRvalue.Ref(MirRefKind.Uniq, this.body.Project(place, MirProjectionKind.Deref, 0), type), node),
+                    HirAcquire.ByCase when this.Binder(type) is var binder and >= 0 => MirOperand.PairAcquire(binder, place),
+                    HirAcquire.ByCase when type.Semantics is not (SemanticsKind.Uniq or SemanticsKind.ObjUniq) => MirOperand.Copy(place),
+                    HirAcquire.Reborrow or HirAcquire.ByCase => this.Temporary(type, MirRvalue.Ref(MirRefKind.Uniq, this.body.Project(place, MirProjectionKind.Deref, 0), type), node),
                     HirAcquire.Copy => MirOperand.Copy(place),
                     _ => MirOperand.Move(place),
                 };
@@ -226,11 +228,15 @@ internal sealed partial class MirBuilder
         return MirOperand.Move(temp);
     }
 
-    // A borrow of a Place in a new temp of the reference a Semantics kind forms to it (uniq: exclusive; ref, objref: shared), moved.
+    // A borrow of a Place in a new temp of the reference a Semantics kind forms to it (uniq: exclusive; ref, objref: shared), moved. A Ref
+    // has no operand that could diverge, so it is made where it is built even when the node it serves does not complete (a call whose
+    // default diverges, an interpolation with a transfer).
     private MirOperand Borrow(SemanticsKind semantics, MirPlace place, Koto node)
     {
         var view = compilation.Types.Reference(semantics, this.body.TypeOf(place) ?? BoundType.Unit);
-        return this.Temporary(view, MirRvalue.Ref(semantics == SemanticsKind.Uniq ? MirRefKind.Uniq : MirRefKind.Shared, place, view), node);
+        var temp = this.Temp(view, node);
+        this.body.Push(this.current, MirStatement.Assign(temp, MirRvalue.Ref(semantics == SemanticsKind.Uniq ? MirRefKind.Uniq : MirRefKind.Shared, place, view), this.Info(node)));
+        return MirOperand.Move(temp);
     }
 
     // SPEC 13.2, 13.3: a built-in operator on its operands, its check Proven where IMPL 21.5.3 omits it; or a sequence's metadata. The left

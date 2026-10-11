@@ -79,31 +79,32 @@ internal sealed partial class MirBuilder
         return place;
     }
 
-    // A name by its Res: a local, parameter or environment binding, a static after its first-access check, or a Field of the receiver
-    // (an accessor's storage, SPEC 11.2).
+    // A name by its Res: a local, parameter, prepared parameter or environment binding, a static after its first-access check, or a Field
+    // of the receiver (an accessor's storage, SPEC 11.2).
     private MirPlace Named(Koto node)
     {
         var symbol = HirTables.Symbol(node);
         switch (HirTables.ResOf(node))
         {
-            case HirRes.Local or HirRes.Param or HirRes.Capture when symbol is not null && this.Bound(symbol) is { } place:
+            case HirRes.Local or HirRes.Param or HirRes.PreparedParam or HirRes.Capture when symbol is not null && this.Bound(symbol) is { } place:
                 return place;
             case HirRes.Static when symbol is not null:
                 return this.Static(symbol, node);
             case HirRes.Field when symbol is not null && this.receiver >= 0:
                 return this.Field(this.Follow(new(this.receiver), 16), symbol.Kind == BindingSymbolKind.Storage ? HirTables.Symbol(symbol.Declaration) : symbol, node);
             default:
-                return this.Unsupported(node); // A prepared parameter of a default (U14).
+                return this.Unsupported(node);
         }
     }
 
-    // The Place of a local or a parameter, or in a Closure's body of an environment binding: its capture's Field of the environment the
-    // receiver reaches (SPEC 7.6.2); null for another symbol.
+    // The Place of a local or a parameter, in a default template a prepared parameter's slot its p_i references (SPEC 7.2.3), or in a
+    // Closure's body of an environment binding: its capture's Field of the environment the receiver reaches (SPEC 7.6.2); null for another
+    // symbol.
     private MirPlace? Bound(BindingSymbol symbol)
     {
         if (this.locals.TryGetValue(symbol, out var local))
         {
-            return new(local);
+            return this.body.Locals[local].Role == MirLocalRole.PreparedInput ? this.body.Project(new(local), MirProjectionKind.Deref, 0) : new(local);
         }
 
         var captures = this.receiver > 0 && this.declaration is FunctionKoto { IsAnonymous: true } closure ? BoundClosure.Of(closure)?.Captures : null;

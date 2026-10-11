@@ -15,13 +15,14 @@ public class ArchitectureRulesTest
 
     // The Binding types the MIR builder may name: the published tables, plans and declaration facts. Frozen at the R2b exit; R3 U1 adds
     // the builder's gaps (BuiltinForm, the key of the builder-only intrinsic rows, and CompilerFunctionKind, the intrinsic table's own key),
-    // R3 U13 TestDefinition (the syntax-level #Test marker that keys a test's body); only the declaration views deferred to their first
+    // R3 U13 TestDefinition (the syntax-level #Test marker that keys a test's body), R3 U14 DefaultDecl (U1's view of a default, the key of
+    // its template, which the list missed); only the declaration views deferred to their first
     // reader (ImplTable, VTableDef, UniversalRelations, EffectBoundTable, AvailableBounds; R4/R5) join it.
     private static readonly string[] PublishedBindingTypes =
     [
         "AdtDef", "BindingSymbol", "BindingSymbolKind", "BoundCapture", "BoundClosure", "BoundDefaultArgument", "BoundEnumCase",
         "BoundEnumConstruction", "BoundLength", "BoundMatch", "BoundMatchArm", "BoundOrigin", "BoundPattern", "BoundPatternKind",
-        "BoundType", "BoundTypeKind", "BuiltinForm", "CallPlan", "CalleeKind", "CompilerFunctionKind", "ConversionBinding", "DispositionKind", "ExpansionKind", "ExpansionPlan", "FunctionResultMode", "HirAcquire",
+        "BoundType", "BoundTypeKind", "BuiltinForm", "CallPlan", "CalleeKind", "CompilerFunctionKind", "ConversionBinding", "DefaultDecl", "DispositionKind", "ExpansionKind", "ExpansionPlan", "FunctionResultMode", "HirAcquire",
         "HirAdaptation", "HirAdjust", "HirCompletion", "HirOp", "HirPlace", "HirPlaceKind", "HirRes", "HirTables", "IntrinsicDisposition", "IntrinsicId", "KimiLibrary",
         "PairBinder", "PairCase", "PatternLiteral", "PatternLiteralKind", "PlanRow", "Subst", "TestDefinition", "TyCtxt",
     ];

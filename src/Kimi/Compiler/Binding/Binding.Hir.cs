@@ -126,6 +126,7 @@ public sealed partial class Binding
                 Array.Clear(hir.Places!);
             }
 
+            (hir.Defaults ??= []).Clear();
             this.table = table;
             this.completion?.Clear();
             (this.parent, this.position, this.exclusive) = (null, HirPosition.None, false);
@@ -168,6 +169,7 @@ public sealed partial class Binding
                             }
 
                             this.defaults[this.defaultCount++] = (function, i);
+                            this.table!.Hir.Defaults!.Add(new(function, i));
                             return HirPosition.Evaluated;
                         }
                     }
@@ -240,7 +242,7 @@ public sealed partial class Binding
             DereferenceKoto or ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } => HirOp.Deref,
             ConversionKoto { ConversionBinding: ConversionBinding.ObjectCreation } => HirOp.Call,
             ConversionKoto conversion => conversion.ConversionBinding == ConversionBinding.None ? HirOp.Unset : HirOp.Convert,
-            TupleLiteralKoto or ArrayLiteralKoto => HirOp.Aggregate,
+            TupleLiteralKoto or ArrayLiteralKoto => node.BoundType is null ? HirOp.Unset : HirOp.Aggregate, // Without its Type (a rejected element).
             DictionaryLiteralKoto => HirOp.DictionaryLiteral,
             CodeBlockKoto => HirOp.Block,
             IfKoto => HirOp.If,

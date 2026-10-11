@@ -9,32 +9,24 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirBuilder
 {
     // A node's call (CallPlan.Of; a Property read's getter; a user or view index's selected call, SPEC 4.6.9); a constructor's builds its
-    // object in the destination (SPEC 6.2.3.2). Not built yet: omitted defaults (U14).
-    private void Call(MirPlace destination, Koto node)
-    {
-        var call = ExpansionPlan.Of(node)?.Second ?? CallPlan.Of(node)!;
-        if (!call.DefaultArguments.IsEmpty)
-        {
-            this.Unsupported(node, destination);
-            return;
-        }
-
-        this.Call(destination, call, node);
-    }
+    // object in the destination (SPEC 6.2.3.2).
+    private void Call(MirPlace destination, Koto node) => this.Call(destination, ExpansionPlan.Of(node)?.Second ?? CallPlan.Of(node)!, node);
 
     // SPEC 7.3, 7.6.3: a call of the function, requirement, virtual slot or callable value Binding selected: a value call's callee in its
     // receiver mode, the receiver, then the arguments in their order (an assignment's secured value first, SPEC 13.7.1), each as its Adjust
-    // takes it for its parameter's Type or as the value an expansion evaluated for it (given), passed by parameter slot, the receiver first.
-    // A compiler function is its intrinsic where the table gives one (IntrinsicDisposition; Fail with its fixed code), a direct base call
-    // the implementation the virtual selection names, and a place result the reference the call returns. A call of a Never function or a diverging intrinsic has no runtime successor and
-    // continues for the checks (SPEC 14.10); a call whose operand does not complete enters no callee (SPEC 15.6.7).
+    // takes it for its parameter's Type or as the value an expansion evaluated for it (given), then its omitted defaults (Defaults), passed by
+    // parameter slot, the receiver first. A compiler function is its intrinsic where the table gives one (IntrinsicDisposition; Fail with its
+    // fixed code), a direct base call the implementation the virtual selection names, and a place result the reference the call returns. A
+    // call of a Never function or a diverging intrinsic has no runtime successor and continues for the checks (SPEC 14.10); a call whose
+    // operand does not complete enters no callee (SPEC 15.6.7).
     private void Call(MirPlace destination, CallPlan call, Koto node, Koto? first = null, Koto? given = null, in MirOperand value = default)
     {
         var function = call.Kind == CalleeKind.Value ? null : call.Target;
         var receiver = function is null ? null : call.Receiver;
         var count = function is null ? call.Signature.Components[0].Components.Count : ((FunctionKoto)function.Declaration).Parameters.Count;
         var direct = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true } ? call.VirtualImplementation is { } implementation ? HirTables.Symbol(implementation) : null : function;
-        if (call.ArgumentOperations.Length + (receiver is null ? 0 : 1) != count || (receiver is not null && function!.ReceiverIndex < 0) || (direct is null && function is not null))
+        if (call.ArgumentOperations.Length + call.DefaultArguments.Length + (receiver is null ? 0 : 1) != count || (receiver is not null && function!.ReceiverIndex < 0) ||
+            (direct is null && function is not null))
         {
             this.Unsupported(node, destination); // A plan whose operations do not cover the parameters (an expansion supplies them).
             return;
@@ -46,12 +38,13 @@ internal sealed partial class MirBuilder
             this.arguments.Add(this.Operand(source, call.ReceiverOperation.AdaptedType, true)); // The callee value, pending while the arguments are evaluated.
         }
 
-        var (start, completes) = (this.arguments.Count, function is not null || Completes(source));
+        var (start, completes, defaults) = (this.arguments.Count, function is not null || Completes(source), !call.DefaultArguments.IsEmpty);
         CollectionsMarshal.SetCount(this.arguments, start + count);
         CollectionsMarshal.AsSpan(this.arguments)[start..].Clear(); // No stale operand reads as pending (Transfer).
         if (receiver is not null)
         {
-            this.arguments[start] = this.Operand(receiver, call.ReceiverOperation.AdaptedType ?? call.ReceiverOperation.ParameterType, true);
+            var operand = this.Operand(receiver, call.ReceiverOperation.AdaptedType ?? call.ReceiverOperation.ParameterType, true);
+            this.arguments[start] = defaults ? this.Pending(operand, call.ReceiverOperation.ParameterType, receiver) : operand;
             completes &= Completes(receiver);
         }
 
@@ -61,13 +54,15 @@ internal sealed partial class MirBuilder
             {
                 if (ReferenceEquals(argument.Source, first) == (pass == 0))
                 {
-                    this.arguments[start + Position(function, argument.ParameterIndex)] = ReferenceEquals(argument.Source, given) ? value : this.Operand(argument.Source!, argument.AdaptedType ?? argument.ParameterType, true);
+                    var operand = ReferenceEquals(argument.Source, given) ? value : this.Operand(argument.Source!, argument.AdaptedType ?? argument.ParameterType, true);
+                    this.arguments[start + Position(function, argument.ParameterIndex)] = defaults ? this.Pending(operand, argument.ParameterType, argument.Source!) : operand;
                     completes &= Completes(argument.Source!);
                 }
             }
         }
 
-        if (!completes)
+        var subst = compilation.Types.SubstOf(call);
+        if (!completes || (defaults && !this.Defaults(call, function!, subst, start, node)))
         {
             this.arguments.RemoveRange(pending, this.arguments.Count - pending);
             return;
@@ -79,7 +74,6 @@ internal sealed partial class MirBuilder
             this.arguments.Add(MirOperand.Const(this.body.Const(new(MirConstKind.String, BoundType.String, Value: disposition.Code))));
         }
 
-        var subst = compilation.Types.SubstOf(call);
         var callee = disposition.Kind == DispositionKind.Intrinsic ? MirCallee.Intrinsic(disposition.Id, subst) : call.Kind switch
         {
             CalleeKind.Requirement => new(MirCalleeKind.Requirement, function, subst, Contract: call.RequirementContract),

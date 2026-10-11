@@ -1,0 +1,399 @@
+defaulttemplate grow#1 @16
+  _0: i32 return @13
+  _1: ref/ref/Box arg self (PreparedInput) @13
+  bb0:
+    * _0 = copy (*(*_1)).0 @16
+      return @16
+defaulttemplate scale#1 @30
+  _0: i32 return @27
+  _1: ref/i32 arg x (PreparedInput) @27
+  bb0:
+    * _0 = Add(copy (*_1), const 1_i32) @30
+      return @30
+defaulttemplate pick#1 @44
+  _0: T return @37
+  _1: ref/T arg a (PreparedInput) @37
+  bb0:
+    * _0 = copy (*_1) @44
+      return @44
+defaulttemplate count#1 @52
+  _0: i32 return @49
+  _1: ref/i32 arg n (PreparedInput) @49
+  _2: bool temp @53
+  _3: i32 temp @61 s2
+  _4: i32 temp (PendingSlot) @61 s2
+  _5: i32 temp value (PendingSlot) @59 s2
+  _6: ref/i32 temp @59 s2
+  s1: lexical in s0 @56
+  s2: lexical in s0 @58
+  bb0:
+      StorageLive(_2) @53
+    * _2 = Eq(copy (*_1), const 0_i32) proven @53
+      switch copy _2 [0: bb3, otherwise: bb2] @53
+  bb1:
+      StorageDead(_6) @59 s2
+      StorageDead(_5) @59 s2
+      StorageDead(_4) @61 s2
+      StorageDead(_3) @61 s2
+      return @52
+  bb2:
+      StorageDead(_2) @53
+    * _0 = const 1_i32 @57 s1
+      goto bb1 @56
+  bb3:
+      StorageDead(_2) @53
+      StorageLive(_3) @61 s2
+    * _3 = Sub(copy (*_1), const 1_i32) @61 s2
+      StorageLive(_4) @61 s2
+      _4 = move _3 @61 s2
+      StorageLive(_5) @59 s2
+      StorageLive(_6) @59 s2
+      _6 = &_4: ref/i32 @59 s2
+      _5 = count#1(move _6) -> bb4 @59 s2
+  bb4:
+      _0 = count(move _4, move _5) -> bb5 @59 s2
+  bb5:
+      goto bb1 @58
+defaulttemplate run#1 @71
+  _0: () -> i32 return @66
+  _1: ref/i32 arg n (PreparedInput) @66
+  _2: closure () -> i32 temp @71
+  _3: () -> i32 temp @71
+  bb0:
+      StorageLive(_2) @71
+    * _2 = Closure(copy (*_1)): closure () -> i32 @71
+      StorageLive(_3) @71
+      _3 = move _2 as () -> i32 (Erasure) proven @71
+      _0 = move _3 @71
+      drop _3 -> bb1 @71
+  bb1:
+      StorageDead(_3) @71
+      StorageDead(_2) @71
+      return @71
+defaulttemplate halt#1 @124
+  _0: i32 return @121
+  _1: ref/i32 arg n (PreparedInput) @121
+  bb0:
+    * _0 = intrinsic Abort(const "halt") -> ! check bb1 @125
+  bb1:
+      unreachable check bb2 @124
+  bb2:
+      return @124
+fn init @6
+  _0: Box return @6
+  _1: i32 arg size @6
+  _2: () temp @8
+  _3: () temp @8
+  _4: i32 temp @9
+  bb0:
+      StorageLive(_2) @8
+      StorageLive(_3) @8
+      StorageLive(_4) @9
+    * _4 = copy _1 @12
+      _0.0 = move _4 @8
+      _3 = const () @8
+      StorageDead(_4) @9
+      StorageDead(_3) @8
+      _2 = const () @8
+      StorageDead(_2) @8
+      return @8
+fn grow @13
+  _0: i32 return @13
+  _1: ref/Box arg self @13
+  _2: i32 arg by @13
+  bb0:
+    * _0 = Add(copy (*_1).0, copy _2) @20
+      return @20
+fn top-level#0 @25
+  _0: () return @25
+  s1: lexical in s0 @26
+  bb0:
+      _0 = const () @26 s1
+      return @26
+fn scale @27
+  _0: i32 return @27
+  _1: i32 arg x @27
+  _2: i32 arg factor @27
+  bb0:
+    * _0 = Mul(copy _1, copy _2) @34
+      return @34
+fn pick @37
+  _0: T return @37
+  _1: T arg a @37
+  _2: T arg b @37
+  _3: Never temp @47 s1
+  _4: T temp @48 s1
+  s1: lexical in s0 @46
+  bb0:
+      StorageLive(_3) @47 s1
+      StorageLive(_4) @48 s1
+    * _4 = copy _2 @48 s1
+      goto bb7 check bb8 @47 s1
+  bb1:
+      return @37
+  bb2:
+      drop _2 -> bb3 @37
+  bb3:
+      drop _1 -> bb4 @37
+  bb4:
+      goto bb1 @37
+  bb5:
+      drop _4 -> bb6 @48 s1
+  bb6:
+      StorageDead(_4) @48 s1
+      StorageDead(_3) @47 s1
+      goto bb2 @37
+  bb7:
+      _0 = move _4 @47 s1
+      goto bb5 @47 s1
+  bb8:
+      drop _4 -> bb9 @48 s1
+  bb9:
+      StorageDead(_4) @48 s1
+      StorageDead(_3) @47 s1
+      drop _2 -> bb10 @37
+  bb10:
+      drop _1 -> bb11 @37
+  bb11:
+      unreachable @46
+fn count @49
+  _0: i32 return @49
+  _1: i32 arg n @49
+  _2: i32 arg value @49
+  bb0:
+    * _0 = copy _2 @65
+      return @65
+fn run @66
+  _0: i32 return @66
+  _1: i32 arg n @66
+  _2: () -> i32 arg action @66
+  _3: ref/() -> i32 temp @78
+  bb0:
+      StorageLive(_3) @78
+    * _3 = &_2: ref/() -> i32 @78
+      _0 = value move _3() -> bb1 @77
+  bb1:
+      StorageDead(_3) @78
+      drop _2 -> bb2 @66
+  bb2:
+      return @77
+closure @71
+  _0: i32 return @71
+  _1: ref/closure () -> i32 arg @71
+  bb0:
+    * _0 = Add(copy (*_1).0, const 1_i32) @73
+      return @73
+fn use @79
+  _0: i32 return @79
+  _1: Box arg box @79
+  _2: i32 var a @83 s1
+  _3: i32 temp (PendingSlot) @87 s1
+  _4: i32 temp factor (PendingSlot) @85 s1
+  _5: ref/i32 temp @85 s1
+  _6: i32 var b @88 s1
+  _7: i32 temp (PendingSlot) @92 s1
+  _8: i32 temp b (PendingSlot) @90 s1
+  _9: ref/i32 temp @90 s1
+  _10: bool var c @93 s1
+  _11: bool temp (PendingSlot) @97 s1
+  _12: bool temp b (PendingSlot) @95 s1
+  _13: ref/bool temp @95 s1
+  _14: i32 var d @98 s1
+  _15: i32 temp (PendingSlot) @102 s1
+  _16: i32 temp value (PendingSlot) @100 s1
+  _17: ref/i32 temp @100 s1
+  _18: i32 var e @103 s1
+  _19: i32 temp (PendingSlot) @107 s1
+  _20: () -> i32 temp action (PendingSlot) @105 s1
+  _21: ref/i32 temp @105 s1
+  _22: closure () -> i32 temp @71 s5
+  _23: () -> i32 temp @71 s5
+  _24: Never temp @108 s1
+  _25: i32 temp @109 s1
+  _26: i32 temp @110 s1
+  _27: i32 temp @111 s1
+  _28: i32 temp @112 s1
+  _29: i32 temp @117 s1
+  _30: ref/Box temp @119 s1
+  _31: ref/Box temp (PendingSlot) @119 s1
+  _32: i32 temp by (PendingSlot) @117 s1
+  _33: ref/ref/Box temp @117 s1
+  s1: lexical in s0 @82
+  s2: inlined in s1 @85
+  s3: inlined in s1 @90
+  s4: inlined in s1 @95
+  s5: inlined in s1 @105
+  s6: inlined in s1 @117
+  bb0:
+      StorageLive(_2) @83 s1
+      StorageLive(_3) @87 s1
+    * _3 = const 3_i32 @87 s1
+      StorageLive(_4) @85 s1
+      StorageLive(_5) @85 s1
+      _5 = &_3: ref/i32 @85 s1
+    * _4 = Add(copy (*_5), const 1_i32) @30 s2
+      goto bb1 @30 s2
+  bb1:
+      _2 = scale(move _3, move _4) -> bb2 @85 s1
+  bb2:
+      StorageDead(_5) @85 s1
+      StorageDead(_4) @85 s1
+      StorageDead(_3) @87 s1
+      StorageLive(_6) @88 s1
+      StorageLive(_7) @92 s1
+    * _7 = const 1_i32 @92 s1
+      StorageLive(_8) @90 s1
+      StorageLive(_9) @90 s1
+      _9 = &_7: ref/i32 @90 s1
+    * _8 = copy (*_9) @44 s3
+      goto bb3 @44 s3
+  bb3:
+      _6 = pick<i32>(move _7, move _8) -> bb4 @90 s1
+  bb4:
+      StorageDead(_9) @90 s1
+      StorageDead(_8) @90 s1
+      StorageDead(_7) @92 s1
+      StorageLive(_10) @93 s1
+      StorageLive(_11) @97 s1
+    * _11 = const true @97 s1
+      StorageLive(_12) @95 s1
+      StorageLive(_13) @95 s1
+      _13 = &_11: ref/bool @95 s1
+    * _12 = copy (*_13) @44 s4
+      goto bb5 @44 s4
+  bb5:
+      _10 = pick<bool>(move _11, move _12) -> bb6 @95 s1
+  bb6:
+      StorageDead(_13) @95 s1
+      StorageDead(_12) @95 s1
+      StorageDead(_11) @97 s1
+      StorageLive(_14) @98 s1
+      StorageLive(_15) @102 s1
+    * _15 = const 3_i32 @102 s1
+      StorageLive(_16) @100 s1
+      StorageLive(_17) @100 s1
+      _17 = &_15: ref/i32 @100 s1
+      _16 = count#1(move _17) -> bb7 @100 s1
+  bb7:
+      _14 = count(move _15, move _16) -> bb8 @100 s1
+  bb8:
+      StorageDead(_17) @100 s1
+      StorageDead(_16) @100 s1
+      StorageDead(_15) @102 s1
+      StorageLive(_18) @103 s1
+      StorageLive(_19) @107 s1
+    * _19 = const 2_i32 @107 s1
+      StorageLive(_20) @105 s1
+      StorageLive(_21) @105 s1
+      _21 = &_19: ref/i32 @105 s1
+      StorageLive(_22) @71 s5
+    * _22 = Closure(copy (*_21)): closure () -> i32 @71 s5
+      StorageLive(_23) @71 s5
+      _23 = move _22 as () -> i32 (Erasure) proven @71 s5
+      _20 = move _23 @71 s5
+      drop _23 -> bb10 @71 s5
+  bb9:
+      _18 = run(move _19, move _20) -> bb11 @105 s1
+  bb10:
+      StorageDead(_23) @71 s5
+      StorageDead(_22) @71 s5
+      goto bb9 @71 s5
+  bb11:
+      StorageDead(_21) @105 s1
+      drop _20 -> bb12 @105 s1
+  bb12:
+      StorageDead(_20) @105 s1
+      StorageDead(_19) @107 s1
+      StorageLive(_24) @108 s1
+      StorageLive(_25) @109 s1
+      StorageLive(_26) @110 s1
+      StorageLive(_27) @111 s1
+      StorageLive(_28) @112 s1
+    * _28 = Add(copy _2, copy _6) @112 s1
+      _27 = Add(move _28, copy _14) @111 s1
+      _26 = Add(move _27, copy _18) @110 s1
+      StorageLive(_29) @117 s1
+      StorageLive(_30) @119 s1
+      _30 = &_1: ref/Box @119 s1
+      StorageLive(_31) @119 s1
+      _31 = move _30 @119 s1
+      StorageLive(_32) @117 s1
+      StorageLive(_33) @117 s1
+      _33 = &_31: ref/ref/Box @117 s1
+    * _32 = copy (*(*_33)).0 @16 s6
+      goto bb13 @16 s6
+  bb13:
+      _29 = grow(move _31, move _32) -> bb14 @117 s1
+  bb14:
+      _25 = Add(move _26, move _29) @109 s1
+      goto bb18 check bb19 @108 s1
+  bb15:
+      return @79
+  bb16:
+      StorageDead(_18) @103 s1
+      StorageDead(_14) @98 s1
+      StorageDead(_10) @93 s1
+      StorageDead(_6) @88 s1
+      StorageDead(_2) @83 s1
+      goto bb15 @79
+  bb17:
+      StorageDead(_33) @117 s1
+      StorageDead(_32) @117 s1
+      StorageDead(_31) @119 s1
+      StorageDead(_30) @119 s1
+      StorageDead(_29) @117 s1
+      StorageDead(_28) @112 s1
+      StorageDead(_27) @111 s1
+      StorageDead(_26) @110 s1
+      StorageDead(_25) @109 s1
+      StorageDead(_24) @108 s1
+      goto bb16 @79
+  bb18:
+      _0 = move _25 @108 s1
+      goto bb17 @108 s1
+  bb19:
+      StorageDead(_33) @117 s1
+      StorageDead(_32) @117 s1
+      StorageDead(_31) @119 s1
+      StorageDead(_30) @119 s1
+      StorageDead(_29) @117 s1
+      StorageDead(_28) @112 s1
+      StorageDead(_27) @111 s1
+      StorageDead(_26) @110 s1
+      StorageDead(_25) @109 s1
+      StorageDead(_24) @108 s1
+      StorageDead(_18) @103 s1
+      StorageDead(_14) @98 s1
+      StorageDead(_10) @93 s1
+      StorageDead(_6) @88 s1
+      StorageDead(_2) @83 s1
+      unreachable @82
+fn halt @121
+  _0: i32 return @121
+  _1: i32 arg n @121
+  _2: i32 arg value @121
+  bb0:
+    * _0 = copy _2 @129
+      return @129
+fn stopped @130
+  _0: i32 return @130
+  _1: i32 temp (PendingSlot) @134
+  _2: i32 temp value (PendingSlot) @132
+  _3: ref/i32 temp @132
+  s1: inlined in s0 @132
+  bb0:
+      StorageLive(_1) @134
+    * _1 = const 1_i32 @134
+      StorageLive(_2) @132
+      StorageLive(_3) @132
+      _3 = &_1: ref/i32 @132
+    * _2 = intrinsic Abort(const "halt") -> ! check bb2 @125 s1
+  bb1:
+      StorageDead(_3) @132
+      StorageDead(_2) @132
+      StorageDead(_1) @134
+      unreachable @132
+  bb2:
+      unreachable check bb3 @124 s1
+  bb3:
+      goto bb1 @124 s1

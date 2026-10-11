@@ -63,9 +63,10 @@ internal readonly record struct MirStatement(MirStatementKind Kind, MirPlace Pla
     internal static MirStatement Of(MirStatementKind kind, MirPlace place, SourceInfo source) => new(kind, place, default, source);
 }
 
-/// <summary>What a Call calls: a Fn, Requirement or Virtual callee's function under its Subst (a Virtual one's slot in <see cref="Arg"/>, a
-/// Requirement's dispatching Contract reference in <see cref="Contract"/>, null for its requirement's own Contract) or an Intrinsic's
-/// <see cref="IntrinsicId"/> in <see cref="Arg"/>; a Value callee is the terminator's operand.</summary>
+/// <summary>What a Call calls: a Fn, Requirement or Virtual callee's function under its Subst (a Fn one's default template, plan 5.6.2, as
+/// its index plus 1 in <see cref="Arg"/>; a Virtual one's slot in <see cref="Arg"/>; a Requirement's dispatching Contract reference in
+/// <see cref="Contract"/>, null for its requirement's own Contract) or an Intrinsic's <see cref="IntrinsicId"/> in <see cref="Arg"/>; a
+/// Value callee is the terminator's operand.</summary>
 internal readonly record struct MirCallee(MirCalleeKind Kind, BindingSymbol? Symbol = null, Subst? Subst = null, int Arg = 0, BindingSymbol? Contract = null)
 {
     internal static MirCallee Intrinsic(IntrinsicId id, Subst? subst = null) => new(MirCalleeKind.Intrinsic, null, subst, (int)id);

@@ -137,16 +137,16 @@ public partial class Compilation
         return records == 0;
     }
 
-    // The MIR records the mir pipeline publishes, added to the list when one is given: construction Unsupported and validator findings
-    // in the source modules. The library's are gated by the MIR corpus test (V9) until it builds without them (R3).
+    // The MIR records the mir pipeline publishes, added to the list when one is given: construction records and validator findings in the
+    // source modules. The library's are gated by the MIR corpus test (V9) until it builds without them (R3).
     private int MirRecords(List<Problem>? into)
     {
         var count = 0;
         if (this.mir is { } program)
         {
-            foreach (var site in program.Unsupported)
+            foreach (var record in program.Records)
             {
-                Add(DiagnosticCode.Unsupported_Kd, site);
+                Add(record.Code, record.Subject);
             }
 
             foreach (var finding in program.Findings)

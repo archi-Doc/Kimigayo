@@ -1,5 +1,4 @@
-func scale(x: i32, factor: i32 = 2) -> i32 => x * factor
-func sum(a: i32, b: i32) -> i32
-    let c = scale(a + b)
-    return c
+func sum<length N>(a: i32, b: i32) -> i32
+    let c: [N of i32] = [N of (a + b)]
+    return b
 func fail() -> i32 => missing

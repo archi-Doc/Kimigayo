@@ -37,12 +37,19 @@ internal sealed partial class MirBuilder(Compilation compilation)
         }
 
         this.program.Clear();
-        foreach (var module in compilation.SourceModules)
+        this.visited.Clear();
+        this.omissions.Clear();
+        // The default templates first, which the bodies that omit them copy.
+        for (var pass = 0; pass < 2; pass++)
         {
-            this.Module(module.Syntax);
+            foreach (var module in compilation.SourceModules)
+            {
+                this.Module(module.Syntax, pass == 0);
+            }
+
+            this.Module(compilation.Library.Kotonoha.Syntax, pass == 0);
         }
 
-        this.Module(compilation.Library.Kotonoha.Syntax);
         this.program.Version = version;
         return this.program;
     }
@@ -76,9 +83,23 @@ internal sealed partial class MirBuilder(Compilation compilation)
     }
 
     // The definitions of a module in id order, a #Test function's a Test body and a Closure's keyed by its own symbol; a struct instance
-    // Field's initializer is built into each constructor of its struct.
-    private void Module(SyntaxTable table)
+    // Field's initializer is built into each constructor of its struct. Or the templates of the defaults the HIR published for the module's
+    // named functions (an anonymous function has none, SPEC 7.2.2).
+    private void Module(SyntaxTable table, bool templates)
     {
+        if (templates)
+        {
+            foreach (var decl in table.Hir.Defaults!)
+            {
+                if (!decl.Function.IsAnonymous && !this.visited.ContainsKey(decl))
+                {
+                    this.Visit(decl);
+                }
+            }
+
+            return;
+        }
+
         var nodes = table.Nodes;
         for (var id = 1; id < nodes.Length; id++)
         {
@@ -110,10 +131,13 @@ internal sealed partial class MirBuilder(Compilation compilation)
     // A body: _0 of the result Type, the arguments with the receiver first (an owned one dropped when the body is left, SPEC 16.2.1), a
     // Closure's being its environment in the mode of its call (SPEC 7.6.3), the value into _0 with its temporaries, then Return where the
     // value completes. A constructor builds its object in _0, its self, from fresh storage (SPEC 6.2.3.3): the base constructor into the
-    // base subobject, this layer's Field initializers in declaration order, then the body, whose Unit value is set aside.
+    // base subobject, this layer's Field initializers in declaration order, then the body, whose Unit value is set aside. A default
+    // template's (plan 5.6.2), a generic body of its function, takes the slots its call prepared for the earlier parameters as shared
+    // references p_i: ref/P_i in slot order (PreparedInput), which its names read through (Bound), and gives the parameter's value.
     private void Body(MirDefKey key, Koto declaration, BindingSymbol? function, BoundType result, Koto value)
     {
-        var body = this.body = this.program.Begin(key, SourceRef.Of(declaration));
+        var template = key.Kind == MirBodyKind.DefaultTemplate;
+        var body = this.body = this.program.Begin(key, SourceRef.Of(template ? value : declaration));
         (this.declaration, this.scope, this.statementStart) = (declaration, 0, false);
         this.locals.Clear();
         this.targets.Clear();
@@ -123,9 +147,16 @@ internal sealed partial class MirBuilder(Compilation compilation)
         this.trees.Clear();
         var parameters = this.OpenScope(true);
         PairBinder.Collect(declaration, body.Binders);
-        var self = declaration is FunctionKoto { IsConstructor: true } constructor ? AdtDef.ReceiverType(constructor) : null;
+        var self = !template && declaration is FunctionKoto { IsConstructor: true } constructor ? AdtDef.ReceiverType(constructor) : null;
         body.AddLocal(new(self ?? result, MirLocalKind.Return, this.Info(declaration, true)));
-        this.receiver = self is not null ? 0 : function is not null && (function.ReceiverIndex >= 0 || CallPlan.Parameter(function, -1) is not null) ? 1 : -1;
+        this.receiver = self is not null ? 0 : function is null ? -1 : template ? ((uint)function.ReceiverIndex < (uint)key.Index ? function.ReceiverIndex + 1 : -1)
+            : function.ReceiverIndex >= 0 || CallPlan.Parameter(function, -1) is not null ? 1 : -1;
+        for (var i = 0; template && i < key.Index; i++)
+        {
+            var parameter = CallPlan.Parameter(function!, i)!;
+            this.locals[parameter] = this.Argument(compilation.Types.Reference(SemanticsKind.Ref, parameter.Type ?? BoundType.Unit), parameter.Name, parameters, MirLocalRole.PreparedInput);
+        }
+
         if (self is not null)
         {
             this.locals[CallPlan.Parameter(function!, -1)!] = 0;
@@ -135,7 +166,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
             this.receiver = this.Argument(plan.Receiver == SemanticsKind.Owner ? environment : compilation.Types.Reference(plan.Receiver, environment), null, parameters);
         }
 
-        for (var position = self is null ? 0 : 1; function is not null && Slot(function, position, out var slot); position++)
+        for (var position = self is null ? 0 : 1; !template && function is not null && Slot(function, position, out var slot); position++)
         {
             var parameter = CallPlan.Parameter(function, slot)!;
             this.locals[parameter] = this.Argument(parameter.Type ?? BoundType.Unit, parameter.Name, parameters);
@@ -164,15 +195,21 @@ internal sealed partial class MirBuilder(Compilation compilation)
         this.Result(done, value, value);
         this.CloseScope(temporaries);
         this.CloseScope(parameters);
-        var end = this.Info(value);
-        body.Terminate(this.current, Completes(value) ? MirTerminator.Return(end) : MirTerminator.Unreachable(end));
+        // A default's value that does not complete goes on to its return, the call that takes it, for the checks only (SPEC 14.10.3).
+        var (end, check) = (this.Info(value), template && !Completes(value) ? body.AddBlock() : -1);
+        body.Terminate(this.current, Completes(value) ? MirTerminator.Return(end) : MirTerminator.Unreachable(end, check));
+        if (check >= 0)
+        {
+            body.Terminate(check, MirTerminator.Return(end));
+        }
+
         this.validator.Validate(body, this.program.Findings);
     }
 
     // An argument local, dropped when the body is left where its Type may need drop (SPEC 16.2.1).
-    private int Argument(BoundType type, string? name, int parameters)
+    private int Argument(BoundType type, string? name, int parameters, MirLocalRole role = MirLocalRole.None)
     {
-        var local = this.body.AddLocal(new(type, MirLocalKind.Arg, this.Info(this.declaration, true), Name: name));
+        var local = this.body.AddLocal(new(type, MirLocalKind.Arg, this.Info(this.declaration, true), Name: name, Role: role));
         if (MirTypes.MayNeedDrop(type))
         {
             this.Register(Cleanup.Drop, local, null, parameters);
@@ -297,9 +334,16 @@ internal sealed partial class MirBuilder(Compilation compilation)
     {
         this.roots.Clear();
         (this.collector ??= new(this)).Visit(node);
+        this.Site(node, destination, Completes(node));
+    }
+
+    // An Opaque value at a node's site naming the roots collected; where it cannot complete, building continues in a block only the
+    // checks reach.
+    private void Site(Koto node, MirPlace destination, bool completes)
+    {
         var site = this.body.AddOpaque(SourceRef.Of(node), CollectionsMarshal.AsSpan(this.roots));
         this.body.Push(this.current, MirStatement.Assign(destination, MirRvalue.Opaque(this.body.TypeOf(destination) ?? BoundType.Unit, site), this.Info(node)));
-        if (!Completes(node))
+        if (!completes)
         {
             var next = this.body.AddBlock();
             this.body.Terminate(this.current, MirTerminator.Unreachable(this.Info(node), next));
@@ -316,7 +360,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
             var symbol = HirTables.Symbol(node);
             switch (HirTables.ResOf(node))
             {
-                case HirRes.Local or HirRes.Param or HirRes.Capture:
+                case HirRes.Local or HirRes.Param or HirRes.PreparedParam or HirRes.Capture:
                     this.Add(symbol);
                     break;
                 case HirRes.Static when symbol is not null:

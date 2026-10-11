@@ -988,14 +988,17 @@ fn early @97
       StorageLive(_4) @101 s1
       StorageLive(_5) @101 s1
       StorageLive(_6) @101 s1
+      _6 = &uniq _3: uniq/HeapBuffer @101 s1
       _4 = intrinsic ErasedWriter<HeapBuffer>(move _6) -> bb3 @101 s1
   bb3:
       StorageLive(_7) @101 s1
+      _7 = &uniq _4: uniq/Utf8Writer @101 s1
       _5 = intrinsic FormatHint(move _7, const 6_isize, const type (())) -> bb4 @101 s1
   bb4:
       StorageLive(_8) @101 s1
       StorageLive(_9) @101 s1
       StorageLive(_10) @101 s1
+      _10 = &uniq _4: uniq/Utf8Writer @101 s1
       StorageLive(_11) @102 s1
       _11 = const "prefix" @102 s1
       StorageLive(_12) @102 s1
@@ -1006,16 +1009,19 @@ fn early @97
       switch copy _9 [0: bb6, otherwise: bb1] @101 s1
   bb6:
       StorageLive(_13) @101 s1
+      _13 = &uniq _4: uniq/Utf8Writer @101 s1
       _5 = intrinsic FormatHint(move _13, const 6_isize, const type ()) -> bb7 @101 s1
   bb7:
       StorageLive(_14) @101 s1
       StorageLive(_15) @101 s1
       StorageLive(_16) @101 s1
+      _16 = &uniq _4: uniq/Utf8Writer @101 s1
       StorageLive(_17) @103 s1
     * EndBorrow(_16) @105 s2
       goto bb14 check bb15 @105 s2
   bb8:
       StorageLive(_18) @101 s1
+      _18 = &uniq _4: uniq/Utf8Writer @101 s1
       _5 = intrinsic FormatHint(move _18, const 0_isize, const type ()) -> bb16 @101 s1
   bb9:
       return @97
@@ -1053,6 +1059,7 @@ fn early @97
       StorageLive(_19) @101 s1
       StorageLive(_20) @101 s1
       StorageLive(_21) @101 s1
+      _21 = &uniq _4: uniq/Utf8Writer @101 s1
       StorageLive(_22) @107 s1
       _22 = const "suffix" @107 s1
       StorageLive(_23) @107 s1
