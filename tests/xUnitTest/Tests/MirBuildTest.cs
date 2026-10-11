@@ -14,14 +14,16 @@ namespace XunitTest;
 /// deterministic and a warm rebuild allocates nothing. The census measures what the builder covers (V9).</summary>
 public sealed class MirBuildTest(ITestOutputHelper output)
 {
-    // V9: builds every body of the corpus and counts the bodies, those with an Opaque value and the records per HirOp; with KIMI_MIR_CENSUS
-    // naming a file, writes the census there as TSV. Every built body is valid, and every static a body reaches through staticEnsure, every
-    // Closure it creates and every default template it calls has its body (plan 5.6.2, 5.6.6).
+    // V9: builds every body of the corpus and counts the bodies, those with an Opaque value, the records per HirOp and the bodies per number
+    // of Semantics case views; with KIMI_MIR_CENSUS naming a file, writes the census there as TSV. Every built body is valid and within the
+    // case bound (plan 5.6.1), and every static a body reaches through staticEnsure, every Closure it creates and every default template it
+    // calls has its body (plan 5.6.2, 5.6.6).
     [Fact]
     public void CorpusBuildsValidBodies()
     {
         var rows = new List<string> { "case\tbodies\topaque\tunsupported\tderived" };
         var sites = new SortedDictionary<string, int>(StringComparer.Ordinal);
+        var views = new SortedDictionary<long, int>();
         var totals = new int[4];
         foreach (var name in HirColumnsTest.Corpus.Select(static x => x.Data))
         {
@@ -52,6 +54,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
                 {
                     counts[0]++;
                     counts[1] += body.HasOpaque ? 1 : 0;
+                    views[MirCases.Count(body)] = views.GetValueOrDefault(MirCases.Count(body)) + 1;
                     foreach (var site in body.OpaqueSites)
                     {
                         counts[3] += HirTables.Op(c.SyntaxOf(site.Source)) == HirOp.Error ? 1 : 0;
@@ -76,6 +79,8 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         rows.Add($"total\t{string.Join('\t', totals)}");
         rows.Add("site\tcount");
         rows.AddRange(sites.OrderByDescending(static x => x.Value).ThenBy(static x => x.Key, StringComparer.Ordinal).Select(static x => $"{x.Key}\t{x.Value}"));
+        rows.Add("views\tbodies");
+        rows.AddRange(views.Select(static x => $"{x.Key}\t{x.Value}"));
         output.WriteLine(string.Join('\n', rows));
         if (Environment.GetEnvironmentVariable("KIMI_MIR_CENSUS") is { Length: > 0 } path)
         {
@@ -84,6 +89,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         }
 
         Assert.True(totals[0] > 500, $"{totals[0]} bodies");
+        Assert.True(views.Keys.Max() <= 64, $"{views.Keys.Max()} views");
     }
 
     // The same compilation builds the same MIR, fresh or after a warm rebind, and a fresh compilation of the same source does too; Milestone38
@@ -122,19 +128,32 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.DoesNotContain(program.Records, x => x.Subject == error.OpaqueSites[0].Source);
     }
 
-    // V11: publishing, building and validating an unchanged compilation again allocates nothing, owning interpolations (Milestone41) included.
+    // V11: publishing, building and validating an unchanged compilation again, and selecting every Semantics case view of its bodies with
+    // their locals' case Types, allocates nothing, owning interpolations (Milestone41) and pair-generic bodies (Milestone39) included.
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("milestone/Milestone26")]
+    [InlineData("milestone/Milestone39")]
     [InlineData("milestone/Milestone41")]
     public void WarmRebuildAllocatesNothing(string name)
     {
         var (c, _) = SemanticSnapshotTest.Bind(name);
         var (bodies, version) = (c.BuildMir().Bodies.Length, c.BuildMir().Version);
+        var cases = new MirCases(c.Types);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             c.Binding.Bind(BindingMode.Final);
-            c.BuildMir();
+            foreach (var body in c.BuildMir().Bodies)
+            {
+                for (var view = 0L; view < MirCases.Count(body); view++)
+                {
+                    cases.Select(body, view);
+                    foreach (var local in body.Locals)
+                    {
+                        _ = cases.Type(local.Type);
+                    }
+                }
+            }
         }));
         Assert.Equal((bodies, version + 16), (c.BuildMir().Bodies.Length, c.BuildMir().Version)); // Eight warm-up and eight measured rebuilds.
     }
@@ -262,6 +281,93 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         }));
     }
 
+    // Plan 5.6.1, SPEC 8.9, 8.10, 13.5.5.1: one body serves every Semantics case. Under each view of tests/mir/cases (one binder, two
+    // binders, a Closure, which has its enclosing function's binders, a default template and its copy, which names the omitting caller's
+    // binder), a PairLayer step is its Place itself in the owner case and the referent of the case's reference otherwise, and a
+    // PairAcquire Reborrows in the uniq case and Copies in the others.
+    [Fact]
+    public void ViewsResolvePairLayersAndAcquisitions()
+    {
+        var c = Compile(File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "mir", "cases.kimi")));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var cases = new MirCases(c.Types);
+        var lines = new List<string>();
+        foreach (var body in program.Bodies)
+        {
+            for (var view = 0L; body.Binders.Count > 0 && view < MirCases.Count(body); view++)
+            {
+                var (resolved, selected) = (new List<string>(), cases.Select(body, view).ToArray());
+                var resolver = new Resolver(body.Projections.ToArray(), cases, resolved);
+                for (var block = 0; block < body.Blocks.Length; block++)
+                {
+                    for (var i = 0; i <= body.Blocks[block].Count; i++)
+                    {
+                        MirUses.ForEach(body, new(block, i), ref resolver);
+                    }
+                }
+
+                var name = body.Key.Decl?.Name is { Length: > 0 } declared ? $"{body.Key.Kind} {declared}" : body.Key.Kind.ToString();
+                lines.Add($"{name} {view} [{string.Join(", ", selected.Select(static x => x.Semantics))}]: {string.Join(", ", resolved.Distinct())}");
+            }
+        }
+
+        output.WriteLine(string.Join('\n', lines));
+        Assert.Equal(
+            [
+                "DefaultTemplate peek 0 [Owner]: @b0 itself: U",
+                "DefaultTemplate peek 1 [Uniq]: @b0 *uniq/U: U",
+                "Fn keep 0 [Owner]: acquire _3 copy, acquire _4 copy, @b0 itself: T",
+                "Fn keep 1 [Uniq]: acquire _3 reborrow, acquire _4 reborrow, @b0 *uniq/T: T",
+                "Fn both 0 [Owner, Owner]: @b0 itself: T, acquire _2 copy, acquire _7 copy",
+                "Fn both 1 [Owner, Ref]: @b0 itself: T, acquire _2 copy, acquire _7 copy",
+                "Fn both 2 [Uniq, Owner]: @b0 *uniq/T: T, acquire _2 copy, acquire _7 copy",
+                "Fn both 3 [Uniq, Ref]: @b0 *uniq/T: T, acquire _2 copy, acquire _7 copy",
+                "Closure 0 [Owner, Owner]: @b1 itself: U",
+                "Closure 1 [Owner, Ref]: @b1 *ref/U: U",
+                "Closure 2 [Uniq, Owner]: @b1 itself: U",
+                "Closure 3 [Uniq, Ref]: @b1 *ref/U: U",
+                "Fn peek 0 [Owner]: ",
+                "Fn peek 1 [Uniq]: ",
+                "Fn caller 0 [Owner]: acquire _1 copy, @b0 itself: T",
+                "Fn caller 1 [Uniq]: acquire _1 reborrow, @b0 *uniq/T: T",
+            ],
+            lines);
+    }
+
+    // SPEC 8.10, 23.3.6.1: the views are not bounded here. Six binders of two cases give 64 distinct views in the old analysis's order (the
+    // last binder fastest); a seventh gives 128, a body Binding accepts (it has no case adaptation) and the MIR builds without an Opaque
+    // value, record or finding, since the definition check decides the bound once (R3: the old analysis's OwnershipCaseLimit_Kd).
+    [Fact]
+    public void TheDefinitionCheckDecidesTheCaseBound()
+    {
+        foreach (var count in new[] { 6, 7 })
+        {
+            var names = "abcdegh"[..count].ToCharArray();
+            var text = new StringBuilder("func f<").AppendJoin(", ", names.Select(static x => $"{x}/{char.ToUpperInvariant(x)}")).Append(">(");
+            text.AppendJoin(", ", names.Select(static x => $"p{x}: {x}/{char.ToUpperInvariant(x)}")).Append(") -> ()\n");
+            text.AppendJoin(string.Empty, names.Select(static x => $"    {x} is owner or uniq\n")).Append("    _ = pa@move\n");
+            var c = Compile(text.ToString());
+            var program = c.BuildMir();
+            Assert.Empty(program.Findings);
+            Assert.Empty(program.Records);
+            var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+            Assert.False(body.HasOpaque);
+            Assert.Equal(1L << count, MirCases.Count(body));
+            var (cases, views) = (new MirCases(c.Types), new List<string>());
+            for (var view = 0L; view < MirCases.Count(body); view++)
+            {
+                views.Add(string.Concat(cases.Select(body, view).ToArray().Select(static x => x.Semantics == SemanticsKind.Owner ? 'o' : 'u')));
+            }
+
+            Assert.Equal(1 << count, views.Distinct().Count());
+            Assert.Equal(new[] { new string('o', count), new string('o', count - 1) + "u", new string('u', count) }, new[] { views[0], views[1], views[^1] });
+            c.Analyze();
+            Assert.Equal(count == 7, c.Problems.Any(static x => x.Code == DiagnosticCode.OwnershipCaseLimit_Kd));
+            Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
+        }
+    }
+
     internal static Compilation Compile(string source, bool test = false)
     {
         var c = Compilation.CreateForTest();
@@ -302,5 +408,33 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         MirDump.Write(program, 0, text);
         MirDump.Write(program, c.Library.Kotonoha.Syntax.Module, text);
         return text.ToString();
+    }
+
+    // What a location's PairAcquire operands and PairLayer steps are under the selected view, each step with its selected Place's case Type.
+    private readonly struct Resolver(MirProjection[] projections, MirCases cases, List<string> log) : IMirUses
+    {
+        public void Operand(in MirOperand operand)
+        {
+            if (operand.Kind == MirOperandKind.PairAcquire)
+            {
+                log.Add($"acquire _{operand.Place.Root} {(cases.Reborrows(operand) ? "reborrow" : "copy")}");
+            }
+        }
+
+        public void Place(MirPlace place, MirAccess access, MirRefKind kind)
+        {
+            for (var id = place.Projection; id != 0; id = projections[id].Prefix)
+            {
+                if (projections[id].Kind == MirProjectionKind.PairLayer)
+                {
+                    var layer = cases.Layer(place with { Projection = id });
+                    log.Add($"@b{projections[id].Arg} {(layer is null ? "itself" : "*" + TyCtxt.Name(layer))}: {TyCtxt.Name(cases.Type(projections[id].Type!))}");
+                }
+            }
+        }
+
+        public void Effect(MirEffect effects, int site)
+        {
+        }
     }
 }

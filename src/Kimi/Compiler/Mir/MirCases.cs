@@ -1,0 +1,90 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+using System.Numerics;
+using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
+
+namespace Kimi.Compiler.Mir;
+
+/// <summary>The Semantics cases of a MIR body (plan 5.6.1, SPEC 8.10) as views of the one body, which is never copied per case: a view
+/// gives each pair binder of <see cref="MirBody.Binders"/> one of its admitted Semantics, and under it a Type is its case Type
+/// (<see cref="Type"/>), a PairLayer step the Place itself or the referent of its case's reference or handle (<see cref="Layer"/>) and a
+/// PairAcquire a Copy or a Reborrow (<see cref="Reborrows"/>), the only case-dependent forms. The analyses that depend on the case (R4:
+/// A1, A4's local facts, A5) run once per view. Views are numbered as the old analysis numbers its case runs, the last binder advancing
+/// fastest, each through its admitted set in SemanticsMask order, so view i is its case bit i. The selected view is kept in reused
+/// storage, so selecting views allocates nothing once it has held the widest body's binders.</summary>
+/// <param name="types">The Type context of the bodies, which interns the case Types.</param>
+internal sealed class MirCases(TyCtxt types)
+{
+    private PairCase[] view = [];
+    private int width;
+    private MirBody? body;
+
+    /// <summary>Gets the number of views of a body: the product of its binders' admitted sets, which Binding and the old analysis bound
+    /// (<see cref="PairBinder.CaseProduct"/>), 1 without a binder. Whether a definition's cases are within the limit (SPEC 8.10, 23.3.6.1)
+    /// is decided where the definition is checked, never here (R3: Binding for a case adaptation, else the old analysis's
+    /// <c>OwnershipCaseLimit_Kd</c>), so a built body may have more views than an analysis runs.</summary>
+    /// <param name="body">The body.</param>
+    /// <returns>The number of views, saturated at the largest count.</returns>
+    internal static long Count(MirBody body) => PairBinder.CaseProduct(body.Binders);
+
+    /// <summary>Selects a view of a body: for each resolved binder, the admitted Semantics its digit of <paramref name="index"/> picks. A
+    /// binder without an admitted Semantics (a Binding error) has no case: its entry is empty, so its layers keep their declared Types and
+    /// its steps and acquisitions read as the owner case's.</summary>
+    /// <param name="body">The body.</param>
+    /// <param name="index">The view, below <see cref="Count"/>.</param>
+    /// <returns>The view: the case of each binder, by the binder's index.</returns>
+    internal ReadOnlySpan<PairCase> Select(MirBody body, long index)
+    {
+        var binders = body.Binders;
+        if (this.view.Length < binders.Count)
+        {
+            this.view = new PairCase[Math.Max(binders.Count, 2 * this.view.Length)];
+        }
+
+        (this.body, this.width) = (body, binders.Count);
+        for (var b = binders.Count - 1; b >= 0; b--)
+        {
+            this.view[b] = default;
+            if (!binders[b].Resolved)
+            {
+                continue;
+            }
+
+            var admitted = (uint)binders[b].Admitted;
+            var size = BitOperations.PopCount(admitted);
+            for (var digit = index % size; digit > 0; digit--)
+            {
+                admitted &= admitted - 1;
+            }
+
+            index /= size;
+            this.view[b] = new(binders[b].Target, (SemanticsKind)BitOperations.TrailingZeroCount(admitted)); // Mask bit i is SemanticsKind i.
+        }
+
+        return this.view.AsSpan(0, this.width);
+    }
+
+    /// <summary>Gets the Type a Type of the body has under the selected view: every pair layer of a binder the view's case Type
+    /// (<see cref="TyCtxt.CaseType"/>), as a Place's, a local's or a projection's Type is in that case.</summary>
+    /// <param name="type">The Type.</param>
+    /// <returns>The case Type.</returns>
+    internal BoundType Type(BoundType type) => types.CaseType(type, this.view.AsSpan(0, this.width));
+
+    /// <summary>Gets what a PairLayer step of the selected body is under the selected view (SPEC 13.5.5.1): the Place it applies to itself
+    /// in the owner case, else the referent of the reference or object handle that Place stores in the case. The Place selected has the
+    /// case Type of the step's Type either way.</summary>
+    /// <param name="step">A Place whose last projection is a PairLayer.</param>
+    /// <returns>Null in the owner case, else the case Type of the layer, whose referent the step selects.</returns>
+    internal BoundType? Layer(MirPlace step)
+    {
+        var row = this.body!.Projections[step.Projection];
+        return this.view[row.Arg].Semantics == SemanticsKind.Owner ? null : this.Type(this.body.TypeOf(step with { Projection = row.Prefix })!);
+    }
+
+    /// <summary>Gets whether a PairAcquire of the selected body Reborrows under the selected view (SPEC 8.9): its Place's case Type is an
+    /// exclusive reference (<see cref="MirTypes.IsExclusive"/>, the builder's rule for a concrete Type), whose referent it borrows
+    /// exclusively in that Semantics; in any other case it Copies its Place, a reference or a value Binding proved Copy.</summary>
+    /// <param name="acquire">A PairAcquire operand.</param>
+    /// <returns>Whether it Reborrows.</returns>
+    internal bool Reborrows(in MirOperand acquire) => MirTypes.IsExclusive(this.Type(this.body!.TypeOf(acquire.Place)!));
+}

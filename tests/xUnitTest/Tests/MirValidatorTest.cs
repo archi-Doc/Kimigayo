@@ -113,6 +113,34 @@ public sealed class MirValidatorTest
         Assert.All(findings, x => Assert.Equal(rule is MirViolation.NoBlocks or MirViolation.Unterminated or MirViolation.StatementRange ? default : Broken.Syntax, x.Subject));
     }
 
+    // Plan 5.6.1: a PairAcquire and a PairLayer name the binder of their Place's pair layer, so each resolves under every Semantics case view
+    // (MirCases). In a body with two binders, naming the other one is a finding: Binder for the operand, Projection for the step, whose Type
+    // ProjectedType does not give.
+    [Fact]
+    public void PairFormsNameTheirLayersBinder()
+    {
+        var c = MirBuildTest.Compile("func both<s/T, t/U>(a: s/T, b: t/U) -> ()\n    s is owner or uniq\n    t is owner or ref\n    T is Copy\n    U is Copy\n    _ = a\n    _ = b\n");
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "both");
+        var body = new MirBody();
+        body.Reset(new(function.SymbolOf()!, MirBodyKind.Fn), default);
+        body.AddLocal(new(BoundType.Unit, MirLocalKind.Return, At));
+        var a = MirModelTest.Local(body, function.Parameters[0].Type.TypeOf()!, MirLocalKind.Arg);
+        var b = MirModelTest.Local(body, function.Parameters[1].Type.TypeOf()!, MirLocalKind.Arg);
+        PairBinder.Collect(function, body.Binders);
+        var block = body.AddBlock();
+        void Read(MirOperand operand, SourceInfo source) => body.Push(block, MirStatement.Assign(new(0), MirRvalue.Use(body.AddOperand(operand)), source));
+        Read(MirOperand.PairAcquire(0, a), At);
+        Read(MirOperand.PairAcquire(1, b), At);
+        Read(MirOperand.Copy(body.Project(a, MirProjectionKind.PairLayer, 0)), At);
+        Read(MirOperand.Copy(body.Project(b, MirProjectionKind.PairLayer, 1)), At);
+        body.Terminate(block, MirTerminator.Return(At));
+        Assert.Empty(Validate(body));
+
+        Read(MirOperand.PairAcquire(1, a), Broken);
+        Read(MirOperand.Copy(body.Project(b, MirProjectionKind.PairLayer, 0)), Broken);
+        Assert.Equal([(MirViolation.Binder, Broken.Syntax), (MirViolation.Projection, Broken.Syntax)], Validate(body).Select(static x => (x.Rule, x.Subject)));
+    }
+
     // V11: validating a body again, and enumerating its uses, allocates nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]

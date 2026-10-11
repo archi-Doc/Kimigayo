@@ -104,7 +104,7 @@ internal sealed partial class MirBuilder
             case HirOp.Borrow: // SPEC 13.5.5.2, 5.4: the operand's Place borrowed in the mode of the node's Type, or its address.
                 var reference = TypeOf(node);
                 var kind = (ConversionBinding)HirTables.PlanOf(node).Mode == ConversionBinding.Address ? MirRefKind.Raw
-                    : reference.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? MirRefKind.Uniq : MirRefKind.Shared;
+                    : MirTypes.IsExclusive(reference) ? MirRefKind.Uniq : MirRefKind.Shared;
                 this.Set(destination, MirRvalue.Ref(kind, this.Place(Child(node)), reference), node);
                 break;
             case HirOp.Convert:
@@ -186,7 +186,7 @@ internal sealed partial class MirBuilder
                 return adjust.Acquire switch
                 {
                     HirAcquire.ByCase when this.Binder(type) is var binder and >= 0 => MirOperand.PairAcquire(binder, place),
-                    HirAcquire.ByCase when type.Semantics is not (SemanticsKind.Uniq or SemanticsKind.ObjUniq) => MirOperand.Copy(place),
+                    HirAcquire.ByCase when !MirTypes.IsExclusive(type) => MirOperand.Copy(place),
                     HirAcquire.Reborrow or HirAcquire.ByCase => this.Temporary(type, MirRvalue.Ref(MirRefKind.Uniq, this.body.Project(place, MirProjectionKind.Deref, 0), type), node),
                     HirAcquire.Copy => MirOperand.Copy(place),
                     _ => MirOperand.Move(place),
@@ -215,7 +215,7 @@ internal sealed partial class MirBuilder
         }
 
         var exclusive = adaptation == HirAdaptation.ExclusiveBorrow || (adaptation is HirAdaptation.ReferenceRead or HirAdaptation.BaseBorrow or HirAdaptation.PayloadProjection &&
-            expected?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq);
+            MirTypes.IsExclusive(expected));
         var reference = expected ?? compilation.Types.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, this.body.TypeOf(place) ?? BoundType.Unit);
         return this.Temporary(reference, MirRvalue.Ref(!exclusive ? MirRefKind.Shared : input ? MirRefKind.TwoPhaseUniq : MirRefKind.Uniq, place, reference), node);
     }

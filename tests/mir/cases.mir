@@ -1,0 +1,299 @@
+defaulttemplate peek#1 @100
+  _0: U return @87
+  _1: ref/t/U arg value (PreparedInput) @87
+  b0: U Value, Uniq
+  bb0:
+    * _0 = copy ((*_1)@b0) @100
+      return @100
+fn top-level#0 @2
+  _0: () return @2
+  s1: lexical in s0 @3
+  bb0:
+      _0 = const () @3 s1
+      return @3
+fn keep @4
+  _0: T return @4
+  _1: s/T arg value @4
+  _2: T arg x @4
+  _3: s/T var mut v @19 s1
+  _4: s/T var local @24 s1
+  _5: () temp @27 s1
+  _6: s/T temp @28 s1
+  _7: () temp @29 s1
+  _8: T temp @30 s1
+  _9: Never temp @34 s1
+  _10: T temp @35 s1
+  s1: lexical in s0 @18
+  b0: T Value, Uniq
+  bb0:
+      StorageLive(_3) @19 s1
+    * _3 = move _1 @22 s1
+      StorageLive(_4) @24 s1
+    * _4 = acquire b0 _3 @26 s1
+      StorageLive(_5) @27 s1
+      StorageLive(_6) @28 s1
+    * _6 = acquire b0 _4 @28 s1
+      drop _6 -> bb1 @28 s1
+  bb1:
+      StorageDead(_6) @28 s1
+      StorageDead(_5) @27 s1
+      StorageLive(_7) @29 s1
+      StorageLive(_8) @30 s1
+    * _8 = copy _2 @33 s1
+      drop (_3@b0) -> bb2 @29 s1
+  bb2:
+      (_3@b0) = move _8 @29 s1
+      _7 = const () @29 s1
+      drop _8 -> bb3 @30 s1
+  bb3:
+      StorageDead(_8) @30 s1
+      StorageDead(_7) @29 s1
+      StorageLive(_9) @34 s1
+      StorageLive(_10) @35 s1
+    * _10 = copy (_3@b0) @35 s1
+      goto bb13 check bb14 @34 s1
+  bb4:
+      return @4
+  bb5:
+      drop _2 -> bb6 @4
+  bb6:
+      drop _1 -> bb7 @4
+  bb7:
+      goto bb4 @4
+  bb8:
+      drop _4 -> bb9 @24 s1
+  bb9:
+      StorageDead(_4) @24 s1
+      drop _3 -> bb10 @19 s1
+  bb10:
+      StorageDead(_3) @19 s1
+      goto bb5 @4
+  bb11:
+      drop _10 -> bb12 @35 s1
+  bb12:
+      StorageDead(_10) @35 s1
+      StorageDead(_9) @34 s1
+      goto bb8 @4
+  bb13:
+      _0 = move _10 @34 s1
+      goto bb11 @34 s1
+  bb14:
+      drop _10 -> bb15 @35 s1
+  bb15:
+      StorageDead(_10) @35 s1
+      StorageDead(_9) @34 s1
+      drop _4 -> bb16 @24 s1
+  bb16:
+      StorageDead(_4) @24 s1
+      drop _3 -> bb17 @19 s1
+  bb17:
+      StorageDead(_3) @19 s1
+      drop _2 -> bb18 @4
+  bb18:
+      drop _1 -> bb19 @4
+  bb19:
+      unreachable @18
+fn both @38
+  _0: U return @38
+  _1: s/T arg a @38
+  _2: t/U arg b @38
+  _3: T arg x @38
+  _4: s/T var mut p @64 s1
+  _5: () temp @69 s1
+  _6: T temp @70 s1
+  _7: t/U var q @74 s1
+  _8: closure () -> U var read @77 s1
+  _9: Never temp @84 s1
+  _10: U temp @85 s1
+  _11: ref/closure () -> U temp @86 s1
+  s1: lexical in s0 @63
+  b0: T Value, Uniq
+  b1: U Value, Ref
+  bb0:
+      StorageLive(_4) @64 s1
+    * _4 = move _1 @67 s1
+      StorageLive(_5) @69 s1
+      StorageLive(_6) @70 s1
+    * _6 = copy _3 @73 s1
+      drop (_4@b0) -> bb1 @69 s1
+  bb1:
+      (_4@b0) = move _6 @69 s1
+      _5 = const () @69 s1
+      drop _6 -> bb2 @70 s1
+  bb2:
+      StorageDead(_6) @70 s1
+      StorageDead(_5) @69 s1
+      StorageLive(_7) @74 s1
+    * _7 = acquire b1 _2 @76 s1
+      StorageLive(_8) @77 s1
+    * _8 = Closure(acquire b1 _7): closure () -> U @79 s1
+      StorageLive(_9) @84 s1
+      StorageLive(_10) @85 s1
+      StorageLive(_11) @86 s1
+    * _11 = &_8: ref/closure () -> U @86 s1
+      _10 = value move _11() -> bb3 @85 s1
+  bb3:
+      goto bb15 check bb16 @84 s1
+  bb4:
+      return @38
+  bb5:
+      drop _3 -> bb6 @38
+  bb6:
+      drop _2 -> bb7 @38
+  bb7:
+      drop _1 -> bb8 @38
+  bb8:
+      goto bb4 @38
+  bb9:
+      drop _8 -> bb10 @77 s1
+  bb10:
+      StorageDead(_8) @77 s1
+      drop _7 -> bb11 @74 s1
+  bb11:
+      StorageDead(_7) @74 s1
+      drop _4 -> bb12 @64 s1
+  bb12:
+      StorageDead(_4) @64 s1
+      goto bb5 @38
+  bb13:
+      StorageDead(_11) @86 s1
+      drop _10 -> bb14 @85 s1
+  bb14:
+      StorageDead(_10) @85 s1
+      StorageDead(_9) @84 s1
+      goto bb9 @38
+  bb15:
+      _0 = move _10 @84 s1
+      goto bb13 @84 s1
+  bb16:
+      StorageDead(_11) @86 s1
+      drop _10 -> bb17 @85 s1
+  bb17:
+      StorageDead(_10) @85 s1
+      StorageDead(_9) @84 s1
+      drop _8 -> bb18 @77 s1
+  bb18:
+      StorageDead(_8) @77 s1
+      drop _7 -> bb19 @74 s1
+  bb19:
+      StorageDead(_7) @74 s1
+      drop _4 -> bb20 @64 s1
+  bb20:
+      StorageDead(_4) @64 s1
+      drop _3 -> bb21 @38
+  bb21:
+      drop _2 -> bb22 @38
+  bb22:
+      drop _1 -> bb23 @38
+  bb23:
+      unreachable @63
+closure @79
+  _0: U return @79
+  _1: ref/closure () -> U arg @79
+  b0: T Value, Uniq
+  b1: U Value, Ref
+  bb0:
+    * _0 = copy ((*_1).0@b1) @81
+      return @81
+fn peek @87
+  _0: U return @87
+  _1: t/U arg value @87
+  _2: U arg seen @87
+  _3: Never temp @105 s1
+  _4: U temp @106 s1
+  s1: lexical in s0 @104
+  b0: U Value, Uniq
+  bb0:
+      StorageLive(_3) @105 s1
+      StorageLive(_4) @106 s1
+    * _4 = copy _2 @106 s1
+      goto bb7 check bb8 @105 s1
+  bb1:
+      return @87
+  bb2:
+      drop _2 -> bb3 @87
+  bb3:
+      drop _1 -> bb4 @87
+  bb4:
+      goto bb1 @87
+  bb5:
+      drop _4 -> bb6 @106 s1
+  bb6:
+      StorageDead(_4) @106 s1
+      StorageDead(_3) @105 s1
+      goto bb2 @87
+  bb7:
+      _0 = move _4 @105 s1
+      goto bb5 @105 s1
+  bb8:
+      drop _4 -> bb9 @106 s1
+  bb9:
+      StorageDead(_4) @106 s1
+      StorageDead(_3) @105 s1
+      drop _2 -> bb10 @87
+  bb10:
+      drop _1 -> bb11 @87
+  bb11:
+      unreachable @104
+fn caller @107
+  _0: T return @107
+  _1: s/T arg x @107
+  _2: Never temp @121 s1
+  _3: T temp @122 s1
+  _4: s/T temp (PendingSlot) @124 s1
+  _5: T temp seen (PendingSlot) @122 s1
+  _6: ref/s/T temp @122 s1
+  s1: lexical in s0 @120
+  s2: inlined in s1 @122
+  b0: T Value, Uniq
+  bb0:
+      StorageLive(_2) @121 s1
+      StorageLive(_3) @122 s1
+      StorageLive(_4) @124 s1
+    * _4 = acquire b0 _1 @124 s1
+      StorageLive(_5) @122 s1
+      StorageLive(_6) @122 s1
+      _6 = &_4: ref/s/T @122 s1
+    * _5 = copy ((*_6)@b0) @100 s2
+      goto bb1 @100 s2
+  bb1:
+      _3 = peek<s/T>(move _4, move _5) -> bb2 @122 s1
+  bb2:
+      goto bb10 check bb11 @121 s1
+  bb3:
+      return @107
+  bb4:
+      drop _1 -> bb5 @107
+  bb5:
+      goto bb3 @107
+  bb6:
+      StorageDead(_6) @122 s1
+      drop _5 -> bb7 @122 s1
+  bb7:
+      StorageDead(_5) @122 s1
+      drop _4 -> bb8 @124 s1
+  bb8:
+      StorageDead(_4) @124 s1
+      drop _3 -> bb9 @122 s1
+  bb9:
+      StorageDead(_3) @122 s1
+      StorageDead(_2) @121 s1
+      goto bb4 @107
+  bb10:
+      _0 = move _3 @121 s1
+      goto bb6 @121 s1
+  bb11:
+      StorageDead(_6) @122 s1
+      drop _5 -> bb12 @122 s1
+  bb12:
+      StorageDead(_5) @122 s1
+      drop _4 -> bb13 @124 s1
+  bb13:
+      StorageDead(_4) @124 s1
+      drop _3 -> bb14 @122 s1
+  bb14:
+      StorageDead(_3) @122 s1
+      StorageDead(_2) @121 s1
+      drop _1 -> bb15 @107
+  bb15:
+      unreachable @120
