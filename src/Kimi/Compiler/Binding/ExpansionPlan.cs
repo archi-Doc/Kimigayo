@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns the published desugaring shape for expansions.
+// Input: Binding's selected calls and already-evaluated operands. Output: ExpansionPlan.Of and its call roles.
+// Call order and reused operands remain explicit; an evaluated operand is not evaluated again.
+// Must not select new calls or duplicate CallPlan's selection contract.
+
 using Kimi.Compiler.Parsing;
 
 #pragma warning disable SA1402 // The kind belongs to its plan.

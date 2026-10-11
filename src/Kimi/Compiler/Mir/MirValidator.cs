@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns structural and Type validation of producer-owned MIR in every configuration.
+// Input: MIR bodies and published Type facts. Output: located invariant findings.
+// Every IR invariant is checked here; a broken producer contract is InternalInvariant_Kd.
+// Must not repair broken IR, recover silently or leave consumers to revalidate it.
+
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 #pragma warning disable SA1402 // The validator's rules and findings belong to it.

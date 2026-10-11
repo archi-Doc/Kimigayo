@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns compiler/library identities and the disposition of each compiler operation.
+// Input: CompilerFunctionKind. Output: a Kimigayo implementation, intrinsic or shim disposition.
+// Each operation has one disposition; temporary intrinsics keep their recorded removal stage.
+// Must not create a second intrinsic allowlist or hand-written library path.
+
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;

@@ -4,6 +4,11 @@ Navigation for compiler changes, not a specification or support matrix. Required
 
 ## Implementation map
 
+Compiler source-size caps and their token-counting regression are in
+[CompilerSizeBudgetTest](../../tests/xUnitTest/Tests/CompilerSizeBudgetTest.cs); current area and stage caps are in
+[COMPILER_ARCHITECTURE](COMPILER_ARCHITECTURE.md#baseline). One scan checks all areas and the C# total; LLVM templates
+retain their separate line cap.
+
 The main path is source input → Koto syntax → Binding → control-flow/ownership analysis → physical emission model → LLVM IR → native tools. Checking stops after the front end; generation and native execution have separate entry points.
 
 Phase and dependency rules, the canonical component of each concern, structure limits and the compiler reduction stage ledger are in [COMPILER_ARCHITECTURE.md](COMPILER_ARCHITECTURE.md); the design decisions behind them are in [DECISIONS.md](DECISIONS.md).

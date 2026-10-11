@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns the Type facts needed by MIR construction and analyses.
+// Input: published Types and their stored shapes. Output: drop, raw, exclusivity and agreement facts.
+// Inline storage is traversed under each fact's documented bounds and Type rules.
+// Must not inspect source syntax or substitute new Binding decisions.
+
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;

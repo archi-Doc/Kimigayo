@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns the indexed storage of one MIR body and its projection chains.
+// Input: builder records. Output: reusable arrays of locals, blocks, statements and associated records.
+// References use body-local indices; projection chains are interned and ProjectedType owns their Type rule.
+// Must not resolve syntax or introduce a parallel representation for the same body.
+
 using System.Runtime.InteropServices;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 

@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns deterministic textual inspection of MIR.
+// Input: MIR records and published Type names. Output: stable text for goldens and semantic snapshots.
+// SourceRef and indexed identities are rendered consistently without mutating the program.
+// Must not infer semantics from syntax or become a second MIR validator.
+
 using System.Globalization;
 using System.Text;
 

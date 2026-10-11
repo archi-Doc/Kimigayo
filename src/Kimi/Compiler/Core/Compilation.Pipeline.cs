@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns the public entry path for post-Binding phases and their Problem records.
+// Input: a prepared compilation and pipeline choice. Output: analysis, validated MIR, diagnostics and IR.
+// Until R6 the legacy path decides acceptance; MIR findings join through the same Problem publication.
+// Must not expose a second analysis/generation path or re-decide phase-owned facts.
+
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 

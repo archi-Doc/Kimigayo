@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns the stored shape of one struct or enum declaration.
+// Input: its bound declaration. Output: ordered fields, cases, destructor and inline storage types.
+// Binding fills the shape once per pass before bodies; field and case ordinals stay consistent.
+// Must not make MIR or Backend rediscover storage from declaration syntax.
+
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;

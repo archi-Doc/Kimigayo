@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns the Binding facts and published HIR columns indexed by a module's SyntaxId.
+// Input: Binding's decisions and syntax identity. Output: reusable columns and PlanRows for readers.
+// Column rows move with renumbered nodes and are cleared for the current pass.
+// Must not let consumers reconstruct semantic facts from syntax.
+
 using System.Runtime.CompilerServices;
 using Kimi.Compiler.Parsing;
 

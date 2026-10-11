@@ -1,93 +1,103 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Xunit;
 
 namespace XunitTest;
 
-/// <summary>Line budgets of src/Kimi/Compiler per area (docs/dev/COMPILER_ARCHITECTURE.md). A line is a newline character,
-/// as counted by <c>wc -l</c>, so comments and blank lines count. The caps fall when a reduction stage exits.</summary>
+/// <summary>Non-trivia C# token budgets per compiler area; generated headers are excluded.
+/// LLVM templates retain their independent newline budget (docs/dev/COMPILER_ARCHITECTURE.md).</summary>
 public class CompilerSizeBudgetTest
 {
-    // R2a exit (2026-10-11): an area may grow by at most 2% over its size at the R2a exit (Core, which grew in R2a,
-    // keeps its lower R1 cap). The parallel stages R2b-R5 (plan section 10.4) check their cumulative ceiling as the total.
-    // R4 (ceiling 142,000 from the R3 exit at 133,004; R4 plan M14) builds the MIR analyses in the Mir area (cap 11,500),
-    // gives Binding 500 lines over its R3-exit size (56,569) for the declaration views and Core 1,830 for the analysis
-    // hook; the frozen Analysis and Emission paths (D5) and every other area keep their caps.
-    private const int TotalCap = 142_000;
+    // A1 converts the approved R4 caps at the measured area ratios, rounded upward; see CR-A1.
+    private const int TotalCap = 894_362;
+    private const int TemplateLineCap = 2_381;
 
     private static readonly Dictionary<string, int> Caps = new(StringComparer.Ordinal)
     {
-        ["Analysis"] = 17_942,
-        ["Binding"] = 57_069,
-        ["Core"] = 1_830,
-        ["Documentation"] = 4_424,
-        ["Emission"] = 21_320,
-        ["Helper"] = 3_505,
-        ["Lexing"] = 4_047,
-        ["LlvmTemplates"] = 2_381,
-        ["Mir"] = 11_500,
-        ["Parsing"] = 16_570,
-        ["Root"] = 1_064,
+        ["Analysis"] = 124_047,
+        ["Binding"] = 375_051,
+        ["Core"] = 8_167,
+        ["Documentation"] = 25_687,
+        ["Emission"] = 164_057,
+        ["Helper"] = 8_068,
+        ["Lexing"] = 19_445,
+        ["Mir"] = 93_651,
+        ["Parsing"] = 77_163,
+        ["Root"] = 7_345,
     };
 
-    public static TheoryData<string> Areas
-    {
-        get
-        {
-            var data = new TheoryData<string>();
-            foreach (var area in Caps.Keys)
-            {
-                data.Add(area);
-            }
-
-            return data;
-        }
-    }
-
-    [Theory]
-    [MemberData(nameof(Areas))]
-    public void AreaStaysWithinItsCap(string area)
-    {
-        var lines = Lines().GetValueOrDefault(area);
-        Assert.True(lines <= Caps[area], $"{area} has {lines} lines; its cap is {Caps[area]}.");
-    }
-
     [Fact]
-    public void EveryAreaHasACapAndTheTotalStaysWithinTheStageCap()
-    {
-        var lines = Lines();
-        Assert.Empty(lines.Keys.Except(Caps.Keys)); // A capped area may not exist yet (Mir before its first file).
-        var total = lines.Values.Sum();
-        Assert.True(total <= TotalCap, $"The compiler has {total} lines; the stage cap is {TotalCap}.");
-    }
-
-    // C# files count toward their first directory below src/Kimi/Compiler (Root for files directly in it), and LLVM IR
-    // templates toward LlvmTemplates.
-    private static Dictionary<string, int> Lines()
+    public void EveryAreaAndTheTotalStayWithinTheirCaps()
     {
         var root = Path.Combine(Repository.Root, "src", "Kimi", "Compiler");
-        var lines = new Dictionary<string, int>(StringComparer.Ordinal);
+        var tokens = new Dictionary<string, int>(StringComparer.Ordinal);
+        var templateLines = 0;
         foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
         {
-            string area;
             if (file.EndsWith(".ll.in", StringComparison.Ordinal))
             {
-                area = "LlvmTemplates";
+                foreach (var character in File.ReadAllText(file))
+                {
+                    if (character == '\n')
+                    {
+                        templateLines++;
+                    }
+                }
             }
             else if (file.EndsWith(".cs", StringComparison.Ordinal))
             {
                 var relative = Path.GetRelativePath(root, file);
                 var separator = relative.IndexOfAny(['/', '\\']);
-                area = separator < 0 ? "Root" : relative[..separator];
+                var area = separator < 0 ? "Root" : relative[..separator];
+                tokens[area] = tokens.GetValueOrDefault(area) + CountTokens(File.ReadAllText(file));
             }
-            else
-            {
-                continue;
-            }
-
-            lines[area] = lines.GetValueOrDefault(area) + File.ReadAllBytes(file).Count(x => x == (byte)'\n');
         }
 
-        return lines;
+        Assert.Empty(tokens.Keys.Except(Caps.Keys));
+        Assert.All(tokens, pair => Assert.True(
+            pair.Value <= Caps[pair.Key], $"{pair.Key} has {pair.Value} tokens; its cap is {Caps[pair.Key]}."));
+        var total = tokens.Values.Sum();
+        Assert.True(total <= TotalCap, $"The compiler has {total} C# tokens; its stage cap is {TotalCap}.");
+        Assert.True(
+            templateLines <= TemplateLineCap,
+            $"LLVM templates have {templateLines} lines; their cap is {TemplateLineCap}.");
+    }
+
+    [Theory]
+    [InlineData("class C { int x; }", 7)]
+    [InlineData("// heading\r\nclass C\n{\n/* explanation */ int x;\n}\n", 7)]
+    [InlineData("// <auto-generated>\nclass C { int x; }", 0)]
+    [InlineData("/* <auto-generated> */\nclass C { }", 0)]
+    [InlineData("class C { string s = \"<auto-generated>\"; }", 9)]
+    [InlineData("class C { string s = \"\"\"\n// <auto-generated>\n\"\"\"; }", 9)]
+    [InlineData("class C { A<B<C>> x; int M(int x) => x >> 1; }", 24)]
+    public void TokensExcludeTriviaAndOnlyGeneratedHeaders(string source, int expected)
+        => Assert.Equal(expected, CountTokens(source));
+
+    // A2 moves this counter to the analyzer's source owner and deletes this local implementation (CR-A1).
+    private static int CountTokens(string source)
+    {
+        foreach (var trivia in SyntaxFactory.ParseLeadingTrivia(source))
+        {
+            if ((trivia.IsKind(SyntaxKind.SingleLineCommentTrivia) || trivia.IsKind(SyntaxKind.MultiLineCommentTrivia)) &&
+                trivia.ToString().Contains("<auto-generated", StringComparison.Ordinal))
+            {
+                return 0;
+            }
+        }
+
+        var root = CSharpSyntaxTree.ParseText(source).GetRoot();
+        var count = 0;
+        foreach (var token in root.DescendantTokens())
+        {
+            if (!token.IsMissing && !token.IsKind(SyntaxKind.EndOfFileToken))
+            {
+                count++;
+            }
+        }
+
+        return count;
     }
 }

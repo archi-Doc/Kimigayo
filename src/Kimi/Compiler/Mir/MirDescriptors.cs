@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns the interpretation of MIR operations, their accesses and successor enumeration.
+// Input: closed MIR kinds and indexed body records. Output: descriptor rows and MirUses walks.
+// Validator and analyses share these rows; operand/effect meaning is decided once.
+// Must not add per-consumer copies of access or control-flow classification.
+
 #pragma warning disable SA1402 // The descriptor table, its flags and the use enumeration belong together.
 
 namespace Kimi.Compiler.Mir;

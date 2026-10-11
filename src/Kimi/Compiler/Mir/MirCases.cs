@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns the Semantics-case views of a MIR body.
+// Input: the body's pair binders and TyCtxt. Output: case Types, projection and acquisition views.
+// Case order is stable; views share the body and reuse their storage.
+// Must not copy the body per case or re-bind source syntax.
+
 using System.Numerics;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 

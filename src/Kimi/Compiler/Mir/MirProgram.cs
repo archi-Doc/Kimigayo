@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns MIR bodies by definition key and the records of construction and validation.
+// Input: built definitions and findings. Output: reusable bodies identified by MirDefKey.
+// One key identifies one body; warm rebuilding reuses body storage.
+// Must not re-bind definitions or maintain a second body map in a consumer.
+
 #pragma warning disable SA1402 // The key belongs to the program.
 
 namespace Kimi.Compiler.Mir;

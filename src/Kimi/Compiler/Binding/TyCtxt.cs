@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns constructed Type and substitution interning and pure Type operations.
+// Input: immutable Type shapes and substitutions. Output: canonical Types, substitutions and derived views.
+// Interned identity is equality; values live with the compilation and survive warm rebinds.
+// Must not resolve source expressions or let consumers duplicate Type construction.
+
 using System.Runtime.CompilerServices;
 using Kimi.Compiler.Parsing;
 

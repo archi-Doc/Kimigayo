@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns the closed HIR vocabularies and the canonical acquisition-to-adjustment mapping.
+// Input: Binding decisions. Output: Op, Res, completion, place and adjustment values.
+// Every value has one published meaning; adding a kind requires an approved vocabulary change.
+// Must not introduce a consumer-specific meaning or infer missing Binding decisions.
+
 using Kimi.Compiler.Parsing;
 
 #pragma warning disable SA1402 // The HIR column vocabularies belong together.

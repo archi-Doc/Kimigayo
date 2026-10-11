@@ -41,6 +41,15 @@ rules that result from them.
   rule. Compare diagnostics, semantic/HIR/MIR snapshots and generated IR, not DLL bytes (commit metadata differs).
   Intake changes architecture policy only; A1–A8 introduce implementation and enforcement.
 
+- **CR-A1** (planning session, independently reviewed). CompilerSizeBudgetTest owns one file scan for all area and
+  total caps. Count parsed C# tokens without trivia, EOF or missing tokens; discard each tree after counting. Header
+  comments mark generated files; LLVM templates retain their newline cap. A0 measured 835,421 tokens / 128,885 C# lines,
+  excluding 1,687 generated lines and 2,335 template lines. Convert approved caps at fixed area ratios (future totals at
+  the whole-compiler ratio), rounding upward. Reject replacing each of the twelve scans with a parse: it repeats the
+  same work. No compiler behavior changes; add entry-file contracts required by Q1. The counter initially belongs to
+  the budget test; A2 moves it into the analyzer source owner and deletes the test copy. Reject a shared utility project
+  for this single operation. Only aggregate totals survive each file; no syntax-tree cache or whole-compiler tree graph.
+
 ## R2b (2026-10-11, main session, as recommended)
 
 - **R2b-D1** `BoundType` stays the Type representation until R7; `TyCtxt` owns interning and `Subst` converts.

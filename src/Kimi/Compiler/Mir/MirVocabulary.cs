@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns the closed statement, rvalue, terminator, projection, operand and callee kinds.
+// Input: the approved MIR forms. Output: kind values with one published meaning each.
+// Access/effect kinds share MirDescriptors; vocabulary growth needs a SPEC basis and owner decision.
+// Must not encode an unreviewed form as a new kind or a consumer-only opcode.
+
 #pragma warning disable SA1402 // The MIR vocabularies belong together.
 #pragma warning disable SA1649 // The file names the vocabulary.
 

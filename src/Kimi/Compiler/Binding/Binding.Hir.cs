@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns publication of HIR facts from the completed Binding pass.
+// Input: that pass's decisions and syntax slots. Output: Op, Res, Completion, Adjust, Place and jump columns.
+// Publication is versioned and reused; it decides nothing beyond Binding's existing facts.
+// Must not resolve again; R7 replaces the publisher walk with inline writes.
+
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;

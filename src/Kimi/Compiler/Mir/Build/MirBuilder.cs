@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns construction and validation of one MIR body per definition or closure.
+// Input: syntax children, published HIR/plans, declaration views and TyCtxt. Output: a validated MirProgram.
+// Op, Adjust and PlaceShape decide lowering; unsupported forms use the one located Unsupported path.
+// Must not read Binding internals, infer from parents or let consumers rebuild missing facts.
+
 using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
