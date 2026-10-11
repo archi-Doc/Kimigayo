@@ -13,9 +13,7 @@ Implement the finalized language of SPEC.md (Chapters 1–19 and 22) and the imp
 
 ## 2. Working rules
 
-Follow [AGENTS.md](../../AGENTS.md) for work policy and [VERIFICATION.md](VERIFICATION.md) for checks and evidence. Serialize work within each worktree. Commit after Unit completion, associate Unit/Session evidence with `verify-commit.ps1`, and push after the required final Session succeeds; a Session covering the last Unit needs no duplicate run. Documentation-only work uses diff/reference review. Compiler allocation regressions follow adopted performance decisions; never relax native guarantees or add warm-up to obtain a pass.
-
-PLAN holds current work; STATUS changes only with verified support boundaries; PLAN_HISTORY keeps a few lines per session. Detailed success/failure evidence belongs in commits and `artifacts/verify/`, measurements in `artifacts/benchmarks/`. Keep explicit blockers and their next steps. Toolchain identity is checked at setup/update or explicitly, not implied by ordinary Verify; CLI tests use `run --no-build` except when testing automatic builds.
+Work policy (design before code, independent review, commit and push per unit, a final Session per working session) is in [AGENTS.md](../../AGENTS.md); checks and evidence in [VERIFICATION.md](VERIFICATION.md); structure rules, migration rules and the stage ledger in [COMPILER_ARCHITECTURE.md](COMPILER_ARCHITECTURE.md). PLAN holds current work and keeps explicit blockers with their next steps.
 
 ## 3. Current position
 

@@ -1,10 +1,10 @@
 # Compiler architecture
 
 The compiler reduction plan ([draft](../../draft/Proposals/2026-10-10%20Compiler%20Size%20Reduction%20and%20Single%20MIR%20Plan.md))
-was adopted on 2026-10-10. This document holds the enforced rules and the stage ledger; the plan holds the design,
-rationale and decisions (its §18). Required behavior remains in SPEC/IMPL, navigation in CODEMAP, verified support in
-STATUS, and execution/verification rules in AGENTS and VERIFICATION. The current compiler does not yet have the target
-structure below; only completed ledger entries describe enforced changes.
+was adopted on 2026-10-10; it holds the design, rationale and decisions (its §18). This document holds the enforced
+structure: phases, dependencies, vocabularies, canonical components, structure limits, migration rules and the stage
+ledger. SPEC/IMPL define behavior, CODEMAP navigation, STATUS verified support, AGENTS work policy and VERIFICATION
+checks. Only completed ledger entries describe the current compiler; the rest is the target.
 
 ## Target pipeline
 
@@ -29,61 +29,103 @@ structure below; only completed ledger entries describe enforced changes.
 | Backend | MIR, declaration tables, `TyCtxt` | HIR, borrow-checker state, syntax |
 | Hover and LSP | `SemanticQuery` | Private Binding state |
 
+`ArchitectureRulesTest` enforces the MIR rows. `MirReadsNoBindingInternals` lets Mir name only the published Binding
+types (`PublishedBindingTypes`; a new view joins with a one-line reason in its commit) and no old Analysis/Emission type.
+`OnlyTheMirBuilderReadsSyntaxAndHir` keeps syntax, HIR and plans out of `Mir/` outside `Mir/Build` (`SemanticsKind`, a
+Type vocabulary in the Parsing namespace, is named through an alias).
+
 ## Closed vocabularies
 
-MIR has 5 statement kinds, 9 rvalue kinds, 6 terminator kinds (plus the `CheckTarget` terminator attribute), 7 projection
-kinds, 4 operand kinds and 5 callee kinds (`ArchitectureRulesTest.VocabularyDoesNotGrow`). Not-yet-implemented forms have one diagnostic code, `Unsupported_Kd`, carrying only a
-location, reported by Binding, MIR construction or the capability check. Adding a vocabulary entry or a second
-Unsupported code is a design change that needs a SPEC basis and owner approval.
+MIR has 5 statement, 9 rvalue, 6 terminator (plus the `CheckTarget` attribute), 7 projection, 4 operand and 5 callee
+kinds; the HIR vocabularies and `IntrinsicId` have fixed limits too (`ArchitectureRulesTest.VocabularyDoesNotGrow`). A
+form not yet implemented has one diagnostic code, the location-only `Unsupported_Kd`, reported by Binding, MIR
+construction or the capability check. A new vocabulary entry or a second Unsupported code is a design change that needs
+a SPEC basis and owner approval.
 
-## Rules during the migration
+## Adding a feature
 
-- From R0 until R6 completes, the old Analysis and Emission paths receive no new accepted forms or generation features
-  (decision D5). Allowed: deletion, miscompile fixes mirrored on the new path, and the mechanical follow-up that a stage
-  of the plan names.
-- Semantic decisions belong to one phase; downstream consumers reuse their results while validating their own IR contracts.
-  Specification-valid forms without implementation report the located Unsupported; language violations and internal contract
-  failures retain their own diagnostics. Do not add `Supports*`-style gates, shape allowlists, Advice or duplicate semantic checks.
-- `CompilerSizeBudgetTest` and `ArchitectureRulesTest` hold the size caps and the no-growth ratchets below; caps fall
-  when a reduction stage exits. A cap rises only on owner instruction, or to preserve native O2 performance and allocation guarantees
-  (plan §18 P5), with the reason recorded. In the parallel stages R2b–R5 the total cap is the stage's cumulative ceiling
-  (plan §10.4, §12.2): R4's is 142,000, with a Mir cap of 11,500, Binding 500 lines over its R3-exit size and Core
-  1,830. `ArchitectureRulesTest.MirReadsNoBindingInternals` enforces the MIR builder row above over a frozen list of
-  published Binding types, which R3 U1 extended by the builder's gaps (`BuiltinForm`, a sequence's metadata member, and `CompilerFunctionKind`) and only the
-  deferred declaration views join, and keeps Mir off the old Analysis/Emission types; `OnlyTheMirBuilderReadsSyntaxAndHir`
-  enforces the MIR analyses row for everything under `Mir/` outside `Mir/Build` (`SemanticsKind`, a Type vocabulary that lives in
-  the Parsing namespace, is named there through an alias).
-- Generated native-code O2 performance and allocation guarantees may not regress. Compiler allocations, both initial and
-  reused, follow AGENTS' performance policy: faster equivalent work or less code may justify a reasonable increase in memory.
-  Record time, allocation and retained-memory tradeoffs and update compiler allocation regressions accordingly. O0 run time
-  and compiler processing time may regress if recorded; timing regressions exceed variation in repeated matched runs.
+Once R6 makes MIR the only path, a new form adds one `HirOp` or Plan row, one MIR builder function and, if needed, a
+descriptor, operator or intrinsic table row. Analyses and code generation change only for a new vocabulary entry. Until
+then the freeze below applies to the old paths.
 
 ## Canonical components
 
-Components the reduction has created, under `src/Kimi/Compiler`. Extend one of these before adding a parallel structure.
+Each concern has one canonical form. Use and extend it; a different form for the same concern replaces the existing one
+in the same unit. Rows give the responsibility and entry point; details live in the code and CODEMAP. Paths are under
+`src/Kimi/Compiler`.
 
-| Component | Source | Responsibility |
+| Concern | Canonical form | Source |
 | --- | --- | --- |
-| `ChildSlots` | `Parsing/Koto/Common/ChildSlots.cs` | The one child walk: a node lists its slots once in `ForEachChildSlot`, which visiting, collecting and replacing share |
-| `SyntaxTable` | `Parsing/Koto/Common/SyntaxTable.cs` | Per-module dense pre-order `SyntaxId`; a synthetic node takes a later id at its first semantic write; `Module`, the module's ordinal (the source modules in order, the library last) |
-| `SourceRef` | `Core/SourceRef.cs` | A syntax node as a value, `(Module, SyntaxId)`, the only way MIR and its records name syntax; `SourceInfo` adds a MIR scope and the statement-start mark |
-| Pipeline switch and entry points | `Core/Compilation.Pipeline.cs` | `Compilation.Pipeline` (`CompilerPipeline` Legacy or Mir; the default read once per process from `KIMI_PIPELINE`, R3–R5) and the one way to run and read the phases after Binding and startup: `Analyze`, `Analysis` (`AnalysisResult`), `Problems` (`Problem(Code, SourceRef Subject)`), `ReportAnalysis`, `WriteIr`, `Validate`, `SyntaxOf`. Until R6 they delegate to the old path; under mir `Analyze` builds and validates the MIR first, and its records, the library's included (construction `Unsupported_Kd` and the default expansion limit's `DefaultExpansionLimit_Kd`, validator `InternalInvariant_Kd`) are analysis Errors, reported in the control-flow partition, that block generation; the mir pipeline marks the check identity (` [mir]`) and the test artifact manifest |
-| `HirTables` | `Binding/HirTables.cs` | Semantic columns and `PlanRow`s keyed by `SyntaxId`, behind the Koto forwarding properties until R6; the published `Op`, `Res`, `Completion`, `Adjust` and PlaceShape (`Places`) columns (`HirOp`, `HirRes`, `HirCompletion`, `HirAdjust` = `HirAcquire` + `HirAdaptation`, `HirPlace` = `HirPlaceKind` + implicit layers, in `Binding/HirVocabulary.cs`), empty until `HirTables.Publish`; `HirAdjust.Of` is the one conversion from Binding's acquisition vocabularies, and an explicit conversion's cast is its `ConversionBinding` |
-| HIR publisher | `Binding/Binding.Hir.cs` | `HirTables.Publish`: at most once per pass, one child walk fills `Op`, `Res` (`PreparedParam` for a parameter read in a later default), `Completion` (Binding's structural completion with its Never evidence), `Adjust` (each consumed child's acquisition and adaptation from the operation Binding recorded, an erasure to its recorded Function Type acquired by the bare rule, an explicit borrow argument the reference itself, else `Binding.BareAcquire`, the one bare-acquisition rule that argument adaptation and capture entries also apply, a formatting plan's storage a Place; a user index under an update or exclusive borrow of its Place path takes `indexUniq`, which its plan row records), PlaceShape (the Place each evaluated node or borrowed Pattern binding designates and the layers its consumer follows, each a `TyCtxt.Layer`; a for loop's step receiver is its iterator local), each jump's target and each number literal's fitted value (`PlanRow.Folded`; a directly signed number is one Literal) in its plan row from facts Binding kept; it returns the pass it describes; replaced by inline writes in R7 |
-| `SemanticQuery` | `Binding/SemanticQuery.cs` | `Compilation.Semantics`: the facts Binding publishes to Hover, the LSP and tests |
-| `CallPlan` | `Binding/CallPlan.cs` | One plan per call, its callee a `CalleeKind` (Function, Requirement, Virtual or Value); `CallPlan.Of(node, ordinal)` is the one way to reach a node's calls, a formatting plan's included; a Requirement callee is its `Target` with its `RequirementContract`, unless the `Target` is a built-in witness (a `Shim`); an omitted default is its selected declaration's `DefaultDecl` (`DefaultDecl.Of`: the default template's owner, slot and declared parameter Types); `CallPlan.Accessor` is the function executing a custom accessor, which its calls target, and `CallPlan.Parameter` a function's parameter as its body reads it (an accessor's `self` and `value`, at -1 a constructor's or destructor's receiver) |
-| `PairBinder` | `Binding/BindingModel.cs` | A pair binder in scope of a body with its admitted set: `PairBinder.Collect(body, list)` lists a body's binders outer to inner and `PairBinder.CaseProduct` counts its Semantics cases |
-| `ExpansionPlan` | `Binding/ExpansionPlan.cs` | `ExpansionPlan.Of(node)`: the expansion the MIR builder desugars at an expansion Op (Iteration, Try, Format, DictionaryLiteral, Range, Index, CompoundAssign), naming the calls whose role `CallPlan.Of`'s order leaves open (an index's key resolution and selected element or view call, a Property update's getter and setter), the argument that stands for an operand already evaluated and an interpolation passed directly to `writeLine`; the Pattern plan of a match, try or user loop is `BoundMatch.Of`, a closure's definition `BoundClosure.Of` (the plan's PatternPlan and ClosureDef) and an enum Case value's construction `BoundEnumConstruction.Of` |
-| `AdtDef` | `Binding/AdtDef.cs` | The stored shape of a struct or enum on its symbol: Fields, Cases, destructor, inline storage and the Field, base and Case Types of each instance |
-| `TyCtxt` | `Binding/TyCtxt.cs` | `Compilation.Types`: the one Type intern table (`Intern`, with the Array, Slice, Dictionary and wrapping-integer canonical forms) and the Types the builder forms (`Reference`, `Pointer`, `Tuple`); `Layer`, the Deref or PairLayer (with its pair binder) a selection follows implicitly; the interned `Subst` of a call, closure or function item (`SubstOf`, a requirement call's declaring Type the bound Contract reference it dispatches through, a direct base call's the implementation it calls in the implementing Type; `SubstOfClosure`, `SubstOfItem`, `Identity`; `Synthesized`, of a call the builder synthesizes for a built-in form's serving function), applied to a declared Type by `Apply` (a Contract's `Self` the conforming Type), which is Binding's storage instantiation until R7, and composed by `Compose` (a call in a body another `Subst` instantiates, as Binding forwards it); `Signature`, a function's declared parameter or result Type under a `Subst`, and `Premised`, a Type as a definition's premises make it, by which the validator checks Types; `CaseType`, a Type in one Semantics case (every pair layer of a binder the cases name the complete Type of its Semantics); `Name`, a Type as diagnostics spell it |
-| Intrinsic table | `Binding/KimiLibraryKinds.cs` | `IntrinsicDisposition.Of(kind)`: the one disposition of each `CompilerFunctionKind` (plan 5.8), a Kimigayo `Body` (the declaration's own, or for a compiler function the body R8 writes, which the backend serves from the legacy runtime helpers until then), an `Intrinsic` (`IntrinsicId`, at most 30, and the temporary ones the owner admitted on 2026-10-11: `Capacity` until R8's representation structs, and an owning interpolation's `FormatBuffer`, `FormatHint` and `FormatFinish`, whose estimates the backend computes per instance, until R8 writes the internal adapter in Kimigayo; `Fail` with its fixed SPEC 22.5.4 code) or a `Shim` (a built-in witness whose body the backend generates); `ExpansionKind` states how an expansion's steps without a call are served; `FormOf` gives a node's `BuiltinForm`, a sequence's metadata member; the builder serves the other built-in forms (a dynamic Array literal, a slicing, a dictionary literal) by existing compiler functions (R3 decision 5), whose declarations `KimiLibrary.Function` gives |
-| MIR model | `Mir/MirVocabulary.cs`, `Mir/MirBody.cs`, `Mir/MirProgram.cs` | The closed MIR vocabularies (plan 5.4) and the operator, cast, constant, local, scope and body kinds; `MirBody`, one body in struct arrays the builder appends to (locals, `_0` the return and the arguments next; blocks, each a range of statements and its terminator with `CheckTarget`; operand lists; switch pairs; interned constants; interned projection chains `(parent, kind, argument, Type)` shared across roots; scopes; pair binders; static roots; Opaque sites with their roots), whose `ProjectedType` is the one rule for the Type a projection selects; `MirProgram`, the bodies by `MirDefKey` (definition symbol, body kind, index), pooled so a warm rebuild allocates nothing |
-| Descriptor table | `Mir/MirDescriptors.cs` | `MirDescriptors.Of`: one row per statement, rvalue, terminator, operand, projection and intrinsic kind, its `MirAccess` (reads, writes, moves, borrows, defines, kills, drop use, case dependence) and `MirEffect`s (static read, write and first-access initialization, raw-holding immutable-static read, integer-to-pointer, environment, abort, allocation, unknown for Opaque), an intrinsic's arity and divergence; `MirUses.ForEach`, the one enumeration of a location's operands, Places (index locals included) and effects by those rows through a struct visitor, and `MirUses.Successors`, a terminator's runtime successors, which the validator and the analyses share |
-| MIR dump | `Mir/MirDump.cs` | `MirDump.Write`: the one deterministic text of a body or of a module's bodies, records and findings (Types by `TyCtxt.Name`, `@SyntaxId`, `*` at a statement start), which the dump goldens and the MIR snapshot compare |
-| MIR builder | `Mir/Build/MirBuilder*.cs` | `Compilation.BuildMir`: once per Binding pass (`HirTables.Publish`'s version), one pooled `MirProgram`: a body per `HirOp.Body` definition (functions, a `#Test` function's a Test body, a constructor's object built in its return local from the base call into the base subobject and the Field initializers in declaration order, accessors keyed by `CallPlan.Accessor`, static initializers; a module's top-level statements with no symbol) and per `HirOp.Closure` (keyed by its own symbol, its environment the receiver; created as the aggregate of its captures by their acquisitions), each validated; a node is built by its Op, Adjust and PlaceShape (`Into`, `Assign`, `Operand` with `Acquire` for each `HirAcquire` and `HirAdaptation`, a value an acquisition forms (a borrow, an erasure, a temporary value) formed in the place that takes it (an assignment's destination, a binding, a pending slot); a form that leaves no value (a require, a defer, a discard, a transfer) built without a destination; the operators, metadata, `and`/`or` and conversions in `MirBuilder.Operators.cs`, `Place` with the layers `Follow` takes by `TyCtxt.Layer`, `Call` by `CallPlan` into the five callees, the arguments by parameter slot, the receiver first (`MirCallee.Slot`/`Position`), a direct base call's receiver its implementation's, a comparison operator's Contract call compared as SPEC 13.4.1 maps it; `Ref`, the one rule of every borrow (of the Place's layer or base whose Type is the reference's referent, in its Type's mode; an implicit exclusive borrow of a call input two-phase); control flow in `MirBuilder.Control.cs`, a transfer to the target its plan row names with a `CheckTarget` to the code after it, a body's end a runtime or check-only edge by its HIR Completion, an operation whose operand does not complete not performed; a match or a try in `MirBuilder.Match.cs` as a source-order decision chain over its `BoundMatch` plan (the Subject by its Adjust, each arm its Pattern's tests, its guard with shared candidate borrows, its bindings by their Adjust, an Unreachable tail; no decision tree or pruning); expansions in `MirBuilder.Expansions.cs` (a for loop's entry and step calls with its Some/None plan, or a ResolvedRange loop's counter; a compound assignment on its Place, or through its Property's accessors on the receiver located once, a standard accessor reading or writing the Property's storage (`Storage`, also an accessor's `storage`), the getter taking the receiver as its own operation does; a keyed or `^x` element, a built-in range selection checked once and served by `RawSlice`; a `$tryWrite`'s writes and status; a dynamic Array literal, the empty Array reserved and appended, and a dictionary literal's lookup, duplicate-key failure and placement; an owning interpolation's writes on its buffer and adapter between the temporary intrinsics FormatBuffer, FormatHint and FormatFinish); scopes in `MirBuilder.Drops.cs`, StorageLive/StorageDead of each Var and Temp local and a Drop where `MirTypes.MayNeedDrop`, registered in its block's, statement's or condition's scope and cleaned up in reverse where the scope is left, a transfer leaving through its target's drop tree whose nodes, defer bodies included, are built once per target and shared), omitted defaults in `MirBuilder.Defaults.cs` (one template body per declaration and default, `MirBodyKind.DefaultTemplate`, generic over its function with `p_i: ref/P_i` for the earlier parameters' slots; an omitting call acquires its explicit arguments into pending slots, then copies each template's MIR folded once under its `Subst` in an Inlined scope, from borrows of the slots it reads and keeping a Drop where the instance's Type may need it, or calls the template where the omission graph's component, found once by Tarjan's algorithm, is recursive; a failed template is an Opaque value at the call, and a copy past 65,536 MIR statements the call's `DefaultExpansionLimit_Kd`), a Place's own value, discarded or taken as a value, is the Place read as its Type decides; and a form without a rule goes through the one `Unsupported(node)`: a record merged by location on the program and an Opaque value naming the roots its syntax touches, unless the lexer or Binding rejected the node (`Rejected`: an Error, a value without a Type, a literal without its constant, a name of a local whose declaration is an Error), whose Opaque is derived without a record, as are a Field initializer of a declaration without a Body and an update of a rejected target |
-| MIR case views | `Mir/MirCases.cs` | The Semantics cases of a body (plan 5.6.1) as views of the one body, which is never copied per case: `MirCases.Count` (`PairBinder.CaseProduct` of its binders; the case bound is decided where the definition is checked, not here), `Select(body, i)` (each binder's admitted Semantics, numbered as the old analysis numbers its case runs) and, under the selected view, `Type` (a Type's case Type), `Layer` (a PairLayer step: the Place itself in the owner case, else the referent of the case's reference or handle) and `Reborrows` (a PairAcquire: a Reborrow where its Place's case Type is an exclusive reference, else a Copy); the view's storage is reused |
-| MIR Type facts | `Mir/MirTypes.cs` | `MirTypes.MayNeedDrop`, the one rule by which MIR drops a value (an owning handle, a managed sequence or string, a Function value, a destructor or an abstract Type anywhere in its inline storage), and `MirTypes.HoldsRaw`, whether a static's value holds raw authority (SPEC 8.4.10.2), each one walk of a Type's inline storage; `MirTypes.IsExclusive`, an exclusive reference (`uniq`, `objuniq`), which a borrow of its mode takes exclusively and a bare acquisition Reborrows; `MirTypes.Agree`, the one Type agreement of MIR, equality modulo Origins (R4 checks those) |
-| `MirValidator` | `Mir/MirValidator.cs` | The one structural verifier of MIR (plan 14-5): structure (terminators, target ranges, `CheckTarget` only on Goto, a Call without a target and Unreachable, every block reached through runtime or check edges), locals, scopes, projections against their base Types (`ProjectedType`), constants, binders, operand ranges, arities (a Fn, Requirement or Virtual callee's by its declaration), Discriminant and Len Types and Opaque sites; the Type tier: each value agrees with the Type it goes to (an Assign's destination, an aggregate's component, a call's parameter under its `Subst`, the receiver first, and its destination, `_0` with the body's result at a Return; `MirTypes.Agree`, else under the body's premises), and each operator, Cast, Ref and branch operand is one its kind admits, a local an Opaque value defines being of an unknown Type; each `MirFinding` names its `MirViolation` and syntax, an `InternalInvariant_Kd`; a warm run allocates nothing |
+| Child walk | `ForEachChildSlot`, shared by visiting, collecting and replacing | `Parsing/Koto/Common/ChildSlots.cs` |
+| Syntax identity | Dense pre-order `SyntaxId` per module; `SourceRef(Module, SyntaxId)`, the only way MIR and its records name syntax | `Parsing/Koto/Common/SyntaxTable.cs`, `Core/SourceRef.cs` |
+| Phases after Binding | The `Compilation` entry points (`Analyze`, `Analysis`, `Problems`, `ReportAnalysis`, `WriteIr`, `Validate`, `SyntaxOf`) and the pipeline switch | `Core/Compilation.Pipeline.cs` |
+| Analysis records | `Problem(Code, SourceRef)`, merged per code and location | `Core/Compilation.Pipeline.cs` |
+| Binding facts for MIR | `HirTables` columns (`Op`, `Res`, `Completion`, `Adjust`, PlaceShape) and `PlanRow`s keyed by `SyntaxId`; `HirAdjust.Of`, the one conversion from Binding's acquisition vocabularies; `Binding.BareAcquire`, the one bare-acquisition rule | `Binding/HirTables.cs`, `Binding/HirVocabulary.cs`, `Binding/Binding.Hir.cs` |
+| Binding facts for Hover, LSP and tests | `SemanticQuery` (`Compilation.Semantics`) | `Binding/SemanticQuery.cs` |
+| Calls | `CallPlan`, reached only through `CallPlan.Of(node, ordinal)`; an omitted default is its `DefaultDecl` | `Binding/CallPlan.cs` |
+| Desugared forms | `ExpansionPlan.Of`; the Pattern plans `BoundMatch.Of`, closures `BoundClosure.Of` and enum Case construction `BoundEnumConstruction.Of` | `Binding/ExpansionPlan.cs` |
+| Stored shape of a struct or enum | `AdtDef` | `Binding/AdtDef.cs` |
+| Types and substitutions | `TyCtxt` (`Compilation.Types`): interning, `Subst` (`SubstOf`, `Apply`, `Compose`, `Signature`), implicit `Layer`s, `CaseType`, `Name` for display | `Binding/TyCtxt.cs` |
+| Semantics cases | `PairBinder` (a body's binders, `CaseProduct`); `MirCases`, per-case views of one body that is never copied | `Binding/BindingModel.cs`, `Mir/MirCases.cs` |
+| Library operations | `IntrinsicDisposition.Of`: a Kimigayo body, an `IntrinsicId` or a shim for each `CompilerFunctionKind` | `Binding/KimiLibraryKinds.cs` |
+| MIR storage | `MirBody` struct arrays with interned projection chains, `ProjectedType` the one projection Type rule; `MirProgram`, bodies by `MirDefKey`, pooled for warm rebuilds | `Mir/MirVocabulary.cs`, `Mir/MirBody.cs`, `Mir/MirProgram.cs` |
+| Operands, accesses and effects | `MirDescriptors.Of` rows; `MirUses.ForEach` and `MirUses.Successors`, the one enumeration the validator and the analyses share | `Mir/MirDescriptors.cs` |
+| Type facts in MIR | `MirTypes`: `MayNeedDrop`, `HoldsRaw`, `IsExclusive`, `Agree` (Type agreement modulo Origins) | `Mir/MirTypes.cs` |
+| MIR construction | `MirBuilder` (`Compilation.BuildMir`): one body per definition and Closure, built by Op, Adjust and PlaceShape; `Ref`, the one borrow rule; one drop tree per transfer target; one template per default; `Unsupported(node)`, the one Unsupported record with an Opaque value | `Mir/Build/MirBuilder*.cs` |
+| MIR validation | `MirValidator`, the one structural and Type verifier; a finding is `InternalInvariant_Kd` | `Mir/MirValidator.cs` |
+| MIR text | `MirDump.Write`, compared by the dump goldens and the MIR snapshot | `Mir/MirDump.cs` |
+
+## Structure limits
+
+Members and files outside the old Analysis/Emission paths stay within these limits, which the owner decided on
+2026-10-11 for the [Code Rules Analyzer](../../draft/Proposals/2026-10-11%20Code%20Rules%20Analyzer.md) (its §9).
+
+| Measure | Limit |
+| --- | --- |
+| Parameters per member | 6, of which at most 2 optional, 1 `out` and 1 `bool` |
+| `bool` literal arguments | Passed by name |
+| Failure text returned through `out string` | None; record a typed Problem instead |
+| Statements per member | 60 |
+| Control-statement nesting | 4 |
+| Operands in one chain of the same logical or pattern operator | 4 |
+| Tokens per file | 5,000 |
+| Line length | 160 characters |
+
+A member or file already over a limit may not get worse; split it by responsibility before it grows. An exception to
+the statement or nesting limit states its reason and bound in the code. Mir and the Backend take no baseline: their
+violations are fixed, except syntax-class decisions in the MIR builder, which reach 0 by the end of R6. The analyzer
+(units A0–A8, before R4) turns these limits into build errors over a shrinking baseline; until then review applies them.
+
+## Rules during the migration
+
+- **Freeze (D5).** From R0 until R6 completes, the old Analysis and Emission paths receive no new accepted forms or
+  generation features. Allowed: deletion, miscompile fixes mirrored on the new path, and the mechanical follow-up that a
+  stage of the plan names.
+- **Sizes.** `CompilerSizeBudgetTest` holds the size caps and `ArchitectureRulesTest` the no-growth ratchets. A stage
+  closes only within its exit ceiling (plan §12.2); otherwise work stops and the owner decides, given the measured size,
+  the remaining deletion candidates and their cost. When a reduction stage exits, its caps fall to the measured size plus
+  2%. A cap rises only on owner instruction or to preserve the native O2 and allocation guarantees (plan §18 P5), with the
+  reason recorded. In R2b–R5 the total cap is the stage's cumulative ceiling: R4's is 142,000, with Mir 11,500, Binding
+  500 lines over its R3-exit size and Core 1,830.
+- **Forecasts.** Each unit states its line forecast; an overrun above 20% is consolidated before commit or reported with
+  its reason.
+- **Missing facts (R3–R5).** Binding publishes a fact the MIR side lacks as a small view, at most 30 Binding lines per
+  unit; Mir never re-derives it.
+- **Difference ledger (R4–R6).** Each difference between the paths is one row in `artifacts/verify/mir-diff`, classified
+  as (a) an old-path error, (b) a new-path error, fixed, (c) a SPEC ambiguity, clarified, (d) an intended change (D4 and
+  the like) with its clause and plan Appendix B item, or (e) a form not ported under D2, recorded in STATUS and PLAN. R4
+  exits only with no unclassified and no (b) row. Each R4 and R5 session ends by reporting the number of unclassified
+  differences; if it fails to fall twice in a row, the owner decides whether to stop (plan §18 P9).
+- **Temporary structures**, with the stage that removes them: the Koto semantic forwarding properties and the
+  `KIMI_PIPELINE` switch (R6); the HIR publisher walk, replaced by inline writes (R7); the temporary intrinsics
+  `Capacity`, `FormatBuffer`, `FormatHint` and `FormatFinish` that the owner admitted on 2026-10-11 (`IntrinsicId` limit
+  34, back to 30 in R8).
+- **Performance and allocation.** Generated native code may not regress in O2 run time or allocation counts (plan §18
+  P1, P2); O0 run time and compiler processing time may, when recorded (P1, P3). A timing regression exceeds the
+  variation of repeated matched runs (P4). Compiler allocations follow the owner's decision of 2026-10-11 (AGENTS,
+  `8071549f`), which supersedes plan §18 P11 and §14-8: an allocation is allowed when it makes equivalent work faster or
+  reduces compiler code with a reasonable increase in memory, with time, allocations and retained memory measured and
+  recorded. Existing compiler allocation regressions hold until a measured change updates them.
 
 ## Stage ledger
 

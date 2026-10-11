@@ -24,69 +24,71 @@ The specification and implementation are not set in stone. The specification gui
 
 # Implementation Design
 
-- Prefer fewer concepts, less duplication and less work over a smaller local diff. Fix the common cause by changing shared representations or responsibilities where needed; avoid unrelated redesign.
-- Before coding, briefly identify the required rule or invariant, the cause of the gap, the component that should own the decision, and related implementations. Consult [CODEMAP](docs/dev/CODEMAP.md); consider deletion, consolidation and moving responsibilities before adding code.
-- Put operations with the same meaning and contract under one owner. If none fits, consider moving or merging existing code before introducing a minimal component. An abstraction must express shared semantics and remove duplication, not merely wrap similar code or anticipate hypothetical uses.
-- Make each semantic decision in its owning phase and reuse the result downstream. Each phase still checks the contracts of the IR it produces or receives. Replace source-shape special cases with common representations and rules; do not add `Supports*` gates or shape allowlists.
-- Remove branches, state, conversions and old paths made redundant by the change in the same unit. Necessary staged removal belongs in the existing migration plan with an explicit removal condition.
-- Before completion, review the diff for reuse, duplication and efficiency. Explain the common rule changed, what became unnecessary, and why any remaining growth is needed. Test another form governed by the same rule and an invalid counterpart where relevant.
-- Implement core libraries, including Iterator and Dictionary, in Kimigayo where practical. Follow [STYLE](docs/STYLE.md); `[Kimi]` rules are required in `src/Kimi/Library` and `docs/spec/` examples, recommended elsewhere.
+Priorities: SPEC correctness and the native O2 and allocation guarantees are constraints. Within them, a coherent structure comes first: each concept has one owner, one representation and one canonical path. Then less code, then faster compilation. A small diff, low test churn or ease of review are not criteria.
+
+- **Design before code.** Unless the change is local (one owner; no new branch, parameter, state or table), first write a short design: the SPEC rule or invariant; the root cause (the representation or responsibility that allowed the gap); the decision's owner; every site sharing the cause, found by search ([CODEMAP](docs/dev/CODEMAP.md), canonical components); the options, including the local patch and why it is rejected; what will be deleted; expected net lines and performance. Someone other than the implementer reviews it before coding. A delegating session puts the design in the prompt; an implementer who finds it wrong stops and reports instead of patching around it.
+- **Fix causes in shared structure.** Changing the representation or responsibility that causes a defect is in scope, even across phases; only changes the cause does not require are unrelated redesign. Each decision is made once, by its owning phase; a consumer lacking a fact has the owner publish it instead of re-deriving it from syntax or another phase's state. Each IR has one validator, owned by its producer (MIR: `MirValidator`, all configurations); consumers trust validated IR without re-checking it, and a broken contract is `InternalInvariant_Kd` without recovery paths.
+- **Create a concept when a decision, fact or shape recurs.** Operations with the same meaning and contract share one owner. Name the concept in SPEC terms, state its contract (inputs, invariants, producers, consumers), migrate every existing use in the same unit and register it as a canonical component. Prefer data over branches: a new form adds a table or plan row, not a case. No wrappers without semantics, single-implementation interfaces or utility bags.
+- **Signs of a symptom fix** (stop and redo the analysis): an extra clause in an existing predicate or switch arm for one form; a new bool, mode or optional parameter steering an existing function; a side table keyed by node or symbol for one feature; a consumer deciding by syntax class what its owner should publish; suppressing duplicate or derived reports afterwards; a second copy of a rule in another phase, a `Supports*` gate or a shape allowlist; a try-then-fallback chain; a temporary structure without a removal condition.
+- A second fix for a related symptom in the same area, or a unit revising the previous unit's rule, means the cause was missed: analyze one level higher and replace both fixes.
+- If the common fix exceeds the unit (frozen paths, stage scope, an owner decision), do not patch locally: keep the located `Unsupported_Kd` or the open issue, record the proposed common change in PLAN and report it. A local patch is allowed only for wrong code that cannot wait, recorded with its removal condition.
+- **Keep the structure predictable.** A responsibility's code lives in its owner's files (`Owner.Concern.cs`), each concern uses its one canonical form, and a concept has one name in every phase. Split a file or member by responsibility before it exceeds the structure limits.
+- Remove branches, state, conversions and old paths made redundant by the change in the same unit. A necessary staged removal is recorded in the stage ledger or PLAN with the stage that removes it.
+- **Independent review.** Before completion, someone other than the implementer checks that the design was followed, no sign of a symptom fix remains and reuse, duplication and efficiency are addressed; a rejected design or diff is redone, not patched over. The commit states the root cause, the concept changed, the sites sharing the cause and the deleted code. Test another form under the same rule and an invalid counterpart where relevant.
+- Write core libraries, including Iterator and Dictionary, in Kimigayo. A compiler intrinsic or hand-written IR needs either inexpressibility in Kimigayo or a measured O2 need; a temporary one names the stage that removes it. Follow [STYLE](docs/STYLE.md); `[Kimi]` rules are required in `src/Kimi/Library` and `docs/spec/` examples, recommended elsewhere.
 
 # Performance and Compiler Structure
 
-- Preserve generated native-code allocation guarantees and O2 performance. Inside the compiler, additional allocations are allowed in initial or reused processing when they make equivalent work faster or reduce compiler code, with a reasonable increase in memory use. Measure time, allocations and retained memory; record the tradeoff and update compiler allocation regressions to reflect the adopted decision in the same commit.
-- Follow [COMPILER_ARCHITECTURE](docs/dev/COMPILER_ARCHITECTURE.md) for dependencies, closed vocabularies, size caps and the old Analysis/Emission migration freeze. Permission to revise the specification does not authorize vocabulary or budget changes. Raise a cap only on owner instruction or to preserve native O2 performance and allocation guarantees, recording why.
-- Record net lines per compiler area in compiler commits. Growth above 300 lines also explains what was replaced or removed and why the remaining additions are needed. At milestone completion, record area sizes, change hotspots and duplication candidates in `artifacts/benchmarks/`. Review repeatedly growing files for mixed responsibilities and duplication; resolve these before extending them again.
-- Keep timing-only benchmark code in `src/Benchmark`, separate from functional and allocation/reuse regressions. Measure performance changes and milestone results on equivalent workloads under fixed conditions. Preserve failed evidence; never add warm-up or relax native allocation assertions to obtain a pass.
+- Generated native code: O2 performance and allocation counts may not regress. In the compiler, an allocation is allowed when it makes equivalent work faster or reduces compiler code with a reasonable increase in memory; measure time, allocations and retained memory, record the tradeoff and update the affected compiler allocation regressions in the same commit.
+- Follow [COMPILER_ARCHITECTURE](docs/dev/COMPILER_ARCHITECTURE.md) for dependencies, closed vocabularies, canonical components, structure limits, size caps, stage gates and the migration freeze. Permission to revise the specification does not authorize vocabulary or budget changes. Raising a cap or closing a stage above its ceiling is the owner's decision, except a cap raised to preserve the native O2 and allocation guarantees, with the reason recorded.
+- State net lines per compiler area in each compiler commit; growth above 300 lines explains what it replaced or removed and why the rest is needed.
+- At each milestone completion and reduction-stage exit, record area sizes, change hotspots and duplication candidates in `artifacts/benchmarks/`. A file changed by three consecutive units is restructured before its next change, or the deferral and its stage are recorded in the stage ledger.
+- Timing-only benchmark code stays in `src/Benchmark`, apart from functional and allocation/reuse regressions. Measure on equivalent workloads under fixed conditions and keep failed evidence; never add warm-up or relax native allocation assertions to pass.
 
 # Documentation
 
-Write updates in English. Each document owns the following information; keep changes consistent with its owner.
+Write in English. Each document owns the following; keep changes consistent with the owner.
 
-| Document | Responsibility and update rule |
+| Document | Owns |
 | --- | --- |
-| [SPEC](docs/SPEC.md) and chapters | Language rules. Keep self-contained; drafts are not authority. |
+| [SPEC](docs/SPEC.md) and chapters | Language rules; self-contained, drafts are not authority. |
 | [IMPL](docs/IMPL.md) | Implementation contracts; never overrides language rules. |
-| [COMPILER_ARCHITECTURE](docs/dev/COMPILER_ARCHITECTURE.md) | Phase responsibilities, dependencies, vocabularies, budgets and migration rules. |
-| [VERIFICATION](docs/dev/VERIFICATION.md) | Verification commands, selection, measurements and evidence procedures. AGENTS defines work policy. |
-| [CODEMAP](docs/dev/CODEMAP.md) | Navigation to owners, entry points and representative tests. Update changed or stale mappings in the same commit; no specification or support rules. |
-| [PLAN](docs/dev/PLAN.md) | Current scope, order, completion conditions, next actions and open issues. Under 200 lines; deferred items belong in SPEC Appendix D. |
-| [STATUS](docs/STATUS.md) | Verified support boundaries and remaining limits. Update when a boundary changes; never claim unverified support. |
-| [PLAN_HISTORY](docs/dev/PLAN_HISTORY.md) | A few lines per session; detailed evidence belongs in commits and artifacts. |
-| [SETTLED](docs/SETTLED.md) | Rejected design changes: problem, example, proposed fix and reason. Consult before design reviews; reopen only when the reason no longer holds, updating the entry with any affected spec change. |
-| [STYLE](docs/STYLE.md) / [LIBRARY](docs/LIBRARY.md) | Conventions / public declarations and guarantees. Update with changed conventions or APIs; follow SPEC, including §4.7.1 naming pairs. [Library README](src/Kimi/Library/README.md) owns implementation policy. |
+| [COMPILER_ARCHITECTURE](docs/dev/COMPILER_ARCHITECTURE.md) | Phases, dependencies, canonical components, structure limits, vocabularies, budgets, stage ledger and migration rules. |
+| [VERIFICATION](docs/dev/VERIFICATION.md) | Verification commands, selection, measurements and evidence. |
+| [CODEMAP](docs/dev/CODEMAP.md) | Navigation to owners, entry points and representative tests; changed or stale mappings are updated in the same commit. |
+| [PLAN](docs/dev/PLAN.md) | Current scope, order, completion conditions, next actions and open issues; under 200 lines; deferred items belong in SPEC Appendix D. |
+| [STATUS](docs/STATUS.md) | Verified support boundaries and remaining limits; updated when a boundary changes; never claims unverified support. |
+| [PLAN_HISTORY](docs/dev/PLAN_HISTORY.md) | A few lines per session; evidence belongs in commits and artifacts. |
+| [SETTLED](docs/SETTLED.md) | Rejected design changes: problem, example, proposed fix and reason. Consult before design reviews; reopen only when the reason no longer holds, updating the entry with the spec change. |
+| [STYLE](docs/STYLE.md) / [LIBRARY](docs/LIBRARY.md) | Conventions / public declarations and guarantees, following SPEC, including §4.7.1 naming pairs. The [Library README](src/Kimi/Library/README.md) owns implementation policy. |
 
-- Never narrow the specification to fit missing implementation; report Unsupported and record the boundary in STATUS and PLAN. Deliberate spec improvements need no separate approval: explain the rationale and preservation of the Principles, and update affected chapters, examples, tests and milestone programs together. Pre-alpha changes need no version bump or migration guide.
-- Proposal creation or text changes require explicit instruction. An instructed intake or closure includes register updates and required moves. Create proposals only in `draft/Proposals`, prototypes in `draft/Sketches`; `draft/Design` and `draft/Decisions` remain frozen archives.
-- Record each intake in `draft/INTEGRATED.md` with proposal-to-spec mappings in the same commit. For open proposals, mark 一部取り込み (partially integrated), list integrated and open scope, and freeze the integrated text. Close when every item is incorporated, rejected with a reason, or transferred to an identified proposal: move to `draft/Changes` as 取り込み済み (integrated) if anything was incorporated, otherwise `draft/Obsolete` as 完了 (closed).
-- Never change frozen text, including typos. Record corrections in INTEGRATED; make later normative changes in the formal spec. Integration and closure do not require implementation or test completion and never imply support.
+- Never narrow the specification to fit missing implementation: report Unsupported and record the boundary in STATUS and PLAN. Deliberate spec improvements need no separate approval: state the rationale and how the Principles are preserved, and update affected chapters, examples, tests and milestone programs together. Pre-alpha changes need no version bump or migration guide.
+- Create or change proposal text only on explicit instruction, in `draft/Proposals` (prototypes in `draft/Sketches`; `draft/Design` and `draft/Decisions` are frozen archives). Record each intake in `draft/INTEGRATED.md` with proposal-to-spec mappings in the same commit. An open proposal is 一部取り込み (partially integrated), listing integrated and open scope; its integrated text is frozen. Close it when every item is incorporated, rejected with a reason or transferred: to `draft/Changes` as 取り込み済み (integrated) if anything was incorporated, otherwise to `draft/Obsolete` as 完了 (closed).
+- Never change frozen text, including typos: record corrections in INTEGRATED and later normative changes in the formal spec. Integration and closure never imply support.
 
 # Diagnostics
 
-- Classify specification violations as language diagnostics, valid but unimplemented forms as the single location-only `Unsupported_Kd`, and internal contract violations as internal errors.
-- Follow SPEC §23 and [DIAGNOSTICS](docs/dev/DIAGNOSTICS.md). Ordinary changes use the existing schema and required code, severity/category, location and factual cause; do not invent evidence, Advice or repair guarantees. Apply [DIAGNOSTIC_WORKFLOW](docs/dev/DIAGNOSTIC_WORKFLOW.md) only on explicit request for that workflow or a detailed diagnostic review. This limits work scope, not required diagnostic behavior.
+- Specification violations are Language diagnostics, valid but unimplemented forms the single location-only `Unsupported_Kd`, and internal contract violations Internal errors. A valid form that no common rule covers yet stays `Unsupported_Kd`: never accept a narrow subset of it or report a conservative Language error for it.
+- A check records typed facts where it fails; message text comes only from the diagnostics adapter, and no check re-runs inference or proof to explain a failure. Follow SPEC §23 and [DIAGNOSTICS](docs/dev/DIAGNOSTICS.md); never invent evidence, Advice or repair guarantees. Apply [DIAGNOSTIC_WORKFLOW](docs/dev/DIAGNOSTIC_WORKFLOW.md) only on explicit request for that workflow or a detailed diagnostic review; this limits work scope, not required diagnostic behavior.
 
 # Verification and Delivery
 
-- Serialize editing, builds, verification and commits within each worktree; use separate worktrees for parallel work or other unfinished changes. Never edit sources during builds or verification. Stage only the unit's changes.
-- Work in reproducer, implementation and focused-test units. Select completion checks by changed behavior and files; combine requirements for mixed changes.
+- Serialize editing, builds, verification and commits within a worktree; parallel work and other unfinished changes use separate worktrees. Never edit sources during builds or verification. Stage only the unit's own paths.
+- Work in units of design, reproducer, implementation and focused tests. Select completion checks by changed behavior and files; mixed changes combine the rows.
 
 | Change | Required verification |
 | --- | --- |
 | Documentation only | Diff and reference review; no builds, tests or native verification. |
-| Compiler, Kimi library or compiler tests | Related Unit checks and a successful final Session. Compiler Units include `CompilerSizeBudgetTest` and `ArchitectureRulesTest` as common mandatory checks; library changes include `KimiLibraryShapeTest`. Select these explicitly alongside related checks. |
-| Benchmark / Playground | Final Session, including the whole-solution build, plus relevant execution or measurements. |
+| Compiler, Kimi library or compiler tests | Unit verification of the related checks plus the common `CompilerSizeBudgetTest` and `ArchitectureRulesTest` (library changes add `KimiLibraryShapeTest`), all selected explicitly, and a successful Session at the end of the working session. |
+| Benchmark / Playground | Session, including the whole-solution build, plus relevant execution or measurements. |
 | Verification scripts, CI or tooling | Affected workflow checks under [verification scope](docs/dev/VERIFICATION.md#verification-scope). |
 | VS Code extension, including build/distribution scripts | [Extension AGENTS](src/kimi-ext/AGENTS.md). |
 
-- For feedback, incrementally build `tests/xUnitTest/xUnitTest.csproj` and run selected methods. Completion uses `scripts/verify.ps1`: non-incremental builds with warnings as errors, Release by default. Unit builds Kimi/tests; Session builds the solution and runs all functional and allocation/reuse regressions. Native fixtures and milestones require explicit selection even in Session. Do not run NativeAOT tests without explicit instruction.
-- Reuse the owning test class and shared helpers; test through public acceptance, diagnostics, IR or MIR entry points at the lowest layer that observes the rule. Internal state assertions belong in the component's own rule tests. Avoid duplicate cases; emit native fixtures only for generated-code behavior. Add input-size scaling checks for affected analyses. Tag allocation/reuse tests `Purpose=Allocation`; include related ones for hot-path changes.
-- Commit each unit after its required checks pass. A final Session can also satisfy the last Unit when it covers all required checks on the same inputs and configuration. Verify the final inputs successfully; do not repeat checks solely for mode names or unchanged inputs. Changed verification inputs require reverification under VERIFICATION's manifest policy.
-- Before pushing, associate each Unit/Session-verified commit with its evidence using `scripts/verify-commit.ps1`. After the required final Session succeeds, automatically push the completed commits on the current branch to `origin`; never force-push. Changes that need no Session may be pushed after their own required checks. A failed required check leaves the work incomplete.
-- Check native-toolchain identity at setup/update or explicitly with `-VerifyToolchain`; ordinary Verify does not imply this check. Use `run --no-build` for built CLI artifacts. See VERIFICATION for selection, native O0/O2 coverage, parallelism and measurement isolation.
+- Feedback uses incremental builds and selected test methods; completion uses `scripts/verify.ps1` as VERIFICATION describes. Native fixtures and milestones need explicit selection, even in Session. Run NativeAOT tests only on explicit instruction.
+- Tests reuse the owning class and shared helpers and assert each rule through public acceptance, diagnostics, IR or MIR entry points at the lowest layer that observes it; internal state only in a component's own rule tests. No duplicate cases; native fixtures only for generated-code behavior; input-size scaling checks for affected analyses. Tag allocation/reuse tests `Purpose=Allocation` and include related ones for hot-path changes.
+- Commit each unit after its required checks pass, associate Unit/Session evidence with `scripts/verify-commit.ps1`, then push the branch to `origin`; never force-push. A Session that covers every required check of the last unit on the same inputs replaces its Unit run. Do not repeat checks for mode names or unchanged inputs; changed inputs need reverification. A failed required check leaves the work incomplete and unpushed.
 
 # Artifacts
 
-- Disposable files: `temp/`; delete only when no build/test is running. Preserve project-local `bin/` and `obj/`.
-- Verification evidence, including failures: `artifacts/verify/`; measurement results: `artifacts/benchmarks/`; packages: `artifacts/packages/`.
-- `temp/` and `artifacts/` are Git-ignored. Retain or back up required evidence separately.
+- `temp/`: disposable files, deleted only when no build or test is running. Preserve project-local `bin/` and `obj/`.
+- `artifacts/verify/`: verification evidence, including failures; `artifacts/benchmarks/`: measurements; `artifacts/packages/`: packages. `temp/` and `artifacts/` are Git-ignored; back up evidence that must be kept.

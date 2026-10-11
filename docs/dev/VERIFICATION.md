@@ -20,7 +20,7 @@ an executable change does not make that change documentation-only.
 | Change | Completion checks |
 | --- | --- |
 | Documentation only | Review diffs and affected references. Do not run builds, tests, native fixtures or milestone harnesses. |
-| Compiler, Kimi library or compiler tests | Unit verification and a successful final Session. Compiler Units combine common checks (`CompilerSizeBudgetTest`, `ArchitectureRulesTest`) with related checks; select them explicitly. Select relevant native fixtures and milestones explicitly too. Library changes include `KimiLibraryShapeTest`. |
+| Compiler, Kimi library or compiler tests | Unit verification of the related checks plus the common `CompilerSizeBudgetTest` and `ArchitectureRulesTest` (library changes add `KimiLibraryShapeTest`), with relevant native fixtures and milestones, all selected explicitly; a successful Session at the end of the working session. |
 | Benchmark or Playground code | Session verification, including the whole-solution build, before completion; execute the affected scenario or relevant fixed-condition measurements. |
 | Verification scripts, CI or other tooling | Related script regressions and affected build/execution paths. Native-runner changes require `NativeFixtureRunnerTest.ps1`. Changes affecting the managed build or test pipeline also require Session. A local check does not certify a hosted CI run. |
 | VS Code extension, including its build/distribution scripts | Follow [the extension instructions](../../src/kimi-ext/AGENTS.md). |
@@ -40,6 +40,12 @@ dotnet tests/xUnitTest/bin/Release/net10.0/xUnitTest.dll -method XunitTest.Defer
 
 Choose an existing method from the test source or runner discovery (`-list methods`). For fast functional feedback within a class, use `-class <class> -trait- Purpose=Allocation`. Direct runner selections of a moved allocation method use `<outer-class>+AllocationTests.<method>`.
 
+Before a formal run, Verify's build flags catch analyzer and StyleCop failures in minutes; the result is feedback, not evidence:
+
+```powershell
+dotnet build tests/xUnitTest/xUnitTest.csproj --no-restore --no-incremental -c Release --disable-build-servers -warnaserror -p:EmitCompilerGeneratedFiles=false
+```
+
 At Unit completion, `scripts/verify.ps1` builds the test project and its Kimi dependency non-incrementally with warnings as errors. At Session completion it builds the entire solution, including Benchmark and Playground, then runs all managed regressions. The existing analyzer check is retained in both modes. Changes to Benchmark or Playground need the Session build before completion. Neither mode runs NativeAOT.
 
 ```powershell
@@ -48,11 +54,11 @@ At Unit completion, `scripts/verify.ps1` builds the test project and its Kimi de
 ./scripts/verify.ps1 -Mode Session
 ```
 
-Compiler Unit completion requires both common checks and related checks; Verify does not add the common classes automatically.
-Purpose-filtered runs such as the allocation example supplement, rather than replace, the remaining required checks.
-Commit each completed unit after its checks pass, associate the evidence, and defer automatic push until the required final
-Session succeeds. Changes that need no Session may be pushed after their own checks pass. Serialize editing, builds,
-verification and commits in each worktree; separate parallel work and other unfinished changes into other worktrees.
+Verify does not add the common compiler checks; select them with the related ones. Purpose-filtered runs such as the
+allocation example supplement, rather than replace, the remaining required checks. Commit each unit after its checks
+pass, associate the evidence (below) and push; run the final Session at the end of the working session. Ordinary Verify
+does not check native-toolchain identity: check it at setup/update or with `-VerifyToolchain`. CLI tests use
+`run --no-build` for built CLI artifacts, except when testing automatic builds.
 
 For the last unit, a successful Session can replace a separate Unit run if it verifies the same source/configuration
 and covers every required Unit check. Session runs all managed regressions, but native fixtures and milestones still
