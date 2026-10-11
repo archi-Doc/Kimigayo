@@ -113,6 +113,9 @@ internal sealed partial class MirBuilder
             case HirOp.Aggregate:
                 this.Aggregate(destination, node, TypeOf(node));
                 break;
+            case HirOp.Assign or HirOp.CompoundAssign when Rejected(Child(node)): // An update of a target Binding rejected is derived from its error.
+                this.Opaque(node, destination);
+                break;
             case HirOp.Assign:
                 this.Replace(destination, (BinaryKoto)node);
                 break;
@@ -122,16 +125,18 @@ internal sealed partial class MirBuilder
             case HirOp.Index when HirTables.PlaceOf(node).Kind == HirPlaceKind.Value: // A built-in range selection.
                 this.Slice(destination, (IndexKoto)node);
                 break;
+            case HirOp.Name or HirOp.Field or HirOp.Index or HirOp.Deref when HirTables.PlaceOf(node).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value):
+                // SPEC 3.5, 14.2: a Place's value, discarded or taken as a value, is its Place evaluated (an Index checks its bounds) and read
+                // as its Type decides: Copied, a stored exclusive reference Reborrowed, a pair layer by case.
+                this.Use(destination, this.Acquire(new(HirAcquire.ByCase, HirAdaptation.None), this.Place(node), null, false, node), node);
+                break;
             case HirOp.DictionaryLiteral:
                 this.Dictionary(destination, (DictionaryLiteralKoto)node);
                 break;
             case HirOp.Interpolation:
                 this.Format(destination, node);
                 break;
-            case HirOp.Error: // Binding reported it; its value is derived.
-                this.Opaque(node, destination);
-                break;
-            default:
+            default: // Binding's Error too, whose value is derived (Rejected).
                 this.Unsupported(node, destination);
                 break;
         }
@@ -164,7 +169,7 @@ internal sealed partial class MirBuilder
         if (adjust.Acquire == HirAcquire.Unset || adjust.Adaptation == HirAdaptation.StorageProjection || (adjust.Adaptation == HirAdaptation.BaseBorrow &&
             expected?.Components is not [_]) || (adjust.Adaptation == HirAdaptation.Erasure && expected is null))
         {
-            return MirOperand.Move(this.Unsupported(node)); // An Error proof left the acquisition unset; a projected receiver's storage is its Field's (Member).
+            return MirOperand.Move(this.Unsupported(node, false, expected)); // An Error proof left the acquisition unset; a projected receiver's storage is its Field's (Member).
         }
 
         return this.Acquire(adjust, adjust.Acquire == HirAcquire.Temporary ? this.Value(node) : this.Place(node), expected, input, node);
@@ -320,7 +325,8 @@ internal sealed partial class MirBuilder
 
     // SPEC 13.5.4, 13.5.7, 5.4: a numeric, wrapping, bit, pointer or object conversion, a Cast of its operand, Proven where it checks
     // nothing; a folded direct literal is its constant and evaluates nothing, a fitted literal is its operand, and a Never operand only
-    // diverges. A case adaptation is not built yet.
+    // diverges. A case adaptation (SPEC 8.9), whose operation each Semantics case selects (an acquisition, a borrow, an address or an object
+    // creation), has no MIR form: the only case-dependent forms are PairLayer and PairAcquire (R3 U16a: an owner decision).
     private void Convert(MirPlace destination, BinaryKoto conversion, BoundType type)
     {
         var binding = (ConversionBinding)HirTables.PlanOf(conversion).Mode;
@@ -441,8 +447,7 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 13.7.1: the value secured first, then the target located, its old value dropped where its Type may need it, and the value placed;
-    // a target that is not a Place is a Property's, whose setter (its last call, after any getter) takes the value, evaluated first. An
-    // assignment to a target Binding rejected is derived from that error.
+    // a target that is not a Place is a Property's, whose setter (its last call, after any getter) takes the value, evaluated first.
     private void Replace(MirPlace destination, BinaryKoto assignment)
     {
         if (HirTables.PlaceOf(assignment.Left).Kind is HirPlaceKind.Unset or HirPlaceKind.Value)
@@ -450,10 +455,6 @@ internal sealed partial class MirBuilder
             if ((CallPlan.Of(assignment.Left, 1) ?? CallPlan.Of(assignment.Left)) is { } setter)
             {
                 this.Call(destination, setter, assignment, assignment.Right);
-            }
-            else if (HirTables.Op(assignment.Left) == HirOp.Error)
-            {
-                this.Opaque(assignment, destination);
             }
             else
             {
@@ -559,10 +560,10 @@ internal sealed partial class MirBuilder
     private MirPlace Temp(BoundType type, Koto node, MirLocalRole role = MirLocalRole.None, string? name = null)
         => new(this.Live(this.body.AddLocal(new(type, MirLocalKind.Temp, this.Info(node, true), Name: name, Role: role)), this.temporaries));
 
-    // An Unsupported form, or a derived one, in a temp.
-    private MirPlace Unsupported(Koto node, bool derived = false)
+    // An Unsupported form, or a derived one, in a temp of the Type its consumer expects, else of its own.
+    private MirPlace Unsupported(Koto node, bool derived = false, BoundType? type = null)
     {
-        var temp = this.Temp(node);
+        var temp = this.Temp(type ?? TypeOf(node), node);
         if (derived)
         {
             this.Opaque(node, temp);

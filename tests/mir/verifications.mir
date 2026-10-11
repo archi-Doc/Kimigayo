@@ -102,7 +102,6 @@ test sample @10
   bb12:
       StorageDead(_15) @31 s1
       _13 = const () @30 s1
-      StorageDead(_20) @30 s1
       StorageDead(_14) @30 s1
       StorageDead(_13) @30 s1
       _0 = const () @13 s1
@@ -119,7 +118,6 @@ test sample @10
       drop _17 -> bb16 @36 s1
   bb16:
       StorageDead(_17) @36 s1
-      StorageLive(_20) @30 s1
       _20 = intrinsic TestRequireAbort(copy _14, const location @30) -> ! check bb17 @30 s1
   bb17:
       unreachable @30 s1

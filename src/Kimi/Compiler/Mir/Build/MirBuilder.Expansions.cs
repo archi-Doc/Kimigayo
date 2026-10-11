@@ -110,44 +110,63 @@ internal sealed partial class MirBuilder
         this.scope = outer;
     }
 
-    // SPEC 13.7.2: the right operand secured, then the target located once, its old value read, the result computed and written back once:
-    // a built-in operation on the Place, or a user arithmetic call (CallPlan.Of) on the old value and the secured operand, its result
-    // replacing the old one; through a custom Property, its getter (First) and setter (Second, taking the result as its Evaluated argument)
-    // on the receiver located once.
+    // SPEC 13.7.2, 11.2: the right operand secured, then the target located once, its old value read, the result computed and written back
+    // once. Reading and writing are selected independently: a Property's custom getter (First) and setter (Second, taking the result as its
+    // Evaluated argument) are called on its receiver, located once, and a standard accessor reads or writes its storage, as a Place target is
+    // read and written in place. The old value is read by a built-in operation, or by a user arithmetic call (CallPlan.Of) with the secured
+    // operand, whose result replaces it.
     private void Update(MirPlace destination, Koto node)
     {
         var (target, right) = node is BinaryKoto update ? (update.Left, update.Right) : (((UnaryKoto)node).Operand, null);
         var (plan, arithmetic, mark) = (ExpansionPlan.Of(node)!.Value, CallPlan.Of(node), this.located.Count);
-        if ((plan.First is null) != (plan.Second is null) || plan.First?.ResultMode is not (null or FunctionResultMode.Value) || (plan.Second is not null && plan.Evaluated < 0))
+        if (plan.Second is not null && plan.Evaluated < 0)
         {
-            this.Unsupported(node, destination); // A Property with one standard accessor, or a place getter, reads or writes its storage.
+            this.Unsupported(node, destination); // A setter without the argument the update computes.
             return;
         }
 
         var value = right is null ? MirOperand.Const(this.body.Const(new(MirConstKind.Integer, TypeOf(target), 1))) : this.Secure(this.Operand(right), right);
-        var place = plan.First is null ? this.Place(target) : this.Temp(plan.First.ReturnType, target);
-        if (plan.First is { } getter)
+        var accessor = plan.First ?? plan.Second; // A Property's accessors take its receiver, located once; a static Property's have none.
+        var (storage, receiver) = (accessor is null ? this.Place(target) : default, accessor is null || HirTables.ResOf(target) == HirRes.Static ? null : (target as MemberAccessKoto)?.Left);
+        if (receiver is not null)
         {
-            if (getter.Receiver is { } receiver)
-            {
-                this.located.Add((receiver, this.Place(receiver)));
-            }
-
-            this.Call(place, getter, target);
+            this.located.Add((receiver, this.Place(receiver)));
         }
 
-        var result = plan.Second is null && arithmetic is null ? place : this.Temp(arithmetic?.ReturnType ?? this.body.TypeOf(place)!, node);
+        if (accessor is not null && (plan.First is null || plan.Second is null))
+        {
+            storage = this.Storage(HirTables.Symbol(target)!, receiver is null ? null : this.located[mark].Place, target);
+        }
+
+        var read = plan.First is null ? storage : this.Temp(plan.First.ReturnType, target);
+        if (plan.First is { } getter)
+        {
+            // A receiver both accessors take keeps the setter's acquisition as its Adjust; the getter takes it as its own operation does
+            // (shared, SPEC 11.2): in place by that adaptation, or by its bare acquisition (a stored reference Copied).
+            var (given, operand) = (plan.Second is null ? null : receiver, default(MirOperand));
+            foreach (ref readonly var argument in getter.ArgumentOperations)
+            {
+                if (given is not null && ReferenceEquals(argument.Source, given) && HirAdjust.Of(argument) is var adaptation)
+                {
+                    operand = this.Acquire(new(adaptation == HirAdaptation.None ? HirAcquire.ByCase : HirAcquire.None, adaptation), this.located[mark].Place, argument.AdaptedType ?? argument.ParameterType, true, given);
+                }
+            }
+
+            this.Call(read, getter, target, null, given, operand);
+        }
+
+        var result = plan.Second is null && arithmetic is null ? storage : this.Temp(arithmetic?.ReturnType ?? this.body.TypeOf(read)!, node);
         if (arithmetic is not null)
         {
-            this.located.Add((target, place));
+            this.located.Add((target, read));
             this.Call(result, arithmetic, node, null, right, value);
         }
         else
         {
             var kind = right is null ? (node.Akind is KotoKind.PrefixPlusPlus or KotoKind.PostfixIncrement ? KotoKind.Plus : KotoKind.Minus) : KotoHelper.CompoundOperation(node.Akind);
-            var (op, operands) = (BinaryOp(kind)!.Value, this.body.AddOperand(MirOperand.Copy(place)));
+            var (op, operands) = (BinaryOp(kind)!.Value, this.body.AddOperand(MirOperand.Copy(read)));
             this.body.AddOperand(value);
-            this.Set(result, MirRvalue.Binary(op, operands, this.Proven(op, this.body.TypeOf(place)!, value)), node);
+            this.Set(result, MirRvalue.Binary(op, operands, this.Proven(op, this.body.TypeOf(read)!, value)), node);
         }
 
         if (plan.Second is { } setter)
@@ -158,7 +177,7 @@ internal sealed partial class MirBuilder
         {
             if (arithmetic is not null)
             {
-                this.Overwrite(place, MirOperand.Move(result), node);
+                this.Overwrite(storage, MirOperand.Move(result), node);
             }
 
             this.Unit(destination, node);
@@ -223,7 +242,9 @@ internal sealed partial class MirBuilder
         this.Serve(destination, CompilerFunctionKind.RawSlice, null, [element], at, index);
     }
 
-    // A selection's position (SPEC 4.6.2, 4.6.9): an integer as the isize it reads, a written ^x the length minus x.
+    // A selection's position (SPEC 4.6.2, 4.6.9): an integer as the isize it reads; a written ^x, which resolves only for 0 <= x <= L, the
+    // length minus x. An offset below 0 fails as an out-of-bounds position (KIMI_E_INDEX_BOUNDS, SPEC 22.5.4), a literal one in range proving
+    // it, so the subtraction cannot overflow; an offset past the length gives a negative position, which the selection's bounds check rejects.
     private MirPlace Boundary(Koto node, MirPlace length)
     {
         if (node is not FromEndIndexKoto { Operand: var offset } || HirTables.Op(node) != HirOp.Range)
@@ -231,10 +252,18 @@ internal sealed partial class MirBuilder
             return this.Position(this.Operand(node), node);
         }
 
-        var x = this.Position(this.Operand(offset), offset);
+        var operand = this.Operand(offset);
+        var (x, zero) = (this.Position(operand, offset), MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize))));
+        if (Completes(node) && (operand.Kind != MirOperandKind.Const || this.body.Consts[operand.Arg].Bits < 0 || this.body.Consts[operand.Arg].Bits > int.MaxValue))
+        {
+            var (test, fail) = (this.Temp(BoundType.Boolean, node), this.body.AddBlock());
+            this.Compare(test, MirBinaryOp.Le, zero, MirOperand.Copy(x), fail, node);
+            this.Fail(fail, "KIMI_E_INDEX_BOUNDS", node);
+        }
+
         var (position, operands) = (this.Temp(BoundType.ISize, node), this.body.AddOperand(MirOperand.Copy(length)));
         this.body.AddOperand(MirOperand.Copy(x));
-        this.Set(position, MirRvalue.Binary(MirBinaryOp.Sub, operands, false), node);
+        this.Set(position, MirRvalue.Binary(MirBinaryOp.Sub, operands, true), node);
         return position;
     }
 

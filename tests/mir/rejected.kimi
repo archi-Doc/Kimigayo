@@ -1,0 +1,12 @@
+struct Grid<length N>
+    public var cells: [N of i32] = [N of 7]
+    public init() => ()
+func fill(a: i32) -> i32
+    var value
+    value = a
+    value += 1
+    let x = missing
+    return x
+func kind() -> i32
+    let c = '\q'
+    return 0

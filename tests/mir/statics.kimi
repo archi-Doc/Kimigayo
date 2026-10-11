@@ -19,3 +19,7 @@ func use(device: uniq/Device) -> i32
     device.level = 30
     Registry.hits += 1
     return device.doubled + Registry.limit + Registry.hits
+group Tally
+    public var count: i32 = 0
+        set(value: i32) -> () => storage = value + 1
+func tally() => Tally.count = 2

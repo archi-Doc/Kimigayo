@@ -79,8 +79,8 @@ internal sealed partial class MirBuilder
         return place;
     }
 
-    // A name by its Res: a local, parameter, prepared parameter or environment binding, a static after its first-access check, or a Field
-    // of the receiver (an accessor's storage, SPEC 11.2).
+    // A name by its Res: a local, parameter, prepared parameter or environment binding, a static after its first-access check, or the
+    // storage of the receiver's Property (an accessor's `storage`, SPEC 11.2).
     private MirPlace Named(Koto node)
     {
         var symbol = HirTables.Symbol(node);
@@ -90,12 +90,17 @@ internal sealed partial class MirBuilder
                 return place;
             case HirRes.Static when symbol is not null:
                 return this.Static(symbol, node);
-            case HirRes.Field when symbol is not null && this.receiver >= 0:
-                return this.Field(this.Follow(new(this.receiver), 16), symbol.Kind == BindingSymbolKind.Storage ? HirTables.Symbol(symbol.Declaration) : symbol, node);
+            case HirRes.Field when (symbol?.Kind == BindingSymbolKind.Storage ? HirTables.Symbol(symbol.Declaration!) : symbol) is { } property:
+                return this.Storage(property, this.receiver < 0 ? null : new MirPlace(this.receiver), node);
             default:
                 return this.Unsupported(node);
         }
     }
+
+    // SPEC 11.1, 11.2, 11.3.2: a stored Property's storage, which its standard accessors and its accessors' `storage` read and write: a static
+    // Property's slot, or the Property's Field of its receiver's Place.
+    private MirPlace Storage(BindingSymbol property, MirPlace? receiver, Koto node) => HirTables.ResOf(property.Declaration!) == HirRes.Static ? this.Static(property, node)
+        : receiver is { } place ? this.Field(this.Follow(place, 16), property, node) : this.Unsupported(node);
 
     // The Place of a local or a parameter, in a default template a prepared parameter's slot its p_i references (SPEC 7.2.3), or in a
     // Closure's body of an environment binding: its capture's Field of the environment the receiver reaches (SPEC 7.6.2); null for another

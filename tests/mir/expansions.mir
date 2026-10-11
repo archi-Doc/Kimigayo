@@ -29,19 +29,19 @@ fn format @26
   _5: uniq/Utf8Writer temp @41 s1
   _6: Result<(), BufferFull> temp @38 s1
   _7: isize temp @38 s1
-  _8: uniq/Utf8Writer temp @147 s1
+  _8: uniq/Utf8Writer temp @199 s1
   _9: string temp @43 s1
   _10: ref/string temp @43 s1
   _11: Result<(), BufferFull> temp @38 s1
   _12: isize temp @38 s1
-  _13: uniq/Utf8Writer temp @147 s1
+  _13: uniq/Utf8Writer temp @199 s1
   _14: ref/i32 temp @44 s1
   _15: Result<(), BufferFull> temp @38 s1
   _16: isize temp @38 s1
-  _17: uniq/Utf8Writer temp @147 s1
+  _17: uniq/Utf8Writer temp @199 s1
   _18: string temp @47 s1
   _19: ref/string temp @47 s1
-  _20: ref/Utf8Writer temp @147 s1
+  _20: ref/Utf8Writer temp @199 s1
   s1: lexical in s0 @36
   bb0:
       StorageLive(_3) @37 s1
@@ -50,16 +50,16 @@ fn format @26
     * _5 = &uniq (*_2): uniq/Utf8Writer @41 s1
       StorageLive(_6) @38 s1
       StorageLive(_7) @38 s1
-      StorageLive(_8) @147 s1
-      _8 = &uniq two-phase (*_5): uniq/Utf8Writer @147 s1
+      StorageLive(_8) @199 s1
+      _8 = &uniq two-phase (*_5): uniq/Utf8Writer @199 s1
       StorageLive(_9) @43 s1
       _9 = const "(" @43 s1
       StorageLive(_10) @43 s1
       _10 = &_9: ref/string @43 s1
       _6 = write<string>(move _8, move _10) -> bb2 @38 s1
   bb1:
-      StorageLive(_20) @147 s1
-      _20 = &(*_5): ref/Utf8Writer @147 s1
+      StorageLive(_20) @199 s1
+      _20 = &(*_5): ref/Utf8Writer @199 s1
       _4 = status(move _20) -> bb8 @38 s1
   bb2:
       _7 = discriminant(_6) @38 s1
@@ -67,8 +67,8 @@ fn format @26
   bb3:
       StorageLive(_11) @38 s1
       StorageLive(_12) @38 s1
-      StorageLive(_13) @147 s1
-      _13 = &uniq two-phase (*_5): uniq/Utf8Writer @147 s1
+      StorageLive(_13) @199 s1
+      _13 = &uniq two-phase (*_5): uniq/Utf8Writer @199 s1
       StorageLive(_14) @44 s1
       _14 = &(*_1).0: ref/i32 @44 s1
       _11 = write<i32>(move _13, move _14) -> bb4 @38 s1
@@ -78,8 +78,8 @@ fn format @26
   bb5:
       StorageLive(_15) @38 s1
       StorageLive(_16) @38 s1
-      StorageLive(_17) @147 s1
-      _17 = &uniq two-phase (*_5): uniq/Utf8Writer @147 s1
+      StorageLive(_17) @199 s1
+      _17 = &uniq two-phase (*_5): uniq/Utf8Writer @199 s1
       StorageLive(_18) @47 s1
       _18 = const ")" @47 s1
       StorageLive(_19) @47 s1
@@ -95,23 +95,23 @@ fn format @26
   bb9:
       return @26
   bb10:
-      StorageDead(_20) @147 s1
+      StorageDead(_20) @199 s1
       StorageDead(_19) @47 s1
       drop _18 -> bb11 @47 s1
   bb11:
       StorageDead(_18) @47 s1
-      StorageDead(_17) @147 s1
+      StorageDead(_17) @199 s1
       StorageDead(_16) @38 s1
       StorageDead(_15) @38 s1
       StorageDead(_14) @44 s1
-      StorageDead(_13) @147 s1
+      StorageDead(_13) @199 s1
       StorageDead(_12) @38 s1
       StorageDead(_11) @38 s1
       StorageDead(_10) @43 s1
       drop _9 -> bb12 @43 s1
   bb12:
       StorageDead(_9) @43 s1
-      StorageDead(_8) @147 s1
+      StorageDead(_8) @199 s1
       StorageDead(_7) @38 s1
       StorageDead(_6) @38 s1
       StorageDead(_5) @41 s1
@@ -122,377 +122,497 @@ fn format @26
       _0 = move _4 @37 s1
       goto bb10 @37 s1
   bb14:
-      StorageDead(_20) @147 s1
+      StorageDead(_20) @199 s1
       StorageDead(_19) @47 s1
       drop _18 -> bb15 @47 s1
   bb15:
       StorageDead(_18) @47 s1
-      StorageDead(_17) @147 s1
+      StorageDead(_17) @199 s1
       StorageDead(_16) @38 s1
       StorageDead(_15) @38 s1
       StorageDead(_14) @44 s1
-      StorageDead(_13) @147 s1
+      StorageDead(_13) @199 s1
       StorageDead(_12) @38 s1
       StorageDead(_11) @38 s1
       StorageDead(_10) @43 s1
       drop _9 -> bb16 @43 s1
   bb16:
       StorageDead(_9) @43 s1
-      StorageDead(_8) @147 s1
+      StorageDead(_8) @199 s1
       StorageDead(_7) @38 s1
       StorageDead(_6) @38 s1
       StorageDead(_5) @41 s1
       StorageDead(_4) @38 s1
       StorageDead(_3) @37 s1
       unreachable @36
-fn top-level#0 @48
-  _0: () return @48
-  s1: lexical in s0 @49
+setter item.Set @53
+  _0: () return @53
+  _1: uniq/Box arg self @53
+  _2: i32 arg value @53
+  _3: () temp @56
+  _4: i32 temp @57
   bb0:
-      _0 = const () @49 s1
-      return @49
-fn bump @50
-  _0: () return @50
-  _1: uniq/Counter arg counter @50
-  _2: i32 arg step @50
-  _3: () temp @55 s1
-  _4: i32 temp @59 s1
-  _5: i32 temp @56 s1
-  _6: uniq/Counter temp @57 s1
-  _7: i32 temp @55 s1
-  _8: uniq/Counter temp @57 s1
-  _9: () temp @60 s1
-  s1: lexical in s0 @54
+      StorageLive(_3) @56
+      StorageLive(_4) @57
+    * _4 = copy _2 @58
+      (*_1).0 = move _4 @56
+      _3 = const () @56
+      StorageDead(_4) @57
+      StorageDead(_3) @56
+      _0 = const () @56
+      return @56
+getter level.Get @63
+  _0: i32 return @63
+  _1: ref/Box arg self @63
   bb0:
-      StorageLive(_3) @55 s1
-      StorageLive(_4) @59 s1
-    * _4 = copy _2 @59 s1
-      StorageLive(_5) @56 s1
-      StorageLive(_6) @57 s1
-      _6 = &uniq (*_1): uniq/Counter @57 s1
-      _5 = count.Get(move _6) -> bb1 @56 s1
-  bb1:
-      StorageLive(_7) @55 s1
-      _7 = Add(copy _5, move _4) @55 s1
-      StorageLive(_8) @57 s1
-      _8 = &uniq (*_1): uniq/Counter @57 s1
-      _3 = count.Set(move _8, move _7) -> bb2 @55 s1
-  bb2:
-      StorageDead(_8) @57 s1
-      StorageDead(_7) @55 s1
-      StorageDead(_6) @57 s1
-      StorageDead(_5) @56 s1
-      StorageDead(_4) @59 s1
-      StorageDead(_3) @55 s1
-      StorageLive(_9) @60 s1
-    * (*_1).0 = Mul(copy (*_1).0, const 2_i32) @60 s1
-      _9 = const () @60 s1
-      StorageDead(_9) @60 s1
-      _0 = const () @54 s1
-      return @54
-fn pick @65
-  _0: i32 return @65
-  _1: Array<i32> arg values @65
-  _2: Kimi.FromEnd<i32> var key @72 s1
-  _3: Never temp @76 s1
-  _4: i32 temp @77 s1
-  _5: isize temp @78 s1
-  _6: isize temp @78 s1
-  _7: isize temp @81 s1
-  _8: isize temp @84 s1
-  _9: isize temp @83 s1
-  s1: lexical in s0 @71
-  bb0:
-      StorageLive(_2) @72 s1
-    * _2 = fromEnd<i32>(const 2_i32) -> bb1 @74 s1
-  bb1:
-      StorageLive(_3) @76 s1
-      StorageLive(_4) @77 s1
-      StorageLive(_5) @78 s1
-    * _5 = len(_1) @78 s1
-      StorageLive(_6) @78 s1
-      _6 = resolved<Kimi.FromEnd<i32>>(copy _2, copy _5) -> bb2 @78 s1
-  bb2:
-      StorageLive(_7) @81 s1
-      _7 = len(_1) @81 s1
-      StorageLive(_8) @84 s1
-      _8 = const 1_i32 as isize (Wrap) proven @84 s1
-      StorageLive(_9) @83 s1
-      _9 = Sub(copy _7, copy _8) @83 s1
-      _4 = Add(copy _1[_6], copy _1[_9]) @77 s1
-      goto bb8 check bb9 @76 s1
-  bb3:
+    * _0 = copy (*_1).1 @65
       return @65
+fn init @66
+  _0: Box return @66
+  _1: () temp @67
+  _2: () temp @67
+  bb0:
+      StorageLive(_1) @67
+    * _0.0 = const 1_i32 @52
+    * _0.1 = const 2_i32 @62
+      StorageLive(_2) @67
+    * _2 = const () @67
+      StorageDead(_2) @67
+      _1 = const () @67
+      StorageDead(_1) @67
+      return @67
+fn top-level#0 @68
+  _0: () return @68
+  s1: lexical in s0 @69
+  bb0:
+      _0 = const () @69 s1
+      return @69
+fn bump @70
+  _0: () return @70
+  _1: uniq/Counter arg counter @70
+  _2: i32 arg step @70
+  _3: () temp @75 s1
+  _4: i32 temp @79 s1
+  _5: i32 temp @76 s1
+  _6: ref/Counter temp @77 s1
+  _7: i32 temp @75 s1
+  _8: uniq/Counter temp @77 s1
+  _9: () temp @80 s1
+  s1: lexical in s0 @74
+  bb0:
+      StorageLive(_3) @75 s1
+      StorageLive(_4) @79 s1
+    * _4 = copy _2 @79 s1
+      StorageLive(_5) @76 s1
+      StorageLive(_6) @77 s1
+      _6 = &(*_1): ref/Counter @77 s1
+      _5 = count.Get(move _6) -> bb1 @76 s1
+  bb1:
+      StorageLive(_7) @75 s1
+      _7 = Add(copy _5, move _4) @75 s1
+      StorageLive(_8) @77 s1
+      _8 = &uniq (*_1): uniq/Counter @77 s1
+      _3 = count.Set(move _8, move _7) -> bb2 @75 s1
+  bb2:
+      StorageDead(_8) @77 s1
+      StorageDead(_7) @75 s1
+      StorageDead(_6) @77 s1
+      StorageDead(_5) @76 s1
+      StorageDead(_4) @79 s1
+      StorageDead(_3) @75 s1
+      StorageLive(_9) @80 s1
+    * (*_1).0 = Mul(copy (*_1).0, const 2_i32) @80 s1
+      _9 = const () @80 s1
+      StorageDead(_9) @80 s1
+      _0 = const () @74 s1
+      return @74
+fn pick @85
+  _0: i32 return @85
+  _1: Array<i32> arg values @85
+  _2: Kimi.FromEnd<i32> var key @92 s1
+  _3: Never temp @96 s1
+  _4: i32 temp @97 s1
+  _5: isize temp @98 s1
+  _6: isize temp @98 s1
+  _7: isize temp @101 s1
+  _8: isize temp @104 s1
+  _9: isize temp @103 s1
+  s1: lexical in s0 @91
+  bb0:
+      StorageLive(_2) @92 s1
+    * _2 = fromEnd<i32>(const 2_i32) -> bb1 @94 s1
+  bb1:
+      StorageLive(_3) @96 s1
+      StorageLive(_4) @97 s1
+      StorageLive(_5) @98 s1
+    * _5 = len(_1) @98 s1
+      StorageLive(_6) @98 s1
+      _6 = resolved<Kimi.FromEnd<i32>>(copy _2, copy _5) -> bb2 @98 s1
+  bb2:
+      StorageLive(_7) @101 s1
+      _7 = len(_1) @101 s1
+      StorageLive(_8) @104 s1
+      _8 = const 1_i32 as isize (Wrap) proven @104 s1
+      StorageLive(_9) @103 s1
+      _9 = Sub(copy _7, copy _8) proven @103 s1
+      _4 = Add(copy _1[_6], copy _1[_9]) @97 s1
+      goto bb8 check bb9 @96 s1
+  bb3:
+      return @85
   bb4:
-      drop _1 -> bb5 @65
+      drop _1 -> bb5 @85
   bb5:
-      goto bb3 @65
+      goto bb3 @85
   bb6:
-      StorageDead(_2) @72 s1
-      goto bb4 @65
+      StorageDead(_2) @92 s1
+      goto bb4 @85
   bb7:
-      StorageDead(_9) @83 s1
-      StorageDead(_8) @84 s1
-      StorageDead(_7) @81 s1
-      StorageDead(_6) @78 s1
-      StorageDead(_5) @78 s1
-      StorageDead(_4) @77 s1
-      StorageDead(_3) @76 s1
-      goto bb6 @65
+      StorageDead(_9) @103 s1
+      StorageDead(_8) @104 s1
+      StorageDead(_7) @101 s1
+      StorageDead(_6) @98 s1
+      StorageDead(_5) @98 s1
+      StorageDead(_4) @97 s1
+      StorageDead(_3) @96 s1
+      goto bb6 @85
   bb8:
-      _0 = move _4 @76 s1
-      goto bb7 @76 s1
+      _0 = move _4 @96 s1
+      goto bb7 @96 s1
   bb9:
-      StorageDead(_9) @83 s1
-      StorageDead(_8) @84 s1
-      StorageDead(_7) @81 s1
-      StorageDead(_6) @78 s1
-      StorageDead(_5) @78 s1
-      StorageDead(_4) @77 s1
-      StorageDead(_3) @76 s1
-      StorageDead(_2) @72 s1
-      drop _1 -> bb10 @65
+      StorageDead(_9) @103 s1
+      StorageDead(_8) @104 s1
+      StorageDead(_7) @101 s1
+      StorageDead(_6) @98 s1
+      StorageDead(_5) @98 s1
+      StorageDead(_4) @97 s1
+      StorageDead(_3) @96 s1
+      StorageDead(_2) @92 s1
+      drop _1 -> bb10 @85
   bb10:
-      unreachable @71
-fn middle @85
-  _0: Slice<i32> return @85
-  _1: ref/[5 of i32] arg values @85
-  _2: isize temp @95
-  _3: isize temp @98
-  _4: isize temp @100
-  _5: isize temp @99
-  _6: bool temp @95
-  _7: isize temp @95
-  _8: Never temp @95
-  _9: raw/i32 temp @95
+      unreachable @91
+fn middle @105
+  _0: Slice<i32> return @105
+  _1: ref/[5 of i32] arg values @105
+  _2: isize temp @115
+  _3: isize temp @118
+  _4: isize temp @120
+  _5: isize temp @119
+  _6: bool temp @115
+  _7: isize temp @115
+  _8: Never temp @115
+  _9: raw/i32 temp @115
   bb0:
-      StorageLive(_2) @95
-    * _2 = len((*_1)) @95
-      StorageLive(_3) @98
-      _3 = const 1_i32 as isize (Wrap) proven @98
-      StorageLive(_4) @100
-      _4 = const 1_i32 as isize (Wrap) proven @100
-      StorageLive(_5) @99
-      _5 = Sub(copy _2, copy _4) @99
-      StorageLive(_6) @95
-      StorageLive(_7) @95
-      _6 = Le(const 0_isize, copy _3) proven @95
-      switch copy _6 [1: bb2, otherwise: bb1] @95
+      StorageLive(_2) @115
+    * _2 = len((*_1)) @115
+      StorageLive(_3) @118
+      _3 = const 1_i32 as isize (Wrap) proven @118
+      StorageLive(_4) @120
+      _4 = const 1_i32 as isize (Wrap) proven @120
+      StorageLive(_5) @119
+      _5 = Sub(copy _2, copy _4) proven @119
+      StorageLive(_6) @115
+      StorageLive(_7) @115
+      _6 = Le(const 0_isize, copy _3) proven @115
+      switch copy _6 [1: bb2, otherwise: bb1] @115
   bb1:
-      StorageLive(_8) @95
-      _8 = intrinsic Fail(const "KIMI_E_INDEX_BOUNDS") -> ! @95
+      _8 = intrinsic Fail(const "KIMI_E_INDEX_BOUNDS") -> ! @115
   bb2:
-      _6 = Le(copy _3, copy _5) proven @95
-      switch copy _6 [1: bb3, otherwise: bb1] @95
+      _6 = Le(copy _3, copy _5) proven @115
+      switch copy _6 [1: bb3, otherwise: bb1] @115
   bb3:
-      _6 = Le(copy _5, copy _2) proven @95
-      switch copy _6 [1: bb4, otherwise: bb1] @95
+      _6 = Le(copy _5, copy _2) proven @115
+      switch copy _6 [1: bb4, otherwise: bb1] @115
   bb4:
-      _7 = Sub(copy _5, copy _3) proven @95
-      StorageLive(_9) @95
-      switch copy _7 [0: bb6, otherwise: bb5] @95
+      _7 = Sub(copy _5, copy _3) proven @115
+      StorageLive(_9) @115
+      switch copy _7 [0: bb6, otherwise: bb5] @115
   bb5:
-      _9 = &raw (*_1)[_3]: raw/i32 @95
-      goto bb7 @95
+      _9 = &raw (*_1)[_3]: raw/i32 @115
+      goto bb7 @115
   bb6:
-      _9 = const 0_raw/i32 @95
-      goto bb7 @95
+      _9 = const 0_raw/i32 @115
+      goto bb7 @115
   bb7:
-      _0 = intrinsic RawSlice<i32>(move _9, copy _7) -> bb8 @95
+      _0 = intrinsic RawSlice<i32>(move _9, copy _7) -> bb8 @115
   bb8:
-      StorageDead(_9) @95
-      StorageDead(_8) @95
-      StorageDead(_7) @95
-      StorageDead(_6) @95
-      StorageDead(_5) @99
-      StorageDead(_4) @100
-      StorageDead(_3) @98
-      StorageDead(_2) @95
-      return @95
-fn head @101
-  _0: Slice<i32> return @101
-  _1: ref/Array<i32> arg values @101
-  _2: isize temp @111
-  _3: isize temp @111
-  _4: isize temp @114
-  _5: bool temp @111
-  _6: isize temp @111
-  _7: Never temp @111
-  _8: raw/i32 temp @111
-  bb0:
-      StorageLive(_2) @111
-    * _2 = len((*_1)) @111
-      StorageLive(_3) @111
-      _3 = const 0_isize @111
-      StorageLive(_4) @114
-      _4 = const 2_i32 as isize (Wrap) proven @114
-      StorageLive(_5) @111
-      StorageLive(_6) @111
-      _5 = Le(const 0_isize, copy _3) proven @111
-      switch copy _5 [1: bb2, otherwise: bb1] @111
-  bb1:
-      StorageLive(_7) @111
-      _7 = intrinsic Fail(const "KIMI_E_INDEX_BOUNDS") -> ! @111
-  bb2:
-      _5 = Le(copy _3, copy _4) proven @111
-      switch copy _5 [1: bb3, otherwise: bb1] @111
-  bb3:
-      _5 = Lt(copy _4, copy _2) proven @111
-      switch copy _5 [1: bb4, otherwise: bb1] @111
-  bb4:
-      _6 = Sub(copy _4, copy _3) proven @111
-      _6 = Add(copy _6, const 1_isize) proven @111
-      StorageLive(_8) @111
-      switch copy _6 [0: bb6, otherwise: bb5] @111
-  bb5:
-      _8 = &raw (*_1)[_3]: raw/i32 @111
-      goto bb7 @111
-  bb6:
-      _8 = const 0_raw/i32 @111
-      goto bb7 @111
-  bb7:
-      _0 = intrinsic RawSlice<i32>(move _8, copy _6) -> bb8 @111
-  bb8:
-      StorageDead(_8) @111
-      StorageDead(_7) @111
-      StorageDead(_6) @111
-      StorageDead(_5) @111
-      StorageDead(_4) @114
-      StorageDead(_3) @111
-      StorageDead(_2) @111
-      return @111
-fn make @115
-  _0: Array<i32> return @115
-  _1: i32 arg first @115
-  _2: () temp @121
-  _3: uniq/Array<i32> temp @121
-  _4: uniq/Array<i32> temp @121
-  _5: uniq/Array<i32> temp @121
-  bb0:
-    * _0 = FixedArray(): Array<i32> @121
-      StorageLive(_2) @121
-      StorageLive(_3) @121
-      _3 = &uniq _0: uniq/Array<i32> @121
-      _2 = reserve(move _3, const 2_isize) -> bb1 @121
-  bb1:
-      StorageLive(_4) @121
-      _4 = &uniq _0: uniq/Array<i32> @121
-      _2 = append(move _4, copy _1) -> bb2 @121
-  bb2:
-      StorageLive(_5) @121
-      _5 = &uniq _0: uniq/Array<i32> @121
-      _2 = append(move _5, const 2_i32) -> bb3 @121
-  bb3:
-      StorageDead(_5) @121
-      StorageDead(_4) @121
-      StorageDead(_3) @121
-      StorageDead(_2) @121
-      return @121
-fn table @124
-  _0: Dictionary<i32, bool> return @124
-  _1: i32 temp @131
-  _2: bool temp @132
+      StorageDead(_9) @115
+      StorageDead(_7) @115
+      StorageDead(_6) @115
+      StorageDead(_5) @119
+      StorageDead(_4) @120
+      StorageDead(_3) @118
+      StorageDead(_2) @115
+      return @115
+fn head @121
+  _0: Slice<i32> return @121
+  _1: ref/Array<i32> arg values @121
+  _2: isize temp @131
   _3: isize temp @131
-  _4: bool temp @131
-  _5: ref/Dictionary<i32, bool> temp @131
-  _6: ref/i32 temp @131
+  _4: isize temp @134
+  _5: bool temp @131
+  _6: isize temp @131
   _7: Never temp @131
-  _8: (raw/u8, isize) temp @132
-  _9: uniq/Dictionary<i32, bool> temp @132
-  _10: () temp @132
-  _11: i32 temp @133
-  _12: bool temp @134
-  _13: isize temp @133
-  _14: bool temp @133
-  _15: ref/Dictionary<i32, bool> temp @133
-  _16: ref/i32 temp @133
-  _17: Never temp @133
-  _18: (raw/u8, isize) temp @134
-  _19: uniq/Dictionary<i32, bool> temp @134
-  _20: () temp @134
+  _8: raw/i32 temp @131
   bb0:
-    * _0 = FixedArray(): Dictionary<i32, bool> @130
-      StorageLive(_1) @131
-      StorageLive(_2) @132
+      StorageLive(_2) @131
+    * _2 = len((*_1)) @131
       StorageLive(_3) @131
-      StorageLive(_4) @131
-      _1 = const 1_i32 @131
+      _3 = const 0_isize @131
+      StorageLive(_4) @134
+      _4 = const 2_i32 as isize (Wrap) proven @134
       StorageLive(_5) @131
-      _5 = &_0: ref/Dictionary<i32, bool> @131
       StorageLive(_6) @131
-      _6 = &_1: ref/i32 @131
-      _3 = findEntry<i32, bool>(move _5, move _6) -> bb2 @131
+      _5 = Le(const 0_isize, copy _3) proven @131
+      switch copy _5 [1: bb2, otherwise: bb1] @131
   bb1:
-      StorageLive(_7) @131
-      _7 = intrinsic Fail(const "KIMI_E_DUPLICATE_KEY") -> ! @131
+      _7 = intrinsic Fail(const "KIMI_E_INDEX_BOUNDS") -> ! @131
   bb2:
-      _4 = Eq(copy _3, const 0_isize) proven @131
-      switch copy _4 [1: bb3, otherwise: bb1] @131
+      _5 = Le(copy _3, copy _4) proven @131
+      switch copy _5 [1: bb3, otherwise: bb1] @131
   bb3:
-      _2 = const true @132
-      StorageLive(_8) @132
-      StorageLive(_9) @132
-      _9 = &uniq _0: uniq/Dictionary<i32, bool> @132
-      _8 = dictionaryStorage<i32, bool>(move _9) -> bb4 @132
+      _5 = Lt(copy _4, copy _2) proven @131
+      switch copy _5 [1: bb4, otherwise: bb1] @131
   bb4:
-      StorageLive(_10) @132
-      _10 = placeEntry<i32, bool>(copy _8.0, move _1, move _2) -> bb5 @132
+      _6 = Sub(copy _4, copy _3) proven @131
+      _6 = Add(copy _6, const 1_isize) proven @131
+      StorageLive(_8) @131
+      switch copy _6 [0: bb6, otherwise: bb5] @131
   bb5:
-      StorageLive(_11) @133
-      StorageLive(_12) @134
-      StorageLive(_13) @133
-      StorageLive(_14) @133
-      _11 = const 2_i32 @133
-      StorageLive(_15) @133
-      _15 = &_0: ref/Dictionary<i32, bool> @133
-      StorageLive(_16) @133
-      _16 = &_11: ref/i32 @133
-      _13 = findEntry<i32, bool>(move _15, move _16) -> bb7 @133
+      _8 = &raw (*_1)[_3]: raw/i32 @131
+      goto bb7 @131
   bb6:
-      StorageLive(_17) @133
-      _17 = intrinsic Fail(const "KIMI_E_DUPLICATE_KEY") -> ! @133
+      _8 = const 0_raw/i32 @131
+      goto bb7 @131
   bb7:
-      _14 = Eq(copy _13, const 0_isize) proven @133
-      switch copy _14 [1: bb8, otherwise: bb6] @133
+      _0 = intrinsic RawSlice<i32>(move _8, copy _6) -> bb8 @131
   bb8:
-      _12 = const false @134
-      StorageLive(_18) @134
-      StorageLive(_19) @134
-      _19 = &uniq _0: uniq/Dictionary<i32, bool> @134
-      _18 = dictionaryStorage<i32, bool>(move _19) -> bb9 @134
-  bb9:
-      StorageLive(_20) @134
-      _20 = placeEntry<i32, bool>(copy _18.0, move _11, move _12) -> bb10 @134
-  bb10:
-      StorageDead(_20) @134
-      StorageDead(_19) @134
-      StorageDead(_18) @134
-      StorageDead(_17) @133
-      StorageDead(_16) @133
-      StorageDead(_15) @133
-      StorageDead(_14) @133
-      StorageDead(_13) @133
-      StorageDead(_12) @134
-      StorageDead(_11) @133
-      StorageDead(_10) @132
-      StorageDead(_9) @132
-      StorageDead(_8) @132
-      StorageDead(_7) @131
+      StorageDead(_8) @131
       StorageDead(_6) @131
       StorageDead(_5) @131
-      StorageDead(_4) @131
+      StorageDead(_4) @134
       StorageDead(_3) @131
-      StorageDead(_2) @132
-      StorageDead(_1) @131
-      return @130
-fn room @135
-  _0: isize return @135
-  _1: ref/Array<i32> arg values @135
-  _2: ref/Array<i32> temp @141
+      StorageDead(_2) @131
+      return @131
+fn make @135
+  _0: Array<i32> return @135
+  _1: i32 arg first @135
+  _2: () temp @141
+  _3: uniq/Array<i32> temp @141
+  _4: uniq/Array<i32> temp @141
+  _5: uniq/Array<i32> temp @141
   bb0:
+    * _0 = FixedArray(): Array<i32> @141
       StorageLive(_2) @141
-    * _2 = &(*_1): ref/Array<i32> @141
-      _0 = intrinsic Capacity(move _2) -> bb1 @141
+      StorageLive(_3) @141
+      _3 = &uniq _0: uniq/Array<i32> @141
+      _2 = reserve(move _3, const 2_isize) -> bb1 @141
   bb1:
+      StorageLive(_4) @141
+      _4 = &uniq _0: uniq/Array<i32> @141
+      _2 = append(move _4, copy _1) -> bb2 @141
+  bb2:
+      StorageLive(_5) @141
+      _5 = &uniq _0: uniq/Array<i32> @141
+      _2 = append(move _5, const 2_i32) -> bb3 @141
+  bb3:
+      StorageDead(_5) @141
+      StorageDead(_4) @141
+      StorageDead(_3) @141
       StorageDead(_2) @141
       return @141
+fn table @144
+  _0: Dictionary<i32, bool> return @144
+  _1: i32 temp @151
+  _2: bool temp @152
+  _3: isize temp @151
+  _4: bool temp @151
+  _5: ref/Dictionary<i32, bool> temp @151
+  _6: ref/i32 temp @151
+  _7: Never temp @151
+  _8: (raw/u8, isize) temp @152
+  _9: uniq/Dictionary<i32, bool> temp @152
+  _10: () temp @152
+  _11: i32 temp @153
+  _12: bool temp @154
+  _13: isize temp @153
+  _14: bool temp @153
+  _15: ref/Dictionary<i32, bool> temp @153
+  _16: ref/i32 temp @153
+  _17: Never temp @153
+  _18: (raw/u8, isize) temp @154
+  _19: uniq/Dictionary<i32, bool> temp @154
+  _20: () temp @154
+  bb0:
+    * _0 = FixedArray(): Dictionary<i32, bool> @150
+      StorageLive(_1) @151
+      StorageLive(_2) @152
+      StorageLive(_3) @151
+      StorageLive(_4) @151
+      _1 = const 1_i32 @151
+      StorageLive(_5) @151
+      _5 = &_0: ref/Dictionary<i32, bool> @151
+      StorageLive(_6) @151
+      _6 = &_1: ref/i32 @151
+      _3 = findEntry<i32, bool>(move _5, move _6) -> bb2 @151
+  bb1:
+      _7 = intrinsic Fail(const "KIMI_E_DUPLICATE_KEY") -> ! @151
+  bb2:
+      _4 = Eq(copy _3, const 0_isize) proven @151
+      switch copy _4 [1: bb3, otherwise: bb1] @151
+  bb3:
+      _2 = const true @152
+      StorageLive(_8) @152
+      StorageLive(_9) @152
+      _9 = &uniq _0: uniq/Dictionary<i32, bool> @152
+      _8 = dictionaryStorage<i32, bool>(move _9) -> bb4 @152
+  bb4:
+      StorageLive(_10) @152
+      _10 = placeEntry<i32, bool>(copy _8.0, move _1, move _2) -> bb5 @152
+  bb5:
+      StorageLive(_11) @153
+      StorageLive(_12) @154
+      StorageLive(_13) @153
+      StorageLive(_14) @153
+      _11 = const 2_i32 @153
+      StorageLive(_15) @153
+      _15 = &_0: ref/Dictionary<i32, bool> @153
+      StorageLive(_16) @153
+      _16 = &_11: ref/i32 @153
+      _13 = findEntry<i32, bool>(move _15, move _16) -> bb7 @153
+  bb6:
+      _17 = intrinsic Fail(const "KIMI_E_DUPLICATE_KEY") -> ! @153
+  bb7:
+      _14 = Eq(copy _13, const 0_isize) proven @153
+      switch copy _14 [1: bb8, otherwise: bb6] @153
+  bb8:
+      _12 = const false @154
+      StorageLive(_18) @154
+      StorageLive(_19) @154
+      _19 = &uniq _0: uniq/Dictionary<i32, bool> @154
+      _18 = dictionaryStorage<i32, bool>(move _19) -> bb9 @154
+  bb9:
+      StorageLive(_20) @154
+      _20 = placeEntry<i32, bool>(copy _18.0, move _11, move _12) -> bb10 @154
+  bb10:
+      StorageDead(_20) @154
+      StorageDead(_19) @154
+      StorageDead(_18) @154
+      StorageDead(_16) @153
+      StorageDead(_15) @153
+      StorageDead(_14) @153
+      StorageDead(_13) @153
+      StorageDead(_12) @154
+      StorageDead(_11) @153
+      StorageDead(_10) @152
+      StorageDead(_9) @152
+      StorageDead(_8) @152
+      StorageDead(_6) @151
+      StorageDead(_5) @151
+      StorageDead(_4) @151
+      StorageDead(_3) @151
+      StorageDead(_2) @152
+      StorageDead(_1) @151
+      return @150
+fn room @155
+  _0: isize return @155
+  _1: ref/Array<i32> arg values @155
+  _2: ref/Array<i32> temp @161
+  bb0:
+      StorageLive(_2) @161
+    * _2 = &(*_1): ref/Array<i32> @161
+      _0 = intrinsic Capacity(move _2) -> bb1 @161
+  bb1:
+      StorageDead(_2) @161
+      return @161
+fn back @164
+  _0: i32 return @164
+  _1: ref/Array<i32> arg values @164
+  _2: i32 arg x @164
+  _3: isize temp @172
+  _4: isize temp @175
+  _5: bool temp @174
+  _6: Never temp @174
+  _7: isize temp @174
+  _8: isize temp @176
+  _9: i32 temp @179
+  _10: isize temp @179
+  _11: bool temp @178
+  _12: Never temp @178
+  _13: isize temp @178
+  bb0:
+      StorageLive(_3) @172
+    * _3 = len((*_1)) @172
+      StorageLive(_4) @175
+      _4 = copy _2 as isize (Wrap) proven @175
+      StorageLive(_5) @174
+      _5 = Le(const 0_isize, copy _4) proven @174
+      switch copy _5 [1: bb2, otherwise: bb1] @174
+  bb1:
+      _6 = intrinsic Fail(const "KIMI_E_INDEX_BOUNDS") -> ! @174
+  bb2:
+      StorageLive(_7) @174
+      _7 = Sub(copy _3, copy _4) proven @174
+      StorageLive(_8) @176
+      _8 = len((*_1)) @176
+      StorageLive(_9) @179
+      _9 = const -1_i32 @180
+      StorageLive(_10) @179
+      _10 = move _9 as isize (Wrap) proven @179
+      StorageLive(_11) @178
+      _11 = Le(const 0_isize, copy _10) proven @178
+      switch copy _11 [1: bb4, otherwise: bb3] @178
+  bb3:
+      _12 = intrinsic Fail(const "KIMI_E_INDEX_BOUNDS") -> ! @178
+  bb4:
+      StorageLive(_13) @178
+      _13 = Sub(copy _8, copy _10) proven @178
+      _0 = Add(copy (*_1)[_7], copy (*_1)[_13]) @171
+      StorageDead(_13) @178
+      StorageDead(_11) @178
+      StorageDead(_10) @179
+      StorageDead(_9) @179
+      StorageDead(_8) @176
+      StorageDead(_7) @174
+      StorageDead(_5) @174
+      StorageDead(_4) @175
+      StorageDead(_3) @172
+      return @171
+fn update @182
+  _0: () return @182
+  _1: uniq/Box arg box @182
+  _2: i32 arg step @182
+  _3: () temp @187 s1
+  _4: i32 temp @191 s1
+  _5: i32 temp @187 s1
+  _6: uniq/Box temp @189 s1
+  _7: i32 temp @192 s1
+  _8: i32 temp @193 s1
+  _9: ref/Box temp @194 s1
+  s1: lexical in s0 @186
+  bb0:
+      StorageLive(_3) @187 s1
+      StorageLive(_4) @191 s1
+    * _4 = copy _2 @191 s1
+      StorageLive(_5) @187 s1
+      _5 = Add(copy (*_1).0, move _4) @187 s1
+      StorageLive(_6) @189 s1
+      _6 = &uniq (*_1): uniq/Box @189 s1
+      _3 = item.Set(move _6, move _5) -> bb1 @187 s1
+  bb1:
+      StorageDead(_6) @189 s1
+      StorageDead(_5) @187 s1
+      StorageDead(_4) @191 s1
+      StorageDead(_3) @187 s1
+      StorageLive(_7) @192 s1
+      StorageLive(_8) @193 s1
+      StorageLive(_9) @194 s1
+    * _9 = &(*_1): ref/Box @194 s1
+      _8 = level.Get(move _9) -> bb2 @193 s1
+  bb2:
+      (*_1).1 = Add(copy _8, const 1_i32) @192 s1
+      _7 = const () @192 s1
+      StorageDead(_9) @194 s1
+      StorageDead(_8) @193 s1
+      StorageDead(_7) @192 s1
+      _0 = const () @186 s1
+      return @186

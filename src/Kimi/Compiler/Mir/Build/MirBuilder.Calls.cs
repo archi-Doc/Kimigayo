@@ -108,11 +108,13 @@ internal sealed partial class MirBuilder
     // SPEC 17.3: a block that fails with a fixed SPEC 22.5.4 code (an expansion's check), without a successor.
     private void Fail(int block, string code, Koto node)
     {
-        var (current, start) = (this.current, this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.String, BoundType.String, Value: code)))));
-        this.current = block;
-        this.body.Terminate(block, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.Fail), start, 1, this.Temp(BoundType.Never, node), -1, this.Info(node)));
-        this.current = current;
+        var start = this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.String, BoundType.String, Value: code))));
+        this.body.Terminate(block, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.Fail), start, 1, this.Unwritten(node), -1, this.Info(node)));
     }
+
+    // The destination of a diverging call on a path that ends with it (a failed check, $require's abort): a Never temp the call never writes
+    // (MirUses), without storage, whose markers the statement's other paths would end without beginning (SPEC 3.6.2).
+    private MirPlace Unwritten(Koto node) => new(this.body.AddLocal(new(BoundType.Never, MirLocalKind.Temp, this.Info(node, true))));
 
     // SPEC 13.6.1: a runtime Type test is the intrinsic typeTest of a shared view of the handle's payload and the target Type's token; an
     // operand that does not complete tests nothing.

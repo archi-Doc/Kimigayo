@@ -105,27 +105,32 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.Contains("opaque", first, StringComparison.Ordinal);
     }
 
-    // Plan 6.2: a form without a building rule is one record at its location, however many bodies meet it (a Field initializer's, built
-    // into each constructor), and an Opaque value naming the locals its syntax touches; Binding's Error is a derived Opaque without a
-    // record; building goes on after both. The unbuilt form is a fill of a length its instance decides, which no R3 unit builds.
+    // Plan 6.2: a form without a building rule is one record at its location, however many times a body meets it (a defer body, built at
+    // each way out of its scope), and an Opaque value naming the locals its syntax touches. A node the lexer or Binding rejected is a derived
+    // Opaque without a record (SPEC 23.3.6.4): Binding's Error, a use of a local whose declaration is an Error, and the Field initializer of a
+    // declaration Binding did not bind (a struct with a misplaced `length` slot), in each constructor. Building goes on after each. The
+    // unbuilt form is a fill of a length its instance decides, which no R3 unit builds.
     [Fact]
     public void UnsupportedFormsAreOpaqueAtOneRecord()
     {
         var c = Compile("struct Grid<length N>\n    public var cells: [N of i32] = [N of 7]\n    public init() => ()\n    public init(y: i32) => ()\n" +
-            "func f<length N>(a: i32, b: i32) -> i32\n    let c: [N of i32] = [N of (a + b)]\n    return b\nfunc g() -> i32 => missing\n");
+            "func f<length N>(a: i32, b: i32) -> i32\n    let c: [N of i32] = [N of (a + b)]\n    return b\nfunc g() -> i32 => missing\n" +
+            "func h<length N>(a: i32, c: bool) -> i32\n    defer\n        let d: [N of i32] = [N of a]\n    if c => return 1\n    return a\n" +
+            "func k() -> i32\n    let x = missing\n    return x\n");
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        var bodies = program.Bodies.ToArray().Where(static x => x.Key.Decl?.Name is "f" or "g").ToDictionary(static x => x.Key.Decl!.Name);
+        var bodies = program.Bodies.ToArray().Where(static x => x.Key.Decl?.Name is "f" or "g" or "h" or "k").ToDictionary(static x => x.Key.Decl!.Name);
         var fill = bodies["f"];
         Assert.True(fill.HasOpaque);
         Assert.Equal([1, 2], fill.OpaqueRoots.ToArray());
         Assert.Contains(fill.Blocks.ToArray(), static x => x.Terminator.Kind == MirTerminatorKind.Return);
+        var records = program.Records.Where(static x => x.Subject.Module == 0).Select(x => c.SyntaxOf(x.Subject).ToString()).Order(StringComparer.Ordinal);
+        Assert.Equal(["[N of (a + b)]", "[N of a]"], records);
+        Assert.Equal(2, bodies["h"].OpaqueSites.ToArray().Count(x => c.SyntaxOf(x.Source).ToString() == "[N of a]"));
 
-        var field = c.SyntaxOf(Assert.Single(program.Records, x => x.Subject.Module == 0 && c.SyntaxOf(x.Subject).ToString() == "[N of 7]").Subject);
-        Assert.Equal(2, program.Bodies.ToArray().Count(x => x.OpaqueSites.ToArray().Any(y => ReferenceEquals(c.SyntaxOf(y.Source), field))));
-        var error = bodies["g"];
-        Assert.Equal(HirOp.Error, HirTables.Op(c.SyntaxOf(error.OpaqueSites[0].Source)));
-        Assert.DoesNotContain(program.Records, x => x.Subject == error.OpaqueSites[0].Source);
+        Assert.Equal(2, program.Bodies.ToArray().Count(x => x.OpaqueSites.ToArray().Any(y => c.SyntaxOf(y.Source).ToString() == "[N of 7]")));
+        Assert.Equal(HirOp.Error, HirTables.Op(c.SyntaxOf(bodies["g"].OpaqueSites[0].Source)));
+        Assert.Equal(["let x = missing", "x"], bodies["k"].OpaqueSites.ToArray().Select(x => c.SyntaxOf(x.Source).ToString()));
     }
 
     // V11: publishing, building and validating an unchanged compilation again, and selecting every Semantics case view of its bodies with

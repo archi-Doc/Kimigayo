@@ -191,7 +191,7 @@ internal sealed partial class MirBuilder
             var start = this.arguments.Count;
             this.arguments.Add(MirOperand.Copy(issue));
             this.arguments.Add(location);
-            this.Invoke(this.Temp(BoundType.Never, verification), MirCallee.Intrinsic(IntrinsicId.TestRequireAbort), start, verification, true);
+            this.Invoke(this.Unwritten(verification), MirCallee.Intrinsic(IntrinsicId.TestRequireAbort), start, verification, true);
             this.body.Terminate(this.current, MirTerminator.Unreachable(this.Info(verification)));
         }
         else

@@ -56,6 +56,11 @@ internal sealed partial class MirBuilder(Compilation compilation)
 
     private static BoundType TypeOf(Koto node) => HirTables.Meaning(node) as BoundType ?? BoundType.Unit;
 
+    // Whether the published facts say the lexer or Binding rejected a node the builder reaches: an Error, a value without a Type, a literal
+    // without its constant (an invalid escape, a number that does not fit), or a name of a local whose declaration is an Error.
+    private static bool Rejected(Koto node) => HirTables.Op(node) is HirOp.Error or HirOp.Literal || HirTables.Meaning(node) is null ||
+        (HirTables.Symbol(node)?.Declaration is { } declaration && HirTables.Op(declaration) == HirOp.Error);
+
     // The parameter slot a body reads at an argument position (SPEC 7.3): the receiver first (a constructor's or destructor's self at -1,
     // else the self parameter at its written slot), then the other parameters in slot order; false past the last.
     private static bool Slot(BindingSymbol function, int position, out int slot)
@@ -185,9 +190,9 @@ internal sealed partial class MirBuilder(Compilation compilation)
 
             for (var i = 0; i < AdtDef.Count(self); i++)
             {
-                if (AdtDef.Field(self, i).InitializerKoto is { } initializer)
+                if (AdtDef.Field(self, i) is { InitializerKoto: { } initializer } field)
                 {
-                    this.Initialize(body.Project(new(0), MirProjectionKind.Field, i), initializer);
+                    this.Initialize(body.Project(new(0), MirProjectionKind.Field, i), initializer, HirTables.Op(field) != HirOp.Body);
                 }
             }
         }
@@ -219,12 +224,16 @@ internal sealed partial class MirBuilder(Compilation compilation)
     }
 
     // A step of a constructor as a statement of its own (SPEC 6.2.3.3): the base call into the base subobject, or a Field's initializer,
-    // as its Adjust takes it, into the Field.
-    private void Initialize(MirPlace place, Koto node)
+    // as its Adjust takes it, into the Field; that of a Field declaration Binding did not bind (no Body) is derived from its error.
+    private void Initialize(MirPlace place, Koto node, bool rejected = false)
     {
         this.statementStart = true;
         var temporaries = this.OpenScope(false);
-        if (HirTables.AdjustOf(node).Acquire == HirAcquire.Unset)
+        if (rejected)
+        {
+            this.Opaque(node, place);
+        }
+        else if (HirTables.AdjustOf(node).Acquire == HirAcquire.Unset)
         {
             this.Into(place, node);
         }
@@ -320,11 +329,15 @@ internal sealed partial class MirBuilder(Compilation compilation)
         this.locals[symbol] = local;
     }
 
-    // The one way a form without a building rule is built (plan 5.4, 6.2): a located record, merged by location, and an Opaque value in
-    // its place.
+    // The one way a form without a building rule is built (plan 5.4, 6.2): an Opaque value in its place and a located record, merged by
+    // location, unless the node is one the lexer or Binding rejected, whose error the Opaque value is derived from (SPEC 23.3.6.4).
     private void Unsupported(Koto node, MirPlace destination)
     {
-        this.program.Report(SourceRef.Of(node));
+        if (!Rejected(node))
+        {
+            this.program.Report(SourceRef.Of(node));
+        }
+
         this.Opaque(node, destination);
     }
 

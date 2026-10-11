@@ -28,3 +28,16 @@ struct Point
 
     public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
         return $tryWrite(writer, "(\(self.x))")
+
+func back(values: ref/Array<i32>, x: i32) -> i32 => values[^x] + values[^(-1)]
+
+struct Box
+    public var item: i32 = 1
+        set(value: i32) -> () => storage = value
+    public var level: i32 = 2
+        get() -> i32 => storage
+    public init() => ()
+
+func update(box: uniq/Box, step: i32)
+    box.item += step
+    box.level++

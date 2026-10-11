@@ -19,3 +19,10 @@ func follow(p: ref/i32, q: uniq/i32) -> i32
 func count() -> i32
     Counters.hits = Counters.hits + 1
     return Counters.hits
+func discard(s: Slice<i32>, i: isize, u: uniq/i32, unit: ref/())
+    s[i]
+    u
+    unit@follow
+struct Item
+    public var id: i32 = 7
+func take(v: uniq/rc/Item) -> i32 => v.id
