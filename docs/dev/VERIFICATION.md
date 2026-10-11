@@ -103,9 +103,9 @@ before it, on the same inputs and configuration:
 - the generated IR: the `.ll` files under the run's `fixtures-<Configuration>` evidence equal the previous run's (compare
   runs from the same worktree path, since the IR records source paths).
 
-A commit that only adds or moves files outside `src/Kimi` and changes no source compiled into `Kimi.dll` may show instead
-that `Kimi.dll` is byte-identical (deterministic build). A difference means the commit changes behavior: split it, or
-treat it as a behavior change with its own tests.
+A difference means the commit changes behavior: split it, or treat it as a behavior change with its own tests. Do not
+compare `Kimi.dll` bytes instead: its informational version embeds the commit id (`0.1.1+<commit>`) and its PDB path
+depends on the worktree, so the DLL changes between commits even when behavior does not.
 
 ## Specification acceptance and support boundaries
 
