@@ -213,7 +213,7 @@ fn code @98
   bb6:
       return @98
   bb7:
-      drop _1 -> bb8 @98
+      drop _1 -> bb8 [keep] @98
   bb8:
       goto bb6 @98
   bb9:
@@ -253,10 +253,11 @@ fn guarded @114
   s4: guard in s1 @139
   s5: lexical in s1 @133
   s6: lexical in s1 @148
+  flags 1
   bb0:
       StorageLive(_2) @118 s1
-      StorageLive(_3) @119 s1
-    * _3 = move _1 @120 s1
+      StorageLive(_3) [clear f0] @119 s1
+    * _3 = move _1 [set f0] @120 s1
       StorageLive(_4) @122 s1
       _4 = discriminant(_3) @122 s1
       switch copy _4 [0: bb3, otherwise: bb2] @122 s1
@@ -279,7 +280,7 @@ fn guarded @114
   bb5:
       StorageDead(_5) @128 s2
       StorageLive(_7) @126 s3
-      _7 = move (_3 as case 0).0 @126 s3
+      _7 = move (_3 as case 0).0 [clear f0] @126 s3
     * goto bb15 check bb16 @131 s3
   bb6:
       StorageDead(_6) @126 s2
@@ -288,7 +289,7 @@ fn guarded @114
   bb7:
       return @114
   bb8:
-      drop _1 -> bb9 @114
+      drop _1 -> bb9 [elide] @114
   bb9:
       goto bb7 @114
   bb10:
@@ -296,12 +297,12 @@ fn guarded @114
       goto bb8 @114
   bb11:
       StorageDead(_4) @122 s1
-      drop _3 -> bb12 @119 s1
+      drop _3 -> bb12 [open ((_ as case 0) open (.0 flag f0))] [clear f0] @119 s1
   bb12:
-      StorageDead(_3) @119 s1
+      StorageDead(_3) [clear f0] @119 s1
       goto bb10 @114
   bb13:
-      drop _7 -> bb14 @126 s3
+      drop _7 -> bb14 [keep] @126 s3
   bb14:
       StorageDead(_7) @126 s3
       goto bb11 @114
@@ -328,7 +329,7 @@ fn guarded @114
   bb21:
       StorageDead(_9) @139 s4
       StorageLive(_12) @137 s5
-      _12 = move (_3 as case 0).0 @137 s5
+      _12 = move (_3 as case 0).0 [clear f0] @137 s5
     * goto bb32 check bb33 @146 s5
   bb22:
       EndBorrow(_10) @144 s4
@@ -357,7 +358,7 @@ fn guarded @114
   bb29:
       unreachable check bb24 @143 s4
   bb30:
-      drop _12 -> bb31 @137 s5
+      drop _12 -> bb31 [keep] @137 s5
   bb31:
       StorageDead(_12) @137 s5
       goto bb25 @114

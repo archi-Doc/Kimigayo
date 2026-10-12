@@ -38,7 +38,7 @@ fn discard @13
   bb0:
       StorageLive(_2) @26 s1
     * _2 = adapt(copy _1, const type i32): s/i32 shorthand @26 s1
-      drop _2 -> bb1 @26 s1
+      drop _2 -> bb1 [elide in v0, v1; keep in v2, v3, v4] @26 s1
   bb1:
       StorageDead(_2) @26 s1
       _0 = const () @24 s1
@@ -52,7 +52,7 @@ fn address @29
   bb0:
       StorageLive(_2) @40 s1
     * _2 = adapt(copy _1, const type i32): s/i32 shorthand @40 s1
-      drop _2 -> bb1 @40 s1
+      drop _2 -> bb1 [keep in v0; elide in v1] @40 s1
   bb1:
       StorageDead(_2) @40 s1
       _0 = const () @38 s1
@@ -73,14 +73,14 @@ fn widen @43
   bb1:
       return @43
   bb2:
-      drop _1 -> bb3 @43
+      drop _1 -> bb3 [elide] @43
   bb3:
       goto bb1 @43
   bb4:
-      drop _3 -> bb5 @55 s1
+      drop _3 -> bb5 [elide] @55 s1
   bb5:
       StorageDead(_3) @55 s1
-      drop _2 -> bb6 @54 s1
+      drop _2 -> bb6 [elide] @54 s1
   bb6:
       StorageDead(_2) @54 s1
       goto bb2 @43
@@ -113,7 +113,7 @@ fn inspect @60
   bb1:
       return @60
   bb2:
-      drop _1 -> bb3 @60
+      drop _1 -> bb3 [keep] @60
   bb3:
       goto bb1 @60
   bb4:
@@ -143,14 +143,14 @@ fn mixed @79
       StorageLive(_3) @95 s1
     * _3 = move _1 @96 s1
       _2 = adapt(move _3, const type s/T) payload (_3@b0): case s { ref => ref/ref/T; obj => obj/T } shorthand @94 s1
-      drop _3 -> bb1 @95 s1
+      drop _3 -> bb1 [elide] @95 s1
   bb1:
       StorageDead(_3) @95 s1
-      drop _2 -> bb2 @94 s1
+      drop _2 -> bb2 [elide in v0; keep in v1] @94 s1
   bb2:
       StorageDead(_2) @94 s1
       _0 = const () @92 s1
-      drop _1 -> bb3 @79
+      drop _1 -> bb3 [elide] @79
   bb3:
       return @92
 fn make @99
@@ -172,10 +172,10 @@ fn make @99
   bb1:
       _2 = move _3 @119 s1
       StorageDead(_4) @120 s1
-      drop _3 -> bb2 @119 s1
+      drop _3 -> bb2 [elide] @119 s1
   bb2:
       StorageDead(_3) @119 s1
-      drop _2 -> bb3 @118 s1
+      drop _2 -> bb3 [elide in v0; keep in v1, v2, v3] @118 s1
   bb3:
       StorageDead(_2) @118 s1
       _0 = const () @107 s1
@@ -202,11 +202,11 @@ fn take @123
   bb1:
       return @123
   bb2:
-      drop _1 -> bb3 @123
+      drop _1 -> bb3 [elide] @123
   bb3:
       goto bb1 @123
   bb4:
-      drop _2 -> bb5 @139 s1
+      drop _2 -> bb5 [elide] @139 s1
   bb5:
       StorageDead(_2) @139 s1
       goto bb2 @123
@@ -243,10 +243,10 @@ fn give @142
   bb3:
       return @142
   bb4:
-      drop _2 -> bb5 @153 s1
+      drop _2 -> bb5 [elide] @153 s1
   bb5:
       StorageDead(_2) @153 s1
-      drop _1 -> bb6 @153 s1
+      drop _1 -> bb6 [elide] @153 s1
   bb6:
       StorageDead(_1) @153 s1
       goto bb3 @142
@@ -277,7 +277,7 @@ fn peek @158
   bb1:
       return @158
   bb2:
-      drop _1 -> bb3 @158
+      drop _1 -> bb3 [keep in v0; elide in v1] @158
   bb3:
       goto bb1 @158
   bb4:
@@ -309,10 +309,10 @@ fn poke @179
     * _3 = adapt(copy _2, const type s/Derived) payload (_2@b0): objuniq/Base @196 s1
       StorageDead(_3) @196 s1
       _0 = const () @189 s1
-      drop _2 -> bb1 @190 s1
+      drop _2 -> bb1 [keep in v0; elide in v1] @190 s1
   bb1:
       StorageDead(_2) @190 s1
-      drop _1 -> bb2 @179
+      drop _1 -> bb2 [elide] @179
   bb2:
       return @189
 fn cast @200
@@ -326,12 +326,12 @@ fn cast @200
   bb0:
       StorageLive(_3) @211 s1
     * _3 = adapt(copy _1, const type raw/i32): s/u8 @211 s1
-      drop _3 -> bb1 @211 s1
+      drop _3 -> bb1 [elide] @211 s1
   bb1:
       StorageDead(_3) @211 s1
       StorageLive(_4) @216 s1
     * _4 = adapt(copy _2, const type usize): s/u8 @216 s1
-      drop _4 -> bb2 @216 s1
+      drop _4 -> bb2 [elide] @216 s1
   bb2:
       StorageDead(_4) @216 s1
       _0 = const () @209 s1

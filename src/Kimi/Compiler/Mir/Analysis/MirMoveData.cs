@@ -2,7 +2,7 @@
 
 // Owns the move paths of one MIR body (SPEC 15.1.3; DECISIONS R4-M21).
 // Input: a validated body, its dataflow order (MirDataflow.Begin) and whether the body constructs its object (AdtDef.IsConstructor). Output:
-// the paths numbered in pre-order, so a subtree is the range [path, End), and the path of each Place.
+// the paths numbered in pre-order, so a subtree is the range [path, End), each with its step from its parent, and the path of each Place.
 // A path is a local or a step from a path: Field, Base (one depth at a time), ConstIndex or Downcast, keyed by its parent, kind and argument;
 // a constructor's _0 has a child per Field and its base. A PairLayer step is transparent: it is the Place itself in the owner case, and the
 // accesses of a reference case end before it (MirInit). Deref and Index end a path: an access through them is an access of the prefix's
@@ -19,14 +19,16 @@ using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>A move path by its pre-order number: its root local, its parent (-1 for a root), the end of its subtree [path, End) and
-/// whether it admits one placement per binding lifetime (a let binding's, or a constructor's Field placed once, <see cref="AdtDef.PlacedOnce"/>).
-/// </summary>
+/// <summary>A move path by its pre-order number: its root local, its parent (-1 for a root), the end of its subtree [path, End), whether
+/// it admits one placement per binding lifetime (a let binding's, or a constructor's Field placed once, <see cref="AdtDef.PlacedOnce"/>)
+/// and its step from its parent, whose Type <see cref="MirBody.ProjectedType"/> gives (a root's is unused).</summary>
 /// <param name="Local">The root local.</param>
 /// <param name="Parent">The parent path, or -1.</param>
 /// <param name="End">The path after its subtree.</param>
 /// <param name="Once">Whether it admits one placement.</param>
-internal readonly record struct MirMovePath(int Local, int Parent, int End, bool Once);
+/// <param name="Kind">The step: Field, Base (one depth), ConstIndex or Downcast.</param>
+/// <param name="Arg">The step's argument.</param>
+internal readonly record struct MirMovePath(int Local, int Parent, int End, bool Once, MirProjectionKind Kind, int Arg);
 
 /// <summary>The move paths of one body (SPEC 15.1.3, DECISIONS R4-M21), view-independent: <see cref="Build"/> collects them in one walk of
 /// the body's uses, and <see cref="Find"/> gives a Place's path and whether the Place is the path itself, a raw Place below it or a Place
@@ -45,6 +47,7 @@ internal sealed class MirMoveData
     private readonly Dictionary<(int Parent, MirProjectionKind Kind, int Arg), int> children = new(); // Each child by creation index.
     private readonly Dictionary<MirPlace, int> places = new(); // Each projected Place's path by creation index << 2 | access.
     private int[] parents = []; // By creation index; locals first.
+    private (MirProjectionKind Kind, int Arg)[] steps = []; // By creation index: the step from the parent.
     private int[] sizes = [];
     private int[] numbers = []; // Each creation index's pre-order number.
     private bool[] once = []; // By creation index: a let root or a constructor's Field placed once.
@@ -131,7 +134,8 @@ internal sealed class MirMoveData
         var index = this.created++;
         MirDataflow.Grow(ref this.parents, this.created);
         MirDataflow.Grow(ref this.once, this.created);
-        (this.parents[index], this.once[index]) = (parent, false);
+        MirDataflow.Grow(ref this.steps, this.created);
+        (this.parents[index], this.once[index], this.steps[index]) = (parent, false, default);
         return index;
     }
 
@@ -142,6 +146,7 @@ internal sealed class MirMoveData
         if (!exists)
         {
             child = this.Add(parent);
+            this.steps[child] = (kind, arg);
         }
 
         return child;
@@ -231,7 +236,7 @@ internal sealed class MirMoveData
 
             this.once[c] |= parent >= 0 && this.once[parent];
             var local = parent < 0 ? c : this.paths[this.numbers[parent]].Local;
-            this.paths[number] = new(local, parent < 0 ? -1 : this.numbers[parent], end, this.once[c]);
+            this.paths[number] = new(local, parent < 0 ? -1 : this.numbers[parent], end, this.once[c], this.steps[c].Kind, this.steps[c].Arg);
             cursors[c] = number + 1;
         }
     }

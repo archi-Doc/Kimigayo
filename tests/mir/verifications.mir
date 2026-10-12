@@ -33,9 +33,10 @@ test sample @10
   _19: () temp @36 s1
   _20: Never temp @30 s1
   s1: lexical in s0 @13
+  flags 1
   bb0:
-      StorageLive(_1) @14 s1
-    * _1 = const "message" @16 s1
+      StorageLive(_1) [clear f0] @14 s1
+    * _1 = const "message" [set f0] @16 s1
       StorageLive(_2) @17 s1
       StorageLive(_3) @17 s1
       StorageLive(_4) @18 s1
@@ -63,7 +64,7 @@ test sample @10
   bb5:
       StorageDead(_8) @24 s1
       StorageLive(_10) @29 s1
-      _10 = move _1 @29 s1
+      _10 = move _1 [clear f0] @29 s1
       StorageLive(_11) @29 s1
       _11 = &_10: ref/string @29 s1
       StorageLive(_12) @29 s1
@@ -87,7 +88,7 @@ test sample @10
   bb9:
       StorageDead(_12) @29 s1
       StorageDead(_11) @29 s1
-      drop _10 -> bb10 @29 s1
+      drop _10 -> bb10 [keep] @29 s1
   bb10:
       StorageDead(_10) @29 s1
       goto bb6 @29 s1
@@ -105,7 +106,7 @@ test sample @10
       StorageDead(_14) @30 s1
       StorageDead(_13) @30 s1
       _0 = const () @13 s1
-      drop _1 -> bb18 @14 s1
+      drop _1 -> bb18 [flag f0] [clear f0] @14 s1
   bb13:
       _15 = Gt(move _16, const 0_i32) proven @31 s1
       _14 = intrinsic TestObserve(copy _15, const location @30) -> bb14 @31 s1
@@ -115,12 +116,12 @@ test sample @10
   bb15:
       StorageDead(_19) @36 s1
       StorageDead(_18) @36 s1
-      drop _17 -> bb16 @36 s1
+      drop _17 -> bb16 [keep] @36 s1
   bb16:
       StorageDead(_17) @36 s1
       _20 = intrinsic TestRequireAbort(copy _14, const location @30) -> ! check bb17 @30 s1
   bb17:
       unreachable @30 s1
   bb18:
-      StorageDead(_1) @14 s1
+      StorageDead(_1) [clear f0] @14 s1
       return @13

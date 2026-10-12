@@ -158,8 +158,8 @@ public sealed class MirInitTest(ITestOutputHelper output)
     }
 
     // R4-M15a: a body whose state arena would exceed the analyses' byte limit (64 MiB) records OwnershipStorageLimit_Kd once, at the body,
-    // and is not analyzed: N locals live across N branches need about N heads × 3 × N/64 words, so the unset read of y is reported at N = 64
-    // and not at N = 13,500.
+    // and is not analyzed: N locals live across N branches need about N heads × 5 lanes × N/64 words, so the unset read of y is reported at
+    // N = 64 and not at N = 13,500.
     [Fact]
     public void AnArenaAboveTheLimitStopsTheBody()
     {
@@ -187,8 +187,9 @@ public sealed class MirInitTest(ITestOutputHelper output)
             "        return values[0]\nfunc keep(values: Array<i32>) => ()\nfunc empty()\n    let values: Array<i32> = []\n    keep(values@move)\n"));
 
     // V16 (plan "New V-checks"): A1 is linear in the body: N 16/32/64 groups of a straight move, a branch that moves on both arms and a loop
-    // that moves and reinitializes grow the allocation of the body's cold analysis (fresh components, the driver's per-body steps; a fresh
-    // driver's pools would hold the widest library body) linearly, with no problem; the output gives the dense arena's words (R4-M20).
+    // that moves and reinitializes grow the allocation of the body's cold analysis (fresh components, the driver's per-body steps with A2,
+    // which A1's checks replay feeds; a fresh driver's pools would hold the widest library body) linearly, with no problem; the output gives
+    // the dense arena's words (R4-M20).
     // MirBuildTest.WarmRebuildAllocatesNothing covers the warm re-analysis, which BuildMir runs.
     [Trait("Purpose", "Allocation")]
     [Theory]
@@ -212,15 +213,19 @@ public sealed class MirInitTest(ITestOutputHelper output)
             Assert.Empty(program.Problems.All.ToArray());
             var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "work");
             work[i] = body.Blocks.Length + body.Statements.Length;
-            var (flow, moves, cases, report) = (new MirDataflow(new MirReach()), new MirMoveData(), new MirCases(c.Types), new MirReport());
-            var init = new MirInit(flow, moves, cases);
+            var (flow, moves, cases, sink) = (new MirDataflow(new MirReach()), new MirMoveData(), new MirCases(c.Types), new MirProgram());
+            var drops = new MirDrops(moves, cases);
+            var init = new MirInit(flow, moves, cases, drops);
             var before = GC.GetAllocatedBytesForCurrentThread();
             flow.Begin(body);
             moves.Build(body, flow);
+            drops.Begin(body, sink);
             cases.Select(body, 0);
-            init.Run(body, 0, report);
+            Assert.True(init.Run(body, 0, sink.Problems));
+            drops.Judge(0);
+            drops.End();
             allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
-            Assert.Equal(0, report.All.Length);
+            Assert.Equal(0, sink.Problems.All.Length);
             arena[i] = ArenaWords(body, flow, moves);
         }
 
@@ -230,12 +235,12 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold analysis allocation {string.Join(", ", allocated)}");
     }
 
-    // R4-M20: the words of A1's state arena for a body begun and built: its heads × the stored words of the three lanes.
+    // R4-M20: the words of A1's state arena for a body begun and built: its heads × the stored words of its lanes.
     internal static long ArenaWords(MirBody body, MirDataflow flow, MirMoveData moves)
-        => (body.Blocks.ToArray().Select((_, b) => flow.Head(b)).Max() + 1) * 3L * ((moves.FlowCount + 63) / 64);
+        => (body.Blocks.ToArray().Select((_, b) => flow.Head(b)).Max() + 1) * (long)MirInit.Lanes * ((moves.FlowCount + 63) / 64);
 
     // The problems of a source's own bodies: code, the first line of the subject, and the views.
-    private static string[] Problems(string source)
+    internal static string[] Problems(string source)
     {
         var c = MirBuildTest.Compile(source);
         var program = c.BuildMir();

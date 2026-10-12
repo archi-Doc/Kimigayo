@@ -6,6 +6,7 @@
 // Must not infer semantics from syntax or become a second MIR validator.
 
 using System.Globalization;
+using System.Numerics;
 using System.Text;
 
 namespace Kimi.Compiler.Mir;
@@ -18,7 +19,10 @@ namespace Kimi.Compiler.Mir;
 /// <c>p.0</c> Field, <c>p.base1</c> Base, <c>p[_3]</c> Index, <c>p[2]</c> ConstIndex, <c>(p as case 1)</c> Downcast and <c>(p@b0)</c>
 /// PairLayer; borrows <c>&amp;</c>, <c>&amp;uniq</c>, <c>&amp;uniq two-phase</c> and <c>&amp;raw</c>; an Opaque value <c>opaque 0: T</c>; a case
 /// adaptation <c>adapt(copy _1, const type T) payload (_1@b0): s/T shorthand</c>, its payload where it is not the operand's Place and
-/// <c>shorthand</c> for the Semantics shorthand; a default template, as a body and as a callee, <c>f#1</c>.</summary>
+/// <c>shorthand</c> for the Semantics shorthand; a default template, as a body and as a callee, <c>f#1</c>. An analyzed body adds drop
+/// elaboration's output (DECISIONS R4-M6a): its flags with the points at its entry (<c>flags 2 [set f0]</c>), each Drop's verdict groups
+/// with their views where they are not all (<c>[keep]</c>, <c>[flag f0]</c>, <c>[elide in v0; open f1 (.0 elide, .1 flag f2) in v1]</c>)
+/// and each location's flag points (<c>[clear f0]</c>, <c>[set f0-f2 in v1]</c>); a Drop only the checks reach has no verdict.</summary>
 internal static class MirDump
 {
     /// <summary>Writes the bodies of one module, then the construction records and validator findings located there.</summary>
@@ -27,11 +31,11 @@ internal static class MirDump
     /// <param name="text">The output.</param>
     internal static void Write(MirProgram program, ushort module, StringBuilder text)
     {
-        foreach (var body in program.Bodies)
+        for (var ordinal = 0; ordinal < program.Bodies.Length; ordinal++)
         {
-            if (body.Source.Module == module)
+            if (program.Bodies[ordinal].Source.Module == module)
             {
-                Write(body, text);
+                Write(program.Bodies[ordinal], text, program.Drops, ordinal);
             }
         }
 
@@ -49,7 +53,9 @@ internal static class MirDump
     /// <summary>Writes one body.</summary>
     /// <param name="body">The body.</param>
     /// <param name="text">The output.</param>
-    internal static void Write(MirBody body, StringBuilder text)
+    /// <param name="drops">The drop table of the body's program, whose verdicts and flags are written (none for a body it does not hold).</param>
+    /// <param name="ordinal">The body's ordinal in the table.</param>
+    internal static void Write(MirBody body, StringBuilder text, MirDropTable drops, int ordinal)
     {
         var name = body.Key.Decl?.Name ?? "top-level"; // A Closure has no name.
         text.Append(body.Key.Kind.ToString().ToLowerInvariant()).Append(name.Length == 0 ? string.Empty : " ").Append(name);
@@ -106,20 +112,107 @@ internal static class MirDump
             Source(text.Append("  must not complete bb").Append(row.End).Append(" from bb").Append(row.Entry), row.Subject).Append('\n');
         }
 
+        Blocks(text, body, drops, ordinal);
+    }
+
+    // The flags, then each block's statements and terminator with their flag points and each Drop's verdicts (DECISIONS R4-M6a).
+    private static void Blocks(StringBuilder text, MirBody body, MirDropTable drops, int ordinal)
+    {
+        var points = drops.PointsOf(ordinal);
+        if (drops.FlagsOf(ordinal) is > 0 and var flags)
+        {
+            Points(text.Append("  flags ").Append(flags), body, points, new(0, -1)).Append('\n');
+        }
+
+        var next = 0;
         for (var i = 0; i < body.Blocks.Length; i++)
         {
             var block = body.Blocks[i];
-            text.Append("  bb").Append(i).Append(":\n");
-            foreach (var statement in body.Statements.Slice(block.Start, block.Count))
+            var first = next;
+            while (next < points.Length && points[next].At.Block == i)
             {
+                next++;
+            }
+
+            text.Append("  bb").Append(i).Append(":\n");
+            for (var s = 0; s < block.Count; s++)
+            {
+                var statement = body.Statements[block.Start + s];
                 Statement(text.Append(statement.Source.StatementStart ? "    * " : "      "), body, statement);
-                Info(text, statement.Source);
+                Info(Points(text, body, points[first..next], new(i, s)), statement.Source);
             }
 
             var terminator = block.Terminator;
             Terminator(text.Append(terminator.Source.StatementStart ? "    * " : "      "), body, terminator);
-            Info(text, terminator.Source);
+            if (terminator.Kind == MirTerminatorKind.Drop)
+            {
+                Verdicts(text, body, drops, ordinal, i);
+            }
+
+            Info(Points(text, body, points[first..next], new(i, block.Count)), terminator.Source);
         }
+    }
+
+    // A Drop's verdict groups, contiguous from view 0's, one per view class, each with its views where they are not all: [keep],
+    // [elide in v0; open (.0 elide) in v1].
+    private static void Verdicts(StringBuilder text, MirBody body, MirDropTable drops, int ordinal, int block)
+    {
+        var rows = drops.RowsOf(ordinal);
+        var group = drops.Group(ordinal, block, 0);
+        var separator = " [";
+        while (group >= 0 && group < rows.Length && rows[group].Block == block)
+        {
+            var next = Verdict(text.Append(separator), rows, group);
+            Views(text, body, rows[group].Views);
+            (group, separator) = (next, "; ");
+        }
+
+        text.Append(separator == "; " ? "]" : string.Empty);
+    }
+
+    // A verdict row and, under Open, its children in pre-order, each after its step: keep, flag f0, open f1 (.0 elide, .base1 open (.2 keep)).
+    private static int Verdict(StringBuilder text, ReadOnlySpan<MirDropRow> rows, int row)
+    {
+        var top = rows[row];
+        text.Append(top.Verdict.ToString().ToLowerInvariant()).Append(top.Flag >= 0 ? $" f{top.Flag}" : string.Empty);
+        var next = row + 1;
+        while (next < rows.Length && rows[next].Depth > top.Depth)
+        {
+            text.Append(next == row + 1 ? " (" : ", ").Append(rows[next].Step == MirProjectionKind.Downcast ? "(_" : string.Empty);
+            next = Verdict(Step(text, rows[next].Step, rows[next].Arg).Append(' '), rows, next);
+        }
+
+        text.Append(next > row + 1 ? ")" : string.Empty);
+        return next;
+    }
+
+    // The flag points at a location: [set f0], [clear f1-f3 in v1].
+    private static StringBuilder Points(StringBuilder text, MirBody body, ReadOnlySpan<MirFlagPoint> points, MirLocation at)
+    {
+        foreach (var point in points)
+        {
+            if (point.At == at)
+            {
+                Views(Flags(text.Append(point.Set ? " [set " : " [clear "), point.First, point.Count), body, point.Views).Append(']');
+            }
+        }
+
+        return text;
+    }
+
+    private static StringBuilder Flags(StringBuilder text, int first, int count)
+        => text.Append('f').Append(first).Append(count > 1 ? $"-f{first + count - 1}" : string.Empty);
+
+    // The views of a group or point where they are not all the body's: " in v0, v2".
+    private static StringBuilder Views(StringBuilder text, MirBody body, ulong views)
+    {
+        var bits = views == ulong.MaxValue >> (64 - (int)MirCases.Count(body)) ? 0UL : views;
+        for (var separator = " in "; bits != 0; bits &= bits - 1, separator = ", ")
+        {
+            text.Append(separator).Append('v').Append(BitOperations.TrailingZeroCount(bits));
+        }
+
+        return text;
     }
 
     private static StringBuilder Source(StringBuilder text, SourceRef source) => text.Append(source.Module == 0 ? " @" : $" @{source.Module}:")
@@ -296,15 +389,18 @@ internal static class MirDump
                 }),
             body,
             place with { Projection = row.Prefix });
-        return row.Kind switch
-        {
-            MirProjectionKind.Deref => text.Append(')'),
-            MirProjectionKind.Field => text.Append('.').Append(row.Arg),
-            MirProjectionKind.Base => text.Append(".base").Append(row.Arg),
-            MirProjectionKind.Index => text.Append("[_").Append(row.Arg).Append(']'),
-            MirProjectionKind.ConstIndex => text.Append('[').Append(row.Arg).Append(']'),
-            MirProjectionKind.Downcast => text.Append(" as case ").Append(row.Arg).Append(')'),
-            _ => text.Append("@b").Append(row.Arg).Append(')'),
-        };
+        return Step(text, row.Kind, row.Arg);
     }
+
+    // A projection after its prefix; a Deref, Downcast or PairLayer closes the parenthesis its Place opened.
+    private static StringBuilder Step(StringBuilder text, MirProjectionKind kind, int arg) => kind switch
+    {
+        MirProjectionKind.Deref => text.Append(')'),
+        MirProjectionKind.Field => text.Append('.').Append(arg),
+        MirProjectionKind.Base => text.Append(".base").Append(arg),
+        MirProjectionKind.Index => text.Append("[_").Append(arg).Append(']'),
+        MirProjectionKind.ConstIndex => text.Append('[').Append(arg).Append(']'),
+        MirProjectionKind.Downcast => text.Append(" as case ").Append(arg).Append(')'),
+        _ => text.Append("@b").Append(arg).Append(')'),
+    };
 }

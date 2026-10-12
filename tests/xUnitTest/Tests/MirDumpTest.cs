@@ -38,7 +38,7 @@ public sealed class MirDumpTest
         body.Push(check, MirStatement.Assign(reference, MirRvalue.Ref(MirRefKind.TwoPhaseUniq, index, body.TypeOf(reference)!), default));
         body.Push(check, MirStatement.Assign(reference, MirRvalue.Ref(MirRefKind.Raw, index, body.TypeOf(reference)!), new(new(1, 5), 1, true)));
         var text = new StringBuilder();
-        MirDump.Write(body, text);
+        MirDump.Write(body, text, new MirDropTable(), 0);
         Golden("every-form", text.ToString());
     }
 

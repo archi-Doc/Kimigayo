@@ -79,16 +79,16 @@ fn shared @15
       return @15
   bb9:
       StorageDead(_9) @68 s1
-      drop _7 -> bb10 @55 s1
+      drop _7 -> bb10 [keep] @55 s1
   bb10:
       StorageDead(_7) @55 s1
-      drop _5 -> bb11 @42 s1
+      drop _5 -> bb11 [keep] @42 s1
   bb11:
       StorageDead(_5) @42 s1
-      drop _3 -> bb12 @31 s1
+      drop _3 -> bb12 [keep] @31 s1
   bb12:
       StorageDead(_3) @31 s1
-      drop _1 -> bb13 @18 s1
+      drop _1 -> bb13 [keep] @18 s1
   bb13:
       StorageDead(_1) @18 s1
       goto bb8 @15

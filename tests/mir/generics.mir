@@ -77,7 +77,7 @@ fn largest @4
       StorageLive(_15) @31 s4
       StorageLive(_16) @32 s4
     * _16 = copy (*_9) @33 s4
-      drop _3 -> bb12 @31 s4
+      drop _3 -> bb12 [keep] @31 s4
   bb10:
       StorageDead(_12) @27 s3
       _11 = const () @26 s3
@@ -90,7 +90,7 @@ fn largest @4
   bb12:
       _3 = move _16 @31 s4
       _15 = const () @31 s4
-      drop _16 -> bb13 @32 s4
+      drop _16 -> bb13 [elide] @32 s4
   bb13:
       StorageDead(_16) @32 s4
       StorageDead(_15) @31 s4
@@ -116,16 +116,16 @@ fn largest @4
   bb18:
       return @4
   bb19:
-      drop _2 -> bb20 @4
+      drop _2 -> bb20 [keep] @4
   bb20:
       goto bb18 @4
   bb21:
-      drop _3 -> bb22 @19 s1
+      drop _3 -> bb22 [keep] @19 s1
   bb22:
       StorageDead(_3) @19 s1
       goto bb19 @4
   bb23:
-      drop _18 -> bb24 @37 s1
+      drop _18 -> bb24 [elide] @37 s1
   bb24:
       StorageDead(_18) @37 s1
       goto bb21 @4

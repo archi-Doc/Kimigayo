@@ -374,7 +374,7 @@ rules that result from them.
   only if A6 shows no dependence on an Opaque site's roots; otherwise it is (b).
 - **R4-M6** A2 writes a side table and does not rewrite MIR: a verdict per Drop and view class (Keep, Elide, Flag, Open)
   and the flag set and clear points; R5 code generation reads it. Rejected: rewriting MIR in place (verdicts differ per
-  view, and insertions break ranges).
+  view, and insertions break ranges). Refined by R4-M6a.
 - **R4-M7** A3's missing fact is `MirBody.MustNotComplete(block, SourceRef)`, written by the builder and range-checked by
   the validator; it is not a vocabulary member. Rejected: inferring it from Unreachable (SPEC 14.9.2 forbids pruning).
   The row shape is superseded by R4-M7a.
@@ -554,13 +554,44 @@ rules that result from them.
   `artifacts/verify/mir-diff/r4-u1-exp-temps`); a completeness check at the Return (after the defers, which cannot place a
   Field, and a second record of an early return's missing Field); a vocabulary member or a role for the exit request (a FakeRead
   is the analyses' read). The first-placement rule, the exit request, the reporting rule, the whole-subtree use and the delivery
-  rule were added after U1's ledger and its independent review (main session, 2026-10-12).
+  rule were added after U1's ledger and its independent review (main session, 2026-10-12). Its three lanes are superseded by
+  R4-M6a (five lanes).
 - **R4-M15a** (2026-10-12, planning session; supersedes R4-M15's "A5's arena" scope) `OwnershipStorageLimit_Kd` stays the one
   Resource code; it is decided at the one place that sizes analysis arenas, `MirDataflow.Prepare` (A1's state arena now, A5's
   Loan × point arena in U7), by byte size against the old path's limit value, 64 MiB (IMPL 21.3.5's text changes in R6). An
   over-limit body records the code once at the body's subject and A1 does not analyze it; the driver owns that skip once A2 and
   A5 read the arena (U5, U7). Reason: the dense arena is O(heads × paths/64), and a body bounded only by the 65,536-statement
   expansion limit could otherwise exhaust memory.
+- **R4-M6a** (2026-10-12, main session; design A of two independent U5 designs, with design B's problem code; refines R4-M6's
+  shape, supersedes R4-M21's "three lanes" and implements R4-M15a's driver skip for A2) Drop elaboration (A2). `MirDrops` judges
+  each Drop the runtime edges reach from the state A1's checks replay holds before it and writes `MirProgram.Drops`
+  (`MirDropTable`, per program version by body ordinal); MIR is not rewritten. A Drop only check edges reach has no row (plan
+  5.6.3; the R4 rewrite of SPEC 14.10.3, plan §16-4, states that drop elaboration and its destructor rule apply to runtime paths
+  only). A1's transfer keeps five lanes: for A2 MaybeInit and MaybePartial (a non-root path a Move or a Drop took out of its
+  parent, cleared with the subtree by any event of an ancestor-or-self), so the state is exact under union joins for the programs
+  A1 accepts; A1 hands A2 the paths its entry initializes (the arguments'; a constructing `_0`'s own bit has no subtree event,
+  so no point, decision risk 6). Five lanes are kept for every body (decision 1): the 64 MiB arena limit (R4-M15a) now trips at
+  3/5 of U1's heads × words (about 23% smaller N in the N-heads × N-paths shape); V17 shows no affected program; a per-body lane
+  count is reconsidered at V18. Per view: Elide where the case Type needs no drop (`MirTypes.MayNeedDrop`) or nothing is initialized on any path;
+  Keep where the whole is initialized on every path or the Place has no Move Path (a static, a Place through a reference or an
+  index); Flag where it is complete or wholly absent on every path, the flag mirroring the path's own bit; Open where a part may
+  be missing: the components without a child path follow the own bit, each child path its own verdict. A layer whose Type
+  declares a `drop` and that may be incomplete at a Drop is `MovedPlace_Kd` at the Drop (SPEC 15.1.3, 16.3.2), any root (an
+  UninitializedPlace variant at a Drop needs a producer of part Drops of a maybe-uninitialized layer; none exists (the
+  replacement Drop's Define clears it; U5b's receiver parts are initialized at entry) — add it with that producer), replacing the old path's Unsupported gate on a partial Move through a drop-bearing
+  ancestor; check-only code is not judged (plan Appendix B C3). Rows `MirDropRow(Block, Views, Verdict, Flag, Depth, Step, Arg)`,
+  one group per Drop and view class (a group equal but for its views to the Drop's previous group is merged into it): the dropped
+  Place, then under Open its child paths in pre-order with their steps (`MirMovePath` carries Kind and Arg). A body's rows are
+  ordered by block, and `MirDropTable.Group(body, block, view)` is the one lookup of a Drop's group under a view, which R5 code
+  generation, A4, A5 and the dump read. Flags are numbered in path order per body, so a subtree's flags are one range;
+  `MirFlagPoint(At, First, Count, Set, Views)` where an ancestor-or-self is defined, moved, dropped or its storage begins or ends
+  on a runtime path, an argument's flags set at the entry (Index -1), ordered by block. States are per solve, recorded as
+  Type-free trees; the Type rule is per view from those trees (a view-dependent body records them per view). A2 has no arena:
+  `MirInit.Run` returns false over the limit and the driver stops that body's views. Rejected: elision by every consumer (design
+  B: one Type decision in A4, A5 and R5); a second forward problem or replay; four lanes with Open for any mixed subtree (correct
+  drops, but the SPEC 15.1.3 rule undecided or false errors from joined bits); replaying or re-solving per view; storing Types in
+  the record; rows on MirBody; flags per Drop; a separate event walk; removing the builder's copy-time rule; a new diagnostic
+  code. Not temporary.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

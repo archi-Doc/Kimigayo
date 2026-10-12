@@ -121,13 +121,13 @@ fn pick @37
   bb1:
       return @37
   bb2:
-      drop _2 -> bb3 @37
+      drop _2 -> bb3 [keep] @37
   bb3:
-      drop _1 -> bb4 @37
+      drop _1 -> bb4 [keep] @37
   bb4:
       goto bb1 @37
   bb5:
-      drop _3 -> bb6 @48 s1
+      drop _3 -> bb6 [elide] @48 s1
   bb6:
       StorageDead(_3) @48 s1
       goto bb2 @37
@@ -161,7 +161,7 @@ fn run @66
       _0 = value move _3() -> bb1 @77
   bb1:
       StorageDead(_3) @78
-      drop _2 -> bb2 @66
+      drop _2 -> bb2 [keep] @66
   bb2:
       return @77
 closure @71
@@ -279,7 +279,7 @@ fn use @79
       _18 = run(move _19, move _20) -> bb10 @105 s1
   bb10:
       StorageDead(_21) @105 s1
-      drop _20 -> bb11 @105 s1
+      drop _20 -> bb11 [elide] @105 s1
   bb11:
       StorageDead(_20) @105 s1
       StorageDead(_19) @107 s1

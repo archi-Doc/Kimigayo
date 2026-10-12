@@ -343,6 +343,7 @@ fn statements @98
   s4: lexical in s1 @117
   s5: unsafe in s1 @124
   must not complete bb20 from bb10 @117
+  flags 1 [set f0]
   bb0:
       StorageLive(_3) @103 s1
       StorageLive(_4) @108 s2
@@ -400,12 +401,12 @@ fn statements @98
       StorageDead(_11) @125 s5
       StorageDead(_10) @123 s1
       StorageLive(_14) @137 s1
-    * _14 = move _2 @138 s1
-      drop _14 -> bb21 @137 s1
+    * _14 = move _2 [clear f0] @138 s1
+      drop _14 -> bb21 [keep] @137 s1
   bb12:
       return @98
   bb13:
-      drop _2 -> bb14 @98
+      drop _2 -> bb14 [flag f0] [clear f0] @98
   bb14:
       goto bb12 @98
   bb15:
