@@ -23,6 +23,18 @@ internal sealed partial class TyCtxt
         _ => CompilerFunctionEffect.Unclassified,
     };
 
+    // SPEC 4.7.5, 12.3.4: an operation's published row in MIR terms (KimiLibraryCatalog.Row): the requirement it runs on the Type below
+    // parameter On and the parameter below which it destroys, -1 for none; null for an operation without a row.
+    internal (BindingSymbol? Runs, int On, int Destroys)? Published(BindingSymbol operation)
+    {
+        if (KimiLibraryCatalog.Row(operation) is not { } row)
+        {
+            return null;
+        }
+
+        return (row.Runs is { } runs ? library.GetSymbol(runs)!.Contract!.Requirements[0].Symbol : null, row.On, row.Destroys); // Its one requirement.
+    }
+
     // R4-M22: the confined obligations of the latest pass (Binding.EffectObligations), appended to a caller-owned list.
     internal void EffectObligations(List<EffectObligation> rows) => binding.EffectObligations(rows);
 

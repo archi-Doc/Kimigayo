@@ -93,10 +93,10 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
 
     // SPEC 8.4.10.2, 8.4.10.4, 8.4.10.7: what a terminator adds. A call of a function with a body enters each body its substitution may
     // select (SPEC 8.8.3, TyCtxt.Implementation); one without a body, or a requirement call that selects a built-in witness, is what Binding
-    // classifies for the compiler function it names and its Self (TyCtxt.Bodyless), and a compiler function that replaces or clears
-    // destroys the value or elements below its first argument. A requirement or dynamic virtual call has the bounds of the caller's
-    // premises (X2) and may destroy what it is given by value (rule 1); a call through a value calls its Callable input; staticEnsure enters
-    // the static's initializer; a Drop destroys what A2's verdicts leave (Dropped).
+    // classifies for the compiler function it names and its Self (TyCtxt.Bodyless), and destroys what its published row destroys. A
+    // requirement or dynamic virtual call has the bounds of the caller's premises (X2) and may destroy what it is given by value (rule 1); a
+    // call through a value calls its Callable input; staticEnsure enters the static's initializer; a Drop destroys what A2's verdicts leave
+    // (Dropped).
     private void Terminator(MirProgram program, MirBody body, int block, long view, in MirTerminator terminator)
     {
         var callee = terminator.Callee;
@@ -110,7 +110,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
         }
         else if (callee.Kind == MirCalleeKind.Fn || (callee.Kind == MirCalleeKind.Requirement && callee.Symbol!.CompilerFunction != CompilerFunctionKind.None))
         {
-            this.Function(program, body, terminator); // A built-in witness a requirement call selects is the compiler function it names.
+            this.Function(program, terminator); // A built-in witness a requirement call selects is the compiler function it names.
         }
         else if (callee.Kind is MirCalleeKind.Requirement or MirCalleeKind.Virtual)
         {
@@ -136,7 +136,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
         }
     }
 
-    private void Function(MirProgram program, MirBody body, in MirTerminator terminator)
+    private void Function(MirProgram program, in MirTerminator terminator)
     {
         var symbol = terminator.Callee.Symbol!;
         var subst = terminator.Callee.Subst;
@@ -161,11 +161,18 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
         }
 
         this.Enter(null, subst, symbol);
-        if (symbol.CompilerFunction is CompilerFunctionKind.ArrayClear or CompilerFunctionKind.Replace)
+        if (types.Published(symbol) is { Destroys: >= 0 } row)
         {
-            _ = TyCtxt.Layer(cases.Type(body.TypeOf(body.Operands[terminator.Start].Place)!), out var destroyed, out _);
-            this.Item(destroyed, Drop);
+            this.Item(this.Below(symbol, subst, row.Destroys), Drop);
         }
+    }
+
+    // SPEC 4.7.5: the Type below a callee's parameter under the call's substitution in the view, what a published row runs on or
+    // destroys; null where the substitution does not instantiate it.
+    private BoundType? Below(BindingSymbol callee, Subst? subst, int slot)
+    {
+        _ = TyCtxt.Layer(TyCtxt.Signature(callee, subst, slot, out _) is { } parameter ? cases.Type(parameter) : null, out var below, out _);
+        return below;
     }
 
     // R4-M6a: what a Drop destroys in the view, by A2's verdict group. One only the checks reach runs no destructor (drop elaboration and

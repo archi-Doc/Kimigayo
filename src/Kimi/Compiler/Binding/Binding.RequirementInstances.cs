@@ -47,14 +47,12 @@ public sealed partial class Binding
         }
 
         if (call.ConformingType is not { } self || this.InstanceReference(call, self, outer) is not { } contract ||
-            this.ResolveConformance(self, contract, outer.Target.Declaration, out var path) != ConstraintProof.Proven ||
-            path is not { IsVerified: true } || !path.WitnessMap.TryGetValue(new(call.Target, contract), out var witness) ||
-            witness.Function is not { ObjectCompatibility: ConstraintProof.Proven } function ||
-            this.StoredType(function.DeclaringType, self) is not { } declaring)
+            this.ConformanceWitness(call.Target, self, contract, this.ConstraintScope(outer.Target.Declaration), out var witness) is not { } declaring)
         {
             return null;
         }
 
+        var function = witness.Function!;
         var origins = this.originScratch.Rent(function.Origins.Length);
         var inputs = this.originScratch.Rent(function.InputOrigins.Length);
         try
@@ -79,6 +77,16 @@ public sealed partial class Binding
                 result[i] = source[i] is { } origin ? this.SubstituteStoredOrigin(origin, requirement, call.Origins, call.InputOrigins) : null!;
             }
         }
+    }
+
+    // SPEC 8.4.10.4: the witness a verified conformance of a Self to a Contract maps a requirement to, and the instance of the Type
+    // that declares it (a base's for an inherited witness); null where none resolves.
+    private BoundType? ConformanceWitness(BindingSymbol requirement, BoundType self, BindingSymbol contract, BindingScope scope, out BoundWitness witness)
+    {
+        witness = default;
+        return this.ResolveConformance(self, contract, scope, out var path) == ConstraintProof.Proven && path is { IsVerified: true } &&
+            path.WitnessMap.TryGetValue(new(requirement, contract), out witness) && witness.Function is { ObjectCompatibility: ConstraintProof.Proven } function
+            ? this.StoredType(function.DeclaringType, self) : null;
     }
 
     // The requirement already acquired and verified its receiver. Its Proven witness lends only the base prefix;

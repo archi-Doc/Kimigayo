@@ -100,13 +100,12 @@ public class EffectBoundImplementationTest
         var operations = 0;
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
-            if (!entry.PublishedSummary)
+            var operation = c.Library.GetSymbol(entry.Id)!;
+            if (!KimiLibraryCatalog.PublishesSummary(operation) || entry.Function != CompilerFunctionKind.None)
             {
-                continue;
+                continue; // A compiler function's row has no Kimi body to verify.
             }
 
-            var operation = c.Library.GetSymbol(entry.Id)!;
-            Assert.True(KimiLibraryCatalog.PublishesSummary(operation));
             if (entry.Implementation is { } implementation)
             {
                 // A bodiless constructor's summary is its linked implementation's, which is checked as its own entry.
@@ -114,7 +113,7 @@ public class EffectBoundImplementationTest
                 continue;
             }
 
-            var published = entry.Id is KimiDeclarationId.DictionaryReserve or KimiDeclarationId.DictionaryShrinkToFit or KimiDeclarationId.DictionaryClear or KimiDeclarationId.ArrayRepeatingImplementation or KimiDeclarationId.ArrayCapacityImplementation ? null : equals;
+            var published = KimiLibraryCatalog.Row(operation)!.Value.Runs is null ? null : equals;
             foreach (var (confined, preserves) in new[] { (true, false), (false, true) })
             {
                 var (valid, violation, node) = c.Binding.SummarizePublishedOperation(operation, confined, preserves, published);
@@ -125,7 +124,7 @@ public class EffectBoundImplementationTest
             operations++;
         }
 
-        Assert.Equal(10, operations);
+        Assert.Equal(11, operations);
     }
 
     // SPEC 8.4.10.2, 22.3.1: a foreign call accesses only what its arguments permit, so preserves results admits it.
