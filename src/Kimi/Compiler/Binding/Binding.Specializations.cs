@@ -495,19 +495,6 @@ public sealed partial class Binding
 
             return false;
         }
-
-        static bool HasParameterDefaults(FunctionKoto function)
-        {
-            for (var i = 0; i < function.Parameters.Count; i++)
-            {
-                if (function.Parameters[i].DefaultValue is not null)
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
     }
 
     private sealed class Specialization(BoundType?[] arguments, BoundLength?[] lengths)

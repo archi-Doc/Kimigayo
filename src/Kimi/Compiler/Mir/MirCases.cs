@@ -24,10 +24,9 @@ internal sealed class MirCases(TyCtxt types)
     private int width;
     private MirBody? body;
 
-    /// <summary>Gets the number of views of a body: the product of its binders' admitted sets, which Binding and the old analysis bound
-    /// (<see cref="PairBinder.CaseProduct"/>), 1 without a binder. Whether a definition's cases are within the limit (SPEC 8.10, 23.3.6.1)
-    /// is decided where the definition is checked, never here (R3: Binding for a case adaptation, else the old analysis's
-    /// <c>OwnershipCaseLimit_Kd</c>), so a built body may have more views than an analysis runs.</summary>
+    /// <summary>Gets the number of views of a body: the product of its binders' admitted sets (<see cref="PairBinder.CaseProduct"/>), 1
+    /// without a binder, at most <see cref="PairBinder.CaseBound"/>: Binding decides the bound once per definition and binds no part of a
+    /// definition beyond it (SPEC 8.10, 23.3.6.1), and <see cref="MirValidator"/> checks it, so the analyses run every view.</summary>
     /// <param name="body">The body.</param>
     /// <returns>The number of views, saturated at the largest count.</returns>
     internal static long Count(MirBody body) => PairBinder.CaseProduct(body.Binders);

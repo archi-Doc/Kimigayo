@@ -169,9 +169,6 @@ public enum OwnershipFailure : byte
     CallEffectConflict,
 
     StorageLimit,
-
-    // SPEC 8.10, 23.3.6.1: the Semantics cases of a definition exceed the implementation bound (OwnershipAnalysis.CaseBound).
-    CaseLimit,
 }
 
 public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type, OwnershipPlaceKind Kind, bool Mutable, AcquisitionKind Acquisition)
@@ -254,7 +251,6 @@ public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failu
         OwnershipFailure.StaticMovePathRequired => DiagnosticCode.StaticMovePathRequired_Kd,
         OwnershipFailure.CallEffectConflict => DiagnosticCode.CallEffectConflict_Kd,
         OwnershipFailure.StorageLimit => DiagnosticCode.OwnershipStorageLimit_Kd,
-        OwnershipFailure.CaseLimit => DiagnosticCode.OwnershipCaseLimit_Kd,
         _ => DiagnosticCode.Unsupported_Kd,
     };
 }

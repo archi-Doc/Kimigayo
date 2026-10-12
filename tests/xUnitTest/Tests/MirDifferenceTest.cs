@@ -70,14 +70,14 @@ public sealed class MirDifferenceTest
     public void TheComparedSetNamesItsAnalysis(string partition, int kind, DiagnosticCode code, string? analysis)
         => Assert.Equal(analysis, MirDifferenceLedger.AnalysisOf(new(Enum.Parse<DiagnosticPartition>(partition), (ushort)kind), code));
 
-    // R4-M4: every code an ownership failure reports is compared, except TransferRequired's, Internal's and CaseLimit's, and each compared
+    // R4-M4: every code an ownership failure reports is compared, except TransferRequired's and Internal's, and each compared
     // code names one analysis, which a MIR problem of that code takes.
     [Fact]
     public void TheComparedSetCoversEachOwnershipCode()
     {
         foreach (var (failure, code) in PipelineSwitchTest.OwnershipCodes())
         {
-            var passes = failure is OwnershipFailure.TransferRequired or OwnershipFailure.Internal or OwnershipFailure.CaseLimit;
+            var passes = failure is OwnershipFailure.TransferRequired or OwnershipFailure.Internal;
             Assert.True(passes == (MirDifferenceLedger.AnalysisOf(DiagnosticRequirement.Ownership(failure), code) is null), $"{failure} {code}");
         }
 

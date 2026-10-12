@@ -37,9 +37,9 @@ public sealed class MirDifferenceLedger : IDisposable
     internal const int Sha = 9;
 
     // R4-M4: the compared old records, by requirement and each code it reports (OwnershipIssue.Code, Binding's code of the failure), with
-    // the analysis that owns them; a MIR problem takes its code's analysis. Every other record passes through: TransferRequired,
-    // Internal and CaseLimit, control flow's other codes and Binding's other failures (its IncompatibleImplementation and effect-limit
-    // Unsupported also carry non-effect records and join from U6).
+    // the analysis that owns them; a MIR problem takes its code's analysis. Every other record passes through: TransferRequired and
+    // Internal, control flow's other codes and Binding's other failures, CaseLimit included; Binding's IncompatibleImplementation and
+    // effect-limit Unsupported also carry non-effect records and join from U6.
     internal static readonly (DiagnosticRequirement Requirement, DiagnosticCode Code, string Analysis)[] Compared =
     [
         (DiagnosticRequirement.Ownership(OwnershipFailure.UninitializedUse), DiagnosticCode.UninitializedPlace_Kd, "A1"),

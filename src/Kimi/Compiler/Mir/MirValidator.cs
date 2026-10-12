@@ -28,7 +28,7 @@ internal enum MirViolation : byte
     Place, // A root or a projection chain out of range.
     Projection, // A projection its base Type does not admit, or a chain out of order.
     Const, // A constant id out of range.
-    Binder, // A PairAcquire of a binder out of range or other than its Place's pair layer.
+    Binder, // A PairAcquire of a binder out of range or other than its Place's pair layer, or more cases than PairBinder.CaseBound.
     OperandRange,
     Arity, // An rvalue's or a Call's operands disagree with its kind, its Type or its callee.
     Callee, // A Fn, Requirement or Virtual callee without its function, or a diverging intrinsic with a target.
@@ -61,6 +61,11 @@ internal sealed class MirValidator
     /// <param name="findings">The caller's list the findings are added to.</param>
     internal void Validate(MirBody body, List<MirFinding> findings)
     {
+        if (MirCases.Count(body) > PairBinder.CaseBound)
+        {
+            findings.Add(new(MirViolation.Binder, body.Source)); // Binding binds no part of a definition beyond the bound.
+        }
+
         var checker = new Checker(body, findings, this.Unknown(body));
         if (!checker.Tables())
         {

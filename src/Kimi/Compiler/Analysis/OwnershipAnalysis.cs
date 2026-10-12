@@ -189,14 +189,6 @@ public sealed partial class OwnershipAnalysis
                 continue;
             }
 
-            if (issue.Failure == OwnershipFailure.CaseLimit)
-            {
-                // SPEC 8.10, 23.3.6.1: the bound on the Semantics cases of one body is a resource limit, shown at the signature.
-                var span = SignatureSpan(issue.Source) ?? issue.Source.Span;
-                issue.Source.Report(requirement, issue.Code, this.CaseProduct((FunctionKoto)issue.Source), (long)CaseBound, note: Note(null), related: Locations(null), span: span, condition: Condition(issue));
-                continue;
-            }
-
             if (issue.Failure == OwnershipFailure.DefaultArgumentMove)
             {
                 ReportDefaultMove(issue);

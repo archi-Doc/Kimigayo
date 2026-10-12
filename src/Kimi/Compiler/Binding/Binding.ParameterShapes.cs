@@ -107,10 +107,11 @@ public sealed partial class Binding
 
     // SPEC 7.3, 7.3.1: a shape violation is an error of the group, not of the declaration's own signature or conditions, so the
     // declaration stays a candidate and the calls that select it are checked normally. SPEC 9.3: a misplaced protected form is
-    // an error of the modifier alone, so the declaration and its uses are checked as written too.
+    // an error of the modifier alone, so the declaration and its uses are checked as written too. SPEC 8.10, 23.3.6.1: a definition
+    // beyond the case bound keeps its signature, and its parts are bound but not verified per case (Binding.CaseLimits).
     private static bool KeepsSignature(Koto declaration)
         => declaration is DeclarationKoto { BindingState: BindingState.Invalid } &&
-            (declaration.BindingFailure == BindingFailure.ProtectedPlacement ||
+            (declaration.BindingFailure is BindingFailure.ProtectedPlacement or BindingFailure.CaseLimit ||
             declaration is FunctionKoto { BindingFailure: BindingFailure.ParameterShapeMismatch or BindingFailure.ReceiverShapeMismatch });
 
     // SPEC 7.3.1, 10.1, 10.8: explicit Type arguments reach only the declarations whose generic parameter lists have the same

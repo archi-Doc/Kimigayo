@@ -34,6 +34,7 @@ public sealed partial class Binding
         if (symbol.Property is not null)
         {
             this.BindHeader(symbol);
+            this.CheckCaseBound(variable);
         }
 
         symbol.Resolving = true;

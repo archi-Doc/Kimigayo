@@ -8,7 +8,7 @@ A review of `src/Kimi/Compiler/Binding` (≈37,000 lines, one `partial class Bin
 - **Failure facts.** A node keeps its first failure only. `FailExplained` records the facts that explain a failure (write target, mismatch, operator operand, acquisition Place, capture entry) only with that failure, so every fact table answers for its node's one failure; `ReportIssue` publishes one direct failure (`040919f3`).
 - **One structural completion.** Result joins, body checks and conversion probes share `ResultStructure()`, created with one Never evidence (`2f48a2cf`).
 - **Requirement reference.** `BindCall` saves and restores the enclosing call's bound Contract reference (`be7286b7`).
-- **Form failures.** A group shape failure or a misplaced protected form (`KeepsSignature`) is an error of the form, not an invalid context for the declaration's members and uses.
+- **Form failures.** A group shape failure or a misplaced protected form (`KeepsSignature`) is an error of the form, not an invalid context for the declaration's members and uses; since R4 U0a also a definition beyond the case bound (DECISIONS R4-M18).
 
 ## Repaired defects
 

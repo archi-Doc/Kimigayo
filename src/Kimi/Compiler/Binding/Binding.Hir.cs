@@ -103,7 +103,8 @@ public sealed partial class Binding
                 HirTables.PlanFor(node, value is not null).Folded = value;
             }
 
-            if (op is not (HirOp.Unset or HirOp.Error) && (op != HirOp.Syntax || (node is FunctionKoto && (position & HirPosition.Replaced) == 0)))
+            if (op is not (HirOp.Unset or HirOp.Error) &&
+                (op != HirOp.Syntax || (node is FunctionKoto function && PartsPublished(function) && (position & HirPosition.Replaced) == 0)))
             {
                 this.Consume(node, op);
             }
@@ -144,6 +145,10 @@ public sealed partial class Binding
         // The operand a parent projects, updates, groups or borrows.
         private static Koto? Operand(Koto? parent) => (parent as BinaryKoto)?.Left ?? (parent as UnaryKoto)?.Operand;
 
+        // A definition's parts (body, defaults, initializer, accessor bodies) are published only when Binding resolved the definition: those
+        // of an unresolved one, such as a definition beyond the case bound (Binding.CaseLimits), are not verified.
+        private static bool PartsPublished(Koto definition) => definition.BindingState == BindingState.Resolved;
+
         // The position of a child: a declaration evaluates its body, defaults and initializer, an expression its operands, and
         // nothing evaluates Types, names it declares or selects, attributes, Origin clauses or a fill length.
         private HirPosition PositionOf(Koto node)
@@ -169,7 +174,7 @@ public sealed partial class Binding
 
                     for (var i = 0; i < function.Parameters.Count; i++)
                     {
-                        if (ReferenceEquals(node, function.Parameters[i].DefaultValue))
+                        if (ReferenceEquals(node, function.Parameters[i].DefaultValue) && PartsPublished(function))
                         {
                             if (this.defaultCount == this.defaults.Length)
                             {
@@ -284,11 +289,12 @@ public sealed partial class Binding
             _ => HirOp.Unset,
         };
 
-        // A resolved declaration whose body Binding bound builds it, unless the body is virtual and no instance applies it.
-        private bool HasBody(Koto declaration) => declaration.BindingState == BindingState.Resolved && declaration switch
+        // A published declaration whose body Binding bound builds it, unless the body is virtual and no instance applies it; an accessor's
+        // body is a part of its Property.
+        private bool HasBody(Koto declaration) => PartsPublished(declaration) && declaration switch
         {
             FunctionKoto function => ((Koto?)function.Body ?? function.ExpressionBody) is { BindingState: not BindingState.Unvisited } && !binding.IsInapplicableVirtualBody(function),
-            PropertyAccessorKoto accessor => accessor.Body is { BindingState: not BindingState.Unvisited },
+            PropertyAccessorKoto accessor => PartsPublished(accessor.Parent!) && accessor.Body is { BindingState: not BindingState.Unvisited },
             _ => ((PropertyKoto)declaration).InitializerKoto is { BindingState: not BindingState.Unvisited },
         };
 

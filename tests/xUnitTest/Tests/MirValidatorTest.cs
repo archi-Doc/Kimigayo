@@ -196,6 +196,24 @@ public sealed class MirValidatorTest
         Assert.Equal([(MirViolation.Binder, Broken.Syntax), (MirViolation.Projection, Broken.Syntax)], Validate(body).Select(static x => (x.Rule, x.Subject)));
     }
 
+    // SPEC 8.10, 23.3.6.1: Binding publishes no part of a definition beyond PairBinder.CaseBound views (Binding.CaseLimits), so a body with more
+    // views is a Binder finding at the body; six binders of two cases, 64 views, are valid.
+    [Fact]
+    public void ViewsBeyondTheCaseBoundAreAFinding()
+    {
+        var binders = new List<PairBinder>();
+        PairBinder.Collect(Fixture.Value.Types.Generic, binders);
+        var binder = binders[0] with { Admitted = SemanticsMask.Owner | SemanticsMask.Uniq };
+        var body = new MirBody();
+        body.Reset(new(null, MirBodyKind.Fn), default);
+        body.AddLocal(new(BoundType.Unit, MirLocalKind.Return, At));
+        body.Terminate(body.AddBlock(), MirTerminator.Return(At));
+        body.Binders.AddRange(Enumerable.Repeat(binder, 6));
+        Assert.Empty(Validate(body));
+        body.Binders.Add(binder);
+        Assert.Equal([(MirViolation.Binder, body.Source)], Validate(body).Select(static x => (x.Rule, x.Subject)));
+    }
+
     // V11: validating a body again, the Type tier's included, and enumerating its uses, allocates nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]

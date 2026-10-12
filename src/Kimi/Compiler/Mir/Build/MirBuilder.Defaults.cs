@@ -69,12 +69,13 @@ internal sealed partial class MirBuilder
         return index;
     }
 
-    // A default's template, MirDefKey(function, DefaultTemplate, index); one with an Opaque value or a finding failed.
+    // A default's template, MirDefKey(function, DefaultTemplate, index); one with an Opaque value or a finding failed. A default the publisher
+    // did not evaluate, of an unresolved function such as one beyond the case bound, has none: its omitting calls take an Opaque value.
     private void Template(int index)
     {
         var decl = this.omissions[index].Decl;
         var findings = this.program.Findings.Count;
-        if (HirTables.Symbol(decl.Function) is { } function && decl.Parameter(decl.Index) is { } type)
+        if (HirTables.Symbol(decl.Function) is { } function && decl.Parameter(decl.Index) is { } type && HirTables.Op(decl.Expression) != HirOp.Syntax)
         {
             this.Body(new(function, MirBodyKind.DefaultTemplate, decl.Index), decl.Function, function, type, decl.Expression);
             ref var node = ref CollectionsMarshal.AsSpan(this.omissions)[index];

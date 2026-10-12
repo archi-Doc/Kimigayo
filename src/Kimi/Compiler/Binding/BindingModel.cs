@@ -115,6 +115,10 @@ internal readonly record struct PairBinder(BindingSymbol Target, SemanticsMask A
     /// (SPEC 8.9, 8.10, 13.5.8). Case substitution does not make an otherwise illegal pair-layer operation legal.</summary>
     internal const SemanticsMask Resolvable = SemanticsMask.All;
 
+    /// <summary>The bound on the Semantics cases of one definition (SPEC 8.10, 23.3.6.1), a finite resource limit. Binding decides it once per
+    /// definition before binding its parts (<c>Binding.CaseLimits</c>), so no body has more cases; MIR validates it.</summary>
+    internal const int CaseBound = 64;
+
     /// <summary>Gets a value indicating whether the binder is analyzed once per admitted Semantics.</summary>
     internal bool Resolved => this.Admitted != SemanticsMask.None && (this.Admitted & ~Resolvable) == 0;
 

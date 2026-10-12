@@ -350,8 +350,8 @@ rules that result from them.
 - **R4-M4** The first unit fixes the compared code set of each analysis: A1 initialization and moves; A3
   `RequireFallthrough`; A4 effect bounds and the effect-limit Unsupported; A5 Loan conflicts, default-argument access,
   Origin relations and `OwnershipStorageLimit_Kd`; every old Ownership-partition `Unsupported_Kd`. Control-flow lints,
-  `TransferRequired`, `OwnershipCaseLimit`, old Internal records and capability Unsupported records pass through
-  uncompared.
+  `TransferRequired`, `OwnershipCaseLimit` (a Binding record since R4-M18), old Internal records and capability Unsupported
+  records pass through uncompared.
 - **R4-M5** Compilations with an incomplete Binding are compared in their own ledger section. A new-only row there is (d)
   only if A6 shows no dependence on an Opaque site's roots; otherwise it is (b).
 - **R4-M6** A2 writes a side table and does not rewrite MIR: a verdict per Drop and view class (Keep, Elide, Flag, Open)
@@ -411,7 +411,7 @@ rules that result from them.
   the rest `missing` or `new`, adds an `acceptance` difference when a comparison's A-owned records are on one side only,
   and classifies signatures (section, kind, analysis, code, requirement, form) by the tracked table into `ledger.tsv` and
   `summary.md` (P9: the unclassified signatures). The compared set (R4-M4) is a table in the fixture of requirements, each
-  with every code it reports and the owning analysis: ownership failures except TransferRequired, Internal and CaseLimit
+  with every code it reports and the owning analysis: ownership failures except TransferRequired and Internal
   (A1, A4, A5; U for the Unsupported gates; - for the expansion limit), ControlFlow `RequireFallthrough_Kd` (A3),
   `Binding.VirtualEffectBound` (A4) and `Binding.OriginRelation` (A5); a MIR problem takes its code's analysis, a MIR
   construction record is B. `Binding.IncompatibleImplementation` and the effect-limit `Binding.Unsupported` also carry
@@ -428,6 +428,26 @@ rules that result from them.
   implementation); design B's content-hash fast path (the Functional/Allocation split is simpler), its positional split
   of `Compilation.Problems` (order-dependent; computing SourceRefs numbers unnumbered nodes under the observer) and its
   shipping only the hook in U0b (two parallel analysis units would invent the driver and record).
+- **R4-M18** (2026-10-12, main session; two independent designs: A chosen with B's table-free report, publication rule and
+  dependent adaptations; revised after the independent review for SPEC 23.3.6) The Semantics case bound (`PairBinder.CaseBound`,
+  64; SPEC 8.10, 23.3.6.1 Resource) has one owner. `Binding.CaseLimits` decides it once per definition and pass, after the
+  signature and before the parts are bound: a function or Property whose defaults, base initializer, body, initializer or accessor
+  bodies would be verified over `PairBinder.CaseProduct` > 64 cases fails with CaseLimit (only as its first failure) and reports
+  `OwnershipCaseLimit_Kd` once, a function at its signature, a Property at its declaration and a synthesized constructor at its
+  structure, the count recomputed from its binders at report time (no table). Its parts are still bound, so their independent
+  records stay visible (SPEC 23.3.6.4), but they are not verified per case: a case adaptation inside it is a dependent of the
+  CaseLimit failure (no record, no row enumeration), and the HIR publishes a definition's parts (bodies and defaults) only when
+  Binding resolved the definition, a rule of every unresolved function, so no MIR body, Closure or default template of it exists
+  and a call omitting its default takes an Opaque value. Its signature stays valid (`KeepsSignature`), so its calls are checked
+  normally. A definition without parts is never bounded; Closures, templates and accessors share their definition's binders, so an
+  adaptation inside a definition within the bound has at most 64 rows and no cap of its own. `MirValidator` rejects a body with
+  more views (`Binder`, `InternalInvariant_Kd`) and the analyses trust it (R4-M11). R4-M4's pass-through of `OwnershipCaseLimit` no
+  longer applies; the code is a Binding record. Deleted: the old analysis's check, `OwnershipFailure.CaseLimit` and
+  `OwnershipAnalysis.CaseBound`, the `Ownership.CaseLimit` requirement, and the adaptation product check, 64-row cap and cause map.
+  Rejected: a driver skip or assertion (a consumer deciding a producer's contract); leaving the parts unbound (design A's first
+  form: it hides their independent errors, SPEC 23.3.6); MIR deciding the bound; a non-form failure (order-dependent caller
+  records); a template guard on an unset Op (Binding.Check leaves no node unvisited before publication); a Koto-keyed count table.
+  Diagnostic sets change only in already-rejected programs; acceptance does not change.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

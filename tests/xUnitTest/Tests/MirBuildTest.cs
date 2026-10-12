@@ -377,9 +377,11 @@ public sealed class MirBuildTest(ITestOutputHelper output)
             lines);
     }
 
-    // SPEC 8.10, 23.3.6.1: the views are not bounded here. Six binders of two cases give 64 distinct views in the old analysis's order (the
-    // last binder fastest); a seventh gives 128, a body Binding accepts (it has no case adaptation) and the MIR builds without an Opaque
-    // value, record or finding, since the definition check decides the bound once (R3: the old analysis's OwnershipCaseLimit_Kd).
+    // SPEC 8.10, 23.3.6.1: Binding decides the case bound once per definition (Binding.CaseLimits), so no built body has more than 64 views.
+    // Six binders of two cases give 64 distinct views of the body, its Closure and its default's template, in the old analysis's order (the
+    // last binder fastest). A seventh puts the definition beyond the bound: Binding binds its parts but publishes none of them, so no body,
+    // Closure or default template of it is built, also where another default omits its default, and a call that omits it takes an Opaque
+    // value without a record or finding.
     [Fact]
     public void TheDefinitionCheckDecidesTheCaseBound()
     {
@@ -387,27 +389,70 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         {
             var names = "abcdegh"[..count].ToCharArray();
             var text = new StringBuilder("func f<").AppendJoin(", ", names.Select(static x => $"{x}/{char.ToUpperInvariant(x)}")).Append(">(");
-            text.AppendJoin(", ", names.Select(static x => $"p{x}: {x}/{char.ToUpperInvariant(x)}")).Append(") -> ()\n");
-            text.AppendJoin(string.Empty, names.Select(static x => $"    {x} is owner or uniq\n")).Append("    _ = pa@move\n");
+            text.AppendJoin(", ", names.Select(static x => $"p{x}: {x}/{char.ToUpperInvariant(x)}")).Append(", k: i32 = 1 + 2) -> i32\n");
+            text.AppendJoin(string.Empty, names.Select(static x => $"    {x} is owner or uniq\n"));
+            text.Append("    let add = func (x: i32) -> i32 => x + k\n    _ = pa@move\n    return add(k)\npublic func main() -> ()\n    var n: i32 = 1\n");
+            text.Append("    _ = f(n, n@uniq").Append(string.Concat(Enumerable.Repeat(", n", count - 2))).Append(")\n");
+            text.Append("func g(x: i32 = f(1").Append(string.Concat(Enumerable.Repeat(", 1", count - 1))).Append(")) -> i32 => x\n");
             var c = Compile(text.ToString());
+            Assert.Equal(count == 6, c.Binding.Result.IsComplete);
+            Assert.Equal(count == 6 ? [] : new[] { DiagnosticCode.OwnershipCaseLimit_Kd }, c.Binding.Issues.Select(static x => x.Code));
             var program = c.BuildMir();
             Assert.Empty(program.Findings);
             Assert.Empty(program.Records);
-            var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
-            Assert.False(body.HasOpaque);
-            Assert.Equal(1L << count, MirCases.Count(body));
-            var (cases, views) = (new MirCases(c.Types), new List<string>());
-            for (var view = 0L; view < MirCases.Count(body); view++)
+            var parts = program.Bodies.ToArray().Where(static x => x.Source.Module == 0 && (x.Key.Decl?.Name == "f" || x.Key.Kind == MirBodyKind.Closure)).ToArray();
+            var main = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "main");
+            Assert.Equal(count == 7, program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "g" && x.Key.Kind == MirBodyKind.DefaultTemplate).HasOpaque);
+            if (count == 7)
             {
-                views.Add(string.Concat(cases.Select(body, view).ToArray().Select(static x => x.Semantics == SemanticsKind.Owner ? 'o' : 'u')));
+                Assert.Empty(parts);
+                Assert.Single(main.OpaqueSites.ToArray());
+            }
+            else
+            {
+                Assert.Equal([MirBodyKind.DefaultTemplate, MirBodyKind.Fn, MirBodyKind.Closure], parts.Select(static x => x.Key.Kind));
+                Assert.All(parts, static x => Assert.Equal(64L, MirCases.Count(x)));
+                Assert.False(main.HasOpaque);
+                var (cases, views) = (new MirCases(c.Types), new List<string>());
+                for (var view = 0L; view < MirCases.Count(parts[1]); view++)
+                {
+                    views.Add(string.Concat(cases.Select(parts[1], view).ToArray().Select(static x => x.Semantics == SemanticsKind.Owner ? 'o' : 'u')));
+                }
+
+                Assert.Equal(64, views.Distinct().Count());
+                Assert.Equal(new[] { "oooooo", "ooooou", "uuuuuu" }, new[] { views[0], views[1], views[^1] });
             }
 
-            Assert.Equal(1 << count, views.Distinct().Count());
-            Assert.Equal(new[] { new string('o', count), new string('o', count - 1) + "u", new string('u', count) }, new[] { views[0], views[1], views[^1] });
             c.Analyze();
-            Assert.Equal(count == 7, c.Problems.Any(static x => x.Code == DiagnosticCode.OwnershipCaseLimit_Kd));
-            Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
+            Assert.DoesNotContain(c.Problems, static x => x.Code is DiagnosticCode.OwnershipCaseLimit_Kd or DiagnosticCode.InternalInvariant_Kd);
         }
+    }
+
+    // SPEC 8.10, 23.3.6.1: a definition whose only part is a parameter default is bounded too, and beyond the bound the default has no
+    // template. Seven unconstrained binders give 9^7 cases; a requirement's default is itself rejected (MisplacedSyntax_Kd).
+    [Fact]
+    public void ADefaultBeyondTheCaseBoundHasNoTemplate()
+    {
+        var c = Compile("contract C\n    func need<a/A, b/B, c/C, d/D, e/E, g/G, h/H>(self: ref/Self, p: a/A, q: b/B, r: c/C, u: d/D, v: e/E, w: g/G, y: h/H, k: i32 = 1 + 2) -> ()\n" +
+            "public func main() -> ()\n    ()\n");
+        Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.OwnershipCaseLimit_Kd);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Bodies.ToArray(), static x => x.Source.Module == 0 && x.Key.Kind == MirBodyKind.DefaultTemplate);
+    }
+
+    // SPEC 8.10, 23.3.6.1: an accessor's body is a part of its Property, so beyond the bound neither it nor a Field initializer, a method or
+    // the synthesized constructor of a seven-binder struct is built, although Binding binds them.
+    [Fact]
+    public void NoMemberOfAContainerBeyondTheCaseBoundIsBuilt()
+    {
+        var c = Compile("struct S<a/A, b/B, c/C, d/D, e/E, g/G, h/H>\n" + string.Concat("abcdegh".Select(static x => $"    {x} is owner or uniq\n")) +
+            "    var count: i32 = 1 + 2\n    computed size: i32\n        get(self: ref/Self) -> i32 => self.count + 1\n" +
+            "    func touch(self: ref/Self) -> i32 => self.count + 2\npublic func main() -> ()\n    ()\n");
+        Assert.Equal(4, c.Binding.Issues.Count(static x => x.Code == DiagnosticCode.OwnershipCaseLimit_Kd));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.All(program.Bodies.ToArray().Where(static x => x.Source.Module == 0), static x => Assert.True(x.Key.Decl is null || x.Key.Decl.Name == "main", x.Key.ToString()));
     }
 
     internal static Compilation Compile(string source, bool test = false)

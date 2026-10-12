@@ -1397,9 +1397,7 @@ public sealed partial class Binding
 
     private void ResetPrerequisites()
     {
-        this.caseLimits?.Clear();
-        this.caseLimitCauses?.Clear();
-        this.adaptationBinders?.Clear();
+        this.caseBinders?.Clear();
         this.mismatches?.Clear();
         this.qualificationStops?.Clear();
         this.qualificationFailures?.Clear();

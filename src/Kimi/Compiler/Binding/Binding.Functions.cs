@@ -10,6 +10,19 @@ public sealed partial class Binding
 {
     private int defaultBindingDepth;
 
+    private static bool HasParameterDefaults(FunctionKoto function)
+    {
+        for (var i = 0; i < function.Parameters.Count; i++)
+        {
+            if (function.Parameters[i].DefaultValue is not null)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // A function definition: its signature (header, receiver, generic arguments, Constraints, effect bounds, parameter and result
     // Types), then its parts (parameter defaults, base initializer and body).
     private BoundType? BindFunction(FunctionKoto function, BindingScope scope)
@@ -53,6 +66,7 @@ public sealed partial class Binding
             this.BindType(resultSyntax, scope);
         }
 
+        this.CheckCaseBound(function);
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             var parameter = function.Parameters[i];
