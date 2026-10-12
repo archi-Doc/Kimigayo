@@ -6,6 +6,10 @@ Archive line numbers below refer to that immutable snapshot, not this file. Hist
 
 ## Sessions
 
+- **2026-10-13 — R4 resumed:** owner requested the current-dev Session first, completion of U8, then U7b redesign and the remaining R4 units. Applied the prepared pause record with the current position corrected to resumed. The new Session and unit results are recorded in the R4 handoff evidence.
+
+- **2026-10-12/13 — R4 session 1:** landed U0a–U0c, U4, U1, U4b/U1b, U5, U5b, U3 (T1), U6 (A4), U6b, U3n, U7 (A5-1, redone after review), U6c (a default-pipeline miscompile: function items now select specializations), the caps rebalance (R4-M25), the token-based Binding rule (R4-M30) and the MIR probe tool; P9 204 → 143. U7b held by the owner; paused with U8 in flight (local branch). Process: light feedback and formal runs, generated reports, stacked landing, landing script. Session `20261012-152447-565-session-session-r4-pause-20261013` passed at 89c01cb0 (20,757 tests); the Session at b141939a was stopped by owner instruction and has no result.
+
 - **2026-10-12 — AGENTS design selection:** AGENTS chooses designs by the priorities (coherence first), defines local changes semantically, writes designs as one chain, shares by meaning, closes open families and classifies review findings (DECISIONS Q4).
 
 - **2026-10-12 — Code Rules Analyzer review (CR-A9–CR-A9b):** the analyzer reuses the driver's semantic model and resolves only candidate KR1 names (csc share 9.4–10.4% to 4.1–5.7%, Report unchanged); KR1006 counts only named Koto type tests (nine rows pruned); KR3003 covers tuple declarations (owner); Verify requires the completion marker, effective options must equal the checksummed globalconfig and Kimi does not discover other .globalconfig files. Independent review findings addressed. Evidence `artifacts/verify/20261012-code-rules-review/`; Session `20261012-004249-246-session` (20,468 tests).
