@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns the source-ordered child-slot walk used for visits, collection and replacement.
+// Input: one node's declared slots and one requested operation. Output: visited nodes or updated slots.
+// Every child shape has one slot definition; non-replacement walks preserve the tree.
+// Must not infer semantic children or maintain a second traversal.
+
 using System.Runtime.CompilerServices;
 
 namespace Kimi.Compiler.Parsing;

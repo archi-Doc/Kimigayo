@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns publication of HIR facts from the completed Binding pass.
+// Input: that pass's decisions and syntax slots. Output: Op, Res, Completion, Adjust, Place and jump columns.
+// Publication is versioned and reused; it decides nothing beyond Binding's existing facts.
+// Must not resolve again; R7 replaces the publisher walk with inline writes.
+
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -8,6 +13,7 @@ namespace Kimi.Compiler;
 // the latest pass keeps; it decides nothing Binding has not decided. Tests call it in R2b and the MIR builder from R3; R7 writes the columns inline.
 public sealed partial class Binding
 {
+    [Transitional("R7", Reason = "R7 replaces the publisher walk with inline Binding writes.")]
     private HirPublisher? hirPublisher;
     private ulong hirVersion;
 
@@ -15,6 +21,7 @@ public sealed partial class Binding
     // call or construction, the call shape of a formatting macro, the name Type arguments apply to), or inside an Error, which the
     // builder replaces whole.
     [Flags]
+    [Transitional("R7", Reason = "R7 replaces the publisher walk with inline Binding writes.")]
     private enum HirPosition : byte
     {
         None = 0,
@@ -44,6 +51,7 @@ public sealed partial class Binding
     }
 
     // One walk of the tree through its child slots; each node's position follows from the slot its parent holds it in.
+    [Transitional("R7", Reason = "R7 replaces the publisher walk with inline Binding writes.")]
     private sealed class HirPublisher(Binding binding) : KotoVisitor
     {
         // The parameter defaults the walk is inside: the function and the parameter's slot.
@@ -102,6 +110,11 @@ public sealed partial class Binding
 
             (this.parent, this.parentOp, this.position) = (node, op, position);
             node.VisitChildren(this);
+            if (node is ForKoto { Iteration: { } iteration } && op == HirOp.For)
+            {
+                this.Visit(iteration.Receiver); // The step's receiver, the iterator local the loop declares (SPEC 14.6.2).
+            }
+
             (this.parent, this.parentOp, this.position, this.defaultCount, this.exclusive) = (parent, parentOp, outer, defaults, exclusive);
         }
 
@@ -121,6 +134,7 @@ public sealed partial class Binding
                 Array.Clear(hir.Places!);
             }
 
+            (hir.Defaults ??= []).Clear();
             this.table = table;
             this.completion?.Clear();
             (this.parent, this.position, this.exclusive) = (null, HirPosition.None, false);
@@ -129,6 +143,10 @@ public sealed partial class Binding
 
         // The operand a parent projects, updates, groups or borrows.
         private static Koto? Operand(Koto? parent) => (parent as BinaryKoto)?.Left ?? (parent as UnaryKoto)?.Operand;
+
+        // SPEC 13.5.7: an object upcast to a view (objref, objuniq) of an operand of another Semantics borrows the operand in the view's mode.
+        private static HirAdaptation ViewBorrow(Koto node) => node is ConversionKoto { ConversionBinding: ConversionBinding.ObjectUpcast, BoundType: { IsObjectBorrow: true } view } upcast &&
+            upcast.Left.BoundType?.Semantics != view.Semantics ? view.Semantics == SemanticsKind.ObjUniq ? HirAdaptation.ExclusiveBorrow : HirAdaptation.SharedBorrow : HirAdaptation.None;
 
         // The position of a child: a declaration evaluates its body, defaults and initializer, an expression its operands, and
         // nothing evaluates Types, names it declares or selects, attributes, Origin clauses or a fill length.
@@ -163,6 +181,7 @@ public sealed partial class Binding
                             }
 
                             this.defaults[this.defaultCount++] = (function, i);
+                            this.table!.Hir.Defaults!.Add(new(function, i));
                             return HirPosition.Evaluated;
                         }
                     }
@@ -181,9 +200,10 @@ public sealed partial class Binding
 
                     return position;
                 case ForKoto loop:
-                    return ReferenceEquals(node, loop.Iterable) || ReferenceEquals(node, loop.Body) ? position : HirPosition.None;
-                case InvocationKoto call:
-                    return ReferenceEquals(node, call.Method) && CallPlan.Of(call)?.Kind != CalleeKind.Value ? position | HirPosition.Covered : position;
+                    return ReferenceEquals(node, loop.Iterable) || ReferenceEquals(node, loop.Body) || ReferenceEquals(node, loop.Iteration?.Receiver) ? position : HirPosition.None;
+                case InvocationKoto call: // A value call's callee is evaluated unless its receiver operation takes what the callee reaches.
+                    return ReferenceEquals(node, call.Method) && (CallPlan.Of(call) is not { Kind: CalleeKind.Value } plan ||
+                        (plan.ReceiverOperation.Source is { } source && !ReferenceEquals(source, node))) ? position | HirPosition.Covered : position;
                 case MacroKoto macro:
                     return macro.Formatting is null ? position : position | HirPosition.Covered;
                 case GenericsKoto generics:
@@ -234,7 +254,7 @@ public sealed partial class Binding
             DereferenceKoto or ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } => HirOp.Deref,
             ConversionKoto { ConversionBinding: ConversionBinding.ObjectCreation } => HirOp.Call,
             ConversionKoto conversion => conversion.ConversionBinding == ConversionBinding.None ? HirOp.Unset : HirOp.Convert,
-            TupleLiteralKoto or ArrayLiteralKoto => HirOp.Aggregate,
+            TupleLiteralKoto or ArrayLiteralKoto => node.BoundType is null ? HirOp.Unset : HirOp.Aggregate, // Without its Type (a rejected element).
             DictionaryLiteralKoto => HirOp.DictionaryLiteral,
             CodeBlockKoto => HirOp.Block,
             IfKoto => HirOp.If,
@@ -253,7 +273,7 @@ public sealed partial class Binding
             NoInitKoto => HirOp.NoInit,
             TestVerificationKoto => HirOp.TestVerification,
             FieldKoto => HirOp.Let,
-            FunctionKoto => HirOp.Closure,
+            FunctionKoto closure => BoundClosure.Of(closure) is null ? HirOp.Unset : HirOp.Closure, // Without its definition (ClosureDef).
             IsKoto { IsRuntimeTest: true } => HirOp.RuntimeTypeTest,
             IndexKoto index => (binding.IndexerCall(index, false) ?? binding.IndexerCall(index, true) ?? binding.ViewRangeCall(index)) is null ? HirOp.Index : HirOp.Call,
             RangeKoto or FromEndIndexKoto => CallPlan.Of(node) is null ? HirOp.Range : HirOp.Call,
@@ -340,14 +360,15 @@ public sealed partial class Binding
                 case VariableKoto or PropertyKoto:
                     this.Take(node is VariableKoto variable ? variable.InitializerKoto : ((PropertyKoto)node).InitializerKoto);
                     break;
-                case ParenthesizedKoto or MacroKoto or LabeledKoto when op == HirOp.Group:
-                    this.Write(node is LabeledKoto label ? label.Target : ((UnaryKoto)node).Operand, new(HirAcquire.None, HirAdaptation.None)); // Its group acquires it.
+                case ParenthesizedKoto or MacroKoto or LabeledKoto when op == HirOp.Group: // Its group acquires it, an erasure recorded at it included.
+                    var grouped = node is LabeledKoto label ? label.Target : ((UnaryKoto)node).Operand;
+                    this.Write(grouped, HirTables.ErasedType(grouped) is null ? new(HirAcquire.None, HirAdaptation.None) : new(this.Bare(grouped), HirAdaptation.Erasure));
                     break;
                 case ConversionKoto { ConversionBinding: ConversionBinding.Transfer } transfer:
                     this.Write(transfer.Left, new(HirAcquire.Move, HirAdaptation.None));
                     break;
                 case ConversionKoto or DereferenceKoto or IsKoto: // A borrow, a followed referent and a runtime test take their operand in place.
-                    this.Take(node is DereferenceKoto dereference ? dereference.Operand : ((BinaryKoto)node).Left, inPlace: op is HirOp.Borrow or HirOp.Deref or HirOp.RuntimeTypeTest);
+                    this.Take(node is DereferenceKoto dereference ? dereference.Operand : ((BinaryKoto)node).Left, ViewBorrow(node), op is HirOp.Borrow or HirOp.Deref or HirOp.RuntimeTypeTest);
                     break;
                 case MemberAccessKoto member when op is HirOp.Field or HirOp.PrimitiveOp: // A stored Field or Tuple element, or a sequence's metadata.
                     this.Take(member.Left, binding.receiverOperations.TryGetValue(member, out var receiver) ? HirAdjust.Of(receiver) : HirAdaptation.None, true);
@@ -466,16 +487,19 @@ public sealed partial class Binding
         // A body or operand that supplies its construct's value (SPEC 14.9).
         private void Result(Koto? source) => this.Take(source is not null && KotoHelper.IsValueContext(source) ? source : null);
 
-        // A consumed child: an adaptation Binding recorded at the node itself (at its fixed expected Type, or as a receiver) wins over its
-        // consumer's operation. A Place adapted or used in place is not acquired, an adapted value is a Temporary, and an unadapted one taken
-        // by value is acquired by the bare rule. A built-in operator's operand that is not Copy, a comparison's, is inspected through a shared
-        // Loan from its evaluation instead (SPEC 13.4): a Place in place, a value other than a literal in its temporary.
+        // A consumed child: an adaptation Binding recorded at the node itself (at its fixed expected Type, or as a receiver; an erasure to its
+        // Function Type, SPEC 7.6.4) wins over its consumer's operation. A Place adapted or used in place is not acquired, an adapted value is
+        // a Temporary, and an unadapted one taken by value, or erased, is acquired by the bare rule. A built-in operator's operand that is not
+        // Copy, a comparison's, is inspected through a shared Loan from its evaluation instead (SPEC 13.4): a Place in place, a value other
+        // than a literal in its temporary.
         private void Take(Koto? child, HirAdaptation adaptation = HirAdaptation.None, bool inPlace = false, bool inspect = false)
         {
             if (child is not null)
             {
-                adaptation = binding.adaptations.TryGetValue(child, out var recorded) ? HirAdjust.Of(recorded, child.BoundType) : adaptation;
-                var acquire = adaptation != HirAdaptation.None || inPlace ? this.IsPlace(child) ? HirAcquire.None : HirAcquire.Temporary : this.Bare(child);
+                adaptation = binding.adaptations.TryGetValue(child, out var recorded) ? HirAdjust.Of(recorded, child.BoundType)
+                    : HirTables.ErasedType(child) is not null ? HirAdaptation.Erasure : adaptation;
+                var acquire = adaptation is not (HirAdaptation.None or HirAdaptation.Erasure) || inPlace ? this.IsPlace(child) ? HirAcquire.None : HirAcquire.Temporary
+                    : this.Bare(child);
                 if (inspect && adaptation == HirAdaptation.None && (acquire is HirAcquire.Move or HirAcquire.Reborrow or HirAcquire.ByCase ||
                     (acquire == HirAcquire.Temporary && child is not StringLiteralKoto && child.BoundType is { } type && binding.ProveCopy(type, child) != ConstraintProof.Proven)))
                 {
@@ -543,8 +567,9 @@ public sealed partial class Binding
             return layers;
         }
 
-        // A bare Place (SPEC 3.5), a raw Place (SPEC 5.2) or a static.
-        private bool IsPlace(Koto child) => IsBarePlace(child) || ElementAccess.IsRawPlace(child) || this.ResOf(KotoHelper.UnwrapParentheses(child)) == HirRes.Static;
+        // A bare Place (SPEC 3.5), a raw Place (SPEC 5.2), a static, or the storage a formatting plan prepared (its buffer, its writer).
+        private bool IsPlace(Koto child) => IsBarePlace(child) || ElementAccess.IsRawPlace(child) || child is FormattingKoto { Operation: FormattingOperation.Storage } ||
+            this.ResOf(KotoHelper.UnwrapParentheses(child)) == HirRes.Static;
 
         // SPEC 15.1.6: a Subject is acquired as written, but a bare Place is borrowed in place: its stored exclusive reference Reborrowed, a
         // stored exclusive reference reached through a shared layer read as one shared reference, and any other Place borrowed in its mode.

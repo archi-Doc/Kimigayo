@@ -17,6 +17,8 @@ internal sealed record TestSite(int Id, string File, int Line, int Column, strin
 
 internal sealed class TestCatalog
 {
+    private readonly Dictionary<SourceRef, int> siteIds = new();
+
     internal string ProjectId { get; private set; } = string.Empty;
 
     internal string ArtifactId { get; private set; } = string.Empty;
@@ -53,10 +55,16 @@ internal sealed class TestCatalog
         return string.IsNullOrWhiteSpace(id) || id.Contains('\0') ? throw new InvalidDataException("TestProjectId must be nonempty text without NUL.") : id;
     }
 
+    /// <summary>Gets the SiteId of a verification, which code generation passes for its site (SPEC 22.6.3, plan 5.6.7).</summary>
+    /// <param name="verification">The verification's syntax.</param>
+    /// <returns>The SiteId, or -1 for a verification discovery did not number.</returns>
+    internal int SiteOf(SourceRef verification) => this.siteIds.GetValueOrDefault(verification, -1);
+
     internal void Discover(Compilation compilation)
     {
         this.Cases.Clear();
         this.Sites.Clear();
+        this.siteIds.Clear();
         if (!compilation.IsTestBuild || !compilation.Binding.Result.IsComplete || !compilation.Analysis.IsVerified)
         {
             throw new InvalidOperationException("Discovery requires complete test semantic verification.");
@@ -79,7 +87,7 @@ internal sealed class TestCatalog
         });
         for (var i = 0; i < this.Sites.Count; i++)
         {
-            this.Sites[i].Node.SiteId = i;
+            this.siteIds[SourceRef.Of(this.Sites[i].Node)] = i;
             this.Sites[i] = this.Sites[i] with { Id = i };
         }
 

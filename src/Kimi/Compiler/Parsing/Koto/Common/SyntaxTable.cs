@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns module-local dense syntax identity and semantic-column capacity.
+// Input: parsed children and Binding's synthetic nodes. Output: SyntaxIds and their indexed storage.
+// Parsed nodes use pre-order ids; zero means no node; renumbering moves semantic rows with their nodes.
+// Must not decide Binding facts or let consumers assign independent ids.
+
 using System.Buffers;
 using System.Runtime.CompilerServices;
 

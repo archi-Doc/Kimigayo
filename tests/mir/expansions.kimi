@@ -1,0 +1,43 @@
+struct Counter
+    public var stored: i32
+    public var count: i32
+        get => self.stored
+        set => self.stored = value
+
+func bump(counter: uniq/Counter, step: i32)
+    counter.count += step
+    counter.stored *= 2
+
+func pick(values: Array<i32>) -> i32
+    let key = ^2
+    return values[key] + values[^1]
+
+func middle(values: ref/[5 of i32]) -> Slice<i32> during values => values[1..^1]
+
+func head(values: ref/Array<i32>) -> Slice<i32> during values => values[..=2]
+
+func make(first: i32) -> Array<i32> => [first, 2]
+
+func table() -> Dictionary<i32, bool> => [1: true, 2: false]
+
+func room(values: ref/Array<i32>) -> isize => values.capacity
+
+struct Point
+    Self is Utf8Format
+    var x: i32
+
+    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        return $tryWrite(writer, "(\(self.x))")
+
+func back(values: ref/Array<i32>, x: i32) -> i32 => values[^x] + values[^(-1)]
+
+struct Box
+    public var item: i32 = 1
+        set(value: i32) -> () => storage = value
+    public var level: i32 = 2
+        get() -> i32 => storage
+    public init() => ()
+
+func update(box: uniq/Box, step: i32)
+    box.item += step
+    box.level++

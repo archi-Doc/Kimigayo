@@ -139,12 +139,15 @@ internal sealed partial class MirBuilder
     // registered it; an exit to it goes on with the cleanup after it, and a body that does not complete goes on there for the checks only.
     private void Deferred(in Registration registration)
     {
-        var (scope, start, defer, next) = (this.scope, this.statementStart, (DeferredBlockKoto)registration.Defer!, this.body.AddBlock());
+        var scope = this.scope;
+        var start = this.statementStart;
+        var defer = (DeferredBlockKoto)registration.Defer!;
+        var next = this.body.AddBlock();
         (this.scope, this.statementStart) = (registration.Scope, false);
         var depth = this.scopes.Count;
-        var temporaries = this.OpenScope(false);
+        var temporaries = this.OpenScope(block: false);
         var result = this.Temp(BoundType.Unit, defer);
-        this.targets.Add(new(defer, result, next, -1, this.arguments.Count, depth, false));
+        this.targets.Add(new(defer, result, next, -1, this.arguments.Count, depth, Reached: false));
         this.Block(result, defer.Body, MirScopeKind.Deferred);
         this.targets.RemoveAt(this.targets.Count - 1);
         this.CloseScope(temporaries);

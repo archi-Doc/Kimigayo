@@ -73,7 +73,7 @@ internal sealed partial class BodyLowering
             this.deliveries[id] = i;
         }
 
-        if (!ValidateValues(body, this))
+        if (!ValidateValues(body))
         {
             return Fail("Missing or inconsistent value-flow plan.", out failure);
         }
@@ -343,7 +343,7 @@ internal sealed partial class BodyLowering
 
         if (body.Values[index].Kind == OwnershipValueKind.Sequence)
         {
-            return this.LowerSequence(library, body, function, constants, projectDirectory, index, out failure);
+            return this.LowerSequence(body, function, constants, projectDirectory, index, out failure);
         }
 
         if (body.Values[index].Kind == OwnershipValueKind.RuntimeTypeTest)

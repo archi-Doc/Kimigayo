@@ -1,0 +1,26 @@
+func keep<s/T>(value: s/T, x: T) -> T
+    s is owner or uniq
+    T is Copy
+    var v = value@move
+    let local = v
+    _ = local
+    v@follow = x
+    return v@follow
+func both<s/T, t/U>(a: s/T, b: t/U, x: T) -> U
+    s is owner or uniq
+    t is owner or ref
+    T is Copy
+    U is Copy
+    var p = a@move
+    p@follow = x
+    let q = b
+    let read = func [q] () -> U => q@follow
+    return read()
+func peek<t/U>(value: t/U, seen: U = value@follow) -> U
+    t is owner or uniq
+    U is Copy
+    return seen
+func caller<s/T>(x: s/T) -> T
+    s is owner or uniq
+    T is Copy
+    return peek(x)

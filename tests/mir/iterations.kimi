@@ -1,0 +1,19 @@
+func sum(values: ref/Array<i32>) -> i32
+    var total = 0
+    for value in values
+        if value < 0 => continue
+        total += value
+    return total
+
+func positions(values: [4 of i32]) -> isize
+    var total: isize = 0
+    for index in values.indices
+        if index == 2 => exit
+        total += index
+    return total
+
+func pairs(entries: Dictionary<i32, bool>) -> i32
+    var hits = 0
+    for (key, value) in entries
+        if value => hits += key
+    return hits

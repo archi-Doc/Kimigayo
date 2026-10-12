@@ -598,7 +598,7 @@ public sealed partial class Binding
         BoundType? reference = null;
         if (GenericParentApplication(syntax) is { } generic)
         {
-            var arguments = this.BindTypeList(generic, generic.TypeArguments, scope, this.TypeContext(generic, scope).Nested, BoundTypeKind.Constructed, named);
+            var arguments = this.BindTypeList(generic.TypeArguments, scope, this.TypeContext(generic, scope).Nested, BoundTypeKind.Constructed, named);
             if (arguments is null)
             {
                 this.RejectEffectBound(effect, new(EffectRejection.NotReference, Symbol: named));

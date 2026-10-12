@@ -1,10 +1,11 @@
 # Compiler architecture
 
 The compiler reduction plan ([draft](../../draft/Proposals/2026-10-10%20Compiler%20Size%20Reduction%20and%20Single%20MIR%20Plan.md))
-was adopted on 2026-10-10. This document holds the enforced rules and the stage ledger; the plan holds the design,
-rationale and decisions (its §18). Required behavior remains in SPEC/IMPL, navigation in CODEMAP, verified support in
-STATUS, and execution/verification rules in AGENTS and VERIFICATION. The current compiler does not yet have the target
-structure below; only completed ledger entries describe enforced changes.
+was adopted on 2026-10-10; it holds the design, rationale and decisions (its §18), and [DECISIONS](DECISIONS.md) holds
+the design decisions taken since. This document holds the enforced
+structure: phases, dependencies, vocabularies, canonical components, structure limits, migration rules and the stage
+ledger. SPEC/IMPL define behavior, CODEMAP navigation, STATUS verified support, AGENTS work policy and VERIFICATION
+checks. Only completed ledger entries describe the current compiler; the rest is the target.
 
 ## Target pipeline
 
@@ -29,58 +30,179 @@ structure below; only completed ledger entries describe enforced changes.
 | Backend | MIR, declaration tables, `TyCtxt` | HIR, borrow-checker state, syntax |
 | Hover and LSP | `SemanticQuery` | Private Binding state |
 
+KR1001 and KR1002 enforce the current dependency/member rows through `src/Kimi/CodeRules.globalconfig`. Layers follow
+the longest source-path prefix; `Compiler/*.cs` means direct files only. Every partial declaration contributes its
+layer. References use resolved types and member owners, including aliases, inferred receivers and attributes.
+The explicit MIR builder allow list names Binding's published types, including BoundArgumentOperation returned by
+CallPlan (CR-A3); a new view joins with a reason in its commit. Outside `Mir/Build`, syntax, HIR and plans are forbidden.
+`SemanticsKind` lives in Misc and needs no layer exception. Syntax forbids the Binding type until R6 broadens that
+restriction to the whole layer. Global forbidden member names cover declarations too; typed member selectors cover
+their type family, including overrides and derived Koto slots.
+
 ## Closed vocabularies
 
-MIR has 5 statement kinds, 9 rvalue kinds, 6 terminator kinds (plus the `CheckTarget` terminator attribute), 7 projection
-kinds, 4 operand kinds and 5 callee kinds (`ArchitectureRulesTest.VocabularyDoesNotGrow`). Not-yet-implemented forms have one diagnostic code, `Unsupported_Kd`, carrying only a
-location, reported by Binding, MIR construction or the capability check. Adding a vocabulary entry or a second
-Unsupported code is a design change that needs a SPEC basis and owner approval.
+MIR has 5 statement, 9 rvalue, 6 terminator (plus the `CheckTarget` attribute), 7 projection, 4 operand and 5 callee
+kinds; the HIR vocabularies and `IntrinsicId` have fixed limits too (KR1003, configured in CodeRules.globalconfig). Enum
+aliases count separately; implicit fields do not. A removed configured enum produces KR9002 for removal from config. A
+form not yet implemented has one diagnostic code, the location-only `Unsupported_Kd`, reported by Binding, MIR
+construction or the capability check. A new vocabulary entry or a second Unsupported code is a design change that needs
+a SPEC basis and owner approval.
 
-## Rules during the migration
+## Adding a feature
 
-- From R0 until R6 completes, the old Analysis and Emission paths receive no new accepted forms or generation features
-  (decision D5). Allowed: deletion, miscompile fixes mirrored on the new path, and the mechanical follow-up that a stage
-  of the plan names.
-- A form that no general rule handles reports the located Unsupported. Do not add `Supports*`-style gates, shape
-  allowlists, Advice or downstream re-verification.
-- `CompilerSizeBudgetTest` and `ArchitectureRulesTest` hold the size caps and the no-growth ratchets below; caps fall
-  when a reduction stage exits. A cap rises only on owner instruction, or to keep O2 performance and zero allocation
-  (plan §18 P5), with the reason recorded. In the parallel stages R2b–R5 the total cap is the stage's cumulative ceiling
-  (plan §10.4, §12.2): R3's is 135,500, with a Mir cap of 6,600, Binding 350 lines over its R2b-exit size and Core
-  1,820. `ArchitectureRulesTest.MirReadsNoBindingInternals` enforces the MIR builder row above over a frozen list of
-  published Binding types, which R3 U1 extended by the builder's gaps (`BuiltinForm`, `CompilerFunctionKind`) and only the
-  deferred declaration views join, and keeps Mir off the old Analysis/Emission types; `OnlyTheMirBuilderReadsSyntaxAndHir`
-  enforces the MIR analyses row for everything under `Mir/` outside `Mir/Build` (`SemanticsKind`, a Type vocabulary that lives in
-  the Parsing namespace, is named there through an alias).
-- O2 run time and zero allocation (compiler warm paths and native allocation counts) may not regress; O0 run time and
-  compiler processing time may, and are recorded. A regression is a change beyond the variation of repeated runs under
-  identical conditions.
+Once R6 makes MIR the only path, a new form adds one `HirOp` or Plan row, one MIR builder function and, if needed, a
+descriptor, operator or intrinsic table row. Analyses and code generation change only for a new vocabulary entry. Until
+then the freeze below applies to the old paths.
 
 ## Canonical components
 
-Components the reduction has created, under `src/Kimi/Compiler`. Extend one of these before adding a parallel structure.
+Each concern has one canonical form. Use and extend it; a different form for the same concern replaces the existing one
+in the same unit. Rows give the responsibility and entry point; details live in the code and CODEMAP. From Code Rules
+Analyzer A1, each entry file begins with the component's contract (AGENTS). Paths are under `src/Kimi/Compiler`.
 
-| Component | Source | Responsibility |
+| Concern | Canonical form | Source |
 | --- | --- | --- |
-| `ChildSlots` | `Parsing/Koto/Common/ChildSlots.cs` | The one child walk: a node lists its slots once in `ForEachChildSlot`, which visiting, collecting and replacing share |
-| `SyntaxTable` | `Parsing/Koto/Common/SyntaxTable.cs` | Per-module dense pre-order `SyntaxId`; a synthetic node takes a later id at its first semantic write; `Module`, the module's ordinal (the source modules in order, the library last) |
-| `SourceRef` | `Core/SourceRef.cs` | A syntax node as a value, `(Module, SyntaxId)`, the only way MIR and its records name syntax; `SourceInfo` adds a MIR scope and the statement-start mark |
-| Pipeline switch and entry points | `Core/Compilation.Pipeline.cs` | `Compilation.Pipeline` (`CompilerPipeline` Legacy or Mir; the default read once per process from `KIMI_PIPELINE`, R3–R5) and the one way to run and read the phases after Binding and startup: `Analyze`, `Analysis` (`AnalysisResult`), `Problems` (`Problem(Code, SourceRef Subject)`), `ReportAnalysis`, `WriteIr`, `Validate`, `SyntaxOf`. Until R6 they delegate to the old path; under mir `Analyze` builds and validates the MIR first, and its records in the source modules (construction `Unsupported_Kd`, validator `InternalInvariant_Kd`) are analysis Errors, reported in the control-flow partition, that block generation; the mir pipeline marks the check identity (` [mir]`) and the test artifact manifest |
-| `HirTables` | `Binding/HirTables.cs` | Semantic columns and `PlanRow`s keyed by `SyntaxId`, behind the Koto forwarding properties until R6; the published `Op`, `Res`, `Completion`, `Adjust` and PlaceShape (`Places`) columns (`HirOp`, `HirRes`, `HirCompletion`, `HirAdjust` = `HirAcquire` + `HirAdaptation`, `HirPlace` = `HirPlaceKind` + implicit layers, in `Binding/HirVocabulary.cs`), empty until `HirTables.Publish`; `HirAdjust.Of` is the one conversion from Binding's acquisition vocabularies, and an explicit conversion's cast is its `ConversionBinding` |
-| HIR publisher | `Binding/Binding.Hir.cs` | `HirTables.Publish`: at most once per pass, one child walk fills `Op`, `Res` (`PreparedParam` for a parameter read in a later default), `Completion` (Binding's structural completion with its Never evidence), `Adjust` (each consumed child's acquisition and adaptation from the operation Binding recorded, else `Binding.BareAcquire`, the one bare-acquisition rule that argument adaptation and capture entries also apply; a user index under an update or exclusive borrow of its Place path takes `indexUniq`, which its plan row records), PlaceShape (the Place each evaluated node or borrowed Pattern binding designates and the layers its consumer follows, each a `TyCtxt.Layer`), each jump's target and each number literal's fitted value (`PlanRow.Folded`; a directly signed number is one Literal) in its plan row from facts Binding kept; it returns the pass it describes; replaced by inline writes in R7 |
-| `SemanticQuery` | `Binding/SemanticQuery.cs` | `Compilation.Semantics`: the facts Binding publishes to Hover, the LSP and tests |
-| `CallPlan` | `Binding/CallPlan.cs` | One plan per call, its callee a `CalleeKind` (Function, Requirement, Virtual or Value); `CallPlan.Of(node, ordinal)` is the one way to reach a node's calls, a formatting plan's included; a Requirement callee is its `Target` with its `RequirementContract`, unless the `Target` is a built-in witness (a `Shim`); an omitted default is its selected declaration's `DefaultDecl` (`DefaultDecl.Of`: the default template's owner, slot and declared parameter Types); `CallPlan.Accessor` is the function executing a custom accessor, which its calls target, and `CallPlan.Parameter` a function's parameter as its body reads it (an accessor's `self` and `value`, at -1 a constructor's or destructor's receiver) |
-| `PairBinder` | `Binding/BindingModel.cs` | A pair binder in scope of a body with its admitted set: `PairBinder.Collect(body, list)` lists a body's binders outer to inner and `PairBinder.CaseProduct` counts its Semantics cases |
-| `ExpansionPlan` | `Binding/ExpansionPlan.cs` | `ExpansionPlan.Of(node)`: the expansion the MIR builder desugars at an expansion Op (Iteration, Try, Format, DictionaryLiteral, Range, Index, CompoundAssign), naming the calls whose role `CallPlan.Of`'s order leaves open (an index's key resolution and selected element or view call, a Property update's getter and setter), the argument that stands for an operand already evaluated and an interpolation passed directly to `writeLine`; the Pattern plan of a match, try or user loop is `BoundMatch.Of`, a closure's definition `BoundClosure.Of` (the plan's PatternPlan and ClosureDef) and an enum Case value's construction `BoundEnumConstruction.Of` |
-| `AdtDef` | `Binding/AdtDef.cs` | The stored shape of a struct or enum on its symbol: Fields, Cases, destructor, inline storage and the Field, base and Case Types of each instance |
-| `TyCtxt` | `Binding/TyCtxt.cs` | `Compilation.Types`: the one Type intern table (`Intern`, with the Array, Slice, Dictionary and wrapping-integer canonical forms) and the Types the builder forms (`Reference`, `Pointer`, `Tuple`); `Layer`, the Deref or PairLayer (with its pair binder) a selection follows implicitly; the interned `Subst` of a call, closure or function item (`SubstOf`, `SubstOfClosure`, `SubstOfItem`, `Identity`), applied to a declared Type by `Apply`, which is Binding's storage instantiation until R7, and composed by `Compose` (a call in a body another `Subst` instantiates, as Binding forwards it); `Name`, a Type as diagnostics spell it |
-| Intrinsic table | `Binding/KimiLibraryKinds.cs` | `IntrinsicDisposition.Of(kind)`: the one disposition of each `CompilerFunctionKind` (plan 5.8), a Kimigayo `Body` (the declaration's own, or for a compiler function the body R8 writes, which the backend serves from the legacy runtime helpers until then), an `Intrinsic` (`IntrinsicId`, at most 30; `Fail` with its fixed SPEC 22.5.4 code) or a `Shim` (a built-in witness whose body the backend generates); `ExpansionKind` states how an expansion's steps without a call are served; the builder-only rows (R3 decision 5) give the `BuiltinForm` of a node (`FormOf`: a sequence's metadata member, a dynamic Array literal, a built-in slicing, a direct interpolation) and the existing compiler function that serves it (`Serving`), whose declaration is `KimiLibrary.Function` |
-| MIR model | `Mir/MirVocabulary.cs`, `Mir/MirBody.cs`, `Mir/MirProgram.cs` | The closed MIR vocabularies (plan 5.4) and the operator, cast, constant, local, scope and body kinds; `MirBody`, one body in struct arrays the builder appends to (locals, `_0` the return and the arguments next; blocks, each a range of statements and its terminator with `CheckTarget`; operand lists; switch pairs; interned constants; interned projection chains `(parent, kind, argument, Type)` shared across roots; scopes; pair binders; static roots; Opaque sites with their roots), whose `ProjectedType` is the one rule for the Type a projection selects; `MirProgram`, the bodies by `MirDefKey` (definition symbol, body kind, index), pooled so a warm rebuild allocates nothing |
-| Descriptor table | `Mir/MirDescriptors.cs` | `MirDescriptors.Of`: one row per statement, rvalue, terminator, operand, projection and intrinsic kind, its `MirAccess` (reads, writes, moves, borrows, defines, kills, drop use, case dependence) and `MirEffect`s (static read, write and first-access initialization, raw-holding immutable-static read, integer-to-pointer, environment, abort, allocation, unknown for Opaque), an intrinsic's arity and divergence; `MirUses.ForEach`, the one enumeration of a location's operands, Places (index locals included) and effects by those rows through a struct visitor, and `MirUses.Successors`, a terminator's runtime successors, which the validator and the analyses share |
-| MIR dump | `Mir/MirDump.cs` | `MirDump.Write`: the one deterministic text of a body or of a module's bodies, records and findings (Types by `TyCtxt.Name`, `@SyntaxId`, `*` at a statement start), which the dump goldens and the MIR snapshot compare |
-| MIR builder | `Mir/Build/MirBuilder*.cs` | `Compilation.BuildMir`: once per Binding pass (`HirTables.Publish`'s version), one pooled `MirProgram`: a body per `HirOp.Body` definition (functions, accessors keyed by `CallPlan.Accessor`, static initializers; a module's top-level statements with no symbol), each validated; a node is built by its Op, Adjust and PlaceShape (`Into`, `Assign`, `Operand` with `Adapt` for each `HirAdaptation`, `Place` with the layers `Follow` takes by `TyCtxt.Layer`, `Call` by `CallPlan` into the five callees, the arguments by parameter slot, the receiver first, an implicit exclusive borrow of a call input two-phase; control flow in `MirBuilder.Control.cs`, a transfer to the target its plan row names with a `CheckTarget` to the code after it, a body's end a runtime or check-only edge by its HIR Completion, an operation whose operand does not complete not performed; a match or a try in `MirBuilder.Match.cs` as a source-order decision chain over its `BoundMatch` plan (the Subject by its Adjust, each arm its Pattern's tests, its guard with shared candidate borrows, its bindings by their Adjust, an Unreachable tail; no decision tree or pruning); scopes in `MirBuilder.Drops.cs`, StorageLive/StorageDead of each Var and Temp local and a Drop where `MirTypes.MayNeedDrop`, registered in its block's, statement's or condition's scope and cleaned up in reverse where the scope is left, a transfer leaving through its target's drop tree whose nodes, defer bodies included, are built once per target and shared), and a form without a rule goes through the one `Unsupported(node)`: a record merged by location on the program and an Opaque value naming the roots its syntax touches; an Error node is a derived Opaque |
-| MIR Type facts | `Mir/MirTypes.cs` | `MirTypes.MayNeedDrop`, the one rule by which MIR drops a value (an owning handle, a managed sequence or string, a Function value, a destructor or an abstract Type anywhere in its inline storage), and `MirTypes.HoldsRaw`, whether a static's value holds raw authority (SPEC 8.4.10.2), each one walk of a Type's inline storage |
-| `MirValidator` | `Mir/MirValidator.cs` | The one structural verifier of MIR (plan 14-5): structure (terminators, target ranges, `CheckTarget` only on Goto, a Call without a target and Unreachable, every block reached through runtime or check edges), locals, scopes, projections against their base Types (`ProjectedType`), constants, binders, operand ranges, arities, Discriminant and Len Types and Opaque sites; each `MirFinding` names its `MirViolation` and syntax, an `InternalInvariant_Kd`; a warm run allocates nothing |
+| Child walk | `ForEachChildSlot`, shared by visiting, collecting and replacing | `Parsing/Koto/Common/ChildSlots.cs` |
+| Syntax identity | Dense pre-order `SyntaxId` per module; `SourceRef(Module, SyntaxId)`, the only way MIR and its records name syntax | `Parsing/Koto/Common/SyntaxTable.cs`, `Core/SourceRef.cs` |
+| Phases after Binding | The `Compilation` entry points (`Analyze`, `Analysis`, `Problems`, `ReportAnalysis`, `WriteIr`, `Validate`, `SyntaxOf`) and the pipeline switch | `Core/Compilation.Pipeline.cs` |
+| Analysis records | `Problem(Code, SourceRef)`, merged per code and location | `Core/Compilation.Pipeline.cs` |
+| Binding facts for MIR | `HirTables` columns (`Op`, `Res`, `Completion`, `Adjust`, PlaceShape) and `PlanRow`s keyed by `SyntaxId`; `HirAdjust.Of`, the one conversion from Binding's acquisition vocabularies; `Binding.BareAcquire`, the one bare-acquisition rule | `Binding/HirTables.cs`, `Binding/HirVocabulary.cs`, `Binding/Binding.Hir.cs` |
+| Binding facts for Hover, LSP and tests | `SemanticQuery` (`Compilation.Semantics`) | `Binding/SemanticQuery.cs` |
+| Calls | `CallPlan`, reached only through `CallPlan.Of(node, ordinal)`; an omitted default is its `DefaultDecl` | `Binding/CallPlan.cs` |
+| Desugared forms | `ExpansionPlan.Of`; the Pattern plans `BoundMatch.Of`, closures `BoundClosure.Of` and enum Case construction `BoundEnumConstruction.Of` | `Binding/ExpansionPlan.cs` |
+| Stored shape of a struct or enum | `AdtDef` | `Binding/AdtDef.cs` |
+| Types and substitutions | `TyCtxt` (`Compilation.Types`): interning, `Subst` (`SubstOf`, `Apply`, `Compose`, `Signature`), implicit `Layer`s, `CaseType`, `Name` for display | `Binding/TyCtxt.cs` |
+| Semantics cases | `PairBinder` (a body's binders, `CaseProduct`); `MirCases`, per-case views of one body that is never copied | `Binding/BindingModel.cs`, `Mir/MirCases.cs` |
+| Library operations | `IntrinsicDisposition.Of`: a Kimigayo body, an `IntrinsicId` or a shim for each `CompilerFunctionKind` | `Binding/KimiLibraryKinds.cs` |
+| MIR storage | `MirBody` struct arrays with interned projection chains, `ProjectedType` the one projection Type rule; `MirProgram`, bodies by `MirDefKey`, pooled for warm rebuilds | `Mir/MirVocabulary.cs`, `Mir/MirBody.cs`, `Mir/MirProgram.cs` |
+| Operands, accesses and effects | `MirDescriptors.Of` rows; `MirUses.ForEach` and `MirUses.Successors`, the one enumeration the validator and the analyses share | `Mir/MirDescriptors.cs` |
+| Type facts in MIR | `MirTypes`: `MayNeedDrop`, `HoldsRaw`, `IsExclusive`, `Agree` (Type agreement modulo Origins) | `Mir/MirTypes.cs` |
+| MIR construction | `MirBuilder` (`Compilation.BuildMir`): one body per definition and Closure, built by Op, Adjust and PlaceShape; `Ref`, the one borrow rule; one drop tree per transfer target; one template per default; `Unsupported(node)`, the one Unsupported record with an Opaque value | `Mir/Build/MirBuilder*.cs` |
+| MIR validation | `MirValidator`, the one structural and Type verifier; a finding is `InternalInvariant_Kd` | `Mir/MirValidator.cs` |
+| MIR text | `MirDump.Write`, compared by the dump goldens and the MIR snapshot | `Mir/MirDump.cs` |
+
+## Structure limits
+
+Members and files outside the old Analysis/Emission paths stay within these limits, which the owner decided on
+2026-10-11 for the [Code Rules Analyzer](../../draft/Changes/2026-10-11%20Code%20Rules%20Analyzer.md) (its §9).
+
+| Measure | Limit |
+| --- | --- |
+| Parameters per member | 6, of which at most 2 optional, 1 `out` and 1 `bool` |
+| `bool` literal arguments | Passed by name |
+| Failure text returned through `out string` | None; record a typed Problem instead |
+| Statements per member | 60 |
+| Control-statement nesting | 4 |
+| Operands in one chain of the same logical or pattern operator | 4 |
+| Tokens per file | 5,000 |
+| Line length | 160 characters |
+
+A member or file already over a limit may not get worse; split it by responsibility before it grows. An exception to
+the statement or nesting limit states its reason and bound in the code. Mir and the Backend take no baseline: their
+violations are fixed, except syntax-class decisions in the MIR builder, which reach 0 by the end of R6. The analyzer
+(units A0–A8, before R4) enforces these limits as build errors over a shrinking baseline.
+
+## Code rules
+
+The owner authorized intake and implementation of the Code Rules Analyzer on 2026-10-12 (DECISIONS CR-A0).
+The following rules are enforced by A2–A7; A8 enforces commit approval comparison.
+Kimi.Analyzers owns C# rules for `src/Kimi`; compiler behavior, tests, Benchmark and Playground are outside that scope.
+Generated code is excluded. Old Analysis/Emission files receive KR1 and the built-in unused-code rules only.
+
+`CodeRulesArchitecture` owns resolved dependency/member/vocabulary policy and structural checks through the shared
+analyzer pipeline. Its .Structure concern implements KR1004–1006 and KR1008 (CR-A4): collection declarations use
+declared symbols, creations use their resolved type, and generic constraints have one cycle-safe expansion.
+Pattern tests use semantic matched/compared/input types; wrapper patterns and casts add no tests, and a recursive
+pattern without a type adds no Koto type test (CR-A9a). Catch anchors exclude the body. Configuration lists use commas: Roslyn treats semicolons as inline comments (CR-A3).
+`CodeRulesDensity` owns KR3001–3003 in the same syntax walk (CR-A5). A physical line is excluded only when wholly
+inside a multiline literal/text token; interpolation holes remain checked. The outermost conditional before a
+callable boundary owns the observation. Parentheses are transparent when classifying new-local tuple values.
+`CodeRulesAccretion` owns KR2001–2010 (CR-A6). The one file walker carries declaration measurements as stack values:
+local functions are separate; lambdas belong to their member and restart control depth; accessors share their member's
+statement count. Parameter/call semantics are resolved only after syntax leaves a possible violation.
+`CodeRuleAnnotation` carries exception bounds and transitional removal stages through the same observation merge.
+The stage order is R0, R1, R2a, R2b, R3–R9; only a current stage later than removal is overdue. Type/member identities
+survive partial-file moves. Report includes every applicable annotation, its reason and bound or stage, even at zero.
+IDE0051, IDE0052 and IDE0060 are build errors, configured only in CodeRules.globalconfig.
+
+| Rules | Contract |
+| --- | --- |
+| KR1001–1003 | Enforce configured dependency/member restrictions and closed vocabularies; A3 preserves existing checks, with no baseline |
+| KR1004 | No Koto-keyed dictionary, set or weak table outside Syntax; Binding's baseline reaches zero at R7 exit |
+| KR1005 | No boolean `Supports*` method or property |
+| KR1006 | No Koto type test or KotoKind comparison/pattern in Mir/Build; baseline reaches zero at R6 exit |
+| KR1007 | Transitional declarations name their removal stage and reason; overdue declarations fail |
+| KR1008 | No unfiltered catch-all outside CLI, LSP and test-runner boundaries |
+| KR2001–2005, KR2010 | Parameter limits above; no failure-text out parameter; source-declared call boolean literals are named |
+| KR2006–2009 | Statement, nesting, logical-chain and file-token limits above |
+| KR3001–3002 | At most 160 UTF-16 units per physical line (whole multiline-string lines excluded); no nested conditional expression |
+| KR3003 | Computed tuple literals do not initialize an all-new-local deconstruction, `var (...)` or `(var a, T b)`; existing-variable assignments are outside this rule |
+| IDE0051, IDE0052, IDE0060 | Remove unused/unread private members and unused parameters, preserving behavior; no baseline |
+
+One baseline row identifies a rule, its innermost named Type (file for file-wide records), and a member, local-function,
+node or line anchor. Member/file measurements cannot rise above the greater of the ordinary limit and their recorded
+value; node/line counts cannot rise. Partial-file moves preserve Type-scoped keys. Obsolete entries must be pruned.
+Ordinary Report measurements are over-limit only. A complete Report with no such occurrence makes its baseline row
+redundant and Prune deletes it (CR-A2). Annotations are reported even at zero; partial declarations share the maximum
+measurement and their single annotation. Unannotated partial measurements at or below the limit stay out of Report.
+KR1001–1003 and KR1007 never have baselines; extend their scope only after the newly covered violations reach zero.
+KR1002's UnwrapParentheses prohibition expands outside Parsing/Binding at R7 exit.
+Syntax's prohibition on the Binding type expands to the whole Binding layer at R6 exit.
+At R5, add the Backend layer and forbid System.Linq.Enumerable in Mir analyses and Backend, rewriting existing
+Mir LINQ uses first. From R5, the owner decides whether to extend these rules to tests/xUnitTest. R8 restores
+IntrinsicId's cap to 30. At every stage exit, obtain a fresh Report for owner review of baseline, exceptions and
+transitional declarations; their inventory does not by itself authorize changes.
+
+Only statement and nesting limits admit CodeRuleException, with an explicit bound and nonempty reason; an exception
+and baseline cannot cover the same member/rule. Invalid targets/rules, out-of-scope exceptions, duplicates, empty reasons,
+needless/exceeded bounds and unknown removal stages are KR9005. Conditional attribute uses are absent from product
+metadata. All KR descriptors are NotConfigurable. Enforce reports stale rows as
+warnings, Verify as errors, and Report publishes complete observations for scripts; verification checks suppression.
+Verify and Report end with the KR9000 completion marker, which verification requires. Effective kimi_code_rules
+options must equal CodeRules.globalconfig, and Kimi does not discover other .globalconfig files (CR-A9b).
+The analyzer reads each file through the compilation's shared semantic model; KR1 resolves only names that can denote
+a forbidden type or member (CR-A9).
+Configuration changes, new/increased baseline rows, new/increased exceptions and later removal stages require owner
+approval recorded by `Code-Rules-Approved`; pruning and reduced exception bounds/removal stages do not. The adopted
+A2–A7 configuration and initial baselines are authorized by the proposal and this intake. Mechanical evasions fail review.
+
+## Rules during the migration
+
+- **Freeze (D5).** From R0 until R6 completes, the old Analysis and Emission paths receive no new accepted forms or
+  generation features. Allowed: deletion, miscompile fixes mirrored on the new path, and the mechanical follow-up that a
+  stage of the plan names.
+- **Sizes.** `CompilerSizeBudgetTest` holds the size caps and `ArchitectureRulesTest` the no-growth ratchets. A stage
+  closes only within its exit ceiling (plan §12.2); otherwise work stops and the owner decides, given the measured size,
+  the remaining deletion candidates and their cost. When a reduction stage exits, its caps fall to the measured size plus
+  2%. A cap rises only on owner instruction or to preserve the native O2 and allocation guarantees (plan §18 P5), with the
+  reason recorded. In R2b–R5 the total cap is the stage's cumulative ceiling; A1's converted caps are below.
+- **Logical size** (owner, 2026-10-11, DECISIONS Q1). Code Rules Analyzer A1, before R4, switches the caps to
+  non-trivia C# tokens, so formatting, comments and blank lines no longer count. Each area's cap becomes its line cap
+  times the area's measured tokens per line; the remaining stage ceilings and the final target convert at the
+  compiler-wide ratio after `.ll.in` and generated data are taken out; `.ll.in` keeps a line cap; generated files
+  (`<auto-generated>` header comments) are excluded. A1 implements this with one scan for all caps.
+- **Forecasts.** Each unit states its line forecast; an overrun above 20% is consolidated before commit or reported with
+  its reason.
+- **Missing facts (R3–R5).** Binding publishes a fact the MIR side lacks as a small view, at most 30 Binding lines per
+  unit; Mir never re-derives it.
+- **Difference ledger (R4–R6).** Each difference between the paths is one row in `artifacts/verify/mir-diff`, classified
+  as (a) an old-path error, (b) a new-path error, fixed, (c) a SPEC ambiguity, clarified, (d) an intended change (D4 and
+  the like) with its clause and plan Appendix B item, or (e) a form not ported under D2, recorded in STATUS and PLAN. R4
+  exits only with no unclassified and no (b) row. Each R4 and R5 session ends by reporting the number of unclassified
+  differences; if it fails to fall twice in a row, the owner decides whether to stop (plan §18 P9).
+- **Temporary structures**, with the stage that removes them: the Koto semantic forwarding properties and the
+  `KIMI_PIPELINE` switch (R6); the HIR publisher walk, replaced by inline writes (R7, DECISIONS R2b-D2); the temporary
+  intrinsics `Capacity`, `FormatBuffer`, `FormatHint` and `FormatFinish` that the owner admitted on 2026-10-11
+  (`IntrinsicId` limit 34, back to 30 in R8; DECISIONS R3-9, R3-10).
+  Transitional attributes identify these declarations (CR-A7). The lasting HIR publication/version contract is unmarked;
+  only its publisher walk and private state disappear at R7. LegacyRuntimeHelpers has no declaration yet; its future
+  producer must record the R8 obligation when introducing it.
+- **Performance and allocation.** Generated native code may not regress in O2 run time or allocation counts (plan §18
+  P1, P2); O0 run time and compiler processing time may, when recorded (P1, P3). A timing regression exceeds the
+  variation of repeated matched runs (P4). Compiler allocations follow the owner's decision of 2026-10-11 (AGENTS,
+  `8071549f`), which supersedes plan §18 P11 and §14-8: an allocation is allowed when it makes equivalent work faster or
+  reduces compiler code with a reasonable increase in memory, with time, allocations and retained memory measured and
+  recorded. Existing compiler allocation regressions hold until a measured change updates them.
 
 ## Stage ledger
 
@@ -90,8 +212,8 @@ Components the reduction has created, under `src/Kimi/Compiler`. Extend one of t
 | R1 | Done 2026-10-10 (closed by user instruction at 129,482 lines, above its 127,000 ceiling) | Delete-first: one Unsupported code, Advice/Note reduction, library validation into tests, dead code, control-flow type flow, OCC-X waiting machinery, independent narrow implementations |
 | R2a | Done 2026-10-11 (closed at 126,611 lines, above its 125,000 ceiling, by the stage decision to close at the measured size) | `SyntaxId`, `HirTables` behind forwarding properties, `AdtDef`, unified CallPlan type, pure fits, child-walk and operator-class consolidation, Hover move |
 | R2b | Done 2026-10-11 (closed at 127,815 lines, within its 129,000 ceiling; the unused 1,185 lines pass to R3) | `TyCtxt` and `Subst`; the published HIR columns (`Op`, `Res`, `Completion`, `Adjust`, PlaceShape) and their publisher; `CallPlan.Of`, `ExpansionPlan`, the Pattern plans and closure definitions as views; `DefaultDecl` and `PreparedParam`; the pair-binder view; the intrinsic table. The five read-only declaration-table views (`ImplTable`, `VTableDef`, `UniversalRelations`, `EffectBoundTable`, `AvailableBounds`) are deferred to their first readers in R4/R5 |
-| R3 | Active | MIR model, descriptor table, validator, dump and builder (shadow) |
-| R4 | Pending | MIR analyses A1–A6 and the difference ledger (shadow) |
+| R3 | Done 2026-10-11 (closed at 133,004 lines, within its 135,500 ceiling: Mir 4,765, Binding 56,569, Core 1,805, the other areas at their R2b-exit sizes; +5,189 against a forecast of +5,750) | MIR model, descriptor table, validator with its Type tier, dump and builder (shadow): every body of the library and the 43 milestones builds without validator findings, with Opaque values only at Binding-rejected nodes of Milestones 33, 35 and 38; 30 dump goldens. The work paused after R3 by owner instruction |
+| R4 | Next | MIR analyses A1–A6 and the difference ledger (shadow) |
 | R5 | Pending | Monomorphization, shims, layout/ABI, code generation, capability table (shadow) |
 | R6 | Pending | Switch the default to MIR, then delete the old Analysis/Emission paths |
 | R7 | Pending | Binding consolidation: resolver, inference context, Contract solver, CallPlan pipeline, Problem records |
@@ -100,8 +222,41 @@ Components the reduction has created, under `src/Kimi/Compiler`. Extend one of t
 
 ## Baseline
 
+A1 (2026-10-12, DECISIONS CR-A1) fixes the conversion at 835,421 tokens / 128,885 non-generated C# lines.
+Each area cap is rounded upward from its former line cap times its measured ratio; Helper first subtracts the
+1,687 generated lines. Total/stage conversions subtract 2,335 template and 1,687 generated lines before applying the
+whole-compiler ratio. No area's pass/fail state changes. EOF, missing tokens and trivia do not count.
+
+| Area | A1 tokens | Token cap |
+| --- | ---: | ---: |
+| Analysis | 121,620 | 124,047 |
+| Binding | 371,765 | 375,051 |
+| Core | 8,055 | 8,167 |
+| Documentation | 24,624 | 25,687 |
+| Emission | 160,848 | 164,057 |
+| Helper | 7,766 | 8,068 |
+| Lexing | 19,065 | 19,445 |
+| Mir | 38,804 | 93,651 |
+| Parsing | 75,668 | 77,163 |
+| Root | 7,206 | 7,345 |
+
+LLVM templates remain at 2,335 lines against their unchanged cap of 2,381, outside the C# total.
+
+| Remaining stage | Total C# token ceiling |
+| --- | ---: |
+| R4 | 894,362 |
+| R5 | 942,976 |
+| R6 | 654,531 |
+| R7 | 589,712 |
+| R8 | 567,025 |
+| R9 | 530,402 |
+| Final target (formerly 84,350 lines) | 520,679 |
+
+The historical line baseline and target below are retained as the inputs of the adopted reduction plan.
+
 At `419e8e79` the compiler has 458 C# files and 134,591 lines (Binding 60,703; Emission 20,859, of which the toolchain
 1,317; Analysis 20,613; Parsing 17,712; Documentation 4,338; Lexing 3,968; Helper 3,472; Core 1,584; root 1,342)
 plus 2,335 lines of `.ll.in`. The target is about 84,350 lines from the like-for-like base of 131,271 (relocated
-Documentation and toolchain excluded), with a final total cap of 85,850. Line counts include comments and blank
-lines; moving code out of the compiler, changing line endings or deleting explanatory comments is not reduction.
+Documentation and toolchain excluded), with a former final total cap of 85,850. These historical line counts include
+comments and blank lines; moving code out of the compiler, changing line endings or deleting explanatory comments is
+not reduction.

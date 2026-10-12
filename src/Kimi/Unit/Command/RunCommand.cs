@@ -13,14 +13,12 @@ public class RunCommand : ISimpleCommand<RunCommand.Options>
         public bool NoBuild { get; set; }
     }
 
-    private readonly UnitContext unitContext;
     private readonly ILogger logger;
     private readonly Kimigayo kimigayo;
     private readonly Solution solution;
 
-    public RunCommand(UnitContext unitContext, ILogger<RunCommand> logger, Kimigayo kimigayo, Solution solution)
+    public RunCommand(ILogger<RunCommand> logger, Kimigayo kimigayo, Solution solution)
     {
-        this.unitContext = unitContext;
         this.logger = logger;
         this.kimigayo = kimigayo;
         this.solution = solution;

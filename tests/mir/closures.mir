@@ -1,0 +1,307 @@
+fn top-level#0 @2
+  _0: () return @2
+  s1: lexical in s0 @3
+  bb0:
+      _0 = const () @3 s1
+      return @3
+fn inspect @4
+  _0: i32 return @4
+  _1: ref/string arg text @4
+  bb0:
+    * _0 = const 1_i32 @8
+      return @8
+fn makeText @9
+  _0: string return @9
+  bb0:
+    * _0 = const "t" @11
+      return @11
+fn makeAdder @12
+  _0: (i32) -> i32 return @12
+  _1: i32 arg offset @12
+  _2: closure (i32) -> i32 temp @20 s1
+  _3: (i32) -> i32 temp @20 s1
+  s1: lexical in s0 @18
+  bb0:
+      StorageLive(_2) @20 s1
+    * _2 = Closure(copy _1): closure (i32) -> i32 @20 s1
+      StorageLive(_3) @20 s1
+      _3 = move _2 as (i32) -> i32 (Erasure) proven @20 s1
+      goto bb4 check bb5 @19 s1
+  bb1:
+      return @12
+  bb2:
+      drop _3 -> bb3 @20 s1
+  bb3:
+      StorageDead(_3) @20 s1
+      StorageDead(_2) @20 s1
+      goto bb1 @12
+  bb4:
+      _0 = move _3 @19 s1
+      goto bb2 @19 s1
+  bb5:
+      drop _3 -> bb6 @20 s1
+  bb6:
+      StorageDead(_3) @20 s1
+      StorageDead(_2) @20 s1
+      unreachable @18
+closure @20
+  _0: i32 return @20
+  _1: ref/closure (i32) -> i32 arg @20
+  _2: i32 arg value @20
+  bb0:
+    * _0 = Add(copy _2, copy (*_1).0) @22
+      return @22
+fn run @25
+  _0: i32 return @25
+  _1: i32 var number @28 s1
+  _2: string var text @32 s1
+  _3: closure () -> i32 var viewer @36 s1
+  _4: ref/i32 temp @38 s1
+  _5: closure () -> i32 var holder @43 s1
+  _6: i32 var mut count @51 s1
+  _7: uniq/i32 var r @55 s1
+  _8: closure () -> () var mut bump @60 s1
+  _9: uniq/i32 temp @62 s1
+  _10: () temp @68 s1
+  _11: uniq/closure () -> () temp @69 s1
+  _12: (i32) -> i32 var erased @70 s1
+  _13: closure (i32) -> i32 temp @76 s1
+  _14: closure () -> i32 var outer @82 s1
+  _15: i32 temp @98 s1
+  _16: i32 temp @99 s1
+  _17: i32 temp @100 s1
+  _18: i32 temp @101 s1
+  _19: i32 temp @102 s1
+  _20: ref/closure () -> i32 temp @103 s1
+  _21: i32 temp @104 s1
+  _22: ref/closure () -> i32 temp @105 s1
+  _23: i32 temp @106 s1
+  _24: ref/(i32) -> i32 temp @107 s1
+  _25: i32 temp @109 s1
+  _26: ref/closure () -> i32 temp @110 s1
+  _27: i32 temp @111 s1
+  _28: (i32) -> i32 temp @112 s1
+  _29: ref/(i32) -> i32 temp @112 s1
+  s1: lexical in s0 @27
+  bb0:
+      StorageLive(_1) @28 s1
+    * _1 = const 10_i32 @31 s1
+      StorageLive(_2) @32 s1
+    * _2 = makeText() -> bb1 @34 s1
+  bb1:
+      StorageLive(_3) @36 s1
+      StorageLive(_4) @38 s1
+    * _4 = &_1: ref/i32 @38 s1
+      _3 = Closure(move _4): closure () -> i32 @38 s1
+      StorageDead(_4) @38 s1
+      StorageLive(_5) @43 s1
+    * _5 = Closure(move _2): closure () -> i32 @45 s1
+      StorageLive(_6) @51 s1
+    * _6 = const 0_i32 @54 s1
+      StorageLive(_7) @55 s1
+    * _7 = &uniq _6: uniq/i32 @57 s1
+      StorageLive(_8) @60 s1
+      StorageLive(_9) @62 s1
+    * _9 = &uniq (*_7): uniq/i32 @62 s1
+      _8 = Closure(move _9): closure () -> () @62 s1
+      StorageDead(_9) @62 s1
+      StorageLive(_10) @68 s1
+      StorageLive(_11) @69 s1
+    * _11 = &uniq two-phase _8: uniq/closure () -> () @69 s1
+      _10 = value move _11() -> bb2 @68 s1
+  bb2:
+      StorageDead(_11) @69 s1
+      StorageDead(_10) @68 s1
+      StorageLive(_12) @70 s1
+      StorageLive(_13) @76 s1
+    * _13 = Closure(): closure (i32) -> i32 @76 s1
+      _12 = move _13 as (i32) -> i32 (Erasure) proven @76 s1
+      StorageDead(_13) @76 s1
+      StorageLive(_14) @82 s1
+    * _14 = Closure(copy _1): closure () -> i32 @84 s1
+      StorageLive(_15) @98 s1
+      StorageLive(_16) @99 s1
+      StorageLive(_17) @100 s1
+      StorageLive(_18) @101 s1
+      StorageLive(_19) @102 s1
+      StorageLive(_20) @103 s1
+    * _20 = &_3: ref/closure () -> i32 @103 s1
+      _19 = value move _20() -> bb3 @102 s1
+  bb3:
+      StorageLive(_21) @104 s1
+      StorageLive(_22) @105 s1
+      _22 = &_5: ref/closure () -> i32 @105 s1
+      _21 = value move _22() -> bb4 @104 s1
+  bb4:
+      _18 = Add(move _19, move _21) @101 s1
+      StorageLive(_23) @106 s1
+      StorageLive(_24) @107 s1
+      _24 = &_12: ref/(i32) -> i32 @107 s1
+      _23 = value move _24(const 1_i32) -> bb5 @106 s1
+  bb5:
+      _17 = Add(move _18, move _23) @100 s1
+      StorageLive(_25) @109 s1
+      StorageLive(_26) @110 s1
+      _26 = &_14: ref/closure () -> i32 @110 s1
+      _25 = value move _26() -> bb6 @109 s1
+  bb6:
+      _16 = Add(move _17, move _25) @99 s1
+      StorageLive(_27) @111 s1
+      StorageLive(_28) @112 s1
+      _28 = makeAdder(const 1_i32) -> bb7 @112 s1
+  bb7:
+      StorageLive(_29) @112 s1
+      _29 = &_28: ref/(i32) -> i32 @112 s1
+      _27 = value move _29(const 2_i32) -> bb8 @111 s1
+  bb8:
+      _15 = Add(move _16, move _27) @98 s1
+      goto bb16 check bb17 @97 s1
+  bb9:
+      return @25
+  bb10:
+      StorageDead(_14) @82 s1
+      drop _12 -> bb11 @70 s1
+  bb11:
+      StorageDead(_12) @70 s1
+      StorageDead(_8) @60 s1
+      StorageDead(_7) @55 s1
+      StorageDead(_6) @51 s1
+      drop _5 -> bb12 @43 s1
+  bb12:
+      StorageDead(_5) @43 s1
+      StorageDead(_3) @36 s1
+      drop _2 -> bb13 @32 s1
+  bb13:
+      StorageDead(_2) @32 s1
+      StorageDead(_1) @28 s1
+      goto bb9 @25
+  bb14:
+      StorageDead(_29) @112 s1
+      drop _28 -> bb15 @112 s1
+  bb15:
+      StorageDead(_28) @112 s1
+      StorageDead(_27) @111 s1
+      StorageDead(_26) @110 s1
+      StorageDead(_25) @109 s1
+      StorageDead(_24) @107 s1
+      StorageDead(_23) @106 s1
+      StorageDead(_22) @105 s1
+      StorageDead(_21) @104 s1
+      StorageDead(_20) @103 s1
+      StorageDead(_19) @102 s1
+      StorageDead(_18) @101 s1
+      StorageDead(_17) @100 s1
+      StorageDead(_16) @99 s1
+      StorageDead(_15) @98 s1
+      goto bb10 @25
+  bb16:
+      _0 = move _15 @97 s1
+      goto bb14 @97 s1
+  bb17:
+      StorageDead(_29) @112 s1
+      drop _28 -> bb18 @112 s1
+  bb18:
+      StorageDead(_28) @112 s1
+      StorageDead(_27) @111 s1
+      StorageDead(_26) @110 s1
+      StorageDead(_25) @109 s1
+      StorageDead(_24) @107 s1
+      StorageDead(_23) @106 s1
+      StorageDead(_22) @105 s1
+      StorageDead(_21) @104 s1
+      StorageDead(_20) @103 s1
+      StorageDead(_19) @102 s1
+      StorageDead(_18) @101 s1
+      StorageDead(_17) @100 s1
+      StorageDead(_16) @99 s1
+      StorageDead(_15) @98 s1
+      StorageDead(_14) @82 s1
+      drop _12 -> bb19 @70 s1
+  bb19:
+      StorageDead(_12) @70 s1
+      StorageDead(_8) @60 s1
+      StorageDead(_7) @55 s1
+      StorageDead(_6) @51 s1
+      drop _5 -> bb20 @43 s1
+  bb20:
+      StorageDead(_5) @43 s1
+      StorageDead(_3) @36 s1
+      drop _2 -> bb21 @32 s1
+  bb21:
+      StorageDead(_2) @32 s1
+      StorageDead(_1) @28 s1
+      unreachable @27
+closure @38
+  _0: i32 return @38
+  _1: ref/closure () -> i32 arg @38
+  bb0:
+    * _0 = copy (*(*_1).0) @40
+      return @40
+closure @45
+  _0: i32 return @45
+  _1: ref/closure () -> i32 arg @45
+  _2: ref/string temp @48
+  bb0:
+      StorageLive(_2) @48
+    * _2 = &(*_1).0: ref/string @48
+      _0 = inspect(move _2) -> bb1 @46
+  bb1:
+      StorageDead(_2) @48
+      return @46
+closure @62
+  _0: () return @62
+  _1: uniq/closure () -> () arg @62
+  _2: () temp @63
+  bb0:
+      StorageLive(_2) @63
+    * (*(*_1).0) = Add(copy (*(*_1).0), const 1_i32) @63
+      _2 = const () @63
+      StorageDead(_2) @63
+      _0 = const () @63
+      return @63
+closure @76
+  _0: i32 return @76
+  _1: ref/closure (i32) -> i32 arg @76
+  _2: i32 arg v @76
+  bb0:
+    * _0 = Mul(copy _2, const 2_i32) @79
+      return @79
+closure @84
+  _0: i32 return @84
+  _1: ref/closure () -> i32 arg @84
+  _2: closure () -> i32 var inner @87 s1
+  _3: i32 temp @95 s1
+  _4: ref/closure () -> i32 temp @96 s1
+  s1: lexical in s0 @86
+  bb0:
+      StorageLive(_2) @87 s1
+    * _2 = Closure(copy (*_1).0): closure () -> i32 @89 s1
+      StorageLive(_3) @95 s1
+      StorageLive(_4) @96 s1
+    * _4 = &_2: ref/closure () -> i32 @96 s1
+      _3 = value move _4() -> bb1 @95 s1
+  bb1:
+      goto bb5 check bb6 @94 s1
+  bb2:
+      return @84
+  bb3:
+      StorageDead(_2) @87 s1
+      goto bb2 @84
+  bb4:
+      StorageDead(_4) @96 s1
+      StorageDead(_3) @95 s1
+      goto bb3 @84
+  bb5:
+      _0 = move _3 @94 s1
+      goto bb4 @94 s1
+  bb6:
+      StorageDead(_4) @96 s1
+      StorageDead(_3) @95 s1
+      StorageDead(_2) @87 s1
+      unreachable @86
+closure @89
+  _0: i32 return @89
+  _1: ref/closure () -> i32 arg @89
+  bb0:
+    * _0 = Add(copy (*_1).0, const 1_i32) @91
+      return @91

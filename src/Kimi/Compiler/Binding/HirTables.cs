@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns the Binding facts and published HIR columns indexed by a module's SyntaxId.
+// Input: Binding's decisions and syntax identity. Output: reusable columns and PlanRows for readers.
+// Column rows move with renumbered nodes and are cleared for the current pass.
+// Must not let consumers reconstruct semantic facts from syntax.
+
 using System.Runtime.CompilerServices;
 using Kimi.Compiler.Parsing;
 
@@ -29,6 +34,7 @@ internal struct HirTables
     internal HirCompletion[]? Completions;
     internal HirAdjust[]? Adjusts;
     internal HirPlace[]? Places;
+    internal List<DefaultDecl>? Defaults; // The parameter defaults the latest publish evaluated, in walk order: the MIR's default templates.
 
     /// <summary>The plan rows from 1 to <see cref="PlanCount"/>; a node gets one at its first plan write and keeps it across passes.</summary>
     internal PlanRow[] Plans;
@@ -51,6 +57,10 @@ internal struct HirTables
     }
 
     internal static BindingState State(Koto node) => node.SyntaxOwner is { } table ? table.Hir.States[node.SyntaxId] : default;
+
+    // Resolve the state first: Compilation.Binding is lazy and must remain uncreated for unresolved nodes.
+    internal static bool HasCurrentBinding(Koto node) => State(node) == BindingState.Resolved &&
+        (node.CodeContext.Compilation.Binding.IsRunning || node.CodeContext.Compilation.Binding.Result != default);
 
     internal static BindingFailure Failure(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Failures[node.SyntaxId] : default;
 

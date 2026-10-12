@@ -304,3 +304,40 @@ The user adopted `Proposals/2026-10-10 Compiler Size Reduction and Single MIR Pl
   - IMPL appendix A §A.8 (R1f, 2026-10-10): from §6.2 rule 2 (the OCC sentence), §6.3 (the PendingExclusive set; the OCC branch of the `OmittedBaseOutcome` distinction) and §11 row 5, the implementation location. A conformance whose only unproven part is a witness of uncomputed ObjectCallCompatible status is one location-only `Unsupported_Kd` at its declaration (an inherited conformance at the derived Type's base clause, once a failing check needs it); the checks resting on it are derived; a use that reaches no conformance reports at the use. An unused inherited conformance reports nothing. The SPEC is unchanged (§23.3.6.1 and §23.3.6.4 already state the rule). The `ImplDecl` state is not yet read by other conformances' verification or agreement, which keep the Unknown proof until R7. `OmittedBaseOutcome.Unsupported` remains for its non-OCC sources until the §6.2 rule 3 unit.
 
   Open: the remaining §11 rows, including the D3 Note reduction (R1b-2), IMPL §21 generation-time reporting (R1, R6) and the later stages.
+
+## 2026-10-12 — Code Rules Analyzer
+
+- `Changes/2026-10-11 Code Rules Analyzer.md`: 取り込み済み (A0–A8, owner instruction 2026-10-12).
+  Integrated policy: §§1.2–1.4, 3.2–3.7, 4 and 9 map to COMPILER_ARCHITECTURE's Structure limits and Code rules;
+  the decision is DECISIONS CR-A0. Before intake, the owner narrowed §4.3 KR3003 to all-new-local `var (...)`
+  declarations; existing-variable assignments and their capture/dependency analysis were removed because exceptions
+  and ref aliases invalidate the claimed sequential equivalence. These integrated policy clauses are frozen.
+  No SPEC/IMPL language rule changes. Intake does not claim build enforcement or new language support.
+  A0 measurements are recorded in PLAN_HISTORY and its evidence directory.
+  A1 integrates §5 into COMPILER_ARCHITECTURE's token caps, AGENTS and CompilerSizeBudgetTest (DECISIONS CR-A1);
+  §5 is now frozen. Q1's entry-file contracts are recorded with their canonical components.
+  A2 maps §3's configuration, identities, baseline reconciliation, suppression and complete-report workflow to
+  Kimi.Analyzers, CODEMAP and VERIFICATION (DECISIONS CR-A2). It introduces no KR1–KR3 detection.
+  A3 maps §4.1 KR1001–1003 and §3.9's dependency/member/vocabulary test replacement to CodeRulesArchitecture and
+  COMPILER_ARCHITECTURE (DECISIONS CR-A3, CR-A3a). Corrections to the frozen examples: lists use commas because Roslyn
+  truncates at semicolon comments; the MIR builder allow list also names CallPlan's already-published
+  BoundArgumentOperation. Koto's existing current-Binding predicate moved to HirTables without changing behavior.
+  A4 maps §4.1 KR1004–1006/KR1008 and the two §3.9 ratchets to CodeRulesArchitecture.Structure and the initialized
+  baseline (DECISIONS CR-A4); declared symbols cover explicit and inferred bindings through one path.
+  A5 maps §4.3 to CodeRulesDensity and the shared source/Report pipeline (DECISIONS CR-A5), removes Mir density
+  violations in evaluation order and initializes 2,115 density keys outside Mir. No language behavior is changed.
+  A6 maps §4.2 and §3.7 to CodeRulesAccretion and CodeRuleAnnotation through one file walker and observation merge
+  (DECISIONS CR-A6–CR-A6b). Mir uses explicit arguments, separate condition obligations and a measured flat-dispatch
+  exception; 1,050 new baseline keys are outside Mir. Redundant Effect dispatch and three KR1006 keys are removed.
+  Frozen-text implementation correction: Report exempts stale KR9002 warnings from MSBuild's logger promotion so
+  Prune can acquire a successful complete Report; Verify still reports them as errors.
+  A7 maps §4.1 KR1007 and §4.5 to the shared annotation/Report pipeline, Conditional Transitional attribute and built-in
+  unused-code errors (DECISIONS CR-A7). The initial inventory marks 49 declarations; unused fields/parameters and their
+  pure arguments are removed. Frozen-text name correction: FormatCapacity is the current FormatBuffer intrinsic;
+  LegacyRuntimeHelpers does not yet exist and its future producer must add the R8 annotation. Invalid transitional
+  uses share KR9005; out-of-scope exceptions are invalid rather than omitted from the approval inventory.
+  A8 maps §3.6's approval comparison to verify-commit and the shared complete-Report producer (DECISIONS CR-A8);
+  §7's process rules map to AGENTS and VERIFICATION. A7's final operational checks and unchanged outputs are
+  recorded in PLAN_HISTORY and its evidence. All §6.4 later-stage obligations transfer to COMPILER_ARCHITECTURE's
+  Code rules and stage ledger; R4 remains unstarted. The frozen proposal moves unchanged to Changes. Future policy
+  corrections belong in the owning architecture/decision documents; closure does not widen language support.

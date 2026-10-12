@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns the value identity of a syntax location across compiler phases.
+// Input: a module's numbered node. Output: its module ordinal and SyntaxId.
+// The default names no node; later phases use this pair when referring to syntax.
+// Must not carry syntax structure or semantic state.
+
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;

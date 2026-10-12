@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns the published shape of a selected call and its ordered operands.
+// Input: Binding's selection, arguments and default declarations. Output: CallPlan.Of(node, ordinal).
+// The selected callee, acquisition and omitted defaults come from the same Binding decision.
+// Must not resolve a call again or make consumers inspect syntax to recover its meaning.
+
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;

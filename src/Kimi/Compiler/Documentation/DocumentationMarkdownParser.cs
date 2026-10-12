@@ -202,7 +202,7 @@ internal ref partial struct DocumentationMarkdownParser
             }
             else if (kind == DocumentationMarkdownKind.ListItem)
             {
-                if (!candidate.IsBlank(this.text) && candidate.ConsumeWhitespace(this.text, container.Indent) != container.Indent)
+                if (!candidate.IsBlank() && candidate.ConsumeWhitespace(this.text, container.Indent) != container.Indent)
                 {
                     break;
                 }
@@ -235,7 +235,7 @@ internal ref partial struct DocumentationMarkdownParser
                 var closing = cursor;
                 var indent = closing.SkipWhitespace(this.text);
                 var count = closing.Count(this.text, this.fenceCharacter);
-                closes = indent <= 3 && count >= this.fenceLength && closing.IsBlank(this.text);
+                closes = indent <= 3 && count >= this.fenceLength && closing.IsBlank();
             }
 
             if (closes)
@@ -255,7 +255,7 @@ internal ref partial struct DocumentationMarkdownParser
             return;
         }
 
-        if (cursor.IsBlank(this.text))
+        if (cursor.IsBlank())
         {
             this.paragraph = 0;
             var top = this.containers.Count - 1;
@@ -347,7 +347,7 @@ internal ref partial struct DocumentationMarkdownParser
                 content.Advance();
                 content.ConsumeWhitespace(this.text, 1);
                 cursor = content;
-                if (cursor.IsBlank(this.text))
+                if (cursor.IsBlank())
                 {
                     this.UpdateEnds(end);
                     return;
@@ -372,7 +372,7 @@ internal ref partial struct DocumentationMarkdownParser
                 var item = this.AddNode(DocumentationMarkdownKind.ListItem, parent, position, end);
                 this.Push(new(item, indent + marker.Width + marker.Padding, '\0'));
                 cursor = marker.Content;
-                if (cursor.IsBlank(this.text))
+                if (cursor.IsBlank())
                 {
                     this.UpdateEnds(end);
                     return;
@@ -811,7 +811,7 @@ internal ref partial struct DocumentationMarkdownParser
             return this.Position - start;
         }
 
-        internal readonly bool IsBlank(string text)
+        internal readonly bool IsBlank()
         {
             return this.Position >= this.nonblankEnd;
         }

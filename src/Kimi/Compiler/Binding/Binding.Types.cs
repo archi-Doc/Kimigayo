@@ -675,9 +675,9 @@ public sealed partial class Binding
                     return BoundType.Unit;
                 }
 
-                return this.BindTypeList(syntax, tuple.ElementNodes, scope, context.Nested, BoundTypeKind.Tuple);
+                return this.BindTypeList(tuple.ElementNodes, scope, context.Nested, BoundTypeKind.Tuple);
             case FunctionTypeKoto function:
-                return this.BindFunctionType(function, scope, context);
+                return this.BindFunctionType(function, scope);
             case FixedArrayTypeKoto array:
                 var element = this.BindType(array.ElementType, scope, context.Nested);
                 var length = this.BindLength(array.Length, scope);
@@ -786,7 +786,7 @@ public sealed partial class Binding
         generic.Identifier!.BoundSymbol = definition;
         generic.Identifier.BindingState = BindingState.Resolved;
         generic.BoundSymbol = definition;
-        var own = this.BindTypeList(generic, generic.TypeArguments, scope, context.Nested, BoundTypeKind.Constructed, definition);
+        var own = this.BindTypeList(generic.TypeArguments, scope, context.Nested, BoundTypeKind.Constructed, definition);
         if (own is { IsWrappingInteger: true })
         {
             // SPEC 3.1.1.1: Wrapping<T> over an integer Type is already the interned Scalar, and that argument satisfies the
@@ -810,7 +810,12 @@ public sealed partial class Binding
         return bound;
     }
 
-    private BoundType? BindTypeList(Koto node, IReadOnlyList<Koto> elements, BindingScope scope, TypeBindingContext context, BoundTypeKind kind, BindingSymbol? symbol = null)
+    private BoundType? BindTypeList(
+        IReadOnlyList<Koto> elements,
+        BindingScope scope,
+        TypeBindingContext context,
+        BoundTypeKind kind,
+        BindingSymbol? symbol = null)
     {
         var buffer = this.RentTypes(elements.Count);
         try

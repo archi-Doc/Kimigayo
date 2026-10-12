@@ -9,6 +9,7 @@ fn f @0
   _7: ref/i32 var @0
   _8: (i32) -> i32 var @0
   _9: bool temp @0
+  _10: Base var @0
   s1: unsafe in s0 @0
   b0: T Value, Uniq
   static0: f: i32
@@ -22,7 +23,7 @@ fn f @0
       EndBorrow(_7) @0
       FakeRead(static0) @0
       FakeRead((_2@b0)) @0
-      _0 = acquire b0 _2 @0
+      _2 = acquire b0 _2 @0
       _9 = opaque 0: bool @0
       _4 = discriminant(_5) @0
       _4 = len(_6) @0
@@ -30,7 +31,7 @@ fn f @0
       _1 = Tuple(const 1_i32, const true): (i32, bool) @0
       _6 = FixedArray(const 1_i32, const 1_i32, const 1_i32): [3 of i32] @0
       _6 = FixedArray(): [3 of i32] @0
-      _3 = Adt(const 1_i32, const 1_i32, const 1_i32): Point @0
+      _3 = Adt(move _10, const 1_i32, const true): Point @0
       _0 = copy _6[_4] @0
       _0 = copy _6[2] @0
       _0 = copy (_5 as case 1).1 @0

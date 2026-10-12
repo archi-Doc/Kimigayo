@@ -1,17 +1,19 @@
 fn init @6
-  _0: () return @6
-  _1: Counter arg self @6
+  _0: Counter return @6
+  _1: () temp @7
   _2: () temp @7
   _3: i32 temp @8
   bb0:
+      StorageLive(_1) @7
       StorageLive(_2) @7
       StorageLive(_3) @8
     * _3 = const 0_i32 @11
-      _1.0 = move _3 @7
+      _0.0 = move _3 @7
       _2 = const () @7
       StorageDead(_3) @8
       StorageDead(_2) @7
-      _0 = const () @7
+      _1 = const () @7
+      StorageDead(_1) @7
       return @7
 fn bump @12
   _0: () return @12
@@ -74,12 +76,11 @@ fn methods @53
   _7: Counter var mut local @69 s1
   _8: () temp @74 s1
   _9: uniq/Counter temp @76 s1
-  _10: Never temp @79 s1
-  _11: i32 temp @80 s1
-  _12: i32 temp @81 s1
-  _13: ref/Counter temp @83 s1
-  _14: i32 temp @85 s1
-  _15: ref/Counter temp @86 s1
+  _10: i32 temp @80 s1
+  _11: i32 temp @81 s1
+  _12: ref/Counter temp @83 s1
+  _13: i32 temp @85 s1
+  _14: ref/Counter temp @86 s1
   s1: lexical in s0 @58
   bb0:
       StorageLive(_3) @59 s1
@@ -105,19 +106,18 @@ fn methods @53
   bb3:
       StorageDead(_9) @76 s1
       StorageDead(_8) @74 s1
-      StorageLive(_10) @79 s1
-      StorageLive(_11) @80 s1
-      StorageLive(_12) @81 s1
-      StorageLive(_13) @83 s1
-    * _13 = &(*_1): ref/Counter @83 s1
-      _12 = read(move _13) -> bb4 @81 s1
+      StorageLive(_10) @80 s1
+      StorageLive(_11) @81 s1
+      StorageLive(_12) @83 s1
+    * _12 = &(*_1): ref/Counter @83 s1
+      _11 = read(move _12) -> bb4 @81 s1
   bb4:
-      StorageLive(_14) @85 s1
-      StorageLive(_15) @86 s1
-      _15 = &_7: ref/Counter @86 s1
-      _14 = doubled.Get(move _15) -> bb5 @85 s1
+      StorageLive(_13) @85 s1
+      StorageLive(_14) @86 s1
+      _14 = &_7: ref/Counter @86 s1
+      _13 = doubled.Get(move _14) -> bb5 @85 s1
   bb5:
-      _11 = Add(move _12, move _14) @80 s1
+      _10 = Add(move _11, move _13) @80 s1
       goto bb9 check bb10 @79 s1
   bb6:
       return @53
@@ -125,42 +125,38 @@ fn methods @53
       StorageDead(_7) @69 s1
       goto bb6 @53
   bb8:
-      StorageDead(_15) @86 s1
-      StorageDead(_14) @85 s1
-      StorageDead(_13) @83 s1
-      StorageDead(_12) @81 s1
-      StorageDead(_11) @80 s1
-      StorageDead(_10) @79 s1
+      StorageDead(_14) @86 s1
+      StorageDead(_13) @85 s1
+      StorageDead(_12) @83 s1
+      StorageDead(_11) @81 s1
+      StorageDead(_10) @80 s1
       goto bb7 @53
   bb9:
-      _0 = move _11 @79 s1
+      _0 = move _10 @79 s1
       goto bb8 @79 s1
   bb10:
-      StorageDead(_15) @86 s1
-      StorageDead(_14) @85 s1
-      StorageDead(_13) @83 s1
-      StorageDead(_12) @81 s1
-      StorageDead(_11) @80 s1
-      StorageDead(_10) @79 s1
+      StorageDead(_14) @86 s1
+      StorageDead(_13) @85 s1
+      StorageDead(_12) @83 s1
+      StorageDead(_11) @81 s1
+      StorageDead(_10) @80 s1
       StorageDead(_7) @69 s1
       unreachable @58
 fn same @88
   _0: bool return @88
   _1: T arg a @88
   _2: T arg b @88
-  _3: Never temp @97 s1
-  _4: bool temp @98 s1
-  _5: ref/T temp @99 s1
-  _6: ref/T temp @100 s1
+  _3: bool temp @98 s1
+  _4: ref/T temp @99 s1
+  _5: ref/T temp @100 s1
   s1: lexical in s0 @96
   bb0:
-      StorageLive(_3) @97 s1
-      StorageLive(_4) @98 s1
-      StorageLive(_5) @99 s1
-    * _5 = &_1: ref/T @99 s1
-      StorageLive(_6) @100 s1
-      _6 = &_2: ref/T @100 s1
-      _4 = requirement equals of Equatable(move _5, move _6) -> bb1 @98 s1
+      StorageLive(_3) @98 s1
+      StorageLive(_4) @99 s1
+    * _4 = &_1: ref/T @99 s1
+      StorageLive(_5) @100 s1
+      _5 = &_2: ref/T @100 s1
+      _3 = requirement equals of Equatable(move _4, move _5) -> bb1 @98 s1
   bb1:
       goto bb7 check bb8 @97 s1
   bb2:
@@ -172,19 +168,17 @@ fn same @88
   bb5:
       goto bb2 @88
   bb6:
-      StorageDead(_6) @100 s1
-      StorageDead(_5) @99 s1
-      StorageDead(_4) @98 s1
-      StorageDead(_3) @97 s1
+      StorageDead(_5) @100 s1
+      StorageDead(_4) @99 s1
+      StorageDead(_3) @98 s1
       goto bb3 @88
   bb7:
-      _0 = move _4 @97 s1
+      _0 = move _3 @97 s1
       goto bb6 @97 s1
   bb8:
-      StorageDead(_6) @100 s1
-      StorageDead(_5) @99 s1
-      StorageDead(_4) @98 s1
-      StorageDead(_3) @97 s1
+      StorageDead(_5) @100 s1
+      StorageDead(_4) @99 s1
+      StorageDead(_3) @98 s1
       drop _2 -> bb9 @88
   bb9:
       drop _1 -> bb10 @88
@@ -193,40 +187,32 @@ fn same @88
 fn apply @101
   _0: i32 return @101
   _1: ref/F arg action @101
-  _2: Never temp @115 s1
-  _3: i32 temp @116 s1
+  _2: i32 temp @116 s1
   s1: lexical in s0 @114
   bb0:
-      StorageLive(_2) @115 s1
-      StorageLive(_3) @116 s1
-    * _3 = value copy _1() -> bb1 @116 s1
+      StorageLive(_2) @116 s1
+    * _2 = value copy _1() -> bb1 @116 s1
   bb1:
       goto bb4 check bb5 @115 s1
   bb2:
       return @101
   bb3:
-      StorageDead(_3) @116 s1
-      StorageDead(_2) @115 s1
+      StorageDead(_2) @116 s1
       goto bb2 @101
   bb4:
-      _0 = move _3 @115 s1
+      _0 = move _2 @115 s1
       goto bb3 @115 s1
   bb5:
-      StorageDead(_3) @116 s1
-      StorageDead(_2) @115 s1
+      StorageDead(_2) @116 s1
       unreachable @114
 fn first @118
   _0: ref/i32 return @118
   _1: ref/[3 of i32] arg values @118
   _2: isize temp @129
-  _3: ref/i32 temp @127
   bb0:
       StorageLive(_2) @129
     * _2 = const 0_i32 as isize (Wrap) proven @129
-      StorageLive(_3) @127
-      _3 = &(*_1)[_2]: ref/i32 @127
-      _0 = move _3 @127
-      StorageDead(_3) @127
+      _0 = &(*_1)[_2]: ref/i32 @127
       StorageDead(_2) @129
       return @127
 fn read @130

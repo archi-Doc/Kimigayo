@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns the read contract for Binding facts used by Hover, LSP and tests.
+// Input: the current compilation and Binding-owned tables. Output: semantic facts through queries.
+// Readers use this contract rather than semantic slots or private Binding state.
+// Must not repeat inference or create independent copies of Binding decisions.
+
 using Kimi.Checking;
 using Kimi.Compiler.Parsing;
 
@@ -34,7 +39,7 @@ internal sealed class SemanticQuery(Compilation compilation, Binding binding, Li
     internal BindingFailure FailureOf(Koto node) => HirTables.Failure(node);
 
     // Resolved by the running or the last completed pass, not by an earlier one.
-    internal bool IsCurrent(Koto node) => node.HasCurrentBinding;
+    internal bool IsCurrent(Koto node) => HirTables.HasCurrentBinding(node);
 
     internal BoundConstraint? ConstraintOf(IsKoto node) => node.BoundConstraint;
 

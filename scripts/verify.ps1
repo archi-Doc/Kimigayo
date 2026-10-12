@@ -1,8 +1,8 @@
 # Kimigayo verification entry point. Evidence goes to artifacts/verify/<timestamp>-<mode>[-<name>]/.
 #
 # Unit mode (per implementation unit): Kimi + tests Release build with warnings as errors, the selected xUnit
-# classes/methods, then native O0/O2 execution of the fixtures those tests regenerated and the
-# selected milestone harnesses.
+# classes/methods joined with the common compiler checks (CompilerSizeBudgetTest, ArchitectureRulesTest),
+# then native O0/O2 execution of the fixtures those tests regenerated and the selected milestone harnesses.
 #   ./scripts/verify.ps1 -Class XunitTest.ForeignEmissionTest -Fixtures 'ForeignPointer*.ll'
 #   ./scripts/verify.ps1 -Class XunitTest.IterationAdapterTest -Fixtures 'IterationAdapter*.ll','LendingIterator*.ll'
 #   ./scripts/verify.ps1 -Method XunitTest.ForeignEmissionTest.PointerSubplacesAccessOnlyTheirStoredParts
@@ -58,8 +58,9 @@ $ErrorActionPreference = 'Stop'
 if ($Mode -eq 'Session' -and $TestPurpose -ne 'All') { throw 'Session verification must include functional and allocation regressions (-TestPurpose All).' }
 . (Join-Path $PSScriptRoot 'verification-selection.ps1')
 . (Join-Path $PSScriptRoot 'verification-inputs.ps1')
-$Class = @($Class | ForEach-Object { ConvertTo-KimiTestPattern $_ })
-$Method = @($Method | ForEach-Object { ConvertTo-KimiTestPattern $_ -Method })
+. (Join-Path $PSScriptRoot 'code-rules-report.ps1')
+$Class = @(Join-KimiCommonTestSelections @($Class | ForEach-Object { ConvertTo-KimiTestPattern $_ }))
+$Method = @(Join-KimiCommonTestSelections @($Method | ForEach-Object { ConvertTo-KimiTestPattern $_ -Method }) -Method)
 $Pipeline = $Pipeline.ToLowerInvariant()
 $previousPipeline = $env:KIMI_PIPELINE
 $env:KIMI_PIPELINE = $Pipeline # Tests, fixtures and milestone harnesses inherit it.
@@ -94,9 +95,15 @@ function Invoke-Script([scriptblock] $block, [string] $log) {
 function Invoke-Build([string] $configuration) {
     $timer = Start-Step "build $configuration"
     $log = Join-Path $evidence "build-$configuration.log"
+    $sarif = Join-Path $evidence "code-rules-$configuration.sarif"
     # --no-incremental recompiles every project, so analyzers (StyleCop) report on sources another build left up to date.
-    & dotnet build (Join-Path $repo $buildTarget) --no-restore --no-incremental -c $configuration --disable-build-servers -m:1 -warnaserror -p:EmitCompilerGeneratedFiles=false -v quiet *> $log
+    & dotnet build (Join-Path $repo $buildTarget) --no-restore --no-incremental -c $configuration --disable-build-servers -m:1 -warnaserror -p:EmitCompilerGeneratedFiles=false -p:KimiCodeRulesMode=Verify "-p:KimiCodeRulesLog=$sarif" -v quiet *> $log
     $ok = $LASTEXITCODE -eq 0
+    if ($ok) {
+        # The completion marker proves the analyzer ran on the current configuration and baseline.
+        try { $null = Read-KimiCodeRulesSarif $sarif $repo -RequireComplete }
+        catch { $_ | Out-String | Add-Content -LiteralPath $log; $ok = $false }
+    }
     Add-Step "build $configuration" $ok $log $timer.Elapsed.TotalSeconds
     return $ok
 }
@@ -180,7 +187,7 @@ try {
 }
 catch { Add-Step 'input manifest' $false $_.Exception.Message $timer.Elapsed.TotalSeconds }
 if (-not $failed) {
-    foreach ($scriptTest in @('VerificationSelectionTest', 'VerificationInputsTest')) {
+    foreach ($scriptTest in @('VerificationSelectionTest', 'VerificationInputsTest', 'CodeRulesReportTest', 'CodeRulesApprovalTest')) {
         $timer = Start-Step $scriptTest
         $log = Join-Path $evidence "$scriptTest.log"
         $ok = Invoke-Script { & (Join-Path $repo "tests/scripts/$scriptTest.ps1") } $log

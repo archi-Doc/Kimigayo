@@ -378,7 +378,12 @@ public sealed partial class Binding
                 Complete(generic, BoundType.Unit);
                 generic.Identifier!.BoundSymbol = parent;
                 Complete(generic.Identifier, BoundType.Unit);
-                var arguments = this.BindTypeList(generic, generic.TypeArguments, this.scopes[contract], this.TypeContext(generic, this.scopes[contract]).Nested, BoundTypeKind.Constructed, parent);
+                var arguments = this.BindTypeList(
+                    generic.TypeArguments,
+                    this.scopes[contract],
+                    this.TypeContext(generic, this.scopes[contract]).Nested,
+                    BoundTypeKind.Constructed,
+                    parent);
                 if (arguments is null)
                 {
                     this.Fail(syntax, BindingFailure.InvalidConstraint);

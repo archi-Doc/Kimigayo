@@ -1,0 +1,8 @@
+func largest<T>(values: ref/Array<T>, fallback: T) -> T
+    T is Comparable
+    T is Copy
+    var best = fallback
+    for value in values
+        if value > best => best = value@follow
+    return best
+func use(values: ref/Array<i64>) -> i64 => largest(values, 0)

@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns the closed statement, rvalue, terminator, projection, operand and callee kinds.
+// Input: the approved MIR forms. Output: kind values with one published meaning each.
+// Access/effect kinds share MirDescriptors; vocabulary growth needs a SPEC basis and owner decision.
+// Must not encode an unreviewed form as a new kind or a consumer-only opcode.
+
 #pragma warning disable SA1402 // The MIR vocabularies belong together.
 #pragma warning disable SA1649 // The file names the vocabulary.
 
@@ -125,7 +130,7 @@ internal enum MirAggregateKind : byte
 {
     Tuple,
     Adt, // A struct (its base first, then its own Fields) or the Case its ordinal names.
-    FixedArray,
+    FixedArray, // A fixed array from its elements; an Array or a Dictionary from none, the empty collection its literal's calls fill.
     Closure, // A Closure environment from its captures.
 }
 
@@ -173,10 +178,10 @@ internal enum MirScopeKind : byte
 internal enum MirBodyKind : byte
 {
     Fn,
-    Closure, // The index-th closure of the definition.
-    Getter,
+    Closure, // A Closure's body, keyed by the Closure's own symbol.
+    Getter, // An accessor's, keyed by the function its calls target.
     Setter,
     StaticInit,
     DefaultTemplate, // The template of the index-th parameter's default (plan 5.6.2).
-    Test,
+    Test, // A #Test function's, which only the test entry calls.
 }

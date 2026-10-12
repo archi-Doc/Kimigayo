@@ -17,6 +17,7 @@ public sealed class ArrayLiteralKoto : ExpressionKoto
     /// <summary>Gets the compile-time length for fill construction, whose sole element is evaluated once.</summary>
     public Koto? FillLength { get; private set; }
 
+    [Transitional("R6", Reason = "Fill-length plan forwarding; R6 reads the published HIR contract directly.")]
     internal BoundLength? FillCount
     {
         get => HirTables.PlanOf(this).Plan as BoundLength;

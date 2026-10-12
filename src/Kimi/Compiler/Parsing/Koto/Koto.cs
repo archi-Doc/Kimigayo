@@ -479,6 +479,7 @@ public abstract class Koto
     }
 
     /// <summary>Gets the current semantic binding state; this does not certify descendants.</summary>
+    [Transitional("R6", Reason = "Semantic forwarding into HIR columns; R6 removes syntax-owned semantic access.")]
     public BindingState BindingState
     {
         get => HirTables.State(this);
@@ -486,6 +487,7 @@ public abstract class Koto
     }
 
     /// <summary>Gets the resolved complete type, or null while unavailable.</summary>
+    [Transitional("R6", Reason = "Semantic forwarding into HIR columns; R6 removes syntax-owned semantic access.")]
     public BoundType? BoundType
     {
         get => HirTables.Meaning(this) as BoundType;
@@ -493,6 +495,7 @@ public abstract class Koto
     }
 
     /// <summary>Gets the resolved Origin when this syntax occurs in the Origin namespace.</summary>
+    [Transitional("R6", Reason = "Semantic forwarding into HIR columns; R6 removes syntax-owned semantic access.")]
     public BoundOrigin? BoundOrigin
     {
         get => HirTables.Meaning(this) as BoundOrigin;
@@ -500,29 +503,34 @@ public abstract class Koto
     }
 
     /// <summary>Gets the selected symbol, or null before selection.</summary>
+    [Transitional("R6", Reason = "Semantic forwarding into HIR columns; R6 removes syntax-owned semantic access.")]
     public BindingSymbol? BoundSymbol
     {
         get => HirTables.Symbol(this);
         internal set => HirTables.Of(this).Symbols[this.SyntaxId] = value;
     }
 
-    internal bool HasCurrentBinding => this.BindingState == BindingState.Resolved &&
-        (this.CodeContext.Compilation.Binding.IsRunning || this.CodeContext.Compilation.Binding.Result != default);
+    [Transitional("R6", Reason = "Semantic forwarding into HIR columns; R6 removes syntax-owned semantic access.")]
+    internal bool HasCurrentBinding => HirTables.HasCurrentBinding(this);
 
+    [Transitional("R6", Reason = "Semantic forwarding into HIR columns; R6 removes syntax-owned semantic access.")]
     internal BoundType? ErasedFunctionType
     {
         get => HirTables.ErasedType(this);
         set => HirTables.Of(this).ErasedTypes[this.SyntaxId] = value;
     }
 
+    [Transitional("R6", Reason = "Semantic forwarding into HIR columns; R6 removes syntax-owned semantic access.")]
     internal BoundFormatting? FormattingStorage
     {
         get => HirTables.PlanOf(this).Formatting;
         set => HirTables.PlanFor(this, value is not null).Formatting = value;
     }
 
+    [Transitional("R6", Reason = "Semantic forwarding into HIR columns; R6 removes syntax-owned semantic access.")]
     internal BoundFormatting? Formatting => this.FormattingStorage is { Active: true } plan ? plan : null;
 
+    [Transitional("R6", Reason = "Semantic forwarding into HIR columns; R6 removes syntax-owned semantic access.")]
     internal BindingFailure BindingFailure
     {
         get => HirTables.Failure(this);
@@ -530,6 +538,7 @@ public abstract class Koto
     }
 
     /// <summary>Gets or sets the shared Type/Origin slot as a whole, so snapshots never clear one meaning through the other.</summary>
+    [Transitional("R6", Reason = "Semantic forwarding into HIR columns; R6 removes syntax-owned semantic access.")]
     internal object? BoundMeaning
     {
         get => HirTables.Meaning(this);

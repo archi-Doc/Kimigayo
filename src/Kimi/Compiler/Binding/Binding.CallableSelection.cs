@@ -11,6 +11,10 @@ public sealed partial class Binding
     private readonly Dictionary<Koto, (int Start, int Count, int Position, AcquisitionMode Mode, AcquisitionMode Other)> callableSelectionFailures = new(ReferenceEqualityComparer.Instance);
     private readonly List<CallableCandidate> callableSelectionParties = [];
 
+    // SPEC 8.3, 8.4: a Type as a scope's premises make it, its associated projections normalized and its Type-identity premises substituted.
+    internal BoundType CallableContractType(BoundType type, BindingScope scope)
+        => this.SubstituteIdentityPremises(this.ContractType(type, scope), scope);
+
     // Whole-contract equality includes fixed Origins and alpha-equivalent per-call binders, not just the storage Type.
     private static bool SameCallableSignature(BoundType a, BoundType b)
         => ReferenceEquals(a, b) || (CallableSignatureFits(a, b, FunctionTypeBinder(a)) && CallableSignatureFits(b, a, FunctionTypeBinder(b)));
@@ -35,9 +39,6 @@ public sealed partial class Binding
 
     private static SemanticsKind WeakestReceiver(SemanticsKind a, SemanticsKind b)
         => a == SemanticsKind.Ref || b == SemanticsKind.Ref ? SemanticsKind.Ref : a == SemanticsKind.Uniq || b == SemanticsKind.Uniq ? SemanticsKind.Uniq : SemanticsKind.Owner;
-
-    private BoundType CallableContractType(BoundType type, BindingScope scope)
-        => this.SubstituteIdentityPremises(this.ContractType(type, scope), scope);
 
     private BoundType? SelectValueCall(InvocationKoto call, BindingScope scope, BoundType type, BoundType? expected)
     {

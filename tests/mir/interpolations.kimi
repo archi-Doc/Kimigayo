@@ -1,0 +1,27 @@
+struct Point
+    Self is Utf8Format
+    var x: i32
+
+    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        return $tryWrite(writer, "(\("x=\(self.x)"))")
+
+func label(n: i32, name: ref/string) -> string => "n=\(n), name=\(name)!"
+
+func show<T>(value: ref/T) -> string
+    T is Utf8Format
+    return "<\(value)>"
+
+func print(n: i64) => Console.writeLine("My number is \(n)")
+
+func keep(text: ref/string) => Console.writeLine(text)
+
+func forms(n: i32)
+    let text = "[\(n)]"
+    keep("(\(n))")
+    keep(text)
+
+func early() -> string
+    _ = "prefix\(do => return "early")suffix"
+    return "late"
+
+func pair() -> string => "\((1, 2))"

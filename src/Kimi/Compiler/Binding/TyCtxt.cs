@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns constructed Type and substitution interning and pure Type operations.
+// Input: immutable Type shapes and substitutions. Output: canonical Types, substitutions and derived views.
+// Interned identity is equality; values live with the compilation and survive warm rebinds.
+// Must not resolve source expressions or let consumers duplicate Type construction.
+
 using System.Runtime.CompilerServices;
 using Kimi.Compiler.Parsing;
 
@@ -42,6 +47,29 @@ internal sealed class TyCtxt(Binding binding, KimiLibrary library)
 
     // SPEC 23.3.6.5: a Type as diagnostics spell it, which the MIR dump writes.
     internal static string Name(BoundType type) => Binding.DiagnosticTypeName(type);
+
+    // SPEC 7.3, 6.2.3.2: a function's parameter Type at a slot as it declares it (an accessor's self and value included), or at -1 the Type
+    // its call gives (a constructor's: its object), under a call's substitution; null past its parameters or where the substitution does
+    // not instantiate it. The MIR validator checks calls and bodies by it.
+    internal static BoundType? Signature(BindingSymbol function, Subst? subst, int slot, out int count)
+    {
+        var declaration = (FunctionKoto)function.Declaration;
+        count = declaration.Parameters.Count;
+        var type = slot >= count ? null : slot >= 0 ? CallPlan.Parameter(function, slot)!.Type : declaration.IsConstructor ? AdtDef.ReceiverType(declaration) : function.Type;
+        return type is null || subst is null ? type : declaration.CodeContext.Compilation.Types.Apply(type, subst);
+    }
+
+    // SPEC 8.3, 8.4: a Type in a definition's body as its premises make it (S for E under `E is S`, T.Element under `T.Element is i32`), as
+    // Binding compares Types there.
+    internal static BoundType Premised(BindingSymbol definition, BoundType type)
+    {
+        var binding = definition.Declaration.CodeContext.Compilation.Binding;
+        return binding.CallableContractType(type, binding.ConstraintScope(definition.Declaration));
+    }
+
+    // SPEC 8.10: the complete Type a Type takes in one Semantics case, each pair layer of a binder the cases name the Type of its Semantics
+    // over its direct target, which the MIR's case views give every Type by.
+    internal BoundType CaseType(BoundType type, ReadOnlySpan<PairCase> cases) => binding.CaseType(type, cases);
 
     internal BoundType Intern(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null, CallPlan? closureContext = null, ReadOnlySpan<BoundLength?> lengthArguments = default, FunctionResultMode resultMode = FunctionResultMode.Value)
     {
@@ -160,9 +188,12 @@ internal sealed class TyCtxt(Binding binding, KimiLibrary library)
 
     internal BoundType Tuple(ReadOnlySpan<BoundType> elements) => this.Intern(BoundTypeKind.Tuple, null, SemanticsKind.Owner, elements);
 
-    // SPEC 8.6, 10.5: a selected call's substitution, as its selection committed it; a value call has none.
-    internal Subst? SubstOf(CallPlan call)
-        => call.Kind == CalleeKind.Value ? null : this.Intern(call.Target, call.ConformingType, call.DeclaringType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
+    // SPEC 8.6, 10.5: a selected call's substitution, as its selection committed it; a value call has none. A direct base call's is its
+    // implementation's in the Type implementing it, which it calls (virtual-dispatch 4).
+    internal Subst? SubstOf(CallPlan call) => call.Kind == CalleeKind.Value ? null
+        : call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true, VirtualImplementation.BoundSymbol: { } implementation }
+            ? this.Intern(implementation, null, call.VirtualImplementingType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins)
+            : this.Intern(call.Target, call.ConformingType, call.DeclaringType ?? BoundContract(call), call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
 
     // SPEC 8.3: a closure's substitution, the context of the instance that closed it; a closure no instance closed is in the identity of
     // the declaration enclosing it.
@@ -187,10 +218,14 @@ internal sealed class TyCtxt(Binding binding, KimiLibrary library)
     // The substitution that binds none of a binder's slots: its own body's.
     internal Subst Identity(Koto binder) => this.Intern(binder.BoundSymbol!, null, null, [], [], [], []);
 
+    // A call the MIR builder synthesizes, of the function serving a built-in form (R3 decision 5): its declaring Type's instance and its Type
+    // arguments; its Origins are the analyses' to relate.
+    internal Subst Synthesized(BindingSymbol target, BoundType? declaring, ReadOnlySpan<BoundType?> types) => this.Intern(target, null, declaring, types, [], [], []);
+
     // SPEC 8.3, 8.6: a declared Type in the instance a substitution makes, which Binding's storage instantiation computes until R7 moves it
     // here; the identity keeps the Type.
     internal BoundType? Apply(BoundType type, Subst subst)
-        => subst.IsIdentity ? type : binding.InstantiateStorageType(type, subst.Target, subst.Declaring, subst.Types, subst.Lengths, subst.Origins, subst.Inputs);
+        => subst.IsIdentity ? type : binding.InstantiateStorageType(type, subst.Target, subst.Declaring, subst.Types, subst.Lengths, subst.Origins, subst.Inputs, subst.Self);
 
     // Plan 5.6.2: the substitution of a call in a body that another substitution instantiates, as a call in a default template folds under
     // the substitution of the call omitting the default: each binding of the inner one in the outer instance, as Binding forwards a call of
@@ -238,6 +273,11 @@ internal sealed class TyCtxt(Binding binding, KimiLibrary library)
             return scratch.AsSpan(0, length);
         }
     }
+
+    // SPEC 8.4.2: the bound Contract reference a requirement call dispatches through (Indexable<isize>), which declares the requirement as a
+    // generic container's instance declares a member; null for a reference to the requirement's own Contract or another call.
+    private static BoundType? BoundContract(CallPlan call)
+        => call is { Kind: CalleeKind.Requirement, RequirementContract: { Type: { } bound } contract } && !ReferenceEquals(bound.Symbol, contract) ? bound : null;
 
     private Subst Intern(BindingSymbol target, BoundType? self, BoundType? declaring, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs)
     {

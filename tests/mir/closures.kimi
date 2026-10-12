@@ -1,0 +1,18 @@
+func inspect(text: ref/string) -> i32 => 1
+func makeText() -> string => "t"
+func makeAdder(offset: i32) -> (i32) -> i32
+    return func [offset] (value) => value + offset
+func run() -> i32
+    let number: i32 = 10
+    let text = makeText()
+    let viewer = func [number@ref] () -> i32 => number@follow
+    let holder = func [text@move] () => inspect(text@ref)
+    var count: i32 = 0
+    let r = count@uniq
+    var bump = func [r] () => r@follow += 1
+    bump()
+    let erased: (i32) -> i32 = func (v: i32) -> i32 => v * 2
+    let outer = func [number] () -> i32
+        let inner = func [number] () -> i32 => number + 1
+        return inner()
+    return viewer() + holder() + erased(1) + outer() + makeAdder(1)(2)

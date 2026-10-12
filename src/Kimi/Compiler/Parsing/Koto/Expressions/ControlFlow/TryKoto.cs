@@ -43,6 +43,7 @@ public sealed class TryKoto : MatchKoto
 
     internal ReturnKoto Failure { get; }
 
+    [Transitional("R6", Reason = "Binding plan flag forwarding; R6 reads the published HIR contract directly.")]
     internal bool SemanticsIndexed
     {
         get => HirTables.PlanOf(this).Flag;

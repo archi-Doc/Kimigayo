@@ -7,9 +7,9 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>The MIR dump goldens (R3 V10): each program of <c>tests/mir</c> dumps the MIR of its module as its <c>.mir</c> file says, and a
-/// body with every statement, rvalue, terminator, operand and projection form as <c>every-form.mir</c> says. <c>KIMI_MIR_GOLDEN=write</c>
-/// writes the goldens instead.</summary>
+/// <summary>The MIR dump goldens (R3 V10): each program of <c>tests/mir</c> (one with a <c>#Test</c> in a test build) dumps the MIR of its
+/// module as its <c>.mir</c> file says, and a body with every statement, rvalue, terminator, operand and projection form as
+/// <c>every-form.mir</c> says. <c>KIMI_MIR_GOLDEN=write</c> writes the goldens instead.</summary>
 [Collection(nameof(MirValidatorTest))]
 public sealed class MirDumpTest
 {
@@ -20,7 +20,8 @@ public sealed class MirDumpTest
     [MemberData(nameof(Programs))]
     public void ProgramDumpsItsGolden(string name)
     {
-        var c = MirBuildTest.Compile(File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "mir", name + ".kimi")));
+        var source = File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "mir", name + ".kimi"));
+        var c = MirBuildTest.Compile(source, source.Contains("#Test", StringComparison.Ordinal));
         var text = new StringBuilder();
         MirDump.Write(c.BuildMir(), 0, text);
         Golden(name, text.ToString());

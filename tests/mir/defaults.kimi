@@ -1,0 +1,19 @@
+func scale(x: i32, factor: i32 = x + 1) -> i32 => x * factor
+func pick<T>(a: T, b: T = a) -> T
+    T is Copy
+    return b
+func count(n: i32, value: i32 = if n == 0 => 1 else => count(n - 1)) -> i32 => value
+func run(n: i32, action: () -> i32 = func [n] () -> i32 => n + 1) -> i32 => action()
+struct Box
+    var size: i32
+    public init(size: i32) => self.size = size
+    public func grow(self, by: i32 = self.size) -> i32 => self.size + by
+func use(box: Box) -> i32
+    let a = scale(3)
+    let b = pick(1)
+    let c = pick(true)
+    let d = count(3)
+    let e = run(2)
+    return a + b + d + e + box.grow()
+func halt(n: i32, value: i32 = $abort("halt")) -> i32 => value
+func stopped() -> i32 => halt(1)

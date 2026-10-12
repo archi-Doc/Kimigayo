@@ -48,48 +48,39 @@ fn cleanup @16
   _2: i32 arg n @16
   _3: string arg owned @16
   _4: string var s @22 s1
-  _5: () temp @26 s1
-  _6: () temp @31 s1
-  _7: bool temp @32 s1
-  _8: Never temp @34 s2
-  _9: () temp @26 s1
-  _10: () temp @28 s3
-  _11: () temp @36 s1
-  _12: i32 var mut i @48 s1
-  _13: () temp @52 s1
-  _14: bool temp @53 s1
-  _15: () temp @56 s1
-  _16: string var t @57 s4
-  _17: () temp @61 s4
-  _18: () temp @66 s4
-  _19: bool temp @67 s4
-  _20: Never temp @71 s5
-  _21: () temp @61 s4
-  _22: () temp @63 s6
-  _23: () temp @72 s4
-  _24: bool temp @73 s4
-  _25: Never temp @77 s7
-  _26: () temp @61 s4
-  _27: () temp @63 s8
-  _28: () temp @78 s4
-  _29: i32 temp @79 s4
-  _30: () temp @61 s4
-  _31: () temp @63 s9
-  _32: Never temp @83 s1
-  _33: () temp @36 s1
-  _34: () temp @38 s10
-  _35: () temp @41 s10
-  _36: bool temp @42 s10
-  _37: Never temp @44 s11
-  _38: () temp @45 s10
-  _39: () temp @36 s1
-  _40: () temp @38 s12
-  _41: () temp @41 s12
-  _42: bool temp @42 s12
-  _43: Never temp @44 s13
-  _44: () temp @45 s12
-  _45: () temp @26 s1
-  _46: () temp @28 s14
+  _5: () temp @31 s1
+  _6: bool temp @32 s1
+  _7: () temp @26 s1
+  _8: () temp @28 s3
+  _9: i32 var mut i @48 s1
+  _10: () temp @52 s1
+  _11: bool temp @53 s1
+  _12: () temp @56 s1
+  _13: string var t @57 s4
+  _14: () temp @66 s4
+  _15: bool temp @67 s4
+  _16: () temp @61 s4
+  _17: () temp @63 s6
+  _18: () temp @72 s4
+  _19: bool temp @73 s4
+  _20: () temp @61 s4
+  _21: () temp @63 s8
+  _22: () temp @78 s4
+  _23: i32 temp @79 s4
+  _24: () temp @61 s4
+  _25: () temp @63 s9
+  _26: () temp @36 s1
+  _27: () temp @38 s10
+  _28: () temp @41 s10
+  _29: bool temp @42 s10
+  _30: () temp @45 s10
+  _31: () temp @36 s1
+  _32: () temp @38 s12
+  _33: () temp @41 s12
+  _34: bool temp @42 s12
+  _35: () temp @45 s12
+  _36: () temp @26 s1
+  _37: () temp @28 s14
   s1: lexical in s0 @21
   s2: lexical in s1 @33
   s3: deferred in s1 @27
@@ -108,27 +99,22 @@ fn cleanup @16
       StorageLive(_4) @22 s1
     * _4 = make() -> bb1 @24 s1
   bb1:
-      StorageLive(_5) @26 s1
-      StorageDead(_5) @26 s1
-      StorageLive(_6) @31 s1
-      StorageLive(_7) @32 s1
-    * _7 = copy _1 @32 s1
-      switch copy _7 [0: bb4, otherwise: bb3] @32 s1
+      StorageLive(_5) @31 s1
+      StorageLive(_6) @32 s1
+    * _6 = copy _1 @32 s1
+      switch copy _6 [0: bb4, otherwise: bb3] @32 s1
   bb2:
-      StorageDead(_6) @31 s1
-      StorageLive(_11) @36 s1
-      StorageDead(_11) @36 s1
-      StorageLive(_12) @48 s1
-    * _12 = const 0_i32 @51 s1
-      StorageLive(_13) @52 s1
-    * goto bb16 @52 s1
+      StorageDead(_5) @31 s1
+      StorageLive(_9) @48 s1
+    * _9 = const 0_i32 @51 s1
+      StorageLive(_10) @52 s1
+    * goto bb15 @52 s1
   bb3:
-      StorageDead(_7) @32 s1
-      StorageLive(_8) @34 s2
-    * goto bb14 check bb15 @34 s2
+      StorageDead(_6) @32 s1
+    * goto bb13 check bb14 @34 s2
   bb4:
-      StorageDead(_7) @32 s1
-      _6 = const () @31 s1
+      StorageDead(_6) @32 s1
+      _5 = const () @31 s1
       goto bb2 @31 s1
   bb5:
       return @16
@@ -137,343 +123,297 @@ fn cleanup @16
   bb7:
       goto bb5 @16
   bb8:
-      StorageLive(_9) @26 s1
-      StorageLive(_10) @28 s3
-    * _10 = log(const 1_i32) -> bb10 @28 s3
+      StorageLive(_7) @26 s1
+      StorageLive(_8) @28 s3
+    * _8 = log(const 1_i32) -> bb10 @28 s3
   bb9:
       drop _4 -> bb11 @22 s1
   bb10:
-      StorageDead(_10) @28 s3
-      _9 = const () @27 s3
-      StorageDead(_9) @26 s1
+      StorageDead(_8) @28 s3
+      _7 = const () @27 s3
+      StorageDead(_7) @26 s1
       goto bb9 @27 s1
   bb11:
       StorageDead(_4) @22 s1
       goto bb6 @16
   bb12:
-      StorageDead(_6) @31 s1
+      StorageDead(_5) @31 s1
       goto bb8 @16
   bb13:
-      StorageDead(_8) @34 s2
-      goto bb12 @16
-  bb14:
       _0 = const 1_i32 @34 s2
-      goto bb13 @34 s2
-  bb15:
-      StorageDead(_8) @34 s2
+      goto bb12 @34 s2
+  bb14:
       unreachable check bb2 @33 s1
+  bb15:
+      StorageLive(_11) @53 s1
+      _11 = Lt(copy _9, copy _2) proven @53 s1
+      switch copy _11 [0: bb17, otherwise: bb16] @53 s1
   bb16:
-      StorageLive(_14) @53 s1
-      _14 = Lt(copy _12, copy _2) proven @53 s1
-      switch copy _14 [0: bb18, otherwise: bb17] @53 s1
+      StorageDead(_11) @53 s1
+      StorageLive(_12) @56 s1
+      StorageLive(_13) @57 s4
+    * _13 = make() -> bb19 @59 s4
   bb17:
-      StorageDead(_14) @53 s1
-      StorageLive(_15) @56 s1
-      StorageLive(_16) @57 s4
-    * _16 = make() -> bb20 @59 s4
+      StorageDead(_11) @53 s1
+      _10 = const () @52 s1
+      goto bb18 @52 s1
   bb18:
-      StorageDead(_14) @53 s1
-      _13 = const () @52 s1
-      goto bb19 @52 s1
+      StorageDead(_10) @52 s1
+    * goto bb55 check bb56 @83 s1
   bb19:
-      StorageDead(_13) @52 s1
-      StorageLive(_32) @83 s1
-    * goto bb60 check bb61 @83 s1
+      StorageLive(_14) @66 s4
+      StorageLive(_15) @67 s4
+    * _15 = Eq(copy _9, const 2_i32) proven @67 s4
+      switch copy _15 [0: bb22, otherwise: bb21] @67 s4
   bb20:
-      StorageLive(_17) @61 s4
-      StorageDead(_17) @61 s4
-      StorageLive(_18) @66 s4
-      StorageLive(_19) @67 s4
-    * _19 = Eq(copy _12, const 2_i32) proven @67 s4
-      switch copy _19 [0: bb23, otherwise: bb22] @67 s4
+      StorageDead(_14) @66 s4
+      StorageLive(_18) @72 s4
+      StorageLive(_19) @73 s4
+    * _19 = Eq(copy _9, const 3_i32) proven @73 s4
+      switch copy _19 [0: bb32, otherwise: bb31] @73 s4
   bb21:
-      StorageDead(_18) @66 s4
-      StorageLive(_23) @72 s4
-      StorageLive(_24) @73 s4
-    * _24 = Eq(copy _12, const 3_i32) proven @73 s4
-      switch copy _24 [0: bb34, otherwise: bb33] @73 s4
+      StorageDead(_15) @67 s4
+    * goto bb28 check bb29 @71 s5
   bb22:
-      StorageDead(_19) @67 s4
-      StorageLive(_20) @71 s5
-    * goto bb30 check bb31 @71 s5
+      StorageDead(_15) @67 s4
+      _14 = const () @66 s4
+      goto bb20 @66 s4
   bb23:
-      StorageDead(_19) @67 s4
-      _18 = const () @66 s4
-      goto bb21 @66 s4
+      StorageDead(_12) @56 s1
+      goto bb15 @16
   bb24:
-      StorageDead(_15) @56 s1
-      goto bb16 @16
+      StorageLive(_16) @61 s4
+      StorageLive(_17) @63 s6
+    * _17 = log(const 4_i32) -> bb26 @63 s6
   bb25:
-      StorageLive(_21) @61 s4
-      StorageLive(_22) @63 s6
-    * _22 = log(const 4_i32) -> bb27 @63 s6
+      drop _13 -> bb27 @57 s4
   bb26:
-      drop _16 -> bb28 @57 s4
+      StorageDead(_17) @63 s6
+      _16 = const () @62 s6
+      StorageDead(_16) @61 s4
+      goto bb25 @62 s4
   bb27:
-      StorageDead(_22) @63 s6
-      _21 = const () @62 s6
-      StorageDead(_21) @61 s4
-      goto bb26 @62 s4
+      StorageDead(_13) @57 s4
+      goto bb23 @16
   bb28:
-      StorageDead(_16) @57 s4
+      StorageDead(_14) @66 s4
       goto bb24 @16
   bb29:
-      StorageDead(_18) @66 s4
-      goto bb25 @16
+      unreachable check bb20 @70 s4
   bb30:
-      StorageDead(_20) @71 s5
-      goto bb29 @16
+      StorageDead(_18) @72 s4
+      StorageLive(_22) @78 s4
+      StorageLive(_23) @79 s4
+    * _23 = Add(copy _9, const 1_i32) @80 s4
+      _9 = move _23 @78 s4
+      _22 = const () @78 s4
+      StorageDead(_23) @79 s4
+      StorageDead(_22) @78 s4
+      _12 = const () @56 s4
+      StorageLive(_24) @61 s4
+      StorageLive(_25) @63 s9
+    * _25 = log(const 4_i32) -> bb42 @63 s9
   bb31:
-      StorageDead(_20) @71 s5
-      unreachable check bb21 @70 s4
+      StorageDead(_19) @73 s4
+    * goto bb39 check bb40 @77 s7
   bb32:
-      StorageDead(_23) @72 s4
-      StorageLive(_28) @78 s4
-      StorageLive(_29) @79 s4
-    * _29 = Add(copy _12, const 1_i32) @80 s4
-      _12 = move _29 @78 s4
-      _28 = const () @78 s4
-      StorageDead(_29) @79 s4
-      StorageDead(_28) @78 s4
-      _15 = const () @56 s4
-      StorageLive(_30) @61 s4
-      StorageLive(_31) @63 s9
-    * _31 = log(const 4_i32) -> bb45 @63 s9
+      StorageDead(_19) @73 s4
+      _18 = const () @72 s4
+      goto bb30 @72 s4
   bb33:
-      StorageDead(_24) @73 s4
-      StorageLive(_25) @77 s7
-    * goto bb42 check bb43 @77 s7
+      StorageDead(_12) @56 s1
+      goto bb18 @16
   bb34:
-      StorageDead(_24) @73 s4
-      _23 = const () @72 s4
-      goto bb32 @72 s4
+      StorageLive(_20) @61 s4
+      StorageLive(_21) @63 s8
+    * _21 = log(const 4_i32) -> bb36 @63 s8
   bb35:
-      StorageDead(_15) @56 s1
-      goto bb19 @16
+      drop _13 -> bb37 @57 s4
   bb36:
-      StorageLive(_26) @61 s4
-      StorageLive(_27) @63 s8
-    * _27 = log(const 4_i32) -> bb38 @63 s8
+      StorageDead(_21) @63 s8
+      _20 = const () @62 s8
+      StorageDead(_20) @61 s4
+      goto bb35 @62 s4
   bb37:
-      drop _16 -> bb39 @57 s4
+      StorageDead(_13) @57 s4
+      goto bb33 @16
   bb38:
-      StorageDead(_27) @63 s8
-      _26 = const () @62 s8
-      StorageDead(_26) @61 s4
-      goto bb37 @62 s4
+      StorageDead(_18) @72 s4
+      goto bb34 @16
   bb39:
-      StorageDead(_16) @57 s4
-      goto bb35 @16
+      _10 = const () @77 s7
+      goto bb38 @77 s7
   bb40:
-      StorageDead(_23) @72 s4
-      goto bb36 @16
+      unreachable check bb30 @76 s4
   bb41:
-      StorageDead(_25) @77 s7
-      goto bb40 @16
+      drop _13 -> bb43 @57 s4
   bb42:
-      _13 = const () @77 s7
-      goto bb41 @77 s7
+      StorageDead(_25) @63 s9
+      _24 = const () @62 s9
+      StorageDead(_24) @61 s4
+      goto bb41 @62 s4
   bb43:
-      StorageDead(_25) @77 s7
-      unreachable check bb32 @76 s4
+      StorageDead(_13) @57 s4
+      StorageDead(_12) @56 s1
+      goto bb15 @56 s1
   bb44:
-      drop _16 -> bb46 @57 s4
+      StorageDead(_9) @48 s1
+      StorageLive(_26) @36 s1
+      StorageLive(_27) @38 s10
+    * _27 = log(const 2_i32) -> bb46 @38 s10
   bb45:
-      StorageDead(_31) @63 s9
-      _30 = const () @62 s9
-      StorageDead(_30) @61 s4
-      goto bb44 @62 s4
-  bb46:
-      StorageDead(_16) @57 s4
-      StorageDead(_15) @56 s1
-      goto bb16 @56 s1
-  bb47:
-      StorageDead(_12) @48 s1
-      StorageLive(_33) @36 s1
-      StorageLive(_34) @38 s10
-    * _34 = log(const 2_i32) -> bb49 @38 s10
-  bb48:
       goto bb8 @16
+  bb46:
+      StorageDead(_27) @38 s10
+      StorageLive(_28) @41 s10
+      StorageLive(_29) @42 s10
+    * _29 = copy _1 @42 s10
+      switch copy _29 [0: bb49, otherwise: bb48] @42 s10
+  bb47:
+      StorageDead(_28) @41 s10
+      StorageLive(_30) @45 s10
+    * _30 = log(const 3_i32) -> bb54 @45 s10
+  bb48:
+      StorageDead(_29) @42 s10
+    * goto bb52 check bb53 @44 s11
   bb49:
-      StorageDead(_34) @38 s10
-      StorageLive(_35) @41 s10
-      StorageLive(_36) @42 s10
-    * _36 = copy _1 @42 s10
-      switch copy _36 [0: bb52, otherwise: bb51] @42 s10
+      StorageDead(_29) @42 s10
+      _28 = const () @41 s10
+      goto bb47 @41 s10
   bb50:
-      StorageDead(_35) @41 s10
-      StorageLive(_38) @45 s10
-    * _38 = log(const 3_i32) -> bb58 @45 s10
+      StorageDead(_26) @36 s1
+      goto bb45 @16
   bb51:
-      StorageDead(_36) @42 s10
-      StorageLive(_37) @44 s11
-    * goto bb56 check bb57 @44 s11
+      StorageDead(_28) @41 s10
+      goto bb50 @16
   bb52:
-      StorageDead(_36) @42 s10
-      _35 = const () @41 s10
-      goto bb50 @41 s10
+      _26 = const () @44 s11
+      goto bb51 @44 s11
   bb53:
-      StorageDead(_33) @36 s1
-      goto bb48 @16
+      unreachable check bb47 @43 s10
   bb54:
-      StorageDead(_35) @41 s10
-      goto bb53 @16
+      StorageDead(_30) @45 s10
+      _26 = const () @37 s10
+      StorageDead(_26) @36 s1
+      goto bb45 @37 s1
   bb55:
-      StorageDead(_37) @44 s11
-      goto bb54 @16
-  bb56:
-      _33 = const () @44 s11
-      goto bb55 @44 s11
-  bb57:
-      StorageDead(_37) @44 s11
-      unreachable check bb50 @43 s10
-  bb58:
-      StorageDead(_38) @45 s10
-      _33 = const () @37 s10
-      StorageDead(_33) @36 s1
-      goto bb48 @37 s1
-  bb59:
-      StorageDead(_32) @83 s1
-      goto bb47 @16
-  bb60:
       _0 = const 0_i32 @83 s1
-      goto bb59 @83 s1
+      goto bb44 @83 s1
+  bb56:
+      StorageDead(_9) @48 s1
+      StorageLive(_31) @36 s1
+      StorageLive(_32) @38 s12
+    * _32 = log(const 2_i32) -> bb58 @38 s12
+  bb57:
+      StorageLive(_36) @26 s1
+      StorageLive(_37) @28 s14
+    * _37 = log(const 1_i32) -> bb68 @28 s14
+  bb58:
+      StorageDead(_32) @38 s12
+      StorageLive(_33) @41 s12
+      StorageLive(_34) @42 s12
+    * _34 = copy _1 @42 s12
+      switch copy _34 [0: bb61, otherwise: bb60] @42 s12
+  bb59:
+      StorageDead(_33) @41 s12
+      StorageLive(_35) @45 s12
+    * _35 = log(const 3_i32) -> bb66 @45 s12
+  bb60:
+      StorageDead(_34) @42 s12
+    * goto bb64 check bb65 @44 s13
   bb61:
-      StorageDead(_32) @83 s1
-      StorageDead(_12) @48 s1
-      StorageLive(_39) @36 s1
-      StorageLive(_40) @38 s12
-    * _40 = log(const 2_i32) -> bb63 @38 s12
+      StorageDead(_34) @42 s12
+      _33 = const () @41 s12
+      goto bb59 @41 s12
   bb62:
-      StorageLive(_45) @26 s1
-      StorageLive(_46) @28 s14
-    * _46 = log(const 1_i32) -> bb74 @28 s14
+      StorageDead(_31) @36 s1
+      goto bb57 @16
   bb63:
-      StorageDead(_40) @38 s12
-      StorageLive(_41) @41 s12
-      StorageLive(_42) @42 s12
-    * _42 = copy _1 @42 s12
-      switch copy _42 [0: bb66, otherwise: bb65] @42 s12
-  bb64:
-      StorageDead(_41) @41 s12
-      StorageLive(_44) @45 s12
-    * _44 = log(const 3_i32) -> bb72 @45 s12
-  bb65:
-      StorageDead(_42) @42 s12
-      StorageLive(_43) @44 s13
-    * goto bb70 check bb71 @44 s13
-  bb66:
-      StorageDead(_42) @42 s12
-      _41 = const () @41 s12
-      goto bb64 @41 s12
-  bb67:
-      StorageDead(_39) @36 s1
+      StorageDead(_33) @41 s12
       goto bb62 @16
+  bb64:
+      _31 = const () @44 s13
+      goto bb63 @44 s13
+  bb65:
+      unreachable check bb59 @43 s12
+  bb66:
+      StorageDead(_35) @45 s12
+      _31 = const () @37 s12
+      StorageDead(_31) @36 s1
+      goto bb57 @37 s1
+  bb67:
+      drop _4 -> bb69 @22 s1
   bb68:
-      StorageDead(_41) @41 s12
-      goto bb67 @16
+      StorageDead(_37) @28 s14
+      _36 = const () @27 s14
+      StorageDead(_36) @26 s1
+      goto bb67 @27 s1
   bb69:
-      StorageDead(_43) @44 s13
-      goto bb68 @16
-  bb70:
-      _39 = const () @44 s13
-      goto bb69 @44 s13
-  bb71:
-      StorageDead(_43) @44 s13
-      unreachable check bb64 @43 s12
-  bb72:
-      StorageDead(_44) @45 s12
-      _39 = const () @37 s12
-      StorageDead(_39) @36 s1
-      goto bb62 @37 s1
-  bb73:
-      drop _4 -> bb75 @22 s1
-  bb74:
-      StorageDead(_46) @28 s14
-      _45 = const () @27 s14
-      StorageDead(_45) @26 s1
-      goto bb73 @27 s1
-  bb75:
       StorageDead(_4) @22 s1
-      drop _3 -> bb76 @16
-  bb76:
+      drop _3 -> bb70 @16
+  bb70:
       unreachable @21
 fn divergingDefer @85
   _0: i32 return @85
   _1: bool arg flag @85
-  _2: () temp @89 s1
-  _3: () temp @93 s1
-  _4: bool temp @94 s1
-  _5: Never temp @96 s2
+  _2: () temp @93 s1
+  _3: bool temp @94 s1
+  _4: () temp @89 s1
+  _5: Never temp @91 s3
   _6: () temp @89 s1
-  _7: Never temp @91 s3
-  _8: Never temp @98 s1
-  _9: () temp @89 s1
-  _10: Never temp @91 s4
+  _7: Never temp @91 s4
   s1: lexical in s0 @88
   s2: lexical in s1 @95
   s3: deferred in s1 @90
   s4: deferred in s1 @90
   bb0:
-      StorageLive(_2) @89 s1
-      StorageDead(_2) @89 s1
-      StorageLive(_3) @93 s1
-      StorageLive(_4) @94 s1
-    * _4 = copy _1 @94 s1
-      switch copy _4 [0: bb3, otherwise: bb2] @94 s1
+      StorageLive(_2) @93 s1
+      StorageLive(_3) @94 s1
+    * _3 = copy _1 @94 s1
+      switch copy _3 [0: bb3, otherwise: bb2] @94 s1
   bb1:
-      StorageDead(_3) @93 s1
-      StorageLive(_8) @98 s1
-    * goto bb13 check bb14 @98 s1
+      StorageDead(_2) @93 s1
+    * goto bb11 check bb12 @98 s1
   bb2:
-      StorageDead(_4) @94 s1
-      StorageLive(_5) @96 s2
-    * goto bb10 check bb11 @96 s2
+      StorageDead(_3) @94 s1
+    * goto bb9 check bb10 @96 s2
   bb3:
-      StorageDead(_4) @94 s1
-      _3 = const () @93 s1
+      StorageDead(_3) @94 s1
+      _2 = const () @93 s1
       goto bb1 @93 s1
   bb4:
       return @85
   bb5:
-      StorageLive(_6) @89 s1
-      StorageLive(_7) @91 s3
-    * _7 = stop() -> ! check bb7 @91 s3
+      StorageLive(_4) @89 s1
+      StorageLive(_5) @91 s3
+    * _5 = stop() -> ! check bb7 @91 s3
   bb6:
       goto bb4 @85
   bb7:
-      StorageDead(_7) @91 s3
-      StorageDead(_6) @89 s1
+      StorageDead(_5) @91 s3
+      StorageDead(_4) @89 s1
       unreachable check bb6 @90 s1
   bb8:
-      StorageDead(_3) @93 s1
+      StorageDead(_2) @93 s1
       goto bb5 @85
   bb9:
-      StorageDead(_5) @96 s2
-      goto bb8 @85
-  bb10:
       _0 = const 1_i32 @96 s2
-      goto bb9 @96 s2
-  bb11:
-      StorageDead(_5) @96 s2
+      goto bb8 @96 s2
+  bb10:
       unreachable check bb1 @95 s1
-  bb12:
-      StorageDead(_8) @98 s1
-      goto bb5 @85
-  bb13:
+  bb11:
       _0 = const 2_i32 @98 s1
-      goto bb12 @98 s1
-  bb14:
-      StorageDead(_8) @98 s1
-      StorageLive(_9) @89 s1
-      StorageLive(_10) @91 s4
-    * _10 = stop() -> ! check bb16 @91 s4
-  bb15:
+      goto bb5 @98 s1
+  bb12:
+      StorageLive(_6) @89 s1
+      StorageLive(_7) @91 s4
+    * _7 = stop() -> ! check bb14 @91 s4
+  bb13:
       unreachable @88
-  bb16:
-      StorageDead(_10) @91 s4
-      StorageDead(_9) @89 s1
-      unreachable check bb15 @90 s1
+  bb14:
+      StorageDead(_7) @91 s4
+      StorageDead(_6) @89 s1
+      unreachable check bb13 @90 s1
 fn conditionTemporaries @100
   _0: i32 return @100
   _1: string arg text @100
@@ -482,8 +422,6 @@ fn conditionTemporaries @100
   _4: string temp @106 s1
   _5: ref/string temp @106 s1
   _6: ref/string temp @108 s1
-  _7: Never temp @110 s2
-  _8: Never temp @112 s1
   s1: lexical in s0 @103
   s2: lexical in s1 @109
   bb0:
@@ -493,12 +431,10 @@ fn conditionTemporaries @100
     * _4 = make() -> bb4 @106 s1
   bb1:
       StorageDead(_2) @104 s1
-      StorageLive(_8) @112 s1
-    * goto bb14 check bb15 @112 s1
+    * goto bb12 check bb13 @112 s1
   bb2:
       StorageDead(_3) @105 s1
-      StorageLive(_7) @110 s2
-    * goto bb11 check bb12 @110 s2
+    * goto bb10 check bb11 @110 s2
   bb3:
       StorageDead(_3) @105 s1
       _2 = const () @104 s1
@@ -525,22 +461,14 @@ fn conditionTemporaries @100
       StorageDead(_2) @104 s1
       goto bb7 @100
   bb10:
-      StorageDead(_7) @110 s2
-      goto bb9 @100
-  bb11:
       _0 = const 1_i32 @110 s2
-      goto bb10 @110 s2
-  bb12:
-      StorageDead(_7) @110 s2
+      goto bb9 @110 s2
+  bb11:
       unreachable check bb1 @109 s1
-  bb13:
-      StorageDead(_8) @112 s1
-      goto bb7 @100
-  bb14:
+  bb12:
       _0 = const 2_i32 @112 s1
-      goto bb13 @112 s1
-  bb15:
-      StorageDead(_8) @112 s1
-      drop _1 -> bb16 @100
-  bb16:
+      goto bb7 @112 s1
+  bb13:
+      drop _1 -> bb14 @100
+  bb14:
       unreachable @103

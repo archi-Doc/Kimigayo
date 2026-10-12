@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns the interpretation of MIR operations, their accesses and successor enumeration.
+// Input: closed MIR kinds and indexed body records. Output: descriptor rows and MirUses walks.
+// Validator and analyses share these rows; operand/effect meaning is decided once.
+// Must not add per-consumer copies of access or control-flow classification.
+
 #pragma warning disable SA1402 // The descriptor table, its flags and the use enumeration belong together.
 
 namespace Kimi.Compiler.Mir;
@@ -67,9 +72,11 @@ internal static class MirDescriptors
 {
     internal static MirDescriptor Of(MirStatementKind kind) => kind switch
     {
-        MirStatementKind.Assign => Row(MirAccess.Writes | MirAccess.Defines),
-        MirStatementKind.StorageLive or MirStatementKind.StorageDead or MirStatementKind.EndBorrow => Row(MirAccess.Kills),
-        MirStatementKind.FakeRead => Row(MirAccess.Reads),
+        MirStatementKind.Assign => Row(MirAccess.Writes | MirAccess.Defines, effects: MirEffect.None),
+        MirStatementKind.StorageLive => Row(MirAccess.Kills, effects: MirEffect.None),
+        MirStatementKind.StorageDead => Row(MirAccess.Kills, effects: MirEffect.None),
+        MirStatementKind.EndBorrow => Row(MirAccess.Kills, effects: MirEffect.None),
+        MirStatementKind.FakeRead => Row(MirAccess.Reads, effects: MirEffect.None),
         _ => default,
     };
 
@@ -77,10 +84,14 @@ internal static class MirDescriptors
     // read, written or borrowed. An operator or a checked Cast aborts unless Proven.
     internal static MirDescriptor Of(MirRvalueKind kind) => kind switch
     {
-        MirRvalueKind.Use or MirRvalueKind.Aggregate => Row(MirAccess.None),
-        MirRvalueKind.Ref => Row(MirAccess.Borrows),
-        MirRvalueKind.BinaryOp or MirRvalueKind.UnaryOp or MirRvalueKind.Cast => Row(MirAccess.None, MirEffect.Abort),
-        MirRvalueKind.Discriminant or MirRvalueKind.Len => Row(MirAccess.Reads),
+        MirRvalueKind.Use => Row(MirAccess.None, effects: MirEffect.None),
+        MirRvalueKind.Aggregate => Row(MirAccess.None, effects: MirEffect.None),
+        MirRvalueKind.Ref => Row(MirAccess.Borrows, effects: MirEffect.None),
+        MirRvalueKind.BinaryOp => Row(MirAccess.None, MirEffect.Abort),
+        MirRvalueKind.UnaryOp => Row(MirAccess.None, MirEffect.Abort),
+        MirRvalueKind.Cast => Row(MirAccess.None, MirEffect.Abort),
+        MirRvalueKind.Discriminant => Row(MirAccess.Reads, effects: MirEffect.None),
+        MirRvalueKind.Len => Row(MirAccess.Reads, effects: MirEffect.None),
         MirRvalueKind.Opaque => Row(MirAccess.Reads | MirAccess.Writes | MirAccess.Borrows, MirEffect.Unknown),
         _ => default,
     };
@@ -89,53 +100,83 @@ internal static class MirDescriptors
     // operand rows, and a Call's effects are its intrinsic's or its callee's summary.
     internal static MirDescriptor Of(MirTerminatorKind kind) => kind switch
     {
-        MirTerminatorKind.Goto or MirTerminatorKind.SwitchInt or MirTerminatorKind.Unreachable => Row(MirAccess.None),
-        MirTerminatorKind.Call => Row(MirAccess.Writes | MirAccess.Defines),
-        MirTerminatorKind.Drop => Row(MirAccess.DropUse),
-        MirTerminatorKind.Return => Row(MirAccess.Moves),
+        MirTerminatorKind.Goto => Row(MirAccess.None, effects: MirEffect.None),
+        MirTerminatorKind.SwitchInt => Row(MirAccess.None, effects: MirEffect.None),
+        MirTerminatorKind.Unreachable => Row(MirAccess.None, effects: MirEffect.None),
+        MirTerminatorKind.Call => Row(MirAccess.Writes | MirAccess.Defines, effects: MirEffect.None),
+        MirTerminatorKind.Drop => Row(MirAccess.DropUse, effects: MirEffect.None),
+        MirTerminatorKind.Return => Row(MirAccess.Moves, effects: MirEffect.None),
         _ => default,
     };
 
     internal static MirDescriptor Of(MirOperandKind kind) => kind switch
     {
-        MirOperandKind.Copy => Row(MirAccess.Reads),
-        MirOperandKind.Move => Row(MirAccess.Moves),
-        MirOperandKind.PairAcquire => Row(MirAccess.Reads | MirAccess.CaseDependent),
-        MirOperandKind.Const => Row(MirAccess.None),
+        MirOperandKind.Copy => Row(MirAccess.Reads, effects: MirEffect.None),
+        MirOperandKind.Move => Row(MirAccess.Moves, effects: MirEffect.None),
+        MirOperandKind.PairAcquire => Row(MirAccess.Reads | MirAccess.CaseDependent, effects: MirEffect.None),
+        MirOperandKind.Const => Row(MirAccess.None, effects: MirEffect.None),
         _ => default,
     };
 
     // Index reads its local and aborts out of bounds; PairLayer makes the use case-dependent.
     internal static MirDescriptor Of(MirProjectionKind kind) => kind switch
     {
-        MirProjectionKind.Deref or MirProjectionKind.Field or MirProjectionKind.Base or MirProjectionKind.ConstIndex or MirProjectionKind.Downcast => Row(MirAccess.None),
+        MirProjectionKind.Deref => Row(MirAccess.None, effects: MirEffect.None),
+        MirProjectionKind.Field => Row(MirAccess.None, effects: MirEffect.None),
+        MirProjectionKind.Base => Row(MirAccess.None, effects: MirEffect.None),
+        MirProjectionKind.ConstIndex => Row(MirAccess.None, effects: MirEffect.None),
+        MirProjectionKind.Downcast => Row(MirAccess.None, effects: MirEffect.None),
         MirProjectionKind.Index => Row(MirAccess.Reads, MirEffect.Abort),
-        MirProjectionKind.PairLayer => Row(MirAccess.CaseDependent),
+        MirProjectionKind.PairLayer => Row(MirAccess.CaseDependent, effects: MirEffect.None),
         _ => default,
     };
 
     // The intrinsic table's rows (plan 5.8): arguments as the library declares them, Fail's being its SPEC 22.5.4 code as a string constant.
     internal static MirDescriptor Of(IntrinsicId id) => id switch
     {
-        IntrinsicId.RawAllocate or IntrinsicId.RawRelease or IntrinsicId.TryAllocateBytes or IntrinsicId.MakeObj or IntrinsicId.MakeRc or
-            IntrinsicId.MakeArc => Row(MirAccess.None, MirEffect.Allocation, 1),
-        IntrinsicId.RawInitialize or IntrinsicId.RawSlice => Row(MirAccess.None, MirEffect.None, 2),
+        IntrinsicId.RawAllocate => Row(MirAccess.None, MirEffect.Allocation, 1),
+        IntrinsicId.RawRelease => Row(MirAccess.None, MirEffect.Allocation, 1),
+        IntrinsicId.TryAllocateBytes => Row(MirAccess.None, MirEffect.Allocation, 1),
+        IntrinsicId.MakeObj => Row(MirAccess.None, MirEffect.Allocation, 1),
+        IntrinsicId.MakeRc => Row(MirAccess.None, MirEffect.Allocation, 1),
+        IntrinsicId.MakeArc => Row(MirAccess.None, MirEffect.Allocation, 1),
+        IntrinsicId.RawInitialize => Row(MirAccess.None, MirEffect.None, 2),
+        IntrinsicId.RawSlice => Row(MirAccess.None, MirEffect.None, 2),
         IntrinsicId.MoveBytes => Row(MirAccess.None, MirEffect.None, 3),
         IntrinsicId.Stride => Row(MirAccess.None, MirEffect.None, 0),
-        IntrinsicId.ReinterpretLoan or IntrinsicId.ErasedWriter or IntrinsicId.Clone => Row(MirAccess.None, MirEffect.None, 1),
+        // Capacity: a handle's view.
+        IntrinsicId.ReinterpretLoan => Row(MirAccess.None, MirEffect.None, 1),
+        IntrinsicId.ErasedWriter => Row(MirAccess.None, MirEffect.None, 1),
+        IntrinsicId.Clone => Row(MirAccess.None, MirEffect.None, 1),
+        IntrinsicId.Capacity => Row(MirAccess.None, MirEffect.None, 1),
         IntrinsicId.TypeTest => Row(MirAccess.None, MirEffect.None, 2), // The payload's shared view and the target Type's token (SPEC 13.6.1).
-        IntrinsicId.DestroyValues or IntrinsicId.FormatFloat or IntrinsicId.ErasedReserve or IntrinsicId.FormatInteger128 => Row(MirAccess.None),
-        IntrinsicId.Abort or IntrinsicId.Fail => Row(MirAccess.None, MirEffect.Abort, 1, true),
-        IntrinsicId.TestRequireAbort => Row(MirAccess.None, MirEffect.Abort, -1, true),
-        IntrinsicId.WriteStdout or IntrinsicId.TestMessage or IntrinsicId.TestRecordValue => Row(MirAccess.None, MirEffect.Environment),
+        IntrinsicId.DestroyValues => Row(MirAccess.None, effects: MirEffect.None),
+        IntrinsicId.FormatFloat => Row(MirAccess.None, effects: MirEffect.None),
+        IntrinsicId.ErasedReserve => Row(MirAccess.None, effects: MirEffect.None),
+        IntrinsicId.FormatInteger128 => Row(MirAccess.None, effects: MirEffect.None),
+        IntrinsicId.Abort => Row(MirAccess.None, MirEffect.Abort, 1, diverges: true),
+        IntrinsicId.Fail => Row(MirAccess.None, MirEffect.Abort, 1, diverges: true),
+        IntrinsicId.TestRequireAbort => Row(MirAccess.None, MirEffect.Abort, -1, diverges: true),
+        IntrinsicId.WriteStdout => Row(MirAccess.None, MirEffect.Environment),
+        IntrinsicId.TestMessage => Row(MirAccess.None, MirEffect.Environment),
+        IntrinsicId.TestRecordValue => Row(MirAccess.None, MirEffect.Environment),
         IntrinsicId.TestObserve => Row(MirAccess.None, MirEffect.Environment, 2), // The condition and the site's id (plan 5.6.7).
-        IntrinsicId.TestPhaseEnter or IntrinsicId.TestPhaseLeave => Row(MirAccess.None, MirEffect.Environment, 1),
+        IntrinsicId.TestPhaseEnter => Row(MirAccess.None, MirEffect.Environment, 1),
+        IntrinsicId.TestPhaseLeave => Row(MirAccess.None, MirEffect.Environment, 1),
         IntrinsicId.TestTempDirectory => Row(MirAccess.None, MirEffect.Environment, 0),
         IntrinsicId.StaticEnsure => Row(MirAccess.None, MirEffect.StaticInit | MirEffect.Abort, 1), // The static's slot (plan 5.6.6).
+        IntrinsicId.FormatBuffer => Row(MirAccess.None, MirEffect.Allocation, 3), // The literal bytes, the values' Types' token, the direct mark.
+        IntrinsicId.FormatHint => Row(MirAccess.None, MirEffect.None, 3), // The adapter, then the later literal bytes and values' Types' token.
+        IntrinsicId.FormatFinish => Row(MirAccess.None, MirEffect.Allocation | MirEffect.Abort, 4), // The adapter, then FormatBuffer's operands.
         _ => default,
     };
 
-    private static MirDescriptor Row(MirAccess access, MirEffect effects = MirEffect.None, sbyte arity = -1, bool diverges = false) => new(true, access, effects, arity, diverges);
+    private static MirDescriptor Row(MirAccess access, MirEffect effects, sbyte arity = -1, bool diverges = false) => new(
+        Defined: true,
+        access,
+        effects,
+        arity,
+        diverges);
 }
 
 /// <summary>The one enumeration of what a location reads, writes, moves, borrows, defines, kills and destroys, and of its effects, by the
@@ -224,7 +265,15 @@ internal static class MirUses
                 Effect(row.Effects, -1, ref visitor);
                 break;
             case MirRvalueKind.Cast:
-                Effect((MirCastKind)rvalue.Op switch { MirCastKind.IntToPointer => MirEffect.IntToPointer, MirCastKind.Integer or MirCastKind.Floating or MirCastKind.Numeric when !rvalue.Proven => row.Effects, _ => MirEffect.None }, -1, ref visitor);
+                Effect(
+                    (MirCastKind)rvalue.Op switch
+                {
+                    MirCastKind.IntToPointer => MirEffect.IntToPointer,
+                    MirCastKind.Integer or MirCastKind.Floating or MirCastKind.Numeric when !rvalue.Proven => row.Effects,
+                    _ => MirEffect.None,
+                },
+                    -1,
+                    ref visitor);
                 break;
             case MirRvalueKind.Opaque:
                 Effect(row.Effects, rvalue.Arg, ref visitor);
@@ -279,7 +328,17 @@ internal static class MirUses
             ref readonly var entry = ref body.Statics[~place.Root];
             var writes = (access & (MirAccess.Writes | MirAccess.Moves | MirAccess.DropUse | MirAccess.Kills)) != 0 ||
                 ((access & MirAccess.Borrows) != 0 && kind is MirRefKind.Uniq or MirRefKind.TwoPhaseUniq);
-            Effect(writes ? MirEffect.StaticWrite : entry.RawHolding && !entry.Mutable ? MirEffect.StaticRead | MirEffect.RawStaticRead : MirEffect.StaticRead, -1, ref visitor);
+            MirEffect effect;
+            if (writes)
+            {
+                effect = MirEffect.StaticWrite;
+            }
+            else
+            {
+                effect = entry.RawHolding && !entry.Mutable ? MirEffect.StaticRead | MirEffect.RawStaticRead : MirEffect.StaticRead;
+            }
+
+            Effect(effect, -1, ref visitor);
         }
     }
 

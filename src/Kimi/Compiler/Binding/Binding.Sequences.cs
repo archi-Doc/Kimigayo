@@ -128,7 +128,7 @@ public sealed partial class Binding
 
         if (userEntry && element is not null)
         {
-            this.BindIterationStep(source, scope, element, tuple!, access, layers);
+            this.BindIterationStep(source, element, tuple!, access, layers);
         }
 
         this.BindNode(source.Body, scope);
@@ -318,7 +318,7 @@ public sealed partial class Binding
         return this.BindCall(plan.Next, plan.Scope, null);
     }
 
-    private void BindIterationStep(ForKoto source, BindingScope scope, BoundType item, BoundType tuple, PatternAccessMode access, int layers)
+    private void BindIterationStep(ForKoto source, BoundType item, BoundType tuple, PatternAccessMode access, int layers)
     {
         var plan = source.Iteration!;
         if (plan.Next.BoundType is not { } option || !ReferenceEquals(option.Symbol, this.Library.Option) ||

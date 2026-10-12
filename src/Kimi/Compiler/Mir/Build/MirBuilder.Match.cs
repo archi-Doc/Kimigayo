@@ -23,14 +23,17 @@ internal sealed partial class MirBuilder
             return;
         }
 
-        var scope = this.OpenScope(false);
+        var scope = this.OpenScope(block: false);
         var subject = this.Temp(plan.SubjectBorrow ?? TypeOf(match.Expression), match.Expression, MirLocalRole.Subject);
         this.Assign(subject, match.Expression);
-        var (after, start) = (this.Open(match, destination), this.selected.Count);
+        var after = this.Open(match, destination);
+        var start = this.selected.Count;
         CollectionsMarshal.SetCount(this.selected, start + plan.Positions.Count);
         for (var i = 0; i < plan.Arms.Count; i++)
         {
-            var (arm, next, outer) = (plan.Arms[i], this.body.AddBlock(), this.scope);
+            var arm = plan.Arms[i];
+            var next = this.body.AddBlock();
+            var outer = this.scope;
             var guard = arm.Syntax.Guard;
             if (!this.Pattern(plan, arm.Pattern, subject, start, next) && guard is null)
             {
@@ -39,16 +42,17 @@ internal sealed partial class MirBuilder
 
             if (guard is not null)
             {
-                var (rejected, accepted) = (this.body.AddBlock(), this.body.AddBlock());
+                var rejected = this.body.AddBlock();
+                var accepted = this.body.AddBlock();
                 this.scope = (ushort)this.body.AddScope(outer, MirScopeKind.Guard, SourceRef.Of(guard));
-                var test = this.Test(guard, rejected, accepted, plan, arm.Pattern, start);
+                var test = this.Guard(guard, rejected, accepted, plan, arm.Pattern, start);
                 this.Enter(rejected, test);
                 this.body.Terminate(rejected, MirTerminator.Goto(next, this.Info(guard)));
                 this.Enter(accepted, test);
             }
 
             this.scope = (ushort)this.body.AddScope(outer, MirScopeKind.Lexical, SourceRef.Of(arm.Syntax.Pattern));
-            var bindings = this.temporaries = this.OpenScope(true);
+            var bindings = this.temporaries = this.OpenScope(block: true);
             this.Bind(plan, arm.Pattern, start);
             this.Result(destination, arm.Syntax.Body, arm.Syntax.Body);
             this.CloseScope(bindings);
@@ -63,31 +67,65 @@ internal sealed partial class MirBuilder
         this.CloseScope(scope);
     }
 
+    // SPEC 14.8.3: guard candidates borrow the selected Places among the condition's temporaries. Keep the Subject protected until
+    // their cleanup, then read it and branch while the bool's storage remains live for Enter in each successor.
+    private MirPlace Guard(Koto condition, int whenFalse, int whenTrue, BoundMatch plan, int pattern, int start)
+    {
+        var tested = this.OpenScope(block: false);
+        var test = this.Temp(BoundType.Boolean, condition);
+        var temporaries = this.OpenScope(block: false);
+        var mark = this.arguments.Count;
+        for (var i = pattern; i < plan.Positions[pattern].End; i++)
+        {
+            if (plan.Positions[i] is { CandidateSymbol: { Type: { } type } candidate, Source: var source })
+            {
+                var reference = this.Temp(type, source, MirLocalRole.GuardCandidate, candidate.Name);
+                this.Set(reference, this.Ref(this.selected[start + i], type, input: false), source);
+                this.arguments.Add(MirOperand.Move(reference));
+                this.locals[candidate] = reference.Root;
+            }
+        }
+
+        this.Assign(test, condition);
+        this.arguments.RemoveRange(mark, this.arguments.Count - mark);
+        this.CloseScope(temporaries);
+        this.body.Push(this.current, MirStatement.Of(MirStatementKind.FakeRead, this.selected[start + pattern], this.Info(condition)));
+        this.Branch(test, condition, whenFalse, whenTrue);
+        this.CloseScope(tested, clean: false);
+        return test;
+    }
+
     // SPEC 14.8.1: a position's tests on the Place it selects, after its implicit follows: a Literal's comparison of the value (a string's
     // inspected through a shared borrow, SPEC 13.4), a Case's discriminant, then its payloads or a Tuple's elements, outside inward and left
     // to right; a mismatch goes on to the next arm. Whether it tested anything.
     private bool Pattern(BoundMatch plan, int index, MirPlace place, int start, int next)
     {
-        var (position, tested) = (plan.Positions[index], false);
+        var position = plan.Positions[index];
+        var tested = false;
         this.selected[start + index] = place;
         place = this.Follow(place, position.ImplicitFollows);
         if (position.Kind == BoundPatternKind.Literal)
         {
-            var (literal, value, operand) = (position.Literal, this.Temp(BoundType.Boolean, position.Source), MirOperand.Copy(place));
+            var literal = position.Literal;
+            var value = this.Temp(BoundType.Boolean, position.Source);
+            var operand = MirOperand.Copy(place);
             if (literal.Kind == PatternLiteralKind.String)
             {
-                var text = compilation.Types.Reference(SemanticsKind.Ref, BoundType.String);
-                operand = this.Temporary(text, MirRvalue.Ref(MirRefKind.Shared, place, text), position.Source);
+                operand = this.Borrow(SemanticsKind.Ref, place, position.Source);
             }
 
-            var (operands, magnitude) = (this.body.AddOperand(operand), (Int128)literal.Magnitude);
-            this.body.AddOperand(MirOperand.Const(this.body.Const(literal.Kind switch
+            var operands = this.body.AddOperand(operand);
+            var magnitude = (Int128)literal.Magnitude;
+            this.body.AddOperand(
+                MirOperand.Const(
+                this.body.Const(
+                literal.Kind switch
             {
                 PatternLiteralKind.String => new(MirConstKind.String, BoundType.String, Value: literal.Text),
                 PatternLiteralKind.Boolean => new(MirConstKind.Bool, BoundType.Boolean, magnitude),
                 _ => new(MirConstKind.Integer, this.body.TypeOf(place)!, literal.Negative ? -magnitude : magnitude),
             })));
-            this.Set(value, MirRvalue.Binary(MirBinaryOp.Eq, operands, true), position.Source);
+            this.Set(value, MirRvalue.Binary(MirBinaryOp.Eq, operands, proven: true), position.Source);
             this.Pass(MirOperand.Copy(value), 1, next, position.Source);
             tested = true;
         }
@@ -116,18 +154,19 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 15.1.6: the selected arm's body locals, left to right, from the Places its binding positions selected, each as its Adjust
-    // acquires it: Copied, moved, by case, or borrowed in the mode its path grants.
-    private void Bind(BoundMatch plan, int pattern, int start)
+    // acquires it: Copied, moved, by case, or borrowed in the mode its path grants; a for loop's are its iteration bindings (SPEC 14.6.1).
+    private void Bind(BoundMatch plan, int pattern, int start, ForKoto? loop = null)
     {
         for (var i = pattern; i < plan.Positions[pattern].End; i++)
         {
-            if (plan.Positions[i] is { BodySymbol: { } symbol, Source: SyntaxFormKoto binding })
+            if (plan.Positions[i] is { BodySymbol: { } symbol, Source: var binding })
             {
-                var (type, adjust, place) = (symbol.Type ?? BoundType.Unit, HirTables.AdjustOf(binding), this.selected[start + i]);
-                var local = this.Live(this.body.AddLocal(new(type, MirLocalKind.Var, this.Info(binding, true), binding.IsMutablePattern, symbol.Name)), this.lexical);
-                var value = adjust.Adaptation == HirAdaptation.None ? MirRvalue.Use(this.body.AddOperand(this.Acquire(adjust.Acquire, place)))
-                    : MirRvalue.Ref(adjust.Adaptation == HirAdaptation.ExclusiveBorrow ? MirRefKind.Uniq : MirRefKind.Shared, place, type);
-                this.Set(new(local), value, binding);
+                var type = symbol.Type ?? BoundType.Unit;
+                var adjust = HirTables.AdjustOf(binding);
+                var place = this.selected[start + i];
+                var mutable = binding is SyntaxFormKoto { IsMutablePattern: true } || (binding is IdentifierNameKoto name && loop?.IsMutableSlot(name) == true);
+                var local = this.Live(this.body.AddLocal(new(type, MirLocalKind.Var, this.Info(binding, local: true), mutable, symbol.Name)), this.lexical);
+                this.Use(new(local), this.Acquire(adjust, place, type, input: false, binding, new(local)), binding);
                 this.locals[symbol] = local;
             }
         }

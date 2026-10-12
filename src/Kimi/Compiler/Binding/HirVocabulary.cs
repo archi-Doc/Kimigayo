@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns the closed HIR vocabularies and the canonical acquisition-to-adjustment mapping.
+// Input: Binding decisions. Output: Op, Res, completion, place and adjustment values.
+// Every value has one published meaning; adding a kind requires an approved vocabulary change.
+// Must not introduce a consumer-specific meaning or infer missing Binding decisions.
+
 using Kimi.Compiler.Parsing;
 
 #pragma warning disable SA1402 // The HIR column vocabularies belong together.
@@ -115,9 +120,11 @@ internal readonly record struct HirAdjust(HirAcquire Acquire, HirAdaptation Adap
         _ => new(HirAcquire.None, acquisition == CaptureAcquisition.SharedSlotBorrow ? HirAdaptation.SharedBorrow : HirAdaptation.ExclusiveBorrow),
     };
 
-    // A call's argument, receiver or payload operation (SPEC 7.3, 10.2); a Reborrow in the same mode keeps the Type, the bare acquisition.
+    // A call's argument, receiver or payload operation (SPEC 7.3, 10.2); a Reborrow in the same mode keeps the Type, the bare acquisition,
+    // and an explicit borrow is the reference itself (SPEC 13.5.5.2), even the string borrow Binding records as the call's (SPEC 22.4).
     internal static HirAdaptation Of(in BoundArgumentOperation operation) => operation.Kind switch
     {
+        ArgumentOperationKind.Borrow when operation.Source is { } source && KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } => HirAdaptation.None,
         ArgumentOperationKind.Value => operation.Adaptation == ArgumentAdaptation.Erasure ? HirAdaptation.Erasure : HirAdaptation.None,
         ArgumentOperationKind.Borrow => operation.ParameterType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? HirAdaptation.ExclusiveBorrow : HirAdaptation.SharedBorrow,
         ArgumentOperationKind.Reborrow => operation.Adaptation == ArgumentAdaptation.SameSemanticsReborrow ? HirAdaptation.None : HirAdaptation.ReferenceRead,

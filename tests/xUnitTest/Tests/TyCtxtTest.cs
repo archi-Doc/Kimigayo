@@ -27,8 +27,9 @@ public sealed class TyCtxtTest
         "let fixed: [3 of i32] = [1, 2, 3]\nlet two: [2 of i32] = [4, 5]\nlet box = Box<i32>.init(6)\nlet p = pick(two@ref)\n" +
         "require f(7) == 7 and f(true) and size(fixed@ref) == 3 and p@follow == 4 and same(8) and same(true) and box.orElse() == 6 else => $abort(\"compose\")\n";
 
-    // SPEC 8.3, 8.6: the callee's declared parameter and result Types under a call's substitution are the call's instantiation, a closure
-    // in such a Type has its instance's signature, and a function item's substitution applies as its context does.
+    // SPEC 8.3, 8.6: the callee's declared parameter and result Types under a call's substitution are the call's instantiation (SPEC 8.4.2:
+    // a requirement's under its conforming Self and the bound Contract reference it dispatches through, which SubstOf records as its
+    // declaring Type), a closure in such a Type has its instance's signature, and a function item's substitution applies as its context does.
     [Theory]
     [MemberData(nameof(HirColumnsTest.Corpus), MemberType = typeof(HirColumnsTest))]
     public void ApplyIsTheInstantiation(string name)
@@ -38,7 +39,9 @@ public sealed class TyCtxtTest
         void Check(Koto node, BoundType? declared, Subst subst, CallPlan context)
         {
             var applied = declared is null ? null : c.Types.Apply(declared, subst);
-            if (!ReferenceEquals(applied, declared is null ? null : c.Binding.InstantiateStorageType(declared, context)) ||
+            var instance = declared is null ? null : context.Kind != CalleeKind.Requirement ? c.Binding.InstantiateStorageType(declared, context)
+                : c.Binding.InstantiateStorageType(declared, context.Target, subst.Declaring, context.TypeArguments, context.LengthArguments, context.Origins, context.InputOrigins, context.ConformingType);
+            if (!ReferenceEquals(applied, instance) ||
                 (applied is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto function } && function.ClosureOf() is { } closure &&
                     !ReferenceEquals(c.Binding.ClosureSignature(applied), c.Types.Apply(closure.Signature, c.Types.SubstOfClosure(applied)!))))
             {

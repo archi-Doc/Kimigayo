@@ -1,15 +1,21 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns MIR bodies by definition key and the records of construction and validation.
+// Input: built definitions and findings. Output: reusable bodies identified by MirDefKey.
+// One key identifies one body; warm rebuilding reuses body storage.
+// Must not re-bind definitions or maintain a second body map in a consumer.
+
 #pragma warning disable SA1402 // The key belongs to the program.
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>The key of a MIR body (R3 decision 6): its definition's symbol, which body of it and the index of a Closure or default
-/// template (0 otherwise). A module's top-level statements (SPEC 22.2.1) have no symbol; their index is the module's ordinal. R7's
-/// declaration table replaces the symbol.</summary>
+/// <summary>The key of a MIR body (R3 decision 6): its definition's symbol (a Closure's own, an accessor's the function its calls
+/// target), which body of it and the index of a default template (0 otherwise), so that a callee's symbol and its declaration name its
+/// body. A module's top-level statements (SPEC 22.2.1) have no symbol; their index is the module's ordinal. R7's declaration table
+/// replaces the symbol.</summary>
 /// <param name="Decl">The definition, or null for a module's top-level statements.</param>
 /// <param name="Kind">The body of the definition.</param>
-/// <param name="Index">The index of a Closure or default template, or the module of top-level statements.</param>
+/// <param name="Index">The index of a default template, or the module of top-level statements.</param>
 internal readonly record struct MirDefKey(BindingSymbol? Decl, MirBodyKind Kind, int Index = 0);
 
 /// <summary>The MIR bodies of a compilation by <see cref="MirDefKey"/>, with the records their construction and validation made.
@@ -18,7 +24,7 @@ internal readonly record struct MirDefKey(BindingSymbol? Decl, MirBodyKind Kind,
 internal sealed class MirProgram
 {
     private readonly Dictionary<MirDefKey, MirBody> bodies = new();
-    private readonly HashSet<SourceRef> reported = new();
+    private readonly HashSet<Problem> reported = new();
     private MirBody[] pool = [];
     private int count;
 
@@ -28,9 +34,9 @@ internal sealed class MirProgram
     /// <summary>Gets or sets the Binding pass the bodies were built from (0: none).</summary>
     internal ulong Version { get; set; }
 
-    /// <summary>Gets the located Unsupported records of construction, one per location (plan 6.2), which the <c>mir</c> pipeline
-    /// publishes as <c>Unsupported_Kd</c>.</summary>
-    internal List<SourceRef> Unsupported { get; } = [];
+    /// <summary>Gets the located records of construction, one per code and location, which the <c>mir</c> pipeline publishes: an
+    /// Unsupported form's <c>Unsupported_Kd</c> (plan 6.2) and the default expansion limit's <c>DefaultExpansionLimit_Kd</c> (Resource).</summary>
+    internal List<Problem> Records { get; } = [];
 
     /// <summary>Gets the validator's findings, which the <c>mir</c> pipeline publishes as <c>InternalInvariant_Kd</c>.</summary>
     internal List<MirFinding> Findings { get; } = [];
@@ -41,18 +47,19 @@ internal sealed class MirProgram
     {
         this.bodies.Clear();
         this.reported.Clear();
-        this.Unsupported.Clear();
+        this.Records.Clear();
         this.Findings.Clear();
         this.count = 0;
     }
 
-    /// <summary>Records an Unsupported form at its location, once however many bodies meet it.</summary>
-    /// <param name="site">The form's syntax.</param>
-    internal void Report(SourceRef site)
+    /// <summary>Records a problem of construction at its location, once however many bodies meet it.</summary>
+    /// <param name="site">The syntax.</param>
+    /// <param name="code">An Unsupported form, or the default expansion limit.</param>
+    internal void Report(SourceRef site, DiagnosticCode code = DiagnosticCode.Unsupported_Kd)
     {
-        if (this.reported.Add(site))
+        if (this.reported.Add(new(code, site)))
         {
-            this.Unsupported.Add(site);
+            this.Records.Add(new(code, site));
         }
     }
 

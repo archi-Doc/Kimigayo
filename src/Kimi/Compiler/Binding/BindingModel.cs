@@ -1,5 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns Binding's result vocabulary, symbols and published pair-binder contracts.
+// Input: declaration and body Binding decisions. Output: semantic results and admitted Semantics cases.
+// A symbol or pair binder has one meaning shared by all readers; vocabularies remain closed.
+// Must not embed MIR state or make downstream phases repeat Binding decisions.
+
 using System.Numerics;
 using Kimi.Compiler.Parsing;
 

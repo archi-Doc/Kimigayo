@@ -1,0 +1,11 @@
+struct Meter
+    public var level: i32 = 0
+    public init() => ()
+func counters(meter: uniq/Meter, values: uniq/[3 of i32], i: isize) -> i32
+    var count = 0
+    let before = count++
+    let after = ++count
+    meter.level += before
+    values[i] -= after
+    values[1] = count
+    return meter.level--

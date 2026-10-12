@@ -15,7 +15,8 @@ internal static class CompilerPipelineMeasurements
     private const int Warmups = 8;
     private const int SampleCount = 7;
     private const int Iterations = 8;
-    private static readonly string[] StageNames = ["PreparationTokenizerParser", "BindingAndStartup", "ControlFlowAndOwnership", "EmissionLowering", "LlvmIrWriting"];
+    private const int MirStage = 2;
+    private static readonly string[] StageNames = ["PreparationTokenizerParser", "BindingAndStartup", "MirPublishBuildValidate", "ControlFlowAndOwnership", "EmissionLowering", "LlvmIrWriting"];
 
     internal static void Run()
     {
@@ -55,6 +56,9 @@ internal static class CompilerPipelineMeasurements
                 operations,
                 totalMeanMilliseconds = Milliseconds(totalTicks, operations),
                 totalMeanAllocatedBytes = (double)totalBytes / operations,
+                benchmark.MirBodies,
+                mirMeanMicrosecondsPerBody = stages[MirStage].meanMilliseconds * 1000 / benchmark.MirBodies,
+                mirMeanAllocatedBytesPerBody = stages[MirStage].meanAllocatedBytes / benchmark.MirBodies,
                 stages,
                 samples,
             });
@@ -62,7 +66,7 @@ internal static class CompilerPipelineMeasurements
 
         var report = new
         {
-            schemaVersion = 1,
+            schemaVersion = 2,
             measuredAtUtc = DateTimeOffset.UtcNow,
             compiler = Compilation.CompilerVersion,
             benchmarkModule = typeof(CompilerPipelineMeasurements).Module.ModuleVersionId,
@@ -88,8 +92,8 @@ internal static class CompilerPipelineMeasurements
 
     internal static void Check()
     {
-        Span<long> timestamps = stackalloc long[6];
-        Span<long> allocations = stackalloc long[6];
+        Span<long> timestamps = stackalloc long[CompilerPipelineBenchmark.Boundaries];
+        Span<long> allocations = stackalloc long[CompilerPipelineBenchmark.Boundaries];
         foreach (var benchmark in Inputs())
         {
             benchmark.Setup();
@@ -111,7 +115,7 @@ internal static class CompilerPipelineMeasurements
             var sample = Measure(benchmark, 2);
             Require(sample.StageTicks.Sum() == sample.TotalTicks, "Stage times do not cover the complete interval.");
             Require(sample.StageAllocatedBytes.Sum() == sample.TotalAllocatedBytes, "Stage allocations do not cover the complete interval.");
-            Console.WriteLine($"PASS five-stage compiler pipeline: functions={benchmark.Functions}, branches={benchmark.Branches}; IR equivalence and accounting");
+            Console.WriteLine($"PASS six-stage compiler pipeline: functions={benchmark.Functions}, branches={benchmark.Branches}, MIR bodies={benchmark.MirBodies}; IR equivalence and accounting");
         }
     }
 
@@ -120,8 +124,8 @@ internal static class CompilerPipelineMeasurements
         var stageTicks = new long[StageNames.Length];
         var stageBytes = new long[StageNames.Length];
         var collections = new int[3];
-        Span<long> timestamps = stackalloc long[6];
-        Span<long> allocations = stackalloc long[6];
+        Span<long> timestamps = stackalloc long[CompilerPipelineBenchmark.Boundaries];
+        Span<long> allocations = stackalloc long[CompilerPipelineBenchmark.Boundaries];
         for (var generation = 0; generation < collections.Length; generation++)
         {
             collections[generation] = GC.CollectionCount(generation);

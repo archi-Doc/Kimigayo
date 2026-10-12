@@ -123,7 +123,8 @@ public class SyntaxIdTest
     public void RenumberingMovesEachRowWithItsNode()
     {
         // A larger statement of another compilation replaces one: the nodes after it take new ids, the transplanted ones bring
-        // their rows from the donor's table, and a parsed node that left the tree loses its row; renumbering drops its plan row.
+        // their rows from the donor's table, and a parsed node that left the tree loses its row; renumbering drops its plan row, so
+        // the plan rows are exactly those of the nodes that stay (the HIR publisher's rows, such as a number literal's Folded, included).
         var c = MinimalEmissionTest.Analyze(Source);
         var table = c.Kotonoha.Syntax;
         var statement = Statement(c, "p");
@@ -136,7 +137,7 @@ public class SyntaxIdTest
         Assert.NotEqual(default, Facts(donor));
         Assert.Contains(removed, x => !HirTables.PlanOf(x).Equals(default(PlanRow)));
         Assert.Contains(Enumerable.Range(0, nodes.Length), i => !facts[i].Plan.Equals(default(PlanRow)) && !removed.Contains(nodes[i]));
-        var plans = table.Hir.PlanCount;
+        var rows = nodes.Select(static x => x.SyntaxOwner!.Hir.PlanIndexes[x.SyntaxId] != 0).ToArray();
 
         table.Number(c.Kotonoha.RootKoto, table.Module);
         AssertConsistent(table);
@@ -159,7 +160,7 @@ public class SyntaxIdTest
         var transplanted = PreOrder(donor);
         Assert.All(transplanted, x => Assert.Same(table, x.SyntaxOwner));
         Assert.Contains(Enumerable.Range(0, nodes.Length), i => reachable.Contains(nodes[i]) && !transplanted.Contains(nodes[i]) && nodes[i].SyntaxId != ids[i]);
-        Assert.True(table.Hir.PlanCount < plans);
+        Assert.Equal(Enumerable.Range(0, nodes.Length).Count(i => rows[i] && !removed.Contains(nodes[i])), table.Hir.PlanCount);
     }
 
     [Fact]
