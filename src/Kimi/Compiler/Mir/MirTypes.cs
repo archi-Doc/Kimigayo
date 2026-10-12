@@ -2,7 +2,7 @@
 
 // Owns the Type facts needed by MIR construction and analyses.
 // Input: published Types and their stored shapes. Output: the destruction walk and the drop, raw, exclusivity, agreement, borrow-kind and
-// pointer-cast facts.
+// pointer-cast facts, and the Types a call passes and an aggregate's operands take.
 // Inline storage is traversed under each fact's documented bounds and Type rules; what destroying a value does is the one Destruction walk.
 // Must not inspect source syntax or substitute new Binding decisions.
 
@@ -146,46 +146,76 @@ internal static class MirTypes
     /// <returns>The Cast's kind.</returns>
     internal static MirCastKind PointerCast(BoundType source) => source.Semantics == SemanticsKind.Raw ? MirCastKind.Pointer : MirCastKind.IntToPointer;
 
-    /// <summary>Gets whether two Types agree, the one Type agreement of MIR: equal but for the Origins and Origin arguments of either Type
-    /// and its components, which an assignment or a call relates instead of equating (SPEC 15.3) and the ownership analysis checks (R4).
-    /// Interned Types that carry no Origin agree only when identical; an unknown Type (null) agrees with any.</summary>
+    /// <summary>Gets whether two Types agree, the one Type agreement of MIR: the structural part of a value fit (<see cref="TyCtxt.Relate"/>),
+    /// equal but for the Origins and Origin arguments of either Type and its components, which an assignment or a call relates instead of
+    /// equating (SPEC 15.3, 15.6.1). Interned Types that carry no Origin agree only when identical; an unknown Type (null) agrees with any.</summary>
     /// <param name="left">A Type.</param>
     /// <param name="right">The other Type.</param>
     /// <returns>Whether they agree.</returns>
-    internal static bool Agree(BoundType? left, BoundType? right)
+    internal static bool Agree(BoundType? left, BoundType? right) => TyCtxt.Relate(left, right);
+
+    /// <summary>Gets a Type below its reference and pair layers (<see cref="TyCtxt.Layer"/>): what a comparison compares (SPEC 13.4) and the
+    /// Function Type a Value callee calls.</summary>
+    /// <param name="type">The Type.</param>
+    /// <returns>The Type below its layers.</returns>
+    internal static BoundType? Terminal(BoundType? type)
+        => TyCtxt.Layer(type, out var below, out _) is var _ && !ReferenceEquals(below, type) ? Terminal(below) : type;
+
+    /// <summary>Gets the Type a Call passes at an argument position, or at -1 the Type it gives (SPEC 7.3): a Fn, Requirement or Virtual
+    /// callee's function's parameter at the slot the position passes (the receiver first) under its Subst, and its result; a default
+    /// template's (plan 5.6.2) parameters before its own in slot order, each taken by a shared reference, and its parameter's Type; a Value
+    /// callee of a Function Type its inputs and result.</summary>
+    /// <param name="callee">The callee.</param>
+    /// <param name="value">The Type of a Value callee's operand.</param>
+    /// <param name="position">The argument position, or -1.</param>
+    /// <param name="count">The arguments the callee takes; -1 without a signature (an intrinsic, a Closure or a function item value).</param>
+    /// <returns>The Type; null past the arguments or where the Subst does not instantiate it.</returns>
+    internal static BoundType? Parameter(in MirCallee callee, BoundType? value, int position, out int count)
     {
-        if (ReferenceEquals(left, right) || left is null || right is null)
+        if (callee.Symbol is { } function && callee.Kind != MirCalleeKind.Intrinsic)
         {
-            return true;
+            var template = callee.Kind == MirCalleeKind.Fn ? callee.Arg - 1 : -1;
+            var slot = template < 0 && position >= 0 ? MirCallee.Slot(function, position) : position;
+            var type = TyCtxt.Signature(function, callee.Subst, position < 0 ? template : slot, out count);
+            count = template < 0 ? count : template;
+            return type;
         }
 
-        if ((!left.CarriesOrigin && !right.CarriesOrigin) || left.Kind != right.Kind || left.Semantics != right.Semantics ||
-            !ReferenceEquals(left.Symbol, right.Symbol))
+        if (callee.Kind != MirCalleeKind.Value || Terminal(value) is not { Kind: BoundTypeKind.Function, Components: [var inputs, var result] })
         {
-            return false;
+            count = -1;
+            return null;
         }
 
-        if (left.Length != right.Length || !ReferenceEquals(left.LengthExpression, right.LengthExpression) || left.ResultMode != right.ResultMode)
+        count = inputs.Components.Count;
+        if (position < 0)
         {
-            return false;
+            return result;
         }
 
-        if (!ReferenceEquals(left.ClosureContext, right.ClosureContext) || left.Components.Count != right.Components.Count ||
-            !left.LengthArguments.AsSpan().SequenceEqual(right.LengthArguments))
-        {
-            return false;
-        }
-
-        for (var i = 0; i < left.Components.Count; i++)
-        {
-            if (!Agree(left.Components[i], right.Components[i]))
-            {
-                return false;
-            }
-        }
-
-        return true;
+        return position < count ? inputs.Components[position] : null;
     }
+
+    /// <summary>Gets the Type of an aggregate's operand as the Place of the aggregate's Type it initializes projects it: a Tuple's element,
+    /// a Closure's capture, a struct's base then its own Fields, a Case's payload, a fixed array's element.</summary>
+    /// <param name="body">The body.</param>
+    /// <param name="aggregate">The Aggregate rvalue.</param>
+    /// <param name="type">The aggregate's Type, its rvalue's or one agreeing with it.</param>
+    /// <param name="index">The operand.</param>
+    /// <returns>The Type, or null when the aggregate's Type does not admit it.</returns>
+    internal static BoundType? Component(MirBody body, in MirRvalue aggregate, BoundType type, int index) => (MirAggregateKind)aggregate.Op switch
+    {
+        MirAggregateKind.FixedArray => type.Components[0],
+        MirAggregateKind.Adt when AdtDef.IsEnum(type) => body.ProjectedType(
+            body.ProjectedType(type, MirProjectionKind.Downcast, aggregate.Arg),
+            MirProjectionKind.Field,
+            index),
+        MirAggregateKind.Adt when AdtDef.Base(type) is { } parent => index == 0 ? parent : body.ProjectedType(
+            type,
+            MirProjectionKind.Field,
+            index - 1),
+        _ => body.ProjectedType(type, MirProjectionKind.Field, index),
+    };
 
     /// <summary>Gets whether a value of a Type holds a raw pointer, an rc handle or a Weak of one at any depth, so that reading it from an
     /// immutable static obtains authority from the environment (SPEC 8.4.10.2); a referent reached through the value counts too.</summary>

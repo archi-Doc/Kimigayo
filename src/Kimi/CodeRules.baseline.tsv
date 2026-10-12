@@ -1623,7 +1623,6 @@ KR3001	T:Kimi.Compiler.Binding	line:aed974bc721c7177	1	src/Kimi/Compiler/Binding
 KR3001	T:Kimi.Compiler.Binding	line:aef27c796a0a64f8	1	src/Kimi/Compiler/Binding/Binding.CallRelations.cs
 KR3001	T:Kimi.Compiler.Binding	line:af0d6c9ed2579032	1	src/Kimi/Compiler/Binding/Binding.TypeRelations.cs
 KR3001	T:Kimi.Compiler.Binding	line:af1240640e78d777	1	src/Kimi/Compiler/Binding/Binding.Patterns.cs
-KR3001	T:Kimi.Compiler.Binding	line:af1acbf8422a39ab	1	src/Kimi/Compiler/Binding/Binding.CallRelations.cs
 KR3001	T:Kimi.Compiler.Binding	line:af23d15d5637fcef	1	src/Kimi/Compiler/Binding/Binding.ValueCalls.cs
 KR3001	T:Kimi.Compiler.Binding	line:af419f8d5681d79c	1	src/Kimi/Compiler/Binding/Binding.ValueCalls.cs
 KR3001	T:Kimi.Compiler.Binding	line:af5c55b40d02cdea	1	src/Kimi/Compiler/Binding/Binding.VirtualEffects.cs
