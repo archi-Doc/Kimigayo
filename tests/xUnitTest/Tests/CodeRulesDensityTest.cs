@@ -53,7 +53,8 @@ public class CodeRulesDensityTest
         Assert.Contains(observations, x => x.Properties["scope"] == "T:C");
         Assert.Equal(observations[0].Properties["anchor"], observations[1].Properties["anchor"]);
         var baseline = string.Join('\n', observations.Select(x => string.Join('\t', x.Properties["rule"], x.Properties["scope"], x.Properties["anchor"], "1", x.Properties["path"])));
-        Assert.Empty(await CodeRulesTestHelper.Analyze(text.Replace("\n", "\r\n", StringComparison.Ordinal), CodeRulesTestHelper.Options("Verify", baseline)));
+        var verified = await CodeRulesTestHelper.Analyze(text.Replace("\n", "\r\n", StringComparison.Ordinal), CodeRulesTestHelper.Options("Verify", baseline));
+        Assert.Equal("KR9000", Assert.Single(verified).Id);
     }
 
     [Theory]
@@ -117,7 +118,7 @@ public class CodeRulesDensityTest
         var report = await CodeRulesTestHelper.Analyze(source, Options("Report"));
         var observed = Assert.Single(report, x => x.Id == "KR9001");
         var baseline = string.Join('\t', "KR3002", observed.Properties["scope"], observed.Properties["anchor"], "1", observed.Properties["path"]);
-        Assert.Empty(await CodeRulesTestHelper.Analyze(source, Options("Verify", baseline)));
+        Assert.Equal("KR9000", Assert.Single(await CodeRulesTestHelper.Analyze(source, Options("Verify", baseline))).Id);
         var compilation = CodeRulesTestHelper.Compilation(source, source.Replace("M(", "N(", StringComparison.Ordinal));
         Assert.Equal(2, (await CodeRulesTestHelper.Analyze(compilation, Options(baseline: baseline))).Length);
     }

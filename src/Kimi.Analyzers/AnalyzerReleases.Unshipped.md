@@ -23,7 +23,7 @@ KR2010 | CodeRules | Error | Optional parameter count
 KR3001 | CodeRules | Error | Line length
 KR3002 | CodeRules | Error | Conditional nesting
 KR3003 | CodeRules | Error | Computed deconstruction
-KR9000 | CodeRules | Info | Complete report
+KR9000 | CodeRules | Info | Analysis complete (Verify and Report)
 KR9001 | CodeRules | Info | Observation
 KR9002 | CodeRules | Warning | Stale baseline or configuration (Error in Verify)
 KR9003 | CodeRules | Error | Invalid configuration

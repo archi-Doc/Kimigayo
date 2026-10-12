@@ -26,7 +26,11 @@ internal static class CodeRulesTestHelper
             References,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-    internal static AnalyzerOptions Options(string mode = "Enforce", string baseline = "", Action<Dictionary<string, string>>? configure = null)
+    internal static AnalyzerOptions Options(
+        string mode = "Enforce",
+        string baseline = "",
+        Action<Dictionary<string, string>>? configure = null,
+        Action<Dictionary<string, string>>? overrideEffective = null)
     {
         var config = File.ReadAllText(Path.Combine(Repository.Root, "src/Kimi/CodeRules.globalconfig"));
         var path = Path.Combine(Repository.Root, "src/Kimi/CodeRules.globalconfig");
@@ -44,6 +48,7 @@ internal static class CodeRulesTestHelper
             ["build_property.KimiRepositoryRoot"] = values["build_property.KimiRepositoryRoot"],
             ["build_property.KimiCodeRulesMode"] = values["build_property.KimiCodeRulesMode"],
         };
+        overrideEffective?.Invoke(effective);
         return new AnalyzerOptions(
             [new TextFile("CodeRules.globalconfig", config), new TextFile("CodeRules.baseline.tsv", baseline)],
             new OptionsProvider(effective));

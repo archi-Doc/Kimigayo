@@ -281,6 +281,20 @@ rules that result from them.
   declarations, `(var a, T b) = (...)`, which otherwise evades the rule; nested, discarded and existing targets stay
   outside. The source has no such declaration, so the baseline is unchanged.
 
+- **CR-A9b** (review session, 2026-10-12). Verification trusted a successful build without evidence that the analyzer
+  ran on the checksummed policy. Verify now also emits KR9000 and verify reads its error log as a complete report, so a
+  build without the analyzer, or with other configuration or baseline bytes, fails; Enforce stays silent in ordinary
+  and IDE builds. Effective kimi_code_rules options must equal those parsed from the checksummed CodeRules.globalconfig
+  (KR9003 otherwise): a globalconfig with a higher level could relax policy outside CR-A8's comparison of that file.
+  Kimi no longer discovers .globalconfig files above the project, which could also change built-in severities that
+  analyzer options do not expose. Without discovery, Roslyn's targets stop passing GlobalAnalyzerConfigFiles items
+  (the first build failed KR9003 on every option), so CodeRules.globalconfig is an EditorConfigFiles item, as the SDK
+  passes its own analysis-level global configs. verify-commit resolves its evidence path once, and the approval
+  restore disables build servers before its checkout is removed. Rejected: case-insensitive suppression IDs (Roslyn
+  4.14 matches IDs case-sensitively; a lowercase ID suppresses nothing) and per-rule baseline anchor validation (a row
+  of the wrong kind cannot match and already fails as stale). The trailers of 755adbdd and f839642a predate CR-A8's
+  format; pushed history is not rewritten.
+
 ## R2b (2026-10-11, main session, as recommended)
 
 - **R2b-D1** `BoundType` stays the Type representation until R7; `TyCtxt` owns interning and `Subst` converts.

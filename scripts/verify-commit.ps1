@@ -2,6 +2,7 @@
 [CmdletBinding()]
 param([Parameter(Mandatory)][string] $Evidence, [string] $Commit = 'HEAD')
 $ErrorActionPreference = 'Stop'
+$Evidence = (Resolve-Path -LiteralPath $Evidence).ProviderPath
 . (Join-Path $PSScriptRoot 'verification-inputs.ps1')
 . (Join-Path $PSScriptRoot 'code-rules-report.ps1')
 . (Join-Path $PSScriptRoot 'code-rules-approval.ps1')

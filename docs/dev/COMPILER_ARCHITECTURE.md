@@ -158,6 +158,8 @@ and baseline cannot cover the same member/rule. Invalid targets/rules, out-of-sc
 needless/exceeded bounds and unknown removal stages are KR9005. Conditional attribute uses are absent from product
 metadata. All KR descriptors are NotConfigurable. Enforce reports stale rows as
 warnings, Verify as errors, and Report publishes complete observations for scripts; verification checks suppression.
+Verify and Report end with the KR9000 completion marker, which verification requires. Effective kimi_code_rules
+options must equal CodeRules.globalconfig, and Kimi does not discover other .globalconfig files (CR-A9b).
 The analyzer reads each file through the compilation's shared semantic model; KR1 resolves only names that can denote
 a forbidden type or member (CR-A9).
 Configuration changes, new/increased baseline rows, new/increased exceptions and later removal stages require owner

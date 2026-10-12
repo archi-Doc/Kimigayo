@@ -2,7 +2,7 @@
 
 // Owns immutable configuration for one analyzer compilation.
 // Input: Roslyn global options and the two AdditionalFiles. Output: validated paths, limits, lists and byte identities.
-// Parse once; use the same physical globalconfig for effective options and checksum evidence.
+// Parse once; effective options must equal the checksummed globalconfig, so no other config can change policy.
 // Must not read the filesystem or turn invalid/missing input into a silent default.
 
 using System.Collections.Immutable;
@@ -78,6 +78,19 @@ internal sealed class CodeRulesConfiguration
             .Add("configChecksum", Hex(config.GetChecksum())).Add("configAlgorithm", config.ChecksumAlgorithm.ToString())
             .Add("baselineChecksum", Hex(baseline.GetChecksum())).Add("baselineAlgorithm", baseline.ChecksumAlgorithm.ToString());
         var result = new CodeRulesConfiguration(root, mode, baselineFile!, baseline, configFile!, config, checksums);
+
+        // Another globalconfig with a higher level could otherwise change effective policy without changing this file.
+        // Only the global section is read, so the validated root supplies the absolute path Roslyn requires.
+        var parsed = AnalyzerConfig.Parse(config, Path.Combine(root, "CodeRules.globalconfig"));
+        var declared = AnalyzerConfigSet.Create(new[] { parsed }).GlobalConfigOptions.AnalyzerOptions;
+        foreach (var key in declared.Keys.Concat(global.Keys).Where(x => x.StartsWith(Prefix, StringComparison.Ordinal)).Distinct())
+        {
+            if (!declared.TryGetValue(key, out var expected) || !global.TryGetValue(key, out var actual) || expected != actual)
+            {
+                errors.Add(Diagnostic.Create(CodeRule.Invalid, result.OptionLocation(key.Substring(Prefix.Length)), "Option differs from CodeRules.globalconfig: " + key));
+            }
+        }
+
         var requiredLimits = new HashSet<string>(CodeRule.All.Select(x => x.LimitOption).Where(x => x.Length != 0), StringComparer.Ordinal);
         foreach (var key in global.Keys)
         {

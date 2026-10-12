@@ -1,7 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns one compilation's analysis, file batches and complete baseline reconciliation.
-// Input: Roslyn compilation callbacks and validated configuration. Output: diagnostics and a complete Report marker.
+// Input: Roslyn compilation callbacks and validated configuration. Output: diagnostics and, in Verify and Report,
+// the completion marker that proves the analysis ran on the checksummed policy.
 // Each file publishes observations once; completion sorts and merges once after all callbacks finish.
 // Must not share mutable compilation state, perform file I/O or issue a completion marker after invalid input/cancellation.
 
@@ -86,7 +87,7 @@ public sealed partial class CodeRulesAnalyzer : DiagnosticAnalyzer
             batches.Clear();
             baseline.Complete(observations, config.Mode, context.ReportDiagnostic, context.CancellationToken);
             context.CancellationToken.ThrowIfCancellationRequested();
-            if (config.Mode == "Report")
+            if (config.Mode != "Enforce")
             {
                 context.ReportDiagnostic(Diagnostic.Create(
                     CodeRule.Complete,

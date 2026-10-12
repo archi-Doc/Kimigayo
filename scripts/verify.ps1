@@ -100,7 +100,8 @@ function Invoke-Build([string] $configuration) {
     & dotnet build (Join-Path $repo $buildTarget) --no-restore --no-incremental -c $configuration --disable-build-servers -m:1 -warnaserror -p:EmitCompilerGeneratedFiles=false -p:KimiCodeRulesMode=Verify "-p:KimiCodeRulesLog=$sarif" -v quiet *> $log
     $ok = $LASTEXITCODE -eq 0
     if ($ok) {
-        try { $null = Read-KimiCodeRulesSarif $sarif $repo }
+        # The completion marker proves the analyzer ran on the current configuration and baseline.
+        try { $null = Read-KimiCodeRulesSarif $sarif $repo -RequireComplete }
         catch { $_ | Out-String | Add-Content -LiteralPath $log; $ok = $false }
     }
     Add-Step "build $configuration" $ok $log $timer.Elapsed.TotalSeconds

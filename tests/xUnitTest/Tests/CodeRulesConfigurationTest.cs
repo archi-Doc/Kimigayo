@@ -34,6 +34,27 @@ public class CodeRulesConfigurationTest
         Assert.All(diagnostics, x => Assert.Equal("KR9003", x.Id));
     }
 
+    [Theory]
+    [InlineData("max_statements", "1000")]
+    [InlineData("deny_members.extra", "Kimi.Compiler.Parsing.Koto.Parent")]
+    [InlineData("stage", null)]
+    public async Task EffectiveOptionsComeOnlyFromTheChecksummedFile(string option, string? value)
+    {
+        var diagnostics = await CodeRulesTestHelper.Analyze("class C { }", CodeRulesTestHelper.Options("Report", overrideEffective: x =>
+        {
+            if (value is null)
+            {
+                x.Remove(CodeRulesConfiguration.Prefix + option);
+            }
+            else
+            {
+                x[CodeRulesConfiguration.Prefix + option] = value;
+            }
+        }));
+        Assert.Contains(diagnostics, x => x.Id == "KR9003" && x.GetMessage().Contains(CodeRulesConfiguration.Prefix + option, StringComparison.Ordinal));
+        Assert.All(diagnostics, x => Assert.Equal("KR9003", x.Id));
+    }
+
     [Fact]
     public async Task ReportCompletionCarriesCurrentAdditionalFileChecksums()
     {

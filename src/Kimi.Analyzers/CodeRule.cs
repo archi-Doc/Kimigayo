@@ -67,7 +67,7 @@ internal sealed class CodeRule
         new(KR3003, "density", CodeRuleMeasure.Count, string.Empty),
     ];
 
-    internal static readonly DiagnosticDescriptor Complete = Descriptor("KR9000", "Code rules report complete", "Code rules report complete", DiagnosticSeverity.Info, WellKnownDiagnosticTags.CompilationEnd);
+    internal static readonly DiagnosticDescriptor Complete = Descriptor("KR9000", "Code rules analysis complete", "Code rules analysis complete", DiagnosticSeverity.Info, WellKnownDiagnosticTags.CompilationEnd);
     internal static readonly DiagnosticDescriptor Observation = Descriptor("KR9001", "Code rule observation", "{0}", DiagnosticSeverity.Info);
     internal static readonly DiagnosticDescriptor Stale = Descriptor("KR9002", "Stale code rules entry", "{0}; remove or reduce the obsolete entry", DiagnosticSeverity.Warning);
     internal static readonly DiagnosticDescriptor Invalid = Descriptor("KR9003", "Invalid code rules configuration", "{0}; correct the code rules configuration", DiagnosticSeverity.Error);

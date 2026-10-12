@@ -155,7 +155,7 @@ public class CodeRulesArchitectureTest
         var stale = Assert.Single(diagnostics, x => x.Id == "KR9002");
         Assert.Equal(severity, stale.Severity);
         Assert.Equal("CodeRules.globalconfig", stale.Location.GetLineSpan().Path);
-        Assert.Equal(mode == "Report", diagnostics.Any(x => x.Id == "KR9000"));
+        Assert.Equal(mode != "Enforce", diagnostics.Any(x => x.Id == "KR9000"));
         Assert.DoesNotContain(diagnostics, x => x.Id == "KR9003");
     }
 

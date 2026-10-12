@@ -28,11 +28,12 @@ $config = [regex]::Replace($config, '(?m)^kimi_code_rules\.(?:layer\.|deny_|allo
     <KimiCodeRulesMode>Report</KimiCodeRulesMode>
     <ErrorLog>`$(KimiCodeRulesLog),version=2.1</ErrorLog>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <DiscoverGlobalAnalyzerConfigFiles>false</DiscoverGlobalAnalyzerConfigFiles>
   </PropertyGroup>
   <ItemGroup>
     <Analyzer Include="$analyzer" />
     <AdditionalFiles Include="src/Kimi/CodeRules.globalconfig;src/Kimi/CodeRules.baseline.tsv" />
-    <GlobalAnalyzerConfigFiles Include="src/Kimi/CodeRules.globalconfig" />
+    <EditorConfigFiles Include="src/Kimi/CodeRules.globalconfig" />
     <CompilerVisibleProperty Include="KimiRepositoryRoot" />
     <CompilerVisibleProperty Include="KimiCodeRulesMode" />
   </ItemGroup>
@@ -49,13 +50,16 @@ $cases = @(
     @{ name = 'type'; source = '[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeRules", "KR9004")] class C { }'; suppressed = $true },
     @{ name = 'assembly'; source = '[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage("CodeRules", "KR9004", Scope = "type", Target = "~T:C")] [System.Diagnostics.CodeAnalysis.SuppressMessage("CodeRules", "KR2001")] class C { }'; suppressed = $true },
     @{ name = 'unconditional'; source = '[System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("CodeRules", "KR9004")] class C { }'; suppressed = $true },
-    @{ name = 'builtin'; source = 'class C { [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE0052")] private int value; public C(int input) { this.value = input; } }'; config = "`ndotnet_diagnostic.IDE0052.severity = error"; suppressed = $true; diagnostic = 'IDE0052' }
+    @{ name = 'builtin'; source = 'class C { [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE0052")] private int value; public C(int input) { this.value = input; } }'; config = "`ndotnet_diagnostic.IDE0052.severity = error"; suppressed = $true; diagnostic = 'IDE0052' },
+    # A discovered .globalconfig would outrank the policy file; Kimi does not discover them.
+    @{ name = 'ancestor-globalconfig'; source = 'class C { private int value; public C(int input) { this.value = input; } }'; config = "`ndotnet_diagnostic.IDE0052.severity = error"; ancestor = "is_global = true`nglobal_level = 100`ndotnet_diagnostic.IDE0052.severity = none"; suppressed = $false; diagnostic = 'IDE0052' }
 )
 $results = [Collections.Generic.List[object]]::new()
 foreach ($case in $cases) {
     [IO.File]::WriteAllText($source, $case.source)
     [IO.File]::WriteAllText($configPath, $config + $case.config)
     [IO.File]::WriteAllText((Join-Path $root '.editorconfig'), [string]$case.editor)
+    [IO.File]::WriteAllText((Join-Path $root '.globalconfig'), [string]$case.ancestor)
     $sarif = Join-Path $Evidence ($case.name + '.sarif')
     $log = Join-Path $Evidence ($case.name + '.log')
     $extra = @($case.extra)
@@ -85,13 +89,14 @@ foreach ($case in @(
     [IO.File]::WriteAllText($source, $case.source)
     [IO.File]::WriteAllText($configPath, $config)
     [IO.File]::WriteAllText((Join-Path $root '.editorconfig'), '')
+    [IO.File]::WriteAllText((Join-Path $root '.globalconfig'), '')
     [IO.File]::WriteAllText($baseline, "KR2001`tT:C`tmember:M:C.M`t7`tsrc/Kimi/Fixture.cs`n")
     $sarif = Join-Path $Evidence ($case.name + '.sarif')
     $log = Join-Path $Evidence ($case.name + '.log')
     & dotnet build $project --no-restore --no-incremental -c Release --disable-build-servers -m:1 -warnaserror -warnnotaserror:KR9002 "-p:KimiCodeRulesMode=$($case.mode)" "-p:KimiCodeRulesLog=$sarif" *> $log
     $exitCode = $LASTEXITCODE
     if (($exitCode -eq 0) -ne $case.success) { throw "Unexpected stale-entry build outcome: $log" }
-    $records = Read-KimiCodeRulesSarif $sarif $root -RequireComplete:($case.mode -ceq 'Report')
+    $records = Read-KimiCodeRulesSarif $sarif $root -RequireComplete
     $stale = @($records | Where-Object ruleId -CEQ 'KR9002')
     if ($stale.Count -ne 1 -or $stale[0].level -cne $case.level) { throw "Stale-entry severity changed: $sarif" }
     if ($case.success) {

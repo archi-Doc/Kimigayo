@@ -43,7 +43,7 @@ function Get-KimiCodeRulesCommitReport([string] $Root, [string] $Commit, [string
         $null = [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($Evidence))
         Push-Location $snapshot
         try {
-            & dotnet restore 'src/Kimi/Kimi.csproj' --disable-parallel *> ($Evidence + '-restore.log')
+            & dotnet restore 'src/Kimi/Kimi.csproj' --disable-parallel --disable-build-servers *> ($Evidence + '-restore.log')
             if ($LASTEXITCODE -ne 0) { throw "Approval report restore failed: $Evidence-restore.log" }
             $result = Invoke-KimiCodeRulesReport $snapshot $Evidence
         }
@@ -77,7 +77,6 @@ function Assert-KimiCodeRulesCommitApproval([string] $Root, [string] $Commit, [s
     $beforeConfig = Invoke-KimiVerificationGit $Root @('rev-parse', "${parent}:$config")
     $afterConfig = Invoke-KimiVerificationGit $Root @('rev-parse', "${Commit}:$config")
     if ($beforeConfig -cne $afterConfig) { throw 'Code-Rules-Approved trailer required: CodeRules.globalconfig changed.' }
-    $Evidence = [IO.Path]::GetFullPath($Evidence)
     $audit = Join-Path $Evidence ('code-rules-approval-' + [Guid]::NewGuid().ToString('N'))
     $null = [IO.Directory]::CreateDirectory($audit)
     $baseline = 'src/Kimi/CodeRules.baseline.tsv'
