@@ -350,9 +350,7 @@ internal sealed partial class MirBuilder
     {
         if (Completes(node) && MirTypes.MayNeedDrop(this.body.TypeOf(target)))
         {
-            var next = this.body.AddBlock();
-            this.body.Terminate(this.current, MirTerminator.Drop(target, next, this.Info(node)));
-            this.current = next;
+            this.DropAt(target, this.Info(node));
         }
 
         this.Use(target, value, node);

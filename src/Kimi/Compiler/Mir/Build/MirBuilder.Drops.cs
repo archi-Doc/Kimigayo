@@ -125,14 +125,20 @@ internal sealed partial class MirBuilder
                 this.body.Push(this.current, MirStatement.Of(MirStatementKind.StorageDead, new(registration.Local), source));
                 break;
             case Cleanup.Drop:
-                var next = this.body.AddBlock();
-                this.body.Terminate(this.current, MirTerminator.Drop(new(registration.Local), next, source));
-                this.current = next;
+                this.DropAt(new(registration.Local), source);
                 break;
             default:
                 this.Deferred(registration);
                 break;
         }
+    }
+
+    // A Drop of a Place from the current block (SPEC 16.3); building goes on in the block after it.
+    private void DropAt(MirPlace place, in SourceInfo source)
+    {
+        var next = this.body.AddBlock();
+        this.body.Terminate(this.current, MirTerminator.Drop(place, next, source));
+        this.current = next;
     }
 
     // SPEC 16.1: a defer body where its scope is left, built once per target of the drop tree it is in (plan 5.6.4), in the scope that
