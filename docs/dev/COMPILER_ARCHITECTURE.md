@@ -65,7 +65,7 @@ Analyzer A1, each entry file begins with the component's contract (AGENTS). Path
 | Child walk | `ForEachChildSlot`, shared by visiting, collecting and replacing | `Parsing/Koto/Common/ChildSlots.cs` |
 | Syntax identity | Dense pre-order `SyntaxId` per module; `SourceRef(Module, SyntaxId)`, the only way MIR and its records name syntax | `Parsing/Koto/Common/SyntaxTable.cs`, `Core/SourceRef.cs` |
 | Phases after Binding | The `Compilation` entry points (`Analyze`, `Analysis`, `Problems`, `ReportAnalysis`, `WriteIr`, `Validate`, `SyntaxOf`) and the pipeline switch | `Core/Compilation.Pipeline.cs` |
-| Analysis records | `Problem(Code, SourceRef)`, merged per code and location | `Core/Compilation.Pipeline.cs` |
+| Analysis records | `Problem(Code, SourceRef)`, merged per code and location; until R6 the MIR analyses' problems stay unpublished on `MirProgram.Problems` (DECISIONS R4-M1) | `Core/Compilation.Pipeline.cs` |
 | Binding facts for MIR | `HirTables` columns (`Op`, `Res`, `Completion`, `Adjust`, PlaceShape) and `PlanRow`s keyed by `SyntaxId`; `HirAdjust.Of`, the one conversion from Binding's acquisition vocabularies; `Binding.BareAcquire`, the one bare-acquisition rule | `Binding/HirTables.cs`, `Binding/HirVocabulary.cs`, `Binding/Binding.Hir.cs` |
 | Binding facts for Hover, LSP and tests | `SemanticQuery` (`Compilation.Semantics`) | `Binding/SemanticQuery.cs` |
 | Calls | `CallPlan`, reached only through `CallPlan.Of(node, ordinal)`; an omitted default is its `DefaultDecl` | `Binding/CallPlan.cs` |
@@ -79,6 +79,8 @@ Analyzer A1, each entry file begins with the component's contract (AGENTS). Path
 | Type facts in MIR | `MirTypes`: `MayNeedDrop`, `HoldsRaw`, `IsExclusive`, `Agree` (Type agreement modulo Origins) | `Mir/MirTypes.cs` |
 | MIR construction | `MirBuilder` (`Compilation.BuildMir`): one body per definition and Closure, built by Op, Adjust and PlaceShape; `Ref`, the one borrow rule; one drop tree per transfer target; one template per default; `Unsupported(node)`, the one Unsupported record with an Opaque value | `Mir/Build/MirBuilder*.cs` |
 | MIR validation | `MirValidator`, the one structural and Type verifier; a finding is `InternalInvariant_Kd` | `Mir/MirValidator.cs` |
+| MIR analyses | `MirAnalysis` (`Compilation.BuildMir`): the analyses of one program version, once per version after build and validation, in the pass order its contract fixes (DECISIONS R4-M2a) | `Mir/Analysis/MirAnalysis.cs` |
+| MIR analysis problems | `MirReport`: one `MirProblem(Code, Subject, Views)` per code and subject with its views merged; the one home of the derived-problem rules (DECISIONS R4-M3a, R4-M10) | `Mir/Analysis/MirReport.cs` |
 | MIR text | `MirDump.Write`, compared by the dump goldens and the MIR snapshot | `Mir/MirDump.cs` |
 
 ## Structure limits
@@ -193,7 +195,8 @@ A2–A7 configuration and initial baselines are authorized by the proposal and t
 - **Temporary structures**, with the stage that removes them: the Koto semantic forwarding properties and the
   `KIMI_PIPELINE` switch (R6); the HIR publisher walk, replaced by inline writes (R7, DECISIONS R2b-D2); the temporary
   intrinsics `Capacity`, `FormatBuffer`, `FormatHint` and `FormatFinish` that the owner admitted on 2026-10-11
-  (`IntrinsicId` limit 34, back to 30 in R8; DECISIONS R3-9, R3-10).
+  (`IntrinsicId` limit 34, back to 30 in R8; DECISIONS R3-9, R3-10); the `Compilation.Analyzed` event, the difference
+  ledger's observation point (R6, DECISIONS R4-M17).
   Transitional attributes identify these declarations (CR-A7). The lasting HIR publication/version contract is unmarked;
   only its publisher walk and private state disappear at R7. LegacyRuntimeHelpers has no declaration yet; its future
   producer must record the R8 obligation when introducing it.
@@ -213,9 +216,9 @@ A2–A7 configuration and initial baselines are authorized by the proposal and t
 | R2a | Done 2026-10-11 (closed at 126,611 lines, above its 125,000 ceiling, by the stage decision to close at the measured size) | `SyntaxId`, `HirTables` behind forwarding properties, `AdtDef`, unified CallPlan type, pure fits, child-walk and operator-class consolidation, Hover move |
 | R2b | Done 2026-10-11 (closed at 127,815 lines, within its 129,000 ceiling; the unused 1,185 lines pass to R3) | `TyCtxt` and `Subst`; the published HIR columns (`Op`, `Res`, `Completion`, `Adjust`, PlaceShape) and their publisher; `CallPlan.Of`, `ExpansionPlan`, the Pattern plans and closure definitions as views; `DefaultDecl` and `PreparedParam`; the pair-binder view; the intrinsic table. The five read-only declaration-table views (`ImplTable`, `VTableDef`, `UniversalRelations`, `EffectBoundTable`, `AvailableBounds`) are deferred to their first readers in R4/R5 |
 | R3 | Done 2026-10-11 (closed at 133,004 lines, within its 135,500 ceiling: Mir 4,765, Binding 56,569, Core 1,805, the other areas at their R2b-exit sizes; +5,189 against a forecast of +5,750) | MIR model, descriptor table, validator with its Type tier, dump and builder (shadow): every body of the library and the 43 milestones builds without validator findings, with Opaque values only at Binding-rejected nodes of Milestones 33, 35 and 38; 30 dump goldens. The work paused after R3 by owner instruction |
-| R4 | Next | MIR analyses A1–A6 and the difference ledger (shadow) |
+| R4 | Active | MIR analyses A1–A6 and the difference ledger (shadow). Every analysis unit extends `Mir/Analysis/MirAnalysis.cs`; its three-consecutive-units restructuring is deferred to the R4 exit (DECISIONS R4-M2a) |
 | R5 | Pending | Monomorphization, shims, layout/ABI, code generation, capability table (shadow) |
-| R6 | Pending | Switch the default to MIR, then delete the old Analysis/Emission paths |
+| R6 | Pending | Switch the default to MIR, then delete the old Analysis/Emission paths. Unit a publishes the MIR problems and folds the MIR construction records, which keep their own merge in `MirProgram` until then, into `MirReport` (DECISIONS R4-M3a) |
 | R7 | Pending | Binding consolidation: resolver, inference context, Contract solver, CallPlan pipeline, Problem records |
 | R8 | Pending | Library algorithms in Kimigayo, about 28 intrinsics |
 | R9 | Pending | Remaining front-end cleanup, Documentation and toolchain moved out, final documentation |

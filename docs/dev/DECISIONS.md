@@ -334,7 +334,7 @@ rules that result from them.
   declarations with three more `CompilerFunctionKind` members (grows the vocabulary R8 shrinks); deferring with an R3
   gate exception. R8 removes all three; with R3-9 the `IntrinsicId` limit returns from 34 to 30.
 
-## R4 (accepted 2026-10-11; R4 has not started)
+## R4 (accepted 2026-10-11)
 
 - **R4-M1** Shadow: under `mir` the old path still decides acceptance, Problems and diagnostics. The analyses run once
   per program version after build and validation (`MirBuilder.Build`, then `MirAnalysis.Run`); MIR problems stay
@@ -343,9 +343,10 @@ rules that result from them.
 - **R4-M2** Layout: `Mir/Analysis/` in namespace `Kimi.Compiler.Mir`: `MirAnalysis` (driver), `MirDataflow`,
   `MirMoveData`, `MirInit` (A1), `MirDrops` (A2), `MirLints` (A3), `MirEffects` (A4), `MirBorrows` with `.Regions`,
   `.Conflicts` and `.Origins` (A5), `MirReport` (A6). The first unit creates all of them as stubs, so parallel units never
-  edit the driver.
+  edit the driver. The stub clause is superseded by R4-M2a.
 - **R4-M3** `MirProblem(Code, Subject, Related, Requirement, Views, Fact)` with pooled fact rows; one `MirReport.Add`
-  applies the derived rule (R4-M10). Core's `Problem(Code, Subject)` is unchanged until R6.
+  applies the derived rule (R4-M10). Core's `Problem(Code, Subject)` is unchanged until R6. The fields are superseded by
+  R4-M3a.
 - **R4-M4** The first unit fixes the compared code set of each analysis: A1 initialization and moves; A3
   `RequireFallthrough`; A4 effect bounds and the effect-limit Unsupported; A5 Loan conflicts, default-argument access,
   Origin relations and `OwnershipStorageLimit_Kd`; every old Ownership-partition `Unsupported_Kd`. Control-flow lints,
@@ -369,7 +370,7 @@ rules that result from them.
   except Loan conflicts with the caller and effect contributions. A finding rooted at a PreparedInput local maps to
   `DefaultArgument*_Kd`.
 - **R4-M11** A1, A4's local facts and A5 run per `MirCases` view; A6 merges by (code, subject, Reason) with the view mask
-  as the case fact. Views are never collapsed.
+  as the case fact. Views are never collapsed. The key is R4-M3a's until U11.
 - **R4-M12** Library bodies are analyzed in every compilation. The library and the milestones produce no problems,
   except an (a) row whose library fix lands in the same unit.
 - **R4-M13** Tests migrate per method kind (body presence, operations, cleanup verdicts, Loans, verification state, R5/R6
@@ -377,6 +378,56 @@ rules that result from them.
 - **R4-M15** `OwnershipStorageLimit_Kd` stays the one Resource code, decided by the byte size of A5's Loan × point arena.
 - **R4-M16** The ledger's classification table is tracked (`tests/xUnitTest/TestData/mir-diff/classification.tsv`); raw
   rows, reproducers and ledgers are evidence under `artifacts/verify/mir-diff/`.
+- **R4-M2a** (2026-10-12, planning session; design A of two independent U0b designs; supersedes R4-M2's stub clause, its
+  layout stays). U0b creates only `MirAnalysis`, the driver whose contract fixes the pass order (A3 per body; per body and
+  view A1, A2, A4's local facts; A4 over the program; A5 per view; A6 inside `MirReport`), and `MirReport`; each analysis
+  unit creates its own files and adds one field and one pass row at its position. R4-M2's reason no longer holds: unused
+  parameters and members are build errors (CR-A7), and AGENTS (2026-10-12) admits no structure without behavior; parallel
+  units' driver edits are line-level, resolved at rebase. The three-consecutive-units restructuring of `MirAnalysis.cs` is
+  deferred to the R4 exit (stage ledger). Rejected: stubs (unused parameters or fake uses, edited anyway); partial methods
+  or a pass interface (declarations without behavior, one call shape forced on different analyses); the driver and record
+  landing with the first analysis unit (parallel units would invent the same files).
+- **R4-M3a** (2026-10-12, planning session; design B's record taken into design A; supersedes R4-M3's fields).
+  `MirProblem(DiagnosticCode Code, SourceRef Subject, ulong Views)`; `MirReport` merges by (Code, Subject), the canonical
+  `Problem` key, OR-ing Views into the first problem, until U11 adds the Reason fact and Reason joins the key (R4-M11's
+  (code, subject, Reason)); a merge keeps the first problem's facts. Construction records keep their own merge in
+  `MirProgram` until R6 unit a folds them into `MirReport` (stage ledger).
+  No Requirement: Mir may not name the legacy `OwnershipFailure` (KR1001), and moving that enum into a shared area would
+  make old-path vocabulary a shared concept; R6 unit a derives the published requirement from the code and the facts. No
+  Related: related sites are facts, and fact rows (pooled, with their own index on the problem) are added by their first
+  producer. The ledger fills its requirement column from the old side only. Rejected: design A's (Code, Subject, Related,
+  Requirement, Views) keyed by (requirement, code, subject); a Requirement through a moved legacy enum; an `int Fact` field
+  before anything produces or reads it.
+- **R4-M17** (2026-10-12, planning session; design A of two independent U0b designs) The difference harness.
+  `Compilation.BuildMir` builds, validates and analyzes (`MirAnalysis.Run`), once per Binding pass. The Transitional
+  internal static event `Compilation.Analyzed`, raised at the end of every `Analyze` on both pipelines when both paths'
+  records of the version are final, is the ledger's one observation point: observers only read, no compiler code
+  subscribes, and R6 unit a deletes it. The test assembly's fixture `MirDifferenceLedger` subscribes when `KIMI_MIR_DIFF`
+  names a directory and compares each mir-pipeline compilation once per Binding pass: the old path's A-owned records, read
+  through `LegacyRecords`, against the MIR's construction records and problems, as multisets on (code, subject node by
+  reference), never numbering an old node. Raw rows (`event section side analysis code requirement location form body
+  sha`) and each source go to that directory; one aggregation (fixture disposal, or `MirDifferenceTest.RequestedLedger`
+  with `KIMI_MIR_LEDGER`) pairs an unmatched old and new row of one code in one body into a `location` difference, counts
+  the rest `missing` or `new`, adds an `acceptance` difference when a comparison's A-owned records are on one side only,
+  and classifies signatures (section, kind, analysis, code, requirement, form) by the tracked table into `ledger.tsv` and
+  `summary.md` (P9: the unclassified signatures). The compared set (R4-M4) is a table in the fixture of requirements, each
+  with every code it reports and the owning analysis: ownership failures except TransferRequired, Internal and CaseLimit
+  (A1, A4, A5; U for the Unsupported gates; - for the expansion limit), ControlFlow `RequireFallthrough_Kd` (A3),
+  `Binding.VirtualEffectBound` (A4) and `Binding.OriginRelation` (A5); a MIR problem takes its code's analysis, a MIR
+  construction record is B. `Binding.IncompatibleImplementation` and the effect-limit `Binding.Unsupported` also carry
+  non-effect records and are compared only from U6, which names how the effect subset is identified. The construction
+  records keep their own merge until R6 unit a folds them into `MirReport` (R4-M3a). Tier 1:
+  `MirDifferenceTest.RequestedCorpus` checks the diagnostic corpus and every `kimi` block of docs/spec through the check
+  entry; tier 2: the Functional suite under mir with the ledger; the Allocation tests run under mir without it, since the
+  observer allocates. Rejected: the driver called by `MirBuilder` (construction would own the P7–P9 order); analyzing
+  inside `Analyze` (dumps and tests calling `BuildMir` would see unanalyzed programs); a hook inside `MirAnalysis` (the old
+  analysis runs after `BuildMir`); capture in test helpers (571 `Analyze` calls; the check entry's compilations unreachable);
+  a per-compilation sink (the same static, or 277+ `CreateForTest` edits that still miss the check entry);
+  compiler-written evidence (product file output by an environment variable); a DiagnosticListener (more code, same role);
+  a ModuleInitializer with ProcessExit (no lifecycle guarantee); a Python aggregator (an untracked second
+  implementation); design B's content-hash fast path (the Functional/Allocation split is simpler), its positional split
+  of `Compilation.Problems` (order-dependent; computing SourceRefs numbers unnumbered nodes under the observer) and its
+  shipping only the hook in U0b (two parallel analysis units would invent the driver and record).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

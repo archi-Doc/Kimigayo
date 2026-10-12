@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns MIR bodies by definition key and the records of construction and validation.
-// Input: built definitions and findings. Output: reusable bodies identified by MirDefKey.
+// Owns MIR bodies by definition key, the records of construction and validation, and the problems the analyses find.
+// Input: built definitions, findings and problems. Output: reusable bodies identified by MirDefKey.
 // One key identifies one body; warm rebuilding reuses body storage.
 // Must not re-bind definitions or maintain a second body map in a consumer.
 
@@ -40,6 +40,10 @@ internal sealed class MirProgram
 
     /// <summary>Gets the validator's findings, which the <c>mir</c> pipeline publishes as <c>InternalInvariant_Kd</c>.</summary>
     internal List<MirFinding> Findings { get; } = [];
+
+    /// <summary>Gets the problems the analyses found in this version (R4: unpublished, compared by the difference ledger); only
+    /// <see cref="MirAnalysis"/> resets them, once per version.</summary>
+    internal MirReport Problems { get; } = new();
 
     internal MirBody? this[MirDefKey key] => this.bodies.TryGetValue(key, out var body) ? body : null;
 

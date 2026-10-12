@@ -1,8 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the public entry path for post-Binding phases and their Problem records.
-// Input: a prepared compilation and pipeline choice. Output: analysis, validated MIR, diagnostics and IR.
+// Input: a prepared compilation and pipeline choice. Output: analysis, validated and analyzed MIR, diagnostics and IR.
 // Until R6 the legacy path decides acceptance; MIR findings join through the same Problem publication.
+// Observers of Analyzed (R4-M17) are read-only; no compiler code subscribes.
 // Must not expose a second analysis/generation path or re-decide phase-owned facts.
 
 using Kimi.Compiler.Parsing;
@@ -11,7 +12,8 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler;
 
 // The analysis and generation entry points (plan 12.1, 13.2), the one way to run and read the phases after Binding and startup, follow
-// the pipeline: until R6 the old path decides under both, and under mir the MIR is built beside it and its records are analysis Errors.
+// the pipeline: until R6 the old path decides under both, and under mir the MIR is built, validated and analyzed beside it and its
+// construction records and validator findings are analysis Errors (its analysis problems stay unpublished, R4-M1).
 public partial class Compilation
 {
     [Transitional("R6", Reason = "The legacy/MIR selection disappears when R6 makes MIR the only pipeline.")]
@@ -20,7 +22,13 @@ public partial class Compilation
     [Transitional("R6", Reason = "The legacy/MIR selection disappears when R6 makes MIR the only pipeline.")]
     private CompilerPipeline pipeline = DefaultPipeline;
     private Mir.MirBuilder? mirBuilder;
+    private Mir.MirAnalysis? mirAnalysis;
     private Mir.MirProgram? mir; // The MIR of the latest Analyze under the mir pipeline; null otherwise and after invalidation.
+
+    /// <summary>Occurs at the end of every <see cref="Analyze"/>, on both pipelines, when the old path's records and, under mir, the
+    /// MIR's of the version are final: the one observation point of the difference ledger (R4-M17). Observers only read.</summary>
+    [Transitional("R6", Reason = "The difference ledger compares the old path with the MIR until R6 deletes the old path.")]
+    internal static event Action<Compilation>? Analyzed;
 
     /// <summary>Gets the result of the latest <see cref="Analyze"/>.</summary>
     public AnalysisResult Analysis
@@ -74,12 +82,14 @@ public partial class Compilation
         }
     }
 
-    /// <summary>Analyzes the bodies after final Binding and the startup check (P6–P9). Under mir the MIR is built and validated first.</summary>
+    /// <summary>Analyzes the bodies after final Binding and the startup check (P6–P9). Under mir the MIR is built, validated and analyzed
+    /// first; then <see cref="Analyzed"/> occurs.</summary>
     /// <returns>The analysis result.</returns>
     public AnalysisResult Analyze()
     {
         this.mir = this.pipeline == CompilerPipeline.Mir ? this.BuildMir() : null;
         this.Ownership.Analyze();
+        Analyzed?.Invoke(this);
         return this.Analysis;
     }
 
@@ -129,9 +139,10 @@ public partial class Compilation
     internal Koto SyntaxOf(SourceRef source)
         => (source.Module < this.SourceModules.Length ? this.SourceModules[source.Module] : this.Library.Kotonoha).Syntax.Nodes[source.Id]!;
 
-    /// <summary>Builds and validates the MIR of the latest Binding pass, once per pass (R3: beside the old path, which still decides).</summary>
-    /// <returns>The program, with its construction records and validator findings.</returns>
-    internal Mir.MirProgram BuildMir() => (this.mirBuilder ??= new(this)).Build();
+    /// <summary>Builds, validates and analyzes the MIR of the latest Binding pass, once per pass (R4: beside the old path, which still
+    /// decides).</summary>
+    /// <returns>The program, with its construction records, validator findings and analysis problems.</returns>
+    internal Mir.MirProgram BuildMir() => (this.mirAnalysis ??= new()).Run((this.mirBuilder ??= new(this)).Build());
 
     internal void InvalidateOwnership()
     {
@@ -176,7 +187,7 @@ internal enum CompilerPipeline : byte
     /// <summary>The old Analysis and Emission path alone.</summary>
     Legacy,
 
-    /// <summary>The MIR built and validated beside the old path, which still decides.</summary>
+    /// <summary>The MIR built, validated and analyzed beside the old path, which still decides.</summary>
     Mir,
 }
 

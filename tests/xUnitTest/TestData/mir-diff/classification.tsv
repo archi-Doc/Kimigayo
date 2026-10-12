@@ -1,0 +1,2 @@
+id	section	kind	analysis	code	requirement	form	category	reference	note
+d1	*	*	*	DeferredExpansionLimit_Kd	*	*	d	plan §6.2-6	The old path's defer expansion limit; MIR drop trees need none, and no SPEC or IMPL clause states it (plan §6.2 rule 6 deletes the code).
