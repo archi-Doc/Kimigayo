@@ -108,7 +108,7 @@ public sealed partial class Binding
     // SPEC 7.3, 7.3.1: a shape violation is an error of the group, not of the declaration's own signature or conditions, so the
     // declaration stays a candidate and the calls that select it are checked normally. SPEC 9.3: a misplaced protected form is
     // an error of the modifier alone, so the declaration and its uses are checked as written too.
-    private static bool IsFormFailure(Koto declaration)
+    private static bool KeepsSignature(Koto declaration)
         => declaration is DeclarationKoto { BindingState: BindingState.Invalid } &&
             (declaration.BindingFailure == BindingFailure.ProtectedPlacement ||
             declaration is FunctionKoto { BindingFailure: BindingFailure.ParameterShapeMismatch or BindingFailure.ReceiverShapeMismatch });

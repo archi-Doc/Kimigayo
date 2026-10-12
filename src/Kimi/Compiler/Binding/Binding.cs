@@ -197,12 +197,13 @@ public sealed partial class Binding
         => InvalidDeclarationContextCause(declaration) is not null;
 
     // The nearest enclosing declaration (or conditional conformance) that failed; a member's check in that context rests on it.
-    // A declaration whose only failure is a form rule (IsFormFailure) keeps a valid signature and body, so it is no such context.
+    // A declaration whose only failure is a form rule (KeepsSignature) keeps a valid signature and body, so it is no such context.
     private static Koto? InvalidDeclarationContextCause(Koto declaration)
     {
         for (Koto? node = declaration; node is not null; node = node.Parent)
         {
-            if ((node is DeclarationKoto or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance }) && node.BindingState == BindingState.Invalid && !IsFormFailure(node))
+            if ((node is DeclarationKoto or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance }) && node.BindingState == BindingState.Invalid &&
+                !KeepsSignature(node))
             {
                 return node;
             }
