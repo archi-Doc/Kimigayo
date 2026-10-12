@@ -82,14 +82,17 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 14.11: the failure body runs where the condition is false and has no successor, at run time or for the checks (SPEC 14.10.3);
-    // its row says no runtime path from its entry may reach its end (SPEC 14.11.2), which A3 checks.
+    // its row says no runtime path from its entry may reach its end (SPEC 14.11.2), which A3 checks. The failure body, a single item or a
+    // block, is the scope its defers register in (SPEC 14.2, 16.1), cleaned up before its end, as a function's or a match arm's body is.
     private void Require(RequireKoto require)
     {
         var fail = this.body.AddBlock();
         var pass = this.body.AddBlock();
         var test = this.Test(require.Condition, fail, pass);
         this.Enter(fail, test);
+        var failure = this.OpenScope(block: true);
         this.Statement(require.ElseBody);
+        this.CloseScope(failure);
         this.body.Terminate(this.current, MirTerminator.Unreachable(this.Info(require)));
         this.body.AddMustNotComplete(new(fail, this.current, SourceRef.Of(require.ElseBody)));
         this.Enter(pass, test);

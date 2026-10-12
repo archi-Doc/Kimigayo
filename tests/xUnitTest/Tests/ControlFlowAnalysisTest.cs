@@ -66,7 +66,8 @@ public class ControlFlowAnalysisTest
 
     // SPEC 14.11.2, 14.10.3 (DECISIONS R4-M7a): the MIR's A3 reports a falling failure body exactly where the old analysis does: the
     // require rows above, a failure body only the checks reach, a require nested after a return in a failure body that the checks alone
-    // leave to its end, a default's failure body once however many calls copy it, a defer's once however many exits build it, and a default
+    // leave to its end, a default's failure body once however many calls copy it, a defer's once however many exits build it, a defer that a
+    // single-item failure body registers, which runs where that body is left (SPEC 16.1), whose own body diverges or completes, and a default
     // whose failure bodies continue only for the checks.
     [Theory]
     [InlineData("func f(ready: bool) -> i32\n    require ready else => return 0\n    return 1", 0)]
@@ -81,6 +82,8 @@ public class ControlFlowAnalysisTest
     [InlineData("func f(c: bool)\n    require c else\n        label outer: do\n            return\n            require c else => exit to outer\n    ()", 0)]
     [InlineData("func value(c: bool, y: i32 = (label choice: do\n    require c else => ()\n    exit to choice 7\n)) -> i32 => y\nlet a = value(true)\nlet b = value(false)", 1)]
     [InlineData("func f(c: bool)\n    defer\n        require c else => ()\n    if c => return\n    ()", 1)]
+    [InlineData("func f()\n    require true else => defer => loop => ()\n    ()", 0)]
+    [InlineData("func f()\n    require true else => defer => ()\n    ()", 1)]
     [InlineData(RequireContinuationTest.Default, 0)]
     public void TheMirFindsEveryRequireFallthrough(string source, int count)
     {

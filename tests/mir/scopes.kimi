@@ -25,3 +25,6 @@ func divergingDefer(flag: bool) -> i32
 func conditionTemporaries(text: string) -> i32
     if make() == text => return 1
     return 2
+func failure(flag: bool) -> i32
+    require flag else => defer => stop()
+    return 1
