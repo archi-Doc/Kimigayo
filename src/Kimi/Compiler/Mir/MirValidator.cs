@@ -16,7 +16,7 @@ internal enum MirViolation : byte
     NoBlocks,
     Unterminated,
     StatementRange,
-    TargetRange, // A successor, case range or check target out of range.
+    TargetRange, // A successor, case range, check target or MustNotComplete block out of range; a MustNotComplete end with a check or not Unreachable.
     CheckTarget, // A check target on a terminator other than Goto, a Call without a target and Unreachable.
     Unreachable, // A block that neither runtime nor check edges reach from the entry.
     Local, // Local 0 is not the Return local, an Arg local does not directly follow it, or a local has no Type.
@@ -208,7 +208,7 @@ internal sealed partial class MirValidator(TyCtxt types)
         {
         }
 
-        // Locals, scopes, Opaque sites and the projection table; false when a chain or site cannot be walked.
+        // Locals, MustNotComplete rows, scopes, Opaque sites and the projection table; false when a chain or site cannot be walked.
         internal bool Tables()
         {
             var locals = body.Locals;
@@ -222,6 +222,17 @@ internal sealed partial class MirValidator(TyCtxt types)
                     (local.Kind == MirLocalKind.Arg && !arguments))
                 {
                     this.Report(MirViolation.Local);
+                }
+            }
+
+            var blocks = body.Blocks;
+            foreach (var row in body.MustNotComplete)
+            {
+                this.at = new(row.Subject, 0, StatementStart: false);
+                if ((uint)row.Entry >= (uint)blocks.Length || (uint)row.End >= (uint)blocks.Length ||
+                    blocks[row.End].Terminator is not { Kind: MirTerminatorKind.Unreachable, CheckTarget: -1 })
+                {
+                    this.Report(MirViolation.TargetRange);
                 }
             }
 

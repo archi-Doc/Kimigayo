@@ -27,6 +27,7 @@ fn effects @4
   s2: lexical in s1 @25
   s3: deferred in s1 @13
   s4: deferred in s1 @13
+  must not complete bb7 from bb1 @11
   bb0:
       StorageLive(_3) @10 s1
     * _3 = copy _1 @10 s1

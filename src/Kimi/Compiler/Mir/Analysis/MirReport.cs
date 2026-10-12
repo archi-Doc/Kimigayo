@@ -18,7 +18,7 @@ namespace Kimi.Compiler.Mir;
 /// code and the facts.</summary>
 /// <param name="Code">The code.</param>
 /// <param name="Subject">The syntax the problem is about.</param>
-/// <param name="Views">The views that have the problem, bit i for view i.</param>
+/// <param name="Views">The views that have the problem, bit i for view i (every bit: a problem no view decides).</param>
 internal readonly record struct MirProblem(DiagnosticCode Code, SourceRef Subject, ulong Views);
 
 /// <summary>The problems of one program version (R4 shadow: unpublished until R6, compared by the difference ledger), one per code and

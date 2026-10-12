@@ -81,7 +81,8 @@ internal sealed partial class MirBuilder
         this.Close(after);
     }
 
-    // SPEC 14.11: the failure body runs where the condition is false and has no successor, at run time or for the checks (SPEC 14.10.3).
+    // SPEC 14.11: the failure body runs where the condition is false and has no successor, at run time or for the checks (SPEC 14.10.3);
+    // its row says no runtime path from its entry may reach its end (SPEC 14.11.2), which A3 checks.
     private void Require(RequireKoto require)
     {
         var fail = this.body.AddBlock();
@@ -90,6 +91,7 @@ internal sealed partial class MirBuilder
         this.Enter(fail, test);
         this.Statement(require.ElseBody);
         this.body.Terminate(this.current, MirTerminator.Unreachable(this.Info(require)));
+        this.body.AddMustNotComplete(new(fail, this.current, SourceRef.Of(require.ElseBody)));
         this.Enter(pass, test);
     }
 

@@ -156,7 +156,8 @@ internal sealed partial class MirBuilder
     // builder targets no entry block) and its returns going on after it; each Type applied and each callee's substitution composed
     // (TyCtxt.Compose), each Place projected again, so that a pair layer the substitution decides is its case's layer and a case-dependent
     // acquisition its case's (Acquire), each static and constant added again, and a Drop the instance's Type does not need left out. A Type
-    // or callee the call does not instantiate is unsupported at the call.
+    // or callee the call does not instantiate is unsupported at the call. No MustNotComplete row is copied: a copy's verdict is its
+    // template's, which A3 judges once (SPEC 7.2.3).
     private void Inline(MirBody template, Subst? subst, int at, MirPlace slot, Koto node)
     {
         var map = this.folded;

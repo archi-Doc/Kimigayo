@@ -14,9 +14,11 @@ namespace Kimi.Compiler.Mir;
 /// version once; a repeated run of the same version keeps its problems.</summary>
 internal sealed class MirAnalysis
 {
+    private readonly MirLints lints = new();
     private ulong version; // The program version whose problems the program holds (0: none).
 
-    /// <summary>Analyzes a program unless this version already was: a new version starts without problems.</summary>
+    /// <summary>Analyzes a program unless this version already was: a new version starts without problems, and one with validator
+    /// findings is not analyzed.</summary>
     /// <param name="program">The built and validated program.</param>
     /// <returns>The program.</returns>
     internal MirProgram Run(MirProgram program)
@@ -25,6 +27,15 @@ internal sealed class MirAnalysis
         {
             this.version = program.Version;
             program.Problems.Clear();
+            if (program.Findings.Count > 0)
+            {
+                return program;
+            }
+
+            foreach (var body in program.Bodies)
+            {
+                this.lints.Run(body, program.Problems); // 1. A3 per body.
+            }
         }
 
         return program;

@@ -11,7 +11,8 @@ using System.Text;
 namespace Kimi.Compiler.Mir;
 
 /// <summary>The deterministic text of MIR (R3: the dump goldens and the MIR snapshot). A body is its header, one line per local, scope,
-/// pair binder, static and Opaque site, then each block's statements and terminator. Every line that comes from syntax ends with it,
+/// pair binder, static, Opaque site and failure body that must not complete (<c>must not complete bb4 from bb2</c>: its end from its
+/// entry), then each block's statements and terminator. Every line that comes from syntax ends with it,
 /// <c>@id</c> (<c>@module:id</c> outside module 0), and its scope (<c>s1</c>) when it is not the body's; <c>*</c> marks where a source
 /// statement starts. Types are spelled as diagnostics spell them (<see cref="TyCtxt.Name"/>). Places: <c>(*p)</c> Deref,
 /// <c>p.0</c> Field, <c>p.base1</c> Base, <c>p[_3]</c> Index, <c>p[2]</c> ConstIndex, <c>(p as case 1)</c> Downcast and <c>(p@b0)</c>
@@ -98,6 +99,11 @@ internal static class MirDump
             }
 
             text.Append('\n');
+        }
+
+        foreach (var row in body.MustNotComplete)
+        {
+            Source(text.Append("  must not complete bb").Append(row.End).Append(" from bb").Append(row.Entry), row.Subject).Append('\n');
         }
 
         for (var i = 0; i < body.Blocks.Length; i++)

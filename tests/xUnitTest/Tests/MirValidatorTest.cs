@@ -112,7 +112,8 @@ public sealed class MirValidatorTest
     }
 
     // A body with every statement, rvalue, terminator, operand and projection kind, an intrinsic and a Value callee, a static, an Opaque
-    // site, a scope, a pair binder and a block that only a check edge reaches; and the Type tier's body, every form it checks in a valid use.
+    // site, a scope, a pair binder, a block that only a check edge reaches and a MustNotComplete row; and the Type tier's body, every form it
+    // checks in a valid use.
     [Fact]
     public void ValidBodyHasNoFinding()
     {
@@ -455,6 +456,7 @@ public sealed class MirValidatorTest
         body.Terminate(exit, MirTerminator.Goto(done, At, check));
         body.Terminate(done, MirTerminator.Return(At));
         body.Terminate(check, MirTerminator.Unreachable(At));
+        body.AddMustNotComplete(new(abort, check, At.Syntax));
         switch (broken)
         {
             case MirViolation.Unterminated:
@@ -462,6 +464,12 @@ public sealed class MirValidatorTest
                 break;
             case MirViolation.TargetRange:
                 body.Terminate(body.AddBlock(), MirTerminator.Goto(99, Broken));
+                body.AddMustNotComplete(new(99, check, Broken.Syntax));
+                body.AddMustNotComplete(new(entry, 99, Broken.Syntax));
+                body.AddMustNotComplete(new(entry, done, Broken.Syntax)); // An end that is a Return.
+                var checkedEnd = body.AddBlock();
+                body.Terminate(checkedEnd, MirTerminator.Unreachable(Broken, check));
+                body.AddMustNotComplete(new(entry, checkedEnd, Broken.Syntax)); // An end with a check target.
                 break;
             case MirViolation.Unreachable:
                 body.Terminate(body.AddBlock(), MirTerminator.Return(Broken));

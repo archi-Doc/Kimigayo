@@ -359,6 +359,7 @@ rules that result from them.
   view, and insertions break ranges).
 - **R4-M7** A3's missing fact is `MirBody.MustNotComplete(block, SourceRef)`, written by the builder and range-checked by
   the validator; it is not a vocabulary member. Rejected: inferring it from Unreachable (SPEC 14.9.2 forbids pruning).
+  The row shape is superseded by R4-M7a.
 - **R4-M8** The definition-stage capability check (A3b) moves to R5 with the single capability table; the R4 ledger
   excludes capability records.
 - **R4-M9** Binding views for R4, each added to `PublishedBindingTypes` with its reason: `TyCtxt.Relate` (the single
@@ -468,6 +469,19 @@ rules that result from them.
   statement masks (plan §5.6.1); the source taken from the operand Place's MIR Type; a MirBody plan table (a table, adder,
   reset, range rules and folding); analyses querying MirCases per Adapt (every analysis would special-case it); moving
   `Select` into TyCtxt (it edits frozen call sites, D5); a MIR copy of `Select` modulo Origins (a second copy). Not temporary.
+- **R4-M7a** (2026-10-12, main session; supersedes R4-M7's row shape): A3's fact is `MirBody.MustNotComplete`, rows
+  `(Entry, End, Subject)`: a require's failure body, entered at Entry, whose end End (an Unreachable without a check
+  target) no runtime path from Entry may reach; Subject the failure body. The builder adds a row where it finishes a
+  require; the validator checks both blocks and End's terminator (`TargetRange`); the dump prints one line per row; a
+  default copy has no rows (A3 judges the template once, SPEC 7.2.3). A3 (`MirLints`) walks runtime edges only with
+  `MirReach`, the one reachability walk (the validator walks all edges), seeding each row's Entry from the last row to the
+  first, so each verdict is exact and each block is visited once per body. Reason R4-M7's `(block, SourceRef)` no longer
+  holds: a walk from the body's entry cannot assume entry to a failure body that only the checks reach (SPEC 14.11.2,
+  14.10.3). Still rejected: inferring the end from Unreachable. Derived A3 problems (an end reached only through an Opaque
+  site whose completion is undecided: an unselected `#switch`, a Binding failure whose Type may be Never) need a
+  published fact and are left to U11/R6; rejected: a body-level `#switch` rule (syntax ancestry, SPEC 23.3.6.4; a KR1006
+  row) and deriving every path through an Opaque site (drops written recovered failure bodies, DIAGNOSTICS §4.3).
+  Rejected also: per-row walks (quadratic), U1's dataflow framework, copying rows into copies. No temporary structure.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

@@ -342,6 +342,7 @@ fn statements @98
   s3: lexical in s2 @110
   s4: lexical in s1 @117
   s5: unsafe in s1 @124
+  must not complete bb20 from bb10 @117
   bb0:
       StorageLive(_3) @103 s1
       StorageLive(_4) @108 s2

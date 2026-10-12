@@ -203,8 +203,14 @@ internal readonly record struct MirStatic(BindingSymbol Symbol, BoundType Type, 
 /// entries of <see cref="MirBody.OpaqueRoots"/> from <see cref="Start"/> (plan 5.4).</summary>
 internal readonly record struct MirOpaque(SourceRef Source, int Start, int Count);
 
+/// <summary>A failure body that must not complete (SPEC 14.11.2): entered at <see cref="Entry"/>, its end <see cref="End"/> an
+/// Unreachable block without a check target that no runtime path from <see cref="Entry"/> may reach; <see cref="Subject"/> the failure
+/// body.</summary>
+internal readonly record struct MirMustNotComplete(int Entry, int End, SourceRef Subject);
+
 /// <summary>The MIR of one body (plan 5.4): struct arrays that the builder appends to (<see cref="AddLocal"/>, <see cref="AddBlock"/>,
-/// <see cref="Push"/>, <see cref="Terminate"/>, <see cref="AddOperand"/>, <see cref="Const"/>, <see cref="Project"/> and the other adders)
+/// <see cref="Push"/>, <see cref="Terminate"/>, <see cref="AddOperand"/>, <see cref="Const"/>, <see cref="Project"/>,
+/// <see cref="AddMustNotComplete"/> and the other adders)
 /// and that a reset keeps, so a pooled body rebuilt to the same size allocates nothing.</summary>
 internal sealed class MirBody
 {
@@ -222,6 +228,7 @@ internal sealed class MirBody
     private MirStatic[] statics = [];
     private MirOpaque[] opaques = [];
     private int[] opaqueRoots = [];
+    private MirMustNotComplete[] ends = [];
     private int localCount;
     private int blockCount;
     private int statementCount;
@@ -233,6 +240,7 @@ internal sealed class MirBody
     private int staticCount;
     private int opaqueCount;
     private int opaqueRootCount;
+    private int endCount;
 
     internal MirDefKey Key { get; private set; }
 
@@ -263,6 +271,10 @@ internal sealed class MirBody
     internal ReadOnlySpan<MirOpaque> OpaqueSites => this.opaques.AsSpan(0, this.opaqueCount);
 
     internal ReadOnlySpan<int> OpaqueRoots => this.opaqueRoots.AsSpan(0, this.opaqueRootCount);
+
+    /// <summary>Gets the failure bodies of the requires built in this body, each added where its require is finished, so one inside
+    /// another's failure body precedes it; a default copy has none, A3 judges its template (SPEC 7.2.3).</summary>
+    internal ReadOnlySpan<MirMustNotComplete> MustNotComplete => this.ends.AsSpan(0, this.endCount);
 
     /// <summary>Gets a value indicating whether a value of the body is Opaque: an error or Unsupported form replaced it.</summary>
     internal bool HasOpaque => this.opaqueCount > 0;
@@ -345,7 +357,7 @@ internal sealed class MirBody
     {
         (this.Key, this.Source) = (key, source);
         this.localCount = this.blockCount = this.statementCount = this.operandCount = this.caseCount = this.constCount = 0;
-        this.projectionCount = this.scopeCount = this.staticCount = this.opaqueCount = this.opaqueRootCount = 0;
+        this.projectionCount = this.scopeCount = this.staticCount = this.opaqueCount = this.opaqueRootCount = this.endCount = 0;
         this.projectionIds.Clear();
         this.constIds.Clear();
         this.Binders.Clear();
@@ -443,6 +455,8 @@ internal sealed class MirBody
 
         return Add(ref this.opaques, ref this.opaqueCount, new MirOpaque(source, start, roots.Length));
     }
+
+    internal void AddMustNotComplete(in MirMustNotComplete row) => Add(ref this.ends, ref this.endCount, row);
 
     private static int Add<T>(ref T[] items, ref int count, in T item)
     {

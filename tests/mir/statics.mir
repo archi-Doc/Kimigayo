@@ -27,6 +27,7 @@ setter level.Set @23
   _5: () temp @35 s1
   _6: i32 temp @36 s1
   s1: lexical in s0 @26
+  must not complete bb3 from bb1 @31
   bb0:
       StorageLive(_3) @28 s1
     * _3 = Ge(copy _2, const 0_i32) proven @28 s1

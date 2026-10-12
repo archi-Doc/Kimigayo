@@ -54,9 +54,24 @@ public class RequireRecoveryDiagnosticTest
     [InlineData("require a == 1 else => 0 < a < 2", "0 < a < 2", new[] { nameof(DiagnosticCode.RequireFallthrough_Kd), nameof(DiagnosticCode.ChainedComparison_Kd) })]
     public void AWrittenFailureBodyIsJudgedOnItsOwn(string statement, string body, string[] codes)
     {
-        var published = Publish(MinimalEmissionTest.Analyze("let a = 1\n" + statement));
+        var c = MinimalEmissionTest.Analyze("let a = 1\n" + statement);
+        var published = Publish(c);
         Assert.Equal(codes, published.Select(static x => x.Code));
         Assert.Equal(body, Assert.Single(published, static x => x.Code == nameof(DiagnosticCode.RequireFallthrough_Kd)).Text);
+
+        // The MIR's A3 has the old analysis's records (DECISIONS R4-M7a), a guessed failure body's included.
+        var (old, mir) = ControlFlowAnalysisTest.RequireFallthroughs(c);
+        Assert.Equal(old, mir);
+    }
+
+    // SPEC 23.3.6.4: a written failure body is judged on its own also inside an expression whose own check failed: an indented do body
+    // supplies Unit (SPEC 14.2), which does not fit the default's i32, and that failure does not explain the failure body that completes.
+    [Fact]
+    public void AFailureBodyInARejectedExpressionIsJudgedOnItsOwn()
+    {
+        var published = Publish(MinimalEmissionTest.Analyze("func value(c: bool, y: i32 = (do\n    require c else => ()\n    7\n)) -> i32 => y\nlet v = value(true)"));
+        Assert.Equal([nameof(DiagnosticCode.TypeMismatch_Kd), nameof(DiagnosticCode.RequireFallthrough_Kd)], published.Select(static x => x.Code));
+        Assert.Equal("()", Assert.Single(published, static x => x.Code == nameof(DiagnosticCode.RequireFallthrough_Kd)).Text);
     }
 
     [Theory]
