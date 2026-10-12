@@ -223,14 +223,13 @@ internal sealed partial class MirBuilder
         return MirOperand.Move(temp);
     }
 
-    // A borrow of a Place in a new temp of the reference a Semantics kind forms to it (uniq: exclusive; ref, objref: shared), moved. A Ref
-    // has no operand that could diverge, so it is made where it is built even when the node it serves does not complete (a call whose
-    // default diverges, an interpolation with a transfer).
+    // A borrow of a Place in a new temp of the reference a Semantics kind forms to it (uniq: exclusive; ref, objref: shared), moved; a part
+    // made where it is built (Make).
     private MirOperand Borrow(SemanticsKind semantics, MirPlace place, Koto node)
     {
         var view = compilation.Types.Reference(semantics, this.body.TypeOf(place) ?? BoundType.Unit);
         var temp = this.Temp(view, node);
-        this.body.Push(this.current, MirStatement.Assign(temp, this.Ref(place, view, input: false), this.Info(node)));
+        this.Make(temp, this.Ref(place, view, input: false), node);
         return MirOperand.Move(temp);
     }
 
@@ -393,14 +392,21 @@ internal sealed partial class MirBuilder
     private BoundType? TypeOf(in MirOperand operand) => operand.Kind == MirOperandKind.Const ? this.body.Consts[operand.Arg].Type
         : this.body.TypeOf(operand.Place);
 
-    // An rvalue assigned at a node; a node that does not complete has no value to assign (SPEC 15.6.7: its operand diverged).
+    // The node's own value, made at its end from the operands the node evaluated, assigned only where the node completes: a node that does
+    // not complete has no value to assign (SPEC 15.6.7: its operand diverged).
     private void Set(MirPlace destination, in MirRvalue rvalue, Koto node)
     {
         if (Completes(node))
         {
-            this.body.Push(this.current, MirStatement.Assign(destination, rvalue, this.Info(node)));
+            this.Make(destination, rvalue, node);
         }
     }
+
+    // A part of a node made where it is built, before later parts that may not complete, so it exists on every path that reaches it: it
+    // reads only Places already located or values made before it (a Ref, a Len, an empty collection the parts fill, an Opaque value
+    // standing for its node, a result's discriminant; SPEC 12.3.4, 4.6.5). The one unguarded assignment beside Set.
+    private void Make(MirPlace destination, in MirRvalue rvalue, Koto node)
+        => this.body.Push(this.current, MirStatement.Assign(destination, rvalue, this.Info(node)));
 
     // The destination takes an operand, unless the operand is the destination's own value moved (an acquisition formed it there).
     private void Use(MirPlace destination, in MirOperand operand, Koto node)

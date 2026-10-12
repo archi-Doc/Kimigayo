@@ -87,7 +87,7 @@ internal sealed partial class MirBuilder
             this.Call(result, write, node, null, first > 0 ? storage : null, first > 0 ? this.Borrow(SemanticsKind.Uniq, writer, node) : default);
             if (Completes(write.ArgumentOperations[1].Source!))
             {
-                this.body.Push(this.current, MirStatement.Assign(discriminant, MirRvalue.Discriminant(result), this.Info(node)));
+                this.Make(discriminant, MirRvalue.Discriminant(result), node);
                 this.Pass(MirOperand.Copy(discriminant), 0, done, node);
             }
         }
