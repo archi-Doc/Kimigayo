@@ -17,6 +17,13 @@ public sealed partial class Binding
     private OriginRewriteVisitor? originRewriteVisitor;
     private Dictionary<Koto, (BoundOrigin First, BoundOrigin Second, Koto Clause)>? principalOriginFailures;
 
+    // SPEC 15.3.5: the variance of a position nested at `inner` within a position of variance `outer`; an unused position is compared
+    // as an invariant one (FitsTypeCore, TyCtxt.Relate).
+    internal static OriginVariance ComposeVariance(OriginVariance outer, OriginVariance inner)
+        => outer == OriginVariance.Invariant || inner is OriginVariance.Invariant or OriginVariance.Unused ? OriginVariance.Invariant
+            : inner == OriginVariance.Covariant ? outer
+            : outer == OriginVariance.Covariant ? OriginVariance.Contravariant : OriginVariance.Covariant;
+
     private static Koto? OriginOwner(Koto node)
     {
         for (var current = node; current is not null; current = current.Parent)
@@ -59,13 +66,6 @@ public sealed partial class Binding
 
         return true;
     }
-
-    // SPEC 15.3.5: the variance of a position nested at `inner` within a position of variance `outer`; an unused position is compared
-    // as an invariant one (FitsTypeCore).
-    private static OriginVariance ComposeVariance(OriginVariance outer, OriginVariance inner)
-        => outer == OriginVariance.Invariant || inner is OriginVariance.Invariant or OriginVariance.Unused ? OriginVariance.Invariant
-            : inner == OriginVariance.Covariant ? outer
-            : outer == OriginVariance.Covariant ? OriginVariance.Contravariant : OriginVariance.Covariant;
 
     // SPEC 15.3.1, 23.3.6.4: a binding set that reuses a visible name failed as DuplicateBinding_Kd and declares nothing.
     private static bool RepeatedSet(TypeSemanticsKoto set) => set.BindingFailure == BindingFailure.Duplicate;
@@ -803,11 +803,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < Math.Min(pattern.Components.Count, value.Components.Count); i++)
             {
-                var component = pattern.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication ? (IsInvariantLayer(pattern, this) ? OriginVariance.Invariant : OriginVariance.Covariant)
-                    : pattern.Kind == BoundTypeKind.Function && pattern.Components.Count == 2 ? (i == 0 ? OriginVariance.Contravariant : OriginVariance.Covariant)
-                    : pattern.Kind == BoundTypeKind.Constructed && pattern.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count ? schema.GenericSlots[i].OriginVariance
-                    : OriginVariance.Covariant;
-                Match(pattern.Components[i], value.Components[i], ComposeVariance(polarity, component));
+                Match(pattern.Components[i], value.Components[i], ComposeVariance(polarity, TyCtxt.ComponentVariance(pattern, i, this)));
             }
         }
 
