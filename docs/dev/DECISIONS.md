@@ -31,6 +31,24 @@ rules that result from them.
 - **Q3 Compiler allocations** (2026-10-11, owner, AGENTS `8071549f`). An allocation in the compiler is allowed when it
   makes equivalent work faster or reduces compiler code with a reasonable increase in memory, measured and recorded.
   Supersedes plan §18 P11 and §14-8. Native allocation counts and O2 run time may not regress.
+- **Q4 Design selection and root-cause method** (2026-10-12, owner; AGENTS Implementation Design).
+  - Adopted: options and designs are compared by the AGENTS priorities: coherence first (one owning component per
+    decision, one representation per fact, the dependency rules, contracts without modes), then net size over the
+    affected scope with deletions, then compilation speed; this replaces "fewer concepts and less code" (AGENTS since
+    `8071549f`). Correcting the rule inside the right owning component is a root fix, and the local-change test is
+    semantic (responsibility, contract and invariants unchanged, no other site sharing the cause). A design is one
+    chain from the required meaning to the special cases it removes. Concepts are shared by meaning and contract; a new
+    form is a row only under a canonical table. An open family is closed by a representation or a whitelist. A reviewer
+    attempts a smaller design and classifies findings; two rounds on one family go to the owner. Roles and the two
+    senses of "owner" are defined.
+  - Reasons: concept and token counts favoured a design that hid a distinction (R4 U0a design A dropped independent
+    records and was revised after review under SPEC 23.3.6); "the local patch and why it is rejected" presupposed
+    rejecting correct owner-local fixes; shape-based sharing and generic tables can merge different contracts; path
+    enumeration did not converge where a Type-level fix did (P26/G75).
+  - Rejected: keeping counts as the first criterion; deleting the table-row rule (it is the target structure,
+    COMPILER_ARCHITECTURE "Adding a feature"); appending a separate rule list instead of replacing the affected rows.
+  - Not reopened: decisions of landed units. Decisions of units not yet on `dev` are re-checked only where the
+    coherence comparison would change the choice.
 
 ## Code rules (2026-10-12)
 
