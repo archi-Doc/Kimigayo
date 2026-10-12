@@ -6,6 +6,8 @@ Archive line numbers below refer to that immutable snapshot, not this file. Hist
 
 ## Sessions
 
+- **2026-10-13 — M39 common redesign:** owner authorized redesign; independent acquisition/case and default alternatives select a common shadow direction, with two independent reviews accepting conditional planning and holding implementation on named C1/C3/C5/C8/E5 contracts. The accepted ordinary-Type/default probe disproves scalar case remapping; it is not a nonuniform failure. The revised whole-R4 proposal estimates 946,606 central and 1,017,696 conditional late peak, with all approvals still open. No compiler change; unchanged-input Session 20,792, V13 known failure unchanged, P9 143 / open (b) 47.
+
 - **2026-10-13 — R4 whole-stage budget proposal:** owner authorized a complete scope and budget comparison including cap revision. Independent common-analysis, producer and exit audits replace the partial forecast, count shared work once and preserve semantic design gates. The new proposal records conditional costs, delivery order and cap/Binding decisions still needed; no compiler change or cap increase is made. The unchanged-input successful Session remains 20,792 tests; V13's known MIR failure is unchanged, P9 143 / open (b) 47.
 
 - **2026-10-13 — R4 resumed:** owner requested the current-dev Session first, completion of U8, then U7b redesign and the remaining R4 units. Applied the prepared pause record with the current position corrected to resumed. The new Session and unit results are recorded in the R4 handoff evidence.

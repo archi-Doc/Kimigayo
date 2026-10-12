@@ -2,7 +2,8 @@
 
 Draft requested by the owner on 2026-10-13. This document proposes the remaining R4 scope, order and budget; it does not
 approve a representation, change a cap, grant a Binding exception or claim implementation support. The owner authorized
-including cap revision among the options. The separate M39 required-access/capability redesign decision remains pending.
+including cap revision among the options and subsequently chose M39 common-representation redesign. This revision includes
+its conditional design, prerequisite costs and remaining technical gates; authorization to redesign did not approve caps.
 
 The adopted [compiler reduction plan](2026-10-10%20Compiler%20Size%20Reduction%20and%20Single%20MIR%20Plan.md) remains the
 stage plan. Its integrated text is unchanged. [DECISIONS](../../docs/dev/DECISIONS.md), especially R4-M24 through R4-M30,
@@ -10,9 +11,9 @@ governs over historical estimates and handoff notes. All sizes below are non-tri
 
 ## 1. Decision and evidence
 
-Recommend option C below: complete the original R4 shadow-analysis scope with proposed caps of **Mir 143,000, Binding
-405,000, Core 14,000 and total 981,000**. These fund the costed uncertainty and restructuring peak; they are not a target
-implementation size. The reference central exit estimate is **926,146** total. No cap has been changed. Do not
+Recommend option C below: complete the original R4 shadow-analysis scope with proposed caps of **Mir 155,000, Binding
+432,000, Core 15,000 and total 1,020,000**. These fund the costed uncertainty and conditional late peak; they are not a target
+implementation size. The reference central exit estimate is **946,606** total. No cap has been changed. Do not
 choose a smaller incomplete representation merely to satisfy a cap. Further consolidation remains required within the
 chosen coherent design; the current studies do not demonstrate that every possible smaller design is impossible.
 
@@ -61,6 +62,20 @@ The budget and order below are conditional on closing these design gates:
 5. Close producer and diagnostic contracts across all sibling forms, including M39 access/capability/rejection publication,
    Slice handle versus backing Origin, safe-range Loans, ReferenceRead, cleanup order and Binding-rejected bound children.
 
+M39's independent common designs and reviews select this conditional direction: one Binding acquired-Place outcome per
+case; ordinary MIR operations joined by a compile-time Case terminator; one immutable semantic publication; and generic
+operation outcomes/input schedules with typed causes. All omitted defaults use their existing template Call form, retaining
+their own generic context. An accepted probe has nine template views but one caller view with an abstract Type argument,
+disproving the original scalar case-remapping premise. The probe's default is uniform; no nonuniform failure is claimed.
+
+The new representation remains gated on C1's fixed-expected contextual-input/inference boundary, C8's effective concrete
+contract and immutable witness transport, C3's positional prepared-input transfer, C5's finite correlated result/effect/
+normal-return domain, and E5's exact per-require unavailable-frontier algorithm with acceptable scaling. E2/E3/E7 supply the
+existing typed-report/suppression interface. No separate default summary solver is funded. Binding's old late certificate
+or CheckBound mutations cannot become new MIR premises or overwrite the snapshot. Concrete Slice results retain their
+stronger Origin contract. A receiver known only through a Contract premise retains that requirement contract; a nominal
+receiver preserves its selected implementation contract even with abstract arguments. Later specialization changes no proof assumptions.
+
 Current A5 liveness reads A2 and structural `MirTypes.Observes`, not solved A4 summaries. A possible schedule is Binding facts
 → A1/A2 → Origin formation/chain judgments → eligible retained contributions → boundary export → effect closure → witness
 and caller checks. This avoids assuming a liveness/effect cycle; it does not supply the still-missing finite algorithms.
@@ -96,49 +111,57 @@ neighbor work; they do not prove an upper bound. Do not multiply the high scenar
 | Scope (counted once) | Mir central | Binding central | Core central | Factor | Reserved total delta |
 | --- | ---: | ---: | ---: | --- | ---: |
 | Frozen U8 (measured) | 5,320 | 0 | 0 | Actual | 5,320 |
-| C1 Requirements, positions and genuine premises | 550 | 1,950 | 0 | 1.5 | 3,750 |
+| C1 Requirements, contextual inputs, genuine premises and immutable publication | 900 | 7,500 | 0 | 2 | 16,800 |
 | C2 U7b capture/result/receiver/erasure contract | 650 | 3,450 | 0 | 2 | 8,200 |
 | C3 Retained transfers and complete U8b | 6,000 | 0 | 0 | 2 | 12,000 |
 | C4 U9 source-chain eligibility and judgment | 3,500 | 0 | 0 | 1.5 | 5,250 |
-| C5 Boundary results and rooted recursive effects | 4,600 | 850 | 0 | 2 | 10,900 |
+| C5 Boundary results, correlated completion and rooted recursive effects | 5,050 | 950 | 0 | 2 | 12,000 |
 | C6 U9 witnesses and U8c caller/hidden-region checks | 2,300 | 0 | 0 | 1.5 | 3,450 |
 | C7 A5 lifecycle, driver and inspection | 800 | 350 | 0 | 1.5 | 1,725 |
-| C8 Selected Callable signature | 750 | 350 | 0 | 1.5 | 1,650 |
+| C8 Selected Callable signature and exact witness/effective-contract transport | 900 | 1,550 | 0 | 1.5 | 3,675 |
 | U8a Secured results and cleanup order/subjects | 900 | 0 | 0 | 1.5 | 1,350 |
 | ReferenceRead shared Copy boundary | 350 | 0 | 0 | 1.5 | 525 |
 | U8s Safe range acquisition/construction | 900 | 180 | 0 | 2 | 2,160 |
 | U8p Place/backing dependency, existing-owner route | 0 | 650 | 0 | 1.5 | 975 |
-| U8i/M39 Complete outcomes including correlated cases | 1,900 | 4,100 | 0 | 2 | 12,000 |
+| U8i/M39 Common acquisition, Case graph and default-call integration | 4,710 | 8,480 | 0 | 2 | 26,380 |
 | U10 Test migration | 0 | 0 | 0 | No compiler change | 0 |
-| U11 Facts, derived/default policy, rejected parts, adapter (E2-E8) | 5,250 | 1,150 | 2,380 | Per concern | 16,970 |
+| U11 Facts, derived/default policy, rejected parts, adapter (E2-E8) | 7,970 | 3,620 | 2,660 | Per concern | 27,910 |
 | Non-A5 ledger repair allowance (E9) | 3,000 | 650 | 100 | 2 | 7,500 |
 | Abstract/tuple comparison limits | 1,320 | 450 | 0 | 2 / 1.5 | 3,355 |
 | U12 Driver structure and measurement entry (E10) | 300 | 0 | 100 | 1.5 | 600 |
 
 C1-C8 replace the old separate U7b/U8b/U8c/U9 placeholders. C3 includes the complete through-reference replacement; C5 owns
-shared result/effect summaries; C6 owns the remaining caller checks. Selected Callable publication is C8 only (x1.5).
+shared result/effect/completion summaries; C6 owns remaining caller checks. Selected Callable/witness publication is C8 (x1.5).
 C7 stores A5 semantic witnesses; U11 integrates reports and migrates A1-A4 facts. E4/E5 owns common rejected/undecided causes
 and independently bound children; M39 owns its distinct capability failure fact. U8a owns cleanup CFG/source causes.
 U8s owns its construction-to-transfer adapter; C3 owns the general transfer engine. No overlap discount is assumed just
 because files are shared.
 
-The full scope includes correlated per-case M39 selection. The smaller uniform-only route would save 3,000 central / 6,000
-reserved Mir+Binding tokens but leave a valid general family Unsupported; it is **not** the recommended full-scope option
-without a separate O4 decision. This is a costed workload, not a third M39 representation design.
+M39 replaces the prior Binding4,100/Mir1,900 workload row. Its common-design allowance is Binding8,480/Mir4,710: selected-call
+construction replaces the old shortcut, default calls delete inline copying, and active topology preserves stable MovePath
+identities. Of the originally MIR-priced family projection work, 350 tokens now belong to Binding's Type/Layer owner.
+C1's7,500 includes the necessary but unresolved contextual-input producer reserve4,500 once; the enlarged common boundary
+uses x2. C8's1,550/900 includes exact witness transport; C5 adds only the prepared endpoint/completion integration to its
+already funded shared solver. E4/E5 replaces950Binding/1,150Mir with3,420Binding/3,870Mir/280Core.
+
+E4 alone owns generic outcome states and child schedules; M39 owns acquisition-specific payloads, permissions and case
+partitions. C1 alone owns semantic snapshot identity; other rows fund local reset/inspection and snapshot consumption.
+E4's default adapter transports called-template causes, with no second inlining path. These are costed scopes with explicit
+technical gates. Uniform-only M39, guessed missing key operations and uncorrelated completion are not completion options.
 
 The full engineering scenarios, preserving frozen readers, are:
 
 | Area | Low | Central | High | Central with factors |
 | --- | ---: | ---: | ---: | ---: |
-| Mir | 97,456 | 109,296 | 129,526 | 137,131 |
-| Binding | 383,620 | 389,190 | 398,460 | 401,495 |
-| Core | 9,516 | 10,746 | 12,446 | 13,186 |
+| Mir | 101,616 | 115,776 | 140,226 | 150,291 |
+| Binding | 394,170 | 402,890 | 417,960 | 429,270 |
+| Core | 9,696 | 11,026 | 12,896 | 13,746 |
 | Other areas | 416,914 | 416,914 | 416,914 | 416,914 |
-| **Total** | **907,506** | **926,146** | **957,346** | **968,726** |
+| **Total** | **922,396** | **946,606** | **987,996** | **1,010,221** |
 
-Even the low engineering scenario exceeds the current total ceiling by 13,144; that is not a mathematical lower bound.
-Central growth from dev is 55,100, including measured U8. Remaining unmeasured central work is 49,780; its factor-adjusted
-allowance is 92,360. The 90,000 Mir gate cannot be satisfied by area rebalance under these estimates.
+Even the low engineering scenario exceeds the current total ceiling by 28,034; that is not a mathematical lower bound.
+Central growth from dev is 75,560, including measured U8. Remaining unmeasured central work is 70,240; its factor-adjusted
+allowance is 133,855. The 90,000 Mir gate cannot be satisfied by area rebalance under these estimates.
 
 ### Known contingencies and restructuring peaks
 
@@ -148,27 +171,29 @@ The following priced alternatives form an envelope; they do not select a represe
 | --- | ---: | ---: | ---: | ---: |
 | Deeper retained-transfer replacement R instead of preserving M24 machinery P | 1,200 | 0 | 0 | 1,200 |
 | U8p shared selected-dependency publication if existing facts prove insufficient | 600 | 1,800 | 0 | 2,400 |
-| Frozen-reader migration exposure across common contracts, M39 and U8p, including correlated cases | 0 | 0 | Analysis 1,020; Emission 780 | 1,800 |
-| **Known-risk net envelope** | **138,931** | **403,295** | **Core 13,186; other areas 418,714** | **974,126** |
+| Frozen-reader migration exposure across common contracts and U8p | 0 | 0 | Analysis 320; Emission 380 | 700 |
+| **Known-risk net envelope** | **152,091** | **431,070** | **Core 13,746; other areas 417,614** | **1,014,521** |
 
 The positive Analysis/Emission exposure is funded risk, **not a selected route or D5 waiver**. The implementation design
 must preserve existing identities/readers, show an already-permitted migration/deletion, or obtain a separate owner decision.
 If the full scope cannot be represented under those conditions, cap approval alone cannot release it. U8p's extra publication
 is likewise conditional, and no unrelated deletion is credited.
 
-P's common Mir central estimate is 19,150; deeper replacement R is 19,750. P adds 23,450 and deletes 4,300; R adds 25,750
-and deletes 6,000. Neither has closed the semantic gates. The earlier 9,140 sketch omitted full U8b/witness maintenance,
-remaining caller checks and complete publication; it is replaced, not added. There is no demonstrated cheaper complete design.
+The selected M39 shadow direction removes its prior Analysis700/Emission400 reserved exposure; no R6 deletion is credited.
+C3's retained-transfer reference P is Mir6,000 central; deeper replacement R is6,600. Neither has closed its semantic gate.
+C1-C8 now total Mir20,100/Binding13,800 central, replacing earlier partial common estimates. There is no demonstrated cheaper
+complete design, nor proof that further consolidation is impossible.
 
 For a conservative permitted schedule, remove common-transfer/producer superseded paths before late U11/U12 work, including
-deletions belonging to the E4/E5 prerequisite. Then reserve late exit coexistence before its own deletions: Binding 895,
-Mir 3,165 and Core 475, total **4,535** above the envelope. This intentionally still counts E4/E5's deletion allowance in that
-late bound. Projected peak: **Mir 142,096; Binding 404,190; Core 13,661; total 978,661**. Rounded area caps plus the funded
-other-area exposure total 980,714; round the stage proposal to **981,000**.
+deletions belonging to the E4/E5 prerequisite. The prior late addback4,535 included factored E4/E5 deletion credits560Binding/
+800Mir. Remove those now-earlier credits, leaving Binding335/Mir2,365/Core475, total **3,175** above the envelope.
+Conditional late peak: **Mir154,456; Binding431,405; Core14,221; total1,017,696**. Rounded area caps plus the funded
+other-area exposure total1,019,614; round the stage proposal to **1,020,000**.
 
-This peak is an additional source-budget check, not another exit-growth estimate. Earlier common R and producer peaks fit
-this packet order; retaining those old paths through late exit would invalidate it. Final designs must verify actual
-per-commit peaks, including any new bridge, before implementation and again before landing. Arbitrary coexistence is not funded.
+This is a conditional late-stage coexistence estimate, not a proved maximum of unfinished prerequisite designs. C1/C8/M39/
+E4/E5 must finish their deletions within their coherent units. Final designs must price their actual per-commit gross peaks
+and any bridge before implementation and again before landing; the factor reserve is not a proof of that bound. Keeping
+superseded prerequisite paths until exit invalidates the schedule. Arbitrary coexistence is not funded.
 
 The non-A5 repair allowance is 3,750 central / 7,500 reserved. It covers unpriced remaining ledger causes and newly visible
 full-record differences, not named U8/U9 work a second time. P9 signatures are not counts of defects. A new cause outside this
@@ -180,8 +205,8 @@ size savings. No elapsed-time completion date is claimed before the algorithms a
 
 | Wave | Work and landing constraint | Safe parallel work |
 | --- | --- | --- |
-| 0 | Decide the budget direction and M39 direction; finish independent shared-contract alternatives, compare them and review the selected design before code. | Read-only designs, reproducer analysis and test inventory for disjoint concerns. |
-| 1 | Complete U8's producer prerequisites and the common retained-instance/contract foundation, including U8b transfer/authority wherever U8 relies on it. Bring U11's shared rejected/undecided-operation cause publication (E4/E5) forward for M39; its required producer/consumer migrations land together. An indispensable U7b producer precedes its U8 consumer. | Independent producer implementations in dedicated worktrees after their designs and Binding exceptions pass. |
+| 0 | M39 redesign is authorized; choose the revised numeric budget and close C1/C3/C5/C8/E5 algorithms and independent shared-contract/default alternatives before code. | Read-only designs, reproducer analysis and test inventory for disjoint concerns. |
+| 1 | Complete U8's producer prerequisites and the common retained-instance/contract foundation, including U8b transfer/authority wherever U8 relies on it. Bring E4/E5 and their required E2/E3 typed-cause consumers forward; Case/default producers and readers migrate together. An indispensable U7b producer precedes its U8 consumer. | Independent producer implementations in dedicated worktrees after their designs and Binding exceptions pass. |
 | 2 | Finish and land U8, with self-review and two independent final reviewers. Finish the remainder of U7b against the same contract. | U10 migration preparation; U8a cleanup design where it does not assume unfinished transfers. |
 | 3 | Complete U8a and the remaining U8c/U9 consumers and U8b acceptance work on the common producer. No U8b transfer needed by U8 is deferred here. Source-chain eligibility precedes dependent retention; effect witnesses precede caller exclusions. | Disjoint consumer files only after their shared inputs are stable; serialize MirBorrows/MirEffects/driver writers. |
 | 4 | Complete U10 and the remaining U11 report/fidelity work, then repair classified (b) causes through their owning units. U11's shared publication design/review and prerequisite implementation occurred in wave 1. | Independent reviews and disjoint test/diagnostic consumers; no parallel writers on shared report or builder files. |
@@ -214,10 +239,10 @@ prevents completion and push. Report P9 stagnation under O5; a planning checkpoi
 | Option | Budget and consequence | Assessment |
 | --- | --- | --- |
 | A. Keep current limits | Mir 93,651; Binding 377,051; Core 8,187; total 894,362; Mir planning gate 90,000. Continue design research without releasing above-limit code. | No complete compliant design has been demonstrated. One more bounded consolidation study may find one; it cannot be promised from current estimates. |
-| B. Fund the net completion envelope | Mir 139,000; Binding 404,000; Core 14,000; total 976,000. Covers the 974,126 known-risk net envelope. | Requires a narrower, proven sequence with no unfunded intermediate coexistence. Current conservative late-exit peak does not fit its Mir/Binding caps. |
-| **C. Fund completion and the priced restructuring peak** | **Mir 143,000; Binding 405,000; Core 14,000; total 981,000.** Covers the 978,661 peak and rounded per-area limits. | **Recommended planning budget.** Preserves all costed semantics and the restructuring-before-behavior rule; still requires complete designs and actual measurements. |
+| B. Fund the net completion envelope | Mir153,000; Binding432,000; Core14,000; total1,017,000. Covers the1,014,521 known-risk net envelope. | Needs a proven narrower sequence; the conditional late peak exceeds its Mir/Core caps and total. |
+| **C. Fund completion and conditional late coexistence** | **Mir155,000; Binding432,000; Core15,000; total1,020,000.** Covers the1,017,696 late estimate and rounded area limits. | **Recommended planning budget.** Preserves the complete scope and restructuring-before-behavior rule; semantic gates and prerequisite gross-peak proofs remain required. |
 
-Option C raises the current caps by Mir 49,349, Binding 27,949, Core 5,813 and stage total 86,638 (9.69%). All other area caps
+Option C raises the current caps by Mir61,349, Binding54,949, Core6,813 and stage total125,638 (14.05%). All other area caps
 and the LLVM-template line cap remain unchanged. Individual area headroom cannot all be spent on top of the stage ceiling.
 The cap is a guard, not permission to spend its remainder on unrelated work or to retain duplicated paths.
 
@@ -233,18 +258,20 @@ Owner decisions needed to release subsequent work:
    scope with the approved whole-plan area/stage envelope. Reforecast at each selected design and landing; an envelope overrun
    requires consolidation or renewed owner approval. The existing per-unit 20% overrun rule stays. Implement the approved
    cap change as its own reviewed policy unit, with DECISIONS/architecture/test updates and the exact owner approval trailer.
-2. **M39 direction after two reviews:** authorize independent redesign of the common required-access plus capability/selection/
-   rejection representation, or hold U8. Funding its full-case workload does not authorize that redesign or select a form.
+2. **M39 vocabulary/configuration after technical closure:** redesign is already authorized. The conditional Case/default/
+   common-outcome direction needs the specific O1 and scoped R4-M19 change, relevant published types/vocabulary and Code Rules
+   configuration decision. No approval trailer or source implementation is released merely by approving this budget.
 3. **Binding exceptions after coherent unit designs:** retain R4-M30's 200-token rule. The table exposes expected requests:
-   C1 1,950; C2 3,450; C5 850; C8 350; U8p 650 (plus 900 only if its alternative is selected); M39 4,100; U11 publication
-   1,150; comparison publication 450. C7's 350 is distributed to the units introducing those facts, not a separate allowance.
+   C1 7,500; C2 3,450; C5 950; C8 1,550; U8p650 (plus900 only if its alternative is selected); M39 8,480; E4/E5 publication
+   3,420; comparison publication450. C7's350 is distributed to units introducing those facts, not a separate allowance.
    U8s central 180 needs an exception if its selected forecast/actual exceeds 200. E9 is not a blanket 650-token exception.
    Submit the selected coherent units, combined growth and exact requested limits together for owner approval before code;
    no fragmentation or prior U7b exception substitutes for this approval.
 
 The requested numeric approval grants no new vocabulary, Code Rules baseline/structure exception, frozen-path feature work,
 SPEC restriction or O4 deferral. Any such need is evidenced and decided separately. This proposal is complete as a costed
-planning decision; its semantic alternatives are deliberately not represented as implementation-ready designs.
+planning decision; its semantic alternatives are deliberately not represented as implementation-ready designs. The earlier
+143,000/405,000/14,000/981,000 proposal is superseded by this forecast and was never approved.
 
 ## 6. Exit and later stages
 
@@ -259,9 +286,10 @@ policy. COMPILER_ARCHITECTURE's measured-plus-2% rule applies at reduction-stage
 it to the R4 growth/shadow stage. Unused R4 allowances do not automatically pass to R5. The stage total remains a separate limit.
 
 R5's current ceiling is 942,976; R6's is 654,531; the final target is 520,679. This proposal does not raise them or credit removal
-of Analysis/Emission before R6. The reference central R4 exit leaves only **16,830** for R5; the reserved R4 exit alone exceeds
-R5's ceiling by **25,750**, before any R5 work. As sensitivity only, preserving the old planned R5 increment of 48,614 would
-put the central path at **974,760**, 31,784 above that ceiling. This is not a new R5 implementation estimate. Approving C thus
+of Analysis/Emission before R6. The reference central R4 exit already exceeds R5 by **3,630**; the reserved exit exceeds it by
+**67,245**, before R5 work. All-template calls add a separately estimated R5 native-specialization workload of2,300 tokens
+(range1,300–3,800), outside this R4 budget. As sensitivity only, retaining the old R5 increment48,614 plus that2,300 puts
+the central path at **997,520**, 54,544 above the current R5 ceiling. This is not a complete R5 estimate. Approving C thus
 accepts a material risk of a later budget revision; it does not establish feasibility of the unchanged later-stage targets.
 
 Reforecast downstream size at common-design closure and U12. Before R5 implementation, estimate its complete generation scope

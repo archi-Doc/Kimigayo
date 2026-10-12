@@ -311,7 +311,9 @@ The owner explicitly requested `Proposals/2026-10-13 R4 Completion Plan and Budg
 options. This is a new, unadopted planning proposal; no section is integrated into SPEC, IMPL or compiler policy. Its full
 scope, budget options and required owner decisions remain open. PLAN records the planning request only. The original
 2026-10-10 proposal and all its integrated text remain unchanged; preparing this draft does not grant numeric caps,
-Binding exceptions, implementation support or the separate M39 redesign decision.
+Binding exceptions or implementation support. The owner's later M39 common-redesign direction is recorded in PLAN;
+the draft now includes its conditional design, independently compared default representations and revised full-stage costs.
+No language or compiler-policy intake follows from that direction; numeric, vocabulary and per-unit Binding decisions remain open.
 
 ## 2026-10-12 — Code Rules Analyzer
 
