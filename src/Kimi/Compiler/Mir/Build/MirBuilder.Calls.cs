@@ -185,8 +185,8 @@ internal sealed partial class MirBuilder
     // (MirUses), without storage, whose markers the statement's other paths would end without beginning (SPEC 3.6.2).
     private MirPlace Unwritten(Koto node) => new(this.body.AddLocal(new(BoundType.Never, MirLocalKind.Temp, this.Info(node, local: true))));
 
-    // SPEC 13.6.1: a runtime Type test is the intrinsic typeTest of a shared view of the handle's payload and the target Type's token; an
-    // operand that does not complete tests nothing.
+    // SPEC 13.6.1: a runtime Type test is the intrinsic typeTest of a shared view of the handle's payload and the target Type's token, and
+    // `is not` is its negation, the Not of its result (as a `!=` call's); an operand that does not complete tests nothing.
     private void TypeTest(MirPlace destination, IsKoto test)
     {
         var handle = HirTables.AdjustOf(test.Left).Acquire == HirAcquire.Temporary ? this.Value(test.Left) : this.Place(test.Left);
@@ -195,7 +195,12 @@ internal sealed partial class MirBuilder
             var start = this.arguments.Count;
             this.arguments.Add(this.Borrow(SemanticsKind.ObjRef, this.body.Project(handle, MirProjectionKind.Deref, 0), test));
             this.arguments.Add(MirOperand.Const(this.body.Const(new(MirConstKind.TypeToken, TypeOf(test.Right)))));
-            this.Invoke(destination, MirCallee.Intrinsic(IntrinsicId.TypeTest), start, test);
+            var result = test.IsNegated ? this.Temp(BoundType.Boolean, test) : destination;
+            this.Invoke(result, MirCallee.Intrinsic(IntrinsicId.TypeTest), start, test);
+            if (test.IsNegated)
+            {
+                this.Set(destination, MirRvalue.Unary(MirUnaryOp.Not, this.body.AddOperand(MirOperand.Move(result)), proven: true), test);
+            }
         }
     }
 }
