@@ -684,7 +684,8 @@ rules that result from them.
   finding Callable obligations in MIR (it lacks Type formations and argument subjects); a Mir copy of the compiler-function table;
   deciding Derived in `MirReport.Add` (the cause class is A4's lattice). Supersedes R4-M9 for `EffectBoundTable`, `ImplTable`,
   `VTableDef` and `CallableBounds`: not built, since their only reader needs who owes confined and the bounds at a call; R5 builds the
-  slot tables when it reads them. Not temporary.
+  slot tables when it reads them. Not temporary. Its SPEC 4.7.5 sentence, `ArrayClear`/`Replace` clause and composite Limit are
+  refined by R4-M28.
 - **R4-M23** (2026-10-12, planning session; owner approvals of 2026-10-12) The effect facts Binding publishes for A4
   (`Binding.EffectObligations.cs`, `TyCtxt.Effects.cs`). `EffectObligation(Subject, Code, Definition, Callable, Receiver, Owner)`,
   listed from the pass's final state into A4's list (`TyCtxt.EffectObligations`); its Definition is the definition whose body owes, or
@@ -726,7 +727,7 @@ rules that result from them.
   for a call through a value, a second copy judged under the target's premises instead of the use's); an agreement walk over a Callable
   input's premises (a third enumeration of the Callable facts beside `SelectValueCall` and `TryCallable`; carrying the selected
   signature in MIR is the general fix and changes a shared MIR form); one bounds function with a null-callee mode (two contracts in one
-  signature).
+  signature). `Bodyless`' composite clause is refined by R4-M28.
 - **R4-M24** (2026-10-12, main session; option P of two independent redo designs, `u7r-decision.md`: design B's positions and
   liveness with design A's core) A5-1, regions and Loans (SPEC 15.6), `MirBorrows` (`.Regions`, `.Liveness`, `.Flows`) per body and
   view in the driver's step 4, after A4:
@@ -806,6 +807,16 @@ rules that result from them.
   budget has counted tokens since CR-A1, and lines overstated growth (R4 U6b: +107 lines, of which 72 were formatting with no tokens —
   KR3001 wrapping of changed long lines, braces, blank lines, comments). Exceptions granted in lines before this entry keep their
   recorded meaning (U6 R4-M23, U7 R4-M9b); units not yet landed restate theirs in tokens. Rejected: keeping the line rule.
+- **R4-M28** (2026-10-12, planning session; design B of two U6b designs with design A's witness probe) SPEC 4.7.5's published rows
+  for A4: `PublishedRow(Runs, On, Destroys)` catalog data (`KimiLibraryCatalog.Row`, `TyCtxt.Published`) replaces `PublishedSummary`;
+  A4 adds a row through the call's substitution, never the private body. A row's requirement is a `Requires` atom on an abstract Type
+  (nothing where the premises declare it confined, else composed at the callers like a destruction); any other Type runs what
+  `TyCtxt.Witnesses` resolves (comparison-plan leaves, a built-in target, the shared `Binding.ConformanceWitness`'s witness), else a
+  Limit. Ratified departure from design B: a Type with an implementation has its effects, not its premises' bounds (SPEC 8.4.10.4). A
+  requirement call written in a generic body keeps X2 (SPEC 4.7.5 clarified). Refines R4-M22 and R4-M23. Rejected: per-effect flags,
+  X2 at the composing node, Witnesses over RequirementImplementation only, open Types by the premises. Owner exception: Binding +561
+  tokens. Open: published bodies unverified against rows (R6); library generics outside the table keep X2; composites with an
+  abstract part a Limit; duplicates RequirementImplementation and findEntry's two identifications.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

@@ -28,7 +28,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
     private const byte Unknown = 2; // an effect that cannot be classified,
     private const byte Limit = 4; // one this implementation cannot classify yet (Unsupported_Kd),
     private const byte Derived = 8; // one only an Opaque site or a callee Binding rejected causes.
-    private const byte Drop = 0; // An atom's kind: the destruction of a value of its Type, else 1 + the receiver of a call through it.
+    private const byte Drop = 0; // An atom's kind: the destruction of a value of its Type, else 1 + the receiver of a call through it,
+    private const byte Requires = byte.MaxValue; // or a published requirement on its Type (SPEC 4.7.5).
 
     private int[] bases = []; // The first node of each body, by ordinal: a node is a body view.
     private int[] owners = []; // The body of each node.
@@ -91,12 +92,12 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
         _ => Limit,
     };
 
-    // SPEC 8.4.10.2, 8.4.10.4, 8.4.10.7: what a terminator adds. A call of a function with a body enters each body its substitution may
-    // select (SPEC 8.8.3, TyCtxt.Implementation); one without a body, or a requirement call that selects a built-in witness, is what Binding
-    // classifies for the compiler function it names and its Self (TyCtxt.Bodyless), and destroys what its published row destroys. A
-    // requirement or dynamic virtual call has the bounds of the caller's premises (X2) and may destroy what it is given by value (rule 1); a
-    // call through a value calls its Callable input; staticEnsure enters the static's initializer; a Drop destroys what A2's verdicts leave
-    // (Dropped).
+    // SPEC 8.4.10.2, 8.4.10.4, 8.4.10.7: what a terminator adds. A published operation adds its row through the call's substitution, never
+    // its body (SPEC 4.7.5); a call of another function with a body enters each body its substitution may select (SPEC 8.8.3,
+    // TyCtxt.Implementation), one without a body is what Binding classifies (TyCtxt.Bodyless). A requirement call that selects a built-in
+    // target runs what its Self's witnesses run; any other requirement or dynamic virtual call has the bounds of the caller's
+    // premises (X2) and may destroy what it is given by value (rule 1); a call through a value calls its Callable input; staticEnsure enters
+    // the static's initializer; a Drop destroys what A2's verdicts leave (Dropped).
     private void Terminator(MirProgram program, MirBody body, int block, long view, in MirTerminator terminator)
     {
         var callee = terminator.Callee;
@@ -108,9 +109,13 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
         {
             return;
         }
-        else if (callee.Kind == MirCalleeKind.Fn || (callee.Kind == MirCalleeKind.Requirement && callee.Symbol!.CompilerFunction != CompilerFunctionKind.None))
+        else if (callee.Kind == MirCalleeKind.Fn)
         {
-            this.Function(program, terminator); // A built-in witness a requirement call selects is the compiler function it names.
+            this.Function(program, terminator);
+        }
+        else if (callee is { Kind: MirCalleeKind.Requirement, Symbol.CompilerFunction: not CompilerFunctionKind.None, Subst.Self: { } self })
+        {
+            this.Item(cases.Type(self), Requires, callee.Symbol); // Binding's built-in target for its Self.
         }
         else if (callee.Kind is MirCalleeKind.Requirement or MirCalleeKind.Virtual)
         {
@@ -140,6 +145,21 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
     {
         var symbol = terminator.Callee.Symbol!;
         var subst = terminator.Callee.Subst;
+        if (terminator.Callee.Arg == 0 && types.Published(symbol) is { } row)
+        {
+            if (row.Runs is { } requirement)
+            {
+                this.Item(this.Below(symbol, subst, row.On), Requires, requirement);
+            }
+
+            if (row.Destroys >= 0)
+            {
+                this.Item(this.Below(symbol, subst, row.Destroys), Drop);
+            }
+
+            return;
+        }
+
         if (program.Callee(terminator.Callee) is { } target)
         {
             if (terminator.Callee.Arg > 0)
@@ -161,10 +181,6 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
         }
 
         this.Enter(null, subst, symbol);
-        if (types.Published(symbol) is { Destroys: >= 0 } row)
-        {
-            this.Item(this.Below(symbol, subst, row.Destroys), Drop);
-        }
     }
 
     // SPEC 4.7.5: the Type below a callee's parameter under the call's substitution in the view, what a published row runs on or
@@ -257,7 +273,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
         }
     }
 
-    private void Item(BoundType? type, byte kind)
+    private void Item(BoundType? type, byte kind, BindingSymbol? requirement = null)
     {
         if (type is null)
         {
@@ -266,7 +282,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
         }
 
         MirDataflow.Grow(ref this.items, this.itemCount + 1);
-        this.items[this.itemCount++] = new(type, kind);
+        this.items[this.itemCount++] = new(type, kind, requirement);
     }
 
     private void AddEdge(MirBody callee, Subst? subst)
@@ -275,8 +291,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
         this.edges[this.edgeCount++] = new(callee.Ordinal, cases.Views(callee, subst), subst);
     }
 
-    // An atom of a summary or a local input: a Type and a kind (Drop, or 1 + a call's receiver).
-    private readonly record struct Atom(BoundType Type, byte Kind);
+    // An atom of a summary or a local input: a Type and a kind (Drop, 1 + a call's receiver, or Requires with its requirement).
+    private readonly record struct Atom(BoundType Type, byte Kind, BindingSymbol? Requirement);
 
     // A call of a body: the callee's ordinal, the views its substitution selects and the substitution, null for the callee's own.
     private readonly record struct Edge(int Body, ulong Views, Subst? Subst);

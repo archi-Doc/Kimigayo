@@ -6,6 +6,49 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 8.4.10.4: what a requirement runs on a Self that is not abstract, as a call's instantiation resolves it under a definition's
+    // premises, each target with its declaring instance: a built-in comparison's plan leaves, another built-in target itself (no
+    // instance), else the conformance's witness, an inherited one included; false where none resolves. The requirement takes `ref/Self`
+    // (SPEC 4.7.5's rows and the comparisons), which no virtual function implements (virtual-dispatch 1, 6.3).
+    internal bool Witnesses(BindingSymbol requirement, BoundType self, BindingSymbol? definition, List<(BindingSymbol Target, BoundType? Declaring)> into)
+    {
+        var target = this.CompilerRequirementTarget(requirement, self);
+        var contract = requirement.Scope.Owner.BoundSymbol!;
+        if (target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare)
+        {
+            return this.ComparisonPlan(target, self, contract.LibraryDeclaration!.Value, operators: false) is { } plan && Leaves(plan, into);
+        }
+
+        if (target.CompilerFunction != CompilerFunctionKind.None)
+        {
+            into.Add((target, null));
+            return true;
+        }
+
+        if (this.ConformanceWitness(requirement, self, contract, this.EffectPremises(definition), out var witness) is not { } declaring)
+        {
+            return false;
+        }
+
+        into.Add((witness.Implementation, declaring));
+        return true;
+
+        static bool Leaves(BoundComparison plan, List<(BindingSymbol Target, BoundType? Declaring)> into)
+        {
+            if (plan.Implementation is { } call)
+            {
+                into.Add((call.Target, call.DeclaringType));
+            }
+
+            foreach (var part in plan.Parts)
+            {
+                _ = Leaves(part, into);
+            }
+
+            return true;
+        }
+    }
+
     // Use the verified declaration mapping, never repeat member lookup at a concrete call.
     private CallPlan? InstantiateRequirementCall(CallPlan call, CallPlan outer, CallPlan? destination = null)
     {

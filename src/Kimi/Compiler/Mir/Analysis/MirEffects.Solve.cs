@@ -12,6 +12,7 @@ internal sealed partial class MirEffects
 {
     private readonly List<EffectObligation> rows = [];
     private readonly HashSet<BoundType> glued = new(ReferenceEqualityComparer.Instance); // The parts one evaluation destroyed.
+    private readonly List<(BindingSymbol Target, BoundType? Declaring)> targets = []; // What requirements on Types that are not abstract run, a stack.
     private byte[] classes = []; // Each node's summary: its classes,
     private int[] atomStarts = []; // and its atoms, a segment of atoms (a node that grows appends a new segment).
     private int[] atomCounts = [];
@@ -102,7 +103,7 @@ internal sealed partial class MirEffects
         this.glued.Clear();
         for (var i = node == 0 ? 0 : this.itemEnds[node - 1]; i < this.itemEnds[node]; i++)
         {
-            this.Process(this.items[i].Type, this.items[i].Kind);
+            this.Process(this.items[i].Type, this.items[i].Kind, this.items[i].Requirement);
         }
 
         for (var e = node == 0 ? 0 : this.edgeEnds[node - 1]; e < this.edgeEnds[node]; e++)
@@ -142,16 +143,22 @@ internal sealed partial class MirEffects
             {
                 var atom = this.atoms[a];
                 var type = subst is null ? atom.Type : types.Apply(atom.Type, subst);
-                this.Process(type is null ? null : cases.Type(type), atom.Kind);
+                this.Process(type is null ? null : cases.Type(type), atom.Kind, atom.Requirement);
             }
         }
     }
 
-    // An input of a summary in the selected view: a part destroyed (every part its destruction reaches) or a call through a Callable
-    // value (SPEC 8.4.10.7): a Closure's or a function item's body entered through its substitution, a common Function Type unknown
-    // (erasure keeps no bound), an abstract input by the definition's premises.
-    private void Process(BoundType? type, byte kind)
+    // An input of a summary in the selected view: a part destroyed (every part its destruction reaches), a published requirement on a Type
+    // (Require), or a call through a Callable value (SPEC 8.4.10.7): a Closure's or a function item's body entered through its substitution,
+    // a common Function Type unknown (erasure keeps no bound), an abstract input by the definition's premises.
+    private void Process(BoundType? type, byte kind, BindingSymbol? requirement = null)
     {
+        if (type is not null && kind == Requires)
+        {
+            this.Require(type, requirement!);
+            return;
+        }
+
         if (type is null || kind == Drop)
         {
             var glue = new Glue(this);
@@ -202,17 +209,59 @@ internal sealed partial class MirEffects
         }
     }
 
-    // A body a part's destruction or a call enters, composed in the views its substitution selects; a function without a body is what
-    // Binding classifies for it and its Self.
+    // A body a part's destruction or a call enters, composed in the views its substitution selects; a published operation's row instead
+    // (SPEC 4.7.5); a function without a body is what Binding classifies.
     private void Enter(MirBody? body, Subst? subst, BindingSymbol symbol)
     {
+        if (types.Published(symbol) is { } row)
+        {
+            if (row.Runs is { } requirement)
+            {
+                this.Process(this.Below(symbol, subst, row.On), Requires, requirement);
+            }
+
+            if (row.Destroys >= 0)
+            {
+                this.Process(this.Below(symbol, subst, row.Destroys), Drop);
+            }
+
+            return;
+        }
+
         if (body is null)
         {
-            this.found |= Class(TyCtxt.Bodyless(symbol, subst?.Self is { } self ? cases.Type(self) : null));
+            this.found |= Class(TyCtxt.Bodyless(symbol));
             return;
         }
 
         this.Compose(body.Ordinal, cases.Views(body, subst), subst);
+    }
+
+    // SPEC 4.7.5, 8.4.10.4: a published requirement on a Type. An abstract Type has no implementation: the requirement is nothing where
+    // the definition's premises declare it confined, else the summary's atom, composed at the callers (unknown at the top). Any other Type
+    // runs each target Binding resolves under those premises (TyCtxt.Witnesses: a compiler function, a composite comparison's leaf
+    // witnesses, a witness body as a dynamic edge), and none resolving (a composite with an abstract part) is a limit.
+    private void Require(BoundType type, BindingSymbol requirement)
+    {
+        if (type.IsAbstract)
+        {
+            if (types.DispatchBounds(this.definition, requirement, type, null)?.Confined != true)
+            {
+                this.AddAtom(type, Requires, requirement);
+            }
+
+            return;
+        }
+
+        var start = this.targets.Count;
+        this.found |= types.Witnesses(requirement, type, this.definition, this.targets) ? (byte)0 : Limit;
+        for (var i = start; i < this.targets.Count; i++)
+        {
+            var (target, declaring) = this.targets[i];
+            this.Enter(this.program.Callee(new(MirCalleeKind.Fn, target)), declaring is null ? null : types.Synthesized(target, declaring, []), target);
+        }
+
+        this.targets.RemoveRange(start, this.targets.Count - start);
     }
 
     // SPEC 16.3, 8.4.10.4 rule 1: a part a destruction reaches. An abstract part is an atom; a Function value's environment is unknown; an
@@ -249,7 +298,7 @@ internal sealed partial class MirEffects
     // An atom of the evaluated summary, once; while judging an obligation it is resolved at once by the target's premises: a destroyed
     // abstract part proven Copy does nothing (SPEC 8.4.7.1), any other is unknown (a call through an input reaches here only without
     // confined).
-    private void AddAtom(BoundType type, byte kind)
+    private void AddAtom(BoundType type, byte kind, BindingSymbol? requirement = null)
     {
         if (this.reader < 0)
         {
@@ -257,16 +306,17 @@ internal sealed partial class MirEffects
             return;
         }
 
+        var atom = new Atom(type, kind, requirement);
         for (var i = 0; i < this.scratchCount; i++)
         {
-            if (ReferenceEquals(this.scratch[i].Type, type) && this.scratch[i].Kind == kind)
+            if (ReferenceEquals(this.scratch[i].Type, type) && this.scratch[i] == atom)
             {
                 return;
             }
         }
 
         MirDataflow.Grow(ref this.scratch, this.scratchCount + 1);
-        this.scratch[this.scratchCount++] = new(type, kind);
+        this.scratch[this.scratchCount++] = atom;
     }
 
     // R4-M22: each obligation Binding published. A Callable binding is a call through its subject with the selected receiver, judged in

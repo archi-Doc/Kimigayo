@@ -24,6 +24,12 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
 
     private const string Apply = "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n        effect confined\n    return f()\n";
 
+    private const string Noisy = "struct Noisy\n    Self is Equatable\n    public var n: i32 = 0\n    public func equals(self: ref/Self, other: ref/Self) -> bool\n" +
+        "        Console.writeLine(\"eq\")\n        return self.n == other.n\n";
+
+    private const string Fixed = "contract Fixed: Equatable\n    effect Equatable.equals confined\nstruct Key\n    Self is Fixed\n" +
+        "    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n";
+
     // SPEC 8.4.10.2: an access to a mutable static, a raw pointer read from an immutable static, an integer made a pointer and a foreign
     // call obtain authority from the environment; reading an immutable static (its initializer enters the summary), writing through a raw
     // input and a foreign call where nothing owes confined do not.
@@ -300,12 +306,129 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
     public void AnOpaqueSiteCausesNoProblem(string body, string expected)
         => Assert.Equal(Expected(expected), Problems(Sink + Loud + Witness + body + "        return .Ok(())\n"));
 
-    // A built-in comparison of a composite Type runs witnesses the backend instantiates (until R8): a limit, Unsupported_Kd.
+    // SPEC 4.7.5, 12.3.4 (R4-M28): a published operation adds its row through the call's substitution, never its private body: K equality
+    // for a Dictionary lookup, update or literal key check, which runs i32's built-in witness and Noisy's printing one (fail-before: the
+    // first and third, through the private Storage helper's requirement call under its own premises).
     [Theory]
-    [InlineData("        _ = (value, 1) == (value, 2)\n", "Unsupported_Kd Self is Sink 1")]
-    [InlineData("        _ = value == 2\n", "")]
-    public void ACompositeComparisonIsALimit(string body, string expected)
-        => Assert.Equal(Expected(expected), Problems(Sink + Loud + Witness + body + "        return .Ok(())\n"));
+    [InlineData(
+        "        var seen: Dictionary<i32, i32> = [:]\n        seen.reserve(1)\n        _ = seen.tryInsert(value, value)\n        _ = seen.insertOrReplace(value, 2)\n" +
+        "        _ = seen.tryGet(value)\n        _ = seen.remove(value)\n        seen.shrinkToFit()\n        seen[value] = 3\n        _ = seen[value]\n",
+        "")]
+    [InlineData("        let seen: Dictionary<Noisy, i32> = [:]\n        _ = seen[Noisy.init()]\n", Failed)]
+    [InlineData("        let seen: Dictionary<i32, i32> = [1: 2, 3: 4]\n", "")]
+    [InlineData("        let seen: Dictionary<Noisy, i32> = [Noisy.init(): 2, Noisy.init(): 4]\n", Failed)]
+    public void PublishedOperationsAddTheirRows(string body, string expected)
+        => Assert.Equal(Expected(expected), Problems(Sink + Loud + Noisy + Witness + body + "        return .Ok(())\n"));
+
+    // SPEC 4.7.5: a row's destruction is of the Type below its parameter: Dictionary clear destroys the values, insertOrReplace the
+    // unused key, also through a function item, Array clear the elements, Intrinsics.replace the old value (fail-before: the first,
+    // through insertOrReplace's private body).
+    [Theory]
+    [InlineData("Dictionary<i32, i32> = [:]", "        self.table.clear()\n        _ = self.table.insertOrReplace(1, 2)\n", "")]
+    [InlineData("Dictionary<i32, Loud> = [:]", "        self.table.clear()\n", Failed)]
+    [InlineData("Dictionary<LoudKey, i32> = [:]", "        _ = self.table.insertOrReplace(LoudKey.init(), 1)\n", Failed)]
+    [InlineData("Dictionary<i32, i32> = [:]", "        let clear = Dictionary<i32, i32>.clear\n        clear(self.table@uniq)\n", "")]
+    [InlineData("Dictionary<i32, Loud> = [:]", "        let clear = Dictionary<i32, Loud>.clear\n        clear(self.table@uniq)\n", Failed)]
+    [InlineData("Array<i32> = []", "        self.table.clear()\n", "")]
+    [InlineData("Array<Loud> = []", "        self.table.clear()\n", Failed)]
+    [InlineData("i32 = 0", "        Kimi.Intrinsics.replace(self.table@uniq, with: 3)\n", "")]
+    [InlineData("i32 = 0", "        Kimi.Intrinsics.replace(self.loud@uniq, with: Loud.init())\n", Failed)]
+    public void ARowDestroysBelowItsParameter(string table, string body, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems(Sink + Loud + "struct LoudKey\n    Self is Equatable\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n" +
+                "    drop => Console.writeLine(\"drop\")\n" + WithField($"table: {table}") + body + "        return .Ok(())\n"));
+
+    // SPEC 4.7.5, 8.4.10.4 (R4-M28): a row's requirement on an abstract Type composes like its destruction, resolved where the Type closes;
+    // a requirement call written in a generic body keeps the bounds of that body's premises (X2), whatever its caller's Type (fail-before:
+    // the first, through the private Storage helper's requirement call).
+    [Theory]
+    [InlineData("i32", "value", "Equatable", "_ = table.remove(key)", "")]
+    [InlineData("Noisy", "Noisy.init()", "Equatable", "_ = table.remove(key)", Failed)]
+    [InlineData("i32", "value", "Equatable", "_ = key == key", Failed)]
+    [InlineData("Key", "Key.init()", "Fixed", "_ = key == key", "")]
+    public void ARowsRequirementComposesAtTheCaller(string key, string argument, string premise, string statement, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems(Sink + Loud + Noisy + Fixed + $"group H\n    public func put<K>(table: uniq/Dictionary<K, i32>, key: ref/K)\n        K is {premise}\n" +
+                $"        {statement}\n" + WithField($"table: Dictionary<{key}, i32> = [:]") + $"        H.put(self.table@uniq, {argument})\n        return .Ok(())\n"));
+
+    // SPEC 4.7.5, 8.4.10.4: at the top, a row's requirement on an abstract Type is judged by the premises (fail-before: the first).
+    [Theory]
+    [InlineData("Fixed", "")]
+    [InlineData("Equatable", Failed)]
+    public void ARowsRequirementIsJudgedByThePremisesAtTheTop(string premise, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems(Sink + Fixed + $"struct G<K>\n    K is {premise}\n    Self is Sink\n    var table: Dictionary<K, i32> = [:]\n    var key: K\n" +
+                "    public init(key: K) => self.key = key@move\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n" +
+                "        _ = self.table.tryGet(self.key)\n        return .Ok(())\n"));
+
+    // SPEC 4.7.5, 8.4.10.4: a formatting function's row runs the value's Utf8Format witness: built-in for i32, Shown's printing one, also in
+    // an interpolation (fail-before: each, a limit).
+    [Theory]
+    [InlineData("        _ = Text.toString(42)\n        _ = \"\\(value)\"\n", "")]
+    [InlineData("        _ = Text.toString(Shown.init())\n", Failed)]
+    [InlineData("        let shown = Shown.init()\n        _ = \"\\(shown)\"\n", Failed)]
+    public void FormattingRunsTheValuesWitness(string body, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems(Sink + Loud + "struct Shown\n    Self is Utf8Format\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n" +
+                "        Console.writeLine(\"format\")\n        return .Ok(())\n" + Witness + body + "        return .Ok(())\n"));
+
+    // SPEC 8.4.10.4: a built-in comparison of a composite Type runs its parts' witnesses (Binding's comparison plan): built-in for i32,
+    // Compared's environment read, also nested; a composite with an abstract part has no plan, a limit (fail-before: the first three, a limit).
+    [Theory]
+    [InlineData("        _ = (value, 1) == (value, 2)\n        _ = value == 2\n", "")]
+    [InlineData("        let first = Compared.init()\n        _ = (first@ref, 1) == (first@ref, 2)\n", Failed)]
+    [InlineData("        let first = Compared.init()\n        _ = ((first@ref, 1), 3) == ((first@ref, 2), 3)\n", Failed)]
+    [InlineData("        let key = Key.init()\n        _ = H.same(key, key)\n", "Unsupported_Kd Self is Sink 1")]
+    public void ACompositeComparisonRunsItsPartsWitnesses(string body, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems(Sink + Loud + Fixed + "group State\n    public var value: i32 = 0\nstruct Compared\n    Self is Equatable\n" +
+                "    public func equals(self: ref/Self, other: ref/Self) -> bool\n        _ = State.value\n        return true\n" +
+                "group H\n    public func same<T>(a: ref/T, b: ref/T) -> bool\n        T is Fixed\n        return (a, 1) == (b, 1)\n" + Witness + body + "        return .Ok(())\n"));
+
+    // SPEC 8.4.10.4: a requirement on an open Type that is not abstract runs the witness its conformance maps it to, entered through the
+    // instance (fail-before: the first, judged by the premises).
+    [Theory]
+    [InlineData(" => true\n", "")]
+    [InlineData("\n        Console.writeLine(\"eq\")\n        return true\n", Failed)]
+    public void AnOpenSelfRunsItsWitness(string equals, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems(Sink + Loud + $"struct Box<T>\n    Self is Equatable\n    public func equals(self: ref/Self, other: ref/Self) -> bool{equals}" +
+                "group H\n    public func find<K>(table: ref/Dictionary<Box<K>, i32>, key: ref/Box<K>)\n        _ = table.tryGet(key)\n" +
+                WithField("boxes: Dictionary<Box<i32>, i32> = [:]") + "        H.find(self.boxes@ref, Box<i32>.init())\n        return .Ok(())\n"));
+
+    // SPEC 8.4.10.4: a requirement on a Type whose conformance maps it to a base's function runs that inherited witness, entered through
+    // the base's instance (the base path ConformanceWitness resolves; fail-before: each, a limit of the formatting function).
+    [Theory]
+    [InlineData(" => .Ok(())\n", "")]
+    [InlineData("\n        Console.writeLine(\"format\")\n        return .Ok(())\n", Failed)]
+    public void AnInheritedWitnessRunsThroughItsBase(string format, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems(Sink + Loud + "open struct Base\n    public init() => ()\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>" +
+                $"{format}struct Leaf : Base\n    Self is Utf8Format\n    public init() => ()\n" + Witness + "        _ = Text.toString(Leaf.init())\n" +
+                "        return .Ok(())\n"));
+
+    // SPEC 8.4.10.4: a witness entered for a row runs its own body, whose requirement call on its parameter keeps the witness's premises
+    // (X2) whatever the instance: `Box<Key>`'s equality is confined under `T is Fixed` and unknown under `T is Equatable`, reached
+    // directly and through a generic helper (fail-before: the confined ones, through the private Storage helper).
+    [Theory]
+    [InlineData("Fixed", "_ = self.boxes.tryGet(Box<Key>.init(Key.init()))", "")]
+    [InlineData("Equatable", "_ = self.boxes.tryGet(Box<Key>.init(Key.init()))", Failed)]
+    [InlineData("Fixed", "H.find(self.boxes@ref, Box<Key>.init(Key.init()))", "")]
+    [InlineData("Equatable", "H.find(self.boxes@ref, Box<Key>.init(Key.init()))", Failed)]
+    public void AWitnessKeepsItsOwnPremises(string premise, string statement, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems(Sink + Loud + Fixed + $"struct Box<T>\n    T is {premise}\n    Self is Equatable\n    public var value: T\n" +
+                "    public init(value: T) => self.value = value@move\n    public func equals(self: ref/Self, other: ref/Self) -> bool => self.value == other.value\n" +
+                $"group H\n    public func find<K>(table: ref/Dictionary<Box<K>, i32>, key: ref/Box<K>)\n        K is {premise}\n        _ = table.tryGet(key)\n" +
+                WithField("boxes: Dictionary<Box<Key>, i32> = [:]") + $"        {statement}\n        return .Ok(())\n"));
 
     // V16 (plan "New V-checks"): A4 is linear: an N-deep call chain whose last member prints and an N-member ring of mutual calls (one
     // member prints), each with one problem, grow the evaluations and the cold allocation of a fresh A4 over the program (the library
@@ -366,6 +489,9 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
     }
 
     private static string[] Expected(string expected) => expected.Length == 0 ? [] : expected.Split('|');
+
+    // The witness S with one more Field.
+    private static string WithField(string field) => Witness.Replace("Loud.init()\n", $"Loud.init()\n    var {field}\n", StringComparison.Ordinal);
 
     private static string[] Problems(string source)
     {

@@ -9,14 +9,11 @@ namespace Kimi.Compiler;
 // read, all under one premise scope per definition (Binding.EffectPremises).
 internal sealed partial class TyCtxt
 {
-    // SPEC 8.4.10.2: what a call of a function without a MIR body does: a compiler function's class (IntrinsicDisposition.Effect), except
-    // that a built-in comparison of a composite Self runs its parts' witnesses, which are not published yet (U6b); a definition Binding
-    // rejected a dependent of that error (R4-M18: its parts are not published), a foreign function (SPEC 22.3.1) an environment effect; any
-    // other is unclassified.
-    internal static CompilerFunctionEffect Bodyless(BindingSymbol function, BoundType? self) => function switch
+    // SPEC 8.4.10.2: what a call of a function without a MIR body does: a compiler function's class (IntrinsicDisposition.Effect), a
+    // definition Binding rejected a dependent of that error (R4-M18: its parts are not published), a foreign function (SPEC 22.3.1) an
+    // environment effect; any other is unclassified.
+    internal static CompilerFunctionEffect Bodyless(BindingSymbol function) => function switch
     {
-        { CompilerFunction: CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare } when ComparisonTypes.IsComposite(self)
-            => CompilerFunctionEffect.Unclassified,
         { CompilerFunction: not CompilerFunctionKind.None } => IntrinsicDisposition.Effect(function.CompilerFunction),
         { Declaration.BindingState: not BindingState.Resolved } => CompilerFunctionEffect.Dependent,
         { Declaration: FunctionKoto declaration } when Binding.IsLibraryImport(declaration) => CompilerFunctionEffect.Environment,
@@ -34,6 +31,11 @@ internal sealed partial class TyCtxt
 
         return (row.Runs is { } runs ? library.GetSymbol(runs)!.Contract!.Requirements[0].Symbol : null, row.On, row.Destroys); // Its one requirement.
     }
+
+    // SPEC 8.4.10.4: what a requirement runs on a Self that is not abstract (Binding.Witnesses), appended to a caller-owned list with each
+    // target's declaring instance (none for a compiler function); false where none resolves.
+    internal bool Witnesses(BindingSymbol requirement, BoundType self, BindingSymbol? definition, List<(BindingSymbol Target, BoundType? Declaring)> into)
+        => binding.Witnesses(requirement, self, definition, into);
 
     // R4-M22: the confined obligations of the latest pass (Binding.EffectObligations), appended to a caller-owned list.
     internal void EffectObligations(List<EffectObligation> rows) => binding.EffectObligations(rows);
