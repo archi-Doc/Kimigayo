@@ -200,24 +200,10 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 13.5.5.2, 5.4, 6.2.2: a reference of a Type to a Place, the one rule of every borrow: of the Place's layer whose Type is the
-    // reference's referent (an object borrow's payload, a reborrow's referent) or its base that is (a base view), in its Type's mode (raw: an
-    // address); an exclusive borrow of a call's input is two-phase, reserved here and activated at the Call (SPEC 15.6.7).
+    // reference's referent (an object borrow's payload, a reborrow's referent) or its base that is (a base view), in its Type's mode
+    // (MirTypes.RefKind; an exclusive borrow of a call's input is two-phase).
     private MirRvalue Ref(MirPlace place, BoundType reference, bool input)
     {
-        MirRefKind kind;
-        if (reference.Semantics == SemanticsKind.Raw)
-        {
-            kind = MirRefKind.Raw;
-        }
-        else if (!MirTypes.IsExclusive(reference))
-        {
-            kind = MirRefKind.Shared;
-        }
-        else
-        {
-            kind = input ? MirRefKind.TwoPhaseUniq : MirRefKind.Uniq;
-        }
-
         var referent = reference.Components is [var target] ? target : null;
         var depth = 0;
         place = referent is null ? place : this.Follow(place, 16, referent);
@@ -226,7 +212,7 @@ internal sealed partial class MirBuilder
             depth = AdtDef.Base(layer) is null ? 0 : depth + 1;
         }
 
-        return MirRvalue.Ref(kind, depth == 0 ? place : this.body.Project(place, MirProjectionKind.Base, depth), reference);
+        return MirRvalue.Ref(MirTypes.RefKind(reference, input), depth == 0 ? place : this.body.Project(place, MirProjectionKind.Base, depth), reference);
     }
 
     // An rvalue in a new temp of its Type, or in the place given where that has its Type, moved.

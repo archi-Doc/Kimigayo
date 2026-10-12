@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the Type facts needed by MIR construction and analyses.
-// Input: published Types and their stored shapes. Output: drop, raw, exclusivity and agreement facts.
+// Input: published Types and their stored shapes. Output: drop, raw, exclusivity, agreement, borrow-kind and pointer-cast facts.
 // Inline storage is traversed under each fact's documented bounds and Type rules.
 // Must not inspect source syntax or substitute new Binding decisions.
 
@@ -39,6 +39,33 @@ internal static class MirTypes
     /// <param name="type">The Type.</param>
     /// <returns>Whether it is an exclusive reference.</returns>
     internal static bool IsExclusive(BoundType? type) => type?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
+
+    /// <summary>Gets the kind of the borrow that forms a reference Type (SPEC 13.5.5.2, 5.4), the mode of every Ref: an address for a raw
+    /// pointer, a shared borrow for a shared reference, else an exclusive one, two-phase for a call's input: reserved at the borrow and
+    /// activated at the Call (SPEC 15.6.7).</summary>
+    /// <param name="reference">The reference Type.</param>
+    /// <param name="input">Whether the borrow is a call's input.</param>
+    /// <returns>The borrow's kind.</returns>
+    internal static MirRefKind RefKind(BoundType reference, bool input)
+    {
+        if (reference.Semantics == SemanticsKind.Raw)
+        {
+            return MirRefKind.Raw;
+        }
+
+        if (!IsExclusive(reference))
+        {
+            return MirRefKind.Shared;
+        }
+
+        return input ? MirRefKind.TwoPhaseUniq : MirRefKind.Uniq;
+    }
+
+    /// <summary>Gets the Cast of a raw pointer conversion from a source Type (SPEC 5.4): Pointer from a raw pointer, else IntToPointer, an
+    /// integer's, an environment effect (SPEC 8.4.10.2).</summary>
+    /// <param name="source">The converted value's Type.</param>
+    /// <returns>The Cast's kind.</returns>
+    internal static MirCastKind PointerCast(BoundType source) => source.Semantics == SemanticsKind.Raw ? MirCastKind.Pointer : MirCastKind.IntToPointer;
 
     /// <summary>Gets whether two Types agree, the one Type agreement of MIR: equal but for the Origins and Origin arguments of either Type
     /// and its components, which an assignment or a call relates instead of equating (SPEC 15.3) and the ownership analysis checks (R4).

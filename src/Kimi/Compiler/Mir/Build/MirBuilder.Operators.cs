@@ -159,7 +159,7 @@ internal sealed partial class MirBuilder
                 ConversionBinding.Wrap => MirCastKind.Wrap,
                 ConversionBinding.Bits => MirCastKind.Bits,
                 ConversionBinding.ObjectUpcast => MirCastKind.Upcast,
-                ConversionBinding.Pointer => source.Semantics == SemanticsKind.Raw ? MirCastKind.Pointer : MirCastKind.IntToPointer,
+                ConversionBinding.Pointer => MirTypes.PointerCast(source),
                 _ when source.IsFloatingPoint == type.IsFloatingPoint => source.IsFloatingPoint ? MirCastKind.Floating : MirCastKind.Integer,
                 _ => MirCastKind.Numeric,
             };
