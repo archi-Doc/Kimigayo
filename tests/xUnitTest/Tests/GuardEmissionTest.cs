@@ -105,6 +105,8 @@ public class GuardEmissionTest
     public void CandidateWidth(string type, string literal)
         => ScalarEmissionTest.EmitFixture("GuardWidth" + type, $"func f(value: {type}) -> bool\n    return match value\n        let n if n == {literal} => true\n        _ => false\nif f({literal}) => Console.writeLine(\"ok\")", "ok\n");
 
+    // The guard's temporaries are destroyed after its value and before its branch to either continuation (their MIR: tests/mir/matches.kimi
+    // `guardCleanup`).
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -117,11 +119,6 @@ public class GuardEmissionTest
         StringEmissionTest.WriteAuditedFixture(name, source, ir, stdout, success ? "a=2;selected=1;fallback=0" : "a=1;b=1;selected=0;fallback=1");
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Matches.Count != 0);
-        var arm = body.MatchArms[0];
-        Assert.True(arm.GuardValue < arm.GuardCleanupStart);
-        Assert.True(arm.GuardCleanupStart < arm.GuardBranch);
-        Assert.True(arm.GuardBranch < arm.BodyEntry);
     }
 
     [Theory]
@@ -181,16 +178,13 @@ public class GuardEmissionTest
         ScalarEmissionTest.EmitFixture("GuardAbort", Source, string.Empty, 1, "Hello.kimi:4:9: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
     }
 
+    // A guard that never completes branches nowhere, so the checks alone reach its body (its MIR: tests/mir/matches.kimi `divergentGuard`).
     [Fact]
     public void DivergentGuardHasNoSelectedBodyEdge()
     {
         const string Source = "func stop() -> Never\n    loop => ()\nmatch 1\n    _ if stop() => Console.writeLine(\"bad\")\n    _ => Console.writeLine(\"after\")";
         var ir = ScalarEmissionTest.EmitFixture("GuardDivergent", Source, string.Empty, timeoutMilliseconds: 300);
         Assert.DoesNotContain("mustprogress", ir);
-        var c = MinimalEmissionTest.Analyze(Source);
-        var body = c.Ownership.Bodies.Single(x => x.Matches.Count != 0);
-        Assert.Equal(-1, body.MatchArms[0].GuardBranch);
-        Assert.False(body.IsReachable(body.MatchArms[0].BodyEntry));
     }
 
     [Fact]

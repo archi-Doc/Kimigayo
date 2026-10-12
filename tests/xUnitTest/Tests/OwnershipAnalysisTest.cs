@@ -87,10 +87,9 @@ public class OwnershipAnalysisTest
     {
         var c = Parse(source);
         var result = c.Analyze();
+        // The Copy-unproven parameter keeps its generic Type; its x@move transfer is checked as a Move (SPEC 13.5.3; its MIR:
+        // tests/mir/generics.kimi `wrapSome`).
         Assert.True(valid == result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        // The Copy-unproven parameter Place stays CopyOrMove; its x@move transfer is checked as a Move (SPEC 13.5.3).
-        Assert.Contains(c.Ownership.Bodies.SelectMany(x => x.Places), x => x.Kind == OwnershipPlaceKind.Parameter && x.Acquisition == AcquisitionKind.CopyOrMove);
-        Assert.Contains(c.Ownership.Bodies.SelectMany(x => x.Operations), x => x.Kind == OwnershipOperationKind.Consume && x.Acquisition == AcquisitionKind.Move);
         if (!valid)
         {
             Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.MovedPlace_Kd);
@@ -152,19 +151,16 @@ public class OwnershipAnalysisTest
         Assert.All(body.Edges.Where(x => x.Kind == OwnershipEdgeKind.Abort), x => Assert.Equal(OwnershipOperationKind.Exit, body.Operations[x.To].Kind));
     }
 
+    // A return secures its result before the cleanup and the delivery (its MIR: tests/mir/scopes.kimi `securedReturn`).
     [Fact]
     public void ReturnSecuresTheResultBeforeCleanupAndDelivery()
     {
         var c = Parse("func f(s: string) -> string\n    return s@move");
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
-        var operations = body.Operations.ToArray();
-        var secure = Array.FindIndex(operations, x => x.Kind == OwnershipOperationKind.Write && body.Places[x.Place].Kind == OwnershipPlaceKind.Result);
-        var cleanup = Array.FindIndex(operations, x => x.Kind == OwnershipOperationKind.Cleanup);
-        var deliver = Array.FindIndex(operations, x => x.Kind == OwnershipOperationKind.Deliver);
-        Assert.True(secure < cleanup && cleanup < deliver);
     }
 
+    // A return inside an argument destroys the inner local before the outer temporary (its MIR: tests/mir/scopes.kimi
+    // `returnInArgument`), whatever the newlines.
     [Theory]
     [InlineData("\n", false)]
     [InlineData("\r\n", false)]
@@ -177,11 +173,10 @@ public class OwnershipAnalysisTest
         var source = "func makeText() -> string => \"outer\"\nfunc consume(a: string, b: i32) => ()\nfunc use(c: bool)\n    consume(\n        makeText(),\n        if c\n            let inner = \"inner\"\n            return\n        else => 1\n    )";
         var c = Parse(source.Replace("\n", newline) + (trailingNewline ? newline : string.Empty));
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "use");
-        var steps = body.CleanupSteps.Where(x => x.Action == CleanupAction.Destroy && body.Operations[x.Operation].Source is ReturnKoto).ToArray();
-        var inner = Array.FindIndex(steps, x => x.Source is FieldKoto);
-        var outer = Array.FindIndex(steps, x => x.Source is InvocationKoto call && call.CallOf()?.Target.Name == "makeText");
-        Assert.True(inner >= 0 && outer > inner);
+        if (newline != "\n" || trailingNewline)
+        {
+            Assert.Equal(MirDumpTest.Dump(Parse(source)), MirDumpTest.Dump(c));
+        }
     }
 
     [Fact]

@@ -8,7 +8,7 @@ namespace XunitTest;
 
 /// <summary>Initialization and moves on MIR (A1, SPEC 15.1, 14.10.3; docs/dev/DECISIONS.md R4-M20, R4-M21): each rule with a valid
 /// program and an invalid one, through the problems <c>Compilation.BuildMir</c> finds (R4 shadow: unpublished), each as its code, the first
-/// line of its subject and its views.</summary>
+/// line of its subject and its views; and the move paths a body forms, through <see cref="MirMoveData"/> itself.</summary>
 public sealed class MirInitTest(ITestOutputHelper output)
 {
     private const string Resource = "struct Resource\n    var name: string\nfunc make() -> Resource => Resource.init(name: \"r\")\n" +
@@ -124,6 +124,20 @@ public sealed class MirInitTest(ITestOutputHelper output)
             ["StaticMovePathRequired_Kd first(names) 1"],
             Problems("func first(values: ref/Array<string>) -> place ref/string during values => values[0]\nfunc f(names: Array<string>)\n" +
                 "    let bare = first(names)\n"));
+    }
+
+    // SPEC 15.1.3: a Move of a constant index forms the referenced element's Move Path; the paths follow the accesses, never the declared
+    // length (an input-size property of MirMoveData).
+    [Fact]
+    public void AnElementMoveAddsOnlyItsOwnPath()
+    {
+        var c = MirBuildTest.Compile("func f()\n    var a: [1000000 of string]\n    let taken = a[42]@move\n");
+        var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData());
+        flow.Begin(body);
+        moves.Build(body, flow);
+        var array = body.Locals.ToArray().ToList().FindIndex(static x => x.Name == "a");
+        Assert.Equal(2, moves.Paths.ToArray().Count(x => x.Local == array));
     }
 
     // SPEC 14.10.3: code only the checks reach is checked with the state after the transfer's operand, which is never merged into a runtime

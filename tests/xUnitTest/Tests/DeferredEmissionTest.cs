@@ -154,15 +154,14 @@ public class DeferredEmissionTest
         Assert.DoesNotContain("willreturn", writer.ToString());
     }
 
+    // A cleanup that never completes leaves the cleanups registered before it to the checks (their MIR: tests/mir/scopes.kimi
+    // `divergentCleanup`).
     [Fact]
     public void DivergentCleanupSkipsRemainingBodiesAndRunsUntilKilled()
     {
         const string Source = "defer\n    Console.writeLine(\"bad\")\ndefer => loop => ()\nConsole.writeLine(\"begin\")";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        var body = c.Ownership.Bodies[0];
-        var bad = Source.IndexOf("Console.writeLine(\"bad\")", StringComparison.Ordinal);
-        Assert.False(body.IsReachable(body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call && x.Source.Span.Start == bad)));
         ScalarEmissionTest.EmitFixture("DeferredDivergent", Source, "begin\n", timeoutMilliseconds: 1000);
     }
 

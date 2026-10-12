@@ -153,8 +153,7 @@ public class ElementMoveEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("var a: [1000000 of string]\nlet taken = a[42]@move");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.UninitializedPlace_Kd);
-        Assert.Equal(2, c.Ownership.Bodies[0].MovePathCount); // Root plus the one referenced element.
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.UninitializedPlace_Kd); // Its paths: MirInitTest.AnElementMoveAddsOnlyItsOwnPath.
     }
 
     [Theory]

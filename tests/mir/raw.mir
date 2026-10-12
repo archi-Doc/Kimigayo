@@ -93,3 +93,47 @@ fn addresses @25
       StorageDead(_3) @37 s1
       StorageDead(_2) @30 s1
       unreachable @29
+fn derefCompare @67
+  _0: () return @67
+  _1: raw/string arg p @67
+  _2: () temp @71 s1
+  _3: bool var equal @73 s2
+  _4: ref/string temp @76 s2
+  s1: lexical in s0 @70
+  s2: unsafe in s1 @72
+  bb0:
+      StorageLive(_2) @71 s1
+      StorageLive(_3) @73 s2
+      StorageLive(_4) @76 s2
+    * _4 = &(*_1): ref/string @76 s2
+      _3 = Eq(move _4, const "text") proven @75 s2
+      StorageDead(_4) @76 s2
+      _2 = const () @72 s2
+      StorageDead(_3) @73 s2
+      StorageDead(_2) @71 s1
+      _0 = const () @70 s1
+      return @70
+fn indexCompare @79
+  _0: () return @79
+  _1: raw/string arg p @79
+  _2: () temp @83 s1
+  _3: bool var equal @85 s2
+  _4: raw/string temp @88 s2
+  _5: ref/string temp @88 s2
+  s1: lexical in s0 @82
+  s2: unsafe in s1 @84
+  bb0:
+      StorageLive(_2) @83 s1
+      StorageLive(_3) @85 s2
+      StorageLive(_4) @88 s2
+    * _4 = Add(copy _1, const 0_isize) proven @88 s2
+      StorageLive(_5) @88 s2
+      _5 = &(*_4): ref/string @88 s2
+      _3 = Eq(move _5, const "text") proven @87 s2
+      StorageDead(_5) @88 s2
+      StorageDead(_4) @88 s2
+      _2 = const () @84 s2
+      StorageDead(_3) @85 s2
+      StorageDead(_2) @83 s1
+      _0 = const () @82 s1
+      return @82

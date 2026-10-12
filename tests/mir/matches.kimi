@@ -47,3 +47,18 @@ open struct Base
 struct Leaf : Base
 
 func isLeaf(view: objref/Base) -> bool => view is Leaf
+func echo(text: string) -> string => text@move
+func guardCleanup()
+    match 1
+        _ if echo("a") == "a" => Console.writeLine("selected")
+        _ => Console.writeLine("fallback")
+func halt() -> Never
+    loop => ()
+func divergentGuard()
+    match 1
+        _ if halt() => Console.writeLine("bad")
+        _ => Console.writeLine("after")
+func loopingGuard()
+    match "held"
+        let text if (loop => ()) => Console.writeLine("selected")
+        _ => Console.writeLine("fallback")

@@ -489,3 +489,34 @@ fn settled @234
       StorageDead(_5) @245 s1
       StorageDead(_3) @239 s1
       unreachable @238
+fn diverge @248
+  _0: Never return @248
+  _1: () temp @251
+  _2: () temp @252 s1
+  s1: lexical in s0 @251
+  bb0:
+    * goto bb1 @250
+  bb1:
+      goto bb2 check bb3 @250
+  bb2:
+      StorageLive(_1) @251
+      StorageLive(_2) @252 s1
+    * _2 = const () @252 s1
+      StorageDead(_2) @252 s1
+      _1 = const () @251 s1
+      StorageDead(_1) @251
+      goto bb1 @251
+  bb3:
+      unreachable @250
+fn neverConverted @253
+  _0: () return @253
+  _1: Never temp @254
+  _2: Never temp @255
+  bb0:
+      StorageLive(_1) @254
+      StorageLive(_2) @255
+    * _2 = diverge() -> ! check bb1 @255
+  bb1:
+      StorageDead(_2) @255
+      StorageDead(_1) @254
+      unreachable @254

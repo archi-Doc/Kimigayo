@@ -108,6 +108,7 @@ public class GenericAdaptationTest
         NativeAllocationAudit.WriteFixture("GenericAdaptationBorrowUpcast", Source, 3, 3, 60, "derived\nderived\nderived\n");
     }
 
+    // The reference case borrows the written reference slot (its view: MirBuildTest.ViewsResolveAdaptations `Fn mixed [Ref]`).
     [Fact]
     public void MixedObjectAndReferenceShorthandBorrowsTheWrittenReferenceSlot()
     {
@@ -115,11 +116,6 @@ public class GenericAdaptationTest
             "let number = 7\ninspect(number@ref)\ninspect<obj/i32>(8@obj)\nrequire number == 7 else => $abort(\"slot\")";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), x => x.ConversionOf().Adaptation is not null);
-        var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "inspect");
-        var type = body.Resolve(conversion.TypeOf(), InterpretationContext.Root)!;
-        Assert.Equal(SemanticsKind.Ref, type.Semantics);
-        Assert.Equal(SemanticsKind.Ref, type.Components[0].Semantics);
         NativeAllocationAudit.WriteFixture("GenericAdaptationMixedSlot", Source, 1, 1, 20);
     }
 

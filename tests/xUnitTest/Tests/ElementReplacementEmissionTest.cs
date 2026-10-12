@@ -91,6 +91,8 @@ public class ElementReplacementEmissionTest
         StringEmissionTest.WriteAuditedFixture("ElementReplacementRhsTransfer", Source, ir, "ok\n", "old=1;ok=1", order: [0, 1]);
     }
 
+    // A cleanup that never completes leaves the destruction of the old element and the placement to the checks (their MIR:
+    // tests/mir/updates.kimi `divergentReplacement`, `divergentReplacementIndex`).
     [Theory]
     [InlineData("Rhs", "a[0] = label work: do\n    defer => loop => ()\n    exit to work \"new\"")]
     [InlineData("Index", "a[(label work: do\n    defer => loop => ()\n    exit to work 0\n)] = \"new\"")]
@@ -101,7 +103,6 @@ public class ElementReplacementEmissionTest
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         var function = module.GetFunction(0);
         Assert.DoesNotContain(function.Instructions, x => x.Callee == WindowsLowering.DestroyString || x.Opcode == EmissionOpcode.DestroyAggregate);
-        Assert.DoesNotContain(c.Ownership.Bodies[0].Operations, x => x.Kind == OwnershipOperationKind.WriteElement);
         ScalarEmissionTest.EmitFixture("ElementReplacementDivergent" + name, source, string.Empty, timeoutMilliseconds: 300);
     }
 

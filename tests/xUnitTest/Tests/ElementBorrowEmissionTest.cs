@@ -297,6 +297,8 @@ public class ElementBorrowEmissionTest
         Assert.Equal(Assert.Single(body.Matches).Subject, candidate.Value);
     }
 
+    // The comparison borrows its elements in place: no temporary, no Move, no cleanup of an element (its MIR: tests/mir/comparisons.kimi
+    // `elementComparison`).
     [Fact]
     public void ComparisonDoesNotAcquireOrDestroyItsElement()
     {
@@ -305,9 +307,6 @@ public class ElementBorrowEmissionTest
         StringEmissionTest.WriteAuditedFixture("ElementBorrowResponsibility", Source, ir, "ok\n", "held=1;sibling=1;ok=1", order: [2, 1, 0]);
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies[0];
-        Assert.DoesNotContain(body.Places, p => p.Kind == OwnershipPlaceKind.Temporary && p.Source is Kimi.Compiler.Parsing.MemberAccessKoto);
-        Assert.Equal(0, body.MovePathCount);
         var comparison = Assert.Single(module.GetFunction(0).Instructions, x => x.Opcode == EmissionOpcode.StringEquals);
         Assert.All(module.GetFunction(0).Operands.Skip(comparison.OperandStart).Take(2), x => Assert.Equal(EmissionOperandKind.ElementAddress, x.Kind));
     }

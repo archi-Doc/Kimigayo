@@ -8,34 +8,33 @@ namespace XunitTest;
 
 public class FloatEmissionTest
 {
+    // SPEC 3.1, 13.5.4: a literal keeps the bits its selected precision gives through storage and calls (each literal's constant:
+    // tests/mir/literal.kimi `floats`).
     [Theory]
-    [InlineData("f32", "1.00000005960464477539062500000000000000000000000000001", 0x3F800001L)]
-    [InlineData("f32", "1.000000059604644775390625", 0x3F800000L)]
-    [InlineData("f32", "1.000000178813934326171875", 0x3F800002L)]
-    [InlineData("f32", "1e-45", 1L)]
-    [InlineData("f32", "7e-46", 0L)]
-    [InlineData("f32", "8e-46", 1L)]
-    [InlineData("f32", "-7e-46", 0x80000000L)]
-    [InlineData("f32", "-0.0", 0x80000000L)]
-    [InlineData("f32", "0.0", 0L)]
-    [InlineData("f32", "1_2.5_0", 0x41480000L)]
-    [InlineData("f32", "3.4028234663852886e38", 0x7F7FFFFFL)]
-    [InlineData("f64", "1.00000000000000011102230246251565404236316680908203125", 0x3FF0000000000000L)]
-    [InlineData("f64", "1.0000000000000001110223024625156540423631668090820312501", 0x3FF0000000000001L)]
-    [InlineData("f64", "4.9406564584124654e-324", 1L)]
-    [InlineData("f64", "2e-324", 0L)]
-    [InlineData("f64", "3e-324", 1L)]
-    [InlineData("f64", "-2e-324", long.MinValue)]
-    [InlineData("f64", "-0.0", long.MinValue)]
-    [InlineData("f64", "0.0", 0L)]
-    [InlineData("f64", "1_2.5_0", 0x4029000000000000L)]
-    [InlineData("f64", "1.7976931348623157e308", 0x7FEFFFFFFFFFFFFFL)]
-    public void LiteralsUseSelectedPrecisionBitsThroughStorageAndCalls(string type, string literal, long bits)
+    [InlineData("f32", "1.00000005960464477539062500000000000000000000000000001")]
+    [InlineData("f32", "1.000000059604644775390625")]
+    [InlineData("f32", "1.000000178813934326171875")]
+    [InlineData("f32", "1e-45")]
+    [InlineData("f32", "7e-46")]
+    [InlineData("f32", "8e-46")]
+    [InlineData("f32", "-7e-46")]
+    [InlineData("f32", "-0.0")]
+    [InlineData("f32", "0.0")]
+    [InlineData("f32", "1_2.5_0")]
+    [InlineData("f32", "3.4028234663852886e38")]
+    [InlineData("f64", "1.00000000000000011102230246251565404236316680908203125")]
+    [InlineData("f64", "1.0000000000000001110223024625156540423631668090820312501")]
+    [InlineData("f64", "4.9406564584124654e-324")]
+    [InlineData("f64", "2e-324")]
+    [InlineData("f64", "3e-324")]
+    [InlineData("f64", "-2e-324")]
+    [InlineData("f64", "-0.0")]
+    [InlineData("f64", "0.0")]
+    [InlineData("f64", "1_2.5_0")]
+    [InlineData("f64", "1.7976931348623157e308")]
+    public void LiteralsUseSelectedPrecisionBitsThroughStorageAndCalls(string type, string literal)
     {
         var source = $"func echo(x: {type}) -> {type} => x\nvar value: {type} = {literal}\nlet copy = value\nvalue = 0.0\nvalue = copy\nif echo(value) == {literal} => Console.writeLine(\"ok\")";
-        var c = MinimalEmissionTest.Analyze(source);
-        var body = c.Ownership.Bodies.Single(x => x.Function.IsGenerated);
-        Assert.Contains(body.Values, x => x.Kind == OwnershipValueKind.Constant && x.Constant == bits);
         var ir = Emit("FloatLiteral" + type + literal.Replace('.', 'P').Replace('-', 'M'), source, "ok\n");
         var llvm = type == "f32" ? "float" : "double";
         Assert.Contains("alloca " + llvm + ", align " + (type == "f32" ? 4 : 8), ir);
@@ -197,6 +196,8 @@ public class FloatEmissionTest
         }));
     }
 
+    // A rebinding parses the literal again, so its MIR equals a fresh compilation's (the literal's bits: tests/mir/literal.kimi `floats`,
+    // f1), and a reload writes the same IR.
     [Fact]
     public void RebindingAndSerializationDoNotReuseTheOldDoubleLiteralCache()
     {
@@ -207,7 +208,7 @@ public class FloatEmissionTest
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
-        Assert.Contains(c.Ownership.Bodies[0].Values, x => x.Kind == OwnershipValueKind.Constant && x.Constant == 0x3F800001L);
+        Assert.Equal(MirDumpTest.Dump(MinimalEmissionTest.Analyze(Source)), MirDumpTest.Dump(c));
         using var original = new StringWriter();
         Assert.True(c.WriteIr(original, out var error), error);
         var restored = CompilationTestHelper.Reload(c);

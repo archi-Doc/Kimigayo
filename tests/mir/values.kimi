@@ -37,3 +37,5 @@ func cut(values: ref/Array<i32>) -> Slice<i32> during values => values[^1..$abor
 func settled(a: bool, b: bool) -> bool
     let both = a and b
     return both or a
+func diverge() -> Never => loop => ()
+func neverConverted() => diverge()@u8

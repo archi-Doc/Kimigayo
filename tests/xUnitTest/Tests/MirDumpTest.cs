@@ -21,10 +21,7 @@ public sealed class MirDumpTest
     public void ProgramDumpsItsGolden(string name)
     {
         var source = File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "mir", name + ".kimi"));
-        var c = MirBuildTest.Compile(source, source.Contains("#Test", StringComparison.Ordinal));
-        var text = new StringBuilder();
-        MirDump.Write(c.BuildMir(), 0, text);
-        Golden(name, text.ToString());
+        Golden(name, Dump(MirBuildTest.Compile(source, source.Contains("#Test", StringComparison.Ordinal))));
     }
 
     // The spellings of every form: Deref, Field, Base, Index, ConstIndex, Downcast and PairLayer projections, the borrows (a two-phase and a
@@ -40,6 +37,14 @@ public sealed class MirDumpTest
         var text = new StringBuilder();
         MirDump.Write(body, text, new MirDropTable(), 0);
         Golden("every-form", text.ToString());
+    }
+
+    // The dump of a compilation's first source module, as a golden holds it.
+    internal static string Dump(Compilation c)
+    {
+        var text = new StringBuilder();
+        MirDump.Write(c.BuildMir(), 0, text);
+        return text.ToString();
     }
 
     private static void Golden(string name, string actual)

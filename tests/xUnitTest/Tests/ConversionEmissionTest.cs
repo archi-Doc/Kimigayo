@@ -248,13 +248,13 @@ public class ConversionEmissionTest
         Assert.Empty(writer.ToString());
     }
 
+    // A conversion of an operand that never completes has no value (its MIR: tests/mir/values.kimi `neverConverted`) and no instruction.
     [Fact]
     public void NoncompletingOperandsHaveNoConversionValueOrInstruction()
     {
         const string Source = "func stop() -> Never => loop => ()\nstop()@u8";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.All(c.Ownership.Bodies, body => Assert.DoesNotContain(body.Values, x => x.Kind == OwnershipValueKind.Convert));
         for (var i = 0; i < module.FunctionCount; i++)
         {
             Assert.DoesNotContain(module.GetFunction(i).Instructions, x => x.Opcode == EmissionOpcode.Convert);

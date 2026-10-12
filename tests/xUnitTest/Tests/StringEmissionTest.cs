@@ -167,14 +167,16 @@ public class StringEmissionTest
         Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
     }
 
+    // A right-hand side that never completes writes nothing (its MIR: tests/mir/updates.kimi `noncompletingWrite`).
     [Fact]
     public void NoncompletingRhsHasNoStringWrite()
     {
         var c = MinimalEmissionTest.Analyze("loop\n    var text = \"old\"\n    text = (exit)");
         Assert.True(c.Validate(out var error), error);
-        Assert.DoesNotContain(c.Ownership.Bodies[0].Operations, x => x.Kind == OwnershipOperationKind.Write && x.Place >= 0 && ReferenceEquals(c.Ownership.Bodies[0].Places[x.Place].Type, BoundType.String) && x.Input < 0);
     }
 
+    // A defer that never completes leaves the string's destruction and the delivery to the checks (their MIR: tests/mir/scopes.kimi
+    // `divergentDeferHeld`).
     [Fact]
     public void DivergentDeferPreventsStringDestructionAndDelivery()
     {
@@ -183,8 +185,6 @@ public class StringEmissionTest
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var function = module.GetFunction(0);
         Assert.DoesNotContain(function.Instructions, x => x.Callee == WindowsLowering.DestroyString || x.Opcode is EmissionOpcode.ReturnVoid or EmissionOpcode.ReturnScalar);
-        var body = c.Ownership.Bodies[0];
-        Assert.All(body.Operations.Select((x, id) => (x, id)).Where(x => x.x.Kind == OwnershipOperationKind.Deliver), x => Assert.False(body.IsReachable(x.id)));
         var ir = ScalarEmissionTest.EmitFixture("StringDivergentDefer", Source, string.Empty, timeoutMilliseconds: 300);
         Assert.DoesNotContain("mustprogress", ir);
         Assert.DoesNotContain("willreturn", ir);

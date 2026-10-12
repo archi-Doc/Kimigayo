@@ -452,12 +452,12 @@ fn quarter @175
   _3: Option<i32> temp (Subject) @185 s1
   _4: isize temp @188 s1
   _5: i32 var $try.value @192 s2
-  _6: isize temp @229 s1
-  _7: Option<i32> temp @231 s3
+  _6: isize temp @301 s1
+  _7: Option<i32> temp @303 s3
   _8: Option<i32> temp @211 s1
   s1: lexical in s0 @181
   s2: lexical in s1 @188
-  s3: lexical in s1 @229
+  s3: lexical in s1 @301
   bb0:
       StorageLive(_2) @182 s1
       StorageLive(_3) @185 s1
@@ -467,15 +467,15 @@ fn quarter @175
       _4 = discriminant(_3) @188 s1
       switch copy _4 [0: bb4, otherwise: bb3] @188 s1
   bb2:
-      StorageDead(_6) @229 s1
+      StorageDead(_6) @301 s1
       StorageDead(_4) @188 s1
       StorageDead(_3) @185 s1
       StorageLive(_8) @211 s1
     * _8 = half(copy _2) -> bb13 @211 s1
   bb3:
-      StorageLive(_6) @229 s1
-      _6 = discriminant(_3) @229 s1
-      switch copy _6 [1: bb6, otherwise: bb5] @229 s1
+      StorageLive(_6) @301 s1
+      _6 = discriminant(_3) @301 s1
+      switch copy _6 [1: bb6, otherwise: bb5] @301 s1
   bb4:
       StorageLive(_5) @192 s2
       _5 = copy (_3 as case 0).0 @192 s2
@@ -485,8 +485,8 @@ fn quarter @175
   bb5:
       unreachable @184 s1
   bb6:
-      StorageLive(_7) @231 s3
-    * _7 = Adt case 1(): Option<i32> @231 s3
+      StorageLive(_7) @303 s3
+    * _7 = Adt case 1(): Option<i32> @303 s3
       goto bb11 check bb12 @203 s3
   bb7:
       return @175
@@ -494,18 +494,18 @@ fn quarter @175
       StorageDead(_2) @182 s1
       goto bb7 @175
   bb9:
-      StorageDead(_6) @229 s1
+      StorageDead(_6) @301 s1
       StorageDead(_4) @188 s1
       StorageDead(_3) @185 s1
       goto bb8 @175
   bb10:
-      StorageDead(_7) @231 s3
+      StorageDead(_7) @303 s3
       goto bb9 @175
   bb11:
       _0 = move _7 @203 s3
       goto bb10 @203 s3
   bb12:
-      StorageDead(_7) @231 s3
+      StorageDead(_7) @303 s3
       unreachable check bb2 @203 s1
   bb13:
       goto bb15 check bb16 @210 s1
@@ -530,25 +530,292 @@ fn isLeaf @214
   bb1:
       StorageDead(_2) @218
       return @218
-fn init @221
-  _0: Base return @221
-  _1: () temp @223
-  s1: lexical in s0 @223
+fn echo @221
+  _0: string return @221
+  _1: string arg text @221
   bb0:
-      StorageLive(_1) @223
-    * _1 = const () @223 s1
-      FakeRead(_0) @221 s1
-      StorageDead(_1) @223
-      return @223
-fn init @222
-  _0: Leaf return @222
-  _1: () temp @226
-  s1: lexical in s0 @226
-  bb0:
-      StorageLive(_1) @226
-    * _0.base1 = init() -> bb1 @225
+    * _0 = move _1 @225
+      drop _1 -> bb1 [elide] @221
   bb1:
-    * _1 = const () @226 s1
-      FakeRead(_0) @222 s1
-      StorageDead(_1) @226
-      return @226
+      return @224
+fn guardCleanup @227
+  _0: () return @227
+  _1: () temp @229 s1
+  _2: i32 temp (Subject) @230 s1
+  _3: bool temp @232 s2
+  _4: string temp @233 s2
+  _5: ref/string temp @233 s2
+  _6: () temp @237 s3
+  _7: string temp @241 s3
+  _8: ref/string temp @241 s3
+  _9: () temp @243 s4
+  _10: string temp @247 s4
+  _11: ref/string temp @247 s4
+  s1: lexical in s0 @228
+  s2: guard in s1 @232
+  s3: lexical in s1 @231
+  s4: lexical in s1 @242
+  bb0:
+      StorageLive(_1) @229 s1
+      StorageLive(_2) @230 s1
+    * _2 = const 1_i32 @230 s1
+      StorageLive(_3) @232 s2
+      StorageLive(_4) @233 s2
+      _4 = echo(const "a") -> bb5 @233 s2
+  bb1:
+      StorageDead(_2) @230 s1
+      StorageDead(_1) @229 s1
+      _0 = const () @228 s1
+      return @228
+  bb2:
+      switch const true [1: bb10, otherwise: bb9] @242 s1
+  bb3:
+      StorageDead(_3) @232 s2
+      goto bb2 @232 s2
+  bb4:
+      StorageDead(_3) @232 s2
+      StorageLive(_6) @237 s3
+      StorageLive(_7) @241 s3
+    * _7 = const "selected" @241 s3
+      StorageLive(_8) @241 s3
+      _8 = &_7: ref/string @241 s3
+      _6 = writeLine(move _8) -> bb7 @237 s3
+  bb5:
+      StorageLive(_5) @233 s2
+      _5 = &_4: ref/string @233 s2
+      _3 = Eq(move _5, const "a") proven @232 s2
+      StorageDead(_5) @233 s2
+      drop _4 -> bb6 [keep] @233 s2
+  bb6:
+      StorageDead(_4) @233 s2
+      FakeRead(_2) @232 s2
+      switch copy _3 [0: bb3, otherwise: bb4] @232 s2
+  bb7:
+      StorageDead(_8) @241 s3
+      drop _7 -> bb8 [keep] @241 s3
+  bb8:
+      StorageDead(_7) @241 s3
+      StorageDead(_6) @237 s3
+      _1 = const () @237 s3
+      goto bb1 @237 s1
+  bb9:
+      unreachable @229 s1
+  bb10:
+      StorageLive(_9) @243 s4
+      StorageLive(_10) @247 s4
+    * _10 = const "fallback" @247 s4
+      StorageLive(_11) @247 s4
+      _11 = &_10: ref/string @247 s4
+      _9 = writeLine(move _11) -> bb11 @243 s4
+  bb11:
+      StorageDead(_11) @247 s4
+      drop _10 -> bb12 [keep] @247 s4
+  bb12:
+      StorageDead(_10) @247 s4
+      StorageDead(_9) @243 s4
+      _1 = const () @243 s4
+      goto bb1 @243 s1
+fn halt @248
+  _0: Never return @248
+  _1: Never temp @251 s1
+  _2: () temp @252 s1
+  _3: () temp @253 s2
+  s1: lexical in s0 @250
+  s2: lexical in s1 @252
+  bb0:
+      StorageLive(_1) @251 s1
+    * goto bb1 @251 s1
+  bb1:
+      goto bb2 check bb3 @251 s1
+  bb2:
+      StorageLive(_2) @252 s1
+      StorageLive(_3) @253 s2
+    * _3 = const () @253 s2
+      StorageDead(_3) @253 s2
+      _2 = const () @252 s2
+      StorageDead(_2) @252 s1
+      goto bb1 @252 s1
+  bb3:
+      StorageDead(_1) @251 s1
+      unreachable @250
+fn divergentGuard @254
+  _0: () return @254
+  _1: () temp @256 s1
+  _2: i32 temp (Subject) @257 s1
+  _3: bool temp @259 s2
+  _4: () temp @261 s3
+  _5: string temp @265 s3
+  _6: ref/string temp @265 s3
+  _7: () temp @267 s4
+  _8: string temp @271 s4
+  _9: ref/string temp @271 s4
+  s1: lexical in s0 @255
+  s2: guard in s1 @259
+  s3: lexical in s1 @258
+  s4: lexical in s1 @266
+  bb0:
+      StorageLive(_1) @256 s1
+      StorageLive(_2) @257 s1
+    * _2 = const 1_i32 @257 s1
+      StorageLive(_3) @259 s2
+      _3 = halt() -> ! check bb5 @259 s2
+  bb1:
+      StorageDead(_2) @257 s1
+      StorageDead(_1) @256 s1
+      _0 = const () @255 s1
+      return @255
+  bb2:
+      switch const true [1: bb9, otherwise: bb8] @266 s1
+  bb3:
+      StorageDead(_3) @259 s2
+      goto bb2 @259 s2
+  bb4:
+      StorageDead(_3) @259 s2
+      StorageLive(_4) @261 s3
+      StorageLive(_5) @265 s3
+    * _5 = const "bad" @265 s3
+      StorageLive(_6) @265 s3
+      _6 = &_5: ref/string @265 s3
+      _4 = writeLine(move _6) -> bb6 @261 s3
+  bb5:
+      FakeRead(_2) @259 s2
+      goto bb4 check bb3 @259 s2
+  bb6:
+      StorageDead(_6) @265 s3
+      drop _5 -> bb7 @265 s3
+  bb7:
+      StorageDead(_5) @265 s3
+      StorageDead(_4) @261 s3
+      _1 = const () @261 s3
+      goto bb1 @261 s1
+  bb8:
+      unreachable @256 s1
+  bb9:
+      StorageLive(_7) @267 s4
+      StorageLive(_8) @271 s4
+    * _8 = const "after" @271 s4
+      StorageLive(_9) @271 s4
+      _9 = &_8: ref/string @271 s4
+      _7 = writeLine(move _9) -> bb10 @267 s4
+  bb10:
+      StorageDead(_9) @271 s4
+      drop _8 -> bb11 @271 s4
+  bb11:
+      StorageDead(_8) @271 s4
+      StorageDead(_7) @267 s4
+      _1 = const () @267 s4
+      goto bb1 @267 s1
+fn loopingGuard @272
+  _0: () return @272
+  _1: () temp @274 s1
+  _2: string temp (Subject) @275 s1
+  _3: bool temp @278 s2
+  _4: ref/string temp text (GuardCandidate) @276 s2
+  _5: () temp @280 s2
+  _6: () temp @281 s3
+  _7: string var text @276 s4
+  _8: () temp @282 s4
+  _9: string temp @286 s4
+  _10: ref/string temp @286 s4
+  _11: () temp @288 s5
+  _12: string temp @292 s5
+  _13: ref/string temp @292 s5
+  s1: lexical in s0 @273
+  s2: guard in s1 @278
+  s3: lexical in s2 @280
+  s4: lexical in s1 @276
+  s5: lexical in s1 @287
+  bb0:
+      StorageLive(_1) @274 s1
+      StorageLive(_2) @275 s1
+    * _2 = const "held" @275 s1
+      StorageLive(_3) @278 s2
+      StorageLive(_4) @276 s2
+      _4 = &_2: ref/string @276 s2
+      goto bb5 @279 s2
+  bb1:
+      drop _2 -> bb15 @275 s1
+  bb2:
+      switch const true [1: bb12, otherwise: bb11] @287 s1
+  bb3:
+      StorageDead(_3) @278 s2
+      goto bb2 @278 s2
+  bb4:
+      StorageDead(_3) @278 s2
+      StorageLive(_7) @276 s4
+      _7 = move _2 @276 s4
+      StorageLive(_8) @282 s4
+      StorageLive(_9) @286 s4
+    * _9 = const "selected" @286 s4
+      StorageLive(_10) @286 s4
+      _10 = &_9: ref/string @286 s4
+      _8 = writeLine(move _10) -> bb8 @282 s4
+  bb5:
+      goto bb6 check bb7 @279 s2
+  bb6:
+      StorageLive(_5) @280 s2
+      StorageLive(_6) @281 s3
+    * _6 = const () @281 s3
+      StorageDead(_6) @281 s3
+      _5 = const () @280 s3
+      StorageDead(_5) @280 s2
+      goto bb5 @280 s2
+  bb7:
+      StorageDead(_4) @276 s2
+      FakeRead(_2) @278 s2
+      goto bb4 check bb3 @278 s2
+  bb8:
+      StorageDead(_10) @286 s4
+      drop _9 -> bb9 @286 s4
+  bb9:
+      StorageDead(_9) @286 s4
+      StorageDead(_8) @282 s4
+      _1 = const () @282 s4
+      drop _7 -> bb10 @276 s4
+  bb10:
+      StorageDead(_7) @276 s4
+      goto bb1 @282 s1
+  bb11:
+      unreachable @274 s1
+  bb12:
+      StorageLive(_11) @288 s5
+      StorageLive(_12) @292 s5
+    * _12 = const "fallback" @292 s5
+      StorageLive(_13) @292 s5
+      _13 = &_12: ref/string @292 s5
+      _11 = writeLine(move _13) -> bb13 @288 s5
+  bb13:
+      StorageDead(_13) @292 s5
+      drop _12 -> bb14 @292 s5
+  bb14:
+      StorageDead(_12) @292 s5
+      StorageDead(_11) @288 s5
+      _1 = const () @288 s5
+      goto bb1 @288 s1
+  bb15:
+      StorageDead(_2) @275 s1
+      StorageDead(_1) @274 s1
+      _0 = const () @273 s1
+      return @273
+fn init @293
+  _0: Base return @293
+  _1: () temp @295
+  s1: lexical in s0 @295
+  bb0:
+      StorageLive(_1) @295
+    * _1 = const () @295 s1
+      FakeRead(_0) @293 s1
+      StorageDead(_1) @295
+      return @295
+fn init @294
+  _0: Leaf return @294
+  _1: () temp @298
+  s1: lexical in s0 @298
+  bb0:
+      StorageLive(_1) @298
+    * _0.base1 = init() -> bb1 @297
+  bb1:
+    * _1 = const () @298 s1
+      FakeRead(_0) @294 s1
+      StorageDead(_1) @298
+      return @298

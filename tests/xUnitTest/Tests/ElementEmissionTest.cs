@@ -134,15 +134,13 @@ public class ElementEmissionTest
         Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
+    // Intermediate projections copy nothing; each read copies its final element once (its MIR: tests/mir/places.kimi `nestedProjections`).
     [Fact]
     public void IntermediateProjectionsDoNotCopyAndTheFinalAggregateCopiesOnce()
     {
         const string Source = "let a = (((42, true), 3), \"held\")\nlet b = a.0.0\nlet n = a.0.0.0";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies[0];
-        Assert.Equal(5, body.Projections.Count);
-        Assert.Equal(2, body.Projections.Count(x => x.Output >= 0));
         var instructions = module.GetFunction(0).Instructions;
         Assert.Single(instructions, x => x.Opcode == EmissionOpcode.TransferAggregate && x.OperandCount == 1);
         Assert.Single(instructions, x => x.Opcode == EmissionOpcode.LoadElement);

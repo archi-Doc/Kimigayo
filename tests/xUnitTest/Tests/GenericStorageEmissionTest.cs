@@ -98,10 +98,6 @@ public class GenericStorageEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(valid, c.Analysis.IsVerified);
-        if (valid)
-        {
-            Assert.Contains(c.Ownership.Bodies.SelectMany(x => x.Operations), x => x.Acquisition == AcquisitionKind.CopyOrMove);
-        }
     }
 
     [Theory]
@@ -183,8 +179,6 @@ public class GenericStorageEmissionTest
         Assert.True(module.IsComplete);
         var instance = Assert.Single(Instances(module));
         Assert.True(instance.Abi.ResultSlot);
-        var generic = c.Ownership.Bodies.Single(x => x.Function.Name == "wrap");
-        Assert.Contains(generic.Places, x => x.Kind == OwnershipPlaceKind.Payload && x.Acquisition == AcquisitionKind.CopyOrMove);
     }
 
     [Fact]
@@ -277,8 +271,6 @@ public class GenericStorageEmissionTest
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         Assert.True(module.IsComplete);
         Assert.Equal(2, Instances(module).Length);
-        var generic = c.Ownership.Bodies.Single(x => x.Function.Name == "unwrap");
-        Assert.Contains(generic.Operations, x => x.Kind == OwnershipOperationKind.AcquirePattern && x.Acquisition == AcquisitionKind.CopyOrMove);
     }
 
     [Fact]

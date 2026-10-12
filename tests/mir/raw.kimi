@@ -11,3 +11,9 @@ func addresses(point: uniq/Point) -> i32
         let second = p[1].y
         let field = (*p).y@raw
         return *field + second
+func derefCompare(p: raw/string)
+    unsafe
+        let equal = *p == "text"
+func indexCompare(p: raw/string)
+    unsafe
+        let equal = p[0] == "text"

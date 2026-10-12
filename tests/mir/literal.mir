@@ -29,3 +29,129 @@ fn greeting @17
   bb0:
     * _0 = const "hi" @19
       return @19
+fn floats @20
+  _0: f64 return @20
+  _1: f32 var f1 @23 s1
+  _2: f32 var f2 @27 s1
+  _3: f32 var f3 @31 s1
+  _4: f32 var f4 @35 s1
+  _5: f32 var f5 @39 s1
+  _6: f32 var f6 @43 s1
+  _7: f32 var f7 @47 s1
+  _8: f32 var f8 @52 s1
+  _9: f32 var f9 @57 s1
+  _10: f32 var f10 @61 s1
+  _11: f32 var f11 @65 s1
+  _12: f64 var d1 @69 s1
+  _13: f64 var d2 @73 s1
+  _14: f64 var d3 @77 s1
+  _15: f64 var d4 @81 s1
+  _16: f64 var d5 @85 s1
+  _17: f64 var d6 @89 s1
+  _18: f64 var d7 @94 s1
+  _19: f64 var d8 @99 s1
+  _20: f64 var d9 @103 s1
+  _21: f64 var d10 @107 s1
+  _22: f64 temp @112 s1
+  s1: lexical in s0 @22
+  bb0:
+      StorageLive(_1) @23 s1
+    * _1 = const 0x3f800001_f32 @26 s1
+      StorageLive(_2) @27 s1
+    * _2 = const 0x3f800000_f32 @30 s1
+      StorageLive(_3) @31 s1
+    * _3 = const 0x3f800002_f32 @34 s1
+      StorageLive(_4) @35 s1
+    * _4 = const 0x1_f32 @38 s1
+      StorageLive(_5) @39 s1
+    * _5 = const 0x0_f32 @42 s1
+      StorageLive(_6) @43 s1
+    * _6 = const 0x1_f32 @46 s1
+      StorageLive(_7) @47 s1
+    * _7 = const 0x80000000_f32 @50 s1
+      StorageLive(_8) @52 s1
+    * _8 = const 0x80000000_f32 @55 s1
+      StorageLive(_9) @57 s1
+    * _9 = const 0x0_f32 @60 s1
+      StorageLive(_10) @61 s1
+    * _10 = const 0x41480000_f32 @64 s1
+      StorageLive(_11) @65 s1
+    * _11 = const 0x7f7fffff_f32 @68 s1
+      StorageLive(_12) @69 s1
+    * _12 = const 0x3ff0000000000000_f64 @72 s1
+      StorageLive(_13) @73 s1
+    * _13 = const 0x3ff0000000000001_f64 @76 s1
+      StorageLive(_14) @77 s1
+    * _14 = const 0x1_f64 @80 s1
+      StorageLive(_15) @81 s1
+    * _15 = const 0x0_f64 @84 s1
+      StorageLive(_16) @85 s1
+    * _16 = const 0x1_f64 @88 s1
+      StorageLive(_17) @89 s1
+    * _17 = const 0x8000000000000000_f64 @92 s1
+      StorageLive(_18) @94 s1
+    * _18 = const 0x8000000000000000_f64 @97 s1
+      StorageLive(_19) @99 s1
+    * _19 = const 0x0_f64 @102 s1
+      StorageLive(_20) @103 s1
+    * _20 = const 0x4029000000000000_f64 @106 s1
+      StorageLive(_21) @107 s1
+    * _21 = const 0x7fefffffffffffff_f64 @110 s1
+      StorageLive(_22) @112 s1
+    * _22 = copy _21 @112 s1
+      goto bb4 check bb5 @111 s1
+  bb1:
+      return @20
+  bb2:
+      StorageDead(_21) @107 s1
+      StorageDead(_20) @103 s1
+      StorageDead(_19) @99 s1
+      StorageDead(_18) @94 s1
+      StorageDead(_17) @89 s1
+      StorageDead(_16) @85 s1
+      StorageDead(_15) @81 s1
+      StorageDead(_14) @77 s1
+      StorageDead(_13) @73 s1
+      StorageDead(_12) @69 s1
+      StorageDead(_11) @65 s1
+      StorageDead(_10) @61 s1
+      StorageDead(_9) @57 s1
+      StorageDead(_8) @52 s1
+      StorageDead(_7) @47 s1
+      StorageDead(_6) @43 s1
+      StorageDead(_5) @39 s1
+      StorageDead(_4) @35 s1
+      StorageDead(_3) @31 s1
+      StorageDead(_2) @27 s1
+      StorageDead(_1) @23 s1
+      goto bb1 @20
+  bb3:
+      StorageDead(_22) @112 s1
+      goto bb2 @20
+  bb4:
+      _0 = move _22 @111 s1
+      goto bb3 @111 s1
+  bb5:
+      StorageDead(_22) @112 s1
+      StorageDead(_21) @107 s1
+      StorageDead(_20) @103 s1
+      StorageDead(_19) @99 s1
+      StorageDead(_18) @94 s1
+      StorageDead(_17) @89 s1
+      StorageDead(_16) @85 s1
+      StorageDead(_15) @81 s1
+      StorageDead(_14) @77 s1
+      StorageDead(_13) @73 s1
+      StorageDead(_12) @69 s1
+      StorageDead(_11) @65 s1
+      StorageDead(_10) @61 s1
+      StorageDead(_9) @57 s1
+      StorageDead(_8) @52 s1
+      StorageDead(_7) @47 s1
+      StorageDead(_6) @43 s1
+      StorageDead(_5) @39 s1
+      StorageDead(_4) @35 s1
+      StorageDead(_3) @31 s1
+      StorageDead(_2) @27 s1
+      StorageDead(_1) @23 s1
+      unreachable @22

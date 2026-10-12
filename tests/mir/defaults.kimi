@@ -17,3 +17,12 @@ func use(box: Box) -> i32
     return a + b + d + e + box.grow()
 func halt(n: i32, value: i32 = $abort("halt")) -> i32 => value
 func stopped() -> i32 => halt(1)
+func evaluate<T>(sample: T, marker: i32 = label result: do
+    let pending: Option<T> = .None
+    match pending@move
+        .Some(let value) => exit to result 1
+        .None => exit to result 0
+) -> i32 => marker
+func replicas()
+    let a = evaluate("held")
+    let b = evaluate(2)

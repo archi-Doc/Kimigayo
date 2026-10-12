@@ -42,3 +42,22 @@ struct Derived : Layered
     drop
         if self.count == 0 => return
         self.count = 1
+func divergentCleanup()
+    defer
+        log(1)
+    defer => loop => ()
+    log(2)
+func divergentDeferHeld()
+    var text = "held"
+    defer => loop => ()
+func securedReturn(s: string) -> string
+    return s@move
+func consumeTwo(a: string, b: i32) => ()
+func returnInArgument(c: bool)
+    consumeTwo(
+        make(),
+        if c
+            let inner = "inner"
+            return
+        else => 1
+    )
