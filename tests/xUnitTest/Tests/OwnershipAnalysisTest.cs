@@ -61,7 +61,6 @@ public class OwnershipAnalysisTest
         var result = c.Analyze();
         Assert.False(result.IsVerified);
         Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.All(c.Ownership.Bodies, x => Assert.False(x.IsVerified));
     }
 
     [Fact]
@@ -70,7 +69,6 @@ public class OwnershipAnalysisTest
         var c = Parse("func f(x: string = \"x\") => ()\nf()");
         var result = c.Analyze();
         Assert.True(result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.All(c.Ownership.Bodies, static body => Assert.True(body.IsVerified));
     }
 
     [Fact]
@@ -191,12 +189,10 @@ public class OwnershipAnalysisTest
     {
         var c = Parse("let s = \"a\"\nConsole.writeLine(s)");
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        var old = Body(c);
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "let other: string\nConsole.writeLine(other)");
         c.Bind();
         Assert.False(c.Analysis.IsVerified);
-        Assert.False(old.IsVerified);
-        Assert.Empty(c.Ownership.Bodies);
+        Assert.Equal(0, c.Analysis.BodyCount);
         Assert.False(c.Analyze().IsVerified);
     }
 
@@ -215,7 +211,7 @@ public class OwnershipAnalysisTest
     {
         var c = Parse("contract Named\n    func name(self: ref/Self) -> i32\nConsole.writeLine(\"x\")");
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.DoesNotContain(c.Ownership.Bodies, x => x.Function.IsRequirement);
+        Assert.Equal(1, c.Analysis.BodyCount);
     }
 
     [Fact]

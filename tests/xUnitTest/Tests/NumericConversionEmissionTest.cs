@@ -223,9 +223,7 @@ public class NumericConversionEmissionTest
         var c = MinimalEmissionTest.Analyze($"let x: {sourceType} = {value}\nlet y = x@{targetType}\nConsole.writeLine(\"ok\")");
         using var original = new StringWriter();
         Assert.True(c.WriteIr(original, out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Convert);
-        var conversion = Assert.IsType<ConversionKoto>(body.Operations[id].Source);
+        var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>());
         conversion.SetConversion(ConversionBinding.Integer);
         using var failed = new StringWriter();
         Assert.False(c.WriteIr(failed, out _));

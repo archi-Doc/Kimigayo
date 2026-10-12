@@ -37,8 +37,8 @@ public class ScalarDefaultEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func f(x: (i32, i32), other: (i32, i32), y: i32 = x.0) -> i32 => y\nf((1, 2), (3, 4))");
         Assert.True(c.Validate(out var error), error);
-        var body = Assert.Single(c.Ownership.Bodies, x => x.Function.IsGenerated);
-        var source = Assert.Single(body.Operations, x => x.Kind == OwnershipOperationKind.LocateReceiver).Source;
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f");
+        var source = KotoTree.Walk(function.Parameters[2].DefaultValue!).Single(static x => x.SymbolOf()?.Kind == BindingSymbolKind.Parameter);
         var original = source.SymbolOf()!;
         source.SetSymbol(c.Binding.ParameterSymbol((FunctionKoto)original.Scope.Owner, 1));
         using var writer = new StringWriter();
@@ -350,8 +350,7 @@ public class ScalarDefaultEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = x + 1, z: i32 = y + 2) -> i32 => z\nf(2)");
         Assert.True(c.Validate(out var error), error);
-        var body = Assert.Single(c.Ownership.Bodies, x => x.Function.IsGenerated);
-        var call = (InvocationKoto)Assert.Single(body.Operations, x => x.Kind == OwnershipOperationKind.Call).Source;
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => x.CallOf()?.Target.Name == "f");
         var plan = call.CallOf()!;
         var defaults = plan.DefaultArguments.ToArray();
         if (mutation == "missing")

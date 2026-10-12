@@ -163,13 +163,15 @@ public class GuardEmissionTest
     public void RebindingReusesDistinctCandidateIdentity()
     {
         var c = MinimalEmissionTest.Analyze("match 1\n    let n if n == 1 => ()\n    _ => ()");
-        var candidate = c.Ownership.Bodies[0].Matches[0].Binding.Positions[0].CandidateSymbol;
+        var match = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MatchKoto>());
+        Assert.True(c.Binding.TryGetMatch(match, out var plan));
+        var candidate = plan!.Positions[0].CandidateSymbol;
         var valid = true;
         var allocated = AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 100, warmupIterations: 100);
         Assert.True(valid);
         Assert.Equal(0, allocated);
-        c.Analyze();
-        Assert.Same(candidate, c.Ownership.Bodies[0].Matches[0].Binding.Positions[0].CandidateSymbol);
+        Assert.True(c.Binding.TryGetMatch(match, out plan));
+        Assert.Same(candidate, plan!.Positions[0].CandidateSymbol);
     }
 
     [Fact]
@@ -195,7 +197,7 @@ public class GuardEmissionTest
     public void RemovedGuardScopeCannotResurrectCandidate()
     {
         var c = MinimalEmissionTest.Analyze("match 1\n    let n if n == 1 => ()\n    _ => ()");
-        var match = c.Ownership.Bodies[0].Matches[0].Binding.Syntax;
+        var match = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MatchKoto>());
         var oldGuard = match.Arms[0].Guard!;
         match.Arms[0].Guard = null;
         Assert.True(KotoHelper.Replace(match, match.Arms[0].Body, oldGuard));
@@ -231,6 +233,6 @@ public class GuardEmissionTest
         const string Source = "let text = \"a\"\ntext == (match 1\n    _ if (label check: do\n        defer => _ = text@move\n        exit to check true\n    ) => \"a\"\n    _ => \"b\"\n)";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Bodies.SelectMany(x => x.Issues), x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
     }
 }

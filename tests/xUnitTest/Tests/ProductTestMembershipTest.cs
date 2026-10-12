@@ -20,7 +20,7 @@ public class ProductTestMembershipTest
         Assert.True(compilation.Binding.Result.IsComplete, MinimalEmissionTest.Describe(compilation, null));
         Assert.True(compilation.Binding.Startup.IsComplete);
         Assert.True(compilation.Analysis.IsVerified);
-        Assert.Single(compilation.Ownership.Bodies);
+        Assert.Equal(1, compilation.Analysis.BodyCount);
     }
 
     [Theory]

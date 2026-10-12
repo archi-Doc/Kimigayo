@@ -236,15 +236,17 @@ public class ReferenceEmissionTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var pool = new FunctionAbiPool();
-        var abi = pool.Get(0, c.Ownership.Bodies[1].Function);
-        var oldType = c.Ownership.Bodies[1].Function.Parameters[0].Type.TypeOf();
+        var same = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "same");
+        var abi = pool.Get(0, same);
+        var oldType = same.Parameters[0].Type.TypeOf();
         c = MinimalEmissionTest.Analyze(Source.Replace("same", "renamed", StringComparison.Ordinal));
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
         Assert.True(c.Emission.TryPrepare(out module, out error), error);
-        Assert.NotSame(oldType, c.Ownership.Bodies[1].Function.Parameters[0].Type.TypeOf());
-        Assert.Same(abi, pool.Get(0, c.Ownership.Bodies[1].Function));
+        var renamed = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "renamed");
+        Assert.NotSame(oldType, renamed.Parameters[0].Type.TypeOf());
+        Assert.Same(abi, pool.Get(0, renamed));
     }
 
     [Fact]
@@ -289,8 +291,8 @@ public class ReferenceEmissionTest
         const string Source = "func pick(a: string) -> bool => true\nfunc pick(a: ref/i64) -> bool => false\nif pick(\"a\") => Console.writeLine(\"owned\")";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.Empty(c.Binding.Issues);
-        var call = c.Ownership.Bodies[0].Operations.First(x => x.Kind == OwnershipOperationKind.Call && x.Source is InvocationKoto { BoundCall.Target.Name: "pick" });
-        Assert.Equal(ArgumentOperationKind.Value, ((InvocationKoto)call.Source).CallOf()!.ArgumentOperations[0].Kind);
+        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().First(static x => x.CallOf()?.Target.Name == "pick");
+        Assert.Equal(ArgumentOperationKind.Value, call.CallOf()!.ArgumentOperations[0].Kind);
         ScalarEmissionTest.EmitFixture("ReferenceOverload", Source, "owned\n");
     }
 
@@ -298,7 +300,7 @@ public class ReferenceEmissionTest
     private static WeakReference Populate(FunctionAbiPool pool)
     {
         var c = MinimalEmissionTest.Analyze(Same + "()");
-        var function = c.Ownership.Bodies[1].Function;
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "same");
         pool.Get(0, function);
         return new WeakReference(function);
     }

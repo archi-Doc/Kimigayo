@@ -4,6 +4,8 @@ using System.Globalization;
 using System.Text;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
+using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Tinyhand;
 using Xunit;
@@ -138,7 +140,8 @@ public class MinimalEmissionTest
         Assert.Equal(valid, c.Validate(out error));
         if (valid)
         {
-            Assert.Contains(c.Ownership.Bodies, x => x.Function.Name == "added");
+            var added = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "added");
+            Assert.NotNull(c.BuildMir()[new(added.SymbolOf(), MirBodyKind.Fn)]);
         }
     }
 

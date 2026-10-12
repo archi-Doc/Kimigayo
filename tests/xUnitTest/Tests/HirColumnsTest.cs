@@ -303,56 +303,6 @@ public sealed class HirColumnsTest
     public void PublishIsInvisible(string name)
         => Assert.Equal(SemanticSnapshotTest.Take(name, false).Text, SemanticSnapshotTest.Take(name, true).Text);
 
-    // Not a gate (R2b U3): with KIMI_ADJUST_SHADOW naming a file, writes each consumed node of the corpus with its Adjust beside the Copy,
-    // Move, read, borrow and Pattern operations the ownership analysis records at it, and a count per pair, for the R4 difference ledger.
-    [Fact]
-    public void AdjustShadowReport()
-    {
-        var path = Environment.GetEnvironmentVariable("KIMI_ADJUST_SHADOW");
-        if (string.IsNullOrEmpty(path))
-        {
-            return;
-        }
-
-        var rows = new List<string> { "case\tlocation\tkind\top\tadjust\townership" };
-        var pairs = new Dictionary<string, int>(StringComparer.Ordinal);
-        foreach (var name in Corpus.Select(static x => x.Data))
-        {
-            var (c, module) = SemanticSnapshotTest.Bind(name);
-            HirTables.Publish(c);
-            c.Analyze();
-            var operations = new Dictionary<Koto, SortedSet<string>>(ReferenceEqualityComparer.Instance);
-            foreach (var operation in c.Ownership.Bodies.SelectMany(static x => x.Operations))
-            {
-                var kind = operation.Kind switch
-                {
-                    OwnershipOperationKind.Consume or OwnershipOperationKind.AcquirePattern => operation.Kind + ":" + operation.Acquisition,
-                    OwnershipOperationKind.Borrow => operation.LoanMode == LoanRequirement.Uniq ? "ExclusiveBorrow" : "SharedBorrow",
-                    OwnershipOperationKind.Read => "Read",
-                    _ => null,
-                };
-
-                if (kind is not null && operation.Source is { } source)
-                {
-                    (operations.TryGetValue(source, out var set) ? set : operations[source] = new(StringComparer.Ordinal)).Add(kind);
-                }
-            }
-
-            foreach (var node in Reachable(module))
-            {
-                if (HirTables.AdjustOf(node) is { Acquire: not HirAcquire.Unset } adjust)
-                {
-                    var key = $"{adjust.Acquire}/{adjust.Adaptation}\t{(operations.TryGetValue(node, out var set) ? string.Join('+', set) : "-")}";
-                    rows.Add($"{name}\t{node.CodeContext.SourceDocument?.Path}:{node.Span.Start}\t{node.Akind}\t{HirTables.Op(node)}\t{key}");
-                    pairs[key] = pairs.GetValueOrDefault(key) + 1;
-                }
-            }
-        }
-
-        File.WriteAllLines(path, rows);
-        File.WriteAllLines(path + ".summary.txt", pairs.OrderByDescending(static x => x.Value).ThenBy(static x => x.Key, StringComparer.Ordinal).Select(static x => $"{x.Value}\t{x.Key}"));
-    }
-
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]

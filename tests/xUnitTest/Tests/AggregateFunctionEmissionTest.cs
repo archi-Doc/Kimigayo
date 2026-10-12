@@ -254,9 +254,11 @@ public class AggregateFunctionEmissionTest
         GC.Collect();
         Assert.False(tree.IsAlive);
         var c = MinimalEmissionTest.Analyze(Echo.Replace("echo", "renamed") + "()");
-        Assert.Same(first, pool.Get(0, c.Ownership.Bodies[1].Function, layouts));
+        var renamed = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "renamed");
+        Assert.Same(first, pool.Get(0, renamed, layouts));
         var empty = MinimalEmissionTest.Analyze("func f(value: [0 of string]) -> [0 of string] => value@move\n()");
-        var omitted = pool.Get(0, empty.Ownership.Bodies[1].Function, layouts);
+        var f = KotoTree.Walk(empty.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f");
+        var omitted = pool.Get(0, f, layouts);
         Assert.NotSame(first, omitted);
         Assert.Empty(omitted.Parameters);
         GC.KeepAlive(layouts);
@@ -302,7 +304,7 @@ public class AggregateFunctionEmissionTest
     private static WeakReference Populate(FunctionAbiPool pool, AggregateLayoutPool layouts, out FunctionAbi abi)
     {
         var c = MinimalEmissionTest.Analyze(Echo + "()");
-        var function = c.Ownership.Bodies[1].Function;
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "echo");
         abi = pool.Get(0, function, layouts);
         layouts.Clear();
         return new WeakReference(function);

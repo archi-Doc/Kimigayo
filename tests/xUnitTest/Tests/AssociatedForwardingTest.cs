@@ -40,14 +40,14 @@ public class AssociatedForwardingTest
     {
         var c = MinimalEmissionTest.Analyze(MilestoneSource);
         Assert.True(c.Binding.Result.IsComplete);
-        var requirement = c.Ownership.Bodies.SelectMany(x => x.Operations).Select(x => x.Source).OfType<InvocationKoto>()
-            .Select(x => x.CallOf()).First(x => x?.Target.Declaration is FunctionKoto { IsRequirement: true })!;
-        var main = c.Ownership.Bodies.Single(x => x.Function.Name == "main");
-        foreach (var operation in main.Operations)
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var requirement = nodes.OfType<InvocationKoto>().Select(x => x.CallOf()).First(x => x?.Target.Declaration is FunctionKoto { IsRequirement: true })!;
+        var main = nodes.OfType<FunctionKoto>().Single(x => x.Name == "main");
+        foreach (var invocation in KotoTree.Walk(main).OfType<InvocationKoto>())
         {
-            if (operation.Source is InvocationKoto invocation && invocation.CallOf() is { } call && call.Target.Name is "readTwice" or "readNumber")
+            if (invocation.CallOf() is { } call && call.Target.Name is "readTwice" or "readNumber")
             {
-                Assert.Equal(ConstraintProof.Proven, c.Binding.ResolveConformance(call.TypeArguments[0]!, requirement.Target.Scope.Owner.SymbolOf()!, main.Function, out var path));
+                Assert.Equal(ConstraintProof.Proven, c.Binding.ResolveConformance(call.TypeArguments[0]!, requirement.Target.Scope.Owner.SymbolOf()!, main, out var path));
                 Assert.True(path!.IsVerified);
                 var implementation = path.GetImplementation(new(requirement.Target, requirement.RequirementContract!));
                 Assert.NotNull(implementation);

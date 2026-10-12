@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -103,9 +104,9 @@ public class AggregateEmissionTest
     public void TupleLayoutKeepsLogicalOrderAndStableAlignmentSorting()
     {
         var c = MinimalEmissionTest.Analyze("let value: (u8, string, u64, string, ()) = (200, \"a\", 255, \"b\", ())");
-        var type = c.Ownership.Bodies[0].Constructions[0].Place;
+        var type = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<TupleLiteralKoto>()).TypeOf()!;
         var pool = new AggregateLayoutPool();
-        var layout = Assert.IsType<AggregateLayout>(pool.Get(c.Ownership.Bodies[0].Places[type].Type));
+        var layout = Assert.IsType<AggregateLayout>(pool.Get(type));
         Assert.Equal(new[] { 56, 0, 24, 32, 57 }, layout.Value.Layout.FieldOffsets.ToArray());
         Assert.Equal(64, layout.Value.Layout.Size);
         Assert.Equal(8, layout.Value.Layout.Alignment);

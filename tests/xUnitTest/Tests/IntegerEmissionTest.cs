@@ -146,14 +146,8 @@ public class IntegerEmissionTest
         Assert.DoesNotContain("zeroext", ir);
         var c = MinimalEmissionTest.Analyze(Mixed);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        for (var i = 0; i < c.Ownership.Bodies.Count; i++)
-        {
-            if (c.Ownership.Bodies[i].Function.Name == "small")
-            {
-                var function = Enumerable.Range(0, module.FunctionCount).Select(module.GetFunction).First(x => x.Abi.Parameters.Length == 6);
-                Assert.Empty(function.Slots);
-            }
-        }
+        var function = Enumerable.Range(0, module.FunctionCount).Select(module.GetFunction).First(x => x.Abi.Parameters.Length == 6);
+        Assert.Empty(function.Slots);
     }
 
     [Fact]

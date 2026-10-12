@@ -190,7 +190,7 @@ public class FunctionEmissionTest
         Assert.False(old.Source.TryGetTarget(out _));
 
         var c = MinimalEmissionTest.Analyze($"func renamed(x: {type}) -> {type} => x\n()");
-        var function = Assert.Single(c.Ownership.Bodies, x => !x.Function.IsGenerated).Function;
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "renamed");
         var abi = pool.Get(0, function);
         Assert.Same(old.Abi, abi);
         c.Bind();
@@ -199,7 +199,7 @@ public class FunctionEmissionTest
         Assert.Same(abi, pool.Get(0, function));
         Assert.Equal("__kimi_f0", abi.Name);
         var changed = MinimalEmissionTest.Analyze("func renamed(x: bool) -> bool => x\n()");
-        Assert.NotSame(abi, pool.Get(0, Assert.Single(changed.Ownership.Bodies, x => !x.Function.IsGenerated).Function));
+        Assert.NotSame(abi, pool.Get(0, KotoTree.Walk(changed.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "renamed")));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -227,7 +227,7 @@ public class FunctionEmissionTest
     private static (WeakReference<FunctionKoto> Source, FunctionAbi Abi) RegisterTemporary(FunctionAbiPool pool, string type)
     {
         var c = MinimalEmissionTest.Analyze($"func temporary(x: {type}) -> {type} => x\n()");
-        var function = Assert.Single(c.Ownership.Bodies, x => !x.Function.IsGenerated).Function;
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "temporary");
         return (new(function), pool.Get(0, function));
     }
 }
