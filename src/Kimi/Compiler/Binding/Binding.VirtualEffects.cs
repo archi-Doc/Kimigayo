@@ -13,7 +13,6 @@ public sealed partial class Binding
 
     internal void ValidateVirtualDestructionEffects(List<Koto> rejected)
     {
-        this.virtualEffectViolations?.Clear();
         this.destructionSummary?.BeginPass();
         this.ValidateVirtualEffectBounds(rejected);
     }

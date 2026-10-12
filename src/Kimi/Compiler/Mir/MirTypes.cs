@@ -1,33 +1,110 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the Type facts needed by MIR construction and analyses.
-// Input: published Types and their stored shapes. Output: drop, raw, exclusivity, agreement, borrow-kind and pointer-cast facts.
-// Inline storage is traversed under each fact's documented bounds and Type rules.
+// Input: published Types and their stored shapes. Output: the destruction walk and the drop, raw, exclusivity, agreement, borrow-kind and
+// pointer-cast facts.
+// Inline storage is traversed under each fact's documented bounds and Type rules; what destroying a value does is the one Destruction walk.
 // Must not inspect source syntax or substitute new Binding decisions.
+
+#pragma warning disable SA1402 // The walk's visitor belongs to the Type facts.
 
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
+
+/// <summary>What the destruction walk of a Type reports (<see cref="MirTypes.Destruction"/>).</summary>
+internal interface IMirDestruction
+{
+    /// <summary>A part of the destroyed value whose destruction runs or releases something.</summary>
+    /// <param name="type">The part's Type.</param>
+    /// <returns>Whether the walk stops.</returns>
+    bool Visit(BoundType type);
+
+    /// <summary>A part past the walk's depth bound, whose destruction the walk does not follow.</summary>
+    /// <returns>Whether the walk stops.</returns>
+    bool Deep();
+}
 
 /// <summary>The Type facts MIR decides by, each one walk of a Type's inline storage: its Tuple, fixed-array and Closure components,
 /// a struct's Fields and base and an enum's Case payloads (plan 5.5).</summary>
 internal static class MirTypes
 {
     /// <summary>Gets whether a value of a Type may own what its destruction releases (SPEC 16.3), the one rule by which the builder drops
-    /// an old value: an owning handle, a managed sequence or string, a Function value's environment, a destructor, or a Type its
-    /// instance decides, anywhere in its inline storage; references, raw pointers, Slices, scalars and an InlineStorage, whose owner
-    /// destroys its contents (<see cref="AdtDef.IsInlineStorage"/>), own nothing.</summary>
+    /// an old value: whether its <see cref="Destruction"/> reports a part.</summary>
     /// <param name="type">The Type.</param>
-    /// <param name="depth">The walk's depth; past 32 the answer is yes.</param>
     /// <returns>Whether drop elaboration has to consider the value.</returns>
-    internal static bool MayNeedDrop(BoundType? type, int depth = 0) => type is not null && (depth > 32 || type.IsAbstract || type.Kind switch
+    internal static bool MayNeedDrop(BoundType? type)
     {
-        BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function => true,
-        BoundTypeKind.Semantics => type.Semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc,
-        BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure => Any(type.Components, depth, raw: false),
-        _ => ReferenceEquals(type, BoundType.String) || AdtDef.Destructor(type) is not null ||
-            (!AdtDef.IsInlineStorage(type) && Stored(type, depth, raw: false)),
-    });
+        var any = default(AnyPart);
+        return Destruction(type, ref any);
+    }
+
+    /// <summary>Walks what destroying a value of a Type does (SPEC 16.3), the one walk of its inline storage that drop elaboration and the
+    /// effect summaries share. It reports each part that runs or releases something: an abstract Type (its instance decides), an owning
+    /// handle, a Function value (its environment), a string, an Array or a Dictionary, a struct that declares a drop (whose destructor body
+    /// alone destroys its parts, R4-M6b), and as Deep a part past depth 32; it walks on into the components of a Tuple, fixed array,
+    /// Closure, Array or Dictionary, a struct's Fields and base and an enum's Case payloads. References, raw pointers, Slices, scalars and
+    /// an InlineStorage, whose owner destroys its contents (<see cref="AdtDef.IsInlineStorage"/>), release nothing.</summary>
+    /// <typeparam name="TVisitor">The visitor's struct type.</typeparam>
+    /// <param name="type">The Type.</param>
+    /// <param name="visitor">The visitor.</param>
+    /// <param name="depth">The walk's depth.</param>
+    /// <returns>Whether the visitor stopped the walk.</returns>
+    internal static bool Destruction<TVisitor>(BoundType? type, ref TVisitor visitor, int depth = 0)
+        where TVisitor : struct, IMirDestruction
+    {
+        if (type is null)
+        {
+            return false;
+        }
+
+        if (depth > 32)
+        {
+            return visitor.Deep();
+        }
+
+        if (type.IsAbstract || type.Kind == BoundTypeKind.Function)
+        {
+            return visitor.Visit(type);
+        }
+
+        if (type.Kind == BoundTypeKind.Semantics)
+        {
+            return type.Semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && visitor.Visit(type);
+        }
+
+        var sequence = type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary; // A managed sequence releases its storage and its elements.
+        var destructor = AdtDef.Destructor(type) is not null;
+        if ((sequence || ReferenceEquals(type, BoundType.String) || destructor) && visitor.Visit(type))
+        {
+            return true;
+        }
+
+        if (destructor || AdtDef.IsInlineStorage(type))
+        {
+            return false;
+        }
+
+        var parts = sequence || type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure
+            ? type.Components : AdtDef.CaseTypes(type) ?? [];
+        for (var i = 0; i < parts.Count; i++)
+        {
+            if (Destruction(parts[i], ref visitor, depth + 1))
+            {
+                return true;
+            }
+        }
+
+        for (var i = 0; AdtDef.IsStruct(type) && i < AdtDef.Count(type); i++)
+        {
+            if (Destruction(AdtDef.FieldType(type, i), ref visitor, depth + 1))
+            {
+                return true;
+            }
+        }
+
+        return AdtDef.Base(type) is { } parent && Destruction(parent, ref visitor, depth + 1);
+    }
 
     /// <summary>Gets whether a value of a Type is a reference whose Loans an EndBorrow ends: a ref, uniq, objref or objuniq, or a pair layer.</summary>
     /// <param name="type">The Type.</param>
@@ -116,14 +193,13 @@ internal static class MirTypes
     /// <param name="depth">The walk's depth; past 32 the answer is yes.</param>
     /// <returns>Whether the value holds raw authority.</returns>
     internal static bool HoldsRaw(BoundType? type, int depth = 0)
-        => type is not null && (depth > 32 || type.Semantics is SemanticsKind.Raw or SemanticsKind.Rc || Any(type.Components, depth, raw: true) ||
-            Stored(type, depth, raw: true));
+        => type is not null && (depth > 32 || type.Semantics is SemanticsKind.Raw or SemanticsKind.Rc || Any(type.Components, depth) || Stored(type, depth));
 
-    private static bool Any(IReadOnlyList<BoundType> types, int depth, bool raw)
+    private static bool Any(IReadOnlyList<BoundType> types, int depth)
     {
         for (var i = 0; i < types.Count; i++)
         {
-            if (raw ? HoldsRaw(types[i], depth + 1) : MayNeedDrop(types[i], depth + 1))
+            if (HoldsRaw(types[i], depth + 1))
             {
                 return true;
             }
@@ -133,17 +209,24 @@ internal static class MirTypes
     }
 
     // A struct's Fields and base, an enum's payload Tuples.
-    private static bool Stored(BoundType type, int depth, bool raw)
+    private static bool Stored(BoundType type, int depth)
     {
         for (var i = 0; AdtDef.IsStruct(type) && i < AdtDef.Count(type); i++)
         {
-            if (raw ? HoldsRaw(AdtDef.FieldType(type, i), depth + 1) : MayNeedDrop(AdtDef.FieldType(type, i), depth + 1))
+            if (HoldsRaw(AdtDef.FieldType(type, i), depth + 1))
             {
                 return true;
             }
         }
 
-        return (AdtDef.Base(type) is { } parent && (raw ? HoldsRaw(parent, depth + 1) : MayNeedDrop(parent, depth + 1))) ||
-            (AdtDef.CaseTypes(type) is { } cases && Any(cases, depth, raw));
+        return (AdtDef.Base(type) is { } parent && HoldsRaw(parent, depth + 1)) || (AdtDef.CaseTypes(type) is { } cases && Any(cases, depth));
+    }
+
+    // MayNeedDrop's visitor: any reported part.
+    private struct AnyPart : IMirDestruction
+    {
+        public readonly bool Visit(BoundType type) => true;
+
+        public readonly bool Deep() => true;
     }
 }

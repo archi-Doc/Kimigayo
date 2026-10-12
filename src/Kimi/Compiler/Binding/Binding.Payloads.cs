@@ -14,8 +14,12 @@ public sealed partial class Binding
         result = actual;
         if (!IsObjectSemantics(actual.Semantics) || actual.Components.Count != 1 ||
             pattern is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ||
-            !ReferenceEquals(actual.Components[0], pattern.Components[0]) ||
-            this.RequestCapability(actual.Components[0], this.Library.Sealed, scope) != ConstraintProof.Proven)
+            !ReferenceEquals(actual.Components[0], pattern.Components[0]))
+        {
+            return false;
+        }
+
+        if (this.ProveSealed(actual.Components[0], scope) != ConstraintProof.Proven)
         {
             return false;
         }

@@ -735,7 +735,6 @@ KR2008	T:Kimi.Compiler.Binding	node:4bcb93f420209ee9	1	src/Kimi/Compiler/Binding
 KR2008	T:Kimi.Compiler.Binding	node:4c1c4a2272bd1458	1	src/Kimi/Compiler/Binding/Binding.ContractAgreement.cs
 KR2008	T:Kimi.Compiler.Binding	node:4cf8634ab00e5e92	1	src/Kimi/Compiler/Binding/Binding.TypeRelations.cs
 KR2008	T:Kimi.Compiler.Binding	node:4d5e0fdf1fba137f	1	src/Kimi/Compiler/Binding/Binding.ShapeEvidence.cs
-KR2008	T:Kimi.Compiler.Binding	node:4dd7232af646d9d2	1	src/Kimi/Compiler/Binding/Binding.Payloads.cs
 KR2008	T:Kimi.Compiler.Binding	node:51b6154875bd6100	1	src/Kimi/Compiler/Binding/Binding.CallableEffects.cs
 KR2008	T:Kimi.Compiler.Binding	node:53dff009461b9478	1	src/Kimi/Compiler/Binding/Binding.AssociatedInference.cs
 KR2008	T:Kimi.Compiler.Binding	node:55be09f882e97cb2	1	src/Kimi/Compiler/Binding/Binding.OpenOrigins.cs
@@ -787,7 +786,6 @@ KR2008	T:Kimi.Compiler.Binding	node:b526528630ac486b	1	src/Kimi/Compiler/Binding
 KR2008	T:Kimi.Compiler.Binding	node:b7c411e7fe52903e	1	src/Kimi/Compiler/Binding/Binding.TypeOrigins.cs
 KR2008	T:Kimi.Compiler.Binding	node:b979b7ecc1944c21	1	src/Kimi/Compiler/Binding/Binding.ContractCalls.cs
 KR2008	T:Kimi.Compiler.Binding	node:bc7f97180bea91e5	1	src/Kimi/Compiler/Binding/Binding.FunctionTypes.cs
-KR2008	T:Kimi.Compiler.Binding	node:bd1ce25c52beac32	1	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs
 KR2008	T:Kimi.Compiler.Binding	node:bfcdd9b0dc8270c2	1	src/Kimi/Compiler/Binding/Binding.Conversions.cs
 KR2008	T:Kimi.Compiler.Binding	node:c4b58503d9c073c9	1	src/Kimi/Compiler/Binding/Binding.Calls.cs
 KR2008	T:Kimi.Compiler.Binding	node:c54fc59b66e7d4a6	1	src/Kimi/Compiler/Binding/Binding.Attributes.cs
@@ -1135,7 +1133,6 @@ KR3001	T:Kimi.Compiler.Binding	line:3e6f49be6abe7031	1	src/Kimi/Compiler/Binding
 KR3001	T:Kimi.Compiler.Binding	line:3e787ede9fc969ad	1	src/Kimi/Compiler/Binding/Binding.Conversions.cs
 KR3001	T:Kimi.Compiler.Binding	line:3e8b3ed78e2c3428	1	src/Kimi/Compiler/Binding/Binding.FunctionTypes.cs
 KR3001	T:Kimi.Compiler.Binding	line:3e9bd90154f748bf	1	src/Kimi/Compiler/Binding/Binding.ArithmeticOperators.cs
-KR3001	T:Kimi.Compiler.Binding	line:3ecfc4d738dce6c1	1	src/Kimi/Compiler/Binding/Binding.Specializations.cs
 KR3001	T:Kimi.Compiler.Binding	line:3ed8e4b81577e350	1	src/Kimi/Compiler/Binding/Binding.TypeRelations.cs
 KR3001	T:Kimi.Compiler.Binding	line:3f087690d56f91bf	1	src/Kimi/Compiler/Binding/Binding.Attributes.cs
 KR3001	T:Kimi.Compiler.Binding	line:3f08e7ba8ca2132f	1	src/Kimi/Compiler/Binding/Binding.cs
@@ -1343,7 +1340,6 @@ KR3001	T:Kimi.Compiler.Binding	line:698cf957d305dd70	1	src/Kimi/Compiler/Binding
 KR3001	T:Kimi.Compiler.Binding	line:69dc438a0cc05361	1	src/Kimi/Compiler/Binding/Binding.ClosureInstances.cs
 KR3001	T:Kimi.Compiler.Binding	line:6a17aee45dbb1036	1	src/Kimi/Compiler/Binding/Binding.Calls.cs
 KR3001	T:Kimi.Compiler.Binding	line:6a1ba7ae5505952b	1	src/Kimi/Compiler/Binding/Binding.CandidateEvaluation.cs
-KR3001	T:Kimi.Compiler.Binding	line:6a463bbb2174511f	1	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs
 KR3001	T:Kimi.Compiler.Binding	line:6a642e6ebadd7fd1	1	src/Kimi/Compiler/Binding/Binding.Calls.cs
 KR3001	T:Kimi.Compiler.Binding	line:6a8421dae377f7ab	1	src/Kimi/Compiler/Binding/Binding.Diagnostics.cs
 KR3001	T:Kimi.Compiler.Binding	line:6aa9a74772ea8fd9	1	src/Kimi/Compiler/Binding/Binding.ArithmeticDiagnostics.cs
@@ -1528,7 +1524,6 @@ KR3001	T:Kimi.Compiler.Binding	line:9892944e92be687c	1	src/Kimi/Compiler/Binding
 KR3001	T:Kimi.Compiler.Binding	line:98b161b340ef3ea2	1	src/Kimi/Compiler/Binding/Binding.FunctionWitnesses.cs
 KR3001	T:Kimi.Compiler.Binding	line:98b30046c8e9a553	1	src/Kimi/Compiler/Binding/Binding.Properties.cs
 KR3001	T:Kimi.Compiler.Binding	line:98f8b4066b3fdd8e	1	src/Kimi/Compiler/Binding/Binding.ConstraintValidation.cs
-KR3001	T:Kimi.Compiler.Binding	line:997c4802c18856e7	1	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs
 KR3001	T:Kimi.Compiler.Binding	line:99c689feee34ba2e	1	src/Kimi/Compiler/Binding/Binding.Types.cs
 KR3001	T:Kimi.Compiler.Binding	line:9a4c356ce23887a3	1	src/Kimi/Compiler/Binding/Binding.Calls.cs
 KR3001	T:Kimi.Compiler.Binding	line:9a58bc1d6c1ff00d	1	src/Kimi/Compiler/Binding/Binding.TypeRelations.cs
@@ -1590,7 +1585,6 @@ KR3001	T:Kimi.Compiler.Binding	line:a56f10a0887f03e2	1	src/Kimi/Compiler/Binding
 KR3001	T:Kimi.Compiler.Binding	line:a57394d9f04be1e9	1	src/Kimi/Compiler/Binding/Binding.PositionWarnings.cs
 KR3001	T:Kimi.Compiler.Binding	line:a575cd44f4cc3fd7	1	src/Kimi/Compiler/Binding/Binding.Diagnostics.cs
 KR3001	T:Kimi.Compiler.Binding	line:a583986a5b4cc403	1	src/Kimi/Compiler/Binding/Binding.PairCases.cs
-KR3001	T:Kimi.Compiler.Binding	line:a59a810a55f54056	1	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs
 KR3001	T:Kimi.Compiler.Binding	line:a6918ec7835c71d1	1	src/Kimi/Compiler/Binding/Binding.CallableSelection.cs
 KR3001	T:Kimi.Compiler.Binding	line:a69c3d7a40aca31d	1	src/Kimi/Compiler/Binding/Binding.Calls.cs
 KR3001	T:Kimi.Compiler.Binding	line:a6b4467de0b8b9e6	1	src/Kimi/Compiler/Binding/Binding.ConstraintValidation.cs
@@ -1639,7 +1633,6 @@ KR3001	T:Kimi.Compiler.Binding	line:b098a7109cf7248a	1	src/Kimi/Compiler/Binding
 KR3001	T:Kimi.Compiler.Binding	line:b13951171f0f40db	1	src/Kimi/Compiler/Binding/Binding.CallSelection.cs
 KR3001	T:Kimi.Compiler.Binding	line:b17f180fbe4626dd	1	src/Kimi/Compiler/Binding/Binding.ArgumentOperations.cs
 KR3001	T:Kimi.Compiler.Binding	line:b1994617de99de6b	1	src/Kimi/Compiler/Binding/Binding.cs
-KR3001	T:Kimi.Compiler.Binding	line:b1c86e58bab57c5a	1	src/Kimi/Compiler/Binding/Binding.PropertyMatching.cs
 KR3001	T:Kimi.Compiler.Binding	line:b1cda05df195e1f3	1	src/Kimi/Compiler/Binding/Binding.BoundContracts.cs
 KR3001	T:Kimi.Compiler.Binding	line:b1e95043cf3934c9	1	src/Kimi/Compiler/Binding/Binding.Closures.cs
 KR3001	T:Kimi.Compiler.Binding	line:b1f8b076db007269	1	src/Kimi/Compiler/Binding/Binding.AssociatedTypes.cs
@@ -1744,7 +1737,6 @@ KR3001	T:Kimi.Compiler.Binding	line:c7eddb51c4e3d9ae	1	src/Kimi/Compiler/Binding
 KR3001	T:Kimi.Compiler.Binding	line:c87ada27e341d5c4	1	src/Kimi/Compiler/Binding/Binding.EffectDeclarations.cs
 KR3001	T:Kimi.Compiler.Binding	line:c89b39bbc1f8ff08	1	src/Kimi/Compiler/Binding/Binding.AssociatedTypes.cs
 KR3001	T:Kimi.Compiler.Binding	line:c9845f0d2661aa5c	1	src/Kimi/Compiler/Binding/Binding.Structs.cs
-KR3001	T:Kimi.Compiler.Binding	line:c98588171b3dd630	1	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs
 KR3001	T:Kimi.Compiler.Binding	line:c9e3b2ed7100d93b	1	src/Kimi/Compiler/Binding/Binding.AssociatedTypes.cs
 KR3001	T:Kimi.Compiler.Binding	line:c9fd26e878a7078d	1	src/Kimi/Compiler/Binding/Binding.ConditionalConformances.cs
 KR3001	T:Kimi.Compiler.Binding	line:ca19fdd45df42d36	1	src/Kimi/Compiler/Binding/Binding.AssociatedInference.cs
@@ -2267,7 +2259,6 @@ KR2005	T:Kimi.Compiler.Binding.EffectSummary	node:3517ca61fa2648df	1	src/Kimi/Co
 KR2005	T:Kimi.Compiler.Binding.EffectSummary	node:5a60f0383737e9c8	1	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs
 KR2005	T:Kimi.Compiler.Binding.EffectSummary	node:869a25cfb330c491	1	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs
 KR2005	T:Kimi.Compiler.Binding.EffectSummary	node:f435ad2dd4239d4b	1	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs
-KR2008	T:Kimi.Compiler.Binding.EffectSummary	node:3dfb81ca9a9f97de	1	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs
 KR2008	T:Kimi.Compiler.Binding.EffectSummary	node:722320b8004deb52	1	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs
 KR2008	T:Kimi.Compiler.Binding.EffectSummary	node:af2358fa507f0630	1	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs
 KR2008	T:Kimi.Compiler.Binding.EffectSummary	node:ef5834f10045bf70	1	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs
@@ -3369,9 +3360,9 @@ KR2009	src/Kimi/Compiler/Binding/Binding.Calls.cs	file	16011	src/Kimi/Compiler/B
 KR2009	src/Kimi/Compiler/Binding/Binding.Closures.cs	file	6057	src/Kimi/Compiler/Binding/Binding.Closures.cs
 KR2009	src/Kimi/Compiler/Binding/Binding.Constraints.cs	file	6176	src/Kimi/Compiler/Binding/Binding.Constraints.cs
 KR2009	src/Kimi/Compiler/Binding/Binding.Contracts.cs	file	6516	src/Kimi/Compiler/Binding/Binding.Contracts.cs
-KR2009	src/Kimi/Compiler/Binding/Binding.Conversions.cs	file	5759	src/Kimi/Compiler/Binding/Binding.Conversions.cs
+KR2009	src/Kimi/Compiler/Binding/Binding.Conversions.cs	file	5753	src/Kimi/Compiler/Binding/Binding.Conversions.cs
 KR2009	src/Kimi/Compiler/Binding/Binding.Diagnostics.cs	file	13022	src/Kimi/Compiler/Binding/Binding.Diagnostics.cs
-KR2009	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs	file	13311	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs
+KR2009	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs	file	12869	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs
 KR2009	src/Kimi/Compiler/Binding/Binding.Expressions.cs	file	11031	src/Kimi/Compiler/Binding/Binding.Expressions.cs
 KR2009	src/Kimi/Compiler/Binding/Binding.FunctionTypes.cs	file	7669	src/Kimi/Compiler/Binding/Binding.FunctionTypes.cs
 KR2009	src/Kimi/Compiler/Binding/Binding.OriginDeclarations.cs	file	5997	src/Kimi/Compiler/Binding/Binding.OriginDeclarations.cs

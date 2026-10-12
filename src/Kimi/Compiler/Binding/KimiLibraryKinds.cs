@@ -147,6 +147,22 @@ internal enum IntrinsicId : byte
     FormatFinish,
 }
 
+/// <summary>How an effect summary classifies a compiler function (SPEC 8.4.10.2), the effect column of the intrinsic table.</summary>
+internal enum CompilerFunctionEffect : byte
+{
+    /// <summary>The kind names no compiler function, or one the summary cannot classify.</summary>
+    Unclassified,
+
+    /// <summary>The function acts only on its acquired inputs and the allocator, and may Abort.</summary>
+    Inputs,
+
+    /// <summary>The function obtains authority from the environment, which confined excludes.</summary>
+    Environment,
+
+    /// <summary>The function runs a selected formatting witness, which the summary follows before classifying.</summary>
+    Formatting,
+}
+
 /// <summary>How a call of a compiler function is served (plan 5.8).</summary>
 internal enum DispositionKind : byte
 {
@@ -197,6 +213,22 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
         CompilerFunctionKind.StorageCountOverflow => Fail("KIMI_E_INT_OVERFLOW"),
         CompilerFunctionKind.StorageAllocationSizeExceeded => Fail("KIMI_E_ALLOC_SIZE"),
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
+
+    // SPEC 8.4.10.2: the effect class of each compiler function. The Storage and Raw families act only on their inputs and the allocator
+    // (SPEC 5.6, 22.1.2.5), so they are classified as families; a storage kind that obtained environment authority would have to be split
+    // out of its family. Console output and the test temporary directory are environment effects. Comparison, formatting and destruction
+    // callbacks are summarized separately.
+    internal static CompilerFunctionEffect Effect(CompilerFunctionKind kind) => kind switch
+    {
+        CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
+        CompilerFunctionKind.WriterWrite or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat => CompilerFunctionEffect.Formatting,
+        >= CompilerFunctionKind.Abort and <= CompilerFunctionKind.Clone or >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.TextValidateUtf8 =>
+            CompilerFunctionEffect.Inputs,
+        >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus or
+            >= CompilerFunctionKind.BuiltinFormat and <= CompilerFunctionKind.BuiltinArithmetic => CompilerFunctionEffect.Inputs,
+        _ when KimiLibraryCatalog.IsStorageOperation(kind) || KimiLibraryCatalog.IsRawOperation(kind) => CompilerFunctionEffect.Inputs,
+        _ => CompilerFunctionEffect.Unclassified,
     };
 
     // The built-in form of a published node: a sequence's metadata by its member.

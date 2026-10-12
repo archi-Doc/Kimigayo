@@ -18,8 +18,7 @@ public sealed partial class Binding
     /// <param name="type">The complete Type.</param>
     /// <param name="context">The use site providing assumptions.</param>
     /// <returns>The proof result, without choosing any acquisition operation.</returns>
-    public ConstraintProof ProveCopy(BoundType type, Koto context)
-        => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Copy)), this.ConstraintScope(context));
+    public ConstraintProof ProveCopy(BoundType type, Koto context) => this.ProveCopy(type, this.ConstraintScope(context));
 
     /// <summary>Queries the recursive Owned guarantee, independently of heap/global borrow restrictions.</summary>
     /// <param name="type">The complete Type.</param>
@@ -48,8 +47,13 @@ public sealed partial class Binding
     /// <param name="type">The normalized complete Type.</param>
     /// <param name="context">The use site providing assumptions.</param>
     /// <returns>The four-valued Sealed proof.</returns>
-    public ConstraintProof ProveSealed(BoundType type, Koto context)
-        => this.RequestCapability(type, this.Library.Sealed, this.ConstraintScope(context));
+    public ConstraintProof ProveSealed(BoundType type, Koto context) => this.ProveSealed(type, this.ConstraintScope(context));
+
+    // The Copy and Sealed queries under a scope's premises, such as a definition's effect premises (EffectPremises).
+    internal ConstraintProof ProveCopy(BoundType type, BindingScope scope)
+        => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Copy)), scope);
+
+    internal ConstraintProof ProveSealed(BoundType type, BindingScope scope) => this.RequestCapability(type, this.Library.Sealed, scope);
 
     private static bool TryLeafCapability(BoundType type, IntrinsicKind kind, out ConstraintProof result)
     {

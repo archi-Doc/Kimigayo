@@ -679,6 +679,9 @@ public sealed partial class Binding
 
     // SPEC 8.4.10.1: an effect item declares a bound of its Contract. A rejected bound word leaves a recovery whose checks
     // rest on the syntax Error; an item outside a Contract declares nothing.
+    // Whether an effect bound applies: one the declaration checks rejected, or a recovery, declares nothing.
+    private bool AppliesBound(EffectBoundKoto bound) => this.effectBoundRejections?.ContainsKey(bound) != true && !IsRecovery(bound, out _);
+
     private BoundType? BindEffectBound(EffectBoundKoto effect)
     {
         if (effect.Selector is { } selector)

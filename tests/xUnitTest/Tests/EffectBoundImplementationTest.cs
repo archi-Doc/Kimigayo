@@ -78,12 +78,12 @@ public class EffectBoundImplementationTest
         {
             var expected = kind switch
             {
-                CompilerFunctionKind.None => Binding.CompilerFunctionEffect.Unclassified,
-                CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.TestTempDirectory => Binding.CompilerFunctionEffect.Environment,
-                CompilerFunctionKind.WriterWrite or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat => Binding.CompilerFunctionEffect.Formatting,
-                _ => Binding.CompilerFunctionEffect.Inputs,
+                CompilerFunctionKind.None => CompilerFunctionEffect.Unclassified,
+                CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
+                CompilerFunctionKind.WriterWrite or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat => CompilerFunctionEffect.Formatting,
+                _ => CompilerFunctionEffect.Inputs,
             };
-            Assert.True(expected == Binding.ClassifyCompilerFunction(kind), kind.ToString());
+            Assert.True(expected == IntrinsicDisposition.Effect(kind), kind.ToString());
         }
     }
 

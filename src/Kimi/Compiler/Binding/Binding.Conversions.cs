@@ -397,7 +397,7 @@ public sealed partial class Binding
             }
 
             if (IsObjectSemantics(reference.Semantics) && reference.Components.Count == 1 &&
-                this.RequestCapability(reference.Components[0], this.Library.Sealed, scope) == ConstraintProof.Proven)
+                this.ProveSealed(reference.Components[0], scope) == ConstraintProof.Proven)
             {
                 Complete(conversion.Right, reference.Components[0]);
                 conversion.ConversionBinding = ConversionBinding.PayloadFollow;

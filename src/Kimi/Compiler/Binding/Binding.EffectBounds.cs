@@ -6,37 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    /// <summary>How an effect summary classifies a compiler function (SPEC 8.4.10.2).</summary>
-    internal enum CompilerFunctionEffect : byte
-    {
-        /// <summary>The kind names no compiler function, or one the summary cannot classify.</summary>
-        Unclassified,
-
-        /// <summary>The function acts only on its acquired inputs and the allocator, and may Abort.</summary>
-        Inputs,
-
-        /// <summary>The function obtains authority from the environment, which confined excludes.</summary>
-        Environment,
-
-        /// <summary>The function runs a selected formatting witness, which the summary follows before classifying.</summary>
-        Formatting,
-    }
-
-    // SPEC 8.4.10.2: the Storage and Raw families act only on their inputs and the allocator (SPEC 5.6, 22.1.2.5), so they are classified
-    // as families; a storage kind that obtained environment authority would have to be split out of its family. Console output and the
-    // test temporary directory are environment effects. Comparison, formatting and destruction callbacks are summarized separately.
-    internal static CompilerFunctionEffect ClassifyCompilerFunction(CompilerFunctionKind kind) => kind switch
-    {
-        CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
-        CompilerFunctionKind.WriterWrite or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat => CompilerFunctionEffect.Formatting,
-        CompilerFunctionKind.Abort or CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap or CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc or CompilerFunctionKind.MakeArc or CompilerFunctionKind.Clone or
-            >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.TextHeap or
-            CompilerFunctionKind.TextWriter or CompilerFunctionKind.TextUtf8 or CompilerFunctionKind.TextValidateUtf8 or
-            >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus or CompilerFunctionKind.BuiltinFormat or
-            CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.BuiltinArithmetic => CompilerFunctionEffect.Inputs,
-        _ => KimiLibraryCatalog.IsStorageOperation(kind) || KimiLibraryCatalog.IsRawOperation(kind) ? CompilerFunctionEffect.Inputs : CompilerFunctionEffect.Unclassified,
-    };
-
     private EffectSummary? effectSummary;
 
     // The pass after ownership analysis keeps its own call pool: its contexts differ from the Binding pass (SPEC 8.4.5).
@@ -98,7 +67,8 @@ public sealed partial class Binding
     // SPEC 8.4.10.4: a conformance checks the complete transitive effect summary of every witness against the bounds that
     // its Contract and the ancestors declare for the requirement; an effect it cannot classify is a conflict (SPEC 8.4.5).
     // Binding checks the Loans the implementation accesses and the calls it makes. Which values it destroys is known only
-    // from the cleanups ownership analysis plans, so destruction effects are checked afterwards (ValidateDestructionEffects).
+    // from the cleanups ownership analysis plans, so destruction effects are checked afterwards (ValidateDestructionEffects),
+    // as are the selected uses of bounded Callable clauses, which this pass enumerates (SPEC 8.4.10.7).
     private void ValidateEffectBounds()
     {
         this.effectViolations?.Clear();
@@ -113,6 +83,7 @@ public sealed partial class Binding
         }
 
         this.InvalidateAssociatedEvidence();
+        this.CollectCallableEffectUses();
     }
 
     // The path, marked invalid, when one of its bounded implementations exceeds a bound; null otherwise. One traversal of a
@@ -470,52 +441,6 @@ public sealed partial class Binding
 
         private static LoanRequirement Mode(BoundType? type)
             => type?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref;
-
-        private static bool MaySelect(Specialization candidate, CallPlan call)
-        {
-            for (var i = 0; i < call.TypeArguments.Length; i++)
-            {
-                if (call.TypeArguments[i] is { } argument && candidate.Arguments[i] is { } closed && !MayMatch(argument, closed))
-                {
-                    return false;
-                }
-            }
-
-            for (var i = 0; i < call.LengthArguments.Length; i++)
-            {
-                if (call.LengthArguments[i] is { IsConstant: true } length && !SameLengthSignature(length, candidate.Lengths[i], null!, null!))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        private static bool MayMatch(BoundType pattern, BoundType closed)
-        {
-            if (ReferenceEquals(pattern, closed) || pattern.IsAbstract)
-            {
-                return true;
-            }
-
-            if (pattern.Kind == BoundTypeKind.Primitive || pattern.Kind != closed.Kind || pattern.Semantics != closed.Semantics ||
-                !ReferenceEquals(pattern.Symbol, closed.Symbol) || pattern.Components.Count != closed.Components.Count ||
-                (pattern.LengthExpression is null && pattern.Length != closed.Length))
-            {
-                return false;
-            }
-
-            for (var i = 0; i < pattern.Components.Count; i++)
-            {
-                if (!MayMatch(pattern.Components[i], closed.Components[i]))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
 
         // The receiver parameter of a bound or unbound call, in its declared slot.
         private static BoundType? Receiver(CallPlan call)
@@ -1141,7 +1066,7 @@ public sealed partial class Binding
             symbol = call?.Target ?? symbol;
             if (symbol.CompilerFunction != CompilerFunctionKind.None)
             {
-                var effect = ClassifyCompilerFunction(symbol.CompilerFunction);
+                var effect = IntrinsicDisposition.Effect(symbol.CompilerFunction);
                 if (effect != CompilerFunctionEffect.Inputs && (effect != CompilerFunctionEffect.Environment || this.confined))
                 {
                     this.Violate(effect == CompilerFunctionEffect.Environment ? EffectViolation.ExternalOperation : EffectViolation.Limit, null);
@@ -1230,7 +1155,7 @@ public sealed partial class Binding
                     {
                         this.Body(candidates[i], null);
                     }
-                    else if (MaySelect(binding.specializations[candidates[i]], call))
+                    else if (MaySelect(binding.specializations[candidates[i]], call.TypeArguments, call.LengthArguments))
                     {
                         this.Specialization(candidates[i], call);
                     }

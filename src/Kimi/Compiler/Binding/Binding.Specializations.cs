@@ -219,24 +219,7 @@ public sealed partial class Binding
     /// <returns>The specializations, or null when it has none.</returns>
     internal List<FunctionKoto>? Specializations(BindingSymbol original) => this.specializationsByOriginal.GetValueOrDefault(original);
 
-    internal FunctionKoto? SelectSpecialization(CallPlan call)
-    {
-        if (!this.specializationsByOriginal.TryGetValue(call.Target, out var candidates))
-        {
-            return null;
-        }
-
-        for (var i = 0; i < candidates.Count; i++)
-        {
-            var specialization = this.specializations[candidates[i]];
-            if (SameSpecializationArguments(specialization.Arguments, call.TypeArguments) && SameSpecializationLengths(specialization.Lengths, call.LengthArguments))
-            {
-                return candidates[i];
-            }
-        }
-
-        return null;
-    }
+    internal FunctionKoto? SelectSpecialization(CallPlan call) => this.SelectSpecialization(call.Target, call.TypeArguments, call.LengthArguments);
 
     // SPEC 8.8.3: the selection key holds every slot; a length slot is its evaluated value (LengthKey(N)).
     private static bool SameSpecializationLengths(ReadOnlySpan<BoundLength?> left, ReadOnlySpan<BoundLength?> right)
@@ -249,6 +232,59 @@ public sealed partial class Binding
         for (var i = 0; i < left.Length; i++)
         {
             if (!SameLengthSignature(left[i], right[i], null!, null!))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // SPEC 8.8.3: whether a call whose key is still open may select a specialization: each argument it fixes may match the
+    // specialization's, and each constant length equals it.
+    private static bool MaySelect(Specialization candidate, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths)
+    {
+        for (var i = 0; i < types.Length; i++)
+        {
+            if (types[i] is { } argument && candidate.Arguments[i] is { } closed && !MayMatch(argument, closed))
+            {
+                return false;
+            }
+        }
+
+        for (var i = 0; i < lengths.Length; i++)
+        {
+            if (lengths[i] is { IsConstant: true } length && !SameLengthSignature(length, candidate.Lengths[i], null!, null!))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // Whether an instance of a pattern may be a closed Type: an abstract part matches anything, any other part the same shape.
+    private static bool MayMatch(BoundType pattern, BoundType closed)
+    {
+        if (ReferenceEquals(pattern, closed) || pattern.IsAbstract)
+        {
+            return true;
+        }
+
+        if (pattern.Kind == BoundTypeKind.Primitive || pattern.Kind != closed.Kind || pattern.Semantics != closed.Semantics)
+        {
+            return false;
+        }
+
+        if (!ReferenceEquals(pattern.Symbol, closed.Symbol) || pattern.Components.Count != closed.Components.Count ||
+            (pattern.LengthExpression is null && pattern.Length != closed.Length))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < pattern.Components.Count; i++)
+        {
+            if (!MayMatch(pattern.Components[i], closed.Components[i]))
             {
                 return false;
             }
@@ -278,6 +314,25 @@ public sealed partial class Binding
         }
 
         return true;
+    }
+
+    private FunctionKoto? SelectSpecialization(BindingSymbol original, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths)
+    {
+        if (!this.specializationsByOriginal.TryGetValue(original, out var candidates))
+        {
+            return null;
+        }
+
+        for (var i = 0; i < candidates.Count; i++)
+        {
+            var specialization = this.specializations[candidates[i]];
+            if (SameSpecializationArguments(specialization.Arguments, types) && SameSpecializationLengths(specialization.Lengths, lengths))
+            {
+                return candidates[i];
+            }
+        }
+
+        return null;
     }
 
     private void ResetSpecializations()

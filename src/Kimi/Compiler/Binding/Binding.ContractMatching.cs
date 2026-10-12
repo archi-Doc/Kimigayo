@@ -586,7 +586,7 @@ public sealed partial class Binding
                     for (var e = 0; e < clause.EffectBounds.Count; e++)
                     {
                         var bound = clause.EffectBounds[e];
-                        if (this.effectBoundRejections?.ContainsKey(bound) == true || IsRecovery(bound, out _))
+                        if (!this.AppliesBound(bound))
                         {
                             continue; // An invalid item declares no obligation for the implementation.
                         }
