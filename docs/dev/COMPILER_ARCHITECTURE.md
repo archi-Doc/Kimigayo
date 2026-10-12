@@ -242,23 +242,26 @@ whole-compiler ratio. No area's pass/fail state changes. EOF, missing tokens and
 | Area | A1 tokens | Token cap |
 | --- | ---: | ---: |
 | Analysis | 121,620 | 124,047 |
-| Binding | 371,765 | 377,051 |
-| Core | 8,055 | 8,187 |
+| Binding | 371,765 | 432,000 |
+| Core | 8,055 | 15,000 |
 | Documentation | 24,624 | 25,687 |
 | Emission | 160,848 | 164,057 |
 | Helper | 7,766 | 8,068 |
 | Lexing | 19,065 | 19,445 |
-| Mir | 38,804 | 93,651 |
+| Mir | 38,804 | 155,000 |
 | Parsing | 75,668 | 77,163 |
 | Root | 7,206 | 7,345 |
 
-The owner raised Binding by 2,000 and Core by 20 tokens within the unchanged R4 ceiling (DECISIONS R4-M25).
+The owner approved the R4 completion and conditional coexistence envelope (DECISIONS R4-M31, superseding R4-M25's
+numeric caps and 90,000 Mir planning trigger for this scope). Reforecast at each selected design and landing; exceeding
+an area or stage envelope requires consolidation or renewed owner approval. The per-unit 20% overrun rule and R4-M30
+Binding exceptions remain. R5 and later ceilings are unchanged; reforecast R5 before its implementation.
 
 LLVM templates remain at 2,335 lines against their unchanged cap of 2,381, outside the C# total.
 
 | Remaining stage | Total C# token ceiling |
 | --- | ---: |
-| R4 | 894,362 |
+| R4 | 1,020,000 |
 | R5 | 942,976 |
 | R6 | 654,531 |
 | R7 | 589,712 |

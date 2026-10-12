@@ -9,21 +9,20 @@ namespace XunitTest;
 /// LLVM templates retain their independent newline budget (docs/dev/COMPILER_ARCHITECTURE.md).</summary>
 public class CompilerSizeBudgetTest
 {
-    // A1 converts the approved R4 caps at the measured area ratios, rounded upward; see CR-A1.
-    // The owner raised Binding and Core within the unchanged R4 total (DECISIONS R4-M25).
-    private const int TotalCap = 894_362;
+    // A1 counts non-trivia tokens; the owner approved R4 completion and temporary coexistence caps (R4-M31).
+    private const int TotalCap = 1_020_000;
     private const int TemplateLineCap = 2_381;
 
     private static readonly Dictionary<string, int> Caps = new(StringComparer.Ordinal)
     {
         ["Analysis"] = 124_047,
-        ["Binding"] = 377_051,
-        ["Core"] = 8_187,
+        ["Binding"] = 432_000,
+        ["Core"] = 15_000,
         ["Documentation"] = 25_687,
         ["Emission"] = 164_057,
         ["Helper"] = 8_068,
         ["Lexing"] = 19_445,
-        ["Mir"] = 93_651,
+        ["Mir"] = 155_000,
         ["Parsing"] = 77_163,
         ["Root"] = 7_345,
     };

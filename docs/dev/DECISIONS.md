@@ -619,7 +619,7 @@ rules that result from them.
   in R4 would delete old-Emission validation tests that still guard the path deciding acceptance until R6 (R4-M1, D5).
   Rejected: deleting the injection tests now; MIR presence for library reach (vacuous while every library body is built);
   `LegacyRecords` as the general reader of flow records (it moves reads out of the ratchet without migrating them).
-- **R4-M25** (owner, 2026-10-12; area caps rebalanced within the R4 stage ceiling) Binding's token cap rises from 375,051 to
+- **R4-M25** (owner, 2026-10-12; numeric caps and planning trigger superseded for the priced R4 scope by R4-M31) Binding's token cap rises from 375,051 to
   377,051 and Core's from 8,167 to 8,187; Mir's cap (93,651) and the R4 total ceiling (894,362) are unchanged. Reason: the
   measured needs of the R4 analyses are published Binding facts (U6 effect obligations and call bounds, U7 Relate/Clauses and the
   callable signature, U9 universal relations) and U11's internal reporter in Core, against 2,997 Binding and 0 Core tokens of
@@ -818,6 +818,14 @@ rules that result from them.
   the composing node, Witnesses over RequirementImplementation only, open Types by the premises, an inapplicable override owing
   nothing. Owner exception: Binding +561 tokens. Open: published bodies unverified against rows (R6); library generics outside the
   table keep X2; composites with an abstract part a Limit; duplicates RequirementImplementation and findEntry's two identifications.
+- **R4-M31** (owner, 2026-10-13; completion budget option C) R4 caps are Mir 155,000, Binding 432,000, Core 15,000 and total
+  1,020,000 non-trivia C# tokens, including conditional late coexistence. Supersedes R4-M25's numeric caps and 90,000 Mir
+  planning trigger for the priced R4 scope: the revised forecast includes common producer/transfer contracts omitted earlier
+  (946,606 central; 1,017,696 conditional late peak). Reforecast at each selected design and landing; an area/stage overrun
+  requires consolidation or renewed owner approval. Keep the per-unit 20% overrun rule, M30 exceptions and technical gates.
+  Other area/template caps and R5 onward ceilings stay unchanged; reforecast R5 before implementation. No vocabulary,
+  baseline, frozen-path feature, scope deferral or per-unit Binding approval is granted. Rejected: old caps (no demonstrated
+  complete fit), net-only option B (conditional late peak exceeds it), and crediting R6 deletions during R4.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

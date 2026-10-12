@@ -307,13 +307,13 @@ The user adopted `Proposals/2026-10-10 Compiler Size Reduction and Single MIR Pl
 
 ## 2026-10-13 — R4 completion plan and budget draft
 
-The owner explicitly requested `Proposals/2026-10-13 R4 Completion Plan and Budget.md`, including cap revision among the
-options. This is a new, unadopted planning proposal; no section is integrated into SPEC, IMPL or compiler policy. Its full
-scope, budget options and required owner decisions remain open. PLAN records the planning request only. The original
-2026-10-10 proposal and all its integrated text remain unchanged; preparing this draft does not grant numeric caps,
-Binding exceptions or implementation support. The owner's later M39 common-redesign direction is recorded in PLAN;
-the draft now includes its conditional design, independently compared default representations and revised full-stage costs.
-No language or compiler-policy intake follows from that direction; numeric, vocabulary and per-unit Binding decisions remain open.
+`Proposals/2026-10-13 R4 Completion Plan and Budget.md`: 一部取り込み (partially integrated). The owner approved option C
+on 2026-10-13. Section 5's C numeric envelope, other-cap preservation and item 1's forecast/overrun policy map to
+COMPILER_ARCHITECTURE's token caps, DECISIONS R4-M31 and CompilerSizeBudgetTest; these adopted clauses are frozen.
+The historical proposal text still describes the request before approval; this register and DECISIONS record its disposition.
+No SPEC or IMPL language rule changes. M39 redesign is authorized, but its technical contracts, vocabulary/configuration
+decisions and per-unit Binding exceptions remain open; no implementation support is claimed. The remaining scope and
+conditional designs/estimates are planning inputs, not adopted representations. The original 2026-10-10 proposal is unchanged.
 
 ## 2026-10-12 — Code Rules Analyzer
 
