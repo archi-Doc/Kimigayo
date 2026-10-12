@@ -28,3 +28,17 @@ func conditionTemporaries(text: string) -> i32
 func failure(flag: bool) -> i32
     require flag else => defer => stop()
     return 1
+open struct Layered
+    var text: string
+    protected init(text: string) => self.text = text@move
+struct Derived : Layered
+    var name: string
+    var count: i32
+    var label: string
+    public init(text: string) : base(text@move)
+        self.name = "n"
+        self.count = 0
+        self.label = "l"
+    drop
+        if self.count == 0 => return
+        self.count = 1

@@ -548,6 +548,19 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.All(program.Bodies.ToArray().Where(static x => x.Source.Module == 0), static x => Assert.True(x.Key.Decl is null || x.Key.Decl.Name == "main", x.Key.ToString()));
     }
 
+    // SPEC 22.1.2.5, 16.3.2 (InlineStorage's contract in Storage.kimi): the compiler never destroys an InlineStorage's contents, so the
+    // destructor body of a fixed array's owning remainder, which destroys the remaining elements itself, ends without a Drop of its
+    // receiver or of any of its parts.
+    [Fact]
+    public void AnInlineStorageIsNeverDestroyed()
+    {
+        var program = Compile("public func main()\n    let values: [3 of string] = [\"a\", \"b\", \"c\"]\n    for value in values@move => ()\n").BuildMir();
+        Assert.Empty(program.Findings);
+        var drop = program.Bodies.ToArray()
+            .Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "drop" } && x.Locals[1].Type.Symbol?.Name == "FixedOwnedRemainder");
+        Assert.DoesNotContain(drop.Blocks.ToArray(), static x => x.Terminator.Kind == MirTerminatorKind.Drop && x.Terminator.Place.Root == 1);
+    }
+
     internal static Compilation Compile(string source, bool test = false)
     {
         var c = Compilation.CreateForTest();

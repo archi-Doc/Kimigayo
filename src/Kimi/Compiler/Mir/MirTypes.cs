@@ -15,7 +15,8 @@ internal static class MirTypes
 {
     /// <summary>Gets whether a value of a Type may own what its destruction releases (SPEC 16.3), the one rule by which the builder drops
     /// an old value: an owning handle, a managed sequence or string, a Function value's environment, a destructor, or a Type its
-    /// instance decides, anywhere in its inline storage; references, raw pointers, Slices and scalars own nothing.</summary>
+    /// instance decides, anywhere in its inline storage; references, raw pointers, Slices, scalars and an InlineStorage, whose owner
+    /// destroys its contents (<see cref="AdtDef.IsInlineStorage"/>), own nothing.</summary>
     /// <param name="type">The Type.</param>
     /// <param name="depth">The walk's depth; past 32 the answer is yes.</param>
     /// <returns>Whether drop elaboration has to consider the value.</returns>
@@ -24,7 +25,8 @@ internal static class MirTypes
         BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function => true,
         BoundTypeKind.Semantics => type.Semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc,
         BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure => Any(type.Components, depth, raw: false),
-        _ => ReferenceEquals(type, BoundType.String) || AdtDef.Destructor(type) is not null || Stored(type, depth, raw: false),
+        _ => ReferenceEquals(type, BoundType.String) || AdtDef.Destructor(type) is not null ||
+            (!AdtDef.IsInlineStorage(type) && Stored(type, depth, raw: false)),
     });
 
     /// <summary>Gets whether a value of a Type is a reference whose Loans an EndBorrow ends: a ref, uniq, objref or objuniq, or a pair layer.</summary>

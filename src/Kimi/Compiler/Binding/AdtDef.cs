@@ -124,6 +124,10 @@ internal sealed class AdtDef
 
     internal static FunctionKoto? Destructor(BoundType type) => Struct(type)?.DestructorKoto;
 
+    // Whether a Type is the library's InlineStorage, whose contents the compiler never destroys: its owner destroys what remains (its
+    // contract in Storage.kimi; SPEC 22.1.2.5).
+    internal static bool IsInlineStorage(BoundType type) => type.Symbol?.LibraryDeclaration == KimiDeclarationId.InlineStorage;
+
     // SPEC 6.2.3: whether a function is a constructor, whose body builds its object from fresh storage (the MIR analyses' fact).
     internal static bool IsConstructor(BindingSymbol? function) => function?.Declaration is FunctionKoto { IsConstructor: true };
 

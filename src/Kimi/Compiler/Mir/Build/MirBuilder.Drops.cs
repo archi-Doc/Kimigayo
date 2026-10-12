@@ -7,9 +7,10 @@ namespace Kimi.Compiler.Mir;
 
 // Scopes and drop trees (SPEC 16, plan 5.6.4). A Var or Temp local lives from its StorageLive to its StorageDead, a value whose Type may
 // need drop (MirTypes.MayNeedDrop) is dropped first, and a defer runs where its scope is left. Each open scope keeps its registrations in
-// order: a block its locals and defers, a statement or a condition its temporaries, the body its parameters. The normal end of a scope
-// cleans them up in reverse order; a transfer leaves through the drop tree of its target, whose node for a scope's first registrations
-// and the rest of the tree is built once and shared by every exit that reaches it (rustc's drop tree), a defer body included.
+// order: a block its locals and defers, a statement or a condition its temporaries, the body its parameters, a destructor's self as its
+// layer's parts (SPEC 16.3.2). The normal end of a scope cleans them up in reverse order; a transfer leaves through the drop tree of its
+// target, whose node for a scope's first registrations and the rest of the tree is built once and shared by every exit that reaches it
+// (rustc's drop tree), a defer body included.
 internal sealed partial class MirBuilder
 {
     private readonly List<DropScope> scopes = []; // The open scopes, innermost last.
@@ -24,6 +25,7 @@ internal sealed partial class MirBuilder
     {
         StorageDead,
         Drop,
+        Fields,
         Defer,
     }
 
@@ -127,6 +129,9 @@ internal sealed partial class MirBuilder
             case Cleanup.Drop:
                 this.DropAt(new(registration.Local), source);
                 break;
+            case Cleanup.Fields:
+                this.FieldCleanup(registration.Local, source);
+                break;
             default:
                 this.Deferred(registration);
                 break;
@@ -139,6 +144,25 @@ internal sealed partial class MirBuilder
         var next = this.body.AddBlock();
         this.body.Terminate(this.current, MirTerminator.Drop(place, next, source));
         this.current = next;
+    }
+
+    // SPEC 16.3.1-16.3.2: a destructor's self is no owner, and its body's end destroys the layer's parts, never the layer: each own Field
+    // whose Type may need drop, last to first, then the direct base, each by its own complete destruction (A2 skips a moved one).
+    private void FieldCleanup(int local, in SourceInfo source)
+    {
+        var type = this.body.Locals[local].Type;
+        for (var i = AdtDef.Count(type) - 1; i >= 0; i--)
+        {
+            if (MirTypes.MayNeedDrop(AdtDef.FieldType(type, i)))
+            {
+                this.DropAt(this.body.Project(new(local), MirProjectionKind.Field, i), source);
+            }
+        }
+
+        if (MirTypes.MayNeedDrop(AdtDef.Base(type)))
+        {
+            this.DropAt(this.body.Project(new(local), MirProjectionKind.Base, 1), source);
+        }
     }
 
     // SPEC 16.1: a defer body where its scope is left, built once per target of the drop tree it is in (plan 5.6.4), in the scope that
