@@ -1613,7 +1613,6 @@ KR3001	T:Kimi.Compiler.Binding	line:ad2b8d55224e5cb6	1	src/Kimi/Compiler/Binding
 KR3001	T:Kimi.Compiler.Binding	line:add73d1e267c39e8	1	src/Kimi/Compiler/Binding/Binding.Calls.cs
 KR3001	T:Kimi.Compiler.Binding	line:add86bda26a2228e	1	src/Kimi/Compiler/Binding/Binding.Diagnostics.cs
 KR3001	T:Kimi.Compiler.Binding	line:ae2ac2fb54641758	1	src/Kimi/Compiler/Binding/Binding.ArgumentOperations.cs
-KR3001	T:Kimi.Compiler.Binding	line:ae44754cbc6f222c	1	src/Kimi/Compiler/Binding/Binding.OriginProof.cs
 KR3001	T:Kimi.Compiler.Binding	line:ae97a525f750f453	1	src/Kimi/Compiler/Binding/Binding.Calls.cs
 KR3001	T:Kimi.Compiler.Binding	line:aed974bc721c7177	1	src/Kimi/Compiler/Binding/Binding.FunctionWitnesses.cs
 KR3001	T:Kimi.Compiler.Binding	line:aef27c796a0a64f8	1	src/Kimi/Compiler/Binding/Binding.CallRelations.cs

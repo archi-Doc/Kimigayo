@@ -826,6 +826,13 @@ rules that result from them.
   Other area/template caps and R5 onward ceilings stay unchanged; reforecast R5 before implementation. No vocabulary,
   baseline, frozen-path feature, scope deferral or per-unit Binding approval is granted. Rejected: old caps (no demonstrated
   complete fit), net-only option B (conditional late peak exceeds it), and crediting R6 deletions during R4.
+- **R4-M32** (2026-10-13, planning session; independent C1a designs compared and reviewed) Binding.OriginProof owns
+  `OriginFit`: the normalized fit answer and an optional initializer contribution, identified by its Local. Classification
+  changes no inference, declaration or obligation state; canonical interning and proof scratch retain their lifecycle.
+  Existing committed-fit and selected-collector adapters apply the contribution immediately, before the next relation;
+  candidate observation applies none. The existing traversal and mutation order stays unchanged. Deleted: duplicated
+  normalization/open-initializer classification and the collector-only bound wrapper. Reject whole-call deferred commit,
+  a second shadow proof rule and unused publication state. This does not make contextual expression completion pure.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

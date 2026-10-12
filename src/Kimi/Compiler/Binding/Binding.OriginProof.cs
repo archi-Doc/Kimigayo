@@ -6,6 +6,11 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // Origin fits classify normalized ends without changing inference, declarations or obligations. An open initializer's
+    // contribution is consumed immediately by the existing fit adapters; candidate observation commits none. Canonical
+    // Origin interning and proof scratch/metrics retain their existing lifecycle. No result survives a Binding mutation.
+    private readonly record struct OriginFit(bool Satisfied, VariableKoto? Local, BoundOrigin Variable, BoundOrigin Value, Koto Use, ulong Condition);
+
     // Every change to inference, obligation or Origin declaration state; a pure proof request leaves it unchanged.
     private int originStateVersion;
 
@@ -221,36 +226,28 @@ public sealed partial class Binding
     // again once the Origin is resolved; any other requirement is the pure proof. An open region holds no Loans, so a value fitted
     // into it would lose its Loans: such a fit is never collected here.
     private bool FitOriginOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
-    {
-        longer = this.OriginAtUse(longer, use);
-        shorter = this.OriginAtUse(shorter, use);
-        if (!OriginOutlives(longer, shorter) && shorter is { Kind: OriginKind.Inference, Open: false } && this.OpenInitializerInference(shorter, use) is { } pending)
-        {
-            this.BoundInitializerOrigin(pending, shorter, longer, use, condition);
-            return true;
-        }
-
-        return this.ProvesOriginOutlives(longer, shorter, use, condition);
-    }
+        => this.CommitOriginFit(this.ClassifyOriginFit(longer, shorter, use, condition));
 
     // SPEC 15.4.4, 10.1: the answer of FitOriginOutlives without its side effects, for applicability. The requirement that a value
     // outlive an Origin omitted in an open initializer is satisfiable (the asymmetry of plan T4 is kept), and only while a selected
     // call's fits are collected (collectingFits) is the value recorded as the Origin's bound; any other requirement is the pure proof.
     private bool FitsOriginOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
     {
+        var fit = this.ClassifyOriginFit(longer, shorter, use, condition);
+        return this.collectingFits ? this.CommitOriginFit(fit) : fit.Satisfied;
+    }
+
+    // SPEC 15.4.4: satisfiability may require an initializer contribution; it is not proof that the relation already holds.
+    private OriginFit ClassifyOriginFit(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition)
+    {
         longer = this.OriginAtUse(longer, use);
         shorter = this.OriginAtUse(shorter, use);
         if (!OriginOutlives(longer, shorter) && shorter is { Kind: OriginKind.Inference, Open: false } && this.OpenInitializer(shorter, use) is { } local)
         {
-            if (this.collectingFits)
-            {
-                this.CollectInitializerBound(local, shorter, longer, use, condition);
-            }
-
-            return true;
+            return new(Satisfied: true, local, shorter, longer, use, condition);
         }
 
-        return this.ProvesOriginOutlives(longer, shorter, use, condition);
+        return new(this.ProvesOriginOutlives(longer, shorter, use, condition), null, shorter, longer, use, condition);
     }
 
     // SPEC 10.1: the Origin part of a fit (FitsTypeCore). During candidate evaluation and while a selected call's fits are collected
@@ -258,9 +255,16 @@ public sealed partial class Binding
     private bool FitOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
         => this.collectingFits || this.candidateTrials != 0 ? this.FitsOriginOutlives(longer, shorter, use, condition) : this.FitOriginOutlives(longer, shorter, use, condition);
 
-    // The collector's record (CollectFitBounds): `bound` bounds the Origin `variable` that `local` omits.
-    private void CollectInitializerBound(VariableKoto local, BoundOrigin variable, BoundOrigin bound, Koto use, ulong condition)
-        => this.BoundInitializerOrigin(this.InitializerDeclaration(local), variable, bound, use, condition);
+    // Apply this fit's contribution before the next relation is queried; later fits must observe its replacement and obligation.
+    private bool CommitOriginFit(in OriginFit fit)
+    {
+        if (fit.Local is { } local)
+        {
+            this.BoundInitializerOrigin(this.InitializerDeclaration(local), fit.Variable, fit.Value, fit.Use, fit.Condition);
+        }
+
+        return fit.Satisfied;
+    }
 
     // Records `bound` for a local's omitted Origin. A bound required only in some Semantics cases still bounds the Origin in every case.
     private void BoundInitializerOrigin(OriginDeclaration pending, BoundOrigin variable, BoundOrigin bound, Koto use, ulong condition)

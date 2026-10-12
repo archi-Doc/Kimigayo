@@ -63,6 +63,9 @@ Tokenizer layout transitions and surrogate scanning are covered by `LayoutRecove
 `Tokenizer.CountIndentation` shares physical-prefix and recovery-column measurement with lookahead; `IdentifierHelper` distinguishes a failed starting scalar from an invalid Name. `LexicalLayoutRecoveryTest` covers their recovery, public records and allocation behavior.
 Fixed-array length grammar and Type/length recovery cross `Parser.Syntax`, `Binding.Types` and `Binding.Lengths`; see `ArrayTypeRecoveryTest` and `ConstantLengthBindingTest`.
 Origin syntax recovery crosses `Parser.Origins`, `Binding.Origins` and `Binding.OriginDeclarations` (failed contract causes and pending slots), with dependent fits in `Binding.Diagnostics`; `OriginRecoveryTest` and `DeclaredOriginSlotTest` check the proof and diagnostic paths.
+`Binding.OriginProof.ClassifyOriginFit` produces the pure fit answer and any initializer contribution; the existing fit adapters
+commit it immediately through `CommitOriginFit`. `CallOriginRelationTest`, `LocalOriginClauseTest` and `OriginPremiseLifecycleTest`
+cover selection, initializer bounds and proof-state reuse (DECISIONS R4-M32).
 
 Constraint recovery enters through `Parser.ParseTypeConstraint`, then the shared `Binding.Constraints.BindConstraint` guard and conditional-conformance prerequisites; `ConstraintRecoveryTest` and the syntax corpus cover these paths.
 
