@@ -45,6 +45,29 @@ public class CodeRulesArchitectureTest
     }
 
     [Theory]
+    [InlineData("class C { void M() { var value = Factory.Make(); } }", "static class Factory { public static Fixture.Secret Make() => new(); }", "var")]
+    [InlineData("class C { int M() => Factory.Run().Invoke(1); }", "static class Factory { public static Fixture.Run Run() => x => x; }", "Invoke")]
+    [InlineData("class C { int? M() => Factory.Run()?.Invoke(1); }", "static class Factory { public static Fixture.Run Run() => x => x; }", "Invoke")]
+    [InlineData("using Fixture; class C { int M() => 1.Twice(); }", "class Unused { }", "Twice")]
+    [InlineData("class C { Hidden value; }", "global using Hidden = Fixture.Secret;", "Hidden")]
+    public async Task OnlyCandidateNamesReachSemanticsAndCandidatesCoverEveryBinding(string source, string shared, string name)
+    {
+        const string extras = "namespace Fixture { public delegate int Run(int x); public static class Extensions { public static int Twice(this int x) => x * 2; } }";
+        var diagnostics = await Analyze([(source, Consumer), (Types, Hidden), (extras, "src/Kimi/Compiler/Binding/Extras.cs"), (shared, Shared)], Options());
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal("KR1001", diagnostic.Id);
+        Assert.Equal(name, diagnostic.Location.SourceTree!.GetText(TestContext.Current.CancellationToken).ToString(diagnostic.Location.SourceSpan));
+    }
+
+    [Fact]
+    public async Task NativeIntegerNamesBindToTheirTypes()
+    {
+        var diagnostics = await Analyze([("class C { nint value; }", Consumer)], Options(x => x[Key("deny_types.use")] = "System.IntPtr"));
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal("nint", diagnostic.Location.SourceTree!.GetText(TestContext.Current.CancellationToken).ToString(diagnostic.Location.SourceSpan));
+    }
+
+    [Theory]
     [InlineData(false, false, 1)]
     [InlineData(true, false, 1)]
     [InlineData(false, true, 0)]

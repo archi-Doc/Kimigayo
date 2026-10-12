@@ -2,7 +2,8 @@
 
 // Owns resolved dependency, member, vocabulary and structural policy for one compilation.
 // Input: validated configuration and source symbols. Output: observations through the common baseline pipeline.
-// File layers, all partial declaration layers and configured type identities are resolved once, then read concurrently.
+// File layers, all partial declaration layers, configured type identities and each layer's candidate names are resolved
+// once, then read concurrently; a name outside its layer's candidates never reaches the semantic model.
 // Must not infer a layer from a namespace, stringify each reference or maintain a second diagnostic/baseline pipeline.
 
 using System.Globalization;
@@ -147,9 +148,18 @@ internal sealed partial class CodeRulesArchitecture
             }
         }
 
+        var aliases = new HashSet<string>(StringComparer.Ordinal);
         foreach (var tree in compilation.SyntaxTrees)
         {
             cancellation.ThrowIfCancellationRequested();
+            foreach (var directive in tree.GetRoot(cancellation).DescendantNodes(x => x is CompilationUnitSyntax or BaseNamespaceDeclarationSyntax).OfType<UsingDirectiveSyntax>())
+            {
+                if (directive.Alias is { } alias)
+                {
+                    aliases.Add(alias.Name.Identifier.ValueText);
+                }
+            }
+
             var path = config.Relative(tree.FilePath);
             Layer? owner = null;
             var longest = -1;
@@ -173,6 +183,11 @@ internal sealed partial class CodeRulesArchitecture
 
         layers.TryGetValue("syntax", out result.syntaxLayer);
         result.Index(compilation.Assembly.GlobalNamespace, cancellation);
+        foreach (var layer in layers.Values)
+        {
+            result.IndexNames(layer, aliases);
+        }
+
         result.CheckVocabularies(compilation, errors, notices, batches, cancellation);
         return result;
 
@@ -186,7 +201,7 @@ internal sealed partial class CodeRulesArchitecture
         if (node is SimpleNameSyntax name)
         {
             var collection = layer is null || layer != this.syntaxLayer ? CollectionCreation(name) : null;
-            if (AttributeName(name) || (collection is null && (layer is null || !layer.HasReferences) && !this.globalMembers.Contains(name.Identifier.ValueText)))
+            if (AttributeName(name) || (collection is null && !(layer?.Names ?? this.globalMembers).Contains(name.Identifier.ValueText)))
             {
                 return null;
             }
@@ -348,6 +363,47 @@ internal sealed partial class CodeRulesArchitecture
         }
     }
 
+    // Names that can resolve to a forbidden type or member. GetMembers includes the synthesized delegate methods that
+    // MemberNames omits; var, nint and nuint bind to types of other names. Allowed types are never forbidden.
+    private void IndexNames(Layer layer, HashSet<string> aliases)
+    {
+        layer.Names.UnionWith(this.globalMembers);
+        if (layer.DeniedLayers.Count == 0 && layer.DeniedTypes.Count == 0 && layer.Members.Count == 0)
+        {
+            return;
+        }
+
+        layer.Names.UnionWith(aliases);
+        layer.Names.UnionWith(layer.Members.Keys);
+        layer.Names.UnionWith(["var", "nint", "nuint"]);
+        foreach (var type in layer.DeniedTypes)
+        {
+            Add(type);
+        }
+
+        foreach (var pair in this.declarations)
+        {
+            if (pair.Value.Any(layer.DeniedLayers.Contains))
+            {
+                Add(pair.Key);
+            }
+        }
+
+        void Add(INamedTypeSymbol type)
+        {
+            if (layer.AllowedTypes.Contains(type))
+            {
+                return;
+            }
+
+            layer.Names.Add(type.Name);
+            foreach (var member in type.GetMembers())
+            {
+                layer.Names.Add(member.Name);
+            }
+        }
+    }
+
     private void CheckVocabularies(Compilation compilation, List<Diagnostic> errors, List<Diagnostic> notices, List<List<CodeRuleObservation>> batches, CancellationToken cancellation)
     {
         if (!this.config.Lists.TryGetValue("vocabularies", out var entries))
@@ -384,7 +440,7 @@ internal sealed partial class CodeRulesArchitecture
                 if (count > limit && type.DeclaringSyntaxReferences.FirstOrDefault() is { } declaration &&
                     this.config.Relative(declaration.SyntaxTree.FilePath) is { } path && this.config.Applies(Vocabulary, path))
                 {
-                    var source = new CodeRulesSource(compilation, declaration.SyntaxTree, path, cancellation);
+                    var source = new CodeRulesSource(compilation.GetSemanticModel(declaration.SyntaxTree), path, cancellation);
                     var node = declaration.GetSyntax(cancellation);
                     source.Record(Vocabulary, node, count, limit, source.NodeAnchor(node.DescendantTokens()));
                     batches.Add(source.Observations!);
@@ -395,8 +451,6 @@ internal sealed partial class CodeRulesArchitecture
 
     internal sealed class Layer(string[] paths)
     {
-        internal bool HasReferences => this.DeniedLayers.Count != 0 || this.DeniedTypes.Count != 0 || this.Members.Count != 0;
-
         internal string[] Paths { get; } = paths;
 
         internal HashSet<Layer> DeniedLayers { get; } = new();
@@ -406,5 +460,7 @@ internal sealed partial class CodeRulesArchitecture
         internal HashSet<INamedTypeSymbol> DeniedTypes { get; } = new(SymbolEqualityComparer.Default);
 
         internal Dictionary<string, HashSet<INamedTypeSymbol>> Members { get; } = new(StringComparer.Ordinal);
+
+        internal HashSet<string> Names { get; } = new(StringComparer.Ordinal);
     }
 }

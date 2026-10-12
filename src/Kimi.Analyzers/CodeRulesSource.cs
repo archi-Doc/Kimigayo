@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns a file's rule identities and logical size, using the compiler's existing syntax tree.
-// Input: a compilation, source tree and normalized repository path. Output: stable scopes, anchors and token counts.
+// Input: the shared semantic model of one source tree and its normalized repository path. Output: stable scopes, anchors and token counts.
 // Symbol identities are resolved only for observations; local collision maps are built once per containing member.
 // Must not concatenate token text, reparse an analyzer tree, retain trees across compilations or perform file I/O.
 
@@ -13,20 +13,19 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace Kimi.Analyzers;
 
-internal sealed class CodeRulesSource(Compilation compilation, SyntaxTree tree, string path, CancellationToken cancellation)
+internal sealed class CodeRulesSource(SemanticModel semantics, string path, CancellationToken cancellation)
 {
-    private readonly SourceText text = tree.GetText(cancellation);
-    private SemanticModel? semantics;
+    private readonly SourceText text = semantics.SyntaxTree.GetText(cancellation);
     private Dictionary<SyntaxNode, string?>? identities;
     private Dictionary<SyntaxNode, Dictionary<LocalFunctionStatementSyntax, string>>? locals;
 
     internal string Path => path;
 
-    internal SyntaxNode Root { get; } = tree.GetRoot(cancellation);
+    internal SyntaxNode Root { get; } = semantics.SyntaxTree.GetRoot(cancellation);
 
     internal SourceText Text => this.text;
 
-    internal SemanticModel Semantics => this.semantics ??= compilation.GetSemanticModel(tree);
+    internal SemanticModel Semantics => semantics;
 
     internal List<CodeRuleObservation>? Observations { get; private set; }
 
@@ -91,7 +90,7 @@ internal sealed class CodeRulesSource(Compilation compilation, SyntaxTree tree, 
             node = node.Parent;
         }
 
-        this.AddObservation(new(new(rule, this.Scope(node), this.LineAnchor(line.LineNumber)), path, Location.Create(tree, line.Span), line.Span.Length, limit));
+        this.AddObservation(new(new(rule, this.Scope(node), this.LineAnchor(line.LineNumber)), path, Location.Create(semantics.SyntaxTree, line.Span), line.Span.Length, limit));
     }
 
     internal string Scope(SyntaxNode node)

@@ -55,6 +55,11 @@ they never enter the baseline. Missing or older annotation-inventory markers are
 command retains MSBuild warnaserror but exempts KR9002 from logger promotion so Prune can read stale-entry warnings.
 Verify's KR9002 is an analyzer error and remains fatal (DECISIONS CR-A6b).
 
+Analyzer cost: after a Kimi.Analyzers change, build the analyzer in Release, then run
+`dotnet build src/Kimi/Kimi.csproj -c Release --no-restore -t:Rebuild -p:ReportAnalyzer=true -p:UseSharedCompilation=false -p:BuildProjectReferences=false -nodeReuse:false -m:1 -v:detailed -clp:PerformanceSummary`.
+The Kimi.Analyzers row of the analyzer summary must stay at or below 10% of the Csc task time (plan §3.8). Compare
+variants by interleaved runs and keep failed measurements.
+
 At each reduction-stage exit, obtain Report and have the owner review its baseline, exceptions and transitional
 inventory. Report does not replace Unit or Session verification. Record approval in the actual Git trailer:
 `Code-Rules-Approved: <approver> <yyyy-MM-dd>: <reason>`.

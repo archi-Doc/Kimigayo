@@ -158,6 +158,8 @@ and baseline cannot cover the same member/rule. Invalid targets/rules, out-of-sc
 needless/exceeded bounds and unknown removal stages are KR9005. Conditional attribute uses are absent from product
 metadata. All KR descriptors are NotConfigurable. Enforce reports stale rows as
 warnings, Verify as errors, and Report publishes complete observations for scripts; verification checks suppression.
+The analyzer reads each file through the compilation's shared semantic model; KR1 resolves only names that can denote
+a forbidden type or member (CR-A9).
 Configuration changes, new/increased baseline rows, new/increased exceptions and later removal stages require owner
 approval recorded by `Code-Rules-Approved`; pruning and reduced exception bounds/removal stages do not. The adopted
 A2–A7 configuration and initial baselines are authorized by the proposal and this intake. Mechanical evasions fail review.

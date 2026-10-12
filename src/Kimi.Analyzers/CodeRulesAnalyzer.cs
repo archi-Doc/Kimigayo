@@ -34,20 +34,20 @@ public sealed partial class CodeRulesAnalyzer : DiagnosticAnalyzer
         var architecture = config is null || errors.Count != 0 ? null :
             CodeRulesArchitecture.Read(start.Compilation, config, errors, notices, batches, start.CancellationToken);
         var trees = 0;
-        start.RegisterSyntaxTreeAction(context =>
+        start.RegisterSemanticModelAction(context =>
         {
             if (config is null || architecture is null || errors.Count != 0)
             {
                 return;
             }
 
-            var path = config.Relative(context.Tree.FilePath);
+            var path = config.Relative(context.SemanticModel.SyntaxTree.FilePath);
             if (path is null || !path.StartsWith("src/Kimi/", StringComparison.Ordinal))
             {
                 return;
             }
 
-            var source = new CodeRulesSource(start.Compilation, context.Tree, path, context.CancellationToken);
+            var source = new CodeRulesSource(context.SemanticModel, path, context.CancellationToken);
             new FileWalker(source, architecture, config, context.ReportDiagnostic, context.CancellationToken).Analyze();
 
             if (source.Observations is { Count: > 0 } observations)

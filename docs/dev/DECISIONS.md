@@ -261,6 +261,17 @@ rules that result from them.
   130 lines plus tests, deleting the command's duplicate build block; compiler tokens and product allocations do
   not change.
 
+- **CR-A9** (review session after A8, 2026-10-12). The analyzer asked Compilation.GetSemanticModel for each tree from
+  a SyntaxTreeAction. That private model bound every inspected body again although the build's other analyzers had
+  bound it through the driver's shared model: Kimi.Analyzers took 3.32–3.84 s, 9.4–10.4% of csc. A
+  SemanticModelAction reuses the shared model. As plan §3.8 requires, KR1 resolves only names that can denote a
+  forbidden type or member: global and layer member names, aliases, `var`, `nint`, `nuint`, and the names and members
+  (GetMembers, which includes synthesized delegate methods) of denied types and of types declared in denied layers,
+  except allowed types. The complete Report is unchanged. Interleaved Release rebuilds: 1.36–1.86 s against
+  32.3–33.3 s of csc (4.1–5.7%), csc about 3 s shorter; a single-thread replay with all 467 build analyzers drops
+  from 3.1 s to 0.54 s. Rejected: counting only written KR1004 types to skip declaration symbols; CR-A4 counts
+  inferred declarations so `var` cannot evade the rule, and 18 occurrences would disappear.
+
 ## R2b (2026-10-11, main session, as recommended)
 
 - **R2b-D1** `BoundType` stays the Type representation until R7; `TyCtxt` owns interning and `Subst` converts.
