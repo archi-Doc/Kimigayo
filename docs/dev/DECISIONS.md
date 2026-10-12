@@ -625,6 +625,106 @@ rules that result from them.
   90,000 is consolidated first or returns to the owner. Per-unit Binding-line exceptions stay owner decisions (U6 about 240
   lines, R4-M23; U7 about 150 lines, R4-M9b). Rejected: cutting R4 scope (Q1 through-reference replacement, U9's preserves
   witnesses) to R5, which would leave (b) rows at the R4 exit; raising the stage ceiling (not needed by the projection).
+- **R4-M22** (2026-10-12, planning session; design B of two independent U6 designs, with design A's classification of the
+  Binding-rejected virtual functions) A4, `MirEffects`, decides `confined` (SPEC 8.4.10.2, 8.4.10.4, 8.4.10.7, 15.6.4). Per body view a
+  union summary: the classes Environment, Unknown, Limit and Derived and atoms Drop(T) and Call(T, receiver) over the definition's
+  abstract Types. Local facts come from `MirUses` (a mutable static's access, an environment effect, an integer made a pointer and a
+  raw pointer read from an immutable static are Environment; an Opaque site's Unknown is Derived) and the terminators: a call of a
+  function with a body (`MirProgram.Callee`: a default template, the function, its getter or setter) is an edge into each body the call
+  may run (`TyCtxt.Implementation`, SPEC 8.8.3: the specialization a closed key selects, else the function and each specialization its
+  open key may still select, the rule the old summary shares; a default template is always the original's), in the callee views its
+  substitution selects (`MirCases.Views`; staticEnsure enters the static's initializer); a function without a body, and a Requirement
+  callee that names a compiler function (a built-in witness), is what `TyCtxt.Bodyless` classifies for it and its Self (a built-in
+  comparison of a composite Self Unclassified, a Limit: its witnesses are instantiated by the backend until R8), `ArrayClear` and
+  `Replace` also destroying what lies below their first argument. A Requirement callee is either an unresolved requirement or Binding's
+  resolved built-in target: a closed Self with a user witness is a Fn callee of the witness. A Requirement or dynamic Virtual call
+  takes the bounds of the caller's own premises (`TyCtxt.DispatchBounds`, plan Appendix B X2, SPEC 8.4.10.4): X2 governs the
+  requirement calls on a generic body's abstract Types that no published summary governs. A requirement of a closed Contract (Position,
+  PositionRange) has no effect (SPEC 8.4.7: every bound); a SPEC 4.7.5 operation contributes its published row (`K` equality and
+  destruction) through the call's substitution, never its body, which A4 does not do yet: it enters the body, so confined code calling
+  Dictionary's published operations is rejected until U6b (ledger (b)). Without confined the call is Unknown, and it may destroy what
+  is moved into it (rule 1); a call through a value calls its Callable input: a Closure or function item enters each body it may run
+  through its substitution, a common Function Type is Unknown (erasure keeps no bound), an abstract input is nothing where its one
+  Callable signature's premises declare confined (`TyCtxt.CallableBounds`), a Limit where it has several signatures (Binding chose
+  among them by the call's arguments, which MIR does not keep), else an atom. A Drop destroys by A2's verdict group in the view
+  (R4-M6a, `MirDropTable.Group`): Elide nothing, Keep and Flag its node's Type, Open no own layer (one that declares a drop is A2's
+  `MovedPlace_Kd`) but each child row and each part without a row, which follows the own bit; a Drop only check edges reach runs no
+  destructor (drop elaboration and the destructor rule apply to runtime paths only, SPEC 14.10.3 as R4-M6a reads it; the blocks the
+  runtime edges reach are `MirReach`'s walk), while check-only statements' own effects count; a runtime Drop with no row (a body over
+  the arena limit, R4-M15a) destroys its case Type. What a destruction does is the one walk `MirTypes.Destruction` (SPEC 16.3): an
+  abstract part is an atom, a Function value Unknown, an owning handle its payload where proven Sealed and else Unknown, a struct that
+  declares a drop its destructor body alone (`AdtDef.DestructorSymbol` under `TyCtxt.Synthesized`; the body's field cleanup destroys
+  the Fields, R4-M6b), an `InlineStorage` nothing (its owner destroys its contents, `AdtDef.IsInlineStorage`), a part past the walk's
+  depth bound a Limit; `MirTypes.MayNeedDrop` is that walk reporting any part. A part past the depth bound and an atom whose
+  substitution fails (`TyCtxt.Apply`) are the located `Unsupported_Kd` of an instance this implementation cannot analyze (SPEC 8.10).
+  Atoms compose through each edge's substitution under the caller's view: an atom still abstract there becomes the caller's (a call
+  atom first asks the caller's premises), a concrete one is resolved there, as SPEC 8.4.10.7 composes calls through the actual
+  arguments. One worklist over every body view, seeded in program order, re-evaluates a node when a summary it read grows (dependencies
+  recorded on read): the lattice is finite and the summaries only grow, so it reaches the least fixed point with no bound and no
+  instance context (V16: evaluations and cold allocation linear in calls). The obligations Binding publishes (R4-M23) are judged with
+  their remaining atoms resolved by the premises of the row's definition (a destroyed abstract part proven Copy does nothing, any other
+  atom is Unknown): every implementation of an owing definition (SPEC 8.4: specializations included, `TyCtxt.Implementation` with no
+  substitution), its own body per view, a specialization, closed, and a function without a body in every view at once; a Callable
+  binding as a call through its subject with the selected receiver (the classification a call through a value makes) under the premises
+  of the use's definition, with no caller view (its open pair layers admit every case, `MirCases.Deselect`) and reported in every view;
+  a failure the premises decide in every view. Environment or Unknown is the row's code at its subject, else Limit is the located
+  `Unsupported_Kd`, else nothing (a Derived cause, R4-M10). A4 decides `confined` only: `preserves results` is A5-3's (U9), static
+  access keys U8's and cause sites U11's, each added by its first reader. Driver: `Local` per body view after the body's A1 and A2
+  (step 2, over its closed A2 table), `Run` over the program (step 3). Rejected: counting a Drop only check edges reach (the drop tree
+  a `return`'s check edge leads to would destroy the values the runtime path moved: `return l@move` in a confined witness rejected);
+  porting `EffectSummary` (instance contexts and their 1024 bound, order-dependent, X2); per-body summaries with Semantics cases
+  composed like Type parameters (SPEC 8.10 never merges cases, and A2's verdict is per view); requirement calls as atoms everywhere
+  (SPEC 8.4.10.4 bounds a generic requirement call by the premises at the caller); edges to every specialization (the body a closed key
+  does not select never runs, SPEC 8.8); Tarjan SCCs (dependencies appear only while composing, when an atom becomes concrete or a call
+  reaches a Closure); no atoms (rejects confined code calling generic helpers with harmless Types and breaks SPEC 8.4.10.7's
+  composition); a literal callee-bounds reading of X2 for destruction (rejects every confined implementation that drops an
+  `Array<i32>`, O3); a per-obligation reachability walk (quadratic); a call-bound field on `MirCallee` (dump and validator churn);
+  finding Callable obligations in MIR (it lacks Type formations and argument subjects); a Mir copy of the compiler-function table;
+  deciding Derived in `MirReport.Add` (the cause class is A4's lattice). Supersedes R4-M9 for `EffectBoundTable`, `ImplTable`,
+  `VTableDef` and `CallableBounds`: not built, since their only reader needs who owes confined and the bounds at a call; R5 builds the
+  slot tables when it reads them. Not temporary.
+- **R4-M23** (2026-10-12, planning session; owner approvals of 2026-10-12) The effect facts Binding publishes for A4
+  (`Binding.EffectObligations.cs`, `TyCtxt.Effects.cs`). `EffectObligation(Subject, Code, Definition, Callable, Receiver, Owner)`,
+  listed from the pass's final state into A4's list (`TyCtxt.EffectObligations`); its Definition is the definition whose body owes, or
+  whose premises judge the Callable. Each witness of a conformance whose Contract or an ancestor declares confined for its requirement
+  (`IncompatibleContractImplementation_Kd` at the `Self is C` clause; a virtual witness by its slot's bound), each virtual function
+  whose slot declares it (`UnsatisfiedEffectBound_Kd` at the function), a conformance or function the old effect checks rejected
+  included: the enumeration reads their violation tables (`effectViolations`, `virtualEffectViolations`), a Transitional coupling that
+  R6 removes with those checks, after which an obligation follows the conformance's and the function's own validity. Each selected use
+  of a Callable clause declaring it (`UnsatisfiedEffectBound_Kd` at the argument or Type argument), enumerated once per pass at the end
+  of `ValidateEffectBounds` (`CollectCallableEffectUses`, which the old judge reads too): Binding decides only an abstract subject, by
+  its Callable premises over the signature it selected (none where they declare confined, a row without a definition where they do
+  not); every other subject is a row with the use's definition, the subject Type and the selected receiver, which A4 judges as a call
+  through it, and Owner where an owner acquisition of a Closure with another receiver also destroys its environment. One premise scope
+  per definition, `Binding.EffectPremises` (an override's inherited implementation premises where present), serves both bounds, the
+  Callable premises, `Copy` and `Sealed` (the scope-taking `ProveCopy` and `ProveSealed`, which Binding's other Copy and Sealed proofs
+  use too). No program tells it from the declaration scope: an override's implementation premises share its body scope's constraint
+  environment (`PrepareVirtualOverridePremises`), so the inherited-premise test passes either way. `TyCtxt.DispatchBounds(definition,
+  callee, self, contract)`: a requirement's or virtual slot's available bounds under those premises, every bound for a requirement of a
+  closed Contract (SPEC 8.4.7, kept out of `AvailableEffectBounds`, which the old path shares), null for a callee that does not
+  dispatch; a requirement function item dispatches through its own Contract reference (`TyCtxt.ItemContract`).
+  `TyCtxt.CallableBounds(definition, input, receiver)`: the bounds of an abstract Callable input's one signature (`TryCallable`, the
+  selection rule of the call through it), null where it has several, a located limit until MIR carries the selected signature (an open
+  issue). The bound-validity filter is one predicate, `Binding.AppliesBound`. `TyCtxt.Bodyless(function, self)`: the compiler-function
+  effect table moved from `Binding.ClassifyCompilerFunction` into `IntrinsicDisposition.Effect` (one table beside the intrinsic table),
+  Unclassified for a built-in comparison of a composite Self (`ComparisonTypes.IsComposite`, Binding's decision), Environment for a
+  foreign function, `Dependent` for a definition Binding rejected (its parts are not published, R4-M18), else Unclassified.
+  `TyCtxt.Implementation(function, subst, index)`: the bodies a call may run, over `Binding.SelectSpecialization`'s key rule and
+  `MaySelect`, which the old summary shares. `TyCtxt.Copy`, `Sealed` and `AdtDef.DestructorSymbol` complete the facts.
+  `EffectObligation` and `CompilerFunctionEffect` join the mir allow list (owner approval, `Code-Rules-Approved` trailer). Owner
+  exception (user, 2026-10-12): Binding ≈ +240 lines in U6, above the 30-line rule; raised from ≈ 110 after the measured design-B
+  facts; F6 consolidation applied. The ledger compares Binding's `IncompatibleImplementation` and `Unsupported` records only where an
+  effect check made them (`Binding.IsEffectRecord`, Transitional, removed in R6 with the old checks);
+  `ValidateVirtualDestructionEffects` no longer clears the Binding pass's virtual violations (the pass resets them), so a Binding-pass
+  virtual limit stays identifiable. A virtual function the Binding pass rejects with VirtualEffectBound has no published body (R4-M18),
+  so A4 sees its target as Dependent: those ledger rows are intended (d), until R6/R7 remove Binding's effect judgment. Rejected: four
+  view types (four allow-list entries and Mir re-pairing witnesses with slots); tuples instead of a row type (unreadable); rows
+  snapshotted before the old checks (`Binding.cs` is at its file-size baseline, and the violation tables already name what the checks
+  rejected); Binding pre-classifying every Callable binding (a Function, Closure, item or dispatching item: the classification A4 makes
+  for a call through a value, a second copy judged under the target's premises instead of the use's); an agreement walk over a Callable
+  input's premises (a third enumeration of the Callable facts beside `SelectValueCall` and `TryCallable`; carrying the selected
+  signature in MIR is the general fix and changes a shared MIR form); one bounds function with a null-callee mode (two contracts in one
+  signature).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

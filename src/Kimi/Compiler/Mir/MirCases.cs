@@ -71,6 +71,42 @@ internal sealed class MirCases(TyCtxt types)
         return this.view.AsSpan(0, this.width);
     }
 
+    /// <summary>Selects no view: every pair layer keeps its declared Type, so a Type of a use no view of which is known admits every case
+    /// (an obligation Binding publishes for a use, R4-M22).</summary>
+    internal void Deselect() => this.width = 0;
+
+    /// <summary>Gets the views of a callee body that a call with a substitution selects under the selected view (SPEC 8.10): for each
+    /// resolved binder of the callee, the case of its whole Type in the substitution, the Semantics of that Type's case Type, or every
+    /// admitted case while that Type is still abstract. Views are decoded as <see cref="Select"/> numbers them; the selected view is kept.</summary>
+    /// <param name="callee">The callee body.</param>
+    /// <param name="subst">The call's substitution, or null for the callee's own (every view).</param>
+    /// <returns>The views, bit i for view i.</returns>
+    internal ulong Views(MirBody callee, Subst? subst)
+    {
+        var count = Count(callee);
+        var views = ulong.MaxValue >> (64 - (int)count);
+        var weight = 1L; // A digit's weight in a view's number: the last binder advances fastest.
+        for (var b = callee.Binders.Count - 1; b >= 0 && subst is not null; b--)
+        {
+            var binder = callee.Binders[b];
+            var size = binder.Resolved ? BitOperations.PopCount((uint)binder.Admitted) : 1;
+            if (binder.Resolved && binder.Target.WholeType is { } whole && types.Apply(whole, subst) is { } actual &&
+                this.Type(actual) is { IsAbstract: false } type)
+            {
+                var bit = 1u << (int)type.Semantics;
+                var digit = ((uint)binder.Admitted & bit) == 0 ? -1 : BitOperations.PopCount((uint)binder.Admitted & (bit - 1));
+                for (var view = 0L; view < count; view++)
+                {
+                    views &= (view / weight) % size == digit ? ulong.MaxValue : ~(1UL << (int)view);
+                }
+            }
+
+            weight *= size;
+        }
+
+        return views;
+    }
+
     /// <summary>Gets the Type a Type of the body has under the selected view: every pair layer of a binder the view's case Type
     /// (<see cref="TyCtxt.CaseType"/>), as a Place's, a local's or a projection's Type is in that case.</summary>
     /// <param name="type">The Type.</param>

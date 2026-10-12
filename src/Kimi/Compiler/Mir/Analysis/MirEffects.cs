@@ -1,0 +1,299 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+// Owns A4 (plan 5.5; SPEC 8.4.10.2, 8.4.10.4, 8.4.10.7, 15.6.4; DECISIONS R4-M22): per body view the effect summary — the classes
+// Environment, Unknown, Limit and Derived and atoms over the definition's abstract Types (Drop(T), a call through a Callable input T) — and
+// the `confined` obligations Binding publishes (TyCtxt.EffectObligations).
+// Input: validated bodies per MirCases view, their uses (MirUses), A2's verdicts (MirProgram.Drops), TyCtxt's obligations and callee facts.
+// Output: IncompatibleContractImplementation_Kd,
+// UnsatisfiedEffectBound_Kd and Unsupported_Kd through MirReport, and the per-node summaries for A5.
+// Atoms compose through each call's substitution into the caller (an atom concrete there is resolved there); requirement and virtual calls
+// take the bounds of the caller's own premises; one worklist with recorded dependencies solves the least fixed point; storage is pooled and
+// reset by counts, so a warm version allocates nothing.
+// Must not read syntax or HIR, re-derive premises, bounds or obligations, decide `preserves results` (A5-3), or report a failure that only
+// an Opaque site or a callee Binding rejected causes (derived, R4-M10).
+
+using System.Numerics;
+using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
+
+namespace Kimi.Compiler.Mir;
+
+/// <summary>A4, the effect summaries (plan P8, R4 shadow): <see cref="Local"/> records each body view's local facts, <see cref="Run"/>
+/// solves the summaries of the program version and judges the obligations.</summary>
+/// <param name="types">The Type context, whose effect facts Binding published.</param>
+/// <param name="cases">The Semantics case views.</param>
+/// <param name="reach">The one reachability walk: the blocks of a body the runtime edges reach.</param>
+internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach reach)
+{
+    private const byte Environment = 1; // The classes of a summary: an environment effect (SPEC 8.4.10.2),
+    private const byte Unknown = 2; // an effect that cannot be classified,
+    private const byte Limit = 4; // one this implementation cannot classify yet (Unsupported_Kd),
+    private const byte Derived = 8; // one only an Opaque site or a callee Binding rejected causes.
+    private const byte Drop = 0; // An atom's kind: the destruction of a value of its Type, else 1 + the receiver of a call through it.
+
+    private int[] bases = []; // The first node of each body, by ordinal: a node is a body view.
+    private int[] owners = []; // The body of each node.
+    private byte[] local = []; // The classes of each node's local facts.
+    private int[] itemEnds = []; // The end of each node's local inputs in items.
+    private int[] edgeEnds = []; // The end of each node's calls in edges.
+    private Atom[] items = [];
+    private Edge[] edges = [];
+    private int nodeCount;
+    private int itemCount;
+    private int edgeCount;
+    private byte found; // The classes the current evaluation or local walk found.
+
+    /// <summary>Records the local facts of a body view (driver step 2, after the body's A1 and A2): its effects and static accesses, its calls
+    /// with a body as edges into the callee views their substitution selects, and the parts its Drops destroy (by A2's verdicts) and the
+    /// Callable inputs it calls through as inputs of its summary. The first view of the first body starts a program version.</summary>
+    /// <param name="program">The program.</param>
+    /// <param name="body">The body, whose view is selected.</param>
+    /// <param name="view">The selected view.</param>
+    internal void Local(MirProgram program, MirBody body, long view)
+    {
+        if (body.Ordinal == 0 && view == 0)
+        {
+            this.nodeCount = this.itemCount = this.edgeCount = 0;
+        }
+
+        var node = this.nodeCount++;
+        MirDataflow.Grow(ref this.bases, body.Ordinal + 1);
+        MirDataflow.Grow(ref this.owners, this.nodeCount);
+        MirDataflow.Grow(ref this.local, this.nodeCount);
+        MirDataflow.Grow(ref this.itemEnds, this.nodeCount);
+        MirDataflow.Grow(ref this.edgeEnds, this.nodeCount);
+        if (view == 0)
+        {
+            this.bases[body.Ordinal] = node;
+            reach.Clear(body.Blocks.Length);
+            reach.Walk(body, 0, checks: false); // The blocks where Drops run (R4-M6a).
+        }
+
+        (this.owners[node], this.found) = (body.Ordinal, 0);
+        var uses = new Uses(this, body);
+        for (var block = 0; block < body.Blocks.Length; block++)
+        {
+            for (var index = 0; index <= body.Blocks[block].Count; index++)
+            {
+                MirUses.ForEach(cases, new(block, index), ref uses);
+            }
+
+            this.Terminator(program, body, block, view, body.Blocks[block].Terminator);
+        }
+
+        (this.local[node], this.itemEnds[node], this.edgeEnds[node]) = (this.found, this.itemCount, this.edgeCount);
+    }
+
+    private static byte Class(CompilerFunctionEffect effect) => effect switch
+    {
+        CompilerFunctionEffect.Inputs => 0,
+        CompilerFunctionEffect.Environment => Environment,
+        CompilerFunctionEffect.Dependent => Derived,
+        _ => Limit,
+    };
+
+    // SPEC 8.4.10.2, 8.4.10.4, 8.4.10.7: what a terminator adds. A call of a function with a body enters each body its substitution may
+    // select (SPEC 8.8.3, TyCtxt.Implementation); one without a body, or a requirement call that selects a built-in witness, is what Binding
+    // classifies for the compiler function it names and its Self (TyCtxt.Bodyless), and a compiler function that replaces or clears
+    // destroys the value or elements below its first argument. A requirement or dynamic virtual call has the bounds of the caller's
+    // premises (X2) and may destroy what it is given by value (rule 1); a call through a value calls its Callable input; staticEnsure enters
+    // the static's initializer; a Drop destroys what A2's verdicts leave (Dropped).
+    private void Terminator(MirProgram program, MirBody body, int block, long view, in MirTerminator terminator)
+    {
+        var callee = terminator.Callee;
+        if (terminator.Kind == MirTerminatorKind.Drop)
+        {
+            this.Dropped(program, body, block, view, cases.Type(body.TypeOf(terminator.Place)!));
+        }
+        else if (terminator.Kind != MirTerminatorKind.Call)
+        {
+            return;
+        }
+        else if (callee.Kind == MirCalleeKind.Fn || (callee.Kind == MirCalleeKind.Requirement && callee.Symbol!.CompilerFunction != CompilerFunctionKind.None))
+        {
+            this.Function(program, body, terminator); // A built-in witness a requirement call selects is the compiler function it names.
+        }
+        else if (callee.Kind is MirCalleeKind.Requirement or MirCalleeKind.Virtual)
+        {
+            var subject = callee.Kind == MirCalleeKind.Requirement ? callee.Subst?.Self : null;
+            this.found |= types.DispatchBounds(body.Key.Decl, callee.Symbol!, subject, callee.Contract)?.Confined == true ? (byte)0 : Unknown;
+            this.Given(body, terminator);
+        }
+        else if (callee.Kind == MirCalleeKind.Value)
+        {
+            var operand = terminator.Operand;
+            var type = cases.Type(operand.Kind == MirOperandKind.Const ? body.Consts[operand.Arg].Type : body.TypeOf(operand.Place)!);
+            _ = TyCtxt.Layer(type, out var callable, out _);
+            this.Item(callable, (byte)(1 + (int)(type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq ? type.Semantics : SemanticsKind.Owner)));
+            if (callable is { IsAbstract: true })
+            {
+                this.Given(body, terminator);
+            }
+        }
+        else if (callee.Arg == (int)IntrinsicId.StaticEnsure &&
+            program[new(body.Statics[(int)body.Consts[body.Operands[terminator.Start].Arg].Bits].Symbol, MirBodyKind.StaticInit)] is { } initializer)
+        {
+            this.AddEdge(initializer, null);
+        }
+    }
+
+    private void Function(MirProgram program, MirBody body, in MirTerminator terminator)
+    {
+        var symbol = terminator.Callee.Symbol!;
+        var subst = terminator.Callee.Subst;
+        if (program.Callee(terminator.Callee) is { } target)
+        {
+            if (terminator.Callee.Arg > 0)
+            {
+                this.AddEdge(target, subst); // SPEC 8.8: a default is always the original's, evaluated before a specialization is called.
+                return;
+            }
+
+            for (var i = 0; types.Implementation(symbol, subst, i) is { } implementation; i++)
+            {
+                var own = ReferenceEquals(implementation, symbol);
+                if ((own ? target : program.Callee(new(MirCalleeKind.Fn, implementation))) is { } callee)
+                {
+                    this.AddEdge(callee, own ? subst : null);
+                }
+            }
+
+            return;
+        }
+
+        this.Enter(null, subst, symbol);
+        if (symbol.CompilerFunction is CompilerFunctionKind.ArrayClear or CompilerFunctionKind.Replace)
+        {
+            _ = TyCtxt.Layer(cases.Type(body.TypeOf(body.Operands[terminator.Start].Place)!), out var destroyed, out _);
+            this.Item(destroyed, Drop);
+        }
+    }
+
+    // R4-M6a: what a Drop destroys in the view, by A2's verdict group. One only the checks reach runs no destructor (drop elaboration and
+    // the destructor rule apply to runtime paths only, SPEC 14.10.3 as R4-M6a reads it), though the check-only statements' own effects
+    // count; a runtime Drop without a row (a body over the analyses' arena limit, R4-M15a) destroys its Place's case Type.
+    private void Dropped(MirProgram program, MirBody body, int block, long view, BoundType type)
+    {
+        var group = program.Drops.Group(body.Ordinal, block, view);
+        if (group >= 0)
+        {
+            _ = this.Destroyed(program.Drops.RowsOf(body.Ordinal), group, body, type);
+        }
+        else if (reach[block])
+        {
+            this.Item(type, Drop);
+        }
+    }
+
+    // A verdict row and its subtree: Elide destroys nothing, Keep and Flag the node's Type, Open no own layer (one that declares a drop is
+    // A2's MovedPlace_Kd) but each child row and each part without one, which follows the own bit. Returns the row after the subtree.
+    private int Destroyed(ReadOnlySpan<MirDropRow> rows, int row, MirBody body, BoundType? type)
+    {
+        var node = rows[row];
+        var next = row + 1;
+        if (node.Verdict is MirDropVerdict.Keep or MirDropVerdict.Flag)
+        {
+            this.Item(type, Drop);
+        }
+
+        var (covered, based) = (0UL, false);
+        while (next < rows.Length && rows[next].Depth > node.Depth)
+        {
+            var child = rows[next];
+            covered |= child.Step == MirProjectionKind.Base ? 0UL : 1UL << Math.Min(child.Arg, 63);
+            based |= child.Step == MirProjectionKind.Base;
+            next = this.Destroyed(rows, next, body, body.ProjectedType(type, child.Step, child.Arg));
+        }
+
+        if (node.Verdict != MirDropVerdict.Open || type is null)
+        {
+            return next;
+        }
+
+        // The parts as move paths name them: a Tuple's or Closure's elements and a struct's Fields, a fixed array's elements (one Type), an
+        // enum's Case payloads, and a struct's base.
+        var (kind, count) = type switch
+        {
+            { Kind: BoundTypeKind.Tuple or BoundTypeKind.Closure } => (MirProjectionKind.Field, type.Components.Count),
+            { Kind: BoundTypeKind.FixedArray, LengthExpression: null } => (MirProjectionKind.ConstIndex, (int)type.Length),
+            _ when AdtDef.CaseTypes(type) is { } payloads => (MirProjectionKind.Downcast, payloads.Length),
+            _ => (MirProjectionKind.Field, AdtDef.Count(type)),
+        };
+        for (var i = 0; i < count; i++)
+        {
+            if (i > 63 || (covered & (1UL << i)) == 0)
+            {
+                this.Item(body.ProjectedType(type, kind, i), Drop);
+                if (kind == MirProjectionKind.ConstIndex)
+                {
+                    break; // A fixed array's elements share one Type.
+                }
+            }
+        }
+
+        if (!based && AdtDef.Base(type) is { } parent)
+        {
+            this.Item(parent, Drop);
+        }
+
+        return next;
+    }
+
+    // SPEC 8.4.10.4 rule 1: a call the caller's premises bound may destroy each value moved into it.
+    private void Given(MirBody body, in MirTerminator terminator)
+    {
+        foreach (var operand in body.Operands.Slice(terminator.Start, terminator.Count))
+        {
+            if (operand.Kind == MirOperandKind.Move)
+            {
+                this.Item(cases.Type(body.TypeOf(operand.Place)!), Drop);
+            }
+        }
+    }
+
+    private void Item(BoundType? type, byte kind)
+    {
+        if (type is null)
+        {
+            this.found |= Limit;
+            return;
+        }
+
+        MirDataflow.Grow(ref this.items, this.itemCount + 1);
+        this.items[this.itemCount++] = new(type, kind);
+    }
+
+    private void AddEdge(MirBody callee, Subst? subst)
+    {
+        MirDataflow.Grow(ref this.edges, this.edgeCount + 1);
+        this.edges[this.edgeCount++] = new(callee.Ordinal, cases.Views(callee, subst), subst);
+    }
+
+    // An atom of a summary or a local input: a Type and a kind (Drop, or 1 + a call's receiver).
+    private readonly record struct Atom(BoundType Type, byte Kind);
+
+    // A call of a body: the callee's ordinal, the views its substitution selects and the substitution, null for the callee's own.
+    private readonly record struct Edge(int Body, ulong Views, Subst? Subst);
+
+    // The local facts of a location: an environment effect (an access to a mutable static, Console output, an integer made a pointer, a
+    // raw pointer read from an immutable static) or an Opaque site's unknown effect, a dependent of the error that made it (R4-M10).
+    private readonly struct Uses(MirEffects owner, MirBody body) : IMirUses
+    {
+        public void Operand(in MirOperand operand)
+        {
+        }
+
+        public void Place(MirPlace place, MirAccess access, MirRefKind kind)
+        {
+            if (place.IsStatic && body.Statics[~place.Root].Mutable)
+            {
+                owner.found |= Environment;
+            }
+        }
+
+        public void Effect(MirEffect effects, int site)
+        {
+            owner.found |= (effects & (MirEffect.Environment | MirEffect.IntToPointer | MirEffect.RawStaticRead)) != 0 ? Environment : (byte)0;
+            owner.found |= (effects & MirEffect.Unknown) != 0 ? Derived : (byte)0;
+        }
+    }
+}

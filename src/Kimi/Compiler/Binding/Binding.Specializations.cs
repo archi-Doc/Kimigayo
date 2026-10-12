@@ -221,6 +221,29 @@ public sealed partial class Binding
 
     internal FunctionKoto? SelectSpecialization(CallPlan call) => this.SelectSpecialization(call.Target, call.TypeArguments, call.LengthArguments);
 
+    // SPEC 8.8, 8.8.3: a body a call of a function under its substitution may run, by index, null past the last: the specialization a
+    // closed key selects, else the function itself and each specialization an open key may still select (no substitution: every one).
+    internal BindingSymbol? Implementation(BindingSymbol function, Subst? subst, int index)
+    {
+        var types = subst is null ? default : subst.Types;
+        var lengths = subst is null ? default : subst.Lengths;
+        if (this.SelectSpecialization(function, types, lengths) is { } selected)
+        {
+            return index == 0 ? selected.BoundSymbol : null;
+        }
+
+        var candidates = this.Specializations(function);
+        for (var i = 0; index > 0 && candidates is not null && i < candidates.Count; i++)
+        {
+            if (MaySelect(this.specializations[candidates[i]], types, lengths) && --index == 0)
+            {
+                return candidates[i].BoundSymbol;
+            }
+        }
+
+        return index == 0 ? function : null;
+    }
+
     // SPEC 8.8.3: the selection key holds every slot; a length slot is its evaluated value (LengthKey(N)).
     private static bool SameSpecializationLengths(ReadOnlySpan<BoundLength?> left, ReadOnlySpan<BoundLength?> right)
     {

@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns MIR bodies by definition key, the records of construction and validation, and the problems and drop table the analyses find.
-// Input: built definitions, findings and problems. Output: reusable bodies identified by MirDefKey.
+// Input: built definitions, findings and problems. Output: reusable bodies identified by MirDefKey and numbered in order, and a callee's body.
 // One key identifies one body; warm rebuilding reuses body storage.
 // Must not re-bind definitions or maintain a second body map in a consumer.
 
@@ -51,6 +51,12 @@ internal sealed class MirProgram
 
     internal MirBody? this[MirDefKey key] => this.bodies.TryGetValue(key, out var body) ? body : null;
 
+    /// <summary>Gets the body a Fn callee runs: a default template's (its Arg, the index plus 1), else its function's, getter's or setter's.</summary>
+    /// <param name="callee">The callee.</param>
+    /// <returns>The body, or null for a function without one.</returns>
+    internal MirBody? Callee(in MirCallee callee) => callee.Arg > 0 ? this[new(callee.Symbol, MirBodyKind.DefaultTemplate, callee.Arg - 1)]
+        : this[new(callee.Symbol, MirBodyKind.Fn)] ?? this[new(callee.Symbol, MirBodyKind.Getter)] ?? this[new(callee.Symbol, MirBodyKind.Setter)];
+
     internal void Clear()
     {
         this.bodies.Clear();
@@ -83,7 +89,7 @@ internal sealed class MirProgram
         }
 
         var body = this.pool[this.count] ??= new();
-        this.count++;
+        body.Ordinal = this.count++;
         body.Reset(key, source);
         this.bodies.Add(key, body);
         return body;

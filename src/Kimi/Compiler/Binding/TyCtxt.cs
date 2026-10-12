@@ -13,7 +13,7 @@ namespace Kimi.Compiler;
 /// <summary>The Type context of a compilation (<c>Compilation.Types</c>): it interns every constructed Type and every
 /// substitution, so identity is equality for both, forms the Types the MIR builder needs and applies a substitution. It lives as
 /// long as its Binding and is never cleared, since it holds only immutable hash-consed values.</summary>
-internal sealed class TyCtxt(Binding binding, KimiLibrary library)
+internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 {
     private readonly Dictionary<int, List<BoundType>> types = new();
     private readonly Dictionary<int, List<Subst>> substs = new();

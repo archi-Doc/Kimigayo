@@ -161,6 +161,9 @@ internal enum CompilerFunctionEffect : byte
 
     /// <summary>The function runs a selected formatting witness, which the summary follows before classifying.</summary>
     Formatting,
+
+    /// <summary>A definition Binding rejected, whose parts are not published (DECISIONS R4-M18): its effects are a dependent of that error.</summary>
+    Dependent,
 }
 
 /// <summary>How a call of a compiler function is served (plan 5.8).</summary>

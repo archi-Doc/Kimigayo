@@ -38,8 +38,8 @@ public sealed class MirDifferenceLedger : IDisposable
 
     // R4-M4: the compared old records, by requirement and each code it reports (OwnershipIssue.Code, Binding's code of the failure), with
     // the analysis that owns them; a MIR problem takes its code's analysis. Every other record passes through: TransferRequired and
-    // Internal, control flow's other codes and Binding's other failures, CaseLimit included; Binding's IncompatibleImplementation and
-    // effect-limit Unsupported also carry non-effect records and join from U6.
+    // Internal, control flow's other codes and Binding's other failures, CaseLimit included. Binding's IncompatibleImplementation and
+    // Unsupported records are compared only where an effect check made them (Binding.IsEffectRecord, R4-M23).
     internal static readonly (DiagnosticRequirement Requirement, DiagnosticCode Code, string Analysis)[] Compared =
     [
         (DiagnosticRequirement.Ownership(OwnershipFailure.UninitializedUse), DiagnosticCode.UninitializedPlace_Kd, "A1"),
@@ -52,6 +52,8 @@ public sealed class MirDifferenceLedger : IDisposable
         (DiagnosticRequirement.Ownership(OwnershipFailure.CallableEffectBound), DiagnosticCode.UnsatisfiedEffectBound_Kd, "A4"),
         (DiagnosticRequirement.Ownership(OwnershipFailure.VirtualEffectBound), DiagnosticCode.UnsatisfiedEffectBound_Kd, "A4"),
         (DiagnosticRequirement.Binding(BindingFailure.VirtualEffectBound), DiagnosticCode.UnsatisfiedEffectBound_Kd, "A4"),
+        (DiagnosticRequirement.Binding(BindingFailure.IncompatibleImplementation), DiagnosticCode.IncompatibleContractImplementation_Kd, "A4"),
+        (DiagnosticRequirement.Binding(BindingFailure.Unsupported), DiagnosticCode.Unsupported_Kd, "U"),
         (DiagnosticRequirement.Ownership(OwnershipFailure.ComparisonLoanConflict), DiagnosticCode.ComparisonLoanConflict_Kd, "A5"),
         (DiagnosticRequirement.Ownership(OwnershipFailure.ComparisonLoanConflict), DiagnosticCode.CallReservationConflict_Kd, "A5"),
         (DiagnosticRequirement.Ownership(OwnershipFailure.ComparisonLoanConflict), DiagnosticCode.CallActivationConflict_Kd, "A5"),
@@ -277,7 +279,9 @@ public sealed class MirDifferenceLedger : IDisposable
         var old = new List<Entry>();
         foreach (var (requirement, code, node) in LegacyRecords.Of(compilation))
         {
-            if (AnalysisOf(requirement, code) is { } analysis)
+            var effectOnly = requirement == DiagnosticRequirement.Binding(BindingFailure.IncompatibleImplementation) ||
+                requirement == DiagnosticRequirement.Binding(BindingFailure.Unsupported);
+            if (AnalysisOf(requirement, code) is { } analysis && (!effectOnly || compilation.Binding.IsEffectRecord(node)))
             {
                 old.Add(new(code, requirement.Name, analysis, node));
             }
