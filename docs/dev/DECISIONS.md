@@ -800,6 +800,12 @@ rules that result from them.
   padding in each producer (an open family; this was its second fix), a key rule accepting an empty span (two forms, and the entry,
   closure-context and default-call identity probes still split one instance), the empty form for calls and keys (two shapes for a
   per-slot fact), per-slot lengths in Item Types (every BoundType keeps LengthArguments empty without a length argument).
+- **R4-M30** (owner, 2026-10-12) The missing-fact allowance counts tokens: a unit may add at most 200 non-trivia Binding tokens
+  (A1 count; the former "30 Binding lines" at Binding's measured 6.57 tokens per line, CR-A1) for a fact the MIR side lacks; more
+  needs an owner exception stated in tokens. Forecasts and overruns are stated in tokens per area, lines for reference. Reason: the
+  budget has counted tokens since CR-A1, and lines overstated growth (R4 U6b: +107 lines, of which 72 were formatting with no tokens —
+  KR3001 wrapping of changed long lines, braces, blank lines, comments). Exceptions granted in lines before this entry keep their
+  recorded meaning (U6 R4-M23, U7 R4-M9b); units not yet landed restate theirs in tokens. Rejected: keeping the line rule.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
