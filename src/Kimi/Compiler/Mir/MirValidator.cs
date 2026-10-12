@@ -53,8 +53,7 @@ internal sealed partial class MirValidator(TyCtxt types)
 {
     private readonly MirCases cases = new(types);
     private readonly List<(MirRvalue Adapt, SourceInfo Source)> adapts = []; // The body's Adapts its case views resolve.
-    private bool[] reached = [];
-    private int[] pending = [];
+    private readonly MirReach reach = new();
     private bool[] unknown = [];
 
     /// <summary>Validates a body.</summary>
@@ -148,33 +147,11 @@ internal sealed partial class MirValidator(TyCtxt types)
     private void Reach(MirBody body, List<MirFinding> findings)
     {
         var blocks = body.Blocks;
-        if (this.reached.Length < blocks.Length)
-        {
-            this.reached = new bool[Math.Max(blocks.Length, this.reached.Length * 2)];
-            this.pending = new int[this.reached.Length];
-        }
-
-        Array.Clear(this.reached, 0, blocks.Length);
-        var count = 0;
-        this.reached[0] = true;
-        this.pending[count++] = 0;
-        while (count > 0)
-        {
-            var terminator = blocks[this.pending[--count]].Terminator;
-            for (var i = -1; i < MirUses.Successors(terminator); i++)
-            {
-                var next = i < 0 ? terminator.CheckTarget : MirUses.Successor(body, terminator, i);
-                if (next >= 0 && !this.reached[next])
-                {
-                    this.reached[next] = true;
-                    this.pending[count++] = next;
-                }
-            }
-        }
-
+        this.reach.Clear(blocks.Length);
+        this.reach.Walk(body, 0, checks: true);
         for (var block = 0; block < blocks.Length; block++)
         {
-            if (!this.reached[block])
+            if (!this.reach[block])
             {
                 findings.Add(new(MirViolation.Unreachable, Subject(body, blocks[block].Terminator.Source)));
             }
