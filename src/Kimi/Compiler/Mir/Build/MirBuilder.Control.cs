@@ -151,6 +151,11 @@ internal sealed partial class MirBuilder
         {
             var placement = this.body.AddBlock();
             this.body.Push(placement, MirStatement.Assign(place, MirRvalue.Use(this.body.AddOperand(value)), info with { StatementStart = false }));
+            if (index == 0 && this.constructed is not null)
+            {
+                this.RequestExit(placement, info with { StatementStart = false }); // A constructor's return.
+            }
+
             this.body.Terminate(placement, MirTerminator.Goto(entry, info with { StatementStart = false }));
             entry = placement;
         }

@@ -26,6 +26,7 @@ fn init @17
       StorageDead(_4) @21 s1
       StorageDead(_3) @20 s1
       _2 = const () @19 s1
+      FakeRead(_0) @17 s1
       StorageDead(_2) @19
       drop _1 -> bb4 @17
   bb4:
@@ -57,6 +58,7 @@ fn init @33
       StorageDead(_6) @43 s1
       StorageDead(_5) @42 s1
       _3 = const () @41 s1
+      FakeRead(_0) @33 s1
       StorageDead(_3) @41
       drop _1 -> bb3 @33
   bb3:
@@ -144,5 +146,6 @@ fn init @107
       StorageLive(_1) @108
     * _0.0 = const 1_i32 @51
     * _1 = const () @108 s1
+      FakeRead(_0) @107 s1
       StorageDead(_1) @108
       return @108

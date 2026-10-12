@@ -85,6 +85,7 @@ fn init @6
       StorageDead(_4) @9
       StorageDead(_3) @8
       _2 = const () @8
+      FakeRead(_0) @6
       StorageDead(_2) @8
       return @8
 fn grow @13

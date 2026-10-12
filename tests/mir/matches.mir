@@ -529,6 +529,7 @@ fn init @221
   bb0:
       StorageLive(_1) @223
     * _1 = const () @223 s1
+      FakeRead(_0) @221 s1
       StorageDead(_1) @223
       return @223
 fn init @222
@@ -540,5 +541,6 @@ fn init @222
     * _0.base1 = init() -> bb1 @225
   bb1:
     * _1 = const () @226 s1
+      FakeRead(_0) @222 s1
       StorageDead(_1) @226
       return @226

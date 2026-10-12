@@ -74,7 +74,7 @@ public sealed class MirAnalysisTest
     public void AWarmLintRunAllocatesNothing()
     {
         var body = MirBuildTest.Compile(RequireEnds(8)).BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "nest");
-        var (lints, report) = (new MirLints(), new MirReport());
+        var (lints, report) = (new MirLints(new MirReach()), new MirReport());
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             report.Clear();

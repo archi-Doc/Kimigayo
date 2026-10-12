@@ -14,6 +14,7 @@ fn init @9
       StorageDead(_4) @12
       StorageDead(_3) @11
       _2 = const () @11
+      FakeRead(_0) @9
       StorageDead(_2) @11
       return @11
 fn equals @16

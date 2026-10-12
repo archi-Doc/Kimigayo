@@ -20,6 +20,7 @@ fn init @9
     * _2 = const () @10
       StorageDead(_2) @10
       _1 = const () @10
+      FakeRead(_0) @9
       StorageDead(_1) @10
       return @10
 fn top-level#0 @11
@@ -343,5 +344,6 @@ fn init @220
       StorageLive(_1) @221
     * _0.0 = const 9_i32 @6
     * _1 = const () @221 s1
+      FakeRead(_0) @220 s1
       StorageDead(_1) @221
       return @221

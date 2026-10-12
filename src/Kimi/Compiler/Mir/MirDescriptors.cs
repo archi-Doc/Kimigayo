@@ -205,7 +205,7 @@ internal static class MirUses
     internal static void ForEach<TVisitor>(MirCases view, MirLocation location, ref TVisitor visitor)
         where TVisitor : struct, IMirUses => Walk(view.Body, view, location, ref visitor);
 
-    /// <summary>Gets the number of runtime successors of a terminator; <see cref="Successor"/> gives each, and its CheckTarget is the
+    /// <summary>Gets the number of runtime successors of a terminator; <see cref="Successor"/> gives each, and at -1 its CheckTarget, the
     /// successor only the checks reach.</summary>
     /// <param name="terminator">The terminator.</param>
     /// <returns>The number of runtime successors.</returns>
@@ -217,13 +217,21 @@ internal static class MirUses
         _ => 0,
     };
 
-    /// <summary>Gets a runtime successor of a terminator: a SwitchInt's case targets in order, then its otherwise target.</summary>
+    /// <summary>Gets a successor of a terminator: at -1 its CheckTarget (-1: none), else a runtime successor, a SwitchInt's case targets in
+    /// order, then its otherwise target.</summary>
     /// <param name="body">The body.</param>
     /// <param name="terminator">The terminator.</param>
-    /// <param name="index">The successor's index, below <see cref="Successors"/>.</param>
+    /// <param name="index">The successor's index from -1, below <see cref="Successors"/>.</param>
     /// <returns>The successor block.</returns>
     internal static int Successor(MirBody body, in MirTerminator terminator, int index)
-        => terminator.Kind == MirTerminatorKind.SwitchInt && index < terminator.Count ? body.Cases[terminator.Start + index].Target : terminator.Target;
+    {
+        if (index < 0)
+        {
+            return terminator.CheckTarget;
+        }
+
+        return terminator.Kind == MirTerminatorKind.SwitchInt && index < terminator.Count ? body.Cases[terminator.Start + index].Target : terminator.Target;
+    }
 
     private static void Walk<TVisitor>(MirBody body, MirCases? view, MirLocation location, ref TVisitor visitor)
         where TVisitor : struct, IMirUses

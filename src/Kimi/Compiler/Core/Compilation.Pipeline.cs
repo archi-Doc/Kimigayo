@@ -142,7 +142,7 @@ public partial class Compilation
     /// <summary>Builds, validates and analyzes the MIR of the latest Binding pass, once per pass (R4: beside the old path, which still
     /// decides).</summary>
     /// <returns>The program, with its construction records, validator findings and analysis problems.</returns>
-    internal Mir.MirProgram BuildMir() => (this.mirAnalysis ??= new()).Run((this.mirBuilder ??= new(this)).Build());
+    internal Mir.MirProgram BuildMir() => (this.mirAnalysis ??= new(this.Types)).Run((this.mirBuilder ??= new(this)).Build());
 
     internal void InvalidateOwnership()
     {

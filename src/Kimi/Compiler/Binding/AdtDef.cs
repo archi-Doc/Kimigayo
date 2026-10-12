@@ -102,6 +102,10 @@ internal sealed class AdtDef
 
     internal static PropertyKoto Field(BoundType type, int index) => Struct(type)!.Fields[index];
 
+    // SPEC 11.3.1: whether a constructor may place a stored Field only once: a let Field, or a var with a custom set.
+    internal static bool PlacedOnce(BoundType type, int index)
+        => Field(type, index) is not { VariableKind: VariableKind.Var, BoundSymbol.Property.Setter.IsStandard: true };
+
     // The logical stored index of the Field `name`. Generated code addresses Kimi library record Fields by name; a missing
     // Field is a defect of the compiler build.
     internal static int IndexOf(BoundType type, string name)
@@ -119,6 +123,9 @@ internal sealed class AdtDef
     }
 
     internal static FunctionKoto? Destructor(BoundType type) => Struct(type)?.DestructorKoto;
+
+    // SPEC 6.2.3: whether a function is a constructor, whose body builds its object from fresh storage (the MIR analyses' fact).
+    internal static bool IsConstructor(BindingSymbol? function) => function?.Declaration is FunctionKoto { IsConstructor: true };
 
     internal static BoundType? ReceiverType(FunctionKoto function)
         => (function.IsConstructor || function.IsDestructor) && function.BoundSymbol?.Scope.Owner.BoundSymbol is { } owner

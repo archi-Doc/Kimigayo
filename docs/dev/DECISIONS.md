@@ -376,7 +376,8 @@ rules that result from them.
   except an (a) row whose library fix lands in the same unit.
 - **R4-M13** Tests migrate per method kind (body presence, operations, cleanup verdicts, Loans, verification state, R5/R6
   residue). Ratchets: control-flow structure reads at most 1, `Ownership.Bodies` reads at most 110.
-- **R4-M15** `OwnershipStorageLimit_Kd` stays the one Resource code, decided by the byte size of A5's Loan × point arena.
+- **R4-M15** `OwnershipStorageLimit_Kd` stays the one Resource code, decided by the byte size of A5's Loan × point arena. The
+  arena scope is superseded by R4-M15a.
 - **R4-M16** The ledger's classification table is tracked (`tests/xUnitTest/TestData/mir-diff/classification.tsv`); raw
   rows, reproducers and ledgers are evidence under `artifacts/verify/mir-diff/`.
 - **R4-M2a** (2026-10-12, planning session; design A of two independent U0b designs; supersedes R4-M2's stub clause, its
@@ -482,6 +483,66 @@ rules that result from them.
   published fact and are left to U11/R6; rejected: a body-level `#switch` rule (syntax ancestry, SPEC 23.3.6.4; a KR1006
   row) and deriving every path through an Opaque site (drops written recovered failure bodies, DIAGNOSTICS §4.3).
   Rejected also: per-row walks (quadratic), U1's dataflow framework, copying rows into copies. No temporary structure.
+- **R4-M20** (2026-10-12, planning session; design A of two independent U1 designs, with design B's three lanes) MIR dataflow.
+  `MirDataflow` solves forward bit-set problems over flow heads: a block whose only edge is a runtime edge into a block with no
+  other predecessor that is not the entry continues into it, so a chain of blocks shares one state, stored only at its head. One
+  pooled arena of heads × stored words, word-major (the lanes of 64 paths per word group); only flow paths are stored, and
+  chain-local paths (a root whose events all lie in one chain from its StorageLive, such as a statement's temporaries; a
+  StorageDead in another chain is no event, since it kills whatever state arrives) live in the scratch. Reverse postorder once
+  per body from the one traversal owner `MirReach`; a ring worklist seeded with every head in reverse postorder, with queued
+  bits; union join. P1 follows runtime edges from the entry; P2 follows runtime and CheckTarget edges and writes only heads P1
+  did not reach, P1's states frozen (a P1 head passes its state once along its CheckTarget); `Replay` gives each reached chain
+  its converged state for the checks and later readers (A2). The backward direction (liveness, all edges) arrives with U7, its
+  first reader. The arena is dense: linear in blocks at fixed flow paths and in flow paths at fixed blocks (V16's reading),
+  quadratic where long-lived locals cross many heads (`MirBuildTest.BodiesScaleLinearly` prints its words). Rejected: a state
+  per block (design B; O(blocks × paths/64) arena and time when calls split blocks while locals grow, quadratic in V16's
+  straight shape and in `MirBuildTest.BodiesScaleLinearly`, which measures `BuildMir` and so the analysis); porting the old
+  solver (OwnershipBody's five lanes, two slots per path, N7); one pass over all edges (SPEC 14.10.3 ¶4); gen/kill block
+  summaries reused across views (a second arena; reverse postorder converges acyclic code in one sweep; views above one are
+  rare); sparse per-path or chunked sets (long-lived locals stay quadratic, more code); a second or third block walk beside
+  `MirReach`.
+- **R4-M21** (2026-10-12, planning session; design A with design B's path keys, lanes and transparent PairLayer) Move paths and
+  A1's state. `MirMoveData` keys a child path by (parent path, projection kind, argument) in a pooled table: Field, Base (one
+  depth per step), ConstIndex and Downcast steps form paths; a PairLayer step is transparent (the Place itself in the owner
+  case; a case-dependent access through a PairLayer that the view makes a reference ends at its outermost such step, as at a
+  Deref, SPEC 13.5.5.1); Deref and Index end a path (an access through them is an access of the prefix's path; a Move through
+  them has no Move Path, except through a raw pointer: an untracked Take, SPEC 5.2.3). Paths are numbered in pre-order without a
+  stack, so a subtree is a range; a constructor's `_0` (`AdtDef.IsConstructor`) has a child per Field and its base. `MirInit`
+  (A1) keeps three lanes, joined by union: MaybeUninit, MaybeMoved, EverInit (MaybeInit joins with A2, U5, its first reader). A
+  definition needs each strict ancestor's own bit (its construction fact) initialized, reports ReassignedLet when a path
+  admitting one placement was ever initialized in the binding lifetime (the paths of a `let` Var, and of a constructor's Field
+  that `AdtDef.PlacedOnce` names: a `let` Field or one with a custom `set`, SPEC 11.3.1), then initializes the subtree; a Move
+  uninitializes and marks it moved, a Drop uninitializes it, StorageLive and StorageDead start a fresh lifetime; a use needs the
+  whole subtree, own bits included, initialized on every incoming path (a complete value has both the construction fact and
+  current completeness, SPEC 15.1.2, 15.1.5; MovedPlace where it may have been moved, else UninitializedPlace). Every root is
+  tracked (A2 reads temporaries' states), but these state problems are recorded only for the paths of Var, Arg and Return roots:
+  a compiler temporary is never a Place of the program, and in check-only code a temporary that an expression whose value only
+  the checks reach never wrote is no uninitialized Place. A Move without a Move Path is StaticMovePathRequired whatever its root
+  (an operation check, SPEC 15.1.3: an operation that requires a Move Path is rejected when none exists; 15.1.5: a Place a
+  function publishes never offers Take) and changes no state. A whole use of the return local is a delivery, checked only where
+  the runtime edges reach it (SPEC 14.10.3): a constructor's object is complete at each exit it requests (SPEC 6.2.3.5), where
+  the builder reads `_0` (FakeRead) once its body completes and at each return, before the Scope Exit whose defers cannot supply
+  a Field; a Return checks nothing (every path into a constructor's Return passes an exit request, and an ordinary function's
+  `_0` at its Return would show only a builder defect). A1 reads each view's uses through `MirUses.ForEach(MirCases, …)`, which
+  resolves an Adapt per view (R4-M19); a body without a case-dependent access (`MirAccess.CaseDependent`: a PairLayer step, a
+  PairAcquire, an Adapt) is analyzed once, for every view. PreparedInput (DefaultArgumentMove), Opaque-root and Inlined rules
+  stay MirReport's (R4-M10, U11). Rejected: interning analysis projections as keys (an analysis must not intern, and a
+  constructor's unplaced Fields have no chain); two slots per path and recursive child walks (the old path); covered paths whose
+  own bit is left out of a use (design A: a whole use then skips the construction fact) and PairLayer paths (design A: the
+  covered-path, layer-step and owner-view parent rules they need); a MirBody constructor flag or a new MirLocalRole member
+  (vocabulary for a declaration fact Binding publishes); a constructor recognized by MIR shape (an empty struct's constructor
+  writes nothing); MoveData per view (only PairLayer ends differ, resolved per access); collapsing views (R4-M11);
+  DefaultArgumentMove decided in A1 (R4-M10's rule); reporting on temporaries (false problems in check-only code,
+  `artifacts/verify/mir-diff/r4-u1-exp-temps`); a completeness check at the Return (after the defers, which cannot place a
+  Field, and a second record of an early return's missing Field); a vocabulary member or a role for the exit request (a FakeRead
+  is the analyses' read). The first-placement rule, the exit request, the reporting rule, the whole-subtree use and the delivery
+  rule were added after U1's ledger and its independent review (main session, 2026-10-12).
+- **R4-M15a** (2026-10-12, planning session; supersedes R4-M15's "A5's arena" scope) `OwnershipStorageLimit_Kd` stays the one
+  Resource code; it is decided at the one place that sizes analysis arenas, `MirDataflow.Prepare` (A1's state arena now, A5's
+  Loan × point arena in U7), by byte size against the old path's limit value, 64 MiB (IMPL 21.3.5's text changes in R6). An
+  over-limit body records the code once at the body's subject and A1 does not analyze it; the driver owns that skip once A2 and
+  A5 read the arena (U5, U7). Reason: the dense arena is O(heads × paths/64), and a body bounded only by the 65,536-statement
+  expansion limit could otherwise exhaust memory.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

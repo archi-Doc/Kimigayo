@@ -20,6 +20,7 @@ fn init @13
       StorageDead(_4) @16
       StorageDead(_3) @15
       _2 = const () @15
+      FakeRead(_0) @13
       StorageDead(_2) @15
       return @15
 fn init @22
@@ -35,6 +36,7 @@ fn init @22
     * _3 = const () @27
       StorageDead(_3) @27
       _2 = const () @27
+      FakeRead(_0) @22
       StorageDead(_2) @27
       return @27
 fn area @28

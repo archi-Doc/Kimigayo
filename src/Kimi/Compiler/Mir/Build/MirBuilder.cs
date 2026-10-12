@@ -27,6 +27,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private Roots? collector;
     private MirBody body = null!;
     private Koto declaration = null!;
+    private Koto? constructed; // A constructor's body, whose completion requests its exit (SPEC 6.2.3.5); null in other bodies.
     private int current; // The block being built.
     private int receiver; // The local a Field of the implicit self, an accessor's storage or a capture is reached from (-1: none).
     private ushort scope;
@@ -208,6 +209,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         this.current = body.AddBlock();
         var temporaries = this.OpenScope(block: false);
         var done = self is null ? new MirPlace(0) : this.Temp(BoundType.Unit, value);
+        this.constructed = self is null ? null : value;
         this.targets.Add(new(declaration, done, -1, -1, 0, 0, Reached: false)); // A return's target.
         if (self is not null)
         {
@@ -332,7 +334,16 @@ internal sealed partial class MirBuilder(Compilation compilation)
                 this.Unit(destination, container);
             }
         }
+
+        if (ReferenceEquals(item, this.constructed) && HirTables.Op(item) != HirOp.Block && Completes(item))
+        {
+            this.RequestExit(this.current, this.Info(this.declaration, local: true)); // An expression body completes; a block body's block.
+        }
     }
+
+    // SPEC 6.2.3.5: a constructor's exit request, its body's completion or a return, reads its object whole before the Scope Exit that
+    // follows, so the analyses find its base and every own Field placed there: a defer cannot place one.
+    private void RequestExit(int block, in SourceInfo info) => this.body.Push(block, MirStatement.Of(MirStatementKind.FakeRead, new(0), info));
 
     // SPEC 14.2, 16.2: a block's items in a scope of their own (an unsafe block's, SPEC 14.3.3), the last one its result; the locals and
     // defers it registers are cleaned up when it is left. Its last item's temporaries are its enclosing statement's (SPEC 3.6.2).
@@ -354,6 +365,11 @@ internal sealed partial class MirBuilder(Compilation compilation)
         else
         {
             this.Unit(destination, block);
+        }
+
+        if (ReferenceEquals(block, this.constructed) && Completes(block))
+        {
+            this.RequestExit(this.current, this.Info(this.declaration, local: true)); // A constructor's body completes before its cleanup.
         }
 
         this.CloseScope(lexical);

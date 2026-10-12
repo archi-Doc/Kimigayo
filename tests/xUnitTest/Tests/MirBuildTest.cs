@@ -288,12 +288,13 @@ public sealed class MirBuildTest(ITestOutputHelper output)
 
     // V11: a body of N statement groups of the common forms (a local from a call, its case adaptation, a condition with an update, a match
     // with a binding, a loop with a transfer, an interpolation) grows its MIR and its cold build's allocation linearly with N, and a warm
-    // rebuild, whose validation resolves each adaptation under both case views, allocates nothing.
+    // rebuild, whose validation resolves each adaptation under both case views, allocates nothing. The build analyzes (R4-M17); the output
+    // gives A1's dense arena words for the body, which grow with heads × flow paths (R4-M20, V16's reading).
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void BodiesScaleLinearly()
     {
-        var (sizes, work, allocated) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
+        var (sizes, work, allocated, arena) = (new[] { 16, 32, 64 }, new long[3], new long[3], new long[3]);
         Compilation c = null!;
         for (var i = 0; i < sizes.Length; i++)
         {
@@ -312,9 +313,14 @@ public sealed class MirBuildTest(ITestOutputHelper output)
             allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
             work[i] = body.Blocks.Length + body.Statements.Length;
             Assert.True(!body.HasOpaque && program.Records.Count == 0 && program.Findings.Count == 0, $"{sizes[i]} groups");
+            var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData());
+            flow.Begin(body);
+            moves.Build(body, flow);
+            arena[i] = MirInitTest.ArenaWords(body, flow, moves);
         }
 
-        output.WriteLine($"N {string.Join(", ", sizes)}: MIR size {string.Join(", ", work)}, cold build allocation {string.Join(", ", allocated)}");
+        output.WriteLine($"N {string.Join(", ", sizes)}: MIR size {string.Join(", ", work)}, cold build allocation {string.Join(", ", allocated)}, " +
+            $"A1 arena words {string.Join(", ", arena)}");
         Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"MIR size {string.Join(", ", work)}");
         Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold build allocation {string.Join(", ", allocated)}");
         Assert.Equal(0, AllocationMeasurement.Measure(() =>

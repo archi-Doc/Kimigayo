@@ -175,6 +175,7 @@ fn init @66
     * _2 = const () @67
       StorageDead(_2) @67
       _1 = const () @67
+      FakeRead(_0) @66
       StorageDead(_1) @67
       return @67
 fn top-level#0 @68

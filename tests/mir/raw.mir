@@ -25,6 +25,7 @@ fn init @9
       StorageDead(_7) @19 s1
       StorageDead(_6) @18 s1
       _3 = const () @12 s1
+      FakeRead(_0) @9 s1
       StorageDead(_3) @12
       return @12
 fn top-level#0 @23

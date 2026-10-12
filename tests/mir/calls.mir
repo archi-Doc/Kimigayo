@@ -13,6 +13,7 @@ fn init @6
       StorageDead(_3) @8
       StorageDead(_2) @7
       _1 = const () @7
+      FakeRead(_0) @6
       StorageDead(_1) @7
       return @7
 fn bump @12

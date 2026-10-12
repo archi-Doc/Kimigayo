@@ -79,6 +79,7 @@ fn init @55
       StorageDead(_4) @59 s1
       StorageDead(_3) @58 s1
       _2 = const () @57 s1
+      FakeRead(_0) @55 s1
       StorageDead(_2) @57
       return @57
 fn init @65
@@ -93,6 +94,7 @@ fn init @65
     * _2 = const () @69
       StorageDead(_2) @69
       _1 = const () @69
+      FakeRead(_0) @65
       StorageDead(_1) @69
       return @69
 fn describe @70
