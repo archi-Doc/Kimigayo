@@ -87,6 +87,12 @@ public class CodeRulesDensityTest
     [InlineData("var (a,b) = ((0), xs.Length);", 0)]
     [InlineData("var (a,b) = ((F(), 1));", 1)]
     [InlineData("var (a,b) = (((xs).Length), 1);", 0)]
+    [InlineData("(var a, var b) = (F(), 1);", 1)]
+    [InlineData("(int a, var b) = (1, F());", 1)]
+    [InlineData("(var a, var b) = (0, xs.Length);", 0)]
+    [InlineData("int a=0; (a, var b) = (F(), 1);", 0)]
+    [InlineData("(var a, var _) = (F(), 1);", 0)]
+    [InlineData("(var a, (var b, var c)) = (F(), (1, 2));", 0)]
     public async Task ComputedDeclarationsExcludeExistingWritesAndNonflatBindings(string statement, int count)
     {
         var diagnostics = await Analyze("class C { void M(int[] xs) { " + statement + " } int F() => 1; (int,int) Pair() => (1,2); int Value => 0; }", wideLines: true);

@@ -68,24 +68,10 @@ internal static class CodeRulesDensity
 
     private static bool IsComputedDeclaration(AssignmentExpressionSyntax assignment)
     {
-        if (!assignment.IsKind(SyntaxKind.SimpleAssignmentExpression) ||
-            assignment.Left is not DeclarationExpressionSyntax
-            {
-                Type.IsVar: true,
-                Designation: ParenthesizedVariableDesignationSyntax variables,
-            }
-
-            || CodeRulesSource.Unwrap(assignment.Right) is not TupleExpressionSyntax { Arguments.Count: >= 2 } tuple)
+        if (!assignment.IsKind(SyntaxKind.SimpleAssignmentExpression) || !NewLocals(assignment.Left) ||
+            CodeRulesSource.Unwrap(assignment.Right) is not TupleExpressionSyntax { Arguments.Count: >= 2 } tuple)
         {
             return false;
-        }
-
-        foreach (var variable in variables.Variables)
-        {
-            if (variable is not SingleVariableDesignationSyntax)
-            {
-                return false;
-            }
         }
 
         foreach (var argument in tuple.Arguments)
@@ -98,6 +84,16 @@ internal static class CodeRulesDensity
 
         return false;
     }
+
+    // `var (a, b)` and `(var a, T b)` both declare only flat new locals; existing targets, discards and nesting do not.
+    private static bool NewLocals(ExpressionSyntax target)
+        => target switch
+        {
+            DeclarationExpressionSyntax { Type.IsVar: true, Designation: ParenthesizedVariableDesignationSyntax variables } =>
+                variables.Variables.All(x => x is SingleVariableDesignationSyntax),
+            TupleExpressionSyntax tuple => tuple.Arguments.All(x => x.Expression is DeclarationExpressionSyntax { Designation: SingleVariableDesignationSyntax }),
+            _ => false,
+        };
 
     private static bool Simple(ExpressionSyntax expression)
     {

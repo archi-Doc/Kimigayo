@@ -129,6 +129,10 @@ public class CodeRulesStructureTest
     [InlineData("return value is string;", 0)]
     [InlineData("return (IdentifierNameKoto)value != null;", 0)]
     [InlineData("return value is var found;", 0)]
+    [InlineData("return ((Koto)value) is { } found;", 0)]
+    [InlineData("return ((Koto)value) is not { };", 0)]
+    [InlineData("return ((Koto)value) is { Akind: KotoKind.Invalid };", 1)]
+    [InlineData("return ((Koto)value) is IdentifierNameKoto { } found;", 1)]
     [InlineData("return value is not (KotoKind.Invalid);", 1)]
     [InlineData("return value is KotoKind.Invalid or KotoKind.Contract;", 2)]
     [InlineData("return value is KotoKind kind;", 1)]
@@ -148,6 +152,7 @@ public class CodeRulesStructureTest
     [InlineData("return kind switch { KotoKind.Invalid => true, _ => false };", 1)]
     [InlineData("switch(kind) { case 0: return true; default: return false; }", 1)]
     [InlineData("return kind is var captured;", 0)]
+    [InlineData("return kind is { } captured;", 1)]
     public async Task KindComparisonsAndAtomicPatternsCountOnce(string body, int count)
     {
         var diagnostics = await Analyze(Imports + "class C { bool M(KotoKind kind) { " + body + " } }", Builder);

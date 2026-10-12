@@ -112,8 +112,8 @@ Generated code is excluded. Old Analysis/Emission files receive KR1 and the buil
 `CodeRulesArchitecture` owns resolved dependency/member/vocabulary policy and structural checks through the shared
 analyzer pipeline. Its .Structure concern implements KR1004–1006 and KR1008 (CR-A4): collection declarations use
 declared symbols, creations use their resolved type, and generic constraints have one cycle-safe expansion.
-Pattern tests use semantic matched/compared/input types; wrapper patterns and casts add no tests. Catch anchors exclude
-the body. Configuration lists use commas: Roslyn treats semicolons as inline comments (CR-A3).
+Pattern tests use semantic matched/compared/input types; wrapper patterns and casts add no tests, and a recursive
+pattern without a type adds no Koto type test (CR-A9a). Catch anchors exclude the body. Configuration lists use commas: Roslyn treats semicolons as inline comments (CR-A3).
 `CodeRulesDensity` owns KR3001–3003 in the same syntax walk (CR-A5). A physical line is excluded only when wholly
 inside a multiline literal/text token; interpolation holes remain checked. The outermost conditional before a
 callable boundary owns the observation. Parentheses are transparent when classifying new-local tuple values.
@@ -136,7 +136,7 @@ IDE0051, IDE0052 and IDE0060 are build errors, configured only in CodeRules.glob
 | KR2001–2005, KR2010 | Parameter limits above; no failure-text out parameter; source-declared call boolean literals are named |
 | KR2006–2009 | Statement, nesting, logical-chain and file-token limits above |
 | KR3001–3002 | At most 160 UTF-16 units per physical line (whole multiline-string lines excluded); no nested conditional expression |
-| KR3003 | Computed tuple literals do not initialize an all-new-local `var (...)` deconstruction; existing-variable assignments are outside this rule |
+| KR3003 | Computed tuple literals do not initialize an all-new-local deconstruction, `var (...)` or `(var a, T b)`; existing-variable assignments are outside this rule |
 | IDE0051, IDE0052, IDE0060 | Remove unused/unread private members and unused parameters, preserving behavior; no baseline |
 
 One baseline row identifies a rule, its innermost named Type (file for file-wide records), and a member, local-function,

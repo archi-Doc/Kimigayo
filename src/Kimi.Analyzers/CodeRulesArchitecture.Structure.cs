@@ -44,7 +44,7 @@ internal sealed partial class CodeRulesArchitecture
             {
                 ITypePatternOperation typed => typed.MatchedType,
                 IDeclarationPatternOperation declaration => declaration.MatchedType,
-                IRecursivePatternOperation recursive => recursive.MatchedType,
+                IRecursivePatternOperation recursive when node is RecursivePatternSyntax { Type: not null } => recursive.MatchedType,
                 _ => null,
             };
             var comparedType = pattern switch

@@ -272,6 +272,15 @@ rules that result from them.
   from 3.1 s to 0.54 s. Rejected: counting only written KR1004 types to skip declaration symbols; CR-A4 counts
   inferred declarations so `var` cannot evade the rule, and 18 occurrences would disappear.
 
+- **CR-A9a** (review session; KR3003 scope by the owner, 2026-10-12). KR1006 counted `x is { } y` on a Koto input
+  as a Koto type test because a typeless recursive pattern's matched type is its input type. It tests only null and
+  properties, like `x != null`, which was never counted; a pattern tests a Koto type only when it names one. Nine
+  MirBuilder rows become stale and Prune removes them. This narrows what the analyzer reports without a configuration,
+  baseline or annotation change, so CR-A8's approval comparison does not see it; it is stated for the owner's review.
+  The owner extends KR3003 from CR-A0's `var (...)` to the same all-new-local deconstruction written as a tuple of
+  declarations, `(var a, T b) = (...)`, which otherwise evades the rule; nested, discarded and existing targets stay
+  outside. The source has no such declaration, so the baseline is unchanged.
+
 ## R2b (2026-10-11, main session, as recommended)
 
 - **R2b-D1** `BoundType` stays the Type representation until R7; `TyCtxt` owns interning and `Subst` converts.
