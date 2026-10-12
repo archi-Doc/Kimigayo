@@ -245,7 +245,8 @@ fn guarded @114
   _8: isize temp @133 s1
   _9: bool temp @139 s4
   _10: ref/string temp data (GuardCandidate) @137 s4
-  _11: string var data @137 s5
+  _11: bool temp @140 s4
+  _12: string var data @137 s5
   s1: lexical in s0 @117
   s2: guard in s1 @128
   s3: lexical in s1 @122
@@ -262,7 +263,7 @@ fn guarded @114
   bb1:
       StorageDead(_8) @133 s1
       StorageDead(_4) @122 s1
-      drop _3 -> bb38 @119 s1
+      drop _3 -> bb39 @119 s1
   bb2:
       StorageLive(_8) @133 s1
       _8 = discriminant(_3) @133 s1
@@ -313,69 +314,75 @@ fn guarded @114
       StorageDead(_7) @126 s3
       unreachable check bb1 @131 s1
   bb18:
-      switch const true [1: bb35, otherwise: bb34] @148 s1
+      switch const true [1: bb36, otherwise: bb35] @148 s1
   bb19:
       StorageLive(_9) @139 s4
       StorageLive(_10) @137 s4
       _10 = &(_3 as case 0).0: ref/string @137 s4
-      _9 = Eq(copy _10, const "a") proven @140 s4
-      switch copy _9 [0: bb22, otherwise: bb23] @140 s4
+      StorageLive(_11) @140 s4
+      _11 = Eq(copy _10, const "a") proven @140 s4
+      switch copy _11 [0: bb22, otherwise: bb23] @140 s4
   bb20:
       StorageDead(_9) @139 s4
       goto bb18 @139 s4
   bb21:
       StorageDead(_9) @139 s4
-      StorageLive(_11) @137 s5
-      _11 = move (_3 as case 0).0 @137 s5
-    * goto bb31 check bb32 @146 s5
+      StorageLive(_12) @137 s5
+      _12 = move (_3 as case 0).0 @137 s5
+    * goto bb32 check bb33 @146 s5
   bb22:
       EndBorrow(_10) @144 s4
-      goto bb27 check bb28 @144 s4
+      goto bb28 check bb29 @144 s4
   bb23:
+      _9 = copy _11 @139 s4
+      goto bb24 @139 s4
+  bb24:
+      StorageDead(_11) @140 s4
       StorageDead(_10) @137 s4
       FakeRead(_3) @139 s4
       switch copy _9 [0: bb20, otherwise: bb21] @139 s4
-  bb24:
+  bb25:
       StorageDead(_8) @133 s1
       goto bb11 @114
-  bb25:
-      StorageDead(_9) @139 s4
-      goto bb24 @114
   bb26:
-      StorageDead(_10) @137 s4
+      StorageDead(_9) @139 s4
       goto bb25 @114
   bb27:
-      _0 = const 2_i32 @144 s4
-      goto bb26 @144 s4
+      StorageDead(_11) @140 s4
+      StorageDead(_10) @137 s4
+      goto bb26 @114
   bb28:
-      unreachable check bb23 @143 s4
+      _0 = const 2_i32 @144 s4
+      goto bb27 @144 s4
   bb29:
-      drop _11 -> bb30 @137 s5
+      unreachable check bb24 @143 s4
   bb30:
-      StorageDead(_11) @137 s5
-      goto bb24 @114
+      drop _12 -> bb31 @137 s5
   bb31:
-      _0 = const 3_i32 @146 s5
-      goto bb29 @146 s5
+      StorageDead(_12) @137 s5
+      goto bb25 @114
   bb32:
-      drop _11 -> bb33 @137 s5
+      _0 = const 3_i32 @146 s5
+      goto bb30 @146 s5
   bb33:
-      StorageDead(_11) @137 s5
-      unreachable check bb1 @146 s1
+      drop _12 -> bb34 @137 s5
   bb34:
-      unreachable @118 s1
+      StorageDead(_12) @137 s5
+      unreachable check bb1 @146 s1
   bb35:
-    * goto bb36 check bb37 @149 s6
+      unreachable @118 s1
   bb36:
-      _0 = const 0_i32 @149 s6
-      goto bb24 @149 s6
+    * goto bb37 check bb38 @149 s6
   bb37:
-      unreachable check bb1 @149 s1
+      _0 = const 0_i32 @149 s6
+      goto bb25 @149 s6
   bb38:
+      unreachable check bb1 @149 s1
+  bb39:
       StorageDead(_3) @119 s1
       StorageDead(_2) @118 s1
-      drop _1 -> bb39 @114
-  bb39:
+      drop _1 -> bb40 @114
+  bb40:
       unreachable @117
 fn half @151
   _0: Option<i32> return @151

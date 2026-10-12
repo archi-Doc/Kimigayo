@@ -104,15 +104,21 @@ internal sealed partial class MirBuilder
         }
     }
 
-    // SPEC 13.3: `and` and `or` evaluate the right operand only where the left does not decide the result: the left into the destination,
-    // then the branch on it to the right operand or past it.
+    // SPEC 13.4: `and` and `or` evaluate the right operand only where the left does not decide the result: the left into a bool, then the
+    // branch on it to the right operand into the destination or, where the left decides the result (false for `and`, true for `or`), to the
+    // left's value into it, so that each path writes the destination once (a let binding is initialized once).
     private void Logical(MirPlace destination, BinaryKoto logical)
     {
-        this.Assign(destination, logical.Left);
+        var left = this.Temp(BoundType.Boolean, logical.Left);
+        this.Assign(left, logical.Left);
         var right = this.body.AddBlock();
+        var decided = this.body.AddBlock();
         var join = this.body.AddBlock();
         var and = logical.Akind == KotoKind.And;
-        this.Branch(destination, logical.Left, and ? join : right, and ? right : join);
+        this.Branch(left, logical.Left, and ? decided : right, and ? right : decided);
+        this.current = decided;
+        this.Use(destination, MirOperand.Copy(left), logical);
+        this.body.Terminate(decided, MirTerminator.Goto(join, this.Info(logical)));
         this.current = right;
         this.Assign(destination, logical.Right);
         this.Join(join, logical.Right);

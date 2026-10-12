@@ -120,18 +120,30 @@ fn logic @95
   _0: bool return @95
   _1: bool arg a @95
   _2: bool arg b @95
+  _3: bool temp @100
+  _4: bool temp @101
   bb0:
-    * _0 = copy _1 @101
-      switch copy _0 [0: bb2, otherwise: bb1] @101
+      StorageLive(_3) @100
+      StorageLive(_4) @101
+    * _4 = copy _1 @101
+      switch copy _4 [0: bb2, otherwise: bb1] @101
   bb1:
-      _0 = copy _2 @102
-      goto bb2 @102
+      _3 = copy _2 @102
+      goto bb3 @102
   bb2:
-      switch copy _0 [0: bb3, otherwise: bb4] @100
+      _3 = copy _4 @100
+      goto bb3 @100
   bb3:
-      _0 = Not(copy _1) proven @103
-      goto bb4 @103
+      switch copy _3 [0: bb4, otherwise: bb5] @100
   bb4:
+      _0 = Not(copy _1) proven @103
+      goto bb6 @103
+  bb5:
+      _0 = copy _3 @99
+      goto bb6 @99
+  bb6:
+      StorageDead(_4) @101
+      StorageDead(_3) @100
       return @99
 fn aggregates @105
   _0: Shape return @105
@@ -179,21 +191,27 @@ fn metadata @145
   _0: bool return @145
   _1: ref/Array<i32> arg values @145
   _2: Slice<i32> arg items @145
-  _3: isize temp @157
-  _4: isize temp @161
+  _3: bool temp @156
+  _4: isize temp @157
+  _5: isize temp @161
   bb0:
-      StorageLive(_3) @157
-    * _3 = len((*_1)) @157
-      _0 = Eq(move _3, const 0_isize) proven @156
-      switch copy _0 [0: bb2, otherwise: bb1] @156
+      StorageLive(_3) @156
+      StorageLive(_4) @157
+    * _4 = len((*_1)) @157
+      _3 = Eq(move _4, const 0_isize) proven @156
+      switch copy _3 [0: bb2, otherwise: bb1] @156
   bb1:
-      StorageLive(_4) @161
-      _4 = len(_2) @161
-      _0 = Eq(const 0_isize, move _4) proven @161
-      goto bb2 @161
+      StorageLive(_5) @161
+      _5 = len(_2) @161
+      _0 = Eq(const 0_isize, move _5) proven @161
+      goto bb3 @161
   bb2:
-      StorageDead(_4) @161
-      StorageDead(_3) @157
+      _0 = copy _3 @155
+      goto bb3 @155
+  bb3:
+      StorageDead(_5) @161
+      StorageDead(_4) @157
+      StorageDead(_3) @156
       return @155
 fn replace @164
   _0: string return @164
@@ -259,3 +277,215 @@ fn replace @164
       drop _1 -> bb16 @164
   bb16:
       unreachable @168
+fn grouped @188
+  _0: string return @188
+  _1: [3 of string] arg a @188
+  bb0:
+    * _0 = move _1[2] @194
+      drop _1 -> bb1 @188
+  bb1:
+      return @193
+fn unfinished @199
+  _0: () return @199
+  _1: bool arg flag @199
+  _2: Dictionary<i32, bool> var entries @202 s1
+  _3: i32 temp @210 s1
+  _4: bool temp @211 s1
+  _5: isize temp @210 s1
+  _6: bool temp @210 s1
+  _7: ref/Dictionary<i32, bool> temp @210 s1
+  _8: ref/i32 temp @210 s1
+  _9: Never temp @210 s1
+  _10: (raw/u8, isize) temp @211 s1
+  _11: uniq/Dictionary<i32, bool> temp @211 s1
+  _12: () temp @211 s1
+  _13: i32 temp @212 s1
+  _14: bool temp @213 s1
+  _15: isize temp @212 s1
+  _16: bool temp @212 s1
+  _17: ref/Dictionary<i32, bool> temp @212 s1
+  _18: ref/i32 temp @212 s1
+  _19: Never temp @212 s1
+  _20: (raw/u8, isize) temp @213 s1
+  _21: uniq/Dictionary<i32, bool> temp @213 s1
+  _22: () temp @213 s1
+  s1: lexical in s0 @201
+  bb0:
+      StorageLive(_2) @202 s1
+    * _2 = FixedArray(): Dictionary<i32, bool> @209 s1
+      StorageLive(_3) @210 s1
+      StorageLive(_4) @211 s1
+      StorageLive(_5) @210 s1
+      StorageLive(_6) @210 s1
+      _3 = const 1_i32 @210 s1
+      StorageLive(_7) @210 s1
+      _7 = &_2: ref/Dictionary<i32, bool> @210 s1
+      StorageLive(_8) @210 s1
+      _8 = &_3: ref/i32 @210 s1
+      _5 = findEntry<i32, bool>(move _7, move _8) -> bb2 @210 s1
+  bb1:
+      _9 = intrinsic Fail(const "KIMI_E_DUPLICATE_KEY") -> ! @210 s1
+  bb2:
+      _6 = Eq(copy _5, const 0_isize) proven @210 s1
+      switch copy _6 [1: bb3, otherwise: bb1] @210 s1
+  bb3:
+      _4 = copy _1 @211 s1
+      StorageLive(_10) @211 s1
+      StorageLive(_11) @211 s1
+      _11 = &uniq _2: uniq/Dictionary<i32, bool> @211 s1
+      _10 = dictionaryStorage<i32, bool>(move _11) -> bb4 @211 s1
+  bb4:
+      StorageLive(_12) @211 s1
+      _12 = placeEntry<i32, bool>(copy _10.0, move _3, move _4) -> bb5 @211 s1
+  bb5:
+      StorageLive(_13) @212 s1
+      StorageLive(_14) @213 s1
+      StorageLive(_15) @212 s1
+      StorageLive(_16) @212 s1
+      _13 = const 2_i32 @212 s1
+      StorageLive(_17) @212 s1
+      _17 = &_2: ref/Dictionary<i32, bool> @212 s1
+      StorageLive(_18) @212 s1
+      _18 = &_13: ref/i32 @212 s1
+      _15 = findEntry<i32, bool>(move _17, move _18) -> bb7 @212 s1
+  bb6:
+      _19 = intrinsic Fail(const "KIMI_E_DUPLICATE_KEY") -> ! @212 s1
+  bb7:
+      _16 = Eq(copy _15, const 0_isize) proven @212 s1
+      switch copy _16 [1: bb8, otherwise: bb6] @212 s1
+  bb8:
+      goto bb13 check bb14 @214 s1
+  bb9:
+      return @199
+  bb10:
+      drop _2 -> bb11 @202 s1
+  bb11:
+      StorageDead(_2) @202 s1
+      goto bb9 @199
+  bb12:
+      StorageDead(_18) @212 s1
+      StorageDead(_17) @212 s1
+      StorageDead(_16) @212 s1
+      StorageDead(_15) @212 s1
+      StorageDead(_14) @213 s1
+      StorageDead(_13) @212 s1
+      StorageDead(_12) @211 s1
+      StorageDead(_11) @211 s1
+      StorageDead(_10) @211 s1
+      StorageDead(_8) @210 s1
+      StorageDead(_7) @210 s1
+      StorageDead(_6) @210 s1
+      StorageDead(_5) @210 s1
+      StorageDead(_4) @211 s1
+      StorageDead(_3) @210 s1
+      goto bb10 @199
+  bb13:
+      _0 = const () @214 s1
+      goto bb12 @214 s1
+  bb14:
+      StorageLive(_20) @213 s1
+      StorageLive(_21) @213 s1
+      _21 = &uniq _2: uniq/Dictionary<i32, bool> @213 s1
+      _20 = dictionaryStorage<i32, bool>(move _21) -> bb15 @213 s1
+  bb15:
+      StorageLive(_22) @213 s1
+      _22 = placeEntry<i32, bool>(copy _20.0, move _13, move _14) -> bb16 @213 s1
+  bb16:
+      StorageDead(_22) @213 s1
+      StorageDead(_21) @213 s1
+      StorageDead(_20) @213 s1
+      StorageDead(_18) @212 s1
+      StorageDead(_17) @212 s1
+      StorageDead(_16) @212 s1
+      StorageDead(_15) @212 s1
+      StorageDead(_14) @213 s1
+      StorageDead(_13) @212 s1
+      StorageDead(_12) @211 s1
+      StorageDead(_11) @211 s1
+      StorageDead(_10) @211 s1
+      StorageDead(_8) @210 s1
+      StorageDead(_7) @210 s1
+      StorageDead(_6) @210 s1
+      StorageDead(_5) @210 s1
+      StorageDead(_4) @211 s1
+      StorageDead(_3) @210 s1
+      drop _2 -> bb17 @202 s1
+  bb17:
+      StorageDead(_2) @202 s1
+      unreachable @201
+fn cut @215
+  _0: Slice<i32> return @215
+  _1: ref/Array<i32> arg values @215
+  _2: isize temp @225
+  _3: isize temp @229
+  _4: isize temp @228
+  _5: Never temp @230
+  _6: isize temp @230
+  bb0:
+      StorageLive(_2) @225
+    * _2 = len((*_1)) @225
+      StorageLive(_3) @229
+      _3 = const 1_i32 as isize (Wrap) proven @229
+      StorageLive(_4) @228
+      _4 = Sub(copy _2, copy _3) proven @228
+      StorageLive(_5) @230
+      _5 = intrinsic Abort(const "stop") -> ! check bb1 @231
+  bb1:
+      StorageLive(_6) @230
+      StorageDead(_6) @230
+      StorageDead(_5) @230
+      StorageDead(_4) @228
+      StorageDead(_3) @229
+      StorageDead(_2) @225
+      unreachable @225
+fn settled @234
+  _0: bool return @234
+  _1: bool arg a @234
+  _2: bool arg b @234
+  _3: bool var both @239 s1
+  _4: bool temp @242 s1
+  _5: bool temp @245 s1
+  _6: bool temp @246 s1
+  s1: lexical in s0 @238
+  bb0:
+      StorageLive(_3) @239 s1
+      StorageLive(_4) @242 s1
+    * _4 = copy _1 @242 s1
+      switch copy _4 [0: bb2, otherwise: bb1] @242 s1
+  bb1:
+      _3 = copy _2 @243 s1
+      goto bb3 @243 s1
+  bb2:
+      _3 = copy _4 @241 s1
+      goto bb3 @241 s1
+  bb3:
+      StorageDead(_4) @242 s1
+      StorageLive(_5) @245 s1
+      StorageLive(_6) @246 s1
+    * _6 = copy _3 @246 s1
+      switch copy _6 [0: bb4, otherwise: bb5] @246 s1
+  bb4:
+      _5 = copy _1 @247 s1
+      goto bb6 @247 s1
+  bb5:
+      _5 = copy _6 @245 s1
+      goto bb6 @245 s1
+  bb6:
+      goto bb10 check bb11 @244 s1
+  bb7:
+      return @234
+  bb8:
+      StorageDead(_3) @239 s1
+      goto bb7 @234
+  bb9:
+      StorageDead(_6) @246 s1
+      StorageDead(_5) @245 s1
+      goto bb8 @234
+  bb10:
+      _0 = move _5 @244 s1
+      goto bb9 @244 s1
+  bb11:
+      StorageDead(_6) @246 s1
+      StorageDead(_5) @245 s1
+      StorageDead(_3) @239 s1
+      unreachable @238

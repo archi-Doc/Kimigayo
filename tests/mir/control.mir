@@ -478,17 +478,26 @@ fn spin @142
 fn short @152
   _0: bool return @152
   _1: bool arg flag @152
+  _2: bool temp @156
   bb0:
-    * _0 = copy _1 @156
-      switch copy _0 [0: bb2, otherwise: bb1] @156
+      StorageLive(_2) @156
+    * _2 = copy _1 @156
+      switch copy _2 [0: bb2, otherwise: bb1] @156
   bb1:
-      goto bb4 check bb5 @158
+      goto bb6 check bb7 @158
   bb2:
-      return @155
+      _0 = copy _2 @155
+      goto bb3 @155
   bb3:
-      return @152
+      StorageDead(_2) @156
+      return @155
   bb4:
-      _0 = const false @158
-      goto bb3 @158
+      return @152
   bb5:
-      unreachable check bb2 @157
+      StorageDead(_2) @156
+      goto bb4 @152
+  bb6:
+      _0 = const false @158
+      goto bb5 @158
+  bb7:
+      unreachable check bb3 @157

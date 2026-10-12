@@ -41,30 +41,42 @@ fn order @44
   _0: bool return @44
   _1: ref/Key arg a @44
   _2: ref/Key arg b @44
-  _3: bool temp @55
-  _4: i32 temp @58
+  _3: bool temp @51
+  _4: bool temp @55
+  _5: bool temp @55
+  _6: i32 temp @58
   bb0:
-    * _0 = equals(copy _1, copy _2) -> bb1 @51
+      StorageLive(_3) @51
+    * _3 = equals(copy _1, copy _2) -> bb1 @51
   bb1:
-      switch copy _0 [0: bb2, otherwise: bb3] @51
+      switch copy _3 [0: bb2, otherwise: bb3] @51
   bb2:
-      StorageLive(_3) @55
-      _3 = equals(copy _1, copy _2) -> bb4 @55
+      StorageLive(_4) @55
+      StorageLive(_5) @55
+      _5 = equals(copy _1, copy _2) -> bb5 @55
   bb3:
-      StorageDead(_4) @58
-      StorageDead(_3) @55
-      return @50
+      _0 = copy _3 @50
+      goto bb4 @50
   bb4:
-      _0 = Not(move _3) proven @55
-      switch copy _0 [0: bb6, otherwise: bb5] @55
+      StorageDead(_6) @58
+      StorageDead(_5) @55
+      StorageDead(_4) @55
+      StorageDead(_3) @51
+      return @50
   bb5:
-      StorageLive(_4) @58
-      _4 = compare(copy _1, copy _2) -> bb7 @58
+      _4 = Not(move _5) proven @55
+      switch copy _4 [0: bb7, otherwise: bb6] @55
   bb6:
-      goto bb3 @54
+      StorageLive(_6) @58
+      _6 = compare(copy _1, copy _2) -> bb9 @58
   bb7:
-      _0 = Lt(move _4, const 0_i32) proven @58
-      goto bb6 @58
+      _0 = copy _4 @54
+      goto bb8 @54
+  bb8:
+      goto bb4 @54
+  bb9:
+      _0 = Lt(move _6, const 0_i32) proven @58
+      goto bb8 @58
 fn generic @61
   _0: bool return @61
   _1: ref/T arg left @61
@@ -96,27 +108,33 @@ fn text @76
   _0: bool return @76
   _1: string arg name @76
   _2: string arg other @76
-  _3: ref/string temp @82
-  _4: ref/string temp @83
-  _5: ref/string temp @85
+  _3: bool temp @81
+  _4: ref/string temp @82
+  _5: ref/string temp @83
+  _6: ref/string temp @85
   bb0:
-      StorageLive(_3) @82
-    * _3 = &_1: ref/string @82
-      StorageLive(_4) @83
-      _4 = &_2: ref/string @83
-      _0 = Eq(move _3, move _4) proven @81
-      switch copy _0 [0: bb1, otherwise: bb2] @81
+      StorageLive(_3) @81
+      StorageLive(_4) @82
+    * _4 = &_1: ref/string @82
+      StorageLive(_5) @83
+      _5 = &_2: ref/string @83
+      _3 = Eq(move _4, move _5) proven @81
+      switch copy _3 [0: bb1, otherwise: bb2] @81
   bb1:
-      StorageLive(_5) @85
-      _5 = &_1: ref/string @85
-      _0 = Eq(move _5, const "kimi") proven @84
-      goto bb2 @84
+      StorageLive(_6) @85
+      _6 = &_1: ref/string @85
+      _0 = Eq(move _6, const "kimi") proven @84
+      goto bb3 @84
   bb2:
-      StorageDead(_5) @85
-      StorageDead(_4) @83
-      StorageDead(_3) @82
-      drop _2 -> bb3 @76
+      _0 = copy _3 @80
+      goto bb3 @80
   bb3:
-      drop _1 -> bb4 @76
+      StorageDead(_6) @85
+      StorageDead(_5) @83
+      StorageDead(_4) @82
+      StorageDead(_3) @81
+      drop _2 -> bb4 @76
   bb4:
+      drop _1 -> bb5 @76
+  bb5:
       return @80

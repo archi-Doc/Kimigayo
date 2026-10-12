@@ -355,10 +355,11 @@ internal sealed partial class MirBuilder
         return result;
     }
 
+    // A located sequence's length, a part of its selection made before the boundaries or key that may not complete (Make).
     private MirPlace Length(MirPlace sequence, Koto node)
     {
         var length = this.Temp(BoundType.ISize, node);
-        this.Set(length, MirRvalue.Len(sequence), node);
+        this.Make(length, MirRvalue.Len(sequence), node);
         return length;
     }
 
@@ -403,7 +404,8 @@ internal sealed partial class MirBuilder
 
     // SPEC 12.3.4: a dictionary literal: the empty Dictionary, then each entry in source order: its key evaluated once and retained, looked
     // up among the entries inserted (its plan's findEntry call), a duplicate failing with KIMI_E_DUPLICATE_KEY before the value is evaluated,
-    // then the value evaluated and the pair placed (the placeEntry body, over the handle dictionaryStorage gives).
+    // then the value evaluated and the pair placed (the placeEntry body, over the handle dictionaryStorage gives). The empty Dictionary is a
+    // part made before the entries, which may not complete (Make).
     private void Dictionary(MirPlace destination, DictionaryLiteralKoto dictionary)
     {
         if (CallPlan.Of(dictionary) is not { } find)
@@ -415,7 +417,7 @@ internal sealed partial class MirBuilder
         var type = TypeOf(dictionary);
         var layout = compilation.Library.Function(CompilerFunctionKind.StorageDictionaryLayout)!.Type!;
         ReadOnlySpan<BoundType?> slots = [type.Components[0], type.Components[1]];
-        this.Set(destination, MirRvalue.Aggregate(MirAggregateKind.FixedArray, this.body.Operands.Length, 0, type), dictionary);
+        this.Make(destination, MirRvalue.Aggregate(MirAggregateKind.FixedArray, this.body.Operands.Length, 0, type), dictionary);
         foreach (var entry in dictionary.Entries)
         {
             var key = this.Temp(type.Components[0], entry.Key);

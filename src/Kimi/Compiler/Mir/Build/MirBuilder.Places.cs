@@ -27,7 +27,8 @@ internal sealed partial class MirBuilder
             HirPlaceKind.Field when node is MemberAccessKoto member => this.Member(member),
             HirPlaceKind.Local or HirPlaceKind.Static or HirPlaceKind.Field => this.Named(node),
             HirPlaceKind.Deref or HirPlaceKind.PairLayer => this.Layer(this.Place(Child(node)), shape.Kind),
-            HirPlaceKind.Index or HirPlaceKind.ConstIndex => this.Element((IndexKoto)node, shape.Kind),
+            HirPlaceKind.Index => this.Element((IndexKoto)node),
+            HirPlaceKind.ConstIndex => this.ConstElement((IndexKoto)node),
             HirPlaceKind.CallResult => this.Referent(node),
             HirPlaceKind.Value => this.Value(node),
             _ => this.Unsupported(node),
@@ -191,9 +192,22 @@ internal sealed partial class MirBuilder
         static int Inherited(BoundType type) => AdtDef.Base(type) is { } parent ? AdtDef.StorageCount(parent) : 0;
     }
 
-    // SPEC 4.6.1, 4.6.9, 15.1.3: a built-in element at an integer position, a ConstIndex where the position is a constant (in range: its
-    // PlaceShape), at a written ^x the length minus x, or at another key's resolution; SPEC 5.3: a raw pointer's p[n] is *(p + n).
-    private MirPlace Element(IndexKoto index, HirPlaceKind kind)
+    // SPEC 15.1.3: a fixed-array element at a literal position in range, grouped or not (its PlaceShape): at the value Binding fitted to
+    // the literal its groups enclose (Folded); the position evaluates nothing.
+    private MirPlace ConstElement(IndexKoto index)
+    {
+        var literal = index.Right;
+        while (HirTables.Op(literal) == HirOp.Group)
+        {
+            literal = Child(literal);
+        }
+
+        return this.body.Project(this.Place(index.Left), MirProjectionKind.ConstIndex, (int)HirTables.PlanOf(literal).Folded!.Value);
+    }
+
+    // SPEC 4.6.1, 4.6.9: a built-in element at a runtime position: an integer, at a written ^x the length minus x, or at another key's
+    // resolution; SPEC 5.3: a raw pointer's p[n] is *(p + n).
+    private MirPlace Element(IndexKoto index)
     {
         var sequence = this.Place(index.Left);
         var key = ExpansionPlan.Of(index)?.First;
@@ -212,11 +226,6 @@ internal sealed partial class MirBuilder
             this.body.AddOperand(position);
             this.Set(offset, MirRvalue.Binary(MirBinaryOp.Add, start, proven: true), index);
             return this.body.Project(offset, MirProjectionKind.Deref, 0);
-        }
-
-        if (kind == HirPlaceKind.ConstIndex && position.Kind == MirOperandKind.Const)
-        {
-            return this.body.Project(sequence, MirProjectionKind.ConstIndex, (int)this.body.Consts[position.Arg].Bits);
         }
 
         return this.body.Project(sequence, MirProjectionKind.Index, this.Position(position, index.Right).Root);
