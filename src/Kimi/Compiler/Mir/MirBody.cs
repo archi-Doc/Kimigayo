@@ -279,6 +279,11 @@ internal sealed class MirBody
     /// <summary>Gets a value indicating whether a value of the body is Opaque: an error or Unsupported form replaced it.</summary>
     internal bool HasOpaque => this.opaqueCount > 0;
 
+    /// <summary>Gets the subject of a finding or problem at a location: the syntax its source names, else the body's.</summary>
+    /// <param name="source">The source of a statement, a terminator or a local.</param>
+    /// <returns>The syntax.</returns>
+    internal SourceRef Subject(in SourceInfo source) => source.Syntax.Id != 0 ? source.Syntax : this.Source;
+
     /// <summary>Gets the Type of a Place: its last projection's, or its root's.</summary>
     /// <param name="place">A Place of the body.</param>
     /// <returns>The Type, or null when a projection is not admitted.</returns>

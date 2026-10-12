@@ -94,8 +94,6 @@ internal sealed partial class MirValidator(TyCtxt types)
         }
     }
 
-    private static SourceRef Subject(MirBody body, in SourceInfo source) => source.Syntax.Id != 0 ? source.Syntax : body.Source;
-
     // The temps an Opaque value defines, whose Type is the replaced syntax's, which Binding may not know (an Error node has none), and those a
     // Use, a unary operator or an arithmetic, bit or shift operator of such a temp defines, whose Type is that operand's: the Type tier reads
     // them as of an unknown Type.
@@ -153,7 +151,7 @@ internal sealed partial class MirValidator(TyCtxt types)
         {
             if (!this.reach[block])
             {
-                findings.Add(new(MirViolation.Unreachable, Subject(body, blocks[block].Terminator.Source)));
+                findings.Add(new(MirViolation.Unreachable, body.Subject(blocks[block].Terminator.Source)));
             }
         }
     }
@@ -315,7 +313,7 @@ internal sealed partial class MirValidator(TyCtxt types)
             }
         }
 
-        internal readonly void Report(MirViolation rule) => findings.Add(new(rule, Subject(body, this.at)));
+        internal readonly void Report(MirViolation rule) => findings.Add(new(rule, body.Subject(this.at)));
 
         private static BindingSymbol? PairBinderOf(BoundType? type)
         {
