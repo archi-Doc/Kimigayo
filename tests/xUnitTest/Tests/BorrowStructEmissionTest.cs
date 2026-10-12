@@ -18,7 +18,7 @@ public class BorrowStructEmissionTest
         var source = File.ReadAllText(Path.Combine(Repository.Root, "tests", "milestones", "Milestone5.kimi"));
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
-        Assert.True(c.Analysis.IsVerified, c.Analysis + "\nObligations: " + string.Join('\n', c.Binding.Obligations) + "\n" + string.Join('\n', c.Problems) + "\nFlow: " + string.Join('\n', c.Ownership.ControlFlow!.Issues) + "\nPending: " + string.Join('\n', c.Ownership.ControlFlow.PendingBinding));
+        Assert.True(c.Analysis.IsVerified, "Obligations: " + string.Join('\n', c.Binding.Obligations) + "\n" + MinimalEmissionTest.Describe(c, null));
         ScalarEmissionTest.EmitFixture("BorrowStructMilestone5", source, "Borrowed sum is 55.\nView destroyed; counter is still 55.\nFinal value is 56.\nCounter destroyed.\nDone.\n");
     }
 

@@ -28,9 +28,9 @@ public class RequireRecoveryDiagnosticTest
         var require = Assert.Single(Descendants(c.Kotonoha.RootKoto).OfType<RequireKoto>());
 
         // The check runs at the body the recovery supplied, which stands for the syntax Error.
-        var issue = Assert.Single(c.Ownership.ControlFlow!.Issues);
-        Assert.Equal(DiagnosticCode.RequireFallthrough_Kd, issue.Code);
-        Assert.Same(require.ElseBody, issue.Node);
+        var (old, mir) = ControlFlowAnalysisTest.RequireFallthroughs(c);
+        Assert.Same(require.ElseBody, Assert.Single(mir));
+        Assert.Equal(old, mir);
         Assert.NotNull(require.ElseBody is ErrorKoto error ? error.Cause : require.CodeContext.RecoveryCause(require.ElseBody));
 
         // Its record is derived: without the syntax partition its prerequisite is unresolved and the record is published ...

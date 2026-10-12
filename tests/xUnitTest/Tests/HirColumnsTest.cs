@@ -125,6 +125,39 @@ public sealed class HirColumnsTest
         Assert.Equal(HirCompletion.Completes, First<RequireKoto>("count"));
     }
 
+    // SPEC 7.2.3, 14.1: a default's transfers target only constructs inside it, so its completion is its own: a default that never
+    // completes leaves the body of its function completing.
+    [Theory]
+    [InlineData("do => 1", true)]
+    [InlineData("loop => exit 1", true)]
+    [InlineData("label choice: do => exit to choice 1", true)]
+    [InlineData("if true => 1 else => 2", true)]
+    [InlineData("loop => continue", false)]
+    public void ADefaultHasItsOwnCompletion(string expression, bool completes)
+    {
+        var c = MinimalEmissionTest.Analyze("func f(x: i32 = (" + expression + ")) => ()\nf(3)");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        HirTables.Publish(c);
+        Assert.Empty(Problems(c.Kotonoha));
+        var function = Reachable(c.Kotonoha).OfType<FunctionKoto>().Single(static x => x.Name == "f");
+        Assert.Equal(completes ? HirCompletion.Completes : HirCompletion.Diverges, HirTables.CompletionOf(function.Parameters[0].DefaultValue!));
+        Assert.Equal(HirCompletion.Completes, HirTables.CompletionOf(function.ExpressionBody!));
+    }
+
+    // SPEC 14.7.3: a yield in a selection inside a match arm ends that selection, not the match.
+    [Fact]
+    public void AYieldInAMatchArmTargetsItsSelection()
+    {
+        var c = MinimalEmissionTest.Analyze("func f(x: bool) -> i32 => match x\n    true => (if x\n        yield 1\n    else\n        yield 2\n    )\n    false => 0");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        HirTables.Publish(c);
+        Assert.Empty(Problems(c.Kotonoha));
+        var f = Reachable(c.Kotonoha).OfType<FunctionKoto>().Single(static x => x.Name == "f");
+        var jumps = Reachable(c.Kotonoha).Where(x => HirTables.Op(x) is HirOp.Jump or HirOp.Continue && IsWithin(x, f)).ToArray();
+        Assert.Equal(2, jumps.Length);
+        Assert.All(jumps, static x => Assert.IsType<IfKoto>(HirTables.PlanOf(Assert.IsType<YieldKoto>(x)).Plan));
+    }
+
     // SPEC 3.5, 10.2, 15.1.5, 15.1.6: a Copy Place is Copied, a stored exclusive reference Reborrowed, a Place a ref parameter takes
     // shared-borrowed in place, an @move operand moved, a Subject borrowed in place, and a value taken as a Temporary.
     [Fact]

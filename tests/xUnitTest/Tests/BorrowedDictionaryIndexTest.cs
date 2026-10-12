@@ -23,7 +23,7 @@ public class BorrowedDictionaryIndexTest(ITestOutputHelper testOutput)
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.False(c.Binding.Result.IsComplete);
         c.Binding.ReportDiagnostics();
-        c.Ownership.ControlFlow!.ReportDiagnostics();
+        c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var errors = result.Diagnostics.Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();

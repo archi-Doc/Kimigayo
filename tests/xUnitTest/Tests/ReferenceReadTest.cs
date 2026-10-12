@@ -24,8 +24,7 @@ public class ReferenceReadTest
     {
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
-        Assert.True(c.Analysis.IsVerified, string.Join("\n", c.Problems.Select(x => $"{x.Code}: {c.SyntaxOf(x.Subject)}")
-            .Concat(c.Ownership.ControlFlow!.Issues.Select(x => $"flow {x.Message}: {x.Node}")).Concat(c.Ownership.ControlFlow.PendingBinding.Select(x => $"pending: {x}"))));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Validate(out var error), MinimalEmissionTest.Describe(c, error));
         ScalarEmissionTest.EmitFixture("ReferenceRead", Source, "ok\n");
     }

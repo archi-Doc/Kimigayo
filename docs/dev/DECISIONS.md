@@ -393,7 +393,8 @@ rules that result from them.
 - **R4-M12** Library bodies are analyzed in every compilation. The library and the milestones produce no problems,
   except an (a) row whose library fix lands in the same unit.
 - **R4-M13** Tests migrate per method kind (body presence, operations, cleanup verdicts, Loans, verification state, R5/R6
-  residue). Ratchets: control-flow structure reads at most 1, `Ownership.Bodies` reads at most 110.
+  residue). Ratchets: control-flow structure reads at most 1, `Ownership.Bodies` reads at most 110. The numbers are superseded
+  by R4-M13a.
 - **R4-M15** `OwnershipStorageLimit_Kd` stays the one Resource code, decided by the byte size of A5's Loan × point arena. The
   arena scope is superseded by R4-M15a.
 - **R4-M16** The ledger's classification table is tracked (`tests/xUnitTest/TestData/mir-diff/classification.tsv`); raw
@@ -592,6 +593,19 @@ rules that result from them.
   drops, but the SPEC 15.1.3 rule undecided or false errors from joined bits); replaying or re-solving per view; storing Types in
   the record; rows on MirBody; flags per Drop; a separate event walk; removing the builder's copy-time rule; a new diagnostic
   code. Not temporary.
+- **R4-M13a** (2026-10-12, planning session; U3 design; supersedes R4-M13's numbers, not its migration kinds) A test method
+  migrates once, at the stage of its latest assertion kind; lookups and failure messages migrate in every method. Control-flow
+  structure reads: 1 (`LegacyRecords`, the harness's and the snapshot's one reader, until R6). `Ownership.Bodies` reads: 183
+  after U3, about 174 after U10; the rest is R5 (emission pairing 40, defect injection into old plans and graphs 87, library
+  reach 23: the MIR builds every library body and IR names are numbered, so reach has no public observable before R5's
+  emission roots) and R6 (old internals, old storage and plan reuse, the probe tool and three class helpers, 24), each site
+  tagged with its stage in the commit that leaves it. A ratchet row counts the test calls of the old control-flow entries
+  (`AnalyzeControlFlow()`, `ControlFlowAnalysis.Analyze(`), so direct calls cannot grow; the A3 old-against-MIR helper
+  `ControlFlowAnalysisTest.RequireFallthroughs` (R4-M7a) is the one shared reader, whose old half R6 deletes for its three
+  callers. Reason R4-M13's numbers no longer hold: they assumed a residue of about 110, and the inventory shows that reaching it
+  in R4 would delete old-Emission validation tests that still guard the path deciding acceptance until R6 (R4-M1, D5).
+  Rejected: deleting the injection tests now; MIR presence for library reach (vacuous while every library body is built);
+  `LegacyRecords` as the general reader of flow records (it moves reads out of the ratchet without migrating them).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

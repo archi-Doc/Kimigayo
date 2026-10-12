@@ -72,8 +72,7 @@ public class GenericBorrowedElementTest
         // once per omission, dependent forwarding) analyzes, lowers per instance and runs natively.
         var c = MinimalEmissionTest.Analyze(Program20Source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
-        Assert.True(c.Analysis.IsVerified, string.Join("\n", c.Problems.Select(x => $"{x.Code}: {c.SyntaxOf(x.Subject)} ({c.SyntaxOf(x.Subject).GetType().Name})")
-            .Concat(c.Ownership.ControlFlow!.Issues.Select(x => $"flow {x.Message}: {x.Node}")).Concat(c.Ownership.ControlFlow.PendingBinding.Select(x => $"pending: {x}"))));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         Assert.True(module.IsComplete);
         ScalarEmissionTest.EmitFixture(

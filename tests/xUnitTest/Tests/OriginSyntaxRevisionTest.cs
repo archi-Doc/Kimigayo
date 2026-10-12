@@ -143,7 +143,7 @@ public class OriginSyntaxRevisionTest
     {
         const string Source = "struct Counter\n    public var value: i32 = 7\nstruct View<T> {source}\n    public let value: ref/T during source\n    public init(value: ref/T during source) => self.value = value\nfunc read<T>(view: ref/View<T>) -> i32 => 1\nspecialize func read<Counter>(view: ref/View<Counter>) -> i32 => view.value.value\nlet counter = Counter.init()\nlet view = View<Counter>.init(counter@ref)\nif read(view@ref) != 7 => $abort(\"specialization\")\n";
         var compilation = MinimalEmissionTest.Analyze(Source);
-        Assert.True(compilation.Analysis.IsVerified, string.Join("\n", compilation.Binding.Obligations) + "\n" + string.Join("\n", compilation.Ownership.ControlFlow!.PendingBinding));
+        Assert.True(compilation.Analysis.IsVerified, string.Join("\n", compilation.Binding.Obligations) + "\n" + MinimalEmissionTest.Describe(compilation, null));
         ScalarEmissionTest.EmitFixture("AnonymousOriginSpecialization", Source, string.Empty);
     }
 
@@ -153,7 +153,7 @@ public class OriginSyntaxRevisionTest
     {
         const string Source = "struct Counter\n    public var value: i32 = 7\nstruct View {source}\n    public let counter: ref/Counter during source\n    public init(counter: ref/Counter during source) => self.counter = counter\nfunc read(view: ref/View) -> i32 => view.counter.value\nvar counter = Counter.init()\nlet view = View.init(counter@ref)\nif read(view@ref) != 7 => $abort(\"bad value\")\n";
         var valid = MinimalEmissionTest.Analyze(Source);
-        Assert.True(valid.Analysis.IsVerified, string.Join("\n", valid.Binding.Obligations) + "\n" + string.Join("\n", valid.Ownership.ControlFlow!.Issues) + "\n" + string.Join("\n", valid.Ownership.ControlFlow.PendingBinding));
+        Assert.True(valid.Analysis.IsVerified, string.Join("\n", valid.Binding.Obligations) + "\n" + MinimalEmissionTest.Describe(valid, null));
         ScalarEmissionTest.EmitFixture("AnonymousAggregateOrigin", Source, string.Empty);
         valid = CompilationTestHelper.Reload(valid);
         for (var i = 0; i < 3; i++)

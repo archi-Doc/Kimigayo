@@ -19,12 +19,7 @@ public class StructEmissionTest
     [InlineData("Replacement", "var value = Resource.init()\nvalue = Resource.init()\nConsole.writeLine(\"done\")", "created\ncreated\ndestroyed\ndone\ndestroyed\n")]
     [InlineData("ConditionalMove", "func take(value: Resource) => ()\nfunc f(flag: bool)\n    let value = Resource.init()\n    if flag => take(value@move)\n    Console.writeLine(\"done\")\nf(true)\nf(false)", "created\ndestroyed\ndone\ncreated\ndone\ndestroyed\n")]
     public void ExecutesOwnedStruct(string name, string body, string stdout)
-    {
-        var compilation = MinimalEmissionTest.Analyze(Resource + body);
-        Assert.Empty(compilation.Ownership.ControlFlow!.Issues);
-        Assert.Empty(compilation.Ownership.ControlFlow.PendingBinding);
-        ScalarEmissionTest.EmitFixture("Struct" + name, Resource + body, stdout);
-    }
+        => ScalarEmissionTest.EmitFixture("Struct" + name, Resource + body, stdout);
 
     [Theory]
     [InlineData("Arguments", "struct S\n    public var value: i32\n    public init(value: i32) => self.value = value\n    drop\n        if self.value == 9 => Console.writeLine(\"nine\")\nlet s = S.init(9)", "nine\n")]

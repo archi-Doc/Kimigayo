@@ -332,12 +332,12 @@ public class MinimalEmissionTest
         return c;
     }
 
+    // The failure message of an analysis or generation assertion: the results, the old path's records (requirement, code and location) and,
+    // under mir, the problems with their Op. It only reads, since a message argument is evaluated whether or not the assertion fails.
     internal static string Describe(Compilation c, string? error)
         => $"{error}; Binding={c.Binding.Result}; Startup={c.Binding.Startup}; Analysis={c.Analysis}; " +
-            string.Join(", ", c.Binding.Issues) + "; " + string.Join(", ", c.Ownership.Issues) + "; " +
-            (c.Ownership.ControlFlow is { } flow ? string.Join(", ", flow.Issues) + "; " + string.Join(", ", flow.PendingBinding) : string.Empty) + "; " +
-            (c.Pipeline == CompilerPipeline.Mir ? string.Join(", ", c.Problems.Skip(c.Ownership.Issues.Count).Select(x => $"{x.Code} {HirTables.Op(c.SyntaxOf(x.Subject))}")) + "; " : string.Empty) +
-            string.Join(", ", c.Ownership.Bodies.SelectMany(x => x.Operations).Select(x => $"{x.Kind}:{x.Place}:{x.Source.Akind}"));
+            string.Join(", ", LegacyRecords.Of(c).Select(static x => $"{x.Requirement} {x.Code} {LegacyRecords.Location(x.Node)}")) +
+            (c.Pipeline == CompilerPipeline.Mir ? "; " + string.Join(", ", c.Problems.Select(x => $"{x.Code} {HirTables.Op(c.SyntaxOf(x.Subject))}")) : string.Empty);
 
     // SPEC 8.4.5: an effect bound rejects its conformance at Binding for the Loans and calls, and after ownership analysis
     // for the destructions the implementation's bodies actually perform (their planned cleanups).

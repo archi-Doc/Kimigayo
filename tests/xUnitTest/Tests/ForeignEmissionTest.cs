@@ -231,11 +231,7 @@ public class ForeignEmissionTest
         var c = MinimalEmissionTest.Analyze(body);
         Assert.Equal(mismatch, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.TypeMismatch_Kd));
         using var writer = new StringWriter();
-        Assert.Equal(!mismatch, c.WriteIr(writer, out var error));
-        if (!mismatch)
-        {
-            Assert.Empty(c.Ownership.ControlFlow!.Issues);
-        }
+        Assert.Equal(!mismatch, c.WriteIr(writer, out _));
     }
 
     [Fact]
@@ -281,15 +277,17 @@ public class ForeignEmissionTest
     }
 
     [Theory]
-    [InlineData("let p: raw/i32 = null\nlet n: i32 = 1\nlet q = unsafe => p + n")]
-    [InlineData("var p: raw/i32 = null\nlet n: i32 = 1\nunsafe => p += n")]
-    [InlineData("var p: raw/i32 = null\nunsafe => p *= 2")]
-    [InlineData("let p: raw/i32 = null\nlet q = unsafe => 1 + p")]
-    [InlineData("let p: raw/i32 = null\nlet q: raw/i32 = null\nlet d = unsafe => p - q")]
-    public void InvalidPointerArithmeticIsRejected(string body)
+    [InlineData("let p: raw/i32 = null\nlet n: i32 = 1\nlet q = unsafe => p + n", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("var p: raw/i32 = null\nlet n: i32 = 1\nunsafe => p += n", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("var p: raw/i32 = null\nunsafe => p *= 2", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("let p: raw/i32 = null\nlet q = unsafe => 1 + p", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("let p: raw/i32 = null\nlet q: raw/i32 = null\nlet d = unsafe => p - q", DiagnosticCode.TypeMismatch_Kd)]
+    public void InvalidPointerArithmeticIsRejected(string body, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(body);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.ControlFlow!.Issues.Count == 0);
+        c.Binding.ReportDiagnostics();
+        c.ReportAnalysis();
+        Assert.Contains(TestDiagnostics.Of(c), x => x.Code == code.ToString());
         using var writer = new StringWriter();
         Assert.False(c.WriteIr(writer, out _));
     }
@@ -319,7 +317,8 @@ public class ForeignEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("let p: raw/i32 = null\nvar v: i32 = 0\nv = *p");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.ControlFlow!.Issues, x => x.Message.Contains("Unsafe", StringComparison.Ordinal));
+        c.ReportAnalysis();
+        Assert.Contains(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.UnsafeBlockRequired_Kd));
     }
 
     [Fact]
@@ -643,7 +642,8 @@ public class ForeignEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("let p: raw/i32 = null\n" + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.ControlFlow!.Issues, x => x.Message.Contains("Unsafe", StringComparison.Ordinal));
+        c.ReportAnalysis();
+        Assert.Contains(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.UnsafeBlockRequired_Kd));
         using var writer = new StringWriter();
         Assert.False(c.WriteIr(writer, out _));
     }
@@ -657,7 +657,8 @@ public class ForeignEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("var p: raw/i32 = null\n" + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.ControlFlow!.Issues, x => x.Message.Contains("Unsafe", StringComparison.Ordinal));
+        c.ReportAnalysis();
+        Assert.Contains(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.UnsafeBlockRequired_Kd));
         using var writer = new StringWriter();
         Assert.False(c.WriteIr(writer, out _));
     }
