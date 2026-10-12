@@ -378,6 +378,21 @@ public sealed class MirBorrowTest(ITestOutputHelper output)
         return text.Append("    return total + view@follow\n").ToString();
     }
 
+    // A5-1 of a body under a view with fresh components, as the driver runs it, A2's verdicts the program's.
+    internal static (MirBorrows Borrows, MirReport Report) Analyze(Compilation c, MirProgram program, MirBody body, long view)
+    {
+        var (flow, moves, cases, report) = (new MirDataflow(new MirReach()), new MirMoveData(), new MirCases(c.Types), new MirReport());
+        var borrows = new MirBorrows(flow, moves, cases, c.Types);
+        flow.Begin(body);
+        moves.Build(body, flow);
+        cases.Select(body, view);
+        borrows.Run(body, view, program.Drops, report);
+        return (borrows, report);
+    }
+
+    // The first line of the subject of a location's source.
+    internal static string Subject(Compilation c, MirBody body, in SourceInfo source) => c.SyntaxOf(body.Subject(source)).ToString().Split('\n')[0].Trim();
+
     // A V16 shape: N borrows read in 16 arms of a match, each arm its own N/16.
     private static string Arms(int size)
     {
@@ -437,8 +452,6 @@ public sealed class MirBorrowTest(ITestOutputHelper output)
         }
     }
 
-    private static string Subject(Compilation c, MirBody body, in SourceInfo source) => c.SyntaxOf(body.Subject(source)).ToString().Split('\n')[0].Trim();
-
     // The body of a name.
     private static (Compilation Compilation, MirProgram Program, MirBody Body) Body(string source, string name)
     {
@@ -446,18 +459,6 @@ public sealed class MirBorrowTest(ITestOutputHelper output)
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         return (c, program, program.Bodies.ToArray().Single(x => x.Source.Module == 0 && x.Key.Kind == MirBodyKind.Fn && x.Key.Decl?.Name == name));
-    }
-
-    // A5-1 of a body under a view with fresh components, as the driver runs it, A2's verdicts the program's.
-    private static (MirBorrows Borrows, MirReport Report) Analyze(Compilation c, MirProgram program, MirBody body, long view)
-    {
-        var (flow, moves, cases, report) = (new MirDataflow(new MirReach()), new MirMoveData(), new MirCases(c.Types), new MirReport());
-        var borrows = new MirBorrows(flow, moves, cases, c.Types);
-        flow.Begin(body);
-        moves.Build(body, flow);
-        cases.Select(body, view);
-        borrows.Run(body, view, program.Drops, report);
-        return (borrows, report);
     }
 
     // The output of a replay: the Loans active before each location, summed.
