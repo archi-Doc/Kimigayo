@@ -2035,7 +2035,7 @@ public sealed partial class Binding
         // the callee's Types as declared.
         private int Context(CallPlan call)
         {
-            if (call.TypeArguments.Length == 0 && call.LengthArguments.Length == 0 && call.Origins.Length == 0 && call.InputOrigins.Length == 0 &&
+            if (call.TypeArguments.Length == 0 && call.Origins.Length == 0 && call.InputOrigins.Length == 0 &&
                 call.DeclaringType is null or { Components.Count: 0, OriginArguments.Count: 0 })
             {
                 return 0;

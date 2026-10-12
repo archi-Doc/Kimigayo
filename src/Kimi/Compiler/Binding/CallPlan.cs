@@ -100,7 +100,7 @@ public sealed class CallPlan
     /// <summary>Gets Type substitutions in declaration-slot order; length slots are null.</summary>
     public ReadOnlySpan<BoundType?> TypeArguments => this.typeArguments;
 
-    /// <summary>Gets length substitutions in declaration-slot order; Type slots are null.</summary>
+    /// <summary>Gets length substitutions in declaration-slot order, one per slot of <see cref="TypeArguments"/>; Type slots are null.</summary>
     public ReadOnlySpan<BoundLength?> LengthArguments => this.lengthArguments;
 
     /// <summary>Gets the invoked callable value of a value call.</summary>
@@ -311,14 +311,14 @@ public sealed class CallPlan
         if (this.typeArguments.Length != typeArguments.Length)
         {
             this.typeArguments = new BoundType[typeArguments.Length];
+            this.lengthArguments = new BoundLength?[typeArguments.Length];
         }
 
+        // SPEC 8.8.3: the plan holds one length entry per slot, the selection key's form. The lengths are empty (the target has no
+        // length slot) or one per slot of the Type arguments.
+        System.Diagnostics.Debug.Assert(lengthArguments.IsEmpty || lengthArguments.Length == typeArguments.Length);
         typeArguments.CopyTo(this.typeArguments);
-        if (this.lengthArguments.Length != lengthArguments.Length)
-        {
-            this.lengthArguments = new BoundLength?[lengthArguments.Length];
-        }
-
+        Array.Clear(this.lengthArguments);
         lengthArguments.CopyTo(this.lengthArguments);
         if (target.Declaration is FunctionKoto { IsVirtual: true } original)
         {

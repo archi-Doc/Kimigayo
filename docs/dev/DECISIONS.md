@@ -791,6 +791,15 @@ rules that result from them.
   `Binding.Constraints`' signature selection on `Callable` (stage ledger). Owner exception (user, 2026-10-12): the 30-Binding-lines
   guideline is waived for U7 up to about 150 lines (from about 70); measured +140 lines, +924 tokens (U7a +54, U7k +17, U7c +1,
   U7 +68).
+- **R4-M26** (2026-10-12, planning session; U6c) A selected call (`CallPlan`) and a substitution (`Subst`) hold one length entry per
+  slot, parallel to their Type arguments, the Implementation Selection Key's form (SPEC 8.8.3, IMPL 21.3.2). Their constructors
+  (`CallPlan.Set`, `TyCtxt.Intern`) establish it: a producer passes no lengths (the target has no length slot) or one per slot, and a
+  span of another length is a broken contract (`Debug.Assert`). A function item's call context (`FunctionItemContext`), the
+  Dictionary storage calls, the object factory call and the MIR builder's synthesized calls pass none, so a function item now runs
+  the specialization its key selects. Replaces the per-producer padding of `InstantiateIntegerPosition` (e6d2c5ee). Rejected:
+  padding in each producer (an open family; this was its second fix), a key rule accepting an empty span (two forms, and the entry,
+  closure-context and default-call identity probes still split one instance), the empty form for calls and keys (two shapes for a
+  per-slot fact), per-slot lengths in Item Types (every BoundType keeps LengthArguments empty without a length argument).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

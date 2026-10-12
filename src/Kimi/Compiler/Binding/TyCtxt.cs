@@ -23,6 +23,9 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     private BoundLength?[] composedLengths = [];
     private BoundOrigin[] composedOrigins = [];
 
+    // The lengths of a substitution whose binder has no length slot; never written, so every entry is null.
+    private BoundLength?[] noLengths = [];
+
     // SPEC 3.4.1, 13.5.5.1: the layer selection follows implicitly at a Type, a Deref of a reference or object handle or a PairLayer of a
     // pair layer, with the Type below it and the pair binder whose Semantics case decides the PairLayer (its SemanticsTarget, the
     // PairBinder.Target); Value, below which is the Type itself, for any other Type.
@@ -277,16 +280,6 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
         }
 
         return failed ? null : this.Intern(inner.Target, inner.Self is { } self ? this.Apply(self, outer) : null, declaring, types, lengths, origins[..inner.Origins.Length], origins[inner.Origins.Length..]);
-
-        static Span<T> Fit<T>(ref T[] scratch, int length)
-        {
-            if (scratch.Length < length)
-            {
-                scratch = new T[length * 2];
-            }
-
-            return scratch.AsSpan(0, length);
-        }
     }
 
     // SPEC 8.4.2: the bound Contract reference a requirement call dispatches through (Indexable<isize>), which declares the requirement as a
@@ -294,8 +287,22 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     private static BoundType? BoundContract(CallPlan call)
         => call is { Kind: CalleeKind.Requirement, RequirementContract: { Type: { } bound } contract } && !ReferenceEquals(bound.Symbol, contract) ? bound : null;
 
+    private static Span<T> Fit<T>(ref T[] scratch, int length)
+    {
+        if (scratch.Length < length)
+        {
+            scratch = new T[length * 2];
+        }
+
+        return scratch.AsSpan(0, length);
+    }
+
+    // SPEC 8.8.3: a substitution holds one length entry per slot, the selection key's form, as a CallPlan does. The lengths are empty (the
+    // binder has no length slot) or one per slot of the Types.
     private Subst Intern(BindingSymbol target, BoundType? self, BoundType? declaring, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs)
     {
+        System.Diagnostics.Debug.Assert(lengths.IsEmpty || lengths.Length == types.Length);
+        lengths = lengths.IsEmpty ? Fit(ref this.noLengths, types.Length) : lengths;
         var hash = default(HashCode);
         hash.Add(RuntimeHelpers.GetHashCode(target));
         hash.Add(self is null ? 0 : RuntimeHelpers.GetHashCode(self));
@@ -362,7 +369,7 @@ internal sealed class Subst(BindingSymbol target, BoundType? self, BoundType? de
     // In declaration-slot order; length slots are null.
     internal ReadOnlySpan<BoundType?> Types => types;
 
-    // In declaration-slot order; Type slots are null.
+    // In declaration-slot order, one per slot of Types; Type slots are null.
     internal ReadOnlySpan<BoundLength?> Lengths => lengths;
 
     // The substitution of the binder's declared Origins.
@@ -372,5 +379,5 @@ internal sealed class Subst(BindingSymbol target, BoundType? self, BoundType? de
     internal ReadOnlySpan<BoundOrigin> Inputs => inputs;
 
     // Binds nothing: the binder's own body.
-    internal bool IsIdentity => self is null && declaring is null && types.Length == 0 && lengths.Length == 0 && origins.Length == 0 && inputs.Length == 0;
+    internal bool IsIdentity => self is null && declaring is null && types.Length + origins.Length + inputs.Length == 0;
 }

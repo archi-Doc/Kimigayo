@@ -26,6 +26,15 @@ public class SpecializationBindingTest
             Ordinary + "specialize func weight<(i32, bool)>(value: ref/(i32, bool)) -> i32 => 2\nspecialize func weight<[2 of i32]>(value: ref/[2 of i32]) -> i32 => 3\nlet pair = (1, true)\nlet array: [2 of i32] = [1, 2]\nlet n: i32 = 0\nrequire weight<(i32, bool)>(pair@ref) == 2 and weight<[2 of i32]>(array@ref) == 3 and weight<i32>(n@ref) == 1 else => $abort(\"weight\")\nConsole.writeLine(\"ok\")",
             "ok\n");
 
+    // SPEC 8.8.3: function references obey the same choice: an explicit Item, an Item selected by its expected signature and an Item
+    // formed in a generic body run the specialization their key selects, and an Item whose key selects none runs the original.
+    [Fact]
+    public void FunctionItemsSelectTheSpecialization()
+        => ScalarEmissionTest.EmitFixture(
+            "SpecializationFunctionItem",
+            Ordinary + "specialize func weight<i32>(value: ref/i32) -> i32 => 2\nfunc relay<T>(value: ref/T) -> i32\n    let item = weight<T>\n    return item(value)\nlet n: i32 = 4\nlet flag = true\nlet f = weight<i32>\nlet g: (ref/i32) -> i32 = weight\nlet h = weight<bool>\nrequire f(n@ref) == 2 and g(n@ref) == 2 and relay<i32>(n@ref) == 2 and h(flag@ref) == 1 and relay<bool>(flag@ref) == 1 else => $abort(\"item\")\nConsole.writeLine(\"ok\")",
+            "ok\n");
+
     // SPEC 8.8.2: the original's generic Constraints are inherited; the closed arguments must satisfy them.
     private const string Constrained = "func twice<T>(value: T) -> T\n    T is Copy\n    return value\n";
 

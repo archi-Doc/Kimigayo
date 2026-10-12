@@ -99,6 +99,22 @@ public sealed class TyCtxtTest
         Assert.Same(closure.Signature, c.Types.Apply(closure.Signature, identity));
     }
 
+    // SPEC 8.8.3: a substitution holds one length entry per slot whichever producer forms it, so a direct call, a function item and a
+    // synthesized call of one instance are one substitution.
+    [Fact]
+    public void ASubstitutionHasOneLengthEntryPerSlot()
+    {
+        var c = MinimalEmissionTest.Analyze("func make<T>() -> i32 => 1\nlet f = make<i32>\nrequire make<i32>() == f() else => $abort(\"make\")\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var call = nodes.OfType<InvocationKoto>().Select(static x => x.CallOf()).Single(static x => x is { Kind: CalleeKind.Function, Target.Name: "make" })!;
+        var item = nodes.Select(static x => x.TypeOf()).First(static x => x is { Kind: BoundTypeKind.FunctionItem })!;
+        var subst = c.Types.SubstOf(call)!;
+        Assert.Equal(1, subst.Lengths.Length);
+        Assert.Same(subst, c.Types.SubstOfItem(item));
+        Assert.Same(subst, c.Types.Synthesized(call.Target, null, call.TypeArguments));
+    }
+
     // SPEC 3.4.1, 13.5.5.1: selection follows a reference or object handle as a Deref and a pair layer, the original s/T or an application
     // s/U, as a PairLayer of the binder in scope, never a raw pointer or an owned value. SPEC 23.3.6.5: a Type is named as diagnostics spell it.
     [Fact]

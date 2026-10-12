@@ -33,7 +33,6 @@ KR3001	T:Kimi.Checking.HoverBuilder	line:2774f7fe24884791	1	src/Kimi/Checking/Ho
 KR3001	T:Kimi.Checking.HoverBuilder	line:2aa108d70999f45f	1	src/Kimi/Checking/Hover/HoverBuilder.Virtual.cs
 KR3001	T:Kimi.Checking.HoverBuilder	line:3b7715ee7a478dcd	1	src/Kimi/Checking/Hover/HoverBuilder.Variables.cs
 KR3001	T:Kimi.Checking.HoverBuilder	line:4221c96f446b39db	1	src/Kimi/Checking/Hover/HoverBuilder.cs
-KR3001	T:Kimi.Checking.HoverBuilder	line:5c5371fd8a212517	1	src/Kimi/Checking/Hover/HoverBuilder.cs
 KR3001	T:Kimi.Checking.HoverBuilder	line:7051fca21096808f	1	src/Kimi/Checking/Hover/HoverBuilder.Effects.cs
 KR3001	T:Kimi.Checking.HoverBuilder	line:707c14c41a8990a9	1	src/Kimi/Checking/Hover/HoverBuilder.Effects.cs
 KR3001	T:Kimi.Checking.HoverBuilder	line:75dcc047881ff58d	1	src/Kimi/Checking/Hover/HoverBuilder.Virtual.cs
@@ -1902,7 +1901,7 @@ KR3001	T:Kimi.Compiler.Binding	line:e5d2e214e829427d	1	src/Kimi/Compiler/Binding
 KR3001	T:Kimi.Compiler.Binding	line:e5dd3951264c0d61	1	src/Kimi/Compiler/Binding/Binding.AssociatedInference.cs
 KR3001	T:Kimi.Compiler.Binding	line:e64a4fbf99d463f4	1	src/Kimi/Compiler/Binding/Binding.CallRelations.cs
 KR3001	T:Kimi.Compiler.Binding	line:e669adac94010d11	1	src/Kimi/Compiler/Binding/Binding.FunctionTypes.cs
-KR3001	T:Kimi.Compiler.Binding	line:e6764941f31a2b6e	2	src/Kimi/Compiler/Binding/Binding.FixedArrays.cs
+KR3001	T:Kimi.Compiler.Binding	line:e6764941f31a2b6e	1	src/Kimi/Compiler/Binding/Binding.FixedArrays.cs
 KR3001	T:Kimi.Compiler.Binding	line:e6851e64377d96bd	1	src/Kimi/Compiler/Binding/Binding.Calls.cs
 KR3001	T:Kimi.Compiler.Binding	line:e7175da70fe6ef21	1	src/Kimi/Compiler/Binding/Binding.ContractCalls.cs
 KR3001	T:Kimi.Compiler.Binding	line:e72b6a709e51256f	1	src/Kimi/Compiler/Binding/Binding.Ranges.cs
@@ -2254,7 +2253,6 @@ KR2005	T:Kimi.Compiler.Binding.EffectSummary	node:3517ca61fa2648df	1	src/Kimi/Co
 KR2005	T:Kimi.Compiler.Binding.EffectSummary	node:5a60f0383737e9c8	1	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs
 KR2005	T:Kimi.Compiler.Binding.EffectSummary	node:869a25cfb330c491	1	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs
 KR2005	T:Kimi.Compiler.Binding.EffectSummary	node:f435ad2dd4239d4b	1	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs
-KR2008	T:Kimi.Compiler.Binding.EffectSummary	node:722320b8004deb52	1	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs
 KR2008	T:Kimi.Compiler.Binding.EffectSummary	node:af2358fa507f0630	1	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs
 KR2008	T:Kimi.Compiler.Binding.EffectSummary	node:ef5834f10045bf70	1	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs
 KR2010	T:Kimi.Compiler.Binding.EffectSummary	member:M:Kimi.Compiler.Binding.EffectSummary.Check(System.Boolean,System.Boolean,Kimi.Compiler.BindingSymbol,Kimi.Compiler.BindingScope,System.Boolean,Kimi.Compiler.BoundType,Kimi.Compiler.Parsing.SemanticsKind,System.Boolean,Kimi.Compiler.BindingSymbol)	4	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs
@@ -3016,7 +3014,6 @@ KR1004	T:Kimi.Compiler.StructuralCompletion	node:690418194ed15d3e	2	src/Kimi/Com
 KR1004	T:Kimi.Compiler.StructuralCompletion	node:a303bc66b4297049	2	src/Kimi/Compiler/Analysis/StructuralCompletion.cs
 KR1004	T:Kimi.Compiler.StructuralCompletion	node:cb2b6590883a8104	3	src/Kimi/Compiler/Analysis/StructuralCompletion.cs
 KR1004	T:Kimi.Compiler.StructuralCompletion.Completion	node:a303bc66b4297049	1	src/Kimi/Compiler/Analysis/StructuralCompletion.cs
-KR2008	T:Kimi.Compiler.Subst	node:d1f45b195ac43b76	1	src/Kimi/Compiler/Binding/TyCtxt.cs
 KR3001	T:Kimi.Compiler.Subst	line:f958743e74a19007	1	src/Kimi/Compiler/Binding/TyCtxt.cs
 KR2008	T:Kimi.Compiler.Target.IrTarget	node:4c5bdd9488403160	1	src/Kimi/Misc/Target/IrTarget.cs
 KR2008	T:Kimi.Compiler.Target.IrTarget	node:8632111776278792	1	src/Kimi/Misc/Target/IrTarget.cs
@@ -3348,7 +3345,7 @@ KR3001	T:Kimi.Testing.TestWorker	line:db2ca56ce3010ebb	1	src/Kimi/Testing/TestWo
 KR3002	T:Kimi.Testing.TestWorker	node:063ccbc3273889df	1	src/Kimi/Testing/TestWorker.cs
 KR3002	T:Kimi.Testing.TestWorker	node:30482bb916852ab2	1	src/Kimi/Testing/TestWorker.cs
 KR3001	src/Kimi/Checking/CheckDocument.cs	line:fcf5300f91da58b7	1	src/Kimi/Checking/CheckDocument.cs
-KR2009	src/Kimi/Checking/Hover/HoverBuilder.cs	file	5589	src/Kimi/Checking/Hover/HoverBuilder.cs
+KR2009	src/Kimi/Checking/Hover/HoverBuilder.cs	file	5565	src/Kimi/Checking/Hover/HoverBuilder.cs
 KR2009	src/Kimi/Compiler/Binding/Binding.ArgumentOperations.cs	file	7682	src/Kimi/Compiler/Binding/Binding.ArgumentOperations.cs
 KR2009	src/Kimi/Compiler/Binding/Binding.AssociatedTypes.cs	file	5051	src/Kimi/Compiler/Binding/Binding.AssociatedTypes.cs
 KR2009	src/Kimi/Compiler/Binding/Binding.Calls.cs	file	16011	src/Kimi/Compiler/Binding/Binding.Calls.cs
@@ -3357,7 +3354,7 @@ KR2009	src/Kimi/Compiler/Binding/Binding.Constraints.cs	file	6176	src/Kimi/Compi
 KR2009	src/Kimi/Compiler/Binding/Binding.Contracts.cs	file	6516	src/Kimi/Compiler/Binding/Binding.Contracts.cs
 KR2009	src/Kimi/Compiler/Binding/Binding.Conversions.cs	file	5753	src/Kimi/Compiler/Binding/Binding.Conversions.cs
 KR2009	src/Kimi/Compiler/Binding/Binding.Diagnostics.cs	file	12974	src/Kimi/Compiler/Binding/Binding.Diagnostics.cs
-KR2009	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs	file	12869	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs
+KR2009	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs	file	12861	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs
 KR2009	src/Kimi/Compiler/Binding/Binding.Expressions.cs	file	11031	src/Kimi/Compiler/Binding/Binding.Expressions.cs
 KR2009	src/Kimi/Compiler/Binding/Binding.FunctionTypes.cs	file	7669	src/Kimi/Compiler/Binding/Binding.FunctionTypes.cs
 KR2009	src/Kimi/Compiler/Binding/Binding.OriginDeclarations.cs	file	5904	src/Kimi/Compiler/Binding/Binding.OriginDeclarations.cs

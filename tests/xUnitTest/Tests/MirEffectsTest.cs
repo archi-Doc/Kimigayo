@@ -92,13 +92,13 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
                 "    public func fill(self: ref/Self, values: uniq/Array<i32>)\n" + body));
 
     // SPEC 8.8, 8.8.3: a call runs the specialization its closed key selects, or the original when none does; the other body never runs.
-    // A function item runs its selection too (its valid form waits for fix unit U6c: an item without length slots binds no length slot,
-    // so no key matches it and both bodies are admitted).
+    // A function item runs its selection too.
     [Theory]
     [InlineData("Console.writeLine(\"g\")", "()", "        H.trace(1)\n", "")]
     [InlineData("Console.writeLine(\"g\")", "()", "        H.trace(true)\n", Failed)]
     [InlineData("()", "Console.writeLine(\"s\")", "        H.trace(true)\n", "")]
     [InlineData("()", "Console.writeLine(\"s\")", "        H.trace(1)\n", Failed)]
+    [InlineData("Console.writeLine(\"g\")", "()", "        let f = H.trace<i32>\n        f(1)\n", "")]
     [InlineData("()", "Console.writeLine(\"s\")", "        let f = H.trace<i32>\n        f(1)\n", Failed)]
     public void CallsRunTheBodyTheirKeySelects(string original, string specialization, string call, string expected)
         => Assert.Equal(
