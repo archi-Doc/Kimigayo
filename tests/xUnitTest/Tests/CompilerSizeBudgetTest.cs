@@ -10,14 +10,15 @@ namespace XunitTest;
 public class CompilerSizeBudgetTest
 {
     // A1 converts the approved R4 caps at the measured area ratios, rounded upward; see CR-A1.
+    // The owner raised Binding and Core within the unchanged R4 total (DECISIONS R4-M25).
     private const int TotalCap = 894_362;
     private const int TemplateLineCap = 2_381;
 
     private static readonly Dictionary<string, int> Caps = new(StringComparer.Ordinal)
     {
         ["Analysis"] = 124_047,
-        ["Binding"] = 375_051,
-        ["Core"] = 8_167,
+        ["Binding"] = 377_051,
+        ["Core"] = 8_187,
         ["Documentation"] = 25_687,
         ["Emission"] = 164_057,
         ["Helper"] = 8_068,

@@ -239,8 +239,8 @@ whole-compiler ratio. No area's pass/fail state changes. EOF, missing tokens and
 | Area | A1 tokens | Token cap |
 | --- | ---: | ---: |
 | Analysis | 121,620 | 124,047 |
-| Binding | 371,765 | 375,051 |
-| Core | 8,055 | 8,167 |
+| Binding | 371,765 | 377,051 |
+| Core | 8,055 | 8,187 |
 | Documentation | 24,624 | 25,687 |
 | Emission | 160,848 | 164,057 |
 | Helper | 7,766 | 8,068 |
@@ -248,6 +248,8 @@ whole-compiler ratio. No area's pass/fail state changes. EOF, missing tokens and
 | Mir | 38,804 | 93,651 |
 | Parsing | 75,668 | 77,163 |
 | Root | 7,206 | 7,345 |
+
+The owner raised Binding by 2,000 and Core by 20 tokens within the unchanged R4 ceiling (DECISIONS R4-M25).
 
 LLVM templates remain at 2,335 lines against their unchanged cap of 2,381, outside the C# total.
 
