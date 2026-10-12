@@ -12,6 +12,25 @@ public sealed partial class Binding
     private readonly List<OriginRelationFact> relationScratch = new();
     private Dictionary<Koto, List<OriginRelationFact>>? callRelations;
 
+    // SPEC 15.3.3, 15.6.4 step 3: a function's declared relations (an accessor's binder's) as a call's substitution substitutes them,
+    // TyCtxt.Clauses; JudgeCallClauses judges the same substitution.
+    internal void Clauses(BindingSymbol function, Subst? subst, List<(BoundOrigin? Longer, BoundOrigin? Shorter, bool Equal)> relations)
+    {
+        if (function.Declaration is not FunctionKoto selected ||
+            !this.originDeclarations.TryGetValue(selected.Accessor?.Binder ?? selected, out var declaration))
+        {
+            return;
+        }
+
+        var origins = subst is null ? default : subst.Origins;
+        var inputs = subst is null ? default : subst.Inputs;
+        foreach (var relation in declaration.Relations)
+        {
+            var longer = this.SubstituteClauseOrigin(relation.Longer, selected, origins, inputs, subst?.Declaring);
+            relations.Add((longer, this.SubstituteClauseOrigin(relation.Shorter, selected, origins, inputs, subst?.Declaring), relation.Equality));
+        }
+    }
+
     private static bool MentionsOrigin(BoundType type, BoundOrigin origin)
     {
         if (!type.CarriesOrigin)
@@ -183,7 +202,8 @@ public sealed partial class Binding
 
         var binder = selected.Accessor?.Binder ?? selected;
         var originCount = selected.Accessor?.Declaration?.Origins.Count ?? selected.BoundSymbol?.Schema?.Origins.Count ?? 0;
-        return this.SubstituteStoredOrigin(origin, binder, origins[..originCount], inputs[..Math.Min(inputs.Length, InputOriginCount(binder))]);
+        var inputCount = Math.Min(inputs.Length, InputOriginCount(binder));
+        return this.SubstituteStoredOrigin(origin, binder, origins[..Math.Min(origins.Length, originCount)], inputs[..inputCount]);
     }
 
     // The records of one call node beyond the first, each with its own condition so that it stays an independent problem.

@@ -37,7 +37,9 @@ internal enum MirDropVerdict : byte
 /// <param name="Depth">The depth below the dropped Place.</param>
 /// <param name="Step">The step from the parent row's Place: Field, Base (one depth), ConstIndex or Downcast; unused at depth 0.</param>
 /// <param name="Arg">The step's argument.</param>
-internal readonly record struct MirDropRow(int Block, ulong Views, MirDropVerdict Verdict, int Flag, int Depth, MirProjectionKind Step, int Arg);
+/// <param name="Path">A part row's move path (Depth above 0), the child path of its parent row's by its step, in the body's numbering
+/// (MirMoveData, deterministic per body); -1 at Depth 0, whose Place is the Drop's own. A5 reads it.</param>
+internal readonly record struct MirDropRow(int Block, ulong Views, MirDropVerdict Verdict, int Flag, int Depth, MirProjectionKind Step, int Arg, int Path);
 
 /// <summary>A point where drop flags change (DECISIONS R4-M6a): when the location completes (a terminator on its runtime successor edge;
 /// Index -1 is the body's entry), the flags [First, First + Count) are set or cleared, in the views given. Flags start clear.</summary>
@@ -299,7 +301,7 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
                 this.flagged[flag] = true;
             }
 
-            this.table.Rows.Add(new(block, views, verdict, flag, node.Depth, step.Kind, step.Arg));
+            this.table.Rows.Add(new(block, views, verdict, flag, node.Depth, step.Kind, step.Arg, node.Depth == 0 ? -1 : node.Path));
         }
 
         this.Merge(block, start);

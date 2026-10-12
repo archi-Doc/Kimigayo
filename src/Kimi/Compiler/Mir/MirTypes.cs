@@ -1,8 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the Type facts needed by MIR construction and analyses.
-// Input: published Types and their stored shapes. Output: the destruction walk and the drop, raw, exclusivity, agreement, borrow-kind and
-// pointer-cast facts, and the Types a call passes and an aggregate's operands take.
+// Input: published Types and their stored shapes. Output: the destruction walk and the drop, raw, drop-observation, exclusivity, agreement,
+// borrow-kind and pointer-cast facts, and the Types a call passes and an aggregate's operands take.
 // Inline storage is traversed under each fact's documented bounds and Type rules; what destroying a value does is the one Destruction walk.
 // Must not inspect source syntax or substitute new Binding decisions.
 
@@ -17,8 +17,9 @@ internal interface IMirDestruction
 {
     /// <summary>A part of the destroyed value whose destruction runs or releases something.</summary>
     /// <param name="type">The part's Type.</param>
+    /// <param name="depth">The part's depth in the walk, at which a visitor that walks on behind it continues.</param>
     /// <returns>Whether the walk stops.</returns>
-    bool Visit(BoundType type);
+    bool Visit(BoundType type, int depth);
 
     /// <summary>A part past the walk's depth bound, whose destruction the walk does not follow.</summary>
     /// <returns>Whether the walk stops.</returns>
@@ -65,17 +66,17 @@ internal static class MirTypes
 
         if (type.IsAbstract || type.Kind == BoundTypeKind.Function)
         {
-            return visitor.Visit(type);
+            return visitor.Visit(type, depth);
         }
 
         if (type.Kind == BoundTypeKind.Semantics)
         {
-            return type.Semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && visitor.Visit(type);
+            return type.Semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && visitor.Visit(type, depth);
         }
 
         var sequence = type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary; // A managed sequence releases its storage and its elements.
         var destructor = AdtDef.Destructor(type) is not null;
-        if ((sequence || ReferenceEquals(type, BoundType.String) || destructor) && visitor.Visit(type))
+        if ((sequence || ReferenceEquals(type, BoundType.String) || destructor) && visitor.Visit(type, depth))
         {
             return true;
         }
@@ -104,6 +105,18 @@ internal static class MirTypes
         }
 
         return AdtDef.Base(type) is { } parent && Destruction(parent, ref visitor, depth + 1);
+    }
+
+    /// <summary>Gets whether destroying a value of a Type may observe an Origin or a Loan (SPEC 15.6.6), which makes its Drop a use of the
+    /// value's Loans: whether its <see cref="Destruction"/> reaches a user drop, assumed to observe every reachable Origin, an abstract part,
+    /// whose instance may declare one (plan Appendix B X1), such a part behind an owning handle, or a part past the walk's depth bound;
+    /// references, raw pointers, scalars, strings and Function values observe nothing.</summary>
+    /// <param name="type">The Type.</param>
+    /// <returns>Whether its destruction may observe an Origin.</returns>
+    internal static bool Observes(BoundType? type)
+    {
+        var observer = default(Observer);
+        return Destruction(type, ref observer);
     }
 
     /// <summary>Gets whether a value of a Type is a reference whose Loans an EndBorrow ends: a ref, uniq, objref or objuniq, or a pair layer.</summary>
@@ -152,7 +165,7 @@ internal static class MirTypes
     /// <param name="left">A Type.</param>
     /// <param name="right">The other Type.</param>
     /// <returns>Whether they agree.</returns>
-    internal static bool Agree(BoundType? left, BoundType? right) => TyCtxt.Relate(left, right);
+    internal static bool Agree(BoundType? left, BoundType? right) => TyCtxt.Relate(left, right, invariant: false, relations: null);
 
     /// <summary>Gets a Type below its reference and pair layers (<see cref="TyCtxt.Layer"/>): what a comparison compares (SPEC 13.4) and the
     /// Function Type a Value callee calls.</summary>
@@ -256,7 +269,18 @@ internal static class MirTypes
     // MayNeedDrop's visitor: any reported part.
     private struct AnyPart : IMirDestruction
     {
-        public readonly bool Visit(BoundType type) => true;
+        public readonly bool Visit(BoundType type, int depth) => true;
+
+        public readonly bool Deep() => true;
+    }
+
+    // Observes' visitor: a user drop or an abstract part observes, an owning handle's payload is walked on at the handle's depth, and the
+    // other parts the walk reports (a Function value, a string, a sequence, whose elements it walks) observe nothing themselves.
+    private struct Observer : IMirDestruction
+    {
+        public bool Visit(BoundType type, int depth) => type.IsAbstract || (type.Kind == BoundTypeKind.Semantics
+            ? Destruction(type.Components[0], ref this, depth + 1)
+            : AdtDef.Destructor(type) is not null);
 
         public readonly bool Deep() => true;
     }

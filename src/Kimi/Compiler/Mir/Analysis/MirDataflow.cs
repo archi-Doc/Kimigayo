@@ -1,29 +1,38 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the forward bit-set dataflow of one MIR body (plan 5.6.3; DECISIONS R4-M20, R4-M15a).
-// Input: a validated body (Begin) and a transfer, a struct IMirFlow that interprets blocks on the scratch state. Output: the blocks in
-// reverse postorder, the converged state at each flow head per phase, and Replay, which gives each reached chain its state once.
+// Owns the bit-set dataflow of one MIR body (plan 5.6.3; DECISIONS R4-M20, R4-M15a, R4-M24): forward problems, and the backward one
+// (liveness).
+// Input: a validated body (Begin) and a transfer, a struct IMirFlow (forward) or IMirBlocks (backward) that interprets blocks on the scratch
+// state. Output: the blocks in reverse postorder, the converged state at each flow head per phase, and Replay, which gives each reached
+// chain its state once; backward, the converged state at each head's entry (AtEntry), and Exit, a chain's state at its exit.
 // Blocks form chains: a block whose only edge is a runtime edge into a block that has no other predecessor and is not the entry continues
 // into it, so a chain shares one stored state, held only at its head. The join is union. P1 follows runtime edges from the entry; P2 follows
-// runtime and CheckTarget edges and writes only heads P1 did not reach, P1's states frozen (SPEC 14.10.3). States are word-major (the lanes
+// runtime and CheckTarget edges and writes only heads P1 did not reach, P1's states frozen (SPEC 14.10.3); backward, a chain P1 reached
+// joins its runtime successors and any other chain every successor, so no continuation state reaches a P1 head (SPEC 14.9, 14.10.3
+// paragraph 4; DECISIONS R4-M24). States are word-major (the lanes
 // of 64 paths per word group), and only the first words, the flow paths', are stored; the scratch holds the rest. The arena's byte size is
-// the one Resource limit of the analyses (OwnershipStorageLimit_Kd). Storage is pooled and reset by counts.
+// the one Resource limit of the analyses (OwnershipStorageLimit_Kd), forward and backward arenas together. Storage is pooled and reset by
+// counts; Index is the analyses' one table builder (keys to values).
 // Must not interpret statements, read syntax or HIR, merge a P2 state into a P1 head, or walk all edges in one pass.
 
 #pragma warning disable SA1402 // The transfer's interface belongs to the dataflow.
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>A forward problem of <see cref="MirDataflow"/>: its entry state and how a block changes a state, both on the scratch that
-/// <see cref="MirDataflow.Prepare"/> returned.</summary>
-internal interface IMirFlow
+/// <summary>A problem of <see cref="MirDataflow"/>: how a block changes a state on the scratch that <see cref="MirDataflow.Prepare"/>
+/// returned, forward or, for <see cref="MirDataflow.Backward"/>, backward.</summary>
+internal interface IMirBlocks
+{
+    /// <summary>Applies a block's statements and terminator to the scratch, in their order or, backward, in reverse.</summary>
+    /// <param name="block">The block.</param>
+    void Block(int block);
+}
+
+/// <summary>A forward problem of <see cref="MirDataflow"/>: its entry state and how a block changes a state.</summary>
+internal interface IMirFlow : IMirBlocks
 {
     /// <summary>Writes the entry state of the body into the scratch.</summary>
     void Entry();
-
-    /// <summary>Applies a block's statements and terminator to the scratch.</summary>
-    /// <param name="block">The block.</param>
-    void Block(int block);
 }
 
 /// <summary>The forward bit-set dataflow of the MIR analyses (plan 5.6.3, DECISIONS R4-M20): <see cref="Begin"/> orders a body's blocks
@@ -37,6 +46,11 @@ internal sealed class MirDataflow(MirReach reach)
     private const long ByteLimit = 64L * 1024 * 1024;
     private int[] order = []; // The blocks in reverse postorder.
     private int[] next = []; // Each block's successor in its chain, or -1 at the chain's tail.
+    private int[] prev = []; // Each block's predecessor in its chain, or -1 at the chain's head.
+    private int[] callers = []; // Per head from callerStart, the heads whose chain's tail has an edge to it (Backward's worklist).
+    private int[] callerStart = [];
+    private int[] edgeHeads = []; // Backward's scratch: each edge between chains, by its target head and its source head.
+    private int[] edgeTails = [];
     private int[] head = []; // Each block's flow head.
     private int[] heads = []; // Each head's block, heads numbered in reverse postorder.
     private int[] tails = []; // Each head's chain's last block.
@@ -44,10 +58,13 @@ internal sealed class MirDataflow(MirReach reach)
     private byte[] reached = []; // The phase that reached each head first: 0 none, 1 P1, 2 P2.
     private bool[] queued = [];
     private ulong[] arena = []; // The stored state of each head.
+    private ulong[] back = []; // The backward state stored at each head's entry.
     private ulong[] scratch = [];
     private MirBody body = null!;
     private int headCount;
     private int stored;
+    private int backward; // The words a head stores backward.
+    private int width;
 
     /// <summary>Gets the blocks of the body begun in reverse postorder over runtime and check edges, so a chain's blocks are in order.</summary>
     internal ReadOnlySpan<int> Order => this.order.AsSpan(0, this.body.Blocks.Length);
@@ -110,6 +127,40 @@ internal sealed class MirDataflow(MirReach reach)
         }
     }
 
+    /// <summary>Builds a table of values by key, the analyses' one (DECISIONS R4-M24): <paramref name="start"/>[k] to
+    /// <paramref name="start"/>[k + 1] index key k's values in <paramref name="items"/>, in their order; a key of -1 adds nothing.</summary>
+    /// <param name="keys">Each pair's key, below <paramref name="count"/>, or -1.</param>
+    /// <param name="values">Each pair's value.</param>
+    /// <param name="count">The number of keys.</param>
+    /// <param name="start">The keys' starts, grown to <paramref name="count"/> + 1.</param>
+    /// <param name="items">The values by key, grown to the pairs' count.</param>
+    internal static void Index(ReadOnlySpan<int> keys, ReadOnlySpan<int> values, int count, ref int[] start, ref int[] items)
+    {
+        Grow(ref start, count + 1);
+        Array.Clear(start, 0, count + 1);
+        foreach (var key in keys)
+        {
+            if (key >= 0)
+            {
+                start[key]++;
+            }
+        }
+
+        for (var k = 1; k <= count; k++)
+        {
+            start[k] += start[k - 1];
+        }
+
+        Grow(ref items, start[count]);
+        for (var i = keys.Length - 1; i >= 0; i--)
+        {
+            if (keys[i] >= 0)
+            {
+                items[--start[keys[i]]] = values[i];
+            }
+        }
+    }
+
     /// <summary>Gets whether the runtime edges from the entry reach a block (P1); every other block only the checks reach (P2).</summary>
     /// <param name="block">A block of the body.</param>
     /// <returns>Whether P1 reached it.</returns>
@@ -120,6 +171,21 @@ internal sealed class MirDataflow(MirReach reach)
     /// <returns>The head.</returns>
     internal int Head(int block) => this.head[block];
 
+    /// <summary>Gets a block's predecessor in its chain.</summary>
+    /// <param name="block">A block of the body.</param>
+    /// <returns>The predecessor, or -1 for the chain's first block, its head's.</returns>
+    internal int Previous(int block) => this.prev[block];
+
+    /// <summary>Gets whether a block is its chain's last, the tail.</summary>
+    /// <param name="block">A block of the body.</param>
+    /// <returns>Whether the chain ends with it.</returns>
+    internal bool Tail(int block) => this.next[block] < 0;
+
+    /// <summary>Gets the backward state <see cref="Backward"/> stored at a head's entry.</summary>
+    /// <param name="head">The head.</param>
+    /// <returns>Its stored words.</returns>
+    internal ReadOnlySpan<ulong> AtEntry(int head) => this.back.AsSpan(head * this.backward, this.backward);
+
     /// <summary>Orders a validated body's blocks and forms its chains and their heads, once per body.</summary>
     /// <param name="body">The body.</param>
     internal void Begin(MirBody body)
@@ -128,6 +194,7 @@ internal sealed class MirDataflow(MirReach reach)
         this.body = body;
         Grow(ref this.order, blocks.Length);
         Grow(ref this.next, blocks.Length);
+        Grow(ref this.prev, blocks.Length);
         Grow(ref this.head, blocks.Length);
         Grow(ref this.heads, blocks.Length);
         Grow(ref this.tails, blocks.Length);
@@ -159,6 +226,7 @@ internal sealed class MirDataflow(MirReach reach)
 
         this.headCount = 0;
         Array.Fill(this.head, -1, 0, blocks.Length);
+        Array.Fill(this.prev, -1, 0, blocks.Length);
         foreach (var block in this.Order)
         {
             if (this.head[block] < 0)
@@ -171,23 +239,27 @@ internal sealed class MirDataflow(MirReach reach)
             if (this.next[block] >= 0)
             {
                 this.head[this.next[block]] = this.head[block];
+                this.prev[this.next[block]] = block;
             }
         }
     }
 
-    /// <summary>Sizes the states of a problem over the heads of the body begun.</summary>
+    /// <summary>Sizes the states of a problem over the heads of the body begun, and of a backward one beside it, keeping the backward
+    /// states stored.</summary>
     /// <param name="stored">The words a head stores, the first words of a state.</param>
-    /// <param name="width">The words of a whole state.</param>
-    /// <returns>The scratch, or null when the arena would exceed the analyses' byte limit (R4-M15a).</returns>
-    internal ulong[]? Prepare(int stored, int width)
+    /// <param name="width">The words of a whole state, forward or backward.</param>
+    /// <param name="backward">The words a head stores backward.</param>
+    /// <returns>The scratch, or null when the arenas together would exceed the analyses' byte limit (R4-M15a).</returns>
+    internal ulong[]? Prepare(int stored, int width, int backward)
     {
-        if ((long)this.headCount * stored * sizeof(ulong) > ByteLimit)
+        if ((long)this.headCount * (stored + backward) * sizeof(ulong) > ByteLimit)
         {
             return null;
         }
 
-        this.stored = stored;
+        (this.stored, this.backward, this.width) = (stored, backward, width);
         Grow(ref this.arena, this.headCount * stored);
+        Grow(ref this.back, this.headCount * backward);
         Grow(ref this.scratch, width);
         Grow(ref this.reached, this.headCount);
         Grow(ref this.queued, this.headCount);
@@ -223,6 +295,82 @@ internal sealed class MirDataflow(MirReach reach)
                 this.Chain(ref flow, h);
             }
         }
+    }
+
+    /// <summary>Solves a backward problem (liveness, DECISIONS R4-M24) over the edges <see cref="Exit"/> joins: each head's state at its
+    /// entry, from its chain's state at its exit through its blocks from the tail. A ring worklist is seeded with
+    /// every head in postorder, so acyclic code converges in one sweep, and a head whose state grows queues the heads with an edge to it.
+    /// </summary>
+    /// <typeparam name="TFlow">The transfer's struct type.</typeparam>
+    /// <param name="flow">The transfer.</param>
+    internal void Backward<TFlow>(ref TFlow flow)
+        where TFlow : struct, IMirBlocks
+    {
+        this.Callers();
+        Array.Clear(this.back, 0, this.headCount * this.backward);
+        for (var h = 0; h < this.headCount; h++)
+        {
+            (this.queue[h], this.queued[h]) = (this.headCount - 1 - h, true);
+        }
+
+        var (first, count) = (0, this.headCount);
+        while (count-- > 0)
+        {
+            var h = this.queue[first];
+            (first, this.queued[h]) = (first + 1 == this.headCount ? 0 : first + 1, false);
+            for (var block = this.Exit(h); block >= 0; block = this.prev[block])
+            {
+                flow.Block(block);
+            }
+
+            if (!Union(this.back.AsSpan(h * this.backward, this.backward), this.scratch))
+            {
+                continue;
+            }
+
+            for (var c = this.callerStart[h]; c < this.callerStart[h + 1]; c++)
+            {
+                if (!this.queued[this.callers[c]])
+                {
+                    this.queued[this.callers[c]] = true;
+                    this.queue[(first + count++) % this.headCount] = this.callers[c];
+                }
+            }
+        }
+    }
+
+    /// <summary>Writes into the scratch a chain's backward state at its exit: the union of the states stored at the entries of the heads
+    /// its tail has an edge to, a chain P1 reached its runtime successors only (SPEC 14.9: continuations add no execution paths).
+    /// </summary>
+    /// <param name="head">The chain's head.</param>
+    /// <returns>The chain's tail.</returns>
+    internal int Exit(int head)
+    {
+        Array.Clear(this.scratch, 0, this.width);
+        var tail = this.tails[head];
+        var terminator = this.body.Blocks[tail].Terminator;
+        for (var i = this.reached[head] == 1 ? 0 : -1; i < MirUses.Successors(terminator); i++)
+        {
+            if (MirUses.Successor(this.body, terminator, i) is >= 0 and var successor)
+            {
+                _ = Union(this.scratch.AsSpan(0, this.backward), this.back.AsSpan(this.head[successor] * this.backward, this.backward));
+            }
+        }
+
+        return tail;
+    }
+
+    // Joins a span into another; returns whether it grew.
+    private static bool Union(Span<ulong> into, ReadOnlySpan<ulong> from)
+    {
+        var grew = 0UL;
+        for (var i = 0; i < into.Length; i++)
+        {
+            grew |= from[i] & ~into[i];
+            into[i] |= from[i];
+        }
+
+        return grew != 0;
     }
 
     // The bits of the paths [first, end) in a word group.
@@ -269,6 +417,27 @@ internal sealed class MirDataflow(MirReach reach)
         }
     }
 
+    // The heads whose chain's exit joins each head's entry (Exit's edges), as a table (Index).
+    private void Callers()
+    {
+        var count = 0;
+        for (var h = 0; h < this.headCount; h++)
+        {
+            var terminator = this.body.Blocks[this.tails[h]].Terminator;
+            for (var i = this.reached[h] == 1 ? 0 : -1; i < MirUses.Successors(terminator); i++)
+            {
+                if (MirUses.Successor(this.body, terminator, i) is >= 0 and var successor)
+                {
+                    Grow(ref this.edgeHeads, count + 1);
+                    Grow(ref this.edgeTails, count + 1);
+                    (this.edgeHeads[count], this.edgeTails[count++]) = (this.head[successor], h);
+                }
+            }
+        }
+
+        Index(this.edgeHeads.AsSpan(0, count), this.edgeTails.AsSpan(0, count), this.headCount, ref this.callerStart, ref this.callers);
+    }
+
     // Loads a head's state into the scratch and applies its chain.
     private void Chain<TFlow>(ref TFlow flow, int h)
         where TFlow : struct, IMirFlow
@@ -291,13 +460,6 @@ internal sealed class MirDataflow(MirReach reach)
             return true;
         }
 
-        var grew = 0UL;
-        for (var i = 0; i < state.Length; i++)
-        {
-            grew |= this.scratch[i] & ~state[i];
-            state[i] |= this.scratch[i];
-        }
-
-        return grew != 0;
+        return Union(state, this.scratch);
     }
 }
