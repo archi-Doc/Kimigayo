@@ -3356,7 +3356,7 @@ KR2009	src/Kimi/Compiler/Binding/Binding.Closures.cs	file	6057	src/Kimi/Compiler
 KR2009	src/Kimi/Compiler/Binding/Binding.Constraints.cs	file	6176	src/Kimi/Compiler/Binding/Binding.Constraints.cs
 KR2009	src/Kimi/Compiler/Binding/Binding.Contracts.cs	file	6516	src/Kimi/Compiler/Binding/Binding.Contracts.cs
 KR2009	src/Kimi/Compiler/Binding/Binding.Conversions.cs	file	5753	src/Kimi/Compiler/Binding/Binding.Conversions.cs
-KR2009	src/Kimi/Compiler/Binding/Binding.Diagnostics.cs	file	13022	src/Kimi/Compiler/Binding/Binding.Diagnostics.cs
+KR2009	src/Kimi/Compiler/Binding/Binding.Diagnostics.cs	file	12974	src/Kimi/Compiler/Binding/Binding.Diagnostics.cs
 KR2009	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs	file	12869	src/Kimi/Compiler/Binding/Binding.EffectBounds.cs
 KR2009	src/Kimi/Compiler/Binding/Binding.Expressions.cs	file	11031	src/Kimi/Compiler/Binding/Binding.Expressions.cs
 KR2009	src/Kimi/Compiler/Binding/Binding.FunctionTypes.cs	file	7669	src/Kimi/Compiler/Binding/Binding.FunctionTypes.cs

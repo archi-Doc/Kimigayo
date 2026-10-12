@@ -153,8 +153,8 @@ internal sealed partial class MirValidator
             }
         }
 
-        // SPEC 7.3: a call passes and gets the Types its callee takes and gives (MirTypes.Parameter). A Closure's or a function item's
-        // signature is its declaration's. A call that diverges writes no destination.
+        // SPEC 7.3: a call passes and gets the Types its callee takes and gives (MirTypes.Parameter), a Closure's or a function item's its
+        // declaration's. A call that diverges writes no destination.
         private void Signature(in MirTerminator call)
         {
             var value = call.Callee.Symbol is null ? this.TypeOf(call.Operand) : null;
