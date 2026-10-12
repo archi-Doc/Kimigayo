@@ -34,7 +34,7 @@ internal enum MirViolation : byte
     Len, // A Len of a Place that is not a sequence.
     Opaque, // An Opaque site or root out of range, or Opaque sites without an Opaque value.
     Type, // An rvalue, an aggregate's operand, a call's argument or result, or _0 at a Return that disagrees with the Type it goes to.
-    Operation, // An operator's, a Cast's or a SwitchInt's operand, or a Ref's Type, that its kind does not admit.
+    Operation, // An operator's, a Cast's, a SwitchInt's or an Adapt's operand, a Ref's Type or an Adapt's case operation, that its kind does not admit.
 }
 
 /// <summary>A validator finding: its rule and the syntax of its statement, terminator or local, else the body's. The build reports it
@@ -44,12 +44,15 @@ internal enum MirViolation : byte
 internal readonly record struct MirFinding(MirViolation Rule, SourceRef Subject);
 
 /// <summary>The one structural verifier of MIR (plan 14-5): a body's structure, locals, projections against their base Types, operands,
-/// rvalues and arities, and the Types values flow between (<see cref="MirTypes.Agree"/>, modulo Origins), before any analysis reads it. It
-/// keeps its scratch, so a warm run allocates nothing.</summary>
+/// rvalues and arities, the Types values flow between (<see cref="MirTypes.Agree"/>, modulo Origins) and each Adapt under every
+/// Semantics case view (<see cref="MirCases"/>), before any analysis reads it. It keeps its scratch, so a warm run allocates nothing.</summary>
 /// <remarks>An intrinsic's operands are checked by its row's arity only, and a Value callee's against its Type's signature only where that
 /// Type is a Function Type.</remarks>
-internal sealed partial class MirValidator
+/// <param name="types">The Type context of the bodies, which interns their case Types.</param>
+internal sealed partial class MirValidator(TyCtxt types)
 {
+    private readonly MirCases cases = new(types);
+    private readonly List<(MirRvalue Adapt, SourceInfo Source)> adapts = []; // The body's Adapts its case views resolve.
     private bool[] reached = [];
     private int[] pending = [];
     private bool[] unknown = [];
@@ -62,9 +65,11 @@ internal sealed partial class MirValidator
         if (MirCases.Count(body) > PairBinder.CaseBound)
         {
             findings.Add(new(MirViolation.Binder, body.Source)); // Binding binds no part of a definition beyond the bound.
+            return; // Nor are its views resolved.
         }
 
-        var checker = new Checker(body, findings, this.Unknown(body));
+        this.adapts.Clear();
+        var checker = new Checker(body, findings, this.Unknown(body), this.adapts);
         if (!checker.Tables())
         {
             return; // A chain or site out of order or range cannot be walked.
@@ -83,6 +88,7 @@ internal sealed partial class MirValidator
         }
 
         checker.Finish();
+        checker.Views(this.cases);
         if (targets)
         {
             this.Reach(body, findings);
@@ -176,7 +182,7 @@ internal sealed partial class MirValidator
     }
 
     // The checks of one body: tables first, then each location before MirUses walks it, and the visitor's checks of what it reports.
-    private partial struct Checker(MirBody body, List<MirFinding> findings, bool[] unknown) : IMirUses
+    private partial struct Checker(MirBody body, List<MirFinding> findings, bool[] unknown, List<(MirRvalue Adapt, SourceInfo Source)> adapts) : IMirUses
     {
         private SourceInfo at;
         private int opaqueValues;
@@ -345,7 +351,7 @@ internal sealed partial class MirValidator
             return rvalue.Kind switch
             {
                 MirRvalueKind.Use or MirRvalueKind.UnaryOp or MirRvalueKind.Cast => 1,
-                MirRvalueKind.BinaryOp => 2,
+                MirRvalueKind.BinaryOp or MirRvalueKind.Adapt => 2,
                 MirRvalueKind.Aggregate => (MirAggregateKind)rvalue.Op switch
                 {
                     MirAggregateKind.Tuple when type?.Kind == BoundTypeKind.Tuple => type.Components.Count,
@@ -409,7 +415,8 @@ internal sealed partial class MirValidator
         // False when the operands or the Opaque site are out of range, which MirUses then does not walk.
         private bool Rvalue(in MirRvalue rvalue, BoundType? destination)
         {
-            if (!MirDescriptors.Of(rvalue.Kind).Defined || (rvalue.Kind == MirRvalueKind.Ref && rvalue.Op > (byte)MirRefKind.Raw))
+            if (!MirDescriptors.Of(rvalue.Kind).Defined || (rvalue.Kind == MirRvalueKind.Ref && rvalue.Op > (byte)MirRefKind.Raw) ||
+                (rvalue.Kind == MirRvalueKind.Adapt && rvalue.Op > 1))
             {
                 this.Report(MirViolation.UnknownKind);
                 return false;

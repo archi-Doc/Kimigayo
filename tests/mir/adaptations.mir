@@ -1,0 +1,347 @@
+defaulttemplate take#0 @132
+  _0: s/i32 return @123
+  _1: i32 temp @133
+  b0: T Owning
+  bb0:
+      StorageLive(_1) @133
+    * _1 = const 7_i32 @133
+      _0 = adapt(move _1, const type i32): s/i32 shorthand @132
+      StorageDead(_1) @133
+      return @132
+fn init @9
+  _0: Derived return @9
+  _1: () temp @10
+  _2: () temp @10
+  bb0:
+      StorageLive(_1) @10
+    * _0.base1 = init() -> bb1 @223
+  bb1:
+      StorageLive(_2) @10
+    * _2 = const () @10
+      StorageDead(_2) @10
+      _1 = const () @10
+      StorageDead(_1) @10
+      return @10
+fn top-level#0 @11
+  _0: () return @11
+  s1: lexical in s0 @12
+  bb0:
+      _0 = const () @12 s1
+      return @12
+fn discard @13
+  _0: () return @13
+  _1: i32 arg value @13
+  _2: s/i32 temp @26 s1
+  s1: lexical in s0 @24
+  b0: T Ref, Owning
+  bb0:
+      StorageLive(_2) @26 s1
+    * _2 = adapt(copy _1, const type i32): s/i32 shorthand @26 s1
+      drop _2 -> bb1 @26 s1
+  bb1:
+      StorageDead(_2) @26 s1
+      _0 = const () @24 s1
+      return @24
+fn address @29
+  _0: () return @29
+  _1: i32 arg value @29
+  _2: s/i32 temp @40 s1
+  s1: lexical in s0 @38
+  b0: T Obj, Raw
+  bb0:
+      StorageLive(_2) @40 s1
+    * _2 = adapt(copy _1, const type i32): s/i32 shorthand @40 s1
+      drop _2 -> bb1 @40 s1
+  bb1:
+      StorageDead(_2) @40 s1
+      _0 = const () @38 s1
+      return @38
+fn widen @43
+  _0: s/Base return @43
+  _1: s/Derived arg value @43
+  _2: s/Base temp @54 s1
+  _3: s/Derived temp @55 s1
+  s1: lexical in s0 @52
+  b0: T Object
+  bb0:
+      StorageLive(_2) @54 s1
+      StorageLive(_3) @55 s1
+    * _3 = move _1 @56 s1
+      _2 = adapt(move _3, const type s/Derived) payload (_3@b0): s/Base @54 s1
+      goto bb7 check bb8 @53 s1
+  bb1:
+      return @43
+  bb2:
+      drop _1 -> bb3 @43
+  bb3:
+      goto bb1 @43
+  bb4:
+      drop _3 -> bb5 @55 s1
+  bb5:
+      StorageDead(_3) @55 s1
+      drop _2 -> bb6 @54 s1
+  bb6:
+      StorageDead(_2) @54 s1
+      goto bb2 @43
+  bb7:
+      _0 = move _2 @53 s1
+      goto bb4 @53 s1
+  bb8:
+      drop _3 -> bb9 @55 s1
+  bb9:
+      StorageDead(_3) @55 s1
+      drop _2 -> bb10 @54 s1
+  bb10:
+      StorageDead(_2) @54 s1
+      drop _1 -> bb11 @43
+  bb11:
+      unreachable @52
+fn inspect @60
+  _0: i32 return @60
+  _1: s/Derived arg value @60
+  _2: objref/Base var view @69 s1
+  _3: i32 temp @76 s1
+  s1: lexical in s0 @68
+  b0: T Object
+  bb0:
+      StorageLive(_2) @69 s1
+    * _2 = adapt(copy _1, const type s/Derived) payload (_1@b0): objref/Base @71 s1
+      StorageLive(_3) @76 s1
+    * _3 = copy (*_2).0 @76 s1
+      goto bb6 check bb7 @75 s1
+  bb1:
+      return @60
+  bb2:
+      drop _1 -> bb3 @60
+  bb3:
+      goto bb1 @60
+  bb4:
+      StorageDead(_2) @69 s1
+      goto bb2 @60
+  bb5:
+      StorageDead(_3) @76 s1
+      goto bb4 @60
+  bb6:
+      _0 = move _3 @75 s1
+      goto bb5 @75 s1
+  bb7:
+      StorageDead(_3) @76 s1
+      StorageDead(_2) @69 s1
+      drop _1 -> bb8 @60
+  bb8:
+      unreachable @68
+fn mixed @79
+  _0: () return @79
+  _1: s/T arg value @79
+  _2: case s { ref => ref/ref/T; obj => obj/T } temp @94 s1
+  _3: s/T temp @95 s1
+  s1: lexical in s0 @92
+  b0: T Ref, Obj
+  bb0:
+      StorageLive(_2) @94 s1
+      StorageLive(_3) @95 s1
+    * _3 = move _1 @96 s1
+      _2 = adapt(move _3, const type s/T) payload (_3@b0): case s { ref => ref/ref/T; obj => obj/T } shorthand @94 s1
+      drop _3 -> bb1 @95 s1
+  bb1:
+      StorageDead(_3) @95 s1
+      drop _2 -> bb2 @94 s1
+  bb2:
+      StorageDead(_2) @94 s1
+      _0 = const () @92 s1
+      drop _1 -> bb3 @79
+  bb3:
+      return @92
+fn make @99
+  _0: () return @99
+  _1: closure (i32) -> s/i32 var create @108 s1
+  _2: s/i32 temp @118 s1
+  _3: s/i32 temp @119 s1
+  _4: ref/closure (i32) -> s/i32 temp @120 s1
+  s1: lexical in s0 @107
+  b0: T Owning
+  bb0:
+      StorageLive(_1) @108 s1
+    * _1 = Closure(): closure (i32) -> s/i32 @110 s1
+      StorageLive(_2) @118 s1
+      StorageLive(_3) @119 s1
+      StorageLive(_4) @120 s1
+    * _4 = &_1: ref/closure (i32) -> s/i32 @120 s1
+      _3 = value move _4(const 7_i32) -> bb1 @119 s1
+  bb1:
+      _2 = move _3 @119 s1
+      StorageDead(_4) @120 s1
+      drop _3 -> bb2 @119 s1
+  bb2:
+      StorageDead(_3) @119 s1
+      drop _2 -> bb3 @118 s1
+  bb3:
+      StorageDead(_2) @118 s1
+      _0 = const () @107 s1
+      StorageDead(_1) @108 s1
+      return @107
+closure @110
+  _0: s/i32 return @110
+  _1: ref/closure (i32) -> s/i32 arg @110
+  _2: i32 arg value @110
+  b0: T Owning
+  bb0:
+    * _0 = adapt(copy _2, const type i32): s/i32 shorthand @114
+      return @114
+fn take @123
+  _0: s/i32 return @123
+  _1: s/i32 arg value @123
+  _2: s/i32 temp @139 s1
+  s1: lexical in s0 @137
+  b0: T Owning
+  bb0:
+      StorageLive(_2) @139 s1
+    * _2 = move _1 @140 s1
+      goto bb6 check bb7 @138 s1
+  bb1:
+      return @123
+  bb2:
+      drop _1 -> bb3 @123
+  bb3:
+      goto bb1 @123
+  bb4:
+      drop _2 -> bb5 @139 s1
+  bb5:
+      StorageDead(_2) @139 s1
+      goto bb2 @123
+  bb6:
+      _0 = move _2 @138 s1
+      goto bb4 @138 s1
+  bb7:
+      drop _2 -> bb8 @139 s1
+  bb8:
+      StorageDead(_2) @139 s1
+      drop _1 -> bb9 @123
+  bb9:
+      unreachable @137
+fn give @142
+  _0: t/i32 return @142
+  _1: t/i32 temp @153 s1
+  _2: t/i32 temp value (PendingSlot) @153 s1
+  _3: i32 temp @133 s2
+  s1: lexical in s0 @151
+  s2: inlined in s1 @153
+  b0: U Owning
+  bb0:
+      StorageLive(_1) @153 s1
+      StorageLive(_2) @153 s1
+      StorageLive(_3) @133 s2
+    * _3 = const 7_i32 @133 s2
+      _2 = adapt(move _3, const type i32): t/i32 shorthand @132 s2
+      StorageDead(_3) @133 s2
+      goto bb1 @132 s2
+  bb1:
+    * _1 = take<t/U>(move _2) -> bb2 @153 s1
+  bb2:
+      goto bb7 check bb8 @152 s1
+  bb3:
+      return @142
+  bb4:
+      drop _2 -> bb5 @153 s1
+  bb5:
+      StorageDead(_2) @153 s1
+      drop _1 -> bb6 @153 s1
+  bb6:
+      StorageDead(_1) @153 s1
+      goto bb3 @142
+  bb7:
+      _0 = move _1 @152 s1
+      goto bb4 @152 s1
+  bb8:
+      drop _2 -> bb9 @153 s1
+  bb9:
+      StorageDead(_2) @153 s1
+      drop _1 -> bb10 @153 s1
+  bb10:
+      StorageDead(_1) @153 s1
+      unreachable @151
+fn peek @158
+  _0: i32 return @158
+  _1: s/Derived arg value @158
+  _2: objref/Base var view @169 s1
+  _3: i32 temp @176 s1
+  s1: lexical in s0 @168
+  b0: T Obj, ObjRef
+  bb0:
+      StorageLive(_2) @169 s1
+    * _2 = adapt(copy _1, const type s/Derived) payload (_1@b0): objref/Base @171 s1
+      StorageLive(_3) @176 s1
+    * _3 = copy (*_2).0 @176 s1
+      goto bb6 check bb7 @175 s1
+  bb1:
+      return @158
+  bb2:
+      drop _1 -> bb3 @158
+  bb3:
+      goto bb1 @158
+  bb4:
+      StorageDead(_2) @169 s1
+      goto bb2 @158
+  bb5:
+      StorageDead(_3) @176 s1
+      goto bb4 @158
+  bb6:
+      _0 = move _3 @175 s1
+      goto bb5 @175 s1
+  bb7:
+      StorageDead(_3) @176 s1
+      StorageDead(_2) @169 s1
+      drop _1 -> bb8 @158
+  bb8:
+      unreachable @168
+fn poke @179
+  _0: () return @179
+  _1: s/Derived arg value @179
+  _2: s/Derived var mut slot @190 s1
+  _3: objuniq/Base temp @196 s1
+  s1: lexical in s0 @189
+  b0: T Obj, ObjUniq
+  bb0:
+      StorageLive(_2) @190 s1
+    * _2 = move _1 @193 s1
+      StorageLive(_3) @196 s1
+    * _3 = adapt(copy _2, const type s/Derived) payload (_2@b0): objuniq/Base @196 s1
+      StorageDead(_3) @196 s1
+      _0 = const () @189 s1
+      drop _2 -> bb1 @190 s1
+  bb1:
+      StorageDead(_2) @190 s1
+      drop _1 -> bb2 @179
+  bb2:
+      return @189
+fn cast @200
+  _0: () return @200
+  _1: raw/i32 arg pointer @200
+  _2: usize arg address @200
+  _3: s/u8 temp @211 s1
+  _4: s/u8 temp @216 s1
+  s1: lexical in s0 @209
+  b0: T Raw
+  bb0:
+      StorageLive(_3) @211 s1
+    * _3 = adapt(copy _1, const type raw/i32): s/u8 @211 s1
+      drop _3 -> bb1 @211 s1
+  bb1:
+      StorageDead(_3) @211 s1
+      StorageLive(_4) @216 s1
+    * _4 = adapt(copy _2, const type usize): s/u8 @216 s1
+      drop _4 -> bb2 @216 s1
+  bb2:
+      StorageDead(_4) @216 s1
+      _0 = const () @209 s1
+      return @209
+fn init @220
+  _0: Base return @220
+  _1: () temp @221
+  s1: lexical in s0 @221
+  bb0:
+      StorageLive(_1) @221
+    * _0.0 = const 9_i32 @6
+    * _1 = const () @221 s1
+      StorageDead(_1) @221
+      return @221

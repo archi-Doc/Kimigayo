@@ -67,6 +67,11 @@ internal sealed class TyCtxt(Binding binding, KimiLibrary library)
         return binding.CallableContractType(type, binding.ConstraintScope(definition.Declaration));
     }
 
+    // SPEC 8.9, 13.5.3: the operation an explicit adaptation from a complete Type to a complete Type is, Binding's one selection, by which
+    // the MIR's case views resolve a case adaptation.
+    internal static ConversionBinding Adaptation(BoundType source, BoundType target, bool shorthand)
+        => ExplicitAdaptationPlan.Select(source, target, shorthand);
+
     // SPEC 8.10: the complete Type a Type takes in one Semantics case, each pair layer of a binder the cases name the Type of its Semantics
     // over its direct target, which the MIR's case views give every Type by.
     internal BoundType CaseType(BoundType type, ReadOnlySpan<PairCase> cases) => binding.CaseType(type, cases);

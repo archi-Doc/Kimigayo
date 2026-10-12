@@ -448,6 +448,26 @@ rules that result from them.
   form: it hides their independent errors, SPEC 23.3.6); MIR deciding the bound; a non-form failure (order-dependent caller
   records); a template guard on an unset Op (Binding.Check leaves no node unvisited before publication); a Koto-keyed count table.
   Diagnostic sets change only in already-rejected programs; acceptance does not change.
+- **R4-M19** (owner O1, 2026-10-12; two designs compared, the first taken with two parts of the second). An explicit case
+  adaptation (SPEC 8.9, 13.5.3), whose operation each Semantics case selects, is the one case-dependent rvalue
+  `MirRvalueKind.Adapt` (KR1003: 9 → 10). Operand 0 is the by-value acquisition (a written Place's Copy, a temporary's Move);
+  operand 1 is the TypeToken of Binding's source Type, since `ExplicitAdaptationPlan.Select` decides by interned identity and
+  the operand Place's MIR Type may differ from Binding's in Origins. Place is the payload one implicit layer below the operand
+  (`Follow(P, 1)`), so object borrows and borrowing upcasts borrow the whole object, never a base; Type is Binding's target;
+  Op 1 is the Semantics shorthand. `MirCases.Adapt` resolves it per view through `TyCtxt.Adaptation` (Binding's `Select`,
+  published like `CaseType`) to an ordinary rvalue: Identity and object creation a `Use` of the operand (a creation also
+  allocates), Pointer and an upcast keeping a non-exclusive Semantics a Proven `Cast`, any other operation a `Ref`
+  (`MirTypes.RefKind`) of the payload for an object reference, else of the operand's Place; analyses never see an Adapt
+  under a view. Its descriptor row is CaseDependent with Allocation. `MirUses.ForEach(MirCases, …)` shares the walk of the
+  body overload and reports the resolved form, a creation with its allocation; without a view an Adapt reports its operands,
+  the acquired Place and the payload as CaseDependent (as PairAcquire's row does), and the allocation. `MirValidator(TyCtxt)` checks the operands' shape and the token against
+  the operand, and under every view that an operation is selected and that a borrow or an address takes a Place of its
+  referent Type. The builder reads the plan from its row and adds `ExplicitAdaptationPlan` only to mir_build's allow list.
+  Rejected: the Unsupported record until R5 (owner); an encoding without a new member (PairLayer and PairAcquire cannot
+  allocate, form a reference or upcast); an operand kind (a creation allocates, a borrow yields a Ref); per-case expansion or
+  statement masks (plan §5.6.1); the source taken from the operand Place's MIR Type; a MirBody plan table (a table, adder,
+  reset, range rules and folding); analyses querying MirCases per Adapt (every analysis would special-case it); moving
+  `Select` into TyCtxt (it edits frozen call sites, D5); a MIR copy of `Select` modulo Origins (a second copy). Not temporary.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

@@ -20,7 +20,7 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirBuilder(Compilation compilation)
 {
     private readonly MirProgram program = new();
-    private readonly MirValidator validator = new();
+    private readonly MirValidator validator = new(compilation.Types);
     private readonly Dictionary<BindingSymbol, int> locals = new(); // The local of each parameter and local symbol of the body.
     private readonly List<MirOperand> arguments = []; // The evaluated arguments of the calls being built, innermost last.
     private readonly List<int> roots = [];

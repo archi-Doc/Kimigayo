@@ -36,8 +36,10 @@ internal readonly record struct MirOperand(MirOperandKind Kind, MirPlace Place, 
 
 /// <summary>An rvalue. Its operands are <see cref="Count"/> entries of <see cref="MirBody.Operands"/> from <see cref="Start"/>;
 /// <see cref="Op"/> is a Ref's <see cref="MirRefKind"/>, an operator's <see cref="MirBinaryOp"/> or <see cref="MirUnaryOp"/>, a Cast's
-/// <see cref="MirCastKind"/> or an aggregate's <see cref="MirAggregateKind"/>; <see cref="Arg"/> is an Adt aggregate's Case ordinal or an
-/// Opaque's site; <see cref="Type"/> is a Ref's reference Type, a Cast's target Type or an aggregate's or Opaque's Type.</summary>
+/// <see cref="MirCastKind"/>, an aggregate's <see cref="MirAggregateKind"/> or an Adapt's 1 for the Semantics shorthand;
+/// <see cref="Arg"/> is an Adt aggregate's Case ordinal or an Opaque's site; <see cref="Place"/> is a Ref's, Discriminant's or Len's
+/// Place or an Adapt's payload; <see cref="Type"/> is a Ref's reference Type, a Cast's or an Adapt's target Type or an aggregate's or
+/// Opaque's Type.</summary>
 internal readonly record struct MirRvalue(
     MirRvalueKind Kind,
     byte Op = 0,
@@ -78,6 +80,16 @@ internal readonly record struct MirRvalue(
     internal static MirRvalue Len(MirPlace place) => new(MirRvalueKind.Len, Place: place);
 
     internal static MirRvalue Opaque(BoundType type, int site) => new(MirRvalueKind.Opaque, Arg: site, Type: type);
+
+    // From the first, the operand acquired by value and the token of Binding's source Type; the payload is the Place one implicit layer
+    // below the operand's, which an object borrow borrows.
+    internal static MirRvalue Adapt(int operands, MirPlace payload, BoundType target, bool shorthand) => new(
+        MirRvalueKind.Adapt,
+        (byte)(shorthand ? 1 : 0),
+        payload,
+        operands,
+        2,
+        Type: target);
 }
 
 /// <summary>A statement: an Assign of its rvalue to its Place, or StorageLive, StorageDead, FakeRead or EndBorrow of its Place.</summary>

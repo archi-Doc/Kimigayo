@@ -15,8 +15,9 @@ namespace Kimi.Compiler.Mir;
 /// <c>@id</c> (<c>@module:id</c> outside module 0), and its scope (<c>s1</c>) when it is not the body's; <c>*</c> marks where a source
 /// statement starts. Types are spelled as diagnostics spell them (<see cref="TyCtxt.Name"/>). Places: <c>(*p)</c> Deref,
 /// <c>p.0</c> Field, <c>p.base1</c> Base, <c>p[_3]</c> Index, <c>p[2]</c> ConstIndex, <c>(p as case 1)</c> Downcast and <c>(p@b0)</c>
-/// PairLayer; borrows <c>&amp;</c>, <c>&amp;uniq</c>, <c>&amp;uniq two-phase</c> and <c>&amp;raw</c>; an Opaque value <c>opaque 0: T</c>; a default
-/// template, as a body and as a callee, <c>f#1</c>.</summary>
+/// PairLayer; borrows <c>&amp;</c>, <c>&amp;uniq</c>, <c>&amp;uniq two-phase</c> and <c>&amp;raw</c>; an Opaque value <c>opaque 0: T</c>; a case
+/// adaptation <c>adapt(copy _1, const type T) payload (_1@b0): s/T shorthand</c>, its payload where it is not the operand's Place and
+/// <c>shorthand</c> for the Semantics shorthand; a default template, as a body and as a callee, <c>f#1</c>.</summary>
 internal static class MirDump
 {
     /// <summary>Writes the bodies of one module, then the construction records and validator findings located there.</summary>
@@ -164,6 +165,15 @@ internal static class MirDump
                 break;
             case MirRvalueKind.Discriminant or MirRvalueKind.Len:
                 Place(text.Append(rvalue.Kind == MirRvalueKind.Len ? "len(" : "discriminant("), body, rvalue.Place).Append(')');
+                break;
+            case MirRvalueKind.Adapt:
+                Operands(text.Append("adapt"), body, rvalue.Start, rvalue.Count);
+                if (rvalue.Place != body.Operands[rvalue.Start].Place)
+                {
+                    Place(text.Append(" payload "), body, rvalue.Place);
+                }
+
+                text.Append(": ").Append(Type(rvalue.Type)).Append(rvalue.Op != 0 ? " shorthand" : string.Empty);
                 break;
             default:
                 text.Append("opaque ").Append(rvalue.Arg).Append(": ").Append(Type(rvalue.Type));

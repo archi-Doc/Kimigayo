@@ -41,7 +41,7 @@ their type family, including overrides and derived Koto slots.
 
 ## Closed vocabularies
 
-MIR has 5 statement, 9 rvalue, 6 terminator (plus the `CheckTarget` attribute), 7 projection, 4 operand and 5 callee
+MIR has 5 statement, 10 rvalue, 6 terminator (plus the `CheckTarget` attribute), 7 projection, 4 operand and 5 callee
 kinds; the HIR vocabularies and `IntrinsicId` have fixed limits too (KR1003, configured in CodeRules.globalconfig). Enum
 aliases count separately; implicit fields do not. A removed configured enum produces KR9002 for removal from config. A
 form not yet implemented has one diagnostic code, the location-only `Unsupported_Kd`, reported by Binding, MIR
@@ -71,13 +71,13 @@ Analyzer A1, each entry file begins with the component's contract (AGENTS). Path
 | Calls | `CallPlan`, reached only through `CallPlan.Of(node, ordinal)`; an omitted default is its `DefaultDecl` | `Binding/CallPlan.cs` |
 | Desugared forms | `ExpansionPlan.Of`; the Pattern plans `BoundMatch.Of`, closures `BoundClosure.Of` and enum Case construction `BoundEnumConstruction.Of` | `Binding/ExpansionPlan.cs` |
 | Stored shape of a struct or enum | `AdtDef` | `Binding/AdtDef.cs` |
-| Types and substitutions | `TyCtxt` (`Compilation.Types`): interning, `Subst` (`SubstOf`, `Apply`, `Compose`, `Signature`), implicit `Layer`s, `CaseType`, `Name` for display | `Binding/TyCtxt.cs` |
-| Semantics cases | `PairBinder` (a body's binders, `CaseProduct`, `CaseBound`); `Binding.CaseLimits`, the one decision of the bound per definition before its parts are bound; `MirCases`, per-case views of one body that is never copied | `Binding/BindingModel.cs`, `Binding/Binding.CaseLimits.cs`, `Mir/MirCases.cs` |
+| Types and substitutions | `TyCtxt` (`Compilation.Types`): interning, `Subst` (`SubstOf`, `Apply`, `Compose`, `Signature`), implicit `Layer`s, `CaseType`, `Adaptation` (Binding's selection of an explicit adaptation), `Name` for display | `Binding/TyCtxt.cs` |
+| Semantics cases | `PairBinder` (a body's binders, `CaseProduct`, `CaseBound`); `Binding.CaseLimits`, the one decision of the bound per definition before its parts are bound; `MirCases`, per-case views of one body that is never copied, under which an `Adapt` is the operation its case selects | `Binding/BindingModel.cs`, `Binding/Binding.CaseLimits.cs`, `Mir/MirCases.cs` |
 | Library operations | `IntrinsicDisposition.Of`: a Kimigayo body, an `IntrinsicId` or a shim for each `CompilerFunctionKind` | `Binding/KimiLibraryKinds.cs` |
 | MIR storage | `MirBody` struct arrays with interned projection chains, `ProjectedType` the one projection Type rule; `MirProgram`, bodies by `MirDefKey`, pooled for warm rebuilds | `Mir/MirVocabulary.cs`, `Mir/MirBody.cs`, `Mir/MirProgram.cs` |
-| Operands, accesses and effects | `MirDescriptors.Of` rows; `MirUses.ForEach` and `MirUses.Successors`, the one enumeration the validator and the analyses share | `Mir/MirDescriptors.cs` |
+| Operands, accesses and effects | `MirDescriptors.Of` rows; `MirUses.ForEach` (of a body, or under a case view with each `Adapt` resolved) and `MirUses.Successors`, the one enumeration the validator and the analyses share | `Mir/MirDescriptors.cs` |
 | Type facts in MIR | `MirTypes`: `MayNeedDrop`, `HoldsRaw`, `IsExclusive`, `Agree` (Type agreement modulo Origins), `RefKind` (the mode of a borrow), `PointerCast` | `Mir/MirTypes.cs` |
-| MIR construction | `MirBuilder` (`Compilation.BuildMir`): one body per definition and Closure, built by Op, Adjust and PlaceShape; `Ref`, the one borrow rule; one drop tree per transfer target; one template per default; `Unsupported(node)`, the one Unsupported record with an Opaque value | `Mir/Build/MirBuilder*.cs` |
+| MIR construction | `MirBuilder` (`Compilation.BuildMir`): one body per definition and Closure, built by Op, Adjust and PlaceShape; `Ref`, the one borrow rule; one `Adapt` per case adaptation; one drop tree per transfer target; one template per default; `Unsupported(node)`, the one Unsupported record with an Opaque value | `Mir/Build/MirBuilder*.cs` |
 | MIR validation | `MirValidator`, the one structural and Type verifier; a finding is `InternalInvariant_Kd` | `Mir/MirValidator.cs`, its Type tier `Mir/MirValidator.Types.cs` |
 | MIR analyses | `MirAnalysis` (`Compilation.BuildMir`): the analyses of one program version, once per version after build and validation, in the pass order its contract fixes (DECISIONS R4-M2a) | `Mir/Analysis/MirAnalysis.cs` |
 | MIR analysis problems | `MirReport`: one `MirProblem(Code, Subject, Views)` per code and subject with its views merged; the one home of the derived-problem rules (DECISIONS R4-M3a, R4-M10) | `Mir/Analysis/MirReport.cs` |

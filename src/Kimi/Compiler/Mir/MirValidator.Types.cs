@@ -4,12 +4,35 @@ using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
 
-// The Type tier (SPEC 3.2-3.4, 13.2-13.5, 7.3): the Types values flow between agree (MirTypes.Agree, modulo Origins, or as the body's
-// premises make them), and each operation admits its operands' Types.
+// The Type tier (SPEC 3.2-3.4, 13.2-13.5, 7.3, 8.9): the Types values flow between agree (MirTypes.Agree, modulo Origins, or as the
+// body's premises make them), each operation admits its operands' Types, and every Semantics case view resolves each Adapt.
 internal sealed partial class MirValidator
 {
     private partial struct Checker
     {
+        // SPEC 8.9, 8.10: under each Semantics case view an Adapt selects an operation (MirCases.Adapt), and a borrow or an address takes
+        // a Place of its reference's referent Type there; one finding per Adapt, at the first view that breaks either.
+        internal void Views(MirCases cases)
+        {
+            var views = MirCases.Count(body);
+            foreach (var (adapt, source) in adapts)
+            {
+                this.at = source;
+                for (var view = 0L; view < views; view++)
+                {
+                    cases.Select(body, view);
+                    var resolved = cases.Adapt(adapt, out var operation);
+                    var borrowed = operation is ConversionBinding.Borrow or ConversionBinding.Address && body.TypeOf(resolved.Place) is { } stored
+                        ? cases.Type(stored) : null;
+                    if (operation == ConversionBinding.None || (borrowed is not null && !this.Agrees(resolved.Type!.Components[0], borrowed)))
+                    {
+                        this.Report(MirViolation.Operation);
+                        break;
+                    }
+                }
+            }
+        }
+
         // An integer Type, or one whose instance decides it (SPEC 8.4.7.3: a PrimitiveInteger T, Wrapping<T>).
         private static bool Integral(BoundType type) => type.HasIntegerArithmetic || type.HasAbstractPart;
 
@@ -90,10 +113,18 @@ internal sealed partial class MirValidator
             _ => body.ProjectedType(rvalue.Type, MirProjectionKind.Field, index),
         };
 
+        // SPEC 8.9: an Adapt acquires its operand by value, a Place's Copy or a temporary's Move, beside the token of Binding's source Type,
+        // into its target Type. A Place or a constant out of range is the walk's finding.
+        private readonly bool Adapts(in MirRvalue adapt, ReadOnlySpan<MirOperand> operands)
+            => adapt.Type is not null && operands[0].Kind is MirOperandKind.Copy or MirOperandKind.Move &&
+                operands[1] is { Kind: MirOperandKind.Const, Arg: var token } &&
+                ((uint)token >= (uint)body.Consts.Length || body.Consts[token].Kind == MirConstKind.TypeToken);
+
         // SPEC 3.2-3.4, 13.2-13.5: the Type an rvalue gives agrees with its destination's: a Use's or a unary operator's operand's, another
         // operator's left operand's, a comparison's bool, a Discriminant's or Len's isize, else its own Type. An operator's operands agree (a
         // comparison's below their layers) but for a shift count, any integer, and a raw pointer's displacement, an isize (SPEC 5.3); a Cast
-        // converts what its kind admits; a Ref's Type is its kind's reference to its Place; an aggregate's operands are its components.
+        // converts what its kind admits; a Ref's Type is its kind's reference to its Place; an aggregate's operands are its components; an
+        // Adapt gives its target Type.
         private void Types(in MirRvalue rvalue, BoundType? destination)
         {
             var operands = body.Operands.Slice(rvalue.Start, rvalue.Count);
@@ -113,6 +144,7 @@ internal sealed partial class MirValidator
                 }),
                 MirRvalueKind.Discriminant or MirRvalueKind.Len => (BoundType.ISize, true),
                 MirRvalueKind.Cast => (rvalue.Type, first is null || rvalue.Type is null || Casts((MirCastKind)rvalue.Op, first, rvalue.Type)),
+                MirRvalueKind.Adapt => (rvalue.Type, this.Adapts(rvalue, operands)),
                 MirRvalueKind.Ref => (rvalue.Type, place is null ||
                     (rvalue.Type is { Kind: BoundTypeKind.Semantics, Components: [var referent] } reference && this.Agrees(referent, place) &&
                     (MirRefKind)rvalue.Op switch
@@ -128,6 +160,14 @@ internal sealed partial class MirValidator
             if (!admitted)
             {
                 this.Report(MirViolation.Operation);
+            }
+            else if (rvalue.Kind == MirRvalueKind.Adapt)
+            {
+                this.Agree(second, first); // Binding's source Type, the token, is the operand's.
+                if (second is not null && this.IsValid(operands[0].Place) && this.IsValid(rvalue.Place))
+                {
+                    adapts.Add((rvalue, this.at)); // Its case views resolve it: its Places and token are in range.
+                }
             }
 
             for (var i = 0; rvalue.Kind == MirRvalueKind.Aggregate && i < operands.Length; i++)

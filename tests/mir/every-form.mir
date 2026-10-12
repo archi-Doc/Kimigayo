@@ -24,6 +24,7 @@ fn f @0
       FakeRead(static0) @0
       FakeRead((_2@b0)) @0
       _2 = acquire b0 _2 @0
+      _2 = adapt(copy (_2@b0), const type T): s/T shorthand @0
       _9 = opaque 0: bool @0
       _4 = discriminant(_5) @0
       _4 = len(_6) @0

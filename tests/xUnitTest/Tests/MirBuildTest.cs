@@ -286,9 +286,9 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         }));
     }
 
-    // V11: a body of N statement groups of the common forms (a local from a call, a condition with an update, a match with a binding, a
-    // loop with a transfer, an interpolation) grows its MIR and its cold build's allocation linearly with N, and a warm rebuild allocates
-    // nothing.
+    // V11: a body of N statement groups of the common forms (a local from a call, its case adaptation, a condition with an update, a match
+    // with a binding, a loop with a transfer, an interpolation) grows its MIR and its cold build's allocation linearly with N, and a warm
+    // rebuild, whose validation resolves each adaptation under both case views, allocates nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void BodiesScaleLinearly()
@@ -297,10 +297,11 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Compilation c = null!;
         for (var i = 0; i < sizes.Length; i++)
         {
-            var text = new StringBuilder("enum Shape\n    Dot\n    Line(i32)\nfunc touch(n: i32) -> i32 => n\nfunc work(flag: bool, shape: Shape) -> i32\n    var total = 0\n");
+            var text = new StringBuilder("enum Shape\n    Dot\n    Line(i32)\nfunc touch(n: i32) -> i32 => n\nfunc work<s/T>(flag: bool, shape: Shape) -> i32\n");
+            text.Append("    s is owner or ref\n    var total = 0\n");
             for (var n = 0; n < sizes[i]; n++)
             {
-                text.Append($"    let v{n} = touch({n})\n    if flag and v{n} > 0 => total += v{n}\n    match shape\n        .Line(let x) => total += x\n        _ => ()\n");
+                text.Append($"    let v{n} = touch({n})\n    _ = v{n}@s\n    if flag and v{n} > 0 => total += v{n}\n    match shape\n        .Line(let x) => total += x\n        _ => ()\n");
                 text.Append("    while total > 1000\n        total -= 1\n        if flag => exit\n    Console.writeLine(\"\\(total)\")\n");
             }
 
@@ -375,6 +376,92 @@ public sealed class MirBuildTest(ITestOutputHelper output)
                 "Fn caller 1 [Uniq]: acquire _1 reborrow, @b0 *uniq/T: T",
             ],
             lines);
+    }
+
+    // SPEC 8.9, 8.10, 13.5.3: an explicit case adaptation is one Adapt, which each Semantics case view of tests/mir/adaptations resolves to
+    // the operation Binding selects in that case, as the operation's ordinary rvalue: a Place Copied, a temporary moved or an object
+    // created from either (Use), an address or a borrow of the operand's Place, or for an object view of the whole object below its pair
+    // layer (Ref; an objuniq upcast's Reborrow too), an owning or objref upcast and a pointer conversion (Cast); in a Closure under its
+    // enclosing function's binder, in a default template under its own and in the template's copy under the omitting caller's. An
+    // adaptation Binding rejected is a derived Opaque, without an Adapt or a record.
+    [Fact]
+    public void ViewsResolveAdaptations()
+    {
+        var c = Compile(File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "mir", "adaptations.kimi")));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Records);
+        var cases = new MirCases(c.Types);
+        var lines = new List<string>();
+        foreach (var body in program.Bodies)
+        {
+            var name = body.Key.Decl?.Name is { Length: > 0 } declared ? $"{body.Key.Kind} {declared}" : body.Key.Kind.ToString();
+            foreach (var adapt in body.Statements.ToArray().Select(static x => x.Rvalue).Where(static x => x.Kind == MirRvalueKind.Adapt))
+            {
+                for (var view = 0L; view < MirCases.Count(body); view++)
+                {
+                    var selected = cases.Select(body, view).ToArray();
+                    var resolved = cases.Adapt(adapt, out var operation);
+                    lines.Add($"{name} [{string.Join(", ", selected.Select(static x => x.Semantics))}]: {operation} {Form(body, resolved)}");
+                }
+            }
+        }
+
+        output.WriteLine(string.Join('\n', lines));
+        Assert.Equal(
+            [
+                "DefaultTemplate take [Owner]: Identity Move _1",
+                "DefaultTemplate take [Obj]: ObjectCreation Move _1",
+                "DefaultTemplate take [Rc]: ObjectCreation Move _1",
+                "DefaultTemplate take [Arc]: ObjectCreation Move _1",
+                "Fn discard [Owner]: Identity Copy _1",
+                "Fn discard [Ref]: Borrow Shared _1: ref/i32",
+                "Fn discard [Obj]: ObjectCreation Copy _1",
+                "Fn discard [Rc]: ObjectCreation Copy _1",
+                "Fn discard [Arc]: ObjectCreation Copy _1",
+                "Fn address [Obj]: ObjectCreation Copy _1",
+                "Fn address [Raw]: Address Raw _1: raw/i32",
+                "Fn widen [Obj]: ObjectUpcast Upcast: obj/Base",
+                "Fn widen [Rc]: ObjectUpcast Upcast: rc/Base",
+                "Fn widen [Arc]: ObjectUpcast Upcast: arc/Base",
+                "Fn inspect [Obj]: ObjectUpcast Shared _1.PairLayer: objref/Base",
+                "Fn inspect [Rc]: ObjectUpcast Shared _1.PairLayer: objref/Base",
+                "Fn inspect [Arc]: ObjectUpcast Shared _1.PairLayer: objref/Base",
+                "Fn mixed [Ref]: Borrow Shared _3: ref/ref/T",
+                "Fn mixed [Obj]: Identity Move _3",
+                "Closure [Owner]: Identity Copy _2",
+                "Closure [Obj]: ObjectCreation Copy _2",
+                "Closure [Rc]: ObjectCreation Copy _2",
+                "Closure [Arc]: ObjectCreation Copy _2",
+                "Fn give [Owner]: Identity Move _3",
+                "Fn give [Obj]: ObjectCreation Move _3",
+                "Fn give [Rc]: ObjectCreation Move _3",
+                "Fn give [Arc]: ObjectCreation Move _3",
+                "Fn peek [Obj]: ObjectUpcast Shared _1.PairLayer: objref/Base",
+                "Fn peek [ObjRef]: ObjectUpcast Upcast: objref/Base",
+                "Fn poke [Obj]: ObjectUpcast Uniq _2.PairLayer: objuniq/Base",
+                "Fn poke [ObjUniq]: ObjectUpcast Uniq _2.PairLayer: objuniq/Base",
+                "Fn cast [Raw]: Pointer Pointer: raw/u8",
+                "Fn cast [Raw]: Pointer IntToPointer: raw/u8",
+            ],
+            lines);
+
+        var rejected = Compile("func wrong<s/T>() -> s/i64\n    s is object\n    return 1@s/i64\n");
+        var built = rejected.BuildMir();
+        Assert.Empty(built.Findings);
+        Assert.Empty(built.Records);
+        var wrong = built.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "wrong");
+        Assert.True(wrong.HasOpaque);
+        Assert.DoesNotContain(wrong.Statements.ToArray(), static x => x.Rvalue.Kind == MirRvalueKind.Adapt);
+
+        static string Form(MirBody body, in MirRvalue rvalue) => rvalue.Kind switch
+        {
+            MirRvalueKind.Use => $"{body.Operands[rvalue.Start].Kind} {Place(body, body.Operands[rvalue.Start].Place)}",
+            MirRvalueKind.Ref => $"{(MirRefKind)rvalue.Op} {Place(body, rvalue.Place)}: {TyCtxt.Name(rvalue.Type!)}",
+            _ => $"{(MirCastKind)rvalue.Op}: {TyCtxt.Name(rvalue.Type!)}",
+        };
+
+        static string Place(MirBody body, MirPlace place) => $"_{place.Root}{(place.Projection == 0 ? string.Empty : "." + body.Projections[place.Projection].Kind)}";
     }
 
     // SPEC 8.10, 23.3.6.1: Binding decides the case bound once per definition (Binding.CaseLimits), so no built body has more than 64 views.

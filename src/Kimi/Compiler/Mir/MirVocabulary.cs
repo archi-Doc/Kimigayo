@@ -33,6 +33,7 @@ internal enum MirRvalueKind : byte
     Discriminant, // The Case ordinal of an enum Place.
     Len, // The length of a sequence Place.
     Opaque, // A value of the Type that a Binding error or an Unsupported form replaced; its site lists the Places it touched.
+    Adapt, // A case adaptation (SPEC 8.9), whose operation each Semantics case selects: MirCases.Adapt resolves it per view.
 }
 
 /// <summary>A MIR terminator (plan 5.4); there is no unwinding. <c>CheckTarget</c> is an attribute of Goto, a Call without a target
