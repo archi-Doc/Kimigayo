@@ -172,6 +172,44 @@ public sealed class DiagnosticSnapshotTest : IDisposable
         return differences;
     }
 
+    /// <summary>Checks one case of the corpus through the shared check entry: an example's own project, or a generated Application
+    /// project for the source of any other kind.</summary>
+    /// <param name="name">The case name: its kind (<c>example</c>, <c>milestone</c>, <c>syntax</c>, <c>spec</c> or <c>mutation</c>), a slash
+    /// and its subject.</param>
+    /// <param name="directory">The directory that receives generated projects.</param>
+    /// <returns>The case's published records, outcome and acceptance.</returns>
+    internal static SnapshotCase Take(string name, string directory)
+    {
+        var kind = name[..name.IndexOf('/')];
+        var subject = name[(kind.Length + 1)..];
+        string project;
+        if (kind == "example")
+        {
+            project = Directory.GetFiles(DiagnosticCorpus.RepositoryPath("docs", "examples", subject), "*.kimiproj").Single();
+        }
+        else
+        {
+            var source = kind switch
+            {
+                "milestone" => File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "milestones", subject + ".kimi")),
+                "syntax" => DiagnosticCorpus.Syntax(subject).Source,
+                "spec" => DiagnosticCorpus.Spec(subject),
+                _ => DiagnosticCorpus.Apply(DiagnosticCorpus.Mutation(subject)),
+            };
+            var folder = Path.Combine(directory, kind, subject);
+            Directory.CreateDirectory(folder);
+            project = Path.Combine(folder, "Program.kimiproj");
+            File.WriteAllText(project, $"OutputKind=\"Application\" Targets={{\"{WindowsProfile.Target}\"}}");
+            File.WriteAllText(Path.Combine(folder, "Program.kimi"), source);
+        }
+
+        Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failure), failure);
+        var output = CheckService.Run(loaded, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
+        var root = Path.GetDirectoryName(project)!;
+        var diagnostics = output.Diagnostics.Select(x => new SnapshotDiagnostic(x.Code, x.Severity.ToString(), x.Message, Relative(root, x.Source < 0 ? null : output.Sources[x.Source].Path), Format(x.Display?.Range), Format(x.Repairs))).ToArray();
+        return new(name, output.Outcome.ToString(), output.Accepted, diagnostics);
+    }
+
     private static string Serialize(SnapshotCase[] snapshot)
         => JsonSerializer.Serialize(snapshot, Options);
 
@@ -187,38 +225,7 @@ public sealed class DiagnosticSnapshotTest : IDisposable
             $"{x.Kind}[{string.Join(",", x.Edits.Select(static e => $"{Format(e.Range)}'{e.Text}'"))}] verified={string.Join(",", x.Verified)} required={string.Join(",", x.Required.Select(static c => c.Condition))}"));
 
     private SnapshotCase[] Take(IEnumerable<string> names)
-        => [.. names.Select(this.Take)];
-
-    private SnapshotCase Take(string name)
-    {
-        var kind = name[..name.IndexOf('/')];
-        var subject = name[(kind.Length + 1)..];
-        string project;
-        if (kind == "example")
-        {
-            project = Directory.GetFiles(DiagnosticCorpus.RepositoryPath("docs", "examples", subject), "*.kimiproj").Single();
-        }
-        else
-        {
-            var source = kind switch
-            {
-                "milestone" => File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "milestones", subject + ".kimi")),
-                "syntax" => DiagnosticCorpus.Syntax(subject).Source,
-                _ => DiagnosticCorpus.Apply(DiagnosticCorpus.Mutation(subject)),
-            };
-            var folder = Path.Combine(this.directory, kind, subject);
-            Directory.CreateDirectory(folder);
-            project = Path.Combine(folder, "Program.kimiproj");
-            File.WriteAllText(project, $"OutputKind=\"Application\" Targets={{\"{WindowsProfile.Target}\"}}");
-            File.WriteAllText(Path.Combine(folder, "Program.kimi"), source);
-        }
-
-        Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failure), failure);
-        var output = CheckService.Run(loaded, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
-        var root = Path.GetDirectoryName(project)!;
-        var diagnostics = output.Diagnostics.Select(x => new SnapshotDiagnostic(x.Code, x.Severity.ToString(), x.Message, Relative(root, x.Source < 0 ? null : output.Sources[x.Source].Path), Format(x.Display?.Range), Format(x.Repairs))).ToArray();
-        return new(name, output.Outcome.ToString(), output.Accepted, diagnostics);
-    }
+        => [.. names.Select(x => Take(x, this.directory))];
 
     /// <summary>One case of a snapshot.</summary>
     /// <param name="Name">The case name.</param>
