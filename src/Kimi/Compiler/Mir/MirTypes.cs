@@ -163,14 +163,15 @@ internal static class MirTypes
 
     /// <summary>Gets the Type a Call passes at an argument position, or at -1 the Type it gives (SPEC 7.3): a Fn, Requirement or Virtual
     /// callee's function's parameter at the slot the position passes (the receiver first) under its Subst, and its result; a default
-    /// template's (plan 5.6.2) parameters before its own in slot order, each taken by a shared reference, and its parameter's Type; a Value
-    /// callee of a Function Type its inputs and result.</summary>
+    /// template's (plan 5.6.2) shared references to the parameters before its own in slot order, and its parameter's Type; a Value callee
+    /// of a Function Type its inputs and result.</summary>
+    /// <param name="types">The Type context, which interns a template argument's reference.</param>
     /// <param name="callee">The callee.</param>
     /// <param name="value">The Type of a Value callee's operand.</param>
     /// <param name="position">The argument position, or -1.</param>
     /// <param name="count">The arguments the callee takes; -1 without a signature (an intrinsic, a Closure or a function item value).</param>
     /// <returns>The Type; null past the arguments or where the Subst does not instantiate it.</returns>
-    internal static BoundType? Parameter(in MirCallee callee, BoundType? value, int position, out int count)
+    internal static BoundType? Parameter(TyCtxt types, in MirCallee callee, BoundType? value, int position, out int count)
     {
         if (callee.Symbol is { } function && callee.Kind != MirCalleeKind.Intrinsic)
         {
@@ -178,7 +179,7 @@ internal static class MirTypes
             var slot = template < 0 && position >= 0 ? MirCallee.Slot(function, position) : position;
             var type = TyCtxt.Signature(function, callee.Subst, position < 0 ? template : slot, out count);
             count = template < 0 ? count : template;
-            return type;
+            return template < 0 || position < 0 || type is null ? type : types.Reference(SemanticsKind.Ref, type);
         }
 
         if (callee.Kind != MirCalleeKind.Value || Terminal(value) is not { Kind: BoundTypeKind.Function, Components: [var inputs, var result] })

@@ -183,14 +183,14 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             }
         }
 
-        // The Place up to its outermost PairLayer step the view makes a reference, or the Place itself.
+        // The Place up to its outermost step that follows a reference under the view (MirCases.Follows), or the Place itself.
         private readonly MirPlace Layer(MirPlace place)
         {
             var projections = body.Projections;
             var layer = place;
             for (var id = place.Projection; id > 0; id = projections[id].Prefix)
             {
-                if (projections[id].Kind == MirProjectionKind.PairLayer && cases.Layer(place with { Projection = id }) is not null)
+                if (cases.Follows(place with { Projection = id }))
                 {
                     layer = place with { Projection = projections[id].Prefix };
                 }

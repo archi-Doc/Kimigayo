@@ -68,7 +68,7 @@ internal sealed partial class MirValidator(TyCtxt types)
         }
 
         this.adapts.Clear();
-        var checker = new Checker(body, findings, this.Unknown(body), this.adapts);
+        var checker = new Checker(types, body, findings, this.Unknown(body), this.adapts);
         if (!checker.Tables())
         {
             return; // A chain or site out of order or range cannot be walked.
@@ -157,7 +157,8 @@ internal sealed partial class MirValidator(TyCtxt types)
     }
 
     // The checks of one body: tables first, then each location before MirUses walks it, and the visitor's checks of what it reports.
-    private partial struct Checker(MirBody body, List<MirFinding> findings, bool[] unknown, List<(MirRvalue Adapt, SourceInfo Source)> adapts) : IMirUses
+    private partial struct Checker(TyCtxt types, MirBody body, List<MirFinding> findings, bool[] unknown, List<(MirRvalue Adapt, SourceInfo Source)> adapts)
+        : IMirUses
     {
         private SourceInfo at;
         private int opaqueValues;

@@ -153,13 +153,12 @@ internal sealed partial class MirValidator
             }
         }
 
-        // SPEC 7.3: a call passes and gets the Types its callee takes and gives (MirTypes.Parameter), a default template's arguments as
-        // shared references. A Closure's or a function item's signature is its declaration's. A call that diverges writes no destination.
+        // SPEC 7.3: a call passes and gets the Types its callee takes and gives (MirTypes.Parameter). A Closure's or a function item's
+        // signature is its declaration's. A call that diverges writes no destination.
         private void Signature(in MirTerminator call)
         {
-            var template = call.Callee.Kind == MirCalleeKind.Fn && call.Callee.Arg > 0;
             var value = call.Callee.Symbol is null ? this.TypeOf(call.Operand) : null;
-            var result = MirTypes.Parameter(call.Callee, value, -1, out var count);
+            var result = MirTypes.Parameter(types, call.Callee, value, -1, out var count);
             if (count < 0)
             {
                 return;
@@ -173,16 +172,7 @@ internal sealed partial class MirValidator
 
             for (var i = 0; i < count; i++)
             {
-                var actual = this.TypeOf(body.Operands[call.Start + i]);
-                var expected = MirTypes.Parameter(call.Callee, value, i, out _);
-                if (!template || actual is null || actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [_] })
-                {
-                    this.Agree(expected, template ? actual?.Components[0] : actual);
-                }
-                else
-                {
-                    this.Report(MirViolation.Type); // A template's argument is no shared reference.
-                }
+                this.Agree(MirTypes.Parameter(types, call.Callee, value, i, out _), this.TypeOf(body.Operands[call.Start + i]));
             }
 
             if (call.Target >= 0 && this.IsValid(call.Place))
