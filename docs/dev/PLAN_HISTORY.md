@@ -6,6 +6,8 @@ Archive line numbers below refer to that immutable snapshot, not this file. Hist
 
 ## Sessions
 
+- **2026-10-13 — R4 whole-stage budget proposal:** owner authorized a complete scope and budget comparison including cap revision. Independent common-analysis, producer and exit audits replace the partial forecast, count shared work once and preserve semantic design gates. The new proposal records conditional costs, delivery order and cap/Binding decisions still needed; no compiler change or cap increase is made. The unchanged-input successful Session remains 20,792 tests; V13's known MIR failure is unchanged, P9 143 / open (b) 47.
+
 - **2026-10-13 — R4 resumed:** owner requested the current-dev Session first, completion of U8, then U7b redesign and the remaining R4 units. Applied the prepared pause record with the current position corrected to resumed. The new Session and unit results are recorded in the R4 handoff evidence.
 - **2026-10-13 — R4 resume verification and design checkpoint:** current-dev legacy Session `20261012-154908-322-session-r4-resume-20261013-access` passed the whole-solution build and 20,792 tests. V13 `r4-resume-20261013-v13-access` has identical on/off outcomes (the known MIR fixed-array failure only); P9 143, open (b) 47. U8's intrinsic correction is local, not landed; reproduced provenance and producer defects require redesign. Independent U7b/U9 designs expose missing shared contracts and a forecast above the R4-M25 gate; consolidation precedes further implementation. No compiler commit or cap/Binding exception was landed in this checkpoint.
 

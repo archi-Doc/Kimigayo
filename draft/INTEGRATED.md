@@ -305,6 +305,14 @@ The user adopted `Proposals/2026-10-10 Compiler Size Reduction and Single MIR Pl
 
   Open: the remaining §11 rows, including the D3 Note reduction (R1b-2), IMPL §21 generation-time reporting (R1, R6) and the later stages.
 
+## 2026-10-13 — R4 completion plan and budget draft
+
+The owner explicitly requested `Proposals/2026-10-13 R4 Completion Plan and Budget.md`, including cap revision among the
+options. This is a new, unadopted planning proposal; no section is integrated into SPEC, IMPL or compiler policy. Its full
+scope, budget options and required owner decisions remain open. PLAN records the planning request only. The original
+2026-10-10 proposal and all its integrated text remain unchanged; preparing this draft does not grant numeric caps,
+Binding exceptions, implementation support or the separate M39 redesign decision.
+
 ## 2026-10-12 — Code Rules Analyzer
 
 - `Changes/2026-10-11 Code Rules Analyzer.md`: 取り込み済み (A0–A8, owner instruction 2026-10-12).
