@@ -2321,7 +2321,6 @@ KR3001	T:Kimi.Compiler.Binding.HirPublisher	line:783564ee3deeb284	1	src/Kimi/Com
 KR3001	T:Kimi.Compiler.Binding.HirPublisher	line:789ceabc90a71856	1	src/Kimi/Compiler/Binding/Binding.Hir.Adjust.cs
 KR3001	T:Kimi.Compiler.Binding.HirPublisher	line:808be1bc322ad41d	1	src/Kimi/Compiler/Binding/Binding.Hir.cs
 KR3001	T:Kimi.Compiler.Binding.HirPublisher	line:81033b1dbe760b21	1	src/Kimi/Compiler/Binding/Binding.Hir.cs
-KR3001	T:Kimi.Compiler.Binding.HirPublisher	line:911a682edeacaf4d	1	src/Kimi/Compiler/Binding/Binding.Hir.cs
 KR3001	T:Kimi.Compiler.Binding.HirPublisher	line:9384842083416326	1	src/Kimi/Compiler/Binding/Binding.Hir.Adjust.cs
 KR3001	T:Kimi.Compiler.Binding.HirPublisher	line:9ae1f941d30faec8	1	src/Kimi/Compiler/Binding/Binding.Hir.Adjust.cs
 KR3001	T:Kimi.Compiler.Binding.HirPublisher	line:9f94a3455ff84d01	1	src/Kimi/Compiler/Binding/Binding.Hir.cs

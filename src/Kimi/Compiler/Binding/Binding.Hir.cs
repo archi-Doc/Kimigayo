@@ -289,11 +289,11 @@ public sealed partial class Binding
             _ => HirOp.Unset,
         };
 
-        // A published declaration whose body Binding bound builds it, unless the body is virtual and no instance applies it; an accessor's
-        // body is a part of its Property.
+        // A published declaration whose body Binding bound builds it, a virtual body no instance applies included (checked, never generated:
+        // virtual-dispatch 3, 6.3); an accessor's body is a part of its Property.
         private bool HasBody(Koto declaration) => PartsPublished(declaration) && declaration switch
         {
-            FunctionKoto function => ((Koto?)function.Body ?? function.ExpressionBody) is { BindingState: not BindingState.Unvisited } && !binding.IsInapplicableVirtualBody(function),
+            FunctionKoto function => ((Koto?)function.Body ?? function.ExpressionBody) is { BindingState: not BindingState.Unvisited },
             PropertyAccessorKoto accessor => PartsPublished(accessor.Parent!) && accessor.Body is { BindingState: not BindingState.Unvisited },
             _ => ((PropertyKoto)declaration).InitializerKoto is { BindingState: not BindingState.Unvisited },
         };

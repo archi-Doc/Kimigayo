@@ -273,6 +273,18 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
             Problems(Loud + "group H\n    public func discard<T>(item: T) => ()\nopen struct Base\n    public virtual func read(self: objref/Self) -> i32\n" +
                 $"        effect confined\n        return 1\nstruct Derived : Base\n    override func read(self: objref/Self) -> i32\n        H.discard({value})\n        return 1\n"));
 
+    // virtual-dispatch 3, 6.3 (R4-M28): an override whose declaring Type refutes its slot's condition is never dispatched, but its body is
+    // checked against the slot's bound (fail-before: each, a limit without a published body).
+    [Theory]
+    [InlineData("=> 2\n", "")]
+    [InlineData("\n        H.discard(Loud.init())\n        return 2\n", "UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32 1")]
+    public void AnInapplicableOverrideIsChecked(string body, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems(Loud + "group H\n    public func discard<T>(item: T) => ()\nopen struct Base<T>\n    public init() => ()\n" +
+                "    public virtual func read(self: objref/Self) -> i32\n        T is Copy\n        effect confined\n        return 1\n" +
+                $"struct Derived : Base<string>\n    public init() => ()\n    override func read(self: objref/Self) -> i32 {body}"));
+
     // virtual-dispatch 6: an override is judged under its premises, the slot's inherited ones included (`T is Copy` makes dropping the item
     // nothing; Owned does not).
     [Theory]

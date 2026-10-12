@@ -808,15 +808,16 @@ rules that result from them.
   KR3001 wrapping of changed long lines, braces, blank lines, comments). Exceptions granted in lines before this entry keep their
   recorded meaning (U6 R4-M23, U7 R4-M9b); units not yet landed restate theirs in tokens. Rejected: keeping the line rule.
 - **R4-M28** (2026-10-12, planning session; design B of two U6b designs with design A's witness probe) SPEC 4.7.5's published rows
-  for A4: `PublishedRow(Runs, On, Destroys)` catalog data (`KimiLibraryCatalog.Row`, `TyCtxt.Published`) replaces `PublishedSummary`;
-  A4 adds a row through the call's substitution, never the private body. A row's requirement is a `Requires` atom on an abstract Type
-  (nothing where the premises declare it confined, else composed at the callers like a destruction); any other Type runs what
-  `TyCtxt.Witnesses` resolves (comparison-plan leaves, a built-in target, the shared `Binding.ConformanceWitness`'s witness), else a
-  Limit. Ratified departure from design B: a Type with an implementation has its effects, not its premises' bounds (SPEC 8.4.10.4). A
-  requirement call written in a generic body keeps X2 (SPEC 4.7.5 clarified). Refines R4-M22 and R4-M23. Rejected: per-effect flags,
-  X2 at the composing node, Witnesses over RequirementImplementation only, open Types by the premises. Owner exception: Binding +561
-  tokens. Open: published bodies unverified against rows (R6); library generics outside the table keep X2; composites with an
-  abstract part a Limit; duplicates RequirementImplementation and findEntry's two identifications.
+  for A4: `PublishedRow(Runs, On, Destroys)` catalog data (`KimiLibraryCatalog.Row`, `TyCtxt.Published`) replaces
+  `PublishedSummary`; A4 adds a row through the call's substitution, never the private body. A row's requirement is a `Requires`
+  atom on an abstract Type (nothing where the premises declare it confined, else composed at the callers like a destruction); any
+  other Type runs what `TyCtxt.Witnesses` resolves (comparison-plan leaves, a built-in target, the shared
+  `Binding.ConformanceWitness`'s witness), else a Limit. Ratified departure from design B: a Type with an implementation has its
+  effects, not its premises' bounds (SPEC 8.4.10.4). A requirement call written in a generic body keeps X2 (SPEC 4.7.5 clarified).
+  HIR publishes a body no instance applies (checked, never generated). Refines R4-M22 and R4-M23. Rejected: per-effect flags, X2 at
+  the composing node, Witnesses over RequirementImplementation only, open Types by the premises, an inapplicable override owing
+  nothing. Owner exception: Binding +561 tokens. Open: published bodies unverified against rows (R6); library generics outside the
+  table keep X2; composites with an abstract part a Limit; duplicates RequirementImplementation and findEntry's two identifications.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
