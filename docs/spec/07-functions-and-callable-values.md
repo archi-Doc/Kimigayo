@@ -2,275 +2,193 @@
 
 [Specification index](../SPEC.md)
 
-A function declaration consists of `func`, a Name, optional generic parameters and a parenthesized parameter list. A result Type or a Place result (§7.1.1) may follow `->`; a named function that omits it returns Unit (`()`), whatever its accessibility or body form. Functions have no Origin parameter list: a directly written borrow annotation may introduce an implicit scalar Origin (§15.3.4). Declaration-attached `origin` relations precede the executable items, at the same indentation as Type Constraints. Bodies use the common Body forms (§7.1). Anonymous functions follow their own [inference rules](#761-syntax-and-inference).
+## 7.1. Declarations, bodies and results
 
-The declared Name is a single unqualified Name, and the function belongs to the lexical Container or executable scope in which it appears. A member is declared inside its Container body, including a permitted fragment. Qualified declaration names such as `func View.get(...)` are errors: a declaration cannot attach a function to another Container, introduce an extension, or gain another Container's private access or generic bindings. Qualified Names at use sites and explicit receivers (§7.3) follow their own rules.
+A function declaration is `func`, one unqualified Name, optional generic parameters, a parenthesized parameter list and an optional `->` result: a Type or a Place result ([§7.1.1](#711-place-results)) (grammar: [§F.6](appendices/F-syntax-summary.md#f6-declarations)). A named function without `->` returns Unit (`()`). Functions have no Origin parameter list; a written borrow annotation may introduce an implicit scalar Origin ([§15.3.4](15-ownership-and-lifetime-analysis.md#1534-names-scope-and-quantification)).
 
-A function declared in a group nested inside a Type is static and has no receiver (§6.1.3.2). Inherited generic parameters take part in generic eligibility and definition checking (§6.1.3), and outer arguments at a qualified call must already be bound (§9.6.1).
+A function belongs to the Container or executable scope in which it is written; a qualified declaration name such as `func View.get(...)` is an error.
 
-## 7.1. Function bodies and results
+The result Type comes from the declaration alone. A generic body is checked under its declared Types and Constraints and is not reinterpreted at instantiation.
 
-Functions use the common single-item or indented Body; §14.2 defines how each form supplies its result. A named function's return Type comes from its declaration alone: its body, its callers and Runtime Reachability never change it. A generic definition is checked under its declared Types and Constraints, and its body is not reinterpreted at instantiation.
-
-A single-item body returns the value of its expression, or discards it when the return Type is fixed as Unit. An indented body discards every direct expression, including the last, and supplies Unit at its structural end, so a non-Unit result requires an explicit `return`. Every explicit `return` must fit the return Type. Expected Types and all written result sources, including unreachable ones, follow §14.9.
+Bodies supply results under [§14.2](14-control-flow.md#142-bodies-and-evaluation-contexts), and every `return` must fit the result Type ([§14.9](14-control-flow.md#149-result-validation)).
 
 ```kimi
 func direct(left: i32, right: i32) -> i32 => left + right
 func indented(left: i32, right: i32) -> i32
     return left + right
+func unused() => 123            // Valid: a Unit function discards 123.
 func bad(left: i32, right: i32) -> i32
-    left + right // Error: structural end supplies Unit.
-
-func cleanup() => handle.close() // Discard even if close returns bool.
-func invalid() => return 123     // Error: explicit result does not fit Unit.
-func unused() => 123             // Valid Unit function; warn on unused effect-free value.
-let twice = func (value: i32) => value * 2 // Anonymous return inference: i32.
+    left + right                // Error: the structural end supplies Unit.
 ```
-
-A final selection, loop or `do` expression in an indented body is also discarded: return the expression, or return inside each of its paths. Anonymous return inference and its fixed-context boundary follow §7.6.1 and §10.5. Other function-like targets are listed in §14.5.3; all of them use the common Scope Exit (§16.2).
 
 ### 7.1.1. Place results
 
-A function may publish a Place instead of returning a value:
+A Place result publishes an existing, complete Storage whose stored Type is `T` instead of returning a value. `place ref/T` offers a shared borrow and, for a Copy `T`, a Copy; `place uniq/T` also offers an exclusive borrow and replacement of the whole `T`. Neither offers Take; there is no `place owner/T` or `place T`. The spelling after `place` is the Type that `@ref` or `@uniq` on the Place produces: `place ref/(ref/Node)` publishes a slot holding a reference, and `place ref/(T?)` a slot storing `Option<T>`. A following `during` applies to the Place result. A Place result is a result category, not a Type; it may be written wherever a result is, and is never inferred.
 
-```text
-FunctionResult := Type
-                | "place" ("ref" | "uniq") "/" SemanticsType BorrowOrigin?
-```
+**Returning.** The `return` operand, or the single-item body, designates a Place without acquiring a value: a Place expression or a call with a compatible Place result. The slot of a local or by-value parameter cannot be returned; Storage reached through a local reference can. Every normally completing path designates a Place, and `if`, `match` and `do` produce none, so each branch returns its own. The Storage's actual Type `A` agrees with `T` in Semantics, Core and structure, and Origins are checked as fitting `ref/A` to `ref/T` (or `uniq/A` to `uniq/T`). An exclusive Place may be published as a shared result, never the reverse.
 
-`place ref/T` and `place uniq/T` publish an existing, complete Storage whose stored complete Type is `T`. The shared form offers a shared borrow and, for a Copy value, a Copy. The exclusive form also offers exclusive borrows and replacement. Neither form offers Take. The spelling after `place` is the Type that `@ref` or `@uniq` on the published Place produces, and `T` is the stored Type: `place ref/(ref/Node)`, also written `place ref/ref/Node`, publishes a slot holding a reference, and `@ref` on it gives `ref/(ref/Node)`. A `?` suffix never applies to the Place itself, so `place ref/(T?)` publishes a slot storing `Option<T>`. There is no `place owner/T` or `place T`.
+**Contracts.** The outer Origin is introduced, quantified and elided like that of a borrow result ([§15.3.4](15-ownership-and-lifetime-analysis.md#1534-names-scope-and-quantification), [§15.4.3](15-ownership-and-lifetime-analysis.md#1543-result-defaults)); `during self` names the receiver's borrow Origin, and `during self.source` never removes the actual receiver Loan. Overloads that differ only in result mode cannot coexist. `T` is fixed from the arguments, explicit Type information and the expected Place contract ([§10.3](10-overload-resolution-and-inference.md#103-expected-results)). Function references, Callable, Contract implementations ([§8.6](08-generics-constraints-and-contracts.md#86-conformance)) and indirect calls keep the result mode, Origins and Loan contract; compatibility needs the same result mode ([§10.7](10-overload-resolution-and-inference.md#107-callable-signature-compatibility)). A Place result cannot bind an ordinary Type argument.
 
-A Place result is a result category, not a Semantics or a value Type. The same syntax is used in function declarations, anonymous functions with an explicit result, Function Types, Callable requirements and Contract requirements; an unannotated anonymous function never infers a Place result. In result position, an unqualified `place` followed by `ref` or `uniq` and a slash is always this syntax and never a Type name. A following `during` applies to the Place result; the Origins inside `T` are separate.
+**Using a Place.** A published Place is acquired under [§3.5](03-types-and-values.md#35-copy-and-move), without Take. A Place that is returned as a Place, borrowed explicitly, projected, used as a Subject or assigned to is not acquired. Discarding an unacquired Place performs the call and destroys nothing; `_ = call()` acquires a value, so it fails where bare acquisition fails.
 
 ```kimi
 func first<T>(values: ref/Array<T>) -> place ref/T during values
-    return values[0]       // Publishes the element Place; nothing is acquired.
+    return values[0]                 // Publishes the element Place.
 
-let view = first(resources@ref)@ref
-inspect(view)
+// resources: Array<Resource>, where Resource is Non-Copy.
+let view = first(resources@ref)@ref  // The element Place is borrowed; the reference is kept.
+inspect(first(resources@ref))        // Shared borrow at a ref/Resource parameter.
+// let value = first(resources@ref)  // Error: a Non-Copy value cannot be read bare.
 ```
 
-**Returning a Place.** The operand of a `return`, or the single-item body, of a function with a Place result designates a Place without acquiring a value. It is a Place expression or a call with a compatible Place result; an ordinary value is never materialized to satisfy a Place result. The slot of a local or by-value parameter that ends with the function cannot be returned, but external Storage reached through a local reference can. Every path that completes normally must designate a Place; a Never path supplies none. Structural fall-through supplies Unit, which does not satisfy even `place ref/()`. `if`, `match` and `do` do not produce Places, so each candidate Place is returned from its own branch.
+## 7.2. Parameters
 
-The returned Storage's actual Type `A` and the published `T` must agree in Semantics, Core and structure. Their Origins are checked as the ordinary fitting of `ref/A` to `ref/T`, or of `uniq/A` to `uniq/T`, keeping invariant positions and the actual Loans. An exclusive Place may be published as a shared result, never the reverse. Function Types have no implicit conversion between result modes.
-
-**Origins.** The outer Origin of a Place result is introduced, quantified and elided exactly like the outer Origin of the corresponding borrow result (§15.3.4, §15.4.3), and the body's dependencies are always checked. `during self` names the receiver's borrow Origin, not the slot of `self`; an accessor whose result does not depend on its search key writes it. An annotation such as `during self.source` never removes the actual receiver Loan. Place results do not bypass Function Type or Callable Origin rules, and specializations inherit the original contract.
-
-**Contracts and identity.** Overloads that differ only in result mode cannot coexist. The published `T` is fixed from the arguments, explicit Type information and the expected Place contract. The use position is checked under the result adaptation of §10.3; an outer `@ref` never prefers a Place-returning candidate. Function references, Callable, Contract implementations, indirect calls and separate compilation preserve the result mode, capabilities, Origins and Loan contract. A Place result cannot be bound to an ordinary Type argument; a higher-order value API needs an explicit wrapper that returns an ordinary reference. Function Type and Callable compatibility require the same result mode and the corresponding reference contract, under the input contravariance, Origin quantification, Unsafe and Closure rules of §10.7. Contract implementation matching follows §8.4.5.
-
-**Using a Place.** A published Place is acquired under §3.5 and §10.2: a Copy value may be read bare, a stored exclusive reference is Reborrowed when the Place grants exclusive access, any other Non-Copy value cannot be read bare, `@move` is unavailable because the Place offers no Take, and a reference comes from an explicit borrow or from the common adaptation at a fixed expected Type.
+Explicit parameters, including anonymous-function, constructor and receiver parameters and a setter's `value`, are initialized, immutable `let`-like bindings; there is no `var` parameter. A parameter may be transferred once with `@move`, but its storage cannot be reassigned, reinitialized or newly borrowed exclusively. A `uniq/T` or `objuniq/T` parameter still permits exclusive access to its referent. Construction and destruction receivers keep their own privileges ([§6.3.4](06-declarations-and-containers.md#634-the-construction-receiver), [§16.3.1](16-scope-exit-and-destruction.md#1631-destruction-receiver)).
 
 ```kimi
-let view = table.get(key)@ref  // One search; the reference is kept.
-inspect(table.get(key))        // Shared borrow at a ref/Resource parameter.
-// let value = table.get(key)  // Error when Resource is Non-Copy.
+func grow(items: uniq/Array<i32>, extra: Array<i32>)
+    items.appendAll(extra@move)   // Valid: exclusive access to the referent; one transfer.
+    // extra = Array.init(capacity: 0)  // Error: a parameter cannot be reassigned.
 ```
-
-A Place is used without acquiring a value when it is returned as a Place, is the operand of an explicit borrow or transfer, is projected, is a Subject or is an assignment target. Discarding an unacquired Place performs the call and its effects but destroys nothing in the published Storage. `_ = expression` instead acquires a value and destroys it, so it cannot discard a published Place that bare acquisition rejects (§3.5). Publishing an exclusive whole `T` permits replacing it with any valid `T`, so a Place through which an internal invariant could be broken is not published. A Dictionary publishes its values, but never an exclusive Place of a key.
-
-## 7.2. Parameters and defaults
-
-Explicit parameters, including anonymous-function, constructor and receiver parameters, are initialized, immutable `let`-like bindings; a setter's `value` is immutable too. A parameter may be transferred once with `@move`, but its storage cannot be reassigned, reinitialized or newly borrowed exclusively; use a `var` local for mutable work. There is no `var` parameter syntax. Binding immutability does not restrict a referent: a `uniq/T` or `objuniq/T` parameter still permits exclusive access to its referent and Reborrow of it. Construction and destruction receivers keep their special privileges.
 
 ### 7.2.1. Argument-name boundary
 
-The parameter list of a named function, constructor or Contract function requirement may contain one `!` boundary in place of a comma. Ordinary parameters before it accept positional or named arguments; those after it require their external names. Without a boundary, every ordinary parameter accepts both forms. The boundary adds no parameter, Type modifier, evaluation phase or ABI slot.
+The parameter list of a named function, constructor or Contract function requirement may contain one `!` in place of a comma. Ordinary parameters before it accept positional or named arguments; those after it need their external names. Without `!`, every ordinary parameter accepts both. The left section may be empty; the right one needs at least one ordinary parameter; a receiver may stand in either section but does not count, so `(! self)` and `(self !)` are invalid. A trailing comma may end only the whole list, never touch `!`. The suffixes `name?` and `name!` are errors. A task slot ([§24.2](24-suspension-and-asynchronous-tasks.md#242-task-slots)) precedes both sections: `func pause(task; ! delay: Time.Duration)`.
 
-The left section may be empty; the right section must contain at least one ordinary parameter, and a receiver does not count. Each section is comma-separated. A trailing comma is permitted only at the end of the whole list, never immediately before or after `!`. Parameter suffixes `name?` and `name!` are errors. An empty list is `()`, not `(!)`. A task slot ([§24.2](24-suspension-and-asynchronous-tasks.md#242-task-slots)) precedes both sections and belongs to neither; its `;` may be followed directly by `!` or `)`, and no comma follows it: `func pause(task; ! delay: Time.Duration)` is valid.
+`external => internal: T` renames a parameter in either section; renaming alone does not make the name required. External names are unique across the whole list, including the receiver; internal names follow [§9.3](09-names-signatures-and-access.md#93-local-scopes-and-contextual-names).
 
-```kimi
-func find(value: i32 ! start: i32, end: i32) => ()
-func pair(a: i32, b: i32) => ()       // Both names may be omitted.
-func configure(! count: i32 = 10) => () // Supplied count must be named.
-find(10, start: 0, end: 100)
-configure()
-configure(count: 20)
-configure(20) // Error: count requires its name.
-```
-
-In either section, `external => internal: T` separates the caller-facing name from the local binding. Renaming alone does not make the name required. External names must be unique across the whole list, including the receiver, regardless of defaults or calls; `func bad(! value => a: i32, value => b: i32)` is therefore invalid. Internal names are checked separately under §9.2, and an external name may equal another parameter's internal name.
-
-For lexical and layout processing, a recognized boundary ends the preceding declaration or default expression and its delimiter region, as a comma does (§2.2.1). It cannot close an indented body on the same line, such as one inside a default that contains a selection, `do` expression or anonymous function: dedent first. The owning list is identified by syntactic containment, not by parenthesis depth alone; inner boundaries, literals, comments and `!=` are not boundaries of the outer list. The boundary may stand on its own continuation line. Whitespace around `!` has no meaning; canonical inline formatting surrounds it with spaces.
+No other list has a boundary, and specialization headers write none. Foreign declarations allow it but no defaults ([§22.6](22-core-execution-and-foreign-functions.md#226-foreign-function-imports)).
 
 ### 7.2.2. Name contract and defaults
 
-Let `N` be the number of ordinary parameters and `K` the number before the boundary; the receiver and the task slot count in neither. Without a boundary `K = N`; with one, `0 <= K < N`. Ordinary parameter `i`, numbered from zero, accepts positional supply exactly when `i < K`, subject to §10.1 matching. The ordered external names of the ordinary parameters and `K` form the declaration's **argument-name contract**; Types, receiver position and defaults are not part of it. Specialization headers inherit this contract instead of computing a new `K` (§8.8.2).
+Let `N` be the number of ordinary parameters and `K` the number before the boundary (`K = N` without one); the receiver and the task slot count in neither. Parameter `i`, from zero, may be supplied positionally exactly when `i < K` ([§10.1.1](10-overload-resolution-and-inference.md#1011-argument-matching)). The ordered external names and `K` form the **argument-name contract**; Types, receiver position and defaults are not part of it, so `(self ! x: i32)` and `(! self, x: i32)` have the same contract. Specialization headers inherit it ([§8.13.2](08-generics-constraints-and-contracts.md#8132-inherited-contract)). It affects applicability, not overload identity or ranking ([§9.1](09-names-signatures-and-access.md#91-signatures)).
 
-Name contracts are compared in this effective form, not by written boundary position: `(self ! x: i32)` and `(! self, x: i32)` both have `K = 0`. Normalization never moves parameters or receivers. Name contracts affect applicability, not overload identity or ranking (§9.1, §10.1). Contract implementation matching (§8.4.5) and candidate equivalence (§8.4.6) have their own rules.
-
-A call uses the name contract and defaults of the statically selected declaration. The implementation that runs, including an override or specialization, does not replace that contract, and it does not permit declarations forbidden by the inherited-Name rule (§6.2.2). Calls through Contract requirements follow §8.4.1.
-
-A parameter with `= defaultExpression` may be omitted; a parameter without a default requires a value, on either side of the boundary. Every parameter initializer is a default, evaluated only when the argument is omitted. Defaulted parameters may precede parameters without defaults; callers then supply the later arguments by name without filling the earlier positions.
-
-| Ordinary parameter position | Default | Positional supply | Named supply | Omitted value |
-| --- | --- | --- | --- | --- |
-| Before boundary / no boundary | No | Allowed | Allowed | Rejected |
-| Before boundary / no boundary | Yes | Allowed | Allowed | Allowed |
-| After boundary | No | Rejected | Allowed | Rejected |
-| After boundary | Yes | Rejected | Allowed | Allowed |
+A parameter with `= default` may be omitted; one without needs an argument on either side of the boundary. Defaulted parameters may precede required ones, which callers then name. A call uses the name contract and defaults of the statically selected declaration, never those of an override or specialization; calls through Contract requirements follow [§8.4.2](08-generics-constraints-and-contracts.md#842-function-requirements). A function value has no names or defaults: its calls supply every parameter positionally ([§7.7](#77-function-expressions)).
 
 ```kimi
 func scale(value: i32 ! by => factor: i32 = 1) -> i32 => value * factor
-scale(3)
-scale(3, by: 4)
-scale(3, factor: 4) // Error: internal name.
 func options(mode: i32 = 0 ! count: i32) => ()
-options(count: 3) // Uses mode's default.
-options(3)        // Error: 3 supplies mode, not count.
+
+scale(3, by: 4)
+scale(3, factor: 4)   // Error: factor is the internal name.
+scale(3, 4)           // Error: by requires its name.
+options(count: 3)     // mode uses its default.
+options(3)            // Error: 3 supplies mode, and count is missing.
 ```
 
-Function Types keep no argument names, name contracts or defaults: a call through a function value supplies every parameter positionally, with no named or omitted arguments (§7.6). The boundary is not available in anonymous functions, Function Types, accessor signatures, specialization headers, generic lists, enum payloads, calls, or dedicated attribute and built-in argument syntax. Special restrictions, such as those of `drop`, still apply. Foreign declarations permit the boundary but not defaults (§22.3).
+### 7.2.3. Default evaluation
 
-### 7.2.3. Default evaluation and ownership
+At each call, the explicit arguments are acquired in source order into pending slots; then each omitted default is evaluated once, in parameter order, in the declaration's scope; it may use preceding parameters, but not later parameters or the caller's locals. It may Copy a preceding Copy value or inspect it through temporary shared access (also a reserved exclusive input, [§15.6.7](15-ownership-and-lifetime-analysis.md#1567-call-reservations), without its exclusive access), but cannot Move or modify that slot. Its result cannot keep a new Borrow or Reborrow of a preceding argument, but may Copy an existing shared borrow. Inspection Loans end before callee entry. Transfers inside a default target only constructs inside it.
 
-At each call, the explicit arguments are acquired in source order into pending slots. Each omitted default is then evaluated once, in parameter declaration order, in the declaration's scope. A default may refer to preceding parameters through their prepared slots, but not to later parameters or caller-local bindings. Slots do not alias caller variables.
+A default is checked at its declaration like a generic body ([§8.15](08-generics-constraints-and-contracts.md#815-generic-body-checking)): it must fit its parameter Type for every binding that satisfies the Constraints, and it is no evidence for inference. Each evaluation instantiates it with the call's bindings; beyond the call's ordinary argument and Loan checks, it can make the call invalid only through the effects it contributes to effect bounds ([§8.11](08-generics-constraints-and-contracts.md#811-effect-bounds)).
 
-A default may Copy a preceding Copy value or inspect it through temporary shared access, but cannot Move, Consume or modify that slot or its owned contents. Its result cannot retain a new Borrow or Reborrow of a preceding argument, but may Copy an existing shared borrow that has external dependencies. Temporary shared inspection also covers a reserved exclusive input ([§15.6.7](15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations)); exclusive access through that input is unavailable during default evaluation. Temporary inspection Loans end before activation and callee entry. Thus `func f(x: string, y: string = x) => ()` is invalid, while `Text.toString(x)` borrows `x` and produces an independent string.
+A transfer that interrupts argument evaluation skips the callee; prepared values and temporaries are cleaned up under [§16.2.1](16-scope-exit-and-destruction.md#1621-cleanup-order). Abort does not unwind. After preparation, the pending slots become the parameters, cleaned up by the callee in reverse parameter order.
 
-Every default is checked at declaration time, even if every call supplies the argument, as a generic body is (§8.10): it must fit its declared parameter Type for every binding that satisfies the Constraints, and it binds no slot. Under `F is Callable<(i32) -> i32>` and a function `inc(value: i32) -> i32`, `action: F = inc` is therefore an error, because the Function Item Type of `inc` is not every such `F`, while `action: (i32) -> i32 = inc` erases `inc` (§7.6.4). Defaults give no evidence for generic inference, and their transfers may target only constructs inside the default. Each evaluation of an omitted default instantiates that verified default (§8.10): the call's bindings are substituted and its exact acquisitions, cleanup and effects are resolved without adding a semantic use condition. Beyond the call's declared contract and ordinary argument and Loan checks, it can reject the call only through the exact effects it contributes to effect bounds (§8.4.10) or through representation obligations; documented compiler resource exhaustion remains distinct (§8.10).
+```kimi
+func inc(value: i32) -> i32 => value + 1
+func label(x: string, y: string = Text.toString(x)) => ()  // Borrows x; y is independent.
+func bad(x: string, y: string = x) => ()                   // Error: a default cannot Move x.
+func erased(action: (i32) -> i32 = inc) => ()              // Valid: inc is erased.
+func run<F>(action: F = inc)                               // Error: inc's Type is not every such F.
+    F is Callable<(i32) -> i32>
+    return
+```
 
-A normal transfer that abandons argument evaluation skips the callee and destroys the still-owned prepared values and temporaries in reverse acquisition order; Abort does not unwind. After successful preparation, ownership passes from the pending slots to the initialized parameters, and callee cleanup uses reverse parameter order.
+## 7.3. Receivers
 
-## 7.3. Explicit receivers
+### 7.3.1. Instance functions and receiver Types
 
-Virtual functions use explicit object-borrow receivers and inherited public contracts under [§6.2.4](virtual-dispatch.md#1-declarations-and-contracts). Their Function Items remain unbound and dispatch on each input receiver.
+A function declared directly in a struct or enum, or a Contract function requirement, is an **instance function** exactly when one parameter's internal Name is `self`; otherwise it is a **Type function**. At most one `self` is allowed; it may stand at any position after the task slot ([§24.2.1](24-suspension-and-asynchronous-tasks.md#2421-form)) and cannot be renamed or have a default.
 
-A function declared directly in a struct or enum, or a Contract function requirement, is an **instance function** exactly when one parameter's **internal Name** is `self`; otherwise it is a **Type function**. At most one `self` is allowed. It may stand at any written position after the task slot, if any ([§24.2.1](24-suspension-and-asynchronous-tasks.md#2421-form)), but cannot be renamed or have a default. Its normalized Type must be `Self`, `ref/Self`, `uniq/Self` or a permitted object-Semantics `Self` form; unrelated targets, extra reference layers, raw pointers and unconstrained generic receiver Semantics are rejected. Origin annotations follow the normal parameter rules. In groups, rootgroups and local functions without an active contextual `self`, a parameter named `self` has no instance-member meaning.
+The receiver's normalized Type is `S/Self` for one concrete Semantics `S` other than `raw`: `Self`, `ref/Self`, `uniq/Self`, `obj/Self`, `rc/Self`, `arc/Self`, `objref/Self` or `objuniq/Self`, under the ordinary Type formation rules (object Semantics need `Self` to be an ObjectPayload). Origin annotations follow the ordinary parameter rules. Any other receiver Type is an error: `raw/Self`, a generic Semantics `s/Self` whether or not `s` is constrained, extra reference layers such as `ref/(ref/Self)`, or another target. Virtual functions use object-borrow receivers ([§6.4.1](06-declarations-and-containers.md#641-declarations)).
 
-A recognized receiver neither starts nor ends an ordinary-parameter section. It may appear on either side of the boundary, but `(! self)` and `(self !)` are invalid because no ordinary parameter follows the boundary. A parameter named `self` without receiver meaning follows the ordinary boundary rules.
+Local named functions, groups and rootgroups have no receiver: a parameter named `self` there is an ordinary parameter. The enclosing function's contextual `self` is not visible inside a local named function, which captures nothing.
 
-**Receiver shorthand.** A receiver written as bare `self` means `self: ref/Self`. The shared-borrow receiver is fixed before the body is checked; nothing about its Type or ownership is inferred from the body. The shorthand is allowed only at the receiver position of an instance function, including Contract requirements and full specializations, and keeps its written position. Every other named-function parameter needs an explicit Type: group and rootgroup functions, local functions and constructors cannot use the shorthand, and anonymous functions keep their own parameter-inference rules. Write the Type to choose another receiver, such as `uniq/Self` or owning `Self`, or to annotate Origins. The shorthand has the same Signature, input Origins, callable Type and invocation rules as its expansion. A function without a receiver parameter is a Type function. Accessor receivers have their own shorthand (§11.2).
+**Shorthand.** A bare `self` means `self: ref/Self`, fixed before the body is checked. It is allowed only at the receiver position of an instance function, including Contract requirements and full specializations; every other parameter of a named function or constructor needs a Type. Accessor receivers have their own shorthand ([§11.3](11-properties.md#113-accessor-functions)).
 
 ```kimi
 struct Meter
-    var measured: i32
-    func read(self) -> i32 => self.measured
+    var measured: i32 = 0
+    func read(self) -> i32 => self.measured           // ref/Self
     func update(self: uniq/Self, value: i32) => self.measured = value
-    func constant() -> i32 => 0 // Type function: no receiver.
+    func total(self) -> i32
+        func helper(self: ref/Meter) -> i32 => 1      // Valid: an ordinary parameter.
+        return helper(self)
+    // func f<s/T>(self: s/Self) => ()                // Error: generic receiver Semantics.
 
-var meter = Meter.init(0)
-let shown = meter.read()   // Shared receiver: implicit borrow.
-meter.update(5)            // Exclusive receiver: the owned Place is acquired implicitly.
+var meter = Meter.init()
+let shown = meter.read()     // Shared receiver: implicit borrow.
+meter.update(5)              // Exclusive receiver: meter is borrowed implicitly.
 ```
 
-**Receiver shape.** A receiver's **shape** is `ref/Self`, `uniq/Self`, owning `Self` or one permitted object-Semantics form. In a function group fixed by member lookup (§9.5), every function that has a receiver must have the same shape; functions without a receiver do not count. For a group formed by a Type's declarations, a violation is a declaration error. Different parameters or labels and mutually exclusive `when` conditions (§8.4.8) do not exempt a group. Contract requirements, including refined ones, obey the rule (§8.4.1), and an explicit full specialization keeps its original's shape (§8.8.2). Same-name declarations in a base and a derived struct are already excluded by the inherited-Name rule (§6.2.2). A group gathered from generic Constraints is checked at the use (§9.5). The `get` and `set` of one Property are distinct operations and are exempt: their shapes are fixed per operation by [§11.2](11-properties.md#112-accessor-functions), `ref/Self` for `get` and `uniq/Self` for `set`, so a Property is the one Name under which a shared and an exclusive receiver coexist. The Name alone therefore fixes a call's receiver acquisition before overload resolution, and Best Candidate comparison covers only the explicit arguments (§10.4). Shared and exclusive variants of one operation need different names; Kimi declarations follow the naming convention of §4.7.1. One function group also has one task-slot shape, so whether a call writes the task argument follows from the Name too ([§24.2.3](24-suspension-and-asynchronous-tasks.md#2423-not-a-parameter-and-one-shape-per-group)).
+### 7.3.2. Receiver shape
+
+A receiver's **shape** is its Semantics; one function group ([§9.6](09-names-signatures-and-access.md#96-qualified-and-inherited-lookup)) has one shape, counting only functions with a receiver. Among a Type's declarations or a Contract's requirements ([§8.4.2](08-generics-constraints-and-contracts.md#842-function-requirements)) a violation is a declaration error, whatever the parameters, labels or `when` conditions; a group gathered from Constraints is checked at the use. A full specialization keeps its original's shape ([§8.13.2](08-generics-constraints-and-contracts.md#8132-inherited-contract)). The `get` and `set` of a Property are separate operations, exempt from this rule; their shapes are fixed by [§11.3](11-properties.md#113-accessor-functions). So the Name fixes the receiver acquisition before overload resolution, and Best Candidate comparison covers only the explicit arguments ([§10.4](10-overload-resolution-and-inference.md#104-best-candidate)). A group also has one task-slot shape ([§24.2.3](24-suspension-and-asynchronous-tasks.md#2423-not-a-parameter-one-shape-per-function-group)).
 
 ```kimi
 struct Counter
-    var value: i32
-    func peek(self) -> i32 => self.value + 1
+    var value: i32 = 0
+    func peek(self) -> i32 => self.value
     func next(self: uniq/Self) -> i32
         self.value += 1
         return self.value
-    // func next(self, by: i32) -> i32     // Error: next would have two receiver shapes.
-
-struct Buffer
-    func insert(self: uniq/Self, index: isize, value: i32)
-    func insert(self: uniq/Self, index: string, value: i32)  // OK: the same shape.
+    // func next(self, by: i32) -> i32 => by   // Error: next would have two shapes.
 ```
 
-**Method calls.** In `receiver.method(arguments)`, the receiver is evaluated and acquired first, wherever `self` is declared, and is passed at the declared position of `self`. The receiver is a Receiver Expression ([§3.4](03-types-and-values.md#34-values-places-and-storage)) and is acquired implicitly, exactly as if the operation in the following table were written on it; the row depends on the receiver requirement and on whether the input is value-kind or object-kind. The explicit positional and named arguments are matched against the remaining parameters in written order, and no argument label can supply `self`; the task argument binds no parameter ([§24.2.2](24-suspension-and-asynchronous-tasks.md#2422-passing)). Defaults follow in the ordinary order. Exclusive preparation follows [call borrow reservations](15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations). Cleanup inside the callee uses the full written parameter order.
+### 7.3.3. Method calls
 
-| Receiver requirement | Value-kind input `p` | Object-kind input `p` |
+In `receiver.method(arguments)`, the receiver is evaluated and acquired first and passed at the declared position of `self`. It is a Receiver Expression ([§3.4](03-types-and-values.md#34-places-and-storage)), acquired as if the table's operation were written on it. The explicit arguments match the remaining parameters; no label supplies `self`, and the task argument binds no parameter ([§24.2.2](24-suspension-and-asynchronous-tasks.md#2422-passing)). Exclusive preparation follows [§15.6.7](15-ownership-and-lifetime-analysis.md#1567-call-reservations).
+
+| Receiver Type | Value-kind input `p` | Object-kind input `p` |
 | --- | --- | --- |
-| `ref/Self`, `uniq/Self` | An owned Place or temporary is borrowed as `p@ref`, `p@uniq`; a borrow value is Reborrowed in the required mode as `p@follow@ref`, `p@follow@uniq`, after the [reference-path selection](03-types-and-values.md#341-reference-path-selection) that located the member | The complete payload `p@follow@ref`, `p@follow@uniq` (§13.5.5.1) when the View Target is exactly the same complete Sealed Type `T`; otherwise `p@objref`, `p@objuniq` |
+| `ref/Self`, `uniq/Self` | Owned Place or temporary: `p@ref`, `p@uniq`; borrow value: `p@follow@ref`, `p@follow@uniq` on the path of [§3.4.3](03-types-and-values.md#343-reference-path-selection) | `p@follow@ref`, `p@follow@uniq` when the View Target is exactly the complete Sealed Type ([§13.5.5](13-operators-and-assignment.md#1355-follow)); otherwise `p@objref`, `p@objuniq` |
 | `objref/Self`, `objuniq/Self` | Not applicable | `p@objref`, `p@objuniq` |
-| Declaration in a base `B` | The projection of §9.5.1 | The same |
-| Owning receiver: `Self`, or an owning object-Semantics form | An owned temporary passes as is; an owned Place is Copied when Copy and is otherwise not acquired (write `p@move.m()`); a reference supplies a `Self` of a read Type (§3.5.3) by the value read, and otherwise `p@follow.m()` Copies a Copy referent | An owned temporary passes as is; an owned Place requires `p@move`; there is no read from an object borrow |
+| Declared in a base `B` | The projection of [§9.6.1](09-names-signatures-and-access.md#961-base-subobject-receiver-projection) | The same |
+| `Self`, `obj/Self`, `rc/Self`, `arc/Self` | Temporary as is; owned Place Copied when Copy, otherwise not acquired (write `p@move.m()`); a reference to a read Type ([§3.5.3](03-types-and-values.md#353-value-read)) gives the value read, otherwise nothing is acquired (write `p@follow.m()` to Copy a Copy referent) | Temporary as is; owned Place needs `p@move`; an object borrow supplies nothing (no read) |
 
-A [pair layer](13-operators-and-assignment.md#pair-layers) on the selected path is followed like a borrow value: a `ref/Self` or `uniq/Self` receiver is acquired as `p@follow@ref` or `p@follow@uniq`, and an exclusive receiver needs the Write capability of §13.5.5.1. For an owning receiver, the only implicit acquisition through a pair layer is the value read of a `Self` of a read Type, the rule of its `ref` case; otherwise write `p@follow.m()`, which Copies the selected Place and needs Copy evidence.
+A pair layer ([§13.5.5](13-operators-and-assignment.md#1355-follow)) on the path is followed like a borrow value; through it a by-value receiver gets only the value read of a read Type.
 
-**Checks.** The acquisition is checked in the following order, and the call is an error if any check fails:
+The call is an error unless, in order: (1) the supplied operation is legal under its explicit rules (static storage, generic Semantics, shared-only `rc`/`arc`, Property permissions, getter-result storage, exclusive acquisition: [§15.2.3](15-ownership-and-lifetime-analysis.md#1523-static-and-owned), [§8.14](08-generics-constraints-and-contracts.md#814-generic-access-effects), [§13.5.5](13-operators-and-assignment.md#1355-follow), [§11.2](11-properties.md#112-standard-access), [§11.5](11-properties.md#115-getter-results), [§15.1.5](15-ownership-and-lifetime-analysis.md#1515-access-operations-and-acquisition)); (2) the path's receiver compatibility holds: on a value-kind path the complete Type fits the required Type; object-borrow and base-projection paths follow [§12.6](12-expressions.md#126-object-member-calls), [§12.7](12-expressions.md#127-object-receiver-compatibility) and [§9.6.1](09-names-signatures-and-access.md#961-base-subobject-receiver-projection), so `objuniq/T` satisfies `uniq/Self` by the path rule, not by conversion; (3) after selection, a protected object borrow or base projection is ObjectCallCompatible Proven ([§12.7](12-expressions.md#127-object-receiver-compatibility)), and a missing proof never reselects.
 
-1. *The supplied operation is legal* under the existing explicit rules, including static storage (§15.2.3), values of generic Semantics (§8.9), `rc`/`arc` (shared access only, §13.5.5), Property permissions (§11.1), getter-result storage (§11.2.3) and the exclusive acquisition conditions of §15.1.5.
-2. *The path's receiver compatibility holds.* On a value-kind path, the complete result Type must fit the required Type. An object-borrow path follows object receiver compatibility (§12.4.3–4), and a base-projection path follows §9.5.1. For example, `objuniq/T` satisfies a `uniq/Self` receiver through this path rule, not through a Type conversion.
-3. *The post-selection use conditions hold.* If a protected object borrow or a base projection was selected, the selected candidate must be ObjectCallCompatible Proven after overload selection (§12.4.4.1, §9.5.1). A complete Sealed payload follow is an ordinary complete-value call and needs no proof (§12.4.4). Proven never excludes a candidate, and a missing proof never reselects another candidate.
-
-**Consequences.**
-
-- *No fallback.* When a check fails, the call does not switch to a value read, a materialized temporary or any other acquisition; in particular, it never modifies a Copy and discards the update.
-- *Explicit spellings.* Writing the table's operation explicitly means the same: for a value-kind input and an exclusive receiver, `p@uniq.m()` equals `p.m()` through the preparation path of §15.6.7, and the redundant spelling is accepted. A different explicit operation means what it says: `tasks@uniq.length` lends `tasks` exclusively and then reads it through shared access, and `r@ref.m()` on a reference `r` borrows the slot of `r` rather than Reborrowing its referent.
-- *Chains.* Each call acquires the previous call's result as its receiver by this table. Acquisition never reaches back through an earlier call, and each call has its own reservations (§15.6.7).
-
-```kimi
-struct Meter
-    var hits: i32 = 0
-    public func nextReading(self: uniq/Self) -> i32
-        self.hits += 1
-        return self.hits
-
-group Registry
-    public var meter: Meter = Meter.init()
-
-struct Builder
-    func add(self: uniq/Self, value: i32) -> uniq/Self   // Returns an exclusive reference.
-    func with(self: Self, value: i32) -> Self            // Returns an owned value.
-    func view(self) -> ref/Self                          // Returns a shared reference.
-    func finish(self: uniq/Self)
-
-// holder and tasks are var locals.
-var meter = Meter.init()
-let seen = meter.nextReading()        // Supplies meter@uniq.
-holder.items.append(1)                // Supplies holder.items@uniq.
-let shared = Registry.meter.nextReading() // Mutable static: supplies Registry.meter@uniq.
-makeResource().consume()              // An owned temporary passes as is.
-
-var builder = makeBuilder()
-builder.add(1).add(2)                 // The second receiver reborrows the uniq result.
-makeBuilder().with(1).finish()        // The owned temporary result of with is borrowed exclusively for finish.
-// builder.view().finish()            // Error: no exclusive acquisition from a ref result.
-
-let count: i32 = 0
-var next = func [var count] (value: i32) -> i32
-    count += 1
-    return value + count
-let a = next(1)                       // 2. Exclusive call: supplies next@uniq.
-let b = applyTwice(10, next@uniq)     // 15. applyTwice of §8.6; an argument needs the spelling.
-
-holder@uniq.items.append(1)           // The same as holder.items.append(1).
-tasks@uniq.length                     // A different operation: lend tasks exclusively, then read it through shared access.
-```
-
-The following calls fail a check:
+A failed check never falls back to another acquisition, so a Copy is never modified and discarded. Writing the table's operation explicitly means the same; a different one means what it says (`tasks@uniq.length` lends `tasks` exclusively, then reads it). In a chain, each call acquires the previous result by the table.
 
 ```kimi
 struct Point
     Self is Copy
     var x: i32
-    var y: i32
-    func normalize(self: uniq/Self)
-        ...
+    func normalize(self: uniq/Self) => self.x = 0
+    func view(self) -> ref/Self => self
 
+var q = makePoint()
+q.normalize()                   // Supplies q@uniq.
+makePoint().normalize()         // A temporary is borrowed exclusively.
+// q.view().normalize()         // Error: no exclusive acquisition from a ref result.
 let p = makePoint()
-p.normalize()             // Error: p is a let binding; no Copy is modified instead.
-
-func plot(p: Point)
-    p.normalize()         // Error: an owned-Type parameter.
-
-func plotRef(p: ref/Point)
-    p.normalize()         // Error: only shared permission.
-
-let tick = func [var count] () -> i32   // Copy: the only capture is an i32.
-    count += 1
-    return count
-let n = tick()            // Error: a let-bound Closure; no Copy is advanced instead.
-
-var q = p                 // Valid: the Copy is explicit.
-q.normalize()
-makePoint().normalize()   // Valid: a temporary from the start.
+// p.normalize()                // Error: p is a let binding; no Copy is modified instead.
 ```
 
-**Diagnostics.** When a Receiver Expression cannot be acquired, the diagnostic names the failed check: immutable owned storage (a `let` binding, an owned-Type parameter, a `let`-bound Closure), only shared permission (a `ref`/`objref` value, `rc`/`arc`, a shared path), or storage whose direct exclusive borrow is forbidden (a stored Property with a custom `set`, getter-result storage). `set` access, receiver incompleteness and ObjectCallCompatible keep their existing diagnostics. No repair candidate is offered (§23.3.6.9), because each fix needs a choice or a Loan verification.
+### 7.3.4. Unbound references
 
-A missing spelling at a position other than a Receiver Expression uses the existing exclusive-borrow diagnostic and offers `@uniq`/`@objuniq` as a repair candidate when the lending point is not refuted to be exclusively writable (§23.3.6.9), also for a Place reached through an exclusive reference. A receiver-shape violation reports every declaration or requirement whose shape differs. Loan conflicts at an implicit lending point carry the notes of §15.6.7.
+A Type-qualified instance function reference such as `Meter.update` is unbound. A call through it supplies every parameter; the receiver is supplied positionally at its declared position when every preceding parameter is supplied positionally, or as a named `self:` argument. The other parameters keep their name contract ([§7.2.2](#722-name-contract-and-defaults)); only a function value formed from the reference is called positionally. The receiver is an ordinary argument, not a Receiver Expression, so an owned Place at `uniq/Self` needs `@uniq`; an unbound function value captures no receiver. `value.method` without a call forms no bound-method value.
 
-**Unbound references.** A Type-qualified instance function reference is unbound. A call through `Type.method` supplies every parameter explicitly, including `self` at its declared position, under the ordinary argument-order and receiver-compatibility checks. The receiver may be supplied positionally at its declared position or as a named `self:` argument, whatever the written boundary. It is an ordinary argument, not a Receiver Expression, so an owned Place supplied to a `uniq/Self` position needs `@uniq`. Ordinary parameters keep their declared name contracts; positional skipping and positional supply after named arguments are not allowed. An unbound function value likewise keeps `self` as an ordinary position of its callable signature, captures no receiver and remains subject to the unsafe-function restrictions. `value.method` without invocation does not form a bound-method value in this revision. None of this introduces extension functions, implicit `self` lookup or a conversion for an otherwise incompatible object receiver.
+```kimi
+struct Meter
+    func update(self: uniq/Self, value: i32) => ()
+    func mark(x: i32 ! y: i32, self) => ()
 
-### 7.3.1. Parameter acquisition shape
+var meter = makeMeter()
+Meter.update(meter@uniq, value: 5)    // The receiver is positional; value may also be positional.
+Meter.mark(1, y: 2, self: meter@ref)  // The receiver cannot be positional after y.
+// Meter.update(meter, 5)             // Error: an owned Place at uniq/Self needs @uniq.
+```
 
-The receiver-shape rule extends to ordinary parameters: in one function group, how an argument is acquired follows from the Name and the position, never from the candidate that the other arguments or the surrounding Semantics select.
+## 7.4. Parameter acquisition shape
 
-**Acquisition mode.** The **acquisition mode** of a parameter is what it requires of a bare owned Place argument, judged on the outer Semantics of its normalized Type (aliases expanded, grouping and redundant `owner` removed); the names are those of the Subject modes (§15.1.6).
+In one function group, how an argument is acquired follows from the Name and the position, never from the candidate that other arguments select.
+
+### 7.4.1. Acquisition modes and admitted cases
+
+The **acquisition mode** of a parameter is what it requires of a bare owned Place argument, judged on the outer Semantics of its normalized Type (aliases expanded, grouping and redundant `owner` removed). The names are those of the Subject modes ([§15.1.6](15-ownership-and-lifetime-analysis.md#1516-match-and-for-subjects)).
 
 | Mode | Outer Semantics |
 | --- | --- |
@@ -278,361 +196,208 @@ The receiver-shape rule extends to ordinary parameters: in one function group, h
 | Shared | `ref`, `objref` |
 | Exclusive | `uniq`, `objuniq` |
 
-A parameter whose outer Semantics is bound by generic substitution has one **admitted case** per Semantics it may take, and each case is judged as if the parameter were written with that Semantics:
+A parameter whose outer Semantics is bound by substitution has one **admitted case** per Semantics it may take, each judged as if written with it: for `s/U` with a pair binder `s`, the admitted set of `s` ([§8.3](08-generics-constraints-and-contracts.md#83-constraint-proof)); for a Type parameter `T` of the function or an enclosing Type, or an associated projection that does not normalize, every Semantics ([§8.1.1](08-generics-constraints-and-contracts.md#811-type-slots-and-pair-parameters)).
 
-| Parameter Type | Admitted cases |
-| --- | --- |
-| A pair `s/T`, or `s` applied to another target `s/U` | The admitted set of `s` (§8.7) |
-| An ordinary Type parameter `T`, of the function or of an enclosing Type, or an associated projection that does not normalize | Every Semantics, because `T` binds a complete Type (§8.1.1) |
+Inference binds a function's own slot to the argument's complete Type; for a bare owned Place, only explicit Type arguments bind it to a Semantics other than `owner` ([§10.1](10-overload-resolution-and-inference.md#101-candidate-applicability), [§10.8](10-overload-resolution-and-inference.md#108-generic-argument-inference)). Explicit Type arguments reach only declarations whose generic lists have the same length and kinds, so against any other declaration a function slot that admits `owner` has the `owner` case alone. A projection of a slot is bound from other arguments and keeps every case.
 
-A function's own slot, including an original pair, is bound to a Semantics other than `owner` for a bare owned Place only by explicit Type arguments (§10.1 step 1, §10.8); inference binds the argument's complete Type. Explicit Type arguments reach only the declarations whose generic parameter lists have the same length and the same kinds position by position (a length slot takes no explicit Type argument), so against any other declaration, a function slot that admits `owner` has the `owner` case alone. A projection of a slot is bound from other arguments and keeps every case. Sharing a slot or projection is a conditional acquisition contract, not an unconditional exemption. Function-own inference slots and a construction target's own inference slots start independent per candidate; only the same fixed outer binding is shared. The contract below records when a permitted shared relation is needed.
+### 7.4.2. Corresponding parameters
 
-**Corresponding parameters.** A declaration has two parameter sequences: that of a bound call `value.f(...)`, which omits the receiver, and that of an unbound call `Type.f(...)` (§7.3), which includes the receiver at its written position; a function without a receiver has the unbound sequence only. Two parameters of two declarations **correspond** when, in the same sequence, both can be supplied positionally (§7.2.2; the receiver of the unbound sequence always can) at the same position number, or they have the same external name. Receivers correspond to receivers under the receiver-shape rule above; this rule compares ordinary parameters with each other and with a receiver in the unbound sequence. Defaults, parameter counts, the position of the `!` boundary, labels, Constraints and `when` conditions do not change correspondence. A task slot is no parameter and corresponds to none; the receiver and the ordinary parameters keep their numbering in both sequences whether or not a task slot is present ([§24.2.3](24-suspension-and-asynchronous-tasks.md#2423-not-a-parameter-and-one-shape-per-group)).
+A declaration has two parameter sequences: the bound call `value.f(...)` without the receiver, and the unbound call `Type.f(...)` with it at its written position. A function without a receiver has only the unbound sequence. Two parameters of two declarations **correspond** when, in the same sequence, both can be supplied positionally at the same position number, or they have the same external name. In the unbound sequence, the receiver can be supplied positionally exactly when every parameter before it can ([§7.3.4](#734-unbound-references)); otherwise it is supplied only as `self:` and corresponds only by that name. Bound-call receivers follow [§7.3.2](#732-receiver-shape). Defaults, counts, the position of `!`, labels, Constraints and `when` conditions do not change correspondence; a task slot corresponds to nothing and shifts no numbering.
 
-**Matching keys and overlap.** Each parameter has a **matching key**:
+### 7.4.3. Matching keys and overlap
 
 | Parameter Type | Matching key |
 | --- | --- |
-| `owner/U` (that is, `U`), `ref/U`, `uniq/U` | `Value(U)` |
+| `U` (that is, `owner/U`), `ref/U`, `uniq/U` | `Value(U)` |
 | `obj/U`, `rc/U`, `arc/U`, `objref/U`, `objuniq/U` | `Object(U)` |
-| `s/U` for a pair `s` applied to another target | `Value(U)` and `Object(U)`, as the admitted set of `s` allows |
-| A bare Type parameter `T`, an original pair `s/T`, a pair target alone, an associated projection that does not normalize | Any: it overlaps every key |
-| Anything else (`raw/U`, a Core, Tuple, fixed array or Function Type) | `Value(the Type itself)` |
+| `s/U` for a pair binder `s` | The keys of the admitted cases of `s`, each formed as if written with that Semantics (a `raw` case gives `Value(raw/U)`) |
+| A bare Type parameter `T`, an original `s/T`, a pair target alone, an associated projection that does not normalize | Any: it overlaps every key |
+| Anything else (`raw/U`, a Core, Tuple, fixed array or Function Type) | `Value` of the Type itself |
 
-Two keys **overlap** when steps 2–4 of the collision test of [§8.4.9.1](08-generics-constraints-and-contracts.md#8491-direct-conformance-collisions) unify them, without the Constraint normalization of its step 1 (**Generics** below). Slots inferred at a use, including a construction target's own slots, are initially independent per candidate; fixed outer slots are shared. The conditional contract below may additionally equate corresponding own slots. Distinct slots such as `A` and `B` in `struct Api<A, B>` can still unify, so `Array<A>` and `ref/Array<B>` overlap under `A = B`. Only a structural mismatch of nominal Types, Tuples or Function Types establishes non-overlap; two lengths differ only when both evaluate to constants with different values, so `(N + 1)` and `2` overlap. Origins and binding sets are ignored.
+Two matching keys overlap when the unification of [§8.9.1](08-generics-constraints-and-contracts.md#891-direct-conformance-collisions) steps 2-4 unifies them (without the Constraint normalization of step 1). Only a mismatch of fixed structure proves non-overlap: different nominal Types, Tuples or Function Types, different determined Semantics (`uniq/Node` and `Node`), or two lengths that are both constants with different values. Slots, unresolved associated projections and non-constant lengths overlap with anything they could bind to; Origins are ignored. Slots inferred at a use are independent per candidate, and fixed outer slots are shared; distinct slots can unify, so `Array<A>` and `ref/Array<B>` overlap for enclosing slots `A` and `B`. Type Constraints are never consulted. Overlap is judged on completed headers ([§8.6](08-generics-constraints-and-contracts.md#86-conformance)).
 
-**Declaration contract.** Summarize each corresponding parameter by its finite acquisition-mode set, matching key and the slot correlations on which sameness or non-overlap depends. Do not add Origin or Loan proofs to this summary; complete Types and fit plans retain those dependencies for their ordinary checks.
+### 7.4.4. Declaration and call contracts
 
-1. Check every admitted combination with independently inferred slots. If all combinations have the same mode or structurally disjoint keys, save that unconditional result. Equal mode sets alone do not prove equal modes for independently bound slots.
-2. For remaining pairs, repeat the structural check assuming the permitted correlations: the same construction-target slot, or same-numbered slots of function argument lists with the same shape. Equal projections depend on equal source bindings. If sharing makes the pair safe, retain all shared relations used in the compared patterns, with their evidence and dependencies; do not search for a minimal subset or arbitrary equations or Constraints.
-3. If different modes still overlap, the declarations are invalid together. A gathered group builds the same contract at its use.
+For each pair of corresponding parameters of two declarations in one group:
 
-**Call contract.** Verify saved conditions against the entire name-resolved group before filtering by argument count, labels, defaults, Constraints, conditions or expected results. Keep any determined partial argument mapping even when another mapping position fails. Reuse unconditional results; otherwise use only fixed explicit/environment bindings, bindings extracted by the same rule from the same structural position of an independently typed actual argument, common unresolved bindings as defined below, or common expected-result completion of still-unbound parts. Proving the same single acquisition mode is sufficient; complete Type equality is unnecessary then. If the necessary correlation cannot be established directly, reject the omitted form and require explicit Type arguments. Never use candidate elimination, inverse associated-Type solving, conversion search or waiting-body analysis to prove it.
+1. Check every combination of admitted cases with independently bound slots. If all overlapping combinations have the same mode, the pair is valid.
+2. Otherwise, repeat assuming the permitted correlations: the same construction-target slot, or same-numbered slots of two function generic lists of the same length and kinds (equal projections from equal sources). If the pair now has one mode wherever keys overlap, it is valid with a contract relying on those correlations.
+3. Otherwise the declarations are invalid together.
 
-A **common unresolved binding** has the same actual-expression identity, extraction path, inference rule and dependency evidence in every compared candidate. Other arguments or expected results that could change it must also give common evidence; a candidate-specific additional source prevents sharing. Compare these symbols without jointly solving the candidates' Constraints. Literal fitting and defaulting keep their ordinary phase, and defaults never break a tie.
+A violation among the same-name declarations of one scope, including a Contract's inherited requirements ([§8.4.3](08-generics-constraints-and-contracts.md#843-refinement)), is a declaration error; in a group gathered at a use ([§9.5.1](09-names-signatures-and-access.md#951-aliases), [§9.6](09-names-signatures-and-access.md#96-qualified-and-inherited-lookup)) it is an error at that use, whatever its arguments. Counts, labels, defaults and `when` conditions exempt no pair; a full specialization keeps its original's contract. Built-in operator, index and comparison candidates obey the rule (`index` and `indexUniq`).
 
-```text
-C<T> constructors:
-  init(value: (T, i32),     tag: i32)
-  init(value: ref/(i64, T), tag: string)
-Actual value Type: (i64, i32).
-```
+**Call contract.** A call without explicit Type arguments to a group whose declaration-time validity relies on correlated slots (step 2) must establish each relied-on correlation before candidates are filtered by count, labels, defaults, Constraints, conditions or expected results. A correlation holds when every compared candidate binds the slot from the same evidence: the same fixed explicit or environment binding; the same independently typable or Literal argument ([§10.5.1](10-overload-resolution-and-inference.md#1051-argument-kinds)) at corresponding parameters, matched by the same inference step of [§10.1](10-overload-resolution-and-inference.md#101-candidate-applicability) (structural or call-signature matching) along the same structural path (the Type constructors and argument indices from the parameter Type to the slot); or the call's expected result along the same structural path of the result Types. The argument's Type need not be resolved yet: a shared unresolved literal argument correlates the slot, and literal fitting and defaulting then proceed as usual ([§10.2.1](10-overload-resolution-and-inference.md#1021-literals)). An argument filled by a default gives no evidence. If any candidate has an additional evidence source for the slot, the correlation fails. Showing from this evidence that the overlapping positions get the same acquisition mode is sufficient; equal complete Types are not required. Candidate elimination, conversion search, associated-Type solving and waiting-argument analysis never establish a correlation. A call that cannot establish it is an error unless it writes explicit Type arguments.
 
-Sharing `T` makes the two keys disjoint at declaration checking. Independent inference can instead bind `T = i64` for ByValue and `T = i32` for Shared. The omitted call fails its correlation condition even when `tag` excludes one constructor. Fixed explicit arguments can use the saved non-overlap result.
-
-Conversely, `Item<T>.init(value: T, code: i32)` and `init(value: T, name: string)` may share the unresolved first argument of `Item.init(42, 0)`: both extract it identically and neither has additional evidence for `T`. Ordinary selection and defaulting can then produce `Item<i32>`. Adding `witness: Tag<T>` to one declaration and `witness: Tag<ref/T>` to the other can break that correlation for a supplied `Tag<ref/i32>`. The same rules apply to ordinary functions and unresolved associated projections.
-
-| Group formation | Judgment |
-| --- | --- |
-| The same-name declarations of one declaration scope: a Container and its fragments, the project root, a local scope, the members of a Type, constructors, the requirements of a Contract including those inherited by refinement (§8.4.2) | A declaration error |
-| A group gathered at a use from several declaration sources: the alias stage of §9.4.1, requirements gathered from Constraints (§9.5) | An error at that use, whatever its arguments |
-
-As for receiver shapes, different parameter counts, labels, defaults or mutually exclusive `when` conditions exempt no pair. An explicit full specialization keeps its original's contract and forms no new pair. The operator, index and comparison candidates come from the built-in operations and the published Contracts, which obey the rule (`index`/`indexUniq`).
+**Consequence.** Where keys overlap, every candidate acquires the argument the same way, and within a candidate a reference argument is acquired as its own Type decides ([§10.2.2](10-overload-resolution-and-inference.md#1022-inference-and-adaptation-classes)). A forgotten `@uniq` is an error at the only candidate ([§15.1.5](15-ownership-and-lifetime-analysis.md#1515-access-operations-and-acquisition)), never a silent selection of a by-value candidate. The single-mode guarantee holds only where keys overlap; for non-overlapping keys the argument's Type selects the candidate, as in `inspect(value: uniq/(uniq/Node))` versus `inspect(value: ref/Node)`.
 
 ```kimi
-func bump(score: Score) -> Score
-func bump(score: uniq/Score) -> ()        // Error: position 0 is acquired by value and exclusively.
+func bump(score: Score ! flag: bool) => ()
+func bump(score: uniq/Score ! flag: i32) => ()  // Error: ByValue and Exclusive at position 0.
+func g<T>(value: T) => ()
+func g(value: uniq/Node) => ()                  // Error: T may be Node.
 
-func bumped(score: Score) -> Score       // The names differ (§4.7.1).
-func bump(score: uniq/Score) -> ()
-// bump(game.score)                      // Error: the only candidate needs @uniq (§15.1.5); no other candidate takes the call.
+func show(value: Node) => ()
+func show(value: objref/Node) => ()             // Valid: Value(Node) and Object(Node).
+func f(value: Node) => ()
+func f<T>(value: T) => ()                       // Valid: T has the owner case alone.
+func inspect(value: uniq/(uniq/Node)) => ()
+func inspect(value: ref/Node) => ()             // Valid: different determined Semantics.
 
-func inspect(value: ref/i32) -> ()
-func inspect(value: uniq/i32) -> ()      // Error: shared and exclusive.
+struct Item<T>
+    public var value: T
+    public init(value: T, code: i32) => self.value = value@move
+    public init(value: T, name: string) => self.value = value@move
 
-func select(value: Node ! flag: bool) -> ()
-func select(value: ref/Node ! flag: i32) -> ()  // Error: flag distinguishes the calls, but value is one position.
-
-func g<T>(value: T) -> ()
-func g(value: uniq/Node) -> ()           // Error: T may be Node, in every case.
-
-func route(value: obj/Node) -> ()
-func route(value: objref/Node) -> ()     // Error: Object(Node) by value and shared.
-
-struct Api<A, B>
-    public func inspect(value: Array<A>) -> ()
-    public func inspect(value: ref/Array<B>) -> ()  // Error: A and B are one Type in Api<i32, i32>.
-
-func fill<length N>(value: [(N + 1) of i32], witness: [N of i32]) -> ()
-func fill<length M>(value: ref/[2 of i32], witness: [M of i32]) -> ()  // Error: a non-constant length overlaps.
-
-struct Node
-    public func inspect(self: ref/Self) -> ()
-    public func inspect(value: Self) -> ()  // Error: Node.inspect(node) acquires position 0 shared or by value.
-
-func choose<T>(value: T, items: Array<T>) -> ()
-func choose<T>(value: Node, items: Array<T>) -> ()  // Error: choose<ref/Node>(node, items) binds T to a reference.
-
-struct Box<A>
-    public func f(value: A) -> ()
-    public func f(value: Node) -> ()        // Error: Box<ref/Node> binds A to ref/Node.
+let item = Item.init(42, 0)   // Item<i32>: both candidates bind T from the same argument.
 ```
 
-The following pairs are valid:
+If one of these constructors also took `witness: Tag<T>` and the other `witness: Tag<ref/T>`, a supplied `Tag<ref/i32>` would be an extra evidence source in one candidate, and the call would need explicit Type arguments.
+
+## 7.5. Function constraints
+
+The indented body of a function, constructor, destructor or accessor begins with a **leading region**: the longest leading sequence of unparenthesized Constraint Clauses ([§8.2](08-generics-constraints-and-contracts.md#82-constraints-and-requirement-expressions); each with its indented Callable effect list, [§8.11.6](08-generics-constraints-and-contracts.md#8116-callable-effect-bounds)), `origin` relation clauses ([§15.3.3](15-ownership-and-lifetime-analysis.md#1533-declaration-attached-relations)) and, in an original virtual function only, effect items ([§8.11.1](08-generics-constraints-and-contracts.md#8111-declarations)), in any order. Blank lines and comments do not end it; a parenthesized test such as `(value is Dog)` is an executable item and ends it; items inside compile-time directives count by their own kinds, in every arm ([§19.4](19-compile-time-directives.md#194-excluded-syntax)). A later Constraint Clause rooted in a generic parameter is a misplaced-Constraint error, and an effect item elsewhere is an error. An accessor's leading region may hold only `origin` relations; a destructor body has no leading region items.
+
+Each subject names a generic parameter of the function or of the declaring Type, or an associated projection rooted in one ([§8.5](08-generics-constraints-and-contracts.md#85-associated-types)). The signature, including the result Type, may rely on the leading Constraints; identity premises follow [§8.2](08-generics-constraints-and-contracts.md#82-constraints-and-requirement-expressions). Function requirements have their own indented region ([§8.4.2](08-generics-constraints-and-contracts.md#842-function-requirements)).
+
+Every generic argument at a call must satisfy the clauses, and the body may rely on them. Constraints are not part of the Signature: declarations that differ only in Constraints conflict.
+
+A member function or constructor whose clauses constrain a generic parameter of its declaring Type is a **conditional member**. Its premise is those clauses and any enclosing `when` condition, with the receiver's or qualifier's Type arguments substituted, and it decides applicability as in [§8.8.2](08-generics-constraints-and-contracts.md#882-verification-and-use): a Refuted premise makes the member inapplicable without changing lookup, and a generic caller must prove it. A conditional member needs no target Contract and grants no conformance.
 
 ```kimi
-func writeLine(text: ref/string) -> ()
-func writeLine(text: Text.Utf8Slice) -> ()   // The Types do not overlap.
+func pick<T>(a: ref/T, b: ref/T) -> ref/T during a
+    origin b outlives a
+    T is Copy                         // Still in the leading region.
+    return a
 
-func f(value: Node) -> ()
-func f<T>(value: T) -> ()                    // Different generic counts: T binds the argument's complete Type, so both are ByValue.
-
-func splitFirst<E>(state: uniq/RefRemainder<E>) -> Option<ref/E during state.source>
-func splitFirst<E>(state: uniq/UniqRemainder<E>) -> Option<uniq/E during state.source>  // Both exclusive; the Types differ.
-
-func show(value: Node) -> ()
-func show(value: objref/Node) -> ()          // Value(Node) and Object(Node) take different arguments.
-
-func f<T>(value: T ! tag: i32) -> ()
-func f<s/U>(value: s/U ! tag: i64) -> ()      // Valid conditional contract: the call must establish the slot correlation.
-
-struct Container<T>
-    public func add(self: uniq/Self, value: T) -> ()
-    public func add(self: uniq/Self, value: T, at: isize) -> ()  // The same enclosing slot.
-
-func fill(buffer: [2 of i32]) -> ()
-func fill(buffer: ref/[3 of i32]) -> ()      // Constant lengths differ.
-```
-
-**Consequences.** At a position whose Types overlap, the acquisition mode of an argument is fixed by the Name and the position: whichever candidate is selected acquires the argument by value, by a new shared borrow or by an exclusive borrow alike. Within one candidate, a reference argument is still acquired as its own Type decides (§10.2.1: the exclusive Reborrow of `identity(r)`, the value read of a read Type); that is not a switch between candidates. A forgotten `@uniq` is therefore an error at the only candidate (§15.1.5), never a silent selection of a by-value candidate that discards its update, and a shared variant and an exclusive variant never switch with the Semantics of an existing reference. Where the rule holds, no bare Place argument is Copied by one candidate and newly borrowed by another, so overload resolution has no acquisition conflict to resolve: the Copy proof of a bare by-value acquisition is an ordinary applicability condition (§10.1).
-
-**Generics.** Overlap is judged by unification of the matching keys alone. The admitted set of a Semantics slot is a finite set and is used; Type Constraints are not, because excluding an overlap through them needs a Refuted proof that the limited proof system (§8.7) often leaves Unknown. Pairs that Constraints, enclosing-Type arguments or length expressions would in fact keep apart are therefore rejected as well, and the diagnostic distinguishes this conservative case from an overlap of closed Types. The structural contract is built at the declarations; each call checks its saved conditions from the bounded evidence above. Generic bodies verify that contract from their published information, and instantiation does not choose a different acquisition (§8.9).
-
-**Diagnostics.** A failed call correlation is an inference-boundary error at the whole call, relating the parameters, slots and input evidence whose acquisition could differ. It is distinct from an invalid declaration and from the constructor fixed-binding reference check (§10.8.1). A declaration violation is `ParameterShapeMismatch_Kd`, reported once per corresponding parameter of the later declaration in source order (one record even when it overlaps several earlier declarations), located at that parameter's Type, with the overlapping earlier parameters as related locations. Its Reason states both acquisition modes, for a parameter with admitted cases the colliding case, the ground of correspondence (the call form and position number, or the external name) and the unified matching key in bounded form. A Note states, when the overlap arises from a slot or a non-constant length, that the check does not consult Constraints, enclosing Type arguments or length values; an overlap of closed Types has no Note. The use-site error is located at the called Name and relates the overlapping declarations; for requirements gathered from Constraints no syntax selects among them, as for receiver shapes (§9.5). The declarations of a violating pair stay in their group, a call that selects one of them is checked normally, and a call that the pair leaves without a selection (ambiguous, or without an applicable candidate) is derived from the declaration error (§23.3.6.4).
-
-## 7.4. Function constraints
-
-Every function, constructor, destructor and accessor with an indented body may begin that body with [Constraints](08-generics-constraints-and-contracts.md#82-constraints). Its Constraint Clauses must precede every executable body item; they are processed at compile time and are not executable expressions.
-
-Before lookup, the longest leading sequence of unparenthesized `ConstraintSubject is IsRequirement` items is parsed as Constraint Clauses. A subject not permitted for the function is an error, never a fallback runtime test. Blank lines and comments do not end this prefix. Parenthesizing the whole test, as in `(value is Dog)`, makes it an executable expression item and ends the prefix, so later value tests are executable. A later clause rooted in a generic parameter is a misplaced-Constraint error. The prefix rule is purely syntactic and applies to every such body. It is judged in source order over selected and excluded items alike: a directive is not itself an item, and the items in its target and in all of its arms extend or end the prefix by their own kinds (§19.5); a leading `value is Dog` is never an expression statement, which would have no effect, so a body that means the runtime test writes it inside its statement, as in `require value is Dog else => return`. Dedicated Type and Contract Constraint regions keep their own rules, even through parentheses.
-
-```kimi
-func inspect<s/T>(value: s/T) -> ()
-    s is ref or obj
-    T is Comparable
-
-    return
-```
-
-Each clause subject must name a generic parameter of the function, a generic parameter of the Type that declares the member, or an [associated-Type projection](08-generics-constraints-and-contracts.md#843-associated-types) rooted in one. A destructor or accessor is never a conditional member, so no subject is permitted in its body. Leading Constraints are collected before the projections in the signature, including the result Type, are resolved; they are still validated. Function requirements use the [same indented placement](08-generics-constraints-and-contracts.md#841-function-requirements), with a Constraints-only region instead of an executable body.
-
-Every explicit or inferred generic argument at a call site must satisfy the clauses, and body Type checking and instantiation may rely on them. Constraints are not part of the function Signature, so declarations that differ only in their Constraints conflict.
-
-A member function or constructor whose clauses constrain a generic parameter of its declaring Type is a **conditional member**. Its premise is those clauses, together with any enclosing `when` condition, with the parameters substituted by the receiver's or qualifier's Type arguments. The premise decides applicability exactly as the [conditional-member table of §8.4.8.2](08-generics-constraints-and-contracts.md#8482-verification-and-use) does: a Refuted premise makes the member inapplicable without changing lookup, and a generic caller must prove it from its own Constraints. The member's body may rely on the clauses. Unlike a [conditional conformance](08-generics-constraints-and-contracts.md#848-conditional-conformance), a conditional member needs no target Contract and grants no conformance.
-
-```kimi
 struct Box<E>
     public var item: E
     public init(item: E) => self.item = item@move
-
     public func same(self, other: ref/Self) -> bool
         E is Equatable
         return self.item == other.item
 
-let a = Box<i32>.init(1)
-let yes = a.same(Box<i32>.init(1))   // OK: i32 is Equatable.
-// Box<Point>.init(p).same(q) is an error when Point is not Equatable: same is inapplicable for Box<Point>.
+let yes = Box<i32>.init(1).same(Box<i32>.init(1))  // Valid: i32 is Equatable.
+// For a non-Equatable Point, same is inapplicable on Box<Point>.
 ```
 
-In the leading Constraint prefix (§7.4), an indented Callable effect list belongs to its clause and does not end the prefix (§8.4.10.7). Ordinary functions declare no effect bounds of their own.
+## 7.6. Unsafe functions
 
-## 7.5. Unsafe functions
+An **unsafe function**, declared `unsafe func`, has a safety contract: memory-safety conditions that its caller must satisfy and its Types cannot express, documented with the `safety` item ([§2.3](02-source-and-lexical-structure.md#23-documentation-comments)). Calling it requires an Unsafe Block ([§14.3](14-control-flow.md#143-do-and-unsafe)); violating the contract is undefined behavior. `unsafe func` does not make its own body an unsafe context.
 
-An **unsafe function**, declared with `unsafe func`, requires its caller to satisfy documented memory-safety conditions for their documented duration. A function is declared unsafe only when its caller has obligations that its Types cannot express; those obligations are its safety contract. Calling it requires an [Unsafe Block](14-control-flow.md#1433-unsafe-block), and violating its safety contract is undefined behavior. This runtime safety contract is distinct from Constraints. The conditions are described with the [`safety` documentation item](02-source-and-lexical-structure.md#235-writing-and-extracting-items), which adds no automatic proof or calling permission.
+`unsafe` is not part of the Signature; overload resolution ignores it and the caller's unsafe context, and the requirement is checked after selection. An unsafe function supports direct calls only: taking it as a value, passing it or converting it is an error. Unsafe Function Types are deferred ([§D](appendices/D-deferred-features.md#appendix-d-deferred-features)).
 
 ```kimi
-// Safety: pointer must refer to a live, initialized i32 throughout the call,
-// with valid range, alignment, provenance, and read permission.
-// Access must obey reference, aliasing, and data-race rules.
+/// - safety: pointer refers to a live, initialized, readable i32 for the call.
 unsafe func read(pointer: raw/i32) -> i32
     unsafe => return *pointer
 
-// Safety: the same requirements as read.
-unsafe func forward(pointer: raw/i32) -> i32
-    unsafe
-        return read(pointer)
-
 unsafe func invalidRead(pointer: raw/i32) -> i32
-    return *pointer // Error: unsafe func does not make its body an unsafe context.
+    return *pointer      // Error: the body is not an unsafe context.
+
+let reader = read        // Error: an unsafe function is not a value.
 ```
 
-`unsafe` is not part of the Signature and does not distinguish overloads. Overload resolution ignores the caller's unsafe context; the selected call's requirement is checked afterward, and another overload is never substituted because the selected one is unsafe.
+## 7.7. Function expressions
 
-Unsafe functions support direct calls only. Taking one as a function value, assigning it to a variable, passing it as an argument or converting it to an ordinary Function Type is an error. Unsafe Function Types are not specified in this revision (Appendix D).
+### 7.7.1. Syntax and inference
 
-```kimi
-let reader = read // Error: an unsafe function cannot be taken as a function value.
-```
+An anonymous function is `func`, an optional Capture List, parameters, an optional result annotation and a body (grammar: [§F.9](appendices/F-syntax-summary.md#f9-expressions)). There is no bare `(x) => x` form, and there are no labels, defaults, `!` boundaries or generic anonymous functions. It has a task slot exactly when its header writes one ([§24.2.1](24-suspension-and-asynchronous-tasks.md#2421-form)). Every parameter needs an argument, and calls are positional.
 
-## 7.6. Function expressions
+An omitted parameter Type needs a fixed expected call signature ([§10.5.2](10-overload-resolution-and-inference.md#1052-call-signatures)), which supplies the Types aligned after any task slot; parameter Types are never inferred from the body or later uses. The result comes from that expectation or, once the parameters are fixed, from the body, with its result Origins and Loans ([§15.8.2](15-ownership-and-lifetime-analysis.md#1582-closure-dependencies)). A body's result is never evidence for an enclosing call's slots: the anonymous function is a waiting argument ([§10.5.1](10-overload-resolution-and-inference.md#1051-argument-kinds)), and a Closure Type bound to a slot fills no other slot ([§10.8](10-overload-resolution-and-inference.md#108-generic-argument-inference)). A `try` failure supplies no result Type candidate ([§17.3](17-failure-handling.md#173-try-propagation)); success values are never wrapped.
 
-### 7.6.1. Syntax and inference
-
-An anonymous function consists of `func`, an optional Capture List, parameters, an optional result annotation and a common Body (§7.1). There is no bare `(x) => x` form, and there are no external parameter labels, defaults, `!` boundaries or generic lambdas. An anonymous function has a task slot exactly when its header writes one ([§24.2.1](24-suspension-and-asynchronous-tasks.md#2421-form)). Every parameter requires a value, and calls are positional whatever the written local names. The body's expectation and its use or discard context are fixed before the body is checked (§10.5).
+Creation evaluates only the captures. A call runs the body under its own Function Boundary, with no outer transfer targets and no inherited Unsafe permission.
 
 ```kimi
-let twice = func (value: i32) => value * 2
+let twice = func (value: i32) => value * 2              // Result: i32.
 let positive: (i32) -> bool = func (value) => value > 0
-let invalid = func (value) => value * 2 // Error: no fixed input signature.
+let invalid = func (value) => value * 2                 // Error: no fixed input signature.
 ```
 
-An omitted parameter Type requires a [fixed expected call signature](10-overload-resolution-and-inference.md#105-inference-boundaries-and-specialization); parameter Types are never inferred from body operations or later uses. That signature never supplies a task slot, but it still supplies omitted parameter Types, aligned with its parameters after the task slot (§24.2.1). The result is inferred from that expectation or, once the parameters are fixed, from the body under normal result validation. Inference from the body yields only the anonymous function's own result and is never evidence for the slots of an enclosing call: an anonymous body that waits for an expectation is a waiting argument (§10.5), and even when a slot such as `F` is bound to the concrete Closure Type after the body is checked, that Closure's result Type fills no other slot (§10.8). Whole-result inference also keeps the [result Origins and Loans](15-ownership-and-lifetime-analysis.md#1582-closure-dependencies-and-call-results); annotations use the existing elision rules.
-
-A try failure is an expectation-dependent return source (§17.2.4) and cannot supply a return Type candidate. Its operand is inferred independently (§10.5), and success values are never wrapped automatically.
-
-Creation evaluates the captures, not the body, and acquires them in the creation context. Invocation evaluates the body under an independent Function Boundary, with no outer `return`/`exit`/`continue`/`yield` targets and no inherited Unsafe permission. Named nested functions still cannot capture.
-
-### 7.6.2. Capture acquisition and environment
+### 7.7.2. Captures
 
 | List or entry | Creation effect |
 | --- | --- |
-| No list | Infer the needed outer runtime bindings; Copy only when each complete Type is Copy |
-| `[]` | Prohibit runtime captures |
-| `[x, y]` | Acquire exactly the listed bindings; unlisted outer runtime bindings are unavailable |
-| `x` / `var x` | Initialize the environment binding `x` as `let x = x` / `var x = x` would |
-| `x@op` / `var x@op` | Initialize it as `let x = x@op` / `var x = x@op` would; `op` is `move`, `ref` or `uniq` |
+| No list | Copies each outer runtime binding the body uses; each must be Copy |
+| `[]` | No runtime captures |
+| `[x, y]` | Exactly the listed bindings |
+| `x` / `var x` | Initializes the environment binding `x` as `let x = x` / `var x = x` would |
+| `x@op` / `var x@op` | As `let x = x@op` / `var x = x@op` would; `op` is `move`, `ref` or `uniq` |
 
-Captures are resolved by Binding Identity. An omitted list is a boundary at which no acquisition is inferred from the body: it never infers a Move, a new external Borrow or Reborrow, including the Reborrow that bare acquisition gives a stored exclusive reference (§3.5), or a partial capture, so a Non-Copy root is rejected even when only a Copy Field is read. An existing `ref/T` may be copied with its dependencies. An omitted-list capture of a binding whose Copy capability depends on generic parameters requires declared Copy evidence at definition checking; unknown Copy is an error, never deferred checking, an inferred Move or a hidden Constraint.
+Captures resolve by Binding Identity. Without a list, no Move, Borrow, Reborrow ([§3.5](03-types-and-values.md#35-copy-and-move)) or partial capture is inferred, so a Non-Copy root is rejected even when only a Copy Field is read; an existing `ref/T` is Copied with its dependencies, and Copy that depends on generic parameters needs declared evidence.
 
-**Explicit entries.** Each explicit entry is the initialization of one environment binding. Its right side designates the outer binding by Binding Identity, and the entry acquires it at creation exactly as the initialization in the table would, under §3.5 and §13.5 and, in a generic body, §8.9. A bare entry therefore Copies a Copy binding, Reborrows a binding that holds `uniq/T` or `objuniq/T` and rejects any other Non-Copy binding; `x@move` transfers even a Copy binding; and `x@ref` and `x@uniq` borrow the outer binding's slot as in any other expression (§13.5.5.2), so on a reference binding they add a reference layer. A bare entry rejected for a Non-Copy binding offers `x@move`, when Take is not refuted, and `x@ref` as repair candidates (§23.3.6.9). A Closure whose entry borrows an outer slot depends on that slot and cannot outlive it; its call permission, escape and cleanup are checked as for any other captured dependency (§7.6.3, §15.8).
+An explicit entry names one binding and acquires it at creation exactly as its initialization would ([§3.5](03-types-and-values.md#35-copy-and-move), [§13.5](13-operators-and-assignment.md#135-explicit-operations), [§8.14](08-generics-constraints-and-contracts.md#814-generic-access-effects)): a bare entry Reborrows a binding holding `uniq/T` or `objuniq/T` and rejects other Non-Copy bindings, and `x@ref` or `x@uniq` borrows the outer slot, on which the Closure then depends ([§15.8](15-ownership-and-lifetime-analysis.md#158-captured-and-erased-dependencies)).
 
-Type names and accessible static function declarations are not runtime captures. Contextual `self` and a setter's `value` are never captured implicitly, and explicit captures of them obey all receiver and accessor restrictions. In a constructor or `drop`, no entry captures `self`, whatever its operation and even after every Field is initialized: construction forbids capturing `self` (§6.2.3.4), and the destruction receiver, which is not an ordinary borrow value, is never Copied, Moved or kept by an environment, even through a shared borrow (§16.3.1). A Closure there reaches `self` only through locals initialized from the Fields it needs. The contextual `storage` binding cannot be captured by name; ordinary bindings named `storage` follow the normal capture rules. No runtime receiver is implicitly bound into a function reference.
+Only outer runtime locals and parameters are captured. Type names, Containers, static storage (static Fields and Properties, whose direct use is a static access, [§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)) and named functions, including local named functions, are not captures. Top-level locals are ordinary locals and are captured like any other. Contextual `self` and a setter's `value` are never captured implicitly; explicit captures of them obey the receiver and accessor rules. In a constructor or `drop`, no entry captures `self` ([§6.3.4](06-declarations-and-containers.md#634-the-construction-receiver), [§16.3.1](16-scope-exit-and-destruction.md#1631-destruction-receiver)). The contextual `storage` binding cannot be captured by name.
 
-Explicit captures execute left to right, including unused entries, and earlier Moves and Loans affect the legality of later entries. Duplicate capture names and collisions with parameters are rejected. Inferred captures execute once each, in order of first occurrence in selected source, including dependencies needed by nested Closures. Source excluded at compile time contributes no capture; a legitimate deferred selection must fix the capture set, order and effects before environment and ownership finalization. Runtime reachability and optimization do not change the set.
+Explicit entries execute left to right, unused ones included; duplicates and names of parameters are errors. Inferred captures execute once each, in order of first occurrence in selected source.
+
+A capture without `var` is a `let`-like environment binding, whatever its source's mutability; a value capture is a snapshot, and `var` changes only the binding's mutability. In a call, each environment binding acts as a local of the call with its capture's `let`/`var` mutability: a Shared call only reads it, an Exclusive call may also assign a `var` binding and use captured `uniq` referents, and only a Consuming call may move a capture out. A consumed `let` capture cannot be reinitialized. Environment bindings are not parameters, so the owned-Type parameter restriction of [§15.1.5](15-ownership-and-lifetime-analysis.md#1515-access-operations-and-acquisition) does not apply to them. No environment may borrow its own owned capture through another capture.
+
+**Nested Closures** acquire through every enclosing environment: a binding used only by the inner Closure must also be captured by the outer one, and each omitted list requires Copy on its own. Moving an outer environment value into an inner Closure makes the outer call Consuming. An inner `[x@uniq]` borrows the outer environment binding `x`: an error when it is `let`, otherwise judged by the outer call's permission ([§7.7.3](#773-call-receiver)).
 
 ```kimi
 let number: i32 = 10
-let copied = func () => number             // Copy capture.
-let text = makeText()                      // Assume string.
-let invalid = func () => text              // Error: explicit list required.
-let holder = func [text@move] () => ()     // Transfer executes even if unused.
+let copied = func () => number              // Copy capture.
+let text = makeText()                       // string: Non-Copy.
+// let bad = func () => text                // Error: an explicit list is required.
+let holder = func [text@move] () => ()      // The transfer happens even if unused.
+
+var value: i32 = 1
+let r = value@uniq
+var bump = func [r] () => r@follow += 1     // [r] Reborrows r as uniq/i32.
+bump()                                      // An Exclusive call.
 ```
 
-Capture targets are binding names only. There are no aliases, initializer expressions, field targets, inter-entry references, `@copy` entries or additional object-borrow capture syntax; a bare entry already Copies a Copy binding.
+### 7.7.3. Call receiver
 
-```kimi
-var number: i32 = 1
-let r = number@uniq
-let view: ref/i32 = r                    // Share the referent first when shared access suffices.
-let reader = func [view] () -> i32 => view@follow
-let snapshot = reader()
+Each concrete Closure has one minimum **Call Receiver Requirement**, from all resolved operations of its body in selected source:
 
-var bump = func [r] () => r@follow += 1  // [r] Reborrows r as uniq/i32.
-bump()                                   // An Exclusive call (§7.6.3).
-// [r@move] transfers the reference value, and [r@ref] borrows the slot of r as ref/(uniq/i32).
-// [r@uniq] is an error: the let binding r cannot be borrowed exclusively.
-```
+| Requirement | Receiver | Body access |
+| --- | --- | --- |
+| Shared | `ref/Self` | Reads the environment |
+| Exclusive | `uniq/Self` | Mutates the environment or captured referents |
+| Consuming | `owner/Self` | Moves values out of the environment |
 
-Captures without `var` create `let`-like environment bindings, whatever the mutability of the source or of the binding that holds the Closure. Value capture takes a snapshot; no shared heap box is created automatically. A captured exclusive reference can mutate its referent given adequate call access, but assignment to the capture name is not rewritten as assignment to the referent. `var` changes only the mutability of the environment binding, not deep copying, Copy classification, Origin dependencies or the authority of the source; with `var x@ref` or `var x@uniq`, the environment binding is a reassignable borrow of the outer slot.
+A Move on any possible path requires Consuming. Where a conditional acquisition plan ([§8.14](08-generics-constraints-and-contracts.md#814-generic-access-effects)) gives admitted cases different effects, each case has its own requirement, and every use is checked in every case ([§8.15](08-generics-constraints-and-contracts.md#815-generic-body-checking)); for example, a bare acquisition of a captured value whose Type is a pair layer makes the call Exclusive exactly in the cases where it Reborrows.
+
+A direct call acquires the receiver like a method receiver ([§7.3.3](#733-method-calls)). An owned Closure Place is borrowed shared for a Shared call and exclusively for an Exclusive call when its lending point is exclusively writable ([§15.1.5](15-ownership-and-lifetime-analysis.md#1515-access-operations-and-acquisition)); `uniq/F` and `ref/F` values are Reborrowed, and `ref/F` cannot supply an Exclusive call. A Consuming call Copies a Copy Closure and otherwise needs `c@move()`.
+
+The call signature keeps task-slot presence, receiver, parameter and result Types, Origins and result Loan dependencies; a call through a signature with a task slot is a task call ([§24.3](24-suspension-and-asynchronous-tasks.md#243-task-calls)). Receiver protection starts before later arguments are evaluated ([§15.6.7](15-ownership-and-lifetime-analysis.md#1567-call-reservations)), also in indirect and Callable calls. Generic calls follow the declared Callable receiver ([§8.10](08-generics-constraints-and-contracts.md#810-callable-constraints)).
 
 ```kimi
 let count: i32 = 0
 var next = func [var count] () -> i32
     count += 1
     return count
-let first = next()  // 1
-let second = next() // 2; outer count is still 0.
-```
-
-Environment bindings are not user Fields. Ownership-bearing calls apply ordinary local acquisition and Move Paths, and a consumed `let` cannot be reinitialized. Shared and Exclusive calls cannot move owned captures out. No environment may borrow its own owned capture through another capture; external borrowed dependencies remain legal under the lifetime rules.
-
-**Nested Closures** acquire through every enclosing environment. A binding free only in the inner Closure must still be captured by the outer one; an outer `[]` or an insufficient explicit list is an error. Each omitted-list boundary requires Copy on its own. The outer Closure's own parameters and body locals need capturing only when the inner Closure is created. Moving an outer environment value into an inner Closure makes the outer call Consuming. An inner `[x@uniq]` borrows the outer environment binding `x`: it is an error when that binding is `let`, and for a `var` binding it is judged by the outer call's permission and Loans (§7.6.3).
-
-```text
-lexical x -> outer capture x -> inner capture x
-            creation of outer  execution of outer, creating inner
-```
-
-### 7.6.3. Call receiver and acquisition
-
-Each concrete Closure has one minimum **Call Receiver Requirement**, inferred from all resolved operations in selected source:
-
-| Minimum requirement | Internal receiver | Body access |
-| --- | --- | --- |
-| Shared | `ref/Self` | Shared access to the environment |
-| Exclusive | `uniq/Self` | Exclusive mutation of the environment or captured referents |
-| Consuming | `owner/Self` | Moving values out of the call's environment |
-
-These are the access requirements of one body, not three independently selected implementations. A Move on any possible body path requires a Consuming call. Legitimate generic effects are resolved before the requirement is finalized. Where a conditional acquisition plan (§8.9) gives the admitted cases different effects, each case has its own requirement and the cases are never merged into the strongest: definition checking verifies every use of the Closure, including its calls, erasure and Callable arguments, in every case under that case's requirement (§8.10), and each instantiation's Closure has the requirement of its case. A bare acquisition in the body of a captured pair binding, a local initializer or a nested Closure's bare entry, makes the call Exclusive exactly in the cases in which it Reborrows (§8.9); an entry of the Closure itself is evaluated in the creation context (§7.6.2) and does not change the receiver. A use that must be valid in every case, such as erasure, a Callable argument or a call of a `let` Closure, fails as soon as it fails in the case with the strongest requirement. Overload resolution is not rerun per receiver, `let` and Property permissions are not relaxed, and ownership cannot rescue an otherwise invalid body. The internal `call` and receiver notation introduce no source member or hidden `self` name.
-
-A direct call acquires the minimum receiver like a method receiver: the callee expression is a Receiver Expression whose receiver requirement is the internal receiver Type, acquired implicitly under [§7.3](#73-explicit-receivers). An owned Closure Place is therefore borrowed without a spelling: shared for a Shared call, and exclusively for an Exclusive call when its lending point is exclusively writable (§15.1.5). `uniq/F` and `ref/F` values are Reborrowed in the required mode, and a `ref/F` value cannot supply an Exclusive call. A Consuming call Copies a Copy Closure and otherwise needs `c@move()`. A temporary Closure passes as is.
-
-A captured `uniq` alone does not grant exclusive access to a `let`-owned Closure: the `let` binding is immutable owned storage, and a Copy of it is never advanced in its place. Borrowed access cannot Move an unowned environment, although a permitted Copy may provide a separate owned call value.
-
-```kimi
-let text = makeText()
-let reader = func [text@move] () => inspectText(text)
-reader()
-reader() // Shared call; a transferred capture does not imply a consuming call.
-
-var next = func [var count] () -> i32
-    count += 1
-    return count
-let first = next()      // Exclusive call: the owned closure is acquired implicitly.
+let first = next()        // 1: an Exclusive call; the outer count stays 0.
 
 let item = makeResource() // Non-Copy.
 let take = func [item@move] () => item@move
-let taken = take@move() // Transfers item out of the consumed closure.
-// take()               // Error: the Non-Copy closure was consumed.
-
-let tick = func [var count] () -> i32 // Copy: the only capture is an i32.
-    count += 1
-    return count
-// let n = tick()       // Error: a let-bound closure cannot be acquired exclusively; no Copy is advanced instead.
+let taken = take@move()   // Consuming: transfers item out.
+// take()                 // Error: take was consumed.
 ```
 
-The internal call signature keeps task-slot presence, the complete receiver, parameter and result Types, per-call Origins, fixed captured Origins and result Loan dependencies. A call of a function value whose call signature has a task slot writes the task argument and is a task call ([§24.3](24-suspension-and-asynchronous-tasks.md#243-task-calls)). Receiver protection starts before later arguments are evaluated; eligible exclusive receivers use the reservation and activation of §15.6.7, also in indirect and Callable calls. The required Loans last through the uses of dependent results. Generic calls follow the declared [Callable receiver](08-generics-constraints-and-contracts.md#86-callable-constraints), even when instantiation reveals a weaker body requirement.
+### 7.7.4. Function references and erasure
 
-### 7.6.4. Function references and common-type conversion
+A function reference is resolved under [§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries) and has its Function Item Type, including bound generic arguments and Origin contract; different declarations have distinct Types. `drop` cannot be taken as a value. Requirement references, including built-in witnesses ([§13.3.3](13-operators-and-assignment.md#1333-arithmetic-contracts)), follow the same rules. A safe compiler-implemented function is referenced the same way, and a requirement value keeps its selected implementation.
 
-The [arithmetic requirement references](arithmetic-contracts.md#12-requirement-function-values), including built-in witnesses, follow these same Function Item, Callable and common Function rules. A selected requirement and its implementation mapping remain attached to the value.
-
-A function reference is resolved under [§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries-and-specialization) and produces its Function Item Type, including its bound generic arguments and Origin contract; different declarations have distinct Types. A Function Item is Copy and Shared-callable, is Owned when its bound arguments satisfy §15.2.3, and keeps its borrowed parameter and result contracts. A runtime method receiver is never bound automatically; receiver arguments are explicit. Unsafe functions and `drop` cannot be acquired as values.
-
-```kimi
-func add(x: i32, y: i32) -> i32 => x + y
-let item = add                         // Concrete Function Item; Copy.
-let erased: (i32, i32) -> i32 = add    // Common owned value; Non-Copy.
-```
-
-A safe compiler-implemented function is referenced by the same rule. When a standard operation is invoked through a Function Item, Callable contract or common Function value, its Abort context is the actual invocation expression (§22.5.1), not the reference or conversion site. This diagnostic context is not part of the Function Item identity or its empty environment. An allocation failure while creating an erased environment belongs to the conversion expression.
-
-At a position whose fixed expected Type (§10.2) is a common Function Type, a Function Item or concrete Closure is converted implicitly, by the erasure row of the [common adaptation table](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types), exactly when:
+At a position whose fixed expected Type ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation)) is a common Function Type, a Function Item or concrete Closure is erased implicitly exactly when:
 
 - its signature fits, with the same task-slot presence ([§24.2.4](24-suspension-and-asynchronous-tasks.md#2424-compatibility)), and its minimum receiver is Shared;
-- its complete environment is Owned, and its result does not borrow the hidden environment receiver;
-- all public Origin and Loan contracts hold, and ordinary acquisition of the source is legal.
+- its complete environment is Owned, and its result does not borrow the environment;
+- all public Origin and Loan contracts hold, its results carry no mutable-static anchor ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)), and ordinary acquisition of the source is legal.
 
-Non-static capture environments and Exclusive- or Consuming-only bodies are therefore rejected; no dependency may be erased to force conformance.
+Erasure is never chained with another operation: a borrowed Closure is not erased ([§3.2.1](03-types-and-values.md#321-callable-value-types)), an erased value is not then borrowed, and nothing inside an existing structure is erased. The common-Type search of [§14.9.2](14-control-flow.md#1492-target-result-type-and-expression-type) never erases. A qualified Case construction erases its payload like the leading-dot form ([§6.5.2](06-declarations-and-containers.md#652-case-references)).
 
-As one row of that table, erasure applies wherever §10.2 fixes the expected Type, whether or not the destination is already initialized, and is never chained with another operation: a borrowed concrete Closure is not erased (§3.2.1), an erasure is not followed by a borrow, and no value is erased inside a structure, so an existing `Option` that holds a Function Item does not fit `Option<(i32) -> i32>`. The common-Type search of [result validation](14-control-flow.md#1491-expression-type-and-target-result-type) compares the sources' own Types, so erasure never supplies a common Function Type there. A qualified Case construction erases its payload as the leading-dot form does, because the expected enum supplies its generic arguments first (§6.3.2). A [fill element](04-arrays-indexing-and-slices.md#43-initialization-and-inference) must be Copy, which an erased value is not.
+Erasure is an owning conversion, distinct from a Copy or Move of the source; it acquires the source ordinarily ([§3.5](03-types-and-values.md#35-copy-and-move)) and never repeats captures. The erased value is Non-Copy. Its layout, allocation count and inlining are implementation-defined; an omitted allocation preserves values, Moves, Loans and cleanup ([§15](15-ownership-and-lifetime-analysis.md#15-ownership-and-lifetime-analysis)) and cannot fail. If erasure allocates and the allocation fails, the program Aborts, with no Move rollback (location: [§22.5.1](22-core-execution-and-foreign-functions.md#2251-abort-location)). Passing a concrete Closure where a `Callable` is expected is not erasure.
 
 ```kimi
 func inc(value: i32) -> i32 => value + 1
-func dec(value: i32) -> i32 => value - 1
 func twice(action: ref/((i32) -> i32), value: i32) -> i32 => action(action(value))
 
-var handler: (i32) -> i32 = inc
-handler = dec                                         // Assignment source: the old value is destroyed.
-let table: [2 of (i32) -> i32] = [inc, dec]           // Aggregate elements.
-let some: Option<(i32) -> i32> = .Some(inc)           // Payload.
-let same: Option<(i32) -> i32> = Option.Some(inc)     // The expected enum fixes T first.
-let chosen: (i32) -> i32 = if ready => inc else => dec // Each arm is erased.
-// let mixed = if ready => handler@move else => inc   // Error: the search forms no common Function Type.
-// let filled: [2 of (i32) -> i32] = [2 of inc]       // Error: a fill element must be Copy.
-// let result = twice(inc, 1)                         // Error: erasure and a borrow are two operations.
+var handler: (i32) -> i32 = inc                        // Erased: Non-Copy.
+handler = inc                                          // Erased again; the old value is destroyed.
+let next = handler@move
+// let mixed = if ready => next@move else => inc       // Error: no common Function Type.
+// let result = twice(inc, 1)                          // Error: erasure and a borrow are two operations.
 ```
-
-The existing environment is acquired by ordinary acquisition (§3.5): a Copy, an explicit `@move` or the transfer of a temporary. Conversion never rereads outer bindings or repeats captures. The resulting owned common value is always Non-Copy. Transferring it again as the same common Type is an ordinary Move, not a new erasure. Shared invocation does not consume it, and borrowing it as `uniq/F` still exposes only the Shared call.
-
-```kimi
-func makeAdder(offset: i32) -> (i32) -> i32
-    return func [offset] (value) => value + offset
-
-let callback = makeAdder(10)
-let next = callback@move   // Transfer the common value.
-callback(5)               // Error: Moved.
-let result = next(5)      // 15.
-```
-
-Erasure is an owning-container conversion, distinct from the Copy or Move of the source, and does not change the definition of Copy. No target-independent layout, allocation count or inlining is guaranteed. The Windows storage and conversion rules are in §21.2.5, separate from the function ABI; allocation elision there preserves acquisition, validity and cleanup under that section's failure-observability rule. A required allocation failure causes ordinary Abort Termination, with no Move rollback and no normal cleanup guarantee. Concrete `Callable` use creates no erased container but does not promise zero runtime cost.

@@ -3,8 +3,8 @@
 `DocumentationMarkdown` uses the independent limited-profile parser. Compiler
 assemblies and packages have no Markdig dependency; Markdig remains a private
 dependency of comparison tests and benchmarks only. The adopted language rules
-are in [§2.3](../../../../docs/spec/02-source-and-lexical-structure.md#231-documentation-text)
-and the [Documentation Markdown profile](../../../../docs/spec/documentation-markdown.md).
+are in [§2.3](../../../../docs/spec/02-source-and-lexical-structure.md#23-documentation-comments)
+and the [Documentation Markdown profile](../../../../docs/spec/02-source-and-lexical-structure.md).
 
 ## Parsing and declaration context
 
@@ -56,7 +56,7 @@ comment objects in a disabled compilation. Invalid lexical results are not share
 
 Optional Hover projection runs after diagnostics and TestPresence are fixed, behind
 `CheckService.TryCreateHover`; its failure is logged separately from check outcomes.
-The complete editor contract is [SPEC §23.4.11](../../../../docs/spec/lsp-hover.md);
+The complete editor contract is [SPEC §23.4.11](../../../../docs/spec/23-compiler-services.md);
 general Hover rendering and adoption are still implementation work.
 
 ## HTML and link placement

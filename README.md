@@ -291,7 +291,7 @@ Functional and allocation/reuse regressions both run in every Session. Unit defa
 
 LSP tests require directory-listing access from the OS temporary directory through every
 ancestor to the filesystem root: project discovery must distinguish an unreadable directory
-from one containing no projects (SPEC §23.4.3). Session verification and selections of the
+from one containing no projects (SPEC §23.4). Session verification and selections of the
 implicit-source LSP test classes check this access before building. If the preflight fails,
 inspect `lsp-discovery-access.log` in the evidence directory and rerun in a process with the
 required access, outside a restricting sandbox. Do not treat an unreadable directory as empty
@@ -359,7 +359,7 @@ Ctrl+F5 needs no `launch.json`. If another language's configuration is selected,
 
 The extension colors `.kimi` files and ```` ```kimi ```` fenced blocks in the Markdown editor with a TextMate grammar; no Kimi executable is needed. Keywords, comments and documentation, strings with interpolation, numbers, Attributes, directives, Semantics such as `ref/` and explicit operations such as `@move` are recognized from the text. Contextual keywords such as `during`, `get` and `of` are colored only in their usual positions, and UpperCamelCase names are colored as Types, following the naming conventions in [STYLE.md](docs/STYLE.md); an UpperCamelCase enum Case declaration is therefore shown as a Type, while a `.Case` reference is shown as a Case. The grammar does not resolve names. The Markdown preview is not colored.
 
-Kimi files indent with four spaces, as SPEC §2.2 requires; Enter indents after a header such as `func`, `if` or `match` without `=>`, and continues `///` documentation. Indented blocks fold.
+Kimi files indent with four spaces, as SPEC §F.4.1 requires; Enter indents after a header such as `func`, `if` or `match` without `=>`, and continues `///` documentation. Indented blocks fold.
 
 ### Settings and troubleshooting
 
@@ -386,7 +386,7 @@ $env:KIMI_TEST_SERVER_PATH = (Resolve-Path src/Kimi/bin/Release/net10.0/Kimi.exe
 npm --prefix src/kimi-ext run test:integration
 ```
 
-The unit tests also check the grammar against the reserved keywords of SPEC §2.5.1, the repository's Kimi sources and the Kimi examples in `docs/spec` and `docs/impl`. Integration tests use isolated VS Code profiles. Set `VSCODE_EXECUTABLE_PATH` to reuse an installed VS Code; otherwise the test runner downloads it. Compiler-dependent cases are skipped without `KIMI_TEST_SERVER_PATH`. Open this repository and select **Kimi Extension** in Run and Debug to launch its development host.
+The unit tests also check the grammar against the reserved words of SPEC §F.3.1, the repository's Kimi sources and the Kimi examples in `docs/spec` and `docs/impl`. Integration tests use isolated VS Code profiles. Set `VSCODE_EXECUTABLE_PATH` to reuse an installed VS Code; otherwise the test runner downloads it. Compiler-dependent cases are skipped without `KIMI_TEST_SERVER_PATH`. Open this repository and select **Kimi Extension** in Run and Debug to launch its development host.
 
 The npm override for Mocha selects supported `glob` 13 while `@vscode/test-cli` still depends on Mocha 11. Keep integration tests passing when updating this override, and remove it when the upstream dependency no longer selects deprecated `glob` 10. Packaging uses the locally installed, locked `@vscode/vsce` rather than an independent `npx` download. The prepublish step bundles the extension and its runtime dependencies with esbuild, retaining license notices; the VSIX excludes tests, build tools and `node_modules`.
 

@@ -2,80 +2,62 @@
 
 [Specification index](../SPEC.md)
 
-Kimigayo identifies declarations and their meaning by:
-
-| Element     | Meaning                                                               |
-| ----------- | --------------------------------------------------------------------- |
-| `Name`      | The basic human-readable name used to refer to a declaration          |
-| `Signature` | The information that distinguishes declarations in the same scope     |
-| `Type`      | The meaning of a value or invocation within the type system           |
-
-See [names, signatures and access](09-names-signatures-and-access.md#9-names-signatures-and-access) and [overload selection](10-overload-resolution-and-inference.md#10-overload-resolution-and-inference). Field and computed-member syntax is defined in [Properties](11-properties.md#11-properties).
+A declaration has a Name, a Signature that distinguishes it in its scope ([§9.1](09-names-signatures-and-access.md#91-signatures)), and a Type. Fields and computed members are defined in [§11.1](11-properties.md#111-property-kinds).
 
 ## 6.1. Declaration containers
 
-A **Declaration Container** is a named declaration scope whose indented body may contain Fields, computed members, functions, associated-Type declarations and specifications, Constraint Clauses, or nested Declaration Containers, as permitted by its kind.
+A **Declaration Container** is a named scope whose kind decides its permitted members.
 
-| Declaration Container kind | Instantiable | Main characteristics |
-| --------------- | ------------ | -------------------- |
-| `group` | No | Accepts Fields, computed members, functions and nested Declaration Containers. All members are static. Declares no parameters of its own and inherits the enclosing generic and Origin environment. |
-| `struct` | Yes | Accepts nested groups, structs, enums and Contracts, Fields, computed members, functions, conditional conformance declarations, associated-Type specifications, constructors, and at most one selected `drop`. Supports generic parameters, Origins and Constraints. Sealed by default; `open struct` permits derivation. |
-| `enum` | Yes | A closed sum Type with Cases, positional payloads, functions, conditional conformance declarations and Constraints; see [enums](#63-enums). No fragments or inheritance. |
-| `contract` | No | Declares function and Property requirements, associated Types and Constraints. Supports refinement of multiple parents and its own Type parameters, but no Origin or length parameters, implementations or storage. Inherits the enclosing generic and Origin bindings. See [Contracts](08-generics-constraints-and-contracts.md#84-static-contracts). |
-| `extension` (future) | — | Not introduced; see the extension boundary below. |
+| Kind | Instances | Contents |
+| --- | --- | --- |
+| `group` | No | Fields, computed members, functions, nested Containers; all members static; no own parameters |
+| `struct` | Yes | Nested groups, structs, enums and Contracts, Fields, computed members, functions, conformances, associated-Type specifications, constructors, at most one selected `drop`; generic parameters, Origins, Constraints |
+| `enum` | Yes | A closed sum Type ([§6.5](#65-enums)) |
+| `contract` | No | Requirements, associated Types, Constraints, parents; own Type parameters but no Origin or length parameters, implementations or storage ([§8.4](08-generics-constraints-and-contracts.md#84-contracts)) |
 
-**Static members.** `static` is not a declaration modifier: `static func`, `static let` and `static var` are rejected, including redundant uses in groups. Members of a group or rootgroup are inherently static; a struct function without a receiver is a Type function; struct Fields and computed members are instance members. The Origin `static`, as in `during static`, remains valid and does not make a declaration static.
+There is no `extension` declaration; lookup has no extension candidates.
 
-**Extension boundary.** `extension` declarations and imports are not accepted, and lookup has no extension candidates. References elsewhere to future extension access, identity or precedence constrain only that future design; they are not active lookup stages or conformance mechanisms. Ordinary member lookup is complete without an extension pass.
-
-### 6.1.1. Root and nested containers
-
-Each source unit contributes its named declarations to the project root. Top-level bindings (`let` and `var`), local functions and executable items keep a SourceDocument-local scope and are not visible from other files. The exception is an explicit root-level `public main`: an ordinary function in the shared root that keeps its declaration-site lookup environment and cannot capture top-level runtime locals. Other shared functions, Fields and computed members belong in named Containers. [Program startup](22-core-execution-and-foreign-functions.md#222-program-startup-and-static-initialization) selects either one document's runtime body or one eligible public `main`. Aliases follow the [source-local import rules](18-modules-and-dependencies.md#181-external-references-and-aliases).
-
-A `rootgroup` declaration starts at the root and takes a dot-separated Name:
+**Static members.** `static` is not a declaration modifier. Group and rootgroup members are static; a struct function without a receiver is a Type function; struct Fields and computed members are instance members. The Origin `static` is unrelated.
 
 ```kimi
-rootgroup A.B
-    var value = 1
+group Limits
+    let max: i32 = 100                   // Static: a group member.
+    // static func one() -> i32 => 1     // Error: `static` is not a modifier.
 ```
 
-This creates the nested group path `A.B`. A `rootgroup` is allowed only directly at the source root, including selected root directive items. Its path creates groups only; it never synthesizes or redefines an intermediate struct. A synthesized intermediate group takes the accessibility of an explicit group declaration with the same path when one exists, and `private` otherwise; synthesis is not an independent header fragment. A public path therefore requires explicitly accessible groups.
+### 6.1.1. Source root and nested containers
 
-| Declaration site | Allowed nested Containers |
-| --- | --- |
-| Project root, group, struct | group, struct, enum, contract |
-| enum, contract | None |
-| Executable Block or conditional-conformance implementation Block | None |
-
-Nesting is recursive, with no fixed language depth limit; exceeding an implementation limit requires a resource diagnostic. Membership in a Container adds no storage, implicit outer instance or receiver, inheritance, Copy, ownership or conformance.
+Each SourceDocument contributes its Container declarations (including rootgroup paths) to the project root. A SourceDocument's **execution scope** holds its top-level `let`/`var` bindings, its root function declarations and its executable items; other documents never see it. Root function declarations, including `public main`, lie inside it and find each other by unqualified lookup ([§9.5](09-names-signatures-and-access.md#95-unqualified-lookup)); as named functions they cannot capture top-level bindings ([§9.3](09-names-signatures-and-access.md#93-local-scopes-and-contextual-names)). Container bodies lie outside it: lookup from a Container never finds document-local bindings or functions. A root function declaration other than `public main` is document-local and takes no access modifier; writing one is an error. Startup is defined in [§22.4](22-core-execution-and-foreign-functions.md#224-program-startup-and-static-storage).
 
 ```kimi
-struct Parser
-    public enum Result
-        Success
-        Failure
+func twice(x: i32) -> i32 => x * 2
 
-    private struct State
-        var position: i32 = 0
+public func main()
+    let n = twice(2)                  // OK: main is inside the execution scope.
 
-    public group Diagnostics
-        public struct Location
-            var line: i32 = 0
+group G
+    func f() -> i32 => twice(1)       // Error: a Container body does not see document-local functions.
+
+// public func helper() -> i32 => 0  // Error: only `main` may be a public root function.
 ```
 
-**Empty declaration bodies.** A group, rootgroup, struct or contract may omit its indented body entirely. The header is then complete at the end of file or at the next effective item at the same or shallower indentation. Blank and comment-only lines, including indented comments, neither create a body nor cause the next item to be absorbed. An indented body may also become empty after directive selection. A bodyless contract is a marker Contract with no requirements; a bodyless struct is an empty structure, subject to its base and implicit-constructor rules. These permissions do not extend to enums (which require at least one selected Case; count rules are judged after selection, §19.5), match-arm lists or executable Blocks. A `()` expression is not an empty-Container marker, because ordinary executable items are not Container members.
+**rootgroup.** `rootgroup A.B` declares the nested group path `A.B` and is allowed only directly at the source root (including selected root directive items). Its path creates groups only; a segment naming an existing non-group Type is a kind conflict ([§9.1](09-names-signatures-and-access.md#91-signatures)). A group the path creates has the access of an explicit group declaration with that path if one exists, and `private` otherwise.
+
+**Nesting.** The root, groups and structs may contain groups, structs, enums and Contracts; enums, Contracts, executable Blocks and conditional-conformance Blocks contain none. Depth has no language limit; an implementation limit is a Resource diagnostic. Membership adds no storage, outer instance, receiver, inheritance or conformance.
+
+**Empty bodies.** A group, rootgroup, struct or contract may omit its body; blank and comment-only lines do not form one, and a body may become empty after directive selection. A bodyless contract is a marker Contract. An enum body is never empty, also after selection; an executable Block needs a source item before selection ([§14.2.1](14-control-flow.md#1421-body-forms)).
 
 ### 6.1.2. Container fragments
 
-Group and struct declarations may be split into fragments, even within one file. Fragments with the same parent and name are collected; a declaration is identified by its originating Kotonoha, parent Symbol, name, kind and generic arity. Conflicting kinds, such as a group and a struct with the same name, are rejected. Different arities, such as `Box` and `Box<T>`, are different Types. Fragments never merge across Kotonoha libraries, and an extension is never a fragment of its target declaration. Applied `ref`/`uniq` Semantics do not change Container identity.
+Group and struct declarations may be split into fragments, even within one file. Fragments with the same originating Kotonoha, parent, Name, kind and generic arity form one declaration (kind conflicts: [§9.1](09-names-signatures-and-access.md#91-signatures)); they never merge across Kotonoha libraries.
 
-Matching fragments must agree on generic parameter count, kinds, order and names; declaration kind; semantic modifiers; and accessibility after defaults. Conflicting accessibility is not widened. Either every struct fragment writes the same Origin header, with matching slot names, order and count, or every fragment omits it, which declares no own slots; unlike the base clause, a header cannot be written on one fragment only (§15.3.2). Members that a Mod appends to an existing Container (impl §20.7.3) write no Type declaration, so they take no part in header matching; their Origin names resolve against the header of the Type they join. Only one fragment may supply the shared Constraint region, including Type Constraints and `origin` relations, even if the repeated clauses would be identical. The other fragments share that contract; each clause resolves in its defining SourceDocument.
+Fragments must agree on generic parameter count, kinds, order and names, on modifiers (`open` included) and on access after defaults; conflicting access is an error. Either every struct fragment writes the same Origin header or none does, which declares no own slots ([§15.3.2](15-ownership-and-lifetime-analysis.md#1532-type-schemas-and-storage)). Members generated into an existing Container use the header of the Type they join.
 
-For structures, `open` must agree across all fragments. At most one fragment supplies the base clause; the others share that base without repeating it. The base resolves in its fragment's source environment, and then the complete merged inheritance relationship is validated.
+At most one fragment supplies the shared Constraint region (Type Constraints and `origin` relations), even if the clauses would be identical, and at most one supplies the base clause; each clause resolves in its own SourceDocument. A binding-set name on a base clause (`: Base<T>{b}`) is visible only in the fragment that writes it; an `origin` relation that uses it must be in that fragment's Constraint region, so that fragment also supplies the shared Constraint region.
 
-After compile-time selection and merging, duplicate Field and computed Names, duplicate function Signatures, duplicate constructor Signatures and namespace conflicts are rejected. Selected fragments, including generated ones, may contribute Fields under [split-structure storage order](#621-split-structures-and-storage-order); C layout requires a single storage-bearing fragment (§21.1.2). No primary fragment is required. A merged structure, including its generated fragments, may have at most one selected `drop` body; destruction bodies are neither concatenated nor chosen by source order, and duplicates are declaration errors. Mutually exclusive declarations or bodies may coexist in source only when selection leaves at most one of them in each fixed target and configuration environment.
+After directive selection and merging, duplicate Field and computed-member Names, duplicate function or constructor Signatures and namespace conflicts are errors, and a struct has at most one selected `drop`. No primary fragment is required. C layout keeps storage in one fragment ([§6.7.1](#671-layout)).
 
-Enums and Contracts cannot be split. After directive selection and source generation, multiple declarations with the same enum identity, or with the same Contract identity (originating Kotonoha, parent Symbol, name, kind and own Type-parameter count), are declaration errors, even when their contents are identical. Inherited bindings do not distinguish declarations. Different Contracts may refine a shared parent; refinement is not declaration merging.
+Enums and Contracts cannot be split: two with the same identity (Kotonoha, parent, Name, kind, own Type-parameter count) are errors, even with identical contents. Contract identity identifies declarations; conformances are identified by bound references ([§8.6](08-generics-constraints-and-contracts.md#86-conformance)).
 
 ```kimi
 // A.kimi
@@ -86,97 +68,79 @@ struct Box<T>
 // B.kimi
 struct Box<T>
     func countValue(self: ref/Self) -> i32 => self.count
-// Repeating the Constraints or renaming T to U in B.kimi is an error.
+// Repeating `T is Comparable` or renaming T to U in B.kimi is an error.
 ```
-
-**Future design.** Contract fragments are not introduced; a future fragment facility needs explicit contents and merging rules. Extension identity and public names are specified separately.
 
 ### 6.1.3. Inherited environments and declaration references
 
-Every nested Container, including a Contract or a group, inherits the enclosing generic environment; a group does not interrupt that inheritance. Runtime variables, values and receivers are not inherited. An inner declaration is checked as generic whenever any enclosing parameter exists, even an unused one.
+Every nested Container, including a group or Contract, inherits the enclosing generic environment, but no runtime variables or receivers. An inner declaration is generic whenever an enclosing parameter exists, even an unused one.
 
-Three kinds of context are kept separate:
-
-| Context | Contents | Part of reference bindings? |
-| --- | --- | --- |
-| Argument bindings | Type/Semantics arguments and complete Origin slot bindings | Yes |
-| Proof context | Input conditions, Origin bounds, obligations, evidence and dependencies | No |
-| Lookup context | Definition-site lexical scope, each fragment's aliases, access context | No |
-
-A **declaration reference** is the original declaration identity plus normalized argument bindings. The identity consists of the originating Kotonoha, the merged parent declaration, the name, the kind and the declaration's own arity, which excludes inherited slots. A concrete parent's arguments belong to the bindings, not to the identity, and are retained even when unused. Every slot is identified by its declaring binder and ordinal, never by spelling alone.
+A **declaration reference** is a declaration identity (originating Kotonoha, merged parent, Name, kind, own arity) plus the normalized Type, Semantics, length and Origin arguments of the declaration and its enclosing declarations, kept even when unused. Proof and lookup context are not part of it. A parameter slot (Type, Semantics, length or Origin) is identified by its binder and ordinal, never by spelling.
 
 ```kimi
 struct Outer<T>
     public struct Inner<U>
         var first: T
         var second: U
-
-    public struct Tag
-
-    public contract Sink
-        func write(self: ref/Self, value: T) -> ()
+// Outer<i32>.Inner<string> and Outer<i64>.Inner<string> are distinct Types.
 ```
 
-`Outer<i32>.Inner<string>` and `Outer<i64>.Inner<string>` are distinct Types. The corresponding empty `Tag` Types and bound `Sink` references also differ. Full Types and conformance evidence keep their Origins; an Origin-erased runtime or generation key proves neither equal evidence nor permission to share code.
+### 6.1.4. Constraint roles
 
-Group and struct fragments are merged recursively under the merged parent identity before bindings are applied. Each fragment repeats only its own header and keeps its own source environment. Fragments are never selected or merged separately per instantiation. Resolving a child declaration does not require the outer Type's layout to be complete.
+Input conditions supplied by the user of a declaration are assumptions while its definition is checked. Declaration obligations, such as an outer struct's conformance of Self and closed conditions, need their own proof. An inner declaration may use outer input conditions and proven evidence, but cannot turn an obligation into an assumption or read the outer Self as its own; its own input conditions do not propagate outward.
 
-#### 6.1.3.1. Constraint roles and definition checking
+In a Contract, a condition only on inherited arguments is a reference input condition, one on the conforming Self is an implementation requirement, and a closed one is a declaration obligation. In a Type declaration, `Self is not ObjectPayload` ([§8.7.3](08-generics-constraints-and-contracts.md#873-objectpayload)) is an opt-out, neither condition nor obligation. Function Constraint subjects follow [§7.5](07-functions-and-callable-values.md#75-function-constraints). A struct may implement a Contract nested in it. A conformance is never evidence for its own identification and compatibility ([§8.3](08-generics-constraints-and-contracts.md#83-constraint-proof), [§8.11.4](08-generics-constraints-and-contracts.md#8114-checking-and-use)). Obligations must hold for every admitted binding (Finality, [§8.3](08-generics-constraints-and-contracts.md#83-constraint-proof)).
 
-Each Constraint keeps its original binder, declaration and role. Caller-supplied input conditions are assumptions during definition checking. Declaration obligations, including an outer struct's Self conformance and closed conditions, require independent proof. Inner declarations may use the outer input conditions and valid proven evidence, but cannot turn obligations into assumptions or reinterpret the outer Self as the inner Self. Additional inner input conditions do not propagate outward.
+### 6.1.5. Self
 
-For a Contract, a condition that depends only on inherited arguments is a reference input condition, one that depends on the conforming Self is an implementation requirement, and a closed condition is a declaration obligation. In a Type declaration, `Self is not ObjectPayload` (§8.4.7.2) is an opt-out declaration, neither an input condition nor an obligation; the same clause in a Contract body is an ordinary Self-dependent implementation requirement. Function Constraint subjects keep their restrictions (§7.4). Declarations are collected and references resolved before proofs are completed, so a struct may implement its nested Contract without a containment-induced proof cycle. A conformance being checked cannot prove itself. Actual evidence dependencies are retained, and every obligation is discharged by its existing deadline for all admitted bindings, not just for favorable instantiations.
-
-#### 6.1.3.2. Self and member ownership
-
-`Self` denotes the innermost struct or enum with all its bindings, or the conforming Type inside a Contract. A group creates no Self context; inside it, `Self` names the nearest outer Self Type. Further outer Types need an explicit path. Group functions and Properties are static and cannot use receiver shorthand, but an explicitly typed ordinary parameter named `self` remains valid (§7.3).
+`Self` denotes the innermost struct or enum with all its bindings, or the conforming Type in a Contract. A group creates no Self context: inside it `Self` names the nearest outer Self Type. Group members have no receiver, but an explicitly typed parameter named `self` is valid ([§7.3](07-functions-and-callable-values.md#73-receivers)). A group body cannot directly contain a Constraint Clause, conformance or associated-Type specification.
 
 ```kimi
 struct Parser
     group Helpers
-        func identity(value: Self) -> Self => value // Parser
+        func identity(value: Self) -> Self => value@move       // Self is Parser.
         struct State
-            func identity(value: Self) -> Self => value // State
+            func identity(value: Self) -> Self => value@move   // Self is State.
 ```
-
-Neither function has an implicit receiver. A group body cannot directly contain a Constraint Clause, conformance declaration or associated-Type specification; its own functions and nested Types keep their permitted Constraints.
 
 ## 6.2. Structure declarations
 
-A `struct` declares a named composite Core. Its Fields and computed members have complete Types, including their Semantics and Origin dependencies:
+A `struct` declares a named composite Core. Its Fields have complete Types, including Semantics and Origins; only Fields contribute storage.
+
+**Finite inline storage.** A struct or enum declaration is invalid if its inline storage (Fields, the direct base, Case payloads, Tuple and fixed-array elements, including zero-length arrays, and Type arguments that a declaration stores inline) reaches the same declaration again, with any Type arguments, without passing through a borrow, raw pointer or object handle. The check is made at the declaration, whether or not the Type is used or instantiated, and is a Language error, never a Resource diagnostic. Only growth of distinct instantiations through an indirection (for example polymorphic recursion) can reach a generation limit.
 
 ```kimi
-struct Point
-    var x: f64
-    var y: f64
+struct Shared
+    var next: Option<rc/Shared>         // OK: an object handle is an indirection.
 
 struct Node
-    var value: i32
-    var next: obj/Node
+    var next: Option<Node>              // Error: Node contains itself inline.
 
-struct View {source}
-    var data: ref/Data during source
+struct Grow<T>
+    var more: Option<Grow<(T, T)>>      // Error: inline recursion, whatever the arguments.
 ```
 
-`Data` is an assumed Core. `View` explicitly declares the Origin of its stored borrow and binds it.
+### 6.2.1. Logical declaration order
 
-Explicit and implicit constructors follow [§6.2.3](#623-constructors). All construction obeys the [initialization rules](11-properties.md#113-types-and-origins) and [construction completeness](15-ownership-and-lifetime-analysis.md#1512-aggregate-construction-and-completeness).
+Declarations from different SourceDocuments are ordered by the documents' logical names ([§20.1](../impl/20-compilation-configuration.md#201-projects-and-sources)), compared as UTF-8 byte sequences over the whole name (`/` is an ordinary byte), and then by position within each document. Generated fragments follow all ordinary ones in an implementation-defined deterministic order. Field initializers run in this order and Fields are destroyed in reverse order ([§16.3.2](16-scope-exit-and-destruction.md#1632-component-destruction)), independently of layout, so renaming a source can change the order of initializer side effects. A package's source list carries no order.
 
-### 6.2.1. Split structures and storage order
+```kimi
+// a.kimi
+struct Config
+    var first: i32 = Log.trace(1)
+// b.kimi
+struct Config
+    var second: i32 = Log.trace(2)
+// Initialization calls Log.trace(1), then Log.trace(2) (Log: an application group).
+```
 
-A `struct` may be split into [declaration fragments](#612-container-fragments), including fragments produced by a [Mod](../impl/20-compilation-configuration.md#207-mods-source-generation); identity, header agreement, member uniqueness and the C-layout single-storage-fragment restriction follow that section. Only Fields contribute storage slots; computed members add none.
-
-The [logical declaration order](../impl/20-compilation-configuration.md#2074-generated-sources-and-declaration-order) applies to the environment-selected fragments of each instantiation. It determines the side-effect order of Field initializers, independently of physical layout.
-
-Mods may inspect provisional Types under [provisional Binding](../impl/20-compilation-configuration.md#2072-compilation-and-binding). Layout is finalized only after all Mods complete and the full selected fragment set and storage classification are known; later generation cannot append storage to a finalized Type.
-
-Physical layout and ABI guarantees follow [structure layout and ABI](../impl/21-layout-runtime-and-code-generation.md#211-structure-layout-and-abi).
+Layout is implementation-defined unless `#Layout("C")` applies ([§6.7.1](#671-layout)).
 
 ### 6.2.2. Inheritance and open structures
 
-A structure is **sealed** unless `open` immediately precedes `struct` in its declaration. A sealed structure cannot be a base Type. `open` permits derivation and is independent of accessibility: `public struct` is sealed, while `internal open struct` permits derivation only where the Type is accessible. A derived structure is sealed unless it is itself declared `open`: openness is not inherited, whereas an ObjectPayload opt-out (§8.4.7.2) is inherited by every derived structure. There is no `sealed` modifier.
+A structure is **sealed** unless `open` precedes `struct`; a sealed structure cannot be a base. Openness is independent of access and is not inherited; an ObjectPayload opt-out ([§8.7.3](08-generics-constraints-and-contracts.md#873-objectpayload)) is inherited.
 
-A structure may name one direct base with `: BaseType` after its Name, generic parameters and optional Origin list. The base must resolve to an accessible constructed or nongeneric `open struct` Core; a generic parameter, a Semantics-applied Type, a group, an enum and a contract are not bases. Without the clause, a structure has no user-defined base. Multiple bases and direct or indirect inheritance cycles, including cycles through different constructions of one generic declaration, are rejected. The base's Constraints must hold, and its accessibility must cover the derived Type's [effective access domain](09-names-signatures-and-access.md#932-api-signature-accessibility). Constraint Clauses express capabilities separately from the base clause.
+A structure names at most one direct base with `: BaseType` after its Name, generic parameters and Origin list. The base must be an accessible `open struct` Core; a generic parameter, a Semantics-applied Type, a group, an enum or a contract is not a base. Inheritance cycles, including through different constructions of one generic declaration, are errors. The base's Constraints must hold, and its access must cover the derived Type's effective access domain ([§9.4.4](09-names-signatures-and-access.md#944-api-signature-accessibility)).
 
 ```kimi
 public open struct Base
@@ -185,48 +149,40 @@ public open struct Base
 public struct Leaf : Base
     public func read(self: ref/Self) -> i32 => self.count
 
-public struct Invalid : Leaf // Error: Leaf is sealed.
+public struct Invalid : Leaf     // Error: Leaf is sealed.
 ```
 
-Inheritance preserves the members' declared accessibility and grants no private access. Nonvirtual function and accessor calls use the implementation selected statically from the receiver's Effective Type, including through concrete Core object views; the Runtime Object Type does not replace that implementation. [Inherited lookup](09-names-signatures-and-access.md#95-qualified-and-inherited-lookup) determines the declaration layer, and [receiver projection](09-names-signatures-and-access.md#951-base-subobject-receiver-projection) supplies eligible instance receivers. Function-value calls keep their own rules.
+Inheritance grants no private access. Nonvirtual calls use the implementation selected statically from the receiver's Effective Type, also through object views; inherited lookup ([§9.6](09-names-signatures-and-access.md#96-qualified-and-inherited-lookup)) and receiver projection ([§9.6.1](09-names-signatures-and-access.md#961-base-subobject-receiver-projection)) apply.
 
-**Inherited Names.** Except for a valid [override](#624-virtual-members-and-overrides), which adds no member or lookup layer, a derived struct cannot declare a Value-role member with the same Name as a member of any ancestor that is accessible from the derived declaration. This covers functions, whatever their Signature and whether instance or Type functions, as well as Fields and stored and computed Properties. Neither conditional premises nor overload applicability exempt a declared Name. For a Property, its own access is checked, not an individual accessor's, and protected access is checked with the derived receiver.
+**Inherited Names.** Except for a valid override ([§6.4](#64-virtual-members-and-overrides)), a derived struct cannot declare a Value-role member (function of any Signature, Field or Property) with the Name of an ancestor member that is accessible from the derived declaration; conditional premises and overloading give no exemption. For a Property its own access is checked; protected access is checked with the derived receiver. Inaccessible ancestor Names may be reused. An explicit specialization is not another member.
 
-The check runs on the completed declaration set, after environment selection, Mod output and fragment merging, with a valid base graph; a collision is diagnosed at the derived declaration. Same-layer overloads and other namespaces keep their rules. In particular, the receiver-shape rule of [§7.3](07-functions-and-callable-values.md#73-explicit-receivers) compares only the declarations of one layer, because a base and a derived declaration of one accessible Name never coexist. Inaccessible ancestor Names, including private members and internal or private-protected members of another Kotonoha, may be reused. An explicit specialization implements its original function and is not another member; it gains no right to specialize a base member from a derived Container.
+**Base subobject.** The direct base is one inline owned subobject that logically precedes the directly declared Fields. Construction runs the base first ([§6.3.3](#633-construction-order)); destruction runs the derived layer first ([§16.3.2](16-scope-exit-and-destruction.md#1632-component-destruction)). A base subobject cannot be Moved, replaced or reconstructed through a base view, and whole-value operations keep the exact Type: a value is never sliced. Access to an inherited Field obeys the Partial Move restrictions of every containing layer. Object upcasts are defined in [§13.6.1](13-operators-and-assignment.md#1361-object-upcasts).
 
-The accessible member Names of an open struct, in the Value and Type namespaces, are part of its API toward derived Types. Adding Names or widening access can invalidate downstream declarations and unqualified uses in derived bodies (§9.4) under [dependency revalidation](../impl/21-layout-runtime-and-code-generation.md#2134-artifacts-verification-and-invalidation). Derived Types must tolerate the mutations and preconditions that base APIs expose; stronger application invariants cannot become unchecked memory-safety assumptions.
+## 6.3. Constructors
 
-**Base subobject.** The direct base is one inline owned subobject that logically precedes the structure's directly declared fields. A base subobject keeps its own field identities and construction-completion facts. The compiler still selects physical offsets under the [layout rules](../impl/21-layout-runtime-and-code-generation.md#211-structure-layout-and-abi); logical ordering requires neither flattening nor a fixed ABI. Construction runs the base first (§6.2.3), and destruction runs the derived layer first ([field cleanup](16-scope-exit-and-destruction.md#1632-field-cleanup)). A base subobject cannot be independently Moved, replaced or reconstructed through a base view of a derived value. Whole-value operations keep the exact owning Type and the responsibility for all layers; they cannot slice a derived value. Access to an inherited field still obeys normal permissions and checks the Partial Move restrictions of every containing base and derived layer.
+### 6.3.1. Declaration
 
-Explicit [base implementation calls](virtual-dispatch.md#4-direct-base-calls) use lexical `self`; no further ordinary conversion between derived and base values is introduced. [Object calls](12-expressions.md#1243-object-member-calls) and [explicit object upcasts](13-operators-and-assignment.md#1357-object-upcasts) keep their defined operations. None of these rules imply a CLR-like representation, boxing, garbage collection or value slicing.
-
-### 6.2.3. Constructors
-
-#### 6.2.3.1. Declaration
-
-A constructor is a dedicated structure declaration: an optional access specification, `init`, a parameter list, an optional `: base(arguments)` clause, and a common executable Body (§14.2), either single-item or indented. It has no ordinary Name, explicit receiver, task slot, separate generic parameters or result annotation; unavailable modifiers follow §2.5.1. Because no caller passes a constructor a task, asynchronous construction uses a factory function with a task slot, as fallible construction does (§6.2.3.5, [§24.2.1](24-suspension-and-asynchronous-tasks.md#2421-form)). It uses the containing structure's Type parameters, Origins and Constraints.
-
-Directly written borrow annotations in a constructor may introduce implicit per-call scalar Origins (§15.3.4); there is no Origin list after `init`. Attached Origin relations precede executable items and add no hidden result slots. Input omission follows §15.4 and is never inferred backward from field assignments. Parameter labels, name-omission permissions, defaults and Type checking follow ordinary function parameters. Access defaults to `private`, and constructor parameters obey API signature accessibility. Only a structure's own fragments may declare its constructors; groups, enums, contracts, extensions and executable Blocks may not.
+A constructor is an optional access specification, `init`, a parameter list, an optional `: base(arguments)` clause and a Body ([§14.2](14-control-flow.md#142-bodies-and-evaluation-contexts)). It has no Name, explicit receiver, task slot, own generic parameters or result annotation; modifiers follow [§F.3](appendices/F-syntax-summary.md#f3-keywords). It uses the structure's Type parameters, Origins and Constraints. Borrow annotations may introduce per-call Origins ([§15.3.4](15-ownership-and-lifetime-analysis.md#1534-names-scope-and-quantification)), input omission follows [§15.4](15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision), parameter labels, defaults and Type checking follow ordinary function parameters, and Origin relations precede the executable items. Access defaults to `private`. Only the structure's own fragments declare its constructors.
 
 ```kimi
 public open struct Named
     public let name: string
     protected init(name: string)
-        self.name = name@move // Transfer the Non-Copy parameter into the Field.
+        self.name = name@move           // Transfer the Non-Copy parameter.
 
 public struct Entry : Named
     public let number: i32
     public init(name: string, number: i32) : base(name@move)
-        self.number = number  // Copy.
+        self.number = number            // Copy.
 
 let entry = Entry.init("item", 1)
 ```
 
-#### 6.2.3.2. Construction expressions
+### 6.3.2. Construction expressions
 
-Syntactically, a qualified Type-shaped path followed by `.init(` is always a construction expression. Because `init` is not an ordinary member Name, no ordinary-call parse competes with it. The qualifier may begin with `::` and contain Type arguments. A Name-shaped qualifier such as `value` is accepted syntactically and then resolved by Type lookup; if it identifies only a value, Binding reports an error, with no retry as a value-member call.
+A qualified Type-shaped path followed by `.init(` is always a construction expression; the qualifier may begin with `::` and contain Type arguments. A qualifier that resolves only to a value is an error.
 
-`Type.init(arguments)` constructs a fresh owner of exactly the resolved construction Type. Resolve the structure declaration and its outer environment first ([§9.6](09-names-signatures-and-access.md#96-type-name-selection)); then select one of its own accessible constructors by the common argument mapping, inference and overload rules. The structure's own Type-argument list may be omitted under [constructor inference](10-overload-resolution-and-inference.md#1081-constructor-type-inference). Existing bindings, including `Self`, an alias or an inherited Container environment, remain fixed. A base constructor's Type is fixed by the declared base. Neither arguments nor an expected result select a different Type declaration or infer an unbound outer Container.
+`Type.init(arguments)` constructs a fresh owner of exactly the resolved Type. The structure and its outer environment are resolved first ([§9.7](09-names-signatures-and-access.md#97-type-name-selection)); then one of its own accessible constructors is selected ([§10](10-overload-resolution-and-inference.md#10-overload-resolution-and-inference)). Its own Type-argument list may be omitted ([§10.8.1](10-overload-resolution-and-inference.md#1081-constructor-type-inference)); the result is as if the inferred arguments were written. Arguments and the expected Type never select another declaration or infer an outer Container.
 
 ```kimi
 struct Box<T>
@@ -235,180 +191,255 @@ struct Box<T>
 
 let number: i32 = 42
 let box = Box.init(number)               // Box<i32>.
-let view = Box.init(number@ref)          // Keeps the dependency on number.
-let nested = Box.init(box@move)          // Box<Box<i32>>.
-let wide: Box<i64> = Box.init(42)         // Fits the untyped literal to i64.
-// let wrong: Box<i64> = Box.init(number) // Error: the input already binds T to i32.
-
-struct Empty<T>
-let empty: Empty<i32> = Empty.init()      // The owner expectation supplies T.
-// let unknown = Empty.init()            // Error: no evidence for T.
+let wide: Box<i64> = Box.init(42)        // The literal fits i64.
+// let wrong: Box<i64> = Box.init(number) // Error: the input binds T to i32.
 ```
 
-A successful inferred construction has the same selected declaration, complete result Type, argument evaluation order, acquisition, construction and destruction as the construction with those Type arguments fixed explicitly, including Types with no direct source spelling. The fixed-binding reference check in §10.8.1 enforces this guarantee; inference adds no runtime operation.
+Constructors are not inherited, there is no field-wise or zero-fill fallback, and a bare Type parameter cannot be constructed. `Type.init` is not a function value, and `value.init(...)` is invalid. Object handles are created separately ([§13.6.2](13-operators-and-assignment.md#1362-object-creation-clone-and-lifecycle)).
 
-Bare Type-parameter construction, inherited or extension constructors, field-wise or zero-fill fallbacks and ordinary function-call fallback are unavailable. Unknown or inaccessible constructors are errors. `Type.init` is not a function value, and `value.init(...)` cannot reinitialize existing storage. Construction returns an owner value; creating `obj`, `rc` or `arc` requires a separate [Kimi ownership operation](13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing).
+### 6.3.3. Construction order
 
-#### 6.2.3.3. Evaluation order
+After the arguments are evaluated, Uninitialized storage is allocated. The base arguments are evaluated next and may not access `self`; then the base constructor runs in the base subobject. Omitting the base clause selects a base constructor callable with no arguments; `: base(...)` without a base is an error. Exactly one base call occurs; same-Type delegation does not exist. Protected base constructors are accessible here ([§9.4.3](09-names-signatures-and-access.md#943-protected-receivers)).
 
-After normal argument and default evaluation, fresh Uninitialized construction storage is allocated and the parameters are bound. The base arguments are evaluated in the constructor's parameter and source context, and the selected direct-base constructor runs in its subobject. Omitting the base clause selects, by ordinary selection (§10) with no arguments, an accessible base constructor, including one whose parameters all have defaults; `: base(...)` in a structure without a base is an error. Exactly one base call occurs; same-Type delegation and repeated base initialization are unavailable. This dedicated operation may call protected base constructors without an ordinary instance receiver.
+Then this layer's Field initializers run in logical declaration order ([§6.2.1](#621-logical-declaration-order)), and then the body. Field initializers cannot reference parameters or `self`. No Field is initialized implicitly. The Origins of stored arguments must be expressible by the Type's declared Origin contract ([§15.3](15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations)).
 
-Base construction completes first. Then this layer's Field declaration initializers are evaluated in logical declaration order, and then the constructor body executes. Declaration initializers keep their own declaration-site environments and cannot reference constructor parameters or `self`. Base arguments may reference constructor parameters but cannot access `self`. No constructor silently initializes a field with zero, null or an element Type's default constructor. The Origins required by stored arguments and by the completed base must be represented by the constructed Type's declared Origin contract and inferred under ordinary lifetime constraints; hidden or invented Origins cannot make a construction valid.
+### 6.3.4. The construction receiver
 
-#### 6.2.3.4. The construction receiver
+For access and Loan checks, constructor `self` is an exclusively writable root for its initialized own Fields, as a `uniq/Self` receiver is. These Fields may be read, Copied, borrowed shared or exclusively (including the implicit acquisition of a Receiver Expression, [§7.3](07-functions-and-callable-values.md#73-receivers)) and Replaced, subject to the Property permissions of [§11.2](11-properties.md#112-standard-access) (an initialized `let` Field is read-only). No Non-Copy value may be Moved out of them. First placement into an Uninitialized Field follows [§11.7](11-properties.md#117-construction-and-destruction) and [§15.1.5](15-ownership-and-lifetime-analysis.md#1515-access-operations-and-acquisition); a custom `set` is never called.
 
-Constructor `self` is a special construction receiver. Writes to own stored Properties follow the first-placement rules of §11.3.1: a write initializes storage directly only when every incoming path is before its first placement; later writes to a `var` with standard `set` use normal state-dependent placement or Replacement; a custom `set` is never called, including at mixed-state joins. Standard `get` may Copy or borrow initialized own storage, but no Non-Copy Move is allowed during construction.
+Construction forbids computed access, inherited Field access, acquiring or borrowing the whole `self`, method and custom-accessor calls on `self`, and capturing or exposing `self`. Field borrows end before completion. These privileges exist only in the constructor body itself, not in nested functions, methods or Field initializers.
 
-Construction forbids computed access, inherited Field access, whole-`self` acquisition or borrowing, instance-method and custom-accessor calls on `self`, and capturing or exposing `self`. The base constructor handles its own fields. Field borrows must end before completion and cannot escape in the result; borrowed inputs may be stored only under the result's Origin contract. These privileges apply only inside the constructor body, not in nested functions, ordinary methods or Field declaration initializers.
+```kimi
+struct Tally
+    var count: i32
+    var total: i32
+    init(start: i32)
+        self.count = start                                // First placement.
+        self.total = 0
+        self.count = self.count + 1                       // Replacement of an initialized var Field.
+        Kimi.Intrinsics.replace(self.total@uniq, with: 5) // Exclusive borrow of an initialized Field.
+```
 
-#### 6.2.3.5. Completion and failure
+### 6.3.5. Completion and failure
 
-A constructor body is a Function Boundary with a Unit control-flow result. Fallthrough, an operandless `return` and a `return` of Unit request success. After any `return` operand, every reachable successful exit must have a completed base and complete, Initialized own Fields. Normal Scope Exit then runs, including parameter cleanup and Deferred Blocks, while the construction storage is retained; completeness and lifetimes are rechecked before this layer is committed. A `defer` cannot supply initialization that is missing at the requested exit, and completion checks cannot justify borrowing a destroyed parameter. Completion of a base layer continues with the next layer; only the outermost completion yields the owned result. Moving that result does not rerun constructors.
+A constructor body returns Unit. Every reachable successful exit must have a completed base and Initialized own Fields; Scope Exit then runs (a `defer` cannot supply missing initialization). Constructors cannot fail: fallible or asynchronous construction uses a factory function ([§24.2.1](24-suspension-and-asynchronous-tasks.md#2421-form)). No ordinary exit leaves a constructor with an incomplete layer: an incomplete `return` is an error, and only Abort, which performs no cleanup, can interrupt construction.
 
-Constructors have no recoverable-failure return or exception mechanism. For fallible acquisition and validation, use an ordinary factory that returns an `Option` or `Result` and calls `Type.init` only after validation; its locals get ordinary cleanup on failure. Abort during any construction phase terminates without unwinding. The partial-initialization cleanup rules (§16.3.2) also govern interrupted aggregate-expression construction and any ordinary Scope Exit that abandons construction storage; they add no failure syntax and do not turn an incomplete `return` into success.
+### 6.3.6. Implicit constructor
 
-#### 6.2.3.6. Implicit constructor
+After merging, one zero-parameter constructor is synthesized exactly when no constructor is selected (even a private one), every own Field has an initializer, and, with a base, the omitted base clause selects a base constructor. No memberwise constructor exists.
 
-After merging, one zero-parameter constructor is synthesized if and only if no explicit or generated constructor is selected, every own Field has an initializer, and, for a structure with a base, the omitted base clause of §6.2.3.3 selects a base constructor. Empty structs meet the Field condition. Any selected explicit or generated constructor, even a private one, suppresses synthesis; no memberwise constructor is added.
-
-The base selection is ordinary selection (§10) over the direct base's constructors with no arguments. It is made from the derived declaration, where protected base constructors are accessible, under the derived declaration's Constraints, and a Refuted premise makes only its own candidate inapplicable. If no candidate applies or the selection is ambiguous, no implicit constructor exists, and the Type itself remains valid. If the selection cannot be decided because a candidate premise is Unknown there (§8.4.8.2), it is unproven and no implicit constructor exists: a construction of the Type reports the unproven premise, and a synthesis in a derived structure or an explicit omitted-base call that depends on this absence is a derived problem with that premise as its prerequisite (§23.3.6.4). If the base declaration is invalid, or the structure's `: BaseType` clause has Constraints that are not Proven, the decision depends on that failure.
-
-The synthesized constructor has the Type's effective access and behaves as `init() => ()` with an omitted base clause, following the normal initialization and completion rules; an error of its base call is reported at the structure's `: BaseType` clause (§6.2.2). Synthesis depends on declarations, not on the validity of initializers, defaults or the selected base call. The synthesized constructor of a generic structure is a generic definition (§8.10), and only its Deferred Obligations wait for instantiation. A Kimi Type whose representation the compiler manages has no implicit constructor (§22.1).
+The base selection is ordinary selection with no arguments, made from the derived declaration ([§9.4.3](09-names-signatures-and-access.md#943-protected-receivers)) under its Constraints. If no candidate applies or the selection is ambiguous, there is no implicit constructor and the Type stays valid. If a candidate premise is Unknown, there is no implicit constructor and constructing the Type is an error. Synthesis does not depend on the validity of initializers. The synthesized constructor has the Type's effective access and behaves as `init() => ()`. The Kimi Types listed in [§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) have only their declared constructors.
 
 ```kimi
 public open struct Counter
     protected var count: i32 = 0
     protected init() => ()
 
-public struct Tally : Counter        // Synthesized: public init() selects the protected base constructor.
+public struct Tally : Counter        // Synthesized public init() calls the protected base constructor.
 
 public open struct Choice
     public init(first: i32 = 1) => ()
     public init(second: bool = true) => ()
 
-public struct Picked : Choice        // Valid without a constructor: both base constructors apply.
-
-let tally = Tally.init()
+public struct Picked : Choice        // Valid; the base selection is ambiguous, so no constructor.
 // let picked = Picked.init()       // Error: Picked has no constructor.
 ```
 
-### 6.2.4. Virtual members and overrides
+## 6.4. Virtual members and overrides
 
-The normative [virtual dispatch detail](virtual-dispatch.md) defines `virtual func`, `override func`, slot identity and inherited contracts, `base.f(...)`, receiver completeness, effects, Contract witnesses and semantic records. Static selection fixes the public slot; the Dynamic Type selects only its implementation. Ordinary members remain nonvirtual.
+Ordinary members are nonvirtual. A virtual slot is selected statically; the object's Dynamic Type selects only its implementation.
 
-## 6.3. Enums
+### 6.4.1. Declarations
 
-An enum is a nominal, closed sum Core. A complete value holds exactly one **Case** and that Case's **payload**, its attached positional data. Distinct enum declarations are different Types even when their Case names and payload Types are equal.
+`virtual func` declares a virtual slot and its original implementation; `override func` supplies an implementation of an inherited slot. Modifier recognition and order follow [§F.3](appendices/F-syntax-summary.md#f3-keywords); the two cannot be combined. Both must be safe instance functions with a body and an `objref/Self` or `objuniq/Self` receiver (bare `self` is `ref/Self` and ineligible), without own Type, Semantics or length parameters. An original is a non-private member of an `open struct`; an override is a member of a derived struct. Type and group functions, requirements, Properties, accessors, `init` and `drop` are never virtual.
+
+The original alone owns the public contract; an override inherits it as an explicit specialization does ([§8.13.2](08-generics-constraints-and-contracts.md#8132-inherited-contract)), mapping only the receiver Self to the derived Self:
+
+| Override header | Rule |
+| --- | --- |
+| Inputs, receiver mode | Same count, order and normalized Types; same `objref` or `objuniq` |
+| Task slot | As the original ([§24.2.1](24-suspension-and-asynchronous-tasks.md#2421-form)) |
+| Result | Same kind, Place mode and normalized Type; no covariance |
+| Parameter names | Same external names; internal names may change |
+| Origins | Inherited; written annotations must state the same contract |
+| Access, `!`, defaults, Constraints, effects | Inherited with the original's access domain (`protected internal` is not reinterpreted relative to the derived Kotonoha); never redeclared |
+| Attributes, other modifiers | None |
+
+Body lookup and private access use the derived declaration's context. A non-receiver `Self` keeps the Type it had where written: if the original's `other: objref/Self` means `objref/Base`, the override writes `objref/Base`. An override in an open struct can be overridden again.
 
 ```kimi
-public enum Message
+open struct Base
+    public virtual func score(self: objref/Self, bonus: i32 = 1) -> i32
+        effect confined
+        return bonus
+
+struct Derived : Base
+    override func score(self: objref/Self, bonus: i32) -> i32
+        return base.score(bonus) + 10
+
+let d = Derived.init()@obj
+let a = d.score()                     // 11; the original supplies the default.
+let b = Base.score(d@objref/Base)     // 11; Type qualification still dispatches.
+```
+
+### 6.4.2. Override target selection
+
+A **virtual slot** is identified by its original declaration and the normalized binding of its declaring Type and base path. An override selects its target as follows:
+
+1. Starting at the direct base, take the first accessible same-named function group of inherited lookup ([§9.6](09-names-signatures-and-access.md#96-qualified-and-inherited-lookup)). Only virtual slots are targets.
+2. Bind the override's input Types in its lexical environment, extended by the common premises: the substituted declared premises shared by every accessible virtual in the group, compared as normalized propositions; a substituted premise that is Refuted supplies no evidence. Compare task presence, receiver mode and inputs by normalized Type structure, as for explicit specialization targets ([§8.13.1](08-generics-constraints-and-contracts.md#8131-declaration-and-target)), not by Constraint proof. An input Type that cannot be resolved there is a declaration error.
+3. Exactly one slot must match. The override then inherits its full premises and is checked against its contract.
+
+No target, several targets and a contract mismatch are declaration errors; results, labels, defaults and declaration order never disambiguate, and farther ancestors are not tried. A derived Type has at most one override per slot, even in disjoint conditional-conformance Blocks.
+
+An override adds no lookup layer, overload or public function. `Derived.f` and `Base.f` are the same Function Item with the original public receiver, so `Derived.f(baseObject)` is valid when its access ([§9.4.3](09-names-signatures-and-access.md#943-protected-receivers)) and receiver Type fit.
+
+```kimi
+open struct Base<T>
+    public virtual func f(self: objref/Self, x: ref/T) -> i32 => 0
+    public virtual func f(self: objref/Self, x: ref/i32) -> i32 => 1
+struct D : Base<i32>
+    // override func f(self: objref/Self, x: ref/i32) -> i32 => 2
+    // Error: matches two slots.
+```
+
+### 6.4.3. Calls and conditional slots
+
+Static selection fixes the slot. At run time the Dynamic Type selects the most-derived implementation on the inheritance path, or the original, with no name, overload, Constraint or access search. Member calls, Type-qualified calls, Function Items and Function values all dispatch; unbound calls add no implicit upcast.
+
+An original may have a conditional-member premise `P` on enclosing parameters; calls and Function Item acquisition require `P`. An override is checked under the derived Type's Constraints with `P` substituted through the base path as an assumption. If the substituted `P` is Refuted or Error, the override is a declaration error: it implements a slot that never exists for the derived Type. If it is Unknown, it is an ordinary assumption. An override inside a conditional-conformance Block requires that Block's conditions to follow from these premises; it cannot add an implementation-selection condition, and an inapplicable `P` never selects a fallback or runtime test.
+
+```kimi
+open struct Base<T>
+    public virtual func same(self: objref/Self, x: ref/T) -> bool
+        T is Equatable
+        return false
+struct Plain
+struct Derived : Base<Plain>
+    // override func same(self: objref/Self, x: ref/Plain) -> bool => true
+    // Error: Plain is Equatable is Refuted, so the slot does not exist here.
+```
+
+### 6.4.4. Direct base calls
+
+`base.f(arguments)` uses lexical `self`, looks `f` up from the lexical declaring struct's direct base, and calls that base's implementation directly (in `A → B → C`, C's call runs B's own or inherited implementation). It is available in derived instance bodies for accessible base instance functions; calls inside the called body still dispatch. A direct base call uses the statically selected public contract and defaults, and may use the selected body's effect summary. An anonymous function needs an explicit `self` capture. Bare `base`, `base.f` as a value, `base.x` for a Field and `base.base` are invalid.
+
+### 6.4.5. Receiver safety
+
+A virtual receiver borrow covers the whole payload, including derived Fields. Every object base-view operation needs the Owned erasure proof of [§13.6.1](13-operators-and-assignment.md#1361-object-upcasts). In an override body, the original slot's Owned erasure evidence covers every object base-view operation whose source is the lexical `self` object: receiver projections for virtual, nonvirtual and direct base (`base.f(...)`) calls, and explicit upcasts of `self`. Base-view operations on any other object need their own proof. An original virtual body gets no such evidence. The object being destroyed cannot be dispatched on ([§16.4](16-scope-exit-and-destruction.md#164-closure-environments-and-objects-under-destruction)).
+
+Every original and override must be ObjectCallCompatible Proven ([§12.7](12-expressions.md#127-object-receiver-compatibility)); the slot guarantees that receiver operations preserve completeness, Dynamic Type and Origin bindings. Replacing a base view or base subobject is forbidden; a proven complete-payload update, such as a sealed implementation's `self@follow` replacement, is allowed. Each implementation is checked separately, and a violation is an error even if unused.
+
+```kimi
+open struct Base
+    public virtual func g(self: objref/Self) -> i32 => 0
+    public virtual func f(self: objref/Self) -> i32 => 0
+struct Derived<U> : Base
+    var item: U
+    override func f(self: objref/Self) -> i32
+        return self.g()   // OK: projection of self is covered by the slot's evidence.
+```
+
+### 6.4.6. Effects and Contract witnesses
+
+Slot effect bounds follow [§8.11.1](08-generics-constraints-and-contracts.md#8111-declarations). A dynamic call uses only the slot's public contract and bounds, even for a sealed target: its effects follow rules 1 to 3 of [§8.11.4](08-generics-constraints-and-contracts.md#8114-checking-and-use), and results use only the public Origin and Loan contract. An original or override whose result may carry a mutable-static anchor is an error ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)).
+
+On a slot, `preserves results` ([§8.11.3](08-generics-constraints-and-contracts.md#8113-preserves-results)) relates calls on the same object (by dependency tracking, not Origin equality) through the same slot, or for direct base calls the same implementation; replacing or Moving the payload contents ends the relation. Handle Moves, Reborrows and lawful View changes preserve the relation; a guaranteed call's conservative input effects alone do not end it.
+
+A virtual implementation of a Contract requirement maps to the slot: the slot's public contract and bounds must satisfy the requirement, never a body's stronger behavior.
+
+## 6.5. Enums
+
+An enum is a nominal, closed sum Core. A value holds exactly one **Case** and that Case's **payload**, its positional data.
+
+### 6.5.1. Cases and payloads
+
+Each Case is written on its own line; Case names are unique. A payload element is one complete Type, with no name, default or variadic form. `Quit` has no payload and `Quit()` is invalid; `Wrapped(())` has a Unit payload.
+
+The header takes generic parameters and an optional Origin header ([§15.3.2](15-ownership-and-lifetime-analysis.md#1532-type-schemas-and-storage)). The body may contain Cases, Constraint Clauses, associated-Type specifications, functions, conditional conformances ([§8.8](08-generics-constraints-and-contracts.md#88-conditional-conformance)) and directives; no Fields, computed members, `init`, `drop`, nested Containers or inheritance. At least one Case must remain after selection. Every Case has the enum's access domain and takes no modifier; payload Types must be accessible there ([§9.4.4](09-names-signatures-and-access.md#944-api-signature-accessibility)). A Case colliding with another Value declaration is an error.
+
+Payload elements are anonymous storage checked like Fields; their dependencies bind to the enum's Origin arguments, variance and Loan requirements come from all Cases ([§15.3.5](15-ownership-and-lifetime-analysis.md#1535-variance-loan-requirements-and-phantom-origins)), and selecting a Case never weakens the enum's Origin contract. A `uniq/T` payload reached through a shared path is bound as `ref/(uniq/T)`, and a fixed expected `ref/T` Reborrows it through both layers ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation)). Storage must be finite ([§6.2](#62-structure-declarations)); no heap allocation is implied. A Case change is a whole-value assignment; there is no `value.0` extraction. Equality and ordering are never derived ([§13.4.1](13-operators-and-assignment.md#1341-contract-comparison-mapping)); discriminants, tag size and ABI are unspecified.
+
+**Objects.** An enum object is created from an owned enum value by `@obj`, `@rc` or `@arc` ([§13.6.2](13-operators-and-assignment.md#1362-object-creation-clone-and-lifecycle)). Its payload is matched by following the handle with `@follow` ([§13.5.5](13-operators-and-assignment.md#1355-follow)) and matching the resulting value Place. `.Case` at an object expected Type is an error ([§6.5.2](#652-case-references)); no operation creates an object implicitly. A Case Pattern never selects through an object handle ([§14.8.1](14-control-flow.md#1481-patterns)). Payloads may contain Object Semantics.
+
+```kimi
+let h = Option<i32>.Some(1)@obj
+let n = match h@follow           // Sealed payload: matches the Option value Place.
+    .Some(let x) => x            // x: ref/i32; value-read.
+    .None => 0
+// let bad: obj/Option<i32> = .Some(1)   // Error: `.Some` needs an owned expected enum Type.
+```
+
+### 6.5.2. Case references
+
+A Case is referenced only as `Type.Case` or `.Case`; an unqualified Name never selects a Case, even through an opening alias ([§9.5](09-names-signatures-and-access.md#95-unqualified-lookup)). A qualified form is an ordinary member access or call; when lookup ([§9.6](09-names-signatures-and-access.md#96-qualified-and-inherited-lookup)) selects a Case, it is a Case construction, with no retry as another call. `.Case` ([§F.9.1](appendices/F-syntax-summary.md#f91-productions)) resolves only in the known expected enum: the owned expected Type, or the Type at a Pattern position ([§14.8.1](14-control-flow.md#1481-patterns)). A payload Case takes all positional arguments, evaluated left to right; a payload-free Case takes no parentheses. Cases are not function values.
+
+The enum's own Type arguments are inferred as follows:
+
+1. Qualifier: an omitted own Type-argument list selects the enum by [§9.7](09-names-signatures-and-access.md#97-type-name-selection).
+2. Construction: when the expected Type is an owned Type of the same enum, its fixed arguments are supplied first; the payload arguments are then adapted to the resulting payload Types ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation), including Function Type erasure [§7.7.4](07-functions-and-callable-values.md#774-function-references-and-erasure)); remaining own slots are inferred from the payload arguments ([§10.8](10-overload-resolution-and-inference.md#108-generic-argument-inference)); a slot still unbound after literal defaults ([§10.2.1](10-overload-resolution-and-inference.md#1021-literals)) is an error. The leading-dot form needs an expected Type that fixes the enum. Explicit arguments that differ from the expected Type's are an error.
+3. Pattern: a qualified Case Pattern may omit the enum's own arguments; they come from the Type at the Pattern position, and explicit arguments must equal them.
+
+Outer Container arguments are never inferred ([§9.7.1](09-names-signatures-and-access.md#971-bound-container-paths)). The qualifier writes no Semantics or Origin arguments of the enum and no binding-set suffix (`View<T>{v}.Some(...)` is not a Case reference); complete Types inside its Type arguments keep theirs. Origin arguments are inferred from the expected Type and the payloads, never invented; if these do not determine them, annotate the expected Type.
+
+```kimi
+enum Message
     Quit
     Write(string)
-    Move(i32, i32)
+    func make() -> Message => .Quit
+    func wrap(s: string) -> Message => Self.Write(s@move)
+    // func bad() -> Message => Quit   // Error: a Case needs `Self.` or `.`.
+
+let a = Option.Some(1)               // Option<i32>, from the payload.
+let b: Option<i64> = Option.Some(1)  // The expected Type supplies T first.
+// let c = Option.None               // Error: nothing determines T.
+// let d: Option<i32> = .None()      // Error: a payload-free Case takes no parentheses.
+let n = match a
+    Option.Some(let x) => x          // T from the matched Type.
+    .None => 0
 ```
 
-### 6.3.1. Cases and payloads
+## 6.6. Bindings
 
-Each Case is written on its own line, without a `case` keyword; PascalCase is conventional. Case names are unique within the enum and cannot be overloaded by payload Type or arity. A payload element declares one complete Type, in positional order, without a binding name, `let`/`var`, default or variadic form. `Quit` has no payload and `Quit()` is invalid, whereas `Wrapped(())` has one Unit payload.
-
-The header supports ordinary generic parameters and an optional Origin schema header. Without a header, the enum declares no own slots, and payload Types reference only declared or visible enclosing Origins (§15.3.2). The body permits Cases, Constraint Clauses, associated-Type specifications for declared conformances, ordinary functions and their full specializations, conditional conformances (§8.4.8), and compile-time directives selecting these items. Constraints, function access and explicit receivers follow the ordinary rules. Fields, computed members, `init`, `drop`, nested Declaration Containers, structure inheritance, `open enum` and external Case additions are not permitted. Every instantiation must keep at least one Case after compile-time selection. Empty enums and uninhabited-value elimination are deferred.
-
-**Access.** Each Case has the enum's effective access domain rather than the ordinary member default of `private`; Cases and payload elements take no access modifiers. Anyone allowed to use the enum may construct and decompose every Case, and each payload Type must satisfy [API signature accessibility](09-names-signatures-and-access.md#932-api-signature-accessibility) for the enum's domain. A Case that collides with another Value declaration, including a function, is a declaration error. Adding or removing a public Case is a potentially breaking source API change: additions can break exhaustive matches, and removals can break Case references.
-
-**Payload storage.** Payload elements are anonymous storage, not named Fields or accessors, and undergo the same complete-Type, Semantics and Origin storage checks as struct stored values. Directly declared borrowed elements require explicit valid Origins; nested Types keep all their dependencies. Use a struct payload for data that needs named fields.
-
-```kimi
-enum View<T> {source}
-    Some(ref/T during source)
-    None
-
-enum MutView<T> {source}
-    Some(uniq/T during source)
-    None
-
-func makeView<T>(value: ref/T)
-    -> View<T>{result}
-    origin result.source == value
-    return .Some(value)
-```
-
-`{result}` names the result's binding set, and the relation equates its `source` slot with the input's Origin. This describes the borrowed contents of an owned enum, whereas `ref/T during value` annotates a direct result borrow. `View<T>{value}` cannot apply an existing Origin: a suffix only introduces a fresh set name (§15.3.1).
-
-At construction, payload dependencies bind to the enum's Origin arguments, and every stored value is validated against that contract. Variance and Loan requirements are inferred from the occurrences in all Cases under the ordinary fixed-point rules. Selecting a Case does not weaken the Type's Origin contract. Storing or moving out a `uniq/T` payload transfers the exclusive reference value, not its referent. On a shared path, such a payload is bound as `ref/(uniq/T)`, and a fixed expected `ref/T` shared-Reborrows it through both layers (§10.2), suspending conflicting exclusive access. The ordinary storage, lifetime and unique Loan-anchor rules still apply.
-
-Enums support owned values and value borrows. Constructing or matching enums through Object Semantics is deferred, although payloads may contain existing Object Semantics. Direct or indirect inline recursion without a finite size is rejected; recursive data requires an existing legal indirection, and no heap allocation is implied. A Case change is a whole-value assignment or Replacement, not a tag mutation. There is no ordinary `value.0` or `value.Case` payload extraction. Copy follows [enum Copy](03-types-and-values.md#352-enum-copy), and remaining payloads follow [aggregate cleanup](16-scope-exit-and-destruction.md#1632-field-cleanup).
-
-Equality and ordering are never derived implicitly; explicit comparison conformance follows §13.4.1. Integer discriminants and conversions, default values, tag size or numbering, niche optimization and a fixed ABI are unspecified. Declaration order defines neither numeric values nor a wire format.
-
-### 6.3.2. Case construction and resolution
-
-A Case is constructed with `Type.Case` or, when the expected enum Type is known, with `.Case`.
-
-**Parsing and Binding.** In expression context, every qualified form uses the ordinary Name, generic-application, member-access and invocation syntax. The parser never chooses a Case construction because of capitalization, a Type lookup or the expected Type. For example:
-
-~~~text
-Message.Move(1, 2)
-    Syntax: Invocation(MemberAccess(Name("Message"), "Move"), [1, 2])
-    Binding, if Move resolves to an enum Case: EnumCaseConstruction
-~~~
-
-The same syntax represents `value.move(1, 2)` and `Namespace.Type.member()`. Binding uses ordinary qualified lookup (§9.5), keeping both the Type-side and the Value-side interpretation when required; distinct successful interpretations remain ambiguous. Once lookup selects a Case Symbol, the operation is classified as enum construction, and payload presence, labels, count and Types are checked. A failure does not retry an ordinary method or another lookup stage. A selected non-Case callable follows the ordinary invocation rules. A qualified payload-free Case is classified from its member access, without a call; the payload and call rules are given below.
-
-Only the leading-dot expression form, such as `.Some(1)`, has dedicated inferred-Case syntax; its arguments are expressions. After resolving either form, a compiler may create a dedicated bound construction node without a second parse. The reserved `.init(` suffix keeps its separate syntactic rule. In Pattern context, the Pattern grammar parses qualified and inferred Case references with Pattern operands; they do not compete with expression calls.
-
-Leading-dot layout is decided syntactically under [§2.2.2](02-source-and-lexical-structure.md#222-leading-dot-continuation-and-case-references), before expected-Type lookup. The qualifier identifies an enum Core whose Case set is statically determinable after alias expansion. Generic arguments must be explicit or uniquely inferred. When the construction's expected Type is an owned Type of the same enum, that Type supplies the Case construction's generic arguments before the payloads are checked, for the qualified and leading-dot forms alike; the payloads are then adapted under §10.2, including erasure to a common Function Type (§7.6.4). Explicit generic arguments that differ from those of the expected Type are an error. The enum's own Semantics and Origin arguments are not written in the qualifier; complete Types inside generic arguments keep theirs. The constructed value's Origin arguments are inferred and checked from its expected Type and payload arguments; if these do not determine them, annotate the expected Type. Hidden Origins or `static` are never invented.
-
-```kimi
-let quit: Message = Message.Quit
-let move: Message = Message.Move(10, 20)
-let some: Option<i32> = Option<i32>.Some(42)
-let none: Option<i32> = .None
-// value: ref/T
-let view: View<T> = View<T>.Some(value)
-    origin view.source == value
-```
-
-`.Case` resolves only within the already known expected enum: the owned expected Type for construction, or the Type determined at the [Pattern position](14-control-flow.md#1481-patterns) for matching. It never searches all enums by Case name, retries another expected Type, or changes a matched value's Origin contract; it is not general expected-Type member lookup. `let bad = .None` has no known enum Type, and `View<T>{v}.Some(...)` is not a Case reference.
-
-A payload-free Case produces its value without parentheses. A payload Case requires a call with all positional arguments in declaration order. Omitted or named arguments and partial application are invalid. Case constructors are not first-class callable values and cannot be acquired as function values.
-
-```kimi
-let missing: Option<i32> = .Some  // Error: payload argument required.
-let extra: Option<i32> = .None()  // Error: payload-free Case takes no parentheses.
-```
-
-Arguments are evaluated once each, left to right, and payloads are initialized by ordinary argument adaptation, literal fitting, bare acquisition or transfer (`.Some(value@move)` for a Non-Copy Place). A complete enum value is committed only after the Case and all payloads are initialized. On an ordinary transfer out of construction, the transfer result is secured and the initialized payloads are destroyed in reverse order (§16.2.1); Abort does not unwind.
-
-## 6.4. Bindings
-
-Fields and local bindings begin with `let` or `var`. For a local binding, `let` declares an immutable binding and `var` a mutable one. The Type annotation and the initializer may each be omitted when the omitted information can be inferred.
+Fields and local bindings begin with `let` (immutable) or `var` (mutable). The Type annotation or the initializer may be omitted when inferable; an unannotated Field takes its initializer's Type ([§11.6](11-properties.md#116-property-types-and-origins)). A local's Type is fixed at its declaration; an explicit Type that omits an Origin needs an initializer ([§15.4](15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision)). A local is visible after its declaration, so in `let x = x` the initializer refers to an outer `x` ([§9.3](09-names-signatures-and-access.md#93-local-scopes-and-contextual-names)). Initialization follows [§15.1.1](15-ownership-and-lifetime-analysis.md#1511-initialization-state).
 
 ```kimi
 let limit: i32 = 10
-var current = 0
+var later: i32                     // Fully specified: no initializer needed.
+later = limit
+// let r: ref/i32                  // Error: the omitted Origin needs an initializer.
 ```
 
-A local's Type must be fixed at its declaration, even without an initializer. An explicit local Type that omits a borrow Origin or a required Origin argument needs a declaration initializer under [Origin inference](15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision); a later first assignment cannot supply the missing information. A fully specified Type may omit its initializer under the ordinary initialization rules. A local becomes visible after its declaration, so in `let x = x` the initializer refers to an outer `x`; duplicate and forward-reference rules follow [name visibility](09-names-signatures-and-access.md#92-namespaces-roles-and-visibility). Definite initialization, the single initialization of `let` and permitted reinitialization follow the [initialization-state rules](15-ownership-and-lifetime-analysis.md#1511-storage-state-and-responsibility).
+## 6.7. Attributes
 
-## 6.5. Attributes
+An Attribute is `#Name` with optional arguments ([§F.6.1](appendices/F-syntax-summary.md#f61-source-units-containers-and-attributes)). Attributes attach to the next declaration at the same indentation; comments and blank lines may intervene. One before an `#if` whose target is a single declaration shares its selection. An Attribute before a directive Block or a `#switch`, or one followed by an unrelated item or a dedent, is dangling; a dangling Attribute is an error.
 
-[Documentation association](02-source-and-lexical-structure.md#232-declaration-association) uses the declaration prelude without changing Attribute targets or placement. Attributes carry metadata; documentation is explanatory Markdown.
+Attributes are accepted on Container, function, Field and computed declarations and on parameters; not on explicit specializations or Contract requirements. In excluded syntax they are checked syntactically only ([§19.4](19-compile-time-directives.md#194-excluded-syntax)). The recognized Attributes are `#Layout`, `#LibraryImport` ([§22.6](22-core-execution-and-foreign-functions.md#226-foreign-function-imports)) and `#Test`; any other selected Attribute is an error.
 
-**Syntax.** `#Name` takes an optional parenthesized, comma-separated argument list, with an optional trailing comma. `Name` must begin with an uppercase Unicode letter; lowercase forms other than the `if`/`switch`/`case` directives are errors. Attributes attach, in source order, to the next declaration at the same indentation, either on its line or on preceding effective lines. Comments and blank lines may intervene; unrelated items and dedents may not. An Attribute written before an `#if` whose target is a single declaration attaches to that declaration and shares its selection, as [excluded syntax](19-compile-time-directives.md#195-diagnostics-and-excluded-syntax) when the target is excluded; before a directive Block or a `#switch`, it is dangling. A dangling Attribute is an error.
+```kimi
+#Test
+func check() => ()
+// #test   // Error: an Attribute Name starts with an uppercase (Lu) letter.
+```
 
-**Placement.** Attributes are accepted on ordinary Container, function, Field and computed declarations, and on function parameters before the parameter Name. Explicit specializations and Contract requirements keep their prohibition on Attributes; expression statements, Patterns, arguments and accessor lists accept no Attribute prefixes. In excluded syntax (§19.5), Attribute grammar and placement are checked as in selected syntax, but Attributes undergo no semantic resolution.
+### 6.7.1. Layout
 
-**Recognized Attributes.** `#Layout` applies to struct storage (§21.1.2), `#LibraryImport` to [foreign functions](22-core-execution-and-foreign-functions.md#223-foreign-function-imports), and `#Test` to [test definitions](#651-test-definitions). Their concrete argument and target rules are checked after selection; ordinary Name lookup does not supply their literal arguments.
+`#Layout("Kimigayo")` and `#Layout("C")` apply only to struct declarations and take exactly one unnamed, non-interpolated string literal, matched case-sensitively. Each fragment has at most one `#Layout`, even with an equal value; fragments of one struct must not specify different modes; without one the mode is Kimigayo. In C mode all selected instance Fields, including generated ones, must be in one fragment, in written order; the Attribute may be on any fragment. Kimigayo layout is implementation-defined; C layout follows the target's C ABI, and a target with no C layout reports `#Layout("C")` as Unsupported. C layout is unavailable for an open or derived struct, an empty struct, and a struct with a zero-sized Field (Unit, Never, a zero-length array or a zero-sized struct); a use that needs such a layout is a Language error ([§8.15.3](08-generics-constraints-and-contracts.md#8153-concrete-layout-and-representation)).
 
-**Mod markers.** A [Mod](../impl/20-compilation-configuration.md#207-mods-source-generation) may use Attributes to find targets. A marker neither requests execution nor is consumed: several Mods may inspect the same Attribute, and a later Mod may emit markers for an already completed Mod without restarting it; doing so is not an error in itself.
+```kimi
+#Layout("C")
+struct NativeRecord
+    var kind: u8
+    var value: u64
 
-Marker names, argument syntax and target Koto are exposed before the target Type is fully bound. Queries use environment-selected syntax and exclude discarded declarations. Matching syntax names does not establish semantic identity between unrelated Attributes with the same spelling. A Mod's registration or accompanying contract must identify its markers and argument rules. Semantic argument queries obey the [Binding access period](../impl/20-compilation-configuration.md#2072-compilation-and-binding); syntax remains readable afterward. Neither discovery nor argument inspection executes the target program or an Attribute constructor.
+#Layout("c") // Error: mode names are case-sensitive.
+struct Invalid
+    var value: i32
+```
 
-Marker discovery and validation are distinct: a selected Attribute that remains unrecognized at final validation is diagnosed, and finding its syntax does not make an unknown Attribute valid. Concrete marker registration and recognition APIs, and general Attribute semantics beyond these rules and Layout, LibraryImport and Test, remain design boundaries.
+### 6.7.2. Test definitions
 
-### 6.5.1. Test definitions
-
-`#Test` takes no arguments and marks a test definition; each definition is one test case. The target must be a safe, ordinary, named function with a body, no parameters (including defaulted ones), no receiver, no task slot ([§24.2.1](24-suspension-and-asynchronous-tasks.md#2421-form)), and a Unit return Type written `-> ()` or omitted. Neither the function nor an ancestor Container may have unresolved generic or Origin parameters. Source-level functions and receiver-free functions in nongeneric group, rootgroup, struct or enum Containers are eligible; no instance is synthesized for a struct test. Foreign imports, explicit specializations, local functions inside another function and functions requiring captures are ineligible. Duplicate Test Attributes and invalid targets or signatures are errors; registration is never silently skipped.
+`#Test` takes no arguments and marks one test case. The target must be a safe, named function with a body, no parameters, no receiver, no task slot and a Unit result, at the root or in a Container. Neither the function nor an enclosing Container may have generic or Origin parameters. Foreign imports, specializations and local functions are ineligible. An ineligible target or a duplicate `#Test` is an error. Outside a test build, test bodies are not checked beyond syntax. User code may neither call a Test function nor take it as a value; only the test runner invokes tests ([§20.6.1](../impl/20-compilation-configuration.md#2061-selection-and-preparation)).
 
 ```kimi
 group Arithmetic
@@ -418,7 +449,3 @@ group Arithmetic
     func addition()
         $expect(add(1, 2) == 3)
 ```
-
-Ordinary builds check the selected Attribute and declaration syntax and the target conditions decidable from syntax, but they do not resolve test function names, check test bodies, generate their code or require test-only dependencies. Test builds perform full target and body verification. The exclusions of §19.5 still apply. Source-level tests keep SourceDocument-local lookup. Product and test membership follows [§18.8](18-modules-and-dependencies.md#188-product-and-test-inputs).
-
-User code may neither call a Test function nor acquire it as a function value; shared work belongs in ordinary helpers. Only generated test startup may invoke nonpublic tests, and this privilege does not widen a test body's access rights. Discovery and execution follow [§20.9](../impl/20-compilation-configuration.md#209-test-command-and-discovery) and [§22.6](22-core-execution-and-foreign-functions.md#226-test-execution-and-reporting).

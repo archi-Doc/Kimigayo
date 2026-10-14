@@ -1,6 +1,6 @@
 # Documentation Markdown verification data
 
-The authority is the formal [Documentation Markdown profile](../../../../docs/spec/documentation-markdown.md), with unchanged syntax defined by CommonMark 0.31.2. Markdig 1.3.2 is a comparison implementation, not the oracle. Tests are offline and embed the JSON fixtures; no data download or external executable is needed for managed conformance tests.
+The authority is the formal [Documentation Markdown profile](../../../../docs/spec/02-source-and-lexical-structure.md), with unchanged syntax defined by CommonMark 0.31.2. Markdig 1.3.2 is a comparison implementation, not the oracle. Tests are offline and embed the JSON fixtures; no data download or external executable is needed for managed conformance tests.
 
 ## Upstream corpus and attribution
 

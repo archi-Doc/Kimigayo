@@ -53,7 +53,7 @@ programs. Hypothetical APIs do not imply support; see [STATUS.md](STATUS.md).
 ### 1.2. Related operations
 
 `[Kimi]` Follow these naming patterns, including the pairs in
-[SPEC §4.7.1](spec/04-arrays-indexing-and-slices.md#471-common-acquisition-and-outcomes):
+[SPEC §4.9.1](spec/04-arrays-indexing-and-slices.md#491-common-rules):
 
 | Relationship | Pattern | Examples |
 | --- | --- | --- |
@@ -73,14 +73,14 @@ For example, `iterateUniq` need not yield exclusive references. Failure-related 
 
 - `[Language]` Each indentation level is four spaces; tabs are forbidden in indentation. A body is
   `=> item` on the header's ending line or an indented block
-  ([SPEC §2.2](spec/02-source-and-lexical-structure.md#22-lines-indentation-and-continuation)).
+  ([SPEC §2.1](spec/02-source-and-lexical-structure.md#21-source-text-and-lines)).
 - `[Kimi]` Use `=>` for a short, single-item body that fits on one line. Otherwise use a block.
 - `[Kimi]` Keep source lines within 120 columns.
 - `[Kimi]` Write the task slot and the task argument `task;` with no space before the `;` and one space after it
   when an item follows on the same line: `(task;)`, `(task; url: ref/Url)`, `fetch(task; url)`
   ([SPEC §24.2.1](spec/24-suspension-and-asynchronous-tasks.md#2421-form)).
 - `[Kimi]` Write ordinary comments as `// ` followed by a sentence explaining intent or a non-obvious
-  constraint. Cite rules as `SPEC 4.7.1`.
+  constraint. Cite rules as `SPEC 4.9.1`.
 
 ### 2.2. Declaration order and spacing
 
@@ -97,12 +97,12 @@ For example, `iterateUniq` need not yield exclusive references. Failure-related 
 
 `[Kimi]` Preserve Field order and layout contracts. Do not regroup `let` and `var` Fields or move them
 across fragments for style: logical order controls initializer effects and reverse destruction
-([SPEC §6.2.1](spec/06-declarations-and-containers.md#621-split-structures-and-storage-order),
-[§16.3.2](spec/16-scope-exit-and-destruction.md#1632-field-cleanup)).
+([SPEC §6.2.1](spec/06-declarations-and-containers.md#621-logical-declaration-order),
+[§16.3.2](spec/16-scope-exit-and-destruction.md#1632-component-destruction)).
 
 `[Kimi]` In a function requirement's Constraint region, write Constraint Clauses, then `origin` relations, then
 `effect` clauses. In a Contract body, place `effect Ancestor.name ...` specifications after the `associate`
-specifications they rely on ([SPEC §8.4.10](spec/08-generics-constraints-and-contracts.md#8410-requirement-effect-bounds)).
+specifications they rely on ([SPEC §8.11](spec/08-generics-constraints-and-contracts.md#811-effect-bounds)).
 
 `[Kimi]` Declare a requirement effect bound only where callers need it. Adding a bound obliges every implementer; removing one
 breaks callers that rely on it, so treat both as API changes. Do not restate a bound that an ancestor already
@@ -113,7 +113,7 @@ declares; the restatement is valid but adds nothing.
   signatures or simple stored declarations may stay consecutive.
 - `[Advice]` Inside a body, separate logical steps with a blank line.
 
-`[Kimi]` Declare a Callable effect bound only where the body relies on it. Adding one restricts callers and removing one admits more; treat both as API changes (SPEC §8.4.10.7).
+`[Kimi]` Declare a Callable effect bound only where the body relies on it. Adding one restricts callers and removing one admits more; treat both as API changes (SPEC §8.11.6).
 
 ## 3. API design
 
@@ -121,7 +121,7 @@ declares; the restatement is valid but adds nothing.
 
 - `[Language]` Within one function group, all functions that have a receiver share one receiver shape.
   Receiverless functions do not participate in this rule
-  ([SPEC §7.3](spec/07-functions-and-callable-values.md#73-explicit-receivers)).
+  ([SPEC §7.3](spec/07-functions-and-callable-values.md#73-receivers)).
 - `[Kimi]` Use bare `self` for read-only methods and `self: uniq/Self` for mutation. Write the full Type
   when stating an Origin or explaining a language rule.
 - `[Kimi]` Use `self: Self` when consuming the value or passing a small Copy value such as a Slice handle.
@@ -143,7 +143,7 @@ declares; the restatement is valid but adds nothing.
   Constraints alone never distinguish overloads (SPEC §9.1), so a position and a range entry need different names.
 - `[Language]` The functions of one Name acquire corresponding parameters of overlapping Types in one mode:
   `T` and `ref/T`, or `ref/T` and `uniq/T`, cannot share a position
-  ([SPEC §7.3.1](spec/07-functions-and-callable-values.md#731-parameter-acquisition-shape)). Give operations
+  ([SPEC §7.4](spec/07-functions-and-callable-values.md#74-parameter-acquisition-shape)). Give operations
   that acquire an input differently different names: `sorted` / `sort`, `index` / `indexUniq`,
   `borrowStorage` / `borrowStorageUniq`.
 - `[Kimi]` Choose defaults that are common, cheap, free of observable effects and require no allocation.
@@ -156,7 +156,7 @@ declares; the restatement is valid but adds nothing.
   effects, and O(1) cost: `length`, `capacity`, `isEmpty`. Use functions for work such as `sorted()`.
 - `[Language]` A getter reads through `ref/Self` and a setter writes through `uniq/Self`; an operation that
   needs exclusive access to its receiver, or consumes it, is a function
-  ([SPEC §11.2](spec/11-properties.md#112-accessor-functions)).
+  ([SPEC §11.3](spec/11-properties.md#113-accessor-functions)).
 - `[Kimi]` Name a function that consumes its receiver to yield the value a Property observes `into` + noun
   (`item` / `intoItem`), and one that advances state and reports it verb + noun (`reading` / `nextReading`).
 - `[Kimi]` Use `Equatable.equals` and `Comparable.compare` for equality and ordering. The latter returns
@@ -165,16 +165,16 @@ declares; the restatement is valid but adds nothing.
 
 ### 3.4. Integer arithmetic and conversions
 
-[Kimi] Arithmetic implementations use the canonical requirement names (`added`, `subtracted`, `multiplied`, `divided`, `remainder`, their `From` forms, and `negated`) and let the common bounded inference rule determine Output when the declared result exposes it unambiguously. Write an explicit `associate` when the public result should remain fixed independently of implementation signatures, or when inference cannot determine it. Document domain, rounding and failure guarantees; do not imply algebraic laws, Copy or allocation-free behavior from conformance alone. Use named mutation methods when callers need explicit buffer reuse. See [arithmetic Contracts](spec/arithmetic-contracts.md).
+[Kimi] Arithmetic implementations use the canonical requirement names (`added`, `subtracted`, `multiplied`, `divided`, `remainder`, their `From` forms, and `negated`) and let the common bounded inference rule determine Output when the declared result exposes it unambiguously. Write an explicit `associate` when the public result should remain fixed independently of implementation signatures, or when inference cannot determine it. Document domain, rounding and failure guarantees; do not imply algebraic laws, Copy or allocation-free behavior from conformance alone. Use named mutation methods when callers need explicit buffer reuse. See [arithmetic Contracts](spec/13-operators-and-assignment.md).
 
 - `[Kimi]` Make a wrapping integer Type visible on the line that introduces it: a Type annotation,
   `@Wrapping<…>` or `@wrap<Wrapping<…>>`. Inference alone hides whether a line wraps or checks
-  ([SPEC §3.1.1.1](spec/03-types-and-values.md#3111-wrapping-integer-types)).
+  ([SPEC §3.1.1](spec/03-types-and-values.md#311-wrapping-integer-types)).
 - `[Kimi]` Write computations that are meant to wrap with `Wrapping<T>` and `@wrap`; do not avoid checks
   by masking or by computing in a wider Type.
 - `[Kimi]` Enter and leave a wrapping integer Type over the same integer argument with `@`
   (`x@Wrapping<u64>`, `w@u64`); use `@wrap` only across a width or signedness boundary
-  ([SPEC §13.5.4.1](spec/13-operators-and-assignment.md#13541-wrapping-integer-conversions)).
+  ([SPEC §13.5.4](spec/13-operators-and-assignment.md#1354-numeric-wrapping-and-bit-conversions)).
 
 ### 3.5. Tasks
 
@@ -185,17 +185,17 @@ declares; the restatement is valid but adds nothing.
 - `[Kimi]` Give an operation that may wait a task slot and no task-free or `Async`-suffixed counterpart:
   `Io.File.open(task; path)`, not `open` beside `openAsync`. The specified exceptions are `Async.run`, the bridge
   from code without a task, and `Console.writeLine`, which stays synchronous
-  ([SPEC §22.1.3.6](spec/22-core-execution-and-foreign-functions.md#22136-sequences-and-the-scope-of-task-operations)).
+  ([SPEC §22.3.5](spec/22-core-execution-and-foreign-functions.md#2235-sequences-and-blocking-calls)).
 - `[Kimi]` Take the bounds of concurrent work as required named arguments without defaults: `limit` for the
   children that run at once, `capacity` for buffered items and `grace` for the delay before cancellation reaches
   a shielded body, as in `Async.each(task; rows.iterateUniq(), fix@ref, limit: 16)`.
 - `[Kimi]` In a body with a task slot, pass the task on: `fetchPage(task; url)`. Use `Async.run` only to bridge
   from code without a task slot; inside a task it suspends every task of the enclosing trees until it returns
-  ([SPEC §22.1.3.3](spec/22-core-execution-and-foreign-functions.md#22133-running-and-structured-operations)).
+  ([SPEC §22.3.2](spec/22-core-execution-and-foreign-functions.md#2232-running-and-structured-operations)).
 - `[Advice]` Split CPU-heavy work into an inner loop without task calls, in a separate plain function, and an
   outer loop that calls `Async.checkpoint` between chunks. A loop that calls `checkpoint` keeps its live values in
   the task frame and is not vectorized
-  ([IMPL §21.6.4](impl/21-layout-runtime-and-code-generation.md#2164-frame-contents-and-hot-loops)).
+  ([IMPL §21.4.6](impl/21-layout-runtime-and-code-generation.md#2146-tasks)).
 
 ```kimi
 func sum(values: Slice<u64>) -> u64                 // Plain: no task slot and no task call.
@@ -249,7 +249,7 @@ short; save independent observations such as `length` before mutation when that 
 
 `[Kimi]` Keep a lookup's reference result independent of the element's Copy capability, as in `tryGet`.
 A Place result exposes storage; its caller may borrow it or read a Copy value. It is not a reference value
-([SPEC §4.6.9](spec/04-arrays-indexing-and-slices.md#469-indexable-contracts)).
+([SPEC §4.7.1](spec/04-arrays-indexing-and-slices.md#471-index-expression-resolution)).
 
 `[Kimi]` State result Origins where permitted, including borrows inside aggregates: `during self` for an
 owning collection, `during self.source` for a Slice. Use the actual source; a newly returned value or a
@@ -272,13 +272,13 @@ values that can be lent exclusively. Stored callbacks use the constraint needed 
 `[Kimi]` Receive the children of task operations by the same intent. A child called once is consumed,
 `child: F` with `F is Callable<owner, (task;) -> R>`, as in `Async.join`; a child called concurrently is shared,
 `child: ref/F` with `F is Callable<(task; T) -> ()>`, as in `Async.each`
-([SPEC §22.1.3.2](spec/22-core-execution-and-foreign-functions.md#22132-declarations)).
+([SPEC §22.3.1](spec/22-core-execution-and-foreign-functions.md#2231-declarations)).
 
 `[Language]` Concrete Callable use creates no erased container, but guarantees neither monomorphization
 nor zero allocation by captures or the body. Erased Function Types retain published borrow contracts;
 allocation depends on representation and optimization, and the Windows profile permits inline storage
-([SPEC §7.6.4](spec/07-functions-and-callable-values.md#764-function-references-and-common-type-conversion),
-[§8.6](spec/08-generics-constraints-and-contracts.md#86-callable-constraints)).
+([SPEC §7.7.4](spec/07-functions-and-callable-values.md#774-function-references-and-erasure),
+[§8.10](spec/08-generics-constraints-and-contracts.md#810-callable-constraints)).
 
 For example, a search borrows its predicate:
 
@@ -308,7 +308,7 @@ func firstIndex<T, F>(values: Slice<T>, matching: ref/F) -> Option<isize>
 - `[Kimi]` Declare a function `unsafe`, including a `#LibraryImport`, only when its callers carry obligations
   that its signature cannot express, and state each one under `- safety:`. A foreign function whose access
   the signature states, such as a borrow of a C-exchangeable referent, is a safe declaration
-  ([SPEC §22.3.1](spec/22-core-execution-and-foreign-functions.md#2231-declaration-and-call-contract)).
+  ([SPEC §22.6](spec/22-core-execution-and-foreign-functions.md#226-foreign-function-imports)).
 - `[Kimi]` Enclose only the operations that need an unsafe context in an `unsafe` block, and lend the result
   of a raw Place access to safe code as a borrow with a declared Origin.
 
@@ -332,7 +332,7 @@ func firstIndex<T, F>(values: Slice<T>, matching: ref/F) -> Option<isize>
 - `[Kimi]` Give a domain error enum that can report cancellation exactly one cancellation Case,
   `Cancelled(Async.Cancelled)`. `try` combines no error Types, so convert a wait's `Async.Cancelled` explicitly:
   `.Err(let reason) => return .Err(.Cancelled(reason))`
-  ([SPEC §22.1.3.4](spec/22-core-execution-and-foreign-functions.md#22134-cancellation)).
+  ([SPEC §22.3.3](spec/22-core-execution-and-foreign-functions.md#2233-cancellation-and-waits)).
 - `[Advice]` Prefer a named enum to `Option<bool>` or `Result<(), ()>` when it makes the outcomes clearer.
   Propagate with `try`, handle with `match`, and discard intentionally with `_ =`.
 
@@ -343,10 +343,10 @@ func firstIndex<T, F>(values: Slice<T>, matching: ref/F) -> Option<isize>
   or completion needs no prefix (`firstIndex`, `pop`, `next`). Keep Contract names such as `reserve` and `format`.
 - `[Kimi]` Give no `try` prefix to a task-taking operation that returns `Result`: the Result reports its own
   failure and, for waits, cancellation, as `WriteWindow.push` and `WriteWindow.append` report `BufferFull`
-  ([SPEC §22.1.3.2](spec/22-core-execution-and-foreign-functions.md#22132-declarations)).
+  ([SPEC §22.3.1](spec/22-core-execution-and-foreign-functions.md#2231-declarations)).
 - `[Language]` A try-prefixed Kimi API recovers only from its specified outcome, not arbitrary failures
   in argument evaluation or callees
-  ([SPEC §4.7.1](spec/04-arrays-indexing-and-slices.md#471-common-acquisition-and-outcomes)).
+  ([SPEC §4.9.1](spec/04-arrays-indexing-and-slices.md#491-common-rules)).
 - `[Kimi]` Validate entry preconditions before mutating state. Checks that require callbacks or traversal
   follow the API's specified effect order. Write `require condition else => $abort("Message")`; use a
   short capitalized phrase naming the violated condition, without a final period.
@@ -356,7 +356,7 @@ func firstIndex<T, F>(values: Slice<T>, matching: ref/F) -> Option<isize>
   such as `Connection.open(task; address)`. Give a waiting finalization, such as a flush or a graceful close, a
   named operation with a task slot and handle its `Result` on each path; call it through `Async.shield` when it
   must run under cancellation. `drop` and Deferred Blocks cannot pass a task, so they never wait
-  ([SPEC §22.1.3.4](spec/22-core-execution-and-foreign-functions.md#22134-cancellation)).
+  ([SPEC §22.3.3](spec/22-core-execution-and-foreign-functions.md#2233-cancellation-and-waits)).
 
 ## 6. Documentation comments
 
@@ -366,14 +366,14 @@ func firstIndex<T, F>(values: Slice<T>, matching: ref/F) -> Option<isize>
 - `[Kimi]` Prefer documentation, then Attributes, then the declaration.
 - `[Language]` Only the closest documentation candidate at the header's indentation can attach; an empty
   or misindented candidate has no fallback. Attributes may precede, separate or follow documentation
-  ([SPEC §2.3.2](spec/02-source-and-lexical-structure.md#232-declaration-association)).
+  ([SPEC §2.3](spec/02-source-and-lexical-structure.md#23-documentation-comments)).
 - `[Kimi]` Start with a one-sentence summary: a noun phrase for a Type or a third-person description
   for an operation ("Returns …", "Appends …"). Explain meaning rather than repeating the signature.
 
 ### 6.2. Details and examples
 
 `[Kimi]` Separate the summary from details with a blank `///` line. Add the items that apply, using the
-[documentation Markdown profile](spec/documentation-markdown.md#3-summary-and-documentation-items):
+[documentation Markdown profile](spec/02-source-and-lexical-structure.md):
 
 | Item | Include when |
 | --- | --- |

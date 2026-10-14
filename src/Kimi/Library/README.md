@@ -110,7 +110,7 @@ the old value before placing the new one and destroys the unused input key throu
 `reserve` and `shrinkToFit` call `DictionaryStorage.reserveEntries`/`shrinkEntries`, caller-location source bodies like
 `resolve`: growth, append and compaction call `Raw.allocate`/`Raw.release`, which report the forwarded location inside
 such bodies, and the private `Storage.countOverflow`, `allocationSizeExceeded`, `tryAllocateBytes` and `transferBytes`
-primitives (SPEC 22.1.2.5). No callback carries the location: a call through an erased or generic Callable value has
+primitives (SPEC 22.2). No callback carries the location: a call through an erased or generic Callable value has
 unknown environment effects, which `confined` users of `reserve`/`tryInsert`/`shrinkToFit` exclude, and a captured
 location would need a heap environment.
 Move the remaining operation bodies into Kimigayo over common memory/ownership

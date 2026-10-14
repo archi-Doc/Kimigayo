@@ -23,10 +23,10 @@ These are compiler identities, not user-implementable replacements.
 | --- | --- | --- |
 | `contract Copy` | Bare acquisition or `@copy` duplicates a value without consuming its source, subject to access and Loan rules. | [Copy and Move](spec/03-types-and-values.md#35-copy-and-move) |
 | `contract Owned` | All lifetime dependencies are `static`; qualifying static borrows are allowed. This is distinct from owner semantics. | [static and Owned](spec/15-ownership-and-lifetime-analysis.md#1523-static-and-owned) |
-| `contract Callable` | `F is Callable<r, (A...) -> R>` requires a call with receiver mode `ref`, `uniq` or `owner`. Omitting `r` means `ref`. | [Callable constraints](spec/08-generics-constraints-and-contracts.md#86-callable-constraints) |
-| `contract Sealed` | The outer semantics are owner and the Core is a valid, non-open, non-Never Type. It does not imply Copy or Owned. | [Sealed](spec/08-generics-constraints-and-contracts.md#8471-sealed) |
-| `contract ObjectPayload` | The value may become a new object payload: owner semantics, a non-Never Core, and no applicable opt-out. Open structs may qualify. | [ObjectPayload](spec/08-generics-constraints-and-contracts.md#8472-objectpayload) |
-| `contract PrimitiveInteger` | Exactly the twelve owner integer Types. On a Type parameter it supplies their common operators, comparisons, shifts, checked `@` conversions, `@wrap`, the formation of `Wrapping<T>`, value read, Copy, Owned, Equatable, Comparable, Utf8Format, Position and literals 0 through 127; unary `-` is unavailable on `T` itself. | [PrimitiveInteger](spec/08-generics-constraints-and-contracts.md#8473-primitiveinteger) |
+| `contract Callable` | `F is Callable<r, (A...) -> R>` requires a call with receiver mode `ref`, `uniq` or `owner`. Omitting `r` means `ref`. | [Callable constraints](spec/08-generics-constraints-and-contracts.md#810-callable-constraints) |
+| `contract Sealed` | The outer semantics are owner and the Core is a valid, non-open, non-Never Type. It does not imply Copy or Owned. | [Sealed](spec/08-generics-constraints-and-contracts.md#872-sealed) |
+| `contract ObjectPayload` | The value may become a new object payload: owner semantics, a non-Never Core, and no applicable opt-out. Open structs may qualify. | [ObjectPayload](spec/08-generics-constraints-and-contracts.md#873-objectpayload) |
+| `contract PrimitiveInteger` | Exactly the twelve owner integer Types. On a Type parameter it supplies their common operators, comparisons, shifts, checked `@` conversions, `@wrap`, the formation of `Wrapping<T>`, value read, Copy, Owned, Equatable, Comparable, Utf8Format, Position and literals 0 through 127; unary `-` is unavailable on `T` itself. | [PrimitiveInteger](spec/08-generics-constraints-and-contracts.md#874-primitiveinteger) |
 
 ### 1.2. Comparison
 
@@ -41,7 +41,7 @@ The floating-point Equatable mapping treats all NaNs as equal and signed zeros a
 
 ### 1.2.1. Arithmetic
 
-[Specification: arithmetic Contracts](spec/arithmetic-contracts.md). Every Contract declares `associate Output`. Ordinary binary requirements take `(self: ref/Self, right: ref/Rhs) -> Self.Output`; Left requirements take `(left: ref/Lhs, self: ref/Self) -> Self.Output` and compute `left op self`.
+[Specification: arithmetic Contracts](spec/13-operators-and-assignment.md). Every Contract declares `associate Output`. Ordinary binary requirements take `(self: ref/Self, right: ref/Rhs) -> Self.Output`; Left requirements take `(left: ref/Lhs, self: ref/Self) -> Self.Output` and compute `left op self`.
 
 | Ordinary Contract / member | Numeric-left Contract / member | Operation |
 | --- | --- | --- |
@@ -56,7 +56,7 @@ Inputs are shared without requiring Copy; Output may differ from Self or retain 
 
 ### 1.3. Option and Result
 
-[Specification: required declarations](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) and [try propagation](spec/17-failure-handling.md#1724-try-propagation).
+[Specification: required declarations](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) and [try propagation](spec/17-failure-handling.md#173-try-propagation).
 
 | Declaration | Cases, in order | Guarantee |
 | --- | --- | --- |
@@ -76,7 +76,7 @@ Inputs are shared without requiring Copy; Output may differ from Self or retain 
 
 ### 1.4. Wrapping integers
 
-[Specification: wrapping integer Types](spec/03-types-and-values.md#3111-wrapping-integer-types), [integer results](spec/13-operators-and-assignment.md#133-arithmetic-bitwise-and-shift-operators) and [conversions](spec/13-operators-and-assignment.md#1354-numeric-conversions-and-literals).
+[Specification: wrapping integer Types](spec/03-types-and-values.md#311-wrapping-integer-types), [integer results](spec/13-operators-and-assignment.md#1331-built-in-numeric-operators) and [conversions](spec/13-operators-and-assignment.md#1354-numeric-wrapping-and-bit-conversions).
 
 | Declaration | Guarantee |
 | --- | --- |
@@ -88,7 +88,7 @@ The wrapping conversion `@wrap<U>` and the bit conversion `@bits<U>` are languag
 
 ### 2.1. Iterator Contracts
 
-[Specification: LendingIterator and Iterator](spec/22-core-execution-and-foreign-functions.md#22121-lendingiterator-and-iterator) and [iterator independence](spec/22-core-execution-and-foreign-functions.md#22124-iterator-independence).
+[Specification: LendingIterator and Iterator](spec/22-core-execution-and-foreign-functions.md#2221-iterator-contracts) and [iterator independence](spec/22-core-execution-and-foreign-functions.md#2223-iterator-independence).
 
 ```kimi
 contract LendingIterator
@@ -101,13 +101,13 @@ contract Iterator: LendingIterator
     effect LendingIterator.next preserves results
 ```
 
-`next` exclusively borrows the iterator so it can advance its state. A lending item may borrow that call's receiver and prevent another call while retained. Iterator instead publishes a step-independent Item and declares `preserves results` for `next` ([§8.4.10.3](spec/08-generics-constraints-and-contracts.md#84103-preserves-results)): a later `next` on the same iterator conflicts with no Loan an earlier item keeps, so callers may retain earlier items across later calls. LendingIterator declares no bound. External source dependencies still apply.
+`next` exclusively borrows the iterator so it can advance its state. A lending item may borrow that call's receiver and prevent another call while retained. Iterator instead publishes a step-independent Item and declares `preserves results` for `next` ([§8.11.3](spec/08-generics-constraints-and-contracts.md#8113-preserves-results)): a later `next` on the same iterator conflicts with no Loan an earlier item keeps, so callers may retain earlier items across later calls. LendingIterator declares no bound. External source dependencies still apply.
 
 `for` stops at the first `None`. A general LendingIterator, including a user Iterator, may later return `Some`. Standard collection, Slice and range iterators remain exhausted after `None`.
 
 ### 2.2. Iteration Entries and Adapters
 
-[Specification: iteration entries](spec/22-core-execution-and-foreign-functions.md#22122-iteration-entries) and [standard adapters](spec/22-core-execution-and-foreign-functions.md#22123-standard-adapters).
+[Specification: iteration entries](spec/22-core-execution-and-foreign-functions.md#2221-iterator-contracts) and [standard adapters](spec/22-core-execution-and-foreign-functions.md#2222-standard-adapters-and-iterators).
 
 ```kimi
 contract Iterable
@@ -138,7 +138,7 @@ Both adapters conform to LendingIterator, IntoIterable and UniqIterable, and to 
 
 ### 2.3. Standard Iteration Modes
 
-[Specification: for iteration](spec/14-control-flow.md#1462-iteration-protocol-and-acquisition) and [Slice iteration](spec/04-arrays-indexing-and-slices.md#467-slice-iteration-and-nested-origins).
+[Specification: for iteration](spec/14-control-flow.md#1462-iteration-protocol) and [Slice iteration](spec/04-arrays-indexing-and-slices.md#483-slice-iteration).
 
 For an owning collection `values`, a bare subject uses Iterable, `values@uniq` uses UniqIterable, and `values@move` or an owned temporary uses IntoIterable. Below, `a` is the collection borrow and `s` is the Slice's backing source.
 
@@ -154,7 +154,7 @@ Sequence iteration uses index order; Dictionary iteration uses insertion order. 
 
 ### 2.4. Indexable Contracts
 
-[Specification: Indexable contracts](spec/04-arrays-indexing-and-slices.md#469-indexable-contracts).
+[Specification: Indexable contracts](spec/04-arrays-indexing-and-slices.md#471-index-expression-resolution).
 
 ```kimi
 contract Indexable<Key>
@@ -171,7 +171,7 @@ These Contracts provide indexed Places for shared access and exclusive access. T
 
 ### 3.1. Positions and Ranges
 
-[Specification: positions](spec/04-arrays-indexing-and-slices.md#462-positions), [ranges](spec/04-arrays-indexing-and-slices.md#463-ranges) and [bounds](spec/04-arrays-indexing-and-slices.md#464-resolution-evaluation-and-failure).
+[Specification: positions](spec/04-arrays-indexing-and-slices.md#461-positions), [ranges](spec/04-arrays-indexing-and-slices.md#462-ranges) and [bounds](spec/04-arrays-indexing-and-slices.md#463-resolution).
 
 The closed Contracts `Position` and `PositionRange` fix the position and range Types; no other Type can conform, and integers conform to `Position` without gaining members.
 
@@ -201,7 +201,7 @@ Prefix `^` and range syntax are the only constructors of `FromEnd<T>`, `Start`, 
 
 ### 3.2. Slice<T> {source}
 
-[Specification: Slice operations](spec/04-arrays-indexing-and-slices.md#466-slice-operations-and-element-results) and [storage and permissions](spec/04-arrays-indexing-and-slices.md#465-slice-storage-lifetime-and-permissions).
+[Specification: Slice operations](spec/04-arrays-indexing-and-slices.md#482-slice-operations) and [storage and permissions](spec/04-arrays-indexing-and-slices.md#481-slice).
 
 A Copy view of contiguous elements with a shared backing Loan. Copying the handle does not copy elements. Elements cannot be written, moved or exclusively borrowed through a Slice.
 
@@ -232,7 +232,7 @@ Try-prefixed operations handle only their own bounds failures: `tryGet(-1)` and 
 
 ### 3.2.1. UniqSlice<T> {source}
 
-[Specification: exclusive view methods and dependencies](spec/04-arrays-indexing-and-slices.md#4611-shared-and-exclusive-view-methods).
+[Specification: exclusive view methods and dependencies](spec/04-arrays-indexing-and-slices.md#484-views-and-uniqslice).
 
 A Non-Copy exclusive view with invariant complete `T`, no element ownership and no Copy/Owned constraint on `T`.
 Empty views retain the source Loan. Child views borrow their parent handle; an owning local needs `var` for exclusive
@@ -248,12 +248,12 @@ operations. Formation and reslicing are O(1), with no element copies or heap all
 | `sliceUniq(self: uniq/Self) -> UniqSlice<T> during self` | Exclusive child view of the whole region. |
 | `sliceUniq<R>(self: uniq/Self, range: R) -> UniqSlice<T> during self`, `R is PositionRange` | Exclusive child subview; invalid bounds Abort. |
 
-Position subscripts normalize under §4.6.9. There is no iteration conformance or direct `toArray`; use
+Position subscripts normalize under §4.7.1. There is no iteration conformance or direct `toArray`; use
 `view.slice().toArray()` for Copy elements. Ordinary explicit `@move` transfers the owning view.
 
 ### 3.3. Common Dynamic Collection Rules
 
-[Specification: acquisition](spec/04-arrays-indexing-and-slices.md#471-common-acquisition-and-outcomes), [capacity](spec/04-arrays-indexing-and-slices.md#474-capacity-and-allocation), [Loans](spec/04-arrays-indexing-and-slices.md#475-loans-retained-dependencies-and-call-effects) and [costs](spec/04-arrays-indexing-and-slices.md#477-performance-and-extension-boundary).
+[Specification: acquisition](spec/04-arrays-indexing-and-slices.md#491-common-rules), [capacity](spec/04-arrays-indexing-and-slices.md#495-capacity-and-allocation), [Loans](spec/04-arrays-indexing-and-slices.md#496-loans-dependencies-and-call-effects) and [costs](spec/04-arrays-indexing-and-slices.md#498-costs).
 
 Array and Dictionary are Non-Copy owning containers. Their elements may carry borrowed dependencies; there is no blanket Owned constraint. Mutations take an exclusive receiver, even when the operation does nothing. Live element or Slice Loans, including empty views, prevent conflicting mutation, movement or destruction.
 
@@ -273,7 +273,7 @@ Complexity bounds describe collection management for fixed Types. Allocator inte
 
 ### 3.4. Array<T>
 
-[Specification: Array operations](spec/04-arrays-indexing-and-slices.md#472-array-operations) and [destruction order](spec/04-arrays-indexing-and-slices.md#476-commit-failure-and-destruction-order).
+[Specification: Array operations](spec/04-arrays-indexing-and-slices.md#493-array-operations) and [destruction order](spec/04-arrays-indexing-and-slices.md#497-failure-and-destruction-order).
 
 An ordered, growable sequence constructed with `[]`, `[a, b, ...]`, `init(! capacity:)` or `init(! repeating:count:)`.
 
@@ -313,7 +313,7 @@ An ordered, growable sequence constructed with `[]`, `[a, b, ...]`, `init(! capa
 | `iterateUniq(self: uniq/Self during source) -> ArrayUniqIterator<T> during source` | The UniqIterable entry: each element is lent exclusively exactly once, so earlier items stay valid across later steps. |
 | `intoIterator(self: Self) -> ArrayOwningIterator<T>` | The IntoIterable entry: each element is transferred out once; the iterator destroys the unreturned elements in reverse index order and frees the buffer. |
 
-`ArrayIterator<T> {source}`, `ArrayUniqIterator<T> {source}` and `ArrayOwningIterator<T>` are the standard Array iterators: each is an `Iterator` whose `Item` is `ref/T during source`, `uniq/T during source` or `T`, `next` returns the next untaken element and stays `None` once exhausted, and each keeps the internal storage boundary (SPEC §22.1.2.5) in a private Field. Capacity operations are in §3.3; indexing Contracts and iteration modes are in §2.
+`ArrayIterator<T> {source}`, `ArrayUniqIterator<T> {source}` and `ArrayOwningIterator<T>` are the standard Array iterators: each is an `Iterator` whose `Item` is `ref/T during source`, `uniq/T during source` or `T`, `next` returns the next untaken element and stays `None` once exhausted, and each keeps the internal storage boundary (SPEC §22.2) in a private Field. Capacity operations are in §3.3; indexing Contracts and iteration modes are in §2.
 
 A fixed array `[N of T]` has no source declaration. Its members are receiver functions of the internal group `Kimi.Storage.FixedArray`, public on any `[N of T]` receiver, and the compiler records the entry conformances they implement (SPEC §22.1).
 
@@ -330,7 +330,7 @@ A fixed array `[N of T]` has no source declaration. Its members are receiver fun
 
 ### 3.5. Dictionary<K, V>, where K is Equatable
 
-[Specification: Dictionary operations](spec/04-arrays-indexing-and-slices.md#473-dictionary-operations-and-indexed-replacement) and [literal duplicate keys](spec/12-expressions.md#1234-dictionary-construction-and-duplicate-keys).
+[Specification: Dictionary operations](spec/04-arrays-indexing-and-slices.md#494-dictionary-operations) and [literal duplicate keys](spec/12-expressions.md#1243-dictionary-literals).
 
 An owning map constructed with `[:]` or `[k: v, ...]`. It preserves insertion order. Key equality must remain stable while stored; no public hashing API is required.
 
@@ -348,29 +348,29 @@ An owning map constructed with `[:]` or `[k: v, ...]`. It preserves insertion or
 | `iterateUniq(self: uniq/Self during source) -> DictionaryUniqIterator<K, V> during source` | The UniqIterable entry: keys stay shared and each value is lent exclusively exactly once, so earlier items stay valid across later steps. |
 | `intoIterator(self: Self) -> DictionaryOwningIterator<K, V>` | The IntoIterable entry: each entry is transferred out once as `(K, V)`; unreturned entries are destroyed with the iterator in reverse insertion order, each value before its key. |
 
-`DictionaryIterator<K, V> {source}` and `DictionaryUniqIterator<K, V> {source}` are the standard borrowing Dictionary iterators and `DictionaryOwningIterator<K, V>` the owning one: each is an `Iterator` whose `Item` is `(ref/K during source, ref/V during source)`, `(ref/K during source, uniq/V during source)` or `(K, V)`; `next` lends the next live entry once, stays `None` once exhausted, and keeps the internal storage boundary (SPEC §22.1.2.5) in a private Field. `for` over a Dictionary selects these entries by its Subject mode.
+`DictionaryIterator<K, V> {source}` and `DictionaryUniqIterator<K, V> {source}` are the standard borrowing Dictionary iterators and `DictionaryOwningIterator<K, V>` the owning one: each is an `Iterator` whose `Item` is `(ref/K during source, ref/V during source)`, `(ref/K during source, uniq/V during source)` or `(K, V)`; `next` lends the next live entry once, stays `None` once exhausted, and keeps the internal storage boundary (SPEC §22.2) in a private Field. `for` over a Dictionary selects these entries by its Subject mode.
 
 Duplicate literal keys in the specification's statically comparable literal forms are compile-time errors. Other duplicates Abort at runtime after evaluating the key, before its value or later entries. Capacity operations are in §3.3; iteration modes are in §2.
 
 ## 4. UTF-8 Formatting and Buffers
 
-All lengths and capacities here are byte counts of Type `isize`. [The formatting profile](spec/utf8-formatting.md) defines validation, effects, representations and required costs.
+All lengths and capacities here are byte counts of Type `isize`. [The formatting profile](spec/22-core-execution-and-foreign-functions.md) defines validation, effects, representations and required costs.
 
 ### 4.1. Root Contracts and Error
 
-[Specification: declarations](spec/utf8-formatting.md#1-contracts-and-declarations) and [formatting](spec/utf8-formatting.md#4-formatting).
+[Specification: declarations](spec/22-core-execution-and-foreign-functions.md#2291-declarations) and [formatting](spec/22-core-execution-and-foreign-functions.md#2210-formatting-and-interpolation).
 
 | Declaration | Member | Guarantee |
 | --- | --- | --- |
 | `struct BufferFull` | `init()` | Stateless Copy error for insufficient destination capacity. |
-| `contract BufferWriter` | `reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>`, `effect confined` | Reserves a Window dependent on the receiver borrow. `confined` ([§8.4.10.2](spec/08-generics-constraints-and-contracts.md#84102-confined)) permits only authority supplied through the inputs: no mutable static, Console output or unclassified call. |
+| `contract BufferWriter` | `reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>`, `effect confined` | Reserves a Window dependent on the receiver borrow. `confined` ([§8.11.2](spec/08-generics-constraints-and-contracts.md#8112-confined)) permits only authority supplied through the inputs: no mutable static, Console output or unclassified call. |
 | `contract Utf8Format` | `format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>` | Writes a complete UTF-8 representation on success, with no output dependency on the input borrow. |
 
 User formatting may allocate or have side effects. Each adapter write calls it once, without a size pre-pass or retry. Success must not abbreviate output to fit.
 
 ### 4.2. WriteWindow {source}
 
-[Specification: Window operations](spec/utf8-formatting.md#32-window-operations).
+[Specification: Window operations](spec/22-core-execution-and-foreign-functions.md#2294-reservation-and-windows).
 
 A Non-Copy reservation over a destination's uncommitted suffix. It requires an exclusive source Loan, opts out of ObjectPayload and has no public initializer.
 
@@ -386,7 +386,7 @@ Limiting neither enlarges nor commits. Dropping an uncommitted Window makes no b
 
 ### 4.3. Utf8Writer {target}
 
-[Specification: adapter operations](spec/utf8-formatting.md#23-adapter-operations) and [write failures](spec/utf8-formatting.md#41-failure-and-writes).
+[Specification: adapter operations](spec/22-core-execution-and-foreign-functions.md#22101-writer-adapter) and [write failures](spec/22-core-execution-and-foreign-functions.md#22101-writer-adapter).
 
 A Non-Copy adapter created by `Text.writer`. It exclusively borrows a BufferWriter, erases its concrete Type without owning it, and opts out of ObjectPayload.
 
@@ -399,7 +399,7 @@ Failure is sticky: later writes skip formatting and reservation, though ordinary
 
 ### 4.4. Text Functions and Views
 
-[Specification: Text operations](spec/utf8-formatting.md#2-text-operations) and [UTF-8 views](spec/utf8-formatting.md#22-utf-8-views).
+[Specification: Text operations](spec/22-core-execution-and-foreign-functions.md#2292-text-operations) and [UTF-8 views](spec/22-core-execution-and-foreign-functions.md#2293-buffers-and-validation).
 
 All names in this subsection belong to `Text`.
 
@@ -423,7 +423,7 @@ Validation accepts Unicode scalar encodings exactly; it rejects malformed UTF-8 
 
 ### 4.5. Text.FixedBuffer and Text.HeapBuffer
 
-[Specification: standard buffers](spec/utf8-formatting.md#21-standard-buffers), [reservation](spec/utf8-formatting.md#31-reservation-and-growth) and [validation and destruction](spec/utf8-formatting.md#33-validation-and-destruction).
+[Specification: standard buffers](spec/22-core-execution-and-foreign-functions.md#2293-buffers-and-validation), [reservation](spec/22-core-execution-and-foreign-functions.md#2294-reservation-and-windows) and [validation and destruction](spec/22-core-execution-and-foreign-functions.md#2293-buffers-and-validation).
 
 `FixedBuffer {source}` is Non-Copy, retains an exclusive array Loan and opts out of ObjectPayload. `HeapBuffer` is Non-Copy and owns its allocation. Both conform to BufferWriter and are created by Text functions, without public initializers.
 
@@ -463,9 +463,9 @@ Targets must contain complete values; these operations do not repair uninitializ
 
 ### 5.2. Object Creation and Strong Handles
 
-[Specification: object ownership](spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing). All functions belong to `Intrinsics`.
+[Specification: object ownership](spec/13-operators-and-assignment.md#1362-object-creation-clone-and-lifecycle). All functions belong to `Intrinsics`.
 
-The three normal factories share the post-acquisition creation contract with `@obj` / `@rc` / `@arc` ([SPEC §13.5.8](spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing)); their ordinary inference and Function Item APIs remain unchanged.
+The three normal factories share the post-acquisition creation contract with `@obj` / `@rc` / `@arc` ([SPEC §13.6.2](spec/13-operators-and-assignment.md#1362-object-creation-clone-and-lifecycle)); their ordinary inference and Function Item APIs remain unchanged.
 
 | Function | Constraint | Guarantee |
 | --- | --- | --- |
@@ -481,7 +481,7 @@ clone's single complete-Type pair, are fixed by the library shape tests, separat
 
 ### 5.3. Weak Handles and Cyclic Construction
 
-[Specification: Weak values](spec/03-types-and-values.md#322-weak-reference-values) and [Weak operations](spec/13-operators-and-assignment.md#1359-weak-reference-operations).
+[Specification: Weak values](spec/03-types-and-values.md#322-weak-references) and [Weak operations](spec/13-operators-and-assignment.md#1363-weak-references).
 
 `struct Weak<s/T>` is a Non-Copy root Type requiring `s is rc or arc`. It always refers to a target table, has no empty initializer and does not expose the payload directly. Use `Option<Weak<s/T>>` for absence. Expiration does not erase its Type's dependencies.
 
@@ -514,13 +514,13 @@ Elements are taken and destroyed with `@move` on raw Places (`_ = storage[i]@mov
 
 | Function | Guarantee | Specification |
 | --- | --- | --- |
-| `Console.writeLine(text: ref/string) -> ()` | Writes the exact UTF-8 bytes followed by one LF; no newline conversion. Output failure may leave partial output and Aborts. | [Console output](spec/22-core-execution-and-foreign-functions.md#224-minimal-console-output) |
-| `Console.writeLine(text: Text.Utf8Slice) -> ()` | The same output behavior, borrowing the view's bytes without constructing a string. | [View output](spec/utf8-formatting.md#61-console-output) |
-| `Test.tempDirectory() -> string` | Returns an independently owned absolute path to the active test case's directory. Available only in test-only bodies; the directory remains available through case cleanup and is reclaimed by the parent afterward. | [Test profile](impl/testing-profile.md#environment-and-temporary-directory) |
+| `Console.writeLine(text: ref/string) -> ()` | Writes the exact UTF-8 bytes followed by one LF; no newline conversion. Output failure may leave partial output and Aborts. | [Console output](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) |
+| `Console.writeLine(text: Text.Utf8Slice) -> ()` | The same output behavior, borrowing the view's bytes without constructing a string. | [View output](spec/22-core-execution-and-foreign-functions.md#227-console-output) |
+| `Test.tempDirectory() -> string` | Returns an independently owned absolute path to the active test case's directory. Available only in test-only bodies; the directory remains available through case cleanup and is reclaimed by the parent afterward. | [Test profile](impl/20-compilation-configuration.md#2063-case-execution) |
 
 ## 7. Windows and Time
 
-[Specification: Windows APIs and elapsed time](spec/22-core-execution-and-foreign-functions.md#227-windows-apis-and-elapsed-time).
+[Specification: Windows APIs and elapsed time](spec/22-core-execution-and-foreign-functions.md#228-time).
 
 `Windows` groups Windows x64 native APIs. Both functions are safe imports: they write the counter value through the exclusive borrow, retain no borrow, and return the native i32 success flag (nonzero on success).
 
@@ -550,9 +550,9 @@ Each stopped interval discards its sub-microsecond fraction. Floating-point Prop
 
 ## 8. Asynchronous Tasks
 
-[Specification: asynchronous tasks](spec/22-core-execution-and-foreign-functions.md#2213-asynchronous-tasks) and [suspension and task calls](spec/24-suspension-and-asynchronous-tasks.md).
+[Specification: asynchronous tasks](spec/22-core-execution-and-foreign-functions.md#223-asynchronous-tasks) and [suspension and task calls](spec/24-suspension-and-asynchronous-tasks.md).
 
-All names in this section belong to `Async`. Implementation of this entire section is deferred (Appendix D.5.2); these are required declarations. A function that may suspend begins its parameter list with the task slot `task;`, and a call passes the task as the task argument `task;`; only such task calls suspend. The tasks of a tree share the thread of its `run`. No value represents a pending computation, a running child or a suspended task frame.
+All names in this section belong to `Async`. Implementation of this entire section is deferred (Appendix D); these are required declarations. A function that may suspend begins its parameter list with the task slot `task;`, and a call passes the task as the task argument `task;`; only such task calls suspend. The tasks of a tree share the thread of its `run`. No value represents a pending computation, a running child or a suspended task frame.
 
 ### 8.1. Types and Channel Endpoints
 

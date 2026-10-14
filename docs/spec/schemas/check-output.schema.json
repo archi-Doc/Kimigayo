@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://kimigayo.dev/schemas/check-output.schema.json",
   "title": "kimi check output (kimi.check/2)",
-  "description": "The JSON document that `kimi check <project> --Format json` writes (SPEC 23.3.6.8): one check unit's outcome, acceptance, source table and diagnostic records with their repair candidates (SPEC 23.3.6.2, 23.3.6.9).",
+  "description": "The JSON check-result document (kimi.check/2), written by `kimi check <input> --Format json` for a Product unit and usable for any check unit: one check unit's outcome, acceptance, source table and diagnostics with their repair candidates. Spans are UTF-16 code units of the source text the check read; ranges are zero-based lines and characters.",
   "type": "object",
   "required": ["schema", "compiler", "unit", "outcome", "accepted", "testPresence", "sources", "diagnostics"],
   "additionalProperties": false,
@@ -15,24 +15,25 @@
       "additionalProperties": false,
       "properties": {
         "project": { "type": "string", "description": "The project file, or the implicit source." },
-        "target": { "type": "string" },
-        "mode": { "enum": ["Product", "Test"] },
+        "target": { "type": "string", "description": "The selected target; when no single target could be selected, the --Target value or the empty string." },
+        "mode": { "enum": ["Product", "Test"], "description": "Product: the kimi check result; Test: the test-preparation result." },
         "debug": { "type": "boolean" }
       }
     },
-    "outcome": { "enum": ["Completed", "Blocked", "Faulted"] },
-    "accepted": { "type": "boolean" },
-    "testPresence": { "enum": ["Yes", "No", "Unknown"] },
+    "outcome": { "enum": ["Completed", "Blocked", "Faulted"], "description": "Completed: checked, with or without errors; Blocked: an input or the configuration could not be established; Faulted: the compiler failed internally." },
+    "accepted": { "type": "boolean", "description": "True exactly when the outcome is Completed and no diagnostic has severity Error." },
+    "testPresence": { "enum": ["Yes", "No", "Unknown"], "description": "Product unit: Yes when the project's own sources contain a `#Test` function, No when they contain none and all parsed without source errors, otherwise Unknown; always Unknown for a Test unit." },
     "sources": {
       "type": "array",
+      "description": "The source table: every source the diagnostics name, in the order the check read them.",
       "items": {
         "type": "object",
         "required": ["path", "isInput"],
         "additionalProperties": false,
         "properties": {
-          "path": { "type": "string" },
-          "isInput": { "type": "boolean" },
-          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "The hash of the recorded input's bytes, present for an input that could be read." }
+          "path": { "type": "string", "description": "The display path." },
+          "isInput": { "type": "boolean", "description": "True for an input the check read from a file or an open document; false for a built-in or generated source." },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "The hash of the input's bytes, present for an input that could be read." }
         }
       }
     },
@@ -41,6 +42,7 @@
   "$defs": {
     "span": {
       "type": "object",
+      "description": "Start offset and length in UTF-16 code units; length 0 marks an insertion point.",
       "required": ["start", "length"],
       "additionalProperties": false,
       "properties": { "start": { "type": "integer", "minimum": 0 }, "length": { "type": "integer", "minimum": 0 } }
@@ -53,20 +55,22 @@
     },
     "range": {
       "type": "object",
+      "description": "Zero-based lines and UTF-16 characters, end excluded.",
       "required": ["start", "end"],
       "additionalProperties": false,
       "properties": { "start": { "$ref": "#/$defs/position" }, "end": { "$ref": "#/$defs/position" } }
     },
     "value": {
       "type": "object",
+      "description": "One typed fact of a reason or repair.",
       "required": ["name", "kind", "value"],
       "additionalProperties": false,
       "properties": {
         "name": { "type": "string" },
         "kind": { "enum": ["Number", "Enumeration", "Boolean", "Text", "Requirement", "Origin"] },
         "value": { "type": "string" },
-        "origin": { "enum": ["expression", "borrow", "omitted", "closure"], "description": "The kind of an Origin display (SPEC 23.3.6.5); present exactly when kind is Origin, whose value is the display's bounded string." },
-        "elided": { "type": "boolean" }
+        "origin": { "enum": ["expression", "borrow", "omitted", "closure"], "description": "Present exactly when kind is Origin, whose value names a fixed or finite Origin. expression: an Origin expression as written in a signature; borrow: the source text of a Borrow or capture item; omitted: the Type occurrence or pair binder declaration of an unnamed Origin; closure: a Closure's call receiver or inferred call result." },
+        "elided": { "type": "boolean", "description": "True when the value was shortened for display." }
       },
       "if": { "properties": { "kind": { "const": "Origin" } } },
       "then": { "required": ["origin"] },
@@ -78,31 +82,33 @@
       "additionalProperties": false,
       "properties": {
         "role": { "type": "string" },
-        "source": { "type": "integer", "minimum": -1 },
-        "span": { "$ref": "#/$defs/span" },
+        "source": { "type": "integer", "minimum": -1, "description": "Source table index, or -1 for a location outside every source." },
+        "span": { "$ref": "#/$defs/span", "description": "Absent when the location is the whole source, or when source is -1." },
         "range": { "$ref": "#/$defs/range" },
         "label": { "type": "string" }
       }
     },
     "omission": {
       "type": "object",
-      "required": ["part", "count"],
+      "description": "A part of the diagnostic that a display limit omitted.",
+      "required": ["part"],
       "additionalProperties": false,
-      "properties": { "part": { "type": "string" }, "count": { "type": "integer", "minimum": 1 } }
+      "properties": { "part": { "type": "string" }, "count": { "type": "integer", "minimum": 1, "description": "The number of omitted items; absent when unknown." } }
     },
     "excerptLine": {
       "type": "object",
       "required": ["line", "text", "start", "length"],
       "additionalProperties": false,
       "properties": {
-        "line": { "type": "integer", "minimum": 1 },
+        "line": { "type": "integer", "minimum": 1, "description": "1-based display line." },
         "text": { "type": "string" },
         "start": { "type": "integer", "minimum": 0 },
-        "length": { "type": "integer", "minimum": 1 }
+        "length": { "type": "integer", "minimum": 0, "description": "Length of the marked text; 0 marks an insertion point." }
       }
     },
     "display": {
       "type": "object",
+      "description": "Display data; never needed to interpret the diagnostic.",
       "required": ["excerpt"],
       "additionalProperties": false,
       "properties": { "range": { "$ref": "#/$defs/range" }, "excerpt": { "type": "array", "items": { "$ref": "#/$defs/excerptLine" } } }
@@ -112,7 +118,7 @@
       "required": ["source", "span", "text"],
       "additionalProperties": false,
       "properties": {
-        "source": { "type": "integer", "minimum": 0, "description": "The source table index of a recorded input." },
+        "source": { "type": "integer", "minimum": 0, "description": "The source table index of an input." },
         "span": { "$ref": "#/$defs/span" },
         "range": { "$ref": "#/$defs/range" },
         "text": { "type": "string", "description": "The replacement text; empty for a deletion." },
@@ -121,6 +127,7 @@
     },
     "requiredCondition": {
       "type": "object",
+      "description": "A condition the check could not decide, with a phrase naming what must hold.",
       "required": ["condition", "phrase"],
       "additionalProperties": false,
       "properties": {
@@ -128,9 +135,13 @@
         "phrase": { "type": "string" }
       }
     },
-    "condition": { "enum": ["Take", "ExclusiveAccess", "UsageLegality", "Structure", "Selection"] },
+    "condition": {
+      "enum": ["Take", "ExclusiveAccess", "UsageLegality", "Structure", "Selection"],
+      "description": "Take: the Place can be moved; ExclusiveAccess: the lending point is exclusively writable; UsageLegality: later uses stay legal; Structure: names, cleanup order and control flow are unchanged; Selection: the qualified name selects what the use needs."
+    },
     "repair": {
       "type": "object",
+      "description": "One alternative structured edit. Verified conditions were established by the check; required conditions were not decided. Applying it yields a new input that only a new check validates.",
       "required": ["kind", "title", "edits", "verified", "required"],
       "additionalProperties": false,
       "properties": {
@@ -153,8 +164,8 @@
         "severity": { "enum": ["Error", "Warning", "Information", "Hint"] },
         "category": { "enum": ["Language", "Proof", "Unsupported", "Input", "Resource", "Internal"] },
         "message": { "type": "string" },
-        "source": { "type": "integer", "minimum": -1 },
-        "span": { "$ref": "#/$defs/span" },
+        "source": { "type": "integer", "minimum": -1, "description": "Source table index, or -1 for a location outside every source." },
+        "span": { "$ref": "#/$defs/span", "description": "Absent when the location is the whole source, or when source is -1." },
         "label": { "type": "string" },
         "reason": { "type": "array", "items": { "$ref": "#/$defs/value" } },
         "related": { "type": "array", "items": { "$ref": "#/$defs/related" } },

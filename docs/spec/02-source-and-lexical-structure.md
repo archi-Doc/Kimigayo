@@ -2,492 +2,238 @@
 
 [Specification index](../SPEC.md)
 
-Source structure determines token boundaries and syntactic containment. The punctuation, layout and grammar rules in this chapter are language requirements. [STATUS.md](../STATUS.md) separately tracks error-recovery tokens and current parser acceptance.
+This chapter defines source text, lines, comments, tokens, Names and literals.
 
-## 2.1. Source text and encoding
+## 2.1. Source text and lines
 
-Kimigayo source text is UTF-8. An invalid UTF-8 byte sequence in source is a compile-time error.
+Source text is UTF-8. An invalid UTF-8 byte sequence is a compile-time error. A source file may begin with one U+FEFF byte order mark; it is not part of the source text.
 
-A **SourceDocument** is one immutable source snapshot (path and text) belonging to a source module. A **Kotonoha** is such a named module; its dependency and source-environment rules are in [Modules and dependencies](18-modules-and-dependencies.md#18-modules-and-dependencies).
+Each source file is a SourceDocument of a Kotonoha ([§18.1](18-modules-and-dependencies.md#181-modules-and-source-environments)).
 
-## 2.2. Lines, indentation, and continuation
+A line ends at LF, CRLF or CR. A source location is a line and a column, both counted from 1; the column counts Unicode scalar values from the start of the line.
 
-Each indentation level is four U+0020 spaces; tabs are forbidden in indentation. A physical line ending may be LF, CRLF or CR. Newlines separate source items where the grammar permits. Commas separate arguments and elements, not statements or binary operands. A `;` occurs only as the separator of a leading task slot or task argument `task;` (§2.4) and separates nothing else. A line that starts with a binary operator does not continue the previous line.
-
-An executable Body is either `=>` followed by one expression or statement, or a newline followed by an indented body (§14.2). The `=>` and the start of its item must be on the header's ending physical line. A body colon, a `=>` followed by a newline, and a separate leading `=>` continuation line are all invalid.
-
-The **header baseline** is the indentation of the header's starting physical line, not its keyword's column, label length, or final continuation line. An indented body starts exactly one level deeper than its header baseline. A match arm list is one level deeper than its `match`, and an indented arm body is one level deeper than its arm.
-
-### 2.2.1. Layout normalization
-
-An **effective line** starts or continues a source token outside comments and literal-internal text. Blank and comment-only lines end neither a body nor a branch join. Continuation lines inside one multiline literal produce no layout events and are not checked for indentation. All other code indentation must be a multiple of four spaces; error recovery does not make invalid indentation legal.
-
-Bodies, explicit delimiters and method-chain continuations are tracked separately. At each effective line:
-
-1. Determine from the grammar whether a body or arm list starts. If so, require its header baseline plus four spaces and produce NEWLINE/INDENT events.
-2. Otherwise, for a continuation line, validate its delimiter or chain alignment; no item separator is produced.
-3. Otherwise, close completed chains and bodies, innermost first, until the line's enclosing level is reached. Reject a dedent that matches no active level and a jump that would invent an empty body. Where the grammar permits a separator (SEP), a body-closing boundary also separates completed enclosing items.
-
-At end of file, diagnose unclosed explicit delimiters and missing bodies, and close the remaining bodies.
-
-Within parentheses, brackets, Origin braces and recognized generic delimiters, continued content is indented one additional level per open delimiter beyond the active body or chain level. A matching closer may align with its opening line or stay at the content indentation. Comparison angle brackets do not start a continuation. Nested bodies generate their own layout events. A comma, parameter-name boundary `!` (§7.2.1) or closer on the same line as an indented body's content cannot close that body; the body must first be closed by a dedent on the next effective line.
-
-A header expression continued across lines must use delimiters inside that expression; grouping the entire construct does not continue its header. A leading `->` may continue a function or accessor header only where its grammar still expects `->`, one level deeper than the header baseline. It changes neither that baseline nor the rule against a separate `=>` line. Content inside a delimiter opened on the `->` line is indented one level beyond the `->` line itself. The continuation ends before the next effective line at or above the `->` line's level; that line starts the body or the next item.
-
-A **delimiter region** governs both single-item body nesting and nested-`if` grouping:
-
-| New region | Ends at |
-| --- | --- |
-| A grouped expression; each argument or element in parentheses or brackets | The matching closer, or the separator before the next argument or element |
-| Each item of an indented body | The end of that item |
-| Each match arm | The end of that arm |
-
-Labels, transfer operands and successive `=>` tokens do not start regions. Inside a single-item body, every body-bearing construct in the same region must also use a single-item body. A match arm list is not an executable body and each arm starts a region, so such a match may still have indented arm bodies.
+Indentation, header baselines, single-item and indented bodies, layout events, continuation, header expressions, branch joins and leading-dot lines are defined in [§F.4](appendices/F-syntax-summary.md#f4-layout).
 
 ```kimi
-if ready => for item in items => process(item)
-defer => unsafe
-    releaseRaw(pointer) // Error: unsafe needs a single-item body in this region.
+func double(x: i32) -> i32 => x * 2
 
-consume(
-    match mode
+func run(ready: bool, mode: Mode) -> i32
+    if ready => work()
+    let n = match mode
         .Fast => 1
-        _
+        .Slow
             prepare()
             yield 2
-)
+    return n
+
+func broken() =>       // Error: the item must follow `=>` on the same line
+    work()
 ```
 
-**Branch joins.** An `else` or `else if` may follow on the ending physical line of a single-item body or on the next effective line. After an indented body, the dedent of the next effective line closes the body before the clause is read. A clause on its own line aligns with the baseline of the initial `if`, and no other item may intervene. The `else` of `require` likewise follows its condition on the same line or on the next effective line, aligned with `require`.
+## 2.2. Whitespace and comments
 
-An inner `if` inside a single-item `if`/`else if`/`else` body must be grouped entirely when it shares that delimiter region, whether or not it has an `else`. Any body-bearing expression used inside a header expression must also be grouped. Missing required grouping and an unmatched `else` are syntax errors. A statement cannot be grouped as an expression.
+Outside literals and comments, the only whitespace is U+0020 and line endings; a tab, a no-break space or any other whitespace or control character there is a compile-time error. Spaces separate tokens, leading spaces give the indentation, and trailing spaces are ignored. Comments separate adjacent tokens and never join them.
 
-```kimi
-let value = if a => (if b => 1 else => 2) else => 3
-if (if a => b else => c) => work()
-func run() => if ready => work() // No enclosing if: grouping is unnecessary.
-```
+- `//` starts a comment that ends at the line ending or the end of the source.
+- `/*` starts a block comment that ends at the first `*/`. Block comments do not nest. A missing `*/` is a compile-time error.
+- Inside literal text, comment delimiters are content. Inside an interpolation, the ordinary token rules apply.
 
-Formatters preserve Body forms and should keep an `if` inside a single-item body, including its `else`, on one line. If the `if` needs an indented enclosing body, a formatter may offer a separate, semantics-checked refactoring (§14.2); formatting alone must not change result use, transfer targets or cleanup. If a multiline non-final argument would need a leading comma after a dedent, prefer a typed intermediate local, or move the argument to the last position when that preserves evaluation and ownership semantics.
-
-### 2.2.2. Leading-dot continuation and Case references
-
-The grammar determines a new body or match-arm position before dot continuation is considered. A leading dot at an arm position starts a Case Pattern; at the first item of a new executable body it may start a Case construction. Neither continues the header. These decisions use neither expected Types nor name lookup. Consequently, a `.where(...)` line after a header is not a header continuation; it is diagnosed as written and never reparsed by guesswork.
-
-Otherwise, a leading single dot exactly one indentation level deeper than the expression it follows continues that expression, and later chain lines use the same level. Thus `.Some(1)` one level below a completed root-level initializer is a member-call continuation, while a Case Pattern below `match` begins an arm. Range tokens are not single dots. To write an independent Case expression, use normal item indentation, group it or qualify its enum Type. Case lookup follows §6.3.2.
-
-## 2.3. Whitespace and comments
-
-Outside literal content, U+0020 spaces separate tokens; leading spaces determine indentation, and trailing spaces are ignored. This neither changes literal contents nor makes tabs valid layout whitespace. Comments contribute no executable syntax; they separate adjacent tokens rather than joining them.
-
-- `//` starts a comment that extends to the physical line ending or the end of the source.
-- `/*` starts a block comment that ends at the first `*/`; block comments do not nest. A missing terminator is a compile-time error.
-- Within literal text, comment delimiters are content. Interpolated expressions follow the ordinary token rules.
-
-A block comment without a physical newline may appear between tokens on one line. The spaces before the comment determine that line's indentation; spaces after `*/` add none.
-
-If a block comment contains a physical newline, only spaces and comments may follow its closing `*/` on the same physical line; code there is a compile-time error. The comment does not join code across lines: later code starts on a following line and obeys the ordinary indentation and continuation rules. Comment-only lines and indentation inside comments do not affect block structure.
+A block comment within one line may appear between tokens; the spaces before it give the line's indentation. If a block comment contains a line ending, only spaces and comments may follow its `*/` on that line.
 
 ```kimi
-let total = 1 /* inline comment */ + 2
+let total = 1 /* inline comment */ + 2   // 3
 
 func example()
     /* A multiline comment.
     */
     work()
-    finish()
+    finish()                              // Both calls are in the body
+
+func bad()
+    /* comment
+    */ work()                             // Error: code after a multiline comment's */
 ```
 
-`total` is `3`. Both `work()` and `finish()` belong to the body of `example`. Blank and comment-only lines do not supply an executable body; see the [nonempty Block rule](14-control-flow.md#1421-nonempty-executable-blocks).
+## 2.3. Documentation comments
 
-### 2.3.1. Documentation text
+A **documentation line** is a line comment whose `///` is preceded only by spaces on its line and is not followed by another `/`. `///Text` and `/// Text` both qualify. `////`, a `///` after code on the same line and `/** ... */` are ordinary comments. Ordinary compilation treats `///` as an ordinary comment. Documentation never affects validity or behavior.
 
-A **Documentation Comment** is Markdown associated with a declaration. It describes purpose, usage and obligations; it does not change name resolution, Type checking or execution. Source-reading tools and Mods may observe its bytes (§18.7.4). Ordinary compilation may discard documentation metadata; enabled documentation tooling follows the rules below.
+Consecutive documentation lines at the same indentation form one **documentation block**. A blank line or an ordinary comment ends the block.
 
-A lexically recognized line comment is a documentation line when only U+0020 spaces precede its `///` on the physical line and the next character is not `/`. Both `///Text` and `/// Text` qualify. `////`, a `///` that follows code on the same line, and `/** ... */` are ordinary comments. Text inside literals or block comments cannot start documentation. Normal encoding, token and layout validation still applies; documentation creates no executable item or layout event.
+**Attachment.** The prelude of a declaration is the sequence of Attributes, blank lines and comments before its header. A declaration has at most one documentation block: the block closest to its header in its prelude, if that block's indentation equals the [header baseline](appendices/F-syntax-summary.md#f41-lines-indentation-and-bodies). Any other block is unattached; attachment never falls back to an earlier block or skips over unrelated syntax, a directive or a scope boundary. Attributes may precede, separate or follow the block; the recommended order is documentation, Attributes, declaration.
 
-Consecutive documentation lines at the same indentation form one **documentation block**. To extract its text, remove from each line the indentation, the `///` and then at most one U+0020, and keep all remaining characters, including trailing spaces. Join the lines with LF, whatever the source line ending (LF, CRLF or CR), without adding a final newline. A bare `///` contributes an empty line. An ordinary blank line or comment ends the block and adds nothing to its text. An attached empty block is distinct from absent documentation.
+These declarations can carry documentation:
 
-```kimi
-/// Returns a shared reference to the first element.
-///
-/// - abort: `values` is empty.
-func first<T>(values: ref/Array<T>) -> ref/T during values
-    return values[0]@ref
-```
-
-### 2.3.2. Declaration association
-
-A **declaration prelude** is the sequence of Attributes, blank lines and comments before a declaration's header. Each Attribute is one syntax unit: comments inside its arguments, or inside the declaration header, are not prelude candidates. Unrelated syntax, directives, actual scope boundaries and document boundaries end the prelude; comment indentation alone does not. This terminology does not change Attribute placement or targets under §6.5, including same-line Attributes.
-
-Each syntactic declaration has at most one documentation block: the closest candidate in its prelude, provided that its indentation equals the header baseline. Other candidates are unattached. When the closest candidate is empty or misindented, association never falls back to an earlier one. Attributes may precede, separate or follow documentation; the preferred order is documentation, Attributes, declaration. Association never skips an ineligible item to find a target. During syntax recovery, uncertain associations and the unattached diagnostics derived from them are deferred.
-
-```kimi
-/// Earlier block: unattached.
-// func old() => ()
-/// Checks that the sample can be invoked.
-#Test
-func sample() => ()
-```
-
-Eligible targets are declaration items directly in declaration or executable lists, including directive-controlled lists; ordinary grammar still determines where they may appear:
-
-| Target | Included forms |
+| Target | Forms |
 | --- | --- |
 | Containers | group, rootgroup, struct, enum, contract |
-| Functions | Named functions and requirements, explicit specializations, init, drop |
-| Properties/bindings | let/var/computed Properties, Contract property requirements, local let/var |
-| Cases | Each enum Case, including its payload description |
-| Associated Types | Contract associate declarations and implementation-side specifications |
+| Functions | named functions (including `main`) and requirements, explicit specializations, `init`, `drop` |
+| Properties and bindings | let, var and computed Properties, Property requirements, local `let` and `var` |
+| Cases | each enum Case |
+| Associated Types | associate declarations and specifications |
 
-A public `main` is a named-function target. Documentation on `rootgroup A.B` belongs to the written `B` fragment, not to synthesized intermediate groups. A Field is a Property's storage slot, not a separate target. Parameters, generic and Origin parameters, payloads and accessors are explained in their containing declaration. Pattern bindings, expressions, aliases, Constraints, directives and Attributes are not independent targets. Broader prose belongs in a group or a separate Markdown document; there is no file- or module-level documentation delimiter.
+Parameters, generic and Origin parameters, payloads and accessors are described in the documentation of their declaration. Documentation on `rootgroup A.B` belongs to that fragment of `B`. Each fragment and each overload has its own documentation; documentation is never inherited or copied from an overridden member, an implemented requirement or a specialized function. Syntax excluded by a compile-time directive ([§19.4](19-compile-time-directives.md#194-excluded-syntax)) attaches no documentation, so documentation of a conditional declaration is written inside the region the directive controls.
 
-### 2.3.3. Selection and related declarations
-
-Documentation is associated only with selected syntax, using original source positions. [Excluded syntax](19-compile-time-directives.md#195-diagnostics-and-excluded-syntax) receives no association, publication or documentation diagnostics, and its documentation never migrates to a surviving declaration. Documentation adds no parsing obligation. A SourceDocument with syntax errors, including errors in its excluded syntax, defers its associations; such a document cannot be built, so accepted documents are unaffected. Place it after the directive, inside the region the directive controls, including the same-indentation form:
+Documentation text is Markdown. By convention, a list item `- name: text` describes a parameter or one of the standard items `return`, `abort`, `safety`, `note`, `warning` and `example`. The supported Markdown, extraction, rendering and documentation diagnostics are implementation-defined.
 
 ```kimi
-#if windows
-/// Returns the platform name.
-func platformName() -> string => "windows"
-```
-
-Only selected declarations are published. Multi-configuration tools parse and select for each configuration and keep the results distinct. For merged group and struct fragments, each fragment's block is retained independently, with its provenance, in the logical declaration order of §20.7.4; Markdown scopes are never concatenated, and fragments never overwrite each other. Generated sources follow the same rules.
-
-Documentation belongs to its syntactic declaration. A related declaration (an inherited member, an implemented requirement or a specialization's source) may be shown by reference; its text is never implicitly copied, inherited or merged. Text from a declaration outside the publication scope is not expanded. Overloads are documented independently. Call documentation comes from the declaration that defines the call contract. Specialization documentation is an implementation note: it may describe the result and side-effect differences that §8.8 permits, but cannot replace the inherited call and Safety obligations.
-
-### 2.3.4. Markdown and links
-
-Documentation text follows the normative [Documentation Markdown profile](documentation-markdown.md). Its [syntax rules](documentation-markdown.md#2-syntax) define the adopted CommonMark subset and explicit boundary behavior; its [HTML and link rules](documentation-markdown.md#4-html-and-links) define escaping, reference bases, logical source targets, output mapping and URL validation. Full CommonMark compatibility is not required.
-
-### 2.3.5. Writing and extracting items
-
-A short opening paragraph explaining purpose is recommended. Explain meaning, boundaries, effects, ordering, complexity and safety without mechanically repeating declaration facts. Documentation does not prove obligations, override declarations or introduce deprecation metadata.
-
-Use list items for short descriptions and headings for longer standard sections. The profile's [summary and item rules](documentation-markdown.md#3-summary-and-documentation-items) own standard names, extraction, description ranges and declaration-dependent classification.
-
-````kimi
 /// Adds two values.
 ///
 /// - left: Left value.
 /// - right: Right value.
 /// - return: Their sum.
-///
-/// # example
-/// ```kimi
-/// let total = add(2, 3)
-/// ```
-public func add(left: i32, right: i32) -> i32 => left + right
-````
+func add(left: i32, right: i32) -> i32 => left + right
 
-### 2.3.6. Tooling and diagnostics
+/// Checks that add can be called.
+#Test
+func addWorks() => ()
 
-Select documentation processing by use:
+    /// Unattached: its indentation differs from the header baseline.
+func other() => ()
 
-| Use | Processing |
-| --- | --- |
-| Ordinary compilation (default) | Skip `///` like ordinary line comments. Do not collect documentation ranges, extract text, associate declarations or parse Markdown. |
-| LSP, documentation generation or documentation checking | Enable range collection in the Tokenizer, separate from ordinary tokens. The Parser associates ranges with declaration fragments; extract text and parse Markdown only on demand. |
-| Source-reading Mods | Read the original SourceDocument independently of documentation collection. Documentation edits count as source dependency changes under §18.7.4 and §20.7.5. |
+#if windows
+/// Returns the platform name.
+func platformName() -> string => "windows"
+```
 
-Documentation metadata may be omitted from the Parser's executable syntax tree; Type checking, Analysis, Lowering and Emit do not require it. The comment text stays in the original SourceDocument for source-reading consumers.
+## 2.4. Tokens and punctuation
 
-When documentation processing is enabled, retain the target fragment and the original SourceDocument and range. Publication scope is configurable; public output follows effective accessibility. Optional documentation diagnostics cover unattached or ignored documentation, missing or ambiguous items, missing `safety` prose on unsafe declarations, and unresolved links. An ignored `///` is diagnosed only where lexing identified an actual line comment, respecting the exclusions of §2.3.3. Documentation diagnostics never affect ordinary language validity, although a separate CI gate may fail on them. Existing encoding, layout and syntax errors are never downgraded to lint.
+A token's spelling is contiguous. Adjacent tokens must be separated when their concatenation would form a different token. Recognizing a token does not make it valid in a given position. Outside comments and literals, a character that begins no token is an error. The punctuation tokens, longest match, generic-closer splitting, the separate tokens `$` and `#`, and the restricted tokens `;`, `!`, `{`, `}`, `&&` and `||` are defined in [§F.2.1](appendices/F-syntax-summary.md#f21-tokens-comments-and-punctuation).
 
-Optional writing diagnostics may report text that resembles an omitted feature, such as a Setext heading or indented code, and name that feature in the Reason. Such resemblance is not a definite syntax error. Exhaustive detection and a comparison parser are not required. Tab and trailing-space diagnostics are separate, because hard-break spaces remain meaningful. Do not collect diagnostic-only data when these checks are disabled; measure their added cost when they are enabled.
-
-Canonical formatting uses `/// ` for nonempty lines and `///` for empty ones, preserving the extracted text. Moving blocks before Attributes must preserve every block's association and text. No new formatter or command syntax is required.
-
-Disabled collection adds no documentation-specific allocations and retains no text or Markdown trees; without candidates, no dedicated candidate buffer exists. Enabled processing uses source-ordered ranges and original-source mappings, without rescanning the whole file per declaration and without runtime metadata. Disposed tokenizer buffers are never retained. Replacement or removal invalidates the associations of generated documents. Structured documentation queries alone cannot narrow raw-source Mod dependencies. The profile's [processing guarantees](documentation-markdown.md#5-syntax-api-and-processing-guarantees) own immutable publication, positions, reuse, cancellation and resource bounds; [Appendix A.21](../impl/appendices/A-compiler-requirements.md#a21-documentation-comments) owns verification.
-
-## 2.4. Tokens, separators, and punctuation
-
-A token's spelling is contiguous. Adjacent spellings must be separated when their concatenation would form a different token. Names, keywords, literals, punctuation and operators follow their own token rules; recognizing a token does not make it a permitted expression. `$` and `#` are separate punctuation tokens: `$abort` is `$` followed by the Name `abort`, and `#if` is `#` followed by the keyword `if`.
-
-`;` occurs only as the separator of the task slot or task argument `task;` (§2.5.1, [§24.2](24-suspension-and-asynchronous-tasks.md#242-task-slots)). It is never a statement separator or expression-body terminator, and every other occurrence outside comments and literal content is an error. Separate statements go on separate effective lines. For example, `if condition => 1` joins an aligned following `else` without `;`.
-
-| Punctuation/operator class | Spellings |
-| --- | --- |
-| Structural | `(` `)` `[` `]` `{` `}` `,` `;` `.` `:` `::` `->` `=>` `@` `#` `$` `!` |
-| Arithmetic and updates | `+` `-` `*` `/` `%` `++` `--` `+=` `-=` `*=` `/=` `%=` |
-| Comparison and assignment | `=` `==` `!=` `<` `<=` `>` `>=` |
-| Bitwise and shifts | `&` `\|` `^` `<<` `>>` `&=` `\|=` `^=` `<<=` `>>=` |
-| Ranges | `..` `..=` |
-| Optional Type suffix | `?` |
-| Recognized but unavailable | `&&` `\|\|` |
-
-`&&` and `\|\|` are recognized so that their use is reported as misplaced syntax whose repair candidates are `and` and `or` (§23.3.6.9).
-
-Outside comments and literals, the longest punctuation spelling is matched: `..=` before `..` before `.`, `->` before `-`, `<<=` before `<<` before `<`, `>>=` before `>>` before `>`, `::` before `:`, and `=>` or `==` before `=`. Thus `a+++b` is `a`, `++`, `+`, `b`; there is no `+++` token. Unlisted punctuation is invalid unless it forms a grammatically valid sequence of listed tokens.
-
-`>>` may split into two `>` tokens, and `>>=` into `>`, `>`, `=` (or `>`, `>=` when only one level closes), only when closing syntactically recognized generic Type arguments or parameters. Expression shifts are unaffected. Tuple indices use the exception in §2.6.
-
-`!` is a parameter-list boundary only where §7.2.1 permits it; it is never a unary or postfix expression operator. `!=` keeps its longest-token spelling.
-
-The [notation table](01-overview.md#12-conventions-and-notation) summarizes the meaning of punctuation. Expression grouping, generic/comparison boundaries and the token rules for `@` follow [precedence and associativity](13-operators-and-assignment.md#131-precedence-and-associativity).
-
-Origin braces `{` `}` form one delimiter pair under the ordinary continuation rules and open no executable scope. Their syntactic position selects their role, a Type schema header or a binding-set name; empty braces are an error in both roles (§15.3.1, §15.3.2). `during` is recognized by position alone, independently of lookup or target eligibility (§3.3.6), and adds no line-continuation rule. The contexts of `during`, `origin` and `outlives` are listed in §2.5.1. `from` has no Origin role.
+```kimi
+let r = 0..=9          // ..= is one token
+let ne = p != q
+let ok = p and q
+let no = p && q        // Error: misplaced &&; write `and`
+```
 
 ## 2.5. Names
 
-A **Name** identifies a declaration in source. All named declarations, including Declaration Containers, Types, functions, Fields, Properties, bindings and parameters, follow the same character rules. A Name is a start character followed by zero or more continuation characters.
+A **Name** identifies a declaration. Every Name, of any declaration kind, has the form of the `Name` production ([§F.2.2](appendices/F-syntax-summary.md#f22-names)).
 
-The start character may be:
+A Name must be in Unicode Normalization Form C; a non-NFC spelling is an error and is not normalized. Format characters (`Cf`), including bidirectional controls and zero-width joiners, are not allowed in Names. Two Names are equal exactly when their Unicode scalar sequences are equal: comparison is case-sensitive, culture-independent and performs no normalization or folding. Visually confusable Names are distinct. Character categories and NFC use Unicode 15.0.0; characters unassigned in that version are not allowed, and the host environment does not change these results. The same rules apply to Condition names ([§19.2](19-compile-time-directives.md#192-conditions)).
 
-- an ASCII letter (`A`–`Z` or `a`–`z`);
-- an underscore (`_`); or
-- a Unicode character in one of the categories Uppercase Letter (`Lu`), Lowercase Letter (`Ll`), Titlecase Letter (`Lt`), Modifier Letter (`Lm`), Other Letter (`Lo`) or Letter Number (`Nl`).
+Reserved words and contextual keywords are listed in [§F.3](appendices/F-syntax-summary.md#f3-keywords).
 
-A continuation character may be any valid start character, or:
-
-- an ASCII digit (`0`–`9`); or
-- a Unicode character in one of the categories Nonspacing Mark (`Mn`), Spacing Combining Mark (`Mc`), Decimal Digit Number (`Nd`) or Connector Punctuation (`Pc`).
-
-For example, `Dog`, `_value`, `point2`, `Delta` and `ǅelta` are valid Names, while `2point`, `has-value` and the empty string are not.
-
-Every Name, in declarations and references alike, must already be in Unicode Normalization Form C (NFC). A non-NFC spelling is a compile-time error; the compiler does not normalize it. For example, a Name containing U+00E9 (`é`) is permitted, while the canonically equivalent sequence U+0065 U+0301 is rejected.
-
-All Format (`Cf`) characters are forbidden in Names, including bidirectional controls and zero-width joiners and non-joiners. This restriction applies to Names, not to comment or literal contents, and does not exclude default-ignorable characters of other categories.
-
-Two Names are equal if and only if their Unicode scalar sequences match exactly. Comparison is case-sensitive and culture-independent; lookup and duplicate detection perform no normalization, case folding, compatibility mapping or character removal. Thus `Dog` and `dog` are distinct Names, as are ASCII `A` and fullwidth `Ａ`. The same rules apply to the compile-time constant Names of the [Condition environment](19-compile-time-directives.md#192-environment-condition-forms).
-
-Visually confusable Names are not equal. An implementation may provide optional lint warnings for confusable Names; such warnings affect neither name identity nor validity.
-
-Category tests and NFC validation use [Unicode 15.0.0](https://www.unicode.org/versions/Unicode15.0.0/) data. Characters unassigned in that release are not permitted in Names. Host runtime, operating system and globalization settings must not change these results; adopting another Unicode release requires a revision of this specification.
-
-The complete spelling `_` is a reserved token, not a Name. Longer Names such as `_value`, digit separators such as `1_000`, and literal and comment contents are unaffected. `_` denotes a syntax-specific omission and has no common acquisition operation:
+The spelling `_` alone is a reserved token, not a Name. It is valid only in these positions:
 
 | Position | Meaning |
 | --- | --- |
-| Runtime Pattern | Wildcard (§14.8.1) |
-| `#case _` | Final catch-all with existing placement/count restrictions (§19) |
-| `[_ of T]`, `[N of _]`, `[_ of _]` | Length and/or element inference in an initialized local fixed-array annotation, recursively through written nesting (§4.3.1) |
-| `_ = expression` | Explicit discard statement (§14.2.4) |
-| for binding or Tuple binding element | Unnamed iteration binding (§14.6.1) |
+| Runtime Pattern | Wildcard ([§14.8.1](14-control-flow.md#1481-patterns)) |
+| `#case _` | Final catch-all case ([§19](19-compile-time-directives.md#19-compile-time-directives)) |
+| `[_ of T]`, `[N of _]`, `[_ of _]` in an initialized local's annotation | Inferred length or element Type ([§4.3.1](04-arrays-indexing-and-slices.md#431-array-literals-and-annotation-holes)) |
+| `_ = expression` | Explicit discard ([§14.2.4](14-control-flow.md#1424-explicit-discard)) |
+| `for` binding or one of its Tuple elements | Unnamed iteration binding ([§14.6.1](14-control-flow.md#1461-for-and-while)) |
 
-Every other standalone `_` is a syntax error. This includes `_` as a declaration, reference, capture, or named or anonymous function parameter, and `let _` and `var _`, including `var _` in a for binding.
+Any other `_`, including `let _`, `var _`, and `_` as a parameter or a reference, is a syntax error. Longer Names such as `_value` are unaffected.
 
-### 2.5.1. Keywords
-
-A reserved keyword cannot be a Name. A contextual keyword is recognized only in its listed context and is an ordinary Name elsewhere. Keywords match only complete words: `ifValue` and `tryGet` are single Names. The tables define token classes independently of any internal grouping.
-
-| Reserved class | Spellings |
-| --- | --- |
-| Primitive Types | `isize`, `usize`, `i8`, `i16`, `i32`, `i64`, `i128`, `u8`, `u16`, `u32`, `u64`, `u128`, `f32`, `f64`, `bool`, `char`, `string` |
-| Bindings and functions | `let`, `var`, `func` |
-| Control, tests and literals | `if`, `else`, `case`, `for`, `while`, `loop`, `do`, `match`, `return`, `exit`, `continue`, `yield`, `try`, `require`, `defer`, `is`, `not`, `and`, `or`, `true`, `false`, `null` |
-| Access | `public`, `internal`, `private`, `protected` |
-| Dedicated forms | `Self`, `init`, `drop`, `base` |
-| Compile-time selection | `switch`; used after `#`. There is no runtime switch construct. |
-| Reserved future syntax | `as` |
-
-| Contextual class | Spellings and recognizing context |
-| --- | --- |
-| Declarations | `alias`, `rootgroup`, `group`, `struct`, `enum`, `contract`, `computed`, `property` in declaration and header positions. `extension` is reserved in the same positions for a future declaration and is rejected in this revision. |
-| Control labels | `label` at a Primary expression start when followed by a Name and `:` on the same physical line; commits to the label-prefix rules of §14.4. Elsewhere it is an ordinary Name. |
-| Function dispatch modifiers | `virtual`, `override` in a declaration's leading modifier sequence; eligible declarations follow [§6.2.4](06-declarations-and-containers.md#624-virtual-members-and-overrides). `abstract` is recognized there but remains unavailable. |
-| Inheritance modifier | `open` in a declaration's leading modifier sequence, recognized as the unavailable modifiers are: before the declaration introducer of the same logical header, without scanning across a newline, indent or dedent. It is valid only immediately before `struct` ([§6.2.2](06-declarations-and-containers.md#622-inheritance-and-open-structures)). Elsewhere it is an ordinary Name. |
-| Parameters and accessors | `in` in a `for` header; `to` immediately after `exit`, `continue` or `yield`; `associate` in an associated-Type declaration or specification; `has`, `get`, `set` in accessor syntax; `specialize` immediately before `func`; `when` in a conditional conformance; `place` in a function result position when followed by `ref` or `uniq` and a slash (§7.1.1); `task` as the first token after the `(` of a parameter list, argument list or Function Parameter List that admits a task slot or task argument, or of a constructor's parameter list, when the next token is `;` ([§24.2.1](24-suspension-and-asynchronous-tasks.md#2421-form)). |
-| Origins | `during` after an AnnotatedType's body and optional suffixes; `origin` at the start of a declaration-attached relation; `outlives` within that relation; `static` as the distinguished Origin in Origin expressions. |
-| Semantics and safety | `owner`, `ref`, `uniq`, `obj`, `rc`, `arc`, `objref`, `objuniq`, `raw` in Semantics positions, including requirements and the mode of a Place result; `raw` also immediately after `@` (§5.4). Elsewhere `raw` is an ordinary Name, such as a Field `raw`. `unsafe` is recognized only before `func` and before a Body that introduces an Unsafe Statement. |
-| Explicit value operations | `move`, `copy` and `follow` immediately after `@`, as the [transfer and copy operations](13-operators-and-assignment.md#1353-defined-adaptations) `E@move` and `E@copy` and the [follow operation](13-operators-and-assignment.md#13551-follow) `E@follow`; `wrap` and `bits` immediately after `@` and followed by an adjacent `<`, as the [wrapping and bit conversions](13-operators-and-assignment.md#1354-numeric-conversions-and-literals) `E@wrap<U>` and `E@bits<U>`. |
-| Semantics categories | `value`, `valueborrow`, `object`, `objectborrow`, `borrow`, `owning`, `reference` in Semantics requirements; see [category sets](03-types-and-values.md#33-type-semantics). |
-| Contextual bindings and operations | `self`, `value`, `storage` under the receiver and accessor rules (§9.2, Chapter 11); `abort` after `$`. |
-| Initialization directive | `noinit` only as the entire unparenthesized initializer of a declaration, before ordinary name lookup; eligibility is checked afterward (§4.3.4). |
-| Fixed arrays and lengths | `of` between length and element Type in `[N of T]`, or length and value in fill construction `[N of value]`; `length` only at the start of a generic parameter declaration, followed by its Name. |
-
-Further notes on individual keywords:
-
-- After `@`, a built-in Semantics name selects a shorthand target (§13.5.1), except bare `raw`, which takes an address (§5.4). There is no prefix `move` operator and no `*` operator for safe references.
-- The compound access specifications `protected internal` and `private protected` each consist of two keywords; their placement follows [accessibility](09-names-signatures-and-access.md#93-accessibility-and-reachability).
-- `init`, `drop` and `base` are reserved for [construction](06-declarations-and-containers.md#623-constructors), destruction and [direct base calls](virtual-dispatch.md#4-direct-base-calls). They introduce no ordinary callable Names; only `base.f(...)` supplies lexical `self`.
-- `require` and `do` are reserved for the [require statement](14-control-flow.md#1411-require-statement) and the [do expression](14-control-flow.md#1432-do-expressions).
-- `specialize` introduces an [explicit specialization declaration](08-generics-constraints-and-contracts.md#88-explicit-full-function-specialization) and reserves nothing in other contexts.
-- `open` and `task` are ordinary Names outside their contexts: in `file.open(task; path)`, `open` is a member Name and `task;` is the task argument, and `let open = 2` and `let task = open` declare ordinary locals.
-
-**Declaration modifier recognition.** `virtual`, `override` and `abstract` are recognized before the other modifiers and the introducer of the same logical declaration header, including otherwise ineligible Type, Property, Contract, constructor, destructor and accessor headers. Recognition never crosses a separating newline, indent or dedent. Validate `virtual` and `override` under §6.2.4; reject `abstract` as unavailable. The words remain ordinary Names in `struct abstract`, `func virtual(...)`, `let override: i32`, `x.abstract()` and `virtual(...)`. A standalone expression does not consume the next declaration. Recovery retains the following independent items.
+```kimi
+let point2 = 1
+let _value = 2
+let délta = 3          // Valid: U+00E9 in NFC
+let Dog = 4
+let dog = 5            // A different Name from Dog
+let 2point = 6         // Error: a Name cannot start with a digit
+let _ = 7              // Error: `_` is not a Name
+```
 
 ## 2.6. Number literals
 
-A `NumberLiteral` begins with an ASCII decimal digit. A leading `+` or `-` is an operator, not part of the literal; sign characters may occur only inside a decimal exponent.
+A number literal begins with an ASCII decimal digit; its grammar is in [§F.2.3](appendices/F-syntax-summary.md#f23-number-literals). A sign applied directly to a number literal forms a direct literal ([§12.3](12-expressions.md#123-literal-typing)). Number literals have no Type suffix; their Types come from context ([§12.3](12-expressions.md#123-literal-typing)) or from explicit fitting such as `123@i32` ([§13.5.4](13-operators-and-assignment.md#1354-numeric-wrapping-and-bit-conversions)).
 
-| Form | Prefix or syntax | Digits |
-| ---- | ---------------- | ------ |
-| Decimal integer | None | `0`–`9` |
-| Binary integer | `0b` or `0B` | `0`, `1` |
-| Octal integer | `0o` or `0O` | `0`–`7` |
-| Hexadecimal integer | `0x` or `0X` | `0`–`9`, `a`–`f`, `A`–`F` |
-| Decimal floating point | Decimal fraction, exponent, or both | `0`–`9` |
+A digit separator `_` is ignored. A floating-point literal denotes its exact decimal value rounded once, to nearest with ties to even, to its `f32` or `f64` Type. An infinite result is an error; zero and subnormal results are allowed. Every other literal is an integer; a magnitude above 2^128 − 1 is an error.
 
-```text
-number-literal       := decimal-literal
-                      | binary-literal
-                      | octal-literal
-                      | hexadecimal-literal
-
-decimal-literal      := decimal-sequence fraction? exponent?
-fraction             := '.' decimal-digit decimal-tail
-exponent             := ('e' | 'E') ('+' | '-')? decimal-digit decimal-tail
-
-binary-literal       := '0' ('b' | 'B') '_'* binary-digit binary-tail
-octal-literal        := '0' ('o' | 'O') '_'* octal-digit octal-tail
-hexadecimal-literal  := '0' ('x' | 'X') '_'* hexadecimal-digit hexadecimal-tail
-
-decimal-sequence     := decimal-digit decimal-tail
-decimal-tail         := (decimal-digit | '_')*
-binary-tail          := (binary-digit | '_')*
-octal-tail           := (octal-digit | '_')*
-hexadecimal-tail     := (hexadecimal-digit | '_')*
-
-decimal-digit        := '0' .. '9'
-binary-digit         := '0' | '1'
-octal-digit          := '0' .. '7'
-hexadecimal-digit    := decimal-digit | 'a' .. 'f' | 'A' .. 'F'
+```kimi
+let a = 1_000_000
+let b = 0x_FF          // 255
+let c = 0b__101__      // 5
+let d = 1.5e-3
+let e = 1.             // Error: the integer 1 followed by a `.` with no member
+let f = 0x             // Error: no hexadecimal digit
+let g = 123abc         // Error: malformed number
+let h = 1e_2           // Error: the exponent needs a digit first
 ```
-
-`_` is an ignored digit separator. Consecutive separators, separators after a base prefix and trailing separators are allowed: `1__000`, `123_`, `0x_FF` and `0b__101__` are valid. Every base prefix requires at least one digit valid for that base, so `0x`, `0b` and `0o___` are compile-time errors. An exponent must have a decimal digit immediately after `e`/`E` and its optional sign; `1e_2` and `1e+_2` are invalid.
-
-A Name continuation character immediately after a number cannot start a separate token. The remaining continuation characters are consumed into a malformed numeric token, which is diagnosed: `0xg`, `0b102` and `123abc` are errors.
-
-A decimal point belongs to the literal only when a decimal digit immediately follows it: `1.0` is floating point, while `1.` is the integer `1` followed by a dot. Only decimal literals have fractions and exponents; `0xFF.0` starts with the integer `0xFF`.
-
-**Tuple indices.** Immediately after a member-access dot token (ignoring intervening spaces and comments), a Tuple index is scanned as the maximal run of ASCII decimal digits, without a fraction, exponent, base prefix or digit separator. The malformed Name-continuation rule still applies: `pair.0abc`, `pair.0xFF` and `pair.1_2` each contain one malformed numeric token after the dot. Thus `pair.0.1` is `pair`, `.`, `0`, `.`, `1`, and `pair.0.name` accesses a named member of element zero. A parser may equivalently resplit a numeric token using its original spelling. An ordinary `0.1` remains a floating-point literal. The Tuple index must be in range.
-
-**Values.** After separators are removed, a decimal literal with a fraction or exponent denotes an exact decimal value. It is rounded once, round-to-nearest ties-to-even, to its determined IEEE 754 `f32` or `f64` Type, without an intermediate floating Type. A result of either infinity is a compile-time error; subnormal and zero results are permitted. All other literals are integers. Magnitudes `0` through `2^128 - 1` are stored as 128-bit patterns; larger magnitudes are invalid.
-
-Number literals have no Type suffix. [Expression type inference](12-expressions.md#1231-type-inference) defines their contextual Types and defaults. To give a literal a specific Type, use a declaration annotation or [explicit literal fitting](13-operators-and-assignment.md#1354-numeric-conversions-and-literals), such as `123@i32`.
 
 ## 2.7. Character escapes
 
-Char Literals and escaped String Literals share the following Character Escapes. Each escape produces exactly one Unicode scalar value.
+Char Literals and escaped strings share these escapes. Each produces exactly one Unicode scalar value.
 
 | Escape | Result |
-| ------ | ------ |
-| `\0` | Null, U+0000 |
-| `\\` | Backslash, U+005C |
-| `\e` | Escape, U+001B |
-| `\t` | Horizontal tab, U+0009 |
-| `\n` | Line feed, U+000A |
-| `\r` | Carriage return, U+000D |
-| `\"` | Double quotation mark, U+0022 |
-| `\'` | Apostrophe, U+0027 |
-| `\u(H...)` | The specified Unicode scalar value |
+| --- | --- |
+| `\0` | U+0000 |
+| `\\` | U+005C backslash |
+| `\e` | U+001B escape |
+| `\t` | U+0009 tab |
+| `\n` | U+000A line feed |
+| `\r` | U+000D carriage return |
+| `\"` | U+0022 quotation mark |
+| `\'` | U+0027 apostrophe |
+| `\u(H...)` | The scalar value with hexadecimal code H |
 
-`\u(H...)` requires one to six ASCII hexadecimal digits. Leading zeros are allowed; whitespace, signs, separators and `0x` are forbidden. Values above U+10FFFF and values in U+D800..U+DFFF are invalid. Each escape is validated independently, so surrogate escapes never combine into a pair. Unsupported or incomplete escapes are compile-time errors.
+A `\u(...)` value above U+10FFFF or in U+D800..U+DFFF is an error; each escape is checked alone, so two surrogate escapes never form a pair. Any other or incomplete escape is an error.
 
 ```kimi
-'\u(41)'            // A
-'\u(000041)'        // A
-'\u(1f600)'         // 😀
-'\u()'              // Error: no digits
-'\u(0000041)'       // Error: seven digits
-'\u(0x41)'          // Error: prefix
-'\u(D800)'          // Error: surrogate
-'\u(110000)'        // Error: outside the Unicode range
-'\u(D83D)\u(DE00)'  // Error: each escape is a surrogate
+let a = '\u(41)'            // A
+let b = '\u(1f600)'         // 😀
+let c = '\u()'              // Error: no digits
+let d = '\u(0000041)'       // Error: seven digits
+let e = '\u(D83D)'          // Error: surrogate
 ```
-
-String interpolation is defined under [escaped strings](#291-escaped-strings).
 
 ## 2.8. Character literals
 
-A `CharLiteral` has Type `char`. It encloses one directly written Unicode scalar value or one [Character Escape](#27-character-escapes) in single quotation marks; the delimiters are not part of the value.
+A Char Literal has Type `char` and holds, between single quotation marks, exactly one Unicode scalar value written directly or as an escape ([§2.7](#27-character-escapes)). A `char` is one scalar value, not a displayed character, so a lone combining mark is valid; the content is not normalized.
 
-```text
-CharLiteral = "'" (DirectScalar | CharacterEscape) "'"
-```
-
-### 2.8.1. Content and validation
-
-After escape processing, the content must be exactly one Unicode scalar value. `DirectScalar` is any scalar value except the following, which must be escaped:
-
-| Excluded direct content | Code points |
-| --- | --- |
-| Apostrophe and backslash | U+0027, U+005C |
-| Controls | U+0000..U+001F, U+007F..U+009F |
-| Line and paragraph separators | U+2028, U+2029 |
-
-A Char Literal cannot contain a physical line break or tab and does not support interpolation. Violations are compile-time errors.
+These must be escaped: the apostrophe and backslash, controls U+0000..U+001F and U+007F..U+009F, and U+2028 and U+2029. A Char Literal has no interpolation.
 
 ```kimi
-let letter: char = 'A'       // U+0041
-let euro: char = '€'         // U+20AC
-let emoji: char = '😀'       // U+1F600
+let letter: char = 'A'
+let euro: char = '€'
 let quote: char = '\''
-let slash: char = '\\'
-let tab: char = '\t'
-let line: char = '\n'
-let separator: char = '\u(2028)'
-let empty = ''              // Error: no scalar value
-let pair = 'ab'             // Error: two scalar values
-let flag = '🇯🇵'            // Error: two scalar values
-let interpolation = '\(letter)' // Error: interpolation is not supported
+let mark: char = '\u(301)'     // A combining mark alone
+let empty = ''                 // Error: no scalar value
+let pair = 'ab'                // Error: two scalar values
+let accent = 'e\u(301)'        // Error: two scalar values
+let flag = '🇯🇵'               // Error: two scalar values
 ```
-
-### 2.8.2. Normalization and displayed characters
-
-The compiler does not normalize Char Literal content; validation uses the content after escape processing. A `char` is one scalar value, not a grapheme cluster or displayed character, so a lone combining mark is valid.
-
-```kimi
-'é'           // Valid: U+00E9
-'\u(E9)'      // Valid: U+00E9
-'e\u(301)'    // Error: U+0065 and U+0301
-'\u(301)'     // Valid: one combining mark
-```
-
-The front end preserves the original spelling of a Char Literal when writing the syntax tree.
 
 ## 2.9. String literals
 
-A `StringLiteral` produces UTF-8 text of Type `string`. Both forms may span one or more lines:
+A string literal has Type `string` and produces UTF-8 text. Both forms may span lines.
 
-| Form | Delimiter | Backslash escapes | Interpolation |
-| ---- | --------- | ----------------- | ------------- |
-| Escaped string | One double quotation mark (`"`) on each side | Yes | Yes |
-| Raw string | The same number (at least three) of double quotation marks on each side | No | No |
+| Form | Delimiter | Escapes | Interpolation |
+| --- | --- | --- | --- |
+| Escaped string | one `"` on each side | yes | yes |
+| Raw string | the same run of three or more `"` on each side | no | no |
 
-The delimiters are not part of the value. In both forms, each physical LF, CRLF or CR in the text contributes one LF. No spaces, indentation, initial newline or final newline are stripped. Escape results and interpolated values are not normalized; write `\r` in an escaped string for an explicit CR. Lines inside a literal do not affect the enclosing layout (§2.2.1).
+String content may contain any Unicode scalar value directly, including controls, tab, U+2028 and U+2029, except the closing delimiter and, in an escaped string, an unescaped `\`. The Char Literal exclusions ([§2.8](#28-character-literals)) do not apply to strings.
 
-### 2.9.1. Escaped strings
+Each line ending inside a literal contributes one LF, whatever its source form. No indentation or initial or final newline is removed, and nothing is normalized. Write `\r` for an explicit CR. Literal text does not take part in layout ([§F.4.1](appendices/F-syntax-summary.md#f41-lines-indentation-and-bodies)).
 
-In an escaped string, a backslash introduces one of the shared [Character Escapes](#27-character-escapes) or an interpolation.
+### 2.9.1. Escaped strings and interpolation
+
+In an escaped string, `\` starts an escape ([§2.7](#27-character-escapes)) or an interpolation. `\(expression)` inserts the text of the expression's value ([§12.4.2](12-expressions.md#1242-interpolated-strings)). The interpolation ends at its matching `)`, found with ordinary tokenization, so parentheses inside nested literals and comments do not count. Its layout follows [§F.4.1](appendices/F-syntax-summary.md#f41-lines-indentation-and-bodies). Nesting depth limits are implementation-defined.
 
 ```kimi
-"Hello, world"
-"First line\nSecond line"
-"
+let greeting = "Hello, \(name)."
+let total = "Total: \(price * quantity)"
+let lines = "First line\nSecond line"
+let block = "
 First line
 Second line
-"
+"                                  // Starts and ends with LF
 ```
-
-**Interpolation.** `\(expression)` inserts the string representation of a Kimigayo expression; its value follows [interpolation formatting](12-expressions.md#1233-interpolation-formatting).
-
-```kimi
-"Hello, \(name)."
-"Total: \(price * quantity)"
-```
-
-The interpolation ends at its matching `)`, found with ordinary expression tokenization, including Char Literals, escaped and raw strings, nested interpolations and comments; parentheses inside those tokens do not change the depth. Missing delimiters and malformed nested tokens are errors. An interpolated expression has its own delimiter and layout context, so its newlines cannot close an outer source body. The language imposes no fixed nesting limit; an implementation may document a finite resource limit and must diagnose exceeding it rather than truncate or misparse the source.
 
 ### 2.9.2. Raw strings
 
-In a raw string, backslashes, line breaks and interpolation-like text are ordinary content; no escape processing or interpolation occurs.
+In a raw string, backslashes, line breaks and `\(` are ordinary content.
+
+At the start of a string token, count the run of `"`. One begins an escaped string, exactly two are the empty string `""`, and a run of N ≥ 3 begins a raw string with delimiter length N. The opening run is never split, so raw string content cannot begin with `"`; write such text as an escaped string. The first later run of M ≥ N quotes ends the raw string: its first M − N quotes are content and its last N are the delimiter. Shorter runs are content, so `""""""` begins an unterminated raw string, not an empty one. Adjacent string literals are never joined.
 
 ```kimi
-"""C:\Users\name\file.txt"""
-"""
-First line
-Second line
-"""
+let path = """C:\Users\name\file.txt"""
+let token = """"The token """ appears here.""""
+let tail = """text""""             // Content is text"
+let a = """"x""""                  // Content is x
+let b = "\"x\""                    // Content is "x"
 ```
-
-A delimiter of `N` quotation marks permits shorter quote runs in the content, so a longer delimiter allows longer runs; four quotation marks allow a literal `"""`:
-
-```kimi
-""""The token """ appears here.""""
-```
-
-**Delimiter selection.** At the start of a string token, count the maximal run of consecutive double quotation marks. One quote begins an escaped string; exactly two form the empty escaped string `""`; a run of N ≥ 3 begins a raw string with delimiter length N. The opening run is never split into an opening and a closing delimiter; for example, six quotes followed by end of file are an unterminated raw string, not an empty raw string.
-
-After the opening run, the first maximal quote run of length M ≥ N terminates the raw string: its first M − N quotes are content and its last N quotes are the closing delimiter. Shorter runs are content. The entire terminating run belongs to this token, and adjacent string tokens are never concatenated implicitly. Thus `"""text""""` has content `text"`. Use `""` for empty text; a raw string that contains a physical newline is not empty.

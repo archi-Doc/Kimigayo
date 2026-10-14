@@ -68,8 +68,8 @@ function specTableSpellings(markdownText: string, header: string): string[] {
   return spellings;
 }
 
-test('colors every reserved keyword of SPEC 2.5.1 as a keyword', () => {
-  const lexical = readFileSync(path.join(repositoryRoot, 'docs/spec/02-source-and-lexical-structure.md'), 'utf8');
+test('colors every reserved word of SPEC F.3.1 as a keyword', () => {
+  const lexical = readFileSync(path.join(repositoryRoot, 'docs/spec/appendices/F-syntax-summary.md'), 'utf8');
   const reserved = specTableSpellings(lexical, 'Reserved class');
   assert.ok(reserved.length >= 50, `only ${reserved.length} reserved keywords were read from the SPEC table`);
   const keywordScopes = ['keyword', 'storage', 'constant.language', 'variable.language', 'support.type.primitive'];

@@ -18,7 +18,7 @@ P34 (rc/arc shared objects, shared object track U7) is IN_PROGRESS. The 2026-10-
 
 Severity: **W** wrong code, **G** accepted by check then `GenerationFailed_Kd`, **L** a Language code for a permitted form, **U** a located Unsupported code (acceptable boundary, to implement).
 
-### R1. Selection does not model the object layer reached through reference layers (SPEC 3.4.1, 7.3, 13.5.5.1)
+### R1. Selection does not model the object layer reached through reference layers (SPEC 3.4.3, 7.3, 13.5.5)
 
 Selection passes `ref`/`uniq` layers and stops at an obj/rc/arc/objref/objuniq layer. No single function computes that stop and its authority; Binding, Ownership and Emission each peel one layer or guess from syntax.
 
@@ -30,7 +30,7 @@ Selection passes `ref`/`uniq` layers and stops at an obj/rc/arc/objref/objuniq l
 
 Root fix: one selection model (all ref/uniq layers, then one object layer, with the nearest shared layer) used by Binding authority (PathAuthority, write gate, IsBarePlace), receiver adaptation (AdaptInput, ReceiverThroughLayers recording the prepared reference, TryPayloadProjection), Ownership (lend the held object's view then payload by reusing `BorrowStoredObject`'s tail; one "lends through the stored reference" predicate at every stored site) and Emission (base check fails closed when the core is not a struct value). Replace the separate `IndirectObjectCallee` limit in `Binding.ValueCalls`. Reviews: drop any accessor-only guard; check pair layers (weakest admitted case), get-only Property writes (keep their code), `@move` through a held handle, user-index writes.
 
-### R2. In-place operand consumers bypass the common Place route (SPEC 13.4, 13.5.5.1)
+### R2. In-place operand consumers bypass the common Place route (SPEC 13.4, 13.5.5)
 
 - **W** String comparison use-after-free: `let r = s@ref; if r == take(s@move)` and `let view = values@ref; view[0] == take(values@move)` are accepted and read freed memory. Cause: the comparison is not a use of its operands, so the left reference's Loan ends before the right operand runs.
 - **G** `h@follow@ref == "abc"`, `s@ref == "abc"`, `g@follow@ref.length`, `r@follow@ref[1]`. Cause: `BodyLowering.ValidateStringInspection` and `LowerSequence` match the operation's source by exact syntax equality.
@@ -40,7 +40,7 @@ Root fix: make the comparison value a use of both operand Places (no extra opera
 
 ### R3. Temporary Loan roots are an allow-list
 
-`OwnershipBody.IsTemporaryOriginRoot` and the `BorrowStruct` value route keep separate lists of materialized temporary Types. Generic Parameter/AssociatedProjection/TargetProjection temporaries are not roots, so `keep<T>(make: () -> T)` with `make()@ref` used later passes the definition and fails only at an instance (SPEC 8.10; STATUS limit). Root fix: one shared predicate, including generic Types; run the whole suite.
+`OwnershipBody.IsTemporaryOriginRoot` and the `BorrowStruct` value route keep separate lists of materialized temporary Types. Generic Parameter/AssociatedProjection/TargetProjection temporaries are not roots, so `keep<T>(make: () -> T)` with `make()@ref` used later passes the definition and fails only at an instance (SPEC 8.15; STATUS limit). Root fix: one shared predicate, including generic Types; run the whole suite.
 
 ### R4. obj payload content writes record no Loan on the handle
 

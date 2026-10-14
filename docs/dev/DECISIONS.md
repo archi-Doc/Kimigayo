@@ -42,7 +42,7 @@ rules that result from them.
     attempts a smaller design and classifies findings; two rounds on one family go to the owner. Roles and the two
     senses of "owner" are defined.
   - Reasons: concept and token counts favoured a design that hid a distinction (R4 U0a design A dropped independent
-    records and was revised after review under SPEC 23.3.6); "the local patch and why it is rejected" presupposed
+    records and was revised after review under SPEC 23.1); "the local patch and why it is rejected" presupposed
     rejecting correct owner-local fixes; shape-based sharing and generic tables can merge different contracts; path
     enumeration did not converge where a Type-level fix did (P26/G75).
   - Rejected: keeping counts as the first criterion; deleting the table-row rule (it is the target structure,
@@ -340,7 +340,7 @@ rules that result from them.
 - **R3-6** `MirDefKey` is keyed by `BindingSymbol` until R7's declaration table.
 - **R3-7** `Problem(Code, SourceRef Subject)` stays minimal until R6.
 - **R3-8** Default expansion stops at 65,536 MIR statements per expanded body with the Resource code
-  `DefaultExpansionLimit_Kd` (IMPL §21.3.5, plan §16-10).
+  `DefaultExpansionLimit_Kd` (IMPL §21.3.2, plan §16-10).
 - **R3-9** (owner) An Array's or Dictionary's `capacity` is the temporary `IntrinsicId.Capacity`
   (`Call(Intrinsic(Capacity), [&handle])`). R5 reads the field under the current layout rules; R8 removes it with the
   representation structs. Rejected: deferring to R5 (the same choice later, plus an R3 gate exception); pulling R8's
@@ -376,7 +376,7 @@ rules that result from them.
   and the flag set and clear points; R5 code generation reads it. Rejected: rewriting MIR in place (verdicts differ per
   view, and insertions break ranges). Refined by R4-M6a.
 - **R4-M7** A3's missing fact is `MirBody.MustNotComplete(block, SourceRef)`, written by the builder and range-checked by
-  the validator; it is not a vocabulary member. Rejected: inferring it from Unreachable (SPEC 14.9.2 forbids pruning).
+  the validator; it is not a vocabulary member. Rejected: inferring it from Unreachable (SPEC 14.2.2 forbids pruning).
   The row shape is superseded by R4-M7a.
 - **R4-M8** The definition-stage capability check (A3b) moves to R5 with the single capability table; the R4 ledger
   excludes capability records.
@@ -450,13 +450,13 @@ rules that result from them.
   of `Compilation.Problems` (order-dependent; computing SourceRefs numbers unnumbered nodes under the observer) and its
   shipping only the hook in U0b (two parallel analysis units would invent the driver and record).
 - **R4-M18** (2026-10-12, main session; two independent designs: A chosen with B's table-free report, publication rule and
-  dependent adaptations; revised after the independent review for SPEC 23.3.6) The Semantics case bound (`PairBinder.CaseBound`,
-  64; SPEC 8.10, 23.3.6.1 Resource) has one owner. `Binding.CaseLimits` decides it once per definition and pass, after the
+  dependent adaptations; revised after the independent review for SPEC 23.1) The Semantics case bound (`PairBinder.CaseBound`,
+  64; SPEC 8.15, 23.1.1 Resource) has one owner. `Binding.CaseLimits` decides it once per definition and pass, after the
   signature and before the parts are bound: a function or Property whose defaults, base initializer, body, initializer or accessor
   bodies would be verified over `PairBinder.CaseProduct` > 64 cases fails with CaseLimit (only as its first failure) and reports
   `OwnershipCaseLimit_Kd` once, a function at its signature, a Property at its declaration and a synthesized constructor at its
   structure, the count recomputed from its binders at report time (no table). Its parts are still bound, so their independent
-  records stay visible (SPEC 23.3.6.4), but they are not verified per case: a case adaptation inside it is a dependent of the
+  records stay visible (SPEC 23.1.2), but they are not verified per case: a case adaptation inside it is a dependent of the
   CaseLimit failure (no record, no row enumeration), and the HIR publishes a definition's parts (bodies and defaults) only when
   Binding resolved the definition, a rule of every unresolved function, so no MIR body, Closure or default template of it exists
   and a call omitting its default takes an Opaque value. Its signature stays valid (`KeepsSignature`), so its calls are checked
@@ -466,11 +466,11 @@ rules that result from them.
   longer applies; the code is a Binding record. Deleted: the old analysis's check, `OwnershipFailure.CaseLimit` and
   `OwnershipAnalysis.CaseBound`, the `Ownership.CaseLimit` requirement, and the adaptation product check, 64-row cap and cause map.
   Rejected: a driver skip or assertion (a consumer deciding a producer's contract); leaving the parts unbound (design A's first
-  form: it hides their independent errors, SPEC 23.3.6); MIR deciding the bound; a non-form failure (order-dependent caller
+  form: it hides their independent errors, SPEC 23.1); MIR deciding the bound; a non-form failure (order-dependent caller
   records); a template guard on an unset Op (Binding.Check leaves no node unvisited before publication); a Koto-keyed count table.
   Diagnostic sets change only in already-rejected programs; acceptance does not change.
 - **R4-M19** (owner O1, 2026-10-12; two designs compared, the first taken with two parts of the second). An explicit case
-  adaptation (SPEC 8.9, 13.5.3), whose operation each Semantics case selects, is the one case-dependent rvalue
+  adaptation (SPEC 8.14, 13.5.3), whose operation each Semantics case selects, is the one case-dependent rvalue
   `MirRvalueKind.Adapt` (KR1003: 9 → 10). Operand 0 is the by-value acquisition (a written Place's Copy, a temporary's Move);
   operand 1 is the TypeToken of Binding's source Type, since `ExplicitAdaptationPlan.Select` decides by interned identity and
   the operand Place's MIR Type may differ from Binding's in Origins. Place is the payload one implicit layer below the operand
@@ -496,10 +496,10 @@ rules that result from them.
   default copy has no rows (A3 judges the template once, SPEC 7.2.3). A3 (`MirLints`) walks runtime edges only with
   `MirReach`, the one reachability walk (the validator walks all edges), seeding each row's Entry from the last row to the
   first, so each verdict is exact and each block is visited once per body. Reason R4-M7's `(block, SourceRef)` no longer
-  holds: a walk from the body's entry cannot assume entry to a failure body that only the checks reach (SPEC 14.11.2,
+  holds: a walk from the body's entry cannot assume entry to a failure body that only the checks reach (SPEC 14.11,
   14.10.3). Still rejected: inferring the end from Unreachable. Derived A3 problems (an end reached only through an Opaque
   site whose completion is undecided: an unselected `#switch`, a Binding failure whose Type may be Never) need a
-  published fact and are left to U11/R6; rejected: a body-level `#switch` rule (syntax ancestry, SPEC 23.3.6.4; a KR1006
+  published fact and are left to U11/R6; rejected: a body-level `#switch` rule (syntax ancestry, SPEC 23.1.2; a KR1006
   row) and deriving every path through an Opaque site (drops written recovered failure bodies, DIAGNOSTICS §4.3).
   Rejected also: per-row walks (quadratic), U1's dataflow framework, copying rows into copies. No temporary structure.
 - **R4-M20** (2026-10-12, planning session; design A of two independent U1 designs, with design B's three lanes) MIR dataflow.
@@ -525,13 +525,13 @@ rules that result from them.
   A1's state. `MirMoveData` keys a child path by (parent path, projection kind, argument) in a pooled table: Field, Base (one
   depth per step), ConstIndex and Downcast steps form paths; a PairLayer step is transparent (the Place itself in the owner
   case; a case-dependent access through a PairLayer that the view makes a reference ends at its outermost such step, as at a
-  Deref, SPEC 13.5.5.1); Deref and Index end a path (an access through them is an access of the prefix's path; a Move through
+  Deref, SPEC 13.5.5); Deref and Index end a path (an access through them is an access of the prefix's path; a Move through
   them has no Move Path, except through a raw pointer: an untracked Take, SPEC 5.2.3). Paths are numbered in pre-order without a
   stack, so a subtree is a range; a constructor's `_0` (`AdtDef.IsConstructor`) has a child per Field and its base. `MirInit`
   (A1) keeps three lanes, joined by union: MaybeUninit, MaybeMoved, EverInit (MaybeInit joins with A2, U5, its first reader). A
   definition needs each strict ancestor's own bit (its construction fact) initialized, reports ReassignedLet when a path
   admitting one placement was ever initialized in the binding lifetime (the paths of a `let` Var, and of a constructor's Field
-  that `AdtDef.PlacedOnce` names: a `let` Field or one with a custom `set`, SPEC 11.3.1), then initializes the subtree; a Move
+  that `AdtDef.PlacedOnce` names: a `let` Field or one with a custom `set`, SPEC 11.7), then initializes the subtree; a Move
   uninitializes and marks it moved, a Drop uninitializes it, StorageLive and StorageDead start a fresh lifetime; a use needs the
   whole subtree, own bits included, initialized on every incoming path (a complete value has both the construction fact and
   current completeness, SPEC 15.1.2, 15.1.5; MovedPlace where it may have been moved, else UninitializedPlace). Every root is
@@ -540,7 +540,7 @@ rules that result from them.
   the checks reach never wrote is no uninitialized Place. A Move without a Move Path is StaticMovePathRequired whatever its root
   (an operation check, SPEC 15.1.3: an operation that requires a Move Path is rejected when none exists; 15.1.5: a Place a
   function publishes never offers Take) and changes no state. A whole use of the return local is a delivery, checked only where
-  the runtime edges reach it (SPEC 14.10.3): a constructor's object is complete at each exit it requests (SPEC 6.2.3.5), where
+  the runtime edges reach it (SPEC 14.10.3): a constructor's object is complete at each exit it requests (SPEC 6.3.5), where
   the builder reads `_0` (FakeRead) once its body completes and at each return, before the Scope Exit whose defers cannot supply
   a Field; a Return checks nothing (every path into a constructor's Return passes an exit request, and an ordinary function's
   `_0` at its Return would show only a builder defect). A1 reads each view's uses through `MirUses.ForEach(MirCases, …)`, which
@@ -560,7 +560,7 @@ rules that result from them.
   R4-M6a (five lanes).
 - **R4-M15a** (2026-10-12, planning session; supersedes R4-M15's "A5's arena" scope) `OwnershipStorageLimit_Kd` stays the one
   Resource code; it is decided at the one place that sizes analysis arenas, `MirDataflow.Prepare` (A1's state arena now, A5's
-  Loan × point arena in U7), by byte size against the old path's limit value, 64 MiB (IMPL 21.3.5's text changes in R6). An
+  Loan × point arena in U7), by byte size against the old path's limit value, 64 MiB (IMPL 21.3.2's text changes in R6). An
   over-limit body records the code once at the body's subject and A1 does not analyze it; the driver owns that skip once A2 and
   A5 read the arena (U5, U7). Reason: the dense arena is O(heads × paths/64), and a body bounded only by the 65,536-statement
   expansion limit could otherwise exhaust memory.
@@ -602,7 +602,7 @@ rules that result from them.
   read these as ordinary Drops (a moved Field is Elide or Flag; a Field whose own Type declares a drop and that may be partly moved
   is `MovedPlace_Kd` at its Drop). A struct that declares a drop is destroyed by its destructor body alone: R5's glue calls it and
   adds no field cleanup, and `MirTypes.Destruction` does not descend into such a struct (A4 enters the body). `InlineStorage<A>`
-  releases nothing: its owner destroys what remains (its library contract in `Storage.kimi`, SPEC 22.1.2.5;
+  releases nothing: its owner destroys what remains (its library contract in `Storage.kimi`, SPEC 22.2;
   `AdtDef.IsInlineStorage`, and the old path's `AggregateLayout.cs:353` until R6). Rejected: a parts-only Drop or a receiver local
   role (O1; a second meaning of Drop in every consumer); A2 recognizing the receiver (a consumer deciding what the builder
   publishes); field cleanup in R5's glue (cannot skip moved Fields). Not temporary.
@@ -628,21 +628,21 @@ rules that result from them.
   lines, R4-M23; U7 about 150 lines, R4-M9b). Rejected: cutting R4 scope (Q1 through-reference replacement, U9's preserves
   witnesses) to R5, which would leave (b) rows at the R4 exit; raising the stage ceiling (not needed by the projection).
 - **R4-M22** (2026-10-12, planning session; design B of two independent U6 designs, with design A's classification of the
-  Binding-rejected virtual functions) A4, `MirEffects`, decides `confined` (SPEC 8.4.10.2, 8.4.10.4, 8.4.10.7, 15.6.4). Per body view a
+  Binding-rejected virtual functions) A4, `MirEffects`, decides `confined` (SPEC 8.11.2, 8.11.4, 8.11.6, 15.6.4). Per body view a
   union summary: the classes Environment, Unknown, Limit and Derived and atoms Drop(T) and Call(T, receiver) over the definition's
   abstract Types. Local facts come from `MirUses` (a mutable static's access, an environment effect, an integer made a pointer and a
   raw pointer read from an immutable static are Environment; an Opaque site's Unknown is Derived) and the terminators: a call of a
   function with a body (`MirProgram.Callee`: a default template, the function, its getter or setter) is an edge into each body the call
-  may run (`TyCtxt.Implementation`, SPEC 8.8.3: the specialization a closed key selects, else the function and each specialization its
+  may run (`TyCtxt.Implementation`, SPEC 8.13.3: the specialization a closed key selects, else the function and each specialization its
   open key may still select, the rule the old summary shares; a default template is always the original's), in the callee views its
   substitution selects (`MirCases.Views`; staticEnsure enters the static's initializer); a function without a body, and a Requirement
   callee that names a compiler function (a built-in witness), is what `TyCtxt.Bodyless` classifies for it and its Self (a built-in
   comparison of a composite Self Unclassified, a Limit: its witnesses are instantiated by the backend until R8), `ArrayClear` and
   `Replace` also destroying what lies below their first argument. A Requirement callee is either an unresolved requirement or Binding's
   resolved built-in target: a closed Self with a user witness is a Fn callee of the witness. A Requirement or dynamic Virtual call
-  takes the bounds of the caller's own premises (`TyCtxt.DispatchBounds`, plan Appendix B X2, SPEC 8.4.10.4): X2 governs the
+  takes the bounds of the caller's own premises (`TyCtxt.DispatchBounds`, plan Appendix B X2, SPEC 8.11.4): X2 governs the
   requirement calls on a generic body's abstract Types that no published summary governs. A requirement of a closed Contract (Position,
-  PositionRange) has no effect (SPEC 8.4.7: every bound); a SPEC 4.7.5 operation contributes its published row (`K` equality and
+  PositionRange) has no effect (SPEC 8.7: every bound); a SPEC 4.9.6 operation contributes its published row (`K` equality and
   destruction) through the call's substitution, never its body, which A4 does not do yet: it enters the body, so confined code calling
   Dictionary's published operations is rejected until U6b (ledger (b)). Without confined the call is Unknown, and it may destroy what
   is moved into it (rule 1); a call through a value calls its Callable input: a Closure or function item enters each body it may run
@@ -658,9 +658,9 @@ rules that result from them.
   declares a drop its destructor body alone (`AdtDef.DestructorSymbol` under `TyCtxt.Synthesized`; the body's field cleanup destroys
   the Fields, R4-M6b), an `InlineStorage` nothing (its owner destroys its contents, `AdtDef.IsInlineStorage`), a part past the walk's
   depth bound a Limit; `MirTypes.MayNeedDrop` is that walk reporting any part. A part past the depth bound and an atom whose
-  substitution fails (`TyCtxt.Apply`) are the located `Unsupported_Kd` of an instance this implementation cannot analyze (SPEC 8.10).
+  substitution fails (`TyCtxt.Apply`) are the located `Unsupported_Kd` of an instance this implementation cannot analyze (SPEC 8.15).
   Atoms compose through each edge's substitution under the caller's view: an atom still abstract there becomes the caller's (a call
-  atom first asks the caller's premises), a concrete one is resolved there, as SPEC 8.4.10.7 composes calls through the actual
+  atom first asks the caller's premises), a concrete one is resolved there, as SPEC 8.11.6 composes calls through the actual
   arguments. One worklist over every body view, seeded in program order, re-evaluates a node when a summary it read grows (dependencies
   recorded on read): the lattice is finite and the summaries only grow, so it reaches the least fixed point with no bound and no
   instance context (V16: evaluations and cold allocation linear in calls). The obligations Binding publishes (R4-M23) are judged with
@@ -675,16 +675,16 @@ rules that result from them.
   (step 2, over its closed A2 table), `Run` over the program (step 3). Rejected: counting a Drop only check edges reach (the drop tree
   a `return`'s check edge leads to would destroy the values the runtime path moved: `return l@move` in a confined witness rejected);
   porting `EffectSummary` (instance contexts and their 1024 bound, order-dependent, X2); per-body summaries with Semantics cases
-  composed like Type parameters (SPEC 8.10 never merges cases, and A2's verdict is per view); requirement calls as atoms everywhere
-  (SPEC 8.4.10.4 bounds a generic requirement call by the premises at the caller); edges to every specialization (the body a closed key
-  does not select never runs, SPEC 8.8); Tarjan SCCs (dependencies appear only while composing, when an atom becomes concrete or a call
-  reaches a Closure); no atoms (rejects confined code calling generic helpers with harmless Types and breaks SPEC 8.4.10.7's
+  composed like Type parameters (SPEC 8.15 never merges cases, and A2's verdict is per view); requirement calls as atoms everywhere
+  (SPEC 8.11.4 bounds a generic requirement call by the premises at the caller); edges to every specialization (the body a closed key
+  does not select never runs, SPEC 8.13); Tarjan SCCs (dependencies appear only while composing, when an atom becomes concrete or a call
+  reaches a Closure); no atoms (rejects confined code calling generic helpers with harmless Types and breaks SPEC 8.11.6's
   composition); a literal callee-bounds reading of X2 for destruction (rejects every confined implementation that drops an
   `Array<i32>`, O3); a per-obligation reachability walk (quadratic); a call-bound field on `MirCallee` (dump and validator churn);
   finding Callable obligations in MIR (it lacks Type formations and argument subjects); a Mir copy of the compiler-function table;
   deciding Derived in `MirReport.Add` (the cause class is A4's lattice). Supersedes R4-M9 for `EffectBoundTable`, `ImplTable`,
   `VTableDef` and `CallableBounds`: not built, since their only reader needs who owes confined and the bounds at a call; R5 builds the
-  slot tables when it reads them. Not temporary. Its SPEC 4.7.5 sentence, `ArrayClear`/`Replace` clause and composite Limit are
+  slot tables when it reads them. Not temporary. Its SPEC 4.9.6 sentence, `ArrayClear`/`Replace` clause and composite Limit are
   refined by R4-M28.
 - **R4-M23** (2026-10-12, planning session; owner approvals of 2026-10-12) The effect facts Binding publishes for A4
   (`Binding.EffectObligations.cs`, `TyCtxt.Effects.cs`). `EffectObligation(Subject, Code, Definition, Callable, Receiver, Owner)`,
@@ -704,7 +704,7 @@ rules that result from them.
   use too). No program tells it from the declaration scope: an override's implementation premises share its body scope's constraint
   environment (`PrepareVirtualOverridePremises`), so the inherited-premise test passes either way. `TyCtxt.DispatchBounds(definition,
   callee, self, contract)`: a requirement's or virtual slot's available bounds under those premises, every bound for a requirement of a
-  closed Contract (SPEC 8.4.7, kept out of `AvailableEffectBounds`, which the old path shares), null for a callee that does not
+  closed Contract (SPEC 8.7, kept out of `AvailableEffectBounds`, which the old path shares), null for a callee that does not
   dispatch; a requirement function item dispatches through its own Contract reference (`TyCtxt.ItemContract`).
   `TyCtxt.CallableBounds(definition, input, receiver)`: the bounds of an abstract Callable input's one signature (`TryCallable`, the
   selection rule of the call through it), null where it has several, a located limit until MIR carries the selected signature (an open
@@ -793,7 +793,7 @@ rules that result from them.
   guideline is waived for U7 up to about 150 lines (from about 70); measured +140 lines, +924 tokens (U7a +54, U7k +17, U7c +1,
   U7 +68).
 - **R4-M26** (2026-10-12, planning session; U6c) A selected call (`CallPlan`) and a substitution (`Subst`) hold one length entry per
-  slot, parallel to their Type arguments, the Implementation Selection Key's form (SPEC 8.8.3, IMPL 21.3.2). Their constructors
+  slot, parallel to their Type arguments, the Implementation Selection Key's form (SPEC 8.13.3, IMPL 21.3). Their constructors
   (`CallPlan.Set`, `TyCtxt.Intern`) establish it: a producer passes no lengths (the target has no length slot) or one per slot, and a
   span of another length is a broken contract (`Debug.Assert`). A function item's call context (`FunctionItemContext`), the
   Dictionary storage calls, the object factory call and the MIR builder's synthesized calls pass none, so a function item now runs
@@ -807,13 +807,13 @@ rules that result from them.
   budget has counted tokens since CR-A1, and lines overstated growth (R4 U6b: +107 lines, of which 72 were formatting with no tokens —
   KR3001 wrapping of changed long lines, braces, blank lines, comments). Exceptions granted in lines before this entry keep their
   recorded meaning (U6 R4-M23, U7 R4-M9b); units not yet landed restate theirs in tokens. Rejected: keeping the line rule.
-- **R4-M28** (2026-10-12, planning session; design B of two U6b designs with design A's witness probe) SPEC 4.7.5's published rows
+- **R4-M28** (2026-10-12, planning session; design B of two U6b designs with design A's witness probe) SPEC 4.9.6's published rows
   for A4: `PublishedRow(Runs, On, Destroys)` catalog data (`KimiLibraryCatalog.Row`, `TyCtxt.Published`) replaces
   `PublishedSummary`; A4 adds a row through the call's substitution, never the private body. A row's requirement is a `Requires`
   atom on an abstract Type (nothing where the premises declare it confined, else composed at the callers like a destruction); any
   other Type runs what `TyCtxt.Witnesses` resolves (comparison-plan leaves, a built-in target, the shared
   `Binding.ConformanceWitness`'s witness), else a Limit. Ratified departure from design B: a Type with an implementation has its
-  effects, not its premises' bounds (SPEC 8.4.10.4). A requirement call written in a generic body keeps X2 (SPEC 4.7.5 clarified).
+  effects, not its premises' bounds (SPEC 8.11.4). A requirement call written in a generic body keeps X2 (SPEC 4.9.6 clarified).
   HIR publishes a body no instance applies (checked, never generated). Refines R4-M22 and R4-M23. Rejected: per-effect flags, X2 at
   the composing node, Witnesses over RequirementImplementation only, open Types by the premises, an inapplicable override owing
   nothing. Owner exception: Binding +561 tokens. Open: published bodies unverified against rows (R6); library generics outside the

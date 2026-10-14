@@ -2,210 +2,200 @@
 
 [Specification index](../SPEC.md)
 
-Name resolution identifies declarations; overload resolution then selects an applicable operation before use-site legality is checked.
+Name resolution associates each Name with a declaration. A Type Name then goes through Type Name Selection ([§9.7](#97-type-name-selection)) and Type Legality; a call through overload resolution ([§10](10-overload-resolution-and-inference.md#10-overload-resolution-and-inference)) and use-site legality.
 
-| Term | Meaning |
-| --- | --- |
-| Binding / Name resolution | Associating source names and operations with declarations and meanings. |
-| Lookup environment | The declarations and aliases available for a lookup in one scope; extensions are a future design. |
-
-Module terms, including Compilation root, project root and source environment, follow [Chapter 18](18-modules-and-dependencies.md#18-modules-and-dependencies).
-
-Names are resolved before overloads are selected and before the operation's legality is checked:
-
-```text
-Name Resolution
-├─ Type name -> Type Name Selection -> Type Legality
-└─ Call      -> Candidate Applicability -> Best Candidate -> Usage Legality
-```
-
-**No backtracking.** Once a stage commits its result, a later failure must not select another lookup stage, declaration or overload. Inaccessible or wrong-role declarations do not commit lookup. Legitimate dependencies may defer resolution; unknown Names and unresolvable dependency cycles are errors.
-
-Language-defined lexical visibility and compile-time selection order apply first. File loading, alias order, candidate enumeration, caching, parallelism and optimization must not change resolution.
-
-During [Mod generation](../impl/20-compilation-configuration.md#2072-compilation-and-binding), these rules may produce provisional results from the declarations available so far. Such results commit neither lookup nor overload selection for the final program; final Binding runs after generation completes.
+**No backtracking.** Once a lookup stage, declaration or overload is selected, a later failure is an error and never selects another. Unknown Names and unresolvable dependency cycles are errors. File, alias and candidate order never change the result.
 
 ## 9.1. Signatures
 
-A Signature determines whether declarations may coexist in one scope:
+A Signature decides whether declarations may coexist in one scope.
 
 | Declaration | Signature |
 | --- | --- |
-| Type declaration | Name and generic parameter count |
-| Function | Name, generic parameter count, and ordered normalized parameter Types including the receiver |
-| Constructor | Declaring structure and ordered normalized parameter Types; no ordinary Name or receiver parameter |
-| Field / computed / Property Requirement | Name |
-| Enum Case | Name within its enum; no payload overloads |
+| Type declaration | Kind, Name and generic parameter count |
+| Function | Name, generic parameter count, ordered normalized parameter Types (receiver included) |
+| Constructor | Declaring structure, ordered normalized parameter Types |
+| Field, computed member, Property Requirement | Name |
+| Enum Case | Name within its enum; payloads do not overload |
 
-**GenericArity** counts generic argument slots, including function length slots; a pair counts as one. **OriginArity** counts the own scalar schema slots that a Type declaration's header declares; inherited slots and internal Type-argument dependencies are separate. OriginArity is not a callable-contract equality test: function contracts are compared by their completed quantifiers and relations (§15.3.7), not by a written binder count. Origin schemas govern binding and fragment compatibility, not additional overloads: `View<T> {source}` and `View<T> {left, right}` cannot coexist as same-name, same-arity Type overloads.
+In one scope, same-name Type-namespace declarations must have the same kind (group, struct, enum or contract); a kind conflict is an error whatever the arities. Same-kind declarations with different generic arities are distinct Types. Same-kind, same-arity group or struct declarations are fragments ([§6.1.2](06-declarations-and-containers.md#612-container-fragments)); other duplicates are errors. A `rootgroup` path segment that names a non-group Type of the same scope is a kind conflict; `rootgroup` never synthesizes a group beside it.
 
-Types are normalized by resolved Symbol and Kotonoha/version: transparent aliases and resolved associated-Type projections are expanded, and grouping and redundant `owner` prefixes are removed. Every Semantics layer is preserved. Generic expressions are represented structurally by declared binder and slot position:
+The generic parameter count (**GenericArity**) includes length slots; a pair counts as one. Origin schemas do not overload: `View<T> {source}` and `View<T> {left, right}` cannot coexist.
 
-| Source expression | Normalized expression |
+**Normalization.** Each Name resolves to its Symbol and Kotonoha; transparent aliases and completed associated-Type projections ([§8.6](08-generics-constraints-and-contracts.md#86-conformance)) are expanded; grouping and redundant `owner` prefixes are removed; every Semantics layer is kept. Generic positions become structural:
+
+| Source | Normalized |
 | --- | --- |
-| Ordinary `T` | `Slot(i)` |
-| Pair `s` / pair `T` | `OuterSemantics(Slot(i))` / `DirectTarget(Slot(i))` |
-| Original pair `s/T` | `Slot(i)` |
+| Ordinary `T`, or an original `s/T` | `Slot(i)` |
+| Pair binder `s` / pair target `T` | `OuterSemantics(Slot(i))` / `DirectTarget(Slot(i))` |
 | `s` applied to another slot `U` | `Apply(OuterSemantics(Slot(i)), Slot(j))` |
-| Length `N` / fixed array | `LengthSlot(i)` / `FixedArray(LengthExpression, ElementType)`; lengths compare under [length normalization](04-arrays-indexing-and-slices.md#44-function-length-parameters) |
+| Length `N` / fixed array | `LengthSlot(i)` / `FixedArray(Length, Element)`, lengths as in [§4.4](04-arrays-indexing-and-slices.md#44-function-length-parameters) |
+| `Self` | Struct or enum: `S<Slot(0), …>`; Contract: the conforming-Type binder `SelfSlot` |
 
-These rewrites apply recursively, and comparison is by structural alpha-equivalence. There is no simplification from accidental equality after instantiation or from arbitrary Constraint proofs. The pair target `T` alone is not `Slot(i)`. Slot kind controls binding and validation but cannot by itself distinguish overloads: `f<T>(value: T)` and `f<s/U>(value: s/U)` conflict. `ref/T` and `uniq/T` remain distinct, including as receivers, so distinct receiver shapes give distinct Signatures; the receiver-shape rule of [§7.3](07-functions-and-callable-values.md#73-explicit-receivers) still forbids `read(self: ref/Self)` and `read(self: uniq/Self)` under one Name. Applied Semantics distinguish use-site Types, not Container identities.
+Comparison is structural alpha-equivalence, never simplified by instantiation or Constraint proofs. Slot kind does not distinguish Signatures: `f<T>(value: T)` and `f<s/U>(value: s/U)` conflict. `ref/T` and `uniq/T` stay distinct, though [§7.3](07-functions-and-callable-values.md#73-receivers) forbids two receiver shapes under one Name. A receiver is compared like any other parameter; its name does not matter.
 
-For Signature comparison only, Origin names, lists and lifetime relations are excluded; complete Types and Origin contracts are kept for semantic checks. Return Types and result modes (§7.1.1), external and internal parameter names, defaults, the argument-name contract's K (§7.2.2), access, `unsafe` and Constraints cannot by themselves distinguish overloads. A task slot is not part of the parameter Types, and one function group has one task-slot shape ([§24.2.3](24-suspension-and-asynchronous-tasks.md#2423-not-a-parameter-and-one-shape-per-group)), so a task slot never distinguishes Signatures.
-
-An **API signature**, used for [accessibility checks](#932-api-signature-accessibility), includes the Types and requirements a declaration exposes, including results and Constraints. It is broader than the Signature used for overload identity; a component excluded from overload identity is still checked for accessibility.
+These never distinguish Signatures: Origins and their relations, return Types and result modes, parameter names, defaults, the argument-name contract ([§7.2.2](07-functions-and-callable-values.md#722-name-contract-and-defaults)), access, `unsafe`, Constraints and task slots ([§24.2.3](24-suspension-and-asynchronous-tasks.md#2423-not-a-parameter-one-shape-per-function-group)). Duplicate Signatures are errors; distinct ones may still conflict under the parameter acquisition shape ([§7.4](07-functions-and-callable-values.md#74-parameter-acquisition-shape)). Equal Signatures from different Containers make a use ambiguous unless overload resolution selects one.
 
 ```kimi
-struct Reader
-    func read(self: ref/Self) -> i32 => 0
-    func read(self: ref/Self, offset: i32) -> i32 => 0 // Distinct parameter list; the same receiver shape.
+struct Box
+struct Box<T>                  // Valid: same kind, different arity.
+// group Box                   // Error: kind conflict with struct Box.
+struct A<T>
+// rootgroup A.B               // Error: A is a struct in this scope.
 
-func identity<T>(value: T) -> T => value
-func identity<U>(value: U) -> U => value // Error: same normalized Signature.
+struct Reader
+    func read(self: ref/Self, at: i32) -> i32 => 0
+    // func read(r: ref/Reader, i: i32) -> i32 => 0 // Error: same Signature.
+
+func identity<T>(value: T) -> T => value@move
+// func identity<U>(value: U) -> U => value@move     // Error: same Signature.
 ```
 
-Duplicate Signatures are declaration errors. Distinct Symbols imported from different Containers may have the same shape; a use is then ambiguous unless the overload rules select one. Header-name agreement between fragments is a separate rule from parameter-name normalization between different function declarations. Distinct Signatures may still be invalid together: the functions of one Name acquire corresponding parameters of overlapping Types in one mode ([parameter acquisition shape](07-functions-and-callable-values.md#731-parameter-acquisition-shape)), a rule separate from Signature identity.
+## 9.2. Namespaces and lookup roles
 
-## 9.2. Namespaces, roles, and visibility
-
-Namespaces separate declaration kinds; a **Lookup Role** filters candidates by their syntactic use before lookup stops.
+A **Lookup Role**, chosen by the syntactic use, filters the candidates of a namespace.
 
 | Namespace | Declarations |
 | --- | --- |
-| Type | Containers, Kotonoha reference names, named aliases, Core and Semantics parameters, associated Types, `Self`, and built-in Semantics/category requirements |
-| Value | Functions, Fields, computed members, enum Cases, parameters, locals, local functions, function length parameters |
-| Origin | Origin declarations |
-| Label | Labels; they use the dedicated transfer-target rules |
+| Type | Containers, Kotonoha reference names, named aliases, Type parameters, pair binders, associated Types, `Self`, built-in Semantics and categories |
+| Value | Functions, Fields, computed members, enum Cases, parameters, locals, length parameters |
+| Origin / Label | Origins / Labels |
 
 | Lookup Role | Namespace | Eligible declarations |
 | --- | --- | --- |
-| Core | Type | Structures, enums, associated Types, `Self`, and generic bindings proven to meet this role |
-| Object View Target | Type | Cores or runtime Contracts; instantiation and runtime usability are validated after selection |
-| Type Semantics | Type | Semantics parameters and language-defined Semantics |
-| Qualifier | Type | Groups, Kotonoha references, and Types that can qualify members |
-| Requirement | Type | Capabilities, Types, Semantics and categories allowed by requirement syntax |
-| Declaration Container | Type | Containers allowed as an alias or other Container target |
-| Value | Value | All value declarations, including non-callable values |
-| Enum Case | Value | Cases of the enum fixed by a Case-reference qualifier or the expected Type |
-| Origin / Label | Corresponding namespace | Origin / Label declarations |
+| Core | Type | Structures, enums, associated Types, `Self`, Type parameters and pair targets |
+| Object View Target | Type | Cores and runtime Contracts |
+| Type Semantics | Type | Pair binders and language-defined Semantics |
+| Qualifier | Type | Groups, Kotonoha references and Types that can qualify members |
+| Requirement | Type | What requirement syntax admits |
+| Declaration Container | Type | Groups, structs, enums, contracts and Kotonoha references |
+| Value | Value | All value declarations, callable or not |
+| Enum Case | Value | Cases of the enum fixed by a qualifier or the expected Type; never an unqualified Name ([§9.5](#95-unqualified-lookup)) |
 
-A declaration may serve several roles; for example, a group is a Qualifier but not a Core. Role filtering does not inspect generic arity, argument Types or labels, expected results, satisfied Constraints or the existence of a later member. Object-target syntax selects the View Target role, and a later ObjectViewCompatible failure does not reopen lookup. There is no callable-only role for `f()`.
+Role filtering looks only at the declaration kind and the syntactic use, never at arity, arguments, expected results, Constraints or later members; there is no callable-only role. Object-target syntax selects the Object View Target role. After selection, Type Legality checks that the binding may be used in that role under its declared Constraints ([§8.1.1](08-generics-constraints-and-contracts.md#811-type-slots-and-pair-parameters)); a failure there, or a later ObjectViewCompatible failure, is an error and never resumes lookup outward.
 
-Type and Value names may coexist. Within one namespace and scope, only valid Container merging, distinct Type Signatures and function overloads permit repeated names. Different roles do not permit conflicting declarations such as `group X` and `struct X` in the same scope.
-
-**Local visibility.** A local becomes visible after its declaration; its own initializer uses the outer environment. Inner blocks may shadow outer locals, but a block cannot redeclare a local name. Parameters and the immediate function body share one declaration space for duplicate checks. Local functions are visible from block entry and may overload by Signature, but cannot collide with a local or parameter in that space. Container members allow forward references, without permission to read uninitialized values.
+Type and Value names may coexist. In one namespace and scope a Name repeats only by [§9.1](#91-signatures). Origin and Label lookup never falls back to Type or Value names.
 
 ```kimi
-func example() -> i32
-    let x = 10
+struct T
+
+func f<s/T>(x: s/T, y: T) -> () => ()
+// Error: T here is the pair target, not struct T, and is not proven a value Type.
+```
+
+## 9.3. Local scopes and contextual names
+
+A local is visible after its declaration; its initializer sees the outer scope. An inner block may shadow an outer local; one block cannot declare a Name twice, and parameters share the immediate body's space. Local functions are visible from block entry, may overload, and cannot collide with a local or parameter. Container members may be used before their declaration, never to read an uninitialized value.
+
+A nested function may use outer Type parameters, but a named nested function captures no runtime local; only anonymous functions capture ([§7.7.2](07-functions-and-callable-values.md#772-captures)). Naming an outer Origin in a signature is not a capture ([§15.3.4](15-ownership-and-lifetime-analysis.md#1534-names-scope-and-quantification)). The SourceDocument execution scope is defined in [§6.1.1](06-declarations-and-containers.md#611-source-root-and-nested-containers); Pattern scopes in [§14.8.2](14-control-flow.md#1482-binding-scopes).
+
+`Self` is reserved for Type and Contract contexts. `self`, `value` and, inside a stored accessor, `storage` ([§11.3](11-properties.md#113-accessor-functions)) are contextual bindings: they cannot be redeclared while active, are never captured implicitly, and are not active inside a local named function ([§7.3](07-functions-and-callable-values.md#73-receivers)). Elsewhere `storage` is an ordinary Name.
+
+```kimi
+func example(input: i32) -> i32
+    let x = input
     if true
-        let x = x + 1       // RHS uses the outer x.
-    let result = later()    // Local functions allow forward references.
-    func later() -> i32 => 20
-    return result
+        let x = x + 1     // Valid: the initializer uses the outer x.
+    // let input = 0      // Error: a parameter and a local share one space.
+    return x
 ```
 
-Type parameters belong to their declaring function or Type scope. Nested functions may use outer Type parameters, but runtime bindings cross a Function Boundary only through the anonymous-function capture rules (§7.6.2); named nested functions do not capture runtime locals. Top-level locals and local functions stay private to their SourceDocument's execution scope.
+## 9.4. Access
 
-Pattern names follow [arm-local scopes](14-control-flow.md#1482-binding-scopes), with separate candidate and body identities. A guard candidate is a `ref/T` reference and not a capture source.
+A use needs access, a path through scopes, qualification or aliases (**Name Reachability**) and a compatible role. Aliases never widen access.
 
-`Self` is reserved and requires a Type or Contract requirement context. `self` and `value` are contextual receiver and accessor bindings and cannot be redeclared while active. The stored-accessor binding `storage` designates its own slot (§11.2) and is not a capturable local; elsewhere `storage` is an ordinary Name. Contextual runtime bindings are never captured implicitly. Origin and Label lookup never falls back to Type or Value names.
+### 9.4.1. Access levels and domains
 
-## 9.3. Accessibility and reachability
+A declaration has one access specification (syntax: `Access`, [§F.6.1](appendices/F-syntax-summary.md#f61-source-units-containers-and-attributes); order with modifiers: [§F.3.3](appendices/F-syntax-summary.md#f33-declaration-modifiers)). Protected forms apply only to structure members (nested Containers and accessors included).
 
-| Access | Scope |
+An access domain is a set expression over these atoms:
+
+- `Body(C)`: the lexical body of Container `C` with all its fragments and nested bodies;
+- `Kotonoha(K)`: all source of Kotonoha `K` (identity: [§18.4.1](18-modules-and-dependencies.md#1841-identities-and-reference-names));
+- `Derived(S)`: the bodies of every structure, present or future, deriving directly or indirectly from any construction of `S`; empty when `S` is not `open`;
+- `All`.
+
+| Access of a member of Container `C` in Kotonoha `K` | Domain |
 | --- | --- |
-| `private` (ordinary default) | Declaring Container and bodies lexically nested within it |
-| `internal` | Same Kotonoha |
-| `protected` | Declaring structure and bodies of its directly or indirectly derived structures |
-| `protected internal` | Same Kotonoha **or** the protected scope |
-| `private protected` | Same Kotonoha **and** the protected scope |
-| `public` | Also accessible from other Kotonoha libraries, subject to enclosing restrictions |
+| `private` (default) | `Body(C)` |
+| `internal` | `Kotonoha(K)` |
+| `protected` | `Body(C) ∪ Derived(C)` |
+| `protected internal` | `Kotonoha(K) ∪ Body(C) ∪ Derived(C)` |
+| `private protected` | `Kotonoha(K) ∩ (Body(C) ∪ Derived(C))` |
+| `public` | `All` |
 
-The protected scope includes bodies lexically nested in the declaring or qualifying derived structure. Protected forms apply only to structure members, including nested Containers declared directly in a structure, and to their accessors; they are invalid on root and group declarations, group members and Contract requirements. A declaration has one access specification. Only the two compound forms shown may combine access words, in the order shown; other combinations and duplicates are errors. `open` is an inheritance modifier, not an access level. Non-inheritable structures may keep protected members but gain no derived access sites.
+The effective domain `Access(D)` intersects this with the domain of every enclosing Container; the domain of a private root declaration is `Kotonoha(K)`. A constructed generic Type's domain intersects its declaration's domain with those of its concrete arguments. There is no package or friend access.
 
-Accessibility grants permission; **Name Reachability** supplies a valid path through scopes, qualification, aliases or explicit re-exports. Both are required, together with role compatibility. Public declarations are not imported automatically. Each enclosing Container and access path must allow access, and aliases and re-exports cannot widen it. API signatures obey the domain checks below, and consumers that name their Types or requirements also need a reachable path under the [module rules](18-modules-and-dependencies.md#18-modules-and-dependencies).
+Private access follows the merged Container, not the file; a parent has no access to a child's private members. Accessor access follows [§11.3.2](11-properties.md#1132-accessor-accessibility). Enum Cases and Contract requirements take their Container's domain and admit no modifier. Once a member is selected, an inaccessible required accessor or a missing receiver is an error.
 
-Private access uses the merged Container Symbol, not the file: other fragments of that Container have access, while unrelated declarations in the same file do not. A parent gains no access to a child's private members merely by containing it. Ordinary accessors inherit their Property's access and may only narrow it. [Enum Cases](06-declarations-and-containers.md#631-cases-and-payloads) and [Contract requirements](#934-conformance-accessibility) instead take their declaring Container's effective domain and have no access modifiers of their own. Locals, parameters and contextual names use lexical visibility instead of access modifiers.
+### 9.4.2. Domain inclusion
+
+`A ⊆ B` is decided on atoms only. Write `A` as a union of intersections and `B` as an intersection of unions. `A ⊆ B` holds when every intersection of `A`, for every union `U` of `B`, either contains atoms of two different Kotonoha (it is empty) or contains an atom included in `U`. An atom is included in `U` when it is included in some atom of `U`, or when it is `Derived(S)` and `Access(S) ⊆ U`.
+
+Atom inclusion: every atom is included in itself and in `All`; `Derived(S)` of a non-`open` `S` is included in every atom; `Body(C) ⊆ Body(E)` when `E` is or encloses `C`; `Body(C) ⊆ Kotonoha(K)` when `C` belongs to `K`; `Body(C) ⊆ Derived(S)` when `C` is or is nested in a structure deriving from `S`; `Derived(S) ⊆ Derived(S')` when `S` is or derives from `S'`. No other inclusion holds. `Derived` follows the declared `open` modifiers and base clauses, never the structures of one build.
 
 ```kimi
-// A.kimi
-group Vault
-    private var secret: i32 = 7
+internal struct Secret
 
-// B.kimi
-group Vault
-    func read() -> i32 => secret       // Same merged Container: allowed.
-group Other
-    func read() -> i32 => Vault.secret // Error, even if moved to A.kimi.
+public open struct Base
+    protected func peek(value: Secret) -> () => ()
+    // Error: Derived(Base) is not included in Kotonoha(K).
 ```
 
-An inaccessible declaration is diagnostic evidence, not a candidate that stops lookup. Once a Property or member has been selected, an inaccessible required accessor or a missing receiver is an error, and outer lookup does not resume.
+### 9.4.3. Protected receivers
 
-### 9.3.1. Effective access domains and protected receivers
+From a derived structure `D`, protected access to an instance member of base `B` needs a receiver whose static Effective Core is `D` or derives from `D` (a generic receiver may use a proven base Constraint); a `B` or sibling receiver is not enough. Accessors are checked separately. The restriction does not apply inside `B`'s body, to same-Kotonoha `protected internal` access, or to non-instance declarations: Type functions, constructors and nested Containers. Inheritance never grants private access.
 
-The **effective access domain** `Access(D)` is the set of source contexts allowed by `D`'s access, intersected with the domain of every enclosing named Container. A public member of a private group therefore stays confined to that group. Private and internal root declarations are Kotonoha-local; public root declarations may be accessed from other libraries without an extra project-root restriction. Dependencies and Name Reachability still apply.
+Where the restriction applies, a protected instance function is used only as `receiver.f(...)`; a Type-qualified call (`Left.f(x)`) or Function Item (`Left.f`) of it is an error. A derived body may call an accessible protected base constructor in its base clause or as `Base.init(...)`.
 
-Domains are computed from Symbol identity, merged Container relationships and the validated inheritance graph, not from file paths or currently observed callers. Internal access refers to the originating Kotonoha, not to a package, workspace, source directory or all libraries in a build; there is no separate package or friend-module access. Declared public access must remain valid for future consumers, even if no other module references it yet. `internal` and `protected` are not linearly ordered: the former includes unrelated code in one Kotonoha, the latter can include derived code in another.
+```kimi
+open struct Base
+    protected init() => ()
+    protected virtual func f(self: objref/Self) -> i32 => 0
 
-Protected access to a member of base `B` from derived `D` requires a receiver whose static Effective Core is `D` or derived from `D`; a generic receiver may use a proven base constraint. A static `B` or a sibling of `D` is insufficient, whatever the runtime Type. Accessors are checked independently. This receiver restriction does not apply inside `B`'s lexical body, to same-Kotonoha access through `protected internal`, or to static members and other non-instance declarations such as nested Containers. `private protected` requires both the module and the protected condition. Access permission supplies neither a receiver nor an undefined conversion.
+struct Left : Base
+    init() : base() => ()
+    func make() -> Base => Base.init()   // Valid: constructors have no receiver.
+    func probe(self: objref/Self, other: objref/Base) -> i32
+        // let g = Left.f                // Error: protected Function Item outside Base.
+        // other.f()                     // Error: the receiver must be Left or derived.
+        return self.f()
 
-For generic declarations, the protected lexical scope includes structures derived from any construction of the declaration, while the instance-receiver check still uses the actual derived receiver Type. Inheritance alone never grants private access. A future extension must receive no special private or protected privilege merely by targeting a Type; its design must use its own lexical access context.
-
-For example, if `Left` and `Right` derive from `Base`, code in `Left` may use a protected `Base` Property through a `ref/Left` receiver, but not through a `ref/Base` or `ref/Right` receiver. Ownership, borrow permissions and accessor availability must also hold.
-
-### 9.3.2. API signature accessibility
-
-Every declaration `D` must satisfy, for each concrete Type or requirement `T` exposed in its API signature:
-
-```text
-Access(D) is a subset of Access(T)
+func outside() -> Base => Base.init()    // Error: Base.init is protected.
 ```
 
-The effective domains are checked, not merely the written modifiers. The rule applies to private, internal and protected declarations as well as public ones. A direct base Type must satisfy the same condition, with the derived Type as `D`. The rule is applied after declaration merging and Type normalization; an invalid exposed signature is a declaration error even if it is never used. An inferred Type is checked once it is established and cannot evade the rule.
+### 9.4.4. API signature accessibility
 
-The check covers function and constructor parameters and results (including receivers and constructed Types), enum payloads, Field, Property and accessor Types, and generic and associated-Type requirements. Payloads use the enum's domain; a Property's header and storage Type use the Property's domain; each accessor's additional signature components use that accessor's domain, and a restricted setter does not narrow the Property. Constraints are checked even when written inside a body, and exposed Origins are validated under their scope and lifetime rules.
+The **API signature** of a declaration is every Type and requirement it exposes. For each declaration `D` and each concrete Type or requirement `T` in it, `Access(D) ⊆ Access(T)` must hold ([§9.4.2](#942-domain-inclusion)), whether or not `D` is used. A direct base obeys this with the derived Type as `D`.
 
-API Types are checked recursively. A constructed generic Type's access domain is the intersection of the declaration's domain and the domains of all concrete arguments; other compound Types require every constituent to be accessible. Semantics cannot hide an inaccessible Core or View Target. Aliases are expanded. For associated projections, the qualifier, the defining requirement and any exposed concrete binding are checked, and unresolved projections keep their obligations. A Type's appearance in an API exposes neither its private fields nor its implementation bodies.
-
-Primitive Types and language-defined public requirements impose no additional restriction. Generic parameters are symbolic API parameters, not private concrete Types: their lexical declaration scope does not restrict the generic API to its body, and their declared constraints are checked instead. In particular, a public generic declaration need not restrict all future Type arguments to public Types.
+It covers parameters, receivers and results; enum payloads (enum's domain); Field and Property Types (Property's domain); each accessor's own components (its domain; a restricted setter does not narrow the Property); and requirements, including Constraints written in a body. Inferred Types, such as an unannotated Field's, are checked like written ones. It is recursive after alias expansion; Semantics cannot hide an inaccessible Core. For an associated projection the qualifier, the requirement and any exposed binding are checked. Generic parameters are symbolic: their Constraints are checked, and a public generic declaration accepts private Type arguments.
 
 ```kimi
 public group Api
     private struct Hidden
     public struct Box<T>
 
-    public func identity<T>(value: T) -> T => value
-    public func expose(value: Box<Hidden>) -> () => () // Error.
+    public func identity<T>(value: T) -> T => value@move
+    public func expose(value: Box<Hidden>) -> () => () // Error: Box<Hidden> is private to Api.
     internal func leak(value: Hidden) -> () => ()      // Error: wider than Hidden.
     private func keep(value: Hidden) -> Hidden
-        return identity<Hidden>(value) // Allowed: Hidden is accessible here.
-
-    private group Implementation
-        public func keep(value: Hidden) -> Hidden => value
-        // Allowed: both keep and Hidden are accessible only within Api's body.
+        return identity<Hidden>(value@move)            // Valid.
 ```
 
-Similarly, a generic function exposed beyond a private Contract's domain cannot name that Contract in its constraints. A public `Box<T>` may be instantiated as `Box<Hidden>` wherever `Hidden` is accessible, but that constructed Type cannot be exposed beyond `Hidden`'s domain. An internal API may use an internal Type whose domain covers the API, including a public member inside an internal Container. Accidental equality of domains in one build must not erase the protected or module conditions required for future consumers.
+### 9.4.5. Generic bodies
 
-### 9.3.3. Generic bodies and separate compilation
+A generic body resolves Names and checks access in its definition-site context and source environment ([§18](18-modules-and-dependencies.md#18-modules-and-dependencies)) wherever it is instantiated; caller aliases never add candidates. It may use private Types and helpers its API signature does not expose, and instantiation elsewhere grants the caller no access. Type arguments and Constraints are checked at the use.
 
-A generic body's access to nondependent Types and helpers is checked in the declaration's definition-site context. Deferred Binding and instantiation keep that context and the originally resolved Symbols. A public generic body may use private implementation Types or helper functions without exposing them in its API signature. Instantiation in another Kotonoha does not recheck those accesses as if the caller had written the body, does not grant the caller private access and does not require the helpers to become public.
+### 9.4.6. Conformance accessibility
 
-At a generic use, the supplied Types and constraints are checked under the normal use-site rules. A caller may supply an accessible private Type to a public generic function; instantiation does not make that concrete instance a new externally public declaration. A wrapper or other declaration that exposes the resulting constructed Type must satisfy API signature accessibility on its own. Enough private implementation metadata is kept for specialization, without making its Symbols source-addressable to consumers.
-
-### 9.3.4. Conformance accessibility
-
-Contract requirements, associated-Type requirements and required accessors cannot declare access modifiers. Their effective access is that of the declaring Contract; the ordinary `private` default does not apply.
-
-Conformance has no access modifier of its own. For Type `T`, bound Contract reference `C` and each required implementation `M`:
+For Type `T`, bound Contract reference `C` and each required implementation `M`:
 
 ```text
-Access(Conformance(T, C)) = Access(T) intersect Access(C)
-Access(Conformance(T, C)) is a subset of Access(M)
+Access(Conformance(T, C)) = Access(T) ∩ Access(C)
+Access(Conformance(T, C)) ⊆ Access(M)
 ```
 
-Effective domains, including enclosing Containers, are used instead of modifier spellings. Every ancestor conformance is checked independently; a narrower child Contract cannot narrow an ancestor conformance's implementation obligations. Conformance is never shrunk to fit a private member, and access is never bypassed with a generated witness thunk. The implementation is selected first and its access validated afterward, without retrying selection. API signature accessibility still applies to exposed Types, Constraints and associated-Type bindings.
+Each ancestor conformance is checked on its own. The implementation is selected first and its access checked afterward, without retrying selection; conformance never shrinks to fit a private member.
 
 ```kimi
 public contract Readable
@@ -213,205 +203,112 @@ public contract Readable
 
 public struct Example
     Self is Readable
-    private var storedValue: i32 = 0
+    private var stored: i32 = 0
     public computed value: i32
-        get(self: ref/Self) -> i32 => self.storedValue
-        private set(self: uniq/Self, value: i32) -> () => self.storedValue = value
+        get(self: ref/Self) -> i32 => self.stored        // Required: must be public.
+        private set(self: uniq/Self, value: i32) -> () => self.stored = value
 ```
 
-The required getter is public, and the extra setter may be private; a private getter would fail this conformance. Required accessors are checked separately, and additional accessors follow the ordinary access rules.
-
-## 9.4. Unqualified lookup
+## 9.5. Unqualified lookup
 
 For the required namespace and role, lookup searches these stages in order:
 
-1. The current local scope, then each enclosing lexical and parameter scope separately.
+1. The local scope, then each enclosing lexical and parameter scope. For a root function declaration these include its document's execution scope; Container bodies are not enclosed by it ([§6.1.1](06-declarations-and-containers.md#611-source-root-and-nested-containers)).
 2. The current Container.
-3. Each parent Container separately, up to the project root.
-4. The reserved `Kimi` and direct-dependency Kotonoha reference names in the Compilation root, for Type qualifiers only.
+3. Each parent Container, up to the project root of the use's Kotonoha.
+4. For Type qualifiers only: the reference names in the Compilation root of the use's Kotonoha ([§18](18-modules-and-dependencies.md#18-modules-and-dependencies)).
 5. The explicit aliases of the use's SourceDocument, together.
-6. The defining module's effective default aliases, together (§18.1.3).
+6. The default aliases of the defining Kotonoha, together ([§18.2.3](18-modules-and-dependencies.md#1823-default-aliases)).
 
-Type parameters and contextual names occur at their declaring lexical positions. Stage 4 finds library reference names, not arbitrary library members. A bare Adaptation Target Name in `E@X` uses the two roles specified by [explicit operations](13-operators-and-assignment.md#135-explicit-operations); conversion success never selects the role.
+Type parameters and contextual names are found at their declaring positions. A bare Adaptation Target in `E@X` uses the roles of [§13.5](13-operators-and-assignment.md#135-explicit-operations).
 
-At each stage, same-name declarations in the namespace are collected, paths to the same Symbol are deduplicated, and candidates are filtered by role and accessibility. Lookup stops at the first stage with eligible declarations. Same-name functions form one candidate set, while a function and a Field or computed member, or other distinct value kinds, conflict at that stage. Type candidates proceed to Type Name Selection.
+At each stage, same-name declarations are collected, paths to one Symbol deduplicated, and candidates filtered by role and access. Lookup stops at the first stage with eligible declarations. Same-name functions form one **function group**; a function and another value kind at one stage conflict. After the stop, wrong Type arguments, labels, Constraints, argument Types or a non-callable value are errors; lookup never searches farther. A nearer group `X` does not stop Core lookup of `X` but does stop `X.member`, even without `member`.
 
-After lookup stops, wrong Type arguments, labels, constraints or argument Types, or a non-callable value, are errors at that stage. Lookup never searches farther, even when an outer declaration would work, and arity-based indexing must keep this boundary.
-
-```kimi
-group Outer
-    func f(value: i32) -> i32 => value
-    group Inner
-        func f(value: string) -> string => value
-        func test() -> ()
-            f(1)           // Error: Inner.f requires string.
-            ::Outer.f(1)   // Explicitly selects Outer.f.
-```
-
-A nearer group `X` does not stop Core lookup for an annotation `X`, but it does stop Qualifier lookup for `X.member`; if that group lacks `member`, lookup does not switch to an outer `X`. Similarly, an integer local `f` stops Value lookup and makes `f()` a non-callable-value error.
-
-**No implicit receiver or inheritance.** In the Type and Value namespaces, an unqualified Name never supplies a receiver and never selects a declaration that a struct inherits from its bases. When stage 2 or 3 searches a Container `C`, lookup stops there with `QualificationRequired_Kd` (Error, `Language`) instead of searching outward if `C`'s own eligible declarations are all instance members, or if `C` is a struct without own eligible declarations and an examination of its base layers finds a declaration of the Name. The examination visits the direct base, then its base, one layer at a time, over the completed declaration set (§6.2.2), conditional members included, and stops at the first layer with an accessible, role-compatible declaration of the Name, as inherited ordinary lookup does (§9.5). It reads declarations only: it needs no base Type or Origin arguments and selects nothing. Accessibility is judged by the effective access domain at the use (§9.3.1); the protected receiver restriction concerns an explicit receiver and does not apply. A base's generic parameters and `Self` are not members and are never examined. A struct's base clause, with its arguments, resolves without examining that struct's own base layers; a dependency cycle that an examination still forms is an unresolvable dependency cycle, as when `struct S : S.N` is declared and resolving the base clause of the nested `N` examines the base layers of `S`, which begin with `N`. In the two-namespace exploration of §9.5, such a stop is a failed path of its namespace. Instance members are reached with `self.member` or another explicit receiver, and other inherited declarations with `Self.member` or `C.member`. The rule does not concern Origin lookup (§15.3.4) or Label lookup.
+**No implicit receiver or inheritance.** An unqualified Name never selects an enum Case, a member that needs a receiver, or an inherited declaration. If the first stage with eligible declarations has only such Cases and members, lookup stops with an error: qualification required. When stage 2 or 3 searches a struct with no own eligible declaration, it examines the base layers in order (conditional members included, [§6.2.2](06-declarations-and-containers.md#622-inheritance-and-open-structures)) and stops with the same error at the first layer with an accessible, role-compatible declaration of the Name. The examination needs no base arguments, ignores the protected receiver restriction and skips a base's generic parameters and `Self`. A struct's own base clause resolves without it; a cycle it still forms, as in `struct S : S.N`, is an unresolvable dependency cycle. This rule does not apply to Origin or Label lookup ([§15.3.4](15-ownership-and-lifetime-analysis.md#1534-names-scope-and-quantification)).
 
 ```kimi
 group Outer
     func marker() -> i32 => 1
 
-    struct Node
-
     open struct Base
         protected var count: i32 = 0
-
         public func marker() -> i32 => 25
 
-        public struct Node
-
     struct Derived : Base
-        func total(self) -> i32 => self.count + Self.marker() // Valid: both inherited members are qualified.
-
-        func root() -> i32 => ::Outer.marker() // Valid: selects Outer.marker, 1.
-
-        func keep(value: Self.Node) -> () => ()               // Valid: Base.Node (§9.6.1).
-
-        func first() -> i32 => marker()                       // Error: lookup finds Base.marker and stops.
-
-        func second(self) -> i32 => count                     // Error: an inherited instance member; write self.count.
-
-        // Error: the inherited Node; write Self.Node or ::Outer.Node.
-        func third(value: Node) -> () => ()
+        func total(self) -> i32 => self.count + Self.marker() // Valid: qualified.
+        func root() -> i32 => ::Outer.marker()                // Valid: Outer.marker.
+        func first() -> i32 => marker()          // Error: stops at Base.marker.
+        func second(self) -> i32 => count        // Error: write self.count.
 ```
 
-A bare `marker()` in a Container nested in `Derived` stops in the same way at stage 3, and one in a fragment of `Derived` without the base clause stops at stage 2.
+### 9.5.1. Aliases
 
-If all stages fail, the diagnostic prefers an inaccessible matching-role declaration, then an accessible wrong-role declaration, then an undefined Name. Exploring outer declarations for a diagnostic never makes them valid fallback targets.
+Named aliases join stage 5 in the Type namespace with their target's Qualifier role; they are not Cores. A selected alias lacking a later member never falls back. In one SourceDocument, two named aliases with one name must denote the same reference (normalized arguments included), even if unused.
 
-### 9.4.1. Named aliases, collisions, and warnings
+Members opened by opening aliases ([§18.2.1](18-modules-and-dependencies.md#1821-forms-and-targets)) are checked for collisions at use. A function group gathered there from several sources must satisfy [§7.4](07-functions-and-callable-values.md#74-parameter-acquisition-shape) and have one task-slot shape ([§24.2.3](24-suspension-and-asynchronous-tasks.md#2423-not-a-parameter-one-shape-per-function-group)); otherwise every use is an error, and `A.f` selects one source.
 
-Named aliases take part in the explicit source-alias stage in the Type namespace and keep their target's Qualifier role; they are not Cores. The Type/Value path rules of §9.5 apply without a preference for aliases. Inner eligible declarations shadow normally, and a selected qualifier that lacks a later member never falls back to another alias or an outer declaration.
+## 9.6. Qualified and inherited lookup
 
-Explicit name mappings are checked at declaration time, once reference identity is fixed. In one selected SourceDocument, equal names with equal declaration references are duplicates of one mapping, while equal names with distinct references are errors even when unused. Distinct normalized argument bindings mean distinct references. If identity is unresolved, the comparison is deferred, keeping every path's validation obligations (§18.1.2). A prior mapping is never overwritten.
+The first component of `A.B.C` is found by unqualified lookup; later components search only the selected target's members. Intermediate Type-side components are Qualifiers; the final role follows the syntax. Associated-Type projections follow [§8.5](08-generics-constraints-and-contracts.md#85-associated-types) and [§9.7.3](#973-nested-types-and-associated-projections).
 
-Conflicts with members introduced by opening aliases are checked at use, under the ordinary namespace, role, access and selection rules, with equal references deduplicated within the stage. Opened members are not expanded eagerly merely to detect collisions. A function group gathered at this stage from several declaration sources must satisfy the [parameter acquisition shape](07-functions-and-callable-values.md#731-parameter-acquisition-shape) and have one task-slot shape ([§24.2.3](24-suspension-and-asynchronous-tasks.md#2423-not-a-parameter-and-one-shape-per-group)); otherwise the use is an error whatever its arguments, and a Container-qualified Name (`A.f`) selects one source.
+Where Type and Value qualification are both possible, each namespace commits its own first stage and follows its complete path (roles, access, static or instance use); a stop under [§9.5](#95-unqualified-lookup) fails the path. The sole successful path is selected; several are ambiguous, and arguments or expected Types never decide. Paths to one Symbol count once; value accesses through different receivers are distinct paths.
 
-**Hidden-alias warning.** After selection and generation, a warning is issued at a successfully resolved and validated named alias that an earlier root qualifier hides. The candidates are the same-name project-root Type-namespace Qualifiers accessible throughout the document or, if there are none, the reserved or direct-dependency reference of that name. The warning is issued if candidates exist and none is the alias's own declaration reference. It ignores arity applicability, later members and call arguments, and does not enumerate potential uses. There is no warning for equal references, inner-only shadowing, or unresolved, invalid or conflicting aliases. The warning changes no lookup or acceptance rule.
+`::A.B` starts at the Compilation root of the use's Kotonoha ([§18](18-modules-and-dependencies.md#18-modules-and-dependencies)), ignoring locals and aliases. Root-name collisions with reference names are governed by [§18.4.1](18-modules-and-dependencies.md#1841-identities-and-reference-names).
 
-```kimi
-// If A is a direct dependency reference:
-alias A => ::Kimi.Console // Warning: choose another name.
-A.writeLine("Hello")     // Search dependency A, without fallback to Console.
-```
+**Inherited lookup.** Member lookup on a struct searches it, then its bases one layer at a time with base arguments substituted, and stops at the first layer with accessible, role-compatible declarations; its same-name functions are the whole function group. Receiver, applicability, accessor and Loan checks come later and never reopen lookup. An override adds no lookup layer ([§6.4.2](06-declarations-and-containers.md#642-override-target-selection)); a derived `f` beside an accessible base `f` is governed by [§6.2.2](06-declarations-and-containers.md#622-inheritance-and-open-structures). A new explicit Contract implementation is selected this way, then checked ([§8.6](08-generics-constraints-and-contracts.md#86-conformance)).
 
-## 9.5. Qualified and inherited lookup
-
-A valid override updates an implementation without introducing a lookup layer or hiding inherited overloads; [slot selection](virtual-dispatch.md#2-slot-identity-and-selection) fixes the original public declaration. Direct base calls retain their lexical lookup origin.
-
-The first component of `A.B.C` is resolved by ordinary lookup with its syntactic role; after that, only the selected target's members are searched, never its parents. Intermediate Type-side components are Qualifiers, and the final role follows the syntax, such as Core in a Type annotation or Declaration Container in an alias. [Associated-Type projections](08-generics-constraints-and-contracts.md#843-associated-types) such as `T.(C).Element` and the short form `T.Element` follow §8.4.3; Binding distinguishes them from ordinary qualified paths, and distinct successful interpretations remain ambiguous.
-
-Where both Type and Value qualification are syntactically possible, both are explored without preferring values:
-
-1. Commit the first eligible lookup stage independently in the Type/Qualifier namespace and in the Value namespace.
-2. Follow each complete path, checking member roles, accessibility and static/instance use; keep both paths at any genuine Type/Value branch.
-3. Select the sole successful path, report ambiguity for distinct successful paths, or report lookup failure if none succeeds.
-
-Identical references to the same Symbol are deduplicated, but value accesses with different receivers are not. Once a first component is committed within a namespace, a later failure cannot substitute an outer declaration. Call arguments and expected return Types cannot resolve a Type/Value path ambiguity, because the function-group path is chosen before overload resolution. A call needed to determine an intermediate receiver Type is resolved independently.
+**Groups gathered from Constraints.** Member lookup on a generic parameter gathers same-name requirements from its Constraints ([§8.6.4](08-generics-constraints-and-contracts.md#864-calls-through-requirements)); the gathered group is checked at the use ([§7.3.2](07-functions-and-callable-values.md#732-receiver-shape), [§7.4.4](07-functions-and-callable-values.md#744-declaration-and-call-contracts), [§24.2.3](24-suspension-and-asynchronous-tasks.md#2423-not-a-parameter-one-shape-per-function-group)).
 
 ```kimi
 group Config
     public var count: i32 = 3
 
-// Settings has a public instance Property count.
+struct Settings
+    public var count: i32 = 0
+
 func read(Config: ref/Settings) -> i32
-    return Config.count     // Error: both Type and Value paths succeed.
-// ::Config.count selects the group; renaming the parameter selects the value.
+    return Config.count                  // Error: both the Type and the Value path succeed.
 ```
 
-`::A.B` starts at the Compilation root, which contains the project-root declarations and the direct-dependency reference names. It ignores local scopes and all aliases but still checks roles and access. A project-root declaration cannot share a dependency reference name, even across namespaces; the ordinary namespace and Signature rules govern root declarations among themselves.
+### 9.6.1. Base subobject receiver projection
 
-Member lookup searches ordinary members. An accessible, role-compatible ordinary member commits lookup even if no overload applies. There is no extension stage in this revision. **Future extension constraint:** ordinary members must precede extensions, and inaccessible or wrong-role members alone must not block them. A future design must specify lexical, source-alias and default-alias enablement stages and must not automatically add argument-associated Containers.
+For `receiver.member`, when lookup selects an instance declaration of a base `B` of the receiver's static Effective Core `D`, the receiver is projected to its inline `B` subobject with base arguments substituted. Access is checked against the original receiver first. Type functions need no projection; Type-qualified calls and function values follow the ordinary argument rules after [§9.4.3](#943-protected-receivers).
 
-**Inherited ordinary lookup.** Unqualified uses never select declarations inherited from a base; §9.4 examines base layers only to stop lookup. After base arguments are substituted, lookup searches the statically selected struct and then its direct bases, one layer at a time, and commits to the first layer with accessible, role-compatible declarations. That layer's same-name functions form the entire overload set; overloads from farther bases are not merged. Inaccessible or wrong-role declarations alone do not commit lookup. Receiver compatibility, generic and argument applicability, accessors and Loans are later checks and cannot reopen lookup. Instance and Type functions share the Value role, so invalid receiver use cannot skip a nearer layer. A new explicit Contract implementation is selected this way and then checked for conformance; already inherited conformances keep their [verified mapping](08-generics-constraints-and-contracts.md#844-conformance).
+For a declared `ref/B` or `uniq/B`, projection forms the shared or exclusive Borrow or Reborrow of the subobject with the original permission. It is part of implicit receiver acquisition ([§7.3](07-functions-and-callable-values.md#73-receivers)): a bare owned Place of Type `D` is projected exclusively when its lending point is exclusively writable ([§15.1.5](15-ownership-and-lifetime-analysis.md#1515-access-operations-and-acquisition)). The receiver is evaluated once, before the arguments. A method or custom accessor borrows the whole subobject; standard Property access projects to the storage Place ([§11.2.2](11-properties.md#1122-field-paths-and-partial-moves)) and keeps the original receiver's owned, borrowed or object classification.
 
-A derived `f(string)` with an accessible base `f(i32)` is a declaration error under the [inherited-Name rule](06-declarations-and-containers.md#622-inheritance-and-open-structures), regardless of call sites. Without an eligible derived `f`, lookup finds the base group. A derived author may reuse a Name that is inaccessible to them, and the layer-commit rule still governs that case. Receiver projection (§9.5.1) adds no ordinary derived-to-base conversion.
+Projection is no conversion and plays no part in Best Candidate comparison ([§10.4](10-overload-resolution-and-inference.md#104-best-candidate)). A borrowed-receiver implementation used through it requires ObjectCallCompatible Proven ([§12.7](12-expressions.md#127-object-receiver-compatibility)), checked after overload selection; NotProven is an error and never excludes a candidate. Projection never permits whole-base Move, Replacement or a sliced owner; receiver-derived results keep its Loan. On objects it keeps identity and Dynamic Type, creates no handle or count change, and needs Owned erasure evidence ([§6.4.5](06-declarations-and-containers.md#645-receiver-safety)). It never satisfies `owner/B`, `obj/B`, `rc/B` or `arc/B`.
 
-Generic bodies use their [definition-site source environment](18-modules-and-dependencies.md#18-modules-and-dependencies), including during deferred instantiation; caller aliases and extensions never enlarge their candidate sets.
+## 9.7. Type name selection
 
-**Groups gathered from constraints.** Member lookup on a generic parameter collects the same-name requirements available from its Constraints (§8.4.6). If the requirements with receivers in such a group do not share one receiver shape ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)), two of them have corresponding parameters of different acquisition modes whose Types overlap ([§7.3.1](07-functions-and-callable-values.md#731-parameter-acquisition-shape)), or the group has two task-slot shapes ([§24.2.3](24-suspension-and-asynchronous-tasks.md#2423-not-a-parameter-and-one-shape-per-group)), the use is an error; no syntax selects among them.
+After lookup stops, Type candidates are filtered by the number and kinds of explicit Type arguments, which resolve in the use-site context. Exactly one must remain; none is a mismatch, several are ambiguous. Constraints are checked afterward, never trying another Type.
+
+A qualifier whose own Type-argument list is omitted before `.init` or a Case reference (expression or Pattern) selects zero-own-arity references if any exist, otherwise the single generic reference; several are ambiguous. Arguments and the expected Type never decide. Case argument inference is in [§6.5.2](06-declarations-and-containers.md#652-case-references).
 
 ```kimi
-contract Reader
-    func read(self) -> i32
-contract Consumer
-    func read(self: uniq/Self) -> i32
+struct Box<T>
+struct Box<T, U>
 
-func use<T>(value: uniq/T) -> i32
-    T is Reader
-    T is Consumer
-    return value.read()                    // Error: the gathered read requirements differ in receiver shape.
+let a = Box<i32>.init()               // Valid: selects Box<T>.
+// let b = Box.init()                 // Error: two generic references.
+let c = Option.Some(1)                // Valid: Option<i32>.
 ```
 
-### 9.5.1. Base subobject receiver projection
+### 9.7.1. Bound container paths
 
-For `receiver.member`, when ordinary lookup selects an instance declaration in a base `B` of the receiver's static Effective Core `D`, **Base Subobject Receiver Projection** locates that declaration's inline base subobject along the unique inheritance path, substituting base Type and Origin arguments at each layer. Accessibility, including the protected-receiver restrictions, is checked against the original receiver before projection. Static members need no projection, and Type-qualified unbound calls and function values keep the ordinary argument rules.
+Container references resolve in three steps: the path (role, access, each segment's arity); the Type and Origin arguments with lexical or base substitution; validation of every qualifier and the target. A later failure never reopens a layer.
 
-For a declaration receiver `ref/B` or `uniq/B`, the corresponding shared Borrow or exclusive Borrow or Reborrow of that subobject is formed with the original receiver's permissions; a shared receiver cannot supply exclusive access. This projection is one of the operations that implicit receiver acquisition supplies to a Receiver Expression ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)): a bare owned Place of Type `D` is projected exclusively for a `uniq/B` declaration when its lending point is exclusively writable (§15.1.5), and the checks of §7.3 apply. The source is evaluated once, before explicit call arguments, preserving its storage anchor, nested dependencies and parent Loan restrictions. A borrowed custom or computed accessor, or a method, borrows the whole base subobject. Standard Property access instead projects to its permitted storage Place under §11.1.2 without forming a whole-base borrow, and keeps the original owned, borrowed or object receiver classification.
+Outer Type arguments are omitted only where the environment supplies them: inside `Outer<T>`, `Inner<i32>` means `Outer<T>.Inner<i32>`. They are never inferred from expected Types or inputs; `Outer<i32>.Inner.init(value)` infers only `Inner`'s own slots.
 
-These are member-receiver operations only, never Exact conversions or [argument adaptations](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types). Because every function with a receiver in the selected group shares one receiver shape (§7.3), the projection is common to the group and takes no part in Best Candidate comparison (§10.4); it adds no preference based on inheritance depth and cannot reopen lookup. Candidate analysis records the operation without committing it before selection.
+Inherited Containers keep their defining declaration: with `open struct Base<T>` containing `struct Node` and `Derived : Base<i32>`, `Derived.Node` is `Base<i32>.Node`. A Container conflicts with an accessible ancestor Container of the same Type-namespace Name, whatever its arity.
 
-An ordinary borrowed-receiver implementation used through projection requires published [ObjectCallCompatible Proven](12-expressions.md#1244-object-receiver-compatibility), checked after overload selection. A use of a NotProven implementation is rejected without inspecting the private body or retrying overload selection, and the status never excludes a candidate. A method that replaces all of `self` may work on a complete `B` but cannot replace the base inside `D`. Neither projection nor an escaping unrestricted exclusive borrow may permit whole-base Move, Replacement, reconstruction or acquisition of a sliced owner. The body keeps its declaration's Self and result contract. Receiver-derived results keep the projected Loan and cannot outlive the original storage; construction, destruction and ancestor-completeness restrictions still apply.
+### 9.7.2. Origins on paths
 
-For Object Semantics, the receiver of the statically selected ObjectCallCompatible implementation is adjusted, preserving the complete object's identity, Dynamic Type, metadata and cleanup. Projection creates no standalone View expression, owning handle or count change. Exposing an object base receiver requires the common [Owned erasure evidence](virtual-dispatch.md#5-receiver-safety-and-completeness), and virtual Loans protect the complete original payload. Projection cannot satisfy an owning receiver requirement (`owner/B`, `obj/B`, `rc/B` or `arc/B`); that needs an independently permitted acquisition or an explicit object upcast.
+A nested declaration's Origin schema holds its own and inherited slots, not those of its Type arguments, Fields or bases. A suffix names the complete binding set of that occurrence, completed under [§15.3](15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations). Contract references, alias targets and Container qualifiers need a complete Origin contract; relations not supplied by inference or inherited bindings are attached to the enclosing declaration. There is no expression-level constraint block and no implicit `static`.
 
-Projection is confined to this member operation. It adds no standalone base-view expression, argument or result conversion, subtype relation, bound-method value or change to the explicit adaptation tables. The complete Sealed payload receiver path (§12.4.4) is separate: inherited Self remains the defining base, so a non-open derived Type cannot use that path to replace its base subobject.
+`(Outer<T>{outer}).Inner<U>{inner}` binds the Origins of an intermediate qualifier without creating values; intermediate obligations are kept. Binding-set labels are lexically scoped and are not Type arguments.
 
-## 9.6. Type name selection
+### 9.7.3. Nested Types and associated projections
 
-After lookup commits, Type candidates are filtered by the number and kinds of explicit Type arguments; the arguments themselves resolve in the use-site context. Exactly one candidate must remain: zero means a Type-argument mismatch and several mean ambiguity. The selected Type's Constraints are checked afterward, and a failure never tries another Type.
+Type parameters conflict with nested declarations of the same namespace; shadowing an ancestor name never removes inherited slots. Origin lookup combines scalar names, binding-set names and value carriers by nearest scope ([§15.3.4](15-ownership-and-lifetime-analysis.md#1534-names-scope-and-quantification)), never falling back past a wrong-role candidate.
 
-For example, `Box<i32>` selects `Box<T>` from a stage containing `Box<T>` and `Box<T, U>`, while a nearer stage containing only `Box<T, U>` blocks an outer `Box<T>`. Different same-arity Types imported at one stage remain ambiguous. Legitimately unresolved argument kinds defer selection with its stage fixed; malformed arguments and unknown Names are errors. Omitted Type arguments use only the inference their construct permits.
-
-For the final construction target in `A.init(...)` with its own Type-argument list omitted, first commit the ordinary lookup stage, role and access. Deduplicate equal references by declaration and normalized outer bindings. If zero-own-arity references exist, select among them; otherwise exactly one generic reference must remain. Several distinct references at the selected priority are ambiguous. Constructor inputs and the expected Type do not disambiguate this lookup. A later failure never retries another declaration or stage. Adding a same-name nongeneric Type can therefore retarget an omitted form.
-
-`Outer<i32>.Inner.init(value)` may infer only `Inner`'s own slots. `Outer.Inner.init(value)` cannot infer an unbound `Outer<T>`. Explicit Type arguments keep the ordinary arity rules above.
-
-### 9.6.1. Bound container paths
-
-Types, Contracts, refinement parents, Constraints, associated-Type selectors and aliases use the same Container-reference rules, in three steps:
-
-1. Resolve the declaration path, namespace, role, access and each segment's own arity.
-2. Bind its Type and Origin arguments and compose lexical or base substitutions.
-3. Validate access, formation, input conditions and Origins for every qualifier and the final target.
-
-A committed lookup layer is not reopened after a failed argument or Constraint check.
-
-Outer Type arguments may be omitted only when the lexical or already-resolved environment supplies them. Inside `Outer<T>`, `Inner<i32>` means `Outer<T>.Inner<i32>`. Outside it, `Outer<i32>.Inner<string>` or `Factory<i32>.make(...)` is required; missing outer arguments are never inferred from expected Types or call inputs. Function-local generic inference is unchanged, so a group function `make<T>(...)` can expose an API that infers `T`.
-
-Inherited lookup keeps the defining declaration and the substituted base environment. With `open struct Base<T>` containing `public struct Node`, and `Derived : Base<i32>`, `Derived.Node` is `Base<i32>.Node`; `Node` is not reparented and its Self is unchanged. A directly declared Container conflicts with an accessible ancestor Container of the same Type-namespace name, whatever its arity. Inaccessible ancestor names and same spellings in different namespaces follow the ordinary rules; inherited declarations are never merged.
-
-#### 9.6.1.1. Origins on paths
-
-A nested declaration's effective Origin schema contains its own and its inherited slots; internal dependencies of Type arguments, Fields and bases are not flattened into it. A suffix names the complete binding set of that occurrence. Slots are completed from inherited bindings, relations and the position rules of §15.3–4.
-
-```kimi
-struct View<T> {source}
-    let value: ref/T during source
-    public struct Tag
-    public contract Source
-        func read(self: ref/Self) -> ref/T during source
-
-func inspect<T>(value: View<T>.Tag{tag}, item: ref/T)
-    origin tag.source == item
-    ()
-```
-
-Independent Contract references, alias targets and Container qualifiers must have a complete Origin contract. Their enclosing declaration supplies attached relations where inference or inherited bindings are insufficient; there is no arbitrary expression-level constraint block and no implicit `static`.
-
-`(Outer<T>{outer}).Inner<U>{inner}` names an intermediate qualifier and a final occurrence without creating runtime values. The parenthesized qualifier must be followed by a member, including `.init`; a standalone `(View<T>{v})` is ordinary Type grouping. Intermediate dependencies are preserved and validated even when they are absent from the final schema. An associated selector may similarly use `X.(ContractPath{c}).Element`.
-
-Paths are normalized by declaration and binding identity, retaining every intermediate obligation. Binding-set labels have lexical scope and are not Type arguments; a formatter must not relocate them or their relations. Lexical `Self` bindings remain fixed. Case and runtime View restrictions keep their own rules.
-
-#### 9.6.1.2. Access and ambiguity
-
-Nested declarations follow the private and protected rules of §9.3, and merged fragments share their declaration's access rights. The effective access of a reference, and API access, include the parent Containers and the concrete outer arguments; conformance access (§9.3.4) uses the bound Contract reference.
-
-Type parameters conflict with nested declarations in the same declaration namespace, and ordinary ancestor shadowing does not remove inherited slots. Origin-context lookup combines scalar names, binding-set names and eligible value carriers by the nearest lexical scope, under the role and collision rules of §15.3.4; it never falls back past a wrong-role candidate.
-
-A nested Type is not an associated Type and adds no conformance or specification. If `T.Element` resolves both ways, the ambiguity is diagnosed. `T.(C).Element` and `T.(C).LentItem(a)` explicitly select a Contract; the unparenthesized `T.C.Element` is an ordinary nested path and never a projection. Associated candidates are deduplicated only by defining declaration plus bound defining Contract reference, including the Contract's own Type arguments; distinct bindings remain separate even when their resulting Types coincide, and explicit selection must still leave one candidate.
+A nested Type is not an associated Type. `T.(C).Element` selects Contract `C`; `T.C.Element` is a nested path. `T.Element` that resolves both ways is ambiguous. Associated candidates are deduplicated only by defining declaration and bound Contract reference.

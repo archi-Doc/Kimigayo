@@ -8,4 +8,4 @@ and an Unsafe Block. The example passes a borrow to a function that writes every
 Borrowing and metadata access do not read elements; whole-array Copy and Move do. No per-element state is tracked.
 
 Run `kimi run docs/examples/FixedArrays/FixedArrays.kimiproj`. The output is `2 7` followed by a newline.
-Required behavior is defined in [SPEC §4.3](../../spec/04-arrays-indexing-and-slices.md#43-initialization-and-inference).
+Required behavior is defined in [SPEC §4.3](../../spec/04-arrays-indexing-and-slices.md#43-array-construction).

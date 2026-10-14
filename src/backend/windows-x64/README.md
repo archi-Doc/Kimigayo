@@ -1,6 +1,6 @@
 # Windows x64 backend
 
-This directory supplies the native helpers for SPEC §21.5.7. The reviewed package is pinned in [profile.json](profile.json); [ADOPTION.md](ADOPTION.md) records its scope and validation. Local builds remain candidates until their actual hash matches the adopted catalog. The helpers are separate from the six runtime operations emitted into Kimigayo LLVM modules. LLVM **22.1.8** is the current profile version.
+This directory supplies the native helpers for SPEC §21.4.7. The reviewed package is pinned in [profile.json](profile.json); [ADOPTION.md](ADOPTION.md) records its scope and validation. Local builds remain candidates until their actual hash matches the adopted catalog. The helpers are separate from the six runtime operations emitted into Kimigayo LLVM modules. LLVM **22.1.8** is the current profile version.
 
 ## Build and test
 
@@ -40,7 +40,7 @@ Set up the checkout's `toolchain/` once from an existing matching LLVM directory
 ./src/backend/windows-x64/build.ps1
 ```
 
-Projects require neither LlvmBin nor a kimi_backend entry. Source-built compilers find this checkout's toolchain from their executable location; standalone distributions use toolchain beside Kimi.exe/Kimi.dll. `--ToolchainRoot` (scripts: `-ToolchainRoot`) or `KIMI_TOOLCHAIN_ROOT` selects another root. Legacy `--LlvmBin`/`-LlvmBin` only overrides LLVM tools. No PATH lookup occurs. See [SPEC §20.8.8](../../../docs/impl/20-compilation-configuration.md#2088-toolchain-storage-and-native-library-lifecycle) for storage, resolution, generation, installation and Application build details.
+Projects require neither LlvmBin nor a kimi_backend entry. Source-built compilers find this checkout's toolchain from their executable location; standalone distributions use toolchain beside Kimi.exe/Kimi.dll. `--ToolchainRoot` (scripts: `-ToolchainRoot`) or `KIMI_TOOLCHAIN_ROOT` selects another root. Legacy `--LlvmBin`/`-LlvmBin` only overrides LLVM tools. No PATH lookup occurs. See [SPEC §20.3.2](../../../docs/impl/20-compilation-configuration.md#2032-builds-and-artifacts) for storage, resolution, generation, installation and Application build details.
 
 No Windows SDK import library is required. Setup/update generates and validates kernel32 from the shared definition, then installs it under `toolchain/windows_x64` with its target, generator and content hashes. Normal compiler/manual builds and scalar fixtures reuse it without version probes or tool/backend identity checks. `kimi toolchain verify` rechecks installation identities and shared imports; `verify.ps1 -VerifyToolchain` invokes it once. The backend candidate builder alone retains `-AllowUnpinnedToolchain` for unverified, non-installable experiments. Profile adoption checks remain strict.
 
