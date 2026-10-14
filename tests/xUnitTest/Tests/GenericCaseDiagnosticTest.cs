@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 8.10, 23.3.6.1, 23.3.6.4: a problem that only some Semantics cases of a generic definition find carries those cases as its
+// SPEC 8.15, 23.1.1, 23.1.2: a problem that only some Semantics cases of a generic definition find carries those cases as its
 // `case` Reason fact, names them in its Note and relates the Semantics bindings it names; a problem every case finds shows no
 // case; the cases of each definition are bounded before its parts are checked.
 public sealed class GenericCaseDiagnosticTest
@@ -24,7 +24,7 @@ public sealed class GenericCaseDiagnosticTest
         Assert.Equal(Conflict.IndexOf("v@follow = x", StringComparison.Ordinal), error.Span!.Value.Start);
         var fact = Assert.Single(error.Reason!);
         Assert.Equal(("case", "s = uniq"), (fact.Name, fact.Value));
-        Assert.Contains("Found under the Semantics case s = uniq (SPEC 8.10)", error.Note, StringComparison.Ordinal);
+        Assert.Contains("Found under the Semantics case s = uniq (SPEC 8.15)", error.Note, StringComparison.Ordinal);
         // Related locations are ordered by role name (DIAGNOSTICS.md §4.4).
         Assert.Collection(
             error.Related!,
@@ -85,7 +85,7 @@ public sealed class GenericCaseDiagnosticTest
         var output = DiagnosticCorpus.Check(Conflict);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(new(output.Diagnostics, output.Sources), string.Empty);
-        Assert.Contains("Found under the Semantics case s = uniq (SPEC 8.10)", console.Text, StringComparison.Ordinal);
+        Assert.Contains("Found under the Semantics case s = uniq (SPEC 8.15)", console.Text, StringComparison.Ordinal);
         Assert.Contains("declaration:", console.Text, StringComparison.Ordinal);
         Assert.Contains("the Semantics binding s", console.Text, StringComparison.Ordinal);
     }
@@ -113,7 +113,7 @@ public sealed class GenericCaseDiagnosticTest
             x => Assert.Equal(("limit", "64"), (x.Name, x.Value)));
     }
 
-    // SPEC 8.10, 23.3.6.1: the bound counts every admitted Semantics of each binder, nine for an unconstrained one, of a definition with
+    // SPEC 8.15, 23.1.1: the bound counts every admitted Semantics of each binder, nine for an unconstrained one, of a definition with
     // parts: one unconstrained binder (9 cases) is within it, two (81) are beyond it, and a requirement without parts is never bounded.
     [Theory]
     [InlineData("func f<a/A>(p: a/A) -> ()\n    _ = p@move\npublic func main() -> ()\n    var n: i32 = 1\n    f(n)\n", null)]
@@ -132,7 +132,7 @@ public sealed class GenericCaseDiagnosticTest
         Assert.Equal((nameof(DiagnosticCode.OwnershipCaseLimit_Kd), "cases", cases), (error.Code, error.Reason![0].Name, error.Reason[0].Value));
     }
 
-    // SPEC 8.10, 23.3.6.1, 23.3.6.4: beyond the bound the definition's parts are still bound, so an independent error in its body is
+    // SPEC 8.15, 23.1.1, 23.1.2: beyond the bound the definition's parts are still bound, so an independent error in its body is
     // reported, and its signature stays valid: a caller's independent error and a call its signature rejects are reported too.
     [Fact]
     public void ADefinitionBeyondTheBoundKeepsItsIndependentRecords()
@@ -145,7 +145,7 @@ public sealed class GenericCaseDiagnosticTest
             DiagnosticCorpus.Check(Source).Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start)));
     }
 
-    // SPEC 8.10, 23.3.6.1: each definition with parts is bounded on its own: a seven-binder struct's synthesized constructor (located at the
+    // SPEC 8.15, 23.1.1: each definition with parts is bounded on its own: a seven-binder struct's synthesized constructor (located at the
     // struct), initialized Field, computed Property and method have one record each.
     [Fact]
     public void EachDefinitionOfAContainerBeyondTheBoundHasItsRecord()

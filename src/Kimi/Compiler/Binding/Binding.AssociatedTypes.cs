@@ -29,7 +29,7 @@ public sealed partial class Binding
         return contract.ContractSelf = symbol.Type;
     }
 
-    // SPEC 8.4.9: a specification qualified by a bound Contract reference (`Indexable<isize>.Element`) belongs to the
+    // SPEC 8.6.1: a specification qualified by a bound Contract reference (`Indexable<isize>.Element`) belongs to the
     // conformance of that reference or of a refinement of it, not to a sibling reference of the same declaration.
     private static bool SpecifiesContract(IsKoto clause, BindingSymbol contract)
     {
@@ -60,7 +60,7 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 8.4.9: every projection names the Contract reference that declares its associated Type, as its second component:
+    // SPEC 8.6.1: every projection names the Contract reference that declares its associated Type, as its second component:
     // a bound reference (`Indexable<isize>`), or a Contract applied to its own Type parameters (`Indexable<Key>` inside its
     // declaration), reached from the reference or refinement that supplied the name, or from the declaring Contract.
     private BoundType ProjectionContract(BindingSymbol associated, BindingSymbol? reference)
@@ -236,7 +236,7 @@ public sealed partial class Binding
             this.AddContractPremises(evidence.Contract!, type, scope);
         }
 
-        // SPEC 8.4.9: an associated Type is identified by its receiver and its declaring Contract reference.
+        // SPEC 8.6.1: an associated Type is identified by its receiver and its declaring Contract reference.
         var projection = this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [type, this.ProjectionContract(associated, reference ?? qualifier)]);
         syntax.BoundSymbol = associated;
         syntax.Right.BoundSymbol = associated;
@@ -249,7 +249,7 @@ public sealed partial class Binding
         return this.NormalizedProjection(projection, scope, applyingOrigins);
     }
 
-    // SPEC 8.4.3: a family with Origin parameters names a Type only once its Origin arguments are applied.
+    // SPEC 8.5: a family with Origin parameters names a Type only once its Origin arguments are applied.
     private bool UnappliedFamily(Koto declaration, bool applyingOrigins) => !applyingOrigins && this.AssociatedParameters(declaration).Length != 0;
 
     // A projection is normalized through the available Constraints, except while Constraint Types are bound or before the
@@ -309,7 +309,7 @@ public sealed partial class Binding
     {
         if (clause.FormationType is not null)
         {
-            this.Fail(clause, BindingFailure.InvalidConstraint); // SPEC 8.4.3: a specification fixes its Type; only a requirement may end with a formation Type.
+            this.Fail(clause, BindingFailure.InvalidConstraint); // SPEC 8.5: a specification fixes its Type; only a requirement may end with a formation Type.
             return;
         }
 
@@ -325,7 +325,7 @@ public sealed partial class Binding
             qualifier = this.TypeName(member.Left, scope, false);
             if (qualifier?.Declaration is ContractKoto && UnwrapAssociatedHead(member.Left) is GenericsKoto)
             {
-                // SPEC 8.4.9: `Indexable<isize>.Element` names the associated Type of that bound reference's conformance.
+                // SPEC 8.6.1: `Indexable<isize>.Element` names the associated Type of that bound reference's conformance.
                 qualifier = this.BindContractReference(member.Left, qualifier, scope);
             }
 
@@ -546,7 +546,7 @@ public sealed partial class Binding
         return binding.Result;
     }
 
-    // `qualifier` is the declaring Contract reference of the projection (SPEC 8.4.9); a bound reference of a Contract with Type
+    // `qualifier` is the declaring Contract reference of the projection (SPEC 8.6.1); a bound reference of a Contract with Type
     // arguments selects that conformance, and a Contract without them has one conformance per Type.
     private BoundType? ResolveAssociated(BoundType receiver, BindingSymbol associated, BindingScope scope, BoundType? qualifier = null)
     {
@@ -624,7 +624,7 @@ public sealed partial class Binding
         type = this.ApplyContractEnvironment(type, scope);
         if (this.activeRequirementContract is { } bound)
         {
-            type = this.SubstituteContractReference(type, bound); // SPEC 8.4.2: the requirement of a bound reference.
+            type = this.SubstituteContractReference(type, bound); // SPEC 8.4.3: the requirement of a bound reference.
         }
 
         // SPEC 8.4: Self of any Contract, including an ancestor whose requirement is read here, is the conforming Type. A

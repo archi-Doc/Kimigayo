@@ -12,7 +12,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 23.3.6.8: `kimi check --Format json` checks one unit through the shared check entry and writes the kimi.check/2 document
+// SPEC 23.3: `kimi check --Format json` checks one unit through the shared check entry and writes the kimi.check/2 document
 // to standard output alone; its records equal the text form's, its inputs carry the hash of the bytes that were read, and a
 // project that cannot be loaded is a Blocked document.
 public sealed class CheckJsonOutputTest : IDisposable
@@ -94,7 +94,7 @@ public sealed class CheckJsonOutputTest : IDisposable
         Assert.False(document.Accepted);
         Assert.Equal(TestPresence.No, document.TestPresence);
 
-        // Every published input carries the hash of the bytes that were read; the project file is read but named by no record (SPEC 23.3.6.3).
+        // Every published input carries the hash of the bytes that were read; the project file is read but named by no record (SPEC 23.1.2).
         Assert.Equal([Path.Combine(Path.GetDirectoryName(project)!, "main.kimi")], document.Sources.Select(static x => x.Path));
         Assert.All(document.Sources, x => Assert.Equal(Hash(x.Path), x.Sha256));
         Assert.All(document.Sources, static x => Assert.True(x.IsInput));
@@ -126,7 +126,7 @@ public sealed class CheckJsonOutputTest : IDisposable
         Assert.Equal(document, JsonSerializer.Deserialize(json, DiagnosticJsonContext.Default.CheckDocument));
     }
 
-    // SPEC 23.3.3: a project that cannot be found or loaded, and a directory without exactly one project, are Blocked documents.
+    // SPEC 23.2.2: a project that cannot be found or loaded, and a directory without exactly one project, are Blocked documents.
     [Theory]
     [InlineData("missing", "App.kimiproj", "ProjectLoadFailed_Kd")]
     [InlineData("empty", "", "ProjectLoadFailed_Kd")]

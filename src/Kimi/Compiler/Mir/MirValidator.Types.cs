@@ -10,7 +10,7 @@ internal sealed partial class MirValidator
 {
     private partial struct Checker
     {
-        // SPEC 8.9, 8.10: under each Semantics case view an Adapt selects an operation (MirCases.Adapt), and a borrow or an address takes
+        // SPEC 8.14, 8.15: under each Semantics case view an Adapt selects an operation (MirCases.Adapt), and a borrow or an address takes
         // a Place of its reference's referent Type there; one finding per Adapt, at the first view that breaks either.
         internal void Views(MirCases cases)
         {
@@ -33,10 +33,10 @@ internal sealed partial class MirValidator
             }
         }
 
-        // An integer Type, or one whose instance decides it (SPEC 8.4.7.3: a PrimitiveInteger T, Wrapping<T>).
+        // An integer Type, or one whose instance decides it (SPEC 8.7.4: a PrimitiveInteger T, Wrapping<T>).
         private static bool Integral(BoundType type) => type.HasIntegerArithmetic || type.HasAbstractPart;
 
-        // SPEC 13.5.4, 13.5.7, 5.4, 10.2: whether a Cast of its kind converts a source Type to a target Type.
+        // SPEC 13.5.4, 13.6.1, 5.4, 10.2: whether a Cast of its kind converts a source Type to a target Type.
         private static bool Casts(MirCastKind kind, BoundType source, BoundType target) => kind switch
         {
             MirCastKind.Integer or MirCastKind.Wrap => Integral(source) && Integral(target),
@@ -76,7 +76,7 @@ internal sealed partial class MirValidator
             return this.IsValid(operand.Place) && !(operand.Place.Root >= 0 && unknown[operand.Place.Root]) ? body.TypeOf(operand.Place) : null;
         }
 
-        // SPEC 8.3: Types agree (MirTypes.Agree) as they are, or as the body's premises make them (TyCtxt.Premised): E and S under `E is S`.
+        // SPEC 8.2: Types agree (MirTypes.Agree) as they are, or as the body's premises make them (TyCtxt.Premised): E and S under `E is S`.
         private readonly bool Agrees(BoundType? expected, BoundType? actual)
             => MirTypes.Agree(expected, actual) || (body.Key.Decl is { } definition && MirTypes.Agree(
                 TyCtxt.Premised(definition, expected!),
@@ -90,7 +90,7 @@ internal sealed partial class MirValidator
             }
         }
 
-        // SPEC 8.9: an Adapt acquires its operand by value, a Place's Copy or a temporary's Move, beside the token of Binding's source Type,
+        // SPEC 8.14: an Adapt acquires its operand by value, a Place's Copy or a temporary's Move, beside the token of Binding's source Type,
         // into its target Type. A Place or a constant out of range is the walk's finding.
         private readonly bool Adapts(in MirRvalue adapt, ReadOnlySpan<MirOperand> operands)
             => adapt.Type is not null && operands[0].Kind is MirOperandKind.Copy or MirOperandKind.Move &&

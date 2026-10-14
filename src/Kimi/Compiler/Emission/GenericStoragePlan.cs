@@ -12,7 +12,7 @@ namespace Kimi.Compiler;
 /// </summary>
 internal sealed partial class GenericStoragePlan
 {
-    // SPEC 21.3.5: a growing substitution key (T -> Box<T>) re-enters one template with ever new keys;
+    // SPEC 21.3.2: a growing substitution key (T -> Box<T>) re-enters one template with ever new keys;
     // finite recursion reuses its registered entry long before this bound.
     private const int GrowingKeyLimit = 16;
     private const int ContextDepthLimit = 128;
@@ -41,7 +41,7 @@ internal sealed partial class GenericStoragePlan
     private IReadOnlyDictionary<FunctionKoto, FunctionAbi>? functions;
     private int entryNames;
 
-    /// <summary>Gets or sets the mandatory bound on distinct closed contexts one generic body may generate (SPEC 21.3.5) for
+    /// <summary>Gets or sets the mandatory bound on distinct closed contexts one generic body may generate (SPEC 21.3.2) for
     /// compilations on the current thread.</summary>
     internal static int SubstitutionSetLimit
     {
@@ -61,7 +61,7 @@ internal sealed partial class GenericStoragePlan
 
     internal CallEntry? ExpansionParent { get; set; }
 
-    /// <summary>Gets a value indicating whether the last failure exceeded a mandatory generation resource limit (SPEC 21.3.5).</summary>
+    /// <summary>Gets a value indicating whether the last failure exceeded a mandatory generation resource limit (SPEC 21.3.2).</summary>
     internal bool ResourceLimitExceeded { get; private set; }
 
     internal static bool IsGeneric(FunctionKoto function)
@@ -253,7 +253,7 @@ internal sealed partial class GenericStoragePlan
     private static bool IsFormattingCallback(CallPlan call)
         => Binding.HasFormattingCallback(call);
 
-    // SPEC 7.6.4: a generic Function Item is called and erased through the instance of its bound arguments. Its entry is
+    // SPEC 7.7.4: a generic Function Item is called and erased through the instance of its bound arguments. Its entry is
     // requested where the Item is produced, under the producing body's own substitution.
     private bool PrepareFunctionItems(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, OwnershipBody body, CallPlan? call, int depth, out string? failure)
     {
@@ -262,7 +262,7 @@ internal sealed partial class GenericStoragePlan
         for (var i = 0; i < body.Operations.Count; i++)
         {
             var operation = body.Operations[i];
-            // The declared Type, not the Place Type: a generic template's first Semantics case substitutes its pair layers (SPEC 8.10).
+            // The declared Type, not the Place Type: a generic template's first Semantics case substitutes its pair layers (SPEC 8.15).
             if (operation.Kind != OwnershipOperationKind.Produce || operation.Place < 0 ||
                 operation.Source.BoundType is not { Kind: BoundTypeKind.FunctionItem } produced || (produced.Components.Count == 0 && produced.LengthArguments.Length == 0) ||
                 produced.Symbol?.Declaration is not FunctionKoto target || produced.Symbol.CompilerFunction != CompilerFunctionKind.None)
@@ -446,7 +446,7 @@ internal sealed partial class GenericStoragePlan
         this.entryCounts.TryGetValue(function, out var count);
         if (count >= SubstitutionSetLimit)
         {
-            // SPEC 21.3.5: an oversized substitution set exceeds a mandatory generation limit.
+            // SPEC 21.3.2: an oversized substitution set exceeds a mandatory generation limit.
             this.ResourceLimitExceeded = true;
             return Fail($"Generic instantiation of '{function.Name}' exceeds the substitution set limit of {SubstitutionSetLimit} distinct closed contexts.", out failure);
         }

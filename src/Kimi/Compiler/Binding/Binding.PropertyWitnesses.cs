@@ -16,7 +16,7 @@ public sealed partial class Binding
             return this.AccessorFunction(witness.Implementation);
         }
 
-        // SPEC 11.4.2: an inherited Field is reached from the requirement receiver over the conforming Type by standard projection,
+        // SPEC 11.9.2: an inherited Field is reached from the requirement receiver over the conforming Type by standard projection,
         // as a direct access is (AdtDef.FindField), so a bridge for a base path has the same body as an own one. An edit that
         // replaces the requirement, the implementing Property or the operation rebuilds the body; otherwise its Types are refreshed.
         var key = (path, witness.Requirement);
@@ -31,7 +31,7 @@ public sealed partial class Binding
                 Input = witness.InputType,
                 Result = witness.ResultType,
             };
-            // SPEC 11.4.2: a bridge is checked and executed under the premises of its conformance path, such as `when T is Copy`;
+            // SPEC 11.9.2: a bridge is checked and executed under the premises of its conformance path, such as `when T is Copy`;
             // its scope is that path's, which ConstraintScope gives the bridge's body, and its container the conforming declaration.
             var scope = path.Scope;
             bridge.SelfSymbol = new("self", BindingSymbolKind.Parameter, bridge.Binder, scope) { Slot = 0, Type = bridge.Receiver };

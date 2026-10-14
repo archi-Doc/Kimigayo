@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 9.3: enclosing declaration accessibility comes from functions and Containers. A Pattern scope's owner may
+    // SPEC 9.4: enclosing declaration accessibility comes from functions and Containers. A Pattern scope's owner may
     // bind a local in that same scope; following its BoundSymbol would revisit that local forever. Body/guard scopes
     // are lexical scopes, not declarations with their own accessibility.
     private static BindingSymbol? EnclosingAccessDeclaration(BindingSymbol symbol)
@@ -30,7 +30,7 @@ public sealed partial class Binding
         => TypeAccessCovers(qualifier, domain, intersection ?? domain) && AccessCovers(contract, domain, intersection ?? domain) &&
             (use.BoundSymbol is not { Kind: BindingSymbolKind.AssociatedType } requirement || AccessCovers(requirement, domain, intersection ?? domain));
 
-    // SPEC 9.3: the written access of a declaration that may carry a protected form.
+    // SPEC 9.4: the written access of a declaration that may carry a protected form.
     private static ModifierKind WrittenAccess(Koto declaration) => (declaration switch
     {
         DeclarationContainerKoto container => container.Modifier,
@@ -53,7 +53,7 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 9.3: protected forms apply only to struct members; the record names what declares this one instead.
+    // SPEC 9.4: protected forms apply only to struct members; the record names what declares this one instead.
     private static void ReportProtectedPlacement(Koto declaration, DiagnosticRequirement requirement)
     {
         var container = DeclaringContainer(declaration) switch
@@ -109,7 +109,7 @@ public sealed partial class Binding
     }
 
     // A fixed-array member receives some `[N of E]`, in the ref, uniq or owning form (PLAN G32); the integer Position
-    // witness receives an integer Type parameter (SPEC 4.6.2).
+    // witness receives an integer Type parameter (SPEC 4.6.1).
     private bool IsReceiverType(BoundType? type, BindingSymbol owner)
         => type is not null && type.Semantics is not (SemanticsKind.Raw or SemanticsKind.Parameter) &&
             (ReferenceEquals(owner.Declaration, this.Library.FixedArrayMembers)
@@ -300,7 +300,7 @@ public sealed partial class Binding
     {
         for (var i = 0; i < this.nodes.Count; i++)
         {
-            // SPEC 9.3: a protected form is invalid on root and group declarations, group members, enum members and local
+            // SPEC 9.4: a protected form is invalid on root and group declarations, group members, enum members and local
             // declarations: every declaration whose declaring Container is not a struct. A Contract requirement takes no
             // modifier at all, which the parser reports (MisplacedSyntax_Kd).
             if (this.nodes[i].BoundSymbol is { } declared && ReferenceEquals(declared.Declaration, this.nodes[i]) &&

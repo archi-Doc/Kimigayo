@@ -108,46 +108,46 @@ public enum CompilerFunctionKind : byte
 internal enum IntrinsicId : byte
 {
     None,
-    RawAllocate, // Memory (SPEC 5.6, 22.1.2.5).
+    RawAllocate, // Memory (SPEC 5.6, 22.2).
     RawRelease,
     RawInitialize,
     RawSlice,
     TryAllocateBytes,
     MoveBytes, // A byte copy whose ranges may overlap.
-    Stride, // Type facts (SPEC 22.1.2.5, IMPL 21.2.2); destroying the values of a cleanup-free T generates nothing.
+    Stride, // Type facts (SPEC 22.2, IMPL 21.1.3); destroying the values of a cleanup-free T generates nothing.
     DestroyValues,
-    ReinterpretLoan, // shareLoan and lendLoan (SPEC 22.1.2.5).
-    Abort, // $abort (SPEC 17.3).
-    Fail, // A fixed SPEC 22.5.4 code.
-    WriteStdout, // SPEC 22.4, 22.5.
-    FormatFloat, // Formatting (utf8-formatting 1): Ryu, the erased entry Text.writer makes, the erased reserve, i128 until Kimigayo formats it.
+    ReinterpretLoan, // shareLoan and lendLoan (SPEC 22.2).
+    Abort, // $abort (SPEC 17.4).
+    Fail, // A fixed SPEC 22.5.2 code.
+    WriteStdout, // SPEC 22.1, 22.5.
+    FormatFloat, // Formatting (SPEC 22.9.1): Ryu, the erased entry Text.writer makes, the erased reserve, i128 until Kimigayo formats it.
     ErasedWriter,
     ErasedReserve,
     FormatInteger128,
-    MakeObj, // Handles (IMPL 21.2.3, SPEC 13.6); the Weak operations come with P35.
+    MakeObj, // Handles (IMPL 21.1.3, SPEC 13.6); the Weak operations come with P35.
     MakeRc,
     MakeArc,
     Clone,
     TypeTest,
-    TestObserve, // Tests (SPEC 22.6.1, testing profile).
+    TestObserve, // Tests (SPEC 20.6.1, testing profile).
     TestMessage,
     TestRequireAbort,
     TestRecordValue,
     TestPhaseEnter,
     TestPhaseLeave,
     TestTempDirectory,
-    StaticEnsure, // SPEC 22.2.3.
+    StaticEnsure, // SPEC 22.4.3.
     [Transitional("R8", Reason = "R8 replaces this temporary intrinsic with Kimigayo representation and library code.")]
-    Capacity, // Temporary (owner, 2026-10-11): an Array's or a Dictionary's capacity (SPEC 4.7.4) until R8 makes it a Field read.
+    Capacity, // Temporary (owner, 2026-10-11): an Array's or a Dictionary's capacity (SPEC 4.9.5) until R8 makes it a Field read.
     [Transitional("R8", Reason = "R8 replaces this temporary intrinsic with Kimigayo representation and library code.")]
     FormatBuffer, // Temporary (owner, 2026-10-11) until R8 writes the internal adapter in Kimigayo: an owning interpolation's private buffer of
     [Transitional("R8", Reason = "R8 replaces this temporary intrinsic with Kimigayo representation and library code.")]
-    FormatHint, // the capacity its instance estimates, the hint before each write and the adapter's end into the string (utf8-formatting 5.1, 5.2).
+    FormatHint, // the capacity its instance estimates, the hint before each write and the adapter's end into the string (SPEC 22.10.5, 22.10.3).
     [Transitional("R8", Reason = "R8 replaces this temporary intrinsic with Kimigayo representation and library code.")]
     FormatFinish,
 }
 
-/// <summary>How an effect summary classifies a compiler function (SPEC 8.4.10.2), the effect column of the intrinsic table.</summary>
+/// <summary>How an effect summary classifies a compiler function (SPEC 8.11.2), the effect column of the intrinsic table.</summary>
 internal enum CompilerFunctionEffect : byte
 {
     /// <summary>The kind names no compiler function, or one the summary cannot classify.</summary>
@@ -170,14 +170,14 @@ internal enum CompilerFunctionEffect : byte
 internal enum DispositionKind : byte
 {
     Body, // A Kimigayo body: the declaration's own, or for a compiler function the body R8 writes, which until then the backend serves from the legacy runtime helpers.
-    Intrinsic, // An IntrinsicId; Fail carries its fixed SPEC 22.5.4 code.
+    Intrinsic, // An IntrinsicId; Fail carries its fixed SPEC 22.5.2 code.
     Shim, // A built-in witness (formatting, equality, comparison, arithmetic), whose body the backend generates for its instance.
 }
 
 /// <summary>The intrinsic table (plan 5.8): the one disposition of each <see cref="CompilerFunctionKind"/>.</summary>
 /// <param name="Kind">How the call is served.</param>
 /// <param name="Id">The intrinsic of an Intrinsic disposition.</param>
-/// <param name="Code">The SPEC 22.5.4 code of <see cref="IntrinsicId.Fail"/>.</param>
+/// <param name="Code">The SPEC 22.5.2 code of <see cref="IntrinsicId.Fail"/>.</param>
 internal readonly record struct IntrinsicDisposition(DispositionKind Kind, IntrinsicId Id = IntrinsicId.None, string? Code = null)
 {
     internal static IntrinsicDisposition Of(CompilerFunctionKind kind) => kind switch
@@ -218,8 +218,8 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 
-    // SPEC 8.4.10.2: the effect class of each compiler function. The Storage and Raw families act only on their inputs and the allocator
-    // (SPEC 5.6, 22.1.2.5), so they are classified as families; a storage kind that obtained environment authority would have to be split
+    // SPEC 8.11.2: the effect class of each compiler function. The Storage and Raw families act only on their inputs and the allocator
+    // (SPEC 5.6, 22.2), so they are classified as families; a storage kind that obtained environment authority would have to be split
     // out of its family. Console output and the test temporary directory are environment effects. Comparison, formatting and destruction
     // callbacks are summarized separately.
     internal static CompilerFunctionEffect Effect(CompilerFunctionKind kind) => kind switch
@@ -247,8 +247,8 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
 internal enum BuiltinForm : byte
 {
     None,
-    Length, // A sequence's length (SPEC 4.6.1).
+    Length, // A sequence's length (SPEC 4.7).
     IsEmpty,
-    Indices, // The ResolvedRange from 0 to the length (SPEC 4.6.3).
-    Capacity, // An Array's or a Dictionary's capacity (SPEC 4.7.4).
+    Indices, // The ResolvedRange from 0 to the length (SPEC 4.6.2).
+    Capacity, // An Array's or a Dictionary's capacity (SPEC 4.9.5).
 }

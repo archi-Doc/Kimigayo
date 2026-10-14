@@ -120,7 +120,7 @@ public class EnumBindingTest
         Assert.False(c.Bind().IsComplete);
     }
 
-    // SPEC 6.3.2, 3.5: a bare Non-Copy or Copy-unproven Place never Moves into a payload.
+    // SPEC 6.5.2, 3.5: a bare Non-Copy or Copy-unproven Place never Moves into a payload.
     [Theory]
     [InlineData("enum Pair<T>\n    Pair(T, string)\nfunc f<T>(a: T, b: string) -> Pair<T> => Pair<T>.Pair(a, b@move)")]
     [InlineData("enum Pair<T>\n    Pair(T, string)\nfunc f<T>(a: T, b: string) -> Pair<T> => Pair<T>.Pair(a@move, b)")]

@@ -217,7 +217,7 @@ public sealed partial class Binding
 
                     if (argument.BoundType is null && operations[i].ParameterType is null)
                     {
-                        // SPEC 23.3.6.4: an argument at an open position, such as `.None` at Option<T>, has no Type without the slot.
+                        // SPEC 23.1.2: an argument at an open position, such as `.None` at Option<T>, has no Type without the slot.
                         this.CompleteDependent(argument, call);
                     }
                 }
@@ -318,7 +318,7 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 23.3.6.4: omitted header Types need the selection's expectation; they rest on the call without the body being checked, and an
+    // SPEC 23.1.2: omitted header Types need the selection's expectation; they rest on the call without the body being checked, and an
     // independent written-Type error stays its own record.
     private void MarkOmittedHeaders(FunctionKoto closure, Koto cause)
     {

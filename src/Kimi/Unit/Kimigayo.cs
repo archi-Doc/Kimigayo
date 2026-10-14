@@ -26,7 +26,7 @@ public class Kimigayo
         this.RendersDiagnostics = rendersDiagnostics;
     }
 
-    /// <summary>Renders a finalized result in its order (SPEC 23.3.6.8); a silent service renders nothing.</summary>
+    /// <summary>Renders a finalized result in its order (SPEC 23.3); a silent service renders nothing.</summary>
     /// <param name="result">The finalized diagnostics.</param>
     /// <param name="baseDirectory">The directory display paths are relative to, or an empty string.</param>
     public void Render(DiagnosticResult result, string baseDirectory)
@@ -76,7 +76,7 @@ public class Kimigayo
     private static string Escape(string text)
         => text.AsSpan().IndexOfAny('\n', '\r', '\t') < 0 ? text : text.Replace("\r", "\\r", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal).Replace("\t", "\\t", StringComparison.Ordinal);
 
-    // SPEC 23.4.7: message and code, the primary location, the underlined excerpt with its label, related locations, then
+    // SPEC 23.4: message and code, the primary location, the underlined excerpt with its label, related locations, then
     // the Note and repair candidates.
     private void Render(CheckDiagnostic diagnostic, DiagnosticSource[] sources, string baseDirectory)
     {
@@ -129,7 +129,7 @@ public class Kimigayo
                 this.consoleService.WriteLine($"Note: {diagnostic.Note}");
             }
 
-            // SPEC 23.3.6.8, 23.3.6.9: each candidate as its title, one line per edit and its verified and required conditions.
+            // SPEC 23.3, 23.1.3: each candidate as its title, one line per edit and its verified and required conditions.
             foreach (var repair in diagnostic.Repairs ?? [])
             {
                 this.consoleService.WriteLine($"Repair: {repair.Title}");

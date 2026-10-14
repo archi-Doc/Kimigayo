@@ -33,7 +33,7 @@ internal sealed class AdtDef
 
     internal static StructKoto? Declaration(BoundType? type) => IsStruct(type) ? (StructKoto)type!.Symbol!.Declaration : null;
 
-    // An instance's stored Types are its substitution of the declared ones (SPEC 8.10): Type, Length and Origin arguments.
+    // An instance's stored Types are its substitution of the declared ones (SPEC 8.15): Type, Length and Origin arguments.
     internal static BoundType? FieldType(BoundType type, int index) => Instance(type).Fields[index];
 
     internal static BoundType? Base(BoundType type) => IsStruct(type) ? Instance(type).Base : null;
@@ -102,7 +102,7 @@ internal sealed class AdtDef
 
     internal static PropertyKoto Field(BoundType type, int index) => Struct(type)!.Fields[index];
 
-    // SPEC 11.3.1: whether a constructor may place a stored Field only once: a let Field, or a var with a custom set.
+    // SPEC 11.7: whether a constructor may place a stored Field only once: a let Field, or a var with a custom set.
     internal static bool PlacedOnce(BoundType type, int index)
         => Field(type, index) is not { VariableKind: VariableKind.Var, BoundSymbol.Property.Setter.IsStandard: true };
 
@@ -125,13 +125,13 @@ internal sealed class AdtDef
     internal static FunctionKoto? Destructor(BoundType type) => Struct(type)?.DestructorKoto;
 
     // Whether a Type is the library's InlineStorage, whose contents the compiler never destroys: its owner destroys what remains (its
-    // contract in Storage.kimi; SPEC 22.1.2.5).
+    // contract in Storage.kimi; SPEC 22.2).
     internal static bool IsInlineStorage(BoundType type) => type.Symbol?.LibraryDeclaration == KimiDeclarationId.InlineStorage;
 
     // The destructor's symbol, by which MIR names its body.
     internal static BindingSymbol? DestructorSymbol(BoundType type) => Destructor(type)?.BoundSymbol;
 
-    // SPEC 6.2.3: whether a function is a constructor, whose body builds its object from fresh storage (the MIR analyses' fact).
+    // SPEC 6.3: whether a function is a constructor, whose body builds its object from fresh storage (the MIR analyses' fact).
     internal static bool IsConstructor(BindingSymbol? function) => function?.Declaration is FunctionKoto { IsConstructor: true };
 
     internal static BoundType? ReceiverType(FunctionKoto function)

@@ -6,7 +6,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-/// <summary>Semantics cases of a definition (SPEC 8.10): a body whose scope has a resolved pair binder is built, solved and
+/// <summary>Semantics cases of a definition (SPEC 8.15): a body whose scope has a resolved pair binder is built, solved and
 /// verified once per admitted case, with every pair layer as the complete Type of that case; the first case is the listed body,
 /// the others pooled side bodies whose problems merge into the listed one.</summary>
 public sealed partial class OwnershipAnalysis
@@ -32,7 +32,7 @@ public sealed partial class OwnershipAnalysis
         return null;
     }
 
-    // Whether a code's catalog row carries the `case` Reason fact as its last evidence fact (SPEC 23.3.6.4).
+    // Whether a code's catalog row carries the `case` Reason fact as its last evidence fact (SPEC 23.1.2).
     private static bool HasCaseEvidence(DiagnosticCode code)
     {
         if (!DiagnosticEntries.TryGet(code, out var entry))
@@ -68,7 +68,7 @@ public sealed partial class OwnershipAnalysis
     // The name a pair binder is declared with (`s` of `s/T`).
     private static string BinderName(in PairBinder binder) => binder.Target.Pair?.Name ?? binder.Target.Name;
 
-    // Resolves the cases of a definition: the product of the admitted sets of the resolved binders in scope (SPEC 8.10). False
+    // Resolves the cases of a definition: the product of the admitted sets of the resolved binders in scope (SPEC 8.15). False
     // when there is none, so the body is analyzed once with its declared Types.
     private bool ResolveCases(FunctionKoto function)
     {
@@ -128,8 +128,8 @@ public sealed partial class OwnershipAnalysis
     }
 
     // Builds every case: the first into the listed body, the others into pooled side bodies; the listed body is verified only when
-    // every case is (SPEC 8.10). Its problems are published after the last case, with the cases each was found under, and a problem
-    // every case found shows no case (SPEC 23.3.6.4). Binding bounds the cases (PairBinder.CaseBound) before the analysis runs.
+    // every case is (SPEC 8.15). Its problems are published after the last case, with the cases each was found under, and a problem
+    // every case found shows no case (SPEC 23.1.2). Binding bounds the cases (PairBinder.CaseBound) before the analysis runs.
     private void BuildCases(FunctionKoto function, int declarationDefault)
     {
         this.caseBodyCount = 0;
@@ -170,7 +170,7 @@ public sealed partial class OwnershipAnalysis
     }
 
     // Appends the built body's problems to the result. In a case run the listed body publishes after the last case (BuildCases)
-    // and a side body's problems merge into it (SPEC 23.3.6.4).
+    // and a side body's problems merge into it (SPEC 23.1.2).
     private void AppendIssues()
     {
         var storage = this.body.IssueStorage;
@@ -193,7 +193,7 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
-    // SPEC 23.3.6.4: the text of the cases a problem was found under, or null for a problem of every case or of no case run. The
+    // SPEC 23.1.2: the text of the cases a problem was found under, or null for a problem of every case or of no case run. The
     // found set is factored per binder when it is a product ("s = uniq"; "s = ref or uniq, t = uniq"), each binder found under
     // all its admitted cases omitted; otherwise each case is listed ("s = uniq, t = owner; s = owner, t = uniq"). The binders
     // named are left in namedBinders for the related declarations. Formatted only for a published record.
@@ -317,7 +317,7 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
-    // The related declarations of a case fact: the Semantics bindings it names (SPEC 23.3.6.4).
+    // The related declarations of a case fact: the Semantics bindings it names (SPEC 23.1.2).
     private (string Role, Koto At, string? Label)[]? WithCaseDeclarations((string Role, Koto At, string? Label)[]? related, string? found)
     {
         if (found is null || this.namedBinders.Count == 0)

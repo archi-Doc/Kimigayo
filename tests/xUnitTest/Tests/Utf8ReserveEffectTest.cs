@@ -111,7 +111,7 @@ public class Utf8ReserveEffectTest
         MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
-    // SPEC 8.4.5: synthesized calls are part of the summary: indexers, iteration steps, and key comparisons through a
+    // SPEC 8.6: synthesized calls are part of the summary: indexers, iteration steps, and key comparisons through a
     // borrowed Dictionary.
     [Theory]
     [InlineData("struct Table\n    Self is Indexable<isize>\n    associate Element is i32\n    var value: i32 = 0\n    public init() => ()\n    public func index(self, key: ref/isize) -> place ref/i32 during self\n        _ = State.value\n        return self.value\n", "let table = Table.init()\n        _ = table[0]")]

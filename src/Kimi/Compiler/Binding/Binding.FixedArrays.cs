@@ -4,7 +4,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// SPEC 22.1, 22.1.2.2 (PLAN G32): a fixed array has no source declaration, so the compiler records its standard entry
+// SPEC 22.1, 22.2.1 (PLAN G32): a fixed array has no source declaration, so the compiler records its standard entry
 // conformances; each witness is the same-named receiver function of the internal Kimi fixed-array group, generic over the
 // element Type `E` and `length N`.
 public sealed partial class Binding

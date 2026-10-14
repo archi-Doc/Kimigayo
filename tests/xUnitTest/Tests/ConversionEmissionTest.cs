@@ -108,7 +108,7 @@ public class ConversionEmissionTest
     [InlineData("let flag = true\nflag@char", "TypeMismatch")]
     [InlineData("let s = \"x\"\ns@bool", "TypeMismatch")]
     [InlineData("256@owner/u8", "InvalidLiteral")]
-    [InlineData("1.5@Wrapping<i32>", "TypeMismatch")] // SPEC 13.5.4.2: a floating literal never enters a wrapping Type.
+    [InlineData("1.5@Wrapping<i32>", "TypeMismatch")] // SPEC 13.5.4: a floating literal never enters a wrapping Type.
     [InlineData("func f(x: i32) => ()\nf(1@u8)", "NoApplicableCandidate")]
     public void InvalidAndUnimplementedAdaptationsHaveDistinctFailures(string source, string failure)
     {
@@ -125,7 +125,7 @@ public class ConversionEmissionTest
         Assert.Empty(writer.ToString());
     }
 
-    // IMPL 21.5.3: a conversion whose source range lies within the destination range carries no check even at O0; a range that
+    // IMPL 21.3.3: a conversion whose source range lies within the destination range carries no check even at O0; a range that
     // exceeds the destination on one side keeps that side's check only.
     [Fact]
     public void ContainedRangesOmitTheCheck()

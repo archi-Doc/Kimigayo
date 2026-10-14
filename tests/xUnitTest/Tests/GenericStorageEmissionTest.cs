@@ -35,7 +35,7 @@ public class GenericStorageEmissionTest
         { "MultiField", Token + "struct Pair<T>\n    let first: T\n    let second: T\n    let third: T\n    public init(a: T, b: T, c: T)\n        self.first = a@move\n        self.second = b@move\n        self.third = c@move\n    public func take(self: Self) -> T => self.first@move\ndo\n    let pair = Pair<Token>.init(Token.init(1), Token.init(2), Token.init(3))\n    let first = pair@move.take()\n    Console.writeLine(\"returned\")", "three\ntwo\nreturned\none\n" },
     };
 
-    // SPEC 8.1.1, 8.1.2, 8.10: a struct Field of pair Type stores the instance's Type in every admitted Semantics, the original
+    // SPEC 8.1.1, 8.1.2, 8.15: a struct Field of pair Type stores the instance's Type in every admitted Semantics, the original
     // `s/T`, an application `s/U` and its conditional slot `s/U during a` alike; each header slot is anchored by a stored Origin.
     public static TheoryData<string, string, string> PairFixtures => new()
     {
@@ -134,7 +134,7 @@ public class GenericStorageEmissionTest
         Assert.DoesNotContain(owned.Instructions, x => x.Opcode == EmissionOpcode.Phi);
     }
 
-    // SPEC 21.3.1, IMPL 21.3.2: a function Item and a direct call of the same instance share its one generic entry.
+    // SPEC 21.3.1, IMPL 21.3: a function Item and a direct call of the same instance share its one generic entry.
     [Fact]
     public void AFunctionItemSharesTheInstanceOfADirectCall()
     {
@@ -285,7 +285,7 @@ public class GenericStorageEmissionTest
     [Fact]
     public void GrowingSubstitutionKeysAreResourceDiagnosed()
     {
-        // SPEC 21.3.5: T -> Box<T> re-enters grow with ever new keys; generation stops with a resource
+        // SPEC 21.3.2: T -> Box<T> re-enters grow with ever new keys; generation stops with a resource
         // failure, distinguished from semantic and representation errors.
         var c = MinimalEmissionTest.Analyze(Box + "func grow<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => grow<Box<T>>(Box<T>.init(value@move), n - 1)\nlet r = grow<i32>(1, 3)");
         Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
@@ -299,7 +299,7 @@ public class GenericStorageEmissionTest
     [Fact]
     public void OversizedSubstitutionSetsAreResourceDiagnosed()
     {
-        // SPEC 21.3.5: a third distinct closed context of choose exceeds a lowered substitution set limit.
+        // SPEC 21.3.2: a third distinct closed context of choose exceeds a lowered substitution set limit.
         var limit = GenericStoragePlan.SubstitutionSetLimit;
         GenericStoragePlan.SubstitutionSetLimit = 2;
         try
@@ -348,7 +348,7 @@ public class GenericStorageEmissionTest
         const string Source = "func count<T>(value: T) -> i32 => 77\nspecialize func count<i32>(value: i32) -> i32 => 5\nrequire count<i32>(1) == 5 and count<i64>(1) == 77 else => $abort(\"selection\")";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        // The selected body is called directly (SPEC 21.3.4); no transitional entry or shared body remains.
+        // The selected body is called directly (SPEC 21.3); no transitional entry or shared body remains.
         Assert.True(module.IsComplete);
         var instance = Assert.Single(Instances(module));
         Assert.Equal(["i64"], instance.Abi.Parameters.Select(x => x.Type).ToArray());

@@ -21,7 +21,7 @@ internal enum MirStatementKind : byte
     EndBorrow, // The Loans a reference local holds end (an abandoned comparison, reservation or guard borrow).
 }
 
-/// <summary>A MIR rvalue (plan 5.4). Abort on a failed check is implicit in the rvalue; Proven marks a check IMPL 21.5.3 omits.</summary>
+/// <summary>A MIR rvalue (plan 5.4). Abort on a failed check is implicit in the rvalue; Proven marks a check IMPL 21.3.3 omits.</summary>
 internal enum MirRvalueKind : byte
 {
     Use, // The operand.
@@ -33,7 +33,7 @@ internal enum MirRvalueKind : byte
     Discriminant, // The Case ordinal of an enum Place.
     Len, // The length of a sequence Place.
     Opaque, // A value of the Type that a Binding error or an Unsupported form replaced; its site lists the Places it touched.
-    Adapt, // A case adaptation (SPEC 8.9), whose operation each Semantics case selects: MirCases.Adapt resolves it per view.
+    Adapt, // A case adaptation (SPEC 8.14), whose operation each Semantics case selects: MirCases.Adapt resolves it per view.
 }
 
 /// <summary>A MIR terminator (plan 5.4); there is no unwinding. <c>CheckTarget</c> is an attribute of Goto, a Call without a target
@@ -119,10 +119,10 @@ internal enum MirCastKind : byte
     Integer, // Between integer Types, checked.
     Floating, // Between floating-point Types.
     Numeric, // Between integer and floating-point Types, checked.
-    Wrap, // An integer wrapped to the Type (SPEC 13.5.4.3).
-    Bits, // The bits of a floating-point value as a same-width integer, or back (SPEC 13.5.4.4).
+    Wrap, // An integer wrapped to the Type (SPEC 13.5.4).
+    Bits, // The bits of a floating-point value as a same-width integer, or back (SPEC 13.5.4).
     Pointer, // Between raw pointer Types, or a raw pointer to usize (SPEC 5.4).
-    IntToPointer, // An integer to a raw pointer, an environment effect (SPEC 8.4.10.2).
+    IntToPointer, // An integer to a raw pointer, an environment effect (SPEC 8.11.2).
     Upcast, // An object handle to one of its base (SPEC 13.6).
     Erasure, // A Closure or function item to its Function Type (SPEC 10.2).
 }

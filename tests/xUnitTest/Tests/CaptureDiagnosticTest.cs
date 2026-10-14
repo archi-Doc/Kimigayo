@@ -9,7 +9,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 7.6.2, 7.6.3, 8.6, 23.3.6.4: a capture list and a closure argument explain their own failures at the written entry or with the
+// SPEC 7.7.2, 7.7.3, 8.10, 23.1.2: a capture list and a closure argument explain their own failures at the written entry or with the
 // receivers involved, and the checks that rest on a rejected capture report nothing more.
 public class CaptureDiagnosticTest
 {
@@ -25,11 +25,11 @@ public class CaptureDiagnosticTest
 
     private const string Text = "let start = 0\nvar text = func [var start] () -> string\n    start += 1\n    return \"a\"\n";
 
-    // SPEC 7.6.2: a capture name that a later entry, or a parameter, repeats is one DuplicateBinding_Kd at the later name, with the
+    // SPEC 7.7.2: a capture name that a later entry, or a parameter, repeats is one DuplicateBinding_Kd at the later name, with the
     // entry it repeats related; it was located at the whole closure. A later call of the closure rests on it.
     [Theory]
-    [InlineData("let x: i32 = 1\nlet f = func [x] (x: i32) => x\nrequire f(2) == 2 else => $abort(\"f\")", "func [x] (", "The capture entry x and the parameter x would both declare x in the anonymous function's body; a parameter cannot repeat a capture name (SPEC 7.6.2)")]
-    [InlineData("let x: i32 = 1\nlet g = func [x, x] () => x\nrequire g() == 1 else => $abort(\"g\")", "func [x, ", "The capture list names x twice; each entry declares its own environment binding, so a name is captured once (SPEC 7.6.2)")]
+    [InlineData("let x: i32 = 1\nlet f = func [x] (x: i32) => x\nrequire f(2) == 2 else => $abort(\"f\")", "func [x] (", "The capture entry x and the parameter x would both declare x in the anonymous function's body; a parameter cannot repeat a capture name (SPEC 7.7.2)")]
+    [InlineData("let x: i32 = 1\nlet g = func [x, x] () => x\nrequire g() == 1 else => $abort(\"g\")", "func [x, ", "The capture list names x twice; each entry declares its own environment binding, so a name is captured once (SPEC 7.7.2)")]
     public void ARepeatedCaptureNameIsLocatedAtTheLaterName(string source, string later, string note)
     {
         var output = DiagnosticCorpus.Check(source);
@@ -79,7 +79,7 @@ public class CaptureDiagnosticTest
         Assert.All(output.Diagnostics, x => Assert.Equal(entry + 1, Assert.Single(x.Related!).Span!.Value.Start));
     }
 
-    // SPEC 7.6.2, 23.3.6.4: the other entries of a list that repeats a name are still bound, so an entry that fails on its own is
+    // SPEC 7.7.2, 23.1.2: the other entries of a list that repeats a name are still bound, so an entry that fails on its own is
     // reported beside the repeat exactly as in a list without one (the repeat returned before them and hid it): an unresolved name at
     // the closure, a bare Non-Copy entry and an exclusive slot borrow of a let binding at the entry. A list whose other entries are
     // valid reports only the repeat, and a list without a repeat reports nothing.
@@ -141,7 +141,7 @@ public class CaptureDiagnosticTest
         Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), "Holder"), (error.Code, Source.Substring(error.Span!.Value.Start, error.Span!.Value.Length)));
     }
 
-    // SPEC 7.6.2, 23.3.6.4: an omitted capture list captures only by Copy, so the rejected capture of a Non-Copy binding is read as
+    // SPEC 7.7.2, 23.1.2: an omitted capture list captures only by Copy, so the rejected capture of a Non-Copy binding is read as
     // that Copy and moves nothing; a later use of the binding reports only its own problems (it was a MovedPlace_Kd cascade), while an
     // independent Move still is.
     [Theory]
@@ -159,12 +159,12 @@ public class CaptureDiagnosticTest
         }
     }
 
-    // SPEC 7.6.3, 8.6: a closure argument whose minimum call receiver its Callable Constraint does not permit names both receivers in
+    // SPEC 7.7.3, 8.10: a closure argument whose minimum call receiver its Callable Constraint does not permit names both receivers in
     // the rejected candidate's label and the Note of NoApplicableOverload_Kd; before, the
     // record named only the count.
     [Theory]
-    [InlineData(Apply + "let text = \"abc\"\nvar take = func [text@move] () => text@move\nConsole.writeLine(apply(take@uniq))", "apply(take@uniq)", "apply: closure requires owner; Callable requires uniq", "The closure argument of f needs a Consuming call, and the Callable Constraint of F permits Shared and Exclusive calls only (SPEC 7.6.3, 8.6)")]
-    [InlineData(Run + Count + "Console.writeLine(\"\\(run(count@ref))\")", "run(count@ref)", "run: closure requires uniq; Callable requires ref", "The closure argument of f needs an Exclusive call, and the Callable Constraint of F permits Shared calls only (SPEC 7.6.3, 8.6)")]
+    [InlineData(Apply + "let text = \"abc\"\nvar take = func [text@move] () => text@move\nConsole.writeLine(apply(take@uniq))", "apply(take@uniq)", "apply: closure requires owner; Callable requires uniq", "The closure argument of f needs a Consuming call, and the Callable Constraint of F permits Shared and Exclusive calls only (SPEC 7.7.3, 8.10)")]
+    [InlineData(Run + Count + "Console.writeLine(\"\\(run(count@ref))\")", "run(count@ref)", "run: closure requires uniq; Callable requires ref", "The closure argument of f needs an Exclusive call, and the Callable Constraint of F permits Shared calls only (SPEC 7.7.3, 8.10)")]
     public void AClosureReceiverMismatchNamesBothReceivers(string source, string text, string label, string note)
     {
         var output = DiagnosticCorpus.Check(source);
@@ -177,9 +177,9 @@ public class CaptureDiagnosticTest
     // The receivers are named only for a candidate that applies once the closure's receiver is permitted. A candidate that fails for
     // another reason keeps its own label: a missing argument, an argument of another Type, or a call signature, whose Note stays the
     // signature's (the receiver Note displaced it). A common Function parameter has no Callable Constraint (its conversion condition is
-    // SPEC 7.6.4), so no Callable receiver is claimed for it (it named one).
+    // SPEC 7.7.4), so no Callable receiver is claimed for it (it named one).
     [Theory]
-    [InlineData(Run + "func run<F>(f: ref/F, n: i32) -> i32\n    F is Callable<() -> i32>\n    return f() + n\n" + Count + "Console.writeLine(\"\\(run(count@ref))\")", "run(count@ref)", new[] { "run: closure requires uniq; Callable requires ref", "run" }, "run: closure requires uniq; Callable requires ref. The closure argument of f needs an Exclusive call, and the Callable Constraint of F permits Shared calls only (SPEC 7.6.3, 8.6)")]
+    [InlineData(Run + "func run<F>(f: ref/F, n: i32) -> i32\n    F is Callable<() -> i32>\n    return f() + n\n" + Count + "Console.writeLine(\"\\(run(count@ref))\")", "run(count@ref)", new[] { "run: closure requires uniq; Callable requires ref", "run" }, "run: closure requires uniq; Callable requires ref. The closure argument of f needs an Exclusive call, and the Callable Constraint of F permits Shared calls only (SPEC 7.7.3, 8.10)")]
     [InlineData("func run<F>(f: ref/F, n: i32) -> i32\n    F is Callable<() -> i32>\n    return f() + n\n" + Count + "Console.writeLine(\"\\(run(count@ref, true))\")", "run(count@ref, true)", new[] { "run" }, null)]
     [InlineData(Run + "func run<F>(f: ref/F, n: i32) -> i32\n    F is Callable<() -> i32>\n    return f() + n\n" + Text + "Console.writeLine(\"\\(run(text@ref))\")", "run(text@ref)", new[] { "run: callable signature is () -> string; requires () -> i32", "run: callable signature is () -> string; requires () -> i32" }, "The argument's known call signature is () -> string; the candidate requires () -> i32 from the supplied Type evidence")]
     public void AClosureReceiverIsNamedOnlyWhereItIsTheFailure(string source, string text, string[] labels, string? note)
@@ -191,7 +191,7 @@ public class CaptureDiagnosticTest
         Assert.Equal(note, error.Note);
     }
 
-    // SPEC 10.5, 7.6.4: erasure receiver conditions are checked at the argument after selection, without a Callable Constraint.
+    // SPEC 10.5, 7.7.4: erasure receiver conditions are checked at the argument after selection, without a Callable Constraint.
     [Fact]
     public void ACommonFunctionReceiverFailureNamesTheConvertedArgument()
     {

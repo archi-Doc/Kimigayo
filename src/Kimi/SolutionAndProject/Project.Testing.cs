@@ -10,7 +10,7 @@ public partial class Project
     internal Compilation? PrepareTests(CancellationToken cancellationToken)
         => this.PrepareTests(cancellationToken, null);
 
-    /// <summary>Prepares and checks the test build through the shared check entry (SPEC 23.3.2).</summary>
+    /// <summary>Prepares and checks the test build through the shared check entry (SPEC 23.2.2).</summary>
     /// <param name="cancellationToken">Cancels dependency resolution.</param>
     /// <param name="context">The check context, or null for the command, which reads the disk.</param>
     /// <returns>The accepted test compilation, or null.</returns>
@@ -25,7 +25,7 @@ public partial class Project
         }
 
         this.ProjectFile.Test.Validate();
-        _ = Testing.TestCatalog.ProjectIdOf(this); // SPEC 23.3.3: an invalid configuration blocks the check before the front end.
+        _ = Testing.TestCatalog.ProjectIdOf(this); // SPEC 23.2.2: an invalid configuration blocks the check before the front end.
         var target = this.KimiOptions.Target;
         if (string.IsNullOrEmpty(target))
         {

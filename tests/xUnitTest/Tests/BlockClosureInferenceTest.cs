@@ -10,7 +10,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 7.6.1, 14.9: anonymous blocks share result-source inference, including unreachable returns and structural end Unit.
+// SPEC 7.7.1, 14.9: anonymous blocks share result-source inference, including unreachable returns and structural end Unit.
 public sealed class BlockClosureInferenceTest
 {
     [Theory]

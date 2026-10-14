@@ -125,7 +125,7 @@ public class RuntimeTypeTest
         var c = CompilationTestHelper.ParseSuccess($"struct Animal\nstruct Dog<T>\nfunc f<T>(x: objref/Animal) -> bool => x is {target}");
         Assert.True(c.Bind().IsComplete == valid, Describe(c));
         Assert.Equal(valid, Test(c).RuntimeTestOf().HasValue);
-        // SPEC 13.6.1: a bare Type parameter target is invalid; Type arguments that depend on one are valid but not implemented.
+        // SPEC 13.6.4: a bare Type parameter target is invalid; Type arguments that depend on one are valid but not implemented.
         if (target is "Dog<T>" or "T")
         {
             Assert.Contains(c.Binding.Issues, x => x.Node == Test(c) && x.Code == (target == "T" ? DiagnosticCode.InvalidTypeFormation_Kd : DiagnosticCode.Unsupported_Kd));
@@ -296,7 +296,7 @@ public class RuntimeTypeTest
         Assert.False(flow.Nodes[Test(c)].CanCompleteNormally);
     }
 
-    // SPEC 7.4: the leading `is` items of every body are Constraints, selected before lookup whatever the function's
+    // SPEC 7.5: the leading `is` items of every body are Constraints, selected before lookup whatever the function's
     // generic parameters; `x` is not a permitted subject. Parentheses make the test executable.
     [Theory]
     [InlineData("f<T>")]

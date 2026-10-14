@@ -5,7 +5,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 4.6.8: reslicing, splitting, Index formation and resolution, element Places and Slice iteration need no
+/// <summary>SPEC 4.8.6: reslicing, splitting, Index formation and resolution, element Places and Slice iteration need no
 /// heap allocation, element storage or reference-count update; only the backing Array allocates.</summary>
 public class SliceCostTest
 {

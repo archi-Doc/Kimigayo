@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 4.6.2–4.6.4: resolution and application agree with an overflow-free mathematical model. Every integer
+/// <summary>SPEC 4.6.1–4.6.3: resolution and application agree with an overflow-free mathematical model. Every integer
 /// Type and FromEnd, Start and End resolve against lengths 0, 3 and isize.MaxValue; every range shape written at a
 /// selection, saved, or passed to trySlice selects the model's interval; and invalid shapes Abort in one check.</summary>
 public class PositionModelTest
@@ -42,12 +42,12 @@ public class PositionModelTest
         "        a += 1\n    check(same(values[..], (true, 0, length)), 18)\n    length += 1\n" +
         "Console.writeLine(\"\\(checks) pairs\")";
 
-    // SPEC 4.6.8: constant positions and ranges on a fixed array, resolved at compile time.
+    // SPEC 4.8.6: constant positions and ranges on a fixed array, resolved at compile time.
     private const string Folding =
         "let values: [4 of i32] = [1, 2, 3, 4]\nlet a = values[^1]\nlet s = values[1..^1]\nlet c = values[..=2]\nlet t = values[^2..]\nlet u = values[1@u8..3@i64]\n" +
         "require a == 4 and s.length == 2 and c.length == 3 and t.length == 2 and u.length == 2 else => $abort(\"fold\")\nConsole.writeLine(\"ok\")";
 
-    // SPEC 8.8: integer positions resolved through generic dispatch, FromEnd<T> and Array.insert.
+    // SPEC 8.13: integer positions resolved through generic dispatch, FromEnd<T> and Array.insert.
     private const string Specializations =
         "func at<P>(p: P) -> isize\n    P is Position\n    match p.tryResolve(4)\n        .Some(let q) => return q\n        .None => return -1\n" +
         "var values: Array<i32> = [1, 2, 3]\nvalues.insert(^1, 9)\n" +
@@ -151,7 +151,7 @@ public class PositionModelTest
             1,
             "Hello.kimi:4:11: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
-    // SPEC 4.6.8: constant positions and ranges that resolve against a fixed array's length are resolved at compile time:
+    // SPEC 4.8.6: constant positions and ranges that resolve against a fixed array's length are resolved at compile time:
     // no from-end subtraction and no runtime check remain, while a failing constant keeps its check (see the Abort cases).
     [Fact]
     public void ConstantPositionsOnFixedArraysFold()
@@ -164,7 +164,7 @@ public class PositionModelTest
         Assert.True(ir.Split("br i1 false,").Length - 1 >= 4, ir);
     }
 
-    // SPEC 8.8: the Kimi integer witness has explicit specializations for isize, i32 and usize; generic dispatch and
+    // SPEC 8.13: the Kimi integer witness has explicit specializations for isize, i32 and usize; generic dispatch and
     // FromEnd<T> select them, so none of these Types reaches the generic body's u128 comparison.
     [Fact]
     public void IntegerPositionsSelectTheirSpecializations()

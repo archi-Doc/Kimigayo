@@ -24,14 +24,14 @@ public sealed partial class OwnershipAnalysis
             var acquisitionKind = capture.Environment.CaptureAcquisition;
             if (acquisitionKind == CaptureAcquisition.Bare && this.body.Places[place].Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 })
             {
-                // SPEC 8.9, 8.10: a bare entry of a pair binding Reborrows in the case or instance whose Type is an exclusive
+                // SPEC 8.14, 8.15: a bare entry of a pair binding Reborrows in the case or instance whose Type is an exclusive
                 // reference, the binding's case Type, and Copies in every other case.
                 acquisitionKind = CaptureAcquisition.Reborrow;
             }
 
             if (closure.EnvironmentType is not null && acquisitionKind is CaptureAcquisition.Reborrow or CaptureAcquisition.SharedSlotBorrow or CaptureAcquisition.ExclusiveSlotBorrow)
             {
-                // SPEC 7.6.2: the entry initializes its environment binding as `let x = x` (a Reborrow) or `let x = x@ref`
+                // SPEC 7.7.2: the entry initializes its environment binding as `let x = x` (a Reborrow) or `let x = x@ref`
                 // and `x@uniq` (a borrow of the outer slot) would; the closure keeps the borrow's Loan (SPEC 15.8.2).
                 var borrowed = this.BorrowCapture(source, place, this.Resolve(capture.Environment.Type!, this.Active)!);
                 var acquired = this.Place(source, capture.Environment.Type, OwnershipPlaceKind.Temporary, false);
@@ -42,7 +42,7 @@ public sealed partial class OwnershipAnalysis
             }
             else if (closure.EnvironmentType is not null)
             {
-                // SPEC 7.6.2: a bare capture Copies and needs definition-side Copy proof; x@move transfers.
+                // SPEC 7.7.2: a bare capture Copies and needs definition-side Copy proof; x@move transfers.
                 var transfer = capture.Environment.TransferCapture;
                 var acquisition = transfer ? AcquisitionKind.Move : this.body.Places[place].Acquisition;
                 if (!transfer && acquisition != AcquisitionKind.Copy)
@@ -56,7 +56,7 @@ public sealed partial class OwnershipAnalysis
                     else
                     {
                         // A rejected capture is read as the Copy it asks for, so the binding stays initialized and later uses report only
-                        // their own problems (SPEC 23.3.6.4).
+                        // their own problems (SPEC 23.1.2).
                         this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired, Capture: i));
                         acquisition = AcquisitionKind.Copy;
                     }
@@ -80,7 +80,7 @@ public sealed partial class OwnershipAnalysis
         return result;
     }
 
-    // SPEC 7.6.2: the borrow that initializes a capture's environment binding. A stored exclusive reference is Reborrowed
+    // SPEC 7.7.2: the borrow that initializes a capture's environment binding. A stored exclusive reference is Reborrowed
     // through its referent when the environment keeps its Type; a slot borrow adds a reference layer over the binding.
     private int BorrowCapture(FunctionKoto source, int place, BoundType type)
     {
@@ -101,7 +101,7 @@ public sealed partial class OwnershipAnalysis
     {
         var depth = this.comparisonDepth++;
         var reservationMark = this.body.CallReservations.Count;
-        // SPEC 7.3, 13.5.5.1: an object callee lends its complete payload through the same checked borrow as `h@follow@ref`/`@uniq`,
+        // SPEC 7.3, 13.5.5: an object callee lends its complete payload through the same checked borrow as `h@follow@ref`/`@uniq`,
         // also when the callee is a written object view (`(h@objuniq)()`).
         var payload = plan.ReceiverOperation.Kind == ArgumentOperationKind.PayloadProjection;
         var explicitReceiver = !payload && plan.ReceiverKind == SemanticsKind.Uniq && IsDirectExclusiveBorrow(plan.CalleeValue);
@@ -110,7 +110,7 @@ public sealed partial class OwnershipAnalysis
         // A common Function value stored in a field or element is called through a shared borrow of that part, as `@ref`
         // would take it, since reading the Non-Copy value out would transfer it.
         var direct = KotoHelper.UnwrapParentheses(plan.CalleeValue);
-        // SPEC 7.6.3, 7.1.1: a user-Indexable element (`m[k]`) and a Place result (`first(xs@ref)`) are such parts too.
+        // SPEC 7.7.3, 7.1.1: a user-Indexable element (`m[k]`) and a Place result (`first(xs@ref)`) are such parts too.
         var part = plan.ReceiverKind == SemanticsKind.Ref && plan.CalleeType.Kind == BoundTypeKind.Function &&
             (direct is MemberAccessKoto || (direct is BinaryKoto element && ElementAccess.IsSyntax(element)) || ElementAccess.IsUserIndex(direct) ||
                 (direct is InvocationKoto && ElementAccess.PlaceCallReference(direct) is not null));
@@ -225,7 +225,7 @@ public sealed partial class OwnershipAnalysis
         return result;
     }
 
-    // SPEC 8.4.10.7: abstract input effects use the same regions as requirement calls. The callable value, rather than a
+    // SPEC 8.11.6: abstract input effects use the same regions as requirement calls. The callable value, rather than a
     // requirement's receiver, identifies earlier calls covered by preserves results. No result borrows its environment. The plan's
     // declared Types are interpreted in the active context, so a default's replica with a concrete callable records none.
     private void CallableEffects(InvocationKoto call, CallPlan plan, int invoke, int result)

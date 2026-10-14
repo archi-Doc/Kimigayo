@@ -64,7 +64,7 @@ public class ControlFlowAnalysisTest
         Assert.Contains(Analyze(source).Issues, x => x.Message.Contains(diagnostic, StringComparison.Ordinal));
     }
 
-    // SPEC 14.11.2, 14.10.3 (DECISIONS R4-M7a): the MIR's A3 reports a falling failure body exactly where the old analysis does: the
+    // SPEC 14.11, 14.10.3 (DECISIONS R4-M7a): the MIR's A3 reports a falling failure body exactly where the old analysis does: the
     // require rows above, a failure body only the checks reach, a require nested after a return in a failure body that the checks alone
     // leave to its end, a default's failure body once however many calls copy it, a defer's once however many exits build it, a defer that a
     // single-item failure body registers, which runs where that body is left (SPEC 16.1), whose own body diverges or completes, and a default

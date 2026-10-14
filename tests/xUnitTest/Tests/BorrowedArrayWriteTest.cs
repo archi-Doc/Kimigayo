@@ -11,7 +11,7 @@ namespace XunitTest;
 
 public class BorrowedArrayWriteTest(ITestOutputHelper output)
 {
-    // SPEC 3.4.1: a member below a Non-Copy element is reached through a synthesized access, which an exclusive path makes exclusive.
+    // SPEC 3.4.3: a member below a Non-Copy element is reached through a synthesized access, which an exclusive path makes exclusive.
     private const string Inner = "struct Inner\n    public var name: string\n    public var count: i32 = 0\n    public init(name: string) => self.name = name@move\n    public func bump(self: uniq/Self) => self.count += 1\n";
 
     [Theory]

@@ -97,7 +97,7 @@ public class ContextualClosureTest(ITestOutputHelper output)
         Assert.True(valid);
     }
 
-    // SPEC 7.6.4, 23.3.6.5: a closure that fails its conversion at a call argument or a default is shown by its signature, with
+    // SPEC 7.7.4, 23.1: a closure that fails its conversion at a call argument or a default is shown by its signature, with
     // the conversion Note, exactly as the same closure at a let annotation (N29a; it was "found closure " without a Note). Owned
     // failures are Constraint records (ErasureOwnedDiagnosticTest).
     [Theory]

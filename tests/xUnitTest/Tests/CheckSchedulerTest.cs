@@ -13,7 +13,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 23.4.5 to 23.4.7: the quiet period, the base rule, reuse, pending units and publication, driven step by step
+// SPEC 23.4 to 23.4: the quiet period, the base rule, reuse, pending units and publication, driven step by step
 // with a fake clock and a controllable runner. Each line's "error" words become diagnostics.
 public sealed class CheckSchedulerTest : IDisposable
 {
@@ -193,7 +193,7 @@ public sealed class CheckSchedulerTest : IDisposable
         harness.At(251);
         await harness.RunCheckAsync();
         var published = await harness.PublishesAsync(shared);
-        // SPEC 23.4.7: range, then contributor (A before B), then result order; a value both send appears once.
+        // SPEC 23.4: range, then contributor (A before B), then result order; a value both send appears once.
         Assert.Equal(["common", "A", "B"], published[^1].GetProperty("diagnostics").EnumerateArray().Select(static x => x.GetProperty("message").GetString()));
 
         harness.At(300).Change(first, 2, "C");

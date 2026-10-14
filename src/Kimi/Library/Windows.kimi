@@ -1,4 +1,4 @@
-/// Windows x64 native APIs. Each import promises to access only what its arguments permit (SPEC 22.3.1).
+/// Windows x64 native APIs. Each import promises to access only what its arguments permit (SPEC 22.6).
 public group Windows
     /// Writes the current performance-counter value through `value` and returns nonzero on success; the borrow is not retained.
     #LibraryImport("kernel32", "QueryPerformanceCounter")

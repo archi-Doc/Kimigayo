@@ -7,7 +7,7 @@ using Kimi.Checking;
 
 namespace Kimi.Lsp;
 
-/// <summary>The kind of an input (SPEC 23.3.4).</summary>
+/// <summary>The kind of an input (SPEC 23.2.1).</summary>
 internal enum InputKind : byte
 {
     /// <summary>A source, project or lock file.</summary>
@@ -68,7 +68,7 @@ internal readonly record struct InputKey(InputKind Kind, SourceIdentity Identity
     public override string ToString() => this.Kind == InputKind.File ? this.Identity.Value : Path.Combine(this.Identity.Value, this.Pattern);
 }
 
-/// <summary>An immutable observation of one input: its identity (SPEC 23.3.4) and the disk facts that drive re-validation.</summary>
+/// <summary>An immutable observation of one input: its identity (SPEC 23.2.1) and the disk facts that drive re-validation.</summary>
 internal sealed class InputState
 {
     /// <summary>Gets a value indicating whether the input is established: readable and synchronized.</summary>
@@ -142,7 +142,7 @@ internal sealed class InputState
 /// <param name="FirstRead">The state of a first read, registered on adoption.</param>
 internal readonly record struct RecordedInput(InputKey Key, long Revision, InputState? FirstRead);
 
-/// <summary>A derived item (SPEC 23.4.5): a loaded project or a unit result, valid while its recorded inputs are current and unmarked.</summary>
+/// <summary>A derived item (SPEC 23.4): a loaded project or a unit result, valid while its recorded inputs are current and unmarked.</summary>
 internal abstract class DerivedItem
 {
     private static long nextId;
@@ -198,13 +198,13 @@ internal sealed class InputEntry
     public List<DerivedItem> Dependents { get; } = [];
 }
 
-/// <summary>A committed view of the store that the worker reads (SPEC 23.4.6); its collections are never changed after it is taken.</summary>
+/// <summary>A committed view of the store that the worker reads (SPEC 23.4); its collections are never changed after it is taken.</summary>
 /// <param name="Base">The base event number.</param>
 /// <param name="Entries">The committed state of every retained input.</param>
 /// <param name="Valid">The items that were valid when the comparisons were committed.</param>
 internal sealed record StoreSnapshot(long Base, Dictionary<InputKey, (long Revision, InputState State)> Entries, HashSet<long> Valid);
 
-/// <summary>The state owner's input store (SPEC 23.4.5): revisions, events, marks and the items that recorded each input.</summary>
+/// <summary>The state owner's input store (SPEC 23.4): revisions, events, marks and the items that recorded each input.</summary>
 internal sealed class InputStore
 {
     private readonly Dictionary<InputKey, InputEntry> entries = new();
@@ -281,7 +281,7 @@ internal sealed class InputStore
         return this.eventNumber;
     }
 
-    /// <summary>Commits one comparison under the base rule (SPEC 23.4.5).</summary>
+    /// <summary>Commits one comparison under the base rule (SPEC 23.4).</summary>
     /// <param name="key">The input.</param>
     /// <param name="state">The observed state.</param>
     /// <param name="checkBase">The check's base.</param>
@@ -323,7 +323,7 @@ internal sealed class InputStore
         }
     }
 
-    /// <summary>Registers an adopted item with its inputs, or rejects it (SPEC 23.4.6).</summary>
+    /// <summary>Registers an adopted item with its inputs, or rejects it (SPEC 23.4).</summary>
     /// <param name="item">The item.</param>
     /// <param name="checkBase">The check's base.</param>
     /// <returns><see langword="false"/> when a recorded input has an event after the base or a revision that is no longer current.</returns>
@@ -454,7 +454,7 @@ internal sealed class InputStore
         return targets;
     }
 
-    /// <summary>Releases entries that no item records and nothing else keeps (SPEC 23.4.6).</summary>
+    /// <summary>Releases entries that no item records and nothing else keeps (SPEC 23.4).</summary>
     /// <param name="keep">Keeps an entry regardless, such as an open document.</param>
     public void Release(Func<InputKey, bool> keep)
     {

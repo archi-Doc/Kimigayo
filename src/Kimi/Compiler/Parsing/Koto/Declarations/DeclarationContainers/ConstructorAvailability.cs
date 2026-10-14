@@ -2,7 +2,7 @@
 
 namespace Kimi.Compiler.Parsing;
 
-/// <summary>How the merged members of a structure determine its constructors (SPEC 6.2.3.6, 22.1).</summary>
+/// <summary>How the merged members of a structure determine its constructors (SPEC 6.3.6, 22.1).</summary>
 internal enum ConstructorAvailability : byte
 {
     /// <summary>The structure declares a constructor, so none is synthesized.</summary>

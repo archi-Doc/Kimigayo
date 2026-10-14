@@ -367,7 +367,7 @@ public sealed partial class Binding
         var layers = 0;
         if (structural)
         {
-            // SPEC 14.8.1, 3.4.1: a structural Pattern selects the referent of every safe value-reference layer
+            // SPEC 14.8.1, 3.4.3: a structural Pattern selects the referent of every safe value-reference layer
             // that lacks its structure; a shared layer anywhere on the path bounds every descendant to shared access.
             while (true)
             {
@@ -390,7 +390,7 @@ public sealed partial class Binding
                     break;
                 }
 
-                // SPEC 14.8.1, 13.5.5.1: a qualifying pair layer is selected like the other safe value-reference layers. The access
+                // SPEC 14.8.1, 13.5.5: a qualifying pair layer is selected like the other safe value-reference layers. The access
                 // past it is the weakest over its admitted cases; an admitted owner keeps the dependency reached so far.
                 access = (admitted & SemanticsMask.Ref) != 0 || access == PatternAccessMode.Shared ? PatternAccessMode.Shared : PatternAccessMode.Exclusive;
                 origin = (admitted & SemanticsMask.Owner) != 0 ? origin : (admitted & SemanticsMask.Ref) != 0 || origin is null ? type.Origin ?? origin

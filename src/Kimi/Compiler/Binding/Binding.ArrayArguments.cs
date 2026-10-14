@@ -9,7 +9,7 @@ public sealed partial class Binding
     private static bool IsAggregateArgument(Koto source)
         => KotoHelper.UnwrapParentheses(source) is ArrayLiteralKoto or TupleLiteralKoto { Elements.Count: > 0 } || IsMixedRange(source);
 
-    // SPEC 4.6.3.1: a range with a literal-only and a typed written boundary. Like a tuple element, each literal-only boundary
+    // SPEC 4.6.2: a range with a literal-only and a typed written boundary. Like a tuple element, each literal-only boundary
     // takes the S or E of the candidate's parameter, while a typed boundary keeps its independent Type.
     private static bool IsMixedRange(Koto source)
         => KotoHelper.UnwrapParentheses(source) is RangeKoto range && !IsLiteralOnlyRange(range) &&
@@ -26,7 +26,7 @@ public sealed partial class Binding
             }
 
             // The typed boundary first; after all other evidence, a literal-only boundary whose S or E is still unknown takes the
-            // other boundary's integer Type, else i32 (SPEC 4.6.3.1 rules 2 and 3).
+            // other boundary's integer Type, else i32 (SPEC 4.6.2 rules 2 and 3).
             var startLiteral = mixed.Start is { } first && IsLiteralOnlyPosition(first);
             var endLiteral = mixed.End is { } last && IsLiteralOnlyPosition(last);
             if ((mixed.Start is not null && !startLiteral && !this.InferAggregateCall(pattern.Components[0], mixed.Start, function, types, lengths, origins, inputs, fitLiterals)) ||
@@ -131,7 +131,7 @@ public sealed partial class Binding
 
         if (source is RangeKoto range && IsMixedRange(range))
         {
-            // SPEC 4.6.3.1: without an expected range, a literal-only boundary takes the integer Type of the typed one.
+            // SPEC 4.6.2: without an expected range, a literal-only boundary takes the integer Type of the typed one.
             var start = this.IndependentRangeBoundary(range.Start, this.StartType);
             var end = this.IndependentRangeBoundary(range.End, this.EndType);
             start ??= this.OtherBoundaryType(range.Start!, end);
@@ -188,7 +188,7 @@ public sealed partial class Binding
         return IsLiteralOnlyPosition(syntax) || syntax.BoundType is not { } actual ? null : this.ReadTypeReferent(actual, syntax) ?? actual;
     }
 
-    // A literal-only boundary beside a typed one: that boundary's integer Type, or its T for FromEnd<T>, else i32 (SPEC 4.6.3.1).
+    // A literal-only boundary beside a typed one: that boundary's integer Type, or its T for FromEnd<T>, else i32 (SPEC 4.6.2).
     private BoundType OtherBoundaryType(Koto boundary, BoundType? other)
     {
         var integer = other is { IsInteger: true } ? other : this.FromEndOffsetType(other) ?? BoundType.I32;
@@ -200,7 +200,7 @@ public sealed partial class Binding
         source = KotoHelper.UnwrapParentheses(source);
         if (source is RangeKoto range && IsMixedRange(range))
         {
-            // A typed boundary is bound on its own now; a literal-only one waits for the candidate (SPEC 4.6.3.1).
+            // A typed boundary is bound on its own now; a literal-only one waits for the candidate (SPEC 4.6.2).
             return (range.Start is null || this.PrepareAggregateArgument(range.Start, scope)) & (range.End is null || this.PrepareAggregateArgument(range.End, scope));
         }
 
@@ -278,7 +278,7 @@ public sealed partial class Binding
 
         if (source is RangeKoto range && IsMixedRange(range))
         {
-            // SPEC 4.6.3.1: the candidate's range of this shape supplies each literal-only boundary's S or E; a typed boundary
+            // SPEC 4.6.2: the candidate's range of this shape supplies each literal-only boundary's S or E; a typed boundary
             // must supply exactly its Type argument, through a value read.
             if (expected is not { Kind: BoundTypeKind.Constructed, Semantics: SemanticsKind.Owner, Components.Count: 2 } ||
                 !ReferenceEquals(expected.Symbol, range.IsInclusive ? this.Library.ClosedRange : this.Library.Range))

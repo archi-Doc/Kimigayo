@@ -622,7 +622,7 @@ public class ForeignEmissionTest
         Assert.Empty(writer.ToString());
     }
 
-    // SPEC 23.3.6.4: an offset whose syntax failed to parse rests on that syntax Error, so no Type mismatch cascades from it.
+    // SPEC 23.1.2: an offset whose syntax failed to parse rests on that syntax Error, so no Type mismatch cascades from it.
     [Fact]
     public void AMalformedPointerOffsetRestsOnItsSyntaxError()
     {
@@ -720,7 +720,7 @@ public class ForeignEmissionTest
         ScalarEmissionTest.EmitFixture("ForeignPointerIncrement" + name, source, string.Empty, 1, "Hello.kimi:8:15: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
     }
 
-    // SPEC 13.2, 13.3: a pointer itself has no increment; a float pointee needs an integer operand and a bool pointee a numeric one.
+    // SPEC 13.2, 13.3.1: a pointer itself has no increment; a float pointee needs an integer operand and a bool pointee a numeric one.
     [Theory]
     [InlineData("i32", "p++", DiagnosticCode.TypeMismatch_Kd)]
     [InlineData("f64", "(*p)++", DiagnosticCode.NonIntegerOperand_Kd)]
@@ -860,7 +860,7 @@ public class ForeignEmissionTest
                 var holders: raw/Holder = null
                 unsafe => holders = (bytes + 256)@raw/Holder
                 unsafe
-                    // Zeroed handles are valid empty Static strings (SPEC 22.5.5).
+                    // Zeroed handles are valid empty Static strings (SPEC 22.7).
                     (*holders).label = "kept"
                     (*holders).count = 41
                     (*holders).count += 1
@@ -1039,7 +1039,7 @@ public class ForeignEmissionTest
                 unsafe => return (*p)@move
             func use(p: raw/string, flag: bool)
                 unsafe
-                    // Zeroed handles are valid empty Static strings (SPEC 22.5.5).
+                    // Zeroed handles are valid empty Static strings (SPEC 22.7).
                     *p = "first"
                     p[0] = "second"
                     Console.writeLine(take(p))

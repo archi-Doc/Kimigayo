@@ -36,7 +36,7 @@ public class SharedObjectBindingTest
         Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
     }
 
-    // SPEC 8.10, 13.5.8: without a premise that proves `s is rc or arc`, a generic clone is an ordinary unproven call.
+    // SPEC 8.15, 13.6.2: without a premise that proves `s is rc or arc`, a generic clone is an ordinary unproven call.
     [Theory]
     [InlineData("func dup<T>(value: ref/T) -> T => Kimi.Intrinsics.clone(value)", "T")]
     [InlineData("func dup<s/T>(value: ref/(s/T)) -> s/T => Kimi.Intrinsics.clone(value)", "s/T")]

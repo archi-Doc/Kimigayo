@@ -28,7 +28,7 @@ public sealed partial class Binding
         return call;
     }
 
-    // SPEC 8.8.3: selection is keyed by the original; each original lists its verified specializations.
+    // SPEC 8.13.3: selection is keyed by the original; each original lists its verified specializations.
     private readonly Dictionary<BindingSymbol, List<FunctionKoto>> specializationsByOriginal = new(ReferenceEqualityComparer.Instance);
     // Retained across binds: a warm rebind reuses each specialization's slot arrays and the sibling lists.
     private readonly Dictionary<FunctionKoto, Specialization> specializationStorage = new(ReferenceEqualityComparer.Instance);
@@ -39,7 +39,7 @@ public sealed partial class Binding
     internal FunctionKoto? GetSpecializationOriginal(FunctionKoto function)
         => this.specializations.TryGetValue(function, out var specialization) ? (FunctionKoto)specialization.Original.Declaration : null;
 
-    // SPEC 8.4.8.2: generic dispatch reaches a verified implementation without a direct call, so a use of `type` as a Type
+    // SPEC 8.3.3: generic dispatch reaches a verified implementation without a direct call, so a use of `type` as a Type
     // argument needs every implementation that its verified conformances map a requirement to.
     internal void CollectWitnesses(BindingSymbol type, List<FunctionKoto> destination)
     {
@@ -210,18 +210,18 @@ public sealed partial class Binding
                 : this.SubstituteStoredOrigin(origin, symbol.Declaration, (BoundOrigin[])container.OriginArguments, types: (BoundType[])container.Components);
         }
 
-        // A body's Origin may name a pair's `o` (SPEC 13.5.5.1), which the instance binds through its Type arguments.
+        // A body's Origin may name a pair's `o` (SPEC 13.5.5), which the instance binds through its Type arguments.
         return this.SubstituteStoredOrigin(origin, target.Declaration, origins, inputs, types);
     }
 
-    /// <summary>Lists the verified specializations of a generic original (SPEC 8.8).</summary>
+    /// <summary>Lists the verified specializations of a generic original (SPEC 8.13).</summary>
     /// <param name="original">The original generic function.</param>
     /// <returns>The specializations, or null when it has none.</returns>
     internal List<FunctionKoto>? Specializations(BindingSymbol original) => this.specializationsByOriginal.GetValueOrDefault(original);
 
     internal FunctionKoto? SelectSpecialization(CallPlan call) => this.SelectSpecialization(call.Target, call.TypeArguments, call.LengthArguments);
 
-    // SPEC 8.8, 8.8.3: a body a call of a function under its substitution may run, by index, null past the last: the specialization a
+    // SPEC 8.13, 8.13.3: a body a call of a function under its substitution may run, by index, null past the last: the specialization a
     // closed key selects, else the function itself and each specialization an open key may still select (no substitution: every one).
     internal BindingSymbol? Implementation(BindingSymbol function, Subst? subst, int index)
     {
@@ -244,7 +244,7 @@ public sealed partial class Binding
         return index == 0 ? function : null;
     }
 
-    // SPEC 8.8.3: the selection key holds every slot; a length slot is its evaluated value (LengthKey(N)).
+    // SPEC 8.13.3: the selection key holds every slot; a length slot is its evaluated value (LengthKey(N)).
     private static bool SameSpecializationLengths(ReadOnlySpan<BoundLength?> left, ReadOnlySpan<BoundLength?> right)
     {
         if (left.Length != right.Length)
@@ -263,7 +263,7 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 8.8.3: whether a call whose key is still open may select a specialization: each argument it fixes may match the
+    // SPEC 8.13.3: whether a call whose key is still open may select a specialization: each argument it fixes may match the
     // specialization's, and each constant length equals it.
     private static bool MaySelect(Specialization candidate, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths)
     {
@@ -381,15 +381,15 @@ public sealed partial class Binding
 
             // Constraint and attribute specializations require their own inherited contract certificates.
             // Do not accept their syntax by merely erasing the generic header. Written binder names
-            // are inherited by CompleteImplementationOrigins (SPEC 8.8.2); a receiver is an ordinary
-            // restated parameter matched at the original's position (SPEC 8.8.1).
+            // are inherited by CompleteImplementationOrigins (SPEC 8.13.2); a receiver is an ordinary
+            // restated parameter matched at the original's position (SPEC 8.13.1).
             if (function.AttributeChain is not null || function.GenericArguments.Count == 0 || HasParameterAttributes(function))
             {
                 this.Fail(function, BindingFailure.Unsupported, true);
                 continue;
             }
 
-            // SPEC 8.8.2: a specialization header inherits the original's access, boundary, defaults and
+            // SPEC 8.13.2: a specialization header inherits the original's access, boundary, defaults and
             // Constraints; it redeclares none of them.
             if (function.Modifier != ModifierKind.NoModifier || function.NameBoundaryIndex >= 0 || function.TypeConstraints.Count != 0 ||
                 HasParameterDefaults(function))
@@ -411,7 +411,7 @@ public sealed partial class Binding
             var scope = this.scopes[function];
             for (var i = 0; i < arguments.Length; i++)
             {
-                // SPEC 8.8: a length slot takes an evaluated constant (LengthKey(N)); a Type slot takes one closed Type.
+                // SPEC 8.13: a length slot takes an evaluated constant (LengthKey(N)); a Type slot takes one closed Type.
                 if (this.IsLengthArgument(function.GenericArguments[i], scope))
                 {
                     lengths[i] = this.BindLength(function.GenericArguments[i], scope);
@@ -432,7 +432,7 @@ public sealed partial class Binding
 
             BindingSymbol? original = null;
             var matches = 0;
-            var candidates = 0; // SPEC 8.8.1: same Name, kind and generic slots; input structure is matched below.
+            var candidates = 0; // SPEC 8.13.1: same Name, kind and generic slots; input structure is matched below.
             for (var candidate = symbol.Scope.Values.GetValueOrDefault(function.Name); candidate is not null; candidate = candidate.Next)
             {
                 if (candidate.Declaration is not FunctionKoto { IsSpecialization: false } ordinary ||
@@ -464,7 +464,7 @@ public sealed partial class Binding
 
             if (matches != 1)
             {
-                // SPEC 8.8.1: no target, an input-structure mismatch and multiple targets are distinct diagnostics.
+                // SPEC 8.13.1: no target, an input-structure mismatch and multiple targets are distinct diagnostics.
                 this.Fail(function, matches > 1 ? BindingFailure.Ambiguous : candidates == 0 ? BindingFailure.MissingSpecializationTarget : BindingFailure.SpecializationInputMismatch);
                 continue;
             }
@@ -476,7 +476,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            // SPEC 8.8.2: the original's generic Constraints are inherited; the closed arguments must satisfy them.
+            // SPEC 8.13.2: the original's generic Constraints are inherited; the closed arguments must satisfy them.
             var constraints = this.CheckConstraints(definition.TypeConstraints, definition, arguments, scope, null, null, lengths);
             if (constraints != ConstraintProof.Proven)
             {
@@ -528,7 +528,7 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 8.8.1: every slot is supplied with its original kind, in declaration order.
+        // SPEC 8.13.1: every slot is supplied with its original kind, in declaration order.
         static bool SameSlotKinds(FunctionKoto ordinary, BoundLength?[] lengths)
         {
             for (var i = 0; i < lengths.Length; i++)

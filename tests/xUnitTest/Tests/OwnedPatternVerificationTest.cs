@@ -67,7 +67,7 @@ public class OwnedPatternVerificationTest
         const string Fixture = "VerificationOwnedPatternAggregateBindings";
         const string Output = "third\nfourth\n";
         var ir = ScalarEmissionTest.EmitFixture(Fixture, Source, Output);
-        // writeLine borrows a and b (SPEC 22.4); the arm destroys them in reverse acquisition order.
+        // writeLine borrows a and b (SPEC 22.1); the arm destroys them in reverse acquisition order.
         StringEmissionTest.WriteAuditedFixture(Fixture, Source, ir, Output, "first=2;second=2;third=2;fourth=2;remaining=2", order: [3, 2, 1, 0, 4, 1, 0, 3, 2, 4]);
     }
 

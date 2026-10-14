@@ -192,7 +192,7 @@ public class ElementMoveEmissionTest
     }
 
     // SPEC 13.7.2: the RHS completes before the target is located, so a target moved there is Moved at the
-    // update, whereas the located receiver stays protected while its index operands evaluate (SPEC 4.6.4).
+    // update, whereas the located receiver stays protected while its index operands evaluate (SPEC 4.6.3).
     [Theory]
     [InlineData("var a = ((\"held\", 40), 0)\na.0.1 += label work: do\n    let taken = a.0@move\n    exit to work 2", DiagnosticCode.MovedPlace_Kd)]
     [InlineData("var a: (string, [1 of i32]) = (\"held\", [40])\na.1[(label work: do\n    let taken = a.0@move\n    exit to work 0\n)] += 2", DiagnosticCode.ComparisonLoanConflict_Kd)]

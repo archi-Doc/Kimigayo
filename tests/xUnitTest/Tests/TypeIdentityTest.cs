@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 8.3, 8.4.8.1, 8.7: an available Type-identity premise `X is U` makes X and U one Type in its scope, a
+/// <summary>SPEC 8.2, 8.8.1, 8.3: an available Type-identity premise `X is U` makes X and U one Type in its scope, a
 /// function body or a conditional conformance's block, by substitution.</summary>
 public class TypeIdentityTest
 {
@@ -61,7 +61,7 @@ public class TypeIdentityTest
         ScalarEmissionTest.EmitFixture("TypeIdentityRange", Source, "ok\n");
     }
 
-    // SPEC 8.3: an expression Type with an identity premise substituted keeps its stored fields, so a field of a substituted
+    // SPEC 8.2: an expression Type with an identity premise substituted keeps its stored fields, so a field of a substituted
     // range keeps its substituted Type in every instance.
     [Fact]
     public void SubstitutedTypesKeepTheirFields()

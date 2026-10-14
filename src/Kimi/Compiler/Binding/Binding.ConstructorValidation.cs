@@ -178,7 +178,7 @@ public sealed partial class Binding
                 }
             }
 
-            // SPEC 8.4.8.2: as at the first selection, an Unknown premise rejects the fixed construction only when it can affect it.
+            // SPEC 8.3.3: as at the first selection, an Unknown premise rejects the fixed construction only when it can affect it.
             if (unproven is not null && !this.PremisesCannotAffect(call, checkedCandidates.AsSpan(0, count), checkedOperations, stride))
             {
                 return Reject(unproven, ConstructionCheck.UnprovenCandidate);
@@ -231,10 +231,10 @@ public sealed partial class Binding
             : [("declaration", fact.Selected, "Tentative selection")];
         var note = fact.Check switch
         {
-            ConstructionCheck.WaitingContext => "The fixed-binding check needs a different or additional waiting-argument context; the argument is never analyzed again to select another constructor (SPEC 10.8.1)",
-            ConstructionCheck.UnprovenCandidate => "The original constructor group cannot be fully judged with the inferred construction Type fixed (SPEC 10.8.1)",
-            ConstructionCheck.AcquisitionCorrelation => "The group contract is checked before applicability filtering; independent inputs and fixed bindings do not establish the required shared acquisition (SPEC 7.3.1)",
-            _ => "The original constructor group, including inference-rejected candidates, no longer has the same unique Best Candidate when the construction Type is fixed (SPEC 10.8.1)",
+            ConstructionCheck.WaitingContext => "The fixed-binding check needs a different or additional waiting-argument context; the argument is never analyzed again to select another constructor (SPEC 10.8)",
+            ConstructionCheck.UnprovenCandidate => "The original constructor group cannot be fully judged with the inferred construction Type fixed (SPEC 10.8)",
+            ConstructionCheck.AcquisitionCorrelation => "The group contract is checked before applicability filtering; independent inputs and fixed bindings do not establish the required shared acquisition (SPEC 7.4)",
+            _ => "The original constructor group, including inference-rejected candidates, no longer has the same unique Best Candidate when the construction Type is fixed (SPEC 10.8)",
         };
         object[] evidence = correlation
             ? fact.LeftBinding is { } left && fact.RightBinding is { } right

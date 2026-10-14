@@ -644,7 +644,7 @@ public sealed partial class Binding
                     var kind = semantics.SemanticsKind;
                     if (kind is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.ObjRef or SemanticsKind.ObjUniq)
                     {
-                        // SPEC 8.4.7.2: the target must be an Object Target. Generic targets and a Contract's
+                        // SPEC 8.7.3: the target must be an Object Target. Generic targets and a Contract's
                         // Self are proven from their premises at the definition deadline.
                         if (inner.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection)
                         {
@@ -789,7 +789,7 @@ public sealed partial class Binding
         var own = this.BindTypeList(generic.TypeArguments, scope, context.Nested, BoundTypeKind.Constructed, definition);
         if (own is { IsWrappingInteger: true })
         {
-            // SPEC 3.1.1.1: Wrapping<T> over an integer Type is already the interned Scalar, and that argument satisfies the
+            // SPEC 3.1.1: Wrapping<T> over an integer Type is already the interned Scalar, and that argument satisfies the
             // declaration's only Constraint, so no container reference or obligation is formed.
             return Complete(generic, own);
         }

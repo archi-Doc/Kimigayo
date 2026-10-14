@@ -5,7 +5,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 7.6.3, 7.1.1, 4.6.9: a common Function value published as a Place, by a user-Indexable element or a Place result, is
+// SPEC 7.7.3, 7.1.1, 4.7.1: a common Function value published as a Place, by a user-Indexable element or a Place result, is
 // called through a shared borrow of that Place, which stays lent while the call's arguments run.
 public class PlaceCalleeTest
 {

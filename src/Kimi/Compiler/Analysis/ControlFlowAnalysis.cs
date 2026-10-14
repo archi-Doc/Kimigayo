@@ -19,7 +19,7 @@ public sealed record ControlFlowIssue(Koto Node, DiagnosticCode Code, object? Ar
     /// <summary>Gets the message formatted from the catalog.</summary>
     public string Message => DiagnosticEntries.TryGet(this.Code, out var entry) ? entry.FormatMessage(this.Argument, null) : this.Code.ToString();
 
-    /// <summary>Gets the repair candidates the warning offers (SPEC 23.3.6.9).</summary>
+    /// <summary>Gets the repair candidates the warning offers (SPEC 23.1.3).</summary>
     internal DiagnosticRepairFact[]? Repairs { get; init; }
 
     internal int Priority { get; init; } = 4;
@@ -80,7 +80,7 @@ public sealed class ControlFlowAnalysis
     private StructuralCompletion? writtenCompletion;
     private List<DiagnosticKey>? suppliedCauses;
 
-    // SPEC 14.3.3: whether an operation in the innermost Unsafe Block being visited used its permission, and whether one whose
+    // SPEC 14.3: whether an operation in the innermost Unsafe Block being visited used its permission, and whether one whose
     // need is unknown, such as an unresolved operation, may have.
     private bool unsafeUsed;
     private bool unsafeUncertain;
@@ -246,7 +246,7 @@ public sealed class ControlFlowAnalysis
         return finder.Found;
     }
 
-    // SPEC 17.2.4: `try` propagates a Result's error only to a function whose result is a Result of the same error Type.
+    // SPEC 17.3: `try` propagates a Result's error only to a function whose result is a Result of the same error Type.
     private static bool FailureTargetFits(Koto node)
     {
         if (node.BoundType is not { Kind: BoundTypeKind.Constructed, Components.Count: 2 } result || result.Symbol?.LibraryDeclaration != KimiDeclarationId.Result)
@@ -301,7 +301,7 @@ public sealed class ControlFlowAnalysis
         => expression is ExpressionKoto and not InvocationKoto && expression.BindingState == BindingState.Resolved &&
             expression.BoundSymbol is { Kind: BindingSymbolKind.Function, Declaration: FunctionKoto function } ? function : null;
 
-    // SPEC 14.3.3: whether a bound operation requires lexical unsafe permission; null while Binding has not resolved it.
+    // SPEC 14.3: whether a bound operation requires lexical unsafe permission; null while Binding has not resolved it.
     private static bool? RequiresUnsafeContext(Koto expression)
     {
         if (expression.BindingState != BindingState.Resolved)
@@ -423,8 +423,8 @@ public sealed class ControlFlowAnalysis
         return false;
     }
 
-    // SPEC 17.4.3, 23.3.6.9: a discarded Result or try success value that is a direct item of an indented body offers `_ = ` before it
-    // and, for a Result whose error Type the enclosing function's failure return target takes (SPEC 17.2.4), `_ = try ` as well;
+    // SPEC 17.5.1, 23.1.3: a discarded Result or try success value that is a direct item of an indented body offers `_ = ` before it
+    // and, for a Result whose error Type the enclosing function's failure return target takes (SPEC 17.3), `_ = try ` as well;
     // `_ =` puts the expression in Value Context (SPEC 14.2.4) and changes no scope, so no condition is relevant.
     private void WarnDiscard(Koto node, DiagnosticCode code, int priority)
     {
@@ -478,7 +478,7 @@ public sealed class ControlFlowAnalysis
                 IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter };
         }
 
-        // Tuples and Case constructions are effect-free when every nested operand is (SPEC 17.4.2).
+        // Tuples and Case constructions are effect-free when every nested operand is (SPEC 17.5.3).
         // A Case construction must also have a proven Copy Type, so its destruction is not observable.
         if (node is TupleLiteralKoto tuple)
         {
@@ -705,7 +705,7 @@ public sealed class ControlFlowAnalysis
                 flow = this.Visit(getter);
                 break;
             case RangeKoto or FromEndIndexKoto when this.binding.RangeValueCall(node) is { } rangeValue:
-                // SPEC 4.6.2, 4.6.3: prefix ^ and range syntax that construct a value are their synthesized PositionSyntax
+                // SPEC 4.6.1, 4.6.2: prefix ^ and range syntax that construct a value are their synthesized PositionSyntax
                 // calls, whose arguments may themselves be synthesized `^x` constructions.
                 flow = this.Visit(rangeValue);
                 break;
@@ -713,7 +713,7 @@ public sealed class ControlFlowAnalysis
                 flow = this.Visit(viewRange);
                 break;
             case IndexKoto keyed when this.binding.ResolvedKeyCall(keyed) is { } resolvedKey:
-                // SPEC 4.6.4: the receiver is evaluated, then a synthesized call resolves the key against the length of that
+                // SPEC 4.6.3: the receiver is evaluated, then a synthesized call resolves the key against the length of that
                 // evaluated receiver; the selection completes as both do.
                 var selectedFlow = this.Visit(keyed.Left);
                 var keyFlow = this.Visit(resolvedKey);
@@ -809,10 +809,10 @@ public sealed class ControlFlowAnalysis
                 this.VisitDeclarations(container);
                 return new(true);
             case SyntaxFormKoto { Akind: KotoKind.AssociatedType }:
-                // SPEC 8.4.3: associated-Type parameters and formation Types have no runtime evaluation.
+                // SPEC 8.5: associated-Type parameters and formation Types have no runtime evaluation.
                 return new(true);
             case EffectBoundKoto:
-                // SPEC 8.4.10.1: an effect item is declaration metadata; its selector and Name are never evaluated.
+                // SPEC 8.11.1: an effect item is declaration metadata; its selector and Name are never evaluated.
                 return new(true);
             case OriginRelationKoto:
                 // SPEC 15.3.3: a Type's origin clause, visited with its declarations, is a contract relation, never evaluated.
@@ -847,7 +847,7 @@ public sealed class ControlFlowAnalysis
                 // Registration never evaluates its body. Its completion matters at scope exit only.
                 return new(true);
             case UnsafeBlockKoto unsafeBlock:
-                // SPEC 14.3.3: an operation uses the permission of the innermost enclosing Unsafe Block.
+                // SPEC 14.3: an operation uses the permission of the innermost enclosing Unsafe Block.
                 var (outerUsed, outerUncertain) = (this.unsafeUsed, this.unsafeUncertain);
                 (this.unsafeUsed, this.unsafeUncertain) = (false, false);
                 flow = this.Visit(unsafeBlock.Body);
@@ -1094,8 +1094,8 @@ public sealed class ControlFlowAnalysis
         }
     }
 
-    // SPEC 14.3.3, 23.3.6.9: the warning is at the unsafe keyword. Removing the block keeps the statements' meaning only when its Body,
-    // an independent scope (SPEC 14.3.1), declares no Name and registers no defer (Structure); a statement of an indented body whose
+    // SPEC 14.3, 23.1.3: the warning is at the unsafe keyword. Removing the block keeps the statements' meaning only when its Body,
+    // an independent scope (SPEC 14.2.1), declares no Name and registers no defer (Structure); a statement of an indented body whose
     // lines allow the edit then offers Repair.RemoveUnsafe.
     private void WarnUnnecessaryUnsafe(UnsafeBlockKoto block)
     {
@@ -1305,7 +1305,7 @@ public sealed class ControlFlowAnalysis
     {
         var condition = this.Visit(node.Condition);
 
-        // Entry to the failure body is assumed independently of the condition, even for literal true (SPEC 14.11.2).
+        // Entry to the failure body is assumed independently of the condition, even for literal true (SPEC 14.11).
         var failure = this.VisitBodyItem(node.ElseBody);
         if (failure.Normal)
         {
@@ -1497,7 +1497,7 @@ public sealed class ControlFlowAnalysis
 
         this.nodes[node].CanCompleteNormally = flow.Normal;
 
-        // SPEC 17.4.1: a selection or do whose Unit result Binding inferred, rather than a declaration, a construct rule or
+        // SPEC 17.5.2: a selection or do whose Unit result Binding inferred, rather than a declaration, a construct rule or
         // an expected Type fixing it, warns at a non-Unit tail it discards.
         if (node is DoKoto or IfKoto or MatchKoto and not TryKoto && this.binding.InfersUnit(node))
         {

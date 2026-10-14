@@ -40,7 +40,7 @@ internal static partial class LlvmModuleWriter
 
         if (instruction.ScalarOperator == "DictionaryEntryAddress")
         {
-            // A key or value inside a validated live slot (SPEC 22.1.2.5).
+            // A key or value inside a validated live slot (SPEC 22.2).
             output.Write("  %v");
             WriteNumber(output, id);
             output.Write(" = getelementptr i8, ptr ");

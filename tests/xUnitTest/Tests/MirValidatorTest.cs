@@ -171,7 +171,7 @@ public sealed class MirValidatorTest
         Assert.All(findings, x => Assert.Equal((Enum.Parse<MirViolation>(rule), Broken.Syntax), (x.Rule, x.Subject)));
     }
 
-    // SPEC 8.3, 15.3: Types that differ only by their Origins agree, and so do Types a body's Type-identity premise equates (E and S under
+    // SPEC 8.2, 15.3: Types that differ only by their Origins agree, and so do Types a body's Type-identity premise equates (E and S under
     // `E is S`), which the corpus's generic bodies rely on; other Types disagree.
     [Fact]
     public void TypesAgreeModuloOriginsAndPremises()
@@ -245,7 +245,7 @@ public sealed class MirValidatorTest
         Assert.Equal([(MirViolation.Type, Broken.Syntax), (MirViolation.Type, Broken.Syntax)], findings.Select(static x => (x.Rule, x.Subject)));
     }
 
-    // SPEC 8.10, 23.3.6.1: Binding publishes no part of a definition beyond PairBinder.CaseBound views (Binding.CaseLimits), so a body with more
+    // SPEC 8.15, 23.1.1: Binding publishes no part of a definition beyond PairBinder.CaseBound views (Binding.CaseLimits), so a body with more
     // views is a Binder finding at the body, which is not checked further: six binders of two cases, 64 views, are valid but for an Adapt no
     // view resolves (T to bool); a seventh gives the one Binder finding, the Adapt's views unresolved.
     [Fact]

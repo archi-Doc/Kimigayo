@@ -23,7 +23,7 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    // Steps over one selected layer: a safe reference or a pair layer, whose target is its referent (SPEC 13.5.5.1).
+    // Steps over one selected layer: a safe reference or a pair layer, whose target is its referent (SPEC 13.5.5).
     private static bool SelectedLayer(ref BoundType type)
     {
         if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
@@ -42,7 +42,7 @@ internal sealed partial class BodyLowering
     }
 
     // A selected layer is read through a pointer when the instance's layer is a reference; a pair layer bound to owner
-    // is the Place itself (SPEC 13.5.5.1).
+    // is the Place itself (SPEC 13.5.5).
     private bool Dereferences(BoundType layer) => this.Matched(layer) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 };
 
     private bool IsCompositeSubject(BoundType type) => (type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && ReferenceTypes.IsStorage(type)) ||

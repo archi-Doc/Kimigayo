@@ -26,7 +26,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // The lengths of a substitution whose binder has no length slot; never written, so every entry is null.
     private BoundLength?[] noLengths = [];
 
-    // SPEC 3.4.1, 13.5.5.1: the layer selection follows implicitly at a Type, a Deref of a reference or object handle or a PairLayer of a
+    // SPEC 3.4.3, 13.5.5: the layer selection follows implicitly at a Type, a Deref of a reference or object handle or a PairLayer of a
     // pair layer, with the Type below it and the pair binder whose Semantics case decides the PairLayer (its SemanticsTarget, the
     // PairBinder.Target); Value, below which is the Type itself, for any other Type.
     internal static HirPlaceKind Layer(BoundType? type, out BoundType? below, out BindingSymbol? binder)
@@ -48,10 +48,10 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
         return HirPlaceKind.Value;
     }
 
-    // SPEC 23.3.6.5: a Type as diagnostics spell it, which the MIR dump writes.
+    // SPEC 23.1: a Type as diagnostics spell it, which the MIR dump writes.
     internal static string Name(BoundType type) => Binding.DiagnosticTypeName(type);
 
-    // SPEC 7.3, 6.2.3.2: a function's parameter Type at a slot as it declares it (an accessor's self and value included), or at -1 the Type
+    // SPEC 7.3, 6.3.2: a function's parameter Type at a slot as it declares it (an accessor's self and value included), or at -1 the Type
     // its call gives (a constructor's: its object), under a call's substitution; null past its parameters or where the substitution does
     // not instantiate it. The MIR validator checks calls and bodies by it.
     internal static BoundType? Signature(BindingSymbol function, Subst? subst, int slot, out int count)
@@ -62,7 +62,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
         return type is null || subst is null ? type : declaration.CodeContext.Compilation.Types.Apply(type, subst);
     }
 
-    // SPEC 8.3, 8.4: a Type in a definition's body as its premises make it (S for E under `E is S`, T.Element under `T.Element is i32`), as
+    // SPEC 8.2, 8.4: a Type in a definition's body as its premises make it (S for E under `E is S`, T.Element under `T.Element is i32`), as
     // Binding compares Types there.
     internal static BoundType Premised(BindingSymbol definition, BoundType type)
     {
@@ -70,16 +70,16 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
         return binding.CallableContractType(type, binding.ConstraintScope(definition.Declaration));
     }
 
-    // SPEC 8.9, 13.5.3: the operation an explicit adaptation from a complete Type to a complete Type is, Binding's one selection, by which
+    // SPEC 8.14, 13.5.3: the operation an explicit adaptation from a complete Type to a complete Type is, Binding's one selection, by which
     // the MIR's case views resolve a case adaptation.
     internal static ConversionBinding Adaptation(BoundType source, BoundType target, bool shorthand)
         => ExplicitAdaptationPlan.Select(source, target, shorthand);
 
-    // SPEC 8.10: the complete Type a Type takes in one Semantics case, each pair layer of a binder the cases name the Type of its Semantics
+    // SPEC 8.15: the complete Type a Type takes in one Semantics case, each pair layer of a binder the cases name the Type of its Semantics
     // over its direct target, which the MIR's case views give every Type by.
     internal BoundType CaseType(BoundType type, ReadOnlySpan<PairCase> cases) => binding.CaseType(type, cases);
 
-    // SPEC 8.6, 10.5, 7.3: the call signature of a callable value's Type, a Function Type: a Function Item's, a Closure's declaration's under
+    // SPEC 8.10, 10.5, 7.3: the call signature of a callable value's Type, a Function Type: a Function Item's, a Closure's declaration's under
     // its context, a Function Type itself; null for any other, whose call has no signature. The MIR's call rule reads it (MirTypes.Parameter).
     internal BoundType? Callable(BoundType? type) => type?.Kind switch
     {
@@ -105,7 +105,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
             }
         }
 
-        // SPEC 3.1.1.1: Wrapping<T> over an integer Type is the interned wrapping Scalar of that Type, identified by Core
+        // SPEC 3.1.1: Wrapping<T> over an integer Type is the interned wrapping Scalar of that Type, identified by Core
         // and never represented as the declared struct; over a Type parameter it stays constructed until substitution.
         if (symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping && components.Length == 1 && components[0].IsInteger &&
             semantics == SemanticsKind.Owner && origin is null && originArguments.Length == 0)
@@ -206,14 +206,14 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 
     internal BoundType Tuple(ReadOnlySpan<BoundType> elements) => this.Intern(BoundTypeKind.Tuple, null, SemanticsKind.Owner, elements);
 
-    // SPEC 8.6, 10.5: a selected call's substitution, as its selection committed it; a value call has none. A direct base call's is its
+    // SPEC 8.10, 10.5: a selected call's substitution, as its selection committed it; a value call has none. A direct base call's is its
     // implementation's in the Type implementing it, which it calls (virtual-dispatch 4).
     internal Subst? SubstOf(CallPlan call) => call.Kind == CalleeKind.Value ? null
         : call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true, VirtualImplementation.BoundSymbol: { } implementation }
             ? this.Intern(implementation, null, call.VirtualImplementingType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins)
             : this.Intern(call.Target, call.ConformingType, call.DeclaringType ?? BoundContract(call), call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
 
-    // SPEC 8.3: a closure's substitution, the context of the instance that closed it; a closure no instance closed is in the identity of
+    // SPEC 8.2: a closure's substitution, the context of the instance that closed it; a closure no instance closed is in the identity of
     // the declaration enclosing it.
     internal Subst? SubstOfClosure(BoundType closure)
     {
@@ -240,7 +240,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // arguments; its Origins are the analyses' to relate.
     internal Subst Synthesized(BindingSymbol target, BoundType? declaring, ReadOnlySpan<BoundType?> types) => this.Intern(target, null, declaring, types, [], [], []);
 
-    // SPEC 8.3, 8.6: a declared Type in the instance a substitution makes, which Binding's storage instantiation computes until R7 moves it
+    // SPEC 8.2, 8.10: a declared Type in the instance a substitution makes, which Binding's storage instantiation computes until R7 moves it
     // here; the identity keeps the Type.
     internal BoundType? Apply(BoundType type, Subst subst)
         => subst.IsIdentity ? type : binding.InstantiateStorageType(type, subst.Target, subst.Declaring, subst.Types, subst.Lengths, subst.Origins, subst.Inputs, subst.Self);
@@ -282,7 +282,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
         return failed ? null : this.Intern(inner.Target, inner.Self is { } self ? this.Apply(self, outer) : null, declaring, types, lengths, origins[..inner.Origins.Length], origins[inner.Origins.Length..]);
     }
 
-    // SPEC 8.4.2: the bound Contract reference a requirement call dispatches through (Indexable<isize>), which declares the requirement as a
+    // SPEC 8.4.3: the bound Contract reference a requirement call dispatches through (Indexable<isize>), which declares the requirement as a
     // generic container's instance declares a member; null for a reference to the requirement's own Contract or another call.
     private static BoundType? BoundContract(CallPlan call)
         => call is { Kind: CalleeKind.Requirement, RequirementContract: { Type: { } bound } contract } && !ReferenceEquals(bound.Symbol, contract) ? bound : null;
@@ -297,7 +297,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
         return scratch.AsSpan(0, length);
     }
 
-    // SPEC 8.8.3: a substitution holds one length entry per slot, the selection key's form, as a CallPlan does. The lengths are empty (the
+    // SPEC 8.13.3: a substitution holds one length entry per slot, the selection key's form, as a CallPlan does. The lengths are empty (the
     // binder has no length slot) or one per slot of the Types.
     private Subst Intern(BindingSymbol target, BoundType? self, BoundType? declaring, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs)
     {

@@ -72,7 +72,7 @@ public class BitwiseEmissionTest
     public void FailureStopsEvaluationAndCleanup(string name, string source, string stdout, int line, int column, bool overflow)
         => ScalarEmissionTest.EmitFixture(name, source, stdout, 1, $"Hello.kimi:{line}:{column}: abort {(overflow ? "KIMI_E_INT_OVERFLOW: Integer overflow" : Reason)}\n");
 
-    // IMPL 21.5.3: a literal count inside 0 <= count < width needs no check even at O0; every other literal count keeps it.
+    // IMPL 21.3.3: a literal count inside 0 <= count < width needs no check even at O0; every other literal count keeps it.
     [Fact]
     public void LiteralInRangeCountsOmitTheCheck()
     {

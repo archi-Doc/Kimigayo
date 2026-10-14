@@ -150,7 +150,7 @@ public sealed class MirBorrowTest(ITestOutputHelper output)
     public void ALoanIsActiveWhileAHolderIsReachingAndLive(string rule, string source, string statement, string root, bool active)
         => Assert.True(active == Active(source, statement, root), rule);
 
-    // R11 (plan 5.6.1, SPEC 8.9): a PairAcquire Reborrows only in a view whose case makes its Place an exclusive reference.
+    // R11 (plan 5.6.1, SPEC 8.14): a PairAcquire Reborrows only in a view whose case makes its Place an exclusive reference.
     [Fact]
     public void APairAcquireReborrowsInTheUniqViewOnly()
     {

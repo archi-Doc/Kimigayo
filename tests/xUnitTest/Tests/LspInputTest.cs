@@ -82,7 +82,7 @@ public sealed class LspInputTest
         ];
         var output = new CheckOutput(CheckOutcome.Completed, false, TestPresence.No, diagnostics, sources);
 
-        // SPEC 23.4.7: distinct problems of one result never merge; a record outside a recorded input moves to the project file.
+        // SPEC 23.4: distinct problems of one result never merge; a record outside a recorded input moves to the project file.
         var reports = WorkspaceCheck.Place(output, [clean, broken, clean, builtIn], project);
         Assert.Equal(3, reports.Count);
         Assert.Empty(reports[clean]);
@@ -95,7 +95,7 @@ public sealed class LspInputTest
             => new(code, DiagnosticSeverity.Error, DiagnosticCategory.Language, message, source, range is null ? null : new SourceSpan(0, 1)) { Display = range is null ? null : new(range, []) };
     }
 
-    // SPEC 23.4.7: a related location in a recorded input is sent as relatedInformation when the client declares it; its
+    // SPEC 23.4: a related location in a recorded input is sent as relatedInformation when the client declares it; its
     // text is appended to the message otherwise, and always for a location the client cannot open.
     [Theory]
     [InlineData(true)]

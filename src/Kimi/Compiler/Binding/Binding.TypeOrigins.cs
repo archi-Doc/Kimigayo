@@ -458,7 +458,7 @@ public sealed partial class Binding
                 }
 
                 // Check the stored value under the inherited premises, not the enclosing Type. A shared static borrow
-                // may be Owned; carrying a borrow is not itself a language error (SPEC 11.3.2, 15.4.2).
+                // may be Owned; carrying a borrow is not itself a language error (SPEC 11.8, 15.4.2).
                 var owned = this.ProveOwned(type, property);
                 this.RequireConstraint(property, owned, this.capabilityMode);
 

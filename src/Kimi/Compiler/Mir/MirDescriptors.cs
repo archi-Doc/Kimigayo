@@ -25,7 +25,7 @@ internal enum MirAccess : ushort
     CaseDependent = 1 << 7, // A pair binder's Semantics case decides the operation: a PairAcquire, a Place through a PairLayer, an Adapt's payload.
 }
 
-/// <summary>An effect of a location, the local facts of the effect summary (plan 5.5, SPEC 8.4.10.2).</summary>
+/// <summary>An effect of a location, the local facts of the effect summary (plan 5.5, SPEC 8.11.2).</summary>
 [Flags]
 internal enum MirEffect : ushort
 {
@@ -133,7 +133,7 @@ internal static class MirDescriptors
         _ => default,
     };
 
-    // The intrinsic table's rows (plan 5.8): arguments as the library declares them, Fail's being its SPEC 22.5.4 code as a string constant.
+    // The intrinsic table's rows (plan 5.8): arguments as the library declares them, Fail's being its SPEC 22.5.2 code as a string constant.
     internal static MirDescriptor Of(IntrinsicId id) => id switch
     {
         IntrinsicId.RawAllocate => Row(MirAccess.None, MirEffect.Allocation, 1),
@@ -151,7 +151,7 @@ internal static class MirDescriptors
         IntrinsicId.ErasedWriter => Row(MirAccess.None, MirEffect.None, 1),
         IntrinsicId.Clone => Row(MirAccess.None, MirEffect.None, 1),
         IntrinsicId.Capacity => Row(MirAccess.None, MirEffect.None, 1),
-        IntrinsicId.TypeTest => Row(MirAccess.None, MirEffect.None, 2), // The payload's shared view and the target Type's token (SPEC 13.6.1).
+        IntrinsicId.TypeTest => Row(MirAccess.None, MirEffect.None, 2), // The payload's shared view and the target Type's token (SPEC 13.6.4).
         IntrinsicId.DestroyValues => Row(MirAccess.None, effects: MirEffect.None),
         IntrinsicId.FormatFloat => Row(MirAccess.None, effects: MirEffect.None),
         IntrinsicId.ErasedReserve => Row(MirAccess.None, effects: MirEffect.None),

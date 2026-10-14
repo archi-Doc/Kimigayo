@@ -7,7 +7,7 @@ using Kimi.Diagnostics;
 namespace Kimi.Lsp;
 
 /// <summary>
-/// Holds the text of one open document in a pooled gap buffer (SPEC 23.4.2).
+/// Holds the text of one open document in a pooled gap buffer (SPEC 23.4).
 /// This type is not thread-safe: only the state owner touches it.
 /// </summary>
 /// <remarks>

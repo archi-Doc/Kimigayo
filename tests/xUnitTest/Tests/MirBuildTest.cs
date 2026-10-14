@@ -107,7 +107,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
 
     // Plan 6.2: a form without a building rule is one record at its location, however many times a body meets it (a defer body, built at
     // each way out of its scope), and an Opaque value naming the locals its syntax touches. A node the lexer or Binding rejected is a derived
-    // Opaque without a record (SPEC 23.3.6.4): Binding's Error, a use of a local whose declaration is an Error, and the Field initializer of a
+    // Opaque without a record (SPEC 23.1.2): Binding's Error, a use of a local whose declaration is an Error, and the Field initializer of a
     // declaration Binding did not bind (a struct with a misplaced `length` slot), in each constructor. Building goes on after each. The
     // unbuilt form is a fill of a length its instance decides, which no R3 unit builds.
     [Fact]
@@ -229,7 +229,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
             .Select(static x => $"{x.Terminator.Callee.Symbol!.Name}#{x.Terminator.Callee.Arg - 1}").ToArray();
     }
 
-    // IMPL 21.3.5, plan 5.6.2: a copy that would take a body past 65,536 MIR statements is not made. Defaults that copy the one below
+    // IMPL 21.3.2, plan 5.6.2: a copy that would take a body past 65,536 MIR statements is not made. Defaults that copy the one below
     // twice at each level report DefaultExpansionLimit_Kd once, at the omitting call where the limit is met; that template fails, so the
     // calls that omit it take an Opaque value without another record.
     [Fact]
@@ -330,7 +330,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         }));
     }
 
-    // Plan 5.6.1, SPEC 8.9, 8.10, 13.5.5.1: one body serves every Semantics case. Under each view of tests/mir/cases (one binder, two
+    // Plan 5.6.1, SPEC 8.14, 8.15, 13.5.5: one body serves every Semantics case. Under each view of tests/mir/cases (one binder, two
     // binders, a Closure, which has its enclosing function's binders, a default template and its copy, which names the omitting caller's
     // binder), a PairLayer step is its Place itself in the owner case and the referent of the case's reference otherwise, and a
     // PairAcquire Reborrows in the uniq case and Copies in the others.
@@ -384,7 +384,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
             lines);
     }
 
-    // SPEC 8.9, 8.10, 13.5.3: an explicit case adaptation is one Adapt, which each Semantics case view of tests/mir/adaptations resolves to
+    // SPEC 8.14, 8.15, 13.5.3: an explicit case adaptation is one Adapt, which each Semantics case view of tests/mir/adaptations resolves to
     // the operation Binding selects in that case, as the operation's ordinary rvalue: a Place Copied, a temporary moved or an object
     // created from either (Use), an address or a borrow of the operand's Place, or for an object view of the whole object below its pair
     // layer (Ref; an objuniq upcast's Reborrow too), an owning or objref upcast and a pointer conversion (Cast); in a Closure under its
@@ -470,7 +470,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         static string Place(MirBody body, MirPlace place) => $"_{place.Root}{(place.Projection == 0 ? string.Empty : "." + body.Projections[place.Projection].Kind)}";
     }
 
-    // SPEC 8.10, 23.3.6.1: Binding decides the case bound once per definition (Binding.CaseLimits), so no built body has more than 64 views.
+    // SPEC 8.15, 23.1.1: Binding decides the case bound once per definition (Binding.CaseLimits), so no built body has more than 64 views.
     // Six binders of two cases give 64 distinct views of the body, its Closure and its default's template, in the old analysis's order (the
     // last binder fastest). A seventh puts the definition beyond the bound: Binding binds its parts but publishes none of them, so no body,
     // Closure or default template of it is built, also where another default omits its default, and a call that omits it takes an Opaque
@@ -521,7 +521,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         }
     }
 
-    // SPEC 8.10, 23.3.6.1: a definition whose only part is a parameter default is bounded too, and beyond the bound the default has no
+    // SPEC 8.15, 23.1.1: a definition whose only part is a parameter default is bounded too, and beyond the bound the default has no
     // template. Seven unconstrained binders give 9^7 cases; a requirement's default is itself rejected (MisplacedSyntax_Kd).
     [Fact]
     public void ADefaultBeyondTheCaseBoundHasNoTemplate()
@@ -534,7 +534,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.DoesNotContain(program.Bodies.ToArray(), static x => x.Source.Module == 0 && x.Key.Kind == MirBodyKind.DefaultTemplate);
     }
 
-    // SPEC 8.10, 23.3.6.1: an accessor's body is a part of its Property, so beyond the bound neither it nor a Field initializer, a method or
+    // SPEC 8.15, 23.1.1: an accessor's body is a part of its Property, so beyond the bound neither it nor a Field initializer, a method or
     // the synthesized constructor of a seven-binder struct is built, although Binding binds them.
     [Fact]
     public void NoMemberOfAContainerBeyondTheCaseBoundIsBuilt()
@@ -548,7 +548,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.All(program.Bodies.ToArray().Where(static x => x.Source.Module == 0), static x => Assert.True(x.Key.Decl is null || x.Key.Decl.Name == "main", x.Key.ToString()));
     }
 
-    // SPEC 22.1.2.5, 16.3.2 (InlineStorage's contract in Storage.kimi): the compiler never destroys an InlineStorage's contents, so the
+    // SPEC 22.2, 16.3.2 (InlineStorage's contract in Storage.kimi): the compiler never destroys an InlineStorage's contents, so the
     // destructor body of a fixed array's owning remainder, which destroys the remaining elements itself, ends without a Drop of its
     // receiver or of any of its parts.
     [Fact]

@@ -1,6 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns A4 (plan 5.5; SPEC 8.4.10.2, 8.4.10.4, 8.4.10.7, 15.6.4; DECISIONS R4-M22): per body view the effect summary — the classes
+// Owns A4 (plan 5.5; SPEC 8.11.2, 8.11.4, 8.11.6, 15.6.4; DECISIONS R4-M22): per body view the effect summary — the classes
 // Environment, Unknown, Limit and Derived and atoms over the definition's abstract Types (Drop(T), a call through a Callable input T) — and
 // the `confined` obligations Binding publishes (TyCtxt.EffectObligations).
 // Input: validated bodies per MirCases view, their uses (MirUses), A2's verdicts (MirProgram.Drops), TyCtxt's obligations and callee facts.
@@ -24,12 +24,12 @@ namespace Kimi.Compiler.Mir;
 /// <param name="reach">The one reachability walk: the blocks of a body the runtime edges reach.</param>
 internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach reach)
 {
-    private const byte Environment = 1; // The classes of a summary: an environment effect (SPEC 8.4.10.2),
+    private const byte Environment = 1; // The classes of a summary: an environment effect (SPEC 8.11.2),
     private const byte Unknown = 2; // an effect that cannot be classified,
     private const byte Limit = 4; // one this implementation cannot classify yet (Unsupported_Kd),
     private const byte Derived = 8; // one only an Opaque site or a callee Binding rejected causes.
     private const byte Drop = 0; // An atom's kind: the destruction of a value of its Type, else 1 + the receiver of a call through it,
-    private const byte Requires = byte.MaxValue; // or a published requirement on its Type (SPEC 4.7.5).
+    private const byte Requires = byte.MaxValue; // or a published requirement on its Type (SPEC 4.9.6).
 
     private int[] bases = []; // The first node of each body, by ordinal: a node is a body view.
     private int[] owners = []; // The body of each node.
@@ -92,8 +92,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
         _ => Limit,
     };
 
-    // SPEC 8.4.10.2, 8.4.10.4, 8.4.10.7: what a terminator adds. A published operation adds its row through the call's substitution, never
-    // its body (SPEC 4.7.5); a call of another function with a body enters each body its substitution may select (SPEC 8.8.3,
+    // SPEC 8.11.2, 8.11.4, 8.11.6: what a terminator adds. A published operation adds its row through the call's substitution, never
+    // its body (SPEC 4.9.6); a call of another function with a body enters each body its substitution may select (SPEC 8.13.3,
     // TyCtxt.Implementation), one without a body is what Binding classifies (TyCtxt.Bodyless). A requirement call that selects a built-in
     // target runs what its Self's witnesses run; any other requirement or dynamic virtual call has the bounds of the caller's
     // premises (X2) and may destroy what it is given by value (rule 1); a call through a value calls its Callable input; staticEnsure enters
@@ -164,7 +164,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
         {
             if (terminator.Callee.Arg > 0)
             {
-                this.AddEdge(target, subst); // SPEC 8.8: a default is always the original's, evaluated before a specialization is called.
+                this.AddEdge(target, subst); // SPEC 8.13: a default is always the original's, evaluated before a specialization is called.
                 return;
             }
 
@@ -183,7 +183,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
         this.Enter(null, subst, symbol);
     }
 
-    // SPEC 4.7.5: the Type below a callee's parameter under the call's substitution in the view, what a published row runs on or
+    // SPEC 4.9.6: the Type below a callee's parameter under the call's substitution in the view, what a published row runs on or
     // destroys; null where the substitution does not instantiate it.
     private BoundType? Below(BindingSymbol callee, Subst? subst, int slot)
     {
@@ -261,7 +261,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
         return next;
     }
 
-    // SPEC 8.4.10.4 rule 1: a call the caller's premises bound may destroy each value moved into it.
+    // SPEC 8.11.4 rule 1: a call the caller's premises bound may destroy each value moved into it.
     private void Given(MirBody body, in MirTerminator terminator)
     {
         foreach (var operand in body.Operands.Slice(terminator.Start, terminator.Count))

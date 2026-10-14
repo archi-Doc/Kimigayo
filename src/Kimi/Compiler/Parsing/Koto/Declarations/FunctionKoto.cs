@@ -180,7 +180,7 @@ public sealed class FunctionKoto : DeclarationKoto
     public Koto? ExpressionBody { get; private set; }
 
     /// <summary>Gets or sets a value indicating whether the body is missing because of a syntax Error; the checks of a body skip the function,
-    /// since that Error explains everything its body would have established (SPEC 23.3.6.4).</summary>
+    /// since that Error explains everything its body would have established (SPEC 23.1.2).</summary>
     internal bool MissingBody { get; set; }
 
     private List<string>? origins;
@@ -192,7 +192,7 @@ public sealed class FunctionKoto : DeclarationKoto
     /// <summary>Gets compile-time constraints declared before executable body items.</summary>
     public IReadOnlyList<Koto> TypeConstraints => (IReadOnlyList<Koto>?)this.typeConstraints ?? [];
 
-    /// <summary>Gets the effect items written in the Constraint region (SPEC 8.4.10.1); only a Contract requirement may declare them.</summary>
+    /// <summary>Gets the effect items written in the Constraint region (SPEC 8.11.1); only a Contract requirement may declare them.</summary>
     public IReadOnlyList<EffectBoundKoto> EffectBounds => (IReadOnlyList<EffectBoundKoto>?)this.effectBounds ?? [];
 
     /// <summary>Gets a value indicating whether this function is a destructor body.</summary>
@@ -222,7 +222,7 @@ public sealed class FunctionKoto : DeclarationKoto
 
     private InvocationKoto? implicitBaseInitializer;
 
-    /// <summary>Gets a value indicating whether this is a structure's synthesized constructor (SPEC 6.2.3.6).</summary>
+    /// <summary>Gets a value indicating whether this is a structure's synthesized constructor (SPEC 6.3.6).</summary>
     internal bool IsImplicitConstructor { get; }
 
     /// <summary>Gets a value indicating whether <see cref="BaseInitializer"/> is the retained call of an omitted base clause.</summary>
@@ -260,7 +260,7 @@ public sealed class FunctionKoto : DeclarationKoto
         set => HirTables.PlanFor(this, value is not null).Plan = value;
     }
 
-    /// <summary>Gets or sets the end of the header, the closing parenthesis of the parameter list (SPEC 23.3.6.5 relates a closure end there).</summary>
+    /// <summary>Gets or sets the end of the header, the closing parenthesis of the parameter list (SPEC 23.1 relates a closure end there).</summary>
     internal int HeaderEnd { get; set; }
 
     internal void SetCaptures(CaptureKoto[]? captures) => this.Captures = captures;
@@ -297,7 +297,7 @@ public sealed class FunctionKoto : DeclarationKoto
     internal bool IsGenericParameter(ReadOnlySpan<char> name)
         => this.genericArguments is not null && NamesParameter(this.genericArguments, name);
 
-    // SPEC 7.4: a member function or constructor of a generic Type may constrain the declaring Type's parameters. The body
+    // SPEC 7.5: a member function or constructor of a generic Type may constrain the declaring Type's parameters. The body
     // is parsed before the member is attached, so the container is recorded for the parse.
     internal bool IsDeclaringTypeParameter(ReadOnlySpan<char> name)
         => this.DeclaringContainer is StructKoto or EnumKoto && NamesParameter(this.DeclaringContainer.GenericParameterNodes, name);

@@ -147,7 +147,7 @@ public class ConstraintBindingTest
     [Fact]
     public void OuterSlotsAreNotAlphaRenamedAsFunctionSlots()
     {
-        // The Signatures are distinct (no duplicate); the pair is rejected only by the parameter acquisition shape of SPEC 7.3.1,
+        // The Signatures are distinct (no duplicate); the pair is rejected only by the parameter acquisition shape of SPEC 7.4,
         // because the outer slot T and the own slot V are different bindings that may take different Semantics.
         var c = Parse("struct Box<T>\n    func f<U>(x: T) => ()\n    func f<V>(x: V) => ()");
         Assert.False(c.Bind().IsComplete);
@@ -173,7 +173,7 @@ public class ConstraintBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
     }
 
-    // SPEC 8.10: a composite clause that a caller's premises cannot prove reports the subject named by its operands.
+    // SPEC 8.15: a composite clause that a caller's premises cannot prove reports the subject named by its operands.
     [Theory]
     [InlineData("s is ref or uniq", "s is borrow")]
     [InlineData("s is not owner and not obj", "s is owner or borrow")]
@@ -205,11 +205,11 @@ public class ConstraintBindingTest
         Assert.Contains($"requires {clause}; this condition cannot be proven for {subject}", error.Note, StringComparison.Ordinal);
     }
 
-    // SPEC 8.7, 10.5: a candidate refuted by a composite clause names the subject that its operands share.
+    // SPEC 8.3, 10.5: a candidate refuted by a composite clause names the subject that its operands share.
     [Theory]
     [InlineData("func need<s/T>(value: ref/(s/T))\n    s is rc or arc\n    ()\nfunc outer<s/T>(value: ref/(s/T))\n    s is borrow\n    need(value)", "s is rc or arc", "s/T")]
     [InlineData("func need<T>(value: ref/T)\n    T is not Copy or Owned\n    ()\nlet x = 1\nneed(x)", "T is not Copy or Owned", "i32")]
-    // SPEC 8.4.4: a refuted operand keeps its cause.
+    // SPEC 8.6: a refuted operand keeps its cause.
     [InlineData("contract Same\n    func same(self: ref/Self, other: ref/Self) -> bool\nopen struct Shape\n    Self is Same\n    public init() => ()\n    public func same(self: ref/Self, other: ref/Self) -> bool => true\nstruct Circle: Shape\n    public init() => ()\nfunc need<T>(value: ref/T)\n    T is Same and Owned\n    ()\nlet c = Circle.init()\nneed(c)", "T is Same and Owned", "Circle. The retained implementation Shape.same keeps Shape as Self")]
     public void RefutedCompositeCandidatesNameTheirSubject(string source, string clause, string subject)
     {
@@ -221,7 +221,7 @@ public class ConstraintBindingTest
         Assert.Contains($"requires {clause}; this condition is refuted for {subject}", error.Note, StringComparison.Ordinal);
     }
 
-    // SPEC 7.4: a member function may constrain its declaring Type's parameters (a conditional member).
+    // SPEC 7.5: a member function may constrain its declaring Type's parameters (a conditional member).
     [Fact]
     public void AMemberFunctionCanConstrainItsDeclaringTypeParameter()
     {
@@ -232,7 +232,7 @@ public class ConstraintBindingTest
     [Fact]
     public void CompletedConcreteConformanceAbsenceCanBeRefuted()
     {
-        // SPEC 8.7: absence is Refuted only after the closed conformance judgment completes; the
+        // SPEC 8.3: absence is Refuted only after the closed conformance judgment completes; the
         // negative requirement lives at a use, since a Type declaration cannot negate a Self clause (SPEC 8.2).
         var c = Parse("contract C\nstruct S\n    Self is C\nstruct N\nfunc absent<T>(x: T)\n    T is not C\n    ()\nfunc use() => absent(N.init())");
         Assert.True(c.Bind().IsComplete);
@@ -240,7 +240,7 @@ public class ConstraintBindingTest
         Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(s.ConstraintNodes[0].ConstraintOf()!, s));
     }
 
-    // SPEC 8.7, 8.4.8.4: a primitive's conformances are fixed, so its absence from any other Contract is Refuted; a negative
+    // SPEC 8.3, 8.7.1: a primitive's conformances are fixed, so its absence from any other Contract is Refuted; a negative
     // requirement holds, and a call whose only candidate needs the conformance has no applicable overload.
     [Theory]
     [InlineData("contract C\nfunc absent<T>(x: T)\n    T is not C\n    ()\nfunc use() => absent(1)", true, null)]

@@ -4,7 +4,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 22.1, 22.1.2.2 (PLAN G32): a fixed array has no source declaration; its entry members are the receiver
+/// <summary>SPEC 22.1, 22.2.1 (PLAN G32): a fixed array has no source declaration; its entry members are the receiver
 /// functions of the internal Kimi fixed-array group, found by member lookup on any `[N of E]`.</summary>
 public class FixedArrayEntryTest
 {

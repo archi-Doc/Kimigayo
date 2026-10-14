@@ -9,7 +9,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 11.2, 11.4: an accessor receiver has the shape of its operation, ref/Self for an instance get and uniq/Self for an instance set.</summary>
+/// <summary>SPEC 11.3, 11.9: an accessor receiver has the shape of its operation, ref/Self for an instance get and uniq/Self for an instance set.</summary>
 public sealed class AccessorReceiverShapeTest(ITestOutputHelper output)
 {
     private const string Meter = "struct Meter\n    var hits: i32 = 0\n    public computed reading: i32\n        get(self: uniq/Self) -> i32\n            self.hits += 1\n            return self.hits\n";
@@ -63,7 +63,7 @@ public sealed class AccessorReceiverShapeTest(ITestOutputHelper output)
         Assert.Empty(Errors(c));
     }
 
-    // SPEC 11.2: the body is checked with the written receiver and the Property stays in member lookup. A use that only the
+    // SPEC 11.3: the body is checked with the written receiver and the Property stays in member lookup. A use that only the
     // written shape rejects (a let or shared receiver of a uniq/Self getter, an owning setter receiver) rests on the declaration;
     // a use the fixed shape also rejects, or that fails for another reason, is reported on its own.
     [Theory]

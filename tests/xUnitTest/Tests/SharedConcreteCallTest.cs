@@ -4,7 +4,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// G10 (SPEC §21.2–21.3): shared generic bodies call ordinary concrete functions.
+// G10 (SPEC §21–21.3): shared generic bodies call ordinary concrete functions.
 public class SharedConcreteCallTest
 {
     [Theory]

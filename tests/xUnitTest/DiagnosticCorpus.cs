@@ -51,7 +51,7 @@ internal sealed record SyntaxEdit(string Text, string? At = null, string? After 
     public SyntaxLocation Location => new(this.At, this.After, this.Skip, this.Length);
 }
 
-/// <summary>One repair candidate a syntax record must offer (SPEC 23.3.6.9), as its kind and located edits.</summary>
+/// <summary>One repair candidate a syntax record must offer (SPEC 23.1.3), as its kind and located edits.</summary>
 /// <param name="Kind">The stable kind name, such as <c>Repair.ReplaceToken</c>.</param>
 /// <param name="Edits">The edits in position order.</param>
 internal sealed record SyntaxRepair(string Kind, SyntaxEdit[] Edits);
@@ -121,7 +121,7 @@ internal static class DiagnosticCorpus
     internal static string Spec(string name)
         => SpecBlocks.Single(x => x.Name == name).Source;
 
-    /// <summary>Checks one source as the product of a minimal Application project through the shared check entry (SPEC 23.3.2).</summary>
+    /// <summary>Checks one source as the product of a minimal Application project through the shared check entry (SPEC 23.2.2).</summary>
     /// <param name="source">The source text of <c>Program.kimi</c>.</param>
     /// <returns>The finalized output.</returns>
     internal static CheckOutput Check(string source)
@@ -171,7 +171,7 @@ internal static class DiagnosticCorpus
         return string.Concat(source.AsSpan(0, index), mutation.After, source.AsSpan(index + mutation.Before.Length));
     }
 
-    // A fenced block (CommonMark, as docs/spec/documentation-markdown.md states) opens at a line that begins with three or more backticks
+    // A fenced block (CommonMark, as docs/spec/02-source-and-lexical-structure.md states) opens at a line that begins with three or more backticks
     // or tildes and closes at the next line that is the same fence; the content of any block, kimi or not, is not searched for further
     // fences.
     private static (string Name, string Source)[] ReadSpecBlocks()

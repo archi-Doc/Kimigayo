@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 3.5.3, 7.3, 10.2.1: a read Type (a Scalar, position or range Type) is read through references where it is
+/// <summary>SPEC 3.5.3, 7.3, 10.2.2: a read Type (a Scalar, position or range Type) is read through references where it is
 /// expected, including as an owning receiver, and a Type argument constrained to a read Contract is inferred as the
 /// referent.</summary>
 public class ValueReadTest

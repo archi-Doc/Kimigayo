@@ -17,7 +17,7 @@ internal static partial class NativeToolchain
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private static readonly string[] ToolNames = ["opt", "llc", "lld-link", "llvm-nm", "llvm-readobj"];
 
-    // Actual object dependencies may only be backend helpers or the runtime's kernel32 imports (SPEC 21.5.7, 22.5.6).
+    // Actual object dependencies may only be backend helpers or the runtime's kernel32 imports (SPEC 21.4.7, 21.4.7).
     private static readonly HashSet<string> AllowedUndefined = CreateAllowedUndefined();
 
     internal static bool IsToolchainFailure(Exception ex)
@@ -206,7 +206,7 @@ internal static partial class NativeToolchain
         }
     }
 
-    // SPEC 20.8.2.2: the linker receives a fixed snapshot named by its content hash, never the mutable
+    // SPEC 20.4: the linker receives a fixed snapshot named by its content hash, never the mutable
     // original; a staged copy is reused only when its bytes still have that hash.
     internal static string StageInput(string input, string stem, out string hash)
     {
@@ -320,7 +320,7 @@ internal static partial class NativeToolchain
                 throw new InvalidDataException("Native library kind mismatch.");
             }
 
-            // SPEC 20.8.2.1-2: another supply must be this project's own, with its expanded Kind and the
+            // SPEC 20.4-2: another supply must be this project's own, with its expanded Kind and the
             // requirement/supply hash assertions checked against the actual bytes that are linked.
             if (project is not null && name is not (Kernel32Imports.LibraryName or WindowsProfile.BackendLibrary))
             {
@@ -375,7 +375,7 @@ internal static partial class NativeToolchain
                 continue;
             }
 
-            // SPEC 22.3: a foreign import is referenced through __imp_ when dllimport and directly otherwise.
+            // SPEC 22.6: a foreign import is referenced through __imp_ when dllimport and directly otherwise.
             declared ??= ReadExternalDeclarations(paths.Ir);
             var imported = symbol.StartsWith("__imp_", StringComparison.Ordinal);
             if (!declared.TryGetValue(imported ? symbol[6..] : symbol, out var dllimport) || dllimport != imported)

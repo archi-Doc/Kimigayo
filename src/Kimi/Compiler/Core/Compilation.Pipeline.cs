@@ -41,7 +41,7 @@ public partial class Compilation
         }
     }
 
-    /// <summary>Gets the compiler identity a check document records (SPEC 23.3.1): the pipeline is part of the effective
+    /// <summary>Gets the compiler identity a check document records (SPEC 23.2.1): the pipeline is part of the effective
     /// configuration, so the mir pipeline of the process marks <see cref="CompilerVersion"/> with <c> [mir]</c>.</summary>
     internal static string CompilerIdentity => DefaultPipeline == CompilerPipeline.Mir ? CompilerVersion + " [mir]" : CompilerVersion;
 

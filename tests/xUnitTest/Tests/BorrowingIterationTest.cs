@@ -47,7 +47,7 @@ public class BorrowingIterationTest
         ScalarEmissionTest.EmitFixture("AssociatedBorrowingSelfStep" + (skipMiddle ? "Continue" : "Backedge"), source, "step\n");
     }
 
-    // SPEC 3.4.1, 14.6.2: the entry is selected at the referent of every reference layer of the Subject.
+    // SPEC 3.4.3, 14.6.2: the entry is selected at the referent of every reference layer of the Subject.
     [Fact]
     public void EntryIsSelectedThroughEveryReferenceLayer()
     {

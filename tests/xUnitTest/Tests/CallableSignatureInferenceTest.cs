@@ -402,7 +402,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.Equal(["make(local@ref, pick)", "make(p, pick)"], rejected.Diagnostics.Select(x => Text(escape, x.Span)));
     }
 
-    // SPEC 23.3.6: the record and its related argument reach the CLI, the language server and JSON.
+    // SPEC 23.1: the record and its related argument reach the CLI, the language server and JSON.
     [Fact]
     public void EveryOutputCarriesThePerCallOriginRecord()
     {
@@ -428,7 +428,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.Equal(result, System.Text.Json.JsonSerializer.Deserialize(json, DiagnosticJsonContext.Default.DiagnosticResult));
     }
 
-    // SPEC 8.6, 7.6.4: a closure result over its hidden environment receiver satisfies no Callable signature and no erasure, so it
+    // SPEC 8.10, 7.7.4: a closure result over its hidden environment receiver satisfies no Callable signature and no erasure, so it
     // never solves a slot; otherwise `s` would outlive the environment that `c@move` destroys. A captured shared reference keeps its
     // external Origin, so it is evidence, and the result keeps the Loan of x.
     [Theory]

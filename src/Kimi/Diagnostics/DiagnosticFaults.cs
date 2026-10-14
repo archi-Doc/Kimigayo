@@ -3,7 +3,7 @@
 namespace Kimi.Diagnostics;
 
 /// <summary>
-/// The one fault path (SPEC 23.3.3): exactly one <c>CheckFaulted_Kd</c> Error explains a Faulted result. Its text is fixed here and
+/// The one fault path (SPEC 23.2.2): exactly one <c>CheckFaulted_Kd</c> Error explains a Faulted result. Its text is fixed here and
 /// depends neither on the catalog nor on ordinary formatting; a test keeps it equal to the catalog entry.
 /// </summary>
 internal static class DiagnosticFaults
@@ -43,7 +43,7 @@ internal static class DiagnosticFaults
             source = Array.FindIndex(sources, x => x.Path == location);
             if (source < 0)
             {
-                // SPEC 23.3.6.3: the project file is consumed before every kept source, so its new entry comes first.
+                // SPEC 23.1.2: the project file is consumed before every kept source, so its new entry comes first.
                 source = 0;
                 sources = [new(location, !location.StartsWith(Checking.SourceIdentity.BuiltInPrefix, StringComparison.Ordinal)), .. sources];
                 previous = Array.ConvertAll(previous, static x => x with

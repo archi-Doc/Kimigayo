@@ -83,7 +83,7 @@ public class ElementEmissionTest
         Assert.Empty(writer.ToString());
     }
 
-    // SPEC 12.4.1: a tuple selector names an element of a Tuple only, so another receiver is a Type error at the selection.
+    // SPEC 12.5.1: a tuple selector names an element of a Tuple only, so another receiver is a Type error at the selection.
     [Theory]
     [InlineData("struct S\n    public var v: i32 = 0\nlet s = S.init()\nlet x = s.0", "s.0")]
     [InlineData("func f<T>(t: T) -> ()\n    let x = t.0\npublic func main() => ()", "t.0")]

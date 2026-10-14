@@ -5,7 +5,7 @@ using Kimi.Checking;
 
 namespace Kimi.Lsp;
 
-/// <summary>The session settings of SPEC 23.4.8, validated once from <c>initializationOptions</c> and fixed for the session.</summary>
+/// <summary>The session settings of SPEC 23.4, validated once from <c>initializationOptions</c> and fixed for the session.</summary>
 internal sealed class LspSettings
 {
     /// <summary>The default quiet period in milliseconds.</summary>

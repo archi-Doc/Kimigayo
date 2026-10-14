@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 12.4.2: parentheses stay part of a referenced function name, so `(f)(1)` is the call `f(1)` under ordinary overload
+// SPEC 12.5.2: parentheses stay part of a referenced function name, so `(f)(1)` is the call `f(1)` under ordinary overload
 // resolution; a parenthesized value is still called as a value.
 public class ParenthesizedCalleeTest
 {

@@ -121,7 +121,7 @@ public class BindingTest
     [InlineData("u32", "3")]
     public void UntypedShiftCountsAreTypedIndependently(string type, string count)
     {
-        // SPEC 12.3.1: a shift count is typed independently of the shifted operand, so an untyped count defaults to i32.
+        // SPEC 12.3: a shift count is typed independently of the shifted operand, so an untyped count defaults to i32.
         var compilation = CompilationTestHelper.ParseSuccess($"let x: {type} = 1\nlet y = x << {count}");
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         var shift = Assert.Single(KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<BinaryKoto>(), static x => x.Akind == KotoKind.LessThanLessThan);

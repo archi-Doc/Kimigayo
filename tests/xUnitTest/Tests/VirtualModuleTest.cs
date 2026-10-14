@@ -102,7 +102,7 @@ public class VirtualModuleTest(ITestOutputHelper output)
     [Fact]
     public void UnimplementedInheritedConformanceDoesNotPublishCode()
     {
-        // SPEC 8.4.4 requires this form; G83 records the missing inherited identity/witness composition.
+        // SPEC 8.6 requires this form; G83 records the missing inherited identity/witness composition.
         // This is a support-boundary regression, not a language rejection or a completed positive case.
         var c = ModuleBindingTest.Create(Derived + "public func main()\n    let value = Derived.init()@obj\n    _ = Lib.Api.call(value@objref)", ConformingLibrary());
         Assert.False(c.Bind().IsComplete);

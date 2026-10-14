@@ -10,7 +10,7 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 /// <summary>The callee a call plan selected: a named function or implementation, a Contract requirement (dispatched through the
-/// conformance, SPEC 8.4.9), a virtual slot, or a callable value (whose plan uses only the value fields).</summary>
+/// conformance, SPEC 8.6.1), a virtual slot, or a callable value (whose plan uses only the value fields).</summary>
 public enum CalleeKind : byte
 {
     Function,
@@ -59,7 +59,7 @@ public sealed class CallPlan
 
     public CalleeKind Kind { get; private set; }
 
-    /// <summary>Gets the explicit receiver's acquisition, or a value call's object-callee payload acquisition (SPEC 7.3, 13.5.5.1).</summary>
+    /// <summary>Gets the explicit receiver's acquisition, or a value call's object-callee payload acquisition (SPEC 7.3, 13.5.5).</summary>
     public BoundArgumentOperation ReceiverOperation { get; private set; }
 
     public ReadOnlySpan<BoundArgumentOperation> ArgumentOperations => this.argumentOperations;
@@ -124,7 +124,7 @@ public sealed class CallPlan
 
     // The Contract reference whose requirement the call selected: a bound reference (Indexable<Name>) when the Contract
     // takes Type arguments, else the Contract itself. Every instance dispatches through the conformance to that reference
-    // (SPEC 8.4.9). Null for calls of other functions.
+    // (SPEC 8.6.1). Null for calls of other functions.
     internal BindingSymbol? RequirementContract { get; set; }
 
     // A virtual call's semantic selection only; neither a body certificate nor a physical slot index. Target is the original slot.
@@ -189,7 +189,7 @@ public sealed class CallPlan
         }
     }
 
-    /// <summary>Gets the function that executes a custom accessor (SPEC 11.2), which its calls target: its Type is the accessor's result,
+    /// <summary>Gets the function that executes a custom accessor (SPEC 11.3), which its calls target: its Type is the accessor's result,
     /// and its parameters (<see cref="Parameter"/>) are the receiver <c>self</c>, then the input <c>value</c>.</summary>
     /// <param name="accessor">An accessor with a body.</param>
     /// <returns>The executing function's symbol.</returns>
@@ -197,7 +197,7 @@ public sealed class CallPlan
         => accessor.CodeContext.Compilation.Binding.AccessorFunction(Binding.Accessor(accessor)).BoundSymbol!;
 
     /// <summary>Gets a function's parameter as its body reads it: slot <paramref name="index"/>, an accessor's <c>self</c> and <c>value</c>
-    /// included, or at -1 the receiver <c>self</c> a constructor initializes or a destructor destroys (SPEC 6.2.3).</summary>
+    /// included, or at -1 the receiver <c>self</c> a constructor initializes or a destructor destroys (SPEC 6.3).</summary>
     /// <param name="function">A function, a closure or an accessor's executing function.</param>
     /// <param name="index">The parameter slot, or -1.</param>
     /// <returns>The parameter, or null at -1 of another function.</returns>
@@ -314,7 +314,7 @@ public sealed class CallPlan
             this.lengthArguments = new BoundLength?[typeArguments.Length];
         }
 
-        // SPEC 8.8.3: the plan holds one length entry per slot, the selection key's form. The lengths are empty (the target has no
+        // SPEC 8.13.3: the plan holds one length entry per slot, the selection key's form. The lengths are empty (the target has no
         // length slot) or one per slot of the Type arguments.
         System.Diagnostics.Debug.Assert(lengthArguments.IsEmpty || lengthArguments.Length == typeArguments.Length);
         typeArguments.CopyTo(this.typeArguments);

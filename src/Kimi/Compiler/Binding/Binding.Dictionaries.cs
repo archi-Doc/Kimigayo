@@ -65,7 +65,7 @@ public sealed partial class Binding
             }
         }
 
-        // Check only the syntax required by SPEC 12.3.4, after all children have
+        // Check only the syntax required by SPEC 12.4.3, after all children have
         // bound so nested literals can reuse this scratch set without interference.
         this.dictionaryLiteralKeys.Clear();
         for (var i = 0; i < literal.Entries.Count; i++)

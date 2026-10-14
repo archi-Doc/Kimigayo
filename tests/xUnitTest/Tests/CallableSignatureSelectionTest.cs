@@ -10,7 +10,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 8.6: normalize the whole contract set, validate its shape, then select by ordinary argument ranking.
+// SPEC 8.10: normalize the whole contract set, validate its shape, then select by ordinary argument ranking.
 public class CallableSignatureSelectionTest
 {
     private const string Main = "public func main() -> ()\n    Console.writeLine(\"done\")\n";

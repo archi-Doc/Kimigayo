@@ -83,7 +83,7 @@ public class CallOriginRelationTest(ITestOutputHelper output)
         Assert.All(errors, static x => Assert.Equal(("fit", "ref/i32 during static"), (x.Reason![3].Value, x.Reason[4].Value)));
     }
 
-    // SPEC 23.3.6.5: at an inner position of a Borrow argument, the failing Origin is the stored Borrow, not the argument's own one: the
+    // SPEC 23.1: at an inner position of a Borrow argument, the failing Origin is the stored Borrow, not the argument's own one: the
     // record names that Borrow and relates it, and the destination shows only the Origin at the failed position. A shorter end that an
     // equality fixed to another argument's stored Borrow is shown and related the same way, and never written as `during` a borrow.
     [Theory]
@@ -124,7 +124,7 @@ public class CallOriginRelationTest(ITestOutputHelper output)
         Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "p", "requires p outlives static, which is not proven"), (error.Code, Text(source, error.Span), error.Label));
         Assert.Equal("declared", error.Reason![3].Value);
 
-        // SPEC 23.3.6.5: `destination` is a fact of `fit` only; a declared relation relates its clause instead.
+        // SPEC 23.1: `destination` is a fact of `fit` only; a declared relation relates its clause instead.
         Assert.Equal(["relation", "longer", "shorter", "source"], error.Reason.Select(static x => x.Name));
         var related = Assert.Single(error.Related!);
         Assert.Equal(("relation", "origin a outlives static"), (related.Role, Text(source, related.Span)));
@@ -228,7 +228,7 @@ public class CallOriginRelationTest(ITestOutputHelper output)
         Assert.Equal([nameof(DiagnosticCode.UnprovenConstraint_Kd), nameof(DiagnosticCode.AmbiguousBinding_Kd)], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
     }
 
-    // SPEC 23.3.6.8: the console, the language server and JSON carry the call relation with its related location.
+    // SPEC 23.3: the console, the language server and JSON carry the call relation with its related location.
     [Theory]
     [InlineData(Clause, "relation", "origin a outlives static")]
     [InlineData(Fresh, "relation", "p")]

@@ -27,7 +27,7 @@ public class PlaceResultTest
         { "StructPlaces", Cell + "var cell = Cell.init(1, \"cell\")\ncell.counter() = 5\ncell.counter() += 1\nConsole.writeLine(cell.label())\nrequire cell.counter() == 6 else => $abort(\"counter\")", "cell\n" },
         { "Forwarded", First + "func second<T>(values: ref/Array<T>) -> place ref/T during values\n    return first(values)\nlet names: Array<string> = [\"only\"]\nConsole.writeLine(second(names))", "only\n" },
         { "TemporaryReceiver", First + "func make() -> Array<string> => [\"made\"]\nConsole.writeLine(first(make()))", "made\n" },
-        // SPEC 4.6.9: an exclusive borrow of a dynamic Array element, owned or through uniq/Array, writes the element itself.
+        // SPEC 4.7.1: an exclusive borrow of a dynamic Array element, owned or through uniq/Array, writes the element itself.
         { "ArrayElementUniq", "var a: Array<i32> = [1, 2]\nlet r = a[1]@uniq\nr@follow = 5\nrequire a[1] == 5 else => $abort(\"element\")\nConsole.writeLine(\"ok\")", "ok\n" },
         { "ArrayElementUniqThroughReference", "func bump(values: uniq/Array<i32>)\n    let r = values[0]@uniq\n    r@follow += 40\nvar a: Array<i32> = [2]\nbump(a@uniq)\nrequire a[0] == 42 else => $abort(\"element\")\nConsole.writeLine(\"ok\")", "ok\n" },
     };

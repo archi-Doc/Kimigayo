@@ -1,7 +1,7 @@
 /// The single-element indexing Contract: `receiver[key]` resolves through a conformance to Indexable<Key>.
 ///
 /// The standard Array, fixed-array, Slice and Dictionary indexing remains compiler-provided (STATUS); user
-/// Types conform explicitly (SPEC 4.6.9, 22.1).
+/// Types conform explicitly (SPEC 4.7.1, 22.1).
 public contract Indexable<Key>
     associate Element
 

@@ -6,8 +6,8 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 14.3.3: an operation that requires an unsafe context uses the permission of the innermost enclosing Unsafe Block; a block
-// whose permission no operation uses is a warning at its keyword. SPEC 23.3.6.9: removing it is a repair candidate exactly when
+// SPEC 14.3: an operation that requires an unsafe context uses the permission of the innermost enclosing Unsafe Block; a block
+// whose permission no operation uses is a warning at its keyword. SPEC 23.1.3: removing it is a repair candidate exactly when
 // that keeps the Body's scope and destruction and defer timing and the statement form allows the edit.
 public class UnnecessaryUnsafeBlockTest
 {

@@ -9,7 +9,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 13.5.5.2, 15.6.3: a child reference retains its actual parent's authority.</summary>
+/// <summary>SPEC 13.5.6, 15.6.3: a child reference retains its actual parent's authority.</summary>
 public class StoredReferenceLoanTest(ITestOutputHelper output)
 {
     [Theory]

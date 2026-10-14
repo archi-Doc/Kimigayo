@@ -7,7 +7,7 @@ func endBound() -> FromEnd<i32>
     Console.writeLine("End evaluated.")
     return ^1
 
-// A user Type publishes its stored Places through the Indexable Contracts (SPEC 4.6.9, 7.1.1).
+// A user Type publishes its stored Places through the Indexable Contracts (SPEC 4.7.1, 7.1.1).
 struct Pair<T>
     Self is UniqIndexable<isize>
     associate Element is T

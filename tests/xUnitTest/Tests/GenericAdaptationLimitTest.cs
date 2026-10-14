@@ -11,7 +11,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 8.10, 23.3.6.1: a definition beyond the 64-case bound verifies none of its cases, so its generic adaptations depend on its one
+// SPEC 8.15, 23.1.1: a definition beyond the 64-case bound verifies none of its cases, so its generic adaptations depend on its one
 // record and none of their plans is committed.
 public class GenericAdaptationLimitTest
 {

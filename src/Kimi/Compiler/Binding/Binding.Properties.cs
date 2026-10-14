@@ -46,7 +46,7 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 11.2: an instance get reads through ref/Self and an instance set writes through uniq/Self. The shape is the outer
+    // SPEC 11.3: an instance get reads through ref/Self and an instance set writes through uniq/Self. The shape is the outer
     // Semantics of the normalized receiver, so Origin annotations are free; the Core is judged by IsReceiverType.
     private static bool AccessorReceiverShapeMismatch(BoundAccessor accessor)
         => accessor.Receiver is { } receiver && receiver.Semantics != (accessor.Kind == PropertyAccessorKind.Get ? SemanticsKind.Ref : SemanticsKind.Uniq);
@@ -282,7 +282,7 @@ public sealed partial class Binding
             proof = CombineProof(proof, this.ValidateAccessor(property.Setter), true);
             property.IsVerified = proof == ConstraintProof.Proven && syntax.BindingFailure == BindingFailure.None && !InvalidDeclarationContext(syntax);
 
-            // SPEC 23.3.6.4: an accessor's own declaration Error explains the Property's failed verification; a second record at
+            // SPEC 23.1.2: an accessor's own declaration Error explains the Property's failed verification; a second record at
             // the Property would restate it. Every other failure is the Property's own problem.
             var explainedByAccessor = proof == ConstraintProof.Error &&
                 ((property.Getter.Declaration is { } getter && (getter.BindingState == BindingState.Invalid || this.HasUnresolvedPrerequisite(getter))) ||
@@ -371,7 +371,7 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        // SPEC 11.2: the receiver has the shape of its operation. The body was checked with the written receiver, so this
+        // SPEC 11.3: the receiver has the shape of its operation. The body was checked with the written receiver, so this
         // declaration error adds no body errors; a use that only the written shape rejects rests on it (ReceiverRestsOnAccessorShape).
         if (owner is StructKoto or ContractKoto && AccessorReceiverShapeMismatch(accessor))
         {
@@ -422,7 +422,7 @@ public sealed partial class Binding
         return Complete(syntax, accessor.Result);
     }
 
-    // SPEC 11.2, 23.3.6.4: a receiver rejected under an accessor's wrongly shaped written receiver, but accepted under the shape
+    // SPEC 11.3, 23.1.2: a receiver rejected under an accessor's wrongly shaped written receiver, but accepted under the shape
     // its operation fixes, fails only because of that declaration error and rests on it; every other rejection stays direct.
     private bool ReceiverRestsOnAccessorShape(Koto node, BoundAccessor accessor, Koto receiver, BoundType actual, BoundType? declaringType, BoundMemberPath? path, BindingScope scope, bool explicitBorrow)
     {

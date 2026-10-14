@@ -26,7 +26,7 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
         Assert.Equal(["drop _3 -> bb3 [elide]", "drop _1 -> bb4 [elide]"], Lines(Resource + "func f()\n    let r = make()\n    consume(r@move)\n", "f"));
     }
 
-    // SPEC 15.1.4, 16.2.1: a value moved on some paths only is destroyed under a flag, which mirrors its initialization: set where it is
+    // SPEC 15, 16.2.1: a value moved on some paths only is destroyed under a flag, which mirrors its initialization: set where it is
     // defined (an argument at the entry), cleared where it is moved, dropped or its storage begins or ends. A drop tree node shared by two
     // exits, one after the Move, has one verdict; reinitializing on the moving path makes it Keep again.
     [Fact]
@@ -135,7 +135,7 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
         Assert.Empty(Lines(Pick, "concrete", all: true));
     }
 
-    // SPEC 6.2.3, 13.7.1: a constructor's first placement of a Field destroys nothing (Elide), and a placement after a conditional one
+    // SPEC 6.3, 13.7.1: a constructor's first placement of a Field destroys nothing (Elide), and a placement after a conditional one
     // destroys the old value under a flag.
     [Fact]
     public void AConstructorFieldIsDestroyedOnlyWherePlaced()

@@ -196,14 +196,14 @@ internal readonly record struct MirProjection(int Prefix, MirProjectionKind Kind
 internal readonly record struct MirSwitchCase(long Value, int Target);
 
 /// <summary>A static the body's Places root at: its symbol and Type, whether it is mutable and whether its value holds a raw pointer, an
-/// rc handle or a Weak of one at any depth (SPEC 8.4.10.2).</summary>
+/// rc handle or a Weak of one at any depth (SPEC 8.11.2).</summary>
 internal readonly record struct MirStatic(BindingSymbol Symbol, BoundType Type, bool Mutable, bool RawHolding);
 
 /// <summary>The site of an Opaque value: the syntax it replaces and the roots that syntax reads, writes or borrows, <see cref="Count"/>
 /// entries of <see cref="MirBody.OpaqueRoots"/> from <see cref="Start"/> (plan 5.4).</summary>
 internal readonly record struct MirOpaque(SourceRef Source, int Start, int Count);
 
-/// <summary>A failure body that must not complete (SPEC 14.11.2): entered at <see cref="Entry"/>, its end <see cref="End"/> an
+/// <summary>A failure body that must not complete (SPEC 14.11): entered at <see cref="Entry"/>, its end <see cref="End"/> an
 /// Unreachable block without a check target that no runtime path from <see cref="Entry"/> may reach; <see cref="Subject"/> the failure
 /// body.</summary>
 internal readonly record struct MirMustNotComplete(int Entry, int End, SourceRef Subject);

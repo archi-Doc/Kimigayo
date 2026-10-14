@@ -306,7 +306,7 @@ public sealed partial class Binding
             this.BindHeader(candidate);
             if (candidate.Declaration is not FunctionKoto function || UnsupportedReference(candidate, unbound, declaring))
             {
-                return this.Fail(use, BindingFailure.Unsupported); // No later context makes the form a value (SPEC 23.3.6.1).
+                return this.Fail(use, BindingFailure.Unsupported); // No later context makes the form a value (SPEC 23.1.1).
             }
 
             if (function.GenericArguments.Count == 0 && function.TypeConstraints.Count != 0 && !ContainerBound(candidate, declaring))

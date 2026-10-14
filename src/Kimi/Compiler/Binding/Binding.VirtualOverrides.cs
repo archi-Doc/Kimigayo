@@ -119,7 +119,7 @@ public sealed partial class Binding
             foreach (var fact in environment.DirectFacts)
             {
                 var bound = this.SubstituteConstraint(fact, owner, (BoundType[])selection.DeclaringType.Components);
-                // Closed propositions are obligations, not assumptions (SPEC 8.4.8.2).
+                // Closed propositions are obligations, not assumptions (SPEC 8.3.3).
                 if (!bound.HasUnresolved && bound.Kind != ConstraintKind.Error && DependentConstraint(bound))
                 {
                     current.Add(bound);
@@ -332,7 +332,7 @@ public sealed partial class Binding
         {
             var bound = this.SubstituteConstraint(fact, slot.DeclaringType.Symbol!.Declaration, (BoundType[])slot.DeclaringType.Components);
             // Applicability belongs to the public slot. A refuted substituted premise supplies no
-            // body evidence; ordinary definition checks still run (SPEC 8.4.8.2). Generation keeps
+            // body evidence; ordinary definition checks still run (SPEC 8.3.3). Generation keeps
             // the inapplicable slot's position without requesting its body.
             var proof = this.ProveConstraint(bound, premises);
             if (proof == ConstraintProof.Refuted)

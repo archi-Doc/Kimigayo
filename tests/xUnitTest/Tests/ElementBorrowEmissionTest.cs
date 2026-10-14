@@ -96,7 +96,7 @@ public class ElementBorrowEmissionTest
     public void UnconstructedReceiversAreRejected(string source)
         => Reject(Same + source, DiagnosticCode.UninitializedPlace_Kd);
 
-    // SPEC 3.4.1, 4.6.9, 5.4, 10.2: an owned fixed-array element at a runtime index, and a stored part below an element of an Array,
+    // SPEC 3.4.3, 4.7.1, 5.4, 10.2: an owned fixed-array element at a runtime index, and a stored part below an element of an Array,
     // a Slice or such a fixed array, owned or reached through references, is borrowed in place through the element's own borrow:
     // exclusive borrows, receivers and addresses change the element, and shared borrows, arguments and comparisons read it, with each
     // selector evaluated once. The path's references decide its authority.
@@ -129,7 +129,7 @@ public class ElementBorrowEmissionTest
     public void SelectedElementPlacesAreBorrowedInPlace(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("ElementBorrowPlace" + name, source, stdout);
 
-    // SPEC 4.6.1: the element's bounds are checked before it or its part is borrowed.
+    // SPEC 4.7: the element's bounds are checked before it or its part is borrowed.
     [Theory]
     [InlineData("Dynamic", Item + Bump + "var xs: Array<Item> = [Item.init(\"a\", 41)]\nlet i: isize = 3\nbump(xs[i].n@uniq)\nConsole.writeLine(\"unreachable\")", "xs[i]")]
     [InlineData("Fixed", Bump + "var ys: [2 of i32] = [41, 5]\nlet i: isize = 3\nbump(ys[i]@uniq)\nConsole.writeLine(\"unreachable\")", "ys[i]")]
@@ -153,7 +153,7 @@ public class ElementBorrowEmissionTest
         Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
-    // SPEC 3.4.1, 15.1.3: a runtime index proves no initialized element, so a fixed array with a moved element lends none.
+    // SPEC 3.4.3, 15.1.3: a runtime index proves no initialized element, so a fixed array with a moved element lends none.
     [Fact]
     public void ARuntimeSelectionOfAPartiallyMovedFixedArrayIsRejected()
     {
@@ -179,7 +179,7 @@ public class ElementBorrowEmissionTest
         Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
-    // SPEC 3.4.1, 10.2, 15.6.2: element routes compose: nested Field, Tuple and Array projections select one Place, a stored reference
+    // SPEC 3.4.3, 10.2, 15.6.2: element routes compose: nested Field, Tuple and Array projections select one Place, a stored reference
     // is lent as its referent or borrowed as its slot, borrows of different Arrays keep separate Loans, and an ordinary read of a part
     // stays an independent Copy.
     [Theory]
@@ -326,7 +326,7 @@ public class ElementBorrowEmissionTest
     public void NonterminationCannotReleaseOrDeliverNormally(string name, string source)
         => ScalarEmissionTest.EmitFixture("ElementBorrowDivergent" + name, source, string.Empty, timeoutMilliseconds: 300);
 
-    // SPEC 3.4.1, 4.6.9: emission accepts a part borrow only through its element's own borrow of the element's stored Type, and an
+    // SPEC 3.4.3, 4.7.1: emission accepts a part borrow only through its element's own borrow of the element's stored Type, and an
     // exclusive fixed-array element only in exclusive mode; a corrupted route record fails before output and a fresh analysis recovers.
     [Theory]
     [InlineData("receiver")]

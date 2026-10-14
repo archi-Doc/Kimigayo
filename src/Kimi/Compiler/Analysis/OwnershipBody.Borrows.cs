@@ -11,7 +11,7 @@ public sealed partial class OwnershipBody
     // borrowDependencies still records the descendant's access mode; no extra per-Place/root table is needed.
     private const LoanRequirement RetainedCallExclusive = (LoanRequirement)3;
 
-    // SPEC 8.4.10.4: each Place that keeps the result of a generic requirement call, with that result's index.
+    // SPEC 8.11.4: each Place that keeps the result of a generic requirement call, with that result's index.
     private readonly List<(int Holder, int Result)> requirementHolders = new();
 
     // SPEC 15.6.5: each destroyed root and holder already reported, and the work list of the carrying-definition walk.
@@ -453,7 +453,7 @@ public sealed partial class OwnershipBody
         {
             if (type.Kind == BoundTypeKind.Function)
             {
-                return; // SPEC 7.6.4: a common Function value holds no Loan; its signature's Origins constrain its calls only.
+                return; // SPEC 7.7.4: a common Function value holds no Loan; its signature's Origins constrain its calls only.
             }
 
             if (type.Origin is { } origin)
@@ -469,7 +469,7 @@ public sealed partial class OwnershipBody
                 AddOrigin(place, type.OriginArguments[i], (LoanRequirement)Math.Min((int)bound, (int)(type.Symbol?.Schema?.Origins[i].LoanRequirement ?? LoanRequirement.Ref)));
             }
 
-            // SPEC 3.3.6: shared access cannot use an inner uniq exclusively, so a Type below a shared layer (ref/uniq/T) keeps
+            // SPEC 3.3.2: shared access cannot use an inner uniq exclusively, so a Type below a shared layer (ref/uniq/T) keeps
             // its inner Loans only in shared mode.
             var inner = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.ObjRef } ? LoanRequirement.Ref : bound;
             for (var i = 0; i < type.Components.Count; i++)
@@ -550,7 +550,7 @@ public sealed partial class OwnershipBody
                         if (origin.Kind == OriginKind.Input && this.Places[declared].Type.Semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc &&
                             (origin.Occurrence is not null || this.Places[declared].Type.Kind == BoundTypeKind.Slice))
                         {
-                            // SPEC 15.2.1, 15.3.1, 4.6.5, 15.6.5, 16.3.3: the slot of an owned input, such as value.source, a by-value
+                            // SPEC 15.2.1, 15.3.1, 4.8.1, 15.6.5, 16.3.3: the slot of an owned input, such as value.source, a by-value
                             // Slice's source or a payload slot of an owned obj, rc or arc handle, names the caller's Loan, not the
                             // input's storage; a result retaining it depends on no local root, so the input itself may be moved into
                             // that result, and destroying it at exit may observe the slot.
@@ -594,7 +594,7 @@ public sealed partial class OwnershipBody
 
                 RecordCarriers();
 
-                // SPEC 7.6.2, 15.8.2: in a closure body an Origin that names no Place of the body, such as the referent of a captured
+                // SPEC 7.7.2, 15.8.2: in a closure body an Origin that names no Place of the body, such as the referent of a captured
                 // exclusive reference or an enclosing function's input, is reached only through the environment bindings whose
                 // Types carry it. Those bindings are Fields of the closure's receiver, so the Loans fall on their Places.
                 void RecordCarriers()
@@ -665,7 +665,7 @@ public sealed partial class OwnershipBody
             }
         }
 
-        // SPEC 8.4.10.4: dependencies that no Origin of a Type carries. The result of a generic requirement call keeps the Loans of
+        // SPEC 8.11.4: dependencies that no Origin of a Type carries. The result of a generic requirement call keeps the Loans of
         // the effect regions its call reached, and follows the value, whole or as a part, into the Places whose Types have abstract
         // parts.
         void AddExplicitDependencies()
@@ -866,7 +866,7 @@ public sealed partial class OwnershipBody
         }
     }
 
-    // SPEC 8.4.10.4: a generic requirement call's derived effects reach every Loan that its abstract inputs' Types may denote,
+    // SPEC 8.11.4: a generic requirement call's derived effects reach every Loan that its abstract inputs' Types may denote,
     // in the inputs' modes. A live Place keeping an earlier requirement result with Loans of the same region conflicts, unless
     // both only read, or preserves results excludes the earlier results of the same requirement on the same receiver. A
     // conflict with the receiver borrow itself keeps the existing diagnostics, so a call that already has one is skipped.
@@ -908,7 +908,7 @@ public sealed partial class OwnershipBody
                     continue;
                 }
 
-                // SPEC 8.4.10.7: preserves results excludes the earlier results of the same Callable value, whose identity across
+                // SPEC 8.11.6: preserves results excludes the earlier results of the same Callable value, whose identity across
                 // replacement needs value flow this analysis lacks: a Callable that may be the same is a limit (plan rule 5).
                 var source = this.Operations[op].Source;
                 this.ReportIssue(effect.Preserves && effect.Requirement is BoundType && ReferenceEquals(earlier.Requirement, effect.Requirement) &&
@@ -1017,11 +1017,11 @@ public sealed partial class OwnershipBody
         return -1;
     }
 
-    // SPEC 7.6.2, 15.8.2: an environment binding is a Place of the closure body being analyzed, initialized by its entry.
+    // SPEC 7.7.2, 15.8.2: an environment binding is a Place of the closure body being analyzed, initialized by its entry.
     private bool IsEnvironmentBinding(int place)
         => this.Places[place].Kind == OwnershipPlaceKind.Local && this.Function.IsAnonymous && ReferenceEquals(this.Places[place].Source, this.Function);
 
-    // SPEC 7.6.2, 15.8.2: an environment binding that stores a reference is, like a borrowed parameter, a root whose referent lies
+    // SPEC 7.7.2, 15.8.2: an environment binding that stores a reference is, like a borrowed parameter, a root whose referent lies
     // outside the closure body; the body reaches that referent only through the binding.
     private bool IsEnvironmentBorrow(int place) => this.IsEnvironmentBinding(place) && ReferenceTypes.IsBorrow(this.Places[place].Type);
 
@@ -1133,8 +1133,8 @@ public sealed partial class OwnershipBody
                         Merge(ValuePlaceForBorrow(operation), this.Sequences[(int)value.Constant].Receiver, id);
                         break;
                     case ValueFlow.Entries when operation.Place >= 0 && this.Places[operation.Place].Type.Kind == BoundTypeKind.Closure:
-                        // SPEC 7.6.2, 15.8.2: the entries flow into the closure temporary, whose environment holds their Loans; a
-                        // common Function value without an environment holds none (SPEC 7.6.4).
+                        // SPEC 7.7.2, 15.8.2: the entries flow into the closure temporary, whose environment holds their Loans; a
+                        // common Function value without an environment holds none (SPEC 7.7.4).
                         for (var i = 0; i < value.Count; i++)
                         {
                             Merge(operation.Place, ValuePlaceForBorrow(this.Operations[this.ValueOperands[value.Start + i]]), id);
@@ -1151,7 +1151,7 @@ public sealed partial class OwnershipBody
         }
         while (changed);
 
-        // SPEC 21.3.5: a kind without a flow row leaves the body unverified instead of silently carrying nothing.
+        // SPEC 21.3.2: a kind without a flow row leaves the body unverified instead of silently carrying nothing.
         this.Invariant(unclassified is null, unclassified);
 
         // SPEC 15.6.3: the retentions of operation `id`, in the prepared order, each under its storage Type's contract.
@@ -1399,7 +1399,7 @@ public sealed partial class OwnershipBody
 
     // An operation after which the Place holds a new value, or none: its earlier value, and every dependency of that value,
     // ends there. Liveness stops at it, and so does a stored dependency.
-    // SPEC 13.5.5.1: the Place a reference's value addresses, through the value's one definition chain: a slot borrow (the borrowed
+    // SPEC 13.5.5: the Place a reference's value addresses, through the value's one definition chain: a slot borrow (the borrowed
     // Place stores the referent Type, as holder@uniq does) names it; a Reborrow continues at the reborrowed value and a reference
     // local at its one definition. A reference loaded from a slot or received as an input addresses no Place of the body, so the
     // holder of the reference keeps what is stored through it.
@@ -1432,7 +1432,7 @@ public sealed partial class OwnershipBody
         return holder;
     }
 
-    // SPEC 13.5.5.1, 15.6.3: the retentions through exclusive references, once per body and in operation order. A store through
+    // SPEC 13.5.5, 15.6.3: the retentions through exclusive references, once per body and in operation order. A store through
     // a uniq/[storage] reference retains the stored value's Loans in the referent, the Place the reference addresses when known,
     // and otherwise in the reference's holder. A call's writable argument of Type uniq/[storage] whose complete stored Type names
     // another argument's Origin retains that argument, and so does the Place it borrows: actual input capabilities are carried
@@ -1698,7 +1698,7 @@ public sealed partial class OwnershipBody
         return -1;
     }
 
-    // SPEC 8.4.10.4: whether the explicit dependencies of a generic body reach `holder` other than through the definitions the
+    // SPEC 8.11.4: whether the explicit dependencies of a generic body reach `holder` other than through the definitions the
     // carrying walk classifies: a holder of a requirement result, or a Place with an abstract part, which inherits through
     // payloads and decompositions too (AddExplicitDependencies).
     private bool HasExplicitDependency(int holder)
@@ -2023,7 +2023,7 @@ public sealed partial class OwnershipBody
         return true;
     }
 
-    // A scalar temporary is a Loan root only where a borrow materializes it (SPEC 3.6.2).
+    // A scalar temporary is a Loan root only where a borrow materializes it (SPEC 3.6).
     // Recorded once per preparation; the Origin mapping queries it for every root of every Place.
     private bool IsBorrowedPlace(int place) => this.borrowedPlaces[place];
 
@@ -2209,7 +2209,7 @@ public sealed partial class OwnershipBody
 
             if (node.Kind == OwnershipValueKind.Sequence && operation.Kind == OwnershipOperationKind.Produce)
             {
-                // SPEC 14.6.2, 4.6: an element borrowed or read through a sequence descends from its receiver: a borrowed
+                // SPEC 14.6.2, 4.7: an element borrowed or read through a sequence descends from its receiver: a borrowed
                 // receiver value, or the owned receiver Place of a view such as the implicit Slice of a loop.
                 if (this.Sequences[(int)node.Constant].Receiver == place)
                 {
@@ -2227,14 +2227,14 @@ public sealed partial class OwnershipBody
 
             if (node.Kind is OwnershipValueKind.PointerLoad or OwnershipValueKind.BorrowedField && node.Count == 1)
             {
-                // SPEC 3.4.1, 10.2: a reference loaded through another reference descends from that reference.
+                // SPEC 3.4.3, 10.2: a reference loaded through another reference descends from that reference.
                 value = this.ValueOperands[node.Start];
                 continue;
             }
 
             if (node.Kind == OwnershipValueKind.Closure)
             {
-                // SPEC 7.6.2, 15.8.2: a closure value descends from each entry whose Loan its environment holds; the entries
+                // SPEC 7.7.2, 15.8.2: a closure value descends from each entry whose Loan its environment holds; the entries
                 // precede the closure, so the walk ends.
                 for (var i = 0; i < node.Count; i++)
                 {

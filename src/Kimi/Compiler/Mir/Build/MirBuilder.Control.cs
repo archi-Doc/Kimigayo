@@ -14,7 +14,7 @@ internal sealed partial class MirBuilder
     // Whether a node's evaluation can complete normally (its HIR Completion).
     private static bool Completes(Koto node) => HirTables.CompletionOf(node) != HirCompletion.Diverges;
 
-    // SPEC 14.7.2: the conditions in order, the first true clause's body into the destination, else the else body or, omitted, Unit.
+    // SPEC 14.7: the conditions in order, the first true clause's body into the destination, else the else body or, omitted, Unit.
     private void If(MirPlace destination, IfKoto conditional)
     {
         var after = this.Open(conditional, destination);
@@ -73,7 +73,7 @@ internal sealed partial class MirBuilder
         this.Close(after);
     }
 
-    // SPEC 14.3.2: the body once into the destination, where a named exit to the do places its value too.
+    // SPEC 14.3: the body once into the destination, where a named exit to the do places its value too.
     private void Do(MirPlace destination, DoKoto scoped)
     {
         var after = this.Open(scoped, destination);
@@ -82,7 +82,7 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 14.11: the failure body runs where the condition is false and has no successor, at run time or for the checks (SPEC 14.10.3);
-    // its row says no runtime path from its entry may reach its end (SPEC 14.11.2), which A3 checks. The failure body, a single item or a
+    // its row says no runtime path from its entry may reach its end (SPEC 14.11), which A3 checks. The failure body, a single item or a
     // block, is the scope its defers register in (SPEC 14.2, 16.1), cleaned up before its end, as a function's or a match arm's body is.
     private void Require(RequireKoto require)
     {
@@ -183,7 +183,7 @@ internal sealed partial class MirBuilder
 
     private bool IsTemp(MirPlace place) => place is { Projection: 0, Root: >= 0 } && this.body.Locals[place.Root].Kind == MirLocalKind.Temp;
 
-    // SPEC 17.5: a verification's condition secured as a bool and observed at its site (testObserve of the bool and the site's location,
+    // SPEC 17.6: a verification's condition secured as a bool and observed at its site (testObserve of the bool and the site's location,
     // which TestCatalog numbers, giving the failure's issue) before its temporaries are cleaned up; on false its message, evaluated and
     // recorded for the issue (testMessage of a shared view) with its own temporaries cleaned up, then for $require the case's Abort
     // (testRequireAbort), which has no successor; $expect continues with Unit either way. Its test phases are the backend's (plan 5.6.7).
@@ -229,7 +229,7 @@ internal sealed partial class MirBuilder
         this.Unit(destination, verification);
     }
 
-    // SPEC 17.5.2: observe a verification's bool before cleaning its temporaries, then branch with the bool's storage live.
+    // SPEC 17.6.2: observe a verification's bool before cleaning its temporaries, then branch with the bool's storage live.
     private MirPlace Observe(Koto condition, int whenFalse, int whenTrue, MirPlace issue, MirOperand site)
     {
         var tested = this.OpenScope(block: false);
@@ -251,7 +251,7 @@ internal sealed partial class MirBuilder
         return test;
     }
 
-    // SPEC 14.2.3, 3.6.2: evaluate a condition once, clean its temporaries, then branch; Enter ends the bool's storage in each successor.
+    // SPEC 14.2.3, 3.6: evaluate a condition once, clean its temporaries, then branch; Enter ends the bool's storage in each successor.
     private MirPlace Test(Koto condition, int whenFalse, int whenTrue)
     {
         var tested = this.OpenScope(block: false);

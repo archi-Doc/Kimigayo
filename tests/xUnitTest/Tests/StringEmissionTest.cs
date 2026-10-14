@@ -7,7 +7,7 @@ namespace XunitTest;
 
 public class StringEmissionTest
 {
-    // writeLine borrows its argument (SPEC 22.4); the conditional Moves are written as transfers of a temporary.
+    // writeLine borrows its argument (SPEC 22.1); the conditional Moves are written as transfers of a temporary.
     private const string Conditional = "var c = true\nvar text = \"old\"\nif c => Console.writeLine(text@move)\ntext = \"new\"\nConsole.writeLine(text)";
     private const string Loop = "var text = \"outer\"\nvar i = 0\nwhile i < 3\n    if i == 1 => Console.writeLine(text@move)\n    text = \"next\"\n    i += 1\nConsole.writeLine(text)";
 

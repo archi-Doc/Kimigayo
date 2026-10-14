@@ -9,9 +9,9 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 13.2, 13.3: %, the bitwise and shift operators, increment and decrement take integer or wrapping integer operands, and a
+// SPEC 13.2, 13.3.1: %, the bitwise and shift operators, increment and decrement take integer or wrapping integer operands, and a
 // shift count is an integer Type, never a wrapping one. Binding owns both checks and names the operand Type and the operator;
-// the operands of one Type are never reported as a mismatch of that Type with itself (SPEC 23.3.6).
+// the operands of one Type are never reported as a mismatch of that Type with itself (SPEC 23.1).
 public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
 {
     [Fact]
@@ -92,7 +92,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(nameof(DiagnosticCode.InvalidShiftCount_Kd), error.Code);
         Assert.Equal($"{type} is not an integer Type", error.Label);
         Assert.Equal("w", error.Text);
-        Assert.Equal("A wrapping integer Type is never a shift count (SPEC 13.3)", error.Note);
+        Assert.Equal("A wrapping integer Type is never a shift count (SPEC 13.3.1)", error.Note);
     }
 
     // The shifted operand is judged before the count, so a floating-point operand with a floating-point count is one record.

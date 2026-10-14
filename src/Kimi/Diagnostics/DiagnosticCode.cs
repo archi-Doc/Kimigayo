@@ -240,7 +240,7 @@ public enum DiagnosticCode
     Count, // Last sentinel
 }
 
-/// <summary>The diagnostic catalog (SPEC 23.3.6.1), validated once when it loads.</summary>
+/// <summary>The diagnostic catalog (SPEC 23.1.1), validated once when it loads.</summary>
 public static class DiagnosticEntries
 {
     private const string ResourceName = "Diagnostics.DiagnosticCode.tinyhand";

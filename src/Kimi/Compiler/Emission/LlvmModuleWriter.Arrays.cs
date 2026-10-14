@@ -2,7 +2,7 @@
 
 namespace Kimi.Compiler;
 
-/// <summary>SPEC 4.7.2, 4.7.6: per-element Array helpers over the {buffer, length, capacity} handle (Windows x64 profile).</summary>
+/// <summary>SPEC 4.9.3, 4.9.7: per-element Array helpers over the {buffer, length, capacity} handle (Windows x64 profile).</summary>
 internal static partial class LlvmModuleWriter
 {
     private const string ArrayGrowBody = """
@@ -15,18 +15,18 @@ internal static partial class LlvmModuleWriter
           %zero_sized = icmp eq i64 %stride, 0
           br i1 %zero_sized, label %unbounded, label %sized
         unbounded:
-          ; SPEC 4.5, 4.7.4: zero-sized elements need no bytes, so every count fits without allocation. The buffer is
+          ; SPEC 4.5, 4.9.5: zero-sized elements need no bytes, so every count fits without allocation. The buffer is
           ; a fixed nonnull substitute, aligned for any element, that __kimi_free never releases.
           store ptr inttoptr (i64 ZERO_SIZED_BUFFER to ptr), ptr %handle, align 8
           store i64 9223372036854775807, ptr %capacity_ptr, align 8
           br label %done
         sized:
-          ; SPEC 4.7.4: optional growth rounding cannot reject a representable minimum.
+          ; SPEC 4.9.5: optional growth rounding cannot reject a representable minimum.
           %maximum = udiv i64 9223372036854775807, %stride
           %unrepresentable = icmp ugt i64 %minimum, %maximum
           br i1 %unrepresentable, label %size_failure, label %prepare
         prepare:
-          ; SPEC 4.7.7: amortized doubling, clamped to the maximum representable capacity.
+          ; SPEC 4.9.8: amortized doubling, clamped to the maximum representable capacity.
           %doubled = shl i64 %capacity, 1
           %wrapped = icmp slt i64 %doubled, %capacity
           %safe_doubled = select i1 %wrapped, i64 9223372036854775807, i64 %doubled
@@ -65,7 +65,7 @@ internal static partial class LlvmModuleWriter
 
     private const string ArrayReserveBody = """
         entry:
-          ; SPEC 4.7.4: a nonnegative additional count; the checked total is the minimum capacity.
+          ; SPEC 4.9.5: a nonnegative additional count; the checked total is the minimum capacity.
           %negative = icmp slt i64 %additional, 0
           br i1 %negative, label %argument_failure, label %total
         total:
@@ -90,7 +90,7 @@ internal static partial class LlvmModuleWriter
 
     private const string ArrayShrinkBody = """
         entry:
-          ; SPEC 4.7.4: a failed candidate allocation leaves the handle unchanged.
+          ; SPEC 4.9.5: a failed candidate allocation leaves the handle unchanged.
           %length_ptr = getelementptr i8, ptr %handle, i64 8
           %length = load i64, ptr %length_ptr, align 8
           %capacity_ptr = getelementptr i8, ptr %handle, i64 16
@@ -143,7 +143,7 @@ internal static partial class LlvmModuleWriter
 
         """;
 
-    // SPEC 4.7.4, 4.7.7: the capacity routines, emitted only for modules that use Arrays so string-only modules keep no memcpy.
+    // SPEC 4.9.5, 4.9.8: the capacity routines, emitted only for modules that use Arrays so string-only modules keep no memcpy.
     private static readonly string ArrayRuntime =
         WindowsLowering.ArrayGrow.GetDefinition(false) + ArrayGrowBody.Replace("REASON_SIZE", Reason(WindowsLowering.AllocationSizeReason), StringComparison.Ordinal)
             .Replace("ZERO_SIZED_BUFFER", Reason(WindowsLowering.ZeroSizedBuffer), StringComparison.Ordinal) +
@@ -196,7 +196,7 @@ internal static partial class LlvmModuleWriter
 
     private static long Stride(ArrayHelper helper) => helper.Element.Layout.Stride;
 
-    // Grows to hold one more element and places it at buffer + length * stride (SPEC 4.7.2, 4.7.7).
+    // Grows to hold one more element and places it at buffer + length * stride (SPEC 4.9.3, 4.9.8).
     private static void WriteArrayAppend(TextWriter output, ArrayHelper helper)
     {
         WriteArrayIncrease(output);
@@ -228,7 +228,7 @@ internal static partial class LlvmModuleWriter
         WriteArrayBoundsFailure(output);
     }
 
-    // Moves the last element into the Option payload with the Some tag, or writes the None tag (SPEC 4.7.2).
+    // Moves the last element into the Option payload with the Some tag, or writes the None tag (SPEC 4.9.3).
     private static void WriteArrayPop(TextWriter output, ArrayHelper helper)
     {
         var option = helper.Option ?? throw new InvalidOperationException("Array pop needs its Option layout.");
@@ -241,7 +241,7 @@ internal static partial class LlvmModuleWriter
         output.Write(", i1 false)\n  store i32 0, ptr %result, align 4\n  store i64 %last, ptr %length_ptr, align 8\n  ret void\nnone:\n  store i32 1, ptr %result, align 4\n  ret void\n");
     }
 
-    // Requires 0 <= index < length, moves the element out and shifts the tail down (SPEC 4.7.2).
+    // Requires 0 <= index < length, moves the element out and shifts the tail down (SPEC 4.9.3).
     private static void WriteArrayRemove(TextWriter output, ArrayHelper helper)
     {
         var scalar = helper.ElementIsScalar;
@@ -282,7 +282,7 @@ internal static partial class LlvmModuleWriter
         WriteArrayBoundsFailure(output);
     }
 
-    // Requires both indices in [0, length) and exchanges the two element slots through a stack buffer (SPEC 4.7.2).
+    // Requires both indices in [0, length) and exchanges the two element slots through a stack buffer (SPEC 4.9.3).
     private static void WriteArraySwap(TextWriter output, ArrayHelper helper)
     {
         if (Stride(helper) == 0)
@@ -309,7 +309,7 @@ internal static partial class LlvmModuleWriter
         WriteArrayBoundsFailure(output);
     }
 
-    // SPEC 22.1.2.5: the remainder records the buffer and the whole length as its untaken range {storage, position, count}.
+    // SPEC 22.2: the remainder records the buffer and the whole length as its untaken range {storage, position, count}.
     private static void WriteArrayBorrow(TextWriter output, ArrayHelper helper)
     {
         output.Write("  %buffer = load ptr, ptr %handle, align 8\n");
@@ -319,7 +319,7 @@ internal static partial class LlvmModuleWriter
         output.Write("  ret void\n");
     }
 
-    // SPEC 22.1.2.5: ownStorage transfers the handle {buffer, length, capacity} into the owning remainder
+    // SPEC 22.2: ownStorage transfers the handle {buffer, length, capacity} into the owning remainder
     // {storage, position 0, count length, capacity}; the consumed Array slot is not read again.
     private static void WriteArrayOwn(TextWriter output, ArrayHelper helper)
     {
@@ -339,7 +339,7 @@ internal static partial class LlvmModuleWriter
         output.Write("  ret void\n");
     }
 
-    // Moves the consumed fixed array into the remainder's inline storage and opens its whole range (SPEC 22.1.2.5).
+    // Moves the consumed fixed array into the remainder's inline storage and opens its whole range (SPEC 22.2).
     private static void WriteFixedOwn(TextWriter output, ArrayHelper helper)
     {
         if (helper.Fields.StorageSize != 0)
@@ -385,7 +385,7 @@ internal static partial class LlvmModuleWriter
         output.Write("  %next = add i64 %length, 1\n  store i64 %next, ptr %length_ptr, align 8\n  ret void\n");
     }
 
-    // Destroys the elements in reverse index order and keeps the capacity; Drop then releases the buffer (SPEC 4.7.6).
+    // Destroys the elements in reverse index order and keeps the capacity; Drop then releases the buffer (SPEC 4.9.7).
     private static void WriteArrayClear(TextWriter output, ArrayHelper helper, bool release)
     {
         if (helper.ElementIsString || helper.ElementLayout?.NeedsDestruction == true)

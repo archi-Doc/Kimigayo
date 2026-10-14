@@ -11,7 +11,7 @@ namespace XunitTest;
 
 public class BorrowedDictionaryIndexTest(ITestOutputHelper testOutput)
 {
-    // SPEC 4.6.9, 10.2: K may itself be ref/i32, so the search argument is ref/(ref/i32).
+    // SPEC 4.7.1, 10.2: K may itself be ref/i32, so the search argument is ref/(ref/i32).
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

@@ -8,7 +8,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 7.6.2, 7.6.3, 8.9, 8.10: a bare capture entry of a pair binding whose every admitted case Copies or Reborrows binds as a
+// SPEC 7.7.2, 7.7.3, 8.14, 8.15: a bare capture entry of a pair binding whose every admitted case Copies or Reborrows binds as a
 // bare entry, which each Semantics case acquires as the binding's case Type does; a case without a plan is the entry's own
 // TransferRequired_Kd naming that case; a bare use that Reborrows in some case makes the closure's receiver Exclusive.
 public sealed class ConditionalCaptureTest
@@ -35,7 +35,7 @@ public sealed class ConditionalCaptureTest
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics, static x => x.Severity == DiagnosticSeverity.Error);
         Assert.Equal(nameof(DiagnosticCode.TransferRequired_Kd), error.Code);
         Assert.Equal("value", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
-        Assert.Contains("in the Semantics case s = owner (SPEC 8.9)", error.Note, StringComparison.Ordinal);
+        Assert.Contains("in the Semantics case s = owner (SPEC 8.14)", error.Note, StringComparison.Ordinal);
         Assert.Contains(error.Repairs!, static x => x.Title.Contains("@move", StringComparison.Ordinal));
     }
 

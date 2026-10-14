@@ -153,7 +153,7 @@ public sealed class CodeContext
     /// <summary>Gets a value indicating whether the parser recorded a recovery in this source; valid source records none.</summary>
     internal bool HasRecoveries => this.recoveries is not null;
 
-    /// <summary>Records excluded syntax, so its diagnostics name the excluding directive (SPEC 19.5, 23.3.6.2).</summary>
+    /// <summary>Records excluded syntax, so its diagnostics name the excluding directive (SPEC 19.4, 23.3).</summary>
     /// <param name="range">The excluded syntax.</param>
     /// <param name="directive">The innermost excluding directive.</param>
     internal void RecordExcludedRange(SourceSpan range, SourceSpan directive)

@@ -26,7 +26,7 @@ internal static class ReferenceTypes
     internal static bool IsDictionary(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
         && type.Components[0].Kind == BoundTypeKind.Dictionary;
 
-    // SPEC 4.6.5: a borrowed Slice is a reference to its Copy handle storage; the elements keep their own source Loan.
+    // SPEC 4.8.1: a borrowed Slice is a reference to its Copy handle storage; the elements keep their own source Loan.
     internal static bool IsSlice(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
         && type.Components[0].Kind == BoundTypeKind.Slice;
 
@@ -36,7 +36,7 @@ internal static class ReferenceTypes
             type.Components[0] is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq }) ||
         (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && ReferenceEquals(type.Components[0], BoundType.Unit)) ||
         (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && (type.Components[0].HandleMode is not null || type.Components[0].IsObjectBorrow)) ||
-        // SPEC 8.4.3, 8.1.1: an associated projection, a pair target or a Semantics application stands for a complete Type like a
+        // SPEC 8.5, 8.1.1: an associated projection, a pair target or a Semantics application stands for a complete Type like a
         // parameter; each instance checks its substitution.
         (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && type.Components[0].Kind is BoundTypeKind.Closure or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication) ||
         // Binding verifies Origin obligations; inferred initializer aliases use the same stored reference representation.
@@ -55,7 +55,7 @@ internal static class ReferenceTypes
         return type is { HandleMode: not null } or { IsObjectBorrow: true } ? type.Components[0] : null;
     }
 
-    // SPEC 4.6.3: the library ResolvedRange struct, which the compiler produces for indices and iterates directly.
+    // SPEC 4.6.2: the library ResolvedRange struct, which the compiler produces for indices and iterates directly.
     internal static bool IsResolvedRange(BoundType? type) => type is { Kind: BoundTypeKind.Nominal, Symbol.LibraryDeclaration: KimiDeclarationId.ResolvedRange };
 
     // SPEC 13.4: safe borrows of one scalar Type compare their referent values.

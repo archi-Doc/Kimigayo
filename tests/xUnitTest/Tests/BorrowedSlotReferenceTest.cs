@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 3.3.6, 15.6.2: `p.0@ref` of a borrowed root `p` whose element holds a reference borrows that element's slot in the
+// SPEC 3.3.2, 15.6.2: `p.0@ref` of a borrowed root `p` whose element holds a reference borrows that element's slot in the
 // caller's storage. It was lowered as a borrow of a temporary copy of the stored reference, so a result `during p`
 // pointed into the callee's frame (non-generic), or failed generation in a generic instance with a reference argument.
 public class BorrowedSlotReferenceTest

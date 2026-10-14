@@ -122,7 +122,7 @@ public class AssociatedOriginBindingTest
         ScalarEmissionTest.EmitFixture("AssociatedOriginGeneric", source, "generic family\n");
     }
 
-    // SPEC 8.4.3: a universal family capability holds at every application, so a Copy of T.Item(b) is proven from it.
+    // SPEC 8.5: a universal family capability holds at every application, so a Copy of T.Item(b) is proven from it.
     [Fact]
     public void UniversalFamilyCapabilityHoldsAtEveryApplication()
     {

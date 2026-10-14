@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 3.5, 15.1.5, 23.3.6.9: a bare Place that needs @move, @uniq or @objuniq offers the spelling as a repair candidate, located
+// SPEC 3.5, 15.1.5, 23.1.3: a bare Place that needs @move, @uniq or @objuniq offers the spelling as a repair candidate, located
 // at the Place: Take is judged from the Place's path (verified for an owned local path, refuted for a borrowed, published or
 // dynamically indexed one), an exclusive borrow has ExclusiveAccess verified, and UsageLegality is always required.
 public class AcquisitionRepairTest
@@ -77,7 +77,7 @@ public class AcquisitionRepairTest
         Assert.Null(error.Repairs);
     }
 
-    // The same holds for a selected referent read by value (SPEC 13.5.5.1): one record at `p@follow`, without the
+    // The same holds for a selected referent read by value (SPEC 13.5.5): one record at `p@follow`, without the
     // Unsupported_Kd and UninitializedPlace_Kd records it published before.
     [Theory]
     [InlineData("func first<A>(p: ref/A) -> A => p@follow\n")]
@@ -144,7 +144,7 @@ public class AcquisitionRepairTest
         Assert.Empty(DiagnosticCorpus.Check(UnnecessaryUnsafeBlockTest.Apply(Source, repair.Edits)).Diagnostics);
     }
 
-    // SPEC 23.3.6.8: the command shows the candidate's edit at the Place and its conditions.
+    // SPEC 23.3: the command shows the candidate's edit at the Place and its conditions.
     [Fact]
     public void TheCommandRendersTheTransferCandidate()
     {

@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 8.4.10.4, 8.4.10.6: a generic requirement call may affect every Loan that its abstract inputs' Types may denote; a live
+// SPEC 8.11.4, 8.11.1: a generic requirement call may affect every Loan that its abstract inputs' Types may denote; a live
 // earlier result keeping such a Loan through the same value conflicts unless an available bound excludes it.
 public class EffectBoundCallerTest
 {
@@ -48,7 +48,7 @@ public class EffectBoundCallerTest
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
-    // SPEC 4.7.5, 8.4.10.4: only a Kimi operation's published summary replaces the unbounded model; a user generic function keeps it,
+    // SPEC 4.9.6, 8.11.4: only a Kimi operation's published summary replaces the unbounded model; a user generic function keeps it,
     // even when its body calls such an operation, so an earlier user generic result still conflicts.
     [Theory]
     [InlineData("func keep<V>(v: V) -> Option<V>\n    V is Copy\n    return .Some(v)\nfunc touch<V>(v: V) -> isize\n    V is Copy\n    return 1\nfunc put<K>(k: K) -> isize\n    K is Copy\n    let r = keep(k)\n    let n = touch(k)\n    match r\n        .Some(_) => return n\n        .None => return 0\n", "touch(k)")]
@@ -73,7 +73,7 @@ public class EffectBoundCallerTest
         Assert.Equal(nameof(DiagnosticCode.CallActivationConflict_Kd), error.Code);
     }
 
-    // SPEC 8.4.10.6: the related locations are the Place keeping the Loan and the call that created it.
+    // SPEC 8.11.1: the related locations are the Place keeping the Loan and the call that created it.
     [Fact]
     public void RelatesTheHeldResultAndItsCall()
     {

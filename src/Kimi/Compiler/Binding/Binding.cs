@@ -54,7 +54,7 @@ public sealed partial class Binding
     /// <summary>Gets requirements to discharge during subsequent semantic analysis.</summary>
     public IReadOnlyList<BindingObligation> Obligations => this.obligations;
 
-    /// <summary>Gets the valid foreign import declarations of the latest pass (SPEC 22.3), in source order.</summary>
+    /// <summary>Gets the valid foreign import declarations of the latest pass (SPEC 22.6), in source order.</summary>
     internal IReadOnlyList<LibraryImport> LibraryImports => this.libraryImports;
 
     /// <summary>Gets the facts this Binding publishes to readers outside Binding.</summary>
@@ -160,7 +160,7 @@ public sealed partial class Binding
                 position.Node.Report(warning, DiagnosticCode.PositionAlwaysFails_Kd, position.Kind, evidence: position.FixedLength < 0 ? null : [position.FixedLength]);
             }
 
-            // SPEC 23.3.3: an incomplete Binding without an Error in it or an earlier phase reports one fallback at its
+            // SPEC 23.2.2: an incomplete Binding without an Error in it or an earlier phase reports one fallback at its
             // first incomplete node. It marks a missing report, a compiler defect to repair where it occurs.
             if (!this.Result.IsComplete && !diagnostics.HasErrorsThrough(DiagnosticPartition.Binding) &&
                 this.nodes.Find(static x => x.BindingState != BindingState.Resolved) is { } first)
@@ -258,7 +258,7 @@ public sealed partial class Binding
         return type;
     }
 
-    // SPEC 7.6.3: the call a closure's minimum receiver needs, and the calls a Callable receiver permits.
+    // SPEC 7.7.3: the call a closure's minimum receiver needs, and the calls a Callable receiver permits.
     private static string CallReceiverText(SemanticsKind receiver)
         => receiver switch { SemanticsKind.Ref => "a Shared call", SemanticsKind.Uniq => "an Exclusive call", _ => "a Consuming call" };
 
@@ -588,7 +588,7 @@ public sealed partial class Binding
         var requirement = DiagnosticRequirement.Binding(issue.Failure);
         if (issue.Failure == BindingFailure.Unsupported)
         {
-            // SPEC 23.3.6.1: a form outside the implemented subset is located only: at the part its check recorded, a function at its
+            // SPEC 23.1.1: a form outside the implemented subset is located only: at the part its check recorded, a function at its
             // signature.
             var span = this.unsupportedSpans?.TryGetValue(issue.Node, out var part) == true ? part
                 : issue.Node is FunctionKoto { SignatureSpan.Length: > 0 } function ? function.SignatureSpan : (SourceSpan?)null;
@@ -662,9 +662,9 @@ public sealed partial class Binding
         }
         else if (issue.Code == DiagnosticCode.InvalidNumericLiteral_Kd && LiteralConversionTarget(issue.Node) is { } literalTarget)
         {
-            // SPEC 13.5.4.2: a direct literal is converted at compile time, so its range failure is explained at the literal.
+            // SPEC 13.5.4: a direct literal is converted at compile time, so its range failure is explained at the literal.
             var truncated = (issue.Node as NumberLiteralKoto ?? ((UnaryKoto)issue.Node).Operand) is NumberLiteralKoto { IsInteger: false };
-            issue.Node.Report(requirement, issue.Code, note: $"The direct literal is converted at compile time and its {(truncated ? "truncated " : string.Empty)}value is outside the range of {DiagnosticTypeName(literalTarget)} (SPEC 13.5.4.2)");
+            issue.Node.Report(requirement, issue.Code, note: $"The direct literal is converted at compile time and its {(truncated ? "truncated " : string.Empty)}value is outside the range of {DiagnosticTypeName(literalTarget)} (SPEC 13.5.4)");
         }
         else if (issue.Code == DiagnosticCode.InvalidTry_Kd)
         {
@@ -698,7 +698,7 @@ public sealed partial class Binding
                 at: head is OriginApplicationKoto application ? application.Type : head,
                 evidence: [associated.Count],
                 related: [("candidate", associated.First.Symbol.Declaration, first), ("candidate", associated.Second.Symbol.Declaration, second)],
-                note: $"{first} and {second} are distinct associated-Type identities; the declaring Contract's bindings are part of each identity (SPEC 8.4.2-3)");
+                note: $"{first} and {second} are distinct associated-Type identities; the declaring Contract's bindings are part of each identity (SPEC 8.4.3-3)");
         }
         else if (issue.Code is DiagnosticCode.NoApplicableOverload_Kd or DiagnosticCode.AmbiguousBinding_Kd && this.rejectedCandidates?.TryGetValue(issue.Node, out var rejected) == true)
         {
@@ -747,14 +747,14 @@ public sealed partial class Binding
                 else if (candidate.ActualReceiver is { } closureReceiver && candidate.RequiredReceiver is { } callableReceiver &&
                     (uint)candidate.ReceiverParameter < (uint)candidate.Function.Parameters.Count)
                 {
-                    // SPEC 7.6.3, 8.6: the closure argument's minimum call receiver is the candidate's only refuted condition
+                    // SPEC 7.7.3, 8.10: the closure argument's minimum call receiver is the candidate's only refuted condition
                     // (TryCandidate).
                     var parameter = candidate.Function.Parameters[candidate.ReceiverParameter];
                     var pattern = parameter.Type.BoundType;
                     var slot = (pattern is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? pattern.Components[0] : pattern)?.Symbol?.Name ?? "F";
                     var needed = closureReceiver.ToString().ToLowerInvariant();
                     label = $"{candidate.Function.Name}: closure requires {needed}; Callable requires {callableReceiver.ToString().ToLowerInvariant()}";
-                    shapeNote ??= $"{label}. The closure argument of {parameter.InternalName} needs {CallReceiverText(closureReceiver)}, and the Callable Constraint of {slot} permits {PermittedCallsText(callableReceiver)} (SPEC 7.6.3, 8.6)";
+                    shapeNote ??= $"{label}. The closure argument of {parameter.InternalName} needs {CallReceiverText(closureReceiver)}, and the Callable Constraint of {slot} permits {PermittedCallsText(callableReceiver)} (SPEC 7.7.3, 8.10)";
                 }
 
                 if (candidate.Actual is { } actual && candidate.Expected is { } expected)
@@ -789,7 +789,7 @@ public sealed partial class Binding
             }
 
             // A synthesized formatting write spans its whole literal; its failure is located at the value it writes, so the
-            // writes of one literal are distinct problems at distinct locations (SPEC 23.3.6.2, 23.3.6.6).
+            // writes of one literal are distinct problems at distinct locations (SPEC 23.3, 23.1).
             var at = issue.Node is InvocationKoto { Method: FormattingKoto or GenericsKoto { Identifier: FormattingKoto }, ArgumentNodes: [_, var value] } ? value : null;
             issue.Node.Report(requirement, issue.Code, evidence: [rejected.Length], related: candidates, note: shapeNote, at: at);
         }
@@ -862,12 +862,12 @@ public sealed partial class Binding
                 issue.Code,
                 evidence: evidence,
                 related: [("contract", agreement.Left.Declaration, first), ("contract", agreement.Right.Declaration, second)],
-                note: "Associated Types and effective implementation mappings must agree for every overlapping binding allowed by the declaration and conformance conditions (SPEC 8.4.9.2)");
+                note: "Associated Types and effective implementation mappings must agree for every overlapping binding allowed by the declaration and conformance conditions (SPEC 8.9.2)");
         }
         else if (issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd &&
             (this.ReportCallablePremiseFailure(issue.Node, requirement) || this.ReportEffectViolation(issue.Node, requirement, issue.Code)))
         {
-            // SPEC 8.4.10.6: reported at the violating effect.
+            // SPEC 8.11.1: reported at the violating effect.
         }
         else if (issue.Code is DiagnosticCode.MissingOriginBinding_Kd or DiagnosticCode.InvalidOriginBinding_Kd && this.ReportFormationCause(issue.Node, requirement, issue.Code))
         {
@@ -947,7 +947,7 @@ public sealed partial class Binding
         else if (issue.Code == DiagnosticCode.TypeMismatch_Kd && this.mismatches?.TryGetValue(issue.Node, out var mismatch) == true)
         {
             // The subject stays the failed node; the location is the syntax that shows the two Types. A numeric conversion
-            // rejected for a wrapping integer Type explains the same-argument rule (SPEC 13.5.4.1).
+            // rejected for a wrapping integer Type explains the same-argument rule (SPEC 13.5.4).
             var wrappingConversion = issue.Node is ConversionKoto && (mismatch.Actual is BoundType { IsWrappingInteger: true } || mismatch.Expected is BoundType { IsWrappingInteger: true });
             var conversion = wrappingConversion ? null : this.ClosureConversionNote(issue.Node, mismatch.Actual, mismatch.Expected);
             issue.Node.Report(requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : conversion ?? this.OmittedResultNote(issue.Node), at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
@@ -968,7 +968,7 @@ public sealed partial class Binding
         }
         else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.callableConstraints?.TryGetValue(issue.Node, out var callable) == true)
         {
-            // SPEC 8.7, 15.6.1: a Callable proof that is Unknown only in its Origin part, at the argument whose Type binds F.
+            // SPEC 8.3, 15.6.1: a Callable proof that is Unknown only in its Origin part, at the argument whose Type binds F.
             ReportCallableConstraint(issue.Node, callable, requirement, issue.Code);
         }
         else if (issue.Code == DiagnosticCode.UnsatisfiedConstraint_Kd && this.rangeIterationFailures?.TryGetValue(issue.Node, out var rangeFailure) == true)
@@ -978,7 +978,7 @@ public sealed partial class Binding
         }
         else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.rangeIterationFailures?.TryGetValue(issue.Node, out var unproven) == true)
         {
-            // SPEC 4.6.3.4: the boundary Types are not known to be one integer Type in this generic context.
+            // SPEC 4.6.4: the boundary Types are not known to be one integer Type in this generic context.
             var start = DiagnosticTypeName(unproven.Subject.Components[0]);
             var end = DiagnosticTypeName(unproven.Subject.Components[1]);
             issue.Node.Report(requirement, issue.Code, note: $"Range iteration requires both boundaries to have one integer Type; the boundary Types {start} and {end} are not proven to be one integer Type");
@@ -1012,7 +1012,7 @@ public sealed partial class Binding
 
             this.SettleSpecificationLinks();
 
-            // SPEC 23.3.6.1: an inherited conformance limited by OCC-X is reported once, at the derived Type's base clause, when a failing
+            // SPEC 23.1.1: an inherited conformance limited by OCC-X is reported once, at the derived Type's base clause, when a failing
             // check rested on it; an explicit one was reported at its declaration (ValidateConformances).
             for (var i = 0; i < this.activeConformancePaths.Count; i++)
             {
@@ -1030,7 +1030,7 @@ public sealed partial class Binding
         {
             var node = this.nodes[i];
             // API and constraint validation can invalidate a target or Type after call selection; a target whose declaration
-            // failed leaves the call resting on that failure (SPEC 23.3.6.4).
+            // failed leaves the call resting on that failure (SPEC 23.1.2).
             if (node is InvocationKoto { BoundCall: { } call })
             {
                 if (node.BindingFailure == BindingFailure.None && InvalidDeclarationContextCause(this.Library.PresentedTarget(call.Target).Declaration) is { } invalidTarget)
@@ -1181,7 +1181,7 @@ public sealed partial class Binding
                 this.issues.Add(new(node, code) { Failure = node.BindingFailure });
                 if (this.formationCauses?.TryGetValue(node, out var causes) == true && (causes & TypeRoleCause.Role) != 0)
                 {
-                    // SPEC 23.3.6.4: a target role that is not proven beside a Language cause of the same occurrence is its own record.
+                    // SPEC 23.1.2: a target role that is not proven beside a Language cause of the same occurrence is its own record.
                     this.issues.Add(new(node, DiagnosticCode.UnprovenConstraint_Kd) { Failure = BindingFailure.UnprovenConstraint });
                 }
             }
@@ -1222,7 +1222,7 @@ public sealed partial class Binding
         }
 
         symbol.Scope = scope;
-        // A pending synthesized constructor is declared in its structure but joins the `init` group only once it exists (SPEC 6.2.3.6).
+        // A pending synthesized constructor is declared in its structure but joins the `init` group only once it exists (SPEC 6.3.6).
         if ((name == "_" && node.Parent is ForKoto) || (kind == BindingSymbolKind.Function && node is FunctionKoto { IsOverride: true }) ||
             node is FunctionKoto { IsImplicitConstructor: true, Parent: StructKoto { ImplicitConstructorPending: true } })
         {
@@ -1324,7 +1324,7 @@ public sealed partial class Binding
         {
             foreach (var first in scope.Values.Values)
             {
-                // SPEC 7.3.1: the functions of one Name acquire corresponding parameters of overlapping Types in one mode; a Contract's
+                // SPEC 7.4: the functions of one Name acquire corresponding parameters of overlapping Types in one mode; a Contract's
                 // requirements are checked below with the ones they inherit.
                 if (scope.Owner is not ContractKoto)
                 {
@@ -1379,7 +1379,7 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 8.4.1: a Contract's same-name requirements, including those inherited by refinement, share one receiver shape.
+        // SPEC 8.4.2: a Contract's same-name requirements, including those inherited by refinement, share one receiver shape.
         for (var n = 0; n < this.nodes.Count; n++)
         {
             if (this.nodes[n] is not ContractKoto { BoundSymbol.Contract: { } shape } contract)
@@ -1582,7 +1582,7 @@ public sealed partial class Binding
 
             if (node is AttributeKoto misplaced && node.CodeContext.RecoveryCause(node) is not null)
             {
-                // A misplaced attribute the parser kept for the source round trip is its syntax Error's recovery (SPEC 6.5): it
+                // A misplaced attribute the parser kept for the source round trip is its syntax Error's recovery (SPEC 6.7): it
                 // marks nothing, so the node it was kept on is checked on its own.
                 misplaced.BoundType = BoundType.Unit;
                 misplaced.BindingState = BindingState.Resolved;
@@ -1636,7 +1636,7 @@ public sealed partial class Binding
 
             if (node is AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "LibraryImport" } } import && AttributeTarget(import) is FunctionKoto)
             {
-                // SPEC 22.3.1: the operand names a library and symbol; it is validated, never evaluated.
+                // SPEC 22.6: the operand names a library and symbol; it is validated, never evaluated.
                 import.BindingFailure = BindingFailure.None;
                 import.BindingState = BindingState.Unvisited;
                 import.BoundType = null;
@@ -1659,7 +1659,7 @@ public sealed partial class Binding
 
             if (node is EffectBoundKoto)
             {
-                // SPEC 8.4.10.1: the selector and Name of an effect item designate a Contract and its requirement; they are
+                // SPEC 8.11.1: the selector and Name of an effect item designate a Contract and its requirement; they are
                 // resolved with the item, never as expressions.
                 binding.nodes.Add(node);
                 return;
@@ -1781,7 +1781,7 @@ public sealed partial class Binding
                         var symbol = binding.Declare(node, function.Name, BindingSymbolKind.Function, node, memberScope);
                         symbol.ConditionalDeclaration = conditional is { Akind: KotoKind.ConditionalConformance } ? conditional : null;
                         // The members of the fixed array and the integer Position witness are receiver functions of internal
-                        // Kimi groups (SPEC 22.1, 4.6.2, PLAN G32).
+                        // Kimi groups (SPEC 22.1, 4.6.1, PLAN G32).
                         if (memberScope.Owner is StructKoto or EnumKoto or ContractKoto || binding.Library.IsBuiltinMemberGroup(memberScope.Owner))
                         {
                             for (var p = 0; p < function.Parameters.Count; p++)

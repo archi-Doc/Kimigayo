@@ -59,7 +59,7 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Equal(["MovedPlace_Kd see(pair) 1"], Problems(Pair + "    see(pair)\n"));
     }
 
-    // SPEC 6.2.3, 15.1.2: a constructor builds its object from fresh storage: a base and every own Field placed before it completes
+    // SPEC 6.3, 15.1.2: a constructor builds its object from fresh storage: a base and every own Field placed before it completes
     // (an implicit constructor and an empty struct's included); a missing Field is reported at the constructor. Writing a part of an
     // aggregate that was never constructed is reported at the write.
     [Fact]
@@ -77,7 +77,7 @@ public sealed class MirInitTest(ITestOutputHelper output)
                 "func f()\n    var p: (i32, i32)\n    p.0 = 1\n"));
     }
 
-    // SPEC 11.3.1: a constructor places a let Field or one with a custom set once; a var with the standard set may be replaced.
+    // SPEC 11.7: a constructor places a let Field or one with a custom set once; a var with the standard set may be replaced.
     [Fact]
     public void AConstructorPlacesALetOrCustomSetFieldOnce()
     {
@@ -90,7 +90,7 @@ public sealed class MirInitTest(ITestOutputHelper output)
                 "        self.level = 2\n"));
     }
 
-    // SPEC 6.2.3.5: a constructor's object is complete at each exit it requests, its body's end or a return, before the Scope Exit that runs
+    // SPEC 6.3.5: a constructor's object is complete at each exit it requests, its body's end or a return, before the Scope Exit that runs
     // its defers, which cannot supply a missing Field: the problem is at the return and at the constructor, once for an early return; an
     // exit request only the checks reach delivers nothing (SPEC 14.10.3).
     [Fact]
@@ -159,7 +159,7 @@ public sealed class MirInitTest(ITestOutputHelper output)
                 "func diverged() -> i32\n    let x: i32 = stop()\n    return x\n"));
     }
 
-    // Plan 5.6.1, SPEC 13.5.5.1: a PairLayer is the Place itself in the owner case and a Deref in a reference case, so writing through an
+    // Plan 5.6.1, SPEC 13.5.5: a PairLayer is the Place itself in the owner case and a Deref in a reference case, so writing through an
     // unset pair layer is a problem in the uniq view only; a body whose accesses no view decides is analyzed once, for every view.
     [Fact]
     public void ViewsDecidePairLayers()
@@ -194,7 +194,7 @@ public sealed class MirInitTest(ITestOutputHelper output)
         }
     }
 
-    // SPEC 4.3.4, 4.7.4: noinit and an empty collection literal construct initialized values.
+    // SPEC 4.3.4, 4.9.5: noinit and an empty collection literal construct initialized values.
     [Fact]
     public void ConstructedAggregatesAreInitialized()
         => Assert.Empty(Problems("func noinit() -> i32\n    unsafe\n        var values: [4 of i32] = noinit\n        values[1] = 2\n" +

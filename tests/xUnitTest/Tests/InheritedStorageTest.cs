@@ -42,7 +42,7 @@ public class InheritedStorageTest
         Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.InvalidAssignment_Kd);
     }
 
-    // SPEC 6.2.3.4, 11.3.1: the construction receiver also forbids inherited Field and computed access, custom accessor calls and
+    // SPEC 6.3.4, 11.7: the construction receiver also forbids inherited Field and computed access, custom accessor calls and
     // a Non-Copy Move, each one Language record at the access.
     [Theory]
     [InlineData("open struct Base\n    public var x: i32 = 1\n    public init() => ()\nstruct Leaf: Base\n    var y: i32\n    public init()\n        self.y = self.x\n", "self.x")]

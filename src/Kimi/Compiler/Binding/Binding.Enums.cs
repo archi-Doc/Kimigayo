@@ -320,7 +320,7 @@ public sealed partial class Binding
                     if (actual is null && hint?.Kind != BoundTypeKind.Function &&
                         source is { BindingState: BindingState.Resolved, BoundSymbol: { Kind: BindingSymbolKind.Function } item })
                     {
-                        // SPEC 7.6.4: infer an open payload from the declaration's Item Type, just as for a generic call.
+                        // SPEC 7.7.4: infer an open payload from the declaration's Item Type, just as for a generic call.
                         actual = this.BindFunctionItem(source, item, scope);
                     }
 
@@ -333,7 +333,7 @@ public sealed partial class Binding
                     this.acquisitionFailure = null;
                     if (!this.AdaptInput(source, hint ?? pattern, actual, scope, null, null, out var adapted, out var quality, out var kind))
                     {
-                        // SPEC 6.3.2, 3.5: a bare Non-Copy Place never Moves into a payload; name the required spelling.
+                        // SPEC 6.5.2, 3.5: a bare Non-Copy Place never Moves into a payload; name the required spelling.
                         return this.acquisitionFailure is { } acquisition ? this.FailAcquisition(use, acquisition.Kind, source, acquisition.Object) : this.Fail(use, BindingFailure.TypeMismatch);
                     }
 
@@ -472,7 +472,7 @@ public sealed partial class Binding
                 }
                 else if (proof != ConstraintProof.Proven && operation.Kind == ArgumentOperationKind.Value && operation.Source is { } payloadSource && IsBarePlace(payloadSource))
                 {
-                    // SPEC 6.3.2, 3.5: a bare Non-Copy or Copy-unproven Place never Moves into a payload; write value@move.
+                    // SPEC 6.5.2, 3.5: a bare Non-Copy or Copy-unproven Place never Moves into a payload; write value@move.
                     plan.IsValid = false;
                     this.FailAcquisition(payloadSource, BindingFailure.TransferRequired, payloadSource);
                 }

@@ -127,12 +127,12 @@ internal static class MirTypes
             (TyCtxt.Layer(type, out _, out var binder) is var _ && binder is not null);
 
     /// <summary>Gets whether a Type is an exclusive reference, <c>uniq</c> or <c>objuniq</c>: a borrow of its mode is exclusive, and a bare
-    /// acquisition of a Place storing it Reborrows it in its own Semantics where another Type's Copies (SPEC 3.5, 8.9).</summary>
+    /// acquisition of a Place storing it Reborrows it in its own Semantics where another Type's Copies (SPEC 3.5, 8.14).</summary>
     /// <param name="type">The Type.</param>
     /// <returns>Whether it is an exclusive reference.</returns>
     internal static bool IsExclusive(BoundType? type) => type?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
 
-    /// <summary>Gets the kind of the borrow that forms a reference Type (SPEC 13.5.5.2, 5.4), the mode of every Ref: an address for a raw
+    /// <summary>Gets the kind of the borrow that forms a reference Type (SPEC 13.5.6, 5.4), the mode of every Ref: an address for a raw
     /// pointer, a shared borrow for a shared reference, else an exclusive one, two-phase for a call's input: reserved at the borrow and
     /// activated at the Call (SPEC 15.6.7).</summary>
     /// <param name="reference">The reference Type.</param>
@@ -154,7 +154,7 @@ internal static class MirTypes
     }
 
     /// <summary>Gets the Cast of a raw pointer conversion from a source Type (SPEC 5.4): Pointer from a raw pointer, else IntToPointer, an
-    /// integer's, an environment effect (SPEC 8.4.10.2).</summary>
+    /// integer's, an environment effect (SPEC 8.11.2).</summary>
     /// <param name="source">The converted value's Type.</param>
     /// <returns>The Cast's kind.</returns>
     internal static MirCastKind PointerCast(BoundType source) => source.Semantics == SemanticsKind.Raw ? MirCastKind.Pointer : MirCastKind.IntToPointer;
@@ -232,7 +232,7 @@ internal static class MirTypes
     };
 
     /// <summary>Gets whether a value of a Type holds a raw pointer, an rc handle or a Weak of one at any depth, so that reading it from an
-    /// immutable static obtains authority from the environment (SPEC 8.4.10.2); a referent reached through the value counts too.</summary>
+    /// immutable static obtains authority from the environment (SPEC 8.11.2); a referent reached through the value counts too.</summary>
     /// <param name="type">The Type.</param>
     /// <param name="depth">The walk's depth; past 32 the answer is yes.</param>
     /// <returns>Whether the value holds raw authority.</returns>

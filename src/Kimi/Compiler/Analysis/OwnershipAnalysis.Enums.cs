@@ -228,7 +228,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         // A committed CopyOrMove is checked as the exact effect of the source Place's own Type under the environment its Place was
-        // built in (SPEC 8.10), and a transfer (@move) moves a Copy or Copy-unproven Place (SPEC 13.5.3).
+        // built in (SPEC 8.15), and a transfer (@move) moves a Copy or Copy-unproven Place (SPEC 13.5.3).
         var source = this.body.PlaceStorage[place];
         var expected = committed == AcquisitionKind.CopyOrMove
             ? this.ExactAcquisition(this.CopyProof(source.Type, source.Source, this.body.ContextOf(place)), source.Type, source.Source) : committed;

@@ -112,7 +112,7 @@ function Test-LspDiscoveryAccess {
     $timer = Start-Step 'LSP discovery access'
     $log = Join-Path $evidence 'lsp-discovery-access.log'
     $ok = $true
-    # Implicit-source fixtures live under the OS temp directory. SPEC 23.4.3 requires
+    # Implicit-source fixtures live under the OS temp directory. SPEC 23.4 requires
     # listing every ancestor; an unreadable listing cannot mean "no project".
     $directory = [IO.Path]::TrimEndingDirectorySeparator([IO.Path]::GetFullPath([IO.Path]::GetTempPath()))
     while ($directory) {

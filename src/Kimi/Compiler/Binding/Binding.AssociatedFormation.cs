@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    /// <summary>Gets the formation Type of an associated-Type declaration, such as <c>ref/Self during source</c> (SPEC 8.4.3).</summary>
+    /// <summary>Gets the formation Type of an associated-Type declaration, such as <c>ref/Self during source</c> (SPEC 8.5).</summary>
     /// <param name="declaration">The associated-Type declaration or specification.</param>
     /// <returns>The formation Type, or <see langword="null"/>.</returns>
     internal static BoundType? AssociatedFormationType(Koto declaration)

@@ -43,7 +43,7 @@ internal static class DiagnosticMeasurements
         var manyProject = WriteProject(directory, "ManyErrors", many.ToString());
         results["check-300-errors"] = Measure(() => Check(manyProject), 8);
 
-        // Three hundred bare transfers of Non-Copy locals, each offering a Transfer repair candidate (SPEC 23.3.6.9), against three
+        // Three hundred bare transfers of Non-Copy locals, each offering a Transfer repair candidate (SPEC 23.1.3), against three
         // hundred transfers through a shared reference, which refute Take and offer none: the difference per record is a candidate's cost.
         const string Declarations = "struct Resource\n    public var value: i32\n    public init(value: i32) => self.value = value\n    drop => ()\nstruct Holder\n    public var item: Resource\n    public init(item: Resource) => self.item = item\nfunc consume(value: Resource) => ()\npublic func main() => ()\n";
         var transfers = new StringBuilder(Declarations);

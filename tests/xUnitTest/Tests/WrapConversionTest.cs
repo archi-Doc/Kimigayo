@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 13.5.4.3: E@wrap<U> wraps an integer or wrapping integer value to U without a check; a direct literal is wrapped at
+// SPEC 13.5.4: E@wrap<U> wraps an integer or wrapping integer value to U without a check; a direct literal is wrapped at
 // compile time, and a generic U takes the generic literals.
 public class WrapConversionTest
 {

@@ -31,7 +31,7 @@ public class DeclaredOriginSlotTest
         Assert.Equal(related, Text(source, location.Span));
     }
 
-    // SPEC 11.3: `during self` in storage is explained by the storage rule, not as an undeclared slot.
+    // SPEC 11.6: `during self` in storage is explained by the storage rule, not as an undeclared slot.
     [Fact]
     public void SelfInStorageKeepsTheStorageRule()
     {
@@ -39,7 +39,7 @@ public class DeclaredOriginSlotTest
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.MissingOriginBinding_Kd), error.Code);
         Assert.Equal("self is not a storage Origin", error.Label);
-        Assert.Contains("SPEC 11.3", error.Note);
+        Assert.Contains("SPEC 11.6", error.Note);
     }
 
     // A name of another role keeps its role error rather than the undeclared-slot record.

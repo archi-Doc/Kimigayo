@@ -64,7 +64,7 @@ public class RequireRecoveryDiagnosticTest
         Assert.Equal(old, mir);
     }
 
-    // SPEC 23.3.6.4: a written failure body is judged on its own also inside an expression whose own check failed: an indented do body
+    // SPEC 23.1.2: a written failure body is judged on its own also inside an expression whose own check failed: an indented do body
     // supplies Unit (SPEC 14.2), which does not fit the default's i32, and that failure does not explain the failure body that completes.
     [Fact]
     public void AFailureBodyInARejectedExpressionIsJudgedOnItsOwn()

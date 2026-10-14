@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 4.6.9, 8.4: a Contract declares Type parameters, and receiver[key] on a user Type resolves through its
+/// <summary>SPEC 4.7.1, 8.4: a Contract declares Type parameters, and receiver[key] on a user Type resolves through its
 /// Indexable&lt;Key&gt; conformance: index for reads and shared borrows, indexUniq for updates and exclusive borrows.</summary>
 public class IndexableContractTest
 {
@@ -21,13 +21,13 @@ public class IndexableContractTest
         "struct View\n    Self is Indexable<isize>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n" +
         "    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value\n";
 
-    // SPEC 8.4.9: a generic Type's conformance names its reference in the Type's own parameters; an instance dispatches
+    // SPEC 8.6.1: a generic Type's conformance names its reference in the Type's own parameters; an instance dispatches
     // through the reference the generic call recorded, instantiated (`Indexable<isize>` for `Keyed<isize>`).
     private const string Keyed =
         "struct Keyed<K>\n    Self is Indexable<K>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n" +
         "    public func index(self, key: ref/K) -> place ref/i32 during self => self.value\n";
 
-    // SPEC 8.4.2: a Constraint on a bound Contract reference indexes a Type parameter through the requirement.
+    // SPEC 8.4.3: a Constraint on a bound Contract reference indexes a Type parameter through the requirement.
     private const string FirstPlace =
         "func firstPlace<S>(items: ref/S) -> place ref/S.Element during items\n    S is Indexable<isize>\n    return items[0]\n";
 
@@ -83,7 +83,7 @@ public class IndexableContractTest
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
 
-    // SPEC 8.4.9, 4.6.9: Indexable<isize> and Indexable<Name> are distinct conformances with their own Element, specified
+    // SPEC 8.6.1, 4.7.1: Indexable<isize> and Indexable<Name> are distinct conformances with their own Element, specified
     // through the bound reference; `receiver[key]` selects the conformance whose Key is the key's own Type, for reads and,
     // through UniqIndexable, for updates.
     private const string TwoKeys = """
@@ -117,7 +117,7 @@ public class IndexableContractTest
         ScalarEmissionTest.EmitFixture("IndexableContractTwoKeys", TwoKeys + Use, "two keys\n");
     }
 
-    // SPEC 8.4.9, 4.6.9: inside a generic body, a parameter with two Indexable conformances selects the one whose Key is the
+    // SPEC 8.6.1, 4.7.1: inside a generic body, a parameter with two Indexable conformances selects the one whose Key is the
     // key's own Type, and `S.(Indexable<Name>).Element` names that conformance's Element, distinct from the other one.
     private const string GenericTwoKeys =
         "func pick<S>(table: ref/S, k: isize, n: Name) -> S.(Indexable<Name>).Element\n    S is Indexable<isize>\n    S is Indexable<Name>\n" +
@@ -235,7 +235,7 @@ public class IndexableContractTest
     [Fact]
     public void AReadDoesNotNeedAConditionalUniqConformance()
     {
-        // SPEC 4.6.9, 8.4.8.2: a read selects index; the refuted UniqIndexable condition of Box<string> supplies nothing and
+        // SPEC 4.7.1, 8.3.3: a read selects index; the refuted UniqIndexable condition of Box<string> supplies nothing and
         // is not judged at the read, while Box<i32> keeps indexUniq for its update.
         const string Use = "var names = Box<string>.init(\"a\")\nConsole.writeLine(names[0])\nvar counts = Box<i32>.init(1)\ncounts[0] = 2\nrequire counts[0] == 2 else => $abort(\"update\")\nConsole.writeLine(\"done\")";
         ScalarEmissionTest.EmitFixture("IndexableConditionalUniqRead", ConditionalUniq + Use, "a\ndone\n");

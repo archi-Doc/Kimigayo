@@ -5,7 +5,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 12.3.1: a literal-only expression is fitted to candidates, expected Types, comparison operands and branch
+/// <summary>SPEC 12.3: a literal-only expression is fitted to candidates, expected Types, comparison operands and branch
 /// results as one literal; its operators then evaluate in the fitted Type at run time, and a shift count is typed
 /// independently of the shifted operand.</summary>
 public class LiteralExpressionTest

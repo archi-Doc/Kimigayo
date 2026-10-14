@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 8.4.10.4, 8.4.10.5: a conformance checks each witness against the bounds its Contract and the ancestors declare, from
+// SPEC 8.11.4, 8.11.5: a conformance checks each witness against the bounds its Contract and the ancestors declare, from
 // the declarations alone; user Contracts bound their requirements exactly as the standard ones do.
 public class EffectBoundImplementationTest
 {
@@ -34,7 +34,7 @@ public class EffectBoundImplementationTest
         }
     }
 
-    // SPEC 8.4.10.2: an environment effect obtains authority over mutable state from the environment; accesses made with
+    // SPEC 8.11.2: an environment effect obtains authority over mutable state from the environment; accesses made with
     // authority from the inputs are none, even through a raw pointer or a borrow of static storage.
     [Theory]
     [InlineData("struct RawSink\n    Self is Sink\n    var slot: raw/i32\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        unsafe\n            *self.slot = value\n        return .Ok(())\n", true)]
@@ -54,7 +54,7 @@ public class EffectBoundImplementationTest
         }
     }
 
-    // SPEC 8.4.10.2, 8.4.10.5: an effect the summary cannot classify yet is one Unsupported_Kd at the conformance: the destructions of
+    // SPEC 8.11.2, 8.11.5: an effect the summary cannot classify yet is one Unsupported_Kd at the conformance: the destructions of
     // a static initializer other than a constant (reading an immutable static is no environment effect), and a conflict that the
     // untried exclusion of a virtual slot call producing the item might remove. A virtual call producing no item keeps its violation.
     [Theory]
@@ -68,7 +68,7 @@ public class EffectBoundImplementationTest
         Assert.Equal((code, source.IndexOf(at, StringComparison.Ordinal), at.Length), (error.Code, error.Span!.Value.Start, error.Span.Value.Length));
     }
 
-    // SPEC 8.4.10.2: every compiler function has one effect class. The Storage and Raw families act only on their inputs and the
+    // SPEC 8.11.2: every compiler function has one effect class. The Storage and Raw families act only on their inputs and the
     // allocator; Console output and the test temporary directory are environment effects; formatting dispatch is followed to its
     // witness before classification. A new kind is unclassified until it is placed here.
     [Fact]
@@ -87,7 +87,7 @@ public class EffectBoundImplementationTest
         }
     }
 
-    // SPEC 4.7.5: the Kimi body of each operation that publishes its summary stays within its row with abstract Type parameters,
+    // SPEC 4.9.6: the Kimi body of each operation that publishes its summary stays within its row with abstract Type parameters,
     // under confined and under preserves results; `K` equality is the only parameter-dependent requirement a row publishes, and the
     // capacity and clear rows publish none at Binding (destructions are checked after ownership analysis). indexUniq lends `uniq/V`
     // from its exclusive receiver, so its own input access affects the Loans earlier results keep and preserves results never holds.
@@ -127,7 +127,7 @@ public class EffectBoundImplementationTest
         Assert.Equal(11, operations);
     }
 
-    // SPEC 8.4.10.2, 22.3.1: a foreign call accesses only what its arguments permit, so preserves results admits it.
+    // SPEC 8.11.2, 22.6: a foreign call accesses only what its arguments permit, so preserves results admits it.
     [Fact]
     public void PreservesResultsAdmitsForeignCalls()
     {
@@ -138,7 +138,7 @@ public class EffectBoundImplementationTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
-    // SPEC 8.4.10.2, 5.2.2: an access through a raw Place borrow is compared with held Loans under its anchor, which no earlier
+    // SPEC 8.11.2, 5.2.2: an access through a raw Place borrow is compared with held Loans under its anchor, which no earlier
     // result can keep, so preserves results admits it even when the item is abstract.
     [Fact]
     public void PreservesResultsComparesRawAccessesUnderTheAnchor()
@@ -149,7 +149,7 @@ public class EffectBoundImplementationTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
-    // SPEC 8.4.10.5: a call of d on a value reached through a Field path of self is compared with no Loan of an earlier result
+    // SPEC 8.11.5: a call of d on a value reached through a Field path of self is compared with no Loan of an earlier result
     // when every result Loan comes from d on that value and no value on the path is replaced; other sources are compared.
     [Theory]
     [InlineData("struct Drain<J>\n    J is Iterator\n    Self is Source\n    associate Source.Item is J.Item\n    var inner: J\n    public var taken: isize = 0\n    public func take(self: uniq/Self) -> Option<J.Item>\n        self.taken += 1\n        return self.inner.next()\n", true)]
@@ -168,7 +168,7 @@ public class EffectBoundImplementationTest
         Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
-    // SPEC 8.4.10.5: an earlier result that may come from an argument keeps Loans that the call of d is compared with.
+    // SPEC 8.11.5: an earlier result that may come from an argument keeps Loans that the call of d is compared with.
     [Fact]
     public void PreservesResultsComparesArgumentLoans()
     {
@@ -180,7 +180,7 @@ public class EffectBoundImplementationTest
         Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
     }
 
-    // SPEC 8.4.10.5: replacing the stepped value between calls through another member needs a new value, whose source the
+    // SPEC 8.11.5: replacing the stepped value between calls through another member needs a new value, whose source the
     // caller can borrow again only after the earlier results end, so the caller's own Loans reject the replacement. The Loan
     // `drain` retains on `values` is one conflict, stated once at the activation of the new value's acquisition (SPEC 15.6.7).
     [Fact]
@@ -198,7 +198,7 @@ public class EffectBoundImplementationTest
         Assert.Equal((nameof(DiagnosticCode.CallActivationConflict_Kd), "values.iterateUniq()"), (error.Code, error.Text));
     }
 
-    // SPEC 8.4.10.1: the bound is the Contract's guarantee, so only Self is StableSource is checked against it.
+    // SPEC 8.11.1: the bound is the Contract's guarantee, so only Self is StableSource is checked against it.
     [Theory]
     [InlineData("Source", true)]
     [InlineData("StableSource", false)]

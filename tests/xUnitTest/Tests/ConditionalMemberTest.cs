@@ -5,7 +5,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 7.4 conditional members: a member function or constructor constrains its declaring Type's parameters, exists
+/// <summary>SPEC 7.5 conditional members: a member function or constructor constrains its declaring Type's parameters, exists
 /// only for receiver or constructed Types whose arguments satisfy the clauses, and its body relies on them.</summary>
 public class ConditionalMemberTest
 {
@@ -20,7 +20,7 @@ public class ConditionalMemberTest
         "public func main()\n    let a = Box<i32>.init(3)\n    let c = Box<i32>.init(copying: 3)\n    let d = Box<i32>.init(4)\n" +
         "    require a.same(c) and not a.same(d) and same(a@ref, c@ref) else => $abort(\"same\")\n    Console.writeLine(\"Conditional.\")\n";
 
-    // SPEC 4.6.6: the Slice search members exist for Equatable elements and compare through shared references.
+    // SPEC 4.8.2: the Slice search members exist for Equatable elements and compare through shared references.
     private const string Search =
         "struct Tag\n    Self is Equatable\n    public var id: i32\n    public init(id: i32) => self.id = id\n" +
         "    public func equals(self: ref/Self, other: ref/Self) -> bool => self.id == other.id\n" +

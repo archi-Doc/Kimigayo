@@ -33,7 +33,7 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    // SPEC 8.10, 13.5.5.1: the Place an assignment writes: its left side, below a pair layer's follow that selects the operand
+    // SPEC 8.15, 13.5.5: the Place an assignment writes: its left side, below a pair layer's follow that selects the operand
     // itself in an owner case or instance; the reference cases write through WriteReferent and never reach an element write.
     private static Koto WrittenPlace(Koto left)
     {

@@ -43,7 +43,7 @@ public sealed partial class LlvmEmitter
     public bool Validate(out string? failure)
         => this.TryPrepare(out _, out failure);
 
-    /// <summary>Gets a value indicating whether the last failure exceeded a generation resource limit (SPEC 21.3.5: generic contexts, instance ownership storage or inline layout depth, size or count), not a semantic or representation obligation.</summary>
+    /// <summary>Gets a value indicating whether the last failure exceeded a generation resource limit (SPEC 21.3.2: generic contexts, instance ownership storage or inline layout depth, size or count), not a semantic or representation obligation.</summary>
     public bool FailureIsResourceLimit => this.resourceLimit;
 
     internal CallPlan? FailureInstance { get; private set; }
@@ -312,9 +312,9 @@ public sealed partial class LlvmEmitter
         }
     }
 
-    // SPEC 22.3.2: a direct import calls its external symbol with the Windows x64 C ABI, whose scalar
+    // SPEC 22.6: a direct import calls its external symbol with the Windows x64 C ABI, whose scalar
     // arguments need no extension attributes. Binding already made same-named imports agree on one
-    // physical signature and supply kind (SPEC 21.5.2), so they share one declaration.
+    // physical signature and supply kind (SPEC 21.2), so they share one declaration.
     private bool RegisterImports(IReadOnlyList<LibraryImport> imports, EmissionModule module, Dictionary<FunctionKoto, FunctionAbi> functions, out string? failure)
     {
         failure = null;
@@ -404,7 +404,7 @@ public sealed partial class LlvmEmitter
         }
 
         // Binding admits fixed-width integers, f32/f64, raw pointers and ref/uniq borrows of C-exchangeable referents, which pass
-        // the referent's address (SPEC 22.3.2); no Scalar borrow is passed by value.
+        // the referent's address (SPEC 22.6); no Scalar borrow is passed by value.
         static string? ImportType(BoundType type)
             => ReferenceTypes.IsPointer(type) || ReferenceTypes.IsReference(type) ? "ptr" : type.Kind == BoundTypeKind.Primitive ? WindowsLowering.GetValue(type)?.ArgumentType : null;
     }

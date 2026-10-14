@@ -25,7 +25,7 @@ public readonly record struct TokenContext(AttributeKoto? AttributeKoto, Modifie
 }
 
 /// <summary>
-/// The restrictions of the region the parser is in (SPEC 2.2.1): a new delimiter region lifts them, a body or header adds one, and
+/// The restrictions of the region the parser is in (SPEC F.4.1): a new delimiter region lifts them, a body or header adds one, and
 /// each enter method of <see cref="TokenReader"/> returns the region to restore afterwards.
 /// </summary>
 /// <param name="SingleBody">Whether the position lies in an expression body after <c>=&gt;</c>.</param>
@@ -130,7 +130,7 @@ public ref partial struct TokenReader
     internal bool ConstraintRequirement { get; set; }
 
     /// <summary>
-    /// Enters a new delimiter region (SPEC 2.2.1), which lifts every restriction of the enclosing one: a grouped expression, each
+    /// Enters a new delimiter region (SPEC F.4.1), which lifts every restriction of the enclosing one: a grouped expression, each
     /// argument or element in parentheses or brackets, an indented body, whose items are regions of their own, and a match arm.
     /// </summary>
     /// <returns>The region to restore afterwards.</returns>
@@ -176,7 +176,7 @@ public ref partial struct TokenReader
 
     internal int DocumentationExcludedStart { get; set; }
 
-    /// <summary>Gets or sets the number of excluded-syntax regions enclosing the current position (SPEC 19.5).</summary>
+    /// <summary>Gets or sets the number of excluded-syntax regions enclosing the current position (SPEC 19.4).</summary>
     /// <remarks>Excluded syntax is parsed and source-checked, but nothing inside it selects, registers or associates documentation.</remarks>
     internal int ExclusionDepth { get; set; }
 
@@ -240,7 +240,7 @@ public ref partial struct TokenReader
 
     internal readonly void Document(Koto declaration, SourceSpan header, AttributeKoto? attributes = null)
     {
-        // Excluded syntax receives no documentation association (SPEC 2.3.3).
+        // Excluded syntax receives no documentation association (SPEC 2.3).
         if (!this.InExcludedSyntax)
         {
             this.CodeContext.Documentation?.Associate(declaration, header, attributes, this.tokens);
@@ -403,7 +403,7 @@ public ref partial struct TokenReader
     }
 
     /// <summary>
-    /// Consumes a token of the specified kind. An attribute at the position is misplaced (SPEC 6.5): it is reported and skipped,
+    /// Consumes a token of the specified kind. An attribute at the position is misplaced (SPEC 6.7): it is reported and skipped,
     /// and the expected token may follow it.
     /// </summary>
     /// <param name="targetKind">The expected token kind.</param>
@@ -702,7 +702,7 @@ public ref partial struct TokenReader
     }
 
     /// <summary>
-    /// Reports attributes at the current position, where the grammar takes none (SPEC 6.5): an attribute precedes a
+    /// Reports attributes at the current position, where the grammar takes none (SPEC 6.7): an attribute precedes a
     /// declaration, so one between the parts of a header, before a Type or in an expression is misplaced. Each is reported
     /// once over its whole extent and kept for the next node, so the source still round-trips through the tree.
     /// </summary>
@@ -796,7 +796,7 @@ public ref partial struct TokenReader
     /// <summary>
     /// Consumes the closer of a grouping. Any other token there is where the closer was expected (DIAGNOSTICS.md §4.4), and the rest
     /// of the grouping is then skipped to its closer, which is consumed. Nested groupings and bodies are skipped whole; the tokenizer
-    /// closes every grouping before what follows it (SPEC 2.2.1), so the skip never leaves the grouping that failed: it stops at the
+    /// closes every grouping before what follows it (SPEC F.4.1), so the skip never leaves the grouping that failed: it stops at the
     /// closer of an enclosing grouping, the end of an enclosing body or a line boundary outside a nested body.
     /// </summary>
     /// <param name="closer">The closer: <c>)</c>, <c>]</c> or <c>}</c>.</param>

@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 13.5.5.1 pair layers: a pair s/T whose admitted set lies in value or valueborrow is a safe value-reference
+/// <summary>SPEC 13.5.5 pair layers: a pair s/T whose admitted set lies in value or valueborrow is a safe value-reference
 /// layer that may or may not exist. @follow selects its direct target; each operation applies the rule of every admitted
 /// Semantics, takes the weakest capability and never offers Take.</summary>
 public class PairFollowTest
@@ -124,7 +124,7 @@ public class PairFollowTest
         "    var d = Coin.init(5)\n    var n: i32 = 0\n    require spend(d@uniq, n@uniq) == 5 and d.n == 5 else => $abort(\"uniq\")\n" +
         "    Console.writeLine(\"Spent.\")\n";
 
-    // SPEC 13.5.5.1, 10.2: adapting s/(ref/V during a) to ref/V Copies the inner ref, so the result depends only on a and the
+    // SPEC 13.5.5, 10.2: adapting s/(ref/V during a) to ref/V Copies the inner ref, so the result depends only on a and the
     // slot holding the reference may change while the result is live.
     private const string Inner =
         "struct Node\n    public var weight: i32\n    public init(weight: i32) => self.weight = weight\n" +
@@ -136,7 +136,7 @@ public class PairFollowTest
         "    var n: i32 = 0\n    require kept.weight == 9 and inner(holder@uniq, n@uniq).weight == 9 else => $abort(\"borrow\")\n" +
         "    Console.writeLine(\"Inner.\")\n";
 
-    // SPEC 13.5.5.1, 3.5.3: a Scalar read through two pair layers; an s/U argument is matched once s is inferred, whatever
+    // SPEC 13.5.5, 3.5.3: a Scalar read through two pair layers; an s/U argument is matched once s is inferred, whatever
     // the argument order, so each instance has exactly the layers its bindings form.
     private const string Nested =
         "func twice<s/T, t/U>(x: s/(t/i32 during b), m: s/T, n: t/U) -> i32\n    s is value or valueborrow\n    t is valueborrow\n    return x * 2\n" +
@@ -147,7 +147,7 @@ public class PairFollowTest
         "    var q = v@uniq\n    require twice(q@ref, z@ref, w@uniq) == 8 else => $abort(\"uniq\")\n" +
         "    Console.writeLine(\"Nested.\")\n";
 
-    // SPEC 13.5.5.1: s/(t/U) needs two follows; an owner binding of the outer layer is no layer, even above a reference.
+    // SPEC 13.5.5: s/(t/U) needs two follows; an owner binding of the outer layer is no layer, even above a reference.
     private const string Followed =
         "func twice<s/T, t/U>(x: s/(t/i32 during b), m: s/T, n: t/U) -> i32\n    s is value or valueborrow\n    t is valueborrow\n    return x@follow@follow * 2\n" +
         "func once<s/T>(x: s/i32, m: s/T) -> i32\n    s is value or valueborrow\n    return x@follow * 3\n" +
@@ -158,7 +158,7 @@ public class PairFollowTest
         "    require once(v, z) == 12 and once(v@ref, z@ref) == 12 and once(v@uniq, w@uniq) == 12 else => $abort(\"once\")\n" +
         "    Console.writeLine(\"Followed.\")\n";
 
-    // SPEC 3.4.1, 7.3: a shared receiver below two pair layers; each instance reads through the layers it has.
+    // SPEC 3.4.3, 7.3: a shared receiver below two pair layers; each instance reads through the layers it has.
     private const string NestedReceiver =
         "struct Node\n    public var weight: i32\n    public init(weight: i32) => self.weight = weight\n    public func load(self: ref/Self) -> i32 => self.weight\n" +
         "func weigh<s/T, t/U>(x: s/(t/Node during b), m: s/T, n: t/U) -> i32\n    s is value or valueborrow\n    t is valueborrow\n    return x.load()\n" +
@@ -169,7 +169,7 @@ public class PairFollowTest
         "    require weigh(q@ref, z@ref, w@uniq) == 7 else => $abort(\"uniq\")\n" +
         "    Console.writeLine(\"Nested receiver.\")\n";
 
-    // SPEC 13.5.5.1: explicit follows as comparison operands and Subjects, and an annotated ref/T local.
+    // SPEC 13.5.5: explicit follows as comparison operands and Subjects, and an annotated ref/T local.
     private const string Combined = Collection +
         "struct Point\n    Self is Equatable\n    public var x: i32\n    public init(x: i32) => self.x = x\n" +
         "    public func equals(self: ref/Self, other: ref/Self) -> bool => self.x == other.x\n" +
@@ -197,13 +197,13 @@ public class PairFollowTest
         "    require total(a@ref) == 3 and peek(a@uniq) == 3 else => $abort(\"followed\")\n" +
         "    Console.writeLine(\"Followed iteration.\")\n";
 
-    // SPEC 13.5.5.1: with only uniq admitted, Write reaches through a let slot; an explicit follow is an exclusive receiver.
+    // SPEC 13.5.5: with only uniq admitted, Write reaches through a let slot; an explicit follow is an exclusive receiver.
     private const string ExclusiveFollow =
         "func grow<s/T>(values: s/Array<i32>, m: s/T)\n    s is uniq\n    values@follow.append(4)\n" +
         "public func main()\n    var a: Array<i32> = [1, 2]\n    var w: i32 = 0\n    grow(a@uniq, w@uniq)\n" +
         "    require a.length == 3 and a[2] == 4 else => $abort(\"grow\")\n    Console.writeLine(\"Exclusive follow.\")\n";
 
-    // SPEC 13.5.5.1: below two pair layers, an exclusive receiver, match and for Subjects and the ref/U adaptation follow
+    // SPEC 13.5.5: below two pair layers, an exclusive receiver, match and for Subjects and the ref/U adaptation follow
     // every layer an instance has, each in the weakest capability over the admitted cases of every layer.
     private const string NestedLayers =
         "struct Node\n    public var weight: i32\n    public init(weight: i32) => self.weight = weight\n    public func grow(self: uniq/Self) => self.weight += 1\n" +
@@ -225,7 +225,7 @@ public class PairFollowTest
         "    let shown = node@ref\n    require view(node@ref, k, k@ref) == 3 and view(shown@ref, k@ref, k@ref) == 3 else => $abort(\"view\")\n" +
         "    Console.writeLine(\"Nested layers.\")\n";
 
-    // SPEC 13.5.5.1, 15.5: in a uniq instance of a borrow-only binder, a follow keeps its slot met with the borrows that reach it, and
+    // SPEC 13.5.5, 15.5: in a uniq instance of a borrow-only binder, a follow keeps its slot met with the borrows that reach it, and
     // an instance binds `o` wherever the body names it: in a forwarded call's Origins, a meet and a local's Origin argument.
     private const string UniqInstance = Box +
         "struct View<T> {source}\n    public var value: uniq/T during source\n    public init(value: uniq/T during source) => self.value = value@move\n" +
@@ -359,7 +359,7 @@ public class PairFollowTest
         Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
-    // SPEC 13.5.5.1, 15.5, 8.10: a follow through a borrow-only layer keeps the slot met with the borrows that reach the operand
+    // SPEC 13.5.5, 15.5, 8.15: a follow through a borrow-only layer keeps the slot met with the borrows that reach the operand
     // when uniq is admitted, and an outer pair layer on the path adds its slot, as the follow of the uniq case's concrete reference
     // does; a result that detaches from those borrows is rejected with the concrete twin's code.
     [Theory]
@@ -491,7 +491,7 @@ public class PairFollowTest
         }
     }
 
-    // SPEC 8.1.2: an s/U nested in a Type argument gains no omitted Origin; SPEC 13.5.5.1: a followed element Place is never
+    // SPEC 8.1.2: an s/U nested in a Type argument gains no omitted Origin; SPEC 13.5.5: a followed element Place is never
     // transferred by a bare initializer, and Write with owner admitted needs an exclusively writable operand.
     [Theory]
     [InlineData("func peekFirst<s/T>(c: ref/Collection<s/Option<i32>>, marker: s/T) -> i32\n    s is value or valueborrow\n    return 0", DiagnosticCode.MissingOriginBinding_Kd)]
@@ -513,7 +513,7 @@ public class PairFollowTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NoApplicableOverload_Kd);
     }
 
-    // SPEC 3.5.3, 13.5.5.1: without s is value or valueborrow the pair layer is not followed, so no Scalar is read.
+    // SPEC 3.5.3, 13.5.5: without s is value or valueborrow the pair layer is not followed, so no Scalar is read.
     [Fact]
     public void ScalarReadNeedsAFollowablePair()
     {

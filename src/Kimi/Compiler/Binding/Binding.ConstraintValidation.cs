@@ -34,12 +34,12 @@ public sealed partial class Binding
         // SPEC 8.1.2: a static outer-Origin slot, although an exclusive borrow binding is admitted (InvalidOriginBinding_Kd).
         StaticExclusive = 2,
 
-        // SPEC 8.4.7.2: the target is not proven a value Type or an Object Target (UnprovenConstraint_Kd).
+        // SPEC 8.7.3: the target is not proven a value Type or an Object Target (UnprovenConstraint_Kd).
         Role = 4,
     }
 
     /// <summary>
-    /// Computes the admitted set of a Semantics binding from every available premise on it (SPEC 8.7):
+    /// Computes the admitted set of a Semantics binding from every available premise on it (SPEC 8.3):
     /// names and categories contribute their members, and/or/not intersect, unite and complement,
     /// separate clauses intersect, and no premise admits all nine Semantics.
     /// </summary>
@@ -68,7 +68,7 @@ public sealed partial class Binding
         return admitted;
     }
 
-    /// <summary>Tests whether a constraint speaks only about the Semantics of <paramref name="whole"/>; other premises never restrict its admitted set (SPEC 8.7).</summary>
+    /// <summary>Tests whether a constraint speaks only about the Semantics of <paramref name="whole"/>; other premises never restrict its admitted set (SPEC 8.3).</summary>
     private static bool SemanticsPremise(BoundConstraint constraint, BoundType whole)
         => constraint.Kind switch
         {
@@ -88,7 +88,7 @@ public sealed partial class Binding
             _ => SemanticsMask.All & ~SemanticsSet(constraint.Left!),
         };
 
-    /// <summary>Gets the subject of one clause's proposition (SPEC 8.7): every atom of `T is A or B`, `T is A and B` or `T is not A`
+    /// <summary>Gets the subject of one clause's proposition (SPEC 8.3): every atom of `T is A or B`, `T is A and B` or `T is not A`
     /// carries the clause's subject and the composite only its operands; an Error or Unresolved atom has none.</summary>
     private static BoundType? ClauseSubject(BoundConstraint constraint)
         => constraint.Kind switch
@@ -431,7 +431,7 @@ public sealed partial class Binding
         this.obligations.RemoveRange(remaining, this.obligations.Count - remaining);
     }
 
-    // SPEC 23.3.6.4: an unproven Definition obligation publishes its Language cause, a missing slot before a static exclusive one, and
+    // SPEC 23.1.2: an unproven Definition obligation publishes its Language cause, a missing slot before a static exclusive one, and
     // keeps an unproven target role of the same occurrence as a separate record; every final check recomputes the causes.
     private void FailTypeRole(BindingObligation obligation)
     {
@@ -446,7 +446,7 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 23.3.6.4: a call or fit that reads a Field whose declared pair occurrence failed with a Language cause rests on that failure:
+    // SPEC 23.1.2: a call or fit that reads a Field whose declared pair occurrence failed with a Language cause rests on that failure:
     // the Field's Type, completed only at the Definition deadline, is what the read could not use. Returns that occurrence.
     private Koto? UnformedFieldRead(Koto node)
     {
@@ -547,7 +547,7 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 23.3.6.4: the Use of the failed conformance that the Error a check just consumed rests on; a limit a failing check needs is
+    // SPEC 23.1.2: the Use of the failed conformance that the Error a check just consumed rests on; a limit a failing check needs is
     // published by Binding.Check.
     private Koto? TakeFailedConformance()
     {
@@ -561,7 +561,7 @@ public sealed partial class Binding
         return path.Use;
     }
 
-    // SPEC 8.1.1, 8.1.2, 8.4.7.2: the independent causes for which a Type occurrence's role or pair formation is not proven, None when
+    // SPEC 8.1.1, 8.1.2, 8.7.3: the independent causes for which a Type occurrence's role or pair formation is not proven, None when
     // it is. A missing outer-Origin slot under an admitted borrow and a static slot under an admitted exclusive borrow are Language
     // causes; a target that is not proven a value Type or an Object Target is a Proof cause, judged separately.
     private TypeRoleCause TypeRoleCauses(BindingObligation obligation)
@@ -627,7 +627,7 @@ public sealed partial class Binding
         return causes;
     }
 
-    /// <summary>Decides the value-Type role of a generic target, or its Object Target role (SPEC 8.4.7.2).</summary>
+    /// <summary>Decides the value-Type role of a generic target, or its Object Target role (SPEC 8.7.3).</summary>
     private bool HasValueRole(BoundType type, BindingScope scope, bool objectTarget)
     {
         if (objectTarget)
@@ -655,7 +655,7 @@ public sealed partial class Binding
         }
         else if (this.RequestCapability(type, this.Library.ObjectPayload, scope) == ConstraintProof.Proven)
         {
-            // SPEC 8.4.7.2: ObjectPayload proves a complete owner value Type, including a pair's target.
+            // SPEC 8.7.3: ObjectPayload proves a complete owner value Type, including a pair's target.
             return true;
         }
         else if (type.Kind == BoundTypeKind.TargetProjection && type.Symbol?.WholeType is { } whole && this.HasSemanticsRole(whole, SemanticsMask.Owner | SemanticsMask.ValueBorrow | SemanticsMask.Raw, scope))
@@ -682,7 +682,7 @@ public sealed partial class Binding
         return false;
     }
 
-    /// <summary>Tests whether the admitted set of a Semantics binding is contained in <paramref name="allowed"/> (SPEC 8.7).</summary>
+    /// <summary>Tests whether the admitted set of a Semantics binding is contained in <paramref name="allowed"/> (SPEC 8.3).</summary>
     private bool HasSemanticsRole(BoundType whole, SemanticsMask allowed, BindingScope scope)
     {
         var admitted = this.AdmittedSemantics(whole, scope);

@@ -8,7 +8,7 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Checking;
 
-/// <summary>The JSON document that <c>kimi check --Format json</c> writes (SPEC 23.3.6.8), version <c>kimi.check/2</c>: one check unit's
+/// <summary>The JSON document that <c>kimi check --Format json</c> writes (SPEC 23.3), version <c>kimi.check/2</c>: one check unit's
 /// outcome, acceptance, source table with the hashes of the inputs that were read, and diagnostic records with their repair candidates.</summary>
 /// <param name="Schema">The schema name and version, <c>kimi.check/2</c>.</param>
 /// <param name="Compiler">The compiler build identity.</param>
@@ -51,14 +51,14 @@ public sealed record CheckDocument(string Schema, string Compiler, CheckUnitDesc
     }
 }
 
-/// <summary>The check unit of a document (SPEC 23.3.1).</summary>
+/// <summary>The check unit of a document (SPEC 23.2.1).</summary>
 /// <param name="Project">The project file, or the implicit source.</param>
 /// <param name="Target">The target.</param>
 /// <param name="Mode">The mode.</param>
 /// <param name="Debug">The unit's <c>Debug</c> setting.</param>
 public sealed record CheckUnitDescription(string Project, string Target, CheckMode Mode, bool Debug);
 
-/// <summary>One entry of a document's source table (SPEC 23.3.6.3).</summary>
+/// <summary>One entry of a document's source table (SPEC 23.1.2).</summary>
 /// <param name="Path">The display path.</param>
 /// <param name="IsInput">Whether the source is an input the check read.</param>
 /// <param name="Sha256">The lowercase hexadecimal SHA-256 of the input's bytes as read for this output, so an edit is applied to the same bytes; <see langword="null"/> when the input was not read.</param>

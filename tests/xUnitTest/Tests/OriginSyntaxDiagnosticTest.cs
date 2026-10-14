@@ -107,7 +107,7 @@ public sealed class OriginSyntaxDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(["BorrowOriginIntersection_Kd", "BorrowOriginSuffixOrder_Kd", "MissingSyntax_Kd"], errors.Select(static x => x.Code));
     }
 
-    // SPEC 3.3.6 and 15.3.1 fix annotation attachment and order before semantic lookup.
+    // SPEC 3.3.2 and 15.3.1 fix annotation attachment and order before semantic lookup.
     [Theory]
     [InlineData("ref/i32 from a", "from", "BorrowOriginKeyword_Kd")]
     [InlineData("owner/ref/i32 during a", "during", "BorrowOriginSemantics_Kd")]
@@ -130,7 +130,7 @@ public sealed class OriginSyntaxDiagnosticTest(ITestOutputHelper output)
         Assert.Null(error.Reason);
     }
 
-    // SPEC 3.3.6, 23.3.6.9: the former keyword offers 'during' as a repair candidate.
+    // SPEC 3.3.2, 23.1.3: the former keyword offers 'during' as a repair candidate.
     [Fact]
     public void TheFormerKeywordOffersDuring()
     {

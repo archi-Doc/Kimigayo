@@ -4,7 +4,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 13.7, 7.1.1, 13.5.5.1, 4.6.9: an assignment through a Place call result, a followed uniq reference or a
+/// <summary>SPEC 13.7, 7.1.1, 13.5.5, 4.7.1: an assignment through a Place call result, a followed uniq reference or a
 /// field reached through a reference is one replacement at that address: the old value is destroyed by its Type's plan
 /// and the new value moves in, for any stored Type, also inside generic bodies. Each literal is destroyed exactly once.</summary>
 public class ReferenceReplacementTest

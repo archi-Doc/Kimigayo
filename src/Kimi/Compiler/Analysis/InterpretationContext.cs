@@ -3,7 +3,7 @@
 namespace Kimi.Compiler;
 
 /// <summary>
-/// SPEC 7.2.3, 8.10: the context in which an operation of an ownership body interprets declared information. A default
+/// SPEC 7.2.3, 8.15: the context in which an operation of an ownership body interprets declared information. A default
 /// evaluated inline at a call is an instantiation of its verified declaration: inside its interval, declared Types and calls
 /// take that call's bindings, which already compose every enclosing default's, and then the body's Semantics case or
 /// instance. Outside every interval the root context applies only the body's case or instance.

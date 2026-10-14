@@ -9,7 +9,7 @@ public class ScalarBorrowShorthandTest
     private const string P = "struct P\n    public var tag: i32 = 7\n    public var flag: bool = true\nfunc bump(n: uniq/i32)\n    ()\nfunc read(n: ref/i32) -> bool => true\n";
 
     // SPEC 15.6.3: `v@uniq` / `v@ref` on scalar Places, including the chapter's own example.
-    // SPEC 3.6.2 and 13.5.5.2: owned scalar temporaries are materialized and may be borrowed explicitly.
+    // SPEC 3.6 and 13.5.6: owned scalar temporaries are materialized and may be borrowed explicitly.
     [Theory]
     [InlineData("Spec", "func bump(n: uniq/i32)\n    ()\nvar v = 0\nbump(v@uniq)\nbump(v@uniq)")]
     [InlineData("Shared", "func read(n: ref/i32) -> i32 => 0\nlet v = 0\nlet r = read(v@ref)\nrequire r == 0 else => $abort(\"value\")")]

@@ -1,6 +1,6 @@
-// Signatures implemented by the compiler; loaded into Kimi.Storage (SPEC 22.1.2.5).
+// Signatures implemented by the compiler; loaded into Kimi.Storage (SPEC 22.2).
 // Borrowed results depend on the remainder's source, never on the state borrow or slot. The exclusive variant of each
-// borrowing operation has its own Name, borrowStorageUniq (SPEC 7.3.1).
+// borrowing operation has its own Name, borrowStorageUniq (SPEC 7.4).
 internal func borrowStorage<E>(value: ref/Array<E> during a) -> RefRemainder<E> during a
 internal func borrowStorageUniq<E>(value: uniq/Array<E> during a) -> UniqRemainder<E> during a
 internal func ownStorage<E>(value: Array<E>) -> OwnedRemainder<E>
@@ -28,7 +28,7 @@ internal func indexBounds() -> Never
 internal func argumentOutOfRange() -> Never
 internal func countOverflow() -> Never
 internal func allocationSizeExceeded() -> Never
-// The nullable form of Alloc (SPEC 22.5.2): null wherever Alloc would Abort; Raw.release releases the result.
+// The nullable form of Alloc (SPEC 21.4.3): null wherever Alloc would Abort; Raw.release releases the result.
 internal func tryAllocateBytes(bytes: isize) -> raw/u8
 // Copies `count` bytes between nonoverlapping allocated ranges whatever their initialization state; no responsibility
 // moves and no user code runs.

@@ -10,7 +10,7 @@ public sealed partial class Binding
 {
     private sealed partial class HirPublisher
     {
-        // SPEC 13.5.7: an object upcast to a view (objref, objuniq) of an operand of another Semantics borrows the operand in the view's mode.
+        // SPEC 13.6.1: an object upcast to a view (objref, objuniq) of an operand of another Semantics borrows the operand in the view's mode.
         private static HirAdaptation ViewBorrow(Koto node) => node is ConversionKoto { ConversionBinding: ConversionBinding.ObjectUpcast, BoundType: { IsObjectBorrow: true } view } upcast &&
             upcast.Left.BoundType?.Semantics != view.Semantics ? view.Semantics == SemanticsKind.ObjUniq ? HirAdaptation.ExclusiveBorrow : HirAdaptation.SharedBorrow : HirAdaptation.None;
 
@@ -103,19 +103,19 @@ public sealed partial class Binding
                     var decomposition = BoundMatch.Of(loop);
                     for (var i = 0; decomposition is null && i < loop.Bindings.Count; i++)
                     {
-                        this.Write(loop.Bindings[i], new(HirAcquire.Copy, HirAdaptation.None)); // SPEC 4.6.3.4: a ResolvedRange loop binds isize positions.
+                        this.Write(loop.Bindings[i], new(HirAcquire.Copy, HirAdaptation.None)); // SPEC 4.6.4: a ResolvedRange loop binds isize positions.
                     }
 
                     this.Bindings(decomposition);
                     break;
                 case MacroKoto { Formatting.Acquisition.BoundCall.ArgumentOperations: [var writer, ..] }:
-                    this.Take(writer.Source, HirAdjust.Of(writer)); // A $tryWrite acquires its writer operand (utf8-formatting 5.3).
+                    this.Take(writer.Source, HirAdjust.Of(writer)); // A $tryWrite acquires its writer operand (SPEC 22.10.4).
                     break;
             }
 
-            // An enum Case's payloads, then each call of the node: a value call's callee in its receiver mode (SPEC 7.6.3), a reference to the
+            // An enum Case's payloads, then each call of the node: a value call's callee in its receiver mode (SPEC 7.7.3), a reference to the
             // callable passed as it is in that mode. Of a user index's index and indexUniq, an update or an exclusive borrow of the element
-            // takes indexUniq (SPEC 4.6.9), which its plan row records for its ExpansionPlan.
+            // takes indexUniq (SPEC 4.7.1), which its plan row records for its ExpansionPlan.
             if (op == HirOp.Aggregate && binding.TryGetEnumConstruction(node, out var construction))
             {
                 foreach (ref readonly var payload in construction!.PayloadOperations)
@@ -162,7 +162,7 @@ public sealed partial class Binding
         private void Result(Koto? source) => this.Take(source is not null && KotoHelper.IsValueContext(source) ? source : null);
 
         // A consumed child: an adaptation Binding recorded at the node itself (at its fixed expected Type, or as a receiver; an erasure to its
-        // Function Type, SPEC 7.6.4) wins over its consumer's operation. A Place adapted or used in place is not acquired, an adapted value is
+        // Function Type, SPEC 7.7.4) wins over its consumer's operation. A Place adapted or used in place is not acquired, an adapted value is
         // a Temporary, and an unadapted one taken by value, or erased, is acquired by the bare rule. A built-in operator's operand that is not
         // Copy, a comparison's, is inspected through a shared Loan from its evaluation instead (SPEC 13.4): a Place in place, a value other
         // than a literal in its temporary.
@@ -199,7 +199,7 @@ public sealed partial class Binding
         }
 
         // Whether a node's consumer updates it or borrows it exclusively, directly or through the projections of a Place path, where the old
-        // path selects a user index's indexUniq (SPEC 4.6.9); the parent is the node's while the node is visited.
+        // path selects a user index's indexUniq (SPEC 4.7.1); the parent is the node's while the node is visited.
         private bool ExclusiveUse(Koto node) => HirTables.AdjustOf(node).Adaptation == HirAdaptation.ExclusiveBorrow ||
             (this.parentOp == HirOp.Borrow && this.parent!.BoundType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq) ||
             ((this.parentOp is HirOp.Assign or HirOp.CompoundAssign || (this.exclusive && (this.parentOp is HirOp.Field or HirOp.Index || this.parent is ParenthesizedKoto))) &&

@@ -191,7 +191,7 @@ public class DirectiveConditionValidationTest
     [Fact]
     public void ExcludedTargetsValidateNestedConditionsAndGrammar()
     {
-        // Excluded syntax receives the source checks of selected syntax (SPEC 19.5).
+        // Excluded syntax receives the source checks of selected syntax (SPEC 19.4).
         var compilation = Parse("#if false\n    #if nestedMissing\n    var incomplete =");
 
         var diagnostics = TestDiagnostics.Of(compilation);

@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 17.4.4: a position or range key built only from literal-only expressions, `^` applied to one and omitted
+/// <summary>SPEC 17.5.4: a position or range key built only from literal-only expressions, `^` applied to one and omitted
 /// boundaries is warned about when it fails to resolve for every length, or for the length of the fixed array it indexes;
 /// the warning changes neither Binding nor execution.</summary>
 public class PositionWarningTest
@@ -124,7 +124,7 @@ public class PositionWarningTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
 
-    // SPEC 17.4.4: the warned access still compiles and Aborts only when executed.
+    // SPEC 17.5.4: the warned access still compiles and Aborts only when executed.
     [Fact]
     public void WarnedAccessAbortsOnlyWhenExecuted()
         => ScalarEmissionTest.EmitFixture(

@@ -10,7 +10,7 @@ namespace Kimi.Compiler.Helper;
 internal static class CharLiteralHelper
 {
     // Keep the complete token, including delimiters. A malformed literal stops before
-    // a physical line break (LF, CRLF, or CR; SPEC 2.2) so recovery cannot consume a declaration
+    // a physical line break (LF, CRLF, or CR; SPEC 2.1) so recovery cannot consume a declaration
     // on the next line. Other excluded scalars such as U+2028 are content errors diagnosed by Decode.
     internal static bool Scan(ReadOnlySpan<char> text, out int length)
     {

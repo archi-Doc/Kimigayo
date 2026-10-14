@@ -102,7 +102,7 @@ public sealed partial class OwnershipAnalysis
 
         if (this.compilation.Binding.ImplicitPairAdmitted(source) != SemanticsMask.None && this.compilation.Binding.TryGetAdaptation(source, out var read))
         {
-            // SPEC 3.5.3, 13.5.5.1: a Scalar read through a pair layer. The owner case reads the operand itself; ref and uniq
+            // SPEC 3.5.3, 13.5.5: a Scalar read through a pair layer. The owner case reads the operand itself; ref and uniq
             // load through the stored reference.
             if (layers == 0)
             {
@@ -113,7 +113,7 @@ public sealed partial class OwnershipAnalysis
         return this.LoadReferent(source, layers);
     }
 
-    // SPEC 3.5.3, 13.5.5.1: the reference expression is read, and the referent is loaded through it (a valid
+    // SPEC 3.5.3, 13.5.5: the reference expression is read, and the referent is loaded through it (a valid
     // address by the reference's Origin, no new Loan) into a fresh Copy temporary, once per layer. The referent
     // stays initialized. The acquired Type retains nested Origins; the outer reference Origin is not attached
     // to an independent snapshot.
@@ -171,7 +171,7 @@ public sealed partial class OwnershipAnalysis
         if (this.compilation.Binding.ImplicitPairAdmitted(source) != SemanticsMask.None &&
             (!this.Substituting || this.ReferenceLayers(source.BoundType, result.Components[0]) == 1))
         {
-            // SPEC 13.5.5.1, 10.2: the inner reference below a pair layer is Copied from the Place itself in the universal
+            // SPEC 13.5.5, 10.2: the inner reference below a pair layer is Copied from the Place itself in the universal
             // verification and an owner instance; a ref or uniq instance loads it through the stored reference below.
             var copy = this.Place(source, result, OwnershipPlaceKind.Temporary, true, AcquisitionKind.Copy);
             var produced = this.Emit(OwnershipOperationKind.Produce, source, copy);
@@ -384,7 +384,7 @@ public sealed partial class OwnershipAnalysis
         return operation == KotoKind.Equals ? this.Temporary(source) : this.UpdateResult(source, previous, value);
     }
 
-    // SPEC 13.5.5.1, 13.7: r@follow = v and r@follow op= v write the referent of a uniq reference through it, securing the
+    // SPEC 13.5.5, 13.7: r@follow = v and r@follow op= v write the referent of a uniq reference through it, securing the
     // RHS first, as the same replacement.
     private int WriteReferent(Koto source, ConversionKoto followed)
     {
@@ -436,7 +436,7 @@ public sealed partial class OwnershipAnalysis
         return operation == KotoKind.Equals ? this.Temporary(source) : this.UpdateResult(source, previous, value);
     }
 
-    // SPEC 5.2, 7.1.1, 13.5.5.1, 13.7: the one replacement through an address, whether a raw pointer, the reference a Place
+    // SPEC 5.2, 7.1.1, 13.5.5, 13.7: the one replacement through an address, whether a raw pointer, the reference a Place
     // call publishes, a followed uniq reference or the exclusive address of a field reached through a reference. The old
     // value is destroyed by its Type's destruction plan and the acquired value's responsibility moves into the destination
     // (LowerPointer); no compiler-owned destination or temporary is created for it.

@@ -101,7 +101,7 @@ public sealed partial class Binding
         Mismatch,
     }
 
-    // `own` is the declaration whose own per-call inputs the root actual signature names (SPEC 8.6); a nested Function Type's own
+    // `own` is the declaration whose own per-call inputs the root actual signature names (SPEC 8.10); a nested Function Type's own
     // syntax binds its inputs. `skipOrigin` leaves the outer Origin to an instantiation that already fixed it; `instance` is the
     // SPEC 15.3.5: the layers invariant in their target: an exclusive borrow, a writable object handle, a raw pointer, and a pair
     // layer whose binder admits one of them (InvariantAdmitted), since a relation between pair layers must hold for every admitted
@@ -337,7 +337,7 @@ public sealed partial class Binding
         return binding is null ? OriginOutlives(a, b) : binding.FitOrigin(a, b, use!);
     }
 
-    // SPEC 10.7, 15.6.1, 23.3.6.5: the first member of a conversion whose Origin part fails under the call-time instantiation: the n-th
+    // SPEC 10.7, 15.6.1, 23.1: the first member of a conversion whose Origin part fails under the call-time instantiation: the n-th
     // parameter, whose required input must outlive the implementation's, or the result, which must outlive the required one. Both ends
     // are instantiated, so neither is a call-time Origin of the implementation.
     private OriginContractFact? ConversionContractFailure(BoundType actual, BoundType expected, Koto? own, Koto at, Koto use)

@@ -13,7 +13,7 @@ namespace Kimi.Compiler.Mir;
 // component of the omission graph, found once by Tarjan's algorithm), a call of the template.
 internal sealed partial class MirBuilder
 {
-    private const int ExpansionLimit = 65_536; // No copy takes a body past this many MIR statements (IMPL 21.3.5).
+    private const int ExpansionLimit = 65_536; // No copy takes a body past this many MIR statements (IMPL 21.3.2).
     private readonly Dictionary<DefaultDecl, int> visited = new(); // Each default's node in the omission graph.
     private readonly List<Omission> omissions = []; // The nodes in visit order.
     private readonly List<int> component = []; // The nodes whose component is open (Tarjan's stack).

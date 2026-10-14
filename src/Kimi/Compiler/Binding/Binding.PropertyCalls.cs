@@ -170,7 +170,7 @@ public sealed partial class Binding
         {
             var inputType = accessor.Input is { } declaredInput ? Signature(declaredInput) : null;
             // Origin-bearing inputs retain their own execution milestone. An owning or object-form written receiver
-            // is the declaration error of SPEC 11.2, not a limit of this path.
+            // is the declaration error of SPEC 11.3, not a limit of this path.
             var receiverUnsupported = requirement is null && accessor.Receiver is { } receiverType && (!ReferenceTypes.IsStruct(receiverType) || receiverType.Components[0].Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) ||
                 (receiverType.Components[0].Kind == BoundTypeKind.Constructed && declaringType is null));
             if ((requirement is null && accessor.Declaration?.Body is null) || accessor.Result is not { } declaredResult ||

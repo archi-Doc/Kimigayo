@@ -133,7 +133,7 @@ public sealed partial class Binding
             conformance.PropertyWitnessMap.Add((witness.Identity, requirement.Kind), witness);
             if (objectProof == ConstraintProof.Unknown)
             {
-                conformance.Unsupported = true; // SPEC 12.4.4.1: OCC-X (UnsupportedProof).
+                conformance.Unsupported = true; // SPEC 12.7: OCC-X (UnsupportedProof).
                 return proof;
             }
 

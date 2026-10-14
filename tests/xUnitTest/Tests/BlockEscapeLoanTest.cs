@@ -40,13 +40,13 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
 
     private const string Temporary = "func make() -> i32 => 4\n\npublic func main() -> ()\n    let r = make()@ref\n    Console.writeLine(\"\\(r@follow)\")\n";
 
-    // SPEC 8.4.10.4: a loop over `C is Iterable` gives the body requirement results; the exit delivering z@ref still keeps no Loan
+    // SPEC 8.11.4: a loop over `C is Iterable` gives the body requirement results; the exit delivering z@ref still keeps no Loan
     // of n, so the escaping exit has the record (review k06; it was at the z@ref exit only).
     private const string GenericRequirement = "func show<C>(values: ref/C, c: bool) -> ()\n    C is Iterable\n    var count: i32 = 0\n    for a in values\n        count += 1\n" +
         "    let z = 1\n    let r = label block: do\n        let n = 5\n        if c\n            exit to block z@ref\n        exit to block n@ref\n    Console.writeLine(\"\\(r@follow) \\(count)\")\n\n" +
         "public func main() -> ()\n    let xs: Array<i32> = [1]\n    show(xs@ref, true)\n";
 
-    // SPEC 8.9: `let local = value` over `s/T` is a conditional reborrow plan (review k01; it was at the z@ref exit only).
+    // SPEC 8.14: `let local = value` over `s/T` is a conditional reborrow plan (review k01; it was at the z@ref exit only).
     private const string GenericReborrow = "func show<s/T>(value: s/T, c: bool) -> ()\n    s is ref or uniq\n    T is Copy\n    let local = value\n    let z = 1\n" +
         "    let r = label block: do\n        let n = 5\n        if c\n            exit to block z@ref\n        exit to block n@ref\n    Console.writeLine(\"\\(r@follow)\")\n\n" +
         "public func main() -> ()\n    let v = 3\n    show(v@ref, true)\n";
@@ -80,7 +80,7 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     private const string LoopItem = "func show() -> i32\n    let r = label l: loop\n        let arr: Array<i32> = [1, 2]\n        for x in arr\n            exit to l x\n        exit to l arr[0]@ref\n" +
         "    return r@follow\n\npublic func main() -> ()\n    Console.writeLine(\"\\(show())\")\n";
 
-    // SPEC 3.6.2, 13.5.5.2, 16.3.3: a temporary obj/rc/arc handle is a Loan root of the borrows lent through it, destroyed at its
+    // SPEC 3.6, 13.5.6, 16.3.3: a temporary obj/rc/arc handle is a Loan root of the borrows lent through it, destroyed at its
     // full-expression boundary.
     private const string TemporaryHandle = "struct Item\n    public var id: i32 = 7\nfunc make() -> rc/Item => Kimi.Intrinsics.makeRc(Item.init())\n\npublic func main() -> ()\n";
 
@@ -200,7 +200,7 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     public void BorrowsWithinTheirRootsScopeRun(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("BlockEscapeLoan" + name, source, stdout);
 
-    // SPEC 23.3.6.8: the console shows both related locations and the Note, the language server sends them in both placements,
+    // SPEC 23.3: the console shows both related locations and the Note, the language server sends them in both placements,
     // and the JSON form keeps the borrow role, for a conversion and for a capture entry.
     [Theory]
     [InlineData(Plain)]

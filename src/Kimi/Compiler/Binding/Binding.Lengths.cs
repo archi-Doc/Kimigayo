@@ -122,7 +122,7 @@ public sealed partial class Binding
 
         if (signed && (Int128)right == -1)
         {
-            // SPEC 13.3: a % -1 is 0 for every a, and only the minimum / -1 quotient is unrepresentable.
+            // SPEC 13.3.1: a % -1 is 0 for every a, and only the minimum / -1 quotient is unrepresentable.
             if (operation == KotoKind.Percent)
             {
                 return true;

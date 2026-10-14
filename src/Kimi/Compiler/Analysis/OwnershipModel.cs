@@ -29,7 +29,7 @@ public enum OwnershipPlaceKind : byte
     Payload,
     Subject,
 
-    // SPEC 8.4.10.4: the Loans that the Origins of one abstract input Type may denote, which only the derived effects of
+    // SPEC 8.11.4: the Loans that the Origins of one abstract input Type may denote, which only the derived effects of
     // generic requirement calls access; no operation initializes or uses it.
     EffectRegion,
 
@@ -155,17 +155,17 @@ public enum OwnershipFailure : byte
     // SPEC 15.4.4: an Origin obligation that neither Binding nor this analysis proves, such as an Origin nothing constrains.
     UnprovenOrigin,
 
-    // SPEC 8.4.5, 22.1.2.4: the destructions an Iterator.next or BufferWriter.reserve implementation performs exceed the
+    // SPEC 8.6, 22.2.3: the destructions an Iterator.next or BufferWriter.reserve implementation performs exceed the
     // published effect bound of its Contract.
     EffectBound,
     CallableEffectBound,
     VirtualEffectBound,
 
-    // SPEC 4.6.1, 15.1.3: an element is moved only through a static Move Path: a nonnegative integer-literal index within an
+    // SPEC 4.7, 15.1.3: an element is moved only through a static Move Path: a nonnegative integer-literal index within an
     // owned fixed array.
     StaticMovePathRequired,
 
-    // SPEC 8.4.10.4, 8.4.10.6: a generic requirement call's derived effects may conflict with a Loan an earlier result keeps.
+    // SPEC 8.11.4, 8.11.1: a generic requirement call's derived effects may conflict with a Loan an earlier result keeps.
     CallEffectConflict,
 
     StorageLimit,
@@ -223,7 +223,7 @@ public readonly record struct OwnershipLending(Koto Input, Koto Call);
 // Destroyed names the borrowed Place a destruction ends while a live value keeps its Loan (empty for a Place without a name, such
 // as DestroyedTemporary); Borrow is the Borrow that created the Loan, with BorrowCapture its capture entry when it is a closure's
 // (SPEC 15.6.2, 16.2.2). Cases is the set of Semantics cases the problem was found under, one bit per case of the function's
-// enumeration (SPEC 8.10, 23.3.6.4); empty outside a case run and once every case found the problem.
+// enumeration (SPEC 8.15, 23.1.2); empty outside a case run and once every case found the problem.
 public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1, int Reservation = -1, bool Activation = false, Koto? LoanSource = null,
     string? StorageTable = null, long RequiredBytes = 0, long LimitBytes = 0, int Capture = -1, Koto? Related = null,
     OwnershipLending? Input = null, OwnershipLending? ConflictingReservation = null, BindingObligation? Obligation = null,
@@ -346,12 +346,12 @@ public sealed partial class OwnershipBody
 
     internal List<OwnershipIdentity>? Identities { get; set; }
 
-    /// <summary>Gets or sets each definition-time conditional plan's acquired Place and the Place its Reborrow case borrows (SPEC 8.9).</summary>
+    /// <summary>Gets or sets each definition-time conditional plan's acquired Place and the Place its Reborrow case borrows (SPEC 8.14).</summary>
 
-    /// <summary>Gets or sets the derived effects of the definition's generic requirement calls on their abstract inputs (SPEC 8.4.10.4).</summary>
+    /// <summary>Gets or sets the derived effects of the definition's generic requirement calls on their abstract inputs (SPEC 8.11.4).</summary>
     internal List<OwnershipRequirementEffect>? RequirementEffects { get; set; }
 
-    /// <summary>Gets or sets the Loans the results of those calls may keep in the regions of their inputs (SPEC 8.4.10.4).</summary>
+    /// <summary>Gets or sets the Loans the results of those calls may keep in the regions of their inputs (SPEC 8.11.4).</summary>
     internal List<OwnershipRequirementResult>? RequirementResults { get; set; }
 
     /// <summary>Gets or sets the anchor Places of the body's raw Place borrows, each sourced at its borrow (SPEC 5.2.2).</summary>
@@ -362,7 +362,7 @@ public sealed partial class OwnershipBody
 
     internal Binding? InstanceBinding { get; set; }
 
-    /// <summary>Gets the Semantics case this definition run analyzes (SPEC 8.10); empty outside a case run.</summary>
+    /// <summary>Gets the Semantics case this definition run analyzes (SPEC 8.15); empty outside a case run.</summary>
     internal ReadOnlyMemory<PairCase> Cases => this.caseStorage.AsMemory(0, this.caseCount);
 
     public bool IsReachable(int operation) => this.Reachable[operation];
@@ -448,7 +448,7 @@ public sealed partial class OwnershipBody
         this.SymbolPlaces.Clear();
     }
 
-    // SPEC 8.10, 23.3.6.4: a problem of a Semantics case run carries its case; one problem found by several cases of this body's
+    // SPEC 8.15, 23.1.2: a problem of a Semantics case run carries its case; one problem found by several cases of this body's
     // function is one record whose cases merge (MergeIssue).
     internal void ReportIssue(OwnershipIssue issue)
     {
@@ -471,7 +471,7 @@ public sealed partial class OwnershipBody
         this.IssueStorage.Add(issue);
     }
 
-    // SPEC 23.3.6.4: after the last case, a problem found under every case of `all` shows no case.
+    // SPEC 23.1.2: after the last case, a problem found under every case of `all` shows no case.
     internal void DropUniversalCases(ulong all)
     {
         for (var i = 0; i < this.IssueStorage.Count; i++)
@@ -484,7 +484,7 @@ public sealed partial class OwnershipBody
     }
 
     // An implementation invariant that decides the analysis outcome is checked in every configuration
-    // (SPEC 21.3.5): a violation is an internal issue that leaves the body unverified, never a silent
+    // (SPEC 21.3.2): a violation is an internal issue that leaves the body unverified, never a silent
     // inconsistency that only a Debug build would notice.
     internal bool Invariant(bool condition, Koto? source = null)
     {
@@ -498,7 +498,7 @@ public sealed partial class OwnershipBody
     }
 
     // The root stage of Resolve: a case run sees its case Types and an instance plan its closed substitution. Every consumer
-    // names its interpretation context through Resolve (SPEC 7.2.3, 8.10).
+    // names its interpretation context through Resolve (SPEC 7.2.3, 8.15).
     private BoundType? Concrete(BoundType? type)
         => type is null ? type : this.Instance is not null ? this.InstanceBinding!.InstantiateStorageType(type, this.Instance)
         : this.Cases.IsEmpty ? type : this.InstanceBinding!.CaseType(type, this.Cases.Span);
@@ -570,14 +570,14 @@ internal readonly record struct OwnershipSequence(int Operation, SequenceOperati
 // Put the small operator before the 16-byte payload to avoid tail padding in every CFG value.
 internal readonly record struct OwnershipValue(OwnershipValueKind Kind, int Start, int Count, KotoKind Operator = default, Int128 Constant = default)
 {
-    // SPEC 4.6.9: the Constant of a Convert value that makes an integer position an isize one; a value isize cannot hold
+    // SPEC 4.7.1: the Constant of a Convert value that makes an integer position an isize one; a value isize cannot hold
     // becomes -1, which the position's one bounds check rejects.
     internal const int PositionConversion = 1;
 
-    // SPEC 13.5.4.3: the Constant of a Convert value that wraps an integer to the target's width, without a check.
+    // SPEC 13.5.4: the Constant of a Convert value that wraps an integer to the target's width, without a check.
     internal const int WrapConversion = 2;
 
-    // SPEC 13.5.4.4: the Constant of a Convert value that reinterprets bits between a floating-point and an integer Type.
+    // SPEC 13.5.4: the Constant of a Convert value that reinterprets bits between a floating-point and an integer Type.
     internal const int BitConversion = 3;
 
     // SPEC 5.2.2: the Constant of a Convert value that borrows a raw Place: the reference is the Place's address.
@@ -615,12 +615,12 @@ internal readonly record struct OwnershipCallLoans(int Call, int Result, int End
 // the same root or a dependency between roots.
 internal readonly record struct OwnershipValueIdentity(int Root, BindingSymbol? Field);
 
-// SPEC 8.4.10.4: a generic requirement call reaches, in Mode, every Loan that the Origins of one abstract input Type may denote
+// SPEC 8.11.4: a generic requirement call reaches, in Mode, every Loan that the Origins of one abstract input Type may denote
 // (the Region) through Input. Preserves holds when an available bound excludes the earlier results of the same requirement on
 // the same receiver.
 internal readonly record struct OwnershipRequirementEffect(int Call, int Region, LoanRequirement Mode, object Requirement, OwnershipValueIdentity Input, OwnershipValueIdentity Receiver, bool Preserves, BindingSymbol? Contract = null);
 
-// SPEC 8.4.10.4: the result of a generic requirement call may keep, in Mode, Loans of a Region its call reached through Input.
+// SPEC 8.11.4: the result of a generic requirement call may keep, in Mode, Loans of a Region its call reached through Input.
 internal readonly record struct OwnershipRequirementResult(int Call, int Result, int Region, LoanRequirement Mode, object Requirement, OwnershipValueIdentity Input, OwnershipValueIdentity Receiver, BindingSymbol? Contract = null);
 
 internal readonly record struct OwnershipStringComparison(int Operation, int Left, int Right, int LeftLoan, int RightLoan, int LeftValue = -1, int RightValue = -1);

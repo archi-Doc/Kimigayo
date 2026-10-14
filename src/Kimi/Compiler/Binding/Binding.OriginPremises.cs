@@ -184,7 +184,7 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 8.4.3.1: an associated application's inherited formation and its requirement's clauses, substituted with its
+    // SPEC 8.5.4: an associated application's inherited formation and its requirement's clauses, substituted with its
     // arguments; the requirement's own declaration is not a premise of itself.
     private void AddAssociatedRequirementPremises(OriginPremiseEnvironment environment, Koto node)
     {

@@ -342,7 +342,7 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 3.4.1, 3.5, 7.1.1, 13.5.5.1, 15.1.3: the Place a node designates, as its Op, Res and Binding's element, follow and call facts
+        // SPEC 3.4.3, 3.5, 7.1.1, 13.5.5, 15.1.3: the Place a node designates, as its Op, Res and Binding's element, follow and call facts
         // give it; a parenthesized Place is its operand's.
         private HirPlaceKind KindOf(Koto node, HirOp op, HirRes res) => op switch
         {
@@ -361,7 +361,7 @@ public sealed partial class Binding
             _ => HirPlaceKind.Value,
         };
 
-        // The layers a node's consumer follows before it projects or borrows the node (SPEC 3.4.1, 13.5.5.1): every reference, object
+        // The layers a node's consumer follows before it projects or borrows the node (SPEC 3.4.3, 13.5.5): every reference, object
         // handle and pair layer of the receiver of a stored Field, a Tuple element, a sequence's metadata or a built-in element, and the pair
         // layers Binding follows at a receiver or Subject down to their terminal target.
         private byte Layers(Koto node)

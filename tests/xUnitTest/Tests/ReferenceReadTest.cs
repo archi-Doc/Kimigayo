@@ -32,7 +32,7 @@ public class ReferenceReadTest
     [Fact]
     public void ExactReferenceParameterOutranksTheRead()
     {
-        // SPEC 10.2: the read is a cross-Semantics adaptation, so an Exact ref/i32 candidate wins over it. SPEC 7.3.1: a by-value
+        // SPEC 10.2: the read is a cross-Semantics adaptation, so an Exact ref/i32 candidate wins over it. SPEC 7.4: a by-value
         // candidate at the same position has a disjoint Type, so the reference is never read into the other candidate.
         const string source = "func f(v: i64) -> i32 => 1\nfunc f(v: ref/i32) -> i32 => 2\nlet x: i32 = 7\nlet r = x@ref\n" +
             "require f(7@i64) == 1 and f(r) == 2 and f(x@ref) == 2 and f(x) == 2 else => $abort(\"ranking\")";

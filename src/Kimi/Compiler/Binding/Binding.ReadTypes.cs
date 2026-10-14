@@ -62,7 +62,7 @@ public sealed partial class Binding
     private bool ProvesClosedContract(BoundType type, BindingSymbol contract, BindingScope scope)
         => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: contract)), scope) == ConstraintProof.Proven;
 
-    // SPEC 10.2.1: a parameter whose Type is a read Type under the declaration's Constraints (a Type parameter implying
+    // SPEC 10.2.2: a parameter whose Type is a read Type under the declaration's Constraints (a Type parameter implying
     // Position, PositionRange or PrimitiveInteger, or Wrapping<T> over such a parameter) binds the terminal referent of safe
     // reference layers; only value Types are read Types, so no other binding exists.
     private bool InfersReadReferent(BoundType parameter, Koto function)

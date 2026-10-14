@@ -9,7 +9,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 7.3.1, 9.4.1, 9.5: the functions of one Name acquire corresponding parameters of overlapping Types in one mode.</summary>
+/// <summary>SPEC 7.4, 9.5.1, 9.6: the functions of one Name acquire corresponding parameters of overlapping Types in one mode.</summary>
 public sealed class ParameterShapeTest(ITestOutputHelper output)
 {
     private const string Types = "struct Node\n    public var number: i32 = 0\nstruct Value\n    Self is Copy\n    public var number: i32 = 0\nstruct Score\n    Self is Copy\n    public var points: i32 = 0\n";
@@ -48,7 +48,7 @@ public sealed class ParameterShapeTest(ITestOutputHelper output)
         output.WriteLine(record.Message + "\n" + related.Label);
     }
 
-    // SPEC 7.3.1: one record per corresponding parameter of the later declaration; several overlapping earlier declarations are its parties.
+    // SPEC 7.4: one record per corresponding parameter of the later declaration; several overlapping earlier declarations are its parties.
     [Fact]
     public void EachConflictingParameterIsOneRecordWithEveryOverlappingDeclaration()
     {
@@ -77,7 +77,7 @@ public sealed class ParameterShapeTest(ITestOutputHelper output)
         Assert.Empty(Errors(c));
     }
 
-    // SPEC 7.3.1, 15.1.5: a forgotten @uniq is an error at the only candidate; no by-value candidate takes the call.
+    // SPEC 7.4, 15.1.5: a forgotten @uniq is an error at the only candidate; no by-value candidate takes the call.
     [Theory]
     [InlineData("var game = Game.init()\nbump(game.score)", "ExclusiveBorrowRequired_Kd")]
     [InlineData("var game = Game.init()\nbump(game.score@uniq)\nlet next = bumped(game.score)", "")]
@@ -91,7 +91,7 @@ public sealed class ParameterShapeTest(ITestOutputHelper output)
     public void ExplicitAcquisitionsSelectTheirCandidatesAtRunTime()
         => ScalarEmissionTest.EmitFixture("ParameterShapeSelection", Types + Game + "var game = Game.init()\nbump(game.score@uniq)\nlet next = bumped(game.score)\nrequire game.score.points == 10 and next.points == 11 else => $abort(\"bump\")\nConsole.writeLine(\"ok\")", "ok\n");
 
-    // SPEC 9.4.1: a group gathered at the alias stage from two Containers is checked at the use; a qualified Name selects one source.
+    // SPEC 9.5.1: a group gathered at the alias stage from two Containers is checked at the use; a qualified Name selects one source.
     [Theory]
     [InlineData("let a = f(v@ref)", "ParameterShapeMismatch_Kd")]
     [InlineData("let a = f(v)", "ParameterShapeMismatch_Kd")]
@@ -108,7 +108,7 @@ public sealed class ParameterShapeTest(ITestOutputHelper output)
         }
     }
 
-    // SPEC 9.5: requirements gathered from Constraints are checked at the use; no syntax selects among them.
+    // SPEC 9.6: requirements gathered from Constraints are checked at the use; no syntax selects among them.
     [Fact]
     public void RequirementsGatheredFromConstraintsAreCheckedAtTheUse()
     {
@@ -118,7 +118,7 @@ public sealed class ParameterShapeTest(ITestOutputHelper output)
         Assert.Equal("read", error.Text);
     }
 
-    // SPEC 8.4.2: requirements inherited by refinement join the refining Contract's group.
+    // SPEC 8.4.3: requirements inherited by refinement join the refining Contract's group.
     [Fact]
     public void RefinedRequirementsJoinTheGroup()
     {
@@ -128,7 +128,7 @@ public sealed class ParameterShapeTest(ITestOutputHelper output)
         Assert.Equal("ref/Node", error.Text);
     }
 
-    // SPEC 7.3.1: the declarations stay in their group; a call that selects one of them is checked normally.
+    // SPEC 7.4: the declarations stay in their group; a call that selects one of them is checked normally.
     [Theory]
     [InlineData("let a = f(Node.init())", "ParameterShapeMismatch_Kd")]
     [InlineData("let node = Node.init()\nlet a = f(node@ref)", "ParameterShapeMismatch_Kd")]

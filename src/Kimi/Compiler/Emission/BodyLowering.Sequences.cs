@@ -104,7 +104,7 @@ internal sealed partial class BodyLowering
 
         if (plan.Kind == SequenceOperation.FromEnd)
         {
-            // SPEC 4.6.9: a written `^x` element key is `length - x`, computed without a check of its own; the element
+            // SPEC 4.7.1: a written `^x` element key is `length - x`, computed without a check of its own; the element
             // access's one bounds check rejects an offset outside [1, length].
             if (operation.Source is not FromEndIndexKoto || receiver.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array) ||
                 !ReferenceEquals(ValueType(body, id), BoundType.ISize) || plan.End != -1 || (uint)plan.Index >= (uint)id ||
@@ -115,7 +115,7 @@ internal sealed partial class BodyLowering
 
             if (receiver.Kind == BoundTypeKind.FixedArray && receiver.Length >= 0 && this.PhysicalOperand(body, plan.Index) is { Kind: EmissionOperandKind.Integer } offset)
             {
-                this.Fold(id, unchecked((long)(receiver.Length - offset.Value))); // SPEC 4.6.8: `^c` on a fixed array is `N - c`.
+                this.Fold(id, unchecked((long)(receiver.Length - offset.Value))); // SPEC 4.8.6: `^c` on a fixed array is `N - c`.
                 return true;
             }
 
@@ -130,7 +130,7 @@ internal sealed partial class BodyLowering
             var sameOrigin = receiver.Kind == BoundTypeKind.Slice || borrowedArray
                 ? ReferenceEquals(reference?.Origin, receiverPlace.Type.Origin)
                 : reference?.Origin is { Kind: OriginKind.Projection } origin && ReferenceEquals(origin.Binder, Binding.PlaceOriginBinder(originSource)) && origin.Slot == Binding.PlaceOriginSlot(originSource);
-            // SPEC 4.6.9: an exclusive element borrow addresses the elements through a uniq array reference.
+            // SPEC 4.7.1: an exclusive element borrow addresses the elements through a uniq array reference.
             var exclusiveElements = borrowedArray && receiverPlace.Type.Semantics == SemanticsKind.Uniq &&
                 operation.Source is IndexKoto && reference?.Semantics == SemanticsKind.Uniq;
             var fixedElements = receiver.Kind == BoundTypeKind.FixedArray && borrowedArray;
@@ -213,7 +213,7 @@ internal sealed partial class BodyLowering
 
         if (plan.Kind == SequenceOperation.Slice)
         {
-            // SPEC 4.6.4: a range selection is written with range boundaries or applied through one ResolvedRange key.
+            // SPEC 4.6.3: a range selection is written with range boundaries or applied through one ResolvedRange key.
             Koto? startSyntax = null;
             Koto? endSyntax = null;
             Koto? resolvedKey = null;
@@ -221,13 +221,13 @@ internal sealed partial class BodyLowering
             var shape = 0L;
             if (operation.Source is IndexKoto keyed && ElementAccess.IsResolvedSlice(keyed))
             {
-                // SPEC 4.6.4: one ResolvedRange value, written or resolved from a Range, supplies both boundaries.
+                // SPEC 4.6.3: one ResolvedRange value, written or resolved from a Range, supplies both boundaries.
                 resolvedKey = ElementAccess.KeySyntax(keyed);
                 sliceType = body.Resolve(keyed.BoundType, body.ContextAt(id));
             }
             else if (operation.Source is IndexKoto { Right: RangeKoto rangeSyntax } source)
             {
-                // SPEC 4.6.4: a `^x` boundary evaluates x and resolves against the length in the slice operation.
+                // SPEC 4.6.3: a `^x` boundary evaluates x and resolves against the length in the slice operation.
                 startSyntax = rangeSyntax.Start is FromEndIndexKoto { Operand: var startOffset } ? startOffset : rangeSyntax.Start;
                 endSyntax = rangeSyntax.End is FromEndIndexKoto { Operand: var endOffset } ? endOffset : rangeSyntax.End;
                 sliceType = body.Resolve(source.BoundType, body.ContextAt(id));

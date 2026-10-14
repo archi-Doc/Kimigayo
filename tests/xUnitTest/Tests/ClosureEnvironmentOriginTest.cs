@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 7.6.2, 15.8.2: an environment binding is a Place of its closure, so a closure body checks the Loans on its environment as an
+// SPEC 7.7.2, 15.8.2: an environment binding is a Place of its closure, so a closure body checks the Loans on its environment as an
 // ordinary body checks its locals, and a borrow of an environment binding's own slot depends on that binding.
 public class ClosureEnvironmentOriginTest
 {
@@ -51,7 +51,7 @@ public class ClosureEnvironmentOriginTest
         Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), "f()"), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
     }
 
-    // SPEC 15.8.2, 15.6.1, 23.3.6.5: a result inferred from the body that borrows the call's own storage, a parameter, a body local or
+    // SPEC 15.8.2, 15.6.1, 23.1: a result inferred from the body that borrows the call's own storage, a parameter, a body local or
     // an environment binding that a Consuming call consumes, is Refuted at the returned value, with the borrow as the longer end and the
     // closure's call result as the shorter, related at the Borrow and at the header. These were a Loan conflict at the closure or
     // accepted (the Consuming forms).

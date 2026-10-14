@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 6.4, 14.6.1, 14.8.2: var locals, var Pattern bindings and var iteration slots are reassignable.
+    // SPEC 6.6, 14.6.1, 14.8.2: var locals, var Pattern bindings and var iteration slots are reassignable.
     internal static bool IsMutableDeclaration(Koto? declaration)
         => declaration is VariableKoto { VariableKind: VariableKind.Var } or SyntaxFormKoto { IsMutablePattern: true } ||
             (declaration is IdentifierNameKoto { Parent: ForKoto loop } slot && loop.IsMutableSlot(slot));
@@ -49,13 +49,13 @@ public sealed partial class Binding
 
         if (node is ConversionKoto { ConversionBinding: ConversionBinding.Follow } selected)
         {
-            // SPEC 13.5.5.1: the referent of uniq/T offers Write; a shared layer on the path bounds it.
+            // SPEC 13.5.5: the referent of uniq/T offers Write; a shared layer on the path bounds it.
             return selected.Left.BoundType?.Semantics == SemanticsKind.Uniq && !ReachedThroughShared(selected.Left);
         }
 
         if (node is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair)
         {
-            return pair.CodeContext.Compilation.Binding.PairCapability(pair, null, true); // SPEC 13.5.5.1 pair layers
+            return pair.CodeContext.Compilation.Binding.PairCapability(pair, null, true); // SPEC 13.5.5 pair layers
         }
 
         if (node is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } payload)
@@ -75,7 +75,7 @@ public sealed partial class Binding
 
         if (node is IndexKoto userIndex && ElementAccess.IsUserIndex(userIndex))
         {
-            return ElementAccess.IndexerCall(userIndex, true) is not null; // SPEC 4.6.9: an update selects indexUniq.
+            return ElementAccess.IndexerCall(userIndex, true) is not null; // SPEC 4.7.1: an update selects indexUniq.
         }
 
         if (ElementAccess.IsExclusiveArrayElement(node))
@@ -97,7 +97,7 @@ public sealed partial class Binding
         if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } throughLayers &&
             node.CodeContext.Compilation.Binding.TryGetAdaptation(throughLayers.Left, out var receiver) && receiver.Kind == ExpectedAdaptationKind.ReferenceRead)
         {
-            return receiver.Type.Semantics == SemanticsKind.Uniq; // SPEC 3.4.1: a shared layer bounds the path to shared access.
+            return receiver.Type.Semantics == SemanticsKind.Uniq; // SPEC 3.4.3: a shared layer bounds the path to shared access.
         }
 
         if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } field &&
@@ -122,7 +122,7 @@ public sealed partial class Binding
     // SPEC 3.5: the positions without a fixed expected Type that acquire any Place operand by bare acquisition.
     // Arguments, assignment sources and results take their expected Type from the
     // declaration and adapt there instead; an anonymous function's expression body without a written or expected result
-    // Type is a result source (SPEC 14.9.1) whose Type the bare acquisition infers.
+    // Type is a result source (SPEC 14.9.2) whose Type the bare acquisition infers.
     private static bool IsBareAcquisitionPosition(Koto node)
     {
         var target = node;
@@ -141,7 +141,7 @@ public sealed partial class Binding
         };
     }
 
-    // SPEC 7.7: an unsafe function supports direct calls only, so every appearance of its name
+    // SPEC 7: an unsafe function supports direct calls only, so every appearance of its name
     // that is not the callee of a direct call acquires it as a value. This is the complement of
     // the callee position, not a list of acquisition positions, so no position stays unchecked.
     private static bool IsValueUse(Koto node)
@@ -185,7 +185,7 @@ public sealed partial class Binding
         return ReferenceEquals(declarationScope.Function, scope.Function);
     }
 
-    // SPEC 12.3.1: an unfitted literal is an untyped literal or literal-only expression still waiting for its Type.
+    // SPEC 12.3: an unfitted literal is an untyped literal or literal-only expression still waiting for its Type.
     private static bool IsUnfittedLiteral(Koto node)
     {
         node = KotoHelper.UnwrapParentheses(node);
@@ -194,20 +194,20 @@ public sealed partial class Binding
             IsLiteralOnlyOperation(node) || IsLiteralOnlyFromEnd(node) || IsLiteralOnlyRange(node));
     }
 
-    // SPEC 13.3: a primitive without arithmetic (bool, Unit, char, string) or safe reference layers ending in string. Never fits
+    // SPEC 13.3.1: a primitive without arithmetic (bool, Unit, char, string) or safe reference layers ending in string. Never fits
     // every operator, and a pointer operand is displaced by SPEC 5.3 before this test.
     private static bool NonNumericOperand(BoundType type)
         => (type.Kind == BoundTypeKind.Primitive && !type.IsNumeric && !ReferenceEquals(type, BoundType.Never)) || ReferenceTypes.EndsInString(type);
 
-    // SPEC 13.2, 13.3: a numeric Type without the integer operators (%, bitwise, shift, increment, decrement), a floating-point Type.
+    // SPEC 13.2, 13.3.1: a numeric Type without the integer operators (%, bitwise, shift, increment, decrement), a floating-point Type.
     private static bool NonIntegerOperand(BoundType type) => type.IsNumeric && !type.HasIntegerArithmetic;
 
-    // SPEC 4.6.3.1, 12.3.1: a range whose written boundaries, at least one, are all literal-only is itself literal-only.
+    // SPEC 4.6.2, 12.3: a range whose written boundaries, at least one, are all literal-only is itself literal-only.
     private static bool IsLiteralOnlyRange(Koto node)
         => node is RangeKoto range && (range.Start ?? range.End) is not null &&
             (range.Start is null || IsLiteralOnlyPosition(range.Start)) && (range.End is null || IsLiteralOnlyPosition(range.End));
 
-    // SPEC 12.3.1: one classification serves waiting arguments, defaults and integer-only positions. Numeric classes
+    // SPEC 12.3: one classification serves waiting arguments, defaults and integer-only positions. Numeric classes
     // never mix; position/range syntax is classified separately. No values are evaluated or Types committed here.
     private static bool IsLiteralOnlyOperation(Koto node)
         => node is UnaryKoto or BinaryKoto && NumericLiteralDefault(node) is not null;
@@ -242,7 +242,7 @@ public sealed partial class Binding
     private static BoundType DefaultLiteralType(NumberLiteralKoto literal, BoundType? expected)
         => expected ?? (literal.IsInteger ? BoundType.I32 : BoundType.F64);
 
-    // SPEC 8.4.7.3: an untyped literal fits an unbound integer Type only when it fits all twelve integer Types, 0 through 127.
+    // SPEC 8.7.4: an untyped literal fits an unbound integer Type only when it fits all twelve integer Types, 0 through 127.
     private static bool FitsGenericInteger(NumberLiteralKoto literal, bool negative)
         => literal.IsInteger && literal.TryGetIntegerMagnitude(out var magnitude) && (negative ? magnitude == 0 : magnitude <= 127);
 
@@ -259,7 +259,7 @@ public sealed partial class Binding
         return literal.TryGetIntegerMagnitude(out var magnitude) && FitsIntegerMagnitude(magnitude, type, negative, pointerWidth);
     }
 
-    // SPEC 3.1.1.1: a wrapping integer Type fits literals by the range of its integer argument.
+    // SPEC 3.1.1: a wrapping integer Type fits literals by the range of its integer argument.
     private static bool FitsIntegerMagnitude(UInt128 magnitude, BoundType type, bool negative, int pointerWidth)
     {
         if (!type.HasIntegerArithmetic)
@@ -286,7 +286,7 @@ public sealed partial class Binding
         return magnitude <= max;
     }
 
-    // SPEC 8.4.7.3: a symbolic Type proven PrimitiveInteger has the built-in integer operators; each instance uses the
+    // SPEC 8.7.4: a symbolic Type proven PrimitiveInteger has the built-in integer operators; each instance uses the
     // operations of its concrete Type.
     // A shared literal argument constructs an owner temporary before acquiring its borrow.
     private static BoundType LiteralInputType(BoundType parameter)
@@ -296,7 +296,7 @@ public sealed partial class Binding
         => type is { Kind: BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection } &&
             this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.PrimitiveInteger)), scope) == ConstraintProof.Proven;
 
-    // SPEC 8.4.7.3, 3.1.1.1: Wrapping<T> over a Type proven PrimitiveInteger has the wrapping integer operators, unary minus for
+    // SPEC 8.7.4, 3.1.1: Wrapping<T> over a Type proven PrimitiveInteger has the wrapping integer operators, unary minus for
     // every instantiation, the generic literals 0 through 127 and the conversions to and from T; each instance uses its Scalar.
     private bool IsGenericWrapping(BoundType? type, BindingScope scope)
         => type is { Kind: BoundTypeKind.Constructed, Components.Count: 1 } && type.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping &&
@@ -305,14 +305,14 @@ public sealed partial class Binding
     // An integer Type, concrete or generic: the Types that positions, range boundaries, lengths and shift counts accept.
     private bool IsIntegerOperand(BoundType? type, BindingScope scope) => type is { IsInteger: true } || this.IsGenericInteger(type, scope);
 
-    // A Type with the integer operators (SPEC 13.3): an integer or wrapping integer Type, concrete or generic.
+    // A Type with the integer operators (SPEC 13.3.1): an integer or wrapping integer Type, concrete or generic.
     private bool IsArithmeticInteger(BoundType? type, BindingScope scope)
         => type is { HasIntegerArithmetic: true } || this.IsGenericInteger(type, scope) || this.IsGenericWrapping(type, scope);
 
-    // A symbolic Type whose literals are the generic 0 through 127 (SPEC 8.4.7.3).
+    // A symbolic Type whose literals are the generic 0 through 127 (SPEC 8.7.4).
     private bool TakesGenericLiterals(BoundType? type, BindingScope scope) => this.IsGenericInteger(type, scope) || this.IsGenericWrapping(type, scope);
 
-    // SPEC 12.3.1: the default Type of an unfitted literal or literal-only expression, or null for null and other syntax.
+    // SPEC 12.3: the default Type of an unfitted literal or literal-only expression, or null for null and other syntax.
     private BoundType? LiteralDefault(Koto node)
     {
         node = KotoHelper.UnwrapParentheses(node);
@@ -324,7 +324,7 @@ public sealed partial class Binding
         node = KotoHelper.UnwrapParentheses(node);
         if ((IsLiteralOnlyFromEnd(node) || IsLiteralOnlyRange(node)) && node.BoundType is null)
         {
-            // SPEC 4.6.3.1: each boundary fits its S or E, and a `^a` operand the T of FromEnd<T>. A comparison operand is
+            // SPEC 4.6.2: each boundary fits its S or E, and a `^a` operand the T of FromEnd<T>. A comparison operand is
             // already fitted.
             return this.FitsLiteralPosition(node, type, scope);
         }
@@ -337,7 +337,7 @@ public sealed partial class Binding
 
         if (number is null && IsLiteralOnlyOperation(node))
         {
-            // SPEC 12.3.1: every literal fits the Type its operator propagates and every operator is defined for that Type;
+            // SPEC 12.3: every literal fits the Type its operator propagates and every operator is defined for that Type;
             // a shift count is typed independently of the candidate. A wrapping integer Type has unary - for every argument.
             var integer = this.IsArithmeticInteger(type, scope);
             var numeric = integer || type.IsFloatingPoint;
@@ -376,7 +376,7 @@ public sealed partial class Binding
 
     private BoundType? BindNode(Koto node, BindingScope scope, BoundType? expected = null)
     {
-        // The caller consulted this node: its failure becomes the caller's prerequisite (SPEC 23.3.6.4).
+        // The caller consulted this node: its failure becomes the caller's prerequisite (SPEC 23.1.2).
         var parent = this.BeginConsultation(node);
         var type = this.BindAndAdaptNode(node, scope, expected);
         this.EndConsultation(node, parent);
@@ -384,14 +384,14 @@ public sealed partial class Binding
         return type;
     }
 
-    // SPEC 7.6.4: a concrete Closure converts to an expected common Function Type when its signature fits, its minimum
+    // SPEC 7.7.4: a concrete Closure converts to an expected common Function Type when its signature fits, its minimum
     // receiver is Shared and its complete environment is Owned. Initializations, returns and call arguments share this judgment.
     private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
         => this.ErasureSignatureFits(actual, expected, node) &&
             (actual.Kind != BoundTypeKind.Closure || actual.Symbol?.Declaration is FunctionKoto { BoundClosure.Receiver: SemanticsKind.Ref }) &&
             this.ProveOwned(actual, node) == ConstraintProof.Proven;
 
-    // SPEC 7.6.4, 10.5, 10.7: the signature part of an erasure, which a call's applicability uses; the Shared receiver and the Owned
+    // SPEC 7.7.4, 10.5, 10.7: the signature part of an erasure, which a call's applicability uses; the Shared receiver and the Owned
     // environment are judged after selection, at the argument, and a failure there never selects another candidate. A Function Item's
     // Origin conditions belong to its signature, proven from the required contract at `use` (SPEC 15.3.7).
     private bool ErasureSignatureFits(BoundType actual, BoundType expected, Koto use)
@@ -415,7 +415,7 @@ public sealed partial class Binding
 
         if (actual is { ContainsParameter: true } && this.SubstituteIdentityPremises(actual, scope) is var substituted && !ReferenceEquals(substituted, actual))
         {
-            // SPEC 8.3: the expression has the one Type that the identity premises of its scope make of its Types.
+            // SPEC 8.2: the expression has the one Type that the identity premises of its scope make of its Types.
             if (ReferenceEquals(node.BoundType, actual))
             {
                 node.BoundType = substituted;
@@ -650,7 +650,7 @@ public sealed partial class Binding
                 return this.BindName(identifier, scope);
             case InvocationKoto invocation:
                 var called = this.BindCall(invocation, scope, expected);
-                this.CheckLiteralArguments(invocation); // SPEC 17.4.4
+                this.CheckLiteralArguments(invocation); // SPEC 17.5.4
                 return called;
             case SyntaxFormKoto { Akind: KotoKind.InferredCase } inferred:
                 var inferredSymbol = this.InferredCase(inferred, scope, expected);
@@ -658,11 +658,11 @@ public sealed partial class Binding
             case IndexKoto index:
                 return this.BindElement(index, scope);
             case RangeKoto range:
-                return this.BindRangeValue(range, scope, expected); // SPEC 4.6.3: range syntax outside an index position.
+                return this.BindRangeValue(range, scope, expected); // SPEC 4.6.2: range syntax outside an index position.
             case MemberAccessKoto { Right: NumberLiteralKoto } tupleElement:
                 return this.BindElement(tupleElement, scope);
             case MemberAccessKoto { Right: ErrorKoto missing } incomplete:
-                return this.CompleteDependent(incomplete, missing); // SPEC 23.3.6.4: a member name that failed to parse explains the access.
+                return this.CompleteDependent(incomplete, missing); // SPEC 23.1.2: a member name that failed to parse explains the access.
             case MemberAccessKoto member:
                 if (this.BindSequenceMember(member, scope, out var sequenceType))
                 {
@@ -737,7 +737,7 @@ public sealed partial class Binding
 
                 if (resultType is { ContainsParameter: true })
                 {
-                    resultType = this.SubstituteIdentityPremises(resultType, scope); // SPEC 8.3
+                    resultType = this.SubstituteIdentityPremises(resultType, scope); // SPEC 8.2
                 }
 
                 var actual = jump.Expression is { } operand ? this.BindExpected(operand, scope, resultType, (target as FunctionKoto)?.ReturnType) : BoundType.Unit;
@@ -810,7 +810,7 @@ public sealed partial class Binding
         this.BindNodeCore(name, scope, null);
         if (name.BindingState != BindingState.Resolved || name.BoundSymbol is not { Kind: BindingSymbolKind.Function } group)
         {
-            // SPEC 7.6, 10.5: a value has no Type parameters, so explicit Type arguments select nothing, as at a value call.
+            // SPEC 7.7, 10.5: a value has no Type parameters, so explicit Type arguments select nothing, as at a value call.
             this.BindUnknownChildren(reference, scope);
             var resolved = name.BindingState == BindingState.Resolved;
             return this.Fail(reference, resolved ? BindingFailure.NoApplicableCandidate : BindingFailure.Unsupported, !resolved);
@@ -902,7 +902,7 @@ public sealed partial class Binding
             this.BindHeader(symbol);
             if (symbol.Next is null && symbol.Declaration is FunctionKoto { IsAnonymous: false } named && (named.Modifier & ModifierKind.Unsafe) != 0 && IsValueUse(node))
             {
-                // SPEC 7.7: an unsafe function supports direct calls only. An overload group is checked after selection.
+                // SPEC 7: an unsafe function supports direct calls only. An overload group is checked after selection.
                 return this.Fail(node, BindingFailure.UnsafeFunctionValue);
             }
 
@@ -958,7 +958,7 @@ public sealed partial class Binding
                 if (!ReferenceEquals(symbol.Scope.Owner, specialFunction.BoundSymbol!.Scope.Owner) || !property.IsStored ||
                     (!write && (!property.Getter.IsStandard || (update && !property.Setter.IsStandard))))
                 {
-                    // SPEC 6.2.3.4, 11.3.1: construction forbids inherited Field and computed access and custom accessor calls on self.
+                    // SPEC 6.3.4, 11.7: construction forbids inherited Field and computed access and custom accessor calls on self.
                     return this.Fail(node, BindingFailure.InvalidAssignment);
                 }
 
@@ -990,7 +990,7 @@ public sealed partial class Binding
                     // SPEC 7.3, 13.7: an accessor receiver is a Receiver Expression and is acquired implicitly.
                     if (!this.AdaptInput(sourceReceiver, required, sourceType, scope, pathSelection.Path, pathSelection.DeclaringType, out var projectedReceiver, out var quality, out var kind, explicitBorrow: update, receiver: true))
                     {
-                        // SPEC 11.2: a receiver that only the accessor's wrongly shaped written receiver rejects rests on that declaration.
+                        // SPEC 11.3: a receiver that only the accessor's wrongly shaped written receiver rejects rests on that declaration.
                         if (this.ReceiverRestsOnAccessorShape(node, operation, sourceReceiver, sourceType, pathSelection.DeclaringType, pathSelection.Path, scope, update))
                         {
                             return null;
@@ -1094,7 +1094,7 @@ public sealed partial class Binding
                 return Complete(unary, expected);
             }
 
-            // A directly signed literal is fitted as a signed value (SPEC 12.3.1).
+            // A directly signed literal is fitted as a signed value (SPEC 12.3).
             var type = DefaultLiteralType(number, expected);
             if (!LiteralCategoryMatches(number, type) && !(ReferenceEquals(number, this.floatingIntegerLiteral) && type.IsFloatingPoint))
             {
@@ -1130,7 +1130,7 @@ public sealed partial class Binding
                     : NonNumericOperand(operand) ? this.FailOperand(unary, operand, BindingFailure.NonNumericOperand)
                     : this.Fail(unary, BindingFailure.TypeMismatch);
             case KotoKind.PrefixMinus:
-                // Negation is defined for signed integers, floating-point values and every wrapping integer Type (SPEC 13.2, 13.3).
+                // Negation is defined for signed integers, floating-point values and every wrapping integer Type (SPEC 13.2, 13.3.1).
                 return (operand.IsNumeric && !operand.IsUnsignedInteger) || this.IsGenericWrapping(operand, scope) ? Complete(unary, operand)
                     : NonNumericOperand(operand) ? this.FailOperand(unary, operand, BindingFailure.NonNumericOperand)
                     : this.Fail(unary, BindingFailure.TypeMismatch);
@@ -1194,7 +1194,7 @@ public sealed partial class Binding
         // target keeps its Place, and an assigned value is read only where the target's Type expects it.
         if (shift)
         {
-            // The count may have any integer Type and is typed independently of the shifted operand (SPEC 12.3.1, 13.3).
+            // The count may have any integer Type and is typed independently of the shifted operand (SPEC 12.3, 13.3.1).
             left = this.BindNode(binary.Left, scope, assignment ? null : expected);
             left = assignment ? ElementAccess.DestinationType(binary.Left, left) : this.ReadReferent(binary.Left, left);
             right = this.BindNode(binary.Right, scope);
@@ -1224,8 +1224,8 @@ public sealed partial class Binding
             // SPEC 5.3: a pointer is displaced by an isize count, including in p += n and p -= n.
             // SPEC 13.4: a comparison reads through every reference layer, so the other operand is fitted to the referent.
             var comparand = comparison && left is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } && !ReferenceTypes.IsString(left) ? ComparisonReferent(left) : left;
-            // SPEC 13.3: a left operand without the operator is the problem, so the right operand is bound without its Type.
-            // SPEC 3.1.5, 13.4: a non-completing left operand fits the right operand's Type, so it expects nothing of it.
+            // SPEC 13.3.1: a left operand without the operator is the problem, so the right operand is bound without its Type.
+            // SPEC 3.1.3, 13.4: a non-completing left operand fits the right operand's Type, so it expects nothing of it.
             var expectedRight = logical ? BoundType.Boolean
                 : !assignment && ReferenceEquals(left, BoundType.Never) ? null
                 : ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus ? BoundType.ISize
@@ -1252,7 +1252,7 @@ public sealed partial class Binding
 
         if (arithmetic && !assignment && ReferenceEquals(left, BoundType.Never))
         {
-            left = right; // The operation is checked at the Type the non-completing operand fits (SPEC 3.1.5, 13.3).
+            left = right; // The operation is checked at the Type the non-completing operand fits (SPEC 3.1.3, 13.3.1).
         }
 
         if (assignment && !this.ValidPropertyWritePath(binary.Left, scope))
@@ -1275,7 +1275,7 @@ public sealed partial class Binding
 
         if (shift)
         {
-            // SPEC 13.3: the shifted operand may be a wrapping integer Type; the count is an integer Type, never a wrapping one.
+            // SPEC 13.3.1: the shifted operand may be a wrapping integer Type; the count is an integer Type, never a wrapping one.
             return NonNumericOperand(left) ? this.FailOperand(binary, left, BindingFailure.NonNumericOperand)
                 : NonIntegerOperand(left) ? this.FailOperand(binary, left, BindingFailure.NonIntegerOperand)
                 : !this.IsArithmeticInteger(left, scope) ? this.Fail(binary, BindingFailure.TypeMismatch)
@@ -1312,10 +1312,10 @@ public sealed partial class Binding
                 : this.FailMismatch(binary, binary.Right, right, BoundType.ISize);
         }
 
-        // SPEC 13.3: arithmetic and bitwise operators take numeric operands, so bool, Unit, char and string have none. A string
+        // SPEC 13.3.1: arithmetic and bitwise operators take numeric operands, so bool, Unit, char and string have none. A string
         // operand is judged through its reference layers and before the operands are compared, so that two string references
         // with distinct Origins are not reported as a mismatch of one Type with itself; an interpolated literal is the one way
-        // to join strings (SPEC 12.3.3). % and the bitwise operators take integers only, so a floating-point left operand is
+        // to join strings (SPEC 12.4.2). % and the bitwise operators take integers only, so a floating-point left operand is
         // the problem whatever the other operand is.
         if (arithmetic && NonNumericOperand(left))
         {
@@ -1329,7 +1329,7 @@ public sealed partial class Binding
 
         if (comparison)
         {
-            // SPEC 13.4, 3.4.1: qualifying pair layers are among the followed layers.
+            // SPEC 13.4, 3.4.3: qualifying pair layers are among the followed layers.
             left = this.ComparisonThroughPairs(binary.Left, left);
             right = this.ComparisonThroughPairs(binary.Right, right);
         }
@@ -1399,7 +1399,7 @@ public sealed partial class Binding
 
         if (genericInteger)
         {
-            return Complete(binary, result); // SPEC 8.4.7.3: every arithmetic, bitwise and remainder operator is defined for integers.
+            return Complete(binary, result); // SPEC 8.7.4: every arithmetic, bitwise and remainder operator is defined for integers.
         }
 
         if (left.IsNumeric)
@@ -1413,7 +1413,7 @@ public sealed partial class Binding
             return Complete(binary, result);
         }
 
-        // SPEC 13.3: the bitwise operators take integers only and have no user extension. SPEC arithmetic Contracts §2, §6: an
+        // SPEC 13.3.1: the bitwise operators take integers only and have no user extension. SPEC 13.3.4, 13.3: an
         // operand Type that is neither numeric nor a provider of the operator, such as an unconstrained Type parameter, a Tuple
         // or a raw pointer product, selects no conformance.
         if (operation is KotoKind.Ampersand or KotoKind.Bar or KotoKind.Caret)

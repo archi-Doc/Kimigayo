@@ -6,13 +6,13 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // The admitted set of every pair layer followed in this pass (SPEC 13.5.5.1), keyed by the @follow node.
+    // The admitted set of every pair layer followed in this pass (SPEC 13.5.5), keyed by the @follow node.
     private readonly Dictionary<Koto, SemanticsMask> pairFollows = new(ReferenceEqualityComparer.Instance);
 
-    // Receivers whose stored pair layer selection follows implicitly (SPEC 3.4.1, 7.3), with their admitted sets.
+    // Receivers whose stored pair layer selection follows implicitly (SPEC 3.4.3, 7.3), with their admitted sets.
     private readonly Dictionary<Koto, SemanticsMask> implicitPairFollows = new(ReferenceEqualityComparer.Instance);
 
-    /// <summary>Decomposes a pair layer (SPEC 13.5.5.1): the original <c>s/T</c>, stored as the pair's whole Type, an annotated
+    /// <summary>Decomposes a pair layer (SPEC 13.5.5): the original <c>s/T</c>, stored as the pair's whole Type, an annotated
     /// occurrence of it (<c>s/T during a</c>, SPEC 8.1.2), or an application <c>s/U</c> to another Type. The pair target <c>T</c>
     /// alone is not a pair layer.</summary>
     /// <param name="type">The normalized Type.</param>
@@ -44,12 +44,12 @@ public sealed partial class Binding
     /// <returns>The admitted Semantics, a subset of owner, ref and uniq.</returns>
     internal SemanticsMask PairAdmitted(Koto node) => this.pairFollows.GetValueOrDefault(node);
 
-    /// <summary>Gets the admitted set of a pair layer that selection follows implicitly at a receiver (SPEC 3.4.1, 7.3), or None.</summary>
+    /// <summary>Gets the admitted set of a pair layer that selection follows implicitly at a receiver (SPEC 3.4.3, 7.3), or None.</summary>
     /// <param name="node">The receiver operand whose stored pair layer is followed.</param>
     /// <returns>The admitted Semantics, a subset of owner, ref and uniq.</returns>
     internal SemanticsMask ImplicitPairAdmitted(Koto node) => this.implicitPairFollows.GetValueOrDefault(node);
 
-    /// <summary>Gets the terminal target below every qualifying pair layer of a node's Type (SPEC 13.5.5.1), or null when
+    /// <summary>Gets the terminal target below every qualifying pair layer of a node's Type (SPEC 13.5.5), or null when
     /// its Type is no qualifying pair layer.</summary>
     /// <param name="node">A pair Subject or receiver.</param>
     /// <returns>The Type the followed layers end in.</returns>
@@ -57,7 +57,7 @@ public sealed partial class Binding
         => node.BoundType is { } type && this.ConstraintScope(node) is var scope && this.FollowablePair(type, scope, out var target) != SemanticsMask.None
             ? this.PairTerminal(target, scope) : null;
 
-    // SPEC 13.5.5.1: the admitted set of a pair layer that may be followed, or None.
+    // SPEC 13.5.5: the admitted set of a pair layer that may be followed, or None.
     private SemanticsMask FollowablePair(BoundType type, BindingScope scope, out BoundType target)
     {
         if (!TryPairLayer(type, out var whole, out target))
@@ -69,7 +69,7 @@ public sealed partial class Binding
         return admitted != SemanticsMask.None && (admitted & ~(SemanticsMask.Owner | SemanticsMask.ValueBorrow)) == 0 ? admitted : SemanticsMask.None;
     }
 
-    // SPEC 13.5.5.1: the weakest capability over the admitted cases. Owner inherits the operand Place's own capability (a write
+    // SPEC 13.5.5: the weakest capability over the admitted cases. Owner inherits the operand Place's own capability (a write
     // needs an assignable Place, such as an inline element of a writable root), uniq grants Write also through a let slot but
     // never through a shared path, and ref grants Read only.
     private bool PairCapability(ConversionKoto followed, BindingScope? scope, bool exclusive)
@@ -87,7 +87,7 @@ public sealed partial class Binding
             ((admitted & SemanticsMask.Owner) == 0 || (scope is null ? Writable(operand) || ElementAccess.WritableRoot(operand) is not null : this.BorrowablePlace(operand, scope, true)));
     }
 
-    // SPEC 7.3, 13.5.5.1: a ref/Self or uniq/Self receiver selected through a pair layer is acquired as p@follow@ref or
+    // SPEC 7.3, 13.5.5: a ref/Self or uniq/Self receiver selected through a pair layer is acquired as p@follow@ref or
     // p@follow@uniq; an exclusive receiver needs the weakest admitted Write capability.
     private bool TryPairReceiver(Koto source, BoundType pattern, BoundType actual, BindingScope scope, out BoundType adapted, out ArgumentOperationKind kind, bool record)
     {
@@ -156,7 +156,7 @@ public sealed partial class Binding
         return this.types.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, target, this.PairOrigin(node, type, admitted));
     }
 
-    // SPEC 13.5.5.1: the Type below every further qualifying pair layer of a pair target. Following for Write needs Write
+    // SPEC 13.5.5: the Type below every further qualifying pair layer of a pair target. Following for Write needs Write
     // through every layer, so an inner layer admitting ref ends an exclusive walk (the outer layer's capability is checked
     // at its operand). The outer layer's Origin bounds the result in every case: each inner Origin outlives it.
     private BoundType? PairTerminal(BoundType target, BindingScope scope, bool exclusive = false)
@@ -174,7 +174,7 @@ public sealed partial class Binding
         return target;
     }
 
-    // SPEC 13.5.5.1, 15.5, 15.6.3: a reference through a pair layer depends on the operand Place when owner is admitted (Borrow)
+    // SPEC 13.5.5, 15.5, 15.6.3: a reference through a pair layer depends on the operand Place when owner is admitted (Borrow)
     // and otherwise keeps the dependencies of the stored reference, like a Reborrow: the layer's outer-Origin slot (`o` for the
     // original pair, the annotation or the application's own slot otherwise), met with the borrows that reach the operand when an
     // exclusive case is admitted, as that case's follow of its concrete reference is; the Place only for an application without

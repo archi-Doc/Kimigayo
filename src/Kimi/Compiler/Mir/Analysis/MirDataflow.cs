@@ -42,7 +42,7 @@ internal interface IMirFlow : IMirBlocks
 internal sealed class MirDataflow(MirReach reach)
 {
     // R4-M15a: the byte size of an analysis arena above which a body is not analyzed (OwnershipStorageLimit_Kd), the old path's limit
-    // value until R6 states it in IMPL 21.3.5.
+    // value until R6 states it in IMPL 21.3.2.
     private const long ByteLimit = 64L * 1024 * 1024;
     private int[] order = []; // The blocks in reverse postorder.
     private int[] next = []; // Each block's successor in its chain, or -1 at the chain's tail.

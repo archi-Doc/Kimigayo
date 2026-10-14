@@ -4,7 +4,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 13.7.2, 13.5.5.1: a compound update through `E@follow` evaluates `E` once, after its right-hand side, and
+/// <summary>SPEC 13.7.2, 13.5.5: a compound update through `E@follow` evaluates `E` once, after its right-hand side, and
 /// reads and writes the one referent Place that evaluation designates.</summary>
 public class DereferenceUpdateTest
 {

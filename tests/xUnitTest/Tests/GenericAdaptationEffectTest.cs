@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 8.10, 13.5.8: creation uses ordinary effects; destruction accounts for every feasible Semantics case.
+// SPEC 8.15, 13.6.2: creation uses ordinary effects; destruction accounts for every feasible Semantics case.
 public class GenericAdaptationEffectTest
 {
     private const string Destruction = "struct Payload\n    drop => Console.writeLine(\"drop\")\n" +

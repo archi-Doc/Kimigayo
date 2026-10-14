@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 23.4.8: the language server advertises code actions only to a client that supports code action literals and versioned
+// SPEC 23.4: the language server advertises code actions only to a client that supports code action literals and versioned
 // document changes, answers textDocument/codeAction from the diagnostics it last sent for the URI, and returns a repair
 // candidate as a quick fix only while the result that sent it is valid.
 public sealed class LspCodeActionTest : IDisposable

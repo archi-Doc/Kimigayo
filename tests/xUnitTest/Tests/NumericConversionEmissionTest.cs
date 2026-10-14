@@ -120,7 +120,7 @@ public class NumericConversionEmissionTest
         Assert.False(c.Validate(out _));
     }
 
-    // SPEC 13.5.4.2: a direct floating-point literal converted to an integer Type is truncated toward zero from its exact decimal
+    // SPEC 13.5.4: a direct floating-point literal converted to an integer Type is truncated toward zero from its exact decimal
     // value at compile time; the folded payload is the target's sign-extended bit pattern.
     [Theory]
     [InlineData("3.9@i32", "i32", "3")]

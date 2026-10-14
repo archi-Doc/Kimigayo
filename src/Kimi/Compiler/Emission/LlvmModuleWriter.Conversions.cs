@@ -50,7 +50,7 @@ internal static partial class LlvmModuleWriter
             WriteArithmeticFailure(output, constants, instruction, condition);
         }
 
-        // SPEC 4.6.9: an unchecked conversion with bounds is a position; a value isize cannot hold becomes -1.
+        // SPEC 4.7.1: an unchecked conversion with bounds is a position; a value isize cannot hold becomes -1.
         var saturate = instruction.Check == ArithmeticCheckKind.None && (instruction.LowerPredicate is not null || instruction.UpperPredicate is not null);
         if (instruction.ScalarOperator is { } op)
         {

@@ -20,7 +20,7 @@ public class ObjectCallableOriginTest
         ScalarEmissionTest.EmitFixture("ObjectCallableOrigin" + mode, source, string.Empty);
     }
 
-    // SPEC 7.3, 7.6.3, 13.5.5.1: a direct call through an object handle or view, or of its written payload follow, acquires the
+    // SPEC 7.3, 7.7.3, 13.5.5: a direct call through an object handle or view, or of its written payload follow, acquires the
     // complete payload through the same checked borrow as h@follow@ref (Shared) or h@follow@uniq (Exclusive).
     [Theory]
     [InlineData("RcItem", "func seven() -> i32 => 7\nlet h = Kimi.Intrinsics.makeRc(seven)\nrequire h() == 7 else => $abort(\"item\")")]

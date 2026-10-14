@@ -331,7 +331,7 @@ internal sealed partial class MirValidator(TyCtxt types)
 
         // The operands an rvalue has: one or two, as many as its Type's elements, Fields (the base first) or Case payload, or captures; -1
         // when an aggregate's kind and Type disagree. A fixed array of a generic length is counted by its instance, and one built from no
-        // operand stores no element (SPEC 4.3.4 noinit); an Array or a Dictionary is built from none, the empty collection (SPEC 12.3.2).
+        // operand stores no element (SPEC 4.3.4 noinit); an Array or a Dictionary is built from none, the empty collection (SPEC 12.4.1).
         private static int Arity(in MirRvalue rvalue)
         {
             var type = rvalue.Type;

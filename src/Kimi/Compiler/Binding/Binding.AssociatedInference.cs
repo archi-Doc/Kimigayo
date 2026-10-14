@@ -356,7 +356,7 @@ public sealed partial class Binding
         this.associatedBindings.TryGetValue((path.RootPath, identity), out var binding) && binding.Candidates.Count == 0 &&
         this.SpecificationPart(path, identity) is null;
 
-    // SPEC 15.3.3, 15.4.4, 23.3.6.4: the explicit specification of an associated identity in the conformance's declaration or its
+    // SPEC 15.3.3, 15.4.4, 23.1.2: the explicit specification of an associated identity in the conformance's declaration or its
     // conditional block that fixes its Type, or that did not bind. An identity so specified is never an inference hole, and a missing
     // binding rests on the clause, or on its specified Type when that fails instead (SettleSpecificationLinks).
     private IsKoto? SpecificationPart(BoundConformancePath path, BoundRequirement identity)
@@ -393,7 +393,7 @@ public sealed partial class Binding
                 ? clause : null;
     }
 
-    // SPEC 23.3.6.4: a conformance resting on a specification is derived from what has failed by publication: the clause, or its
+    // SPEC 23.1.2: a conformance resting on a specification is derived from what has failed by publication: the clause, or its
     // specified Type when only that failed, such as a formation proven at the Definition deadline.
     private void SettleSpecificationLinks()
     {

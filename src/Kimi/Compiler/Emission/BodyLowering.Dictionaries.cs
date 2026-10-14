@@ -102,7 +102,7 @@ internal sealed partial class BodyLowering
             : element.IsScalar ? this.PhysicalOperand(body, Input(body, id, operand)) : new(EmissionOperandKind.SlotAddress, place);
     }
 
-    // SPEC 22.1.2.5: the nullable form of Alloc and the unsafe byte copy that the DictionaryStorage capacity bodies use; neither
+    // SPEC 22.2: the nullable form of Alloc and the unsafe byte copy that the DictionaryStorage capacity bodies use; neither
     // reports a failure, so neither needs a location.
     private bool LowerStorageBytes(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
@@ -153,7 +153,7 @@ internal sealed partial class BodyLowering
         static bool BytePointer(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } && ReferenceEquals(pointee, BoundType.Primitives["u8"]);
     }
 
-    // SPEC 4.7.5: placeEntry appends one slot, growing the storage first, and transfers the acquired key and value into
+    // SPEC 4.9.6: placeEntry appends one slot, growing the storage first, and transfers the acquired key and value into
     // it through the literal's typed placement helper. The ordinary source bodies prove that no equal key is stored, and
     // growth failure reports the standard operation's forwarded caller location.
     private bool LowerDictionaryPlacement(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, CallPlan plan, out string? failure)

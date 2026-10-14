@@ -9,7 +9,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 15.6.1, 15.6.5, 23.3.6.5: a fit that holds structurally but fails in an Origin part is an Origin relation, reported at the
+// SPEC 15.6.1, 15.6.5, 23.1: a fit that holds structurally but fails in an Origin part is an Origin relation, reported at the
 // value that supplies the longer end. A body-local Borrow reaching a fixed Origin is Refuted (UnsatisfiedOriginRelation_Kd, Language)
 // and an underivable relation between fixed Origins is Unknown (UnprovenOriginRelation_Kd, Proof); both ends are Origin displays and
 // neither is ever a Type mismatch.
@@ -77,7 +77,7 @@ public class OriginRelationDiagnosticTest
         Assert.True(output.Accepted, string.Join("\n", output.Diagnostics.Select(static x => $"{x.Code}: {x.Label}")));
     }
 
-    // SPEC 15.6.1, 23.3.6.5: a Type occurrence whose nested Origin is not proven to outlive the outer one is a wellFormed record at
+    // SPEC 15.6.1, 23.1: a Type occurrence whose nested Origin is not proven to outlive the outer one is a wellFormed record at
     // that occurrence, independent of the fit of the initializer, which is its own record.
     [Fact]
     public void AWellFormednessRelationIsRecordedAtItsTypeOccurrence()
@@ -88,7 +88,7 @@ public class OriginRelationDiagnosticTest
         Assert.All(errors, static x => Assert.Equal(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), x.Code));
         Assert.Equal(("ref/(ref/i32 during b) during a", "wellFormed"), (Text(source, errors[0].Span), errors[0].Reason![3].Value));
         Assert.Equal(("slot", "fit"), (Text(source, errors[1].Span), errors[1].Reason![3].Value));
-        // SPEC 23.3.6.5: only the fit names its destination Type.
+        // SPEC 23.1: only the fit names its destination Type.
         Assert.Equal(["relation", "longer", "shorter", "source"], errors[0].Reason!.Select(static x => x.Name));
         Assert.Equal(["relation", "longer", "shorter", "source", "destination"], errors[1].Reason!.Select(static x => x.Name));
         Assert.All(errors, static x => Assert.Equal("requires b outlives a, which is not proven", x.Label));
@@ -130,7 +130,7 @@ public class OriginRelationDiagnosticTest
         Assert.Equal(nameof(DiagnosticCode.CallActivationConflict_Kd), error.Code);
     }
 
-    // SPEC 7.6.1, 15.6.1: an anonymous function has no origin clauses, so only an Origin written on its input bounds that input.
+    // SPEC 7.7.1, 15.6.1: an anonymous function has no origin clauses, so only an Origin written on its input bounds that input.
     [Fact]
     public void AnAnonymousInputIsBoundByItsWrittenOrigin()
     {
@@ -152,7 +152,7 @@ public class OriginRelationDiagnosticTest
         Assert.Equal(("n = 2", "y"), (Text(source, errors[0].Span), Text(source, errors[1].Span)));
     }
 
-    // SPEC 23.3.6.8: the console names the borrow and relates it, the language server sends the record with its related location,
+    // SPEC 23.3: the console names the borrow and relates it, the language server sends the record with its related location,
     // and the JSON form carries the display kind beside each Origin value.
     [Fact]
     public void EveryOutputCarriesTheOriginDisplay()

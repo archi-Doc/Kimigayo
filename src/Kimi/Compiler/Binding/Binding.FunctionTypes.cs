@@ -37,7 +37,7 @@ public sealed partial class Binding
         return null;
     }
 
-    // The declaration whose own per-call inputs the signature of a Function Item or closure names (SPEC 8.6).
+    // The declaration whose own per-call inputs the signature of a Function Item or closure names (SPEC 8.10).
     internal static Koto? SignatureOwner(BoundType callee)
     {
         var owner = callee is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } borrowed ? borrowed.Components[0] : callee;
@@ -173,7 +173,7 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 8.6, 15.6.4: every Origin-bearing input is a direct borrow over its own per-call input, an Origin that the signature's
+    // SPEC 8.10, 15.6.4: every Origin-bearing input is a direct borrow over its own per-call input, an Origin that the signature's
     // own binder quantifies: a Function Type's own syntax or the declaration `own`. Any other Origin is fixed, even at its own slot.
     // An expected signature (`any`) may take a fixed Origin for a per-call one, which only asks more of the implementation.
     private static bool PerCallInputs(BoundType signature, Koto? own, bool any = false)
@@ -526,7 +526,7 @@ public sealed partial class Binding
 
         if (target.GenericArguments.Count != 0)
         {
-            // The selected generic Item keeps its bound arguments; at a common Function Type it is then erased (SPEC 7.6.4).
+            // The selected generic Item keeps its bound arguments; at a common Function Type it is then erased (SPEC 7.7.4).
             var arguments = this.typeScratch.Rent(target.GenericArguments.Count);
             var lengths = this.lengthScratch.Rent(target.GenericArguments.Count);
             try
@@ -568,7 +568,7 @@ public sealed partial class Binding
             }
         }
 
-        // The reference is its Function Item; at a common Function Type that Item is erased (SPEC 7.6.4), whatever syntax names it.
+        // The reference is its Function Item; at a common Function Type that Item is erased (SPEC 7.7.4), whatever syntax names it.
         var concrete = this.CompleteFunctionItem(use, selected, default, this.ReferenceContainer(use, selected));
         if (!erase)
         {

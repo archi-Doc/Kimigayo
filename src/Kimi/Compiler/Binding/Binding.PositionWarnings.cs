@@ -5,7 +5,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// SPEC 17.4.4: a position or range key built only from literal-only expressions, `^` applied to one and omitted boundaries
+// SPEC 17.5.4: a position or range key built only from literal-only expressions, `^` applied to one and omitted boundaries
 // is judged exactly. Each position is `c * L + k` in the target length L, and resolution is a set of linear inequalities
 // in L; the key is warned about when no length resolves it or, for a fixed array, when its length N does not. The warning
 // changes neither Type fitting, execution nor overload choice.
@@ -154,7 +154,7 @@ public sealed partial class Binding
     private void CheckLiteralKey(IndexKoto source, BoundType core)
         => this.CheckLiteralPosition(source.Right, KotoHelper.UnwrapParentheses(source.Right) is RangeKoto ? LiteralRole.Range : LiteralRole.Element, FixedLength(core));
 
-    // SPEC 17.4.4: judges a literal-only position or range passed to a Kimi operation that resolves it: a sequence
+    // SPEC 17.5.4: judges a literal-only position or range passed to a Kimi operation that resolves it: a sequence
     // operation's position or range parameter, or the receiver of `resolve`/`tryResolve` on a position or range Type.
     private void CheckLiteralArguments(InvocationKoto call)
     {
@@ -190,7 +190,7 @@ public sealed partial class Binding
             }
         }
 
-        // The resolution a public position entry performs (SPEC 4.6.6, 4.7.2).
+        // The resolution a public position entry performs (SPEC 4.8.2, 4.9.3).
         static LiteralRole? OperationRole(string? operation, string? parameter) => (operation, parameter) switch
         {
             ("tryGet" or "tryGetUniq" or "remove" or "swapRemove", "index") or ("swap", "first" or "second") => LiteralRole.Element,

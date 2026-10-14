@@ -110,7 +110,7 @@ internal readonly record struct HirAdjust(HirAcquire Acquire, HirAdaptation Adap
         _ => default,
     };
 
-    // A capture entry, as `let x = x` or `let x = x@op` acquires (SPEC 7.6.2).
+    // A capture entry, as `let x = x` or `let x = x@op` acquires (SPEC 7.7.2).
     internal static HirAdjust Of(CaptureAcquisition acquisition) => acquisition switch
     {
         CaptureAcquisition.Copy => new(HirAcquire.Copy, HirAdaptation.None),
@@ -121,7 +121,7 @@ internal readonly record struct HirAdjust(HirAcquire Acquire, HirAdaptation Adap
     };
 
     // A call's argument, receiver or payload operation (SPEC 7.3, 10.2); a Reborrow in the same mode keeps the Type, the bare acquisition,
-    // and an explicit borrow is the reference itself (SPEC 13.5.5.2), even the string borrow Binding records as the call's (SPEC 22.4).
+    // and an explicit borrow is the reference itself (SPEC 13.5.6), even the string borrow Binding records as the call's (SPEC 22.1).
     internal static HirAdaptation Of(in BoundArgumentOperation operation) => operation.Kind switch
     {
         ArgumentOperationKind.Borrow when operation.Source is { } source && KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } => HirAdaptation.None,
@@ -135,7 +135,7 @@ internal readonly record struct HirAdjust(HirAcquire Acquire, HirAdaptation Adap
         _ => HirAdaptation.ReferenceRead,
     };
 
-    // An adaptation recorded at a node's fixed expected Type or for a receiver (SPEC 3.4.1, 3.5.3, 10.2); a Reborrow in the node's own mode
+    // An adaptation recorded at a node's fixed expected Type or for a receiver (SPEC 3.4.3, 3.5.3, 10.2); a Reborrow in the node's own mode
     // keeps the Type, the bare acquisition.
     internal static HirAdaptation Of(in BoundAdaptation adaptation, BoundType? type) => adaptation.Kind switch
     {
@@ -155,11 +155,11 @@ internal enum HirAcquire : byte
     Copy,
     Move,
     Reborrow, // The exclusive reference a Place stores, Reborrowed in its own mode.
-    ByCase, // As each Semantics case's Type acquires: a pair layer's Copy or Reborrow (SPEC 8.9).
+    ByCase, // As each Semantics case's Type acquires: a pair layer's Copy or Reborrow (SPEC 8.14).
     Temporary, // A value, not a Place, taken as it is.
 }
 
-/// <summary>The Place a node designates: the PlaceShape column of <see cref="HirTables"/> (SPEC 3.4.1, 3.5, 13.5.5.1), set on every node
+/// <summary>The Place a node designates: the PlaceShape column of <see cref="HirTables"/> (SPEC 3.4.3, 3.5, 13.5.5), set on every node
 /// the builder evaluates and on a Pattern binding its plan borrows. The builder forms a MIR Place from the Kind, the node's Res and its
 /// direct children, then follows <paramref name="Layers"/> layers of the node's own Type (<see cref="TyCtxt.Layer"/>: a reference or object
 /// handle layer as a Deref, a pair layer as a PairLayer) that its consumer follows implicitly before it projects or borrows the node.</summary>
@@ -177,7 +177,7 @@ internal enum HirPlaceKind : byte
     Static,
     Field, // A stored Field or a Tuple element of its receiver, an accessor's storage of its implicit self, or a Tuple position.
     Deref, // The referent *p or p@follow selects through a reference, a pointer or an object handle.
-    PairLayer, // The target p@follow selects through a pair layer (SPEC 13.5.5.1).
+    PairLayer, // The target p@follow selects through a pair layer (SPEC 13.5.5).
     Index, // An element at a runtime position or key.
     ConstIndex, // A fixed-array element at a literal position in range (SPEC 15.1.3).
     Downcast, // The payload of a Case position.
@@ -189,11 +189,11 @@ internal enum HirAdaptation : byte
 {
     None,
     ReferentRead, // The Scalar the reference layers end in is read (SPEC 3.5.3).
-    ReferenceRead, // One reference, in the destination's mode, to the referent the layers reach (SPEC 3.4.1, 10.2).
+    ReferenceRead, // One reference, in the destination's mode, to the referent the layers reach (SPEC 3.4.3, 10.2).
     SharedBorrow,
     ExclusiveBorrow,
     BaseBorrow, // A borrow of the base a projected receiver's path selects (SPEC 7.3).
-    PayloadProjection, // A shared borrow of an object handle's payload (SPEC 13.5.5.1).
+    PayloadProjection, // A shared borrow of an object handle's payload (SPEC 13.5.5).
     StorageProjection, // The receiver's base that declares the selected stored Field.
     Erasure, // A closure or function item erased to its Function Type (SPEC 10.2).
 }

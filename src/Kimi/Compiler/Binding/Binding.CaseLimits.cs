@@ -1,10 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the Semantics case bound of a definition (SPEC 8.10, 23.3.6.1), the one place it is decided.
+// Owns the Semantics case bound of a definition (SPEC 8.15, 23.1.1), the one place it is decided.
 // Input: a function or Property definition whose signature is bound. Output: CaseLimit on the definition beyond PairBinder.CaseBound.
 // Decided once per definition and pass, before its parts (defaults, base initializer, bodies, initializer, accessor bodies) are bound;
 // beyond the bound the definition fails with CaseLimit, only as its first failure. Its parts are still bound, so their independent
-// records stay visible (SPEC 23.3.6.4), but no case of them is verified: a case adaptation in them depends on the failure, and the HIR
+// records stay visible (SPEC 23.1.2), but no case of them is verified: a case adaptation in them depends on the failure, and the HIR
 // publishes no part of an unresolved definition. Its signature stays valid (KeepsSignature), so its calls are checked normally. A
 // definition without parts is never bounded; Closures, default templates and accessors share their definition's binders.
 // Must not bound an operation or keep the case count in a table: the report recomputes it.

@@ -7,12 +7,12 @@ namespace Kimi.Compiler.Mir;
 
 // Matches (SPEC 14.8, 15.1.6, plan 5.6.3): the Subject acquired once into its Place, then the arms in source order as a decision chain, each
 // its Pattern's tests, its guard, its bindings and its body; no decision tree, no pruning by Pattern containment and no constant folding come
-// before the analyses (SPEC 14.9.2), and where no arm matches is unreachable.
+// before the analyses (SPEC 14.2.2), and where no arm matches is unreachable.
 internal sealed partial class MirBuilder
 {
     private readonly List<MirPlace> selected = []; // The Place each Pattern position of the matches being built selects, before its follows.
 
-    // SPEC 14.8, 17.2.4: a match, or a try with its synthesized arms, a target for a yield. The Subject and the tests' temporaries end
+    // SPEC 14.8, 17.3: a match, or a try with its synthesized arms, a target for a yield. The Subject and the tests' temporaries end
     // when the match does, after the selected arm's scope (SPEC 15.1.6); a link whose Pattern tests nothing and has no guard still branches,
     // on a constant, to the next one, so that even a catch-all can fail for the analyses.
     private void Match(MirPlace destination, MatchKoto match)

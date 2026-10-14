@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 13.5.5.1, 15.6.2: a reference stored in an inline Field, Tuple element or nested part of an owned root is followed
+// SPEC 13.5.5, 15.6.2: a reference stored in an inline Field, Tuple element or nested part of an owned root is followed
 // through that slot; let forbids replacing the slot but keeps the stored reference's capability.
 public class OwnedStoredReferenceTest
 {
@@ -185,7 +185,7 @@ public class OwnedStoredReferenceTest
         Assert.False(c.Validate(out _));
     }
 
-    // SPEC 3.4, 13.5.5.1: a referent selected through a reference to a stored exclusive reference (`uniq/uniq/i32`,
+    // SPEC 3.4, 13.5.5: a referent selected through a reference to a stored exclusive reference (`uniq/uniq/i32`,
     // `ref/uniq/i32`) is reached through both addresses; the inner exclusive reference is not copied.
     [Theory]
     [InlineData("SlotWrite", "var t = (value@uniq, 2)\nlet r = t.0@uniq\nr@follow@follow = 5\nrequire value == 5 else => $abort(\"changed\")")]
@@ -216,7 +216,7 @@ public class OwnedStoredReferenceTest
         Assert.False(c.Validate(out _));
     }
 
-    // SPEC 3.3.6: a shared borrow of a slot holding an exclusive reference (`ref/uniq/i32`) has only shared access to the
+    // SPEC 3.3.2: a shared borrow of a slot holding an exclusive reference (`ref/uniq/i32`) has only shared access to the
     // referent, so two such borrows and reads through either coexist; each kept the inner reference's exclusive Loan before.
     [Theory]
     [InlineData("SharedLocal", "let p = value@uniq\nlet r = p@ref\nlet r2 = p@ref\nlet x: i32 = r\nrequire x == 1 and r2 == 1 and r == r2 else => $abort(\"read\")")]

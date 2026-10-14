@@ -30,7 +30,7 @@ public class AccessorReceiverBindingTest
         Assert.False(c.Validate(out _));
     }
 
-    // SPEC 11.2: a function keeps every receiver form, while a computed getter reads through ref/Self only; the Core of a
+    // SPEC 11.3: a function keeps every receiver form, while a computed getter reads through ref/Self only; the Core of a
     // wrongly shaped receiver is still Self, so the formation check passes and the shape check reports it.
     [Theory]
     [InlineData("Self")]

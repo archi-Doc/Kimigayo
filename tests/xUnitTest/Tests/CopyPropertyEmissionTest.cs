@@ -83,7 +83,7 @@ public class CopyPropertyEmissionTest
     public void ComputedSetterHasItsOwnInputType()
         => ScalarEmissionTest.EmitFixture("CopyPropertySetterType", "struct S\n    var raw: i32 = 0\n    public computed item: i32\n        get() -> i32 => self.raw\n        set(value: bool) -> ()\n            if value => self.raw = 9\nvar s = S.init()\ns.item = true\nrequire s.item == 9 else => $abort(\"input\")", string.Empty);
 
-    // SPEC 11.2: a getter reads through ref/Self; the operation that advances the state is a function whose receiver is acquired
+    // SPEC 11.3: a getter reads through ref/Self; the operation that advances the state is a function whose receiver is acquired
     // exclusively by the call form (SPEC 7.3), and a shared getter beside it reads the same state.
     [Fact]
     public void ExclusiveReadingIsAFunctionBesideASharedGetter()

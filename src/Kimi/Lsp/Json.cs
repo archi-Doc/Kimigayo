@@ -41,7 +41,7 @@ public sealed class HoverClientCapabilities
     public string[]? ContentFormat { get; set; }
 }
 
-/// <summary>The client's code action support; <c>codeActionLiteralSupport</c> is read as presence (SPEC 23.4.8).</summary>
+/// <summary>The client's code action support; <c>codeActionLiteralSupport</c> is read as presence (SPEC 23.4).</summary>
 public sealed class CodeActionClientCapabilities
 {
     public JsonElement? CodeActionLiteralSupport { get; set; }
@@ -59,7 +59,7 @@ public sealed class WorkspaceClientCapabilities
     public WorkspaceEditClientCapabilities? WorkspaceEdit { get; set; }
 }
 
-/// <summary>The client's workspace edit support; versioned <c>documentChanges</c> are required for code actions (SPEC 23.4.8).</summary>
+/// <summary>The client's workspace edit support; versioned <c>documentChanges</c> are required for code actions (SPEC 23.4).</summary>
 public sealed class WorkspaceEditClientCapabilities
 {
     public bool? DocumentChanges { get; set; }
@@ -85,7 +85,7 @@ public sealed class ServerCapabilities
 
     public TextDocumentSyncOptions TextDocumentSync { get; set; } = new();
 
-    /// <summary>Gets or sets the code action provider, advertised only when the client supports literals and versioned document changes (SPEC 23.4.8).</summary>
+    /// <summary>Gets or sets the code action provider, advertised only when the client supports literals and versioned document changes (SPEC 23.4).</summary>
     public CodeActionOptions? CodeActionProvider { get; set; }
 }
 
@@ -193,7 +193,7 @@ public sealed class FileSystemWatcher
     public string GlobPattern { get; set; } = string.Empty;
 }
 
-/// <summary>The parameters of <c>textDocument/codeAction</c> (SPEC 23.4.8); <c>context.diagnostics</c> is accepted and not read.</summary>
+/// <summary>The parameters of <c>textDocument/codeAction</c> (SPEC 23.4); <c>context.diagnostics</c> is accepted and not read.</summary>
 public sealed class CodeActionParams
 {
     public TextDocumentIdentifier TextDocument { get; set; } = new();
@@ -262,7 +262,7 @@ public sealed class TextDocumentEdit
 /// <param name="NewText">The replacement text.</param>
 public sealed record LspTextEdit(SourceRange Range, string NewText);
 
-/// <summary>A repair candidate placed in a report URI (SPEC 23.4.8): the diagnostic it belongs to, its title with any required phrases, and its edits in that document.</summary>
+/// <summary>A repair candidate placed in a report URI (SPEC 23.4): the diagnostic it belongs to, its title with any required phrases, and its edits in that document.</summary>
 /// <param name="Diagnostic">The sent diagnostic.</param>
 /// <param name="Title">The code action title.</param>
 /// <param name="Edits">The edits, all in the report's document.</param>
@@ -379,7 +379,7 @@ internal sealed class LspMessage
 
 /// <summary>
 /// Reads document text, which may hold a lone surrogate: JSON escapes it, and the tokenizer reports it as
-/// <c>InvalidSourceEncoding_Kd</c> (SPEC 23.3.4), so it must not make the whole change unreadable.
+/// <c>InvalidSourceEncoding_Kd</c> (SPEC 23.2.1), so it must not make the whole change unreadable.
 /// </summary>
 internal sealed class DocumentTextConverter : JsonConverter<string>
 {

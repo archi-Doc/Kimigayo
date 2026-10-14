@@ -25,7 +25,7 @@ public sealed class TryKoto : MatchKoto
         this.nonePattern = Pattern(ref reader, span, Case(ref reader, span, "None"), null);
         this.errorPattern = Pattern(ref reader, span, Case(ref reader, span, "Err"), "$try.error");
         this.noneValue = Case(ref reader, span, "None");
-        // SPEC 17.2.4: the extracted payloads are transferred out of their generated bindings (SPEC 15.1.5).
+        // SPEC 17.3: the extracted payloads are transferred out of their generated bindings (SPEC 15.1.5).
         this.errorValue = new InvocationKoto(ref reader, span, Case(ref reader, span, "Err"), [Transfer(ref reader, span, "$try.error")]);
         this.Failure = new ReturnKoto(ref reader, span, this.errorValue);
         var arms = (List<MatchArmKoto>)this.Arms;

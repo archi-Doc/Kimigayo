@@ -194,7 +194,7 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // SPEC 15.6.1, 8.9: an operand into a destination of a Type; a PairAcquire the view makes a Reborrow (MirCases.Reborrows) is also a Loan
+    // SPEC 15.6.1, 8.14: an operand into a destination of a Type; a PairAcquire the view makes a Reborrow (MirCases.Reborrows) is also a Loan
     // on its Place's referent, into the destination's outer Origin.
     private void Flow(MirLocation at, in MirOperand operand, BoundType? expected, Side to)
     {

@@ -13,7 +13,7 @@ public sealed partial class Binding
     private FunctionKoto? activeInferenceFunction;
 
     // Set when a known call signature's result over its closure's hidden environment receiver supplied no evidence for a slot: that slot
-    // is not unsolved but judged by the Callable proof or the conversion (SPEC 8.6, 7.6.4).
+    // is not unsolved but judged by the Callable proof or the conversion (SPEC 8.10, 7.7.4).
     private bool environmentEvidence;
 
     private static Koto? IncompleteSignature(FunctionKoto function)
@@ -119,7 +119,7 @@ public sealed partial class Binding
             var receiverType = this.BindNode(member.Left, scope);
             this.ReceiverThroughLayers(member.Left, receiverType);
             this.ReceiverElement(member.Left, receiverType);
-            // SPEC 3.4.1: selection continues at the referent of each safe value-reference layer and, under the
+            // SPEC 3.4.3: selection continues at the referent of each safe value-reference layer and, under the
             // object view rules, at the payload of an object handle or view.
             while (true)
             {
@@ -136,7 +136,7 @@ public sealed partial class Binding
                     valueMember = valueSelection.Member ?? valueMember;
                 }
 
-                // SPEC 3.4.1: a qualifying pair layer without the member, declared or published, continues at its target.
+                // SPEC 3.4.3: a qualifying pair layer without the member, declared or published, continues at its target.
                 if (valueMember is not null || receiverType is null || this.FollowablePair(receiverType, scope, out var pairTarget) == SemanticsMask.None)
                 {
                     break;
@@ -229,7 +229,7 @@ public sealed partial class Binding
 
     private BoundType? BindCall(InvocationKoto call, BindingScope scope, BoundType? expected)
     {
-        // The bound requirement reference of a candidate or winner belongs to its own call (SPEC 8.4.2): a call bound inside
+        // The bound requirement reference of a candidate or winner belongs to its own call (SPEC 8.4.3): a call bound inside
         // it, such as a later argument, neither sees nor clears the enclosing call's reference.
         var enclosingRequirementContract = this.activeRequirementContract;
         var enclosingAcquisition = this.acquisitionFailure;
@@ -338,7 +338,7 @@ public sealed partial class Binding
             var named = inner is GenericsKoto { Identifier: { } identifier } ? identifier : inner;
             if (callee is ParenthesizedKoto && named is IdentifierNameKoto or MemberAccessKoto && named.BoundSymbol is { Kind: BindingSymbolKind.Function } function)
             {
-                // SPEC 12.4.2: parentheses stay part of a referenced function name, so `(f)(1)` is the call `f(1)`; a member is
+                // SPEC 12.5.2: parentheses stay part of a referenced function name, so `(f)(1)` is the call `f(1)`; a member is
                 // selected again as a callee, with its receiver.
                 callee = named;
                 generic = inner as GenericsKoto;
@@ -411,7 +411,7 @@ public sealed partial class Binding
         var imports = this.importCandidates?.GetValueOrDefault(callee);
         if (imports is { Count: > 1 } && this.CheckGatheredParameterShapes(callee, imports, aliasStage: true))
         {
-            // SPEC 7.3.1, 9.4.1: a function group gathered at the alias stage from several declaration sources is checked at the use.
+            // SPEC 7.4, 9.5.1: a function group gathered at the alias stage from several declaration sources is checked at the use.
             return Complete(call, null);
         }
 
@@ -530,7 +530,7 @@ public sealed partial class Binding
             if (evaluation.Error)
             {
                 // A candidate in a failed declaration cannot be judged, nor one whose Constraint fails on a conformance resting on a failed
-                // associated specification or limited by OCC-X, so the selection rests on that failure (SPEC 23.3.6.4).
+                // associated specification or limited by OCC-X, so the selection rests on that failure (SPEC 23.1.2).
                 return (evaluation.InvalidDeclaration ?? this.TakeFailedConformance()) is { } cause ? this.CompleteDependent(call, cause) : this.Fail(call, BindingFailure.InvalidConstraint);
             }
 
@@ -543,13 +543,13 @@ public sealed partial class Binding
             if (selection == CallSelection.FailedSignature)
             {
                 // A candidate whose own signature failed, such as a nested borrow without its Origin (`ref/uniq/i32`), stays
-                // pending at every call; the selection rests on that failure (SPEC 23.3.6.4).
+                // pending at every call; the selection rests on that failure (SPEC 23.1.2).
                 return this.CompleteDependent(call, evaluation.FailedPendingSignature!);
             }
 
             if (selection == CallSelection.Unproven)
             {
-                // SPEC 8.4.8.2: an Unknown premise that can affect the selection defers it. Omitted header Types rest on the call.
+                // SPEC 8.3.3: an Unknown premise that can affect the selection defers it. Omitted header Types rest on the call.
                 return evaluation.PendingCount == 1 && evaluation.CallableFailure is { } callable ? this.FailCallableSelection(call, callable)
                     : evaluation.PendingCount == 1 && evaluation.ConstraintFailure is { } constraint ? this.FailPendingConstraint(call, constraint)
                     : this.FailWaitingSelection(call, BindingFailure.UnprovenConstraint);
@@ -762,7 +762,7 @@ public sealed partial class Binding
                 if (receiverOperation.ObjectCompatibility != ConstraintProof.Proven)
                 {
                     // Pending effect verification is an implementation boundary, not a
-                    // completed public NotProven guarantee (SPEC 12.4.4.1).
+                    // completed public NotProven guarantee (SPEC 12.7).
                     var pendingEffects = receiverOperation.ObjectCompatibility == ConstraintProof.Unknown;
                     return this.Fail(call, pendingEffects ? BindingFailure.Unsupported : BindingFailure.UnprovenConstraint, pendingEffects);
                 }
@@ -799,15 +799,15 @@ public sealed partial class Binding
                 {
                     if (!this.ErasesToFunction(call.ArgumentNodes[i], closureType, erased))
                     {
-                        // SPEC 10.5, 7.6.4: the erasure conditions are judged after selection, at the argument: an environment that is not
+                        // SPEC 10.5, 7.7.4: the erasure conditions are judged after selection, at the argument: an environment that is not
                         // Owned is the Constraint record, a receiver that is not Shared a Type mismatch with its Note. The call rests on it
-                        // and another candidate is never selected; every failing argument is reported (SPEC 23.3.6.4).
+                        // and another candidate is never selected; every failing argument is reported (SPEC 23.1.2).
                         this.RecordMismatch(call.ArgumentNodes[i], call.ArgumentNodes[i], closureType, erased);
                         erasureFailed = true;
                         continue;
                     }
 
-                    // SPEC 7.6.4: the selected parameter fixes the common Function Type the Closure value is converted to.
+                    // SPEC 7.7.4: the selected parameter fixes the common Function Type the Closure value is converted to.
                     call.ArgumentNodes[i].ErasedFunctionType = erased;
                     selectedOperations[i] = selectedOperations[i] with { SourceType = erased };
                 }
@@ -1058,7 +1058,7 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
 
-            // SPEC 8.8.3: specializations never enter the candidate set, so an invalid one cannot fail a call.
+            // SPEC 8.13.3: specializations never enter the candidate set, so an invalid one cannot fail a call.
             if (function.IsSpecialization)
             {
                 return CandidateApplicability.Inapplicable;
@@ -1409,7 +1409,7 @@ public sealed partial class Binding
 
                     if (argument is { BoundType: null, BindingState: BindingState.Resolved, BoundSymbol: { Kind: BindingSymbolKind.Function } group })
                     {
-                        // SPEC 7.6.4: a function group argument fits when one of its functions converts to the parameter's common
+                        // SPEC 7.7.4: a function group argument fits when one of its functions converts to the parameter's common
                         // Function Type; the reference is bound to that function after selection.
                         var perCallOnly = false;
                         if (type.Kind != BoundTypeKind.Function || !this.FunctionGroupFits(argument, group, type, scope))
@@ -1476,7 +1476,7 @@ public sealed partial class Binding
 
                     if (argument.BoundType is { } closureType && this.ErasureSignatureFits(closureType, type, argument))
                     {
-                        // SPEC 7.6.4: a concrete Closure value converts to the parameter's common Function Type, as at an
+                        // SPEC 7.7.4: a concrete Closure value converts to the parameter's common Function Type, as at an
                         // initialization; the argument is bound with that expectation once the call is selected. Its receiver and
                         // Owned conditions are judged then (SPEC 10.5).
                         operations[i] = new(call.ArgumentNodes[i], closureType, type, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure, ParameterIndex: mapping[i]);
@@ -1600,7 +1600,7 @@ public sealed partial class Binding
             if (waitingCallables && proof == ConstraintProof.Unknown &&
                 this.ResolvedClauseUnknown(function.TypeConstraints, function, arguments.AsSpan(0, CallSlotCount(function)), scope, self, function.IsConstructor ? null : declaringType, lengths.AsSpan(0, CallOwnSlots(function).Count), slotOwner: CallSlotOwner(function)))
             {
-                // SPEC 10.5, 8.7: a Constraint that no waiting argument leaves open, such as a Callable clause on an F that an independent
+                // SPEC 10.5, 8.3: a Constraint that no waiting argument leaves open, such as a Callable clause on an F that an independent
                 // argument binds, waits on nothing; Unknown proves neither applicability nor negation, so another candidate is never
                 // selected past it.
                 return CandidateApplicability.Pending;
@@ -1621,7 +1621,7 @@ public sealed partial class Binding
 
             if (proof == ConstraintProof.Refuted && this.ClosureReceiverMismatch(call, function, mapping) is { } mismatch)
             {
-                // SPEC 7.6.3, 8.6: a closure's minimum call receiver is the candidate's failure only when the candidate applies once that
+                // SPEC 7.7.3, 8.10: a closure's minimum call receiver is the candidate's failure only when the candidate applies once that
                 // receiver is permitted; a rejected candidate then names both receivers (NoApplicableOverload_Kd).
                 this.permitClosureReceivers = true;
                 try
@@ -1641,7 +1641,7 @@ public sealed partial class Binding
             }
 
             unsolved = proof == ConstraintProof.Proven && !unsolvedSlots.IsEmpty;
-            premiseUnknown = proof == ConstraintProof.Unknown; // SPEC 8.4.8.2: every argument and result check has passed.
+            premiseUnknown = proof == ConstraintProof.Unknown; // SPEC 8.3.3: every argument and result check has passed.
             return proof switch
             {
                 ConstraintProof.Proven => CandidateApplicability.Applicable,
@@ -1706,7 +1706,7 @@ public sealed partial class Binding
                 else if (pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Closure &&
                     actual.Symbol?.Declaration is FunctionKoto { BoundClosure: { } closure })
                 {
-                    // SPEC 7.6.4, 10.5: a concrete Closure meets a common Function Type through its signature; the conversion itself,
+                    // SPEC 7.7.4, 10.5: a concrete Closure meets a common Function Type through its signature; the conversion itself,
                     // its receiver and Owned conditions included, is judged once the call is selected.
                     actual = closure.Signature;
                 }
@@ -2018,7 +2018,7 @@ public sealed partial class Binding
                 this.Infer(pattern.Components[0], actual.Components[0], function, arguments, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant || whole.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw);
         }
 
-        // SPEC 3.1.1.1: the wrapping Scalar Wrapping<u8> is the instance of the pattern Wrapping<T>, so T is inferred from
+        // SPEC 3.1.1: the wrapping Scalar Wrapping<u8> is the instance of the pattern Wrapping<T>, so T is inferred from
         // the Scalar's integer argument; the substituted parameter then normalizes to the same Scalar.
         if (actual.IsWrappingInteger && pattern is { Kind: BoundTypeKind.Constructed, Components.Count: 1 } && pattern.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping)
         {
@@ -2039,7 +2039,7 @@ public sealed partial class Binding
                 return arguments[slot] is not { } establishedArray || FitsStructurally(establishedArray, actual);
             }
 
-            // SPEC 10.2.1: a parameter constrained to Position, PositionRange or PrimitiveInteger binds the referent; the
+            // SPEC 10.2.2: a parameter constrained to Position, PositionRange or PrimitiveInteger binds the referent; the
             // argument is then value-read.
             if (!structural && actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
                 ComparisonReferent(actual) is var referent && !ReferenceEquals(referent, actual) && this.InfersReadReferent(pattern, this.activeInferenceFunction is { } inference && ReferenceEquals(CallSlotOwner(inference), function) ? inference : function))
@@ -2049,7 +2049,7 @@ public sealed partial class Binding
 
             if (evidence is { Binder: FunctionKoto { BoundClosure: not null } closure } && HasEnvironmentOrigin(actual, closure))
             {
-                // SPEC 8.6, 7.6.4: a result over the closure's hidden environment receiver satisfies no Callable signature and no
+                // SPEC 8.10, 7.7.4: a result over the closure's hidden environment receiver satisfies no Callable signature and no
                 // erasure, so that part is no evidence for the slot; the Callable proof or the conversion judges it against the rest.
                 this.environmentEvidence = true;
                 return true;

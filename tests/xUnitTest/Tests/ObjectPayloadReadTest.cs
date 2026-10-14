@@ -103,7 +103,7 @@ public class ObjectPayloadReadTest(ITestOutputHelper output)
         Assert.False(c.Validate(out _));
     }
 
-    // SPEC 13.5.5.1: exclusive payload access needs exclusive authority along the whole path, also to an objuniq view.
+    // SPEC 13.5.5: exclusive payload access needs exclusive authority along the whole path, also to an objuniq view.
     [Fact]
     public void AnObjuniqViewReachedThroughASharedPathLendsNoExclusiveReceiver()
     {

@@ -1,4 +1,4 @@
-// SPEC 22.1.2.5: the standard storage boundary. These Types and operations split standard collection Storage into
+// SPEC 22.2: the standard storage boundary. These Types and operations split standard collection Storage into
 // non-overlapping regions; they are internal to the Kimi Kotonoha, and public Iterators keep them in private Fields.
 // The compiler supplies construction; elements are lent and split by borrowing raw Places, whose range, non-overlap and
 // initialization are this group's unsafe obligations (SPEC 5.2.2).
@@ -69,7 +69,7 @@ internal group Storage
         internal var tail: isize
         internal var count: isize
 
-        // Unreturned entries are destroyed in reverse insertion order, each value before its key (SPEC 4.7.6).
+        // Unreturned entries are destroyed in reverse insertion order, each value before its key (SPEC 4.9.7).
         drop
             let storage: raw/u8 = self.storage
             unsafe
@@ -157,13 +157,13 @@ internal group Storage
         internal var value: A
 
     /// The inline elements and destruction responsibility transferred from a fixed array for its unreturned elements
-    /// `[position, position + count)` (SPEC 22.1.2.5).
+    /// `[position, position + count)` (SPEC 22.2).
     internal struct FixedOwnedRemainder<E, A>
         internal var storage: InlineStorage<A>
         internal var position: isize
         internal var count: isize
 
-        // Unreturned elements are destroyed in reverse index order (SPEC 4.7.6); the storage itself is never destroyed.
+        // Unreturned elements are destroyed in reverse index order (SPEC 4.9.7); the storage itself is never destroyed.
         drop
             let elements = self.storage@raw@raw/E
             while self.count > 0
@@ -209,7 +209,7 @@ internal group Storage
             if firstPosition < secondPosition => return .Some((lower@move, upper@move))
             return .Some((upper@move, lower@move))
 
-    // SPEC 22.1, 22.1.2.2 (PLAN G32): the members of the built-in fixed array `[N of E]`. A fixed array has no source
+    // SPEC 22.1, 22.2.1 (PLAN G32): the members of the built-in fixed array `[N of E]`. A fixed array has no source
     // declaration and Types have no length slots (SPEC 4.4), so its members are these receiver functions, generic over
     // `E` and `length N`. The compiler looks them up for fixed-array receivers, where they are public, and records the
     // entry conformances they implement.
@@ -239,7 +239,7 @@ internal group Storage
             return ArrayUniqIterator<E>.init(borrowStorageUniq(self))
 
         /// Starts an owning enumeration: each element is transferred out once, and the unreturned elements are destroyed
-        /// with the iterator in reverse index order (SPEC 4.7.6).
+        /// with the iterator in reverse index order (SPEC 4.9.7).
         public func intoIterator<E, length N>(self: [N of E]) -> FixedArrayOwningIterator<E, [N of E]>
             return FixedArrayOwningIterator<E, [N of E]>.init(ownStorage(self@move))
 

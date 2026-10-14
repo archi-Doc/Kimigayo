@@ -135,7 +135,7 @@ public sealed partial class Binding
                 }
             }
 
-            // SPEC 8.8.2 and 6.2.4: implementations inherit named Origin binders without adding or renaming them.
+            // SPEC 8.13.2 and 6.4: implementations inherit named Origin binders without adding or renaming them.
             var written = function.BoundSymbol!.Schema?.Origins ?? [];
             for (var i = 0; i < definitionOrigins.Count; i++)
             {

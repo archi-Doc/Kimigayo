@@ -12,7 +12,7 @@ public sealed partial class Binding
     // Kimi position/range identities are qualified even when a user declaration hides their normal alias.
     internal static string DiagnosticTypeName(object value) => DiagnosticTypeName(value, null, null);
 
-    // SPEC 23.3.6.5: `shown`, when given, is the one Origin the display writes, at the first borrow layer that has it, as `during
+    // SPEC 23.1: `shown`, when given, is the one Origin the display writes, at the first borrow layer that has it, as `during
     // shownText`; a layer below another borrow layer is parenthesized, as in `uniq/(ref/i32 during static)`.
     internal static string DiagnosticTypeName(object value, BoundOrigin? shown, string? shownText)
         => DisplayTypeName(value, shown, shownText, complete: false);
@@ -34,7 +34,7 @@ public sealed partial class Binding
             return (string)value;
         }
 
-        // SPEC 23.3.6.5: a pair target is shown as its pair, `s/T`, which an ordinary diagnostic writes without its outer Origin.
+        // SPEC 23.1: a pair target is shown as its pair, `s/T`, which an ordinary diagnostic writes without its outer Origin.
         if (type.Kind is BoundTypeKind.Primitive or BoundTypeKind.Parameter && (!complete || (!type.CarriesOrigin && type.Symbol?.Kind != BindingSymbolKind.SemanticsTarget)))
         {
             return type.Symbol is { Kind: BindingSymbolKind.SemanticsTarget, Pair: { } pair } && type.Kind == BoundTypeKind.Parameter ? pair.Name + "/" + type.Name : type.Name;
@@ -115,7 +115,7 @@ public sealed partial class Binding
 
             if (current.Kind == BoundTypeKind.AssociatedProjection && current.Components.Count != 0)
             {
-                // SPEC 8.4.3: a projection reads as written, T.Item or Self.LentItem(step).
+                // SPEC 8.5: a projection reads as written, T.Item or Self.LentItem(step).
                 Append(current.Components[0]);
                 text.Append('.').Append(current.Name);
                 for (var i = 0; i < current.OriginArguments.Count; i++)
@@ -172,7 +172,7 @@ public sealed partial class Binding
 
             if (current.Kind == BoundTypeKind.Closure)
             {
-                // SPEC 7.6: a closure Type has no written name; its components are the captured environment, so it is shown by
+                // SPEC 7.7: a closure Type has no written name; its components are the captured environment, so it is shown by
                 // the signature of its anonymous function, also when the closure node itself failed, as at a call argument.
                 text.Append("closure ");
                 if ((current.Symbol?.Declaration as FunctionKoto)?.ClosureStorage?.Signature is { } signature)

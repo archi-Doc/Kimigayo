@@ -41,7 +41,7 @@ internal sealed partial class BodyLowering
     // SPEC 7.2.3: a closure inside a default of the function that declares the captured parameter reads the argument that
     // the pending call prepared for that parameter: a temporary of the calling body, or the result of the selection, `do` or
     // short-circuit join that supplied it. Any other entry reads its source binding.
-    // SPEC 7.6.2, 8.10: an entry whose environment binding is initialized by a borrow of the outer binding: a Reborrow or a slot
+    // SPEC 7.7.2, 8.15: an entry whose environment binding is initialized by a borrow of the outer binding: a Reborrow or a slot
     // borrow, or a bare entry of a pair binding whose instantiated Type is an exclusive reference (a Copy in every other instance).
     private bool BorrowingEntry(in BoundCapture capture)
         => capture.Environment.CaptureAcquisition is CaptureAcquisition.Reborrow or CaptureAcquisition.SharedSlotBorrow or CaptureAcquisition.ExclusiveSlotBorrow ||
@@ -110,7 +110,7 @@ internal sealed partial class BodyLowering
         var operation = body.Operations[id];
         if (body.Values[id].Count == 0)
         {
-            // SPEC 7.6.4: a Function Item has no environment; the erasure adapter takes the common (environment, ret, inputs,
+            // SPEC 7.7.4: a Function Item has no environment; the erasure adapter takes the common (environment, ret, inputs,
             // context) call and calls the function with its own ABI.
             if (operation.Kind != OwnershipOperationKind.Produce || operation.Source.BoundSymbol is not { Kind: BindingSymbolKind.Function, Declaration: FunctionKoto { IsAnonymous: false } target } ||
                 body.Places[operation.Place].Type.Kind != BoundTypeKind.Function || (target.IsVirtual ? this.Virtuals?.Address(target) : this.functions?.GetValueOrDefault(target)) is not { CallerLocation: false } item)
@@ -236,7 +236,7 @@ internal sealed partial class BodyLowering
             var capture = closure.Captures[i];
             var representation = environmentLayout?.Fields[i] ?? WindowsLowering.GetValue(capture.Environment.Type!);
             var offset = environmentLayout?.Offset(i) ?? CaptureOffset(closure, i);
-            // SPEC 7.6.2: a borrowing entry consumes the temporary its borrow of the outer binding produced.
+            // SPEC 7.7.2: a borrowing entry consumes the temporary its borrow of the outer binding produced.
             var borrowed = this.BorrowingEntry(capture);
             var place = -1;
             if (representation is null || offset < 0 || (environmentLayout is null && offset + representation.Layout.Size > 8) ||
@@ -262,7 +262,7 @@ internal sealed partial class BodyLowering
     {
         failure = null;
         var operation = body.Operations[id];
-        // A monomorphized instance or a default's replica calls the value through the signature of the call's own context (SPEC 8.10,
+        // A monomorphized instance or a default's replica calls the value through the signature of the call's own context (SPEC 8.15,
         // 21.3.1); the plan's declared Types are interpreted there once.
         var context = body.ContextAt(id);
         var receiver = body.Resolve(plan.CalleeType, context);

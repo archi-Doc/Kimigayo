@@ -10,7 +10,7 @@ using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>The Semantics cases of a MIR body (plan 5.6.1, SPEC 8.10) as views of the one body, which is never copied per case: a view
+/// <summary>The Semantics cases of a MIR body (plan 5.6.1, SPEC 8.15) as views of the one body, which is never copied per case: a view
 /// gives each pair binder of <see cref="MirBody.Binders"/> one of its admitted Semantics, and under it a Type is its case Type
 /// (<see cref="Type"/>), a PairLayer step the Place itself or the referent of its case's reference or handle (<see cref="Layer"/>), a
 /// PairAcquire a Copy or a Reborrow (<see cref="Reborrows"/>) and an Adapt the operation its case selects (<see cref="Adapt"/>), the only
@@ -29,7 +29,7 @@ internal sealed class MirCases(TyCtxt types)
 
     /// <summary>Gets the number of views of a body: the product of its binders' admitted sets (<see cref="PairBinder.CaseProduct"/>), 1
     /// without a binder, at most <see cref="PairBinder.CaseBound"/>: Binding decides the bound once per definition and binds no part of a
-    /// definition beyond it (SPEC 8.10, 23.3.6.1), and <see cref="MirValidator"/> checks it, so the analyses run every view.</summary>
+    /// definition beyond it (SPEC 8.15, 23.1.1), and <see cref="MirValidator"/> checks it, so the analyses run every view.</summary>
     /// <param name="body">The body.</param>
     /// <returns>The number of views, saturated at the largest count.</returns>
     internal static long Count(MirBody body) => PairBinder.CaseProduct(body.Binders);
@@ -75,7 +75,7 @@ internal sealed class MirCases(TyCtxt types)
     /// (an obligation Binding publishes for a use, R4-M22).</summary>
     internal void Deselect() => this.width = 0;
 
-    /// <summary>Gets the views of a callee body that a call with a substitution selects under the selected view (SPEC 8.10): for each
+    /// <summary>Gets the views of a callee body that a call with a substitution selects under the selected view (SPEC 8.15): for each
     /// resolved binder of the callee, the case of its whole Type in the substitution, the Semantics of that Type's case Type, or every
     /// admitted case while that Type is still abstract. Views are decoded as <see cref="Select"/> numbers them; the selected view is kept.</summary>
     /// <param name="callee">The callee body.</param>
@@ -113,7 +113,7 @@ internal sealed class MirCases(TyCtxt types)
     /// <returns>The case Type.</returns>
     internal BoundType Type(BoundType type) => types.CaseType(type, this.view.AsSpan(0, this.width));
 
-    /// <summary>Gets what a PairLayer step of the selected body is under the selected view (SPEC 13.5.5.1): the Place it applies to itself
+    /// <summary>Gets what a PairLayer step of the selected body is under the selected view (SPEC 13.5.5): the Place it applies to itself
     /// in the owner case, else the referent of the reference or object handle that Place stores in the case. The Place selected has the
     /// case Type of the step's Type either way.</summary>
     /// <param name="step">A Place whose last projection is a PairLayer.</param>
@@ -140,14 +140,14 @@ internal sealed class MirCases(TyCtxt types)
         return row.Kind == MirProjectionKind.Deref && this.Body.TypeOf(step with { Projection = row.Prefix })?.Semantics != SemanticsKind.Raw;
     }
 
-    /// <summary>Gets whether a PairAcquire of the selected body Reborrows under the selected view (SPEC 8.9): its Place's case Type is an
+    /// <summary>Gets whether a PairAcquire of the selected body Reborrows under the selected view (SPEC 8.14): its Place's case Type is an
     /// exclusive reference (<see cref="MirTypes.IsExclusive"/>, the builder's rule for a concrete Type), whose referent it borrows
     /// exclusively in that Semantics; in any other case it Copies its Place, a reference or a value Binding proved Copy.</summary>
     /// <param name="acquire">A PairAcquire operand.</param>
     /// <returns>Whether it Reborrows.</returns>
     internal bool Reborrows(in MirOperand acquire) => MirTypes.IsExclusive(this.Type(this.Body.TypeOf(acquire.Place)!));
 
-    /// <summary>Gets what an Adapt of the selected body is under the selected view (SPEC 8.9, 13.5.3): the operation Binding selects
+    /// <summary>Gets what an Adapt of the selected body is under the selected view (SPEC 8.14, 13.5.3): the operation Binding selects
     /// (<see cref="TyCtxt.Adaptation"/>) from the case Type of its source token to the case Type of its target, as that operation's
     /// ordinary rvalue: an Identity or an object creation its operand (a creation also allocates), a pointer conversion or an upcast
     /// keeping a non-exclusive Semantics a Proven Cast of it, any other a borrow of the payload for an object reference, else of the

@@ -17,7 +17,7 @@ public class DictionaryIndexableTest
         ScalarEmissionTest.WriteFixture("DictionaryIndexableSubscript", CompilationTestHelper.WriteIr(c), string.Empty);
     }
 
-    // SPEC 4.6, 4.6.9: a Dictionary takes a key of its key Type, so a range literal is a Range key, not a slice; only the
+    // SPEC 4.7, 4.7.1: a Dictionary takes a key of its key Type, so a range literal is a Range key, not a slice; only the
     // concrete sequences read a range as a slice.
     [Fact]
     public void ARangeLiteralIsAKeyOfARangeKeyedDictionary()

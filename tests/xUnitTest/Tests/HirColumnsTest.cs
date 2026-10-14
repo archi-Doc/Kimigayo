@@ -144,7 +144,7 @@ public sealed class HirColumnsTest
         Assert.Equal(HirCompletion.Completes, HirTables.CompletionOf(function.ExpressionBody!));
     }
 
-    // SPEC 14.7.3: a yield in a selection inside a match arm ends that selection, not the match.
+    // SPEC 14.7: a yield in a selection inside a match arm ends that selection, not the match.
     [Fact]
     public void AYieldInAMatchArmTargetsItsSelection()
     {
@@ -190,7 +190,7 @@ public sealed class HirColumnsTest
         Assert.Equal(expected, adjusted);
     }
 
-    // SPEC 3.5, 8.9: a bare Place whose Type's Copy is unproven needs a Move (the ownership analysis reports TransferRequired), and a pair
+    // SPEC 3.5, 8.14: a bare Place whose Type's Copy is unproven needs a Move (the ownership analysis reports TransferRequired), and a pair
     // layer whose every admitted case Copies or Reborrows is acquired by case.
     [Fact]
     public void ABarePlaceIsAcquiredAsBindingDecides()
@@ -203,7 +203,7 @@ public sealed class HirColumnsTest
         Assert.Equal([HirAcquire.Move, HirAcquire.ByCase], Reachable(c.Kotonoha).OfType<JumpKoto>().Select(static x => HirTables.AdjustOf(x.Expression!).Acquire));
     }
 
-    // SPEC 3.4.1, 4.6.9, 7.1.1, 15.1.3, 15.1.6: a Field through two reference layers follows both, a literal fixed-array position is a
+    // SPEC 3.4.3, 4.7.1, 7.1.1, 15.1.3, 15.1.6: a Field through two reference layers follows both, a literal fixed-array position is a
     // ConstIndex and a runtime one an Index, a user index publishes the element Place, which an update through its Field takes by indexUniq
     // (its receiver borrowed exclusively) and a read by index, and a borrowed Case payload is its Downcast.
     [Fact]
@@ -224,7 +224,7 @@ public sealed class HirColumnsTest
         var start = Source.IndexOf("func through", StringComparison.Ordinal);
         var places = Reachable(c.Kotonoha).Where(x => x.Span.Start >= start && HirTables.PlaceOf(x).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value))
             .Select(x => $"{Source.Substring(x.Span.Start, x.Span.Length)} {HirTables.PlaceOf(x).Kind}+{HirTables.PlaceOf(x).Layers} {HirTables.AdjustOf(x).Adaptation}");
-        // A Field's receiver keeps the access Binding recorded for it (SPEC 3.4.1: one reference through its layers, a shared access of a
+        // A Field's receiver keeps the access Binding recorded for it (SPEC 3.4.3: one reference through its layers, a shared access of a
         // user index's element); its layers are followed from its own Type.
         string[] expected =
         [
@@ -236,7 +236,7 @@ public sealed class HirColumnsTest
         Assert.Equal(expected, places);
     }
 
-    // SPEC 4.6.9, 11.3, 13.4, utf8-formatting 6.1: a Property update names its getter and its setter, which takes the computed value; a user
+    // SPEC 4.7.1, 11.6, 13.4, SPEC 22.7: a Property update names its getter and its setter, which takes the computed value; a user
     // index its selected index or indexUniq call, a view its element or slice call; a key resolution reads the evaluated receiver's length;
     // an interpolation passed directly to writeLine is marked; a ResolvedRange loop Copies its positions.
     [Fact]
@@ -270,7 +270,7 @@ public sealed class HirColumnsTest
         Assert.Equal(new HirAdjust(HirAcquire.Copy, HirAdaptation.None), HirTables.AdjustOf(loop.Bindings[0]));
     }
 
-    // SPEC 4.6.1, 4.7.4, 6.2.3.6, 11.2: an accessor's executing function takes its receiver and its input (a static setter only its input),
+    // SPEC 4.7, 4.9.5, 6.3.6, 11.3: an accessor's executing function takes its receiver and its input (a static setter only its input),
     // an implicit constructor of a derived structure initializes its Fields and calls the base constructor its omitted base clause selects,
     // and each sequence metadata member is published with its form.
     [Fact]
@@ -580,7 +580,7 @@ public sealed class HirColumnsTest
     // R3 U1's views at an evaluated node or a body: an enum Case value has its construction; a sequence's metadata its member, of the Type
     // that member has, and no other node a built-in form; an accessor's executing
     // function its result and its receiver and input; a parameter read the function's own parameter; an implicit constructor its receiver,
-    // which every Field's initializer initializes, and its base call exactly where the structure has a base (SPEC 6.2.3.6).
+    // which every Field's initializer initializes, and its base call exactly where the structure has a base (SPEC 6.3.6).
     private static bool ViewsAgree(Koto node, HirOp op)
     {
         var construction = BoundEnumConstruction.Of(node);
@@ -658,7 +658,7 @@ public sealed class HirColumnsTest
         return binders;
     }
 
-    // SPEC 3.4.1, 13.5.5.1: a reference, object handle or pair layer, which selection follows implicitly.
+    // SPEC 3.4.3, 13.5.5: a reference, object handle or pair layer, which selection follows implicitly.
     private static bool IsLayer(BoundType? type) => TyCtxt.Layer(type, out _, out _) != HirPlaceKind.Value;
 
     private static bool Peel(BoundType? type, int layers, out BoundType? result)

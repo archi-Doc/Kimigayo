@@ -56,25 +56,25 @@ public sealed partial class Binding
 
             if (receiver is not null && this.TryBindKeyedSelection((IndexKoto)source, scope, receiver, out var keyed))
             {
-                return keyed; // SPEC 4.6.1: a range, ResolvedRange or resolved position key.
+                return keyed; // SPEC 4.7: a range, ResolvedRange or resolved position key.
             }
 
-            // SPEC 4.6.9: the key of a sequence below is an integer of any Type or a written `^x`, already bound; ownership
+            // SPEC 4.7.1: the key of a sequence below is an integer of any Type or a written `^x`, already bound; ownership
             // converts it to an isize element position within the element access's bounds check.
             if ((ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDynamicArray(receiver)) && source.Right is not RangeKoto)
             {
-                // SPEC 4.6.9: the element Place keeps its stored complete Type.
+                // SPEC 4.7.1: the element Place keeps its stored complete Type.
                 return Complete(source, receiver!.Components[0].Components[0]);
             }
 
             if (receiver?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array && source.Right is not RangeKoto)
             {
-                return Complete(source, receiver.Components[0]); // SPEC 4.6.6: the shared element Place.
+                return Complete(source, receiver.Components[0]); // SPEC 4.8.2: the shared element Place.
             }
 
             if (this.TryBindIndexer((IndexKoto)source, scope, receiver, out var indexed))
             {
-                return indexed; // SPEC 4.6.9: a user Indexable conformance.
+                return indexed; // SPEC 4.7.1: a user Indexable conformance.
             }
 
             if (receiver is not { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } && !ReferenceEquals(receiver, BoundType.Never))
@@ -85,7 +85,7 @@ public sealed partial class Binding
                     return this.CompleteDependent(source, source.Left); // The receiver's own failure explains the access.
                 }
 
-                // SPEC 3.4.1, 4.6.9: a sequence reached here, such as through reference or pair layers, is an implementation limit;
+                // SPEC 3.4.3, 4.7.1: a sequence reached here, such as through reference or pair layers, is an implementation limit;
                 // any other receiver, including a range key on an Indexable Type, cannot be indexed by the key.
                 var sequence = ComparisonReferent(this.ComparisonThroughPairs(source.Left, receiver)).Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary;
                 return this.Fail(source, sequence ? BindingFailure.Unsupported : BindingFailure.NotIndexable);
@@ -123,7 +123,7 @@ public sealed partial class Binding
 
         if (!ElementAccess.TryType(source, out var element, out _))
         {
-            // SPEC 3.4.1, 12.4.1: only a Tuple or a fixed array has these elements; one reached through further layers is not implemented.
+            // SPEC 3.4.3, 12.5.1: only a Tuple or a fixed array has these elements; one reached through further layers is not implemented.
             var core = receiver is null ? null : ComparisonReferent(this.ComparisonThroughPairs(source.Left, receiver));
             var limit = core is null || (!ReferenceEquals(core, receiver) && core.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray);
             return this.Fail(source, limit ? BindingFailure.Unsupported : BindingFailure.TypeMismatch);

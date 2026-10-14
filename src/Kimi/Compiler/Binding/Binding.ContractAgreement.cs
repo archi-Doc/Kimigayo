@@ -12,7 +12,7 @@ public sealed partial class Binding
 
     private readonly record struct ContractAgreementFailure(BindingSymbol Left, BindingSymbol Right, BoundType? AssociatedLeft = null, BoundType? AssociatedRight = null, BindingSymbol? Associated = null);
 
-    // SPEC 8.4.9.2: these equalities describe the intersection where two references coincide, not new declaration
+    // SPEC 8.9.2: these equalities describe the intersection where two references coincide, not new declaration
     // premises. The ordinary bounded prover must establish consistency there; a residual term is never disjointness.
     private BindingScope? ContractOverlapScope(BindingScope parent, BindingSymbol left, BindingSymbol right)
     {

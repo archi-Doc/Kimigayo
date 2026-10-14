@@ -42,7 +42,7 @@ public sealed class NumberLiteralKoto : ExpressionKoto
         return this.parseResult == NumberLiteralParseResult.I128;
     }
 
-    /// <summary>Gets the exact decimal value of a floating-point literal truncated toward zero (SPEC 13.5.4.2).</summary>
+    /// <summary>Gets the exact decimal value of a floating-point literal truncated toward zero (SPEC 13.5.4).</summary>
     /// <param name="magnitude">The truncated magnitude, read from the spelling without an intermediate floating-point Type.</param>
     /// <returns>Whether this is a floating-point literal whose truncated magnitude fits 128 bits.</returns>
     public bool TryGetTruncatedMagnitude(out UInt128 magnitude)
@@ -107,7 +107,7 @@ public sealed class NumberLiteralKoto : ExpressionKoto
     }
 
     /// <summary>Initializes a new instance of the <see cref="NumberLiteralKoto"/> class for a compiler-synthesized
-    /// decimal integer operand at the span of its source root, such as the isize limit of Index formation (SPEC 4.6.2).</summary>
+    /// decimal integer operand at the span of its source root, such as the isize limit of Index formation (SPEC 4.6.1).</summary>
     /// <param name="root">The source node whose position the literal takes.</param>
     /// <param name="value">The nonnegative integer value.</param>
     internal NumberLiteralKoto(Koto root, ulong value)

@@ -67,7 +67,7 @@ public sealed partial class Binding
         var element = this.BindNode(fill.Elements[0], scope, expected?.Kind == BoundTypeKind.FixedArray ? expected.Components[0] : null);
         if (length is null || element is null)
         {
-            // A failed element or length explains the fill (SPEC 23.3.6.4); a length syntax that binds but is no length keeps
+            // A failed element or length explains the fill (SPEC 23.1.2); a length syntax that binds but is no length keeps
             // the formation failure.
             var failed = element is null && fill.Elements[0].BindingState != BindingState.Resolved ? fill.Elements[0]
                 : length is null && fill.FillLength!.BindingState != BindingState.Resolved ? fill.FillLength : null;

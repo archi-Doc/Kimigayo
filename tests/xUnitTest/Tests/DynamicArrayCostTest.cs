@@ -16,7 +16,7 @@ public class DynamicArrayCostTest
     public void SliceCopiesAllocateAtMostOnceWithoutGrowthTransfers(int count)
         => WriteCostFixture("SliceCopy" + count, "let values: [" + count + " of i32] = [" + count + " of 7]\nlet copy = values.slice().toArray()\nrequire copy.length == " + count + " else => $abort(\"length\")", count == 0 ? 0 : 1, 0);
 
-    // SPEC 4.7.4: repeating construction reserves once and places every Copy within that capacity; zero-sized elements allocate nothing.
+    // SPEC 4.9.5: repeating construction reserves once and places every Copy within that capacity; zero-sized elements allocate nothing.
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(0)]
@@ -26,7 +26,7 @@ public class DynamicArrayCostTest
     public void RepeatingConstructionAllocatesAtMostOnceWithoutGrowthTransfers(int count)
         => WriteCostFixture("Repeating" + count, "let values = Array<i32>.init(repeating: 7, count: " + count + ")\nrequire values.length == " + count + " else => $abort(\"length\")", count == 0 ? 0 : 1, 0);
 
-    // SPEC 4.7.4, 22.5.2: the one reservation that fails Aborts at the construction, which the implementation's caller location names.
+    // SPEC 4.9.5, 21.4.3: the one reservation that fails Aborts at the construction, which the implementation's caller location names.
     [Fact]
     public void RepeatingAllocationFailureReportsTheConstruction()
     {

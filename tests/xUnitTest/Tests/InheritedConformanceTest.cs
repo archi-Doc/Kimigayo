@@ -37,7 +37,7 @@ public class InheritedConformanceTest
 
     private const string Bumps = "contract Bumps\n    func bump(self: uniq/Self) -> ()\n";
 
-    // SPEC 12.4.4.1, 23.3.6.1, 23.3.6.4: an exclusive implementation reached through a base has no computed ObjectCallCompatible status
+    // SPEC 12.7, 23.1.1, 23.1.2: an exclusive implementation reached through a base has no computed ObjectCallCompatible status
     // (OCC-X). Its conformance is one location-only Unsupported_Kd at its declaration: an explicit `Self is C`, or the derived Type's base
     // clause for an inherited conformance once a check that needs it fails. Every check resting on it is derived; an unused inherited
     // conformance says nothing.
@@ -73,7 +73,7 @@ public class InheritedConformanceTest
         Assert.Equal([nameof(DiagnosticCode.TypeMismatch_Kd), nameof(DiagnosticCode.Unsupported_Kd)], independent.Select(static x => x.Code).Order());
     }
 
-    // SPEC 23.3.6.4: a clause or candidate whose proof rests on a conformance limited by OCC-X is not decided whatever its other operands
+    // SPEC 23.1.2: a clause or candidate whose proof rests on a conformance limited by OCC-X is not decided whatever its other operands
     // and clauses (a refuted limit would refute it), so it is derived from that conformance's one record.
     [Theory]
     [InlineData("func up<T>(x: uniq/T) -> ()\n    T is Bumps and Owned\n    ()\nfunc outer<U>(x: uniq/GLeaf<U>) -> () => up(x)\n")]

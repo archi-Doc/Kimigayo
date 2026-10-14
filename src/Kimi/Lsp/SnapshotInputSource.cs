@@ -6,7 +6,7 @@ using Kimi.Checking;
 
 namespace Kimi.Lsp;
 
-/// <summary>The inputs of one workspace check as the worker reads them (SPEC 23.4.6).</summary>
+/// <summary>The inputs of one workspace check as the worker reads them (SPEC 23.4).</summary>
 /// <remarks>
 /// A committed input is read from the snapshot; an input read for the first time is read once per check and shared by
 /// every unit of the check. The published set of inputs changed after the base lets a check stop early; adoption stays

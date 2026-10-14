@@ -25,7 +25,7 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 13.5.4.2: a direct literal converted at compile time. The literal, its sign and its parentheses take the target Type,
+    // SPEC 13.5.4: a direct literal converted at compile time. The literal, its sign and its parentheses take the target Type,
     // and the conversion carries the folded constant that is produced instead of evaluating the literal.
     private static BoundType? CompleteFolded(ConversionKoto conversion, NumberLiteralKoto number, BoundType target, Int128 folded, ConversionBinding binding)
     {
@@ -43,10 +43,10 @@ public sealed partial class Binding
         return Complete(conversion, target);
     }
 
-    // SPEC 13.5.4.1: the explanation of a numeric conversion rejected for a different integer argument.
-    internal const string WrappingConversionNote = "A numeric conversion enters or leaves Wrapping<U> only from U itself, so the range check stays visible (SPEC 13.5.4.1)";
+    // SPEC 13.5.4: the explanation of a numeric conversion rejected for a different integer argument.
+    internal const string WrappingConversionNote = "A numeric conversion enters or leaves Wrapping<U> only from U itself, so the range check stays visible (SPEC 13.5.4)";
 
-    // SPEC 13.5.4.3: E@wrap<U> wraps an integer or wrapping integer value to the integer or wrapping integer Type U, concrete
+    // SPEC 13.5.4: E@wrap<U> wraps an integer or wrapping integer value to the integer or wrapping integer Type U, concrete
     // or generic, without a check. A direct literal is wrapped at compile time; for a generic U only the generic literals fit.
     private BoundType? BindWrapConversion(ConversionKoto conversion, BindingScope scope, Koto argument, string operation)
     {
@@ -103,7 +103,7 @@ public sealed partial class Binding
         return Complete(conversion, target);
     }
 
-    // SPEC 13.5.4.4: E@bits<U> reinterprets the bits between a floating-point Type and an integer or wrapping integer Type of
+    // SPEC 13.5.4: E@bits<U> reinterprets the bits between a floating-point Type and an integer or wrapping integer Type of
     // the same fixed width, in either direction, without a check; a direct literal is converted at compile time.
     private BoundType? BindBitConversion(ConversionKoto conversion, BindingScope scope, BoundType? target, NumberLiteralKoto? number, bool negative)
     {
@@ -172,7 +172,7 @@ public sealed partial class Binding
         return Complete(conversion, target);
     }
 
-    // SPEC 13.5.4.2: a direct floating-point literal converted to an integer Type is truncated toward zero from its exact decimal
+    // SPEC 13.5.4: a direct floating-point literal converted to an integer Type is truncated toward zero from its exact decimal
     // value and must fit the target's range. The literal never takes an intermediate floating-point Type, so 9007199254740993.0@i64
     // is exact, and a value outside the range is a compile-time error at the literal rather than a runtime Abort.
     private BoundType? BindTruncatedLiteral(ConversionKoto conversion, BoundType target, Koto operand)
@@ -205,7 +205,7 @@ public sealed partial class Binding
         => ConversionTargetSyntax(conversion) is TypeSemanticsKoto { Type: null, Identifier: Constants.CopyOperation };
 
     // The fixed width of an integer or wrapping integer Type that @bits accepts: 32 or 64, never a platform-dependent or
-    // 128-bit one (SPEC 13.5.4.4).
+    // 128-bit one (SPEC 13.5.4).
     private static int BitWidth(BoundType type, int pointerWidth)
     {
         if (!type.HasIntegerArithmetic || type.Underlying.Name is "isize" or "usize")
@@ -217,14 +217,14 @@ public sealed partial class Binding
         return width is 32 or 64 ? width : 0;
     }
 
-    // A Kimi position or range Type other than an integer (SPEC 4.6.2, 4.6.3).
+    // A Kimi position or range Type other than an integer (SPEC 4.6.1, 4.6.2).
     private static bool IsPositionOrRangeType(BoundType type)
         => type.Symbol?.LibraryDeclaration is KimiDeclarationId.FromEnd or KimiDeclarationId.Start or KimiDeclarationId.End or KimiDeclarationId.Range or
             KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange;
 
     // SPEC 13.5: a bare Semantics name or operation directly after @ completes the operation. A grouped target is a Type,
     // so a grouped bare name such as (ref) is bound, and rejected, as a Type; grouping stays transparent for complete targets.
-    // Bare @owner remains invalid; object shorthands select their payload target from the input (SPEC 13.5.8).
+    // Bare @owner remains invalid; object shorthands select their payload target from the input (SPEC 13.6.2).
     private static Koto ConversionTargetSyntax(ConversionKoto conversion)
     {
         var syntax = conversion.Right;
@@ -249,7 +249,7 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 13.5.5.2: @ref, @uniq and the borrow of @raw (SPEC 5.4) borrow the immediately written slot whatever it stores.
+    // SPEC 13.5.6: @ref, @uniq and the borrow of @raw (SPEC 5.4) borrow the immediately written slot whatever it stores.
     private static bool BorrowsWrittenSlot(BoundType type)
         => AdtDef.IsStruct(type) || AdtDef.IsEnum(type) || type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation ||
             ReferenceTypes.IsStorage(type) || ReferenceTypes.IsPointer(type) || ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || IsBorrow(type.Semantics) || IsObjectSemantics(type.Semantics);
@@ -275,7 +275,7 @@ public sealed partial class Binding
 
     private BoundType? CompleteTransfer(ConversionKoto conversion, BoundType type, BindingScope scope)
     {
-        // SPEC 6.2.3.4: construction also allows no Non-Copy Move out of its receiver.
+        // SPEC 6.3.4: construction also allows no Non-Copy Move out of its receiver.
         if (!OffersTake(conversion.Left) ||
             (IsSpecialField(KotoHelper.UnwrapParentheses(conversion.Left), out var special) && special.IsConstructor && this.ProveCopy(type, conversion) != ConstraintProof.Proven))
         {
@@ -283,7 +283,7 @@ public sealed partial class Binding
             return this.Fail(conversion, failure == BindingFailure.InvalidAssignment && KotoHelper.UnwrapParentheses(conversion.Left) is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } ? BindingFailure.ExclusivePathTake : failure);
         }
 
-        // SPEC 11.1: consuming var storage requires its accessible standard setter,
+        // SPEC 11.2: consuming var storage requires its accessible standard setter,
         // including enclosing owned projections. Move does not require a writable
         // root; a custom getter instead starts a separate result value.
         var source = KotoHelper.UnwrapParentheses(conversion.Left);
@@ -375,7 +375,7 @@ public sealed partial class Binding
         var syntax = ConversionTargetSyntax(conversion);
         if (syntax is TypeSemanticsKoto { Type: null, Identifier: Constants.FollowOperation, HasOrigin: false })
         {
-            // SPEC 13.5.5.1: E@follow selects the referent Place of a ref/uniq value, or the complete payload of a
+            // SPEC 13.5.5: E@follow selects the referent Place of a ref/uniq value, or the complete payload of a
             // proven Sealed object handle. It reads only the reference and acquires nothing.
             var reference = this.BindNode(conversion.Left, scope);
             if (reference is null)
@@ -406,7 +406,7 @@ public sealed partial class Binding
 
             if (TryPairLayer(reference, out _, out _))
             {
-                // SPEC 13.5.5.1: a pair layer is followed only when its admitted set lies in value or valueborrow.
+                // SPEC 13.5.5: a pair layer is followed only when its admitted set lies in value or valueborrow.
                 if (this.FollowablePair(reference, scope, out var pairTarget) is var admitted && admitted == SemanticsMask.None)
                 {
                     return this.Fail(conversion, BindingFailure.UnprovenConstraint);
@@ -489,7 +489,7 @@ public sealed partial class Binding
                 return this.BindObjectUpcast(conversion, scope, actual, pattern);
             }
 
-            // SPEC 13.5.5.2: a typed borrow names exactly the stored Type of the written slot; it selects no
+            // SPEC 13.5.6: a typed borrow names exactly the stored Type of the written slot; it selects no
             // referent, copies no same-Type reference and never Reborrows. Payloads are selected with @follow.
             if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && !ReferenceEquals(actual, pattern.Components[0]))
             {
@@ -615,7 +615,7 @@ public sealed partial class Binding
 
             if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq && BorrowsWrittenSlot(operandType))
             {
-                // SPEC 13.5.5.2: @ref/@uniq borrow the immediately written slot whatever it stores; a stored
+                // SPEC 13.5.6: @ref/@uniq borrow the immediately written slot whatever it stores; a stored
                 // reference is Reborrowed only through @follow or at a fixed expected Type (SPEC 10.2).
                 var pattern = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [operandType]);
                 if (!this.AdaptInput(conversion.Left, pattern, operandType, scope, null, null, out var adapted, out _, out _, explicitBorrow: true))
@@ -636,7 +636,7 @@ public sealed partial class Binding
                 return this.Fail(conversion, BindingFailure.BareOwningShorthand);
             }
 
-            // SPEC 13.5.5.2: @objref and @objuniq borrow an object payload; another operand has none, as for @objref/T.
+            // SPEC 13.5.6: @objref and @objuniq borrow an object payload; another operand has none, as for @objref/T.
             if (semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq && !ReferenceEquals(operandType, BoundType.Never))
             {
                 Complete(conversion.Right, operandType);
@@ -749,7 +749,7 @@ public sealed partial class Binding
             return this.CompleteIdentity(conversion, target);
         }
 
-        // SPEC 8.4.7.3: a checked conversion between Types that satisfy PrimitiveInteger, including unbound ones, and the
+        // SPEC 8.7.4: a checked conversion between Types that satisfy PrimitiveInteger, including unbound ones, and the
         // conversions between a proven T and Wrapping<T>, including a generic literal fitted to Wrapping<T>.
         if ((this.IsGenericInteger(source, scope) && this.IsIntegerOperand(target, scope)) || (source.IsInteger && this.IsGenericInteger(target, scope)) ||
             (this.IsGenericWrapping(source, scope) && (ReferenceEquals(target, source) || ReferenceEquals(target, source.Components[0]))) ||
@@ -759,7 +759,7 @@ public sealed partial class Binding
             return Complete(conversion, target);
         }
 
-        // SPEC 13.5.4.1: the only numeric conversion that involves a wrapping integer Type is between U and Wrapping<U>, which
+        // SPEC 13.5.4: the only numeric conversion that involves a wrapping integer Type is between U and Wrapping<U>, which
         // keeps the value and the bits; a different integer argument or a floating-point Type is a static error, so that a
         // conversion whose name suggests wrapping never Aborts at runtime.
         if (source.IsWrappingInteger || target.IsWrappingInteger)

@@ -219,7 +219,7 @@ public sealed class DiagnosticSnapshotTest : IDisposable
     private static string Format(SourceRange? range)
         => range is { } value ? $"{value.Start.Line + 1}:{value.Start.Character + 1}-{value.End.Line + 1}:{value.End.Character + 1}" : string.Empty;
 
-    // SPEC 23.3.6.9: each candidate as its kind, its edits (range and replacement) and its judged conditions, so a changed candidate is a difference of kind repair.
+    // SPEC 23.1.3: each candidate as its kind, its edits (range and replacement) and its judged conditions, so a changed candidate is a difference of kind repair.
     private static string Format(RepairCandidate[]? repairs)
         => repairs is null ? string.Empty : string.Join("; ", repairs.Select(static x =>
             $"{x.Kind}[{string.Join(",", x.Edits.Select(static e => $"{Format(e.Range)}'{e.Text}'"))}] verified={string.Join(",", x.Verified)} required={string.Join(",", x.Required.Select(static c => c.Condition))}"));

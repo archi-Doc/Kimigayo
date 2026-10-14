@@ -47,7 +47,7 @@ public class ClosureResultOriginTest
     public void StoredObjectResultsKeepHeaderIdentityAndTheOwner()
         => NativeAllocationAudit.WriteFixture("ClosureResultOriginObject", "struct Item\n    public let id: i32 = 7\n    drop => Console.writeLine(\"drop\")\nlet owner = Kimi.Intrinsics.makeObj(Item.init())\nlet values: [1 of objref/Item] = [owner@objref]\nlet f = func [values] () => values[0]\nlet result = f()\nrequire result.id == 7 else => $abort(\"result\")", 1, 1, 20, "drop\n");
 
-    // SPEC 15.8.2, 15.6.4, 7.6.3: a call's result over the closure's environment depends on the call receiver, which needs region
+    // SPEC 15.8.2, 15.6.4, 7.7.3: a call's result over the closure's environment depends on the call receiver, which needs region
     // inference, so each such call is one Unsupported_Kd: a borrow of an environment binding, through a reference receiver, a Reborrow
     // through a captured exclusive reference, a result beside a per-call input, a temporary closure, a Consuming call that moves a
     // captured reference out and a returned closure that borrows the environment (compiler reduction R1; they ran since G65).
@@ -74,7 +74,7 @@ public class ClosureResultOriginTest
         Assert.False(c.Validate(out _));
     }
 
-    // SPEC 7.6.4, 15.6.1, 23.3.6.5: a common Function value cannot return a borrow of its hidden environment receiver, so the erasure of
+    // SPEC 7.7.4, 15.6.1, 23.1: a common Function value cannot return a borrow of its hidden environment receiver, so the erasure of
     // a closure whose result borrows its environment is one UnprovenOriginContract_Kd at the converted value, whose longer end is the
     // closure display "call receiver", related at the anonymous function's header. It was displayed as a borrow of the closure's text.
     [Theory]
@@ -89,7 +89,7 @@ public class ClosureResultOriginTest
         var header = Assert.Single(error.Related!, static x => x.Role == "origin").Span!.Value;
         Assert.StartsWith("func [", source.Substring(header.Start, header.Length), StringComparison.Ordinal);
         Assert.EndsWith("] ()", source.Substring(header.Start, header.Length), StringComparison.Ordinal);
-        Assert.Equal("A common Function value cannot return a borrow of its hidden environment receiver (SPEC 7.6.4)", error.Note);
+        Assert.Equal("A common Function value cannot return a borrow of its hidden environment receiver (SPEC 7.7.4)", error.Note);
         var result = new DiagnosticResult(output.Diagnostics, output.Sources);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);

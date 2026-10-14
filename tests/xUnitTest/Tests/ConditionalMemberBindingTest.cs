@@ -188,7 +188,7 @@ public class ConditionalMemberBindingTest
         Assert.Null(call.CallOf());
         Assert.NotEqual(BindingState.Resolved, call.StateOf());
 
-        // SPEC 23.3.6.4: the failed candidate declaration publishes its Error, and the call rests on it instead of repeating it.
+        // SPEC 23.1.2: the failed candidate declaration publishes its Error, and the call rests on it instead of repeating it.
         Assert.Contains(c.Binding.Issues, x => x.Node is FunctionKoto { Name: "f" } && x.Code == DiagnosticCode.InvalidConstraint_Kd);
         Assert.DoesNotContain(c.Binding.Issues, x => ReferenceEquals(x.Node, call));
     }
@@ -212,7 +212,7 @@ public class ConditionalMemberBindingTest
         }
     }
 
-    // SPEC 8.4.8.2: an Unknown premise defers the selection only when it can affect it. The plain f(self), still strictly best with the
+    // SPEC 8.3.3: an Unknown premise defers the selection only when it can affect it. The plain f(self), still strictly best with the
     // Unknown candidate ranked as applicable, is selected; a better or tying Unknown candidate keeps the call unproven.
     [Theory]
     [InlineData("public func f(self: ref/Self) -> i32 => 1\n    public func f(self: ref/Self, x: i32 = 0) -> i32\n        T is Equatable\n        return 2", true)]

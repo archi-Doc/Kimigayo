@@ -70,7 +70,7 @@ internal sealed partial class MirBuilder
         return binder;
     }
 
-    // SPEC 3.4.1, 13.5.5.1: up to count of the layers its Type's selection follows implicitly, stopping at a Place of the target Type.
+    // SPEC 3.4.3, 13.5.5: up to count of the layers its Type's selection follows implicitly, stopping at a Place of the target Type.
     private MirPlace Follow(MirPlace place, int count, BoundType? target = null)
     {
         for (; count > 0 && !(target is not null && MirTypes.Agree(this.body.TypeOf(place), target)) && TyCtxt.Layer(
@@ -85,7 +85,7 @@ internal sealed partial class MirBuilder
     }
 
     // A name by its Res: a local, parameter, prepared parameter or environment binding, a static after its first-access check, or the
-    // storage of the receiver's Property (an accessor's `storage`, SPEC 11.2).
+    // storage of the receiver's Property (an accessor's `storage`, SPEC 11.3).
     private MirPlace Named(Koto node)
     {
         var symbol = HirTables.Symbol(node);
@@ -102,7 +102,7 @@ internal sealed partial class MirBuilder
         }
     }
 
-    // SPEC 11.1, 11.2, 11.3.2: a stored Property's storage, which its standard accessors and its accessors' `storage` read and write: a static
+    // SPEC 11.2, 11.3, 11.8: a stored Property's storage, which its standard accessors and its accessors' `storage` read and write: a static
     // Property's slot, or the Property's Field of its receiver's Place.
     private MirPlace Storage(BindingSymbol property, MirPlace? receiver, Koto node)
     {
@@ -115,7 +115,7 @@ internal sealed partial class MirBuilder
     }
 
     // The Place of a local or a parameter, in a default template a prepared parameter's slot its p_i references (SPEC 7.2.3), or in a
-    // Closure's body of an environment binding: its capture's Field of the environment the receiver reaches (SPEC 7.6.2); null for another
+    // Closure's body of an environment binding: its capture's Field of the environment the receiver reaches (SPEC 7.7.2); null for another
     // symbol.
     private MirPlace? Bound(BindingSymbol symbol)
     {
@@ -136,7 +136,7 @@ internal sealed partial class MirBuilder
         return index < 0 ? null : this.body.Project(this.Follow(new(this.receiver), 16), MirProjectionKind.Field, index);
     }
 
-    // SPEC 22.2.3, plan 5.6.6: a static's Place, after the check of its state that initializes it at its first access, staticEnsure of its
+    // SPEC 22.4.3, plan 5.6.6: a static's Place, after the check of its state that initializes it at its first access, staticEnsure of its
     // slot in the body's statics, which names its initializer's body; a static whose declaration Binding rejected has none, and its use is
     // derived from that error.
     private MirPlace Static(BindingSymbol symbol, Koto node)
@@ -205,7 +205,7 @@ internal sealed partial class MirBuilder
         return this.body.Project(this.Place(index.Left), MirProjectionKind.ConstIndex, (int)HirTables.PlanOf(literal).Folded!.Value);
     }
 
-    // SPEC 4.6.1, 4.6.9: a built-in element at a runtime position: an integer, at a written ^x the length minus x, or at another key's
+    // SPEC 4.7, 4.7.1: a built-in element at a runtime position: an integer, at a written ^x the length minus x, or at another key's
     // resolution; SPEC 5.3: a raw pointer's p[n] is *(p + n).
     private MirPlace Element(IndexKoto index)
     {
@@ -231,7 +231,7 @@ internal sealed partial class MirBuilder
         return this.body.Project(sequence, MirProjectionKind.Index, this.Position(position, index.Right).Root);
     }
 
-    // SPEC 4.6.2: a position as the isize a selection reads, its value compared mathematically: a Type no wider than isize wraps (a same-width
+    // SPEC 4.6.1: a position as the isize a selection reads, its value compared mathematically: a Type no wider than isize wraps (a same-width
     // unsigned value isize cannot hold reads as negative, which the bounds check rejects), a wider one converts checked.
     private MirPlace Position(in MirOperand position, Koto node)
     {

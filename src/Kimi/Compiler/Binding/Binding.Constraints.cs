@@ -32,7 +32,7 @@ public sealed partial class Binding
         {
             if (current is FunctionKoto { IsPropertyWitness: true, BoundSymbol.Scope: { } bridge })
             {
-                return bridge; // SPEC 11.4.2: a standard witness bridge's premises are its conformance path's (PropertyWitnessFunction).
+                return bridge; // SPEC 11.9.2: a standard witness bridge's premises are its conformance path's (PropertyWitnessFunction).
             }
 
             if (this.scopes.TryGetValue(current, out var scope))
@@ -255,7 +255,7 @@ public sealed partial class Binding
                 return ConstraintProof.Refuted;
             }
 
-            // SPEC 15.6.1, 8.7: once the structural part of the whole-contract comparison holds, its Origin part is Proven or Unknown,
+            // SPEC 15.6.1, 8.3: once the structural part of the whole-contract comparison holds, its Origin part is Proven or Unknown,
             // never Refuted (CallableOriginFailure explains it). A required signature over an open region is decided by the per-call
             // stand-in instead (SPEC 15.3.6, PerCallCallables). A Function Item's Origin conditions, its clauses and result premises, are
             // proven from the required contract and belong to that Origin part (SPEC 15.3.7).
@@ -270,7 +270,7 @@ public sealed partial class Binding
             var subject = proposition.Subject!;
             if (subject.IsAbstract)
             {
-                // SPEC 8.7: a requirement on a Semantics binding is decided by containment of its admitted set.
+                // SPEC 8.3: a requirement on a Semantics binding is decided by containment of its admitted set.
                 var admitted = this.ResultSemantics(subject, scope);
                 return admitted == SemanticsMask.None ? ConstraintProof.Error :
                     (admitted & ~proposition.Mask) == 0 ? ConstraintProof.Proven :
@@ -429,7 +429,7 @@ public sealed partial class Binding
 
         if (clause.FormationType is not null && !IsAssociatedRequirement(clause))
         {
-            this.Fail(clause, BindingFailure.InvalidConstraint); // SPEC 8.4.3: only a requirement may end with a formation Type.
+            this.Fail(clause, BindingFailure.InvalidConstraint); // SPEC 8.5: only a requirement may end with a formation Type.
             return;
         }
 
@@ -471,7 +471,7 @@ public sealed partial class Binding
 
         // Only propositions dependent on generic inputs or the conforming Self are premises.
         // Closed propositions are independently checked declaration obligations.
-        // SPEC 8.4.7.2, 8.4.7: inside a Contract, `Self is [not] ObjectPayload`, `Self is Copy` and `Self is Owned` are
+        // SPEC 8.7.3, 8.7: inside a Contract, `Self is [not] ObjectPayload`, `Self is Copy` and `Self is Owned` are
         // Self-dependent implementation requirements: premises for the Contract's own signatures, derived for every Type
         // that the Contract is available for, and obligations of every conformer.
         var contractSelfClause = scope.Owner is ContractKoto && IsSelfConstraint(clause) && (IsObjectPayloadRequirement(requirement) || requirement.Contract?.Intrinsic is IntrinsicKind.Copy or IntrinsicKind.Owned);
@@ -539,7 +539,7 @@ public sealed partial class Binding
                             result = this.BindCallableRequirement(node, subject, scope, target);
                             if (result.Kind == ConstraintKind.Error && this.FailedSignaturePart(node) is { } part)
                             {
-                                // SPEC 23.3.6.4: a Callable signature that failed for a part of its own syntax rests on that part.
+                                // SPEC 23.1.2: a Callable signature that failed for a part of its own syntax rests on that part.
                                 (this.constraintDiagnosticCauses ??= new(ReferenceEqualityComparer.Instance))[node] = part;
                             }
 
@@ -784,7 +784,7 @@ public sealed partial class Binding
         {
             var constraint = (IsKoto)clauses[i];
             // A bound Contract reference supplies its parameters; its associated requirements
-            // are obligations of a conforming Self, not of forming the reference (SPEC 8.4.2).
+            // are obligations of a conforming Self, not of forming the reference (SPEC 8.4.3).
             if (binder is ContractKoto && constraint.IsAssociatedConstraint)
             {
                 continue;
@@ -826,7 +826,7 @@ public sealed partial class Binding
         return result;
     }
 
-    // SPEC 10.5, 8.7: whether a clause that no unbound slot leaves unresolved is Unknown. Such a proof waits on no argument, so it proves
+    // SPEC 10.5, 8.3: whether a clause that no unbound slot leaves unresolved is Unknown. Such a proof waits on no argument, so it proves
     // neither applicability nor negation even while a waiting argument is still open.
     private bool ResolvedClauseUnknown(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self, BoundType? declaringType, ReadOnlySpan<BoundLength?> lengths, Koto? slotOwner = null)
     {

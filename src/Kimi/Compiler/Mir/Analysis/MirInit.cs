@@ -80,7 +80,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         internal bool Checks { get; set; }
 
         // Every path uninitialized; the arguments initialized, which A2 sets the flags of at the entry, and a constructor's object storage,
-        // whose Fields are not (SPEC 6.2.3).
+        // whose Fields are not (SPEC 6.3).
         public readonly void Entry()
         {
             var paths = moves.Paths;
@@ -100,7 +100,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         }
 
         // StorageLive and StorageDead start a fresh binding lifetime; EndBorrow ends Loans only; a Return delivers what the exit requests
-        // before it checked (SPEC 6.2.3.5), so it checks nothing.
+        // before it checked (SPEC 6.3.5), so it checks nothing.
         public void Block(int block)
         {
             ref readonly var data = ref body.Blocks[block];
@@ -137,7 +137,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         }
 
         // A use of a Place under the view. A whole use of the return local delivers it, which only the runtime edges can (SPEC 14.10.3). A
-        // PairLayer a case-dependent access takes is the Place itself in the owner case and a Deref in a reference case (SPEC 13.5.5.1),
+        // PairLayer a case-dependent access takes is the Place itself in the owner case and a Deref in a reference case (SPEC 13.5.5),
         // so the outermost such reference ends the path; through a Deref or an Index only the prefix's path is used, and a Move there has
         // no Move Path (SPEC 15.1.3, 15.1.5). A2 judges a Drop the runtime edges reach from the state before it, by its path (-1: none).
         public readonly void Place(MirPlace place, MirAccess access, MirRefKind kind)
@@ -200,7 +200,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         }
 
         // A definition: every strict ancestor constructed (its own bit initialized), a path admitting one placement initialized once per
-        // binding lifetime (SPEC 15.1.1, 11.3.1), then the subtree initialized.
+        // binding lifetime (SPEC 15.1.1, 11.7), then the subtree initialized.
         private readonly void Define(int path)
         {
             var paths = moves.Paths;

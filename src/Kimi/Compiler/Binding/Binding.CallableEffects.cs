@@ -123,7 +123,7 @@ public sealed partial class Binding
     private static bool ReceiverCovers(SemanticsMask premise, SemanticsKind receiver)
         => premise == SemanticsMask.Owner || receiver == SemanticsKind.Ref || (premise == SemanticsMask.Uniq && receiver == SemanticsKind.Uniq);
 
-    // Bounds are attached to clauses, never to interned propositions or applicability facts (SPEC 8.4.10.7).
+    // Bounds are attached to clauses, never to interned propositions or applicability facts (SPEC 8.11.6).
     private void PrepareCallableEffects()
     {
         this.callableEffectClauses.Clear();
@@ -186,7 +186,7 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 8.4.10.7: the selected uses of bounded Callable clauses: each selected call, function reference and Type formation, located at
+    // SPEC 8.11.6: the selected uses of bounded Callable clauses: each selected call, function reference and Type formation, located at
     // its argument or Type argument, with its substituted subject, signature and receiver; enumerated once at the end of the Binding pass.
     private void CollectCallableEffectUses()
     {

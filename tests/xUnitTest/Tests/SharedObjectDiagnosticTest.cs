@@ -29,7 +29,7 @@ public class SharedObjectDiagnosticTest(ITestOutputHelper output)
         this.CheckOutputs(result);
     }
 
-    // SPEC 13.5.5.1, 13.5.8: a counted payload grants Read only, even from a writable handle slot at strong count one.
+    // SPEC 13.5.5, 13.6.2: a counted payload grants Read only, even from a writable handle slot at strong count one.
     [Theory]
     [InlineData("let u = owner@follow@uniq", "owner@follow@uniq")]
     [InlineData("let taken = owner@follow@move", "owner@follow@move")]

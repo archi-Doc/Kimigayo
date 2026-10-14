@@ -342,7 +342,7 @@ public class MinimalEmissionTest
             string.Join(", ", LegacyRecords.Of(c).Select(static x => $"{x.Requirement} {x.Code} {LegacyRecords.Location(x.Node)}")) +
             (c.Pipeline == CompilerPipeline.Mir ? "; " + string.Join(", ", c.Problems.Select(x => $"{x.Code} {HirTables.Op(c.SyntaxOf(x.Subject))}")) : string.Empty);
 
-    // SPEC 8.4.5: an effect bound rejects its conformance at Binding for the Loans and calls, and after ownership analysis
+    // SPEC 8.6: an effect bound rejects its conformance at Binding for the Loans and calls, and after ownership analysis
     // for the destructions the implementation's bodies actually perform (their planned cleanups).
     internal static void AssertEffectBoundRejected(Compilation c)
         => Assert.True(

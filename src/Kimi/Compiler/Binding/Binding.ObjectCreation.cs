@@ -14,7 +14,7 @@ public sealed partial class Binding
             _ => KimiDeclarationId.MakeArc,
         };
 
-    // SPEC 13.5.8: inference finishes before the common creation/identity/upcast table.
+    // SPEC 13.6.2: inference finishes before the common creation/identity/upcast table.
     // The retained intrinsic call reuses acquisition, Loans, effects, cleanup and generation.
     private BoundType? BindObjectAdaptation(ConversionKoto conversion, BindingScope scope, BoundType source, BoundType target)
     {

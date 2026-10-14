@@ -114,7 +114,7 @@ public class RawStorageTest
         }
     }
 
-    // SPEC 5.6, 8.4.10.2: allocate is an allocation and release and initialize are raw accesses; none is an environment effect.
+    // SPEC 5.6, 8.11.2: allocate is an allocation and release and initialize are raw accesses; none is an environment effect.
     [Fact]
     public void RawOperationsAreNoEnvironmentEffects()
     {

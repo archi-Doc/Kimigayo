@@ -6,15 +6,15 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
 
-// Formatting's ordered writes, adapter lifetime and capacity estimates (utf8-formatting 5, 6).
+// Formatting's ordered writes, adapter lifetime and capacity estimates (SPEC 22.10, 22.10.5).
 internal sealed partial class MirBuilder
 {
     private readonly List<BoundType> formatTypes = []; // The values' Types of the owning interpolations being built, innermost last.
 
-    // The literal bytes a write of an owning interpolation writes (utf8-formatting 5.1); -1 for a value, whose bound its instance decides.
+    // The literal bytes a write of an owning interpolation writes (SPEC 22.10.5); -1 for a value, whose bound its instance decides.
     private static int Bytes(CallPlan write) => write.ArgumentOperations[1].Source is StringLiteralKoto text ? Encoding.UTF8.GetByteCount(text.Literal) : -1;
 
-    // utf8-formatting 5.2, 5.3: the writes of a formatting plan in order (CallPlan.Of), each through an exclusive borrow of its adapter, a failed
+    // SPEC 22.10.3, 22.10.4: the writes of a formatting plan in order (CallPlan.Of), each through an exclusive borrow of its adapter, a failed
     // one leaving them: a $tryWrite's adapter is its writer operand, acquired once and Reborrowed, and a failure goes to its result, the writer's
     // status. An owning interpolation's is the internal adapter (its second call) over an exclusive borrow of the private buffer FormatBuffer
     // gives of the capacity its instance estimates from the literal bytes and the values' Types (5.1), on the stack where it is passed directly to
@@ -112,7 +112,7 @@ internal sealed partial class MirBuilder
         CollectionsMarshal.SetCount(this.formatTypes, start);
     }
 
-    // An owning interpolation's intrinsic on the operands pushed since at, then its estimate (utf8-formatting 5.1, 6.1): the literal bytes and a
+    // An owning interpolation's intrinsic on the operands pushed since at, then its estimate (SPEC 22.10.5, 22.7): the literal bytes and a
     // token of the Tuple of the values' Types from a position on, whose bounds its instance sums, and for the buffer and the end whether it is
     // passed directly to writeLine.
     private void Estimate(MirPlace destination, IntrinsicId id, long bytes, int from, int at, Koto node)

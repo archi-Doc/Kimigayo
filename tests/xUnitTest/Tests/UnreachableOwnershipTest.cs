@@ -9,7 +9,7 @@ namespace XunitTest;
 
 // SPEC 14.10.3 checks unreachable source under a type-checking continuation, which this analysis does not provide: it never
 // checks unreachable operations, and a body without another ownership issue reports its first unreachable use of a Local or
-// Parameter as the location-only Unsupported_Kd (SPEC 23.3.6.1).
+// Parameter as the location-only Unsupported_Kd (SPEC 23.1.1).
 public class UnreachableOwnershipTest
 {
     // A deferred body repeated at its dead scope end performs the use already checked on the reachable exit.

@@ -244,11 +244,11 @@ public static partial class Parser
                 ParseConstructorInitializer(ref reader, functionKoto);
             }
 
-            // A constructor accepts an access modifier and a common Body (SPEC 6.2.3).
+            // A constructor accepts an access modifier and a common Body (SPEC 6.3).
             if (genericArguments is not null || returnType is not null ||
                 context.AttributeKoto is not null || context.ModifierKind.Judged() != context.ModifierKind.ExtractAccessibilityModifiers())
             {
-                // The attributes it reports are kept as its recovery, so they mark nothing and are not resolved (SPEC 6.5).
+                // The attributes it reports are kept as its recovery, so they mark nothing and are not resolved (SPEC 6.7).
                 if (functionKoto.Unexpected(SyntaxForm.ConstructorHeader) is { } decorated)
                 {
                     for (var attribute = context.AttributeKoto; attribute is not null; attribute = attribute.AttributeChain)
@@ -294,7 +294,7 @@ public static partial class Parser
     /// </summary>
     private static bool TryParseFunctionName(ref TokenReader reader, bool anonymous, bool constructor, [NotNullWhen(true)] out string? name)
     {
-        // An attribute precedes the declaration (SPEC 6.5); one before the Name, or before a function expression's parameter
+        // An attribute precedes the declaration (SPEC 6.7); one before the Name, or before a function expression's parameter
         // list, is reported and the header continues after it.
         if (reader.CurrentTokenKind == TokenKind.Sharp)
         {
@@ -539,7 +539,7 @@ public static partial class Parser
         }
         else
         {
-            // The recovery Type stands for the missing annotation; the rest of the parameter is skipped (SPEC 23.3.6.4).
+            // The recovery Type stands for the missing annotation; the rest of the parameter is skipped (SPEC 23.1.2).
             parameterType = new ErrorKoto(ref reader, new SourceSpan(reader.PreviousSyntaxEnd, 0)) { Cause = reader.Expect(SyntaxForm.ParameterType) };
             SkipParameter(ref reader);
         }
@@ -550,7 +550,7 @@ public static partial class Parser
             defaultValue = ParseRequiredExpression(ref reader);
         }
 
-        // A specialization's restated defaults and attributes are Binding's requirement (SPEC 8.8.2); the parser keeps them. A
+        // A specialization's restated defaults and attributes are Binding's requirement (SPEC 8.13.2); the parser keeps them. A
         // misplaced attribute already reported before the list is kept here for the tree, not written on the parameter.
         if (anonymous && (internalName != externalName || defaultValue is not null || HasWrittenAttribute(attribute)))
         {
@@ -578,7 +578,7 @@ public static partial class Parser
         return false;
     }
 
-    /// <summary>Reports the pending attributes before an item that takes none (SPEC 6.5), such as a Constraint, an Origin relation
+    /// <summary>Reports the pending attributes before an item that takes none (SPEC 6.7), such as a Constraint, an Origin relation
     /// or an enum Case; each is kept for the item's first node as the recovery of its report, as a misplaced attribute is.</summary>
     /// <param name="reader">The token reader.</param>
     internal static void ReportPendingAttributes(ref TokenReader reader)
@@ -598,7 +598,7 @@ public static partial class Parser
     /// <summary>Parses the result Type after a function header's arrow; a line that ends at the arrow leaves a recovery Type.</summary>
     private static Koto ParseFunctionReturnType(ref TokenReader reader, SourceSpan arrow)
     {
-        reader.ReportMisplacedAttributes(); // A Type takes no attribute (SPEC 6.5); the result Type may follow it.
+        reader.ReportMisplacedAttributes(); // A Type takes no attribute (SPEC 6.7); the result Type may follow it.
         if (!reader.CanRead || reader.CurrentTokenKind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock or TokenKind.EqualsGreaterThan)
         {
             reader.Diagnostic.Add(arrow, DiagnosticCode.MissingReturnType_Kd);
@@ -608,7 +608,7 @@ public static partial class Parser
         return ParseFunctionResult(ref reader);
     }
 
-    /// <summary>Parses <c>base(arguments)</c> after the colon of a constructor header (SPEC 6.2.3.1).</summary>
+    /// <summary>Parses <c>base(arguments)</c> after the colon of a constructor header (SPEC 6.3.1).</summary>
     private static void ParseConstructorInitializer(ref TokenReader reader, FunctionKoto constructor)
     {
         var baseSpan = reader.CurrentTokenRange;
@@ -770,7 +770,7 @@ Exit:
         return directive;
     }
 
-    /// <summary>Parses a local binding declaration after its keyword (SPEC 6.4).</summary>
+    /// <summary>Parses a local binding declaration after its keyword (SPEC 6.6).</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="token">The declaration keyword token.</param>
     /// <returns>The parsed declaration, or <see langword="null"/> after an error.</returns>
@@ -810,7 +810,7 @@ Exit:
         }
 
         // A binding states its Type or has an initializer, and an inferred element Type needs the initializer; the recovery
-        // Type stands for what is missing, so the uses of the binding rest on this Error (SPEC 23.3.6.4).
+        // Type stands for what is missing, so the uses of the binding rest on this Error (SPEC 23.1.2).
         if (typeKoto is null && initializerKoto is null)
         {
             typeKoto = new ErrorKoto(ref reader, new SourceSpan(nameKoto.Span.End, 0)) { Cause = reader.Expect(SyntaxForm.TypeOrInitializer) };
@@ -851,7 +851,7 @@ Exit:
         }
         else if (computed)
         {
-            // A computed Property or requirement states its Type; the recovery Type stands for the missing annotation (SPEC 23.3.6.4).
+            // A computed Property or requirement states its Type; the recovery Type stands for the missing annotation (SPEC 23.1.2).
             typeKoto = new ErrorKoto(ref reader, new SourceSpan(nameKoto.Span.End, 0)) { Cause = reader.Expect(SyntaxForm.TypeAnnotation) };
         }
 
@@ -869,7 +869,7 @@ Exit:
 
         if (!computed && typeKoto is null && initializerKoto is null)
         {
-            // A stored Property states its Type or has an initializer; the recovery Type stands for the missing one (SPEC 23.3.6.4).
+            // A stored Property states its Type or has an initializer; the recovery Type stands for the missing one (SPEC 23.1.2).
             typeKoto = new ErrorKoto(ref reader, new SourceSpan(nameKoto.Span.End, 0)) { Cause = reader.Expect(SyntaxForm.TypeOrInitializer) };
         }
 
@@ -1198,7 +1198,7 @@ CloseParameters:
     /// </summary>
     private static bool TryParseAccessorHeader(ref TokenReader reader, PropertyKoto property, out AccessorHeader header)
     {
-        // An accessor list takes no attributes (SPEC 6.5): one is reported and kept for the accessor, which is still read.
+        // An accessor list takes no attributes (SPEC 6.7): one is reported and kept for the accessor, which is still read.
         reader.ReportMisplacedAttributes();
         var start = reader.CurrentTokenRange.Start;
         var modifier = ParseAccessorAccessibility(ref reader);
@@ -1439,7 +1439,7 @@ CloseParameters:
                 case TokenKind.Separator:
                     if (reader.ModifierKind != ModifierKind.NoModifier)
                     {
-                        // Modifiers share the line of the word that introduces their declaration (Appendix F.3), so modifiers
+                        // Modifiers share the line of the word that introduces their declaration (Appendix F.6), so modifiers
                         // that end their line introduce nothing: the declaration is missing after them and they are dropped,
                         // while attributes before them still precede the next declaration. A static, already reported, is
                         // no modifier that needs one. An indented body after them would be the missing declaration's, so it is
@@ -1489,7 +1489,7 @@ CloseParameters:
                     {
                         if (reader.PeekKind(1) is TokenKind.If or TokenKind.Switch or TokenKind.Case)
                         {
-                            // A directive is an item of its own (Appendix F.8): the modifiers before it introduce nothing.
+                            // A directive is an item of its own (Appendix F.11): the modifiers before it introduce nothing.
                             if ((reader.ModifierKind & ~ModifierKind.Static) != ModifierKind.NoModifier)
                             {
                                 reader.Expect(SyntaxForm.Declaration);
@@ -1500,7 +1500,7 @@ CloseParameters:
                         }
                         else
                         {
-                            // Attributes precede a declaration's modifiers (Appendix F.3): one after them is misplaced, and it
+                            // Attributes precede a declaration's modifiers (Appendix F.6): one after them is misplaced, and it
                             // is kept for the declaration as that Error's recovery.
                             reader.ReportMisplacedAttributes();
                             continue;
@@ -1524,7 +1524,7 @@ CloseParameters:
                     {
                         if (allowCompileTimeDirectives)
                         {
-                            // Its Condition is validated and its body is parsed as excluded syntax (SPEC 19.5).
+                            // Its Condition is validated and its body is parsed as excluded syntax (SPEC 19.4).
                             reader.HasCompileTimeIfPrefix |= ParseOrphanCompileTimeCase(ref reader);
                             continue;
                         }
@@ -1545,7 +1545,7 @@ CloseParameters:
                     }
                     else if (reader.ModifierKind.HasFlag(ModifierKind.Open) && (tokenKind != TokenKind.Struct || reader.PeekKind(-1) != TokenKind.Open))
                     {
-                        // open applies only to structures and immediately precedes struct (SPEC 6.2.2, F.3). It is reported here
+                        // open applies only to structures and immediately precedes struct (SPEC 6.2.2, F.6). It is reported here
                         // only, so the declaration's own checks do not judge it again (Judged).
                         reader.Unexpected(SyntaxForm.OpenModifier, openSpan);
                     }
@@ -1559,7 +1559,7 @@ CloseParameters:
         isEnd = true;
         return false;
 
-        // Attributes, modifiers or a compile-time prefix at the end of a body or of the source introduce no declaration (SPEC 6.5):
+        // Attributes, modifiers or a compile-time prefix at the end of a body or of the source introduce no declaration (SPEC 6.7):
         // the declaration is missing after them, and the pending header is dropped.
         static void ReportDanglingHeader(ref TokenReader reader)
         {
@@ -1774,7 +1774,7 @@ CloseParameters:
 
         return optionalSuffix ? ParseOptionalSuffix(ref reader, left, parseBorrowOrigin: !disambiguateGenerics) : left;
 
-        // After a '.', a member is a Name, whose Type arguments the loop reads, or a parenthesized Contract (SPEC 8.4.3); a fixed
+        // After a '.', a member is a Name, whose Type arguments the loop reads, or a parenthesized Contract (SPEC 8.5); a fixed
         // array or a root name there is where the Name was expected. A '/' after the member is left to the enclosing construct.
         static Koto ParseTypeMember(ref TokenReader reader)
         {
@@ -2089,7 +2089,7 @@ CloseParameters:
         Koto type;
         while (true)
         {
-            // A line boundary ends an unrecognized list: the tokenizer joins the lines of a recognized one (SPEC 2.2.1).
+            // A line boundary ends an unrecognized list: the tokenizer joins the lines of a recognized one (SPEC F.4.1).
             type = ParseTypeArgument(ref reader);
             typeList.Add(type);
             end = type.Span.End;
@@ -2116,7 +2116,7 @@ CloseParameters:
     /// <summary>Parses an attribute expression.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="beforeList">Whether the attribute is misplaced where the grammar expects <c>(</c>, such as before a parameter
-    /// list. SPEC 6.5 sets no adjacency rule for the argument list, so there the attribute takes a list only when another
+    /// list. SPEC 6.7 sets no adjacency rule for the argument list, so there the attribute takes a list only when another
     /// <c>(</c> follows it: the last list is the one the grammar expects, as in <c>func f #Test () => ()</c>.</param>
     /// <returns>The parsed attribute, or <see langword="null"/> after an error.</returns>
     public static AttributeKoto? ParseAttributeKoto(ref TokenReader reader, bool beforeList = false)
@@ -2370,7 +2370,7 @@ CloseParameters:
                 }
                 else if (reader.TryConsume(TokenKind.Dot))
                 {
-                    // SPEC 8.4.3: a requirement Type may be a Contract-qualified projection such as I.(LendingIterator).LentItem(step).
+                    // SPEC 8.5: a requirement Type may be a Contract-qualified projection such as I.(LendingIterator).LentItem(step).
                     var member = reader.CurrentTokenKind == TokenKind.OpenParenthesis
                         ? ParseBareParenthesizedType(ref reader)
                         : ParseName(ref reader);
@@ -2564,7 +2564,7 @@ CloseParameters:
     /// <param name="state">The Constraint-prefix state of the enclosing body, shared by its directive targets and arms.</param>
     /// <returns>The end offset of the block.</returns>
     /// <remarks>
-    /// Directive targets and arms are parsed by this same loop (SPEC 19.5): a selected one adds its items directly; excluded
+    /// Directive targets and arms are parsed by this same loop (SPEC 19.4): a selected one adds its items directly; excluded
     /// syntax is parsed with the same grammar and recovery, extends the source-order Constraint prefix, and is dropped.
     /// </remarks>
     private static int ParseExecutableBlockItems(ref TokenReader reader, ref TemporaryKotoList items, ref ExecutableItemState state)
@@ -2689,7 +2689,7 @@ CloseParameters:
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void ParseExecutableItem(ref TokenReader reader, ref TemporaryKotoList items, ref ExecutableItemState state)
     {
-        // Excluded syntax is parsed like selected syntax but registers nothing with the enclosing declarations (SPEC 19.5).
+        // Excluded syntax is parsed like selected syntax but registers nothing with the enclosing declarations (SPEC 19.4).
         var excluded = reader.InExcludedSyntax;
         var function = state.Function;
         if (IsOriginRelationStart(ref reader))
@@ -2711,7 +2711,7 @@ CloseParameters:
             return;
         }
 
-        // SPEC 8.4.10.1: an effect item belongs to a requirement's Constraint region. At a body's Constraint prefix it is
+        // SPEC 8.11.1: an effect item belongs to a requirement's Constraint region. At a body's Constraint prefix it is
         // kept for Binding to reject, never read as an expression.
         if (function is not null && !state.SeenExecutableItem && IsEffectStart(ref reader, specification: false))
         {
@@ -2725,7 +2725,7 @@ CloseParameters:
             return;
         }
 
-        // SPEC 7.4: every function, constructor, destructor and accessor body begins with its Constraint prefix, whatever
+        // SPEC 7.5: every function, constructor, destructor and accessor body begins with its Constraint prefix, whatever
         // the declaration's generic parameters; a leading `value is Dog` is never an expression statement.
         if ((function is not null || state.OriginOwner is PropertyAccessorKoto) && IsFunctionConstraintStart(ref reader, function))
         {
@@ -2741,7 +2741,7 @@ CloseParameters:
                 var constraint = ParseTypeConstraint(ref reader);
                 if (constraint is not null && function is { IsDestructor: false } && !excluded)
                 {
-                    // The prefix stays a Constraint of the function (SPEC 7.4); a misplaced one is a recovery, so Binding's own judgement of it is derived.
+                    // The prefix stays a Constraint of the function (SPEC 7.5); a misplaced one is a recovery, so Binding's own judgement of it is derived.
                     function.AddTypeConstraint(constraint);
                     if (misplaced is { } cause)
                     {
@@ -2809,7 +2809,7 @@ CloseParameters:
     {
         if (cause is { } key && !reader.InExcludedSyntax)
         {
-            // Excluded syntax records no omission for the selected program (SPEC 19.5).
+            // Excluded syntax records no omission for the selected program (SPEC 19.4).
             reader.CodeContext.Kotonoha.RecordOmission(key);
         }
 
@@ -2817,7 +2817,7 @@ CloseParameters:
     }
 
     /// <summary>
-    /// Gets whether a Container keyword at the current token declares a Container. The contextual keyword is a Name (SPEC 2.5.1)
+    /// Gets whether a Container keyword at the current token declares a Container. The contextual keyword is a Name (SPEC F.3)
     /// where an expression continues after it, through an operator, a member access, a call or an index, and where its line ends
     /// without an indented body; anything else, its Name or a token no expression takes there, makes it a declaration.
     /// </summary>
@@ -2853,7 +2853,7 @@ CloseParameters:
             var cause = reader.Expect(SyntaxForm.Declaration);
             if (!reader.InExcludedSyntax)
             {
-                // Excluded syntax records no omission for the selected program (SPEC 19.5).
+                // Excluded syntax records no omission for the selected program (SPEC 19.4).
                 reader.CodeContext.Kotonoha.RecordOmission(cause);
             }
 
@@ -2863,7 +2863,7 @@ CloseParameters:
 
         if (reader.AttributeKoto is { } attribute && (reader.CurrentTokenKind != TokenKind.Func || reader.PeekKind(1) is TokenKind.OpenParenthesis or TokenKind.OpenBracket))
         {
-            // Only a named function among executable items takes attributes (SPEC 6.5, F.5); a misplaced one attaches to nothing,
+            // Only a named function among executable items takes attributes (SPEC 6.7, F.10); a misplaced one attaches to nothing,
             // so the item it precedes is checked on its own.
             reader.Unexpected(SyntaxForm.Attribute, attribute.Span);
             reader.PopAttribute();
@@ -2997,7 +2997,7 @@ CloseParameters:
     }
 
     // unsafe is contextual: it introduces a statement only before a Body (or an obsolete body colon/missing body
-    // at statement start). A following operator, call, index, or member access keeps it an ordinary Name (SPEC 2.5.1).
+    // at statement start). A following operator, call, index, or member access keeps it an ordinary Name (SPEC F.3).
     private static bool IsBlockStatementStart(ref TokenReader reader, bool expressionPosition = false)
         => reader.CurrentTokenKind == TokenKind.Defer ||
             (reader.IsCurrentIdentifier(Constants.UnsafeKeyword) &&
@@ -3135,7 +3135,7 @@ CloseParameters:
         return loop;
     }
 
-    /// <summary>Parses the slots of <c>(slot, ...)</c> (SPEC 14.6.1, F.5); a failed slot is skipped whole and the list continues.</summary>
+    /// <summary>Parses the slots of <c>(slot, ...)</c> (SPEC 14.6.1, F.10); a failed slot is skipped whole and the list continues.</summary>
     /// <returns>The key of the first Error, or <see langword="null"/> for a well-formed list.</returns>
     private static DiagnosticKey? ParseForTupleBindings(ref TokenReader reader, List<IdentifierNameKoto> bindings, ref bool[]? mutableSlots)
     {
@@ -3146,7 +3146,7 @@ CloseParameters:
             var start = reader.Position;
             if (reader.CurrentTokenKind is TokenKind.CloseParenthesis or TokenKind.In || IsExpressionBoundary(ref reader))
             {
-                // An empty list, a trailing comma or a list cut short: a ForBinding needs a slot here (SPEC F.5).
+                // An empty list, a trailing comma or a list cut short: a ForBinding needs a slot here (SPEC F.10).
                 malformed ??= reader.Expect(SyntaxForm.Name);
             }
             else if (TryParseForBinding(ref reader, out var binding, out var mutable))
@@ -3275,7 +3275,7 @@ CloseParameters:
 
             if (reader.CurrentTokenKind == TokenKind.Sharp && reader.PeekKind(1) is TokenKind.If or TokenKind.Switch or TokenKind.Case)
             {
-                // A directive selects whole items, and an arm is none (SPEC 19.1, Appendix F.8): it is one problem, and its line is
+                // A directive selects whole items, and an arm is none (SPEC 19.1, Appendix F.11): it is one problem, and its line is
                 // skipped with the indented arms of a block form or a #switch; the arms after it are read as usual.
                 reader.Unexpected(SyntaxForm.CompileTimeDirective, SourceSpan.FromBounds(reader.CurrentTokenRange.Start, reader.PeekToken(1).Span.End));
                 if (reader.SkipHeaderLine())
@@ -3453,7 +3453,7 @@ CloseParameters:
                 reader.Expect(SyntaxForm.ArrowBody);
             }
 
-            // The items of an indented body are regions of their own (SPEC 2.2.1).
+            // The items of an indented body are regions of their own (SPEC F.4.1).
             var region = reader.EnterRegion();
             var block = ParseRequiredBlock(ref reader, true);
             reader.RestoreRegion(region);
@@ -3549,7 +3549,7 @@ CloseParameters:
 
             if (tokenKind == TokenKind.Sharp)
             {
-                // An expression takes no attribute (SPEC 6.5); the misplaced one is discarded and the expression continues after it.
+                // An expression takes no attribute (SPEC 6.7); the misplaced one is discarded and the expression continues after it.
                 reader.ReportMisplacedAttributes();
                 continue;
             }
@@ -3863,7 +3863,7 @@ ProcessPrefix:
     }
 
     /// <summary>
-    /// Recognizes the conversion operations <c>@wrap&lt;U&gt;</c> and <c>@bits&lt;U&gt;</c> (SPEC §2.5.1, §13.5.4): <c>wrap</c> or
+    /// Recognizes the conversion operations <c>@wrap&lt;U&gt;</c> and <c>@bits&lt;U&gt;</c> (SPEC §F.3, §13.5.4): <c>wrap</c> or
     /// <c>bits</c> with adjacent Type arguments, parsed as a generic Type application and re-formed as an operation target.
     /// </summary>
     private static Koto ConversionOperationTarget(ref TokenReader reader, Koto target)
@@ -3892,7 +3892,7 @@ ProcessPrefix:
     }
 
     /// <summary>
-    /// Determines whether the current <c>@</c> starts the postfix follow operation <c>E@follow</c> (SPEC §13.5.5.1):
+    /// Determines whether the current <c>@</c> starts the postfix follow operation <c>E@follow</c> (SPEC §13.5.5):
     /// the next token spells <c>follow</c>. A following slash is division, never a Semantics prefix.
     /// </summary>
     private static bool IsFollowOperation(ref TokenReader reader)
@@ -4020,7 +4020,7 @@ ProcessPrefix:
 
     /// <summary>
     /// Determines whether the current <c>&lt;</c> applies Type arguments to the syntax that ends at <paramref name="targetSpan"/>: it is
-    /// adjacent to it, and the tokenizer found its matching <c>&gt;</c> (SPEC 12.4.2, <see cref="Token.OpensTypeArguments"/>). Otherwise
+    /// adjacent to it, and the tokenizer found its matching <c>&gt;</c> (SPEC 12.5.2, <see cref="Token.OpensTypeArguments"/>). Otherwise
     /// it compares values, so spaces around a comparison avoid the ambiguity.
     /// </summary>
     private static bool OpensAdjacentTypeArguments(ref TokenReader reader, SourceSpan targetSpan)
@@ -4743,7 +4743,7 @@ Separator:
     /// <summary>
     /// Parses a parenthesized Type or Tuple Type by itself: no Origin annotation, Function Type arrow, Container suffix or
     /// optional suffix follows it here, because the caller continues the enclosing form (a Semantics prefix, or a
-    /// Contract-qualified projection such as <c>I.(LendingIterator).LentItem</c>, SPEC 8.4.3).
+    /// Contract-qualified projection such as <c>I.(LendingIterator).LentItem</c>, SPEC 8.5).
     /// </summary>
     private static Koto ParseBareParenthesizedType(ref TokenReader reader)
         => ParseDeclarationType(ref reader, parseOrigin: false, parseFunctionType: false, parseContainerSuffix: false, parseSuffix: false);

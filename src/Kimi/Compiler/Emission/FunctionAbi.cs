@@ -4,7 +4,7 @@ using System.Text;
 
 namespace Kimi.Compiler;
 
-/// <summary>A physical signature shared by definitions and calls (SPEC 21.4.2). ccc is LLVM's default; identity is by reference.</summary>
+/// <summary>A physical signature shared by definitions and calls (SPEC 21.3.1). ccc is LLVM's default; identity is by reference.</summary>
 internal sealed class FunctionAbi(string name, string result, AbiParameter[] parameters, bool noReturn = false, bool resultSlot = false, bool callerLocation = false)
 {
     private string? internalDefinition;

@@ -254,7 +254,7 @@ public class KimiLibraryShapeTest
     }
 
     // Plan 5.8: the intrinsic table gives every compiler function one disposition; an intrinsic serves at most one of them, except Fail,
-    // which carries a fixed SPEC 22.5.4 code; there are at most 30 intrinsics, and the temporary Capacity, FormatBuffer, FormatHint and
+    // which carries a fixed SPEC 22.5.2 code; there are at most 30 intrinsics, and the temporary Capacity, FormatBuffer, FormatHint and
     // FormatFinish (owner approvals 2026-10-11) until R8.
     [Fact]
     public void EveryCompilerFunctionHasOneDisposition()

@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 4.6.3–4.6.4: two boundaries of one integer Type construct an iterable Range&lt;T, T&gt; or ClosedRange&lt;T, T&gt;;
+/// <summary>SPEC 4.6.2–4.6.3: two boundaries of one integer Type construct an iterable Range&lt;T, T&gt; or ClosedRange&lt;T, T&gt;;
 /// construction checks nothing, iteration Aborts on a reversed range, and resolution and slicing check boundaries against a
 /// length, with one check for a range applied directly.</summary>
 public class IntegerRangeTest
@@ -53,7 +53,7 @@ public class IntegerRangeTest
         "match tryWindow(data[..], start: -1, end: 2)\n    .Some(_) => $abort(\"window negative\")\n    .None => Console.writeLine(\"Window refused.\")\n" +
         "Console.writeLine(\"ok\")";
 
-    // SPEC 4.6.3.4: a ResolvedRange's entries return RangeIterator<isize> over its half-open interval, also through a
+    // SPEC 4.6.4: a ResolvedRange's entries return RangeIterator<isize> over its half-open interval, also through a
     // generic Iterable and an owning adapter.
     private const string Resolved =
         "func count<S>(items: S) -> i32\n    S is Iterable\n    var n: i32 = 0\n    for _ in items\n        n += 1\n    return n\n" +
@@ -63,7 +63,7 @@ public class IntegerRangeTest
         "require count(values.indices) == 5 and count(r) == 3 and count((2..2).resolve(5)) == 0 and count(0..4) == 4 and count(0..=4) == 5 else => $abort(\"generic\")\n" +
         "Console.writeLine(\"ok\")";
 
-    // SPEC 4.6.3.4: a closed range yields its end last and never computes past it, also at the maximum of its Type; the
+    // SPEC 4.6.4: a closed range yields its end last and never computes past it, also at the maximum of its Type; the
     // iterator iterates a half-open state unless the end is that maximum (measured design, P41 U6).
     private const string ClosedEnds =
         "func check<T>(first: T, last: T, count: i32) -> bool\n    T is PrimitiveInteger\n    var n: i32 = 0\n    var seen: T = first\n    for v in first..=last\n        seen = v\n        n += 1\n    return n == count and seen == last\n" +
@@ -77,7 +77,7 @@ public class IntegerRangeTest
         "var it = (3..=5).iterate()\nvar total = 0\nloop\n    match it.next()\n        .Some(let v) => total += v\n        .None => exit\nmatch it.next()\n    .Some(_) => $abort(\"exhausted\")\n    .None => ()\nrequire total == 12 else => $abort(\"explicit\")\n" +
         "Console.writeLine(\"ok\")";
 
-    // SPEC 4.6.3.4, 4.6.8: a ResolvedRange loop runs the positions of its RangeIterator<isize> entries without forming an
+    // SPEC 4.6.4, 4.8.6: a ResolvedRange loop runs the positions of its RangeIterator<isize> entries without forming an
     // iterator; both are compared over every interval of a small target.
     private const string ResolvedCursor =
         "var checked = 0\nvar start: isize = 0\nwhile start <= 6\n    var end = start\n    while end <= 6\n" +
@@ -135,7 +135,7 @@ public class IntegerRangeTest
             1,
             "Hello.kimi:3:9: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
-    // SPEC 4.6.4: construction checks nothing; a negative boundary fails only when a use resolves it.
+    // SPEC 4.6.3: construction checks nothing; a negative boundary fails only when a use resolves it.
     [Fact]
     public void ConstructionChecksNothing()
         => ScalarEmissionTest.EmitFixture(
@@ -145,7 +145,7 @@ public class IntegerRangeTest
             1,
             "Hello.kimi:8:9: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
-    // SPEC 4.6.2: a u64 offset beyond isize fails resolution; nothing is truncated or checked at construction.
+    // SPEC 4.6.1: a u64 offset beyond isize fails resolution; nothing is truncated or checked at construction.
     [Theory]
     [InlineData("Direct", "let x = values[^n]")]
     [InlineData("Saved", "let x = values[index]")]
@@ -187,7 +187,7 @@ public class IntegerRangeTest
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
-    // SPEC 4.6.3.1: each literal-only boundary takes the S or E of the expected range, else the integer Type of the other
+    // SPEC 4.6.2: each literal-only boundary takes the S or E of the expected range, else the integer Type of the other
     // boundary, else i32.
     [Theory]
     [InlineData("let r = 1..^1", "Range<i32, FromEnd<i32>>")]

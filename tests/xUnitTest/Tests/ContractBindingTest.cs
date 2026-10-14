@@ -345,7 +345,7 @@ public class ContractBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.AmbiguousBinding_Kd);
     }
 
-    // SPEC 23.3.6.4: the cyclic specifications are invalid, and the conformance's completeness rests on them (G34-8).
+    // SPEC 23.1.2: the cyclic specifications are invalid, and the conformance's completeness rests on them (G34-8).
     [Fact]
     public void AssociatedIdentityCyclesCannotValidateAnImplementation()
     {

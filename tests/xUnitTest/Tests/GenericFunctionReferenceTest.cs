@@ -10,7 +10,7 @@ using Xunit;
 namespace XunitTest;
 
 // SPEC 10.5: a generic function reference binds its own slots from the fixed expected call signature, and its Function Item
-// keeps those bound arguments (SPEC 7.6.4); calls and erasure enter the instance of the bound arguments.
+// keeps those bound arguments (SPEC 7.7.4); calls and erasure enter the instance of the bound arguments.
 public class GenericFunctionReferenceTest
 {
     private const string Identity = "func identity<T>(value: T) -> T => value@move\n";
@@ -194,7 +194,7 @@ public class GenericFunctionReferenceTest
     }
 
     // SPEC 10.5, 15.6.5: an input Origin of a function enclosing the reference is fixed in its body, so a slot may hold it; at a common
-    // Function Type the Item is then judged by the Owned condition (SPEC 7.6.4, 15.2.3), which a premise can prove. A written Type
+    // Function Type the Item is then judged by the Owned condition (SPEC 7.7.4, 15.2.3), which a premise can prove. A written Type
     // argument whose Origin is omitted takes that Origin from S by local inference (SPEC 15.4.4), so it reaches the same condition.
     [Theory]
     [InlineData("make")]
@@ -337,7 +337,7 @@ public class GenericFunctionReferenceTest
         Assert.Equal(code, Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error).Code);
     }
 
-    // SPEC 7.6, 10.5: a value has no Type parameters, so explicit Type arguments select nothing, as at a value call.
+    // SPEC 7.7, 10.5: a value has no Type parameters, so explicit Type arguments select nothing, as at a value call.
     [Fact]
     public void ExplicitArgumentsOnAValueSelectNothing()
     {

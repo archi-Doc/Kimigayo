@@ -90,7 +90,7 @@ public class ConcreteClosureTest
         Assert.Empty(output.ToString());
     }
 
-    // SPEC 7.6.2: creating a closure acquires its entries even where its value is discarded, as a statement or a statement
+    // SPEC 7.7.2: creating a closure acquires its entries even where its value is discarded, as a statement or a statement
     // match arm, so a later use of a moved entry is MovedPlace_Kd at that use.
     [Theory]
     [InlineData("public func main() -> ()\n    let s = \"x\"\n    let n = 1\n    match n\n        0 => func [s@move] () => ()\n        _ => ()\n    Console.writeLine(s)\n")]

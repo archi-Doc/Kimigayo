@@ -14,7 +14,7 @@ internal static class ScalarTypes
     // Character storage uses i32, but does not grant integer arithmetic or conversions.
     internal static bool IsCharacterValue(Int128 value) => value >= 0 && value <= 0x10FFFF && !(value >= 0xD800 && value <= 0xDFFF);
 
-    // A wrapping integer Type answers every width and signedness query by its integer argument (SPEC 3.1.1.1).
+    // A wrapping integer Type answers every width and signedness query by its integer argument (SPEC 3.1.1).
     internal static int Width(BoundType? type, int pointerWidth = 64) => type?.Kind != BoundTypeKind.Primitive ? 0 : type.Underlying.Name switch
     {
         "i8" or "u8" => 8,

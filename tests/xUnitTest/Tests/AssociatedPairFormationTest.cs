@@ -4,7 +4,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 8.1.1, 8.4.3.1: a family may borrow the target `T` of a pair `s/T` stored in `Self`; the formation condition
+/// <summary>SPEC 8.1.1, 8.5.4: a family may borrow the target `T` of a pair `s/T` stored in `Self`; the formation condition
 /// `for ref/Self during a` proves the stored pair's dependencies, and so the target's, outlive `a`.</summary>
 public class AssociatedPairFormationTest
 {
@@ -41,7 +41,7 @@ public class AssociatedPairFormationTest
         Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.InvalidOriginBinding_Kd);
     }
 
-    // SPEC 8.1.2, 8.4.3: a family over a pair layer, annotated or applied, is a conditional borrow of its target: `s/U during a` and
+    // SPEC 8.1.2, 8.5: a family over a pair layer, annotated or applied, is a conditional borrow of its target: `s/U during a` and
     // `s/T during a` return the stored application and the stored `W` in owner and ref instances alike (A.15). Each header slot is
     // anchored by a Field in every instance, and the ref instance is inferred, since a written Type argument cannot bind its own
     // omitted Origin yet (PLAN G10).
@@ -63,7 +63,7 @@ public class AssociatedPairFormationTest
         ScalarEmissionTest.EmitFixture("AssociatedPairLayers", Source, "7 6 9 5\n");
     }
 
-    // SPEC 8.1.2, 8.4.3, 23.3.6.4: pair-layer families are formed like borrows whose slot exists in the binder's borrow cases. A missing
+    // SPEC 8.1.2, 8.5, 23.1.2: pair-layer families are formed like borrows whose slot exists in the binder's borrow cases. A missing
     // formation condition, a static slot under an admitted `uniq` and a slot that the target's Origins do not provably outlive are each
     // one record, as for the concrete twin; a binder admitting an object Semantics stays Unsupported, beside its own unproven Object
     // Target.

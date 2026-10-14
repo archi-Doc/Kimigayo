@@ -5,7 +5,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 8.10; PLAN G75 U6: the Semantics-case runs of a definition reuse their pooled side bodies, case vectors, binder lists,
+// SPEC 8.15; PLAN G75 U6: the Semantics-case runs of a definition reuse their pooled side bodies, case vectors, binder lists,
 // retentions and issue maps, so warm rebinding and ownership analysis of the case workload allocate nothing.
 public sealed class GenericCaseAllocationTest
 {

@@ -8,7 +8,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 8.9, 8.10 and 13.5.8: one fixed input and the ordinary operation in every admitted Semantics case.</summary>
+/// <summary>SPEC 8.14, 8.15 and 13.6.2: one fixed input and the ordinary operation in every admitted Semantics case.</summary>
 public class GenericAdaptationTest
 {
     [Theory]

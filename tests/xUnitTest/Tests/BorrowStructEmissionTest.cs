@@ -45,7 +45,7 @@ public class BorrowStructEmissionTest
         Assert.False(c.Validate(out _));
     }
 
-    // SPEC 6.2.3.6, 22.1: a construction of a Type without constructors is one Language absence at T.init whose Note names the reason:
+    // SPEC 6.3.6, 22.1: a construction of a Type without constructors is one Language absence at T.init whose Note names the reason:
     // an own Field without an initializer (related), a Kimi Type whose representation the compiler manages, or a Type that is no
     // structure. Generic Wrapping<T> no longer receives a synthesized constructor that generation cannot lower.
     [Theory]

@@ -9,7 +9,7 @@
 // path, and a Move through them has no Move Path, except through a raw pointer (an untracked Take). Roots whose events all lie in one chain
 // from their StorageLive (a StorageDead elsewhere kills whatever state arrives) are chain-local and numbered after the flow roots, so a head
 // stores only the flow paths. A path admits one placement when its root is a let binding or it lies in a constructor's Field placed once
-// (SPEC 15.1.1, 11.3.1).
+// (SPEC 15.1.1, 11.7).
 // Must not decide initialization, copy a body per view, intern projections or change the body.
 
 #pragma warning disable SA1402 // The path record belongs to the paths.
@@ -67,7 +67,7 @@ internal sealed class MirMoveData
     /// PairAcquire, an Adapt; <see cref="MirAccess.CaseDependent"/>).</summary>
     internal bool ViewDependent { get; private set; }
 
-    /// <summary>Gets a value indicating whether the body constructs its object in _0 from fresh storage (SPEC 6.2.3).</summary>
+    /// <summary>Gets a value indicating whether the body constructs its object in _0 from fresh storage (SPEC 6.3).</summary>
     internal bool Constructing { get; private set; }
 
     /// <summary>Collects the move paths of a body and numbers them.</summary>

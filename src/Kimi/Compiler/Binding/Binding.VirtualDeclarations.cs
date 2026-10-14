@@ -86,7 +86,7 @@ public sealed partial class Binding
         this.baseCallFailures?.Clear();
     }
 
-    // SPEC 6.2.4: declaration eligibility precedes slot matching and body proofs.
+    // SPEC 6.4: declaration eligibility precedes slot matching and body proofs.
     private void ValidateVirtualDeclarations()
     {
         for (var i = 0; i < this.nodes.Count; i++)
@@ -106,7 +106,7 @@ public sealed partial class Binding
         }
     }
 
-    // Shared receivers preserve completeness by their authority (SPEC 12.4.4.2) and proceed
+    // Shared receivers preserve completeness by their authority (SPEC 12.7.1) and proceed
     // through ordinary ownership checking. Exclusive OCC still needs its fixed point.
     private void GuardPendingVirtualDeclarations()
     {

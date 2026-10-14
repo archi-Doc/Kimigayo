@@ -352,7 +352,7 @@ internal ref struct Tokenizer
 
     /// <summary>
     /// Reads one logical line: its tokens, the physical lines that continue it inside delimiters, and the layout tokens that the
-    /// indentation of the next effective line produces (SPEC 2.2.1). The indentation stack lives for one logical line only; the
+    /// indentation of the next effective line produces (SPEC F.4.1). The indentation stack lives for one logical line only; the
     /// body levels it leaves open become <see cref="currentIndentLevel"/>.
     /// </summary>
     private void ReadLogicalLine()
@@ -859,7 +859,7 @@ LineContent:
                 goto Loop;
             }
             else if (this.span.Length > 1 && this.span[0] == Constants.MinusChar && this.span[1] == Constants.GreaterThanChar)
-            {// A header "->" line is one level deeper; delimiters opened on it nest from that line (SPEC 2.2.1).
+            {// A header "->" line is one level deeper; delimiters opened on it nest from that line (SPEC F.4.1).
                 this.PushIndentSource(IndentSource.LineContinuation, indentLevel);
                 goto Loop;
             }
@@ -1055,8 +1055,8 @@ EndOfFile:
 
     /// <summary>
     /// Determines whether the '&lt;' at the current position opens Type arguments or parameters: it follows a Name, adjacent to it in an
-    /// expression (SPEC 12.4.2), and its matching '&gt;' follows within the grouping that encloses it. Its content continues on a later
-    /// line only as SPEC 2.2.1 lets the content of a delimiter continue, and a '&lt;' that is not adjacent, as in a declaration
+    /// expression (SPEC 12.5.2), and its matching '&gt;' follows within the grouping that encloses it. Its content continues on a later
+    /// line only as SPEC F.4.1 lets the content of a delimiter continue, and a '&lt;' that is not adjacent, as in a declaration
     /// <c>List &lt;T&gt;</c>, continues only when the line ends after it. Otherwise it is a comparison.
     /// </summary>
     private readonly bool IsGenericOpen()
@@ -1365,7 +1365,7 @@ EndOfFile:
 
         // Inspect only the preceding logical header; no source strings are created.
         // Keywords inside delimiters belong to nested expressions, and an outer "=>" has already
-        // supplied a single-item body, whose expression may continue with a leading dot (SPEC 2.2.2).
+        // supplied a single-item body, whose expression may continue with a leading dot (SPEC F.4.6).
         var nesting = 0;
         for (var i = this.tokenCount - 1; i >= 0; i--)
         {
@@ -1772,7 +1772,7 @@ EndOfFile:
             if (indentSource == IndentSource.Block)
             {
                 // A body opens only at a line start, so this closer shares a line with body content.
-                // Close it for recovery, but a dedent must precede the outer closer (SPEC 2.2.1).
+                // Close it for recovery, but a dedent must precede the outer closer (SPEC F.4.1).
                 if (!closesBody)
                 {
                     closesBody = true;
@@ -1917,8 +1917,8 @@ EndOfFile:
 
     private void ReportMissingDelimiter(SourceSpan opening, SourceSpan range, TokenKind closingKind)
     {
-        // The closer is missing at an insertion point; the grouping it closes is related evidence (SPEC 23.3.6.2), and the closer
-        // inserted there is the repair candidate (SPEC 23.3.6.9).
+        // The closer is missing at an insertion point; the grouping it closes is related evidence (SPEC 23.3), and the closer
+        // inserted there is the repair candidate (SPEC 23.1.3).
         var opened = this.diagnostics.Relate("opening delimiter", opening, this.sourceDocument, "opened here");
         var closer = closingKind.ToText();
         var repairs = this.sourceDocument is null ? null : new DiagnosticRepairFact[] { new(RepairKind.InsertToken, [closer], [this.diagnostics.Edit(new(range.Start, 0), closer, this.sourceDocument)], RepairConditionSet.None) };

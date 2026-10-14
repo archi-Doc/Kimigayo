@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 17.4.3, 23.3.6.9: a discarded Result statement offers `_ = try ` where the enclosing function's failure return target takes
+// SPEC 17.5.1, 23.1.3: a discarded Result statement offers `_ = try ` where the enclosing function's failure return target takes
 // its error Type and `_ = ` always; a discarded try success value offers `_ = `; neither carries a condition, and neither is
 // offered where the expression is not a direct item of an indented body.
 public class DiscardRepairTest

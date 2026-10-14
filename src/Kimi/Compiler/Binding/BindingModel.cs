@@ -81,7 +81,7 @@ public enum BoundTypeKind : byte
     FunctionItem,
 }
 
-/// <summary>How an explicit capture entry initializes its environment binding, as <c>let x = x</c> or <c>let x = x@op</c> would (SPEC 7.6.2).</summary>
+/// <summary>How an explicit capture entry initializes its environment binding, as <c>let x = x</c> or <c>let x = x@op</c> would (SPEC 7.7.2).</summary>
 internal enum CaptureAcquisition : byte
 {
     /// <summary>A bare entry of a proven-Copy binding.</summary>
@@ -93,9 +93,9 @@ internal enum CaptureAcquisition : byte
     /// <summary>A bare entry of a binding storing <c>uniq/T</c> or <c>objuniq/T</c>: a Reborrow in the same Semantics.</summary>
     Reborrow,
 
-    /// <summary>A bare entry of a binding storing a pair layer whose every admitted case Copies or Reborrows (SPEC 8.9): each case
+    /// <summary>A bare entry of a binding storing a pair layer whose every admitted case Copies or Reborrows (SPEC 8.14): each case
     /// run and instance acquires it as the binding's case Type does, a Reborrow for an exclusive reference and a Copy otherwise
-    /// (SPEC 8.10).</summary>
+    /// (SPEC 8.15).</summary>
     Bare,
 
     /// <summary><c>x@ref</c>: a shared borrow of the outer binding's slot.</summary>
@@ -105,31 +105,31 @@ internal enum CaptureAcquisition : byte
     ExclusiveSlotBorrow,
 }
 
-/// <summary>A pair binder in scope of a body with its admitted set (SPEC 8.7); it is resolved into Semantics cases (SPEC 8.10) when
+/// <summary>A pair binder in scope of a body with its admitted set (SPEC 8.3); it is resolved into Semantics cases (SPEC 8.15) when
 /// the admitted set lies within the Semantics for which the specification defines an operation per case.</summary>
 /// <param name="Target">The pair's SemanticsTarget symbol, whose <c>WholeType</c> is <c>W</c>.</param>
 /// <param name="Admitted">The admitted Semantics of the binder.</param>
 internal readonly record struct PairBinder(BindingSymbol Target, SemanticsMask Admitted)
 {
     /// <summary>The finite Semantics cases verified by the shared ownership engine, including object creation and acquisition
-    /// (SPEC 8.9, 8.10, 13.5.8). Case substitution does not make an otherwise illegal pair-layer operation legal.</summary>
+    /// (SPEC 8.14, 8.15, 13.6.2). Case substitution does not make an otherwise illegal pair-layer operation legal.</summary>
     internal const SemanticsMask Resolvable = SemanticsMask.All;
 
-    /// <summary>The bound on the Semantics cases of one definition (SPEC 8.10, 23.3.6.1), a finite resource limit. Binding decides it once per
+    /// <summary>The bound on the Semantics cases of one definition (SPEC 8.15, 23.1.1), a finite resource limit. Binding decides it once per
     /// definition before binding its parts (<c>Binding.CaseLimits</c>), so no body has more cases; MIR validates it.</summary>
     internal const int CaseBound = 64;
 
     /// <summary>Gets a value indicating whether the binder is analyzed once per admitted Semantics.</summary>
     internal bool Resolved => this.Admitted != SemanticsMask.None && (this.Admitted & ~Resolvable) == 0;
 
-    /// <summary>Collects the pair binders in scope of a body (SPEC 8.10): those of its own declaration, of its containers and, for a
+    /// <summary>Collects the pair binders in scope of a body (SPEC 8.15): those of its own declaration, of its containers and, for a
     /// Closure, an accessor or a static initializer, of the enclosing declarations, outer to inner in slot order, each with its admitted
     /// set; the MIR body's binders, whose resolved ones give its Semantics cases.</summary>
     /// <param name="body">The body's declaration.</param>
     /// <param name="binders">The caller-owned list to fill; it is cleared first.</param>
     internal static void Collect(Koto body, List<PairBinder> binders) => body.CodeContext.Compilation.Binding.PairBinders(body, binders);
 
-    /// <summary>Counts the Semantics cases of a body without overflowing the resource counter (SPEC 8.10).</summary>
+    /// <summary>Counts the Semantics cases of a body without overflowing the resource counter (SPEC 8.15).</summary>
     /// <param name="binders">The body's pair binders and their admitted sets.</param>
     /// <returns>The product of the resolved binders' admitted sets, saturated at the largest representable count.</returns>
     internal static long CaseProduct(IReadOnlyList<PairBinder> binders)
@@ -148,7 +148,7 @@ internal readonly record struct PairBinder(BindingSymbol Target, SemanticsMask A
     }
 }
 
-/// <summary>One Semantics case of a pair binder (SPEC 8.10): the Semantics its whole Type takes.</summary>
+/// <summary>One Semantics case of a pair binder (SPEC 8.15): the Semantics its whole Type takes.</summary>
 /// <param name="Target">The pair's SemanticsTarget symbol.</param>
 /// <param name="Semantics">The admitted Semantics of this case.</param>
 internal readonly record struct PairCase(BindingSymbol Target, SemanticsKind Semantics);
@@ -216,10 +216,10 @@ internal enum BindingFailure : byte
     // SPEC 7.3: one receiver shape per function group fixed by member lookup.
     ReceiverShapeMismatch,
 
-    // SPEC 11.2: an accessor receiver has the shape of its operation, ref/Self for an instance get and uniq/Self for an instance set.
+    // SPEC 11.3: an accessor receiver has the shape of its operation, ref/Self for an instance get and uniq/Self for an instance set.
     AccessorReceiverShape,
 
-    // SPEC 7.3.1: the functions of one Name acquire corresponding parameters of overlapping Types in one mode.
+    // SPEC 7.4: the functions of one Name acquire corresponding parameters of overlapping Types in one mode.
     ParameterShapeMismatch,
 
     // SPEC 10.5: a reference without a fixed expected call signature needs every Type parameter bound explicitly.
@@ -254,42 +254,42 @@ internal enum BindingFailure : byte
     BareOwningShorthand,
     NonCopyOperand,
 
-    // SPEC 13.2, 13.3: an arithmetic, bitwise, shift, sign, increment or decrement operand is numeric; bool, Unit, char and
+    // SPEC 13.2, 13.3.1: an arithmetic, bitwise, shift, sign, increment or decrement operand is numeric; bool, Unit, char and
     // string have no such operators. %, the bitwise and shift operators, increment and decrement also need an integer or
     // wrapping integer operand, and a shift count an integer Type.
     NonNumericOperand,
     NonIntegerOperand,
     InvalidShiftCount,
 
-    // SPEC 13.5.4.3-4: @wrap converts integer and wrapping integer values only; @bits pairs a floating-point Type with a
+    // SPEC 13.5.4-4: @wrap converts integer and wrapping integer values only; @bits pairs a floating-point Type with a
     // same-width integer Type and needs both Types fixed.
     InvalidWrapConversion,
     InvalidBitConversion,
     GenericBitConversion,
 
-    // SPEC 9.3: the protected access forms apply only to members of a struct and their accessors.
+    // SPEC 9.4: the protected access forms apply only to members of a struct and their accessors.
     ProtectedPlacement,
     MissingSpecializationTarget,
     SpecializationInputMismatch,
     DuplicateDictionaryKey,
 
-    // SPEC 8.4.7: the conforming Types of an intrinsic or closed Contract are fixed by the language.
+    // SPEC 8.7: the conforming Types of an intrinsic or closed Contract are fixed by the language.
     ClosedContractConformance,
     ArithmeticConformance,
     ArithmeticSelection,
     ArithmeticDirection,
 
-    // SPEC 4.6.9: element indexing needs an Indexable conformance, and range indexing applies only to the sequence Types.
+    // SPEC 4.7.1: element indexing needs an Indexable conformance, and range indexing applies only to the sequence Types.
     NotIndexable,
 
-    // SPEC 8.4.10.1, 8.4.10.6: an effect item that declares no bound of its Contract.
+    // SPEC 8.11.1, 8.11.1: an effect item that declares no bound of its Contract.
     InvalidEffectBound,
 
     // SPEC 4.3.1: an initialized local annotation obtains every written hole from consistent initializer evidence.
     ArrayAnnotationInference,
     NoInit,
 
-    // SPEC 21.3.5: a state that valid input never reaches, such as a library declaration the catalog guarantees; a compiler fault.
+    // SPEC 21.3.2: a state that valid input never reaches, such as a library declaration the catalog guarantees; a compiler fault.
     Internal,
 }
 
@@ -364,13 +364,13 @@ public sealed class BindingSymbol
     /// <summary>Gets or sets a value indicating whether a Pattern or iteration binding is a reference because its path is shared or exclusive (SPEC 15.1.6).</summary>
     internal bool BindsReference { get; set; }
 
-    /// <summary>Gets or sets how a capture entry initializes its environment binding (SPEC 7.6.2).</summary>
+    /// <summary>Gets or sets how a capture entry initializes its environment binding (SPEC 7.7.2).</summary>
     internal CaptureAcquisition CaptureAcquisition { get; set; }
 
-    /// <summary>Gets a value indicating whether a capture entry was written <c>x@move</c>: the binding is transferred even when Copy (SPEC 7.6.2).</summary>
+    /// <summary>Gets a value indicating whether a capture entry was written <c>x@move</c>: the binding is transferred even when Copy (SPEC 7.7.2).</summary>
     internal bool TransferCapture => this.CaptureAcquisition == CaptureAcquisition.Move;
 
-    /// <summary>Gets or sets the struct or enum that declared <c>Self is not ObjectPayload</c> for this Type: itself or an ancestor (SPEC 8.4.7.2), or null when the Type may be an object payload.</summary>
+    /// <summary>Gets or sets the struct or enum that declared <c>Self is not ObjectPayload</c> for this Type: itself or an ancestor (SPEC 8.7.3), or null when the Type may be an object payload.</summary>
     internal BindingSymbol? ObjectPayloadOptOut { get; set; }
 }
 
@@ -380,7 +380,7 @@ public sealed record BoundType
 {
     private readonly NumericCategory numeric;
 
-    // The integer Type whose representation a wrapping integer Scalar shares (SPEC 3.1.1.1); the Type itself otherwise.
+    // The integer Type whose representation a wrapping integer Scalar shares (SPEC 3.1.1); the Type itself otherwise.
     private readonly BoundType underlying;
 
     // Whole-subtree summaries, computed once at construction (see the constructor).
@@ -438,7 +438,7 @@ public sealed record BoundType
         this.hasAbstractPart = abstractPart;
     }
 
-    // SPEC 3.1.1.1: the wrapping integer Scalar Wrapping<T> over one integer Type, which keeps T's representation and
+    // SPEC 3.1.1: the wrapping integer Scalar Wrapping<T> over one integer Type, which keeps T's representation and
     // signedness. It is a Primitive by Core identity: no declaration, components or storage, and identity by reference.
     private BoundType(string name, BoundType integer)
     {
@@ -485,11 +485,11 @@ public sealed record BoundType
     /// wrapping integer Types; positions, lengths, shift counts and PrimitiveInteger need exactly these.</summary>
     public bool IsInteger => this.numeric is NumericCategory.Signed or NumericCategory.Unsigned && !this.IsWrappingInteger;
 
-    /// <summary>Gets a value indicating whether this is a wrapping integer Type <c>Wrapping&lt;T&gt;</c> (SPEC 3.1.1.1).</summary>
+    /// <summary>Gets a value indicating whether this is a wrapping integer Type <c>Wrapping&lt;T&gt;</c> (SPEC 3.1.1).</summary>
     public bool IsWrappingInteger => !ReferenceEquals(this.underlying, this);
 
     /// <summary>Gets a value indicating whether this is an integer or wrapping integer Type: the Types with the integer
-    /// operators, integer literals and integer comparison (SPEC 13.3).</summary>
+    /// operators, integer literals and integer comparison (SPEC 13.3.1).</summary>
     public bool HasIntegerArithmetic => this.numeric is NumericCategory.Signed or NumericCategory.Unsigned;
 
     /// <summary>Gets a value indicating whether this is a numeric Type: integer, wrapping integer or floating-point.</summary>
@@ -518,7 +518,7 @@ public sealed record BoundType
 
     internal static readonly BoundType String = Primitives["string"];
 
-    /// <summary>The interned wrapping integer Scalar of each integer Type (SPEC 3.1.1.1), keyed by that integer Type.</summary>
+    /// <summary>The interned wrapping integer Scalar of each integer Type (SPEC 3.1.1), keyed by that integer Type.</summary>
     internal static readonly Dictionary<BoundType, BoundType> WrappingScalars = CreateWrappingScalars();
 
     /// <summary>Gets the wrapping integer Scalar over an integer Type.</summary>
@@ -547,14 +547,14 @@ public sealed record BoundType
     internal bool CarriesOriginOrSlot => this.carriesOriginOrSlot;
 
     /// <summary>Gets a value indicating whether this subtree contains a Type parameter, which a Type-identity premise
-    /// may substitute (SPEC 8.3).</summary>
+    /// may substitute (SPEC 8.2).</summary>
     internal bool ContainsParameter => this.containsParameter;
 
-    /// <summary>Gets a value indicating whether this subtree contains a pair layer (SPEC 13.5.5.1): the original <c>s/T</c>, an
-    /// annotated occurrence of it or an application <c>s/U</c>; a Semantics case substitutes only such Types (SPEC 8.10).</summary>
+    /// <summary>Gets a value indicating whether this subtree contains a pair layer (SPEC 13.5.5): the original <c>s/T</c>, an
+    /// annotated occurrence of it or an application <c>s/U</c>; a Semantics case substitutes only such Types (SPEC 8.15).</summary>
     internal bool ContainsPairLayer => this.containsPairLayer;
 
-    // Only an unsigned integer Type rejects unary minus; a wrapping integer Type has it for every argument (SPEC 13.3).
+    // Only an unsigned integer Type rejects unary minus; a wrapping integer Type has it for every argument (SPEC 13.3.1).
     internal bool IsUnsignedInteger => this.numeric == NumericCategory.Unsigned && !this.IsWrappingInteger;
 
     /// <summary>Gets the integer Type whose representation, signedness and width a wrapping integer Type shares, or this
@@ -654,7 +654,7 @@ internal sealed class BindingScope(Koto owner)
     }
 }
 
-/// <summary>How a check judged a repair condition from its own facts (SPEC 23.3.6.9); a refuted condition withholds the candidate.</summary>
+/// <summary>How a check judged a repair condition from its own facts (SPEC 23.1.3); a refuted condition withholds the candidate.</summary>
 public enum AcquisitionJudgment : byte
 {
     /// <summary>The condition is established.</summary>
@@ -681,7 +681,7 @@ public readonly record struct BindingResult(BindingMode Mode, int ResolvedCount,
 }
 
 /// <summary>A validated <c>#LibraryImport</c> declaration: its external symbol and the supply kind that
-/// selects dllimport (<c>import</c>) or a direct static reference (SPEC 20.8.2.1, 22.3).</summary>
+/// selects dllimport (<c>import</c>) or a direct static reference (SPEC 20.4, 22.6).</summary>
 internal readonly record struct LibraryImport(FunctionKoto Function, string Library, string Symbol, string Kind);
 
 /// <summary>An Origin relation that a fit leaves unproven (SPEC 15.6.1): <c>Longer outlives Shorter</c>, or <c>==</c> at an invariant
@@ -707,11 +707,11 @@ internal enum ReferenceSlotFailure : byte
     InputOrigin,
 }
 
-// SPEC 15.6.1, 23.3.6.5: the member of a conversion whose Origin part fails, with its relation; both ends are rigid symbols of the
+// SPEC 15.6.1, 23.1: the member of a conversion whose Origin part fails, with its relation; both ends are rigid symbols of the
 // comparison, never a call-time Origin of the implementation.
 internal readonly record struct OriginContractFact(Koto At, string Member, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, FunctionKoto? Required = null);
 
-// SPEC 15.2.3, 23.3.6.5: the Owned failure of a common Function conversion: the converted value, the member of its OwnedOrigins through
+// SPEC 15.2.3, 23.1: the Owned failure of a common Function conversion: the converted value, the member of its OwnedOrigins through
 // which a non-static Origin enters (a capture name or a bound Type argument) with its Type, that Origin when one is displayable, the
 // capture entry and closure it belongs to, the Borrow that supplies a captured binding's Origin, and whether the failure is Refuted (a
 // body-local Origin) rather than Unknown.
@@ -724,7 +724,7 @@ internal enum ObjectCountingStep : byte
     Atomic,
 }
 
-// SPEC 3.2, IMPL 21.2.3: payload authority and reference counting are independent properties of the static mode of an
+// SPEC 3.2, IMPL 21.1.3: payload authority and reference counting are independent properties of the static mode of an
 // obj, rc or arc handle (BoundType.HandleMode).
 internal readonly record struct ObjectHandleMode(SemanticsKind Semantics)
 {

@@ -8,7 +8,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>A4, effect summaries on MIR (SPEC 8.4.10.2, 8.4.10.4, 8.4.10.7, 15.6.4; docs/dev/DECISIONS.md R4-M22): each rule with a
+/// <summary>A4, effect summaries on MIR (SPEC 8.11.2, 8.11.4, 8.11.6, 15.6.4; docs/dev/DECISIONS.md R4-M22): each rule with a
 /// valid program and an invalid one, through the problems <c>Compilation.BuildMir</c> finds (R4 shadow: unpublished), each as its code,
 /// the first line of its subject and its views.</summary>
 public sealed class MirEffectsTest(ITestOutputHelper output)
@@ -30,7 +30,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
     private const string Fixed = "contract Fixed: Equatable\n    effect Equatable.equals confined\nstruct Key\n    Self is Fixed\n" +
         "    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n";
 
-    // SPEC 8.4.10.2: an access to a mutable static, a raw pointer read from an immutable static, an integer made a pointer and a foreign
+    // SPEC 8.11.2: an access to a mutable static, a raw pointer read from an immutable static, an integer made a pointer and a foreign
     // call obtain authority from the environment; reading an immutable static (its initializer enters the summary), writing through a raw
     // input and a foreign call where nothing owes confined do not.
     [Theory]
@@ -48,7 +48,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
     public void ConfinedExcludesEnvironmentAuthority(string declarations, string body, string expected)
         => Assert.Equal(Expected(expected), Problems(Sink + Loud + declarations + Witness + body + "        return .Ok(())\n"));
 
-    // SPEC 8.4.10.2, 15.6.4: the summary is transitive through callees, also through mutual recursion, whose fixed point terminates.
+    // SPEC 8.11.2, 15.6.4: the summary is transitive through callees, also through mutual recursion, whose fixed point terminates.
     [Theory]
     [InlineData("    public func c() => Console.writeLine(\"c\")\n", Failed)]
     [InlineData("    public func c() => ()\n", "")]
@@ -59,7 +59,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
             Expected(expected),
             Problems(Sink + Loud + "group H\n    public func a() => H.b()\n    public func b() => H.c()\n" + last + Witness + "        H.a()\n        return .Ok(())\n"));
 
-    // SPEC 8.10, 8.4.10.4 (plan Appendix B X2): a requirement call in a generic body has the bounds of that body's own premises, never those
+    // SPEC 8.15, 8.11.4 (plan Appendix B X2): a requirement call in a generic body has the bounds of that body's own premises, never those
     // of an instance: the helper calls take under `S is Source`, which declares no confined bound, though Feed also proves Confined.
     [Theory]
     [InlineData("Source", Failed)]
@@ -74,7 +74,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
                 Witness.Replace("Loud = Loud.init()\n", "Loud = Loud.init()\n    var feed: Feed = Feed.init()\n", StringComparison.Ordinal) +
                 "        H.drain(self.feed@uniq)\n        return .Ok(())\n"));
 
-    // SPEC 8.4.7: every implementation of a closed Contract (Position, PositionRange) reads only its boundaries and the length and has no
+    // SPEC 8.7: every implementation of a closed Contract (Position, PositionRange) reads only its boundaries and the length and has no
     // other effect, so the library's position operations need no bound of their own; a generic helper over another Contract keeps X2.
     [Theory]
     [InlineData("        var view = values.sliceUniq()\n        view[0] = 7\n", "")]
@@ -97,7 +97,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
                 "contract Filler\n    func fill(self: ref/Self, values: uniq/Array<i32>)\n        effect confined\nstruct F\n    Self is Filler\n" +
                 "    public func fill(self: ref/Self, values: uniq/Array<i32>)\n" + body));
 
-    // SPEC 8.8, 8.8.3: a call runs the specialization its closed key selects, or the original when none does; the other body never runs.
+    // SPEC 8.13, 8.13.3: a call runs the specialization its closed key selects, or the original when none does; the other body never runs.
     // A function item runs its selection too.
     [Theory]
     [InlineData("Console.writeLine(\"g\")", "()", "        H.trace(1)\n", "")]
@@ -123,7 +123,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
             Problems("contract Show\n    func show<U>(self: ref/Self, u: ref/U)\n        effect confined\nstruct S\n    Self is Show\n" +
                 $"    public func show<U>(self: ref/Self, u: ref/U) => ()\n    specialize func show<i32>(self: ref/Self, u: ref/i32) => {specialization}\n"));
 
-    // SPEC 8.8: an omitted argument evaluates the original's default, also where a specialization is called: inline, or as a call of the
+    // SPEC 8.13: an omitted argument evaluates the original's default, also where a specialization is called: inline, or as a call of the
     // template where the defaults reach each other (a's default calls b, whose default calls a; b prints).
     [Theory]
     [InlineData("        _ = H.a(1)\n", Failed)]
@@ -134,7 +134,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
             Problems(Sink + Loud + "group H\n    public func a<T>(v: T, n: i32 = H.b(1)) -> i32 => n\n    specialize func a<i32>(v: i32, n: i32) -> i32 => n\n" +
                 "    public func b(m: i32, k: i32 = H.a(m)) -> i32\n        Console.writeLine(\"b\")\n        return k\n" + Witness + call + "        return .Ok(())\n"));
 
-    // SPEC 8.4.10.4: a requirement call whose Self is closed runs that Type's implementation, entered like any call.
+    // SPEC 8.11.4: a requirement call whose Self is closed runs that Type's implementation, entered like any call.
     [Theory]
     [InlineData("", "")]
     [InlineData("        Console.writeLine(\"equals\")\n", Failed)]
@@ -144,7 +144,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
             Problems(Sink + Loud + "struct Key\n    Self is Equatable\n    public var n: i32 = 0\n    public func equals(self: ref/Self, other: ref/Self) -> bool\n" +
                 effect + "        return self.n == other.n\n" + Witness + "        let key = Key.init()\n        _ = key == key\n        return .Ok(())\n"));
 
-    // SPEC 16.3, 8.4.10.4 rule 1: destroying a value runs its destructor; a generic helper's destruction of its parameter composes through
+    // SPEC 16.3, 8.11.4 rule 1: destroying a value runs its destructor; a generic helper's destruction of its parameter composes through
     // the caller's argument (Loud's drop prints, i32 has none); an abstract value destroyed at the top is unknown unless proven Copy.
     [Theory]
     [InlineData("        H.discard(Loud.init())\n", Failed)]
@@ -196,7 +196,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
             Expected(expected),
             Problems(Sink + Loud + $"struct Outer\n    public var inner: {inner}\n    drop => ()\n" + Witness + body + "        return .Ok(())\n"));
 
-    // SPEC 8.10: a callee's Semantics case views are those its call selects: a pair binder bound to a reference is the reference case,
+    // SPEC 8.15: a callee's Semantics case views are those its call selects: a pair binder bound to a reference is the reference case,
     // whose value is not destroyed.
     [Theory]
     [InlineData("        H.keep(Loud.init())\n", Failed)]
@@ -206,7 +206,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
             Expected(expected),
             Problems(Sink + Loud + "group H\n    public func keep<s/T>(item: s/T)\n        s is owner or ref\n        ()\n" + Witness + body + "        return .Ok(())\n"));
 
-    // SPEC 8.4.10.7: a call through a Callable input composes the actual Closure's or function item's summary at the caller; a bounded
+    // SPEC 8.11.6: a call through a Callable input composes the actual Closure's or function item's summary at the caller; a bounded
     // input's binding owes its bound after selection, decided by the premises where they can (a missing premise, an erased Function Type)
     // at the argument; an owner call also destroys the remaining environment.
     [Theory]
@@ -228,7 +228,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
     public void CallableBindingsOweTheirBound(string declarations, string expected)
         => Assert.Equal(Expected(expected), Problems(Apply + declarations));
 
-    // SPEC 8.4.10.7: a binding's remaining atoms are resolved by the premises of the use: consume's destruction of its T is the user's T,
+    // SPEC 8.11.6: a binding's remaining atoms are resolved by the premises of the use: consume's destruction of its T is the user's T,
     // which only the user's premise proves Copy.
     [Theory]
     [InlineData("    T is Copy\n", "")]
@@ -239,7 +239,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
             Problems("func take<U, F>(f: ref/F, value: U)\n    F is Callable<(U) -> ()>\n        effect confined\n    f(value@move)\n" +
                 $"func consume<T>(v: T) => ()\nfunc user<T>(v: T)\n{premise}    take(consume<T>, v@move)\n"));
 
-    // SPEC 8.4.10.7: a call through an abstract input takes the bounds of its one Callable signature; with several, only the call's
+    // SPEC 8.11.6: a call through an abstract input takes the bounds of its one Callable signature; with several, only the call's
     // arguments chose among them, which MIR does not keep: a located limit (DECISIONS R4-M23).
     [Theory]
     [InlineData("", "")]
@@ -296,7 +296,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
             Problems("open struct Base<T>\n    public init() => ()\n    public virtual func keep(self: objref/Self, item: T)\n" +
                 $"        T is {premise}\n        effect confined\n        ()\nstruct Derived<U> : Base<U>\n    override func keep(self: objref/Self, item: U)\n        ()\n"));
 
-    // virtual-dispatch 6, SPEC 8.4.10.7: a virtual witness and a virtual function item dispatch, so their slot's bound decides, never the
+    // virtual-dispatch 6, SPEC 8.11.6: a virtual witness and a virtual function item dispatch, so their slot's bound decides, never the
     // original's body.
     [Theory]
     [InlineData("", "Self is Getter\n", "IncompatibleContractImplementation_Kd Self is Getter 18446744073709551615|IncompatibleContractImplementation_Kd Self is Reader 1")]
@@ -318,7 +318,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
     public void AnOpaqueSiteCausesNoProblem(string body, string expected)
         => Assert.Equal(Expected(expected), Problems(Sink + Loud + Witness + body + "        return .Ok(())\n"));
 
-    // SPEC 4.7.5, 12.3.4 (R4-M28): a published operation adds its row through the call's substitution, never its private body: K equality
+    // SPEC 4.9.6, 12.4.3 (R4-M28): a published operation adds its row through the call's substitution, never its private body: K equality
     // for a Dictionary lookup, update or literal key check, which runs i32's built-in witness and Noisy's printing one (fail-before: the
     // first and third, through the private Storage helper's requirement call under its own premises).
     [Theory]
@@ -332,7 +332,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
     public void PublishedOperationsAddTheirRows(string body, string expected)
         => Assert.Equal(Expected(expected), Problems(Sink + Loud + Noisy + Witness + body + "        return .Ok(())\n"));
 
-    // SPEC 4.7.5: a row's destruction is of the Type below its parameter: Dictionary clear destroys the values, insertOrReplace the
+    // SPEC 4.9.6: a row's destruction is of the Type below its parameter: Dictionary clear destroys the values, insertOrReplace the
     // unused key, also through a function item, Array clear the elements, Intrinsics.replace the old value (fail-before: the first,
     // through insertOrReplace's private body).
     [Theory]
@@ -351,7 +351,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
             Problems(Sink + Loud + "struct LoudKey\n    Self is Equatable\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n" +
                 "    drop => Console.writeLine(\"drop\")\n" + WithField($"table: {table}") + body + "        return .Ok(())\n"));
 
-    // SPEC 4.7.5, 8.4.10.4 (R4-M28): a row's requirement on an abstract Type composes like its destruction, resolved where the Type closes;
+    // SPEC 4.9.6, 8.11.4 (R4-M28): a row's requirement on an abstract Type composes like its destruction, resolved where the Type closes;
     // a requirement call written in a generic body keeps the bounds of that body's premises (X2), whatever its caller's Type (fail-before:
     // the first, through the private Storage helper's requirement call).
     [Theory]
@@ -365,7 +365,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
             Problems(Sink + Loud + Noisy + Fixed + $"group H\n    public func put<K>(table: uniq/Dictionary<K, i32>, key: ref/K)\n        K is {premise}\n" +
                 $"        {statement}\n" + WithField($"table: Dictionary<{key}, i32> = [:]") + $"        H.put(self.table@uniq, {argument})\n        return .Ok(())\n"));
 
-    // SPEC 4.7.5, 8.4.10.4: at the top, a row's requirement on an abstract Type is judged by the premises (fail-before: the first).
+    // SPEC 4.9.6, 8.11.4: at the top, a row's requirement on an abstract Type is judged by the premises (fail-before: the first).
     [Theory]
     [InlineData("Fixed", "")]
     [InlineData("Equatable", Failed)]
@@ -376,7 +376,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
                 "    public init(key: K) => self.key = key@move\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n" +
                 "        _ = self.table.tryGet(self.key)\n        return .Ok(())\n"));
 
-    // SPEC 4.7.5, 8.4.10.4: a formatting function's row runs the value's Utf8Format witness: built-in for i32, Shown's printing one, also in
+    // SPEC 4.9.6, 8.11.4: a formatting function's row runs the value's Utf8Format witness: built-in for i32, Shown's printing one, also in
     // an interpolation (fail-before: each, a limit).
     [Theory]
     [InlineData("        _ = Text.toString(42)\n        _ = \"\\(value)\"\n", "")]
@@ -388,7 +388,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
             Problems(Sink + Loud + "struct Shown\n    Self is Utf8Format\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n" +
                 "        Console.writeLine(\"format\")\n        return .Ok(())\n" + Witness + body + "        return .Ok(())\n"));
 
-    // SPEC 8.4.10.4: a built-in comparison of a composite Type runs its parts' witnesses (Binding's comparison plan): built-in for i32,
+    // SPEC 8.11.4: a built-in comparison of a composite Type runs its parts' witnesses (Binding's comparison plan): built-in for i32,
     // Compared's environment read, also nested; a composite with an abstract part has no plan, a limit (fail-before: the first three, a limit).
     [Theory]
     [InlineData("        _ = (value, 1) == (value, 2)\n        _ = value == 2\n", "")]
@@ -402,7 +402,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
                 "    public func equals(self: ref/Self, other: ref/Self) -> bool\n        _ = State.value\n        return true\n" +
                 "group H\n    public func same<T>(a: ref/T, b: ref/T) -> bool\n        T is Fixed\n        return (a, 1) == (b, 1)\n" + Witness + body + "        return .Ok(())\n"));
 
-    // SPEC 8.4.10.4: a requirement on an open Type that is not abstract runs the witness its conformance maps it to, entered through the
+    // SPEC 8.11.4: a requirement on an open Type that is not abstract runs the witness its conformance maps it to, entered through the
     // instance (fail-before: the first, judged by the premises).
     [Theory]
     [InlineData(" => true\n", "")]
@@ -414,7 +414,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
                 "group H\n    public func find<K>(table: ref/Dictionary<Box<K>, i32>, key: ref/Box<K>)\n        _ = table.tryGet(key)\n" +
                 WithField("boxes: Dictionary<Box<i32>, i32> = [:]") + "        H.find(self.boxes@ref, Box<i32>.init())\n        return .Ok(())\n"));
 
-    // SPEC 8.4.10.4: a requirement on a Type whose conformance maps it to a base's function runs that inherited witness, entered through
+    // SPEC 8.11.4: a requirement on a Type whose conformance maps it to a base's function runs that inherited witness, entered through
     // the base's instance (the base path ConformanceWitness resolves; fail-before: each, a limit of the formatting function).
     [Theory]
     [InlineData(" => .Ok(())\n", "")]
@@ -426,7 +426,7 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
                 $"{format}struct Leaf : Base\n    Self is Utf8Format\n    public init() => ()\n" + Witness + "        _ = Text.toString(Leaf.init())\n" +
                 "        return .Ok(())\n"));
 
-    // SPEC 8.4.10.4: a witness entered for a row runs its own body, whose requirement call on its parameter keeps the witness's premises
+    // SPEC 8.11.4: a witness entered for a row runs its own body, whose requirement call on its parameter keeps the witness's premises
     // (X2) whatever the instance: `Box<Key>`'s equality is confined under `T is Fixed` and unknown under `T is Equatable`, reached
     // directly and through a generic helper (fail-before: the confined ones, through the private Storage helper).
     [Theory]

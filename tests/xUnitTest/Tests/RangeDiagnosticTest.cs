@@ -35,7 +35,7 @@ public class RangeDiagnosticTest(ITestOutputHelper output)
         Assert.DoesNotContain(c.Diagnostics.Finalize().Diagnostics, static x => x.Code == nameof(DiagnosticCode.PrerequisiteUnavailable_Kd));
     }
 
-    // SPEC 4.6.3.4, 8.3: boundary Types not proven to be one integer Type in a generic context are reported once, at the
+    // SPEC 4.6.4, 8.2: boundary Types not proven to be one integer Type in a generic context are reported once, at the
     // Subject, with the requirement and a conditional repair.
     [Theory]
     [InlineData("func f<A, B>(p: A, q: B)\n    A is PrimitiveInteger\n    B is PrimitiveInteger\n    for x in p..q => ()", "p..q")]
