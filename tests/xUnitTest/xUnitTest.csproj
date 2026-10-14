@@ -19,7 +19,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Kimi\Kimi.csproj" />
-    <ProjectReference Include="../../src/Kimi.Analyzers/Kimi.Analyzers.csproj" />
     <Compile Include="..\Workloads\AssociatedInferenceWorkloads.cs" Link="Workloads\AssociatedInferenceWorkloads.cs" />
     <Compile Include="..\Workloads\VerificationWorkloads.cs" Link="Workloads\VerificationWorkloads.cs" />
     <Compile Include="..\Workloads\OriginProofWorkloads.cs" Link="Workloads\OriginProofWorkloads.cs" />
