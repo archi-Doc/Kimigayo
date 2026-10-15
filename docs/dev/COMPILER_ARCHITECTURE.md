@@ -30,23 +30,46 @@ checks. Only completed ledger entries describe the current compiler; the rest is
 | Backend | MIR, declaration tables, `TyCtxt` | HIR, borrow-checker state, syntax |
 | Hover and LSP | `SemanticQuery` | Private Binding state |
 
-KR1001 and KR1002 enforce the current dependency/member rows through `src/Kimi/CodeRules.globalconfig`. Layers follow
-the longest source-path prefix; `Compiler/*.cs` means direct files only. Every partial declaration contributes its
-layer. References use resolved types and member owners, including aliases, inferred receivers and attributes.
-The explicit MIR builder allow list names Binding's published types, including BoundArgumentOperation returned by
-CallPlan (CR-A3); a new view joins with a reason in its commit. Outside `Mir/Build`, syntax, HIR and plans are forbidden.
-`SemanticsKind` lives in Misc and needs no layer exception. Syntax forbids the Binding type until R6 broadens that
-restriction to the whole layer. Global forbidden member names cover declarations too; typed member selectors cover
-their type family, including overrides and derived Koto slots.
+Dependency and member restrictions are review obligations after the analyzer retirement (DECISIONS CR-R1).
+Review resolved types and member owners, including aliases, inferred receivers, attributes and every partial
+declaration. Mir/Build consumes only published Binding contracts; a new view needs a reason in its commit.
+Outside Mir/Build, syntax, HIR and plans are forbidden. Syntax must not read Binding; Hover uses SemanticQuery.
+The former exact allow/deny inventory remains in `2e341155^:src/Kimi/CodeRules.globalconfig` as review evidence;
+its removal does not authorize new dependencies. Global forbidden child-walk members are VisitChildrenCore,
+GetChildNodes, ReplaceChildCore and ReplaceInList; the canonical walk remains ForEachChildSlot.
 
 ## Closed vocabularies
 
 MIR has 5 statement, 10 rvalue, 6 terminator (plus the `CheckTarget` attribute), 7 projection, 4 operand and 5 callee
-kinds; the HIR vocabularies and `IntrinsicId` have fixed limits too (KR1003, configured in CodeRules.globalconfig). Enum
-aliases count separately; implicit fields do not. A removed configured enum produces KR9002 for removal from config. A
+kinds; the HIR vocabularies and `IntrinsicId` have fixed limits too (listed below). Enum
+aliases count separately; implicit fields do not. A
 form not yet implemented has one diagnostic code, the location-only `Unsupported_Kd`, reported by Binding, MIR
 construction or the capability check. A new vocabulary entry or a second Unsupported code is a design change that needs
 a SPEC basis and owner approval.
+
+| Vocabulary | Maximum entries |
+| --- | ---: |
+| `OwnershipOperationKind` | 38 |
+| `OwnershipValueKind` | 31 |
+| `EmissionOpcode` | 49 |
+| `CompilerFunctionKind` | 76 |
+| `BindingFailure` | 89 |
+| `HirOp` | 40 |
+| `HirRes` | 9 |
+| `HirAcquire` | 7 |
+| `HirAdaptation` | 9 |
+| `HirPlaceKind` | 11 |
+| `HirCompletion` | 3 |
+| `ExpansionKind` | 7 |
+| `IntrinsicId` | 34 |
+| `MirStatementKind` | 5 |
+| `MirRvalueKind` | 10 |
+| `MirTerminatorKind` | 6 |
+| `MirProjectionKind` | 7 |
+| `MirOperandKind` | 4 |
+| `MirCalleeKind` | 5 |
+
+These are the unchanged pre-retirement limits; IntrinsicId returns to 30 at R8.
 
 ## Adding a feature
 
@@ -57,8 +80,8 @@ then the freeze below applies to the old paths.
 ## Canonical components
 
 Each concern has one canonical form. Use and extend it; a different form for the same concern replaces the existing one
-in the same unit. Rows give the responsibility and entry point; details live in the code and CODEMAP. From Code Rules
-Analyzer A1, each entry file begins with the component's contract (AGENTS). Paths are under `src/Kimi/Compiler`.
+in the same unit. Rows give the responsibility and entry point; details live in the code and CODEMAP.
+Each entry file begins with the component's contract (AGENTS). Paths are under `src/Kimi/Compiler`.
 
 | Concern | Canonical form | Source |
 | --- | --- | --- |
@@ -110,79 +133,44 @@ Members and files outside the old Analysis/Emission paths stay within these limi
 
 A member or file already over a limit may not get worse; split it by responsibility before it grows. An exception to
 the statement or nesting limit states its reason and bound in the code. Mir and the Backend take no baseline: their
-violations are fixed, except syntax-class decisions in the MIR builder, which reach 0 by the end of R6. The analyzer
-(units A0–A8, before R4) enforces these limits as build errors over a shrinking baseline.
+violations are fixed, except syntax-class decisions in the MIR builder, which reach 0 by the end of R6. Review checks these limits against the existing source and recorded exceptions;
+the analyzer and its baseline have been retired (DECISIONS CR-R1).
 
 ## Code rules
 
-The owner authorized intake and implementation of the Code Rules Analyzer on 2026-10-12 (DECISIONS CR-A0).
-The following rules are enforced by A2–A7; A8 enforces commit approval comparison.
-Kimi.Analyzers owns C# rules for `src/Kimi`; compiler behavior, tests, Benchmark and Playground are outside that scope.
-Generated code is excluded. Old Analysis/Emission files receive KR1 and the built-in unused-code rules only.
+The owner retired the analyzer workflow on 2026-10-15 after its producer/configuration were deleted in
+`2e341155` (DECISIONS CR-R1). The requirements below remain review obligations; they are not claimed as
+automated build diagnostics. `ArchitectureRulesTest` separately retains its existing no-growth assertions.
 
-`CodeRulesArchitecture` owns resolved dependency/member/vocabulary policy and structural checks through the shared
-analyzer pipeline. Its .Structure concern implements KR1004–1006 and KR1008 (CR-A4): collection declarations use
-declared symbols, creations use their resolved type, and generic constraints have one cycle-safe expansion.
-Pattern tests use semantic matched/compared/input types; wrapper patterns and casts add no tests, and a recursive
-pattern without a type adds no Koto type test (CR-A9a). Catch anchors exclude the body. Configuration lists use commas: Roslyn treats semicolons as inline comments (CR-A3).
-`CodeRulesDensity` owns KR3001–3003 in the same syntax walk (CR-A5). A physical line is excluded only when wholly
-inside a multiline literal/text token; interpolation holes remain checked. The outermost conditional before a
-callable boundary owns the observation. Parentheses are transparent when classifying new-local tuple values.
-`CodeRulesAccretion` owns KR2001–2010 (CR-A6). The one file walker carries declaration measurements as stack values:
-local functions are separate; lambdas belong to their member and restart control depth; accessors share their member's
-statement count. Parameter/call semantics are resolved only after syntax leaves a possible violation.
-`CodeRuleAnnotation` carries exception bounds and transitional removal stages through the same observation merge.
-The stage order is R0, R1, R2a, R2b, R3–R9; only a current stage later than removal is overdue. Type/member identities
-survive partial-file moves. Report includes every applicable annotation, its reason and bound or stage, even at zero.
-IDE0051, IDE0052 and IDE0060 are build errors, configured only in CodeRules.globalconfig.
-
-| Rules | Contract |
+| Concern | Review contract |
 | --- | --- |
-| KR1001–1003 | Enforce configured dependency/member restrictions and closed vocabularies; A3 preserves existing checks, with no baseline |
-| KR1004 | No Koto-keyed dictionary, set or weak table outside Syntax; Binding's baseline reaches zero at R7 exit |
-| KR1005 | No boolean `Supports*` method or property |
-| KR1006 | No Koto type test or KotoKind comparison/pattern in Mir/Build; baseline reaches zero at R6 exit |
-| KR1007 | Transitional declarations name their removal stage and reason; overdue declarations fail |
-| KR1008 | No unfiltered catch-all outside CLI, LSP and test-runner boundaries |
-| KR2001–2005, KR2010 | Parameter limits above; no failure-text out parameter; source-declared call boolean literals are named |
-| KR2006–2009 | Statement, nesting, logical-chain and file-token limits above |
-| KR3001–3002 | At most 160 UTF-16 units per physical line (whole multiline-string lines excluded); no nested conditional expression |
-| KR3003 | Computed tuple literals do not initialize an all-new-local deconstruction, `var (...)` or `(var a, T b)`; existing-variable assignments are outside this rule |
-| IDE0051, IDE0052, IDE0060 | Remove unused/unread private members and unused parameters, preserving behavior; no baseline |
+| Dependencies and vocabulary | Follow the published layers, member restrictions and closed vocabulary limits above. |
+| Syntax identity | No Koto-keyed dictionary, set or weak table outside Syntax; migrate existing Binding uses by R7 exit. |
+| Capability gates | No boolean `Supports*` method or property. |
+| MIR dispatch | No Koto type test or KotoKind dispatch in Mir/Build after R6; remove existing uses by that stage. |
+| Transitional declarations | Keep a removal stage and reason; the stage ledger governs when removal is due. |
+| Catch boundaries | No unfiltered catch-all outside CLI, LSP and test-runner boundaries. |
+| Member and file structure | Follow the parameter, statement, nesting, logical-chain and token limits above. |
+| Density | At most 160 UTF-16 units per physical line, excluding whole multiline-string lines; no nested conditional expression. |
+| Deconstruction | Computed tuple literals do not initialize all-new-local deconstructions; existing-variable assignments remain allowed. |
+| Unused code | Remove unused/unread private members and unused parameters while preserving behavior. |
 
-One baseline row identifies a rule, its innermost named Type (file for file-wide records), and a member, local-function,
-node or line anchor. Member/file measurements cannot rise above the greater of the ordinary limit and their recorded
-value; node/line counts cannot rise. Partial-file moves preserve Type-scoped keys. Obsolete entries must be pruned.
-Ordinary Report measurements are over-limit only. A complete Report with no such occurrence makes its baseline row
-redundant and Prune deletes it (CR-A2). Annotations are reported even at zero; partial declarations share the maximum
-measurement and their single annotation. Unannotated partial measurements at or below the limit stay out of Report.
-KR1001–1003 and KR1007 never have baselines; extend their scope only after the newly covered violations reach zero.
-KR1002's UnwrapParentheses prohibition expands outside Parsing/Binding at R7 exit.
-Syntax's prohibition on the Binding type expands to the whole Binding layer at R6 exit.
-At R5, add the Backend layer and forbid System.Linq.Enumerable in Mir analyses and Backend, rewriting existing
-Mir LINQ uses first. From R5, the owner decides whether to extend these rules to tests/xUnitTest. R8 restores
-IntrinsicId's cap to 30. At every stage exit, obtain a fresh Report for owner review of baseline, exceptions and
-transitional declarations; their inventory does not by itself authorize changes.
+Existing excess cannot grow. Only statement and nesting limits admit `CodeRuleException`, with an explicit
+bound and reason. `Transitional` records a removal obligation; neither attribute is an analyzer certificate.
+New/increased exceptions and later removal stages need owner approval recorded in the commit. Reduced bounds
+and earlier stages do not. Mechanical evasions fail review. At a stage exit, record measurements and review
+exceptions and transitional declarations with the owner; the deleted Report command is not a gate.
 
-Only statement and nesting limits admit CodeRuleException, with an explicit bound and nonempty reason; an exception
-and baseline cannot cover the same member/rule. Invalid targets/rules, out-of-scope exceptions, duplicates, empty reasons,
-needless/exceeded bounds and unknown removal stages are KR9005. Conditional attribute uses are absent from product
-metadata. All KR descriptors are NotConfigurable. Enforce reports stale rows as
-warnings, Verify as errors, and Report publishes complete observations for scripts; verification checks suppression.
-Verify and Report end with the KR9000 completion marker, which verification requires. Effective kimi_code_rules
-options must equal CodeRules.globalconfig, and Kimi does not discover other .globalconfig files (CR-A9b).
-The analyzer reads each file through the compilation's shared semantic model; KR1 resolves only names that can denote
-a forbidden type or member (CR-A9).
-Configuration changes, new/increased baseline rows, new/increased exceptions and later removal stages require owner
-approval recorded by `Code-Rules-Approved`; pruning and reduced exception bounds/removal stages do not. The adopted
-A2–A7 configuration and initial baselines are authorized by the proposal and this intake. Mechanical evasions fail review.
+At R6, Syntax's restriction extends to the whole Binding layer. At R7, UnwrapParentheses is restricted to
+Parsing/Binding. At R5, add Backend and forbid System.Linq.Enumerable in Mir analyses and Backend, rewriting
+existing uses first; the owner decides whether to extend these rules to tests. IntrinsicId returns to 30 at R8.
 
 ## Rules during the migration
 
 - **Freeze (D5).** From R0 until R6 completes, the old Analysis and Emission paths receive no new accepted forms or
   generation features. Allowed: deletion, miscompile fixes mirrored on the new path, and the mechanical follow-up that a
   stage of the plan names.
-- **Sizes.** `CompilerSizeBudgetTest` holds the size caps and `ArchitectureRulesTest` the no-growth ratchets. A stage
+- **Sizes.** The baseline below holds the size caps; review checks measured sizes. `ArchitectureRulesTest` retains its no-growth ratchets. A stage
   closes only within its exit ceiling (plan §12.2); otherwise work stops and the owner decides, given the measured size,
   the remaining deletion candidates and their cost. When a reduction stage exits, its caps fall to the measured size plus
   2%. A cap rises only on owner instruction or to preserve the native O2 and allocation guarantees (plan §18 P5), with the
@@ -191,7 +179,7 @@ A2–A7 configuration and initial baselines are authorized by the proposal and t
   non-trivia C# tokens, so formatting, comments and blank lines no longer count. Each area's cap becomes its line cap
   times the area's measured tokens per line; the remaining stage ceilings and the final target convert at the
   compiler-wide ratio after `.ll.in` and generated data are taken out; `.ll.in` keeps a line cap; generated files
-  (`<auto-generated>` header comments) are excluded. A1 implements this with one scan for all caps.
+  (`<auto-generated>` header comments) are excluded. The former A1 scan was removed with CompilerSizeBudgetTest; measurements must still use this definition.
 - **Forecasts.** Each unit states its forecast in non-trivia C# tokens per area (lines for reference); an overrun above 20% is
   consolidated before commit or reported with its reason.
 - **Missing facts (R3–R5).** Binding publishes a fact the MIR side lacks as a small view, at most 200 non-trivia Binding

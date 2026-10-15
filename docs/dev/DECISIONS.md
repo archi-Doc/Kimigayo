@@ -52,6 +52,25 @@ rules that result from them.
 
 ## Code rules (2026-10-12)
 
+CR-R1 supersedes only the analyzer enforcement, Report and approval requirements in CR-A0–CR-A9b below.
+Underlying compiler decisions (including CR-A3a's HirTables ownership), token methodology, structure, size
+and migration obligations remain in force; no numeric cap changes are authorized by retirement.
+
+- **CR-R1 Analyzer workflow retirement** (2026-10-15, owner; independently reviewed).
+  - Cause: `2e341155` deleted the analyzer, policy/baseline, its tests and CompilerSizeBudgetTest, but Verify
+    still required KR9000, injected the deleted test, and commit association demanded retired Reports.
+    A warning-free whole-solution build therefore failed its verification wrapper before tests ran.
+  - Decision: remove all consumers of the retired producer, including code-rules scripts/tests and dead
+    project properties. ArchitectureRulesTest is the sole common Unit test. Keep warning-as-error builds,
+    actual-assembly selector/nonzero checks, the full Session suite, native selections, stable input
+    manifests and exact committed-input association. Existing attributes remain source-only review records.
+  - Rejected: restore ~8,495 deleted lines against the owner's removal direction; skip only the marker,
+    leaving dead Report/approval paths and a nonexistent default test; conditionally bypass missing tools.
+    Removing the retired workflow deletes roughly 900 script/test lines and adds no modes or fallback.
+  - The owner explicitly authorized aligning verification and related rules with the deletion. Existing
+    architectural limits stay unchanged and are reviewed; no automated analyzer/size coverage is claimed.
+
+
 - **CR-A0** (owner). Begin the adopted Code Rules Analyzer A0–A8 before R4. KR3003 covers only
   all-new-local `var (...)` deconstruction declarations with computed tuple elements. Existing-variable assignments
   are excluded: even uncaptured, syntactically independent locals change observably when a later RHS throws or reads

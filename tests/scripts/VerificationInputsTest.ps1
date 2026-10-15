@@ -37,6 +37,9 @@ Put 'docs/SPEC.md' "Required behavior`n"
 Put 'docs/dev/PLAN.md' "Current position`n"
 Put 'draft/Proposals/ongoing.md' "Draft`n"
 Put 'src/obj/project.assets.json' '{}'
+foreach ($script in @('verify-commit.ps1', 'verification-inputs.ps1')) {
+    Put "scripts/$script" ([IO.File]::ReadAllText((Join-Path $repo "scripts/$script")))
+}
 $null = Invoke-KimiVerificationGit $work @('add', '--all')
 $null = Invoke-KimiVerificationGit $work @('commit', '--quiet', '-m', 'Baseline')
 $baseline = Get-KimiVerificationInputs $work
@@ -88,4 +91,15 @@ Reject { Assert-KimiVerificationCommit $work $deleted } 'does not match'
 $null = Invoke-KimiVerificationGit $work @('commit', '--quiet', '-m', 'Deleted source')
 $null = Assert-KimiVerificationCommit $work $deleted
 $cases++
+# The public association entry needs only successful evidence and exact inputs, without retired analyzer files.
+$evidence = Join-Path $work 'artifacts/verify'
+Put 'artifacts/verify/inputs-before.json' ($deleted | ConvertTo-Json -Depth 5)
+Put 'artifacts/verify/summary.json' '{"inputStability":"passed","steps":[{"result":"PASS"}]}'
+$null = & (Join-Path $work 'scripts/verify-commit.ps1') -Evidence $evidence
+$association = Get-Content -LiteralPath (Join-Path $evidence 'commit-match.json') -Raw | ConvertFrom-Json
+Expect ($association.commit -ceq (Assert-KimiVerificationCommit $work $deleted)) 'Association must name the verified commit.'
+Put 'artifacts/verify/summary.json' '{"inputStability":"passed","steps":[{"result":"FAIL"}]}'
+Reject { & (Join-Path $work 'scripts/verify-commit.ps1') -Evidence $evidence } 'successful Verify run'
+Put 'artifacts/verify/summary.json' '{"inputStability":"failed","steps":[{"result":"PASS"}]}'
+Reject { & (Join-Path $work 'scripts/verify-commit.ps1') -Evidence $evidence } 'successful Verify run'
 Write-Output "Passed $cases verification input checks. Isolated repository retained: $work"

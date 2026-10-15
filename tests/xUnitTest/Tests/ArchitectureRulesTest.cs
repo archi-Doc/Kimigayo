@@ -9,7 +9,7 @@ namespace XunitTest;
 /// the stage that set it; a count may fall but never rise. A deleted construct counts as zero.</summary>
 public class ArchitectureRulesTest
 {
-    // Test-only semantic-slot ratchet; production member policy belongs to CodeRules.globalconfig.
+    // Test-only semantic-slot ratchet; production member policy is reviewed against COMPILER_ARCHITECTURE.
     private const string SemanticSlots = "Bound(?:Type|Origin|Symbol|Call|ValueCall|Constraint|RuntimeTest|Meaning|Closure)|BindingState|BindingFailure|HasCurrentBinding|CallStorage|ClosureStorage|ConversionBinding|FoldedConstant|CreationCall|ErasedFunctionType|EntryCall|FormattingStorage|ArithmeticCall|ComparisonCall|IsDirectStorage|FillCount|SemanticsIndexed|RequirementStorage|ImplementationStorage";
 
     [Theory]

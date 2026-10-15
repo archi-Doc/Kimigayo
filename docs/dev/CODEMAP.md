@@ -4,40 +4,16 @@ Navigation for compiler changes, not a specification or support matrix. Required
 
 ## Implementation map
 
-Compiler source-size caps and their token-counting regression are in
-[CompilerSizeBudgetTest](../../tests/xUnitTest/Tests/CompilerSizeBudgetTest.cs); current area and stage caps are in
-[COMPILER_ARCHITECTURE](COMPILER_ARCHITECTURE.md#baseline). One scan checks all areas and the C# total; LLVM templates
-retain their separate line cap.
-
-Code-rule enforcement belongs to [Kimi.Analyzers](../../src/Kimi.Analyzers/CodeRulesAnalyzer.cs): one compilation
-coordinator and file-local observation batches. [CodeRule](../../src/Kimi.Analyzers/CodeRule.cs) owns the catalogue and
-diagnostics; [CodeRulesSource](../../src/Kimi.Analyzers/CodeRulesSource.cs) owns token counts and stable source identities;
-[CodeRulesConfiguration](../../src/Kimi.Analyzers/CodeRulesConfiguration.cs) reads options once, and
-[CodeRulesBaseline](../../src/Kimi.Analyzers/CodeRulesBaseline.cs) performs the final sorted merge.
-[CodeRulesArchitecture](../../src/Kimi.Analyzers/CodeRulesArchitecture.cs) resolves declaration layers and dependency,
-member and enum policies once per compilation (KR1001–1003); CodeRulesArchitectureTest exercises semantic references.
-[CodeRulesArchitecture.Structure](../../src/Kimi.Analyzers/CodeRulesArchitecture.Structure.cs) owns collection
-declarations/creations, Supports gates, MIR syntax dispatch and catch boundaries (KR1004–1006, KR1008);
-CodeRulesStructureTest covers their semantic forms, exclusions and shared baseline identities.
-[CodeRulesDensity](../../src/Kimi.Analyzers/CodeRulesDensity.cs) owns physical lines, nested conditionals and computed
-new-local deconstructions (KR3001–3003), sharing the file walk and source identities; CodeRulesDensityTest covers
-literal/interpolation boundaries, callable boundaries, evaluation shapes and baseline growth.
-[CodeRulesAnalyzer.File](../../src/Kimi.Analyzers/CodeRulesAnalyzer.File.cs) owns the single syntax walk and stack-value
-measurements. [CodeRulesAccretion](../../src/Kimi.Analyzers/CodeRulesAccretion.cs) owns KR2001–2010; its tests cover member,
-callable, alias and logical-chain boundaries. [CodeRuleAnnotation](../../src/Kimi.Analyzers/CodeRuleAnnotation.cs) decodes
-source-authored exceptions and transitional stages for the same observation merge. CodeRulesExceptionTest covers
-partial measurements and baseline overlap; CodeRulesTransitionalTest covers stage ordering, aliases/constants,
-partial moves, combined annotations, excluded paths and conditional metadata. The conditional attributes live in
-`src/Kimi/Misc`; built-in unused-code diagnostics belong to CodeRules.globalconfig.
-MirBuilder.Formatting owns the existing formatting expansion concern;
-its condition operations are Test (ordinary), Guard (Match) and Observe (verification), with shared scope primitives.
-Suppression checks
-live in CodeRulesAnalyzer.Suppression.cs. CodeRules*Test classes share CodeRulesTestHelper; the real-csc regression is
-tests/scripts/CodeRulesCompilerTest.ps1, including MSBuild stale-Report/Prune and Verify regressions. Operational commands and the shared SARIF reader are described in
-[VERIFICATION](VERIFICATION.md#code-rules).
-`scripts/code-rules-report.ps1` owns the shared Report build, SARIF validation and keyed baseline operations.
-`scripts/code-rules-approval.ps1` compares Git trailers/blobs and complete annotation Reports for verify-commit;
-`tests/scripts/CodeRulesApprovalTest.ps1` covers the approval policy and actual Git trailer parsing.
+Compiler source-size caps and review obligations are in
+[COMPILER_ARCHITECTURE](COMPILER_ARCHITECTURE.md#baseline). LLVM templates retain a separate line cap.
+[ArchitectureRulesTest](../../tests/xUnitTest/Tests/ArchitectureRulesTest.cs) owns the retained structural ratchets.
+The analyzer and CompilerSizeBudgetTest were retired (DECISIONS CR-R1); no live owner provides their former reports.
+[`verify.ps1`](../../scripts/verify.ps1) owns build/test execution and input stability;
+[`verification-selection.ps1`](../../scripts/verification-selection.ps1) owns selector normalization and discovery checks;
+[`verification-inputs.ps1`](../../scripts/verification-inputs.ps1) owns source/NuGet manifests and Git-normalized matching;
+[`verify-commit.ps1`](../../scripts/verify-commit.ps1) associates successful evidence with exact committed inputs.
+The matching script regressions are VerificationSelectionTest.ps1 and VerificationInputsTest.ps1.
+MirBuilder.Formatting owns formatting expansion with Test, Guard and Observe condition operations.
 
 The main path is source input → Koto syntax → Binding → control-flow/ownership analysis → physical emission model → LLVM IR → native tools. Checking stops after the front end; generation and native execution have separate entry points.
 

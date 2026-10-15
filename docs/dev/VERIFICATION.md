@@ -20,7 +20,7 @@ an executable change does not make that change documentation-only.
 | Change | Completion checks |
 | --- | --- |
 | Documentation only | Review diffs and affected references. Do not run builds, tests, native fixtures or milestone harnesses. |
-| Compiler, Kimi library or compiler tests | Unit verification of the related checks (library changes add `KimiLibraryShapeTest`) with relevant native fixtures and milestones, all selected explicitly, plus the common `CompilerSizeBudgetTest` and `ArchitectureRulesTest` that Verify adds; a successful Session at the end of the working session. |
+| Compiler, Kimi library or compiler tests | Unit verification of the related checks (library changes add `KimiLibraryShapeTest`) with relevant native fixtures and milestones, all selected explicitly, plus the common `ArchitectureRulesTest` that Verify adds; a successful Session at the end of the working session. |
 | Benchmark or Playground code | Session verification, including the whole-solution build, before completion; execute the affected scenario or relevant fixed-condition measurements. |
 | Verification scripts, CI or other tooling | Related script regressions and affected build/execution paths. Native-runner changes require `NativeFixtureRunnerTest.ps1`. Changes affecting the managed build or test pipeline also require Session. A local check does not certify a hosted CI run. |
 | VS Code extension, including its build/distribution scripts | Follow [the extension instructions](../../src/kimi-ext/AGENTS.md). |
@@ -31,54 +31,16 @@ still requires explicit instruction.
 
 ## Code rules
 
-Kimi.csproj references Kimi.Analyzers as a private analyzer; other projects do not inherit it. The globalconfig is
-also an AdditionalFile, alongside the baseline TSV. KimiCodeRulesMode defaults to Enforce. Verify always sets Verify
-and KimiCodeRulesLog (a Kimi-only SARIF 2.1 output); do not set a solution-wide ErrorLog or use Report for verification.
-The shared SARIF reader rejects analyzer exceptions and suppressed KR/IDE0051/IDE0052/IDE0060 diagnostics, including
-suppressed KR9004. Verify also requires the completion marker with matching configuration/baseline checksums, so a
-build that did not run the analyzer on the current policy fails. CodeRulesConfigurationTest keeps built-in severities
-out of other configuration files.
-Use commas between configuration list entries; semicolons begin comments in Roslyn's globalconfig parser.
+The Code Rules Analyzer, its configuration/baseline and CompilerSizeBudgetTest were removed in
+`2e341155`. DECISIONS CR-R1 retires their Report, SARIF-marker and commit-approval workflow.
+`verify.ps1` still builds nonincrementally with warnings as errors, validates every requested
+test selector against the new assembly, rejects zero executed tests and checks source/NuGet
+input stability. `verify-commit.ps1` still requires a successful run and exact committed inputs.
+`ArchitectureRulesTest` retains its existing no-growth assertions and joins every Unit selection.
 
-| Command | Effect |
-| --- | --- |
-| `pwsh scripts/code-rules.ps1 -Report` | Fresh Release analysis, rule/area counts and observations under artifacts/verify |
-| `pwsh scripts/code-rules.ps1 -Prune` | Reduce existing bounds and delete absent/ineffective rows; never add or raise |
-| `pwsh scripts/code-rules.ps1 -Accept -Rule KR2006 -Path src/Kimi/Compiler/Binding/Binding.cs` | Accept observed keys at the specified file (or directory ending in /); requires owner approval |
-| `pwsh scripts/code-rules.ps1 -Initialize -Rule KR3001,KR3002,KR3003` | Introduce the specified rules' observed keys in their implementation unit; reject replacement of existing keys |
-
-Every operation uses a new nonincremental build and SARIF path. Before writing, it requires a successful build,
-exactly one completion marker with nonzero tree count and `annotationKinds=exception,transitional`, matching raw-byte configuration/baseline checksums and
-unchanged source/configuration/NuGet manifests. Keys and final observed values come only from the analyzer. Baselines
-are written atomically in ordinal scope/rule/anchor order. A complete report with no over-limit occurrence deletes
-that row, including a measurement now at or below the ordinary limit (DECISIONS CR-A2).
-Annotation observations include their reason and either an exception bound or removal stage/ordinal, even at zero;
-they never enter the baseline. Missing or older annotation-inventory markers are incomplete Reports. The Report
-command retains MSBuild warnaserror but exempts KR9002 from logger promotion so Prune can read stale-entry warnings.
-Verify's KR9002 is an analyzer error and remains fatal (DECISIONS CR-A6b).
-
-Analyzer cost: after a Kimi.Analyzers change, build the analyzer in Release, then run
-`dotnet build src/Kimi/Kimi.csproj -c Release --no-restore -t:Rebuild -p:ReportAnalyzer=true -p:UseSharedCompilation=false -p:BuildProjectReferences=false -nodeReuse:false -m:1 -v:detailed -clp:PerformanceSummary`.
-The Kimi.Analyzers row of the analyzer summary must stay at or below 10% of the Csc task time (plan §3.8). Compare
-variants by interleaved runs and keep failed measurements.
-
-At each reduction-stage exit, obtain Report and have the owner review its baseline, exceptions and transitional
-inventory. Report does not replace Unit or Session verification. Record approval in the actual Git trailer:
-`Code-Rules-Approved: <approver> <yyyy-MM-dd>: <reason>`.
-verify-commit first matches the verified inputs, then requires that trailer for any globalconfig change,
-new/increased baseline key, new/increased exception or postponed existing transitional key. Pruning, reduced bounds,
-earlier stages and partial-file moves need no approval. A valid trailer bypasses only the approval comparison.
-Without one, the audit builds fresh complete Reports of the exact first parent and target in isolated detached
-worktrees, using the same Report function as code-rules.ps1. Both reports, input manifests and failure logs stay in
-the Verify evidence directory. Missing or incomplete inventories fail; no cached report or text-based attribute
-parser substitutes for the analyzer (DECISIONS CR-A8). Script policy regressions are CodeRulesApprovalTest.ps1;
-the no-trailer commit association exercises the full two-build path.
-
-Run CodeRulesReportTest.ps1 for the shared reader/update operations, and CodeRulesCompilerTest.ps1 after a Release
-analyzer build when suppression or analyzer build integration changes. The latter retains actual-csc logs for pragma,
-member/type/assembly/alias/unconditional attributes, NoWarn, editorconfig/globalconfig and built-in suppression. Full
-Session covers the in-memory rule tests; it also runs the cheap report-script regressions. Stage exits and milestone
-completion require Report for owner review; rule introduction adds its rule tests and required behavior snapshots.
+The structure, dependency, vocabulary and size rules in COMPILER_ARCHITECTURE remain review
+obligations. Report measured sizes and exceptions in commits/artifacts; do not claim automated
+coverage for the removed analyzer or change a cap without the existing owner decision.
 
 ## Feedback and completion
 
@@ -97,7 +59,7 @@ Before a formal run, Verify's build flags catch analyzer and StyleCop failures i
 dotnet build tests/xUnitTest/xUnitTest.csproj --no-restore --no-incremental -c Release --disable-build-servers -warnaserror -p:EmitCompilerGeneratedFiles=false
 ```
 
-At Unit completion, `scripts/verify.ps1` builds the test project and its Kimi dependency non-incrementally with warnings as errors. At Session completion it builds the entire solution, including Benchmark and Playground, then runs all managed regressions. The existing analyzer check is retained in both modes. Changes to Benchmark or Playground need the Session build before completion. Neither mode runs NativeAOT.
+At Unit completion, `scripts/verify.ps1` builds the test project and its Kimi dependency non-incrementally with warnings as errors. At Session completion it builds the entire solution, including Benchmark and Playground, then runs all managed regressions. Both modes retain the installed build analyzers and warnings-as-errors policy. Changes to Benchmark or Playground need the Session build before completion. Neither mode runs NativeAOT.
 
 ```powershell
 ./scripts/verify.ps1 -Class DeferredEmissionTest -Fixtures 'Deferred*.ll'
@@ -105,7 +67,7 @@ At Unit completion, `scripts/verify.ps1` builds the test project and its Kimi de
 ./scripts/verify.ps1 -Mode Session
 ```
 
-Unit Verify adds the common compiler checks `CompilerSizeBudgetTest` and `ArchitectureRulesTest` to every class or
+Unit Verify adds the common compiler check `ArchitectureRulesTest` to every class or
 method selection, once; the purpose filter applies to them too. Purpose-filtered runs such as the allocation example
 supplement, rather than replace, the remaining required checks. Commit each unit after its checks pass, associate the
 evidence (below) and push; run the final Session at the end of the working session. Ordinary Verify does not check
