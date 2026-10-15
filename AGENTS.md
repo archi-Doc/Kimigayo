@@ -20,8 +20,6 @@
    - **AST Inspection and Manipulation:** inspect syntax and semantics, apply edits against identified source snapshots, and produce reviewable source changes.
    - **Verifiable Changes:** associate checks, tests, and measurements with exact source and configuration, reporting outcomes and remaining uncertainty.
 
-The specification and implementation are not set in stone. The specification guides implementation, but implementation insights can also lead to revisions: when the specification is contradictory, unsound or overly complex, or when a simpler, more consistent, more efficient or faster rule exists. Every revision must uphold the Kimigayo Principles and keep the language consistent and robust; these conditions are absolute. Let’s think carefully and refine both together to build a better language.
-
 # Implementation Design
 
 Priorities: SPEC correctness and the native O2 and allocation guarantees are constraints. Within them, a coherent structure comes first: each concept has one owner, one representation and one canonical path. Then less code, then faster compilation. A small diff, low test churn or ease of review are not criteria.
@@ -53,7 +51,10 @@ Priorities: SPEC correctness and the native O2 and allocation guarantees are con
 
 # Documentation
 
-Write in English. Each document owns the following; keep changes consistent with the owner. Documents state current rules and positions in short rows; narrative, completed history and evidence belong in commits, PLAN_HISTORY and artifacts.
+- Write documentation in concise, clear English by default.
+- When creating Japanese documentation or translating documentation into Japanese, use concise, clear Japanese and refer to [SPECJ_TERMINOLOGY](docs/SPECJ_TERMINOLOGY.md) for terminology.
+
+Each document owns the following; keep changes consistent with the owner. Documents state current rules and positions in short rows; narrative, completed history and evidence belong in commits, PLAN_HISTORY and artifacts.
 
 | Document | Owns |
 | --- | --- |
