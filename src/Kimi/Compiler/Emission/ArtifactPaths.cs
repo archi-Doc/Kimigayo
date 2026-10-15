@@ -2,7 +2,7 @@
 
 namespace Kimi.Compiler;
 
-/// <summary>One resolved artifact set shared by emission, native build and execution.</summary>
+/// <summary>One resolved artifact set shared by emission, build records and native execution.</summary>
 internal sealed record ArtifactPaths(string Ir, string Manifest, string Record, string Stem)
 {
     internal string Executable => this.Stem + ".exe";

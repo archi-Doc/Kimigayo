@@ -11,7 +11,8 @@ using static Kimi.Compiler.ArtifactFiles;
 
 namespace Kimi.Compiler;
 
-/// <summary>Runs the Windows LLVM tools and existing executables without a shell.</summary>
+/// <summary>Owns build-record publication and native tool/executable execution. Consumes checked product metadata
+/// or validated emission artifacts; publishes success atomically and never checks source semantics.</summary>
 internal static partial class NativeToolchain
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
@@ -27,6 +28,19 @@ internal static partial class NativeToolchain
     {
         Directory.CreateDirectory(Path.GetDirectoryName(paths.Record)!);
         WriteRecord(paths.Record, CreateBuildRecord());
+    }
+
+    internal static void RecordLibrary(Project project, ArtifactPaths paths, CancellationToken cancellationToken)
+    {
+        var metadata = project.BuildMetadata.Single();
+        var record = new JsonObject
+        {
+            ["status"] = "checked", ["outputKind"] = "Library", ["input"] = project.FilePath,
+            ["target"] = metadata.TargetTriple, ["debug"] = metadata.Debug, ["optimization"] = project.ProjectFile.Optimization,
+            ["languageVersion"] = metadata.LanguageVersion, ["compilerVersion"] = metadata.CompilerVersion,
+        };
+        cancellationToken.ThrowIfCancellationRequested();
+        WriteRecord(paths.Record, record);
     }
 
     internal static async Task Build(Project project, ArtifactPaths paths, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)

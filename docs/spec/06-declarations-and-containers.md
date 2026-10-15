@@ -41,6 +41,8 @@ group G
 // public func helper() -> i32 => 0  // Error: only `main` may be a public root function.
 ```
 
+Root functions admit explicit full specialization in the same SourceDocument execution scope ([§8.13](08-generics-constraints-and-contracts.md#813-explicit-full-function-specialization)); another document cannot specialize them.
+
 **rootgroup.** `rootgroup A.B` declares the nested group path `A.B` and is allowed only directly at the source root (including selected root directive items). Its path creates groups only; a segment naming an existing non-group Type is a kind conflict ([§9.1](09-names-signatures-and-access.md#91-signatures)). A group the path creates has the access of an explicit group declaration with that path if one exists, and `private` otherwise.
 
 **Nesting.** The root, groups and structs may contain groups, structs, enums and Contracts; enums, Contracts, executable Blocks and conditional-conformance Blocks contain none. Depth has no language limit; an implementation limit is a Resource diagnostic. Membership adds no storage, outer instance, receiver, inheritance or conformance.

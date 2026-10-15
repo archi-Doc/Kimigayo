@@ -224,7 +224,7 @@ In the table, `source` means the backing Origin `self.source`, not a borrow of t
 | `trySplitAt<P>(self: Self, index: P) -> Option<(Slice<T> during source, Slice<T> during source)>`, `P is Position` | The same split, returning None for an invalid boundary. |
 | `contains(self: Self, value: ref/T) -> bool`, `T is Equatable` | Whether some element equals `value`; visits elements in index order and stops at the first match. |
 | `firstIndex(self: Self, of: ref/T) -> Option<isize>`, `T is Equatable` | The first index whose element equals the value, or None. |
-| `firstIndex<F>(self: Self, matching: F) -> Option<isize>`, `F is Callable<(ref/T) -> bool>` | The first index for which `matching` returns true, or None. |
+| `firstIndexWhere<F>(self: Self, predicate: F) -> Option<isize>`, `F is Callable<(ref/T) -> bool>` | The first index for which `predicate` returns true, or None. |
 | `iterate(self: ref/Self during handle) -> SliceIterator<T> during source` | The Iterable entry: a shared enumeration in index order. Items keep `source`, not the borrow of the handle. |
 | `iterateUniq(self: uniq/Self during handle) -> SliceIterator<T> during source` | The UniqIterable entry: exclusive access lends only the handle, so the items stay shared. |
 | `intoIterator(self: Self) -> SliceIterator<T> during source` | The IntoIterable entry: the same shared enumeration from a Slice value, such as a range selection. |
@@ -565,9 +565,9 @@ All names in this section belong to `Async`. Implementation of this entire secti
 | `enum SendFailure` | `Closed`, `Cancelled(Async.Cancelled)` | Why `send` returned its value: the receiver is closed, or cancellation. |
 | `enum Raced<A, B>`, one declaration per arity | `First(A, B)`, `Second(A, B)`; one Case per child, in order | The Case names the child that completed first; every final result is kept. |
 | `struct Sender<T>` | `send(task; self: uniq/Self, value: T) -> Result<(), (T, SendFailure)>` | `Ok(())` once the value has left into the buffer or to the receiver; otherwise `Err` returns the value with `Closed` or `Cancelled`. The value moves only on `Ok`. |
-| `struct Receiver<T>` | `receive(task; self: uniq/Self) -> Result<Option<T>, Cancelled>` | `Ok(Some(item))` removes one item; `Ok(None)` once the channel is closed and drained, and on every later call; `Err` on cancellation removes nothing. A delivered item depends on neither the receiver borrow nor the channel storage. |
+| `struct Receiver<T>` | `receive(task; self: uniq/Self) -> Result<Option<T>, Cancelled>` | `Ok(Some(item))` removes the earliest item in successful-send commit order (FIFO); `Ok(None)` once the channel is closed and drained, and on every later call; `Err` on cancellation removes nothing. A delivered item depends on neither the receiver borrow nor the channel storage. |
 
-`pipe` creates every channel and lends its endpoints; they are operated only through `uniq/Self`. Each wait commits exactly once, by its operation or by cancellation, and returns what it committed to.
+`pipe` creates every channel and lends its endpoints; they are operated only through `uniq/Self`. Each wait commits exactly once, by its operation or by cancellation, and returns what it committed to. Before `pipe` returns, remaining buffered items are completely destroyed one at a time in reverse successful-send commit order. Delivery and destruction order are independent of task resumption order ([§22.3.4](spec/22-core-execution-and-foreign-functions.md#2234-channels)).
 
 ### 8.2. Operations
 

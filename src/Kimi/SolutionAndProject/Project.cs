@@ -200,21 +200,30 @@ public partial class Project
     public Task<bool> Check(CancellationToken cancellationToken)
         => this.BuildCore(false, cancellationToken);
 
-    /// <summary>Generates LLVM inputs, verifies them and links a native Application.</summary>
-    /// <param name="cancellationToken">Cancels generation and native tool processes.</param>
-    /// <returns>Whether a new native executable was built successfully.</returns>
+    /// <summary>Checks product sources and records a Library build or links an Application.</summary>
+    /// <param name="cancellationToken">Cancels checking, generation and native tool processes.</param>
+    /// <returns>Whether this OutputKind's checks and artifacts succeeded.</returns>
     public async Task<bool> Build(CancellationToken cancellationToken = default)
     {
         try
         {
             var paths = ArtifactPaths.Create(this);
             NativeToolchain.Invalidate(paths);
-            if (!await this.BuildCore(true, cancellationToken, paths).ConfigureAwait(false))
+            var application = this.ProjectFile.OutputKind == OutputKind.Application;
+            if (!await this.BuildCore(application, cancellationToken, paths).ConfigureAwait(false))
             {
                 return false;
             }
 
-            await NativeToolchain.Build(this, paths, (severity, message) => this.kimigayo.WriteLine(severity, message), cancellationToken).ConfigureAwait(false);
+            if (application)
+            {
+                await NativeToolchain.Build(this, paths, (severity, message) => this.kimigayo.WriteLine(severity, message), cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                NativeToolchain.RecordLibrary(this, paths, cancellationToken);
+            }
+
             return true;
         }
         catch (Exception ex) when (NativeToolchain.IsToolchainFailure(ex))
@@ -264,6 +273,7 @@ public partial class Project
 
     // Retain the Task exception/cancellation contract at the public boundary. Each target
     // is synchronous; do not build another async state machine around every compilation.
+    // paths requests build artifacts, including a Library's record even when emit is false.
     private async Task<bool> BuildCore(bool emit, CancellationToken cancellationToken = default, ArtifactPaths? paths = null)
         => this.BuildTargetsAndPublish(emit, cancellationToken, paths, null);
 
@@ -347,9 +357,9 @@ public partial class Project
             targets = [this.KimiOptions.Target];
         }
 
-        if (emit && (targets.Length != 1 || targets[0] != WindowsProfile.Target))
+        if ((emit || paths is not null) && (targets.Length != 1 || targets[0] != WindowsProfile.Target))
         {
-            this.Fail(diagnostics, "Emission currently requires exactly one configured Windows x64 target.");
+            this.Fail(diagnostics, "Artifact production currently requires exactly one configured Windows x64 target.");
             return false;
         }
 

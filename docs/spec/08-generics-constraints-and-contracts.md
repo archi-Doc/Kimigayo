@@ -889,9 +889,9 @@ An **explicit full specialization** supplies the implementation of a generic fun
 
 ### 8.13.1. Declaration and target
 
-`specialize func` declares one: a single unqualified Name, explicit arguments for every slot in order (lengths by [§4.4](04-arrays-indexing-and-slices.md#44-function-length-parameters)), a task slot exactly when the original has one, typed parameters, an optional result and a body. It declares no Type parameters and cannot see the original's names. An omitted result is Unit. The arguments must be closed: no unbound Type parameter or pair binder, unresolved projection or outer generic parameter. The target is a generic Type function or method with an ordinary body, not a constructor, `drop`, accessor or operator; there is no partial, conditional or Container-argument specialization.
+`specialize func` declares one: a single unqualified Name, explicit arguments for every slot in order (lengths by [§4.4](04-arrays-indexing-and-slices.md#44-function-length-parameters)), a task slot exactly when the original has one, typed parameters, an optional result and a body. It declares no Type parameters and cannot see the original's names. An omitted result is Unit. The arguments must be closed: no unbound Type parameter or pair binder, unresolved projection or outer generic parameter. The target is a generic root function, Type function or method with an ordinary body, not a constructor, `drop`, accessor or operator; there is no partial, conditional or Container-argument specialization.
 
-The target is the unique function in the same Container with the same name, kind and slot count whose substituted task slot, receiver and parameters match the header's normalized structure, Origins excluded. Zero or several matches are errors; results, Constraints and order never break ties.
+The specialization and its target belong to the same declaration scope: a root function's SourceDocument execution scope ([§6.1.1](06-declarations-and-containers.md#611-source-root-and-nested-containers)), or the same Container for a member. The target is the unique function there with the same name, kind and slot count whose substituted task slot, receiver and parameters match the header's normalized structure, Origins excluded. Zero or several matches are errors; results, Constraints and order never break ties.
 
 ```kimi
 func classify<T>(value: ref/T) -> i32 => 0
@@ -909,7 +909,7 @@ The header restates the original's substituted receiver shape ([§7.3](07-functi
 
 ### 8.13.3. Selection
 
-The selection key is the original declaration with its normalized static arguments, excluding only Origins; `obj/D` and `rc/D` differ. Two specializations with one key are an error. Calls and function references use ordinary lookup, overload resolution and the original contract; specializations are never candidates. Once the arguments determine a key, the matching specialization runs, whether the arguments were known at the call or after generic substitution; Dynamic Types never matter. A specialization has no name and cannot be bypassed; calling the same function with the same arguments inside it recurses. Specializations belong to the original's Kotonoha and Container, and declaration or loading order never affects selection.
+The selection key is the original declaration with its normalized static arguments, excluding only Origins; `obj/D` and `rc/D` differ. Two specializations with one key are an error. Calls and function references use ordinary lookup, overload resolution and the original contract; specializations are never candidates. Once the arguments determine a key, the matching specialization runs, whether the arguments were known at the call or after generic substitution; Dynamic Types never matter. A specialization has no name and cannot be bypassed; calling the same function with the same arguments inside it recurses. Specializations belong to the original's Kotonoha and declaration scope (§8.13.1), and declaration or loading order never affects selection.
 
 ```kimi
 func classify<T>(value: ref/T) -> i32 => 0

@@ -264,7 +264,9 @@ func flushAlways(task; log: uniq/Log) -> Result<(), LogError>
 
 ### 22.3.4. Channels
 
-`pipe` is the only way to create a channel; it lends one endpoint to each child as `uniq`. With `capacity >= 1` it buffers items without heap allocation in steady state. When the consumer completes, `pipe` closes the receiver and cancels and joins the producer, whose pending `send` commits to `Closed`. When the producer returns first, the sender closes and `receive` returns the buffered items, then `Ok(None)` on every later call. Items left in the buffer are destroyed when `pipe` returns, so `Ok` from `send` means the buffer took the value. A delivered item depends on neither the receiver borrow nor the channel storage. Endpoints interleave only at task calls ([§24.3](24-suspension-and-asynchronous-tasks.md#243-task-calls)).
+`pipe` is the only way to create a channel; it lends one endpoint to each child as `uniq`. With `capacity >= 1` it buffers items without heap allocation in steady state. When the consumer completes, `pipe` closes the receiver and cancels and joins the producer, whose pending `send` commits to `Closed`. When the producer returns first, the sender closes and `receive` returns the buffered items, then `Ok(None)` on every later call. `Ok` from `send` means the channel took the value, not that the consumer received it. A delivered item depends on neither the receiver borrow nor the channel storage. Endpoints interleave only at task calls ([§24.3](24-suspension-and-asynchronous-tasks.md#243-task-calls)).
+
+Delivery is FIFO in the commit order of successful sends. Before `pipe` returns, remaining buffered items are destroyed in reverse successful-send commit order, each completely before the next. These orders are independent of task resumption order.
 
 There are no detached tasks: dynamic work uses `eachReceived` with erased jobs of Type `(task;) -> ()` ([§7.7.4](07-functions-and-callable-values.md#774-function-references-and-erasure)). A generator is `pipe` with capacity 0.
 

@@ -78,7 +78,7 @@ group Log
 | `restore <project>` | Resolves dependencies and replaces the lock ([§20.5](#205-packages-and-locks)); no network access. |
 | `check <input>` | Selects inputs, targets and Debug settings as `build` does, and checks one Product unit per selected project. [§23.2.3](../spec/23-compiler-services.md#2323-check-commands) defines ordering, continued checking after unit failures, aggregate acceptance and cancellation; [§23.3](../spec/23-compiler-services.md#233-json-check-output) defines the single JSON command document. |
 | `emit <input>` | Checks and publishes the `.ll` and `.link.json` pair; runs no LLVM tool. |
-| `build <input>` | Builds the executable from current sources and writes a build record. With `--Manifest <file>`, builds an emitted pair without loading sources; generation settings come from the manifest, and source, target, Debug and lock options are errors. |
+| `build <input>` | Checks current product sources and publishes artifacts by OutputKind (§20.3.2). With `--Manifest <file>`, builds an emitted Application pair without loading sources; Library manifests are rejected. Generation settings come from the manifest, and source, target, Debug and lock options are errors. |
 | `run <input>` | Builds as `build` does, then runs the Application; a failed build launches nothing. With `--no-build`, runs the existing executable if the latest build record succeeded, names the resolved input and matches the executable's hash. `run <file.exe>` runs that file directly. |
 | `test <input>` | Runs tests ([§20.6](#206-test-execution)). |
 | `pack`, `publish`, `store verify` | Package operations ([§20.5](#205-packages-and-locks)). |
@@ -110,10 +110,19 @@ kimi run A --no-build        # resolves A.kimiproj; Error: the record names A.ki
 
 ### 20.3.2. Builds and artifacts
 
-For `OutputPath` `Name.ll`, `emit` writes `Name.ll` and `Name.link.json`; `build` writes `Name.O0.exe` or `Name.O2.exe` and the build record `Name.link.build.json`. A Library's `.ll` is for inspection only. The formats of `.link.json` and of build records are implementation-defined.
+Every source build checks the Product unit in its selected target and Debug environment, excluding TestSources (§20.6.1).
+
+| OutputKind | Build succeeds when | Artifacts |
+| --- | --- | --- |
+| Application | Required checks and executable generation succeed | Executable and successful build record |
+| Library | Required product checks succeed | Successful build record; no executable |
+
+A Solution or directory build applies these rules to every selected Project, including Libraries, and succeeds only if all succeed. A Library build invokes no native tools. `build --Manifest` accepts only Application manifests: it cannot establish a Library's source-check result. Use a source build for Libraries, `emit` for IR and `pack` for distribution packages.
+
+For `OutputPath` `Name.ll`, `emit` writes `Name.ll` and `Name.link.json`. An Application build also writes `Name.O0.exe` or `Name.O2.exe`; every build writes `Name.link.build.json`. A Library build writes only the record; its IR, when requested with `emit`, is for inspection only. A successful Library record identifies the input, selected target, Debug setting, language and compiler versions, and completed product checks. The formats of `.link.json` and of build records are implementation-defined.
 
 - `emit` reports success only after both outputs are published; a partial publication is a failure.
-- A build first invalidates the latest successful build record and publishes the executable only on success; `run` never runs an older executable left by a failed build.
+- A build first invalidates the latest successful build record. It publishes success only after the required checks and artifacts complete; an Application publishes its executable only on success. Failure or cancellation leaves no successful record for that attempt; `run` never runs an older executable left by a failed build.
 - Reuse of earlier results follows [§A.2](appendices/A-compiler-requirements.md#a2-reuse-of-earlier-work).
 - An Unsupported operation produces no placeholder binary.
 

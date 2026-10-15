@@ -501,7 +501,7 @@ Positions are passed by value and resolved once against the entry length ([§4.6
 | `first`, `last: Option<ref/T during self>` (shared receiver) | `None` when empty |
 | `tryGetUniq<P>(index: P) -> Option<uniq/T during self>` | `None` unless an element position |
 
-`P` and `Q` are Position Types. Moving elements within the Array copies none and runs no destructor; only `init` and growth allocate. During `removeAll` and `sort` callbacks cannot observe the Array, and an Abort in a callback leaves every element initialized exactly once. An inconsistent comparison yields an unspecified permutation.
+`P` and `Q` are Position Types. Moving elements within the Array copies none and runs no destructor. Allocation guarantees are defined in [§4.9.5](#495-capacity-and-allocation). During `removeAll` and `sort` callbacks cannot observe the Array, and an Abort in a callback leaves every element initialized exactly once. An inconsistent comparison yields an unspecified permutation.
 
 ```kimi
 var values = Array<i32>.init(capacity: 4)
@@ -539,7 +539,9 @@ names[2] = "two"              // Aborts if executed: key 2 is absent.
 
 ### 4.9.5. Capacity and allocation
 
-Both collections expose read-only `capacity: isize`, the elements or entries storable without allocation; `0 <= length <= capacity`. Typed empty `[]` and `[:]` allocate nothing, and `init(capacity: c)` behaves as `[]` then `reserve(additional: c)`. `reserve(additional:)`, which also accepts its argument positionally, Aborts on a negative or overflowing request and ensures `capacity >= length + additional`, never shrinks, and when capacity suffices neither allocates nor moves elements. `shrinkToFit()` may reduce capacity; if allocation fails, nothing changes. Adding within capacity, lookup, replacement, removal, `clear` and rejection never allocate; growth may Abort on allocation failure ([§22.5.2](22-core-execution-and-foreign-functions.md#2252-abort-codes)). Exact capacities are implementation-defined.
+Both collections expose read-only `capacity: isize`, the elements or entries storable without allocation; `0 <= length <= capacity`. Typed empty `[]` and `[:]` allocate nothing, and `init(capacity: c)` behaves as `[]` then `reserve(additional: c)`. `reserve(additional:)`, which also accepts its argument positionally, Aborts on a negative or overflowing request and ensures `capacity >= length + additional`, never shrinks, and when capacity suffices neither allocates nor moves elements. Adding within capacity, lookup, replacement, removal, `clear` and rejection never allocate; growth may Abort on allocation failure ([§22.5.2](22-core-execution-and-foreign-functions.md#2252-abort-codes)). Exact capacities are implementation-defined.
+
+`shrinkToFit()` may allocate to reduce capacity; the resulting capacity is between length and the old capacity, inclusive. It preserves values, order and length. If size calculation or allocation fails, it returns normally and also preserves capacity and element placement. Exact fit and release to the OS are not guaranteed.
 
 ### 4.9.6. Loans, dependencies and call effects
 

@@ -110,9 +110,39 @@ public sealed class NativeToolchainTest : IDisposable
     }
 
     [Fact]
-    public async Task SemanticFailureInvalidatesPreviousBuildBeforeInvokingTools()
+    public async Task LibraryBuildRecordsProductChecksWithoutEmissionOrTools()
+    {
+        var file = Path.Combine(this.directory, "Library.kimiproj");
+        File.WriteAllText(file, "Targets = { \"x86_64-pc-windows-msvc\" }\nOutputKind = \"Library\"\nTestSources = { \"tests.kimi\" }");
+        File.WriteAllText(Path.Combine(this.directory, "product.kimi"), "public group Example");
+        File.WriteAllText(Path.Combine(this.directory, "tests.kimi"), "let broken =");
+        Assert.True(Project.TryCreate(Compilation.CreateForTest().Kimigayo, null, file, out var project));
+        project.ProjectFile.LlvmBin = "missing LLVM directory";
+        project.KimiOptions.Debug = true;
+        Assert.True(await project.Build(TestContext.Current.CancellationToken));
+        var paths = ArtifactPaths.Create(project);
+        using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
+        var root = record.RootElement;
+        Assert.Equal("checked", root.GetProperty("status").GetString());
+        Assert.Equal("Library", root.GetProperty("outputKind").GetString());
+        Assert.Equal(file, root.GetProperty("input").GetString());
+        Assert.Equal(WindowsProfile.Target, root.GetProperty("target").GetString());
+        Assert.True(root.GetProperty("debug").GetBoolean());
+        Assert.Equal(Compilation.CurrentLanguageVersion, root.GetProperty("languageVersion").GetString());
+        Assert.Equal(Compilation.CompilerVersion, root.GetProperty("compilerVersion").GetString());
+        Assert.False(File.Exists(paths.Ir));
+        Assert.False(File.Exists(paths.Manifest));
+        Assert.False(File.Exists(paths.Executable));
+        await Assert.ThrowsAsync<InvalidDataException>(() => project.Run(TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData(OutputKind.Application)]
+    [InlineData(OutputKind.Library)]
+    public async Task SemanticFailureInvalidatesPreviousBuildBeforeInvokingTools(OutputKind kind)
     {
         var project = this.Create("let broken =");
+        project.ProjectFile.OutputKind = kind;
         var paths = ArtifactPaths.Create(project);
         Directory.CreateDirectory(Path.GetDirectoryName(paths.Record)!);
         File.WriteAllText(paths.Record, "{\"status\":\"linked\"}");
@@ -120,6 +150,60 @@ public sealed class NativeToolchainTest : IDisposable
         using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
         Assert.False(File.Exists(paths.Ir));
+    }
+
+    [Fact]
+    public async Task LibraryManifestCannotReplaceProductChecks()
+    {
+        var project = this.Create("public group Example");
+        project.ProjectFile.OutputKind = OutputKind.Library;
+        Assert.True(await project.Generate(TestContext.Current.CancellationToken));
+        var paths = ArtifactPaths.Create(project);
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, null, (_, _) => { }, TestContext.Current.CancellationToken));
+        Assert.Contains("Application", error.Message);
+        using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
+        Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
+        Assert.False(File.Exists(paths.Executable));
+    }
+
+    [Theory]
+    [InlineData("", false)]
+    [InlineData("aarch64-pc-windows-msvc", false)]
+    [InlineData("x86_64-pc-windows-msvc", true)]
+    public async Task LibraryBuildRequiresOneSelectedSupportedTarget(string selected, bool accepted)
+    {
+        var project = this.Create("public group Example");
+        project.ProjectFile.OutputKind = OutputKind.Library;
+        project.ProjectFile.Targets = ["aarch64-pc-windows-msvc", WindowsProfile.Target];
+        project.KimiOptions.Target = selected;
+        Assert.Equal(accepted, await project.Build(TestContext.Current.CancellationToken));
+        using var record = JsonDocument.Parse(File.ReadAllText(ArtifactPaths.Create(project).Record));
+        Assert.Equal(accepted ? "checked" : "incomplete", record.RootElement.GetProperty("status").GetString());
+        if (accepted)
+        {
+            Assert.Equal(selected, record.RootElement.GetProperty("target").GetString());
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SolutionBuildChecksEveryLibraryEvenAfterFailure(bool valid)
+    {
+        var solution = new Solution(Compilation.CreateForTest().Kimigayo);
+        var first = this.Create(valid ? "public group First" : "let broken =");
+        first.Name = "First";
+        first.ProjectFile.OutputKind = OutputKind.Library;
+        var second = this.Create("public group Second");
+        second.Name = "Second";
+        second.ProjectFile.OutputKind = OutputKind.Library;
+        solution.Projects.Add("first.kimiproj", first);
+        solution.Projects.Add("second.kimiproj", second);
+        Assert.Equal(valid, await solution.Build(TestContext.Current.CancellationToken));
+        using var firstRecord = JsonDocument.Parse(File.ReadAllText(ArtifactPaths.Create(first).Record));
+        using var secondRecord = JsonDocument.Parse(File.ReadAllText(ArtifactPaths.Create(second).Record));
+        Assert.Equal(valid ? "checked" : "incomplete", firstRecord.RootElement.GetProperty("status").GetString());
+        Assert.Equal("checked", secondRecord.RootElement.GetProperty("status").GetString());
     }
 
     [Fact]
@@ -145,16 +229,21 @@ public sealed class NativeToolchainTest : IDisposable
         await Assert.ThrowsAsync<InvalidDataException>(() => solution.Run(TestContext.Current.CancellationToken));
     }
 
-    [Fact]
-    public async Task UnsupportedTargetCannotEmitAndCancelledBuildCannotSucceed()
+    [Theory]
+    [InlineData(OutputKind.Application)]
+    [InlineData(OutputKind.Library)]
+    public async Task UnsupportedTargetCannotEmitAndCancelledBuildCannotSucceed(OutputKind kind)
     {
         var project = this.Create();
+        project.ProjectFile.OutputKind = kind;
         project.KimiOptions.Target = "aarch64-pc-windows-msvc";
         Assert.False(await project.Generate(TestContext.Current.CancellationToken));
         project.KimiOptions.Target = string.Empty;
         using var cancelled = new CancellationTokenSource();
         cancelled.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => project.Build(cancelled.Token));
+        using var record = JsonDocument.Parse(File.ReadAllText(ArtifactPaths.Create(project).Record));
+        Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
     }
 
     private Project Create(string source = "::Kimi.Console.writeLine(\"Hello\")")

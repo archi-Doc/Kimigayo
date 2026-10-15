@@ -367,6 +367,7 @@ EnumCase             := Name ("(" TrailingList<Type> ")")? OriginClauses?
 ```
 
 - At the source root, `let` and `var` items are LocalBindings; which items each Container admits, nesting, and omitted or empty Container bodies are defined in [§6.1.1](../06-declarations-and-containers.md#611-source-root-and-nested-containers). An enum body remains nonempty after selection.
+- A root `SpecializationDeclaration` targets a function in the same SourceDocument execution scope ([§8.13.1](../08-generics-constraints-and-contracts.md#8131-declaration-and-target)).
 - Aliases appear only at the source root, before other items ([§18.2](../18-modules-and-dependencies.md#182-aliases)). `=>` in an alias introduces a reference, never a Body.
 - Modifier order and recognition: [§F.3.3](#f33-declaration-modifiers).
 - The `#` forms are: `#` followed by `if`, `switch` or `case` is a directive ([§F.11](#f11-compile-time-directives)); `#` followed by a Name starting with a Lu character is an Attribute; any other `#Name` is an error. Attribute placement and targets are defined in [§6.7](../06-declarations-and-containers.md#67-attributes).

@@ -77,7 +77,9 @@ dotnet src/Kimi/bin/Release/net10.0/Kimi.dll run docs/examples/Hello/Hello.kimip
 Use `kimi <command> [project.kimiproj | solution.kimisln | directory] [options]`.
 Omitting the path searches the current directory for a solution or projects.
 
-- `build`: compile and link; requires the LLVM toolchain above.
+- `build`: check product sources and write a successful build record. Applications
+  also compile and link an executable, requiring the LLVM toolchain above;
+  Libraries need no LLVM tools and produce only the record.
 - `run`: build the current source, then run the resulting executable and forward
   its output and exit code. Requires the LLVM toolchain; a failed build does not run.
   Add `--no-build` to run the existing executable without compiling or requiring LLVM.
@@ -119,7 +121,7 @@ For a source checkout, replace `kimi` in these examples with `dotnet src/Kimi/bi
 
 `check <project> --Format json` checks one project through the same entry the language server uses and writes a single JSON document (`kimi.check/1`, schema in [docs/spec/schemas/check-output.schema.json](docs/spec/schemas/check-output.schema.json)) to standard output: the outcome, the source table with the SHA-256 of every input that was read, and the diagnostic records with their repair candidates, which are structured edits with their verified and required conditions. Everything else goes to standard error, and the exit code follows acceptance as in the text form.
 
-Run `restore <project.kimiproj>` before checking a project with dependencies. Restore resolves exact local Project references and writes deterministic product/test partitions to `<project>.kimi.lock.json`. Source commands validate the required lock and never rewrite it; `--locked` is supported. Source edits require rechecking, but no restore. Supported source-module bodies share final Application generation. Library `emit` produces inspection IR with no OS entry; Library native build/run, package inputs and full module/native supply records remain unfinished.
+Run `restore <project.kimiproj>` before checking a project with dependencies. Restore resolves exact local Project references and writes deterministic product/test partitions to `<project>.kimi.lock.json`. Source commands validate the required lock and never rewrite it; `--locked` is supported. Source edits require rechecking, but no restore. Supported source-module bodies share final Application generation. Library `build` records successful product checks; Library `emit` produces inspection IR with no OS entry. Source `run` and `build --Manifest` require Applications. Package inputs and full module/native supply records remain unfinished.
 
 See the [transitive source dependency example](docs/examples/SourceDependencies/README.md).
 
