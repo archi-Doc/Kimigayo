@@ -178,7 +178,7 @@ public sealed class TyCtxtTest
     [Fact]
     public void WarmSubstitutionsAreTheSameAndAllocateNothing()
     {
-        var c = SemanticSnapshotTest.Bind("milestone/Milestone26").Compilation;
+        var c = SemanticSnapshotTest.Bind("milestone/Milestone34").Compilation;
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).Concat(KotoTree.Walk(c.Library.Kotonoha.RootKoto))
             .SelectMany(static x => Enumerable.Range(0, 8).Select(i => (Node: x, Ordinal: i)).TakeWhile(static y => CallPlan.Of(y.Node, y.Ordinal) is not null))
             .Where(x => c.Types.SubstOf(CallPlan.Of(x.Node, x.Ordinal)!) is not null).ToArray();

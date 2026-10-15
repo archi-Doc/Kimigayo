@@ -1,10 +1,14 @@
 # Kimigayo Plan History
 
+Entries before 2026-10-15 retain their original Milestone IDs. The [implementation-order catalog](../../tests/milestones/README.md#implementation-order) maps those IDs to the current programs; historical anchors and evidence paths are unchanged.
+
 A few lines per session. Current work belongs in [PLAN.md](PLAN.md), support boundaries in [STATUS.md](../STATUS.md). Detailed records through this compaction remain in the [2026-10-08 source snapshot](https://github.com/archi-Doc/Kimigayo/blob/2834c7bf41d458a4fc1744fb9466ad03eccc2e5a/docs/dev/PLAN_HISTORY.md), including every failed run, intermediate experiment, commit and measurement. Retrieve it locally with `git show 2834c7bf41d458a4fc1744fb9466ad03eccc2e5a:docs/dev/PLAN_HISTORY.md`; older pre-2026-09-22 details remain at `git show 32324537:PLAN_HISTORY.md`.
 
 Archive line numbers below refer to that immutable snapshot, not this file. Historical completion and pending statements describe their checkpoints, not current support. Ignored `artifacts/verify/` and `artifacts/benchmarks/` need separate retention/backup; Git preserves the records and references, not those artifacts. Keep new sessions above the compacted index.
 
 ## Sessions
+
+- **2026-10-15 — Milestone implementation order:** renumbered all 43 programs and their harness/test/benchmark/current-document references; the catalog records former IDs and retains pending stage/diagnostic expectations. Consolidated README status/output and corrected generic-generation and consuming-function wording. Independent design/source/diff review passes. Session `20261015-003350-513-session-milestone-implementation-order-final` also covers the unit: warning-free Release solution, 20,432 tests, all 39 original-source harnesses at O0/O2 (78 executions) and stable inputs. The three changed benchmark entry paths pass (`artifacts/benchmarks/milestone-renumber-20261015/`); no performance-change claim. Earlier failed verification evidence is retained; the separate CR-R1 unit resolved the pre-existing analyzer-workflow mismatch. No milestone completion or compiler support boundary changed.
 
 - **2026-10-15 — Verification after analyzer retirement:** owner-authorized CR-R1 removes consumers left behind by `2e341155`; retained structure/size obligations, ArchitectureRulesTest and exact-source commit association remain. Independent design/diff review passes. Session `20261015-002453-727-session-analyzer-workflow-retirement` passes the warning-free whole solution and all 20,432 tests; 33 selector and 23 input/association regressions pass, plus real-assembly Unit selector discovery. The Session also covers this unit. No compiler behavior, numeric cap or native guarantee changed.
 

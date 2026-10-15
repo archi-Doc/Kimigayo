@@ -12,7 +12,7 @@ public class Utf8IntegrationTest
 
     [Fact]
     public void MilestoneRunsUnchanged()
-        => ScalarEmissionTest.EmitFixture("Utf8IntegrationMilestone", Read("tests/milestones/Milestone32.kimi"), "source retained\nreading destroyed\nvalue=Reading(42)\n君: value=Reading(42)\ndone=true\nMy number is 42\n");
+        => ScalarEmissionTest.EmitFixture("Utf8IntegrationMilestone", Read("tests/milestones/Milestone24.kimi"), "source retained\nreading destroyed\nvalue=Reading(42)\n君: value=Reading(42)\ndone=true\nMy number is 42\n");
 
     [Fact]
     public void OwningFailureAbortsBeforeLaterEvaluationAndConsoleOutput()

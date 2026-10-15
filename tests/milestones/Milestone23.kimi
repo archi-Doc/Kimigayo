@@ -1,41 +1,52 @@
-// Milestone 23: standard Places and Copy accessor calls stay distinct.
-struct Meter
-    public var raw: i32
-    public var level: i32
-        get() -> i32
-            Console.writeLine("Custom get.")
-            return storage
-        set(value: i32) -> ()
-            Console.writeLine("Custom set.")
-            storage = value
-    public computed doubled: i32
-        get() -> i32
-            Console.writeLine("Computed get.")
-            return self.raw * 2
-        set(value: i32) -> ()
-            Console.writeLine("Computed set.")
-            self.raw = value / 2
-    public init()
-        self.raw = 2
-        self.level = 3
+// Milestone 23: dynamic Array growth, insertion, replacement, removal and owning iteration.
+struct Task
+    public let id: i32
+    public init(id: i32) => self.id = id
+    drop
+        match self.id
+            1 => Console.writeLine("Task 1 destroyed.")
+            2 => Console.writeLine("Task 2 destroyed.")
+            3 => Console.writeLine("Task 3 destroyed.")
+            4 => Console.writeLine("Task 4 destroyed.")
+            5 => Console.writeLine("Task 5 destroyed.")
+            _ => Console.writeLine("Task 6 destroyed.")
 
-func receiver(value: uniq/Meter during source) -> uniq/Meter during source
-    Console.writeLine("Receiver evaluated.")
-    return value
-
-func input() -> i32
-    Console.writeLine("Input evaluated.")
-    return 8
+func describe(tasks: ref/Array<Task>)
+    // Length metadata shares access without reading or copying elements.
+    match tasks.length
+        0 => Console.writeLine("No tasks.")
+        2 => Console.writeLine("Two tasks.")
+        _ => Console.writeLine("Many tasks.")
 
 public func main()
-    var meter = Meter.init()
-    meter.raw = 4
-    require meter.raw == 4 else => $abort("Standard access failed")
-    Console.writeLine("Standard access finished.")
-    receiver(meter@uniq).level = input()
-    let level = meter.level
-    require level == 8 else => $abort("Custom access failed")
-    meter.doubled = 12
-    let doubled = meter.doubled
-    require doubled == 12 and meter.raw == 6 else => $abort("Computed access failed")
-    Console.writeLine("Copy properties finished.")
+    var tasks: Array<Task> = [] // Length and capacity zero; nothing is allocated.
+    describe(tasks@ref)
+    tasks.reserve(additional: 4)
+    require tasks.length == 0 and tasks.capacity >= 4 else => $abort("Reserve failed")
+    tasks.append(Task.init(1))
+    tasks.append(Task.init(3))
+    tasks.insert(1, Task.init(2))  // Before position 1: [1, 2, 3].
+    tasks.insert(^0, Task.init(4)) // From the end, ^0 appends: [1, 2, 3, 4].
+    require tasks.length == 4 and tasks.capacity >= 4 else => $abort("Growth failed")
+    describe(tasks@ref)
+    let last = tasks.remove(^1) // Transfers Task 4 out; [1, 2, 3]; capacity is unchanged.
+    require last.id == 4 and tasks.length == 3 else => $abort("Removal failed")
+    Console.writeLine("Removed the last task.")
+    tasks[0] = Task.init(5) // Indexed replacement destroys Task 1 first: [5, 2, 3].
+    match tasks.pop()
+        .Some(let popped)
+            require popped.id == 3 else => $abort("Pop failed")
+            Console.writeLine("Popped a task.")
+            // popped is destroyed here, at the end of its arm.
+        .None => $abort("Unexpected empty pop")
+    describe(tasks@ref)
+    var spare: Array<Task> = [Task.init(6)] // An independent literal constructs an Array.
+    spare.clear() // Destroys every element in reverse index order; capacity is preserved.
+    require spare.length == 0 and spare.capacity >= 1 else => $abort("Clear failed")
+    Console.writeLine("Cleared the spare tasks.")
+    for task in tasks@move // Owning iteration consumes the Array: Task 5, then Task 2.
+        require task.id == 5 else => $abort("Iteration order failed")
+        Console.writeLine("Iterating task 5.")
+        exit // task is destroyed first; the iterator then destroys the unyielded Task 2.
+    Console.writeLine("Array run finished.")
+    // Scope exit destroys last (Task 4); spare is empty and tasks was consumed.

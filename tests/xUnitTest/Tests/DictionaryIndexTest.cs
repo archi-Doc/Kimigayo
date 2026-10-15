@@ -133,10 +133,10 @@ public class DictionaryIndexTest
 
     [Trait("Purpose", "Allocation")]
     [Fact]
-    public void Milestone31RunsUnchangedWithOneBufferAllocation()
+    public void Milestone32RunsUnchangedWithOneBufferAllocation()
     {
-        var source = File.ReadAllText(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone31.kimi")));
+        var source = File.ReadAllText(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone32.kimi")));
         const string Output = "Duplicate returned both inputs.\nRejected item destroyed.\nRejected key destroyed.\nReplacement key destroyed.\nReplacement returned item 10.\nItem 10 destroyed.\nItem 11 destroyed.\nStored keys and insertion order preserved.\nRemoved the original key and item.\nItem 12 destroyed.\nKey 1 destroyed.\nOwning iteration starts at key 2.\nItem 20 destroyed.\nKey 2 destroyed.\nItem 30 destroyed.\nKey 3 destroyed.\nItem 40 destroyed.\nKey 4 destroyed.\nDictionary run finished.\n";
-        NativeAllocationAudit.WriteFixture("DictionaryIndexMilestone31", source, 1, 1, 128, Output);
+        NativeAllocationAudit.WriteFixture("DictionaryIndexMilestone32", source, 1, 1, 128, Output);
     }
 }

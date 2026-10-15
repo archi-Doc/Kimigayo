@@ -593,7 +593,7 @@ The source library currently has the following differences from the required API
 
 [LendingIterator.kimi](../src/Kimi/Library/LendingIterator.kimi) declares the specified `LentItem(step)` formation domain and `next` signature; direct and generic calls preserve borrowed Option payloads and their Loans. [Iterator.kimi](../src/Kimi/Library/Iterator.kimi) refines it by fixing every `LentItem(step)` to `Item` and declares `preserves results` for `next`, which every conformance is checked against.
 
-[Iterable.kimi](../src/Kimi/Library/Iterable.kimi) and [UniqIterable.kimi](../src/Kimi/Library/UniqIterable.kimi) declare the borrowing entries of §2: `IteratorType(source)` requires LendingIterator and publishes the shared or exclusive Self formation domain. Direct and generic entry calls and user `for` dispatch preserve the source borrow and the item Type returned by `next`; standard storage/adapter migration remains P28 work.
+[Iterable.kimi](../src/Kimi/Library/Iterable.kimi) and [UniqIterable.kimi](../src/Kimi/Library/UniqIterable.kimi) declare the borrowing entries of §2: `IteratorType(source)` requires LendingIterator and publishes the shared or exclusive Self formation domain. Direct and generic entry calls and user `for` dispatch preserve the source borrow and the item Type returned by `next`; standard storage/adapter migration remains P29 work.
 
 [IntoIterable.kimi](../src/Kimi/Library/IntoIterable.kimi) accepts any LendingIterator for `IteratorType`. Concrete and generic owned loops support items borrowing the iterator, including cleanup before backedges and `continue`.
 

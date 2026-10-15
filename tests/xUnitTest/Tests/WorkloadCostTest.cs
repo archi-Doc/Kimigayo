@@ -4,7 +4,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>PLAN P37: allocation observation of the unchanged Program 37 workload. Every heap allocation is made by the collection
+/// <summary>PLAN P35: allocation observation of the unchanged Program 35 workload. Every heap allocation is made by the collection
 /// runtimes; views, iteration, closures, formatting and removal allocate nothing.</summary>
 public class WorkloadCostTest
 {
@@ -51,7 +51,7 @@ public class WorkloadCostTest
     }
 
     private static string Program()
-        => Repository.ReadText("tests", "milestones", "Milestone37.kimi");
+        => Repository.ReadText("tests", "milestones", "Milestone35.kimi");
 
     private static void WriteWorkload(string name, string source, string stdout, int bound)
     {

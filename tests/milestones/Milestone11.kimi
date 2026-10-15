@@ -1,4 +1,4 @@
-// Milestone 11: shared generic generation and explicit specialization selection.
+// Milestone 11: generic instantiations and explicit specialization selection.
 group Weights
     // Group members are static; no static modifier is used.
     public let defaultWeight: i32 = 1
@@ -27,4 +27,4 @@ public func main()
     match actual
         (6, 3, 2) => Console.writeLine("Generic weights are 6, 3, 2.")
         _ => $abort("Generic implementation selection changed")
-    // Sharing/automatic specialization may change code shape, never this result.
+    // Concrete generic instantiations must preserve the selected explicit specialization.

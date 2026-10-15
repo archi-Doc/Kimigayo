@@ -6,7 +6,7 @@ After a whole-solution Release build, run from the repository root:
 dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --property-plans > artifacts/benchmarks/property-plans.json
 ```
 
-The input is the unchanged Milestone 24 source: Non-Copy replacement, borrowing getters,
+The input is the Milestone 36 (former 24) source: Non-Copy replacement, borrowing getters,
 Contract storage-borrow witnesses and consuming functions. The shared compiler-plan runner
 measures Binding, ownership analysis and IR emission separately, with 32 warm-ups and seven
 samples of 64 iterations per phase. Collection is outside each sample; every operation must

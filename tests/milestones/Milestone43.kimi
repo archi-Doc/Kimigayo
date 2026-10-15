@@ -1,86 +1,71 @@
-// User arithmetic: finite Contract selection, shared Non-Copy inputs and ordinary replacement.
-struct Vec2
-    Self is Addable<Self> and Multipliable<f32> and LeftMultipliable<f32> and Negatable
-    associate Addable<Self>.Output is Self
-    associate Multipliable<f32>.Output is Self
-    associate LeftMultipliable<f32>.Output is Self
-    associate Negatable.Output is Self
-    public let x: f32
-    public let y: f32
+// Milestone 43: Properties, inheritance, objects, shared ownership, static state and formatting together.
+open struct Device
+    public let name: string
+    public var level: i32
+        set(value: i32) -> ()
+            require value >= 0 and value <= 100 else => $abort("Level out of range")
+            storage = value
+    public computed isOff: bool
+        get() -> bool => self.level == 0
+    protected init(name: string, level: i32)
+        self.name = name@move
+        self.level = level
+    drop => Console.writeLine("Device \(self.name) released.")
 
-    public init(x: f32, y: f32)
-        self.x = x
-        self.y = y
+struct Lamp : Device
+    Self is Utf8Format
+    public let watts: i32
+    public init(name: string, watts: i32) : base(name@move, 0)
+        self.watts = watts
+    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        return $tryWrite(writer, "\(self.name) (\(self.watts) W, level \(self.level))")
+    drop => Console.writeLine("Lamp \(self.name) destroyed.")
 
-    public func added(self: ref/Self, right: ref/Self) -> Self
-        return Self.init(self.x + right.x, self.y + right.y)
+struct Sensor : Device
+    public init(name: string) : base(name@move, 50) => ()
 
-    public func multiplied(self: ref/Self, right: ref/f32) -> Self
-        return Self.init(self.x * right, self.y * right)
+group Registry
+    public var lastSeen: Option<Weak<rc/Lamp>> = .None
 
-    public func multipliedFrom(left: ref/f32, self: ref/Self) -> Self
-        return self.multiplied(left)
+func describe(view: objref/Device) -> string
+    if view is Lamp
+        return Text.toString(view@follow@ref) // The refined view exposes the complete Sealed Lamp.
+    return "\(view.name) at level \(view.level)"
 
-    public func negated(self: ref/Self) -> Self
-        return Self.init(-self.x, -self.y)
+func lookup() -> Option<rc/Lamp>
+    match Registry.lastSeen
+        .Some(let weak) => return Kimi.Intrinsics.upgrade(weak)
+        .None => return .None
 
-    drop => ()
-
-func sum<T>(left: ref/T, right: ref/T) -> T.(Addable<T>).Output
-    T is Addable<T>
-    return left + right
-
-func apply<F, T>(operation: ref/F, left: ref/T, right: ref/T) -> T
-    F is Callable<(ref/T, ref/T) -> T>
-    return operation(left, right)
-
-func throughValues<T>(left: ref/T, right: ref/T) -> T
-    T is Addable<T> and Owned
-    T.(Addable<T>).Output is T
-    let item = T.added
-    let erased: (ref/T, ref/T) -> T = item
-    _ = item(left, right)
-    _ = apply(item, left, right)
-    return erased(left, right)
-
-struct Quotient
-    Self is Dividable<i32>
-    associate Output is Result<i32, i32>
-    public let dividend: i32
-    public init(dividend: i32) => self.dividend = dividend
-
-    public func divided(self: ref/Self, right: ref/i32) -> Result<i32, i32>
-        require right != 0 else => return .Err(7)
-        return .Ok(self.dividend / right)
-
-func quotient(divisor: i32) -> Result<i32, i32>
-    let value = Quotient.init(84)
-    return .Ok(try (value / divisor))
-
-func doubleFirst(values: uniq/Array<Vec2>)
-    values[0] += values[0]
-
-let original = Vec2.init(2.0, 3.0)
-let added = sum(original, original)
-let scaled = (1.0 + 1.0) * original
-let negative = -original
-let called = throughValues(original, original)
-require added.x == 4.0 and added.y == 6.0 else => $abort("generic sum")
-require scaled.x == 4.0 and scaled.y == 6.0 else => $abort("numeric left")
-require negative.x == -2.0 and negative.y == -3.0 else => $abort("negation")
-require called.x == 4.0 and called.y == 6.0 else => $abort("function values")
-require throughValues(40, 2) == 42 else => $abort("numeric witness")
-Console.writeLine("Shared operators and function values: 4, 6.")
-
-var values: Array<Vec2> = [original@move]
-doubleFirst(values@uniq)
-require values[0].x == 4.0 and values[0].y == 6.0 else => $abort("replacement")
-Console.writeLine("One located element replaced: 4, 6.")
-
-match quotient(2)
-    .Ok(let value) => require value == 42 else => $abort("quotient")
-    .Err(_) => $abort("unexpected failure")
-match quotient(0)
-    .Ok(_) => $abort("unexpected success")
-    .Err(let error) => require error == 7 else => $abort("error")
-Console.writeLine("Explicit Result propagation: 42, error 7.")
+public func main()
+    do
+        var owner = Kimi.Intrinsics.makeObj<Lamp>(Lamp.init("desk", 40))
+        owner.level = 30 // The custom setter runs through the owning handle.
+        require owner.level == 30 and owner.isOff == false else => $abort("Property access failed")
+        Console.writeLine(describe(owner@objref/Device))
+        owner = Kimi.Intrinsics.makeObj<Lamp>(Lamp.init("shelf", 25)) // Replacement destroys the desk lamp first.
+        require owner.isOff else => $abort("Replacement kept the old level")
+        Console.writeLine(describe(owner@objref/Device))
+        // The shelf lamp is destroyed at scope exit.
+    do
+        let sensor = Kimi.Intrinsics.makeObj<Sensor>(Sensor.init("door"))
+        Console.writeLine(describe(sensor@objref/Device))
+    match lookup()
+        .Some(_) => $abort("Registry was not empty")
+        .None => Console.writeLine("Registry starts empty.")
+    do
+        let shared = Kimi.Intrinsics.makeRc(Lamp.init("hall", 60))
+        Registry.lastSeen = .Some(Kimi.Intrinsics.downgrade(shared@ref))
+        do
+            let keeper = Kimi.Intrinsics.clone(shared@ref)
+            match lookup()
+                .Some(let live) => Console.writeLine(describe(live@objref/Device))
+                .None => $abort("Live lamp failed to upgrade")
+            // keeper releases one strong here.
+        Console.writeLine("Hall lamp still owned once.")
+        // shared releases the final strong: the hall lamp is destroyed while the Weak survives.
+    match lookup()
+        .Some(_) => $abort("Expired lamp was resurrected")
+        .None => Console.writeLine("Registry entry expired.")
+    Console.writeLine("Application finished.")
+    // Shutdown destroys the initialized static Weak, which releases the weak table of the hall lamp.

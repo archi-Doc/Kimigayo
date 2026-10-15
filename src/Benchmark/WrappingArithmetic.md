@@ -1,5 +1,8 @@
-# Wrapping arithmetic timing (P42)
+# Wrapping arithmetic timing (P31, formerly P42)
 
+Program IDs in dated measurements retain the pre-2026-10-15 numbering; see the [current mapping](../../tests/milestones/README.md#implementation-order).
+
+The benchmark script retains its historical filename.
 `src/backend/windows-x64/benchmark-p42.ps1` builds `src/Benchmark/Kimi/HashWrapping.kimi` and
 `HashChecked.kimi` at O0 and O2 through the milestone harness (`milestone-harness.ps1 -Source -WorkRoot -Runs`),
 checks each first run's output and times the repetitions. Timing only, outside normal Verify.

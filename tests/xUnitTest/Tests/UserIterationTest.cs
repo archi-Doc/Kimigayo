@@ -162,8 +162,8 @@ public class UserIterationTest
     [Fact]
     public void UnchangedMilestoneExecutes()
     {
-        var path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone28.kimi"));
-        ScalarEmissionTest.EmitFixture("UserIterationMilestone28", File.ReadAllText(path), "Owned iterator acquired.\nContinue after item 1.\nItem 1 destroyed.\nExit after item 2.\nItem 2 destroyed.\nItem 4 destroyed.\nItem 3 destroyed.\nOwned iteration finished.\nBorrowed iterator acquired.\nExternal first is 10; remaining total is 50.\nBorrowed iterator acquired.\nGeneral iteration finished.\n");
+        var path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone29.kimi"));
+        ScalarEmissionTest.EmitFixture("UserIterationMilestone29", File.ReadAllText(path), "Owned iterator acquired.\nContinue after item 1.\nItem 1 destroyed.\nExit after item 2.\nItem 2 destroyed.\nItem 4 destroyed.\nItem 3 destroyed.\nOwned iteration finished.\nBorrowed iterator acquired.\nExternal first is 10; remaining total is 50.\nBorrowed iterator acquired.\nGeneral iteration finished.\n");
     }
 
     [Fact]

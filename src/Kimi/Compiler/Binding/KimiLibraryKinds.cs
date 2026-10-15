@@ -124,7 +124,7 @@ internal enum IntrinsicId : byte
     ErasedWriter,
     ErasedReserve,
     FormatInteger128,
-    MakeObj, // Handles (IMPL 21.1.3, SPEC 13.6); the Weak operations come with P35.
+    MakeObj, // Handles (IMPL 21.1.3, SPEC 13.6); the Weak operations come with P41.
     MakeRc,
     MakeArc,
     Clone,

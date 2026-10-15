@@ -40,7 +40,7 @@ public class GenericBorrowedElementTest
             1,
             "Hello.kimi:3:12: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
-    private static string Program20Source => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone20.kimi")).Replace("\r\n", "\n", StringComparison.Ordinal);
+    private static string Program21Source => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone21.kimi")).Replace("\r\n", "\n", StringComparison.Ordinal);
 
     [Fact]
     public void RejectsSafeDereference()
@@ -55,29 +55,29 @@ public class GenericBorrowedElementTest
     }
 
     [Fact]
-    public void BindsProgram20()
+    public void BindsProgram21()
     {
         // SPEC 3.3 and 13.4: each `inferred == 10` check reads the returned element borrow as its i32 referent;
-        // the whole Milestone 20 source binds: inferred length/Type/Origin, ordinary defaults and dependent forwarding.
+        // the whole Milestone 21 source binds: inferred length/Type/Origin, ordinary defaults and dependent forwarding.
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Program20Source));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Program21Source));
         Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code} ({x.Node.GetType().Name}): {x.Node}")));
     }
 
     [Fact]
-    public void ExecutesProgram20()
+    public void ExecutesProgram21()
     {
-        // The unchanged Milestone 20 source (inferred length/Type/Origin, ordinary defaults evaluated
+        // The unchanged Milestone 21 source (inferred length/Type/Origin, ordinary defaults evaluated
         // once per omission, dependent forwarding) analyzes, lowers per instance and runs natively.
-        var c = MinimalEmissionTest.Analyze(Program20Source);
+        var c = MinimalEmissionTest.Analyze(Program21Source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         Assert.True(module.IsComplete);
         ScalarEmissionTest.EmitFixture(
-            "GenericBorrowedElementProgram20",
-            Program20Source,
+            "GenericBorrowedElementProgram21",
+            Program21Source,
             "Default index evaluated.\nInferred selection is 10.\nExplicit selection is 30.\nDefault index evaluated.\nForwarded selection is 10.\nDefault index evaluated.\nOrdinary selection is 4.\nDefault index evaluated.\nLocal selection is 7.\nInference and defaults finished.\n");
     }
 

@@ -7,10 +7,10 @@ This directory supplies the native helpers for SPEC §21.4.7. The reviewed packa
 Use the repository's `scripts/verify.ps1` for implementation-unit and end-of-session evidence:
 
 ```powershell
-./scripts/verify.ps1 -Class XunitTest.StorageBoundaryTest -Fixtures 'StorageBoundary*.ll' -Milestone 28
-./scripts/verify.ps1 -Mode Session -Fixtures 'StorageBoundary*.ll' -Milestone 27,28
+./scripts/verify.ps1 -Class XunitTest.StorageBoundaryTest -Fixtures 'StorageBoundary*.ll' -Milestone 29
+./scripts/verify.ps1 -Mode Session -Fixtures 'StorageBoundary*.ll' -Milestone 27,29
 # Debug is opt-in in either mode:
-./scripts/verify.ps1 -Configuration Debug -Class XunitTest.StorageBoundaryTest -Fixtures 'StorageBoundary*.ll' -Milestone 28
+./scripts/verify.ps1 -Configuration Debug -Class XunitTest.StorageBoundaryTest -Fixtures 'StorageBoundary*.ll' -Milestone 29
 ./scripts/verify.ps1 -Mode Session -Configuration Debug
 ```
 

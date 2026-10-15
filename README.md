@@ -25,7 +25,7 @@ Native execution currently targets Windows x64. See [STATUS.md](docs/STATUS.md) 
 | `src/third_party/` | Vendored source code and its licenses. |
 | `tests/` | Regression tests and milestone acceptance programs. |
 | `tests/xUnitTest/` | Managed regression tests and test data. |
-| `tests/milestones/` | Programs that define end-to-end implementation milestones. |
+| [`tests/milestones/`](tests/milestones/README.md) | 43 independent acceptance programs numbered in compiler implementation order; catalog, status and expected output. |
 | `docs/` | Specifications, guides, library reference and development records. |
 | `docs/spec/` | Language specification chapters, indexed by [SPEC.md](docs/SPEC.md). |
 | `docs/impl/` | Implementation contracts, indexed by [IMPL.md](docs/IMPL.md). |

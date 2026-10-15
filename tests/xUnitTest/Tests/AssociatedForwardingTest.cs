@@ -8,11 +8,11 @@ namespace XunitTest;
 
 public class AssociatedForwardingTest
 {
-    internal static string MilestoneSource => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone19.kimi")).Replace("\r\n", "\n", StringComparison.Ordinal);
+    internal static string MilestoneSource => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone20.kimi")).Replace("\r\n", "\n", StringComparison.Ordinal);
 
     [Fact]
     public void EmitsUnchangedMilestone()
-        => ScalarEmissionTest.EmitFixture("AssociatedForwardingMilestone19", MilestoneSource, "Associated numbers are 21, 21.\nAssociated flags are true, true.\nContract forwarding finished.\n");
+        => ScalarEmissionTest.EmitFixture("AssociatedForwardingMilestone20", MilestoneSource, "Associated numbers are 21, 21.\nAssociated flags are true, true.\nContract forwarding finished.\n");
 
     [Fact]
     public void EmitsMilestoneWithAnInferredBinding()

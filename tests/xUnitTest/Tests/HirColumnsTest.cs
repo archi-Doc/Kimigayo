@@ -309,7 +309,7 @@ public sealed class HirColumnsTest
     [InlineData(true)]
     public void WarmPublishAllocatesNothing(bool virtualBodies)
     {
-        var c = virtualBodies ? MinimalEmissionTest.Analyze(VirtualSource) : SemanticSnapshotTest.Bind("milestone/Milestone26").Compilation;
+        var c = virtualBodies ? MinimalEmissionTest.Analyze(VirtualSource) : SemanticSnapshotTest.Bind("milestone/Milestone34").Compilation;
         HirTables.Publish(c);
         var nodes = Reachable(c.Kotonoha).Concat(Reachable(c.Library.Kotonoha)).ToArray();
         var (cold, warm) = (ReadViews(nodes), 0);

@@ -92,13 +92,13 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.True(views.Keys.Max() <= 64, $"{views.Keys.Max()} views");
     }
 
-    // The same compilation builds the same MIR, fresh or after a warm rebind, and a fresh compilation of the same source does too; Milestone38
+    // The same compilation builds the same MIR, fresh or after a warm rebind, and a fresh compilation of the same source does too; Milestone43
     // keeps Opaque values where Binding rejected it.
     [Fact]
     public void BuildIsDeterministic()
     {
-        var first = Dump(SemanticSnapshotTest.Bind("milestone/Milestone38").Compilation);
-        var (c, _) = SemanticSnapshotTest.Bind("milestone/Milestone38");
+        var first = Dump(SemanticSnapshotTest.Bind("milestone/Milestone43").Compilation);
+        var (c, _) = SemanticSnapshotTest.Bind("milestone/Milestone43");
         Assert.Equal(first, Dump(c));
         c.Binding.Bind(BindingMode.Final);
         Assert.Equal(first, Dump(c));
@@ -134,12 +134,12 @@ public sealed class MirBuildTest(ITestOutputHelper output)
     }
 
     // V11: publishing, building and validating an unchanged compilation again, and selecting every Semantics case view of its bodies with
-    // their locals' case Types, allocates nothing, owning interpolations (Milestone41) and pair-generic bodies (Milestone39) included.
+    // their locals' case Types, allocates nothing, owning interpolations (Milestone30) and pair-generic bodies (Milestone28) included.
     [Trait("Purpose", "Allocation")]
     [Theory]
-    [InlineData("milestone/Milestone26")]
-    [InlineData("milestone/Milestone39")]
-    [InlineData("milestone/Milestone41")]
+    [InlineData("milestone/Milestone34")]
+    [InlineData("milestone/Milestone28")]
+    [InlineData("milestone/Milestone30")]
     public void WarmRebuildAllocatesNothing(string name)
     {
         var (c, _) = SemanticSnapshotTest.Bind(name);

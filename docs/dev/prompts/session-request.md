@@ -1,5 +1,5 @@
 Work duration: 60 minutes.
-Target: the one docs/dev/PLAN.md §6 item 1 assigns (sessions alternate between the main milestone and the shared object track), or name it here (for example: P40, or shared object track U1).
+Target: the one docs/dev/PLAN.md §6 item 1 assigns (sessions alternate between the main milestone and the shared object track), or name it here (for example: P33, or shared object track U1).
 Program sources: immutable except for the SPEC and authoring corrections allowed by the execution rules.
 Harness: may create or complete the target milestone's harness.
 

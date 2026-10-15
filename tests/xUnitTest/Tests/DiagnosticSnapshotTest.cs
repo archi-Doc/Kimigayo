@@ -28,7 +28,7 @@ public sealed class DiagnosticSnapshotTest : IDisposable
     [Fact]
     public void SnapshotsAreDeterministic()
     {
-        string[] names = ["milestone/Milestone1", "milestone/Milestone24", "mutation/let-counter", "example/Counter"];
+        string[] names = ["milestone/Milestone1", "milestone/Milestone36", "mutation/let-counter", "example/Counter"];
         var first = this.Take(names);
         var second = this.Take(names);
         Assert.Equal(Serialize(first), Serialize(second));

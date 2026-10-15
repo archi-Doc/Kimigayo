@@ -179,7 +179,7 @@ public class LocalOriginClauseTest
         var error = AssertDeclared(source, nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "origin a == b", "requires a == b, which is not proven", null, "origin a == b");
     }
 
-    // SPEC 15.3.6, 15.4.4: the Milestone 13 and 28 clause shapes, a slot equal to its initializer's or proven by a premise, a covariant
+    // SPEC 15.3.6, 15.4.4: the Milestone 13 and 29 clause shapes, a slot equal to its initializer's or proven by a premise, a covariant
     // inferred slot bounded by both the initializer and a clause (the meet of its upper bounds), and a contravariant slot whose
     // relation a premise proves.
     [Theory]

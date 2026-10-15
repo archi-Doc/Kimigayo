@@ -257,14 +257,14 @@ public class BindingTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Binding.Bind(BindingMode.Final)));
     }
 
-    // Closure receiver classification (12, 14, 37: a reusable visitor, the capture list without a boxed enumerator) and
-    // specialization Origin inheritance (21: scratch binders) once allocated on every warm rebind.
+    // Closure receiver classification (12, 14, 35: a reusable visitor, the capture list without a boxed enumerator) and
+    // specialization Origin inheritance (22: scratch binders) once allocated on every warm rebind.
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(12)]
     [InlineData(14)]
-    [InlineData(21)]
-    [InlineData(37)]
+    [InlineData(22)]
+    [InlineData(35)]
     public void RebindingAMilestoneProgramDoesNotAllocate(int number)
     {
         var compilation = Compilation.CreateForTest();

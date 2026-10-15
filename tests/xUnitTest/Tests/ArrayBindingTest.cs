@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 4.3, 4.5 and 4.7: the compiler-managed Array Type binds; its operations are not generated yet (PLAN P29).</summary>
+/// <summary>SPEC 4.3, 4.5 and 4.7: binding rules for the compiler-managed Array Type (PLAN P23).</summary>
 public class ArrayBindingTest
 {
     private const string Task = "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n";

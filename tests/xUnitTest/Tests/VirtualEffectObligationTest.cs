@@ -24,7 +24,7 @@ public class VirtualEffectObligationTest(ITestOutputHelper output)
         Assert.False(c.WriteIr(TextWriter.Null, out var failure));
         if (!fails)
         {
-            // The unrelated mutable group storage is still outside generation (P36).
+            // The unrelated mutable group storage is still outside generation (P42).
             Assert.Contains("declaration container", failure!, StringComparison.Ordinal);
         }
     }

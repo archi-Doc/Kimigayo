@@ -64,7 +64,7 @@ public class IntegerRangeTest
         "Console.writeLine(\"ok\")";
 
     // SPEC 4.6.4: a closed range yields its end last and never computes past it, also at the maximum of its Type; the
-    // iterator iterates a half-open state unless the end is that maximum (measured design, P41 U6).
+    // iterator iterates a half-open state unless the end is that maximum (measured design, former P41 U6; current P30).
     private const string ClosedEnds =
         "func check<T>(first: T, last: T, count: i32) -> bool\n    T is PrimitiveInteger\n    var n: i32 = 0\n    var seen: T = first\n    for v in first..=last\n        seen = v\n        n += 1\n    return n == count and seen == last\n" +
         "require check(120@i8, 127@i8, 8) and check(-128@i8, -126@i8, 3) and check(250@u8, 255@u8, 6) else => $abort(\"8\")\n" +
