@@ -219,6 +219,7 @@ public class SpecializationBindingTest
         Assert.True(c.Bind().IsComplete);
         c.Kotonoha.AddSource(new Kimi.Compiler.SourceDocument("duplicate.kimi", "specialize func weight<i32>(value: ref/i32) -> i32 => 3"));
         Assert.False(c.Bind().IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.MissingSpecializationTarget_Kd);
     }
 
     [Fact]

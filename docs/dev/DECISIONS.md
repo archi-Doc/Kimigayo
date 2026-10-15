@@ -14,6 +14,10 @@ rules that result from them.
   restating them; a decision recorded only there is not in force.
 - Open questions belong in PLAN until decided.
 
+## Build artifacts
+
+- **B1 Library build records** (2026-10-15, planning session; owner decision in IMPL §20.3.2). `Project.Build` selects product checks or Application emission by OutputKind. `NativeToolchain` owns invalidation and atomic record publication; Library success is `status: checked`, with input and selected compilation metadata, and invokes no native tools. All artifact-producing calls retain the single Windows x64 target rule. Library manifests are rejected because they cannot establish source-check success. Rejected: record writing in Project (duplicates publication ownership), and a new record component (moves an already shared responsibility without removing duplication). No compiler phase, IR or generation contract changes.
+
 ## Working process
 
 - **Q1 Quality mechanisms** (2026-10-12, owner).

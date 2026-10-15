@@ -9,6 +9,7 @@ Implement the finalized language of SPEC.md (Chapters 1–19 and 22) and the imp
 - **Generics:** the initial profile monomorphizes (§21.3.1). Generic code sharing is deferred; milestone P19 replaced the existing shared generation path.
 - **Origins and the Contract/type system** (§8, §15) remain complete requirements; implementation limits never narrow them.
 - **Async tasks and workers:** implementation is deferred by user instruction; the preserved plan is Appendix D. Callable effect bounds are implemented independently within the verified boundary in STATUS; remaining integration is G78.
+- **Adopted library contracts:** channel delivery is FIFO by successful-send commit order, and remaining items are completely destroyed one at a time in reverse order (SPEC §22.3.4). Apply these when the deferred async implementation resumes. Slice `firstIndexWhere(predicate:)` remains unimplemented within the existing library support boundary.
 - **Proposal text changes** and **NativeAOT tests** need explicit instruction. Instructed intake or closure includes register updates and moves under AGENTS.
 
 ## 2. Working rules

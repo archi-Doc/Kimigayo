@@ -712,7 +712,7 @@
 
   + Name="MissingSpecializationTarget_Kd"
     Category="Language"
-    Message="No generic function with this Name, function kind and generic slots exists in the Declaration Container"
+    Message="No generic function with this Name, function kind and generic slots exists in the declaration scope"
 
   + Name="SpecializationInputMismatch_Kd"
     Category="Language"

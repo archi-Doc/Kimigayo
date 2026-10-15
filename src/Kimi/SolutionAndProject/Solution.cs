@@ -81,7 +81,7 @@ public class Solution
     public async Task<bool> Check(CancellationToken cancellationToken)
         => this.AllProjectsLoaded() && await this.BuildCore(false, cancellationToken).ConfigureAwait(false);
 
-    /// <summary>Builds native binaries for all selected projects.</summary>
+    /// <summary>Builds every selected project according to its OutputKind.</summary>
     /// <param name="cancellationToken">Cancels generation and tool execution.</param>
     /// <returns>Whether all selected projects built successfully.</returns>
     public async Task<bool> Build(CancellationToken cancellationToken = default)

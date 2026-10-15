@@ -444,7 +444,7 @@ P,QはPosition。removeAllのFは`Callable<(ref/T)->bool>`、sort(by:)のFは`Ca
 
 `map[key]`は既存値のPlaceで、不在はAbort。添字代入は挿入ではない。右辺取得→対象とキーの評価→共有検索→旧値破棄→新値配置の順。途中の辞書再構築・Move・破棄は禁止し、書き込み前にキーも含むLoanを確認する。旧値破棄で右辺依存が無効になる置換は拒否する。複合代入でも検索は一回。
 
-**容量とメモリー割当て。** `0 <= length <= capacity`。型が確定した空の`[]`/`[:]`はメモリー割当てなし。reserveはlength+additionalを満たし、負数・オーバーフローはAbort、縮小はしない。既存容量で足りればメモリー割当ても移動もない。shrinkToFitのメモリー割当て失敗は無変更。容量内追加、検索、置換、除去、clear、拒否はメモリー割当てなし。正確な容量は実装定義。
+**容量とメモリー割当て（§4.9.5）。** `0 <= length <= capacity`。型が確定した空の`[]`/`[:]`はメモリー割当てなし。reserveはlength+additionalを満たし、負数・オーバーフローはAbort、縮小はしない。既存容量で足りればメモリー割当ても移動もない。shrinkToFitは縮小のためメモリー割当てを行ってよく、容量をlength以上、元の容量以下に保つ。値・順序・長さを保ち、サイズ計算またはメモリー割当ての失敗時は正常復帰し、容量と要素の配置も保つ。正確な縮小やOSへの返却は保証しない。容量内追加、検索、置換、除去、clear、拒否はメモリー割当てなし。正確な容量は実装定義。
 
 **Loanと効果。** 排他的レシーバは後続引数より前に予約し、入口で有効化する。その時点まで生きる要素・SliceのLoanは競合する。追加・置換の入力依存はコレクションへ結合し、tryInsertがErrでも結合する。除去値は完全な依存を保持し、依存集合を引き算する操作はない。
 
@@ -776,7 +776,7 @@ ObjectViewCompatibleなContractは、safeかつ非消費のオブジェクトレ
 
 ### 8.13 明示的な完全特殊化
 
-`specialize func`は同じコンテナーにある一意の通常ジェネリック関数へ、全独自型引数を閉じて指定する。部分・条件付き・外側環境の特殊化、コンストラクター、drop、アクセサー、演算子の特殊化は不可。
+`specialize func`は同じ宣言スコープにある一意の通常ジェネリック関数へ、全独自型引数を閉じて指定する。ルート関数では同じSourceDocumentの実行スコープ、メンバーでは同じコンテナーに宣言する。他の文書のルート関数は特殊化できない。部分・条件付き・外側環境の特殊化、コンストラクター、drop、アクセサー、演算子の特殊化は不可。
 
 原契約を全て引き継ぎ、外部引数名も一致させる。アクセス、既定値、`!`、制約、属性、安全性、効果、Originバインダーを再記述せず、Origin条件も追加しない。キーは原関数と正規化された静的型引数からOriginだけを消したもの。同じキーは重複できない。
 
@@ -1712,8 +1712,8 @@ CompileTimeSettings名は識別子で、重複・組み込み名は不可。言�
 | restore | 明示された依存を解決してlockを置換。ネットワーク使用なし |
 | check | buildと同じ入力・target・Debugで各ProjectをProduct検査。集約は§23 |
 | emit | 検査して`.ll`と`.link.json`を発行。LLVMは実行しない |
-| build | 現ソースから実行形式と成功記録を作る |
-| build --Manifest | 発行済みのIR/manifest組から構築。ソースは読まず、生成設定はmanifestを使う |
+| build | 選択した環境で製品ソースを検査し、OutputKindに応じた成果物と成功記録を作る |
+| build --Manifest | 発行済みのApplicationのIR/manifest組から構築。Libraryは拒否。ソースは読まず、生成設定はmanifestを使う |
 | run | build成功後だけ起動。--no-buildでは入力と実行形式ハッシュに合う最新成功記録が必須 |
 | test | 選択したテスト単位を準備し、ケースを分離実行 |
 | pack / publish / store verify | ソースパッケージ作成、ローカル公開、キャッシュ再検査 |
@@ -1730,7 +1730,9 @@ optionは大小文字を区別し、`--Format`はtext既定/json、boolはtrue/f
 
 単独`.kimi`はその一ファイルだけの暗黙Application/O2 Projectとなる。所在ディレクトリーとファイル名を使い、隣接ソース・設定・依存・lock・Projectファイルを追加しない。targetはホストまたは--Target。成功記録には選択したProject/ソース同一性を残す。
 
-**発行。** Name.llに対してemitはName.llとName.link.json、buildはName.O0.exe/Name.O2.exeとName.link.build.jsonを作る。両emit出力の発行完了まで成功としない。build開始時に旧成功記録を無効化し、新exeは成功時だけ発行する。失敗後に古いexeをrunしない。Unsupportedで代用バイナリーを作らない。LibraryのIRは検査用で、manifest/記録形式は実装定義。
+**buildの成功条件。** Applicationは必要な検査と実行ファイル生成の成功、Libraryは選択したtarget・Debug環境での製品検査の成功を条件とする。TestSourcesは除外する。SolutionやディレクトリーではLibraryを含む全選択Projectにこの規則を適用し、全て成功したときだけ全体を成功とする。
+
+**発行。** Name.llに対してemitはName.llとName.link.jsonを作る。ApplicationのbuildはさらにName.O0.exe/Name.O2.exeとName.link.build.jsonを作り、Libraryのbuildは記録だけを作る。Libraryはネイティブツールを使わず、記録には入力、target、Debug、言語版、コンパイラー版、製品検査の成功を残す。LibraryのIR出力はemit、配布パッケージ作成はpackを使う。両emit出力の発行完了まで成功としない。build開始時に旧成功記録を無効化し、必要な検査と成果物が完成してから成功を記録する。失敗・取消時は成功を記録せず、古いexeをrunしない。Unsupportedで代用バイナリーを作らない。LibraryのIRは検査用で、manifest/記録形式は実装定義。
 
 toolchainルートは--ToolchainRoot→KIMI_TOOLCHAIN_ROOT→コンパイラー隣のtoolchain。選択先なしはエラーで、PATHやネットワークを探さない。LlvmBinはCLI→Projectの順にLLVMツールの場所だけを上書きする。CLI相対パスは起動位置、Project設定はProject基準。固定版・ハッシュ検査は通常ビルドでなくtoolchain verifyで行う。
 
@@ -2018,7 +2020,7 @@ sleepとshieldは単調時計を用い、期限・猶予の和を正確に求め
 
 効果要約は、一時停止後の子の処理、イテレーターのnextとdropなども含む。sleep・checkpoint・構造化操作・channel自身は、子とdropを除いて環境効果を持たない。runのexecutor状態、I/Oは環境効果。defer内ではtaskを渡せないため、待機を伴う後始末は明示的なshield等で書く。
 
-channelを作る操作はpipeのみ。Sender/Receiverはuniqで操作する。capacity>=1では、初期化後の定常送受信にheapメモリー割当てをしない。consumer完了はreceiverを閉じ、保留sendをClosedにし、producerを取り消して回収する。producer完了はsenderを閉じ、バッファーを読み尽くすとreceiveがNoneを返す。残バッファー要素はpipeが戻る前にdropする。
+channelを作る操作はpipeのみ。Sender/Receiverはuniqで操作する。capacity>=1では、初期化後の定常送受信にヒープメモリー割当てをしない。consumer完了はreceiverを閉じ、保留sendをClosedにし、producerを取り消して回収する。producer完了はsenderを閉じ、バッファーを読み尽くすとreceiveがNoneを返す。配送は成功した送信のcommit順によるFIFO。残存要素はpipeが戻る前に、その逆順で、一つずつ完全に破棄する。配送・破棄順序はタスクの再開順序と独立している。
 
 受信値はReceiverの一時Loanやchannel保存領域に依存しない。切り離したtaskは作れない。動的な仕事列はeachReceivedの共通関数で処理し、generatorはcapacity=0のpipeで表せる。run以外の待機操作にはtaskが必要。Consoleは同期処理で、その呼出し中に同じtreeの他taskを進めない。
 
