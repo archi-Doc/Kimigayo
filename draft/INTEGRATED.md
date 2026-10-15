@@ -351,3 +351,12 @@ conditional designs/estimates are planning inputs, not adopted representations. 
   recorded in PLAN_HISTORY and its evidence. All §6.4 later-stage obligations transfer to COMPILER_ARCHITECTURE's
   Code rules and stage ledger; R4 remains unstarted. The frozen proposal moves unchanged to Changes. Future policy
   corrections belong in the owning architecture/decision documents; closure does not widen language support.
+
+## 2026-10-16 — Zero-sized raw operations
+
+`Proposals/2026-10-16 Zero-Sized Raw Operations.md`: 一部取り込み（取り込み済み範囲なし）。
+2026-10-16の依頼により、日本語の仕様提案として作成。正式仕様・実装への取り込みは未着手。
+対応予定：§2.1 → SPEC §5.2.1・§5.3・§5.5、§2.2 → §3.4・§4.1・§5.2・§5.6、
+§2.3・§3 → §5.2.2–§5.2.3・§5.6・§15.1・§15.6・§16、§5の表 → IMPL §21.1.1・§21.1.3・§21.4.3とLIBRARYのRaw契約。
+未解決範囲は提案全体の採否と取り込み。§4は仕様例、§5–§6は設計理由・反映先・Rust公式資料との比較。
+既存の `2026-10-15 Raw Storage as Storage.md` は未統合の比較対象であり、本文・状態とも変更しない。
