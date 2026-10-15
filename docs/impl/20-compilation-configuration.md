@@ -76,7 +76,7 @@ group Log
 | Command | Behavior |
 | --- | --- |
 | `restore <project>` | Resolves dependencies and replaces the lock ([§20.5](#205-packages-and-locks)); no network access. |
-| `check <input>` | Checks the product unit as [§23.2.2](../spec/23-compiler-services.md#2322-results-and-acceptance) defines, selecting input, target and Debug setting as `build` does. If the input cannot be loaded or no single target is selectable, the result is Blocked, and a JSON document ([§23.3](../spec/23-compiler-services.md#233-json-check-output)) has `unit.target` equal to the `--Target` value or empty. |
+| `check <input>` | Selects inputs, targets and Debug settings as `build` does, and checks one Product unit per selected project. [§23.2.3](../spec/23-compiler-services.md#2323-check-commands) defines ordering, continued checking after unit failures, aggregate acceptance and cancellation; [§23.3](../spec/23-compiler-services.md#233-json-check-output) defines the single JSON command document. |
 | `emit <input>` | Checks and publishes the `.ll` and `.link.json` pair; runs no LLVM tool. |
 | `build <input>` | Builds the executable from current sources and writes a build record. With `--Manifest <file>`, builds an emitted pair without loading sources; generation settings come from the manifest, and source, target, Debug and lock options are errors. |
 | `run <input>` | Builds as `build` does, then runs the Application; a failed build launches nothing. With `--no-build`, runs the existing executable if the latest build record succeeded, names the resolved input and matches the executable's hash. `run <file.exe>` runs that file directly. |
@@ -87,7 +87,7 @@ group Log
 
 - Option names are case-sensitive and spelled as this chapter writes them (`--Format`, never `--format`). `--Format` takes `text`, the default, or `json`. Boolean options take `true` or `false`; `--no-build` alone means true.
 - `--Target` selects a configured target for `check`, `emit`, `build`, `run` and `pack`, and for `test` in every selected Project; without it, each Project's sole target is used, and several are an error. Release is the default mode; `--Debug true` selects Debug, independently of `Optimization`.
-- `check` returns 0 when accepted and 1 otherwise; other commands return 0 on success and 1 on failure. `run` returns the program's exit code, or 1 for a failure before launch, reported on standard error. `test` uses [§20.6.4](#2064-results-and-exit-codes). Cancellation returns 130.
+- `check` returns 0 when the whole command is accepted ([§23.2.3](../spec/23-compiler-services.md#2323-check-commands)) and 1 otherwise; other commands return 0 on success and 1 on failure. `run` returns the program's exit code, or 1 for a failure before launch, reported on standard error. `test` uses [§20.6.4](#2064-results-and-exit-codes). Cancellation returns 130.
 - `run` forwards standard streams and runs in the project directory (a direct `.exe`: the caller's).
 
 ### 20.3.1. Input resolution and implicit projects

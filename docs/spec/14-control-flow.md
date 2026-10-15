@@ -210,7 +210,7 @@ while ready => process()
 | Exclusive | `values@uniq`, a `uniq/C` value | `UniqIterable.iterateUniq` |
 | ByValue | `values@move`, a temporary, `range@copy` | `IntoIterable.intoIterator` |
 
-ByValue never takes ownership of a referent. A missing or ambiguous conformance is an error; nothing else is tried. An iterator value is enumerated through `Kimi.Iteration.owning(it@move)` or `Kimi.Iteration.borrowing(it@uniq)` ([§22.2.2](22-core-execution-and-foreign-functions.md#2222-standard-adapters-and-iterators)).
+ByValue never takes ownership of a referent. A missing or ambiguous conformance is an error; nothing else is tried. An iterator value is enumerated through `Kimi.Iteration.owning(it@move)` or `Kimi.Iteration.borrowing(it@uniq)` ([§22.2.2](22-core-execution-and-foreign-functions.md#2222-standard-adapters-and-iterators)). Standard iterator bookkeeping, owned storage and element costs follow [§4.8.6](04-arrays-indexing-and-slices.md#486-costs).
 
 The item Type is `LendingIterator.LentItem(step)`, or `Iterator.Item` for an Iterator. A single slot binds it unchanged. A parenthesized binding requires a Tuple item with exactly as many elements as slots, or a safe reference to one ([§14.8.1](#1481-patterns)), and decomposes it under [§15.1.6](15-ownership-and-lifetime-analysis.md#1516-match-and-for-subjects): `ref/(A, B)` binds `ref/A` and `ref/B`. `_` still takes and cleans up the item.
 

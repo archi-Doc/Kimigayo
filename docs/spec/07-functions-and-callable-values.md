@@ -387,13 +387,18 @@ At a position whose fixed expected Type ([§10.2](10-overload-resolution-and-inf
 - its complete environment is Owned, and its result does not borrow the environment;
 - all public Origin and Loan contracts hold, its results carry no mutable-static anchor ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)), and ordinary acquisition of the source is legal.
 
-Erasure is never chained with another operation: a borrowed Closure is not erased ([§3.2.1](03-types-and-values.md#321-callable-value-types)), an erased value is not then borrowed, and nothing inside an existing structure is erased. The common-Type search of [§14.9.2](14-control-flow.md#1492-target-result-type-and-expression-type) never erases. A qualified Case construction erases its payload like the leading-dot form ([§6.5.2](06-declarations-and-containers.md#652-case-references)).
+Erasure is never chained with another implicit adaptation: a borrowed Closure is not erased ([§3.2.1](03-types-and-values.md#321-callable-value-types)), an erased value is not then borrowed, and nothing inside an existing structure is erased. Explicit acquisition may precede erasure ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation)). The common-Type search of [§14.9.2](14-control-flow.md#1492-target-result-type-and-expression-type) never erases. A qualified Case construction erases its payload like the leading-dot form ([§6.5.2](06-declarations-and-containers.md#652-case-references)).
 
 Erasure is an owning conversion, distinct from a Copy or Move of the source; it acquires the source ordinarily ([§3.5](03-types-and-values.md#35-copy-and-move)) and never repeats captures. The erased value is Non-Copy. Its layout, allocation count and inlining are implementation-defined; an omitted allocation preserves values, Moves, Loans and cleanup ([§15](15-ownership-and-lifetime-analysis.md#15-ownership-and-lifetime-analysis)) and cannot fail. If erasure allocates and the allocation fails, the program Aborts, with no Move rollback (location: [§22.5.1](22-core-execution-and-foreign-functions.md#2251-abort-location)). Passing a concrete Closure where a `Callable` is expected is not erasure.
 
 ```kimi
 func inc(value: i32) -> i32 => value + 1
 func twice(action: ref/((i32) -> i32), value: i32) -> i32 => action(action(value))
+
+let text = "hello"
+let closure = func [text@move] () => ()
+let erased: () -> () = closure@move                    // Transfer, then erasure; closure is Moved.
+// let view: ref/(() -> ()) = func () => ()             // Error: erasure cannot then borrow.
 
 var handler: (i32) -> i32 = inc                        // Erased: Non-Copy.
 handler = inc                                          // Erased again; the old value is destroyed.

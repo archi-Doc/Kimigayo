@@ -451,7 +451,7 @@ inspect(a)
 
 Constructing, resolving and copying positions and ranges, and forming, copying, reslicing and splitting views and element Places, take O(1) time without allocation or reference-count update. Slice and UniqSlice elements are spaced by `stride(T)`.
 
-For the standard iterators of arrays, Slices, ranges and Dictionary, with `n` live elements or entries: creation, destruction and each `next` are O(1) (amortized for Dictionary, whose `n` excludes free capacity), a full enumeration is O(1 + n), and the iterator uses O(1) storage without allocation. Owning iterators keep these bounds; element transfer and destruction are charged separately.
+For standard iterators of arrays, Slices, ranges and Dictionary, let `n` be the number of live elements or entries when enumeration starts; free capacity is excluded. Creation, destruction and each `next` take O(1) time (amortized for Dictionary), and full enumeration takes O(1 + n). Bookkeeping uses O(1) storage in `n`; owned element storage is separate. An inline owned `[N of E]` occupies `N * stride(E)` bytes, and an owning dynamic-collection iterator retains the existing element storage. Iterator operations make no new heap allocation. Element movement and destruction costs are charged separately, including movement of inline array storage.
 
 ## 4.9. Dynamic collections
 

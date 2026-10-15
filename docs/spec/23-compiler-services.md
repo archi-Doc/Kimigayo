@@ -67,7 +67,7 @@ A result has one **outcome**:
 | Blocked | An input or the configuration could not be established; an Input error explains it. |
 | Faulted | The compiler failed internally; an Internal error explains it. |
 
-A cancelled check reports nothing. A result is **accepted** when its outcome is Completed and it reports no Error. A rejected result reports at least one Error.
+A cancelled unit check reports nothing. A unit result is **accepted** when its outcome is Completed and it reports no Error. A rejected unit result reports at least one Error. Command aggregation and cancellation follow [§23.2.3](#2323-check-commands).
 
 A program that `kimi check` accepts never fails `emit`, `build` or `run` with a Language or Proof error. Those commands can still fail on a Resource limit, on an operation the target does not support (Unsupported), or on a native-library resolution ([§20.4](../impl/20-compilation-configuration.md#204-native-libraries)), toolchain, output or launch failure. Whether `check` already reports a target's unsupported operations (for example `i128` division) is implementation-defined; when it reports them, it reports them for the same checked set.
 
@@ -77,16 +77,44 @@ func divide(a: i128, b: i128) -> i128 => a / b
 // when building; check may report it too.
 ```
 
+### 23.2.3. Check commands
+
+`kimi check` first selects a nonempty set of project or implicit-source paths ([§20.3.1](../impl/20-compilation-configuration.md#2031-input-resolution-and-implicit-projects)), then checks one Product unit per path. Failure to select this set produces a Blocked command with an Input error; an internal selection failure produces Faulted with an Internal error. Both have no unit results. An empty selection is an Input error.
+
+Resolve selected paths to absolute paths, remove `.` and `..` components, and use `/` separators. Repeated paths under the host's path-comparison rules select one unit, using the smallest spelling in Unicode scalar order. Sort the retained paths in that order; do not resolve symbolic links for this ordering. Unit results use this order regardless of execution order.
+
+Once selection succeeds, check every selected unit. A project load or configuration failure produces a Blocked unit; an internal failure produces a Faulted unit. Continue with the remaining units after either failure. Each result retains its own outcome, acceptance, source table and diagnostics. If a unit's target cannot be established, `unit.target` is the `--Target` value or the empty string.
+
+The command outcome is Faulted if any unit is Faulted, otherwise Blocked if any is Blocked, otherwise Completed. The command is accepted exactly when input selection succeeds and every selected unit is accepted. Command-level diagnostics describe selection failures only; unit diagnostics are not copied there. A Completed command can therefore be rejected. Exit codes follow [§20.3](../impl/20-compilation-configuration.md#203-commands).
+
+Publish the JSON document only after all units finish. Cancellation before publication discards all results, writes no JSON and returns 130. Once publication starts, finish it without observing further cancellation and use the command result's exit code.
+
 ## 23.3. JSON check output
 
-`kimi check --Format json` ([§20.3](../impl/20-compilation-configuration.md#203-commands)) writes one `kimi.check/2` document to standard output; everything else goes to standard error. The schema file [`schemas/check-output.schema.json`](schemas/check-output.schema.json) describes every field and is part of this chapter's contract. Spans are offsets and lengths in UTF-16 code units of the source text the check read; ranges are zero-based lines and characters.
+`kimi check --Format json` ([§20.3](../impl/20-compilation-configuration.md#203-commands)) writes one `kimi.check/3` command document to standard output; everything else goes to standard error. Its `units` array contains each unit result, with one element for a single selected project. The root holds the schema and compiler identities, command outcome and acceptance, and command-level sources and diagnostics; the latter two arrays are empty after successful selection. Every diagnostic, related location and repair uses the source table of its containing result, never another unit's table. The schema file [`schemas/check-output.schema.json`](schemas/check-output.schema.json) describes every field and is part of this chapter's contract. Spans are offsets and lengths in UTF-16 code units of the source text the check read; ranges are zero-based lines and characters. Cancellation follows [§23.2.3](#2323-check-commands).
 
 The schema version changes when a field or enumeration value is removed, renamed or given a new meaning. Adding an optional field or an enumeration value keeps the version.
 
-```text
-{ "schema": "kimi.check/2", "outcome": "Completed", "accepted": false,
-  "diagnostics": [ { "code": "…_Kd", "severity": "Error", "category": "Language",
-                     "message": "…", "source": 0, "span": { "start": 42, "length": 1 } } ], … }
+```json
+{
+  "schema": "kimi.check/3", "compiler": "example-build",
+  "outcome": "Blocked", "accepted": false, "sources": [], "diagnostics": [],
+  "units": [
+    {
+      "unit": { "project": "C:/work/App/App.kimiproj", "target": "x86_64-pc-windows-msvc", "mode": "Product", "debug": false },
+      "outcome": "Completed", "accepted": true, "testPresence": "No",
+      "sources": [], "diagnostics": []
+    },
+    {
+      "unit": { "project": "C:/work/Library/Library.kimiproj", "target": "", "mode": "Product", "debug": false },
+      "outcome": "Blocked", "accepted": false, "testPresence": "Unknown", "sources": [],
+      "diagnostics": [
+        { "code": "ExampleInput_Kd", "severity": "Error", "category": "Input",
+          "message": "Project could not be loaded", "source": -1 }
+      ]
+    }
+  ]
+}
 ```
 
 ## 23.4. Language server

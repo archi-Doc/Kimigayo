@@ -1,31 +1,48 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://kimigayo.dev/schemas/check-output.schema.json",
-  "title": "kimi check output (kimi.check/2)",
-  "description": "The JSON check-result document (kimi.check/2), written by `kimi check <input> --Format json` for a Product unit and usable for any check unit: one check unit's outcome, acceptance, source table and diagnostics with their repair candidates. Spans are UTF-16 code units of the source text the check read; ranges are zero-based lines and characters.",
+  "title": "kimi check output (kimi.check/3)",
+  "description": "One command result with an ordered array of check-unit results, including a singleton for one selected project. Input-selection failure has no units. Each result's diagnostic, related-location and repair source indices refer only to that result's sources. Spans are UTF-16 code units; ranges are zero-based lines and characters. Cancellation before publication emits no document. SPEC 23.2.3 defines aggregation, ordering and publication.",
   "type": "object",
-  "required": ["schema", "compiler", "unit", "outcome", "accepted", "testPresence", "sources", "diagnostics"],
+  "required": ["schema", "compiler", "outcome", "accepted", "sources", "diagnostics", "units"],
   "additionalProperties": false,
   "properties": {
-    "schema": { "const": "kimi.check/2" },
-    "compiler": { "type": "string", "description": "The compiler build identity." },
-    "unit": {
+    "schema": { "const": "kimi.check/3" },
+    "compiler": { "type": "string", "description": "The compiler build identity for all units." },
+    "outcome": { "$ref": "#/$defs/outcome", "description": "Selection failure: Blocked for Input, Faulted for Internal. After selection: Faulted if any unit is Faulted, otherwise Blocked if any is Blocked, otherwise Completed." },
+    "accepted": { "type": "boolean", "description": "True exactly when selection succeeds with at least one unit and every selected unit is accepted." },
+    "sources": { "$ref": "#/$defs/sources", "description": "Sources of command-level selection diagnostics; empty after successful selection." },
+    "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" }, "description": "Selection failures only; an Input Error for Blocked or an Internal Error for Faulted. Empty after successful selection; unit diagnostics are not duplicated here." },
+    "units": { "type": "array", "items": { "$ref": "#/$defs/unitResult" }, "description": "Every selected unit in the path order of SPEC 23.2.3, including Blocked and Faulted units. Empty only when selection fails." }
+  },
+  "$defs": {
+    "outcome": { "enum": ["Completed", "Blocked", "Faulted"] },
+    "unitResult": {
       "type": "object",
-      "required": ["project", "target", "mode", "debug"],
+      "required": ["unit", "outcome", "accepted", "testPresence", "sources", "diagnostics"],
       "additionalProperties": false,
       "properties": {
-        "project": { "type": "string", "description": "The project file, or the implicit source." },
-        "target": { "type": "string", "description": "The selected target; when no single target could be selected, the --Target value or the empty string." },
-        "mode": { "enum": ["Product", "Test"], "description": "Product: the kimi check result; Test: the test-preparation result." },
-        "debug": { "type": "boolean" }
+        "unit": {
+          "type": "object",
+          "required": ["project", "target", "mode", "debug"],
+          "additionalProperties": false,
+          "properties": {
+            "project": { "type": "string", "description": "The normalized selected project path, or implicit-source path." },
+            "target": { "type": "string", "description": "The selected target; when no single target could be selected, the --Target value or the empty string." },
+            "mode": { "enum": ["Product", "Test"], "description": "Product: the kimi check result; Test: the test-preparation result." },
+            "debug": { "type": "boolean" }
+          }
+        },
+        "outcome": { "$ref": "#/$defs/outcome", "description": "Completed: checked, with or without errors; Blocked: an input or configuration could not be established; Faulted: the compiler failed internally." },
+        "accepted": { "type": "boolean", "description": "True exactly when this unit's outcome is Completed and none of its diagnostics has severity Error. A rejected unit has at least one Error." },
+        "testPresence": { "enum": ["Yes", "No", "Unknown"], "description": "Product unit: Yes when the project's own sources contain a `#Test` function, No when they contain none and all parsed without source errors, otherwise Unknown; always Unknown for a Test unit." },
+        "sources": { "$ref": "#/$defs/sources" },
+        "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } }
       }
     },
-    "outcome": { "enum": ["Completed", "Blocked", "Faulted"], "description": "Completed: checked, with or without errors; Blocked: an input or the configuration could not be established; Faulted: the compiler failed internally." },
-    "accepted": { "type": "boolean", "description": "True exactly when the outcome is Completed and no diagnostic has severity Error." },
-    "testPresence": { "enum": ["Yes", "No", "Unknown"], "description": "Product unit: Yes when the project's own sources contain a `#Test` function, No when they contain none and all parsed without source errors, otherwise Unknown; always Unknown for a Test unit." },
     "sources": {
       "type": "array",
-      "description": "The source table: every source the diagnostics name, in the order the check read them.",
+      "description": "Every source this result's diagnostics name, in the order read; indices are local to this result.",
       "items": {
         "type": "object",
         "required": ["path", "isInput"],
@@ -37,9 +54,6 @@
         }
       }
     },
-    "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } }
-  },
-  "$defs": {
     "span": {
       "type": "object",
       "description": "Start offset and length in UTF-16 code units; length 0 marks an insertion point.",

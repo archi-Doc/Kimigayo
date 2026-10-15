@@ -45,7 +45,7 @@ This file is the table of contents of the language specification. The chapters u
 ### Part VII. Compiler services
 
 - [23. Compiler services](spec/23-compiler-services.md)
-  - [Check output schema](spec/schemas/check-output.schema.json)
+  - [Check output schema: command result and unit results](spec/schemas/check-output.schema.json)
 
 ### Part VIII. Asynchronous execution
 

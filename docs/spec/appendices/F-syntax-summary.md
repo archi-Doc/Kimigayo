@@ -111,6 +111,8 @@ let first = ((1, 2), 3).0.1       // Tuple indices
 
 A reserved word is never a Name. A contextual keyword is a keyword only in the context listed below and an ordinary Name elsewhere. Recognition uses tokens only, never name lookup or Types.
 
+`Never` and `Transferable` are ordinary Names of required Kimi declarations ([§22.1](../22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)); neither is a keyword. Ordinary lookup may shadow them; `::Kimi.Never` and `::Kimi.Transferable` identify the built-ins.
+
 ### F.3.1. Reserved words
 
 | Reserved class | Spellings |

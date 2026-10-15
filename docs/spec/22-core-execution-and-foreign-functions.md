@@ -14,11 +14,12 @@ This table is the only list of required Kimi declarations (names relative to `Ki
 
 | Declaration | Required shape |
 | --- | --- |
+| `Never` | public, non-open, non-generic struct with no Origins, base or members; the compiler-intrinsic uninhabited value Type of [§3.1.3](03-types-and-values.md#313-unit-and-never) |
 | `Option<T>` | enum `Some(T)`, `None` in that order; Copy when `T` is Copy |
 | `Result<T, E>` | enum `Ok(T)`, `Err(E)` in that order; Copy when `T` and `E` are Copy |
 | `Equatable` | `func equals(self: ref/Self, other: ref/Self) -> bool` |
 | `Comparable: Equatable` | `func compare(self: ref/Self, other: ref/Self) -> i32`, negative, zero or positive for less, equal or greater |
-| `Copy`, `Owned`, `Callable`, `Sealed`, `ObjectPayload`, `PrimitiveInteger` | compiler-intrinsic Contracts ([§8.7](08-generics-constraints-and-contracts.md#87-compiler-intrinsic-and-closed-contracts)) |
+| `Copy`, `Owned`, `Callable`, `Sealed`, `ObjectPayload`, `PrimitiveInteger`, `Transferable` | compiler-intrinsic Contracts ([§8.7](08-generics-constraints-and-contracts.md#87-compiler-intrinsic-and-closed-contracts)); `Transferable` is public and has no parameters, parents or members |
 | Arithmetic Contracts | the eleven Contracts of [§13.3.3](13-operators-and-assignment.md#1333-arithmetic-contracts) |
 | `Position: Equatable, Utf8Format` | closed Contract, `Self is Copy`, `Self is Owned`, `func tryResolve(self: Self, length: isize) -> Option<isize>`; conforming Types exactly the twelve integer Types, `FromEnd<T>`, `Start`, `End` ([§4.6.1](04-arrays-indexing-and-slices.md#461-positions)) |
 | `PositionRange: Equatable, Utf8Format` | closed Contract, `Self is Copy`, `Self is Owned`, `func tryResolve(self: Self, length: isize) -> Option<ResolvedRange>`; conforming Types exactly `Range`, `ClosedRange`, `ResolvedRange` ([§4.6.3](04-arrays-indexing-and-slices.md#463-resolution)) |
@@ -45,7 +46,7 @@ This table is the only list of required Kimi declarations (names relative to `Ki
 | UTF-8 formatting | `Utf8Format`, `BufferWriter`, `WriteWindow`, `Utf8Writer`, `BufferFull`, `Text` group ([§22.9](#229-utf-8-text-and-buffers)) |
 | `Test` group | `tempDirectory() -> string`, only in test-only bodies ([§17.6.1](17-failure-handling.md#1761-forms-and-placement); [§20.6.3](../impl/20-compilation-configuration.md#2063-case-execution)) |
 
-The iteration and indexing Contracts are static; their associated Types are complete and may take Origin parameters ([§8.5.4](08-generics-constraints-and-contracts.md#854-origin-parameters)). `Array`, `Dictionary`, `Slice`, `UniqSlice`, `Wrapping`, `Loan` and `Weak` have exactly the constructors their Kimi declarations declare, such as `Array<T>.init(capacity:)` (`Weak` and `Wrapping` declare none); none is synthesized ([§6.3.6](06-declarations-and-containers.md#636-implicit-constructor)).
+The iteration and indexing Contracts are static; their associated Types are complete and may take Origin parameters ([§8.5.4](08-generics-constraints-and-contracts.md#854-origin-parameters)). `Array`, `Dictionary`, `Slice`, `UniqSlice`, `Wrapping`, `Loan`, `Weak` and `Never` have exactly the constructors their Kimi declarations declare, such as `Array<T>.init(capacity:)` (`Weak`, `Wrapping` and `Never` declare none); none is synthesized ([§6.3.6](06-declarations-and-containers.md#636-implicit-constructor)).
 
 Every fixed array `[N of T]`, for every element Type and length, including a length parameter, has built-in public members (the metadata of [§4.7.3](04-arrays-indexing-and-slices.md#473-length-metadata), the read operations of [§4.8.2](04-arrays-indexing-and-slices.md#482-slice-operations), the views of [§4.8.4](04-arrays-indexing-and-slices.md#484-views-and-uniqslice) and [§4.8.5](04-arrays-indexing-and-slices.md#485-disjoint-exclusive-element-pairs)) and built-in conformances to `UniqIndexable<isize>` and the iteration entries. These cannot be declared in source.
 
@@ -433,6 +434,7 @@ Every Abort cause of [§17.4.1](17-failure-handling.md#1741-causes) and of the K
 | `KIMI_E_STRING_RELEASE: Invalid string release kind` | A detected invalid string representation during destruction (detection not guaranteed) |
 | `KIMI_E_CLOCK: Elapsed-time counter failed` | The elapsed-time counter fails, reports a nonpositive frequency or goes backward |
 | `KIMI_E_THREAD: Failed to start worker` | A worker cannot be started ([§22.3.6](#2236-structured-worker-offload)) |
+| `KIMI_E_REQUIRE: <reason>` | The Abort of a false `$require` ([§17.6.2](17-failure-handling.md#1762-evaluation-and-failure)); the reason is its evaluated `message:` unchanged, or `Test requirement failed` when omitted |
 | `KIMI_E_ABORT: <message>` | Explicit `$abort(message)`; the message is written unchanged |
 
 ## 22.6. Foreign function imports
@@ -675,8 +677,9 @@ A value is **bounded** when the Type that its write formats ([§22.10.3](#22103-
 
 - Built-in formatting into a `FixedBuffer`, or into a `HeapBuffer` with enough capacity, allocates nothing.
 - `text`, `validate`, `intoText` and `intoString` scan nothing when the buffer is fully validated.
-- An interpolation makes at most one heap allocation when every value is bounded, or when its only unbounded value is one `string` or `Utf8Slice` preceded only by literal text. `Text.toString` makes at most one allocation.
-- Otherwise the allocations of the private buffers of interpolation and `Text.toString` are implementation-defined. An implementation may elide, merge, delay or place them on the stack, so their allocation failures need not occur; results, output, evaluation order and count, and user effects never depend on this.
+- An interpolation makes at most one heap allocation when every value is bounded, or when its only unbounded value is one `string` or `Utf8Slice` preceded only by literal text.
+- `Text.toString` makes at most one heap allocation when built-in formatting reserves the whole output once. It calls the formatter once, without a sizing pass or retry.
+- These bounds count private output-buffer allocations, including the storage retained by the resulting string, but exclude allocations by embedded expressions or user formatters. All other private-buffer allocation counts for interpolation and `Text.toString` are implementation-defined. An implementation may elide, merge, delay or place them on the stack, so their allocation failures need not occur; results, output, evaluation order and count, and user effects never depend on this.
 
 ```kimi
 let s = "xyz"

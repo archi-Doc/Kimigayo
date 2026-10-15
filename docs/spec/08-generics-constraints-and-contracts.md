@@ -401,7 +401,7 @@ Duplicate declarations ([§9.1](09-names-signatures-and-access.md#91-signatures)
 
 After substituting `Self`, the Type's arguments and the available associated Types, the implementation of a function requirement is identified by: exact name; function kind; generic parameter count, kinds and order; task-slot presence ([§24.2.4](24-suspension-and-asynchronous-tasks.md#2424-compatibility)); ordinary parameter count, order and external labels; receiver presence and structure (with the correspondence of [§8.6.2](#862-inherited-conformance)); normalized parameter Type structure; and result category (value, or Place with the same mode). Type structure includes Semantics, arguments and completed associated Types; Origins are excluded, but kept for compatibility. Identification uses no contravariance or adaptation and never ranks by preferences, Origins, Constraints or Effects. Zero candidates is a missing implementation; several are ambiguous. `Callable` uses [§10.7](10-overload-resolution-and-inference.md#107-callable-signature-compatibility) instead.
 
-A Type conforms to two bindings of one Contract only when their implementations can coexist as declarations ([§9.1](09-names-signatures-and-access.md#91-signatures)). Bindings whose requirements differ only in result Type cannot both be implemented; give the operation the target Type as an input or use distinct names.
+One implementation may satisfy several requirements, including requirements of different bindings of one Contract, when it passes identification and every compatibility obligation for each requirement. Distinct implementation declarations must obey the ordinary coexistence rules ([§9.1](09-names-signatures-and-access.md#91-signatures)); result Types alone never distinguish them. Conformance collisions and agreement still follow [§8.9](#89-collisions-and-proof-paths), and distinct requirements remain distinct call candidates ([§8.6.4](#864-calls-through-requirements)).
 
 | Aspect | Compatibility obligation |
 | --- | --- |
@@ -415,6 +415,20 @@ A Type conforms to two bindings of one Contract only when their implementations 
 Bounds are checked against each implementation's effect summary ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)), with destruction as in [§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release); an effect the summary cannot classify is a conflict, never an empty effect. Bounds are checked when [§8.11.4](#8114-checking-and-use) states. Origin contracts use [§15.3.7](15-ownership-and-lifetime-analysis.md#1537-contract-comparison). Compatibility inserts no conversion, Copy, Borrow or erasure, and a failure is a conformance error, never a reason to try another implementation. Properties and accessor witnesses follow [§11.9](11-properties.md#119-contract-property-requirements) and [§12.7](12-expressions.md#127-object-receiver-compatibility).
 
 ```kimi
+contract Maker<T>
+    func make() -> T
+
+contract Both: Maker<i32>, Maker<string>
+
+struct Stop
+    Self is Both
+    public func make() -> Never => $abort("No value") // One implementation satisfies both requirements.
+
+struct Incomplete
+    Self is Both
+    public func make() -> i32 => 1                   // Error: does not satisfy Maker<string>.
+    // public func make() -> string => "one"         // Error if added: duplicate Signature.
+
 struct S
     Self is Source
     public func read(self: ref/Self) -> i32 => 1    // Infers Source.Element is i32.
@@ -446,13 +460,13 @@ func resetBoth<T>(x: uniq/T)
 
 ### 8.7.1. Compiler-intrinsic Contracts
 
-Copy, Owned, Callable, Sealed, ObjectPayload and PrimitiveInteger are the **compiler-intrinsic Contracts**. Each has only the effects defined for it; a user Contract with the same name or members gains none. In a struct or enum declaration:
+Copy, Owned, Callable, Sealed, ObjectPayload, PrimitiveInteger and Transferable are the **compiler-intrinsic Contracts** declared by Kimi ([§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)). Each has only the effects defined for it; a user Contract with the same name or members gains none. In a struct or enum declaration:
 
 | X | `Self is X` (optionally `when P`) |
 | --- | --- |
 | Copy | Requests derived Copy ([§3.5.2](03-types-and-values.md#352-copy-capability)). |
 | Owned | Checked assertion: the Type must be Owned ([§15.2.3](15-ownership-and-lifetime-analysis.md#1523-static-and-owned)) for every binding its Constraints (and `P`) admit. It grants nothing. |
-| Sealed, ObjectPayload, PrimitiveInteger, Callable | Error. These are decided by the Type's structure alone. |
+| Sealed, ObjectPayload, PrimitiveInteger, Callable, Transferable | Error. These are decided by the Type's structure alone. |
 
 In a struct or enum declaration, `Self is not ObjectPayload` is the only negated `Self` clause; it is the opt-out of [§8.7.3](#873-objectpayload). In a Contract, `Self is X` (and `Self is not ObjectPayload`) is a requirement that every conforming Type satisfies X by X's own rules; listing X as a refinement parent (`contract C: Copy`) means the same as `Self is X` in its body.
 

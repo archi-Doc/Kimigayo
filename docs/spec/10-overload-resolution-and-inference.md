@@ -67,11 +67,11 @@ Common adaptation fits a value to a fixed expected Type: at arguments, annotated
 
 A **reference or handle slot** is a Place whose Type is a reference (`ref`, `uniq`, `objref`, `objuniq`) or an owning object handle (`obj`, `rc`, `arc`). The first row never borrows it implicitly; write `clone(handle@ref)`. The other rows still adapt its referent or object, for example `obj/U` to `objref/U`. Other named Types, including `Weak<S>`, take the first row.
 
-Exactly one row is selected, on the input's original complete Type, and adaptations never chain: a stored `uniq/U` at `ref/U` takes the shared-reference row directly. The Origin relations of the fit are judged after selection ([§15.6.1](15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness)).
+Explicit acquisition runs before implicit adaptation. `@move` transfers the value and responsibility and marks a source Place Moved; no later adaptation replaces or undoes that transfer. A transferred exclusive reference that directly fits the expected Type is passed unchanged, without Reborrow. Otherwise, select one row using the acquired value's complete Type and category; for a bare input, use its original Type and category. At most one implicit adaptation runs: a stored `uniq/U` at `ref/U` takes the shared-reference row directly. Explicit acquisition does not count as an implicit adaptation. The ordinary temporary lifetime, Loan and erasure rules apply, and Origin relations are judged after selection ([§15.6.1](15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness)).
 
 **One shared reference through layers.** With a `ref` layer, the innermost `ref` is Copied, each `uniq` layer below it is shared-Reborrowed, and the Origin is the meet of those layers' Origins; outer layers add no dependency. Without one, the result is a shared Reborrow through every layer. Every layer is checked for initialization, capability and Loans. The shared-reference and Reborrow rows add no dependency on a temporary slot holding the reference.
 
-**No other implicit operation.** There is no implicit object payload follow, `rc`/`arc` duplication, exclusive borrow of a temporary, object upcast, numeric or user conversion. A bare Non-Copy or Copy-unproven Place is never acquired by value, except that bare acquisition Reborrows a stored exclusive reference; a candidate that needs that Copy is inapplicable. An explicit `@move` executes first and is not adapted afterwards. A new exclusive borrow of an owned Place needs `@uniq` or `@objuniq`, except for a Receiver Expression ([§7.3](07-functions-and-callable-values.md#73-receivers)), so a bare owned Place, or one reached through an exclusive reference ([§15.1.5](15-ownership-and-lifetime-analysis.md#1515-access-operations-and-acquisition)), never fits a `uniq` or `objuniq` parameter. An annotation never adds lifetime or capability.
+**No other implicit operation.** There is no implicit object payload follow, `rc`/`arc` duplication, exclusive borrow of a temporary, object upcast, numeric or user conversion. A bare Non-Copy or Copy-unproven Place is never acquired by value, except that bare acquisition Reborrows a stored exclusive reference; a candidate that needs that Copy is inapplicable. A new exclusive borrow of an owned Place needs `@uniq` or `@objuniq`, except for a Receiver Expression ([§7.3](07-functions-and-callable-values.md#73-receivers)), so a bare owned Place, or one reached through an exclusive reference ([§15.1.5](15-ownership-and-lifetime-analysis.md#1515-access-operations-and-acquisition)), never fits a `uniq` or `objuniq` parameter. An annotation never adds lifetime or capability.
 
 **Temporaries.** An owner temporary is evaluated once into a Temporary Place with the ordinary lifetime ([§3.6](03-types-and-values.md#36-temporaries)), which is never extended for a borrow: using `view` after `let view: ref/Node = makeNode()` is an error.
 
@@ -82,12 +82,13 @@ func normalize(node: uniq/Node) -> () => ()
 func work(node: uniq/Node)
     validate(node)              // Shared Reborrow.
     normalize(node)             // Exclusive Reborrow.
-    let transferred = node@move // The reference value itself.
+    let transferred: uniq/Node = node@move // Transfers the reference; no Reborrow.
 
 var node = Node.init()
 validate(node)                  // Shared borrow of the owned value.
 normalize(node@uniq)
 // normalize(node)              // Error: no implicit exclusive borrow.
+validate(node@move)             // Transfer, then borrow the temporary; node is Moved.
 ```
 
 ### 10.2.1. Literals
@@ -119,7 +120,7 @@ Inferring a Type performs no Copy, Move or borrow.
 
 1. Explicit Type arguments bind first; the rest are inferred together from the original complete Types of the receiver and the arguments, never by traversal order. A bare `T` binds the argument's Type, except that a parameter of a read Type ([§3.5.3](03-types-and-values.md#353-value-read)) binds the terminal referent of reference layers, and the argument is value-read. A declared `ref/T` or `uniq/T` binds `T` to an owned argument's Type or to the referent of a borrow's outermost layer. A pair layer ([§13.5.5](13-operators-and-assignment.md#1355-follow)) is not a borrow: for an element Type `s/U`, `inspect(c[i])` binds `T = s/U` and borrows the slot, while `inspect(c[i]@follow)` binds `U`.
 2. An independently known expected result fills still-unbound parts by Type matching; it never inverts a borrow or value read and never changes an established Type.
-3. Each argument's acquisition is planned under [§3.5](03-types-and-values.md#35-copy-and-move) and [§10.2](#102-common-adaptation). A reference passed to a borrow parameter is Reborrowed; transferring it needs `@move`.
+3. Each argument's acquisition and adaptation are planned under [§3.5](03-types-and-values.md#35-copy-and-move) and [§10.2](#102-common-adaptation). A directly fitting exclusive reference is Reborrowed when bare and transferred under `@move`.
 
 ```kimi
 // n: ref/i32; r: uniq/Node; identity<T>(value: T) -> T; double<T> with T is PrimitiveInteger.

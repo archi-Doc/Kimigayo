@@ -19,10 +19,13 @@ This reference lists required constructors and named operations, and describes c
 
 These are compiler identities, not user-implementable replacements.
 
+The required `struct Never` is the uninhabited compiler-intrinsic value Type ([§3.1.3](spec/03-types-and-values.md#313-unit-and-never)): no parameters, Origins, base, members or constructors. Like the Contracts below, its name uses ordinary lookup; `::Kimi.Never` always identifies the built-in.
+
 | Declaration | Guarantee | Specification |
 | --- | --- | --- |
 | `contract Copy` | Bare acquisition or `@copy` duplicates a value without consuming its source, subject to access and Loan rules. | [Copy and Move](spec/03-types-and-values.md#35-copy-and-move) |
 | `contract Owned` | All lifetime dependencies are `static`; qualifying static borrows are allowed. This is distinct from owner semantics. | [static and Owned](spec/15-ownership-and-lifetime-analysis.md#1523-static-and-owned) |
+| `contract Transferable` | Structural eligibility for worker inputs and immutable statics read by confined code; no parameters or members, no user opt-in, and no Owned requirement. | [Transferable](spec/15-ownership-and-lifetime-analysis.md#1524-transferable) |
 | `contract Callable` | `F is Callable<r, (A...) -> R>` requires a call with receiver mode `ref`, `uniq` or `owner`. Omitting `r` means `ref`. | [Callable constraints](spec/08-generics-constraints-and-contracts.md#810-callable-constraints) |
 | `contract Sealed` | The outer semantics are owner and the Core is a valid, non-open, non-Never Type. It does not imply Copy or Owned. | [Sealed](spec/08-generics-constraints-and-contracts.md#872-sealed) |
 | `contract ObjectPayload` | The value may become a new object payload: owner semantics, a non-Never Core, and no applicable opt-out. Open structs may qualify. | [ObjectPayload](spec/08-generics-constraints-and-contracts.md#873-objectpayload) |
@@ -321,12 +324,12 @@ A fixed array `[N of T]` has no source declaration. Its members are receiver fun
 | --- | --- |
 | `iterate(self: ref/Self during source) -> ArrayIterator<T> during source` | The Iterable entry: a shared enumeration in index order. |
 | `iterateUniq(self: uniq/Self during source) -> ArrayUniqIterator<T> during source` | The UniqIterable entry: each element is lent exclusively exactly once. |
-| `intoIterator(self: Self) -> FixedArrayOwningIterator<T, [N of T]>` | The IntoIterable entry: each element is transferred out once; the iterator destroys the unreturned elements in reverse index order and allocates nothing. |
+| `intoIterator(self: Self) -> FixedArrayOwningIterator<T, [N of T]>` | The IntoIterable entry: each element is transferred out once; the iterator destroys the unreturned elements in reverse index order. Iterator operations allocate no heap storage; element movement and destruction costs are separate ([§4.8.6](spec/04-arrays-indexing-and-slices.md#486-costs)). |
 | `slice`, `slice<R>`, `sliceUniq`, `sliceUniq<R>` | The Array view signatures and guarantees above, with `Self = [N of T]` and functions generic over T and `length N`. |
 | `tryGet<P>`, `trySlice<R>`, `splitAt<P>`, `trySplitAt<P>` with `self: ref/Self during source` | The read operations of §3.2 on `self[..]`, with results `during source`. |
 | `tryGetPairUniq<P, Q>(self: uniq/Self during source ! first: P, second: Q)`, `P is Position`, `Q is Position` | `Option<(uniq/T during source, uniq/T during source)>` in argument order; None for invalid or equal resolved positions. O(1), no allocation, including zero-sized elements. |
 
-`FixedArrayOwningIterator<T, A>` is the standard owning fixed-array iterator: an `Iterator` whose `Item` is `T`, holding the array `A` inline in its private storage-boundary Field. It names the array Type `A` rather than `N` because only functions have length slots (SPEC §4.4).
+`FixedArrayOwningIterator<T, A>` is the standard owning fixed-array iterator: an `Iterator` whose `Item` is `T`, holding the array `A` inline. For `A = [N of T]`, its `N * stride(T)` bytes of element storage are separate from O(1) bookkeeping. It names the array Type `A` rather than `N` because only functions have length slots (SPEC §4.4).
 
 ### 3.5. Dictionary<K, V>, where K is Equatable
 
@@ -410,7 +413,7 @@ All names in this subsection belong to `Text`.
 | `writer<W>(destination: uniq/W) -> Utf8Writer`, where `W is BufferWriter` | Creates an adapter dependent on destination, with no recorded failure. |
 | `utf8(text: ref/string) -> Utf8Slice` | Borrows string bytes without allocation, copying or validation; the result depends on text. |
 | `validateUtf8(bytes: Slice<u8>) -> Result<Utf8Slice during bytes.source, InvalidUtf8>` | Validates once without allocation or copying. |
-| `toString<T>(value: ref/T) -> string`, where `T is Utf8Format` | Formats into an owning string; BufferFull Aborts. Also the standard string-copy operation. |
+| `toString<T>(value: ref/T) -> string`, where `T is Utf8Format` | Formats once into an owning string; BufferFull Aborts. Also the standard string-copy operation. Private output storage needs at most one heap allocation when built-in formatting reserves the whole output once; other counts are implementation-defined, excluding user-formatter allocations ([§22.10.5](spec/22-core-execution-and-foreign-functions.md#22105-allocation)). |
 | `tryFormat<T, length N>(value: ref/T, destination: uniq/[N of u8]) -> Result<Utf8Slice during destination, BufferFull>`, where `T is Utf8Format` | Formats once into the fixed array. Partial bytes may remain on failure. Source Loan rules are in §4.5. |
 
 | Type | Member | Guarantee |

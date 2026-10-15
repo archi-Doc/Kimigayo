@@ -17,6 +17,8 @@ Work policy (design before code, independent review, commit and push per unit, a
 
 ## 3. Current position
 
+- **Specification follow-up (S1015):** audit the eight adopted clarifications in SPEC §3.1.3, §4.8.6, §7.7.4, §8.6.3, §8.7.1, §10.2, §15.2.4, §17.6.2, §22.1, §22.5.2, §22.10.5, §23.2–§23.3 and IMPL §20.3/§21.4.2. Implement the `kimi.check/3` command envelope in place of the current single-unit writer; record and verify the other differences before claiming support.
+
 - **Compiler reduction** ([plan](../../draft/Proposals/2026-10-10%20Compiler%20Size%20Reduction%20and%20Single%20MIR%20Plan.md), adopted 2026-10-10; stage ledger and rules in [COMPILER_ARCHITECTURE](COMPILER_ARCHITECTURE.md), decisions in [DECISIONS](DECISIONS.md), stage results in PLAN_HISTORY):
   - **Position:** R0–R3 are done; R4 (MIR analyses, shadow) **resumed by owner instruction on 2026-10-13** after the pause that day: A1–A4 and A5-1
     have landed (U0/U1/U3–U7, U6b, fix units U1b/U4b/U5b/U6c/U3n, test migration T1 U3), P9 204 → 143, open (b) 47; U8 (A5-2) is in flight on a

@@ -134,13 +134,13 @@ The windows-x64 profile targets `x86_64-pc-windows-msvc` with the baseline x86-6
 
 An Application defines the external entry `__kimi_start` (linked with `/entry:__kimi_start`) and uses no C runtime startup. It performs runtime initialization, runs the program body ([§22.4](../spec/22-core-execution-and-foreign-functions.md#224-program-startup-and-static-storage)), completes shutdown and calls `ExitProcess(0)`. A Library defines no entry.
 
-An Abort ([§17.4.3](../spec/17-failure-handling.md#1743-termination-and-cleanup)) writes one line to standard error and then calls `ExitProcess(1)`:
+An Abort ([§17.4.3](../spec/17-failure-handling.md#1743-termination-and-cleanup)) writes one report to standard error and then calls `ExitProcess(1)`:
 
 ```text
 path:line:column: abort CODE: Reason
 ```
 
-The line ends with LF; when the operating system supplied an error code, ` (win32=N)` precedes the LF.
+Write the `path:line:column: abort CODE: ` prefix, the Reason bytes unchanged, and a final LF. A message may contain line breaks or NUL; neither is escaped or removed. When the operating system supplied an error code, append ` (win32=N)` after the Reason and before the final LF.
 
 - `line:column` follows [§2.1](../spec/02-source-and-lexical-structure.md#21-source-text-and-lines); the code and reason come from [§22.5.2](../spec/22-core-execution-and-foreign-functions.md#2252-abort-codes), and the location from [§22.5.1](../spec/22-core-execution-and-foreign-functions.md#2251-abort-location).
 - The logical source path is displayed with non-ASCII and control characters escaped as `\u{HEX}` and backslash as `\\`.
