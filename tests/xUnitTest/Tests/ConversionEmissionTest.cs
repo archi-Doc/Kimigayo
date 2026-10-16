@@ -175,14 +175,11 @@ public class ConversionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(Consumers);
         var valid = true;
-        var allocated = AllocationMeasurement.Measure(
-            () =>
-            {
-                valid &= c.Analyze().IsVerified;
-                valid &= c.WriteIr(TextWriter.Null, out _);
-            },
-            iterations: 128,
-            warmupIterations: 100);
+        var allocated = AllocationMeasurement.Measure(() =>
+        {
+            valid &= c.Analyze().IsVerified;
+            valid &= c.WriteIr(TextWriter.Null, out _);
+        });
         Assert.True(valid);
         Assert.Equal(0, allocated);
     }
@@ -209,7 +206,7 @@ public class ConversionEmissionTest
         Assert.Equal(ConversionBinding.Integer, nodes[1].ConversionOf().Kind);
         Assert.Equal(ConversionBinding.Literal, nodes[2].ConversionOf().Kind);
         var complete = true;
-        var allocated = AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete, iterations: 128, warmupIterations: 100);
+        var allocated = AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete);
         Assert.True(complete);
         Assert.Equal(0, allocated);
     }

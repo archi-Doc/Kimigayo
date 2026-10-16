@@ -257,11 +257,7 @@ public class OwnedStoredReferenceTest
     public void OwnedStoredReferenceAnalysisReusesItsStorage()
     {
         var c = MinimalEmissionTest.Analyze("func run(value: uniq/i32 during a)\n    let item = (value@move, 7)\n    item.0@follow += 1\n    let child = item.0@follow@ref\n    require child == 43 else => $abort(\"value\")");
-        for (var i = 0; i < 8; i++)
-        {
-            Assert.True(c.Analyze().IsVerified);
-        }
-
+        Assert.True(c.Analyze().IsVerified);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
     }
 }

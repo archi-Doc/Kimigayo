@@ -309,25 +309,18 @@ public class PairFollowTest
     public void WarmPairLayerCompilationAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze(Collected);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            c.Binding.CheckStartup(Kimi.Compiler.OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
-        var success = true;
-        var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete, iterations: 128, warmupIterations: 100);
+        Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(Kimi.Compiler.OutputKind.Application);
-        var bytes = AllocationMeasurement.Measure(
-            () =>
-            {
-                success &= c.Analyze().IsVerified;
-                success &= c.WriteIr(TextWriter.Null, out _);
-            },
-            iterations: 128,
-            warmupIterations: 100);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        var success = true;
+        var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
+        c.Binding.CheckStartup(Kimi.Compiler.OutputKind.Application);
+        var bytes = AllocationMeasurement.Measure(() =>
+        {
+            success &= c.Analyze().IsVerified;
+            success &= c.WriteIr(TextWriter.Null, out _);
+        });
         Assert.True(success);
         Assert.Equal(0, bindingBytes);
         Assert.Equal(0, bytes);

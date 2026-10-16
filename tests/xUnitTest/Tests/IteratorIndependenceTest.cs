@@ -170,14 +170,10 @@ public class IteratorIndependenceTest
     public void EffectCheckingReusesCallAndDestructionState()
     {
         var c = MinimalEmissionTest.Analyze(CleanupProgram);
-        for (var i = 0; i < 32; i++)
-        {
-            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
-            c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        c.Binding.CheckStartup(OutputKind.Application);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>

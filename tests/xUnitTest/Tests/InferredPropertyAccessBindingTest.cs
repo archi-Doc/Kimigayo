@@ -60,11 +60,7 @@ public class InferredPropertyAccessBindingTest
     public void WarmInferredPropertyAccessAllocatesNothing()
     {
         var c = Check("contract C\n    associate Element\npublic struct Source\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public let item = (1, 1@Source.C.Element)", true);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

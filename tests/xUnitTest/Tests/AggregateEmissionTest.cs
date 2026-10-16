@@ -53,14 +53,11 @@ public class AggregateEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("let value = (\"a\", (2, \"b\"))\nlet moved = value@move\nlet array: [2 of i32] = [1, 2]\nlet copied = array");
         var valid = true;
-        var allocated = AllocationMeasurement.Measure(
-            () =>
-            {
-                valid &= c.Analyze().IsVerified;
-                valid &= c.WriteIr(TextWriter.Null, out _);
-            },
-            iterations: 128,
-            warmupIterations: 100);
+        var allocated = AllocationMeasurement.Measure(() =>
+        {
+            valid &= c.Analyze().IsVerified;
+            valid &= c.WriteIr(TextWriter.Null, out _);
+        });
         Assert.True(valid);
         Assert.Equal(0, allocated);
     }

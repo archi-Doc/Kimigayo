@@ -164,11 +164,7 @@ public class LengthCallBindingTest
         tree.OnDeserialized(restored);
         Assert.True(restored.Bind().IsComplete);
         Assert.All(KotoTree.Walk(restored.Kotonoha.RootKoto).OfType<InvocationKoto>(), call => Assert.Equal(2, call.CallOf()!.LengthArguments[0]!.Value));
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

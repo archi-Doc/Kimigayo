@@ -160,7 +160,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
                 }
             }
         }));
-        Assert.Equal((bodies, version + 16), (c.BuildMir().Bodies.Length, c.BuildMir().Version)); // Eight warm-up and eight measured rebuilds.
+        Assert.Equal((bodies, version + AllocationMeasurement.WarmupOperations + AllocationMeasurement.MeasuredOperations), (c.BuildMir().Bodies.Length, c.BuildMir().Version)); // Warm-up and measured rebuilds.
     }
 
     // V11, plan 5.6.4: N defers, then N returns that each leave all of them, build each defer once per target (one drop tree shared by

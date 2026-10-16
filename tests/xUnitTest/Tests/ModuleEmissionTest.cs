@@ -94,11 +94,6 @@ public class ModuleEmissionTest
             }
         }
 
-        for (var i = 0; i < 100; i++)
-        {
-            Write();
-        }
-
         Assert.Equal(0, AllocationMeasurement.Measure(Write));
     }
 

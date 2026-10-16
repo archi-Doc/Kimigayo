@@ -290,11 +290,7 @@ public class ConstraintBindingTest
     public void WarmConstraintPassesReusePropositionsAndFactStorage()
     {
         var c = Parse("func f<T>(x: T) -> T\n    T is i32 or string\n    return x\n" + string.Join('\n', Enumerable.Range(0, 128).Select(x => $"let x{x} = f({x})")));
-        for (var i = 0; i < 8; i++)
-        {
-            Assert.True(c.Binding.Bind(BindingMode.Final).IsComplete, Describe(c));
-        }
-
+        Assert.True(c.Binding.Bind(BindingMode.Final).IsComplete, Describe(c));
         var proposition = ((IsKoto)Function(c, "f").TypeConstraints[0]).ConstraintOf();
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
         Assert.Same(proposition, ((IsKoto)Function(c, "f").TypeConstraints[0]).ConstraintOf());

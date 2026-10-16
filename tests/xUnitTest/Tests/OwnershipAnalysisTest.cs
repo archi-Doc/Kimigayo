@@ -330,25 +330,19 @@ public class OwnershipAnalysisTest
             }
 
             var c = Parse(source.ToString());
-            for (var i = 0; i < 8; i++)
-            {
-                c.Bind();
-                Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-            }
-
-            var phases = new long[16];
+            c.Bind();
+            Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+            var phases = new long[2 * (AllocationMeasurement.WarmupOperations + AllocationMeasurement.MeasuredOperations)];
             var phase = 0;
-            var allocated = AllocationMeasurement.Measure(
-                () =>
-                {
-                    var before = GC.GetAllocatedBytesForCurrentThread();
-                    c.Bind();
-                    phases[phase++] = GC.GetAllocatedBytesForCurrentThread() - before;
-                    before = GC.GetAllocatedBytesForCurrentThread();
-                    c.Analyze();
-                    phases[phase++] = GC.GetAllocatedBytesForCurrentThread() - before;
-                },
-                4);
+            var allocated = AllocationMeasurement.Measure(() =>
+            {
+                var before = GC.GetAllocatedBytesForCurrentThread();
+                c.Bind();
+                phases[phase++] = GC.GetAllocatedBytesForCurrentThread() - before;
+                before = GC.GetAllocatedBytesForCurrentThread();
+                c.Analyze();
+                phases[phase++] = GC.GetAllocatedBytesForCurrentThread() - before;
+            });
             Assert.True(allocated == 0, $"Allocated {allocated}; warm and measured Binding/Ownership phases: {string.Join(',', phases)}");
         }
     }

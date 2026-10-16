@@ -319,12 +319,8 @@ public class FunctionDefaultTest
     public void WarmFunctionDefaultPlansReuseStorage()
     {
         var c = MinimalEmissionTest.Analyze(Steps + Heap + "func run(offset: i32, a: (i32) -> i32 = inc, b: (i32) -> i32 = func [offset] (x) => x + offset) -> i32 => b(a(1))\nrequire run(10) == 12 and runE(1, 2) == 3 else => $abort(\"warm\")");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))

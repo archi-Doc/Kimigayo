@@ -176,11 +176,7 @@ public class AssociatedInferenceBoundaryTest
     public void RejectedWarmInferenceReusesStorage()
     {
         var c = CompilationTestHelper.ParseSuccess("contract C\n    associate Item\n    func read<T>(value: T) -> Self.Item\nstruct S\n    Self is C\n    public func read<U>(value: U) -> U => value");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.False(c.Bind().IsComplete);
-        }
-
+        Assert.False(c.Bind().IsComplete);
         var storage = c.Binding.AssociatedMetrics;
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

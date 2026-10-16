@@ -88,11 +88,7 @@ public class AssociatedOriginBindingTest
         Assert.NotNull(tree);
         tree.OnDeserialized(restored);
         Assert.True(restored.Bind().IsComplete, MinimalEmissionTest.Describe(restored, null));
-        for (var i = 0; i < 8; i++)
-        {
-            Assert.True(restored.Bind().IsComplete);
-        }
-
+        Assert.True(restored.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => restored.Bind()));
     }
 

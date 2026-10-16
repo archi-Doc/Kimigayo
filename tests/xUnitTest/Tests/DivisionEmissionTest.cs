@@ -272,14 +272,11 @@ public class DivisionEmissionTest
         Assert.True(c.Analyze().IsVerified);
         Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         var success = true;
-        var bytes = AllocationMeasurement.Measure(
-            () =>
-            {
-                success &= c.Analyze().IsVerified;
-                success &= c.WriteIr(TextWriter.Null, out _);
-            },
-            iterations: 128,
-            warmupIterations: 100);
+        var bytes = AllocationMeasurement.Measure(() =>
+        {
+            success &= c.Analyze().IsVerified;
+            success &= c.WriteIr(TextWriter.Null, out _);
+        });
         Assert.Equal(0, bytes);
         Assert.True(success);
     }

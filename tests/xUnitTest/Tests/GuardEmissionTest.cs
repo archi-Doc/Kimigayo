@@ -79,14 +79,11 @@ public class GuardEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(Fixtures.First().Data.Item2);
         var valid = true;
-        var allocated = AllocationMeasurement.Measure(
-            () =>
-            {
-                valid &= c.Analyze().IsVerified;
-                valid &= c.WriteIr(TextWriter.Null, out _);
-            },
-            iterations: 128,
-            warmupIterations: 100);
+        var allocated = AllocationMeasurement.Measure(() =>
+        {
+            valid &= c.Analyze().IsVerified;
+            valid &= c.WriteIr(TextWriter.Null, out _);
+        });
         Assert.True(valid);
         Assert.Equal(0, allocated);
     }
@@ -164,7 +161,7 @@ public class GuardEmissionTest
         Assert.True(c.Binding.TryGetMatch(match, out var plan));
         var candidate = plan!.Positions[0].CandidateSymbol;
         var valid = true;
-        var allocated = AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 100, warmupIterations: 100);
+        var allocated = AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete);
         Assert.True(valid);
         Assert.Equal(0, allocated);
         Assert.True(c.Binding.TryGetMatch(match, out plan));

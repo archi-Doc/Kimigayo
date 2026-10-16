@@ -103,11 +103,7 @@ public class UnresolvedRefinementBindingTest
     public void WarmMissingParentBindingAllocatesNothing()
     {
         var c = Parse("public contract Child: Copy, Future\npublic contract Leaf: Child");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
-        }
-
+        Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (c.Binding.Bind(BindingMode.Provisional).InvalidCount != 0)

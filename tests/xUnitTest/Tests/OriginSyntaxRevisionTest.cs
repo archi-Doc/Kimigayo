@@ -164,20 +164,11 @@ public class OriginSyntaxRevisionTest
             Assert.True(valid.WriteIr(TextWriter.Null, out var error), error);
         }
 
-        for (var i = 0; i < 32; i++)
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             valid.Analyze();
             valid.WriteIr(TextWriter.Null, out _);
-        }
-
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 16; i++)
-        {
-            valid.Analyze();
-            valid.WriteIr(TextWriter.Null, out _);
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        }));
         var invalid = MinimalEmissionTest.Analyze(Source.Replace("if read", "counter.value = 8\nif read", StringComparison.Ordinal));
         Assert.False(invalid.Validate(out _));
     }

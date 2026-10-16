@@ -265,19 +265,13 @@ public class StartupBindingTest
         }
 
         var c = Parse(source.ToString());
-        for (var i = 0; i < 12; i++)
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        var allocated = AllocationMeasurement.Measure(() =>
         {
-            Assert.True(c.Bind().IsComplete, Describe(c));
-            Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        }
-
-        var allocated = AllocationMeasurement.Measure(
-            () =>
-            {
-                c.Bind();
-                c.Binding.CheckStartup(OutputKind.Application);
-            },
-            16);
+            c.Bind();
+            c.Binding.CheckStartup(OutputKind.Application);
+        });
         Assert.Equal(0, allocated);
     }
 

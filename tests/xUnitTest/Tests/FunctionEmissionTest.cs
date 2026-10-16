@@ -207,14 +207,11 @@ public class FunctionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(parameters ? "func f(a: i32, b: (), c: bool) -> i32 => if c => a else => 0\nvar x = 0\nwhile x < 100\n    x += f(c: true, b: (), a: 1)" : Snapshot);
         var valid = true;
-        var allocated = AllocationMeasurement.Measure(
-            () =>
-            {
-                valid &= c.Analyze().IsVerified;
-                valid &= c.WriteIr(TextWriter.Null, out _);
-            },
-            iterations: 128,
-            warmupIterations: 100);
+        var allocated = AllocationMeasurement.Measure(() =>
+        {
+            valid &= c.Analyze().IsVerified;
+            valid &= c.WriteIr(TextWriter.Null, out _);
+        });
 
         Assert.Equal(0, allocated);
         Assert.True(valid);

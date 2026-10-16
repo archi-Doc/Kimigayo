@@ -128,11 +128,7 @@ public class ClosedTypeConstraintBindingTest
     public void WarmClosedObligationChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Source("struct", "Source is Origin\n    i32 is Copy"));
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

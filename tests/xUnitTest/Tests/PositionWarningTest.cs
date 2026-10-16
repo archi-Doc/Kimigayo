@@ -116,11 +116,7 @@ public class PositionWarningTest
     public void WideLiteralWarningsReuseTheirStorage()
     {
         var c = CompilationTestHelper.ParseSuccess(Prelude + "let a = values.tryGet<i128>(1 << 127)");
-        for (var i = 0; i < 4; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
 

@@ -93,11 +93,7 @@ public class ConstraintProjectionCertificateBindingTest
     public void WarmConstraintProjectionProofsAllocateNothing(int form)
     {
         var c = MinimalEmissionTest.Analyze(Prefix("public") + Consumer(form));
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

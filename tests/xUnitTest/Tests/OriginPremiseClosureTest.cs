@@ -238,11 +238,6 @@ public class OriginPremiseClosureTest
     {
         var (universe, premises) = Generate(7);
         var closure = new OriginPremiseClosure();
-        for (var i = 0; i < 10; i++)
-        {
-            Run();
-        }
-
         Assert.Equal(0, AllocationMeasurement.Measure(Run));
 
         void Run()

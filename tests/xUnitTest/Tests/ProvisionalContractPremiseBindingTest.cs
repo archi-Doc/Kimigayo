@@ -82,11 +82,7 @@ public class ProvisionalContractPremiseBindingTest
     public void WarmProvenanceRevalidationAllocatesNothing()
     {
         var c = Parse("public contract Origin\npublic struct Source\npublic contract Marker: Copy\n    Source is Origin\ngroup G\n    func inspect<T>(value: T)\n        T is Marker\n        ()");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
-        }
-
+        Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (c.Binding.Bind(BindingMode.Provisional).InvalidCount != 0)

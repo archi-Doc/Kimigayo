@@ -111,13 +111,10 @@ public class ValueCallBindingTest
         Assert.True(c.Binding.Result.IsComplete);
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         var plan = call.ValueCallOf();
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            Assert.Same(plan, call.ValueCallOf());
-        }
-
+        Assert.True(c.Bind().IsComplete);
+        Assert.Same(plan, call.ValueCallOf());
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
+        Assert.Same(plan, call.ValueCallOf());
         var restored = Compilation.CreateForTest();
         Assert.True(restored.Prepare(WindowsProfile.Target));
         var tree = restored.Kotonoha;

@@ -470,11 +470,6 @@ public class InheritedReceiverBindingTest
 
         var c = CompilationTestHelper.ParseSuccess(source.ToString());
         Assert.True(c.Bind().IsComplete, Describe(c));
-        for (var i = 0; i < 8; i++)
-        {
-            c.Binding.Bind(BindingMode.Final);
-        }
-
         var allocated = AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final));
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
         Assert.Equal(0, allocated);

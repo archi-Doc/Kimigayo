@@ -205,12 +205,8 @@ public class CharEmissionTest
     public void ReanalysisAndWritingReuseCharacterPlansWithoutAllocations()
     {
         var c = MinimalEmissionTest.Analyze(Guard + "\nlet aggregate = ('A', (true, '😀'))");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))

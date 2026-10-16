@@ -156,11 +156,7 @@ public class ProductTestMembershipTest
             }
         }
 
-        for (var i = 0; i < 100; i++)
-        {
-            Analyze();
-        }
-
+        Analyze();
         Assert.Equal(0, AllocationMeasurement.Measure(Analyze));
     }
 

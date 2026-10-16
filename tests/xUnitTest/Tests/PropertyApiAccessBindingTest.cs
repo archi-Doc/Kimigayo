@@ -110,11 +110,7 @@ public class PropertyApiAccessBindingTest
     public void WarmPropertyHeaderAccessChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("public struct Api<T>\n    public let item: T\n        private get\npublic enum Choice<T>\n    Item(T)");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

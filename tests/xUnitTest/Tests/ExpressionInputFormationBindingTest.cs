@@ -118,11 +118,7 @@ public class ExpressionInputFormationBindingTest
     public void WarmExpressionInputChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "struct Target<T>\ngroup G\n    func take<T>() => ()\n    func call() => take<Source<i32>.Origin.Item>()\n    func check(x: objref/Target<i32>) -> bool => x is Target<Source<i32>.Origin.Item>");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

@@ -161,31 +161,18 @@ public class ReferenceEmissionTest
     public void WarmBindingAndEmissionAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Same + "func forward(a: ref/string, b: ref/string) -> bool => same(a, b)\nlet a = \"a\"\nforward(a, a)");
-        for (var i = 0; i < 100; i++)
-        {
-            c.Bind();
-            c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        var valid = true;
-        for (var i = 0; i < 128; i++)
-        {
-            valid &= c.Bind().IsComplete;
-        }
-
-        var bindingBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        var valid = true;
+        var bindingBytes = AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        var emissionBytes = AllocationMeasurement.Measure(() =>
         {
             valid &= c.Analyze().IsVerified;
             valid &= c.WriteIr(TextWriter.Null, out _);
-        }
-
-        var emissionBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        });
         Assert.True(valid);
         Assert.Equal(0, bindingBytes);
         Assert.Equal(0, emissionBytes);

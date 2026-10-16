@@ -117,12 +117,8 @@ public class ClosedConstraintLifecycleBindingTest
     public void WarmProvisionalAndFinalTransitionsAllocateNothing()
     {
         var c = Parse("public contract Marker\npublic struct Target\n    i32 is Copy\n    Self is Marker");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (c.Binding.Bind(BindingMode.Provisional).InvalidCount != 0 || !c.Bind().IsComplete)

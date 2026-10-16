@@ -118,7 +118,7 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze("struct Item\n    public init() => ()\n    drop => " + operation + "\nopen struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n        _ = Item.init()\n        return 1\n()");
         Assert.Equal(accepted, c.Analysis.IsVerified);
         var consistent = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => consistent &= c.Analyze().IsVerified == accepted, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => consistent &= c.Analyze().IsVerified == accepted));
         Assert.True(consistent);
     }
 
@@ -129,7 +129,7 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(Shared);
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var verified = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => verified &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => verified &= c.Analyze().IsVerified));
         Assert.True(verified);
     }
 }

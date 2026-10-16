@@ -181,12 +181,8 @@ public class FloatEmissionTest
     public void WarmFloatAnalysisAndEmissionDoNotAllocate()
     {
         var c = MinimalEmissionTest.Analyze("func f(x: f32) -> f32 => -(x * 1_2.5)\nvar a: f32 = 1.25\na = if a > 0.0 => f(a) else => a\nlet pair: (f32, f64) = (a, 1.25)");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))

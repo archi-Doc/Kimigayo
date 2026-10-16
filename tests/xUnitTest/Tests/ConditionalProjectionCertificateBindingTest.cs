@@ -114,11 +114,7 @@ public class ConditionalProjectionCertificateBindingTest
     public void WarmConditionalProjectionChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Prefix(true, true) + Consumer);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)
@@ -184,11 +180,7 @@ public class ConditionalProjectionCertificateBindingTest
     public void WarmConditionalPropertyChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Prefix(true, true) + Consumer + PropertyMember);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

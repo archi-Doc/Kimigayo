@@ -163,13 +163,12 @@ public class NoInitTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze("unsafe\n    var values: [2 of i32] = noinit\n    values[0] = 1\n    values[1] = 2\n    require values[1] == 2 else => $abort(\"value\")");
         var ok = true;
-        var bytes = AllocationMeasurement.Measure(
-            () =>
-            {
-                ok &= c.Bind().IsComplete;
-                c.Binding.CheckStartup(OutputKind.Application);
-                ok &= c.Analyze().IsVerified && c.WriteIr(TextWriter.Null, out _);
-            }, iterations: 8, warmupIterations: 8);
+        var bytes = AllocationMeasurement.Measure(() =>
+        {
+            ok &= c.Bind().IsComplete;
+            c.Binding.CheckStartup(OutputKind.Application);
+            ok &= c.Analyze().IsVerified && c.WriteIr(TextWriter.Null, out _);
+        });
         Assert.True(ok);
         Assert.Equal(0, bytes);
     }

@@ -413,7 +413,7 @@ public class LocalOriginClauseTest
             "    let h0 = C.init(g@move)\n    let h: C{x} = h0@move\n        origin x.s outlives b\n    return 0\n" + Main;
         var c = CompilationTestHelper.Parse(source);
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete == proven, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete == proven));
         Assert.True(valid);
     }
 
@@ -496,11 +496,7 @@ public class LocalOriginClauseTest
     public void WarmLocalClauseBindingAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze(Holder + "func f(a: ref/i32, b: ref/i32) -> i32\n    let h0 = H.init(a)\n    let h: H{x} = h0@move\n        origin b outlives x.s\n    let k: H{y} = H.init(a)\n        origin y.s outlives a\n    return h.item@follow + k.item@follow\n" + Main);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)
@@ -516,11 +512,7 @@ public class LocalOriginClauseTest
     public void WarmTypeClauseBindingAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze(Ordered + "func f(p: ref/i32, q: ref/i32, r: ref/i32, s: S{u}, o: Option<S{v}>) -> i32\n    origin u.a == p\n    origin u.b == q\n    origin v.a == p\n    origin v.b == q\n    origin p outlives r\n    origin r outlives q\n    let s2: S{w} = s@move\n        origin w.a == r\n        origin w.b == q\n    let o2: Option<S{z}> = o@move\n        origin z.a == r\n        origin z.b == q\n    return s2.x@follow\n" + Main);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

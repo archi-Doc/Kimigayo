@@ -108,11 +108,7 @@ public class ContainerFragmentBindingTest
     public void WarmMergedBindingAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze("open struct B\n    public func value() -> i32 => 7\nstruct S: B\nstruct S\nfunc use() -> i32 => S.value()");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

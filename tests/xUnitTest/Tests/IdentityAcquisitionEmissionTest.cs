@@ -145,12 +145,8 @@ public class IdentityAcquisitionEmissionTest
     public void WarmIdentityAnalysisAndWritingAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("func take(value: (string, i32)) -> string => value.0@move\nlet pair = (\"ok\", 42)\nConsole.writeLine(take(pair@move@(string, i32)))");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))

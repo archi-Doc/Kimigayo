@@ -37,14 +37,10 @@ public class CopyPropertyEmissionTest
     public void WarmCopyAccessorPipelineAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze(Meter + "var m = Meter.init()\nm.level += 2\n_ = m.doubled");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.Validate(out var error), error);
-        }
-
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.Validate(out var error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

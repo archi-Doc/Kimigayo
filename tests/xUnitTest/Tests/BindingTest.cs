@@ -249,11 +249,7 @@ public class BindingTest
     {
         var source = "func identity<T>(x: T) -> T => x\n" + string.Join("\n", Enumerable.Range(0, 256).Select(i => $"let v{i} = identity({i})"));
         var compilation = CompilationTestHelper.ParseSuccess(source);
-        for (var i = 0; i < 4; i++)
-        {
-            Assert.True(compilation.Bind().IsComplete, Describe(compilation));
-        }
-
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Binding.Bind(BindingMode.Final)));
     }
 
@@ -270,12 +266,8 @@ public class BindingTest
         var compilation = Compilation.CreateForTest();
         Assert.True(compilation.Prepare(WindowsProfile.Target));
         compilation.Kotonoha.AddSource(new SourceDocument($"Milestone{number}.kimi", DiagnosticCorpus.Milestone(number)));
-        for (var i = 0; i < 4; i++)
-        {
-            Assert.True(compilation.Bind().IsComplete, Describe(compilation));
-        }
-
-        Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Binding.Bind(BindingMode.Final), iterations: 8));
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Binding.Bind(BindingMode.Final)));
     }
 
     [Fact]

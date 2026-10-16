@@ -101,11 +101,7 @@ public class NestedCollectionTest
             Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
-        for (var i = 0; i < 32; i++)
-        {
-            Compile();
-        }
-
+        Compile();
         Assert.Equal(0, AllocationMeasurement.Measure(Compile));
     }
 

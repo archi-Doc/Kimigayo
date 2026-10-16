@@ -87,11 +87,7 @@ public class TypeIdentityTest
     public void IdentityClosureReusesItsScratchStorage()
     {
         var c = CompilationTestHelper.ParseSuccess("func same<A, B, C>(b: B) -> C\n    A is B\n    A is C\n    return b@move\n()");
-        for (var i = 0; i < 4; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
 

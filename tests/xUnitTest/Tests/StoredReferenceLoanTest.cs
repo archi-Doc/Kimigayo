@@ -205,11 +205,7 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
     public void NamedInputBorrowAnalysisReusesItsStorage(string mode)
     {
         var c = MinimalEmissionTest.Analyze("func run(value: uniq/i32 during a)\n    let found = value@follow@" + mode + "\n    require found == 42 else => $abort(\"value\")\n    value@follow = 99");
-        for (var i = 0; i < 8; i++)
-        {
-            Assert.True(c.Analyze().IsVerified);
-        }
-
+        Assert.True(c.Analyze().IsVerified);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
     }
 }

@@ -98,11 +98,7 @@ public class AggregateArgumentInferenceTest
     public void WarmAggregateCandidateInferenceAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze("func use<length N, T>(value: ([N of T], bool)) => ()\nlet n: u8 = 2\nuse(([255, n], true))");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

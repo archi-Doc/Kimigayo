@@ -43,7 +43,7 @@ public class VirtualOverrideContractTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Original + "override func choose(self: objref/Self, value: ref/i32) -> ref/i32 => value\n()");
         var complete = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete));
         Assert.True(complete, MinimalEmissionTest.Describe(c, null));
     }
 
@@ -123,7 +123,7 @@ public class VirtualOverrideContractTest(ITestOutputHelper output)
         const string Source = "open struct Base\n    public virtual func choose(self: objref/Self, a: ref/i32 during first, b: ref/i32 during second) -> ref/i32 during second\n        origin first outlives second\n        return a\nstruct Derived : Base\n    override func choose(self: objref/Self, a: ref/i32 during first, b: ref/i32 during second) -> ref/i32 during second\n        origin first outlives second\n        return a\n()";
         var c = MinimalEmissionTest.Analyze(Source);
         var complete = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete));
         Assert.True(complete, MinimalEmissionTest.Describe(c, null));
     }
 

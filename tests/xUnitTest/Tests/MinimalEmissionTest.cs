@@ -243,14 +243,11 @@ public class MinimalEmissionTest
     public void WarmValidationDoesNotAllocate()
     {
         var c = Analyze("Console.writeLine(\"a\")");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Validate(out var error), Describe(c, error));
-        }
+        Assert.True(c.Validate(out var error), Describe(c, error));
 
         // The helper retires the thread's allocation context before measuring (see AllocationMeasurement).
         var valid = true;
-        var allocated = AllocationMeasurement.Measure(() => valid &= c.Validate(out _), 128);
+        var allocated = AllocationMeasurement.Measure(() => valid &= c.Validate(out _));
         Assert.True(valid);
         Assert.Equal(0, allocated);
     }
@@ -261,7 +258,7 @@ public class MinimalEmissionTest
     {
         var c = Analyze("Console.writeLine(\"a\")");
         var valid = true;
-        var allocated = AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 128, warmupIterations: 100);
+        var allocated = AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _));
         Assert.True(valid);
         Assert.Equal(0, allocated);
     }

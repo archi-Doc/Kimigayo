@@ -116,7 +116,7 @@ public class FunctionReferenceConditionTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Program(true, true, "i32"));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(valid);
     }
 

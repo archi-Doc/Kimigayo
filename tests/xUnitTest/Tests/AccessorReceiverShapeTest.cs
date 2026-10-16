@@ -133,11 +133,7 @@ public sealed class AccessorReceiverShapeTest(ITestOutputHelper output)
     public void WarmShapeRejectionAllocatesNothing()
     {
         var c = CompilationTestHelper.ParseSuccess(Meter + Point + "let fixed = Meter.init()\nfixed.reading\nvar meter = Meter.init()\nmeter.reading\nvar point = Point.init()\npoint.x = 10");
-        for (var i = 0; i < 4; i++)
-        {
-            Assert.False(c.Bind().IsComplete);
-        }
-
+        Assert.False(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
 

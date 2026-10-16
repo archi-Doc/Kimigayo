@@ -162,14 +162,10 @@ public class DynamicArrayCostTest
     public void WarmStorageIteratorEmissionAllocatesNothing(string loop)
     {
         var c = MinimalEmissionTest.Analyze("var values: Array<i32> = [1, 2]\nvar total: i32 = 0\n" + loop);
-        for (var i = 0; i < 32; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.WriteIr(TextWriter.Null, out _)));
     }
 
@@ -183,14 +179,10 @@ public class DynamicArrayCostTest
     public void WarmArrayAnalysisAndEmissionAllocateNothing(string stage)
     {
         var c = MinimalEmissionTest.Analyze("struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\nlet tasks: Array<Task> = [Task.init(42)]\nlet task = tasks[0]@ref\nrequire task.id == 42 else => $abort(\"task\")\nlet taskView = tasks[..]\nfor item in taskView => require item.id == 42 else => $abort(\"shared\")\nvar values: Array<i32> = [1, 2]\nvalues@uniq.insert(^0, 3)\nvalues[0] = 4\nlet last = values@uniq.remove(^1)\nlet view = values[0..1]\nlet item = view[0]@ref\nrequire item == 4 else => $abort(\"view\")\nfor value in values@move => require value > 0 else => $abort(\"value\")\nlet filled = Array<Task>.init(capacity: 0)\nlet copies = Array<i32>.init(repeating: 5, count: 3)\nrequire copies[2] == 5 and filled.length == 0 else => $abort(\"repeating\")");
-        for (var i = 0; i < 32; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (stage == "Pipeline")

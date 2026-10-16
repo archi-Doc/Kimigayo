@@ -94,11 +94,7 @@ public class AssociatedSpecificationAccessBindingTest
     public void WarmSpecificationChecksAllocateNothing()
     {
         var c = Check("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\ncontract Export\n    associate Item\npublic struct Api<T>\n    Self is Export when T is Copy\n        associate Export.Item is Source.Hidden.Element", true);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

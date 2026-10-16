@@ -104,11 +104,7 @@ public class SignatureProjectionCertificateBindingTest
     public void WarmSignatureProofsAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Prefix("public") + Consumer(true));
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

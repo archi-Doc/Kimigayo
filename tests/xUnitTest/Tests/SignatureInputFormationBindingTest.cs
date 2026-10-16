@@ -103,11 +103,7 @@ public class SignatureInputFormationBindingTest
     public void WarmSignatureInputChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "struct S\n    var value: Source<i32>.Origin.Item\ngroup G\n    func take(x: Source<i32>.Origin.Item) -> i32 => x\n    func call() -> i32 => take(1)");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

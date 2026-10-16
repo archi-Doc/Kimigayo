@@ -27,11 +27,7 @@ public class AssociatedForwardingTest
         var source = MilestoneSource[..MilestoneSource.IndexOf("public func main", StringComparison.Ordinal)] +
             "func project(value: Wrapper<Wrapper<NumberSource>>.Source.Element) -> i32 => value\n()";
         var c = MinimalEmissionTest.Analyze(source);
-        for (var i = 0; i < 8; i++)
-        {
-            Assert.True(c.Binding.Bind(BindingMode.Final).IsComplete);
-        }
-
+        Assert.True(c.Binding.Bind(BindingMode.Final).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
 

@@ -63,11 +63,7 @@ public class PatternWarningCompletionTest
     public void WarmWarningCompletionAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze(Source("public", "_", "_"));
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete || c.Binding.PatternWarnings.Count != 1)

@@ -89,11 +89,7 @@ public class PropertyCompletionBindingTest
     public void WarmPropertyCompletionAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "struct S\n    var value: E<Source>");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

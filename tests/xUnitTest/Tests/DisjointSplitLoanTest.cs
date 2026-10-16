@@ -17,16 +17,13 @@ public class DisjointSplitLoanTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze("struct Item\n    public var value: i32 = 1\nvar values: Array<Item> = [Item.init(), Item.init()]\nmatch values.tryGetPairUniq(first: 0, second: 1)\n    .Some((let a, let b))\n        let child = a@follow@ref\n        b.value += child.value\n        a.value += b.value\n    .None => ()");
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(0, AllocationMeasurement.Measure(
-            () =>
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            if (!c.Analyze().IsVerified)
             {
-                if (!c.Analyze().IsVerified)
-                {
-                    throw new InvalidOperationException("Sibling Loan analysis failed.");
-                }
-            },
-            iterations: 64,
-            warmupIterations: 32));
+                throw new InvalidOperationException("Sibling Loan analysis failed.");
+            }
+        }));
     }
 
     [Theory]

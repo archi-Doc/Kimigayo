@@ -105,11 +105,7 @@ public class NumericReplacementTest
         var variable = Variable(c);
         var donor = MinimalEmissionTest.Analyze("let donor = 2");
         Assert.True(KotoHelper.Replace(variable, variable.InitializerKoto!, Variable(donor).InitializerKoto!));
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

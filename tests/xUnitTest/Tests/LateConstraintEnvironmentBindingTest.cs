@@ -83,11 +83,7 @@ public class LateConstraintEnvironmentBindingTest
     public void WarmEnvironmentRevalidationAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze("public contract Marker: Copy\n    i32 is Copy" + Consumers);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)
