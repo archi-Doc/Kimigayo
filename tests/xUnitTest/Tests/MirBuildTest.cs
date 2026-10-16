@@ -613,6 +613,44 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.DoesNotContain(transfers, b => ends.Contains(b)); // The branching block, which the checks' edge leaves too, ends nothing.
     }
 
+    // SPEC 4.6.3, 4.8.1, 5.6 (DECISIONS R4-M40): a range selection's RawSlice takes what the Slice retains as its backing, the third
+    // operand: a shared borrow of an array's whole Place, or a Slice receiver's handle, copied first and never borrowed (SPEC 4.7.4);
+    // nothing backs a written Raw.slice, so its backing is Unit.
+    [Fact]
+    public void RangeSelectionsPassTheirBacking()
+    {
+        const string Source = "func middle(values: ref/[5 of i32]) -> Slice<i32> during values => values[1..^1]\n" +
+            "func reslice(view: Slice<i32>) -> Slice<i32> during view.source => view[1..]\n" +
+            "func empty() -> Slice<i32>\n    unsafe => return Raw.slice(null@raw/i32, 0)\n";
+        var middle = Body(Source, "middle");
+        var backing = middle.Operands[Slice(middle)];
+        var borrow = Assert.Single(
+            middle.Statements.ToArray(),
+            x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref } && x.Place == backing.Place);
+        Assert.Equal((MirRefKind.Shared, 1), ((MirRefKind)borrow.Rvalue.Op, borrow.Rvalue.Place.Root));
+        var reslice = Body(Source, "reslice");
+        var handle = reslice.Operands[Slice(reslice)];
+        var copy = Assert.Single(reslice.Statements.ToArray(), x => x.Kind == MirStatementKind.Assign && x.Place == handle.Place);
+        Assert.Equal((MirOperandKind.Move, MirRvalueKind.Use), (handle.Kind, copy.Rvalue.Kind));
+        Assert.Equal((MirOperandKind.Copy, 1), (reslice.Operands[copy.Rvalue.Start].Kind, reslice.Operands[copy.Rvalue.Start].Place.Root));
+        Assert.DoesNotContain(
+            reslice.Statements.ToArray(),
+            static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref, Rvalue.Place.Root: 1 });
+        var empty = Body(Source, "empty");
+        Assert.Equal(MirConstKind.Unit, empty.Consts[empty.Operands[Slice(empty)].Arg].Kind);
+
+        // The third operand of the body's one RawSlice.
+        static int Slice(MirBody body)
+        {
+            var call = body.Blocks.ToArray().Single(static x => x.Terminator is
+            {
+                Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.RawSlice },
+            });
+            Assert.Equal(3, call.Terminator.Count);
+            return call.Terminator.Start + 2;
+        }
+    }
+
     // SPEC 13.7.2: an in-place compound update reserves its located destination (TwoPhaseUniq) and reads and writes it through that
     // reservation, so the write activates it.
     [Fact]

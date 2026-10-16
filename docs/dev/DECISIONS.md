@@ -973,6 +973,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Rejected: a builder field marking the current input (hidden state); a second copy of the Borrow row in `Operand`; a writeback
   through setters now (the receiver would have to be acquired once at locate and passed to the setter: F8's unit 2d); the validator
   accepting every Type with a `Never` part (an open family; `Agree` also decides the builder's layers). Not temporary.
+  The `RawSlice` backing landed later (R4-M40).
 - **R4-M38** (2026-10-17; design A3 §4.2, owner approval of P5 and of its §9 item 8 on 2026-10-17) A4's static keys for A5.
   `MirEffects.Keys(body, view, block, out unknown)`: the mutable static Fields a Call or a Drop may access through what it runs, each
   once and written where any access writes it, from the summaries the last `Run` solved; `unknown` where A4 does not classify what it
@@ -1008,6 +1009,20 @@ and migration obligations remain in force; no numeric cap changes are authorized
   and INTEGRATED change only at that revision, SPECJ only on an explicit translation update, and the proposal stays open. Its
   companion S2 ([Preserves Results by Receiver Place](../../draft/Proposals/2026-10-16%20Preserves%20Results%20by%20Receiver%20Place.md))
   is not decided here.
+- **R4-M40** (2026-10-17; design A3 §4.1's Slice row, owner approval of its §9 item 8 on 2026-10-17, implemented on the planning
+  session's instruction of the same day) `RawSlice` takes a third operand, its backing, what the Slice retains under A5's intrinsic
+  retention (every operand to the result), so a Slice cannot outlive or alias a write of what it views, which A3 found otherwise
+  accepted. A range selection's backing follows SPEC 4.8.1: an array (fixed or `Array`) lends its whole Place, a shared borrow made
+  with the call (`Borrow`); a Slice receiver's handle is copied first where it is located (SPEC 4.7.4), its length, element address
+  and backing all read from that copy, so the reslice retains its source and borrows no handle variable. A written
+  `Raw.slice(storage, length)` has nothing to back it (SPEC 5.6: the caller's obligation, a fresh anchor for its result), so its
+  backing is Unit, added by `Extra`, the builder's one table of the operands an intrinsic takes beyond a written call's arguments
+  (Fail's code is its other row). The backing is the last operand, not A3's first, so a written call's arguments keep their
+  parameters' positions. R5's code generation ignores it. Open (PLAN G94): the backing is formed after the boundaries are
+  evaluated, so a write inside a boundary meets no Loan (SPEC 4.7.4), as element indexing and updates do. Rejected: a SPEC and
+  library revision giving `Raw.slice` a backing parameter (SPEC 5.6's fresh anchor already says nothing backs it); a second
+  `IntrinsicId` for range selections (an O1 vocabulary entry); an arity of 2 or 3 (two forms of one row); the storage pointer passed
+  twice by a written call (a raw pointer carries no Loan, and the copy would read as a backing). Not temporary.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

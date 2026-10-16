@@ -258,10 +258,19 @@ internal sealed partial class MirBuilder
     // SPEC 4.6.3, 4.8.1: a built-in range selection: the receiver located once and its range resolved against its length, a range written
     // directly at each boundary (omitted: 0 or the length; ^x: the length minus x; a closed end q: q + 1), else the ResolvedRange its key
     // is or its key's resolution (First) gives; checked once (0 <= start <= end <= length, else KIMI_E_INDEX_BOUNDS), then the Slice RawSlice
-    // serves (R3 decision 5) of the elements from the address of element start, any address for none (SPEC 5.6).
+    // serves (R3 decision 5) of the elements from the address of element start, any address for none (SPEC 5.6), backed by what the
+    // Slice retains (DECISIONS R4-M40): a shared borrow of an array's whole Place, or a Slice receiver's copied handle.
     private void Slice(MirPlace destination, IndexKoto index)
     {
         var sequence = this.Place(index.Left);
+        var handle = this.body.TypeOf(sequence) is { Kind: BoundTypeKind.Slice } view ? this.Temp(view, index) : (MirPlace?)null;
+        if (handle is { } copy)
+        {
+            // SPEC 4.7.4, 4.8.1: a Slice receiver's handle is copied first; its reslice retains the copy's source, no handle variable.
+            this.Make(copy, MirRvalue.Use(this.body.AddOperand(MirOperand.Copy(sequence))), index);
+            sequence = copy;
+        }
+
         var range = HirTables.Op(index.Right) == HirOp.Range ? index.Right as RangeKoto : null;
         var length = this.Length(sequence, index);
         var zero = MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize)));
@@ -328,6 +337,7 @@ internal sealed partial class MirBuilder
         this.current = join;
         this.arguments.Add(MirOperand.Move(pointer));
         this.arguments.Add(MirOperand.Copy(count));
+        this.arguments.Add(handle is { } source ? MirOperand.Move(source) : this.Borrow(SemanticsKind.Ref, sequence, index));
         this.Serve(destination, CompilerFunctionKind.RawSlice, null, [element], at, index);
     }
 
