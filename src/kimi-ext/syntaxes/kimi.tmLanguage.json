@@ -195,10 +195,6 @@
           "name": "keyword.other.when.kimi"
         },
         {
-          "match": "(?<![\\w.])(place)(?=\\s+(?:ref|uniq)/)",
-          "name": "storage.modifier.place.kimi"
-        },
-        {
           "match": "(?<![\\w.])(specialize)(?=\\s+func\\b)",
           "name": "storage.modifier.specialize.kimi"
         },

@@ -207,7 +207,6 @@ test('colors contextual keywords only in their contexts', () => {
   expectScope('let filled = [N of _]', 'of', 'keyword.other.of');
   expectScope('let filled = [N of _]', '_', 'variable.language.wildcard');
   expectScope('func sum<length N>(values: [N of i32]) -> i32', 'length', 'storage.modifier.length');
-  expectScope('func index(self: ref/Self) -> place ref/V during self', 'place', 'storage.modifier.place');
   expectScope('    origin r.source == self.source', 'origin', 'keyword.other.origin');
   expectScope('func f() -> ref/i32 during static', 'static', 'keyword.other.origin.static');
   expectScope('    specialize func tryResolve<isize>(self: isize) -> bool', 'specialize', 'storage.modifier.specialize');
@@ -224,6 +223,8 @@ test('colors contextual keywords only in their contexts', () => {
   expectScope('    associate Iterable.IteratorType(source) is ArrayIterator<T> during source', 'associate', 'storage.type.associate');
   expectScope('    T is owning', 'owning', 'storage.modifier.semantics.category');
   // Elsewhere the same words are ordinary Names.
+  // A function result is a Type (SPEC 7.1), so `place` after `->` is an ordinary Name too.
+  expectNoScope('func index(self: ref/Self) -> place ref/V during self', 'place', 'storage');
   const names = 'let during = origin + when + place + length + of + static + unsafe';
   for (const word of ['during', 'origin', 'when', 'place', 'length', 'of', 'static', 'unsafe']) {
     expectNoScope(names, word, 'keyword');
