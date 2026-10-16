@@ -199,7 +199,7 @@ internal group Storage
         let start = state.position
         unsafe
             // Discard each skipped prefix's authority, then remove the selected element before splitting it.
-            // Logical positions, not pointer equality, prove disjointness even when E has zero size.
+            // Distinct positions let the raw Places designate distinct Places, also when E is zero-sized (SPEC 5.2).
             state.position = start + low + 1
             state.count = count - low - 1
             let lower = state.storage[start + low]@uniq

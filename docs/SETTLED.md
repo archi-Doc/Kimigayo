@@ -309,3 +309,18 @@
 - **Proposed fix:** Make `x[k]` an ordinary call of `index` or `indexUniq` and require `x[k]@follow`.
 - **Why not applied:** It breaks parity between user and built-in element Places (SPEC §4.7.2): `values[i] = v`,
   `values[i]@ref` and nested selections would need a spelling that built-in arrays do not.
+
+## Zero-sized raw values told apart by stride, pointer position, `Raw.write`, count, a provenance exemption or a producer list
+
+- **Problem:** Distinct zero-sized values may share an address (§4.1), so raw-storage state kept per address cannot tell them apart: initialization, Take, borrowing, `Raw.slice` and release cannot say which value they act on.
+- **Example:**
+
+  ```kimi
+  let p = Raw.allocate<()>(2)
+  unsafe
+      Raw.initialize(p, ())
+      Raw.initialize(p + 1, ())   // p + 1 == p: per-address state already holds a value here.
+  ```
+
+- **Proposed fix:** Give zero-sized Types a positive stride; carry a logical position in every raw pointer; replace `Raw.initialize` with a `Raw.write` that overwrites without destroying; count zero-sized values per address; exempt zero-byte accesses from provenance, as Rust does; or name "raw elements" by a list of storage producers.
+- **Why not applied:** A positive stride changes §4.1 and the cost of zero-byte allocation. Pointer positions add state to arithmetic, casts, projection and foreign contracts. `Raw.write` still leaves Take, borrowing and `Raw.slice` without a target and adds a second way to abandon a value (Principle 1). Counting restates the capability and Loan rules for each counted group of zero-sized values. Rust can exempt zero-byte accesses because its abstract machine keeps no memory state for zero-byte ranges; Kimigayo keeps initialization, Loans and destruction per zero-sized Place, so an exemption would need a second, size-dependent bound on the Places a pointer reaches, and without it equal zero-byte results would share Places of different owners. A producer list misses storage that contracts provide and values that relocation moves. Raw storage is Storage instead: a placed value occupies a Place, and a raw Place designates one (§3.4, §5.2).

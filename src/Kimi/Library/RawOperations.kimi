@@ -1,13 +1,31 @@
 // Signatures implemented by the compiler; loaded into Kimi.Raw (SPEC 5.6).
-/// Allocates uninitialized storage for `count` elements. A negative count, an overflow of `count * stride(T)` or an
-/// allocation failure Aborts. A zero-byte request allocates nothing and returns a nonnull address aligned for `T`.
+/// Allocates raw storage for `count` elements; it holds no value.
+///
+/// A zero-byte request allocates nothing and returns a nonnull address aligned for `T`, with provenance of its own.
+///
+/// - abort: `count` is negative, `count * stride(T)` overflows, or the allocation fails.
 public func allocate<T>(count: isize) -> raw/T
-/// Releases storage that `allocate` returned, at its start address and without destroying any element; null and
-/// zero-byte results are ignored. Every pointer derived from the allocation becomes invalid.
+/// Releases storage that `allocate` returned, at its start address, without destroying any value.
+///
+/// Null is ignored, and nothing is freed for a zero-byte result, which may be released again. Afterwards every
+/// pointer into the storage is invalid.
+///
+/// - safety: `storage` is null, a zero-byte result or the start of an unreleased `allocate` result, possibly converted
+///   to another raw pointer Type. Every Non-Copy value placed in the storage is already destroyed, taken or relocated,
+///   whole or, if destroying it whole would only destroy its components, by its remaining Non-Copy components under
+///   the same rule (SPEC 5.6).
 public unsafe func release<T>(storage: raw/T)
-/// Moves `value` into live, aligned, writable storage that holds no initialized value, destroying nothing.
+/// Moves `value` into a Place of `T` at `storage`, an existing one or, in raw storage, a new one, destroying nothing.
+///
+/// - safety: The write meets the raw access conditions (SPEC 5.2.1): `storage` is live, aligned for `T` and writable,
+///   the Place lies within its provenance, and no live Loan conflicts. The Place holds no value, and no Initialized
+///   Place other than its ancestors holds any of its bytes (SPEC 5.2).
 public unsafe func initialize<T>(storage: raw/T, value: T)
-/// Forms a shared Slice of `length` elements starting at `storage`; the caller fixes the result Origin `s`. When `length` is
-/// positive, `storage` is nonnull and aligned for completed contiguous storage, which is not written for `s`. Formation
-/// reads no element; the programmer must write valid values before reading any noinit elements through this view.
+/// Forms a shared Slice of `length` elements starting at `storage` without reading them; the caller fixes the
+/// result Origin `s`.
+///
+/// - safety: `length >= 0`. A positive `length` needs a nonnull, aligned `storage` with `length * stride(T)` fitting
+///   in `isize`, each `storage[i]` below `length` designating a distinct Place that holds a complete, valid value or
+///   belongs to a noinit array, and no element is written for `s` (SPEC 5.6). The programmer writes valid values
+///   before reading noinit elements through this view.
 public unsafe func slice<T>(storage: raw/T, length: isize) -> Slice<T> during s

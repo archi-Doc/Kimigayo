@@ -35,7 +35,7 @@ resource = makeResource() // Error: a let is initialized only once.
 
 A **complete value** has both **construction completion** (its construction finished) and **current completeness** (every stored component is Initialized and complete). A struct's components are its base subobject and its own Fields, with completion tracked per layer; an enum's components are the active Case's payloads, and inactive Cases need no initialization. Every stored Field must be initialized; computed Properties are not components.
 
-Only construction commits completion: the constructor phases ([§6.3](06-declarations-and-containers.md#63-constructors)), Case construction ([§6.5.2](06-declarations-and-containers.md#652-case-references)), Tuple and array construction, and `noinit` ([§4.3.4](04-arrays-indexing-and-slices.md#434-noinit)). No other operation commits or resets it, and an incomplete exit or an Abort never commits. A constructor commits after success is validated and cleanup finishes with the storage alive, before the value is exposed or transferred.
+Only construction commits completion: the constructor phases ([§6.3](06-declarations-and-containers.md#63-constructors)), Case construction ([§6.5.2](06-declarations-and-containers.md#652-case-references)), Tuple and array construction, `noinit` ([§4.3.4](04-arrays-indexing-and-slices.md#434-noinit)) and construction that an operation contract states; a punned Place holds a complete value, and relocation keeps a value's completion ([§5.2](05-raw-pointers-and-unsafe-memory.md#52-raw-places)). No other operation commits or resets it, and an incomplete exit or an Abort never commits. A constructor commits after success is validated and cleanup finishes with the storage alive, before the value is exposed or transferred.
 
 - A Place without construction completion (never initialized, or its whole value Moved) can be initialized only by placing a whole value; writing, reading or borrowing a part of it is an error. The only exception is the construction receiver's own stored Fields ([§6.3.4](06-declarations-and-containers.md#634-the-construction-receiver)); a nested part such as `self.inner.x` is not one of them.
 - While a value is incomplete, whole-value reads, Copy, borrows, Move and exposure are errors, also through accessors that take the whole `self`.
@@ -83,7 +83,7 @@ inspect(items[i])          // Valid.
 
 ### 15.1.5. Access operations and acquisition
 
-A **Movable Place** offers Take. A tracked Place must also be complete and reached by a trackable owned path. A raw Place, and its Fields and elements, offer Take without state tracking or a completeness check ([§5.2.3](05-raw-pointers-and-unsafe-memory.md#523-taking-from-raw-places)). Owned roots, permitted inline Fields and Tuple elements, and constant-index fixed-array elements offer Take; borrowed referents, object payloads, static storage, dynamic-collection elements, other indices and hidden Property storage never offer Take; `remove` and owning iterators extract elements under their own contracts.
+A **Movable Place** offers Take. A tracked Place must also be complete and reached by a trackable owned path. A raw Place, and its Fields and elements, offer Take without state tracking; completeness is the author's obligation ([§5.2](05-raw-pointers-and-unsafe-memory.md#52-raw-places), [§5.2.3](05-raw-pointers-and-unsafe-memory.md#523-taking-from-raw-places)). Owned roots, permitted inline Fields and Tuple elements, and constant-index fixed-array elements offer Take; borrowed referents, object payloads, static storage, dynamic-collection elements, other indices and hidden Property storage never offer Take; `remove` and owning iterators extract elements under their own contracts.
 
 | Operation | Required conditions |
 | --- | --- |
@@ -94,7 +94,7 @@ A **Movable Place** offers Take. A tracked Place must also be complete and reach
 | Initialize | Uninitialized; the declaration's initialization permission |
 | Replace | Write; the old value can be destroyed; no dependency of the old or new value is broken |
 
-Every operation also checks access, Origins and Loan conflicts. The first initialization of a `let` and initialization during construction are dedicated permissions, not Write or Take. A Moved `let` cannot be reinitialized, and Uninitialized storage cannot be borrowed as `uniq/T`. A generic owned value may be Moved whole without a Contract; an unknown `T` is acquired as `T`. A raw Place keeps the obligations of [§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions).
+Every operation also checks access, Origins and Loan conflicts. The first initialization of a `let` and initialization during construction are dedicated permissions, not Write or Take. A Moved `let` cannot be reinitialized, and Uninitialized storage cannot be borrowed as `uniq/T`. A generic owned value may be Moved whole without a Contract; an unknown `T` is acquired as `T`. A raw Place keeps the obligations of [§5.2](05-raw-pointers-and-unsafe-memory.md#52-raw-places) and [§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions).
 
 **Lending rule.**
 
@@ -484,7 +484,7 @@ func get(b: objref/Holder<ref/i32 during c> during o) -> ref/i32 during o
 
 ### 15.6.2. Place overlap and conflicts
 
-Two Places overlap when an operation on one may affect the other. Non-overlap is proven only by these rules:
+Places overlap as [§3.4](03-types-and-values.md#34-places-and-storage) defines; non-overlap is proven only by these rules:
 
 | Places | Result |
 | --- | --- |
@@ -512,7 +512,7 @@ Each operation is checked against every live Loan on an overlapping Place:
 
 Borrowing through an exclusive borrow creates a child Loan anchored on the referent; while the child is live, access through the parent is suspended. The child does not depend on the variable that holds the parent, so a Reborrow of a parameter may be returned. It is contained in the Origin of the parent and of each safe borrow through which the parent is reached, such as a receiver ([§15.5](#155-exclusive-origins)) or a Closure's call receiver ([§15.8.2](#1582-closure-dependencies)), up to and including the first shared layer. A shared Borrow through a shared reference is thus contained only in that reference's Origin.
 
-**Region splitting** derives several child Loans from one parent the same way. Exclusive children and the parent's remainder must be pairwise non-overlapping, by [§15.6.2](#1562-place-overlap-and-conflicts) or by the unsafe promise of a `uniq` borrow of a raw Place; shared children may overlap. A Reborrow through a child stays within that child. A value descends from the Iterator or remainder it was split from when a call returns it with Origins of that receiver's Type only and no other input's Type names them, as `next` does. Destroying the Iterator or remainder does not end published child Loans. A library splits raw storage in ordinary code: the remainder keeps the parent Loan in a `Loan<uniq/… during source>` Field, each child is a `uniq` borrow of a raw Place returned `during state.source`, and never lending a child twice is the unsafe obligation.
+**Region splitting** derives several child Loans from one parent the same way. Exclusive children and the parent's remainder must be pairwise non-overlapping, by [§15.6.2](#1562-place-overlap-and-conflicts) or by the unsafe promise of a `uniq` borrow of a raw Place; shared children may overlap. A Reborrow through a child stays within that child. A value descends from the Iterator or remainder it was split from when a call returns it with Origins of that receiver's Type only and no other input's Type names them, as `next` does. Destroying the Iterator or remainder does not end published child Loans. A library splits raw storage in ordinary code: the remainder keeps the parent Loan in a `Loan<uniq/… during source>` Field, each child is a `uniq` borrow of a raw Place returned `during state.source`, and never lending overlapping Places to two live exclusive children is the unsafe obligation.
 
 A result may be kept across later calls on the same receiver when its Type does not depend on its call's receiver Loan and the callee's effects (for `preserves results`, its effect bound, [§8.11.3](08-generics-constraints-and-contracts.md#8113-preserves-results)) do not conflict with it.
 

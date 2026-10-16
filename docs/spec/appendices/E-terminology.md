@@ -29,7 +29,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Conditional Conformance | A conformance available when its conditions are Proven. | [§8.8](../08-generics-constraints-and-contracts.md#88-conditional-conformance) |
 | Conditional Member | A member whose Constraint Clauses constrain its Type's parameters; applicable only when they are Proven. | [§7.5](../07-functions-and-callable-values.md#75-function-constraints) |
 | `confined` | Effect bound: no environment effect and no unclassified effect. | [§8.11.2](../08-generics-constraints-and-contracts.md#8112-confined) |
-| Conflicting access | Two accesses to overlapping Storage, at least one a write, not both atomic implementation accesses. | [§22.3.7](../22-core-execution-and-foreign-functions.md#2237-data-races) |
+| Conflicting access | Two accesses to overlapping Places or to one object's reference counts, at least one a write, not both atomic implementation accesses. | [§22.3.7](../22-core-execution-and-foreign-functions.md#2237-data-races) |
 | Conformance | A Type's fulfillment of a Contract. | [§8.6.1](../08-generics-constraints-and-contracts.md#861-conformance-declarations-and-identity) |
 | Conformance Identity | Complete conforming Type plus bound Contract reference. | [§8.6.1](../08-generics-constraints-and-contracts.md#861-conformance-declarations-and-identity) |
 | Constraint / Constraint Clause | A condition on a Type or Semantics / its clause `subject is requirement`. | [§8.2.1](../08-generics-constraints-and-contracts.md#821-constraint-clauses) |
@@ -76,6 +76,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Origin | A symbolic lifetime denoting a region. | [§15.2.1](../15-ownership-and-lifetime-analysis.md#1521-origin-expressions) |
 | Origin parameter | An Origin binder of an associated Type, as in `LentItem(step)`. | [§8.5.4](../08-generics-constraints-and-contracts.md#854-origin-parameters) |
 | Origin relation | A required `==` or `outlives` between Origins. | [§15.6.1](../15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness) |
+| Overlap | Identical Places, a Place and an inline part of it, or Places that share a byte. | [§3.4](../03-types-and-values.md#34-places-and-storage) |
 | Override | A derived body implementing one inherited virtual slot; it adds no lookup layer, overload or public function. | [§6.4.2](../06-declarations-and-containers.md#642-override-target-selection) |
 | Owned | Independence from non-static Origins. | [§15.2.3](../15-ownership-and-lifetime-analysis.md#1523-static-and-owned) |
 | Pair binder / pair target | In a pair parameter `<s/T>`: `s` / `T`. | [§8.1.1](../08-generics-constraints-and-contracts.md#811-type-slots-and-pair-parameters) |
@@ -87,7 +88,9 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | PrimitiveInteger | The compiler-intrinsic Contract of exactly the twelve integer Types. | [§8.7.4](../08-generics-constraints-and-contracts.md#874-primitiveinteger) |
 | Project root | The top of a Kotonoha's declaration hierarchy. | [§18](../18-modules-and-dependencies.md#18-modules-and-dependencies) |
 | Property | A stored `let`/`var` member or a computed member. | [§11.1](../11-properties.md#111-property-kinds) |
-| Raw pointer / raw Place | A `raw/T` address / `*p`, `p[n]` or a part of one. | [§5](../05-raw-pointers-and-unsafe-memory.md#5-raw-pointers-and-unsafe-memory), [§5.2](../05-raw-pointers-and-unsafe-memory.md#52-raw-places) |
+| Punned Place | A transient Place of a Copy, positive-sized Type over bytes that Initialized Places hold. | [§5.2](../05-raw-pointers-and-unsafe-memory.md#52-raw-places) |
+| Raw pointer / raw Place | A `raw/T` address / `*p`, `p[n]` or a part of one, designating a Place at its address. | [§5](../05-raw-pointers-and-unsafe-memory.md#5-raw-pointers-and-unsafe-memory), [§5.2](../05-raw-pointers-and-unsafe-memory.md#52-raw-places) |
+| Raw storage | Storage, such as an allocation or a dynamic collection's element storage, that declares no Place for the values placed in it. | [§3.4](../03-types-and-values.md#34-places-and-storage) |
 | Read / Write / Take | The capabilities of a Place: observe; initialize or replace; extract. | [§3.4](../03-types-and-values.md#34-places-and-storage) |
 | Read Type / Value read | A Scalar, position or range Type / the implicit Copy of the terminal value of safe `ref`/`uniq` layers where a read Type is required. | [§3.5.3](../03-types-and-values.md#353-value-read) |
 | Reborrow | A borrow derived from an existing borrow. | [§13.5.6](../13-operators-and-assignment.md#1356-borrow-and-reborrow) |

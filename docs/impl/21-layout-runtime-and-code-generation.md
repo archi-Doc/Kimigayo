@@ -12,7 +12,7 @@ For a storable Type `T`, `size(T)` is the number of inline bytes it reserves, in
 
 - Every component meets its natural alignment, and an aggregate's alignment is at least the maximum of its components'. Positive-sized components never overlap, and padding of a nested component is never reused.
 - Padding has no defined content. Byte transfers may copy it; typed reads and comparisons never treat it as a value.
-- Zero-sized values keep their evaluation, initialization, ownership, Loans and destruction. Distinct zero-sized Places may share an address.
+- Zero-sized values keep their evaluation, initialization, ownership, Loans and destruction. Distinct zero-sized Places may share an address; a raw Place designates a Place, not an address ([§5.2](../spec/05-raw-pointers-and-unsafe-memory.md#52-raw-places)).
 - Physical layout never changes Field identity, initialization order, Partial Move, Loans or destruction order.
 - The same compiler, target, settings and selected sources produce the same layout.
 

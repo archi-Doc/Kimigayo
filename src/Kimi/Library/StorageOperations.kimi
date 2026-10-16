@@ -30,9 +30,9 @@ internal func countOverflow() -> Never
 internal func allocationSizeExceeded() -> Never
 // The nullable form of Alloc (SPEC 21.4.3): null wherever Alloc would Abort; Raw.release releases the result.
 internal func tryAllocateBytes(bytes: isize) -> raw/u8
-// Copies `count` bytes between nonoverlapping allocated ranges whatever their initialization state; no responsibility
-// moves and no user code runs.
+// Copies `count` bytes between nonoverlapping allocated ranges whatever their initialization state; it may relocate
+// the values in the source range (SPEC 5.2) and runs no user code.
 internal unsafe func transferBytes(destination: raw/u8, source: raw/u8, count: isize)
-// Appends one slot, growing the storage first, and transfers `key` and `value` into it. The ordinary source decides that
-// no equal key is stored; growth failure Aborts at the standard operation's caller location.
+// Appends one slot, growing the storage first, and places `key` and `value` in it (SPEC 5.2). The ordinary source
+// decides that no equal key is stored; growth failure Aborts at the standard operation's caller location.
 internal unsafe func placeEntry<K, V>(handle: raw/u8, key: K, value: V)
