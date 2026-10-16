@@ -52,7 +52,8 @@ internal func borrowStorageUniq<E>(value: uniq/(UniqSlice<E> during source) duri
 /// no valid value (SPEC 5.2.1 condition 2) until the construction calls `DictionaryStorage.initialize`, which writes
 /// them through a pointer with the provenance and authority that `@raw` gives for the Dictionary under construction.
 ///
-/// - safety: Writes through the result keep the Handle consistent with its slot storage.
+/// - safety: Writes through the result keep the Handle consistent with its slot storage and the slot invariant that
+///   DictionaryStorage.Links states.
 internal unsafe func dictionaryStorage<K, V>(value: uniq/Dictionary<K, V>) -> (raw/u8, isize)
     K is Equatable
 // Fails with the caller location carried by the standard operation's private ABI.
