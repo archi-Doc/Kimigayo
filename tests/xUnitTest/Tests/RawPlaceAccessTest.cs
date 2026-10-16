@@ -50,19 +50,15 @@ public class RawPlaceAccessTest
     [Fact]
     public void AnExplicitTakeMovesAndDestroys()
     {
-        var source = Resource + """
-            group Native
-                #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: raw/u8, size: u64, kind: u32, protect: u32) -> raw/u8
-                #LibraryImport("kernel32", "VirtualFree")
-                public unsafe func free(address: raw/u8, size: u64, kind: u32) -> i32
+        var source = Resource + $$"""
+            {{ForeignEmissionTest.Pages()}}
             public func main()
                 unsafe
                     let bytes = Native.allocate(null, 4096, 12288, 4)
                     require bytes != null else => $abort("allocate")
                     let storage = bytes@raw/Resource
-                    (*storage).value = 1
-                    storage[1].value = 2
+                    Raw.initialize(storage, Resource.init(1))
+                    Raw.initialize(storage + 1, Resource.init(2))
                     let taken = (*storage)@move
                     require taken.value == 1 else => $abort("take")
                     _ = storage[1]@move
