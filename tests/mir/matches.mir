@@ -61,7 +61,9 @@ fn area @28
       StorageLive(_9) @50 s3
       _9 = &((*_3) as case 1).1: ref/i32 @50 s3
       _7 = Gt(copy (*_8), const 0_i32) proven @52 s3
+      EndBorrow(_9) @50 s3
       StorageDead(_9) @50 s3
+      EndBorrow(_8) @48 s3
       StorageDead(_8) @48 s3
       FakeRead(_3) @52 s3
       switch copy _7 [0: bb6, otherwise: bb7] @52 s3
@@ -283,6 +285,7 @@ fn guarded @114
       _7 = move (_3 as case 0).0 [clear f0] @126 s3
     * goto bb15 check bb16 @131 s3
   bb6:
+      EndBorrow(_6) @126 s2
       StorageDead(_6) @126 s2
       FakeRead(_3) @128 s2
       switch copy _5 [0: bb4, otherwise: bb5] @128 s2
@@ -332,13 +335,13 @@ fn guarded @114
       _12 = move (_3 as case 0).0 [clear f0] @137 s5
     * goto bb32 check bb33 @146 s5
   bb22:
-      EndBorrow(_10) @144 s4
       goto bb28 check bb29 @144 s4
   bb23:
       _9 = copy _11 @139 s4
       goto bb24 @139 s4
   bb24:
       StorageDead(_11) @140 s4
+      EndBorrow(_10) @137 s4
       StorageDead(_10) @137 s4
       FakeRead(_3) @139 s4
       switch copy _9 [0: bb20, otherwise: bb21] @139 s4
@@ -350,6 +353,7 @@ fn guarded @114
       goto bb25 @114
   bb27:
       StorageDead(_11) @140 s4
+      EndBorrow(_10) @137 s4
       StorageDead(_10) @137 s4
       goto bb26 @114
   bb28:
@@ -761,6 +765,7 @@ fn loopingGuard @272
       StorageDead(_5) @280 s2
       goto bb5 @280 s2
   bb7:
+      EndBorrow(_4) @276 s2
       StorageDead(_4) @276 s2
       FakeRead(_2) @278 s2
       goto bb4 check bb3 @278 s2

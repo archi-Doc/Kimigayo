@@ -8,9 +8,10 @@ namespace Kimi.Compiler.Mir;
 // and PlaceShape.
 internal sealed partial class MirBuilder
 {
-    // The value a node's own form produces, into the destination.
+    // The value a node's own form produces, into the destination; as a call's input (input), a written exclusive borrow, also inside
+    // parentheses, is two-phase (SPEC 15.6.7).
     [CodeRuleException("KR2006", Limit = 67, Reason = "Flat dispatch over the closed HirOp vocabulary; each row invokes its owning lowering operation.")]
-    private void Into(MirPlace destination, Koto node)
+    private void Into(MirPlace destination, Koto node, bool input = false)
     {
         switch (HirTables.Op(node))
         {
@@ -21,7 +22,7 @@ internal sealed partial class MirBuilder
                 this.Use(destination, MirOperand.Const(this.body.Const(new(MirConstKind.FnItem, item))), node); // SPEC 7.7.4: a constant of its Item Type.
                 break;
             case HirOp.Group: // Its operand, which the group acquires as the operand's Adjust says.
-                this.Assign(destination, Child(node));
+                this.Assign(destination, Child(node), input);
                 break;
             case HirOp.Block:
                 this.Block(destination, (CodeBlockKoto)node);
@@ -81,7 +82,7 @@ internal sealed partial class MirBuilder
                 this.Logical(destination, (BinaryKoto)node);
                 break;
             case HirOp.Borrow: // SPEC 13.5.6, 5.4: the operand's Place borrowed as the node's Type says, or its address.
-                this.Set(destination, this.Ref(this.Place(Child(node)), TypeOf(node), input: false), node);
+                this.Set(destination, this.Ref(this.Place(Child(node), input), TypeOf(node), input), node);
                 break;
             case HirOp.Convert:
                 this.Convert(destination, (BinaryKoto)node, TypeOf(node));
@@ -104,7 +105,7 @@ internal sealed partial class MirBuilder
             case HirOp.Name or HirOp.Field or HirOp.Index or HirOp.Deref or HirOp.Call when HirTables.PlaceOf(node).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value):
                 // SPEC 3.5, 14.2: a Place's value, discarded or taken as a value, is its Place evaluated (an Index checks its bounds) and read
                 // as its Type decides: Copied, a stored exclusive reference Reborrowed, a pair layer by case.
-                this.Use(destination, this.Acquire(new(HirAcquire.ByCase, HirAdaptation.None), this.Place(node), null, input: false, node, destination), node);
+                this.Use(destination, this.Acquire(new(HirAcquire.ByCase, HirAdaptation.None), this.Place(node, input), null, input, node, destination), node);
                 break;
             case HirOp.DictionaryLiteral:
                 this.Dictionary(destination, (DictionaryLiteralKoto)node);
@@ -119,16 +120,17 @@ internal sealed partial class MirBuilder
     }
 
     // The destination takes a node's value as its consumer takes it (its Adjust): a Temporary, or a group's operand, is built into the
-    // destination; any other acquisition is an operand of the destination's Type, a value it forms (a borrow, an erasure) formed there.
-    private void Assign(MirPlace destination, Koto node)
+    // destination; any other acquisition is an operand of the destination's Type, a value it forms (a borrow, an erasure) formed there,
+    // as a call's input where the destination holds one (input).
+    private void Assign(MirPlace destination, Koto node, bool input = false)
     {
         if (HirTables.AdjustOf(node) is { Acquire: HirAcquire.Temporary or HirAcquire.None, Adaptation: HirAdaptation.None })
         {
-            this.Into(destination, node);
+            this.Into(destination, node, input);
         }
         else
         {
-            this.Use(destination, this.Operand(node, this.body.TypeOf(destination), input: false, destination), node);
+            this.Use(destination, this.Operand(node, this.body.TypeOf(destination), input, destination), node);
         }
     }
 
@@ -141,7 +143,7 @@ internal sealed partial class MirBuilder
         if (adjust is { Acquire: HirAcquire.Temporary or HirAcquire.None, Adaptation: HirAdaptation.None })
         {
             return HirTables.Op(node) == HirOp.Literal && this.Literal(node) is var constant and >= 0 ? MirOperand.Const(constant)
-                : MirOperand.Move(this.Value(node, into));
+                : MirOperand.Move(this.Value(node, into, input));
         }
 
         if (adjust.Acquire == HirAcquire.Unset || adjust.Adaptation == HirAdaptation.StorageProjection || (adjust.Adaptation == HirAdaptation.BaseBorrow &&
@@ -151,7 +153,8 @@ internal sealed partial class MirBuilder
             return MirOperand.Move(this.Unsupported(node, derived: false, expected));
         }
 
-        return this.Acquire(adjust, adjust.Acquire == HirAcquire.Temporary ? this.Value(node) : this.Place(node), expected, input, node, into);
+        var place = adjust.Acquire == HirAcquire.Temporary ? this.Value(node, input: input) : this.Place(node, input);
+        return this.Acquire(adjust, place, expected, input, node, into);
     }
 
     // A Place as an acquisition and an adaptation take it: Copied, moved, acquired by its pair layer's case (SPEC 8.14; where its Type
@@ -172,7 +175,7 @@ internal sealed partial class MirBuilder
                 {
                     HirAcquire.ByCase when this.Binder(type) is var binder and >= 0 => MirOperand.PairAcquire(binder, place),
                     HirAcquire.ByCase when !MirTypes.IsExclusive(type) => MirOperand.Copy(place),
-                    HirAcquire.Reborrow or HirAcquire.ByCase => this.Temporary(type, this.Ref(place, type, input: false), node, into),
+                    HirAcquire.Reborrow or HirAcquire.ByCase => this.Temporary(type, this.Ref(place, type, input), node, into),
                     HirAcquire.Copy => MirOperand.Copy(place),
                     _ => MirOperand.Move(place),
                 };
@@ -201,7 +204,7 @@ internal sealed partial class MirBuilder
 
     // SPEC 13.5.6, 5.4, 6.2.2: a reference of a Type to a Place, the one rule of every borrow: of the Place's layer whose Type is the
     // reference's referent (an object borrow's payload, a reborrow's referent) or its base that is (a base view), in its Type's mode
-    // (MirTypes.RefKind; an exclusive borrow of a call's input is two-phase).
+    // (MirTypes.RefKind; an exclusive reservation, a call's input or an update's destination, is two-phase).
     private MirRvalue Ref(MirPlace place, BoundType reference, bool input)
     {
         var referent = reference.Components is [var target] ? target : null;
@@ -223,13 +226,13 @@ internal sealed partial class MirBuilder
         return MirOperand.Move(temp);
     }
 
-    // A borrow of a Place in a new temp of the reference a Semantics kind forms to it (uniq: exclusive; ref, objref: shared), moved; a part
-    // made where it is built (Make).
+    // A borrow of a Place in a new temp of the reference a Semantics kind forms to it (uniq: exclusive; ref, objref: shared), moved: a
+    // synthesized call's input, so an exclusive one is two-phase (SPEC 15.6.7); a part made where it is built (Make).
     private MirOperand Borrow(SemanticsKind semantics, MirPlace place, Koto node)
     {
         var view = compilation.Types.Reference(semantics, this.body.TypeOf(place) ?? BoundType.Unit);
         var temp = this.Temp(view, node);
-        this.Make(temp, this.Ref(place, view, input: false), node);
+        this.Make(temp, this.Ref(place, view, input: true), node);
         return MirOperand.Move(temp);
     }
 

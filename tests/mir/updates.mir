@@ -25,73 +25,94 @@ fn counters @11
   _3: isize arg i @11
   _4: i32 var mut count @21 s1
   _5: i32 var before @24 s1
-  _6: i32 var after @28 s1
-  _7: () temp @32 s1
-  _8: i32 temp @36 s1
-  _9: () temp @37 s1
-  _10: i32 temp @41 s1
-  _11: isize temp @40 s1
-  _12: () temp @42 s1
-  _13: i32 temp @43 s1
-  _14: isize temp @45 s1
-  _15: i32 temp @48 s1
+  _6: uniq/i32 temp @26 s1
+  _7: i32 var after @28 s1
+  _8: uniq/i32 temp @30 s1
+  _9: () temp @32 s1
+  _10: i32 temp @36 s1
+  _11: uniq/i32 temp @32 s1
+  _12: () temp @37 s1
+  _13: i32 temp @41 s1
+  _14: isize temp @40 s1
+  _15: uniq/i32 temp @37 s1
+  _16: () temp @42 s1
+  _17: i32 temp @43 s1
+  _18: isize temp @45 s1
+  _19: i32 temp @48 s1
+  _20: uniq/i32 temp @48 s1
   s1: lexical in s0 @20
   bb0:
       StorageLive(_4) @21 s1
     * _4 = const 0_i32 @23 s1
       StorageLive(_5) @24 s1
-    * _5 = copy _4 @26 s1
-      _4 = Add(copy _4, const 1_i32) @26 s1
-      StorageLive(_6) @28 s1
-    * _4 = Add(copy _4, const 1_i32) @30 s1
-      _6 = copy _4 @30 s1
-      StorageLive(_7) @32 s1
-      StorageLive(_8) @36 s1
-    * _8 = copy _5 @36 s1
-      (*_1).0 = Add(copy (*_1).0, move _8) @32 s1
-      _7 = const () @32 s1
-      StorageDead(_8) @36 s1
-      StorageDead(_7) @32 s1
-      StorageLive(_9) @37 s1
-      StorageLive(_10) @41 s1
-    * _10 = copy _6 @41 s1
-      StorageLive(_11) @40 s1
-      _11 = copy _3 @40 s1
-      (*_2)[_11] = Sub(copy (*_2)[_11], move _10) @37 s1
-      _9 = const () @37 s1
-      StorageDead(_11) @40 s1
-      StorageDead(_10) @41 s1
-      StorageDead(_9) @37 s1
-      StorageLive(_12) @42 s1
-      StorageLive(_13) @43 s1
-    * _13 = copy _4 @46 s1
-      StorageLive(_14) @45 s1
-      _14 = const 1_i32 as isize (Wrap) proven @45 s1
-      (*_2)[_14] = move _13 @42 s1
-      _12 = const () @42 s1
-      StorageDead(_14) @45 s1
-      StorageDead(_13) @43 s1
-      StorageDead(_12) @42 s1
-      StorageLive(_15) @48 s1
-    * _15 = copy (*_1).0 @48 s1
-      (*_1).0 = Sub(copy (*_1).0, const 1_i32) @48 s1
+      StorageLive(_6) @26 s1
+    * _6 = &uniq two-phase _4: uniq/i32 @26 s1
+      _5 = copy (*_6) @26 s1
+      (*_6) = Add(copy (*_6), const 1_i32) @26 s1
+      StorageDead(_6) @26 s1
+      StorageLive(_7) @28 s1
+      StorageLive(_8) @30 s1
+    * _8 = &uniq two-phase _4: uniq/i32 @30 s1
+      (*_8) = Add(copy (*_8), const 1_i32) @30 s1
+      _7 = copy (*_8) @30 s1
+      StorageDead(_8) @30 s1
+      StorageLive(_9) @32 s1
+      StorageLive(_10) @36 s1
+    * _10 = copy _5 @36 s1
+      StorageLive(_11) @32 s1
+      _11 = &uniq two-phase (*_1).0: uniq/i32 @32 s1
+      (*_11) = Add(copy (*_11), move _10) @32 s1
+      _9 = const () @32 s1
+      StorageDead(_11) @32 s1
+      StorageDead(_10) @36 s1
+      StorageDead(_9) @32 s1
+      StorageLive(_12) @37 s1
+      StorageLive(_13) @41 s1
+    * _13 = copy _7 @41 s1
+      StorageLive(_14) @40 s1
+      _14 = copy _3 @40 s1
+      StorageLive(_15) @37 s1
+      _15 = &uniq two-phase (*_2)[_14]: uniq/i32 @37 s1
+      (*_15) = Sub(copy (*_15), move _13) @37 s1
+      _12 = const () @37 s1
+      StorageDead(_15) @37 s1
+      StorageDead(_14) @40 s1
+      StorageDead(_13) @41 s1
+      StorageDead(_12) @37 s1
+      StorageLive(_16) @42 s1
+      StorageLive(_17) @43 s1
+    * _17 = copy _4 @46 s1
+      StorageLive(_18) @45 s1
+      _18 = const 1_i32 as isize (Wrap) proven @45 s1
+      (*_2)[_18] = move _17 @42 s1
+      _16 = const () @42 s1
+      StorageDead(_18) @45 s1
+      StorageDead(_17) @43 s1
+      StorageDead(_16) @42 s1
+      StorageLive(_19) @48 s1
+      StorageLive(_20) @48 s1
+    * _20 = &uniq two-phase (*_1).0: uniq/i32 @48 s1
+      _19 = copy (*_20) @48 s1
+      (*_20) = Sub(copy (*_20), const 1_i32) @48 s1
       goto bb4 check bb5 @47 s1
   bb1:
       return @11
   bb2:
-      StorageDead(_6) @28 s1
+      StorageDead(_7) @28 s1
       StorageDead(_5) @24 s1
       StorageDead(_4) @21 s1
       goto bb1 @11
   bb3:
-      StorageDead(_15) @48 s1
+      StorageDead(_20) @48 s1
+      StorageDead(_19) @48 s1
       goto bb2 @11
   bb4:
-      _0 = move _15 @47 s1
+      _0 = move _19 @47 s1
       goto bb3 @47 s1
   bb5:
-      StorageDead(_15) @48 s1
-      StorageDead(_6) @28 s1
+      StorageDead(_20) @48 s1
+      StorageDead(_19) @48 s1
+      StorageDead(_7) @28 s1
       StorageDead(_5) @24 s1
       StorageDead(_4) @21 s1
       unreachable @20

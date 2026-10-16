@@ -196,6 +196,7 @@ fn bump @70
   _7: i32 temp @75 s1
   _8: uniq/Counter temp @77 s1
   _9: () temp @80 s1
+  _10: uniq/i32 temp @80 s1
   s1: lexical in s0 @74
   bb0:
       StorageLive(_3) @75 s1
@@ -209,7 +210,7 @@ fn bump @70
       StorageLive(_7) @75 s1
       _7 = Add(copy _5, move _4) @75 s1
       StorageLive(_8) @77 s1
-      _8 = &uniq (*_1): uniq/Counter @77 s1
+      _8 = &uniq two-phase (*_1): uniq/Counter @77 s1
       _3 = count.Set(move _8, move _7) -> bb2 @75 s1
   bb2:
       StorageDead(_8) @77 s1
@@ -219,8 +220,11 @@ fn bump @70
       StorageDead(_4) @79 s1
       StorageDead(_3) @75 s1
       StorageLive(_9) @80 s1
-    * (*_1).0 = Mul(copy (*_1).0, const 2_i32) @80 s1
+      StorageLive(_10) @80 s1
+    * _10 = &uniq two-phase (*_1).0: uniq/i32 @80 s1
+      (*_10) = Mul(copy (*_10), const 2_i32) @80 s1
       _9 = const () @80 s1
+      StorageDead(_10) @80 s1
       StorageDead(_9) @80 s1
       _0 = const () @74 s1
       return @74
@@ -398,15 +402,15 @@ fn make @135
     * _0 = FixedArray(): Array<i32> @141
       StorageLive(_2) @141
       StorageLive(_3) @141
-      _3 = &uniq _0: uniq/Array<i32> @141
+      _3 = &uniq two-phase _0: uniq/Array<i32> @141
       _2 = reserve(move _3, const 2_isize) -> bb1 @141
   bb1:
       StorageLive(_4) @141
-      _4 = &uniq _0: uniq/Array<i32> @141
+      _4 = &uniq two-phase _0: uniq/Array<i32> @141
       _2 = append(move _4, copy _1) -> bb2 @141
   bb2:
       StorageLive(_5) @141
-      _5 = &uniq _0: uniq/Array<i32> @141
+      _5 = &uniq two-phase _0: uniq/Array<i32> @141
       _2 = append(move _5, const 2_i32) -> bb3 @141
   bb3:
       StorageDead(_5) @141
@@ -457,7 +461,7 @@ fn table @144
       _2 = const true @152
       StorageLive(_8) @152
       StorageLive(_9) @152
-      _9 = &uniq _0: uniq/Dictionary<i32, bool> @152
+      _9 = &uniq two-phase _0: uniq/Dictionary<i32, bool> @152
       _8 = dictionaryStorage<i32, bool>(move _9) -> bb4 @152
   bb4:
       StorageLive(_10) @152
@@ -482,7 +486,7 @@ fn table @144
       _12 = const false @154
       StorageLive(_18) @154
       StorageLive(_19) @154
-      _19 = &uniq _0: uniq/Dictionary<i32, bool> @154
+      _19 = &uniq two-phase _0: uniq/Dictionary<i32, bool> @154
       _18 = dictionaryStorage<i32, bool>(move _19) -> bb9 @154
   bb9:
       StorageLive(_20) @154
@@ -580,8 +584,9 @@ fn update @182
   _5: i32 temp @187 s1
   _6: uniq/Box temp @189 s1
   _7: i32 temp @192 s1
-  _8: i32 temp @193 s1
-  _9: ref/Box temp @194 s1
+  _8: uniq/i32 temp @192 s1
+  _9: i32 temp @193 s1
+  _10: ref/Box temp @194 s1
   s1: lexical in s0 @186
   bb0:
       StorageLive(_3) @187 s1
@@ -590,7 +595,7 @@ fn update @182
       StorageLive(_5) @187 s1
       _5 = Add(copy (*_1).0, move _4) @187 s1
       StorageLive(_6) @189 s1
-      _6 = &uniq (*_1): uniq/Box @189 s1
+      _6 = &uniq two-phase (*_1): uniq/Box @189 s1
       _3 = item.Set(move _6, move _5) -> bb1 @187 s1
   bb1:
       StorageDead(_6) @189 s1
@@ -598,15 +603,18 @@ fn update @182
       StorageDead(_4) @191 s1
       StorageDead(_3) @187 s1
       StorageLive(_7) @192 s1
-      StorageLive(_8) @193 s1
-      StorageLive(_9) @194 s1
-    * _9 = &(*_1): ref/Box @194 s1
-      _8 = level.Get(move _9) -> bb2 @193 s1
+      StorageLive(_8) @192 s1
+    * _8 = &uniq two-phase (*_1).1: uniq/i32 @192 s1
+      StorageLive(_9) @193 s1
+      StorageLive(_10) @194 s1
+      _10 = &(*_1): ref/Box @194 s1
+      _9 = level.Get(move _10) -> bb2 @193 s1
   bb2:
-      _7 = copy _8 @192 s1
-      (*_1).1 = Add(copy _8, const 1_i32) @192 s1
-      StorageDead(_9) @194 s1
-      StorageDead(_8) @193 s1
+      _7 = copy _9 @192 s1
+      (*_8) = Add(copy _9, const 1_i32) @192 s1
+      StorageDead(_10) @194 s1
+      StorageDead(_9) @193 s1
+      StorageDead(_8) @192 s1
       StorageDead(_7) @192 s1
       _0 = const () @186 s1
       return @186

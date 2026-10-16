@@ -144,7 +144,8 @@ public sealed class MirInitTest(ITestOutputHelper output)
     // path: a value consumed before a return out of a do is usable after the do (plan Appendix B C1), a default that does not complete
     // delivers nothing at its template's Return, an index whose value only the checks reach leaves its compiler temporary unwritten (not a
     // Place of the program), a value moved before a return is MovedPlace after it, and a value whose initializer diverged is
-    // UninitializedPlace where only the checks read it (plan Appendix B C3).
+    // UninitializedPlace where only the checks read it (plan Appendix B C3); a call whose argument diverged moves its other arguments
+    // for the checks (SPEC 14.10.3).
     [Fact]
     public void CheckOnlyCodeKeepsItsOwnState()
     {
@@ -154,9 +155,10 @@ public sealed class MirInitTest(ITestOutputHelper output)
             "func caller() -> i32 => peek(true)\nfunc index()\n    var a: (string, [1 of i32]) = (\"held\", [0])\n    a.1[label work: do\n" +
             "        defer => loop => ()\n        exit to work 0\n    ] = 42\n"));
         Assert.Equal(
-            ["MovedPlace_Kd box 1", "UninitializedPlace_Kd x 1"],
+            ["MovedPlace_Kd box 1", "UninitializedPlace_Kd x 1", "MovedPlace_Kd box 1"],
             Problems(Box + "func afterReturn(box: Box) -> i32\n    consume(box@move)\n    return 1\n    consume(box@move)\n    return 2\n" +
-                "func diverged() -> i32\n    let x: i32 = stop()\n    return x\n"));
+                "func diverged() -> i32\n    let x: i32 = stop()\n    return x\nfunc take(box: Box, n: i32) => ()\n" +
+                "func continued(box: Box) -> i32\n    take(box@move, (return 1))\n    consume(box@move)\n    return 2\n"));
     }
 
     // Plan 5.6.1, SPEC 13.5.5: a PairLayer is the Place itself in the owner case and a Deref in a reference case, so writing through an

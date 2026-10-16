@@ -942,6 +942,37 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Type holding itself in an Array is deep (PLAN G91). Rejected: `CarriesOriginOrSlot` as the test (builder-made references carry no
   Origin); a depth bound alone, as HoldsRaw has (a repeating recursive Origin-free Type would become a holder and keep the Loans read
   into it live); one fact for both (two readers, two rules). Not temporary.
+- **R4-M37** (2026-10-17; design A3 §4.1 G5, G6, the writeback and the guard row, owner approval of its §9 item 8 on 2026-10-17) The
+  MIR builder contracts A5's reservations and guard-local Origins read. G5: every exclusive borrow on an invocation's preparation path
+  is `TwoPhaseUniq` (SPEC 15.6.7): a written `@uniq`, also in parentheses or on the Place path of a receiver or an argument down to a
+  value (`h@follow@uniq.c.bump(1)`; a call result or a getter activates at its own call), the Reborrow of a stored exclusive reference
+  at an input (`Acquire`), and every synthesized receiver (`Borrow`, whose results are all synthesized calls' inputs). The call-input
+  fact passes from `Operand` through `Value`, `Into`, a group's `Assign` and `Place`, never through control-flow results or nested
+  calls, whose borrows are live when formed. G6: an invocation whose operand does not complete is still built where that operand's
+  check-only code continues, with its later operands and defaults (`Defaults` no longer stops at a diverging default), so its
+  activation is checked in the assumed state (SPEC 14.10.3). By the builder's rule that a node which does not complete assigns no value
+  (`Set`), the call takes such an operand as `Never`: its own temp where it has that Type, else an unwritten temp, also where Binding
+  gives it a Tuple with a `Never` element; a pending slot keeps its parameter's Type. The validator lets a `Never` argument agree with
+  any parameter. A transfer ends the borrows of the calls it abandons on its runtime edge only, in the block that places its result.
+  The continued calls are seen by A1 (their Moves and definitions: a later Move in the check-only code is `MovedPlace_Kd`, as SPEC
+  14.10.3 requires) and by A4 (their callees' edges, which R4-M6a counts). Writeback: a compound update whose destination is written in
+  place (a Place, or a standard set's storage) reserves it once located, `$w = TwoPhaseUniq(D)` at the update, and reads and writes
+  `(*$w)`, so the write activates the reservation (SPEC 13.7.2). Guard: each guard candidate's cleanup registers an `EndBorrow` before
+  its `StorageDead`, so its guard-local Origin ends on every path, a transfer's drop tree included (SPEC 14.8.3); candidates no longer
+  sit among the pending operands. `EndBorrow` is restated as a use of the local after which every Loan issued into it must be dead, its
+  carrying ended, and never an activation; `TwoPhaseUniq` activates at its Call or at the write through it. No vocabulary entry. Not
+  done, for the planning session: A3's `RawSlice` backing operand (arity 2→3 breaks the written `Raw.slice(storage, length)` calls,
+  which have no backing; a SPEC and library revision or an O1 intrinsic); C8, deferred to the unit whose `Retains` reads it (step 1):
+  a Value callee's selected Callable signature needs a form there (a `TypeToken` constant or a `MirCallee` field), and a Virtual callee
+  is named by its `Symbol` and `Subst` already, so `MirBody`'s "a Virtual one's slot in Arg" does not hold today. Open: A3's mode rule
+  makes a reserved Loan `ref` only in its reservation holder, so a parent reservation reborrowed by a child one (the G5 Place path) is
+  uniq in the child before the call, which `holder@uniq.items.append(x)` (SPEC 15.6.7: the same call as `holder.items.append(x)`)
+  needs refined in step 1; which values exist on assumed paths (a continued call's result dropped by the `Never` operand; an update
+  whose target or right side diverges reserves but never writes) needs one rule (PLAN); a custom setter's receiver is reserved only at
+  the setter call, not from locate; a pair-layer argument (`PairAcquire`) is acquired at its Call, so it has no reservation interval.
+  Rejected: a builder field marking the current input (hidden state); a second copy of the Borrow row in `Operand`; a writeback
+  through setters now (the receiver would have to be acquired once at locate and passed to the setter: F8's unit 2d); the validator
+  accepting every Type with a `Never` part (an open family; `Agree` also decides the builder's layers). Not temporary.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

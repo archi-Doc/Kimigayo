@@ -97,8 +97,8 @@ internal sealed partial class MirBuilder
     // of the earlier parameters' slots (a copy, of those its template reads): a copy of its template, a call of a recursive template
     // (every slot, its arguments), or an Opaque value reading those slots where
     // its template failed (no record) or the copy would take the body past the limit (the call's Resource record). A default that does not
-    // complete reaches no later default and no callee (SPEC 15.6.7): false, building going on for the checks only.
-    private bool Defaults(CallPlan call, BindingSymbol function, Subst? subst, int start, Koto node)
+    // complete reaches no later default and no callee at run time (SPEC 15.6.7); building goes on for the checks.
+    private void Defaults(CallPlan call, BindingSymbol function, Subst? subst, int start, Koto node)
     {
         foreach (ref readonly var omitted in call.DefaultArguments)
         {
@@ -140,15 +140,8 @@ internal sealed partial class MirBuilder
                 }
             }
 
-            if (!completes)
-            {
-                return false;
-            }
-
             this.arguments[start + MirCallee.Position(function, decl.Index)] = MirOperand.Move(slot);
         }
-
-        return true;
     }
 
     // Plan 5.6.2: a copy of a template's MIR in this body, folded once under the call's substitution: its scopes in a scope Inlined at the

@@ -252,10 +252,14 @@ closure @62
   _0: () return @62
   _1: uniq/closure () -> () arg @62
   _2: () temp @63
+  _3: uniq/i32 temp @63
   bb0:
       StorageLive(_2) @63
-    * (*(*_1).0) = Add(copy (*(*_1).0), const 1_i32) @63
+      StorageLive(_3) @63
+    * _3 = &uniq two-phase (*(*_1).0): uniq/i32 @63
+      (*_3) = Add(copy (*_3), const 1_i32) @63
       _2 = const () @63
+      StorageDead(_3) @63
       StorageDead(_2) @63
       _0 = const () @63
       return @63

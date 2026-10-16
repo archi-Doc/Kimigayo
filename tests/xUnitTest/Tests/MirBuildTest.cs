@@ -561,6 +561,105 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.DoesNotContain(drop.Blocks.ToArray(), static x => x.Terminator.Kind == MirTerminatorKind.Drop && x.Terminator.Place.Root == 1);
     }
 
+    // SPEC 15.6.7: every exclusive borrow that produces an invocation's argument or receiver is reserved (TwoPhaseUniq): a written @uniq,
+    // also in parentheses, the Reborrow of a stored uniq at a uniq parameter and a synthesized receiver (an Array literal's reserve and
+    // appends), and a written @uniq on a receiver's path; a borrow saved in storage or a control-flow result is live when formed (Uniq).
+    [Fact]
+    public void ReservedCallInputsAreTwoPhase()
+    {
+        var source = "func take(a: uniq/i32, b: i32) => ()\nfunc f()\n    var p: i32 = 1\n    take(p@uniq, p + 1)\n    take((p@uniq), 2)\n" +
+            "    var r = p@uniq\n    take(r, 3)\n    let values = [1, 2]\nstruct Counter\n    var count: i32\n    public init() => self.count = 0\n" +
+            "    public func bump(self: uniq/Self, by: i32) => self.count = self.count + by\nstruct Holder\n    public var c: Counter\n" +
+            "    public init() => self.c = Counter.init()\nfunc g(h: uniq/Holder)\n    h@follow@uniq.c.bump(1)\n    h@follow@uniq.c@uniq.bump(2)\nfunc chosen()\n    var p: i32 = 1\n" +
+            "    take(if p > 0 => p@uniq else => p@uniq, 4)\n";
+        Assert.Equal(
+            [MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq, MirRefKind.Uniq, MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq,
+                MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq],
+            Refs(Body(source, "f")));
+        Assert.Equal([MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq], Refs(Body(source, "g")));
+        Assert.Equal([MirRefKind.Uniq, MirRefKind.Uniq], Refs(Body(source, "chosen")));
+
+        static IEnumerable<MirRefKind> Refs(MirBody body) => body.Statements.ToArray()
+            .Where(static x => x.Kind == MirStatementKind.Assign && x.Rvalue.Kind == MirRvalueKind.Ref).Select(static x => (MirRefKind)x.Rvalue.Op);
+    }
+
+    // SPEC 15.6.7, 14.10.3: a call whose argument does not complete is still built where that argument's code continues for the checks,
+    // so its activation is checked there, and the reservation the transfer abandons ends on the transfer's runtime edge only. The argument
+    // has no value, so it is of Type Never, also where its own Type is a Tuple with a Never element.
+    [Fact]
+    public void ADivergingArgumentContinuesItsCallForTheChecks()
+    {
+        var source = "func three(a: uniq/i32, b: i32, c: uniq/i32) => ()\nfunc f() -> i32\n    var p: i32 = 1\n    three(p@uniq, (return 1), p@uniq)\n" +
+            "    return 2\nfunc pair(x: (i32, i32)) => ()\nfunc g() -> i32\n    pair((1, (return 1)))\n    return 2\n";
+        var paired = Body(source, "g");
+        var operand = Assert.Single(paired.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "pair" })
+            .Terminator.Start;
+        Assert.Same(BoundType.Never, paired.TypeOf(paired.Operands[operand].Place));
+        var body = Body(source, "f");
+        var reach = new MirReach();
+        reach.Clear(body.Blocks.Length);
+        reach.Walk(body, 0, checks: false);
+        var blocks = body.Blocks.ToArray();
+        var call = Assert.Single(
+            Enumerable.Range(0, blocks.Length),
+            b => blocks[b].Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "three" });
+        Assert.False(reach[call]);
+        var ends = Enumerable.Range(0, blocks.Length).Where(b => body.Statements.Slice(blocks[b].Start, blocks[b].Count).ToArray()
+            .Any(static x => x.Kind == MirStatementKind.EndBorrow)).ToArray();
+        Assert.NotEmpty(ends);
+        Assert.All(ends, b => Assert.True(reach[b]));
+        var transfers = Enumerable.Range(0, blocks.Length).Where(b => blocks[b].Terminator is { Kind: MirTerminatorKind.Goto, CheckTarget: >= 0 }).ToArray();
+        Assert.NotEmpty(transfers);
+        Assert.DoesNotContain(transfers, b => ends.Contains(b)); // The branching block, which the checks' edge leaves too, ends nothing.
+    }
+
+    // SPEC 13.7.2: an in-place compound update reserves its located destination (TwoPhaseUniq) and reads and writes it through that
+    // reservation, so the write activates it.
+    [Fact]
+    public void CompoundUpdatesWriteThroughTheirReservation()
+    {
+        var body = Body("func f()\n    var x: i32 = 1\n    x += 2\n    var t: (i32, i32) = (1, 2)\n    t.0 *= 3\n", "f");
+        var statements = body.Statements.ToArray();
+        var reservations = statements.Where(static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref })
+            .Select(static x => ((MirRefKind)x.Rvalue.Op, x.Place.Root)).ToArray();
+        Assert.Equal(2, reservations.Length);
+        foreach (var (kind, root) in reservations)
+        {
+            Assert.Equal(MirRefKind.TwoPhaseUniq, kind);
+            Assert.Contains(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.BinaryOp } && x.Place.Root == root &&
+                body.Projections[x.Place.Projection].Kind == MirProjectionKind.Deref);
+        }
+    }
+
+    // SPEC 14.8.3: a guard candidate's guard-local Origin ends at the guard's cleanup on every path, a transfer out of the guard
+    // included: each StorageDead of a candidate follows its EndBorrow.
+    [Fact]
+    public void GuardCandidatesEndAtEveryCleanup()
+    {
+        var body = Body(
+            "func f(o: Option<i32>) -> i32\n    match o\n        .Some(let v) if v@follow > 3 or (return 9) => return v\n        _ => return 0\n",
+            "f");
+        var candidates = Enumerable.Range(0, body.Locals.Length).Where(x => body.Locals[x].Role == MirLocalRole.GuardCandidate).ToArray();
+        Assert.NotEmpty(candidates);
+        var (ends, deaths) = (0, 0);
+        foreach (var block in body.Blocks.ToArray())
+        {
+            var statements = body.Statements.Slice(block.Start, block.Count).ToArray();
+            for (var i = 0; i < statements.Length; i++)
+            {
+                if (statements[i] is { Kind: MirStatementKind.StorageDead } death && candidates.Contains(death.Place.Root))
+                {
+                    deaths++;
+                    Assert.True(i > 0 && statements[i - 1] is { Kind: MirStatementKind.EndBorrow } end && end.Place == death.Place);
+                }
+
+                ends += statements[i].Kind == MirStatementKind.EndBorrow && candidates.Contains(statements[i].Place.Root) ? 1 : 0;
+            }
+        }
+
+        Assert.True(deaths >= 2 && ends == deaths, $"{ends} EndBorrows, {deaths} StorageDeads");
+    }
+
     internal static Compilation Compile(string source, bool test = false)
     {
         var c = Compilation.CreateForTest();
@@ -570,6 +669,14 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         c.Bind();
         _ = test ? c.Binding.CheckTestStartup() : c.Binding.CheckStartup(OutputKind.Application);
         return c;
+    }
+
+    // The body of a function of a source, built without validator findings.
+    private static MirBody Body(string source, string name)
+    {
+        var program = Compile(source).BuildMir();
+        Assert.Empty(program.Findings);
+        return program.Bodies.ToArray().Single(x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == name);
     }
 
     // The census key of a record: its Op, a Name's Res, a call's callee kind or the part of the call not built yet, and an Adjust the

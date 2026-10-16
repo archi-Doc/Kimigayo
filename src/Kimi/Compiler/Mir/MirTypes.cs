@@ -142,10 +142,11 @@ internal static class MirTypes
     internal static bool IsExclusive(BoundType? type) => type?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
 
     /// <summary>Gets the kind of the borrow that forms a reference Type (SPEC 13.5.6, 5.4), the mode of every Ref: an address for a raw
-    /// pointer, a shared borrow for a shared reference, else an exclusive one, two-phase for a call's input: reserved at the borrow and
-    /// activated at the Call (SPEC 15.6.7).</summary>
+    /// pointer, a shared borrow for a shared reference, else an exclusive one, two-phase for a reservation: reserved at the borrow and
+    /// activated at the Call that takes it, a call's input on its preparation path (SPEC 15.6.7), or at the write through it, an update's
+    /// destination (SPEC 13.7.2).</summary>
     /// <param name="reference">The reference Type.</param>
-    /// <param name="input">Whether the borrow is a call's input.</param>
+    /// <param name="input">Whether the borrow is a reservation.</param>
     /// <returns>The borrow's kind.</returns>
     internal static MirRefKind RefKind(BoundType reference, bool input)
     {

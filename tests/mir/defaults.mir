@@ -440,13 +440,15 @@ fn stopped @130
       StorageLive(_2) @132
     * _2 = intrinsic Abort(const "halt") -> ! check bb2 @125 s1
   bb1:
-      StorageDead(_2) @132
-      StorageDead(_1) @134
-      unreachable @132
+      _0 = halt(move _1, move _2) -> bb4 @132
   bb2:
       unreachable check bb3 @124 s1
   bb3:
       goto bb1 @124 s1
+  bb4:
+      StorageDead(_2) @132
+      StorageDead(_1) @134
+      unreachable @132
 fn evaluate @135
   _0: i32 return @135
   _1: T arg sample @135
