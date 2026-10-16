@@ -191,6 +191,12 @@ existing uses first; the owner decides whether to extend these rules to tests. I
   `8071549f`), which supersedes plan §18 P11 and §14-8: an allocation is allowed when it makes equivalent work faster or
   reduces compiler code with a reasonable increase in memory, with time, allocations and retained memory measured and
   recorded. Existing compiler allocation regressions hold until a measured change updates them.
+- **R4 and R5 in parallel (DECISIONS R4-M35, A5 plan §9.1).** R5 owns the files it creates and R4 the other files under
+  `Mir/Analysis` except the `MirAnalysis` driver; neither stream edits the other's. The rest of `Mir`, the driver
+  included, and the `tests/mir` goldens are shared; a test file follows the file it tests. One stream at a time changes a
+  shared file: before the unit starts, its planning session records the hold (stream, branch, files) in PLAN §3 on dev
+  and removes it in the merge that brings the unit into dev; the other stream merges dev before its next change to that
+  file.
 
 ## Stage ledger
 
