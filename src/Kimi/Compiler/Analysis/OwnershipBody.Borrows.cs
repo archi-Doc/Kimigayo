@@ -1617,9 +1617,7 @@ public sealed partial class OwnershipBody
     // cleanup ends that storage, for a local as for a temporary.
     private int DestroyedRoot(int operation)
         => this.Operations[operation] is { Kind: OwnershipOperationKind.Cleanup, Place: >= 0 and var place } && place < this.Places.Count && this.dependencyRoots[place] &&
-            (!IsReferenceSlot(this.Places[place].Type) || this.IsBorrowedPlace(place)) ? place : -1;
-
-    private static bool IsReferenceSlot(BoundType type) => ReferenceTypes.IsBorrow(type) || type.IsObjectBorrow;
+            (!ReferenceTypes.IsBorrow(this.Places[place].Type) || this.IsBorrowedPlace(place)) ? place : -1;
 
     // SPEC 15.6.5: a definition of `holder` whose value may keep the Loan of `root` and reaches the input of `destruction` with no
     // other definition of the holder between them: -1 when none does, -2 when the holder may change in a way this walk does not
@@ -2033,7 +2031,7 @@ public sealed partial class OwnershipBody
     // SPEC 3.4.2: whether a Borrow lends the borrowed Place's own storage: always for a Place that holds no reference; for a reference slot
     // only when the result references the slot itself (`r@ref`), not a part reached through the reference.
     private bool LendsOwnStorage(in OwnershipOperation borrow)
-        => !IsReferenceSlot(this.Places[borrow.Place].Type) || (borrow.Input >= 0 && this.Places[borrow.Input].Type.Components is [var lent] && ReferenceEquals(lent, this.Places[borrow.Place].Type));
+        => !ReferenceTypes.IsBorrow(this.Places[borrow.Place].Type) || (borrow.Input >= 0 && this.Places[borrow.Input].Type.Components is [var lent] && ReferenceEquals(lent, this.Places[borrow.Place].Type));
 
     // SPEC 15.6.7: the Places that one reserved argument prepares (its Reborrow, and the slot borrow and loaded reference of
     // a stored reference it Reborrows through) activate together and never conflict with one another.
@@ -2750,8 +2748,8 @@ public sealed partial class OwnershipBody
     {
         var candidate = this.Places[root];
         return origin.Kind == OriginKind.Projection && candidate.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result &&
-            (ReferenceEquals(candidate.Type, BoundType.String) || AdtDef.IsStruct(candidate.Type) || AdtDef.IsEnum(candidate.Type) || candidate.Type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Closure || ScalarTypes.Supports(candidate.Type) || candidate.Type.HandleMode is not null || IsReferenceSlot(candidate.Type)) &&
-            ReferenceEquals(candidate.Source, origin.Binder) && (!(ScalarTypes.Supports(candidate.Type) || IsReferenceSlot(candidate.Type)) || this.IsBorrowedPlace(root));
+            (ReferenceEquals(candidate.Type, BoundType.String) || AdtDef.IsStruct(candidate.Type) || AdtDef.IsEnum(candidate.Type) || candidate.Type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Closure || ScalarTypes.Supports(candidate.Type) || candidate.Type.HandleMode is not null || ReferenceTypes.IsBorrow(candidate.Type)) &&
+            ReferenceEquals(candidate.Source, origin.Binder) && (!(ScalarTypes.Supports(candidate.Type) || ReferenceTypes.IsBorrow(candidate.Type)) || this.IsBorrowedPlace(root));
     }
 
     private bool SharesDeferredExecution(int place, int root)
