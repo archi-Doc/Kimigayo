@@ -264,10 +264,11 @@ internal sealed partial class MirEffects
         this.targets.RemoveRange(start, this.targets.Count - start);
     }
 
-    // SPEC 16.3, 8.11.4 rule 1: a part a destruction reaches. An abstract part is an atom; a Function value's environment is unknown; an
-    // owning handle destroys its payload when it is proven Sealed (SPEC 16.3.3), else any more-derived destructor may run; a struct's
-    // destructor runs; a string's, an Array's or a Dictionary's storage is released (its elements are parts of their own).
-    private void Destroy(BoundType type)
+    // SPEC 16.3, 8.11.4 rule 1: a part a destruction reaches, at its depth in the walk. An abstract part is an atom; a Function value's
+    // environment is unknown; an owning handle destroys its payload when it is proven Sealed (SPEC 16.3.3), walked on below the handle so
+    // that a growing recursive Type (SPEC 15.3.5) meets the walk's bound, else any more-derived destructor may run; a struct's destructor
+    // runs; a string's, an Array's or a Dictionary's storage is released (its elements are parts of their own).
+    private void Destroy(BoundType type, int depth)
     {
         if (!this.glued.Add(type))
         {
@@ -287,7 +288,7 @@ internal sealed partial class MirEffects
             var glue = new Glue(this);
             var proven = types.Sealed(this.definition, type.Components[0]);
             this.found |= proven ? (byte)0 : Unknown;
-            MirTypes.Destruction(proven ? type.Components[0] : null, ref glue);
+            MirTypes.Destruction(proven ? type.Components[0] : null, ref glue, depth + 1);
         }
         else if (AdtDef.DestructorSymbol(type) is { } destructor)
         {
@@ -385,9 +386,9 @@ internal sealed partial class MirEffects
     // The destruction walk's visitor: each part reached, and past the walk's depth bound a part this implementation does not follow.
     private readonly struct Glue(MirEffects owner) : IMirDestruction
     {
-        public bool Visit(BoundType type)
+        public bool Visit(BoundType type, int depth)
         {
-            owner.Destroy(type);
+            owner.Destroy(type, depth);
             return false;
         }
 

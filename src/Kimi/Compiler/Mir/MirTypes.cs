@@ -17,8 +17,9 @@ internal interface IMirDestruction
 {
     /// <summary>A part of the destroyed value whose destruction runs or releases something.</summary>
     /// <param name="type">The part's Type.</param>
+    /// <param name="depth">The part's depth in the walk, from which a walk of what the part owns goes on (a Sealed handle's payload).</param>
     /// <returns>Whether the walk stops.</returns>
-    bool Visit(BoundType type);
+    bool Visit(BoundType type, int depth);
 
     /// <summary>A part past the walk's depth bound, whose destruction the walk does not follow.</summary>
     /// <returns>Whether the walk stops.</returns>
@@ -65,17 +66,17 @@ internal static class MirTypes
 
         if (type.IsAbstract || type.Kind == BoundTypeKind.Function)
         {
-            return visitor.Visit(type);
+            return visitor.Visit(type, depth);
         }
 
         if (type.Kind == BoundTypeKind.Semantics)
         {
-            return type.Semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && visitor.Visit(type);
+            return type.Semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && visitor.Visit(type, depth);
         }
 
         var sequence = type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary; // A managed sequence releases its storage and its elements.
         var destructor = AdtDef.Destructor(type) is not null;
-        if ((sequence || ReferenceEquals(type, BoundType.String) || destructor) && visitor.Visit(type))
+        if ((sequence || ReferenceEquals(type, BoundType.String) || destructor) && visitor.Visit(type, depth))
         {
             return true;
         }
@@ -225,7 +226,7 @@ internal static class MirTypes
     // MayNeedDrop's visitor: any reported part.
     private struct AnyPart : IMirDestruction
     {
-        public readonly bool Visit(BoundType type) => true;
+        public readonly bool Visit(BoundType type, int depth) => true;
 
         public readonly bool Deep() => true;
     }

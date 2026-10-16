@@ -442,6 +442,18 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
                 $"group H\n    public func find<K>(table: ref/Dictionary<Box<K>, i32>, key: ref/Box<K>)\n        K is {premise}\n        _ = table.tryGet(key)\n" +
                 WithField("boxes: Dictionary<Box<Key>, i32> = [:]") + $"        {statement}\n        return .Ok(())\n"));
 
+    // SPEC 15.3.5, 16.3.3, 8.15: a growing recursive Type, Nest<(T, T)> below a Sealed rc payload, ends at the destruction walk's bound,
+    // since the payload's walk goes on below its handle: a body destroying one is analyzed (it hung before), and where it owes confined
+    // that destruction is a limit, the located Unsupported_Kd.
+    [Fact]
+    public void AGrowingRecursiveDestructionEndsAtTheBound()
+    {
+        const string Nest = "struct Nest<T>\n    var value: T\n    var next: Option<rc/Nest<(T, T)>>\n    public init(value: T)\n" +
+            "        self.value = value@move\n        self.next = .None\n";
+        Assert.Empty(Problems(Nest + "func release(nest: Nest<i32>) => ()\n"));
+        Assert.Equal(["Unsupported_Kd Self is Sink 1"], Problems(Sink + Loud + Nest + Witness + "        _ = Nest<i32>.init(value: 1)\n        return .Ok(())\n"));
+    }
+
     // V16 (plan "New V-checks"): A4 is linear: an N-deep call chain whose last member prints and an N-member ring of mutual calls (one
     // member prints), each with one problem, grow the evaluations and the cold allocation of a fresh A4 over the program (the library
     // included) linearly; a warm re-analysis of the same program allocates nothing. N is 256/512/1024 so that the program's own bodies,
