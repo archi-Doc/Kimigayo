@@ -16,6 +16,8 @@ func middle(values: ref/[5 of i32]) -> Slice<i32> during values => values[1..^1]
 
 func head(values: ref/Array<i32>) -> Slice<i32> during values => values[..=2]
 
+func reslice(view: Slice<i32>) -> Slice<i32> during view.source => view[1..]
+
 func make(first: i32) -> Array<i32> => [first, 2]
 
 func table() -> Dictionary<i32, bool> => [1: true, 2: false]

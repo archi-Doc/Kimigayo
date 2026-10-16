@@ -67,27 +67,26 @@ internal sealed partial class MirBuilder
         this.CloseScope(scope);
     }
 
-    // SPEC 14.8.3: guard candidates borrow the selected Places among the condition's temporaries. Keep the Subject protected until
-    // their cleanup, then read it and branch while the bool's storage remains live for Enter in each successor.
+    // SPEC 14.8.3: guard candidates borrow the selected Places among the condition's temporaries, and the guard-local Origin of each ends
+    // at their cleanup on every path (an EndBorrow before its StorageDead). Keep the Subject protected until then, then read it and branch
+    // while the bool's storage remains live for Enter in each successor.
     private MirPlace Guard(Koto condition, int whenFalse, int whenTrue, BoundMatch plan, int pattern, int start)
     {
         var tested = this.OpenScope(block: false);
         var test = this.Temp(BoundType.Boolean, condition);
         var temporaries = this.OpenScope(block: false);
-        var mark = this.arguments.Count;
         for (var i = pattern; i < plan.Positions[pattern].End; i++)
         {
             if (plan.Positions[i] is { CandidateSymbol: { Type: { } type } candidate, Source: var source })
             {
                 var reference = this.Temp(type, source, MirLocalRole.GuardCandidate, candidate.Name);
+                this.Register(Cleanup.EndBorrow, reference.Root, null, temporaries);
                 this.Make(reference, this.Ref(this.selected[start + i], type, input: false), source);
-                this.arguments.Add(MirOperand.Move(reference));
                 this.locals[candidate] = reference.Root;
             }
         }
 
         this.Assign(test, condition);
-        this.arguments.RemoveRange(mark, this.arguments.Count - mark);
         this.CloseScope(temporaries);
         this.body.Push(this.current, MirStatement.Of(MirStatementKind.FakeRead, this.selected[start + pattern], this.Info(condition)));
         this.Branch(test, condition, whenFalse, whenTrue);

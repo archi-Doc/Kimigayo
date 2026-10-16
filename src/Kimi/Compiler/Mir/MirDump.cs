@@ -302,7 +302,7 @@ internal static class MirDump
                     callee.Kind switch
                 {
                     MirCalleeKind.Fn => callee.Arg > 0 ? $"{callee.Symbol?.Name}#{callee.Arg - 1}" : callee.Symbol?.Name,
-                    MirCalleeKind.Virtual => $"virtual slot {callee.Arg} {callee.Symbol?.Name}",
+                    MirCalleeKind.Virtual => $"virtual {callee.Symbol?.Name}",
                     MirCalleeKind.Intrinsic => $"intrinsic {(IntrinsicId)callee.Arg}",
                     MirCalleeKind.Requirement when callee.Contract is { } contract => $"requirement {callee.Symbol?.Name} of {contract.Name}",
                     _ => $"{callee.Kind.ToString().ToLowerInvariant()} {callee.Symbol?.Name}",
@@ -310,7 +310,8 @@ internal static class MirDump
 
                 if (callee.Kind == MirCalleeKind.Value)
                 {
-                    Operand(text, body, terminator.Operand);
+                    Operand(text, body, MirOperand.Const(callee.Arg));
+                    Operand(text.Append(' '), body, terminator.Operand);
                 }
 
                 if (callee.Subst is { Types.Length: > 0 } subst)

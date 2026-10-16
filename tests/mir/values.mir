@@ -332,7 +332,7 @@ fn unfinished @199
       _4 = copy _1 @211 s1
       StorageLive(_10) @211 s1
       StorageLive(_11) @211 s1
-      _11 = &uniq _2: uniq/Dictionary<i32, bool> @211 s1
+      _11 = &uniq two-phase _2: uniq/Dictionary<i32, bool> @211 s1
       _10 = dictionaryStorage<i32, bool>(move _11) -> bb4 @211 s1
   bb4:
       StorageLive(_12) @211 s1
@@ -385,7 +385,7 @@ fn unfinished @199
   bb14:
       StorageLive(_20) @213 s1
       StorageLive(_21) @213 s1
-      _21 = &uniq _2: uniq/Dictionary<i32, bool> @213 s1
+      _21 = &uniq two-phase _2: uniq/Dictionary<i32, bool> @213 s1
       _20 = dictionaryStorage<i32, bool>(move _21) -> bb15 @213 s1
   bb15:
       StorageLive(_22) @213 s1

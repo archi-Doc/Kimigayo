@@ -29,7 +29,7 @@ internal enum MirViolation : byte
     Binder, // A PairAcquire of a binder out of range or other than its Place's pair layer, or more cases than PairBinder.CaseBound.
     OperandRange,
     Arity, // An rvalue's or a Call's operands disagree with its kind, its Type or its callee.
-    Callee, // A Fn, Requirement or Virtual callee without its function, or a diverging intrinsic with a target.
+    Callee, // A Fn, Requirement or Virtual callee without its function, a Value one without its signature, or a diverging intrinsic with a target.
     Discriminant, // A Discriminant of a Place that is not an enum.
     Len, // A Len of a Place that is not a sequence.
     Opaque, // An Opaque site or root out of range, or Opaque sites without an Opaque value.
@@ -509,6 +509,7 @@ internal sealed partial class MirValidator(TyCtxt types)
             switch (callee.Kind)
             {
                 case MirCalleeKind.Fn or MirCalleeKind.Requirement or MirCalleeKind.Virtual when callee.Symbol is null:
+                case MirCalleeKind.Value when (uint)callee.Arg >= (uint)body.Consts.Length || body.Consts[callee.Arg].Kind != MirConstKind.TypeToken:
                     this.Report(MirViolation.Callee);
                     break;
                 case MirCalleeKind.Fn or MirCalleeKind.Requirement or MirCalleeKind.Virtual or MirCalleeKind.Value:

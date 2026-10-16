@@ -1,0 +1,160 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+#pragma warning disable SA1402 // The walk's visitor belongs to the Type facts.
+
+using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
+
+namespace Kimi.Compiler.Mir;
+
+/// <summary>What the destruction walk of a Type reports (<see cref="MirTypes.Destruction"/>).</summary>
+internal interface IMirDestruction
+{
+    /// <summary>A part of the destroyed value whose destruction runs or releases something.</summary>
+    /// <param name="type">The part's Type.</param>
+    /// <param name="depth">The part's depth in the walk, from which a walk of what the part owns goes on (a Sealed handle's payload).</param>
+    /// <returns>Whether the walk stops.</returns>
+    bool Visit(BoundType type, int depth);
+
+    /// <summary>A part past the walk's depth bound, whose destruction the walk does not follow.</summary>
+    /// <returns>Whether the walk stops.</returns>
+    bool Deep();
+}
+
+// The destruction walk and the facts over it: whether a value may need a drop, and whether its destruction may observe what it holds.
+internal static partial class MirTypes
+{
+    /// <summary>Gets whether a value of a Type may own what its destruction releases (SPEC 16.3), the one rule by which the builder drops
+    /// an old value: whether its <see cref="Destruction"/> reports a part.</summary>
+    /// <param name="type">The Type.</param>
+    /// <returns>Whether drop elaboration has to consider the value.</returns>
+    internal static bool MayNeedDrop(BoundType? type)
+    {
+        var any = default(AnyPart);
+        return Destruction(type, ref any);
+    }
+
+    /// <summary>Gets whether destroying a value of a Type may observe the Origins and Loans it holds (SPEC 15.6.6, 16.3.3): its
+    /// <see cref="Destruction"/> reaches a struct that declares a drop, which observes all it reaches; a Function value or an abstract part
+    /// not proven Copy, whose destruction is unknown; or an owning handle whose payload is not proven Sealed, or is and observes, since any
+    /// rc or arc release may be final. A payload is walked once per query, below its handle: a recursive Type ends, exactly where it
+    /// repeats and at the walk's bound where it grows.</summary>
+    /// <param name="type">The Type.</param>
+    /// <param name="types">The Type context, whose Copy and Sealed proofs Binding publishes.</param>
+    /// <param name="definition">The definition whose premises prove Copy and Sealed.</param>
+    /// <param name="seen">Scratch for the payloads walked, cleared first.</param>
+    /// <param name="deep">Whether the walk reached a part past its depth bound, which this implementation does not follow (SPEC 8.15):
+    /// the caller's located Unsupported_Kd.</param>
+    /// <returns>Whether the destruction may observe them; true when deep.</returns>
+    internal static bool Observes(BoundType? type, TyCtxt types, BindingSymbol? definition, HashSet<BoundType> seen, out bool deep)
+    {
+        seen.Clear();
+        var observer = new Observer(types, definition, seen);
+        var observes = Destruction(type, ref observer);
+        deep = observer.Beyond;
+        return observes;
+    }
+
+    /// <summary>Walks what destroying a value of a Type does (SPEC 16.3), the one walk of its inline storage that drop elaboration and the
+    /// effect summaries share. It reports each part that runs or releases something: an abstract Type (its instance decides), an owning
+    /// handle, a Function value (its environment), a string, an Array or a Dictionary, a struct that declares a drop (whose destructor body
+    /// alone destroys its parts, R4-M6b), and as Deep a part past depth 32; it walks on into the components of a Tuple, fixed array,
+    /// Closure, Array or Dictionary, a struct's Fields and base and an enum's Case payloads. References, raw pointers, Slices, scalars and
+    /// an InlineStorage, whose owner destroys its contents (<see cref="AdtDef.IsInlineStorage"/>), release nothing.</summary>
+    /// <typeparam name="TVisitor">The visitor's struct type.</typeparam>
+    /// <param name="type">The Type.</param>
+    /// <param name="visitor">The visitor.</param>
+    /// <param name="depth">The walk's depth.</param>
+    /// <returns>Whether the visitor stopped the walk.</returns>
+    internal static bool Destruction<TVisitor>(BoundType? type, ref TVisitor visitor, int depth = 0)
+        where TVisitor : struct, IMirDestruction
+    {
+        if (type is null)
+        {
+            return false;
+        }
+
+        if (depth > 32)
+        {
+            return visitor.Deep();
+        }
+
+        if (type.IsAbstract || type.Kind == BoundTypeKind.Function)
+        {
+            return visitor.Visit(type, depth);
+        }
+
+        if (type.Kind == BoundTypeKind.Semantics)
+        {
+            return type.Semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && visitor.Visit(type, depth);
+        }
+
+        var sequence = type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary; // A managed sequence releases its storage and its elements.
+        var destructor = AdtDef.Destructor(type) is not null;
+        if ((sequence || ReferenceEquals(type, BoundType.String) || destructor) && visitor.Visit(type, depth))
+        {
+            return true;
+        }
+
+        if (destructor || AdtDef.IsInlineStorage(type))
+        {
+            return false;
+        }
+
+        var parts = sequence || type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure
+            ? type.Components : AdtDef.CaseTypes(type) ?? [];
+        for (var i = 0; i < parts.Count; i++)
+        {
+            if (Destruction(parts[i], ref visitor, depth + 1))
+            {
+                return true;
+            }
+        }
+
+        for (var i = 0; AdtDef.IsStruct(type) && i < AdtDef.Count(type); i++)
+        {
+            if (Destruction(AdtDef.FieldType(type, i), ref visitor, depth + 1))
+            {
+                return true;
+            }
+        }
+
+        return AdtDef.Base(type) is { } parent && Destruction(parent, ref visitor, depth + 1);
+    }
+
+    // MayNeedDrop's visitor: any reported part.
+    private struct AnyPart : IMirDestruction
+    {
+        public readonly bool Visit(BoundType type, int depth) => true;
+
+        public readonly bool Deep() => true;
+    }
+
+    // Observes' visitor: a reported part that may observe, and past the walk's depth bound one it does not follow. A string's or a
+    // sequence's own release observes nothing; its elements are parts of their own.
+    private struct Observer(TyCtxt types, BindingSymbol? definition, HashSet<BoundType> seen) : IMirDestruction
+    {
+        internal bool Beyond { get; private set; }
+
+        public bool Visit(BoundType type, int depth)
+        {
+            if (type.IsAbstract)
+            {
+                return !types.Copy(definition, type);
+            }
+
+            if (type.Kind == BoundTypeKind.Function || AdtDef.Destructor(type) is not null)
+            {
+                return true;
+            }
+
+            var payload = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : null;
+            return payload is not null && (!types.Sealed(definition, payload) || (seen.Add(payload) && Destruction(payload, ref this, depth + 1)));
+        }
+
+        public bool Deep()
+        {
+            this.Beyond = true;
+            return true;
+        }
+    }
+}

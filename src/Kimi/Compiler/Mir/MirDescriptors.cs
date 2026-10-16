@@ -63,7 +63,8 @@ internal interface IMirUses
 
     /// <summary>Effects of the location.</summary>
     /// <param name="effects">The effects.</param>
-    /// <param name="site">The Opaque site of an Unknown effect, else -1.</param>
+    /// <param name="site">The Opaque site of an Unknown effect, the static's index in <see cref="MirBody.Statics"/> of a static
+    /// effect, else -1.</param>
     void Effect(MirEffect effects, int site);
 }
 
@@ -133,7 +134,8 @@ internal static class MirDescriptors
         _ => default,
     };
 
-    // The intrinsic table's rows (plan 5.8): arguments as the library declares them, Fail's being its SPEC 22.5.2 code as a string constant.
+    // The intrinsic table's rows (plan 5.8): arguments as the library declares them, then those the builder adds: Fail's SPEC 22.5.2
+    // code as a string constant and RawSlice's backing (DECISIONS R4-M40).
     internal static MirDescriptor Of(IntrinsicId id) => id switch
     {
         IntrinsicId.RawAllocate => Row(MirAccess.None, MirEffect.Allocation, 1),
@@ -143,7 +145,7 @@ internal static class MirDescriptors
         IntrinsicId.MakeRc => Row(MirAccess.None, MirEffect.Allocation, 1),
         IntrinsicId.MakeArc => Row(MirAccess.None, MirEffect.Allocation, 1),
         IntrinsicId.RawInitialize => Row(MirAccess.None, MirEffect.None, 2),
-        IntrinsicId.RawSlice => Row(MirAccess.None, MirEffect.None, 2),
+        IntrinsicId.RawSlice => Row(MirAccess.None, MirEffect.None, 3), // The storage, the length and the backing (DECISIONS R4-M40).
         IntrinsicId.MoveBytes => Row(MirAccess.None, MirEffect.None, 3),
         IntrinsicId.Stride => Row(MirAccess.None, MirEffect.None, 0),
         // Capacity: a handle's view.
@@ -374,7 +376,7 @@ internal static class MirUses
                 effect = entry.RawHolding && !entry.Mutable ? MirEffect.StaticRead | MirEffect.RawStaticRead : MirEffect.StaticRead;
             }
 
-            Effect(effect, -1, ref visitor);
+            Effect(effect, ~place.Root, ref visitor);
         }
     }
 

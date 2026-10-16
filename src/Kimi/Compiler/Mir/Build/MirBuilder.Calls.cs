@@ -13,7 +13,12 @@ internal sealed partial class MirBuilder
     // compare's i32 compared with zero.
     private void Call(MirPlace destination, Koto node)
     {
-        var call = ExpansionPlan.Of(node)?.Second ?? CallPlan.Of(node)!;
+        if ((ExpansionPlan.Of(node) is { } plan ? plan.Second : CallPlan.Of(node)) is not { } call)
+        {
+            this.Broken(node, destination);
+            return;
+        }
+
         if (node is not BinaryKoto binary || BinaryOp(binary.Akind) is not (> MirBinaryOp.Eq and MirBinaryOp relation))
         {
             this.Call(destination, call, node, first: null);
@@ -37,10 +42,11 @@ internal sealed partial class MirBuilder
     // SPEC 7.3, 7.7.3: a call of the function, requirement, virtual slot or callable value Binding selected: a value call's callee in its
     // receiver mode, the receiver, then the arguments in their order (an assignment's secured value first, SPEC 13.7.1), each as its Adjust
     // takes it for its parameter's Type or as the value an expansion evaluated for it (given), then its omitted defaults (Defaults), passed by
-    // parameter slot, the receiver first. A compiler function is its intrinsic where the table gives one (IntrinsicDisposition; Fail with its
-    // fixed code), and a direct base call the implementation the virtual selection names. A
+    // parameter slot, the receiver first. A compiler function is its intrinsic where the table gives one (IntrinsicDisposition), with
+    // the operands it takes beyond the written arguments (Extra), and a direct base call the implementation the virtual selection names. A
     // call of a Never function or a diverging intrinsic has no runtime successor and continues for the checks (SPEC 14.10); a call whose
-    // operand does not complete enters no callee (SPEC 15.6.7).
+    // operand does not complete enters no callee at run time (SPEC 15.6.7), but for the checks it continues where that operand's code
+    // continues, its later operands, defaults and activation checked there (SPEC 14.10.3).
     private void Call(MirPlace destination, CallPlan call, Koto node, Koto? first, Koto? given = null, in MirOperand value = default)
     {
         var function = call.Kind == CalleeKind.Value ? null : call.Target;
@@ -66,11 +72,10 @@ internal sealed partial class MirBuilder
         if (function is null)
         {
             // The callee value, pending while the arguments are evaluated.
-            this.arguments.Add(this.Operand(source, call.ReceiverOperation.AdaptedType, input: true));
+            this.arguments.Add(this.Reached(this.Operand(source, call.ReceiverOperation.AdaptedType, input: true), source));
         }
 
         var start = this.arguments.Count;
-        var completes = function is not null || Completes(source);
         var defaults = !call.DefaultArguments.IsEmpty;
         CollectionsMarshal.SetCount(this.arguments, start + count);
         CollectionsMarshal.AsSpan(this.arguments)[start..].Clear(); // No stale operand reads as pending (Transfer).
@@ -88,8 +93,7 @@ internal sealed partial class MirBuilder
                 ReferenceEquals(direct, function) ? call.ReceiverOperation.AdaptedType ?? parameter : parameter,
                 input: true,
                 slot);
-            this.arguments[start] = slot is { } place ? this.Pending(place, operand, receiver) : operand;
-            completes &= Completes(receiver);
+            this.arguments[start] = slot is { } place ? this.Pending(place, operand, receiver) : this.Reached(operand, receiver);
         }
 
         for (var pass = first is null ? 1 : 0; pass < 2; pass++)
@@ -107,29 +111,27 @@ internal sealed partial class MirBuilder
                     this.arguments[start + MirCallee.Position(function, argument.ParameterIndex)] = slot is { } place ? this.Pending(
                         place,
                         operand,
-                        argument.Source!) : operand;
-                    completes &= Completes(argument.Source!);
+                        argument.Source!) : this.Reached(operand, argument.Source!);
                 }
             }
         }
 
-        if (!completes || (defaults && !this.Defaults(call, function!, subst, start, node)))
+        if (defaults)
         {
-            this.arguments.RemoveRange(pending, this.arguments.Count - pending);
-            return;
+            this.Defaults(call, function!, subst, start, node);
         }
 
         var disposition = function is null ? default : IntrinsicDisposition.Of(function.CompilerFunction);
-        if (disposition.Id == IntrinsicId.Fail)
+        if (this.Extra(disposition) is { } extra)
         {
-            this.arguments.Add(MirOperand.Const(this.body.Const(new(MirConstKind.String, BoundType.String, Value: disposition.Code))));
+            this.arguments.Add(extra);
         }
 
         var callee = disposition.Kind == DispositionKind.Intrinsic ? MirCallee.Intrinsic(disposition.Id, subst) : call.Kind switch
         {
             CalleeKind.Requirement => new(MirCalleeKind.Requirement, function, subst, Contract: call.RequirementContract),
             CalleeKind.Virtual when !call.VirtualIsDirect => new(MirCalleeKind.Virtual, function, subst),
-            CalleeKind.Value => new(MirCalleeKind.Value),
+            CalleeKind.Value => new(MirCalleeKind.Value, Arg: this.body.Const(new(MirConstKind.TypeToken, call.DeclaredSignature))), // C8.
             _ => new MirCallee(MirCalleeKind.Fn, direct, subst),
         };
 
@@ -142,6 +144,22 @@ internal sealed partial class MirBuilder
             function is null ? this.arguments[pending] : default);
         this.arguments.RemoveRange(pending, start - pending);
     }
+
+    // The operand an intrinsic takes beyond a written call's arguments (its row's arity; DECISIONS R4-M40): Fail's fixed code (SPEC 22.5.2)
+    // and Raw.slice's backing, Unit, since nothing backs a written raw slice (SPEC 5.6: its storage is the caller's obligation); none for
+    // another callee.
+    private MirOperand? Extra(in IntrinsicDisposition disposition) => disposition.Id switch
+    {
+        IntrinsicId.Fail => this.Code(disposition.Code!),
+        IntrinsicId.RawSlice => this.UnitOperand(),
+        _ => null,
+    };
+
+    // An operand as its call takes it without a pending slot (which has its parameter's Type): where its node does not complete no value
+    // reaches the call (SPEC 15.6.7), so it is of Type Never, which agrees with any parameter (MirValidator): its own where it has that
+    // Type, else an unwritten temp.
+    private MirOperand Reached(in MirOperand operand, Koto node)
+        => Completes(node) || ReferenceEquals(this.TypeOf(operand), BoundType.Never) ? operand : MirOperand.Move(this.Unwritten(node));
 
     // A Call terminator of a callee on the operands pushed since start, into the destination; one that diverges continues for the checks
     // only (SPEC 14.10).
@@ -175,9 +193,12 @@ internal sealed partial class MirBuilder
     // SPEC 17.4: a block that fails with a fixed SPEC 22.5.2 code (an expansion's check), without a successor.
     private void Fail(int block, string code, Koto node)
     {
-        var start = this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.String, BoundType.String, Value: code))));
+        var start = this.body.AddOperand(this.Code(code));
         this.body.Terminate(block, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.Fail), start, 1, this.Unwritten(node), -1, this.Info(node)));
     }
+
+    // A SPEC 22.5.2 failure code, the string constant Fail takes.
+    private MirOperand Code(string code) => MirOperand.Const(this.body.Const(new(MirConstKind.String, BoundType.String, Value: code)));
 
     // The destination of a diverging call on a path that ends with it (a failed check, $require's abort): a Never temp the call never writes
     // (MirUses), without storage, whose markers the statement's other paths would end without beginning (SPEC 3.6).

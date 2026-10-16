@@ -64,7 +64,7 @@ fn measure @42
   _0: i32 return @42
   _1: objref/Shape arg shape @42
   bb0:
-    * _0 = virtual slot 0 area(copy _1) -> bb1 @46
+    * _0 = virtual area(copy _1) -> bb1 @46
   bb1:
       return @46
 fn make @50

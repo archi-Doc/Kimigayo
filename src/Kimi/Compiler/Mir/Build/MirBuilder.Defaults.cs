@@ -97,8 +97,8 @@ internal sealed partial class MirBuilder
     // of the earlier parameters' slots (a copy, of those its template reads): a copy of its template, a call of a recursive template
     // (every slot, its arguments), or an Opaque value reading those slots where
     // its template failed (no record) or the copy would take the body past the limit (the call's Resource record). A default that does not
-    // complete reaches no later default and no callee (SPEC 15.6.7): false, building going on for the checks only.
-    private bool Defaults(CallPlan call, BindingSymbol function, Subst? subst, int start, Koto node)
+    // complete reaches no later default and no callee at run time (SPEC 15.6.7); building goes on for the checks.
+    private void Defaults(CallPlan call, BindingSymbol function, Subst? subst, int start, Koto node)
     {
         foreach (ref readonly var omitted in call.DefaultArguments)
         {
@@ -140,15 +140,8 @@ internal sealed partial class MirBuilder
                 }
             }
 
-            if (!completes)
-            {
-                return false;
-            }
-
             this.arguments[start + MirCallee.Position(function, decl.Index)] = MirOperand.Move(slot);
         }
-
-        return true;
     }
 
     // Plan 5.6.2: a copy of a template's MIR in this body, folded once under the call's substitution: its scopes in a scope Inlined at the
@@ -237,11 +230,16 @@ internal sealed partial class MirBuilder
             var composed = terminator.Callee.Subst is { } inner && subst is not null ? compilation.Types.Compose(inner, subst) : terminator.Callee.Subst;
             failed |= composed is null && terminator.Callee.Subst is not null;
             var place = call || terminator.Kind == MirTerminatorKind.Drop ? FoldPlace(terminator.Place) : default;
+            var callee = terminator.Callee with { Subst = composed ?? terminator.Callee.Subst };
+            if (callee.Kind == MirCalleeKind.Value)
+            {
+                callee = callee with { Arg = FoldOperand(MirOperand.Const(callee.Arg)).Arg }; // Its signature, a constant (C8).
+            }
+
             var copied = terminator with
             {
                 Source = FoldInfo(terminator.Source), Target = Target(terminator.Target), CheckTarget = Target(terminator.CheckTarget),
-                Operand = operand, Start = first,
-                Place = place, Callee = terminator.Callee with { Subst = composed ?? terminator.Callee.Subst },
+                Operand = operand, Start = first, Place = place, Callee = callee,
             };
             // The copy keeps a Drop where its instance's Type may need one (MirTypes.MayNeedDrop, the rule every Drop is built by).
             var kept = terminator.Kind != MirTerminatorKind.Drop || MirTypes.MayNeedDrop(this.body.TypeOf(place));

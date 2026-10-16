@@ -168,7 +168,7 @@ fn make @99
       StorageLive(_3) @119 s1
       StorageLive(_4) @120 s1
     * _4 = &_1: ref/closure (i32) -> s/i32 @120 s1
-      _3 = value move _4(const 7_i32) -> bb1 @119 s1
+      _3 = value const type (i32) -> s/i32 move _4(const 7_i32) -> bb1 @119 s1
   bb1:
       _2 = move _3 @119 s1
       StorageDead(_4) @120 s1

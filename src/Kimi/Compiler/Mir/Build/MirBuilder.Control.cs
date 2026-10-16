@@ -98,10 +98,10 @@ internal sealed partial class MirBuilder
         this.Enter(pass, test);
     }
 
-    // SPEC 14.5, 16.2.2, 15.6.7: a transfer evaluates and secures its operand, ends the borrows of the calls it abandons (its operands
-    // pending since its target began), then branches: at run time to its result's placement and on through its target's drop tree to the
-    // target its plan row names (a function's return block, built at its first return), for the checks to the code after it. An operand
-    // that does not complete leaves no transfer.
+    // SPEC 14.5, 16.2.2, 15.6.7: a transfer evaluates and secures its operand, then branches: at run time it ends the borrows of the calls
+    // it abandons (its operands pending since its target began), places its result and goes on through its target's drop tree to the
+    // target its plan row names (a function's return block, built at its first return); for the checks it goes on to the code after it,
+    // where those calls continue with their reservations. An operand that does not complete leaves no transfer.
     private void Transfer(JumpKoto jump)
     {
         var plan = HirTables.PlanOf(jump).Plan;
@@ -131,36 +131,40 @@ internal sealed partial class MirBuilder
         }
 
         value = continues ? value : this.Secure(value, operand ?? jump);
+        var info = this.Info(jump);
         ref var target = ref CollectionsMarshal.AsSpan(this.targets)[index];
-        for (var i = target.Mark; i < this.arguments.Count; i++)
-        {
-            var pending = this.arguments[i].Place;
-            if (this.arguments[i].Kind == MirOperandKind.Move && this.IsTemp(pending) && MirTypes.IsReference(this.body.TypeOf(pending)))
-            {
-                this.body.Push(this.current, MirStatement.Of(MirStatementKind.EndBorrow, pending, this.Info(jump)));
-            }
-        }
-
         if (target.Break < 0)
         {
             this.body.Terminate(target.Break = this.body.AddBlock(), MirTerminator.Return(new(SourceRef.Of(this.declaration), 0, StatementStart: false)));
         }
 
         target.Reached |= !continues;
-        var info = this.Info(jump);
-        var place = target.Destination;
+        var (inner, place, mark) = (info with { StatementStart = false }, target.Destination, target.Mark);
         var entry = this.Exit(target.Depth, continues ? target.Continue : target.Break);
+        var runtime = continues ? -1 : this.body.AddBlock(); // The runtime edge's first block: the abandoned borrows end, the result is placed.
+        for (var i = mark; i < this.arguments.Count; i++)
+        {
+            var pending = this.arguments[i].Place;
+            if (this.arguments[i].Kind == MirOperandKind.Move && this.IsTemp(pending) && MirTypes.IsReference(this.body.TypeOf(pending)))
+            {
+                runtime = runtime < 0 ? this.body.AddBlock() : runtime;
+                this.body.Push(runtime, MirStatement.Of(MirStatementKind.EndBorrow, pending, inner));
+            }
+        }
+
         if (!continues)
         {
-            var placement = this.body.AddBlock();
-            this.body.Push(placement, MirStatement.Assign(place, MirRvalue.Use(this.body.AddOperand(value)), info with { StatementStart = false }));
+            this.body.Push(runtime, MirStatement.Assign(place, MirRvalue.Use(this.body.AddOperand(value)), inner));
             if (index == 0 && this.constructed is not null)
             {
-                this.RequestExit(placement, info with { StatementStart = false }); // A constructor's return.
+                this.RequestExit(runtime, inner); // A constructor's return.
             }
+        }
 
-            this.body.Terminate(placement, MirTerminator.Goto(entry, info with { StatementStart = false }));
-            entry = placement;
+        if (runtime >= 0)
+        {
+            this.body.Terminate(runtime, MirTerminator.Goto(entry, inner));
+            entry = runtime;
         }
 
         var next = this.body.AddBlock();

@@ -44,7 +44,7 @@ fn f @0
   bb1:
       _0 = intrinsic Abort(const "abort") -> ! check bb2 @0
   bb2:
-      _0 = value copy _8(copy _1.0) -> bb3 @0
+      _0 = value const type (i32) -> i32 copy _8(copy _1.0) -> bb3 @0
   bb3:
       drop _3 -> bb4 @0
   bb4:
