@@ -86,11 +86,7 @@ public class FunctionTypeConstraintBindingTest
     public void WarmFunctionConditionChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("public struct Target\n    (i32) -> bool is (i32) -> bool and Owned");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

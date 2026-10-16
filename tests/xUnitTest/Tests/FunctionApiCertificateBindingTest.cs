@@ -71,11 +71,7 @@ public class FunctionApiCertificateBindingTest
     public void WarmApiCertificateChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Source("public", "public"));
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

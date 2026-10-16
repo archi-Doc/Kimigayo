@@ -66,11 +66,6 @@ public class DefaultBindingTest
         var c = MinimalEmissionTest.Analyze("func f(x: i32 = (if true => 1 else => 2)) => ()\nf(3)");
         Assert.True(c.Binding.Result.IsComplete);
         var valid = true;
-        for (var i = 0; i < 100; i++)
-        {
-            valid &= c.Analyze().IsVerified;
-        }
-
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
         Assert.True(valid);
     }
@@ -217,11 +212,7 @@ public class DefaultBindingTest
     public void WarmOmittedDefaultPlansReuseTheirStorage()
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = x, z: i32 = y) => ()\nf(1)\nf(z: 3, x: 1)");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)
@@ -304,11 +295,7 @@ public class DefaultBindingTest
     public void WarmDefaultBindingAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = x + 1) => ()");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

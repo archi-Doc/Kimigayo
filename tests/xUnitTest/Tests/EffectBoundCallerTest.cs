@@ -90,11 +90,6 @@ public class EffectBoundCallerTest
     {
         var c = MinimalEmissionTest.Analyze(Source + "func takeTwoStable<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)\n    S is StableSource\n    let first = source.take()\n    let second = source.take()\n    return (first@move, second@move)\n" + Main);
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        for (var i = 0; i < 4; i++)
-        {
-            c.Analyze();
-        }
-
         var verified = true;
         var allocated = AllocationMeasurement.Measure(() => verified &= c.Analyze().IsVerified);
         Assert.True(verified);

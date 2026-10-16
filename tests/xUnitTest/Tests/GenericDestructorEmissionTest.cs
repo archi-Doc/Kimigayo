@@ -164,11 +164,7 @@ public class GenericDestructorEmissionTest
     public void InstantiatedDestructorsReuseWarmEmissionState()
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    let value: T\n    let tag: i32\n    public init(value: T)\n        self.value = value@move\n        self.tag = 1\n    drop\n        if self.tag == 1 => Console.writeLine(\"tag\")\nlet a = Box<i8>.init(7)\nlet b = Box<i64>.init(8)");
-        for (var i = 0; i < 16; i++)
-        {
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.WriteIr(TextWriter.Null, out var error))

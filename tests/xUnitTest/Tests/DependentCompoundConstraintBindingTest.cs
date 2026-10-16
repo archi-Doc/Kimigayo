@@ -141,11 +141,7 @@ public class DependentCompoundConstraintBindingTest
     public void WarmCompoundInputsAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    [2 of T] is Copy\npublic func use(value: Target<i32>)\n    return");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

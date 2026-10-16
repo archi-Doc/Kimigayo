@@ -80,11 +80,7 @@ public class UnknownAttributeCertificateBindingTest
     public void WarmInvalidAttributeBindingAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze("contract Marker\n#Unknown\nstruct S\n    Self is Marker");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.False(c.Bind().IsComplete);
-        }
-
+        Assert.False(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (c.Bind().IsComplete)

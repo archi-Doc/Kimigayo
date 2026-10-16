@@ -102,11 +102,7 @@ public class ClosedProjectionConstraintBindingTest
     public void WarmClosedProjectionProofsAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Source("struct", "[2 of Source.Origin.Item] is Copy"));
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

@@ -182,11 +182,7 @@ public sealed class ParameterShapeTest(ITestOutputHelper output)
     public void WarmShapeRejectionAllocatesNothing()
     {
         var c = CompilationTestHelper.ParseSuccess(Types + "func pair(left: Value, right: Value) -> () => ()\nfunc pair(left: ref/Value, right: uniq/Value) -> () => ()\nlet a = Value.init()\npair(a, a)");
-        for (var i = 0; i < 4; i++)
-        {
-            Assert.False(c.Bind().IsComplete);
-        }
-
+        Assert.False(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
 
@@ -195,11 +191,7 @@ public sealed class ParameterShapeTest(ITestOutputHelper output)
     public void WarmAcceptedGroupsAllocateNothing()
     {
         var c = CompilationTestHelper.ParseSuccess(Types + Game + "func f(value: Node) -> i32 => 1\nfunc f<T>(value: T) -> i32 => 2\nvar game = Game.init()\nbump(game.score@uniq)\n_ = bumped(game.score)\n_ = f(Node.init())");
-        for (var i = 0; i < 4; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
 

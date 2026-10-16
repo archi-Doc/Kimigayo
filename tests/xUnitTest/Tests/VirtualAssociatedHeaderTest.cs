@@ -86,7 +86,7 @@ public class VirtualAssociatedHeaderTest
     {
         var c = MinimalEmissionTest.Analyze("contract Catalog\n    associate Element\n    Element is Copy\nopen struct Base<T>\n    public virtual func read(self: objref/Self, value: ref/T.Element) -> T.Element\n        T is Catalog\n        return value@follow\nstruct Derived<U> : Base<U>\n    override func read(self: objref/Self, value: ref/U.Element) -> U.Element => value@follow\n()");
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(valid);
     }
 

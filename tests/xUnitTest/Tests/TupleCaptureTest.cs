@@ -84,7 +84,7 @@ public class TupleCaptureTest
         var c = MinimalEmissionTest.Analyze("let pair = (\"owned\", 7)\nlet f: () -> i32 = func [pair@move] () => pair.1\nrequire f() == 7 else => $abort(\"call\")");
         Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid);
     }
 

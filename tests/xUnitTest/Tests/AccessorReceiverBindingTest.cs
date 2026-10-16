@@ -115,11 +115,7 @@ public class AccessorReceiverBindingTest
     public void WarmAccessorReceiverChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("public struct Api<T>\n    public computed item: i32\n        get() -> i32 => 1\n        set(self: uniq/Self, value: i32) -> () => ()\n    public func read(self) -> i32 => 1");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

@@ -46,7 +46,7 @@ public class VirtualPublicEffectTest
         var c = MinimalEmissionTest.Analyze("open struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n        return 1\n()");
         var original = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsVirtual);
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Binding.AvailableEffectBounds(original, null, original) == (true, false), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Binding.AvailableEffectBounds(original, null, original) == (true, false)));
         Assert.True(valid);
     }
 }

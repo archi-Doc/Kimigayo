@@ -61,15 +61,12 @@ public class SliceToArrayTest
     {
         var c = MinimalEmissionTest.Analyze(VerificationWorkloads.SliceCopies);
         var valid = true;
-        var bytes = AllocationMeasurement.Measure(
-            () =>
-            {
-                valid &= c.Bind().IsComplete;
-                c.Binding.CheckStartup(OutputKind.Application);
-                valid &= c.Analyze().IsVerified && c.WriteIr(TextWriter.Null, out _);
-            },
-            iterations: 8,
-            warmupIterations: 8);
+        var bytes = AllocationMeasurement.Measure(() =>
+        {
+            valid &= c.Bind().IsComplete;
+            c.Binding.CheckStartup(OutputKind.Application);
+            valid &= c.Analyze().IsVerified && c.WriteIr(TextWriter.Null, out _);
+        });
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(0, bytes);
     }

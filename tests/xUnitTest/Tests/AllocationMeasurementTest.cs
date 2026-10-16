@@ -8,60 +8,54 @@ public class AllocationMeasurementTest
 {
     [Trait("Purpose", "Allocation")]
     [Fact]
-    public void PreservesFixedCountsAndIsolatesTheMeasuringThread()
+    public void RunsTheStandardWindowAndIsolatesTheMeasuringThread()
     {
         var context = new AsyncLocal<string?> { Value = "runner" };
         var runnerThread = Environment.CurrentManagedThreadId;
         var calls = 0;
         var isolated = true;
-        var bytes = AllocationMeasurement.Measure(
-            () =>
-            {
-                isolated &= Environment.CurrentManagedThreadId != runnerThread && context.Value is null;
-                calls++;
-            },
-            iterations: 128,
-            warmupIterations: 100);
+        var bytes = AllocationMeasurement.Measure(() =>
+        {
+            isolated &= Environment.CurrentManagedThreadId != runnerThread && context.Value is null;
+            calls++;
+        });
         Assert.True(isolated);
-        Assert.Equal(228, calls);
+        Assert.Equal(AllocationMeasurement.WarmupOperations + AllocationMeasurement.MeasuredOperations, calls);
         Assert.Equal(0, bytes);
         Assert.Equal("runner", context.Value);
     }
 
-    [Theory]
-    [InlineData(-1, 0)]
-    [InlineData(0, -1)]
-    public void InvalidCountsNeverRunTheWork(int iterations, int warmupIterations)
-    {
-        var calls = 0;
-        Assert.Throws<ArgumentOutOfRangeException>(() => AllocationMeasurement.Measure(() => calls++, iterations, warmupIterations));
-        Assert.Equal(0, calls);
-    }
-
-    [Trait("Purpose", "Allocation")]
-    [Theory]
-    [InlineData(8, 8)]
-    [InlineData(128, 100)]
-    public void DetectsAllocatingWork(int iterations, int warmupIterations)
-        => Assert.True(AllocationMeasurement.Measure(() => GC.KeepAlive(new byte[128]), iterations, warmupIterations) >= 128 * iterations);
-
     [Trait("Purpose", "Allocation")]
     [Fact]
-    public void WarmupAllocationsStayOutsideTheFixedMeasurement()
+    public void DetectsAllocatingWork()
+        => Assert.True(AllocationMeasurement.Measure(() => GC.KeepAlive(new byte[128])) >= 128 * AllocationMeasurement.MeasuredOperations);
+
+    // Allocating in exactly the warm-up operations measures nothing, and allocating in the first measured operation
+    // is measured: together they fix the split of the window.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MeasuresExactlyTheOperationsAfterTheWarmup(bool firstMeasured)
     {
         var calls = 0;
-        var bytes = AllocationMeasurement.Measure(
-            () =>
+        var bytes = AllocationMeasurement.Measure(() =>
+        {
+            calls++;
+            if (firstMeasured ? calls == AllocationMeasurement.WarmupOperations + 1 : calls <= AllocationMeasurement.WarmupOperations)
             {
-                if (++calls <= 100)
-                {
-                    GC.KeepAlive(new byte[128]);
-                }
-            },
-            iterations: 128,
-            warmupIterations: 100);
-        Assert.Equal(228, calls);
-        Assert.Equal(0, bytes);
+                GC.KeepAlive(new byte[128]);
+            }
+        });
+        Assert.Equal(AllocationMeasurement.WarmupOperations + AllocationMeasurement.MeasuredOperations, calls);
+        if (firstMeasured)
+        {
+            Assert.True(bytes >= 128);
+        }
+        else
+        {
+            Assert.Equal(0, bytes);
+        }
     }
 
     [Trait("Purpose", "Allocation")]

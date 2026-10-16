@@ -36,11 +36,7 @@ public class BorrowDependencyStorageTest
         var body = Assert.Single(c.Ownership.Bodies, static x => x.Function.Name == "check");
         Assert.True(body.Places.Count >= count);
         Assert.Equal(0, body.BorrowDependencyCapacity);
-        for (var i = 0; i < 8; i++)
-        {
-            Assert.True(c.Analyze().IsVerified);
-        }
-
+        Assert.True(c.Analyze().IsVerified);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
     }
 

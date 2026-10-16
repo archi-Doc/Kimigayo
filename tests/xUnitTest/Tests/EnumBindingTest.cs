@@ -211,11 +211,7 @@ public class EnumBindingTest
         public void WarmEnumBindingReusesIdentitiesAndPlanStorage()
         {
             var c = CompilationTestHelper.ParseSuccess("enum E<T>\n    Both(T, string)\n" + string.Join('\n', Enumerable.Range(0, 128).Select(i => $"let v{i} = E<i32>.Both({i}, \"x\")")));
-            for (var i = 0; i < 8; i++)
-            {
-                Assert.True(c.Bind().IsComplete, Describe(c));
-            }
-
+            Assert.True(c.Bind().IsComplete, Describe(c));
             var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().First();
             Assert.True(c.Binding.TryGetEnumConstruction(call, out var plan));
             Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
@@ -227,11 +223,7 @@ public class EnumBindingTest
         public void WarmContextualConstructionPreservesBorrowOperations()
         {
             var c = CompilationTestHelper.ParseSuccess("func take(x: Option<ref/i32 during static>) => ()\nfunc f(x: ref/i32 during static)\n    take(.Some(x))");
-            for (var i = 0; i < 8; i++)
-            {
-                Assert.True(c.Bind().IsComplete, Describe(c));
-            }
-
+            Assert.True(c.Bind().IsComplete, Describe(c));
             Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
         }
     }

@@ -147,38 +147,17 @@ public class IndexableContractTest
         static (long Binding, long Ownership, long Generation) Measure(string source)
         {
             var c = MinimalEmissionTest.Analyze(source);
-            for (var i = 0; i < 100; i++)
-            {
-                Assert.True(c.Bind().IsComplete);
-                c.Binding.CheckStartup(OutputKind.Application);
-                Assert.True(c.Analyze().IsVerified);
-                Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-            }
-
-            var success = true;
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            for (var i = 0; i < 128; i++)
-            {
-                success &= c.Bind().IsComplete;
-            }
-
-            var binding = GC.GetAllocatedBytesForCurrentThread() - before;
+            Assert.True(c.Bind().IsComplete);
             c.Binding.CheckStartup(OutputKind.Application);
-            before = GC.GetAllocatedBytesForCurrentThread();
-            for (var i = 0; i < 128; i++)
-            {
-                success &= c.Analyze().IsVerified;
-            }
-
-            var ownership = GC.GetAllocatedBytesForCurrentThread() - before;
-            before = GC.GetAllocatedBytesForCurrentThread();
-            for (var i = 0; i < 128; i++)
-            {
-                success &= c.WriteIr(TextWriter.Null, out _);
-            }
-
+            Assert.True(c.Analyze().IsVerified);
+            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+            var success = true;
+            var binding = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
+            c.Binding.CheckStartup(OutputKind.Application);
+            var ownership = AllocationMeasurement.Measure(() => success &= c.Analyze().IsVerified);
+            var generation = AllocationMeasurement.Measure(() => success &= c.WriteIr(TextWriter.Null, out _));
             Assert.True(success);
-            return (binding, ownership, GC.GetAllocatedBytesForCurrentThread() - before);
+            return (binding, ownership, generation);
         }
     }
 

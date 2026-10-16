@@ -76,11 +76,7 @@ public class ExpressionProjectionCertificateBindingTest
     public void WarmWitnessChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Source("public", false));
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

@@ -184,14 +184,10 @@ public class DictionaryRemainderTest
     public void WarmExclusiveDictionaryLoopAllocatesNothing(string stage)
     {
         var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, string> = [:]\n_ = entries.tryInsert(1, \"a\")\nfor (key, value) in entries@uniq\n    Console.writeLine(value)");
-        for (var i = 0; i < 32; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             var valid = stage switch

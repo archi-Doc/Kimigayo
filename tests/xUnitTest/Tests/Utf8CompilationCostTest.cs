@@ -26,14 +26,10 @@ public class Utf8CompilationCostTest
             _ = $tryWrite(writer@uniq, "number=\(42)")
             """;
         var c = MinimalEmissionTest.Analyze(Source);
-        for (var i = 0; i < 32; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         var allocated = AllocationMeasurement.Measure(() =>
         {
             if (stage == "Pipeline")
@@ -64,9 +60,9 @@ public class Utf8CompilationCostTest
                 throw new InvalidOperationException("Warm formatting compilation failed.");
             }
         });
-        // Eight repetitions. Binding and ownership allocate nothing; the complete
-        // builtin pipeline has a 256-byte per-pass budget (measured: 216 bytes).
-        Assert.InRange(allocated, 0, stage is "Binding" or "Ownership" ? 0 : 8 * 256);
+        // Binding and ownership allocate nothing; the complete builtin pipeline has a
+        // 256-byte per-pass budget (measured: 216 bytes).
+        Assert.InRange(allocated, 0, stage is "Binding" or "Ownership" ? 0 : AllocationMeasurement.MeasuredOperations * 256);
     }
 
     [Fact]

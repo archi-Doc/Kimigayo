@@ -197,12 +197,8 @@ public class CallbackEmissionTest
         var c = MinimalEmissionTest.Analyze(Source);
         using var first = new StringWriter();
         Assert.True(c.WriteIr(first, out var failure), MinimalEmissionTest.Describe(c, failure));
-        for (var i = 0; i < 20; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            Assert.True(c.Analyze().IsVerified);
-        }
-
+        Assert.True(c.Bind().IsComplete);
+        Assert.True(c.Analyze().IsVerified);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
         Assert.True(c.Analyze().IsVerified);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));

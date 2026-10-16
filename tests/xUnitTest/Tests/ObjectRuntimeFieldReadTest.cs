@@ -81,16 +81,13 @@ public class ObjectRuntimeFieldReadTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze("struct Item\n    public let id: i32 = 7\nlet owner = Kimi.Intrinsics.makeObj(Item.init())\nrequire owner.id == 7 else => $abort(\"id\")");
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(0, AllocationMeasurement.Measure(
-            () =>
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            if (!c.Analyze().IsVerified)
             {
-                if (!c.Analyze().IsVerified)
-                {
-                    throw new InvalidOperationException("Object field analysis failed.");
-                }
-            },
-            iterations: 64,
-            warmupIterations: 32));
+                throw new InvalidOperationException("Object field analysis failed.");
+            }
+        }));
     }
 
     [Fact]

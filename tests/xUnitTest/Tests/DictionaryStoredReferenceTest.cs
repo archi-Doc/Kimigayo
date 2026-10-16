@@ -282,11 +282,7 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(optionalTuple
             ? "func run(value: uniq/i32 during a)\n    var entries = [1: (value@move, 7)]\n    let found = match entries.tryGet(1)\n        .Some(let item) => item.0@follow@ref\n        .None => $abort(\"missing\")\n    entries.clear()\n    require found == 42 else => $abort(\"value\")"
             : Header + "    let found = entries[1]@follow@ref\n    entries.clear()\n    require found == 42 else => $abort(\"value\")");
-        for (var i = 0; i < 8; i++)
-        {
-            Assert.True(c.Analyze().IsVerified);
-        }
-
+        Assert.True(c.Analyze().IsVerified);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
     }
 }

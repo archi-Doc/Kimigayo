@@ -133,7 +133,7 @@ public class GenericIdentityAdaptationTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(associated ? AssociatedOwnerSource : PlainOwnerSource);
         Assert.False(c.Binding.Result.IsComplete);
         var rejected = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => rejected &= !c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => rejected &= !c.Bind().IsComplete));
         Assert.True(rejected);
     }
 }

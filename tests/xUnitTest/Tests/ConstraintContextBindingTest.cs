@@ -74,11 +74,7 @@ public class ConstraintContextBindingTest
     public void WarmContextProofsAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("group Valid\n    public struct S\ngroup Consumer\n    func query<T>()\n        T is Valid.S\n        ()");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

@@ -87,14 +87,10 @@ public class DictionaryCostTest
             for (key, value) in entries@move => require value == 4 else => $abort("owner")
             """;
         var c = MinimalEmissionTest.Analyze(prefix == 0 ? Source : string.Join('\n', Source.Split('\n')[..prefix]));
-        for (var i = 0; i < 32; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         var bytes = AllocationMeasurement.Measure(() =>
         {
             if (stage == "Pipeline")

@@ -93,11 +93,7 @@ public class AggregateProjectionCertificateBindingTest
     public void WarmAggregateProofsAllocateNothing(int form)
     {
         var c = MinimalEmissionTest.Analyze(Source(form, false, "public"));
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

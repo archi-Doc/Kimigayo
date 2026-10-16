@@ -160,11 +160,7 @@ public class TypeBindingTest
         }
 
         var c = Parse(text.ToString());
-        for (var i = 0; i < 4; i++)
-        {
-            Assert.True(c.Bind().IsComplete, Describe(c));
-        }
-
+        Assert.True(c.Bind().IsComplete, Describe(c));
         var allocated = AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final));
         Assert.Equal(0, allocated);
     }

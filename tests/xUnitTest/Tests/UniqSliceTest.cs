@@ -199,13 +199,12 @@ public class UniqSliceTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(VerificationWorkloads.ExclusiveViews);
         var valid = true;
-        var bytes = AllocationMeasurement.Measure(
-            () =>
-            {
-                valid &= c.Bind().IsComplete;
-                c.Binding.CheckStartup(OutputKind.Application);
-                valid &= c.Analyze().IsVerified && c.WriteIr(TextWriter.Null, out _);
-            }, iterations: 8, warmupIterations: 8);
+        var bytes = AllocationMeasurement.Measure(() =>
+        {
+            valid &= c.Bind().IsComplete;
+            c.Binding.CheckStartup(OutputKind.Application);
+            valid &= c.Analyze().IsVerified && c.WriteIr(TextWriter.Null, out _);
+        });
         Assert.Equal(0, bytes);
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }

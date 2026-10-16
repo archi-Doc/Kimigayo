@@ -98,11 +98,7 @@ public class ArrayInferenceEmissionTest
     public void WarmArrayInferenceAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze("let value: u8 = 2\nlet matrix: [2 of [1 of _]] = [[1], [value]]");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

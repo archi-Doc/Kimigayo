@@ -95,14 +95,11 @@ public class DeferredEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(scenario == 2 ? Formatting : scenario == 1 ? ExpansionSource(2) : Snapshot);
         var success = true;
-        var allocated = AllocationMeasurement.Measure(
-            () =>
-            {
-                success &= c.Analyze().IsVerified;
-                success &= c.WriteIr(TextWriter.Null, out _);
-            },
-            iterations: 128,
-            warmupIterations: 100);
+        var allocated = AllocationMeasurement.Measure(() =>
+        {
+            success &= c.Analyze().IsVerified;
+            success &= c.WriteIr(TextWriter.Null, out _);
+        });
         Assert.True(success);
         Assert.Equal(0, allocated);
     }

@@ -38,14 +38,10 @@ public class BorrowedArrayWriteTest(ITestOutputHelper output)
     public void WarmBorrowedFixedArrayUpdatesAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("func edit(a: uniq/[2 of i32])\n    a[0] = 2\n    a[^1] += a[0]\nvar a: [2 of i32] = [1, 2]\nedit(a@uniq)");
-        for (var i = 0; i < 32; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.Validate(out var error), error);
-        }
-
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.Validate(out var error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

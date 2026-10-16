@@ -90,11 +90,7 @@ public class CallAdaptationTest
     public void WarmResultAdaptationReusesStorage()
     {
         var c = CompilationTestHelper.ParseSuccess(ReadResult);
-        for (var i = 0; i < 8; i++)
-        {
-            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
-        }
-
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
     }
 }

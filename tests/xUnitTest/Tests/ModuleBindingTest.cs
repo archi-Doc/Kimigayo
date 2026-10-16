@@ -226,11 +226,6 @@ public class ModuleBindingTest
             }
         }
 
-        for (var i = 0; i < 100; i++)
-        {
-            Analyze();
-        }
-
         Assert.Equal(0, AllocationMeasurement.Measure(Analyze));
     }
 

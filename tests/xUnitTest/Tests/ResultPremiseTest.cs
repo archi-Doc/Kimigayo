@@ -505,11 +505,7 @@ public class ResultPremiseTest
             _ => Holder + PickRelated + PickInto + Pinned.Replace("    origin h.a outlives x\n", "    origin h.a outlives x\n    origin x outlives s\n", StringComparison.Ordinal) +
                 "let value: i32 = 7\nlet h = Holder.init(item: value@ref)\nlet other: i32 = 3\nlet r = pickRelated(p: h@ref, q: other@ref)\nrequire r@follow@follow == 7 else => $abort(\"r\")\n",
         });
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

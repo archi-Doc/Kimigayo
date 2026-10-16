@@ -223,14 +223,11 @@ public class StringFunctionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(Echo + "var i = 0\nwhile i < 3\n    Console.writeLine(echo(echo(\"text\")))\n    i += 1");
         var success = true;
-        var bytes = AllocationMeasurement.Measure(
-            () =>
-            {
-                success &= c.Analyze().IsVerified;
-                success &= c.WriteIr(TextWriter.Null, out _);
-            },
-            iterations: 128,
-            warmupIterations: 100);
+        var bytes = AllocationMeasurement.Measure(() =>
+        {
+            success &= c.Analyze().IsVerified;
+            success &= c.WriteIr(TextWriter.Null, out _);
+        });
         Assert.True(success);
         Assert.Equal(0, bytes);
     }

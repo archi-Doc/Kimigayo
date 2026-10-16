@@ -141,7 +141,7 @@ public class VirtualConditionalDispatchTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(Program(false) + "\n_ = Leaf<NonCopy>.copy");
         Assert.False(c.Binding.Result.IsComplete);
         var rejected = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => rejected &= !c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => rejected &= !c.Bind().IsComplete));
         Assert.True(rejected);
     }
 
@@ -154,7 +154,7 @@ public class VirtualConditionalDispatchTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(Program(block));
         Assert.True(c.Validate(out var failure), MinimalEmissionTest.Describe(c, failure));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid);
     }
 

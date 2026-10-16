@@ -140,11 +140,7 @@ public class PairGroupingBindingTest
     public void WarmGroupedPairBindingAllocatesNothing()
     {
         var c = Parse("func identity<s/T>(value: s/((T))) -> s/(T) => value\nfunc use(value: ref/i32) -> ref/i32 => identity(value)");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete, Describe(c));
-        }
-
+        Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

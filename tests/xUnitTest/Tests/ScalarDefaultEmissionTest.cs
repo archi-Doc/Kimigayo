@@ -54,12 +54,8 @@ public class ScalarDefaultEmissionTest
     public void WarmPreparedElementReadsReuseStorage()
     {
         var c = MinimalEmissionTest.Analyze("func f(x: [2 of i32], i: isize, y: i32 = x[i]) -> i32 => y\nf([1, 2], 0)\nf([3, 4], 1)");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
@@ -91,12 +87,8 @@ public class ScalarDefaultEmissionTest
     public void WarmUnitDefaultPlansReuseStorage()
     {
         var c = MinimalEmissionTest.Analyze("func f(x: bool, first: () = (if x => ()), second: () = first, y: i32 = 3) -> i32 => y\nf(true)\nf(false)");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
@@ -391,12 +383,8 @@ public class ScalarDefaultEmissionTest
     public void WarmDefaultOwnershipAndEmissionReuseStorage()
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = (label scope: do\n    var n = (loop => exit (do => if x > 0 => (x@i64 + 1)@i32 else => 0))\n    n += 0\n    exit to scope n\n)) -> i32 => y\nlet a = f(1)\nlet b = f(2)");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))

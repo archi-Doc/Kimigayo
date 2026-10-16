@@ -94,7 +94,7 @@ public class BaseCallSyntaxTest(ITestOutputHelper output)
     public void RepeatedLexicalBaseCheckingReusesStorage()
     {
         var c = MinimalEmissionTest.Analyze(Base + "func readAgain(self: objref/Self) -> i32 => base.read()\n()");
-        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind(), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
         Assert.Empty(c.Binding.Issues);
     }
 

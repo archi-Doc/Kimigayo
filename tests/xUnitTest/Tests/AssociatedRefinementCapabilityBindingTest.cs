@@ -87,12 +87,8 @@ public class AssociatedRefinementCapabilityBindingTest
     {
         var c = MinimalEmissionTest.Analyze("public contract Trait: Copy\npublic contract Elements\n    associate Item is Trait\ngroup G\n    func inspect<T>(value: T.Item)\n        T is Elements\n        ()");
         var function = Function(c);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(function.Parameters[0].Type.TypeOf()!, function));
-        }
-
+        Assert.True(c.Bind().IsComplete);
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(function.Parameters[0].Type.TypeOf()!, function));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete || c.Binding.ProveCopy(function.Parameters[0].Type.TypeOf()!, function) != ConstraintProof.Proven)

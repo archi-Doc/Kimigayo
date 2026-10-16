@@ -67,20 +67,11 @@ public class BorrowedArrayEmissionTest
             Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
-        for (var i = 0; i < 32; i++)
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             c.Analyze();
             c.WriteIr(TextWriter.Null, out _);
-        }
-
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 16; i++)
-        {
-            c.Analyze();
-            c.WriteIr(TextWriter.Null, out _);
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        }));
     }
 
     [Fact]

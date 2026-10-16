@@ -101,11 +101,7 @@ public class ArrayArgumentEmissionTest
     public void WarmCandidateProbingAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze("func use(x: [1 of (u8, string)]) => ()\nfunc use(x: [1 of (i8, string)]) => ()\nuse([(255, \"value\")])");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

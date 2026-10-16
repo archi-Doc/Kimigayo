@@ -161,11 +161,7 @@ public class ConstantLengthBindingTest
         Assert.Equal(original.ToString(), writer.ToString());
         ScalarEmissionTest.WriteFixture("ConstantLengthReload", writer.ToString(), "two\n");
 
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

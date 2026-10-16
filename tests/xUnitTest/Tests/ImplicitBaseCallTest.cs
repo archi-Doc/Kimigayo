@@ -212,7 +212,7 @@ public class ImplicitBaseCallTest
         Assert.True(c.Bind().IsComplete);
         var constructor = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.HasOmittedBaseInitializer);
         var selected = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => selected &= c.Binding.SelectOmittedBaseConstructor(constructor).Outcome == OmittedBaseOutcome.Selected, iterations: 64, warmupIterations: 16));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => selected &= c.Binding.SelectOmittedBaseConstructor(constructor).Outcome == OmittedBaseOutcome.Selected));
         Assert.True(selected);
     }
 

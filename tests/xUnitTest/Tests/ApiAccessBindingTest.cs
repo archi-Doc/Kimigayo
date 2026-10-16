@@ -96,11 +96,7 @@ public class ApiAccessBindingTest
     public void WarmApiAccessChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("public struct Box<T>\n    T is Copy\npublic group Api\n    public func use<T>(value: (Box<T>, T))\n        T is Copy\n        ()");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

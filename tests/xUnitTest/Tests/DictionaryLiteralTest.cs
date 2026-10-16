@@ -93,11 +93,7 @@ public class DictionaryLiteralTest
     public void WarmDictionaryInferenceAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze("let key: u8 = 2\nlet entries = [1: [1: true], key: [2: false]]");
-        for (var i = 0; i < 4; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
 

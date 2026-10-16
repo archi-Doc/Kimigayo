@@ -187,11 +187,7 @@ public class RangeDiagnosticTest(ITestOutputHelper output)
     public void WarmRangeFailureRecordingAllocatesNothing()
     {
         var c = CompilationTestHelper.ParseSuccess("struct Start\nlet r = ..3\nlet p: Start = r.start\nfor i in 1..^1 => ()");
-        for (var i = 0; i < 4; i++)
-        {
-            Assert.False(c.Bind().IsComplete);
-        }
-
+        Assert.False(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
 

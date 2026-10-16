@@ -125,12 +125,8 @@ public class FloatConversionEmissionTest
     public void WarmFloatConversionPlansAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("func f(x: f32) -> f64 => x@f64\nlet x = 1.25@f32\nlet y = if x > 0.0 => f(x) else => x@f64\nlet z = y@f64");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
