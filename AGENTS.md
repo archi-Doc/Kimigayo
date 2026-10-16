@@ -15,7 +15,6 @@
 
 4. **Compiler Server Protocol**
    Provide a structured interface for:
-
    - **Diagnostics:** causes, related locations, and repair candidates with explicit preconditions and guarantees.
    - **AST Inspection and Manipulation:** inspect syntax and semantics, apply edits against identified source snapshots, and produce reviewable source changes.
    - **Verifiable Changes:** associate checks, tests, and measurements with exact source and configuration, reporting outcomes and remaining uncertainty.
@@ -28,11 +27,8 @@ SPEC correctness and the native O2 run-time and allocation guarantees are constr
 - **Short:** the least code that does the job coherently, counting deletions; no speculative mechanisms, wrappers without semantics, single-implementation interfaces or utility bags.
 - **Fast:** fast compilation and fast generated code, shown by measurement.
 
-Small diffs, low test churn and ease of review are not criteria. Code size has no caps; each compiler commit states its net size change per area.
-
 - **Roles.** The owner is the user. The planning session, which received the request, decides the design; the implementer follows it; a reviewer wrote neither, so a session working alone delegates review.
 - **Design before code.** First establish the failing condition and its cause from the code and a reproducer; label an unverified hypothesis as one. A change is local when it stays in one owning component, keeps its contract and invariants, adds no branch, parameter, state or table, and a search finds no other site with the same cause; its commit states the rule and the search. Any other change first gets a short design as one chain: the required meaning (the SPEC rule and the forms it governs) → what the representation lacks or wrongly allows → the owning component that decides it → what becomes unnecessary. It lists the sites sharing the cause ([CODEMAP](docs/dev/CODEMAP.md)), the options (at least a fix inside the owning component and a change of shared structure), the deletions and the expected size and speed. A delegated prompt carries the request, design, completion conditions and checks; an implementer who finds the design wrong stops and reports.
-- **Choose** consistent, then short, then fast. Never merge distinct responsibilities, or hide a distinction the SPEC or a contract needs, to save code. Reject a local patch that leaves the cause or a duplicated decision in place; correcting the rule inside the right owning component is a root fix, however small.
 - **Record decisions.** New representations, components, vocabulary entries, temporary structures and responsibilities moved between phases are decided by the planning session (or the owner where COMPILER_ARCHITECTURE says so) and recorded in [DECISIONS](docs/dev/DECISIONS.md) in the commit that first implements them. Read the area's DECISIONS and SETTLED entries first; departing from one adds a superseding entry naming the reason that no longer holds.
 - **Fix causes in shared structure,** even across phases; other findings become open issues or separate units. Each decision is made once, by its owning phase; a consumer lacking a fact has the owning component publish it. Each IR has one validator, owned by its producer (MIR: `MirValidator`); consumers trust validated IR, and a broken contract is `InternalInvariant_Kd` without recovery.
 - **Share by meaning.** Decisions with the same meaning and contract share one owning component; a similar shape under another contract stays separate. A new concept answers a recurring decision or an unowned responsibility, states what it removes, takes a SPEC name and a contract, replaces every existing use in the same unit and becomes a canonical component. Under a canonical table a new form adds a row, not a case.
@@ -48,7 +44,7 @@ Small diffs, low test churn and ease of review are not criteria. Code size has n
 
 - A compiler allocation is allowed when it makes equivalent work faster or removes code at a reasonable memory cost; measure time, allocations and retained memory, and update the affected allocation regressions in the same commit.
 - Follow [COMPILER_ARCHITECTURE](docs/dev/COMPILER_ARCHITECTURE.md) for dependencies, closed vocabularies, canonical components, structure limits, stage gates and the migration freeze; review enforces them (DECISIONS CR-R1). New vocabulary entries, new or larger exceptions and postponed removal stages need owner approval recorded in the commit. Mechanical splitting, argument-only bags and renaming to evade a limit fail review.
-- At each milestone and stage exit, record area sizes, change hotspots and duplication candidates in `artifacts/benchmarks/`. Restructure a file changed by three consecutive units before its next change, or record the deferral in the stage ledger.
+- At each milestone and stage exit, record area sizes, change hotspots and duplication candidates in `artifacts/benchmarks/`. Restructure a file changed by three consecutive units before its next change.
 - Timing-only benchmarks stay in `src/Benchmark`. Measure equivalent workloads under fixed conditions, keep failed evidence and never add warm-up or relax native allocation assertions to pass.
 
 # Documentation
