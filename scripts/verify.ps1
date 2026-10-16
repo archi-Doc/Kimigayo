@@ -91,14 +91,33 @@ function Invoke-Script([scriptblock] $block, [string] $log) {
     catch { $_ | Out-String | Add-Content -LiteralPath $log; return $false }
 }
 
+function Start-ScriptJob([string] $step, [string] $script, [string] $log, [hashtable] $parameters) {
+    # Harness scripts throw on failure; the job writes its own log and Complete-ScriptJob records PASS/FAIL.
+    Write-Host "RUN  $step"
+    $job = Start-Job -ArgumentList $script, $log, $parameters -ScriptBlock {
+        param($script, $log, $parameters)
+        $ErrorActionPreference = 'Stop'
+        $timer = [Diagnostics.Stopwatch]::StartNew()
+        $ok = $true
+        try { & $script @parameters *> $log }
+        catch { $_ | Out-String | Add-Content -LiteralPath $log; $ok = $false }
+        [pscustomobject]@{ ok = $ok; seconds = $timer.Elapsed.TotalSeconds }
+    }
+    return [pscustomobject]@{ step = $step; log = $log; job = $job }
+}
+
+function Complete-ScriptJob($run) {
+    $result = Receive-Job -Job $run.job -Wait
+    Remove-Job -Job $run.job
+    Add-Step $run.step ($result.ok -eq $true) $run.log $result.seconds
+}
+
 function Invoke-Build([string] $configuration) {
     $timer = Start-Step "build $configuration"
     $log = Join-Path $evidence "build-$configuration.log"
     # --no-incremental recompiles every project, so analyzers (StyleCop) report on sources another build left up to date.
     & dotnet build (Join-Path $repo $buildTarget) --no-restore --no-incremental -c $configuration --disable-build-servers -m:1 -warnaserror -p:EmitCompilerGeneratedFiles=false -v quiet *> $log
-    $ok = $LASTEXITCODE -eq 0
-    Add-Step "build $configuration" $ok $log $timer.Elapsed.TotalSeconds
-    return $ok
+    Add-Step "build $configuration" ($LASTEXITCODE -eq 0) $log $timer.Elapsed.TotalSeconds
 }
 
 function Test-LspDiscoveryAccess {
@@ -213,16 +232,15 @@ foreach ($pattern in $classPatterns) {
 }
 if ($needsLspAccess) { $null = Test-LspDiscoveryAccess }
 
+if (-not $failed) { Invoke-Build $Configuration }
 $toolchainVerification = 'not-performed'
-if (-not $failed -and (Invoke-Build $Configuration)) {
-    if ($VerifyToolchain) {
-        $timer = Start-Step 'toolchain verify'
-        $log = Join-Path $evidence 'toolchain.log'
-        & dotnet (Join-Path $repo "src/Kimi/bin/$Configuration/net10.0/Kimi.dll") toolchain verify --Report (Join-Path $evidence 'toolchain.json') *> $log
-        $ok = $LASTEXITCODE -eq 0
-        $toolchainVerification = if ($ok) { 'passed' } else { 'failed' }
-        Add-Step 'toolchain verify' $ok $log $timer.Elapsed.TotalSeconds
-    }
+if (-not $failed -and $VerifyToolchain) {
+    $timer = Start-Step 'toolchain verify'
+    $log = Join-Path $evidence 'toolchain.log'
+    & dotnet (Join-Path $repo "src/Kimi/bin/$Configuration/net10.0/Kimi.dll") toolchain verify --Report (Join-Path $evidence 'toolchain.json') *> $log
+    $ok = $LASTEXITCODE -eq 0
+    $toolchainVerification = if ($ok) { 'passed' } else { 'failed' }
+    Add-Step 'toolchain verify' $ok $log $timer.Elapsed.TotalSeconds
 }
 if (-not $failed -and $Mode -eq 'Unit' -and ($hasTestSelection -or $TestPurpose -ne 'All')) {
     Test-Selection $Configuration $filters
@@ -273,30 +291,13 @@ if (-not $failed -and $Fixtures.Count -gt 0) {
 }
 
 if (-not $failed -and $Milestone.Count -gt 0) {
-    # Harness scripts throw on failure; each job records PASS/FAIL after writing its own log.
-    $jobs = [ordered]@{}
+    $runs = [Collections.Generic.List[object]]::new()
     foreach ($number in $Milestone) {
-        while (@($jobs.Values | Where-Object { $_.State -eq 'Running' }).Count -ge $Parallel) { Start-Sleep -Milliseconds 500 }
-        Write-Host "RUN  milestone $number ($native)"
-        $log = Join-Path $evidence "milestone$number-$native.log"
-        $script = Join-Path $repo "src/backend/windows-x64/test-milestone$number.ps1"
-        $jobs["$number"] = Start-Job -Name "milestone$number" -ArgumentList $script, $native, $log -ScriptBlock {
-            param($script, $configuration, $log)
-            $ErrorActionPreference = 'Stop'
-            $timer = [Diagnostics.Stopwatch]::StartNew()
-            $ok = $true
-            try { & $script -Configuration $configuration *> $log }
-            catch { $_ | Out-String | Add-Content -LiteralPath $log; $ok = $false }
-            [pscustomobject]@{ ok = $ok; seconds = $timer.Elapsed.TotalSeconds }
-        }
+        while (@($runs | Where-Object { $_.job.State -eq 'Running' }).Count -ge $Parallel) { Start-Sleep -Milliseconds 500 }
+        $runs.Add((Start-ScriptJob "milestone $number ($native)" (Join-Path $repo "src/backend/windows-x64/test-milestone$number.ps1") (Join-Path $evidence "milestone$number-$native.log") @{ Configuration = $native }))
     }
 
-    foreach ($number in $Milestone) {
-        $job = $jobs["$number"]
-        $result = Receive-Job -Job $job -Wait
-        Remove-Job -Job $job
-        Add-Step "milestone $number ($native)" ($result.ok -eq $true) (Join-Path $evidence "milestone$number-$native.log") $result.seconds
-    }
+    foreach ($run in $runs) { Complete-ScriptJob $run }
 }
 
 if ($null -ne $beforeInputs) {
