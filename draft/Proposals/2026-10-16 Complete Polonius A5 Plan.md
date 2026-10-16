@@ -513,7 +513,10 @@ own proposal; S1 and S2 are being drafted in a separate session.
     and still cannot follow an exchange inside a callee, so it is not loss-free either.
 - **S1's proposal also defines** the base when the parent is reached through another reference or a non-path index,
   and which sites are Borrow sites: implicit borrows, Loans created by calls, comparison inspection and inlined
-  defaults. It states that an object-handle base keeps §13.5.5's handle Loan, so `=` on it stays an error. It checks
+  defaults. It follows design A3's step classes (§3): an owning handle's payload (`obj`, `rc`, `arc`) is an own step
+  that keeps §13.5.5's handle Loan, so `=` on such a base stays an error. `objref` and `objuniq` are borrow Derefs
+  like `ref` and `uniq`, with no separate handle Loan, so `=` on such a base ends the child. This is sound because
+  replacing a borrow handle releases nothing and the child keeps the parent Loan on the owning handle. It checks
   two points against §3.5.1 and §13.5.6 (H): whether some Lost forms are already rejected today, and whether
   exclusively borrowing an ancestor for a call is a current gap that S1 closes. It also states that destroying an old
   value whose `drop` may reach the base counts as an exclusive use of the base (round 5: 24a rejected, 24b valid).
