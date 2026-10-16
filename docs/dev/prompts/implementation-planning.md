@@ -2,9 +2,9 @@
 
 Create an implementation plan for the specified Kimigayo feature or problem.
 
-The plan must serve as both an implementation design and a maintained execution record: requirements, progress, verification evidence, unresolved decisions, and next actions.
+The plan holds the implementation design, current position, completion conditions, unresolved decisions and next actions. Commits and artifacts hold unit history and verification evidence; link to them only where needed to explain readiness or completion.
 
-**This is a planning phase. Do not begin implementation. Write and maintain the entire plan in English, including progress tables, verification records, decisions, and change records. Preserve source identifiers, commands, paths, and quoted diagnostics exactly.**
+**This is a planning phase. Do not begin implementation. Write and maintain the entire plan in English, including state tables, verification requirements, proposed decisions and blockers. Preserve source identifiers, commands, paths, and quoted diagnostics exactly.**
 
 ## Inputs
 
@@ -22,10 +22,11 @@ Do not assume that `docs/dev/PLAN.md` or any other planning file exists. Do not 
 - Follow the user’s instructions and applicable `AGENTS.md` files.
 - Modify only the designated plan file during this phase.
 - Preserve existing user changes.
-- Prefer the smallest coherent change that satisfies the current specification.
+- Follow AGENTS' priorities: within correctness and native O2 guarantees, consistent, short and fast code, in that order.
 - Respect existing architecture; avoid unrelated fixes, redesigns, abstractions, and speculative generalization.
 - Consider allocations, algorithmic cost, retained memory, and existing reuse mechanisms.
 - Do not modify files under `draft/` unless editing those files is explicitly authorized.
+- Follow [AGENTS Documentation](../../../AGENTS.md#documentation) for update conditions. Planning an implementation does not authorize specification/policy changes, translation, guide synchronization or history maintenance. Do not create another management document for routine records.
 - Do not run NativeAOT tests or make them mandatory unless explicitly requested. Distinguish NativeAOT from ordinary native execution.
 
 ## 2. Repository Investigation
@@ -143,7 +144,7 @@ If independent verification is impractical, explain the minimum set of changes t
 
 Provide an implementation checklist linked to milestones and requirements. Do not mechanically add syntax nodes, Bound nodes, runtime work, or other changes that the feature does not require.
 
-Include necessary future updates to specification documents, `docs/STATUS.md`, usage documentation, and examples. Do not mark planned support as implemented.
+Identify only future document edits whose AGENTS update condition follows from the planned change. Treat a needed specification/contract revision outside the requested scope as an unresolved decision, not an automatic implementation step. Do not schedule translation, guide or history synchronization without explicit instruction, or mark planned support as implemented.
 
 Specify execution steps using references:
 
@@ -195,7 +196,7 @@ Address concrete concerns such as stage responsibilities, evaluation order, owne
 
 ## 7. Living Plan Structure
 
-If a path is specified, use that file as the authoritative execution record for this effort. Otherwise, provide the same structure in the conversation.
+If a path is specified, use that file for the current plan. Otherwise, provide the same structure in the conversation. Update an existing plan when its position, next actions or blockers change, not after every unit or session.
 
 Separate the plan into:
 
@@ -209,12 +210,11 @@ These define success. They must not be weakened to match incomplete implementati
 
 Maintain:
 
-- Last updated time.
-- Relevant code baseline, including uncommitted changes where applicable.
+- Relevant code baseline when needed to define scope or readiness, including uncommitted changes where applicable; do not refresh it after every commit.
 - Planning readiness: `READY`, `PARTIALLY_READY`, or `BLOCKED`.
 - Current milestone and executable work.
 - Progress table.
-- Verification records.
+- Links to verification evidence needed to judge completion or a blocker.
 - Unresolved questions and blockers.
 - Concrete next actions and resumption instructions.
 - Material plan changes and their rationale.
@@ -234,7 +234,7 @@ Progress table:
 
 `ID / State / Completion evidence or remaining work / Next action`
 
-Verification record:
+Verification evidence (kept in commits and artifacts, not copied into a running plan log):
 
 `Verification ID / Target and configuration / Relevant code or artifact state / Result / Evidence / Reverification needed`
 
@@ -244,9 +244,9 @@ Use verification results:
 
 Do not initialize items as `DONE` without adequate evidence. Historical success must not be recorded as a current run.
 
-Keep IDs stable. Retain removed or superseded work with its disposition and rationale rather than silently deleting it. Record significant decisions, not every command or edit.
+Keep IDs stable. Record the disposition of removed or superseded work in its commit; retain it in the current plan only while it affects next actions or blockers. Reference existing DECISIONS entries and identify new decisions for the first implementing commit; this planning phase still edits only its designated plan.
 
-The plan tracks this effort; `docs/STATUS.md` tracks product-wide support. Avoid duplicating detailed execution history across documents.
+The plan tracks this effort; `docs/STATUS.md` tracks product-wide support. Do not maintain per-session history here or in PLAN_HISTORY unless explicitly requested.
 
 ## 8. Final Review and Output
 
@@ -269,11 +269,11 @@ Use this structure:
 5. **Gaps and Decisions**
 6. **Milestones**
 7. **Implementation Checklist**
-8. **Test Plan and Verification Records**
+8. **Test Plan and Completion Evidence**
 9. **Risks and Implementation Notes**
 10. **Execution Order and Next Actions**
 11. **Definition of Done**
-12. **Plan Changes and Out-of-Scope Findings**
+12. **Open Issues and Out-of-Scope Findings**
 
 Keep the plan concrete and proportional to the task. Use cross-references instead of repetition.
 
