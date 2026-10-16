@@ -129,7 +129,10 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
 
+    // Expects the rule before Loan identity by base (A5 S1): Moving `value` while `found`, a child through it, is live is
+    // now an error (SPEC 15.6.3); the default pipeline keeps the old rule until R6-check.
     [Fact]
+    [Trait("OldRule", "S1")]
     public void AChildRetainsItsInputAfterTransferringTheParentReference()
     {
         const string source = "func change(value: uniq/i32) => value@follow = 99\nfunc run(value: uniq/i32 during a)\n    let found = value@follow@ref\n    let moved = value@move\n    require found == 42 else => $abort(\"value\")\n    change(moved)\nvar value = 42\nrun(value@uniq)\nrequire value == 99 else => $abort(\"changed\")";

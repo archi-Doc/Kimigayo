@@ -873,6 +873,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
   every 2026-10-13 checkpoint, the O5 trigger); the MIR plan continues and R4's remaining scope is replanned. R4-M25's caps
   apply again; R4-M30 and the other R4 decisions stand. Removed with the units, for the replan: the validator's signature
   check of function-item and Closure calls (U7c) and the Q1-ref and A5-closure findings. Unlanded U8/C1b work is not carried.
+- **R4-M50** (2026-10-17; the A5 plan's §9.2 under OD5) A test that expects a rule an adopted SPEC revision replaced carries
+  `[Trait("OldRule", "<id>")]`, the id naming the revision's item as `draft/INTEGRATED.md` maps it (S1, S4, P1–P11, a, b),
+  with a comment naming the affected rows. It marks what the default pipeline still decides; each such test migrates to the
+  revised rule, dropping the trait, when MIR decides acceptance. Rejected: changing the expectations now (the default
+  pipeline decides acceptance until R6-check); splitting mixed theories (churn for a marker); per-row markers (xUnit traits
+  are per method). Temporary: removed at R6-check.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

@@ -344,7 +344,7 @@ struct Derived<U> : Base
 
 ### 6.4.6. Effects and Contract witnesses
 
-Slot effect bounds follow [§8.11.1](08-generics-constraints-and-contracts.md#8111-declarations). A dynamic call uses only the slot's public contract and bounds, even for a sealed target: its effects follow rules 1 to 3 of [§8.11.4](08-generics-constraints-and-contracts.md#8114-checking-and-use), and results use only the public Origin and Loan contract. An original or override whose result may carry a mutable-static anchor is an error ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)).
+Slot effect bounds follow [§8.11.1](08-generics-constraints-and-contracts.md#8111-declarations). A dynamic call uses only the slot's public contract and bounds, even for a sealed target: its effects follow rules 1 to 3 of [§8.11.4](08-generics-constraints-and-contracts.md#8114-checking-and-use), and results use only the public Origin and Loan contract.
 
 On a slot, `preserves results` ([§8.11.3](08-generics-constraints-and-contracts.md#8113-preserves-results)) relates calls on the same object (by dependency tracking, not Origin equality) through the same slot, or for direct base calls the same implementation; replacing or Moving the payload contents ends the relation. Handle Moves, Reborrows and lawful View changes preserve the relation; a guaranteed call's conservative input effects alone do not end it.
 

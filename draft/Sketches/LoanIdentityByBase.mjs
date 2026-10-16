@@ -1,4 +1,4 @@
-// Prototype for draft/Proposals/2026-10-16 Loan Identity by Base.md. Not part of the compiler.
+// Prototype for draft/Changes/2026-10-16 Loan Identity by Base.md. Not part of the compiler.
 //
 // A small evaluator of the proposed Loan rules on a toy language of exclusive (uniq) and shared (ref) reference holders,
 // checked against an exact reference semantics. It tests the hypothesis H1 that ending a child Loan when its base is
