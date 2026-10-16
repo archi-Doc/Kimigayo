@@ -433,3 +433,19 @@ conditional designs/estimates are planning inputs, not adopted representations. 
 - `Proposals/2026-10-06 Callable and Local Region Implementation Plan.md` stays 一部取り込み. Its design point that Function
   contracts carry a Value/PlaceRef/PlaceUniq result category is superseded by this removal and needs no further work; its
   frozen text is unchanged.
+
+## 2026-10-16 — Named alias declarations
+
+- [Named Alias Declarations](Proposals/2026-10-16%20Named%20Alias%20Declarations.md): 一部取り込み (open).
+  Intake: the owner requested an English specification-change and implementation plan after approving ordinary named
+  alias declarations and their boundary rules. No section is integrated or frozen; implementation is unverified.
+- By the owner's explicit instruction, this plan takes precedence over SPEC and its references for its stated changes;
+  existing specifications govern everything else. This intake changes no current specification.
+- Revision 2026-10-17, at the owner's request after a readiness review: an opening target never resolves through a
+  named alias; alias access is the ordinary §9.4.4 API-signature rule at every access level; A1–A2 form a unit of R7's
+  resolver consolidation. The text was restructured and duplicated policy removed.
+- Planned mapping: §2.1–2.2 → SPEC §§1, 6.1, 6.7, 9.1–9.3, 9.7.1, 18.2 and Appendix F; §2.3 → §§9.2, 9.5–9.6,
+  18.1–18.2, 18.4.1; §2.4 → §§3.3.2, 8.1, 9.7.2, 15.3–15.4 and Appendix F; §2.5 → §§6.3.2, 6.5.2, 9.1, 9.7, 10.8;
+  §2.6 → §§9.4, 18.2–18.3 and Appendix D; §2.7 → §§18.2.1, 19.1, 19.4; §3 → affected examples; §§4–5 → implementation,
+  services, verification and conditional maintenance listed in the plan. Formal integration requires a later
+  instruction; no support claim follows from this intake.
