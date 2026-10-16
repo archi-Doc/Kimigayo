@@ -6,8 +6,8 @@ using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 namespace Kimi.Compiler.Mir;
 
 // A4's summaries and verdicts (DECISIONS R4-M22): the least fixed point of the summaries over one worklist, each node re-evaluated when a
-// summary it read grows, then each obligation judged with its remaining atoms resolved by its definition's premises: an owing body per
-// view, a Callable binding as a call through it.
+// summary it read grows, then P5's static keys joined once per component of what the nodes read (Spread, R4-M38), then each obligation
+// judged with its remaining atoms resolved by its definition's premises: an owing body per view, a Callable binding as a call through it.
 internal sealed partial class MirEffects
 {
     private readonly List<EffectObligation> rows = [];
@@ -18,6 +18,13 @@ internal sealed partial class MirEffects
     private int[] atomCounts = [];
     private Atom[] atoms = [];
     private Atom[] scratch = []; // The atoms of the current evaluation.
+    private ulong[] keys = []; // Each node's static keys, keyWords words of key bits (P5: of Fields, never substituted), after Spread,
+    private ulong[] keyScratch = []; // and those of the current query.
+    private int keyWords;
+    private int[] visits = []; // Spread's components: each node's visit number (int.MaxValue once finished),
+    private int[] lows = []; // its lowest open visit it reaches, then its component's end in members,
+    private int[] members = [];
+    private (int Node, int Edge)[] frames = []; // and the walk's path, each node with its next dependency.
     private int[] queue = [];
     private ulong[] queued = [];
     private int[] readers = []; // The last node that read each node, so consecutive reads record one dependency,
@@ -50,6 +57,11 @@ internal sealed partial class MirEffects
         MirDataflow.Grow(ref this.queued, (count + 63) >> 6);
         MirDataflow.Grow(ref this.readers, count);
         MirDataflow.Grow(ref this.dependentHeads, count);
+        var words = ((2 * this.fields.Count) + 63) >> 6;
+        MirDataflow.Grow(ref this.keys, count * words);
+        MirDataflow.Grow(ref this.keyScratch, words);
+        this.keys.AsSpan(0, count * words).Clear();
+        this.keyWords = 0; // No key is composed before Spread solves them.
         this.classes.AsSpan(0, count).Clear();
         this.atomCounts.AsSpan(0, count).Clear();
         this.readers.AsSpan(0, count).Fill(-1);
@@ -78,6 +90,12 @@ internal sealed partial class MirEffects
             }
         }
 
+        this.keyWords = words;
+        if (words > 0)
+        {
+            this.Spread(count);
+        }
+
         this.Obligations(report);
     }
 
@@ -93,6 +111,116 @@ internal sealed partial class MirEffects
         }
     }
 
+    // P5's keys after the fixed point (R4-M38), which neither classes nor atoms read: a node's local keys joined with those of every node
+    // it read, as its dependencies record them (read sets only grow), once per strongly connected component of the read graph (Tarjan's,
+    // iterative), the components whose nodes others read first, so Θ((nodes + dependencies) × keyWords).
+    private void Spread(int count)
+    {
+        MirDataflow.Grow(ref this.visits, count);
+        MirDataflow.Grow(ref this.lows, count);
+        MirDataflow.Grow(ref this.members, count);
+        MirDataflow.Grow(ref this.frames, count);
+        this.visits.AsSpan(0, count).Fill(-1);
+        for (var node = 0; node < count; node++)
+        {
+            for (var k = node == 0 ? 0 : this.keyEnds[node - 1]; k < this.keyEnds[node]; k++)
+            {
+                this.keys[(node * this.keyWords) + (this.localKeys[k] >> 6)] |= 1UL << this.localKeys[k];
+            }
+        }
+
+        // members holds the open nodes from its start and the finished components from its end, the last finished first.
+        var (visited, open, finished) = (0, 0, count);
+        for (var root = 0; root < count; root++)
+        {
+            if (this.visits[root] < 0)
+            {
+                this.Walk(root, ref visited, ref open, ref finished);
+            }
+        }
+
+        // A component after every component it reads: its keys, then each reader's.
+        var words = this.keyWords;
+        for (var start = 0; start < count; start = this.lows[this.members[start]])
+        {
+            var union = this.keyScratch.AsSpan(0, words);
+            union.Clear();
+            for (var i = start; i < this.lows[this.members[start]]; i++)
+            {
+                _ = MirDataflow.Union(union, this.keys.AsSpan(this.members[i] * words, words));
+            }
+
+            for (var i = start; i < this.lows[this.members[start]]; i++)
+            {
+                union.CopyTo(this.keys.AsSpan(this.members[i] * words, words));
+                for (var d = this.dependentHeads[this.members[i]]; d >= 0; d = this.dependents[d].Next)
+                {
+                    _ = MirDataflow.Union(this.keys.AsSpan(this.dependents[d].Node * words, words), union);
+                }
+            }
+        }
+    }
+
+    // The depth-first walk of Spread from an unvisited root along the dependencies (each node to its readers), finishing each component
+    // once every component it reaches is finished.
+    private void Walk(int root, ref int visited, ref int open, ref int finished)
+    {
+        var depth = 0;
+        for (var next = root; next >= 0;)
+        {
+            this.visits[next] = this.lows[next] = visited++;
+            this.members[open++] = next;
+            this.frames[depth++] = (next, this.dependentHeads[next]);
+            next = -1;
+            while (depth > 0 && next < 0)
+            {
+                ref var frame = ref this.frames[depth - 1];
+                if (frame.Edge < 0)
+                {
+                    this.Finish(frame.Node, --depth, ref open, ref finished);
+                    continue;
+                }
+
+                var dependent = this.dependents[frame.Edge].Node;
+                frame.Edge = this.dependents[frame.Edge].Next;
+                if (this.visits[dependent] < 0)
+                {
+                    next = dependent;
+                }
+                else if (this.visits[dependent] != int.MaxValue)
+                {
+                    this.lows[frame.Node] = Math.Min(this.lows[frame.Node], this.visits[dependent]); // Open: on this path's component.
+                }
+            }
+        }
+    }
+
+    // A node whose readers are all walked: its parent's low lowered to its own and, at its component's root, the component finished.
+    private void Finish(int node, int depth, ref int open, ref int finished)
+    {
+        if (depth > 0)
+        {
+            ref var parent = ref this.lows[this.frames[depth - 1].Node];
+            parent = Math.Min(parent, this.lows[node]);
+        }
+
+        if (this.lows[node] != this.visits[node])
+        {
+            return;
+        }
+
+        var end = finished;
+        int member;
+        do
+        {
+            member = this.members[--open];
+            this.visits[member] = int.MaxValue;
+            this.lows[member] = end;
+            this.members[--finished] = member;
+        }
+        while (member != node);
+    }
+
     // A node's summary from its local facts and its callees' current summaries: whether it grew.
     private bool Evaluate(int node)
     {
@@ -101,16 +229,7 @@ internal sealed partial class MirEffects
         cases.Select(body, node - this.bases[this.owners[node]]);
         (this.definition, this.reader, this.found, this.scratchCount) = (body.Key.Decl, node, this.local[node], 0);
         this.glued.Clear();
-        for (var i = node == 0 ? 0 : this.itemEnds[node - 1]; i < this.itemEnds[node]; i++)
-        {
-            this.Process(this.items[i].Type, this.items[i].Kind, this.items[i].Requirement);
-        }
-
-        for (var e = node == 0 ? 0 : this.edgeEnds[node - 1]; e < this.edgeEnds[node]; e++)
-        {
-            this.Compose(this.edges[e].Body, this.edges[e].Views, this.edges[e].Subst);
-        }
-
+        this.Inputs(node == 0 ? 0 : this.itemEnds[node - 1], this.itemEnds[node], node == 0 ? 0 : this.edgeEnds[node - 1], this.edgeEnds[node]);
         if (this.found == this.classes[node] && this.scratchCount == this.atomCounts[node])
         {
             return false; // The summary only grows, so equal counts are equal sets.
@@ -123,8 +242,22 @@ internal sealed partial class MirEffects
         return true;
     }
 
-    // The summaries of a body's views a call selects, composed through its substitution under the selected view; read nodes record the
-    // reader.
+    // A node's or a site's local inputs, items [item, itemEnd) and edges [edge, edgeEnd), into the current evaluation.
+    private void Inputs(int item, int itemEnd, int edge, int edgeEnd)
+    {
+        for (var i = item; i < itemEnd; i++)
+        {
+            this.Process(this.items[i].Type, this.items[i].Kind, this.items[i].Requirement);
+        }
+
+        for (var e = edge; e < edgeEnd; e++)
+        {
+            this.Compose(this.edges[e].Body, this.edges[e].Views, this.edges[e].Subst);
+        }
+    }
+
+    // The summaries of a body's views a call selects, composed through its substitution under the selected view, their keys unchanged
+    // (P5); read nodes record the reader.
     private void Compose(int body, ulong views, Subst? subst)
     {
         for (var mask = views; mask != 0; mask &= mask - 1)
@@ -139,6 +272,7 @@ internal sealed partial class MirEffects
             }
 
             this.found |= this.classes[node];
+            _ = MirDataflow.Union(this.keyScratch.AsSpan(0, this.keyWords), this.keys.AsSpan(node * this.keyWords, this.keyWords));
             for (var a = this.atomStarts[node]; a < this.atomStarts[node] + this.atomCounts[node]; a++)
             {
                 var atom = this.atoms[a];

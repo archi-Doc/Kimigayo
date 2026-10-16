@@ -63,7 +63,8 @@ internal interface IMirUses
 
     /// <summary>Effects of the location.</summary>
     /// <param name="effects">The effects.</param>
-    /// <param name="site">The Opaque site of an Unknown effect, else -1.</param>
+    /// <param name="site">The Opaque site of an Unknown effect, the static's index in <see cref="MirBody.Statics"/> of a static
+    /// effect, else -1.</param>
     void Effect(MirEffect effects, int site);
 }
 
@@ -374,7 +375,7 @@ internal static class MirUses
                 effect = entry.RawHolding && !entry.Mutable ? MirEffect.StaticRead | MirEffect.RawStaticRead : MirEffect.StaticRead;
             }
 
-            Effect(effect, -1, ref visitor);
+            Effect(effect, ~place.Root, ref visitor);
         }
     }
 

@@ -90,10 +90,10 @@ public sealed class MirValidatorTest
 
         Assert.Equal(["Copy", "1* Reads", "Const", "Abort -1", "0 Writes, Defines"], Uses(body, entry, 0));
         Assert.Equal(["Copy", "4 Reads", "Abort -1", "3* Reads", "0 Writes, Defines"], Uses(body, entry, 1));
-        Assert.Equal(["-1 Reads", "StaticRead, RawStaticRead -1"], Uses(body, entry, 2));
+        Assert.Equal(["-1 Reads", "StaticRead, RawStaticRead 0"], Uses(body, entry, 2));
         Assert.Equal(["PairAcquire", "2 Reads, CaseDependent", "2 Writes, Defines"], Uses(body, entry, 3));
         Assert.Equal(["2* Reads, CaseDependent"], Uses(body, entry, 4));
-        Assert.Equal(["-1 Borrows Uniq", "StaticWrite -1", "5 Writes, Defines"], Uses(body, entry, 5));
+        Assert.Equal(["-1 Borrows Uniq", "StaticWrite 0", "5 Writes, Defines"], Uses(body, entry, 5));
         Assert.Equal(["Copy", "4 Reads", "IntToPointer -1", "6 Writes, Defines"], Uses(body, entry, 6));
         Assert.Equal(["Unknown 0", "3 Reads, Writes, Borrows Shared", "0 Writes, Defines"], Uses(body, entry, 7));
         Assert.Equal(["Copy", "7 Reads, CaseDependent", "Const", "7 CaseDependent", "Allocation -1", "2 Writes, Defines"], Uses(body, entry, 8));
