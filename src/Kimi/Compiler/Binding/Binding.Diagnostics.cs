@@ -244,6 +244,15 @@ public sealed partial class Binding
             expected.Symbol?.LibraryDeclaration is KimiDeclarationId.Range or KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange && actual.Symbol != expected.Symbol;
     }
 
+    // The call signature of a Function Item, closure or Function value.
+    private BoundType? ValueSignature(BoundType value) => value.Kind switch
+    {
+        BoundTypeKind.FunctionItem => this.FunctionItemSignature(value),
+        BoundTypeKind.Closure => this.ClosureSignature(value),
+        BoundTypeKind.Function => value,
+        _ => null,
+    };
+
     private string? ClosureConversionNote(Koto node, object actual, object expected)
     {
         if (expected is not BoundType { Kind: BoundTypeKind.Function } signature)

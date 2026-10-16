@@ -385,7 +385,7 @@ internal sealed partial class MirEffects
     // The destruction walk's visitor: each part reached, and past the walk's depth bound a part this implementation does not follow.
     private readonly struct Glue(MirEffects owner) : IMirDestruction
     {
-        public bool Visit(BoundType type, int depth)
+        public bool Visit(BoundType type)
         {
             owner.Destroy(type);
             return false;

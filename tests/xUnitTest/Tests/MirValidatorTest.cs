@@ -219,32 +219,6 @@ public sealed class MirValidatorTest
         Assert.Equal([(MirViolation.Binder, Broken.Syntax), (MirViolation.Projection, Broken.Syntax)], Validate(body).Select(static x => (x.Rule, x.Subject)));
     }
 
-    // SPEC 7.3, 15.6.4: a call of a function item or a Closure value passes its declaration's signature (MirTypes.Parameter,
-    // TyCtxt.Callable): the built calls agree with it, and either call given an argument of another Type there is a Type finding.
-    [Fact]
-    public void ItemAndClosureCallsTakeTheirDeclarationsSignature()
-    {
-        var c = MirBuildTest.Compile("func put(slot: uniq/i32, value: i32) => slot@follow = value\nfunc f() -> i32\n    var n = 1\n    let p = put\n" +
-            "    p(n@uniq, 2)\n    let add = func [n] (x: i32) -> i32 => x + n\n    return add(1)\n");
-        var program = c.BuildMir();
-        Assert.Empty(program.Findings);
-        var body = program.Bodies.ToArray().Single(static x => x.Source.Module == 0 && x.Key.Decl?.Name == "f");
-        var calls = Enumerable.Range(0, body.Blocks.Length).Where(x => body.Blocks[x].Terminator.Callee.Kind == MirCalleeKind.Value).ToArray();
-        Assert.Equal(2, calls.Length);
-        var wrong = MirOperand.Const(body.Const(new(MirConstKind.Bool, BoundType.Boolean, 1)));
-        foreach (var block in calls)
-        {
-            var call = body.Blocks[block].Terminator;
-            var operands = Enumerable.Range(call.Start, call.Count).Select(x => body.Operands[x]).ToArray();
-            operands[^1] = wrong;
-            body.Terminate(block, call with { Start = AddOperands(body, operands), Source = Broken });
-        }
-
-        var findings = new List<MirFinding>();
-        new MirValidator(c.Types).Validate(body, findings);
-        Assert.Equal([(MirViolation.Type, Broken.Syntax), (MirViolation.Type, Broken.Syntax)], findings.Select(static x => (x.Rule, x.Subject)));
-    }
-
     // SPEC 8.15, 23.1.1: Binding publishes no part of a definition beyond PairBinder.CaseBound views (Binding.CaseLimits), so a body with more
     // views is a Binder finding at the body, which is not checked further: six binders of two cases, 64 views, are valid but for an Adapt no
     // view resolves (T to bool); a seventh gives the one Binder finding, the Adapt's views unresolved.

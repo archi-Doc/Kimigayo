@@ -79,16 +79,6 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // over its direct target, which the MIR's case views give every Type by.
     internal BoundType CaseType(BoundType type, ReadOnlySpan<PairCase> cases) => binding.CaseType(type, cases);
 
-    // SPEC 8.10, 10.5, 7.3: the call signature of a callable value's Type, a Function Type: a Function Item's, a Closure's declaration's under
-    // its context, a Function Type itself; null for any other, whose call has no signature. The MIR's call rule reads it (MirTypes.Parameter).
-    internal BoundType? Callable(BoundType? type) => type?.Kind switch
-    {
-        BoundTypeKind.FunctionItem => binding.FunctionItemSignature(type),
-        BoundTypeKind.Closure => binding.ClosureSignature(type),
-        BoundTypeKind.Function => type,
-        _ => null,
-    };
-
     internal BoundType Intern(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null, CallPlan? closureContext = null, ReadOnlySpan<BoundLength?> lengthArguments = default, FunctionResultMode resultMode = FunctionResultMode.Value)
     {
         if (kind == BoundTypeKind.SemanticsAdaptation && components.Length > 0)

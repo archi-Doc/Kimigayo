@@ -12,25 +12,6 @@ public sealed partial class Binding
     private readonly List<OriginRelationFact> relationScratch = new();
     private Dictionary<Koto, List<OriginRelationFact>>? callRelations;
 
-    // SPEC 15.3.3, 15.6.4 step 3: a function's declared relations (an accessor's binder's) as a call's substitution substitutes them,
-    // TyCtxt.Clauses; JudgeCallClauses judges the same substitution.
-    internal void Clauses(BindingSymbol function, Subst? subst, List<(BoundOrigin? Longer, BoundOrigin? Shorter, bool Equal)> relations)
-    {
-        if (function.Declaration is not FunctionKoto selected ||
-            !this.originDeclarations.TryGetValue(selected.Accessor?.Binder ?? selected, out var declaration))
-        {
-            return;
-        }
-
-        var origins = subst is null ? default : subst.Origins;
-        var inputs = subst is null ? default : subst.Inputs;
-        foreach (var relation in declaration.Relations)
-        {
-            var longer = this.SubstituteClauseOrigin(relation.Longer, selected, origins, inputs, subst?.Declaring);
-            relations.Add((longer, this.SubstituteClauseOrigin(relation.Shorter, selected, origins, inputs, subst?.Declaring), relation.Equality));
-        }
-    }
-
     private static bool MentionsOrigin(BoundType type, BoundOrigin origin)
     {
         if (!type.CarriesOrigin)
@@ -179,31 +160,22 @@ public sealed partial class Binding
             {
                 // SPEC 15.6.1: a substituted clause is located at the first input whose parameter names its longer Origin.
                 var at = this.ClauseInput(selected, operations, argumentCount, relation.Longer) ?? call;
-                var longer = this.SubstituteClauseOrigin(relation.Longer, selected, origins, inputs, declaringType);
-                var shorter = this.SubstituteClauseOrigin(relation.Shorter, selected, origins, inputs, declaringType);
+                var longer = Substitute(relation.Longer);
+                var shorter = Substitute(relation.Shorter);
                 this.JudgeCallPosition(at, longer, shorter, relation.Equality, null, relation.Syntax, declared: true);
             }
         }
-    }
 
-    // SPEC 15.6.4 step 3: an Origin of a callee's declared relation (an accessor's, its binder's) as a call substitutes it: the declaring
-    // Type's stored slots, then the callee's own Origins and inputs.
-    private BoundOrigin SubstituteClauseOrigin(
-        BoundOrigin origin,
-        FunctionKoto selected,
-        ReadOnlySpan<BoundOrigin> origins,
-        ReadOnlySpan<BoundOrigin> inputs,
-        BoundType? declaringType)
-    {
-        if (declaringType?.Symbol is { } owner)
+        BoundOrigin Substitute(BoundOrigin origin)
         {
-            origin = this.SubstituteStoredOrigin(origin, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments);
-        }
+            if (declaringType?.Symbol is { } owner)
+            {
+                origin = this.SubstituteStoredOrigin(origin, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments);
+            }
 
-        var binder = selected.Accessor?.Binder ?? selected;
-        var originCount = selected.Accessor?.Declaration?.Origins.Count ?? selected.BoundSymbol?.Schema?.Origins.Count ?? 0;
-        var inputCount = Math.Min(inputs.Length, InputOriginCount(binder));
-        return this.SubstituteStoredOrigin(origin, binder, origins[..Math.Min(origins.Length, originCount)], inputs[..inputCount]);
+            var originCount = selected.Accessor?.Declaration?.Origins.Count ?? selected.BoundSymbol?.Schema?.Origins.Count ?? 0;
+            return this.SubstituteStoredOrigin(origin, binder, origins.AsSpan(0, originCount), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(binder))));
+        }
     }
 
     // The records of one call node beyond the first, each with its own condition so that it stays an independent problem.

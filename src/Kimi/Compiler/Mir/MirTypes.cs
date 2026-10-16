@@ -1,8 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the Type facts needed by MIR construction and analyses.
-// Input: published Types and their stored shapes. Output: the destruction walk and the drop, raw, drop-observation, exclusivity, agreement,
-// borrow-kind and pointer-cast facts, and the Types a call passes and an aggregate's operands take.
+// Input: published Types and their stored shapes. Output: the destruction walk and the drop, raw, exclusivity, agreement, borrow-kind and
+// pointer-cast facts.
 // Inline storage is traversed under each fact's documented bounds and Type rules; what destroying a value does is the one Destruction walk.
 // Must not inspect source syntax or substitute new Binding decisions.
 
@@ -17,9 +17,8 @@ internal interface IMirDestruction
 {
     /// <summary>A part of the destroyed value whose destruction runs or releases something.</summary>
     /// <param name="type">The part's Type.</param>
-    /// <param name="depth">The part's depth in the walk, at which a visitor that walks on behind it continues.</param>
     /// <returns>Whether the walk stops.</returns>
-    bool Visit(BoundType type, int depth);
+    bool Visit(BoundType type);
 
     /// <summary>A part past the walk's depth bound, whose destruction the walk does not follow.</summary>
     /// <returns>Whether the walk stops.</returns>
@@ -66,17 +65,17 @@ internal static class MirTypes
 
         if (type.IsAbstract || type.Kind == BoundTypeKind.Function)
         {
-            return visitor.Visit(type, depth);
+            return visitor.Visit(type);
         }
 
         if (type.Kind == BoundTypeKind.Semantics)
         {
-            return type.Semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && visitor.Visit(type, depth);
+            return type.Semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && visitor.Visit(type);
         }
 
         var sequence = type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary; // A managed sequence releases its storage and its elements.
         var destructor = AdtDef.Destructor(type) is not null;
-        if ((sequence || ReferenceEquals(type, BoundType.String) || destructor) && visitor.Visit(type, depth))
+        if ((sequence || ReferenceEquals(type, BoundType.String) || destructor) && visitor.Visit(type))
         {
             return true;
         }
@@ -105,18 +104,6 @@ internal static class MirTypes
         }
 
         return AdtDef.Base(type) is { } parent && Destruction(parent, ref visitor, depth + 1);
-    }
-
-    /// <summary>Gets whether destroying a value of a Type may observe an Origin or a Loan (SPEC 15.6.6), which makes its Drop a use of the
-    /// value's Loans: whether its <see cref="Destruction"/> reaches a user drop, assumed to observe every reachable Origin, an abstract part,
-    /// whose instance may declare one (plan Appendix B X1), such a part behind an owning handle, or a part past the walk's depth bound;
-    /// references, raw pointers, scalars, strings and Function values observe nothing.</summary>
-    /// <param name="type">The Type.</param>
-    /// <returns>Whether its destruction may observe an Origin.</returns>
-    internal static bool Observes(BoundType? type)
-    {
-        var observer = default(Observer);
-        return Destruction(type, ref observer);
     }
 
     /// <summary>Gets whether a value of a Type is a reference whose Loans an EndBorrow ends: a ref, uniq, objref or objuniq, or a pair layer.</summary>
@@ -159,77 +146,46 @@ internal static class MirTypes
     /// <returns>The Cast's kind.</returns>
     internal static MirCastKind PointerCast(BoundType source) => source.Semantics == SemanticsKind.Raw ? MirCastKind.Pointer : MirCastKind.IntToPointer;
 
-    /// <summary>Gets whether two Types agree, the one Type agreement of MIR: the structural part of a value fit (<see cref="TyCtxt.Relate"/>),
-    /// equal but for the Origins and Origin arguments of either Type and its components, which an assignment or a call relates instead of
-    /// equating (SPEC 15.3, 15.6.1). Interned Types that carry no Origin agree only when identical; an unknown Type (null) agrees with any.</summary>
+    /// <summary>Gets whether two Types agree, the one Type agreement of MIR: equal but for the Origins and Origin arguments of either Type
+    /// and its components, which an assignment or a call relates instead of equating (SPEC 15.3) and the ownership analysis checks (R4).
+    /// Interned Types that carry no Origin agree only when identical; an unknown Type (null) agrees with any.</summary>
     /// <param name="left">A Type.</param>
     /// <param name="right">The other Type.</param>
     /// <returns>Whether they agree.</returns>
-    internal static bool Agree(BoundType? left, BoundType? right) => TyCtxt.Relate(left, right, invariant: false, relations: null);
-
-    /// <summary>Gets a Type below its reference and pair layers (<see cref="TyCtxt.Layer"/>): what a comparison compares (SPEC 13.4) and the
-    /// Function Type a Value callee calls.</summary>
-    /// <param name="type">The Type.</param>
-    /// <returns>The Type below its layers.</returns>
-    internal static BoundType? Terminal(BoundType? type)
-        => TyCtxt.Layer(type, out var below, out _) is var _ && !ReferenceEquals(below, type) ? Terminal(below) : type;
-
-    /// <summary>Gets the Type a Call passes at an argument position, or at -1 the Type it gives (SPEC 7.3): a Fn, Requirement or Virtual
-    /// callee's function's parameter at the slot the position passes (the receiver first) under its Subst, and its result; a default
-    /// template's (plan 5.6.2) shared references to the parameters before its own in slot order, and its parameter's Type; a Value callee's
-    /// signature's inputs and result (<see cref="TyCtxt.Callable"/>: a Function Type's, a function item's, a Closure's declaration's).</summary>
-    /// <param name="types">The Type context, which interns a template argument's reference.</param>
-    /// <param name="callee">The callee.</param>
-    /// <param name="value">The Type of a Value callee's operand.</param>
-    /// <param name="position">The argument position, or -1.</param>
-    /// <param name="count">The arguments the callee takes; -1 without a signature (an intrinsic, a callable value of an abstract Type).</param>
-    /// <returns>The Type; null past the arguments or where the Subst does not instantiate it.</returns>
-    internal static BoundType? Parameter(TyCtxt types, in MirCallee callee, BoundType? value, int position, out int count)
+    internal static bool Agree(BoundType? left, BoundType? right)
     {
-        if (callee.Symbol is { } function && callee.Kind != MirCalleeKind.Intrinsic)
+        if (ReferenceEquals(left, right) || left is null || right is null)
         {
-            var template = callee.Kind == MirCalleeKind.Fn ? callee.Arg - 1 : -1;
-            var slot = template < 0 && position >= 0 ? MirCallee.Slot(function, position) : position;
-            var type = TyCtxt.Signature(function, callee.Subst, position < 0 ? template : slot, out count);
-            count = template < 0 ? count : template;
-            return template < 0 || position < 0 || type is null ? type : types.Reference(SemanticsKind.Ref, type);
+            return true;
         }
 
-        if (callee.Kind != MirCalleeKind.Value || types.Callable(Terminal(value)) is not { Components: [var inputs, var result] })
+        if ((!left.CarriesOrigin && !right.CarriesOrigin) || left.Kind != right.Kind || left.Semantics != right.Semantics ||
+            !ReferenceEquals(left.Symbol, right.Symbol))
         {
-            count = -1;
-            return null;
+            return false;
         }
 
-        count = inputs.Components.Count;
-        if (position < 0)
+        if (left.Length != right.Length || !ReferenceEquals(left.LengthExpression, right.LengthExpression) || left.ResultMode != right.ResultMode)
         {
-            return result;
+            return false;
         }
 
-        return position < count ? inputs.Components[position] : null;
+        if (!ReferenceEquals(left.ClosureContext, right.ClosureContext) || left.Components.Count != right.Components.Count ||
+            !left.LengthArguments.AsSpan().SequenceEqual(right.LengthArguments))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < left.Components.Count; i++)
+        {
+            if (!Agree(left.Components[i], right.Components[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
-
-    /// <summary>Gets the Type of an aggregate's operand as the Place of the aggregate's Type it initializes projects it: a Tuple's element,
-    /// a Closure's capture, a struct's base then its own Fields, a Case's payload, a fixed array's element.</summary>
-    /// <param name="body">The body.</param>
-    /// <param name="aggregate">The Aggregate rvalue.</param>
-    /// <param name="type">The aggregate's Type, its rvalue's or one agreeing with it.</param>
-    /// <param name="index">The operand.</param>
-    /// <returns>The Type, or null when the aggregate's Type does not admit it.</returns>
-    internal static BoundType? Component(MirBody body, in MirRvalue aggregate, BoundType type, int index) => (MirAggregateKind)aggregate.Op switch
-    {
-        MirAggregateKind.FixedArray => type.Components[0],
-        MirAggregateKind.Adt when AdtDef.IsEnum(type) => body.ProjectedType(
-            body.ProjectedType(type, MirProjectionKind.Downcast, aggregate.Arg),
-            MirProjectionKind.Field,
-            index),
-        MirAggregateKind.Adt when AdtDef.Base(type) is { } parent => index == 0 ? parent : body.ProjectedType(
-            type,
-            MirProjectionKind.Field,
-            index - 1),
-        _ => body.ProjectedType(type, MirProjectionKind.Field, index),
-    };
 
     /// <summary>Gets whether a value of a Type holds a raw pointer, an rc handle or a Weak of one at any depth, so that reading it from an
     /// immutable static obtains authority from the environment (SPEC 8.11.2); a referent reached through the value counts too.</summary>
@@ -269,18 +225,7 @@ internal static class MirTypes
     // MayNeedDrop's visitor: any reported part.
     private struct AnyPart : IMirDestruction
     {
-        public readonly bool Visit(BoundType type, int depth) => true;
-
-        public readonly bool Deep() => true;
-    }
-
-    // Observes' visitor: a user drop or an abstract part observes, an owning handle's payload is walked on at the handle's depth, and the
-    // other parts the walk reports (a Function value, a string, a sequence, whose elements it walks) observe nothing themselves.
-    private struct Observer : IMirDestruction
-    {
-        public bool Visit(BoundType type, int depth) => type.IsAbstract || (type.Kind == BoundTypeKind.Semantics
-            ? Destruction(type.Components[0], ref this, depth + 1)
-            : AdtDef.Destructor(type) is not null);
+        public readonly bool Visit(BoundType type) => true;
 
         public readonly bool Deep() => true;
     }

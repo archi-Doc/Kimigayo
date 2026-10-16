@@ -124,22 +124,6 @@ internal sealed class MirCases(TyCtxt types)
         return this.view[row.Arg].Semantics == SemanticsKind.Owner ? null : this.Type(this.Body.TypeOf(step with { Projection = row.Prefix })!);
     }
 
-    /// <summary>Gets whether a projection step of the selected body follows a reference or an object handle under the selected view (SPEC
-    /// 3.4.1, 13.5.5.1): a Deref of one, or a PairLayer the view makes one (<see cref="Layer"/>); a raw pointer's Deref is no such step.
-    /// </summary>
-    /// <param name="step">A Place whose last projection is the step.</param>
-    /// <returns>Whether the step follows a reference or a handle.</returns>
-    internal bool Follows(MirPlace step)
-    {
-        var row = this.Body.Projections[step.Projection];
-        if (row.Kind == MirProjectionKind.PairLayer)
-        {
-            return this.Layer(step) is not null;
-        }
-
-        return row.Kind == MirProjectionKind.Deref && this.Body.TypeOf(step with { Projection = row.Prefix })?.Semantics != SemanticsKind.Raw;
-    }
-
     /// <summary>Gets whether a PairAcquire of the selected body Reborrows under the selected view (SPEC 8.14): its Place's case Type is an
     /// exclusive reference (<see cref="MirTypes.IsExclusive"/>, the builder's rule for a concrete Type), whose referent it borrows
     /// exclusively in that Semantics; in any other case it Copies its Place, a reference or a value Binding proved Copy.</summary>

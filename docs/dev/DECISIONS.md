@@ -642,7 +642,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   in R4 would delete old-Emission validation tests that still guard the path deciding acceptance until R6 (R4-M1, D5).
   Rejected: deleting the injection tests now; MIR presence for library reach (vacuous while every library body is built);
   `LegacyRecords` as the general reader of flow records (it moves reads out of the ratchet without migrating them).
-- **R4-M25** (owner, 2026-10-12; numeric caps and planning trigger superseded for the priced R4 scope by R4-M31) Binding's token cap rises from 375,051 to
+- **R4-M25** (owner, 2026-10-12; area caps rebalanced within the R4 stage ceiling; in force again by R4-M33) Binding's token cap rises from 375,051 to
   377,051 and Core's from 8,167 to 8,187; Mir's cap (93,651) and the R4 total ceiling (894,362) are unchanged. Reason: the
   measured needs of the R4 analyses are published Binding facts (U6 effect obligations and call bounds, U7 Relate/Clauses and the
   callable signature, U9 universal relations) and U11's internal reporter in Core, against 2,997 Binding and 0 Core tokens of
@@ -751,7 +751,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   input's premises (a third enumeration of the Callable facts beside `SelectValueCall` and `TryCallable`; carrying the selected
   signature in MIR is the general fix and changes a shared MIR form); one bounds function with a null-callee mode (two contracts in one
   signature). `Bodyless`' composite clause is refined by R4-M28.
-- **R4-M24** (2026-10-12, main session; option P of two independent redo designs, `u7r-decision.md`: design B's positions and
+- **R4-M24** (2026-10-12, main session; superseded by R4-M33; option P of two independent redo designs, `u7r-decision.md`: design B's positions and
   liveness with design A's core) A5-1, regions and Loans (SPEC 15.6), `MirBorrows` (`.Regions`, `.Liveness`, `.Flows`) per body and
   view in the driver's step 4, after A4:
   - Positions: a cell is a move path (R4-M21) whose case Type carries Origins in its own storage (a leaf all its Type's; an inner
@@ -804,7 +804,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     design B's claim that no IntrinsicId writes through a safe exclusive argument (a cross-component claim); cells without own
     parts, complete child paths, per-root liveness, bit rows, NLL regions per slot and region SCCs (design B's (c)-(h)); holder scans
     (`Alive`/`Recheck`, cubic on Q4); `Release` (unsound, F2); entry anchors before U8, their first reader (K7).
-- **R4-M9b** (2026-10-12, main session; supersedes R4-M9's view list and placement) Binding views are built by their first reader
+- **R4-M9b** (2026-10-12, main session; supersedes R4-M9's view list and placement; superseded by R4-M33) Binding views are built by their first reader
   (R2b-D3). U7 builds `TyCtxt.Relate` (`Binding/TyCtxt.Relations.cs`; U7a moved MIR's structural agreement there, U7 adds its Origin
   relations), `TyCtxt.ComponentVariance` and `InvariantTarget` (U7k: SPEC 15.3.5's one component rule, `obj` invariant, shared with
   `Binding.ComposeVariance` and Binding's local Origin inference), `TyCtxt.Clauses` (a callee's declared relations through
@@ -841,7 +841,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   the composing node, Witnesses over RequirementImplementation only, open Types by the premises, an inapplicable override owing
   nothing. Owner exception: Binding +561 tokens. Open: published bodies unverified against rows (R6); library generics outside the
   table keep X2; composites with an abstract part a Limit; duplicates RequirementImplementation and findEntry's two identifications.
-- **R4-M31** (owner, 2026-10-13; completion budget option C) R4 caps are Mir 155,000, Binding 432,000, Core 15,000 and total
+- **R4-M31** (owner, 2026-10-13; completion budget option C; withdrawn by R4-M33) R4 caps are Mir 155,000, Binding 432,000, Core 15,000 and total
   1,020,000 non-trivia C# tokens, including conditional late coexistence. Supersedes R4-M25's numeric caps and 90,000 Mir
   planning trigger for the priced R4 scope: the revised forecast includes common producer/transfer contracts omitted earlier
   (946,606 central; 1,017,696 conditional late peak). Reforecast at each selected design and landing; an area/stage overrun
@@ -849,13 +849,19 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Other area/template caps and R5 onward ceilings stay unchanged; reforecast R5 before implementation. No vocabulary,
   baseline, frozen-path feature, scope deferral or per-unit Binding approval is granted. Rejected: old caps (no demonstrated
   complete fit), net-only option B (conditional late peak exceeds it), and crediting R6 deletions during R4.
-- **R4-M32** (2026-10-13, planning session; independent C1a designs compared and reviewed) Binding.OriginProof owns
+- **R4-M32** (2026-10-13, planning session; independent C1a designs compared and reviewed; superseded by R4-M33) Binding.OriginProof owns
   `OriginFit`: the normalized fit answer and an optional initializer contribution, identified by its Local. Classification
   changes no inference, declaration or obligation state; canonical interning and proof scratch retain their lifecycle.
   Existing committed-fit and selected-collector adapters apply the contribution immediately, before the next relation;
   candidate observation applies none. The existing traversal and mutation order stays unchanged. Deleted: duplicated
   normalization/open-initializer classification and the collector-only bound wrapper. Reject whole-call deferred commit,
   a second shadow proof rule and unused publication state. This does not make contextual expression completion pure.
+- **R4-M33** (owner, 2026-10-16; supersedes R4-M9b, R4-M24, R4-M31 and R4-M32) R4 keeps A1–A4 (U0–U6 with U1b, U3n, U4b,
+  U5b, U6b, U6c and the T1 test migration) and discards the work after them: A5-1 (U7) with its preparatory units U7a, U7a2,
+  U7k and U7c, C1a, the MIR probe tool and the completion plan and budget. Reason: the implementation stalled (P9 143 at
+  every 2026-10-13 checkpoint, the O5 trigger); the MIR plan continues and R4's remaining scope is replanned. R4-M25's caps
+  apply again; R4-M30 and the other R4 decisions stand. Removed with the units, for the replan: the validator's signature
+  check of function-item and Closure calls (U7c) and the Q1-ref and A5-closure findings. Unlanded U8/C1b work is not carried.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

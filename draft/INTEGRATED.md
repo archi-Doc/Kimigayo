@@ -307,7 +307,9 @@ The user adopted `Proposals/2026-10-10 Compiler Size Reduction and Single MIR Pl
 
 ## 2026-10-13 — R4 completion plan and budget draft
 
-`Proposals/2026-10-13 R4 Completion Plan and Budget.md`: 一部取り込み (partially integrated). The owner approved option C
+`Obsolete/2026-10-13 R4 Completion Plan and Budget.md`: 完了 (closed, 2026-10-16). The owner withdrew the plan with the
+work after A4 (DECISIONS R4-M33): the adopted envelope is reverted to R4-M25's caps, and every remaining item is rejected
+because the implementation stalled; R4's remaining scope is replanned separately. History of the earlier intake: the owner approved option C
 on 2026-10-13. Section 5's C numeric envelope, other-cap preservation and item 1's forecast/overrun policy map to
 COMPILER_ARCHITECTURE's token caps, DECISIONS R4-M31 and CompilerSizeBudgetTest; these adopted clauses are frozen.
 The historical proposal text still describes the request before approval; this register and DECISIONS record its disposition.

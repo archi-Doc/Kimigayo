@@ -94,24 +94,23 @@ Each entry file begins with the component's contract (AGENTS). Paths are under `
 | Calls | `CallPlan`, reached only through `CallPlan.Of(node, ordinal)`; an omitted default is its `DefaultDecl` | `Binding/CallPlan.cs` |
 | Desugared forms | `ExpansionPlan.Of`; the Pattern plans `BoundMatch.Of`, closures `BoundClosure.Of` and enum Case construction `BoundEnumConstruction.Of` | `Binding/ExpansionPlan.cs` |
 | Stored shape of a struct or enum | `AdtDef` | `Binding/AdtDef.cs` |
-| Types and substitutions | `TyCtxt` (`Compilation.Types`): interning, `Subst` (`SubstOf`, `Apply`, `Compose`, `Signature`), implicit `Layer`s, `CaseType`, `Adaptation` (Binding's selection of an explicit adaptation), `Relate` (a value fit: its structural part and its Origin relations, SPEC 15.3.5, 15.6.1), `ComponentVariance` and `InvariantTarget` (SPEC 15.3.5's one component rule), `Clauses` (a callee's declared relations under a call's substitution), `Callable` (a callable value's signature), `Name` for display | `Binding/TyCtxt.cs`, `Binding/TyCtxt.Relations.cs` |
+| Types and substitutions | `TyCtxt` (`Compilation.Types`): interning, `Subst` (`SubstOf`, `Apply`, `Compose`, `Signature`), implicit `Layer`s, `CaseType`, `Adaptation` (Binding's selection of an explicit adaptation), `Name` for display | `Binding/TyCtxt.cs` |
 | Effect facts | `TyCtxt.EffectObligations` (who owes `confined`: `EffectObligation` rows), `DispatchBounds` and `CallableBounds` (the bounds a requirement or virtual call and a call through an abstract Callable input may use under a definition's premises; `ItemContract` a requirement item's Contract reference), `Bodyless` (what a function without a body does), `Implementation` (the bodies a call may run), `Published` (an operation's published row) and `Witnesses` (what a requirement runs on a Type that is not abstract), `Copy`, `Sealed`, all under one premise scope per definition, `Binding.EffectPremises` (DECISIONS R4-M23, R4-M28) | `Binding/TyCtxt.Effects.cs`, `Binding/Binding.EffectObligations.cs` |
-| Semantics cases | `PairBinder` (a body's binders, `CaseProduct`, `CaseBound`); `Binding.CaseLimits`, the one decision of the bound per definition before its parts are bound; `MirCases`, per-case views of one body that is never copied, under which an `Adapt` is the operation its case selects, `Follows` whether a step follows a reference, and `Views`, the views of a callee a call's substitution selects | `Binding/BindingModel.cs`, `Binding/Binding.CaseLimits.cs`, `Mir/MirCases.cs` |
+| Semantics cases | `PairBinder` (a body's binders, `CaseProduct`, `CaseBound`); `Binding.CaseLimits`, the one decision of the bound per definition before its parts are bound; `MirCases`, per-case views of one body that is never copied, under which an `Adapt` is the operation its case selects, and `Views`, the views of a callee a call's substitution selects | `Binding/BindingModel.cs`, `Binding/Binding.CaseLimits.cs`, `Mir/MirCases.cs` |
 | Library operations | `IntrinsicDisposition.Of`: a Kimigayo body, an `IntrinsicId` or a shim for each `CompilerFunctionKind`; `IntrinsicDisposition.Effect`, its effect class (SPEC 8.11.2); `KimiLibraryCatalog.Row`, an operation's published row `PublishedRow(Runs, On, Destroys)` (SPEC 4.9.6, 12.4.3), which `TyCtxt.Published` gives MIR | `Binding/KimiLibraryKinds.cs`, `Binding/KimiLibraryCatalog.cs` |
 | MIR storage | `MirBody` struct arrays with interned projection chains, `ProjectedType` the one projection Type rule; `MirProgram`, bodies by `MirDefKey` and `Ordinal`, the body a callee runs (`Callee`), pooled for warm rebuilds | `Mir/MirVocabulary.cs`, `Mir/MirBody.cs`, `Mir/MirProgram.cs` |
 | Operands, accesses and effects | `MirDescriptors.Of` rows; `MirUses.ForEach` (of a body, or under a case view with each `Adapt` resolved) and `MirUses.Successors`, the one enumeration the validator and the analyses share | `Mir/MirDescriptors.cs` |
 | Reachability | `MirReach`, the one depth-first walk over a body's blocks along runtime edges and, when asked, CheckTarget edges (the validator, A3, the dataflow's reverse postorder); reached blocks and their `Postorder` accumulate until `Clear` | `Mir/MirReach.cs` |
-| Type facts in MIR | `MirTypes`: `Destruction` (the one walk of what destroying a value does), `MayNeedDrop` and `Observes` (a destruction that may observe an Origin, SPEC 15.6.6) over it, `HoldsRaw`, `IsExclusive`, `Agree` (Type agreement modulo Origins, `TyCtxt.Relate`), `RefKind` (the mode of a borrow), `PointerCast`, `Parameter` (the Types a call passes and gives, the validator's and the analyses' one rule), `Component` (the Type an aggregate's operand takes) | `Mir/MirTypes.cs` |
+| Type facts in MIR | `MirTypes`: `Destruction` (the one walk of what destroying a value does), `MayNeedDrop` (over it), `HoldsRaw`, `IsExclusive`, `Agree` (Type agreement modulo Origins), `RefKind` (the mode of a borrow), `PointerCast` | `Mir/MirTypes.cs` |
 | MIR construction | `MirBuilder` (`Compilation.BuildMir`): one body per definition and Closure, built by Op, Adjust and PlaceShape; `Ref`, the one borrow rule; `Set` (a node's own value, assigned where the node completes) and `Make` (a part made where it is built, before later parts that may not complete), the two assignments; one `Adapt` per case adaptation; one drop tree per transfer target; one template per default; `Unsupported(node)`, the one Unsupported record with an Opaque value | `Mir/Build/MirBuilder*.cs` |
 | MIR validation | `MirValidator`, the one structural and Type verifier; a finding is `InternalInvariant_Kd` | `Mir/MirValidator.cs`, its Type tier `Mir/MirValidator.Types.cs` |
 | MIR analyses | `MirAnalysis` (`Compilation.BuildMir`): the analyses of one program version, once per version after build and validation, in the pass order its contract fixes (DECISIONS R4-M2a) | `Mir/Analysis/MirAnalysis.cs` |
 | Runtime lints (A3) | `MirLints`: a require failure body whose end a runtime path from its entry reaches (`MirBody.MustNotComplete`) is `RequireFallthrough_Kd` (DECISIONS R4-M7a) | `Mir/Analysis/MirLints.cs` |
-| MIR dataflow | `MirDataflow`: forward bit-set states stored at flow heads (chains of blocks), union join, P1 over runtime edges and P2 over the heads only the checks reach with P1 frozen, `Replay` for the checks and later readers; `Backward` (liveness: a chain P1 reached joins its runtime successors, any other every successor), states stored at head entries (`AtEntry`); `Index`, the analyses' one table builder; the analyses' one arena Resource limit, forward and backward together (DECISIONS R4-M20, R4-M15a, R4-M24) | `Mir/Analysis/MirDataflow.cs` |
+| MIR dataflow | `MirDataflow`: forward bit-set states stored at flow heads (chains of blocks), union join, P1 over runtime edges and P2 over the heads only the checks reach with P1 frozen, `Replay` for the checks and later readers; the analyses' one arena Resource limit (DECISIONS R4-M20, R4-M15a) | `Mir/Analysis/MirDataflow.cs` |
 | Move paths | `MirMoveData`: a body's move paths keyed by (parent, step kind, argument) and numbered in pre-order, so a subtree is a range; `Find` gives a Place's path (DECISIONS R4-M21) | `Mir/Analysis/MirMoveData.cs` |
 | Initialization and moves | `MirInit` (A1): MaybeUninit, MaybeMoved and EverInit, and for A2 MaybeInit and MaybePartial, per move path and Semantics case view (DECISIONS R4-M21, R4-M6a) | `Mir/Analysis/MirInit.cs` |
-| Drop elaboration (A2) | `MirDrops`: per Drop the runtime edges reach and view class a verdict (Keep, Elide, Flag, Open), the drop flags and their set and clear points in `MirProgram.Drops` (`MirDropTable`, a Drop's group by `Group`, each row with its move path), read by R5, A4, A5 and the dump; an incomplete layer with its own `drop` is `MovedPlace_Kd` (DECISIONS R4-M6a) | `Mir/Analysis/MirDrops.cs` |
+| Drop elaboration (A2) | `MirDrops`: per Drop the runtime edges reach and view class a verdict (Keep, Elide, Flag, Open), the drop flags and their set and clear points in `MirProgram.Drops` (`MirDropTable`, a Drop's group by `Group`), read by R5, A4, A5 and the dump; an incomplete layer with its own `drop` is `MovedPlace_Kd` (DECISIONS R4-M6a) | `Mir/Analysis/MirDrops.cs` |
 | Effect summaries | `MirEffects` (A4): per body view the classes and atoms of the effect summary, composed through each call's substitution, one worklist to the least fixed point, and the `confined` obligations Binding publishes judged per view (DECISIONS R4-M22) | `Mir/Analysis/MirEffects.cs`, `Mir/Analysis/MirEffects.Solve.cs` |
-| Regions and Loans (A5-1) | `MirBorrows`: per body and Semantics case view, holders (definition, cell) on the move paths, the flow graph of actual value flows (`TyCtxt.Relate`, `TyCtxt.Clauses`, `MirTypes.Parameter`), liveness backward and the active Loans forward by exact counts; `Replay` gives each location the Loans active before it (DECISIONS R4-M24) | `Mir/Analysis/MirBorrows.cs`, `.Regions.cs`, `.Liveness.cs`, `.Flows.cs` |
 | MIR analysis problems | `MirReport`: one `MirProblem(Code, Subject, Views)` per code and subject with its views merged; the one home of the derived-problem rules (DECISIONS R4-M3a, R4-M10) | `Mir/Analysis/MirReport.cs` |
 | MIR text | `MirDump.Write`, with A2's verdicts and flags on an analyzed program, compared by the dump goldens and the MIR snapshot | `Mir/MirDump.cs` |
 
@@ -213,10 +212,10 @@ existing uses first; the owner decides whether to extend these rules to tests. I
 | R2a | Done 2026-10-11 (closed at 126,611 lines, above its 125,000 ceiling, by the stage decision to close at the measured size) | `SyntaxId`, `HirTables` behind forwarding properties, `AdtDef`, unified CallPlan type, pure fits, child-walk and operator-class consolidation, Hover move |
 | R2b | Done 2026-10-11 (closed at 127,815 lines, within its 129,000 ceiling; the unused 1,185 lines pass to R3) | `TyCtxt` and `Subst`; the published HIR columns (`Op`, `Res`, `Completion`, `Adjust`, PlaceShape) and their publisher; `CallPlan.Of`, `ExpansionPlan`, the Pattern plans and closure definitions as views; `DefaultDecl` and `PreparedParam`; the pair-binder view; the intrinsic table. The five read-only declaration-table views (`ImplTable`, `VTableDef`, `UniversalRelations`, `EffectBoundTable`, `AvailableBounds`) are deferred to their first readers in R4/R5 |
 | R3 | Done 2026-10-11 (closed at 133,004 lines, within its 135,500 ceiling: Mir 4,765, Binding 56,569, Core 1,805, the other areas at their R2b-exit sizes; +5,189 against a forecast of +5,750) | MIR model, descriptor table, validator with its Type tier, dump and builder (shadow): every body of the library and the 43 milestones builds without validator findings, with Opaque values only at Binding-rejected nodes of Milestones 33, 35 and 38; 30 dump goldens. The work paused after R3 by owner instruction |
-| R4 | Active | MIR analyses A1–A6 and the difference ledger (shadow). Every analysis unit extends `Mir/Analysis/MirAnalysis.cs`; its three-consecutive-units restructuring is deferred to the R4 exit (DECISIONS R4-M2a). `Mir/MirDump.cs` changed in three consecutive units (U0c, U4, U5): its next change restructures it first |
+| R4 | Active; A1–A4 landed, the remaining scope is being replanned (DECISIONS R4-M33) | MIR analyses A1–A6 and the difference ledger (shadow). Every analysis unit extends `Mir/Analysis/MirAnalysis.cs`; its three-consecutive-units restructuring is deferred to the R4 exit (DECISIONS R4-M2a). `Mir/MirDump.cs` changed in three consecutive units (U0c, U4, U5): its next change restructures it first |
 | R5 | Pending | Monomorphization, shims, layout/ABI, code generation, capability table (shadow); MIR holds the bodies of overrides no instance applies, which generation reads applicability to skip (DECISIONS R4-M28) |
 | R6 | Pending | Switch the default to MIR, then delete the old Analysis/Emission paths. Unit a publishes the MIR problems and folds the MIR construction records, which keep their own merge in `MirProgram` until then, into `MirReport` (DECISIONS R4-M3a). TransferRequired moves to Binding/HIR (R4-M4), which makes A1's StaticMovePathRequired at the bare acquisitions it rejects derived. Deleting the old effect checks ends `Binding.EffectObligations`' reading of their violation tables (`effectViolations`, `virtualEffectViolations`): an obligation then follows the conformance's and the function's own validity (DECISIONS R4-M23); the old twins of A4's rules go with them: `EffectSummary.Function`'s foreign-function branch (beside `TyCtxt.Bodyless`), its formatting-callback and composite-comparison branches and the Dictionary selection and literal comparison of the old walk (beside the published rows and `TyCtxt.Witnesses`), with the `Formatting` effect class only they read, and `CallableEffectFailure`'s decision of a Closure's owner acquisition (beside `AddCallableObligation`'s `Owner`); the Array `append`/`insert`/`pop`/`remove` rows join the catalog (DECISIONS R4-M28) |
-| R7 | Pending | Binding consolidation: resolver, inference context, Contract solver, CallPlan pipeline, Problem records; Binding's variance and callable-signature spellings converge on `TyCtxt.Relate`, `ComponentVariance` and `Callable` (DECISIONS R4-M9b) |
+| R7 | Pending | Binding consolidation: resolver, inference context, Contract solver, CallPlan pipeline, Problem records |
 | R8 | Pending | Library algorithms in Kimigayo, about 28 intrinsics |
 | R9 | Pending | Remaining front-end cleanup, Documentation and toolchain moved out, final documentation |
 
@@ -230,26 +229,24 @@ whole-compiler ratio. No area's pass/fail state changes. EOF, missing tokens and
 | Area | A1 tokens | Token cap |
 | --- | ---: | ---: |
 | Analysis | 121,620 | 124,047 |
-| Binding | 371,765 | 432,000 |
-| Core | 8,055 | 15,000 |
+| Binding | 371,765 | 377,051 |
+| Core | 8,055 | 8,187 |
 | Documentation | 24,624 | 25,687 |
 | Emission | 160,848 | 164,057 |
 | Helper | 7,766 | 8,068 |
 | Lexing | 19,065 | 19,445 |
-| Mir | 38,804 | 155,000 |
+| Mir | 38,804 | 93,651 |
 | Parsing | 75,668 | 77,163 |
 | Root | 7,206 | 7,345 |
 
-The owner approved the R4 completion and conditional coexistence envelope (DECISIONS R4-M31, superseding R4-M25's
-numeric caps and 90,000 Mir planning trigger for this scope). Reforecast at each selected design and landing; exceeding
-an area or stage envelope requires consolidation or renewed owner approval. The per-unit 20% overrun rule and R4-M30
-Binding exceptions remain. R5 and later ceilings are unchanged; reforecast R5 before its implementation.
+The owner raised Binding by 2,000 and Core by 20 tokens within the unchanged R4 ceiling (DECISIONS R4-M25). The R4
+completion envelope (R4-M31) was withdrawn with the A5 work (DECISIONS R4-M33).
 
 LLVM templates remain at 2,335 lines against their unchanged cap of 2,381, outside the C# total.
 
 | Remaining stage | Total C# token ceiling |
 | --- | ---: |
-| R4 | 1,020,000 |
+| R4 | 894,362 |
 | R5 | 942,976 |
 | R6 | 654,531 |
 | R7 | 589,712 |

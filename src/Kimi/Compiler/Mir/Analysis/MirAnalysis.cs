@@ -22,8 +22,6 @@ internal sealed class MirAnalysis
     private readonly MirInit init;
     private readonly MirDrops drops;
     private readonly MirEffects effects;
-    private readonly MirBorrows borrows;
-    private bool[] stopped = []; // By body ordinal: A1 stopped it over the arena limit, so no later analysis runs on it (R4-M15a).
     private ulong version; // The program version whose problems the program holds (0: none).
 
     /// <summary>Initializes a new instance of the <see cref="MirAnalysis"/> class.</summary>
@@ -37,7 +35,6 @@ internal sealed class MirAnalysis
         this.drops = new(this.moves, this.cases);
         this.init = new(this.flow, this.moves, this.cases, this.drops);
         this.effects = new(types, this.cases, reach);
-        this.borrows = new(this.flow, this.moves, this.cases, types);
     }
 
     /// <summary>Analyzes a program unless this version already was: a new version starts without problems, and one with validator
@@ -56,10 +53,8 @@ internal sealed class MirAnalysis
                 return program;
             }
 
-            MirDataflow.Grow(ref this.stopped, program.Bodies.Length);
             foreach (var body in program.Bodies)
             {
-                this.stopped[body.Ordinal] = false;
                 this.lints.Run(body, program.Problems); // 1. A3 per body.
                 this.flow.Begin(body); // 2. Per body its block order and move paths, then per view A1, then A2, then A4's local facts.
                 this.moves.Build(body, this.flow);
@@ -69,7 +64,6 @@ internal sealed class MirAnalysis
                     this.cases.Select(body, view);
                     if (!this.init.Run(body, view, program.Problems))
                     {
-                        this.stopped[body.Ordinal] = true;
                         break;
                     }
 
@@ -85,30 +79,8 @@ internal sealed class MirAnalysis
             }
 
             this.effects.Run(program, program.Problems); // 3. A4's summaries and obligations over the program.
-            this.Borrows(program);
         }
 
         return program;
-    }
-
-    // 4. A5 per body and view, after A4 (DECISIONS R4-M24), its block order and move paths recomputed; it reads A2's verdicts by the body's
-    // ordinal and skips a body A1 stopped.
-    private void Borrows(MirProgram program)
-    {
-        foreach (var body in program.Bodies)
-        {
-            if (this.stopped[body.Ordinal])
-            {
-                continue;
-            }
-
-            this.flow.Begin(body);
-            this.moves.Build(body, this.flow);
-            for (var view = 0L; view < MirCases.Count(body); view++)
-            {
-                this.cases.Select(body, view);
-                this.borrows.Run(body, view, program.Drops, program.Problems);
-            }
-        }
     }
 }

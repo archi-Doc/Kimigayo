@@ -49,6 +49,10 @@ internal sealed partial class MirValidator
             _ => false,
         };
 
+        // A Type below its reference and pair layers (TyCtxt.Layer), which a comparison compares (SPEC 13.4).
+        private static BoundType? Terminal(BoundType? type)
+            => TyCtxt.Layer(type, out var below, out _) is var _ && !ReferenceEquals(below, type) ? Terminal(below) : type;
+
         // The Type a body gives in _0: its function's result (a constructor's object), a default template's parameter's or a static's; none
         // for the top-level statements, which have no symbol.
         private static BoundType? Result(MirDefKey key)
@@ -90,6 +94,25 @@ internal sealed partial class MirValidator
             }
         }
 
+        // The Type of an aggregate's operand, as the Place it initializes projects it: a Tuple's element, a Closure's capture, a struct's base
+        // then its own Fields, a Case's payload, a fixed array's element.
+        private readonly BoundType? Component(in MirRvalue rvalue, int index) => (MirAggregateKind)rvalue.Op switch
+        {
+            MirAggregateKind.FixedArray => rvalue.Type!.Components[0],
+            MirAggregateKind.Adt when AdtDef.IsEnum(rvalue.Type) => body.ProjectedType(
+                body.ProjectedType(
+                    rvalue.Type,
+                    MirProjectionKind.Downcast,
+                    rvalue.Arg),
+                MirProjectionKind.Field,
+                index),
+            MirAggregateKind.Adt when AdtDef.Base(rvalue.Type!) is { } parent => index == 0 ? parent : body.ProjectedType(
+                rvalue.Type,
+                MirProjectionKind.Field,
+                index - 1),
+            _ => body.ProjectedType(rvalue.Type, MirProjectionKind.Field, index),
+        };
+
         // SPEC 8.14: an Adapt acquires its operand by value, a Place's Copy or a temporary's Move, beside the token of Binding's source Type,
         // into its target Type. A Place or a constant out of range is the walk's finding.
         private readonly bool Adapts(in MirRvalue adapt, ReadOnlySpan<MirOperand> operands)
@@ -115,7 +138,7 @@ internal sealed partial class MirValidator
                 MirRvalueKind.BinaryOp => (op >= MirBinaryOp.Eq ? BoundType.Boolean : first, op switch
                 {
                     MirBinaryOp.Shl or MirBinaryOp.Shr => second is null || second.IsInteger || second.IsAbstract,
-                    >= MirBinaryOp.Eq => this.Agrees(MirTypes.Terminal(first), MirTypes.Terminal(second)),
+                    >= MirBinaryOp.Eq => this.Agrees(Terminal(first), Terminal(second)),
                     MirBinaryOp.Add or MirBinaryOp.Sub when first?.Semantics == SemanticsKind.Raw => second is null || ReferenceEquals(second, BoundType.ISize),
                     _ => this.Agrees(first, second),
                 }),
@@ -149,19 +172,33 @@ internal sealed partial class MirValidator
 
             for (var i = 0; rvalue.Kind == MirRvalueKind.Aggregate && i < operands.Length; i++)
             {
-                this.Agree(MirTypes.Component(body, rvalue, rvalue.Type!, i), this.TypeOf(operands[i]));
+                this.Agree(this.Component(rvalue, i), this.TypeOf(operands[i]));
             }
         }
 
-        // SPEC 7.3: a call passes and gets the Types its callee takes and gives (MirTypes.Parameter), a Closure's or a function item's its
-        // declaration's. A call that diverges writes no destination.
+        // SPEC 7.3: a Fn, Requirement or Virtual callee takes its function's parameters under its Subst, the receiver first (a default
+        // template, plan 5.6.2: shared references to the parameters before its own, in slot order), and gives its result; a Value callee of a
+        // Function Type its inputs and result. A call that diverges writes no destination.
         private void Signature(in MirTerminator call)
         {
-            var value = call.Callee.Symbol is null ? this.TypeOf(call.Operand) : null;
-            var result = MirTypes.Parameter(types, call.Callee, value, -1, out var count);
-            if (count < 0)
+            var function = call.Callee.Symbol;
+            var subst = call.Callee.Subst;
+            var template = call.Callee.Kind == MirCalleeKind.Fn ? call.Callee.Arg - 1 : -1;
+            var value = function is null ? Terminal(this.TypeOf(call.Operand)) : null;
+            if (function is null && value is not { Kind: BoundTypeKind.Function, Components: [_, _] })
             {
-                return;
+                return; // A Closure's or a function item's signature is its declaration's.
+            }
+
+            var count = 0;
+            var result = function is null ? value!.Components[1] : TyCtxt.Signature(function, subst, template, out count);
+            if (function is null)
+            {
+                count = value!.Components[0].Components.Count;
+            }
+            else if (template >= 0)
+            {
+                count = template;
             }
 
             if (count != call.Count)
@@ -172,7 +209,25 @@ internal sealed partial class MirValidator
 
             for (var i = 0; i < count; i++)
             {
-                this.Agree(MirTypes.Parameter(types, call.Callee, value, i, out _), this.TypeOf(body.Operands[call.Start + i]));
+                var actual = this.TypeOf(body.Operands[call.Start + i]);
+                BoundType? expected;
+                if (function is null)
+                {
+                    expected = value!.Components[0].Components[i];
+                }
+                else
+                {
+                    expected = TyCtxt.Signature(function, subst, template < 0 ? MirCallee.Slot(function, i) : i, out _);
+                }
+
+                if (template < 0 || actual is null || actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [_] })
+                {
+                    this.Agree(expected, template < 0 ? actual : actual?.Components[0]);
+                }
+                else
+                {
+                    this.Report(MirViolation.Type); // A template's argument is no shared reference.
+                }
             }
 
             if (call.Target >= 0 && this.IsValid(call.Place))
