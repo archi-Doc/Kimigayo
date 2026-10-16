@@ -29,10 +29,10 @@ public class IndexableContractTest
 
     // SPEC 8.4.3: a Constraint on a bound Contract reference indexes a Type parameter through the requirement.
     private const string FirstPlace =
-        "func firstPlace<S>(items: ref/S) -> place ref/S.Element during items\n    S is Indexable<isize>\n    return items[0]\n";
+        "func firstPlace<S>(items: ref/S) -> ref/S.Element during items\n    S is Indexable<isize>\n    return items[0]@ref\n";
 
     private const string FirstUniq =
-        "func firstUniq<S>(items: uniq/S) -> place uniq/S.Element during items\n    S is UniqIndexable<isize>\n    return items[0]\n";
+        "func firstUniq<S>(items: uniq/S) -> uniq/S.Element during items\n    S is UniqIndexable<isize>\n    return items[0]@uniq\n";
 
     public static TheoryData<string, string, string> Fixtures => new()
     {
@@ -41,8 +41,8 @@ public class IndexableContractTest
         { "ExclusiveWrite", Pair + "var counts = Pair<i32>.init(1, 2)\ncounts[1] += 40\nlet exclusive = counts[0]@uniq\nexclusive@follow = 7\nrequire counts[1] == 42 and counts[0] == 7 else => $abort(\"write\")\ncounts[0] = counts[1] + 1\nrequire counts[0] == 43 else => $abort(\"replace\")\nConsole.writeLine(\"Pair replaced.\")\nvar names = Pair<string>.init(\"Pair first.\", \"Pair second.\")\nlet lent = names[1]@uniq\nConsole.writeLine(lent)", "Pair replaced.\nPair second.\n" },
         { "ThroughReferences", Pair + "func show(pair: ref/Pair<string>) => Console.writeLine(pair[1])\nfunc bump(pair: uniq/Pair<i32>) => pair[0] += 1\nvar names = Pair<string>.init(\"a\", \"b\")\nshow(names)\nvar counts = Pair<i32>.init(41, 0)\nbump(counts@uniq)\nrequire counts[0] == 42 else => $abort(\"bump\")\nConsole.writeLine(\"ok\")", "b\nok\n" },
         { "SharedOnly", Shared + "let view = View.init(42)\nrequire view[0] == 42 else => $abort(\"shared\")\nConsole.writeLine(\"ok\")", "ok\n" },
-        { "GenericShared", Pair + Shared + FirstPlace + "var pair = Pair<string>.init(\"Pair first.\", \"Pair second.\")\nConsole.writeLine(firstPlace(pair))\nlet counts = Pair<i32>.init(7, 8)\nlet view = View.init(9)\nrequire firstPlace(counts) == 7 and firstPlace(view) == 9 else => $abort(\"generic\")\nlet lent = firstPlace(pair)@ref\nConsole.writeLine(lent)", "Pair first.\nPair first.\n" },
-        { "GenericExclusive", Pair + FirstUniq + "var counts = Pair<i32>.init(1, 2)\nfirstUniq(counts@uniq) = 40\nfirstUniq(counts@uniq) += 2\nrequire counts[0] == 42 and counts[1] == 2 else => $abort(\"uniq\")\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "GenericShared", Pair + Shared + FirstPlace + "var pair = Pair<string>.init(\"Pair first.\", \"Pair second.\")\nConsole.writeLine(firstPlace(pair))\nlet counts = Pair<i32>.init(7, 8)\nlet view = View.init(9)\nrequire firstPlace(counts) == 7 and firstPlace(view) == 9 else => $abort(\"generic\")\nlet lent = firstPlace(pair)@follow@ref\nConsole.writeLine(lent)", "Pair first.\nPair first.\n" },
+        { "GenericExclusive", Pair + FirstUniq + "var counts = Pair<i32>.init(1, 2)\nfirstUniq(counts@uniq)@follow = 40\nfirstUniq(counts@uniq)@follow += 2\nrequire counts[0] == 42 and counts[1] == 2 else => $abort(\"uniq\")\nConsole.writeLine(\"ok\")", "ok\n" },
         { "GenericConformanceReference", Keyed + FirstPlace + "let keyed = Keyed<isize>.init(7)\nrequire firstPlace(keyed) == 7 and keyed[1] == 7 else => $abort(\"keyed\")\nConsole.writeLine(\"ok\")", "ok\n" },
         { "PlaceComparison", Pair + FirstPlace + "var names = Pair<string>.init(\"a\", \"b\")\nlet held = names[1]@ref\nrequire firstPlace(names) == \"a\" and names[1] == held and firstPlace(names) != held and held == names[1] else => $abort(\"compare\")\nConsole.writeLine(\"ok\")", "ok\n" },
     };
@@ -62,8 +62,8 @@ public class IndexableContractTest
     [InlineData("struct Wrong\n    Self is Indexable<isize>\n    associate Element is string\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value", DiagnosticCode.IncompatibleContractImplementation_Kd)]
     [InlineData("struct Missing\n    Self is UniqIndexable<isize>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value", DiagnosticCode.MissingContractImplementation_Kd)]
     [InlineData("struct Value\n    Self is Indexable<isize>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> i32 => self.value", DiagnosticCode.MissingContractImplementation_Kd)]
-    [InlineData("func f<S>(items: uniq/S) -> place uniq/S.Element during items\n    S is Indexable<isize>\n    return items[0]", DiagnosticCode.SharedPathAccess_Kd)]
-    [InlineData(Shared + FirstUniq + "var view = View.init(1)\nfirstUniq(view@uniq) = 2", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("func f<S>(items: uniq/S) -> uniq/S.Element during items\n    S is Indexable<isize>\n    return items[0]@uniq", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData(Shared + FirstUniq + "var view = View.init(1)\nfirstUniq(view@uniq)@follow = 2", DiagnosticCode.NoApplicableOverload_Kd)]
     public void RejectsAtBinding(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -186,9 +186,9 @@ public class IndexableContractTest
     [Fact]
     public void GenericUpdatesSelectAmongSeveralUniqConformances()
     {
-        const string Update = "func keySlot<S>(table: uniq/S, k: isize) -> place uniq/S.(Indexable<isize>).Element during table\n    S is UniqIndexable<isize>\n    S is UniqIndexable<Name>\n    return table[k]\n" +
-            "func nameSlot<S>(table: uniq/S, n: Name) -> place uniq/S.(Indexable<Name>).Element during table\n    S is UniqIndexable<isize>\n    S is UniqIndexable<Name>\n    return table[n]\n";
-        const string Use = "var table = Table.init(3, 4)\nkeySlot(table@uniq, 0) = 30\nnameSlot(table@uniq, Name.init(1)) = 40\nnameSlot(table@uniq, Name.init(1)) += 2\nlet k: isize = 0\nlet n = Name.init(1)\n" +
+        const string Update = "func keySlot<S>(table: uniq/S, k: isize) -> uniq/S.(Indexable<isize>).Element during table\n    S is UniqIndexable<isize>\n    S is UniqIndexable<Name>\n    return table[k]@uniq\n" +
+            "func nameSlot<S>(table: uniq/S, n: Name) -> uniq/S.(Indexable<Name>).Element during table\n    S is UniqIndexable<isize>\n    S is UniqIndexable<Name>\n    return table[n]@uniq\n";
+        const string Use = "var table = Table.init(3, 4)\nkeySlot(table@uniq, 0)@follow = 30\nnameSlot(table@uniq, Name.init(1))@follow = 40\nnameSlot(table@uniq, Name.init(1))@follow += 2\nlet k: isize = 0\nlet n = Name.init(1)\n" +
             "let a: i32 = table[k]\nlet b: i64 = table[n]\nrequire a == 30 and b == 42 else => $abort(\"update\")\nConsole.writeLine(\"generic updates\")";
         ScalarEmissionTest.EmitFixture("IndexableContractGenericUpdates", TwoKeys + Update + Use, "generic updates\n");
     }
@@ -219,7 +219,7 @@ public class IndexableContractTest
         // enclosing requirement reference, so the generic call had no implementation mapping and generation failed.
         const string Source = "struct Keyed<K>\n    Self is Indexable<K>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n" +
             "    public func index(self, key: ref/K) -> place ref/i32 during self => self.value\n" +
-            "func pick<S>(items: ref/S) -> place ref/S.Element during items\n    S is Indexable<Range<i32, i32>>\n    return items.index(0..2)\n" +
+            "func pick<S>(items: ref/S) -> ref/S.Element during items\n    S is Indexable<Range<i32, i32>>\n    return items.index(0..2)\n" +
             "let keyed = Keyed<Range<i32, i32>>.init(7)\nrequire pick(keyed) == 7 else => $abort(\"pick\")\nConsole.writeLine(\"ok\")";
         var c = MinimalEmissionTest.Analyze(Source);
         var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(x => x.ToString() == "items.index(0..2)");

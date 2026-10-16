@@ -121,9 +121,9 @@ public sealed class MirInitTest(ITestOutputHelper output)
             ["StaticMovePathRequired_Kd values[i] 1", "StaticMovePathRequired_Kd values[i] 1"],
             Problems("func take(s: string) => ()\nfunc f(values: Array<string>, i: isize)\n    take(values[i]@move)\n    take(values[i]@move)\n"));
         Assert.Equal(
-            ["StaticMovePathRequired_Kd first(names) 1"],
-            Problems("func first(values: ref/Array<string>) -> place ref/string during values => values[0]\nfunc f(names: Array<string>)\n" +
-                "    let bare = first(names)\n"));
+            ["StaticMovePathRequired_Kd first(names)@follow 1"],
+            Problems("func first(values: ref/Array<string>) -> ref/string during values => values[0]@ref\nfunc f(names: Array<string>)\n" +
+                "    let bare = first(names)@follow\n"));
     }
 
     // SPEC 15.1.3: a Move of a constant index forms the referenced element's Move Path; the paths follow the accesses, never the declared

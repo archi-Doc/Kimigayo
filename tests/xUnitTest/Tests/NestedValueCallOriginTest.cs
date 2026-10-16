@@ -40,7 +40,7 @@ public class NestedValueCallOriginTest
     [InlineData("Slice", "func pick(values: Slice<i32>) -> ref/i32 during values.source => values[0]@ref\nlet f = pick\nlet n: [1 of i32] = [7]\nrequire f(n[..])@follow == 7 else => $abort(\"slice\")")]
     [InlineData("NestedReference", "func pick(slot: ref/(ref/i32 during source)) -> ref/i32 during source => slot@follow\nlet f = pick\nlet n = 7\nlet view = n@ref\nrequire f(view@ref)@follow == 7 else => $abort(\"nested\")")]
     [InlineData("ResultOnly", "func empty() -> Option<ref/i32 during source> => .None\nlet f = empty\nlet n = 7\nvar value = f()\nvalue = .Some(n@ref)\nmatch value\n    .Some(let item) => require item@follow == 7 else => $abort(\"some\")\n    .None => $abort(\"none\")")]
-    [InlineData("Place", "func slot(values: ref/[1 of ref/i32 during source]) -> place ref/(ref/i32 during source) => values[0]\nlet f = slot\nlet n = 7\nlet values: [1 of ref/i32] = [n@ref]\nrequire f(values@ref)@follow == 7 else => $abort(\"place\")")]
+    [InlineData("StoredReference", "func slot(values: ref/[1 of ref/i32 during source]) -> ref/(ref/i32 during source) => values[0]@ref\nlet f = slot\nlet n = 7\nlet values: [1 of ref/i32] = [n@ref]\nrequire f(values@ref)@follow@follow == 7 else => $abort(\"stored\")")]
     [InlineData("DistinctCalls", "func pick(pair: (ref/i32 during source, i32)) -> ref/i32 during source => pair.0\nlet f = pick\nvar a = 1\nvar b = 2\nlet first = f((a@ref, 0))\nlet second = f((b@ref, 0))\nrequire first@follow == 1 else => $abort(\"first\")\na = 3\nrequire second@follow == 2 else => $abort(\"second\")")]
     public void EachCallSolvesEveryInputOrigin(string name, string source)
         => ScalarEmissionTest.EmitFixture("NestedValueCallOrigin" + name, source, string.Empty);

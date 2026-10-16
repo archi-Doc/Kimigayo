@@ -8,7 +8,7 @@ namespace XunitTest;
 
 public class PublishedPlaceProjectionTest
 {
-    private const string Header = "func slot<D, K>(values: uniq/D, key: ref/K) -> place uniq/D.Element during values\n    D is UniqIndexable<K>\n    return values[key]\nfunc change(value: uniq/i32) => value@follow += 2\n";
+    private const string Header = "func slot<D, K>(values: uniq/D, key: ref/K) -> uniq/D.Element during values\n    D is UniqIndexable<K>\n    return values[key]@uniq\nfunc change(value: uniq/i32) => value@follow += 2\n";
 
     [Theory]
     [InlineData("Index", "values[1]")]

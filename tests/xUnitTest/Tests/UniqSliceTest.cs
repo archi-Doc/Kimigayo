@@ -108,7 +108,7 @@ public class UniqSliceTest(ITestOutputHelper output)
     [InlineData("DependentElements", "let first = 4\nlet second = 7\nvar values: [2 of ref/i32] = [first@ref, second@ref]\nvar view = values.sliceUniq()\nview[0] = second@ref\nrequire view[0]@follow == 7 else => $abort(\"dependency\")")]
     [InlineData("NoInitViews", "unsafe\n    var values: [2 of bool] = noinit\n    var view = values.sliceUniq()\n    view[0] = true\n    view[1] = false\n    require view.slice()[0] and not view.slice()[1] else => $abort(\"noinit\")")]
     [InlineData("IntegerKeys", "var values: [2 of i32] = [1, 2]\nvar view = values.sliceUniq()\nlet key: u128 = 1\nview[key] = 8\nlet range = (0..2).resolve(2)\nrequire view[range][1] == 8 else => $abort(\"keys\")")]
-    [InlineData("GenericIndexable", "func first<S>(items: uniq/S) -> place uniq/S.Element during items\n    S is UniqIndexable<isize>\n    return items[0]\nvar values = [1, 2]\nvar view = values.sliceUniq()\nfirst(view@uniq) = 9\nrequire view[0] == 9 else => $abort(\"generic\")")]
+    [InlineData("GenericIndexable", "func first<S>(items: uniq/S) -> uniq/S.Element during items\n    S is UniqIndexable<isize>\n    return items[0]@uniq\nvar values = [1, 2]\nvar view = values.sliceUniq()\nfirst(view@uniq)@follow = 9\nrequire view[0] == 9 else => $abort(\"generic\")")]
     public void ViewsPreserveOrdinaryElementAndAcquisitionRules(string name, string source)
         => ScalarEmissionTest.EmitFixture("UniqSlice" + name, source + "\nConsole.writeLine(\"ok\")", "ok\n");
 

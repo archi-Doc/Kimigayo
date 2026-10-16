@@ -19,6 +19,6 @@ func same<T>(a: T, b: T) -> bool
 func apply<F>(action: ref/F) -> i32
     F is Callable<ref, () -> i32>
     return action()
-func first(values: ref/[3 of i32]) -> place ref/i32 during values => values[0]
+func first(values: ref/[3 of i32]) -> ref/i32 during values => values[0]@ref
 func read(values: ref/[3 of i32]) -> i32 => first(values)
 func stop() -> Never => $abort("stopped")

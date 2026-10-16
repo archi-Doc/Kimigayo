@@ -47,12 +47,12 @@ public class UserArithmeticUpdateTest
 
     [Theory]
     [InlineData("Follow", "func add(target: uniq/Counter, right: ref/Counter) => target@follow += right\nvar total = Counter.init(21)\nlet right = Counter.init(21)\nadd(total@uniq, right)\nrequire total.value == 42 else => $abort(\"follow\")")]
-    [InlineData("Place", "func slot(target: uniq/Counter) -> place uniq/Counter during target\n    Console.writeLine(\"locate\")\n    return target@follow\nvar total = Counter.init(21)\nlet right = Counter.init(21)\nslot(total@uniq) += right\nrequire total.value == 42 else => $abort(\"place\")")]
+    [InlineData("ReturnedReference", "func slot(target: uniq/Counter) -> uniq/Counter during target\n    Console.writeLine(\"locate\")\n    return target\nvar total = Counter.init(21)\nlet right = Counter.init(21)\nslot(total@uniq)@follow += right\nrequire total.value == 42 else => $abort(\"returned\")")]
     [InlineData("Field", "struct Box\n    public var item: Counter\n    public init() => self.item = Counter.init(21)\nvar box = Box.init()\nbox.item += box.item\nrequire box.item.value == 42 else => $abort(\"field\")")]
     [InlineData("Tuple", "var pair = (Counter.init(21), 7)\npair.0 += pair.0\nrequire pair.0.value == 42 and pair.1 == 7 else => $abort(\"tuple\")")]
     [InlineData("Raw", "var total = Counter.init(21)\nlet right = Counter.init(21)\nlet pointer = total@raw\nunsafe => *pointer += right\nrequire total.value == 42 else => $abort(\"raw\")")]
     public void AddressTargetsAreLocatedOnce(string name, string program)
-        => ScalarEmissionTest.EmitFixture("UserArithmeticUpdate" + name, Counter + "\n" + program, name == "Place" ? "locate\n" : string.Empty);
+        => ScalarEmissionTest.EmitFixture("UserArithmeticUpdate" + name, Counter + "\n" + program, name == "ReturnedReference" ? "locate\n" : string.Empty);
 
     [Theory]
     [InlineData("Fixed", "[2 of Counter]")]

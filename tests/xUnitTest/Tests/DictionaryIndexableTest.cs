@@ -93,9 +93,9 @@ public class DictionaryIndexableTest
     public void GenericMissingKeysReportTheIndexInsideTheGenericBody()
     {
         const string Source = """
-            func read<D, K>(values: ref/D, key: ref/K) -> place ref/D.Element during values
+            func read<D, K>(values: ref/D, key: ref/K) -> ref/D.Element during values
                 D is Indexable<K>
-                return values[key]
+                return values[key]@ref
             var values = [1: 42]
             require read(values, 1) == 42 else => $abort("existing")
             require read(values, 9) == 0 else => $abort("unreachable")
@@ -118,15 +118,15 @@ public class DictionaryIndexableTest
     public void DictionaryPublishesPlacesThroughGenericIndexableConstraints()
     {
         const string Source = """
-            func read<D, K>(values: ref/D, key: ref/K) -> place ref/D.Element during values
+            func read<D, K>(values: ref/D, key: ref/K) -> ref/D.Element during values
                 D is Indexable<K>
-                return values[key]
-            func slot<D, K>(values: uniq/D, key: ref/K) -> place uniq/D.Element during values
+                return values[key]@ref
+            func slot<D, K>(values: uniq/D, key: ref/K) -> uniq/D.Element during values
                 D is UniqIndexable<K>
-                return values[key]
+                return values[key]@uniq
             var values = [1: "before"]
             Console.writeLine(read(values, 1))
-            slot(values@uniq, 1) = "after"
+            slot(values@uniq, 1)@follow = "after"
             Console.writeLine(read(values, 1))
             """;
         ScalarEmissionTest.EmitFixture("DictionaryIndexableGeneric", Source, "before\nafter\n");

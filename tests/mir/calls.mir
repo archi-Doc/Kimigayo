@@ -213,23 +213,23 @@ fn first @118
   bb0:
       StorageLive(_2) @129
     * _2 = const 0_i32 as isize (Wrap) proven @129
-      _0 = &(*_1)[_2]: ref/i32 @127
+      _0 = &(*_1)[_2]: ref/i32 @126
       StorageDead(_2) @129
-      return @127
-fn read @130
-  _0: i32 return @130
-  _1: ref/[3 of i32] arg values @130
-  _2: ref/i32 temp @136
+      return @126
+fn read @131
+  _0: i32 return @131
+  _1: ref/[3 of i32] arg values @131
+  _2: ref/i32 temp @137
   bb0:
-      StorageLive(_2) @136
-    * _2 = first(copy _1) -> bb1 @136
+      StorageLive(_2) @137
+    * _2 = first(copy _1) -> bb1 @137
   bb1:
-      _0 = copy (*_2) @136
-      StorageDead(_2) @136
-      return @136
-fn stop @139
-  _0: Never return @139
+      _0 = copy (*_2) @137
+      StorageDead(_2) @137
+      return @137
+fn stop @140
+  _0: Never return @140
   bb0:
-    * _0 = intrinsic Abort(const "stopped") -> ! check bb1 @142
+    * _0 = intrinsic Abort(const "stopped") -> ! check bb1 @143
   bb1:
-      unreachable @141
+      unreachable @142

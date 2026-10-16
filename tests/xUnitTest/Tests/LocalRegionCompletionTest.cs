@@ -31,7 +31,7 @@ public class LocalRegionCompletionTest
     [InlineData(Joined + "var a = 3\nvar b = 4\nlet value = choose(false, a@ref, b@ref)\nb = 5\nrequire value@follow == 4 else => $abort(\"join\")", "b = 5")]
     [InlineData(Slots + "slot@follow = .Some(n@ref)\nn = 3\nmatch b\n    .Some(let value) => require value@follow == 2 else => $abort(\"live\")\n    .None => ()", "n = 3")]
     [InlineData(Slots + "slot@follow = .Some(n@ref)\nlet old = b\nslot@follow = .None\nn = 3\nmatch old\n    .Some(let value) => require value@follow == 2 else => $abort(\"copy\")\n    .None => ()", "n = 3")]
-    [InlineData("func first<T>(pair: uniq/(T, T)) -> place uniq/T during pair => pair.0\nvar a = 1\nvar b = 2\nvar pair = (a@ref, a@ref)\nfirst(pair@uniq) = b@ref\na = 3\nrequire pair.1@follow == 1 else => $abort(\"sibling\")", "a = 3")]
+    [InlineData("func first<T>(pair: uniq/(T, T)) -> uniq/T during pair => pair.0@uniq\nvar a = 1\nvar b = 2\nvar pair = (a@ref, a@ref)\nfirst(pair@uniq)@follow = b@ref\na = 3\nrequire pair.1@follow == 1 else => $abort(\"sibling\")", "a = 3")]
     public void CompletionPreservesEveryRemainingLoan(string source, string at)
     {
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
