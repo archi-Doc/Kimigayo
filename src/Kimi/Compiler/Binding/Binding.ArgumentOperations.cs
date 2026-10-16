@@ -733,7 +733,7 @@ public sealed partial class Binding
             return published; // SPEC 7.1.1: a published Place keeps the dependencies of the returned reference.
         }
 
-        if (ElementAccess.IndexerCall(source, false) is { } indexer && ElementAccess.PlaceCallReference(indexer) is { Origin: { } publishedElement })
+        if (ElementAccess.IndexerCall(source, false) is { } indexer && ElementAccess.IndexerReference(indexer) is { Origin: { } publishedElement })
         {
             return publishedElement; // SPEC 4.7.1: the element Place depends on the receiver under its contract.
         }

@@ -47,6 +47,11 @@ public sealed partial class Binding
         return false;
     }
 
+    // SPEC 4.7.1: the element a selected index or indexUniq call lends, the referent of the reference its plan returns; the index
+    // expression designates it, whatever the call node itself is typed.
+    private static BoundType? LentElement(InvocationKoto? call)
+        => call?.BoundCall?.ReturnType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var element] } ? element : null;
+
     private bool TryBindIndexer(IndexKoto source, BindingScope scope, BoundType? receiver, out BoundType? result)
     {
         result = null;
@@ -110,7 +115,7 @@ public sealed partial class Binding
         }
 
         var shared = this.BindIndexerCall(source, scope, false);
-        if (shared?.BoundType is not { } element)
+        if (LentElement(shared) is not { } element)
         {
             result = Complete(source, null);
             return true;

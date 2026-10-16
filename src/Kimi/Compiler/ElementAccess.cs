@@ -60,6 +60,15 @@ internal static class ElementAccess
 
     internal static bool IsUserIndex(Koto source) => KotoHelper.UnwrapParentheses(source) is IndexKoto index && IndexerCall(index, false) is not null;
 
+    // SPEC 4.7.1: the reference that a subscript's selected index or indexUniq call returns, from that call's plan; the index
+    // expression designates its referent. Null for any other node.
+    internal static BoundType? IndexerReference(Koto source)
+        => KotoHelper.UnwrapParentheses(source) is InvocationKoto { BoundCall: { } plan } call && IsIndexerCall(call) ? plan.ReturnType : null;
+
+    // The stored Type of the Place an expression designates: the referent of the reference a published Place's call returns,
+    // otherwise the expression's own Type.
+    internal static BoundType? DesignatedType(Koto source) => PlaceCallReference(source) is { Components: [var stored] } ? stored : source.BoundType;
+
     // SPEC 4.7, 4.6.3: the evaluated key of a built-in selection. An Index or Range key is resolved against the
     // receiver's length by a synthesized call; an isize or ResolvedRange key is applied as written.
     internal static Koto KeySyntax(IndexKoto index) => index.CodeContext.Compilation.Binding.ResolvedKeyCall(index) ?? index.Right;
@@ -127,8 +136,8 @@ internal static class ElementAccess
                     }
 
                     return selected == ConversionBinding.ObjectCreation ? conversion.CreationStorage! : conversion;
-                case InvocationKoto { Parent: IndexKoto index } call when ReferenceEquals(IndexerCall(index, false), call) || ReferenceEquals(IndexerCall(index, true), call):
-                    source = index; // Both acquisition modes denote the same published element Place.
+                case InvocationKoto call when IsIndexerCall(call):
+                    source = call.Parent!; // Both acquisition modes denote the same published element Place.
                     break;
                 case EvaluatedKoto evaluated:
                     source = evaluated.Source; // A desugaring's evaluated operand is the value of its source.
@@ -465,4 +474,8 @@ internal static class ElementAccess
 
         return false;
     }
+
+    // Whether a call is the index or indexUniq call that a subscript selected (SPEC 4.7.1).
+    private static bool IsIndexerCall(InvocationKoto call)
+        => call.Parent is IndexKoto index && (ReferenceEquals(IndexerCall(index, false), call) || ReferenceEquals(IndexerCall(index, true), call));
 }

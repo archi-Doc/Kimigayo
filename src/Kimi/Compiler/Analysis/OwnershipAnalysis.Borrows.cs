@@ -149,8 +149,8 @@ public sealed partial class OwnershipAnalysis
             return reference < 0 ? -1 : this.BorrowThrough(unwrapped, reference, type, reservation);
         }
 
-        if ((ElementAccess.IsUserIndex(unwrapped) || ElementAccess.IsPlaceCall(unwrapped)) && ReferenceTypes.IsBorrow(unwrapped.BoundType) &&
-            ReferenceEquals(unwrapped.BoundType!.Components[0], type.Components[0]))
+        if ((ElementAccess.IsUserIndex(unwrapped) || ElementAccess.IsPlaceCall(unwrapped)) && ElementAccess.DesignatedType(unwrapped) is { } designated && ReferenceTypes.IsBorrow(designated) &&
+            ReferenceEquals(designated.Components[0], type.Components[0]))
         {
             return this.BorrowStoredReference(unwrapped, unwrapped, type, reservation);
         }

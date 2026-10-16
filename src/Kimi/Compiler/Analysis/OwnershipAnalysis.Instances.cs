@@ -175,12 +175,13 @@ public sealed partial class OwnershipAnalysis
         var ownedSlot = left is BinaryKoto path && !Binding.IsGetterResult(path) && !this.SpecialField(path) && ElementAccess.OwnedPathRoot(path) is not null;
         if (ElementAccess.IsUserIndex(left) || ElementAccess.IsPlaceCall(left) || ownedSlot)
         {
-            var stored = this.Resolve(left.BoundType, this.Active)!;
+            var designated = ElementAccess.DesignatedType(left)!;
+            var stored = this.Resolve(designated, this.Active)!;
             // SPEC 15.6.7: the exclusive slot borrow and the loaded reference of a reserved argument are reserved with it,
             // so a later argument may still inspect the same stored reference until the call activates all three.
             var reserved = ownedSlot && reservation >= 0 && mode == SemanticsKind.Uniq;
-            var slotType = ownedSlot ? this.compilation.Types.Reference(mode, left.BoundType!)
-                : this.compilation.Binding.PreparedBorrowType(left, this.compilation.Types.Reference(mode, left.BoundType!));
+            var slotType = ownedSlot ? this.compilation.Types.Reference(mode, designated)
+                : this.compilation.Binding.PreparedBorrowType(left, this.compilation.Types.Reference(mode, designated));
             var slot = this.BorrowIntermediate(left, slotType, reserved ? reservation : -1);
             if (slot < 0)
             {

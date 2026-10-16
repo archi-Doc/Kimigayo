@@ -292,10 +292,11 @@ public sealed partial class OwnershipAnalysis
     // selected referent: a Copy snapshot of a proven-Copy stored Type, never a Move.
     private int ReadPlaceCall(InvocationKoto call, AcquisitionKind? acquisition)
     {
-        var stored = this.Resolve(call.BoundType, this.Active);
+        var element = ElementAccess.DesignatedType(call);
+        var stored = this.Resolve(element, this.Active);
         if (acquisition == AcquisitionKind.Move || stored is null || !this.SupportsCopySnapshot(stored, call))
         {
-            if (acquisition is null && call.BoundType is { } element && this.compilation.Binding.ProveCopy(element, call) != ConstraintProof.Proven)
+            if (acquisition is null && element is not null && this.compilation.Binding.ProveCopy(element, call) != ConstraintProof.Proven)
             {
                 var source = call.Parent is IndexKoto index && ReferenceEquals(this.compilation.Binding.IndexerCall(index, false), call) ? (Koto)index : call;
                 this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
@@ -335,7 +336,7 @@ public sealed partial class OwnershipAnalysis
     // a compound update).
     private int WritePlaceCall(Koto source, InvocationKoto call)
     {
-        var type = call.BoundType;
+        var type = ElementAccess.DesignatedType(call);
         var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
         if (ElementAccess.PlaceCallReference(call)?.Semantics != SemanticsKind.Uniq || type is null ||
             (operation != KotoKind.Equals && !this.SupportsUpdate(call, type, operation)))
