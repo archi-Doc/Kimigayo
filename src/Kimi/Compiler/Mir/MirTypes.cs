@@ -1,8 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the Type facts needed by MIR construction and analyses.
-// Input: published Types and their stored shapes. Output: the destruction walk and the drop, raw, exclusivity, agreement, borrow-kind and
-// pointer-cast facts.
+// Input: published Types, their stored shapes and Binding's Copy and Sealed proofs. Output: the destruction walk and the drop, observation,
+// Loan-holding, raw, exclusivity, agreement, borrow-kind and pointer-cast facts.
 // Inline storage is traversed under each fact's documented bounds and Type rules; what destroying a value does is the one Destruction walk.
 // Must not inspect source syntax or substitute new Binding decisions.
 
@@ -38,6 +38,27 @@ internal static class MirTypes
     {
         var any = default(AnyPart);
         return Destruction(type, ref any);
+    }
+
+    /// <summary>Gets whether destroying a value of a Type may observe the Origins and Loans it holds (SPEC 15.6.6, 16.3.3): its
+    /// <see cref="Destruction"/> reaches a struct that declares a drop, which observes all it reaches; a Function value or an abstract part
+    /// not proven Copy, whose destruction is unknown; or an owning handle whose payload is not proven Sealed, or is and observes, since any
+    /// rc or arc release may be final. A payload is walked once per query, below its handle: a recursive Type ends, exactly where it
+    /// repeats and at the walk's bound where it grows.</summary>
+    /// <param name="type">The Type.</param>
+    /// <param name="types">The Type context, whose Copy and Sealed proofs Binding publishes.</param>
+    /// <param name="definition">The definition whose premises prove Copy and Sealed.</param>
+    /// <param name="seen">Scratch for the payloads walked, cleared first.</param>
+    /// <param name="deep">Whether the walk reached a part past its depth bound, which this implementation does not follow (SPEC 8.15):
+    /// the caller's located Unsupported_Kd.</param>
+    /// <returns>Whether the destruction may observe them; true when deep.</returns>
+    internal static bool Observes(BoundType? type, TyCtxt types, BindingSymbol? definition, HashSet<BoundType> seen, out bool deep)
+    {
+        seen.Clear();
+        var observer = new Observer(types, definition, seen);
+        var observes = Destruction(type, ref observer);
+        deep = observer.Beyond;
+        return observes;
     }
 
     /// <summary>Walks what destroying a value of a Type does (SPEC 16.3), the one walk of its inline storage that drop elaboration and the
@@ -196,6 +217,21 @@ internal static class MirTypes
     internal static bool HoldsRaw(BoundType? type, int depth = 0)
         => type is not null && (depth > 32 || type.Semantics is SemanticsKind.Raw or SemanticsKind.Rc || Any(type.Components, depth) || Stored(type, depth));
 
+    /// <summary>Gets whether a value of a Type may hold a Loan (SPEC 15.6), so that A5 tracks it: a part of it is a borrow or pair layer, a
+    /// Slice, a Function or Closure value, or an abstract Type, whose instance may store a borrow its Origins do not show. Its parts are its
+    /// own storage, a struct's Fields and base and an enum's payloads, and its components: elements, an owning handle's payload, and a
+    /// Type argument, which its storage may hold behind a raw pointer (a library collection, its iterators) or as a Loan or a Weak (SPEC
+    /// 3.2.2, 15.3.5). A raw pointer holds none (SPEC 5.2.2: its borrow ends at once), nor a function item. Each Type is walked once per
+    /// query, so a repeating recursive Type ends exactly; past depth 32, where one grows (SPEC 15.3.5), the answer is yes.</summary>
+    /// <param name="type">The Type.</param>
+    /// <param name="seen">Scratch for the Types walked, cleared first.</param>
+    /// <returns>Whether the value may hold a Loan.</returns>
+    internal static bool HoldsLoans(BoundType? type, HashSet<BoundType> seen)
+    {
+        seen.Clear();
+        return Holds(type, seen, 0);
+    }
+
     private static bool Any(IReadOnlyList<BoundType> types, int depth)
     {
         for (var i = 0; i < types.Count; i++)
@@ -223,11 +259,80 @@ internal static class MirTypes
         return (AdtDef.Base(type) is { } parent && HoldsRaw(parent, depth + 1)) || (AdtDef.CaseTypes(type) is { } cases && Any(cases, depth));
     }
 
+    // HoldsLoans' walk: a Type seen before adds nothing.
+    private static bool Holds(BoundType? type, HashSet<BoundType> seen, int depth)
+    {
+        if (type is null || type.Semantics == SemanticsKind.Raw || type.Kind == BoundTypeKind.FunctionItem || !seen.Add(type))
+        {
+            return false;
+        }
+
+        if (depth > 32 || type.IsAbstract || type.Kind is BoundTypeKind.Slice or BoundTypeKind.Function or BoundTypeKind.Closure || IsReference(type))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (Holds(type.Components[i], seen, depth + 1))
+            {
+                return true;
+            }
+        }
+
+        for (var i = 0; AdtDef.IsStruct(type) && i < AdtDef.Count(type); i++)
+        {
+            if (Holds(AdtDef.FieldType(type, i), seen, depth + 1))
+            {
+                return true;
+            }
+        }
+
+        foreach (var payload in AdtDef.CaseTypes(type) ?? [])
+        {
+            if (Holds(payload, seen, depth + 1))
+            {
+                return true;
+            }
+        }
+
+        return Holds(AdtDef.Base(type), seen, depth + 1);
+    }
+
     // MayNeedDrop's visitor: any reported part.
     private struct AnyPart : IMirDestruction
     {
         public readonly bool Visit(BoundType type, int depth) => true;
 
         public readonly bool Deep() => true;
+    }
+
+    // Observes' visitor: a reported part that may observe, and past the walk's depth bound one it does not follow. A string's or a
+    // sequence's own release observes nothing; its elements are parts of their own.
+    private struct Observer(TyCtxt types, BindingSymbol? definition, HashSet<BoundType> seen) : IMirDestruction
+    {
+        internal bool Beyond { get; private set; }
+
+        public bool Visit(BoundType type, int depth)
+        {
+            if (type.IsAbstract)
+            {
+                return !types.Copy(definition, type);
+            }
+
+            if (type.Kind == BoundTypeKind.Function || AdtDef.Destructor(type) is not null)
+            {
+                return true;
+            }
+
+            var payload = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : null;
+            return payload is not null && (!types.Sealed(definition, payload) || (seen.Add(payload) && Destruction(payload, ref this, depth + 1)));
+        }
+
+        public bool Deep()
+        {
+            this.Beyond = true;
+            return true;
+        }
     }
 }

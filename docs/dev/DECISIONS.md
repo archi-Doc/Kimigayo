@@ -889,6 +889,22 @@ and migration obligations remain in force; no numeric cap changes are authorized
   against a per-block fixed point. Rejected: a second arena or limit for the backward pass (two Resource decisions); per-block backward
   states (R4-M20's reason); sweeps without predecessor edges (rounds grow with loop nesting); a fixed union join (A5's node union is no
   word OR); one solve with a direction parameter. Not temporary.
+- **R4-M36** (2026-10-17; design A3 §4.1 G2, owner approval of its §9 item 8 on 2026-10-17) The Type facts A5's holders and destruction
+  checks read. `MirTypes.HoldsLoans(type, seen)` (A3 §3's holder rule): a part of the value is a borrow or pair layer, a Slice, a
+  Function or Closure value or an abstract Type; its parts are its own storage (Fields and base, payloads) and its components (elements,
+  an owning handle's payload, Type arguments); a raw pointer and a function item hold none. Two clarifications of A3's list, both needed
+  for soundness: an abstract Type counts, since an instance may store a borrow its Origins do not show (SPEC 15.2.3's `pass(local)`;
+  `BoundType.HasAbstractPart`), and a Type argument may be stored (library collections and their iterators hold their elements behind
+  a raw pointer, and SPEC 3.2.2 and 15.3.5 analyze a Loan or a Weak as storing its argument); leaving either out loses the Loans an
+  iterator or a T-typed result carries. `MirTypes.Observes(type, types, definition, seen, out deep)`, a visitor of the one Destruction
+  walk (SPEC 15.6.6, 16.3.3): a struct that declares a drop, a Function value, an abstract part not proven Copy, or an owning handle
+  whose payload is not proven Sealed, or is and observes (any rc or arc release may be final), under the definition's premises
+  (`TyCtxt.Copy`, `Sealed`). Each walks a Type, or for Observes a payload below its handle, once per query through the caller's set: a
+  repeating recursive Type ends exactly, a growing one (SPEC 15.3.5) at the bound of 32, where HoldsLoans answers yes and Observes sets
+  deep, the caller's located `Unsupported_Kd` as A4's Limit is. The Destruction walk cuts no cycle through a sequence, so a recursive
+  Type holding itself in an Array is deep (PLAN G91). Rejected: `CarriesOriginOrSlot` as the test (builder-made references carry no
+  Origin); a depth bound alone, as HoldsRaw has (a repeating recursive Origin-free Type would become a holder and keep the Loans read
+  into it live); one fact for both (two readers, two rules). Not temporary.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
