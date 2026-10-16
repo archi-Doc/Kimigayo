@@ -663,6 +663,30 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.Same(body.TypeOf(new MirPlace(1)), signature.Type);
     }
 
+    // DECISIONS R4-M42: a call, a subscript or a view selection whose published call is missing is a broken HIR contract,
+    // InternalInvariant_Kd at its node with an Opaque value in its place, which the validator accepts, never a fault nor another call.
+    [Fact]
+    public void AMissingPublishedCallIsABrokenContract()
+    {
+        var c = Compile(
+            "func one() -> i32 => 1\nfunc called() -> i32 => one()\nstruct Pair\n    Self is UniqIndexable<isize>\n    associate Element is i32\n" +
+            "    var first: i32 = 1\n    public init() => ()\n    public func index(self, key: ref/isize) -> ref/i32 during self => self.first@ref\n" +
+            "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/i32 during self => self.first@uniq\n" +
+            "func read(pair: ref/Pair) -> i32 => pair[0]\nfunc view(items: ref/UniqSlice<i32>) -> Slice<i32> during items => items[1..^1]\n");
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
+        var indexes = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IndexKoto>().ToArray();
+        Assert.Equal(2, indexes.Length);
+        HirTables.Publish(c); // Its columns from the bound plans; then the plans go missing.
+        HirTables.PlanFor(call, false).Plan = null;
+        HirTables.PlanFor(c.Binding.IndexerCall(indexes[0], false)!, false).Plan = null;
+        HirTables.PlanFor(c.Binding.ViewRangeCall(indexes[1])!, false).Plan = null;
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Equal(
+            [SourceRef.Of(call), SourceRef.Of(indexes[0]), SourceRef.Of(indexes[1])],
+            program.Records.Where(static x => x.Code == DiagnosticCode.InternalInvariant_Kd).Select(static x => x.Subject));
+    }
+
     // SPEC 13.7.2: an in-place compound update reserves its located destination (TwoPhaseUniq) and reads and writes it through that
     // reservation, so the write activates it.
     [Fact]

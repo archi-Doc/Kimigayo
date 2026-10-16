@@ -1033,6 +1033,20 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Function Type and skips Closures and function items; the published signature could be its one source. Rejected: a `BoundType?`
   field on `MirCallee` (a field for one callee kind on every terminator); the operand's Type (a Closure's or a function item's Type
   is not its signature). Not temporary.
+- **R4-M42** (2026-10-17; PLAN G90, implemented on the planning session's instruction of the same day) A fact Binding publishes for
+  a node that the builder finds missing is a broken HIR contract: `MirBuilder.Broken` records `InternalInvariant_Kd` at the node in
+  `MirProgram.Records`, beside the Unsupported and expansion-limit records, and puts an Opaque value in its place, so the body stays
+  valid and generation is refused; a node Binding rejected has its error instead, which the value is derived from, as for
+  `Unsupported`. A call's plan (`Call`) and a subscript's selected call (`Referent`) are read so instead of being trusted with `!`,
+  and an index's expansion without its selected call no longer falls back to the index's first published call (the indexer the
+  HIR publish left unselected). `ExpansionPlan.Of(...)!` for a compound update, an index or an interpolation stays, since the accessor builds a plan
+  for those Ops. Open (PLAN G96): more facts are trusted the same way (Formatting's `CallPlan.Of(...)!`, four sites; `Folded!`,
+  `HirTables.Symbol(...)!`, `BoundClosure.Of(...)!`, an `ExplicitAdaptationPlan` cast, `ArgumentOperations[...].Source!` and
+  `TypeArguments[0]!`); the shared-structure option is a check owned by the HIR producer at publish that each Op has its facts
+  (an index's Op Call its selected call, a ConstIndex its folded position), after which the builder trusts them; the planning
+  session decides. Rejected: a `MirViolation` (the validator verifies MIR; the broken contract is HIR's); an exception (AGENTS: a
+  located internal invariant without recovery); a code parameter on `Unsupported` (one function steered by a parameter for two
+  contracts). Not temporary.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

@@ -255,10 +255,16 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 4.7.1: the referent of the reference that a subscript's selected call returns; the selection's published expansion names that
-    // call, and a missing one is a broken HIR contract.
+    // call, and a missing one is a broken HIR contract (Broken), an Opaque value of the node's Type.
     private MirPlace Referent(Koto node)
     {
-        var call = ExpansionPlan.Of(node)!.Value.Second!;
+        if (ExpansionPlan.Of(node)?.Second is not { } call)
+        {
+            var value = this.Temp(node);
+            this.Broken(node, value);
+            return value;
+        }
+
         var result = this.Temp(call.ReturnType, node);
         this.Call(result, call, node, first: null);
         return this.body.Project(result, MirProjectionKind.Deref, 0);

@@ -13,7 +13,12 @@ internal sealed partial class MirBuilder
     // compare's i32 compared with zero.
     private void Call(MirPlace destination, Koto node)
     {
-        var call = ExpansionPlan.Of(node)?.Second ?? CallPlan.Of(node)!;
+        if ((ExpansionPlan.Of(node) is { } plan ? plan.Second : CallPlan.Of(node)) is not { } call)
+        {
+            this.Broken(node, destination);
+            return;
+        }
+
         if (node is not BinaryKoto binary || BinaryOp(binary.Akind) is not (> MirBinaryOp.Eq and MirBinaryOp relation))
         {
             this.Call(destination, call, node, first: null);
