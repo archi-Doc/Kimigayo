@@ -449,3 +449,13 @@ conditional designs/estimates are planning inputs, not adopted representations. 
   §2.6 → §§9.4, 18.2–18.3 and Appendix D; §2.7 → §§18.2.1, 19.1, 19.4; §3 → affected examples; §§4–5 → implementation,
   services, verification and conditional maintenance listed in the plan. Formal integration requires a later
   instruction; no support claim follows from this intake.
+
+## 2026-10-16 — Complete Polonius A5 plan
+
+- [Complete Polonius A5 Plan](Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): 一部取り込み (open). The owner
+  adopted it for R4's remaining scope on 2026-10-16 and 2026-10-17 (its decisions OD1–OD13: the direction in its status line, the
+  2026-10-17 outcomes in its §10; DECISIONS R4-M35) and approved its step 0 design A3 (`Sketches/A5 Step 0/design-A3.md`, §9) on 2026-10-17. It is a working plan:
+  no section is integrated into SPEC or IMPL, and no text is frozen.
+- Its SPEC change items go separately: S1, S2 and S5 as proposals, S3 and S4 as clarifications (plan §5.2, OD7), and each approved
+  list of precision losses as one SPEC revision before the R4 exit (OD13); each is recorded here when it lands. Adoption implies no
+  implementation support.

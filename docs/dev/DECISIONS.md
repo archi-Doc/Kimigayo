@@ -403,9 +403,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `RequireFallthrough`; A4 effect bounds and the effect-limit Unsupported; A5 Loan conflicts, default-argument access,
   Origin relations and `OwnershipStorageLimit_Kd`; every old Ownership-partition `Unsupported_Kd`. Control-flow lints,
   `TransferRequired`, `OwnershipCaseLimit` (a Binding record since R4-M18), old Internal records and capability Unsupported
-  records pass through uncompared.
+  records pass through uncompared. Its role in the R4 exit is superseded by R4-M35.
 - **R4-M5** Compilations with an incomplete Binding are compared in their own ledger section. A new-only row there is (d)
-  only if A6 shows no dependence on an Opaque site's roots; otherwise it is (b).
+  only if A6 shows no dependence on an Opaque site's roots; otherwise it is (b). That rule is superseded by R4-M35.
 - **R4-M6** A2 writes a side table and does not rewrite MIR: a verdict per Drop and view class (Keep, Elide, Flag, Open)
   and the flag set and clear points; R5 code generation reads it. Rejected: rewriting MIR in place (verdicts differ per
   view, and insertions break ranges). Refined by R4-M6a.
@@ -425,14 +425,14 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M11** A1, A4's local facts and A5 run per `MirCases` view; A6 merges by (code, subject, Reason) with the view mask
   as the case fact. Views are never collapsed. The key is R4-M3a's until U11.
 - **R4-M12** Library bodies are analyzed in every compilation. The library and the milestones produce no problems,
-  except an (a) row whose library fix lands in the same unit.
+  except an (a) row whose library fix lands in the same unit. Suspended until the joint core lands (R4-M35).
 - **R4-M13** Tests migrate per method kind (body presence, operations, cleanup verdicts, Loans, verification state, R5/R6
   residue). Ratchets: control-flow structure reads at most 1, `Ownership.Bodies` reads at most 110. The numbers are superseded
   by R4-M13a.
 - **R4-M15** `OwnershipStorageLimit_Kd` stays the one Resource code, decided by the byte size of A5's Loan × point arena. The
   arena scope is superseded by R4-M15a.
 - **R4-M16** The ledger's classification table is tracked (`tests/xUnitTest/TestData/mir-diff/classification.tsv`); raw
-  rows, reproducers and ledgers are evidence under `artifacts/verify/mir-diff/`.
+  rows, reproducers and ledgers are evidence under `artifacts/verify/mir-diff/`. R4-M35 adds a SPEC-clause column for (d) rows.
 - **R4-M2a** (2026-10-12, planning session; design A of two independent U0b designs; supersedes R4-M2's stub clause, its
   layout stays). U0b creates only `MirAnalysis`, the driver whose contract fixes the pass order (A3 per body; per body and
   view A1, A2, A4's local facts; A4 over the program; A5 per view; A6 inside `MirReport`), and `MirReport`; each analysis
@@ -441,7 +441,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   units' driver edits are line-level, resolved at rebase. The three-consecutive-units restructuring of `MirAnalysis.cs` is
   deferred to the R4 exit (stage ledger). Rejected: stubs (unused parameters or fake uses, edited anyway); partial methods
   or a pass interface (declarations without behavior, one call shape forced on different analyses); the driver and record
-  landing with the first analysis unit (parallel units would invent the same files).
+  landing with the first analysis unit (parallel units would invent the same files). R4-M35 moves the restructuring to before the R5
+  split.
 - **R4-M3a** (2026-10-12, planning session; design B's record taken into design A; supersedes R4-M3's fields).
   `MirProblem(DiagnosticCode Code, SourceRef Subject, ulong Views)`; `MirReport` merges by (Code, Subject), the canonical
   `Problem` key, OR-ing Views into the first problem, until U11 adds the Reason fact and Reason joins the key (R4-M11's
@@ -482,7 +483,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   a ModuleInitializer with ProcessExit (no lifecycle guarantee); a Python aggregator (an untracked second
   implementation); design B's content-hash fast path (the Functional/Allocation split is simpler), its positional split
   of `Compilation.Problems` (order-dependent; computing SourceRefs numbers unnumbered nodes under the observer) and its
-  shipping only the hook in U0b (two parallel analysis units would invent the driver and record).
+  shipping only the hook in U0b (two parallel analysis units would invent the driver and record). R4-M35 ends its role as an exit
+  gate, and tier 1 gains expected codes for the SPEC examples.
 - **R4-M18** (2026-10-12, main session; two independent designs: A chosen with B's table-free report, publication rule and
   dependent adaptations; revised after the independent review for SPEC 23.1) The Semantics case bound (`PairBinder.CaseBound`,
   64; SPEC 8.15, 23.1.1 Resource) has one owner. `Binding.CaseLimits` decides it once per definition and pass, after the
@@ -889,6 +891,41 @@ and migration obligations remain in force; no numeric cap changes are authorized
   against a per-block fixed point. Rejected: a second arena or limit for the backward pass (two Resource decisions); per-block backward
   states (R4-M20's reason); sweeps without predecessor edges (rounds grow with loop nesting); a fixed union join (A5's node union is no
   word OR); one solve with a direction parameter. Not temporary.
+- **R4-M35** (owner: the plan's direction and its step 0 on 2026-10-16, with OD1–OD7 and OD12, as the plan's status line records;
+  OD8–OD11 and OD13's first list on 2026-10-17, as plan §10 records them; supersedes the parts named below) R4's remaining scope
+  follows the [Complete Polonius A5 Plan](../../draft/Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): the Binding facts A5 reads
+  first, then A5 deciding the SPEC rules of plan Appendix A as facts and a fixed set of rules that a C# evaluator runs, then A6 and
+  the R4 exit tasks.
+  - Adopted (plan §10): OD1 the complete approach against the rules as simplified, with no whitelist, in the order of plan §6 (a needed
+    SPEC change the owner rejects leaves its rule Unsupported only by an owner exception, O4); OD2 Binding publishes each fact A5 reads
+    before A5 uses it, in R7's target shape and out of R7's scope (plan §7); OD3 plan §8 replaces the R4 exit, PLAN10 §18 P9, O5 and
+    G-Diff's blocking rule, and R4-M12 is suspended until the joint core (step 1) lands; OD4 R5 starts in parallel under plan §9.1's
+    conditions, instance collection running before acceptance (its entry, with the target pipeline's change, comes with its first
+    implementing commit); OD5 SPEC changes are implemented on MIR only, with plan §9.2's departure from AGENTS "Diagnostics" until
+    R6-check (owner exception); OD6 review and records as plan §9.3, in force once AGENTS "Review weight" is revised on the owner's
+    instruction (until then AGENTS and Q5 govern); OD7 each rule the audit finds not finitely expressible gets its own SPEC proposal
+    (O3 and O4 apply); OD10 R6 runs in two stages, R6-gen after R5 and R6-check after R4 and R6-gen, with `AnalyzeInstance` a
+    check-only step until R6-check; OD11 confirmed: a complete write through a reference ends none of the referent's earlier Loans
+    (S4); OD12 simple, then fast, then precise, never trading soundness, a precision loss being allowed only as a rule clause decided
+    as plan §5.3 states, which is the owner's request for the resulting SPEC revisions; OD13 each list of precision losses is approved
+    as one decision. Not adopted: OD8 (no Case terminator; case dependence stays per view, R4-M19) and OD9 (the inline default fold
+    and the SETTLED entry stay; no closed defaults).
+  - Step 0 (plan §6.2) produced design A3 (`draft/Sketches/A5 Step 0/design-A3.md`, confirmed by its third review). The owner chose the
+    representation for the access-check family (A3's transit clause) and approved A3 §9 as recommended on 2026-10-17: A3's losses P1,
+    P3, P4, P10 and P11, the optional P5, P6 and P9, and S1's `within` kill; relaxations (a) and (b); S1's additions; clarifications
+    c1 and c2; V16 as A3 §6.3 restates it; the Origin boundary of A3 §7; the MIR contracts of A3 §4.1; the DEC and DIAGNOSTICS
+    records. Not adopted: the root-most kill and relaxation (c). Where A3 departs from the plan (G3: no drop-row Path), A3 governs.
+    Until the SPEC revisions land, before the R4 exit, a violation of an approved loss is a located `Unsupported_Kd`. Each
+    representation, contract or phase move gets its own entry in the commit that first implements it (R4-M34 onward).
+  - Superseded: PLAN10 §12.1's "R3–R6 run alone" and its single D5 end (now per stage), §12.2's R4 exit, R5 start condition and R6 row
+    (the single switch), §12.3's stop rule, §13.1 G-Diff and §18 P9; R4-M2a's deferral of the `MirAnalysis` restructuring to the R4
+    exit (now before the R5 split, with `MirDump`'s); R4-M4's compared set and R4-M17's harness as an exit gate (the ledger stays as
+    information, plan §8), and R4-M17's tier 1, which only compares the two paths, gains expected codes for the SPEC examples; R4-M5's
+    rule that a new-only row is (b) (a row blocks only as plan §8 states); R4-M12 until the joint core lands; R4-M16's classification
+    table, which gains a SPEC-clause column for (d) rows (plan §9.2); O5, replaced by plan §8's stop rule: the owner is consulted after
+    two consecutive working sessions on the plan that land no unit.
+  - Elsewhere in DEC and ARCH, an "R6" item that only Emission concerns means R6-gen and any other means R6-check (for example R4-M1,
+    R4-M3a, R4-M13a and R4-M17's unit a).
 - **R4-M36** (2026-10-17; design A3 §4.1 G2, owner approval of its §9 item 8 on 2026-10-17) The Type facts A5's holders and destruction
   checks read. `MirTypes.HoldsLoans(type, seen)` (A3 §3's holder rule): a part of the value is a borrow or pair layer, a Slice, a
   Function or Closure value or an abstract Type; its parts are its own storage (Fields and base, payloads) and its components (elements,
@@ -908,7 +945,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
-  exit; O5 the unclassified count failing to fall in two sessions in a row (plan §18 P9).
+  exit; O5 the unclassified count failing to fall in two sessions in a row (plan §18 P9; superseded by R4-M35).
 
 ## Language changes (2026-10-16)
 
