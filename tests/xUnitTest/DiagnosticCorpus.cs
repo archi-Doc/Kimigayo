@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Checking;
 using Kimi.Compiler;
@@ -88,6 +89,47 @@ internal sealed record SyntaxCase(string Name, string Source, string Intended, S
 /// <param name="Expected">The codes of the expected primary records, written independently of the compiler.</param>
 internal sealed record MutationCase(string Name, int Program, string Before, string After, string Intended, string[] Expected);
 
+/// <summary>One SPEC example with the codes the SPEC gives it (plan §8 of the Complete Polonius A5 Plan; DECISIONS R4-M45): the
+/// <c>kimi</c> block of a section that contains an anchor. Moved lines keep the row; a changed block, anchor or verdict fails it.</summary>
+/// <param name="Name">The case name.</param>
+/// <param name="Section">The number of the section whose own text holds the block, such as <c>15.6.7</c>.</param>
+/// <param name="Anchor">Text that exactly one <c>kimi</c> block of the section contains.</param>
+/// <param name="Family">The analysis or A5 family (plan §6.1) that decides the variants' verdicts, unless a variant names its own.</param>
+/// <param name="Prelude">What the example assumes: declarations of the names it leaves undeclared, and the startup item <c>()</c> for an
+/// example without runtime items (SPEC 22.4).</param>
+/// <param name="Variants">The block as written, and with one commented line uncommented.</param>
+/// <param name="Indent">The spaces before each line of the block, for a body fragment whose enclosing header ends the prelude.</param>
+/// <param name="Omitted">The commented error lines without a variant, by their text after <c>// </c>, each with the reason.</param>
+internal sealed record SpecCase(string Name, string Section, string Anchor, string Family, string Prelude, SpecVariant[] Variants, int Indent = 0, Dictionary<string, string>? Omitted = null);
+
+/// <summary>One variant of a SPEC example and the Error records the SPEC gives it, written from SPEC and DIAGNOSTICS independently of the
+/// compiler (docs/dev/DIAGNOSTICS.md §9.2).</summary>
+/// <param name="Uncomment">The text after <c>// </c> of the one commented line the variant uncomments; null for the block as written.</param>
+/// <param name="Expected">The Error records; none for an accepted variant.</param>
+/// <param name="Family">The deciding analysis or family when it is not the case's.</param>
+/// <param name="Old">The old path's records where they differ from the SPEC (plan §9.2).</param>
+/// <param name="Mir">The MIR's records where they differ from the SPEC, for a landed family.</param>
+internal sealed record SpecVariant(string? Uncomment, SpecRecord[] Expected, string? Family = null, SpecDifference? Old = null, SpecDifference? Mir = null);
+
+/// <summary>One Error record of a SPEC example: its code, the code named by DIAGNOSTICS or by the catalog entry whose message states the
+/// rule, and the text that locates the line holding its primary location.</summary>
+/// <param name="Code">The code name.</param>
+/// <param name="Line">Text that occurs exactly once in the variant's source.</param>
+/// <param name="Dependent">Whether SPEC 23.1.2 leaves its report implementation-defined (only another expected failure causes it, or it is
+/// another record of one), so that it may be absent.</param>
+/// <param name="Basis">Why the code, when neither DIAGNOSTICS nor a catalog message states the rule.</param>
+internal sealed record SpecRecord(string Code, string Line, bool Dependent = false, string? Basis = null);
+
+/// <summary>A path's records of a variant where they differ from the SPEC, with the class the difference ledger would give the difference
+/// ((a) an old-path error, which goes with the old path at R6-check; (b) a new-path error, including Binding's, which both paths share;
+/// (c) a SPEC ambiguity; (d) an intended change, a rule the SPEC changed that MIR alone implements, plan §9.2; or (e) a form MIR does not
+/// build yet) and the SPEC clause.</summary>
+/// <param name="Records">The path's Error records.</param>
+/// <param name="Category">The class.</param>
+/// <param name="Clause">The SPEC sections deciding the variant, separated by spaces.</param>
+/// <param name="Note">The difference.</param>
+internal sealed record SpecDifference(SpecRecord[] Records, string Category, string Clause, string Note);
+
 /// <summary>The shared diagnostic corpus: milestone programs, examples and mutation cases.</summary>
 internal static class DiagnosticCorpus
 {
@@ -97,7 +139,10 @@ internal static class DiagnosticCorpus
     private static readonly Lazy<SyntaxCase[]> SyntaxCorpus = new(static () =>
         JsonSerializer.Deserialize<SyntaxCase[]>(File.ReadAllText(RepositoryPath("tests", "diagnostics", "syntax.json")))!);
 
-    private static readonly Lazy<(string Name, string Source)[]> SpecCorpus = new(ReadSpecBlocks);
+    private static readonly Lazy<SpecCase[]> SpecCaseCorpus = new(static () =>
+        JsonSerializer.Deserialize<SpecCase[]>(File.ReadAllText(RepositoryPath("tests", "diagnostics", "spec-cases.json")))!);
+
+    private static readonly Lazy<((string Name, string Section, string Source)[] Blocks, HashSet<string> Sections)> SpecCorpus = new(ReadSpec);
 
     /// <summary>Gets the mutation cases of <c>tests/diagnostics/mutations.json</c>.</summary>
     internal static IReadOnlyList<MutationCase> Mutations => MutationCases.Value;
@@ -105,9 +150,15 @@ internal static class DiagnosticCorpus
     /// <summary>Gets the syntax cases of <c>tests/diagnostics/syntax.json</c>.</summary>
     internal static IReadOnlyList<SyntaxCase> SyntaxCases => SyntaxCorpus.Value;
 
+    /// <summary>Gets the SPEC examples of <c>tests/diagnostics/spec-cases.json</c>.</summary>
+    internal static IReadOnlyList<SpecCase> SpecCases => SpecCaseCorpus.Value;
+
     /// <summary>Gets every <c>kimi</c> code block of the specification (<c>docs/spec/**/*.md</c>), named by its file below <c>docs/spec</c>
-    /// without the extension, a slash and the line of its opening fence.</summary>
-    internal static IReadOnlyList<(string Name, string Source)> SpecBlocks => SpecCorpus.Value;
+    /// without the extension, a slash and the line of its opening fence, with the number of the section whose own text holds it.</summary>
+    internal static IReadOnlyList<(string Name, string Section, string Source)> SpecBlocks => SpecCorpus.Value.Blocks;
+
+    /// <summary>Gets the numbers of the specification's numbered sections, such as <c>15.6.7</c> and <c>D.1</c>.</summary>
+    internal static IReadOnlySet<string> SpecSections => SpecCorpus.Value.Sections;
 
     /// <summary>Gets a syntax case by name.</summary>
     /// <param name="name">The case name.</param>
@@ -120,6 +171,32 @@ internal static class DiagnosticCorpus
     /// <returns>The source text.</returns>
     internal static string Spec(string name)
         => SpecBlocks.Single(x => x.Name == name).Source;
+
+    /// <summary>Gets the specification block of a section that contains an anchor, requiring it to be the only one.</summary>
+    /// <param name="section">The section number.</param>
+    /// <param name="anchor">The anchor text.</param>
+    /// <returns>The source text.</returns>
+    internal static string SpecExample(string section, string anchor)
+    {
+        var blocks = SpecBlocks.Where(x => x.Section == section && x.Source.Contains(anchor, StringComparison.Ordinal)).ToArray();
+        Assert.True(blocks.Length == 1, $"Exactly one kimi block of SPEC {section} must contain '{anchor}'; {blocks.Length} do.");
+        return blocks[0].Source;
+    }
+
+    /// <summary>Gets a SPEC example variant's source: the case's prelude, then its block, indented, with the variant's commented line uncommented.</summary>
+    /// <param name="example">The case.</param>
+    /// <param name="variant">The variant.</param>
+    /// <returns>The source text.</returns>
+    internal static string Source(SpecCase example, SpecVariant variant)
+    {
+        var block = SpecExample(example.Section, example.Anchor);
+        if (variant.Uncomment is { } line)
+        {
+            block = block.Remove(new SyntaxLocation("// " + line).Resolve(block).Start, 3);
+        }
+
+        return example.Prelude + string.Join('\n', block.Split('\n').Select(x => x.Length == 0 ? x : new string(' ', example.Indent) + x)) + "\n";
+    }
 
     /// <summary>Checks one source as the product of a minimal Application project through the shared check entry (SPEC 23.2.2).</summary>
     /// <param name="source">The source text of <c>Program.kimi</c>.</param>
@@ -173,17 +250,26 @@ internal static class DiagnosticCorpus
 
     // A fenced block (CommonMark, as docs/spec/02-source-and-lexical-structure.md states) opens at a line that begins with three or more backticks
     // or tildes and closes at the next line that is the same fence; the content of any block, kimi or not, is not searched for further
-    // fences.
-    private static (string Name, string Source)[] ReadSpecBlocks()
+    // fences or headings. A heading outside blocks that begins with a section number (`### 15.6.7. Call reservations`) starts that section.
+    private static ((string Name, string Section, string Source)[] Blocks, HashSet<string> Sections) ReadSpec()
     {
         var root = RepositoryPath("docs", "spec");
-        var blocks = new List<(string Name, string Source)>();
+        var blocks = new List<(string Name, string Section, string Source)>();
+        var sections = new HashSet<string>(StringComparer.Ordinal);
         foreach (var file in Directory.GetFiles(root, "*.md", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
         {
             var name = Path.ChangeExtension(Path.GetRelativePath(root, file), null).Replace('\\', '/');
             var lines = File.ReadAllText(file).Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+            var section = string.Empty;
             for (var line = 0; line < lines.Length; line++)
             {
+                if (Regex.Match(lines[line], @"^#+ ([0-9]+(?:\.[0-9]+)*|[A-Z](?:\.[0-9]+)+)\. ") is { Success: true } heading)
+                {
+                    section = heading.Groups[1].Value;
+                    sections.Add(section);
+                    continue;
+                }
+
                 var marker = lines[line].StartsWith('~') ? '~' : '`';
                 var fence = lines[line][..(lines[line].Length - lines[line].TrimStart(marker).Length)];
                 if (fence.Length < 3)
@@ -195,13 +281,13 @@ internal static class DiagnosticCorpus
                 end = end < 0 ? lines.Length : end;
                 if (lines[line][fence.Length..].Trim() == "kimi")
                 {
-                    blocks.Add(($"{name}/{line + 1}", string.Join('\n', lines[(line + 1)..end])));
+                    blocks.Add(($"{name}/{line + 1}", section, string.Join('\n', lines[(line + 1)..end])));
                 }
 
                 line = end;
             }
         }
 
-        return [.. blocks];
+        return ([.. blocks], sections);
     }
 }

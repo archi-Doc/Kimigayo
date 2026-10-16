@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Xunit;
@@ -16,13 +17,13 @@ namespace XunitTest;
 
 /// <summary>The MIR difference ledger (docs/dev/DECISIONS.md R4-M17; R4–R6). With <c>KIMI_MIR_DIFF</c> naming a directory, the test
 /// assembly observes every analysis (<see cref="Compilation.Analyzed"/>) and, once per mir-pipeline compilation and Binding pass, matches
-/// the old path's A-owned records (<see cref="LegacyRecords"/>, the compared set of R4-M4) with the MIR's construction records and
-/// problems on code and subject node, appending one row per record to <c>raw-&lt;pid&gt;.tsv</c> there and saving the source once as
+/// the old path's A-owned records (<see cref="LegacyRecords"/>, the compared set of R4-M4) with the MIR's construction records, validator
+/// findings and problems on code and subject node (<see cref="Sides"/>), appending one row per record to <c>raw-&lt;pid&gt;.tsv</c> there and saving the source once as
 /// <c>sources/&lt;sha&gt;.kimi</c>. Disposal aggregates the rows (<see cref="Aggregate"/>). Without the variable nothing is observed.
 /// </summary>
 /// <remarks>A raw row is <c>event section side analysis code requirement location form body sha</c>: the comparison, complete or
 /// incomplete Binding (R4-M5), both, old or new, the owning analysis (A1, A3, A4, A5, U for an old Unsupported gate, - for the expansion
-/// limit, B for a MIR construction record; a MIR problem takes its code's), the code, the old requirement (- on the MIR side, R4-M3a), the
+/// limit, B for a MIR construction record or validator finding; a MIR problem takes its code's), the code, the old requirement (- on the MIR side, R4-M3a), the
 /// subject's document, offset and length, its syntax form, the location of its enclosing definition and the source's hash.</remarks>
 public sealed class MirDifferenceLedger : IDisposable
 {
@@ -226,6 +227,33 @@ public sealed class MirDifferenceLedger : IDisposable
         File.WriteAllText(Path.Combine(directory, "summary.md"), summary.ToString(), new UTF8Encoding(false));
     }
 
+    /// <summary>Lists an analyzed compilation's records by side: Binding's records outside the compared set (R4-M4), which both paths
+    /// publish; the old path's A-owned records, which the ledger compares; the old analyses' other records, which pass through; and the
+    /// MIR's construction records, validator findings (as <c>InternalInvariant_Kd</c>) and problems.</summary>
+    /// <param name="compilation">The compilation after <see cref="Compilation.Analyze"/>.</param>
+    /// <param name="program">Its MIR (<see cref="Compilation.BuildMir"/>).</param>
+    /// <returns>The common, old, passed and MIR records.</returns>
+    internal static (List<Entry> Common, List<Entry> Old, List<Entry> Passed, List<Entry> Mir) Sides(Compilation compilation, MirProgram program)
+    {
+        var (common, old, passed) = (new List<Entry>(), new List<Entry>(), new List<Entry>());
+        foreach (var (requirement, code, node) in LegacyRecords.Of(compilation))
+        {
+            var effectOnly = requirement == DiagnosticRequirement.Binding(BindingFailure.IncompatibleImplementation) ||
+                requirement == DiagnosticRequirement.Binding(BindingFailure.Unsupported);
+            var analysis = AnalysisOf(requirement, code) is { } owner && (!effectOnly || compilation.Binding.IsEffectRecord(node)) ? owner : null;
+            (analysis is not null ? old : requirement.Partition == DiagnosticPartition.Binding ? common : passed).Add(new(code, requirement.Name, analysis ?? "-", node));
+        }
+
+        var mir = program.Records.Select(x => new Entry(x.Code, "-", "B", compilation.SyntaxOf(x.Subject)))
+            .Concat(program.Findings.Select(x => new Entry(DiagnosticCode.InternalInvariant_Kd, "-", "B", compilation.SyntaxOf(x.Subject)))).ToList();
+        foreach (var problem in program.Problems.All)
+        {
+            mir.Add(new(problem.Code, "-", AnalysisOf(problem.Code), compilation.SyntaxOf(problem.Subject)));
+        }
+
+        return (common, old, passed, mir);
+    }
+
     private static (string Signature, string Sha) Difference(string[] row, string kind)
         => (string.Join('\t', row[Section], kind, row[Analysis], row[Code], row[Requirement], row[Form]), row[Sha]);
 
@@ -276,23 +304,7 @@ public sealed class MirDifferenceLedger : IDisposable
             return;
         }
 
-        var old = new List<Entry>();
-        foreach (var (requirement, code, node) in LegacyRecords.Of(compilation))
-        {
-            var effectOnly = requirement == DiagnosticRequirement.Binding(BindingFailure.IncompatibleImplementation) ||
-                requirement == DiagnosticRequirement.Binding(BindingFailure.Unsupported);
-            if (AnalysisOf(requirement, code) is { } analysis && (!effectOnly || compilation.Binding.IsEffectRecord(node)))
-            {
-                old.Add(new(code, requirement.Name, analysis, node));
-            }
-        }
-
-        var mir = program.Records.Select(x => new Entry(x.Code, "-", "B", compilation.SyntaxOf(x.Subject))).ToList();
-        foreach (var problem in program.Problems.All)
-        {
-            mir.Add(new(problem.Code, "-", AnalysisOf(problem.Code), compilation.SyntaxOf(problem.Subject)));
-        }
-
+        var (_, old, _, mir) = Sides(compilation, program);
         if (old.Count + mir.Count != 0)
         {
             this.Write(compilation, Match(old, mir));

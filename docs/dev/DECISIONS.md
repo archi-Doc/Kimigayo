@@ -503,6 +503,22 @@ and migration obligations remain in force; no numeric cap changes are authorized
   form: it hides their independent errors, SPEC 23.1); MIR deciding the bound; a non-form failure (order-dependent caller
   records); a template guard on an unset Op (Binding.Check leaves no node unvisited before publication); a Koto-keyed count table.
   Diagnostic sets change only in already-rejected programs; acceptance does not change.
+- **R4-M45** (2026-10-17, tooling session; plan §8 of the Complete Polonius A5 Plan, R4-M35; amends R4-M17's MIR side) The
+  SPEC-example oracle, which gives R4-M17's tier 1 its expected codes as an always-on theory beside `RequestedCorpus`.
+  `tests/diagnostics/spec-cases.json` gives SPEC examples the Error records the SPEC gives them: the code DIAGNOSTICS names, else the
+  catalog entry whose message states the rule, else a code with a written basis. A row names its block by section number and an
+  anchor that one `kimi` block of the section contains, never by line; a prelude supplies what the example assumes (an indent places
+  a body fragment under the prelude's header). Each variant (the block as written, or one commented line uncommented) has its records
+  (a dependent one, whose report SPEC 23.1.2 leaves implementation-defined, may be absent), its decider (the analysis that decides its
+  verdict: Binding, A1–A4 or an A5 family of plan §6.1), and the old path's or the MIR's records where they differ, with a class and
+  the SPEC clause (plan §9.2); every error verdict of the block needs a record, a variant or a written omission, so moved lines keep a
+  row and a changed block, anchor or verdict fails it. `VerifiedSpecExampleTest` checks every variant on the old path until R6-check
+  and on the MIR once its decider is `Landed` (Binding, A1, A3, A4; each rule unit adds its family). The sides come from
+  `MirDifferenceLedger.Sides`, the ledger's one split of a compilation's records: Binding's, which both paths publish; the old path's
+  A-owned ones (R4-M4); the old analyses' others, which pass through; and the MIR's records, problems and validator findings, which the
+  mir pipeline publishes as `InternalInvariant_Kd` (the ledger's MIR side now includes them). Rejected: marker comments in the SPEC (an
+  explicit SPEC revision); block names by line (SPEC revisions move lines); tier 1 alone (it compares the paths, with no expectation);
+  a second record reader beside the ledger's. The number follows the range the planning session assigned to this session.
 - **R4-M19** (owner O1, 2026-10-12; two designs compared, the first taken with two parts of the second). An explicit case
   adaptation (SPEC 8.14, 13.5.3), whose operation each Semantics case selects, is the one case-dependent rvalue
   `MirRvalueKind.Adapt` (KR1003: 9 → 10). Operand 0 is the by-value acquisition (a written Place's Copy, a temporary's Move);
