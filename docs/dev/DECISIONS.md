@@ -994,6 +994,20 @@ and migration obligations remain in force; no numeric cap changes are authorized
   at N = 1,024 against 3,310); a stored record per site (+36–60% cold A4 allocation in `SummariesScaleLinearly` against +3–6% for
   the query); open keys and owner Type arguments on `MirStatic` (needed only without P5); a key list per node (union and growth
   checks per element); A4 re-deriving reads and writes from access flags (a second copy of MirUses' rule). Not temporary.
+- **R4-M39** (owner: adopted on 2026-10-17, 「S1採用します」) The A5 plan's S1,
+  [Loan Identity by Base](../../draft/Proposals/2026-10-16%20Loan%20Identity%20by%20Base.md) as revised in `61b1abf2`, which states
+  the additions from design A3 that the owner approved on 2026-10-17: a Loan is identified by its Borrow site and Semantics case, its
+  Place named by its access path; a child Loan's base is the Place before the last borrow dereference of its path, and destroying in
+  place (`=`, a storage end or a `replace` target) a Move Path that holds the base, with no borrow dereference between them, ends it,
+  while a base reached through a reference never ends this way; a Move or a Borrow of a Place, shared Borrows included, reaches the
+  Loans formed through the references stored in it (A3's P3); a Loan is checked where a value that carries it may be used, never
+  excused by its identity. Per plan §5.3 its SPEC revision (§3.5.1, §13.5.5, §15.6, §15.6.2, §15.6.3, §15.6.6 and Appendix E) lands
+  before the R4 exit. Until then a program valid under the current SPEC that S1 rejects is a located `Unsupported_Kd`, which becomes
+  the Language code when the SPEC adopts the rule, and tests of the affected SPEC examples expect `Unsupported_Kd`; nothing is
+  published before R6-check (shadow mode), and a library or milestone program that S1 rejects goes to O3. Not an integration: SPEC
+  and INTEGRATED change only at that revision, SPECJ only on an explicit translation update, and the proposal stays open. Its
+  companion S2 ([Preserves Results by Receiver Place](../../draft/Proposals/2026-10-16%20Preserves%20Results%20by%20Receiver%20Place.md))
+  is not decided here.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
