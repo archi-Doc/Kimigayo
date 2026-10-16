@@ -1,6 +1,6 @@
 # Kimigayo Compiler Plan
 
-Current plan only: position, milestone order, completion conditions, next actions and open issues. Required behavior is in [SPEC.md](../SPEC.md); implemented support is in [STATUS.md](../STATUS.md); a few lines per session are in [PLAN_HISTORY.md](PLAN_HISTORY.md). Items deferred by [Appendix D](../spec/appendices/D-deferred-features.md) are not planned here.
+Current plan only: position, milestone order, completion conditions, next actions and open issues. Update when position, next actions or blockers change, under [AGENTS Documentation](../../AGENTS.md#documentation). Required behavior is in [SPEC.md](../SPEC.md); implemented support is in [STATUS.md](../STATUS.md). Commits and artifacts hold unit evidence; [PLAN_HISTORY.md](PLAN_HISTORY.md) preserves selected historical summaries and is maintained only on explicit request. Items deferred by [Appendix D](../spec/appendices/D-deferred-features.md) are not planned here.
 
 ## 1. Scope
 
