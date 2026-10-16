@@ -230,11 +230,16 @@ internal sealed partial class MirBuilder
             var composed = terminator.Callee.Subst is { } inner && subst is not null ? compilation.Types.Compose(inner, subst) : terminator.Callee.Subst;
             failed |= composed is null && terminator.Callee.Subst is not null;
             var place = call || terminator.Kind == MirTerminatorKind.Drop ? FoldPlace(terminator.Place) : default;
+            var callee = terminator.Callee with { Subst = composed ?? terminator.Callee.Subst };
+            if (callee.Kind == MirCalleeKind.Value)
+            {
+                callee = callee with { Arg = FoldOperand(MirOperand.Const(callee.Arg)).Arg }; // Its signature, a constant (C8).
+            }
+
             var copied = terminator with
             {
                 Source = FoldInfo(terminator.Source), Target = Target(terminator.Target), CheckTarget = Target(terminator.CheckTarget),
-                Operand = operand, Start = first,
-                Place = place, Callee = terminator.Callee with { Subst = composed ?? terminator.Callee.Subst },
+                Operand = operand, Start = first, Place = place, Callee = callee,
             };
             // The copy keeps a Drop where its instance's Type may need one (MirTypes.MayNeedDrop, the rule every Drop is built by).
             var kept = terminator.Kind != MirTerminatorKind.Drop || MirTypes.MayNeedDrop(this.body.TypeOf(place));

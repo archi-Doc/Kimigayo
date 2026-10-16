@@ -651,6 +651,18 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         }
     }
 
+    // SPEC 7.7.3, 15.6.4 (DECISIONS R4-M41): a Value callee names the Callable signature its callee declares, a TypeToken constant: the
+    // Function Type with its own Origins, not the call's, whose result is bound to the argument.
+    [Fact]
+    public void ValueCalleesNameTheirSignature()
+    {
+        var body = Body("func apply(f: (ref/i32) -> ref/i32, x: ref/i32) -> ref/i32 during x => f(x)\n", "apply");
+        var call = Assert.Single(body.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Kind: MirCalleeKind.Value });
+        var signature = body.Consts[call.Terminator.Callee.Arg];
+        Assert.Equal(MirConstKind.TypeToken, signature.Kind);
+        Assert.Same(body.TypeOf(new MirPlace(1)), signature.Type);
+    }
+
     // SPEC 13.7.2: an in-place compound update reserves its located destination (TwoPhaseUniq) and reads and writes it through that
     // reservation, so the write activates it.
     [Fact]

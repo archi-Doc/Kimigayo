@@ -122,7 +122,7 @@ fn both @38
       StorageLive(_9) @85 s1
       StorageLive(_10) @86 s1
     * _10 = &_8: ref/closure () -> U @86 s1
-      _9 = value move _10() -> bb3 @85 s1
+      _9 = value const type () -> U move _10() -> bb3 @85 s1
   bb3:
       goto bb15 check bb16 @84 s1
   bb4:

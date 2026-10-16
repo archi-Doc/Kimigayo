@@ -240,7 +240,7 @@ fn run @66
   bb0:
       StorageLive(_3) @78
     * _3 = &_2: ref/() -> i32 @78
-      _0 = value move _3() -> bb1 @77
+      _0 = value const type () -> i32 move _3() -> bb1 @77
   bb1:
       StorageDead(_3) @78
       drop _2 -> bb2 [keep] @66

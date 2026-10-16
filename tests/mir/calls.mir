@@ -220,7 +220,7 @@ fn apply @141
   s1: lexical in s0 @154
   bb0:
       StorageLive(_2) @156 s1
-    * _2 = value copy _1() -> bb1 @156 s1
+    * _2 = value const type () -> i32 copy _1() -> bb1 @156 s1
   bb1:
       goto bb4 check bb5 @155 s1
   bb2:

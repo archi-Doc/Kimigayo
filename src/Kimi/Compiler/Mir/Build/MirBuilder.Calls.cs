@@ -126,7 +126,7 @@ internal sealed partial class MirBuilder
         {
             CalleeKind.Requirement => new(MirCalleeKind.Requirement, function, subst, Contract: call.RequirementContract),
             CalleeKind.Virtual when !call.VirtualIsDirect => new(MirCalleeKind.Virtual, function, subst),
-            CalleeKind.Value => new(MirCalleeKind.Value),
+            CalleeKind.Value => new(MirCalleeKind.Value, Arg: this.body.Const(new(MirConstKind.TypeToken, call.DeclaredSignature))), // C8.
             _ => new MirCallee(MirCalleeKind.Fn, direct, subst),
         };
 

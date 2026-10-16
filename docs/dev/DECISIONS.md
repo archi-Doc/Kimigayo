@@ -973,7 +973,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Rejected: a builder field marking the current input (hidden state); a second copy of the Borrow row in `Operand`; a writeback
   through setters now (the receiver would have to be acquired once at locate and passed to the setter: F8's unit 2d); the validator
   accepting every Type with a `Never` part (an open family; `Agree` also decides the builder's layers). Not temporary.
-  The `RawSlice` backing landed later (R4-M40).
+  The `RawSlice` backing and C8 landed later (R4-M40, R4-M41).
 - **R4-M38** (2026-10-17; design A3 §4.2, owner approval of P5 and of its §9 item 8 on 2026-10-17) A4's static keys for A5.
   `MirEffects.Keys(body, view, block, out unknown)`: the mutable static Fields a Call or a Drop may access through what it runs, each
   once and written where any access writes it, from the summaries the last `Run` solved; `unknown` where A4 does not classify what it
@@ -1023,6 +1023,16 @@ and migration obligations remain in force; no numeric cap changes are authorized
   library revision giving `Raw.slice` a backing parameter (SPEC 5.6's fresh anchor already says nothing backs it); a second
   `IntrinsicId` for range selections (an O1 vocabulary entry); an arity of 2 or 3 (two forms of one row); the storage pointer passed
   twice by a written call (a raw pointer carries no Loan, and the copy would read as a backing). Not temporary.
+- **R4-M41** (2026-10-17; design A3 §4.1's C8 row, owner approval of its §9 item 8 on 2026-10-17) A Value callee's `MirCallee.Arg` is
+  the Callable signature its callee declares (`CallPlan.DeclaredSignature`), a TypeToken constant of the body, which A3's
+  `Retains(callee or Callable signature, Subst)` (step 1a) reads over the signature's own Origins (SPEC 15.6.4: fresh regions for its
+  abstract Origins), not the call-solved `Signature`, whose binder Origins are the arguments'. A default template's copy folds it like
+  its other constants, the validator requires it (a Value callee without it is a `Callee` finding), and the dump shows it. A Virtual
+  callee is named by its slot's function under its Subst, so `MirCallee`'s doc no longer claims a slot in `Arg`, which the builder
+  never set, and the dump drops its `slot 0`. Open: the validator still checks a Value call's arguments against its operand's
+  Function Type and skips Closures and function items; the published signature could be its one source. Rejected: a `BoundType?`
+  field on `MirCallee` (a field for one callee kind on every terminator); the operand's Type (a Closure's or a function item's Type
+  is not its signature). Not temporary.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
