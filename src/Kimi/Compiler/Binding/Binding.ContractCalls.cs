@@ -8,7 +8,7 @@ public sealed partial class Binding
 {
     private readonly Dictionary<MemberAccessKoto, RequirementGroup> requirementGroups = new(ReferenceEqualityComparer.Instance);
 
-    // SPEC 8.4.2: the bound Contract reference whose requirement is the candidate under evaluation or the selected
+    // SPEC 8.4.3: the bound Contract reference whose requirement is the candidate under evaluation or the selected
     // callee; its Type arguments substitute the requirement's signature (Key of Indexable<isize>) in ContractType.
     private BindingSymbol? activeRequirementContract;
 
@@ -120,7 +120,7 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 8.4.7.3: PrimitiveInteger implies Position, whose requirement is called through an integer Type parameter;
+        // SPEC 8.7.4: PrimitiveInteger implies Position, whose requirement is called through an integer Type parameter;
         // concrete integers gain no members.
         if (this.Library.Position.Contract is { } position && this.IsGenericInteger(type, scope))
         {
@@ -156,7 +156,7 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 9.5: requirements gathered from constraints must share one receiver shape; a mismatch is an error at the use.
+        // SPEC 9.6: requirements gathered from constraints must share one receiver shape; a mismatch is an error at the use.
         SemanticsKind? expected = null;
         for (var i = 0; i < group.Members.Count; i++)
         {
@@ -177,7 +177,7 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 7.3.1, 9.5: nor may they acquire corresponding parameters of overlapping Types in different modes.
+        // SPEC 7.4, 9.6: nor may they acquire corresponding parameters of overlapping Types in different modes.
         if (this.CheckGatheredParameterShapes(member, group.Members, aliasStage: false))
         {
             group.Active = false;
@@ -192,7 +192,7 @@ public sealed partial class Binding
                 return group.Properties[0];
             }
 
-            // SPEC 11.4: a Property requirement is instance-only, so a Type names none; several identities are not implemented.
+            // SPEC 11.9: a Property requirement is instance-only, so a Type names none; several identities are not implemented.
             this.Fail(member, typeAccess ? BindingFailure.MissingName : BindingFailure.Unsupported, true);
             return null;
         }
@@ -209,7 +209,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < members.Count; i++)
             {
-                // SPEC 8.4.9: one requirement reached through distinct bound references (Indexable<isize>, Indexable<Name>)
+                // SPEC 8.6.1: one requirement reached through distinct bound references (Indexable<isize>, Indexable<Name>)
                 // is one candidate per reference; a refinement reaches the same reference as its ancestor.
                 var identity = members[i];
                 var requirement = identity.Symbol;

@@ -189,14 +189,14 @@ public sealed partial class Binding
         return this.Fail(node, BindingFailure.InvalidTypeFormation);
     }
 
-    // SPEC 6.2.3.3: the direct base's constructor group seen from a derived constructor, and the base Type it constructs.
+    // SPEC 6.3.3: the direct base's constructor group seen from a derived constructor, and the base Type it constructs.
     private BindingSymbol? BaseConstructorGroup(FunctionKoto constructor, out BoundType? parent)
     {
         parent = AdtDef.Base(this.SelfType(constructor.BoundSymbol!.Scope.Owner.BoundSymbol!));
         return parent?.Symbol?.Declaration is StructKoto declaration && this.scopes[declaration].Values.TryGetValue("init", out var group) ? group : null;
     }
 
-    // SPEC 6.2.3.6, 22.1: a Type without constructors is a located absence at its construction or base call. A derived structure whose
+    // SPEC 6.3.6, 22.1: a Type without constructors is a located absence at its construction or base call. A derived structure whose
     // omitted base clause selects no base constructor has none either; an Unknown premise that can change that selection leaves it
     // unproven, and a selection resting on another failure is derived from it. A Type parameter under an identity premise waits for
     // its substitution and remains unsupported, as does a qualifier that did not bind.
@@ -236,8 +236,8 @@ public sealed partial class Binding
             var omitted = declared == name ? "its omitted base clause" : $"the omitted base clause of {declared}";
             if (decision.Outcome == OmittedBaseOutcome.Unproven)
             {
-                // SPEC 6.2.3.6, 8.4.8.2: the synthesized constructor is decided once, generically, from the derived declaration.
-                var note = $"{name} has a synthesized constructor only when {omitted} selects a constructor of {baseName}; an Unknown premise of a candidate can change that selection, and the constructor is decided once for every {declared} (SPEC 6.2.3.6, 8.4.8.2)";
+                // SPEC 6.3.6, 8.3.3: the synthesized constructor is decided once, generically, from the derived declaration.
+                var note = $"{name} has a synthesized constructor only when {omitted} selects a constructor of {baseName}; an Unknown premise of a candidate can change that selection, and the constructor is decided once for every {declared} (SPEC 6.3.6, 8.3.3)";
                 if (decision.Cause is { } premise)
                 {
                     node.Report(requirement, code, evidence: [name, "init", premise.ToString()], note: note, related: [("constraint", premise, "unproven premise"), ("declaration", clause, "omitted base clause")]);
@@ -256,11 +256,11 @@ public sealed partial class Binding
                 OmittedBaseOutcome.NoneApplicable => $"no constructor of {baseName} applies without arguments",
                 _ => $"more than one constructor of {baseName} applies without arguments",
             };
-            node.Report(requirement, code, note: $"{name} has no constructor: {omitted} selects none, since {reason} (SPEC 6.2.3.6)", related: [("declaration", clause, "omitted base clause")]);
+            node.Report(requirement, code, note: $"{name} has no constructor: {omitted} selects none, since {reason} (SPEC 6.3.6)", related: [("declaration", clause, "omitted base clause")]);
         }
         else if (type is { Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto { ConstructorAvailability: ConstructorAvailability.MissingInitializer, UninitializedField: { } field } })
         {
-            node.Report(requirement, code, note: $"{name} has no constructor: its Field {field.NameKoto.IdentifierName} has no initializer, so none is synthesized (SPEC 6.2.3.6)", related: [("declaration", field.NameKoto, "no initializer")]);
+            node.Report(requirement, code, note: $"{name} has no constructor: its Field {field.NameKoto.IdentifierName} has no initializer, so none is synthesized (SPEC 6.3.6)", related: [("declaration", field.NameKoto, "no initializer")]);
         }
         else if (type.IsWrappingInteger || type.Symbol?.Declaration is StructKoto { ConstructorAvailability: ConstructorAvailability.CompilerManaged })
         {
@@ -269,7 +269,7 @@ public sealed partial class Binding
         else
         {
             var subject = type.Kind == BoundTypeKind.Parameter ? "The Type parameter " + name : name;
-            node.Report(requirement, code, note: $"{subject} declares no constructor; only a structure declares constructors (SPEC 6.2.3)");
+            node.Report(requirement, code, note: $"{subject} declares no constructor; only a structure declares constructors (SPEC 6.3)");
         }
     }
 

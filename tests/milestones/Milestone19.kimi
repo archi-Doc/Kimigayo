@@ -1,54 +1,36 @@
-// Milestone 19: associated Types and conditional Contract requirement calls.
-contract Source
-    associate Element is Copy
-    func read(self: ref/Self) -> Element
+// Milestone 19: concrete generic entries preserve layout and Type operations.
+struct Red
+    public let id: i32
+    public init(id: i32) => self.id = id
+    drop => Console.writeLine("Red destroyed.")
 
-struct NumberSource
-    Self is Source
-    associate Source.Element is i32
-    let value: i32
-    public init(value: i32) => self.value = value
-    public func read(self: ref/Self) -> i32 => self.value
+struct Blue
+    public let id: i32
+    public init(id: i32) => self.id = id
+    drop => Console.writeLine("Blue destroyed.")
 
-struct FlagSource
-    Self is Source
-    associate Source.Element is bool
-    let value: bool
-    public init(value: bool) => self.value = value
-    public func read(self: ref/Self) -> bool => self.value
+func relay<T>(value: T) -> T => value@move
 
-struct Wrapper<T>
-    let value: T
-    public init(value: T) => self.value = value@move
+func forward<T>(value: T) -> T => relay<T>(value@move)
 
-    // Storage is valid without this premise; the Source capability is conditional.
-    Self is Source when T is Source
-        associate Source.Element is T.Source.Element
-        public func read(self: ref/Self) -> T.Source.Element
-            return self.value.read()
-
-func readTwice<T>(source: ref/T) -> (T.Source.Element, T.Source.Element)
-    T is Source
-    let first: T.Source.Element = source.read()
-    return (first, source.read())
-
-func readNumber<T>(source: ref/T) -> i32
-    T is Source
-    T.Source.Element is i32
-    return source.read()
+specialize func relay<i32>(value: i32) -> i32 => value + 1
 
 public func main()
-    let number = Wrapper<NumberSource>.init(NumberSource.init(21))
-    match readTwice(number@ref)
-        (21, 21) => Console.writeLine("Associated numbers are 21, 21.")
-        _ => $abort("Number requirement call failed")
-    require readNumber(number@ref) == 21 else => $abort("Associated equality failed")
-    let flag = Wrapper<FlagSource>.init(FlagSource.init(true))
-    match readTwice(flag@ref)
-        (true, true) => Console.writeLine("Associated flags are true, true.")
-        _ => $abort("Flag requirement call failed")
-    let nested = Wrapper<Wrapper<NumberSource>>.init(number@move)
-    require readNumber(nested@ref) == 21 else => $abort("Nested conformance failed")
-    // i32 has no user Source conformance, but Wrapper<i32> storage remains legal.
-    let storageOnly = Wrapper<i32>.init(99)
-    Console.writeLine("Contract forwarding finished.")
+    let small: [2 of i32] = [3, 5]
+    let copied = forward(small)
+    require small[0] == 3 and copied[1] == 5 else => $abort("Copy transfer failed")
+    let wide: (i64, (i32, bool)) = (9, (7, true))
+    match forward(wide)
+        (9, (7, true)) => Console.writeLine("Compound layouts preserved.")
+        _ => $abort("Compound ABI failed")
+    require relay<i32>(10) == 11 and forward<i32>(20) == 21 else => $abort("Selected body lost")
+    Console.writeLine("Specialization preserved.")
+    do
+        let red = forward(Red.init(1))
+        require red.id == 1 else => $abort("Red transfer failed")
+        Console.writeLine("Red received.")
+    do
+        let blue = forward(Blue.init(2))
+        require blue.id == 2 else => $abort("Blue transfer failed")
+        Console.writeLine("Blue received.")
+    Console.writeLine("Generic generation finished.")

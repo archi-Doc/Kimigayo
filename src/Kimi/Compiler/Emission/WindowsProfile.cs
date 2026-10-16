@@ -12,14 +12,14 @@ public static class WindowsProfile
     public const string DataLayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
     public const string BackendFile = "kimi_backend_windows_x64_v1.lib";
 
-    // Code generation settings shared by function attributes, the link manifest and llc (SPEC 21.5.1).
+    // Code generation settings shared by function attributes, the link manifest and llc (SPEC 21.3.1).
     internal const string Cpu = "x86-64";
     internal const string Features = "+sse2";
     internal const string RelocationModel = "pic";
     internal const string CodeModel = "small";
     internal const string UnwindTables = "async";
 
-    // Backend supply (SPEC 21.5.7) and Application entry (SPEC 22.2.3) identities.
+    // Backend supply (SPEC 21.4.7) and Application entry (SPEC 22.4.3) identities.
     internal const string BackendPackageId = "kimi-backend-windows-x64";
     internal const int BackendAbiVersion = 2;
     internal const string BackendLibrary = "kimi_backend";
@@ -30,13 +30,13 @@ public static class WindowsProfile
     /// <summary>Gets the helper symbols supplied by the backend archive, in catalog order.</summary>
     internal static readonly string[] ProvidedSymbols = ["__chkstk", "memcmp", "memcpy", "memmove", "memset"];
 
-    /// <summary>Gets the seven Windows APIs imported by the generated runtime (SPEC 22.5.6), followed by the two used by the test runtime.</summary>
+    /// <summary>Gets the seven Windows APIs imported by the generated runtime (SPEC 21.4.7), followed by the two used by the test runtime.</summary>
     internal static readonly string[] RuntimeImports = ["GetProcessHeap", "HeapAlloc", "HeapFree", "GetStdHandle", "WriteFile", "GetLastError", "ExitProcess", "GetEnvironmentVariableA", "SetHandleInformation"];
 
     /// <summary>Gets the kernel32 declarations the generated runtimes emit, with their import-ABI physical
-    /// signatures: the ordinary runtime of SPEC 22.5.6 and the two test-runtime APIs, which one source can
+    /// signatures: the ordinary runtime of SPEC 21.4.7 and the two test-runtime APIs, which one source can
     /// reach in either build. A null signature marks a declaration no expressible LibraryImport can share:
-    /// the ExitProcess declaration is noreturn, an ABI attribute no import carries (SPEC 21.5.2).</summary>
+    /// the ExitProcess declaration is noreturn, an ABI attribute no import carries (SPEC 21.2).</summary>
     internal static readonly (string Symbol, string? Signature)[] RuntimeDeclarations =
     [
         ("GetProcessHeap", "p"),

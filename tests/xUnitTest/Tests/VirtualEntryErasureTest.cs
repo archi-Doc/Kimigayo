@@ -200,7 +200,7 @@ public class VirtualEntryErasureTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Source("        let f = func[self]() -> i32 => base.ordinary()\n        return f() + self.ordinary()"));
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind(), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -211,7 +211,7 @@ public class VirtualEntryErasureTest(ITestOutputHelper output)
             "\n        _ = a32.ordinary()\n        let f = func[a32]() -> i32 => a32.ordinary()\n        return f()";
         var c = MinimalEmissionTest.Analyze(Source(body));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind(), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
     }
 
     private static string Source(string body) => Base + "struct Leaf<T> : Base<T>\n    override func read(self: objref/Self, other: objref/Leaf<T>) -> i32\n" + body + "\n()";

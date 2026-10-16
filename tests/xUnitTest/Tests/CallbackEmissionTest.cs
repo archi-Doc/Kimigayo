@@ -26,11 +26,11 @@ public class CallbackEmissionTest
     [InlineData("Unused", "let value: i32 = 6\nlet f: () -> i32 = func [value] () => 7\nrequire f() == 7 else => $abort(\"unused\")")]
     [InlineData("Block", "let n: i32 = 6\nlet f: () -> i32 = func [n] ()\n    return n\nrequire f() == 6 else => $abort(\"block\")")]
     [InlineData("Unit", "let n = ()\nlet f: () -> () = func [n] () => n\nf()\nf()")]
-    // SPEC 7.6.4: a stored concrete Closure converts to the parameter's common Function Type at an argument, as at an
+    // SPEC 7.7.4: a stored concrete Closure converts to the parameter's common Function Type at an argument, as at an
     // initialization; it was NoApplicableOverload_Kd unless the argument was a literal.
     [InlineData("StoredArgument", "func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nlet g = func [] (value: i32) -> i32 => value * 2\nrequire apply(g, 3) == 6 and apply(g, 4) == 8 and g(5) == 10 else => $abort(\"stored\")")]
     [InlineData("MovedArgument", "func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nlet k: i32 = 3\nlet g = func [k] (value: i32) -> i32 => value * k\nrequire apply(g@move, 3) == 9 else => $abort(\"moved\")")]
-    // SPEC 10.5, 7.6.4: an omitted parameter Type takes the fixed expected input (the SPEC's own `makeAdder` example was a
+    // SPEC 10.5, 7.7.4: an omitted parameter Type takes the fixed expected input (the SPEC's own `makeAdder` example was a
     // TypeMismatch_Kd), at a return, an initialization, an argument, a generic argument and between overloads by arity.
     [InlineData("OmittedReturn", "func makeAdder(offset: i32) -> (i32) -> i32\n    return func [offset] (value) => value + offset\nlet f = makeAdder(10)\nrequire f(5) == 15 else => $abort(\"return\")")]
     [InlineData("OmittedInitializer", "let f: (i32) -> i32 = func [] (value) => value + 1\nrequire f(5) == 6 else => $abort(\"initializer\")")]
@@ -45,7 +45,7 @@ public class CallbackEmissionTest
     [InlineData("ArrayResult", "let n: i32 = 7\nlet f: () -> Array<i32> = func [n] () -> Array<i32> => [n, n, n]\nlet a = f()\nrequire a.length == 3 and a[2] == 7 else => $abort(\"array\")")]
     [InlineData("TupleResult", "let f: (i32) -> (i32, i64, i32) = func [] (v) => (v, 2@i64, 3)\nlet t = f(1)\nrequire t.0 == 1 and t.1 == 2 and t.2 == 3 else => $abort(\"tuple\")")]
     [InlineData("DirectStringResult", "let n: i32 = 7\nlet f = func [n] () -> Array<i32> => [n, n]\nlet a = f()\nrequire a.length == 2 and a[1] == 7 else => $abort(\"direct\")")]
-    // SPEC 7.6.4: a Function Item converts to a fixed common Function Type without an environment; the erasure adapter calls
+    // SPEC 7.7.4: a Function Item converts to a fixed common Function Type without an environment; the erasure adapter calls
     // the function with its own ABI. Ownership analysis read the item as a missing local, and an argument was unsupported.
     [InlineData("FunctionItemInitializer", "func inc(value: i32) -> i32 => value + 1\nlet f: (i32) -> i32 = inc\nrequire f(2) == 3 else => $abort(\"initializer\")")]
     [InlineData("FunctionItemArgument", "func inc(value: i32) -> i32 => value + 1\nfunc apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nrequire apply(inc, 2) == 3 else => $abort(\"argument\")")]
@@ -90,7 +90,7 @@ public class CallbackEmissionTest
     public void LargerEnvironmentsUseHeapErasure(string name, string source)
         => NativeAllocationAudit.WriteFixture("ContextualClosure" + name, source, 1, 1, 16, string.Empty);
 
-    // SPEC 7.6.2: an Option capture, once reported at its entry as unsupported, is an ordinary environment binding.
+    // SPEC 7.7.2: an Option capture, once reported at its entry as unsupported, is an ordinary environment binding.
     [Theory]
     [InlineData("let t: Option<i32> = .Some(1)\nlet f = func [t] () => 1\nrequire f() == 1 else => $abort(\"f\")")]
     [InlineData("let t: Option<i32> = .Some(1)\nlet f: () -> i32 = func [t] () => 1\nrequire f() == 1 else => $abort(\"f\")")]
@@ -197,12 +197,8 @@ public class CallbackEmissionTest
         var c = MinimalEmissionTest.Analyze(Source);
         using var first = new StringWriter();
         Assert.True(c.WriteIr(first, out var failure), MinimalEmissionTest.Describe(c, failure));
-        for (var i = 0; i < 20; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            Assert.True(c.Analyze().IsVerified);
-        }
-
+        Assert.True(c.Bind().IsComplete);
+        Assert.True(c.Analyze().IsVerified);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
         Assert.True(c.Analyze().IsVerified);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));

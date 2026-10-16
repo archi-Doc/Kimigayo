@@ -80,21 +80,33 @@ public sealed partial class Binding
     // Select only the outer modes needed by the operation. Complete payload Types retain their symbolic proofs.
     private BoundType? BindCaseAdaptation(ConversionKoto conversion, BindingScope scope, BoundType source, BoundType target, bool shorthand = false)
     {
-        var caseProduct = this.AdaptationCaseProduct(conversion);
-        if (caseProduct > OwnershipAnalysis.CaseBound)
+        // A definition beyond the case bound verifies none of its cases (Binding.CaseLimits); within it, a row is one of its cases.
+        if (Definition(conversion) is { BindingFailure: BindingFailure.CaseLimit } definition)
         {
-            return this.FailCaseLimit(conversion, scope, caseProduct);
+            return this.CompleteDependent(conversion, definition);
         }
 
+        this.PairBinders(conversion, this.caseBinders ??= new()); // A row selects at most one case of each binder in scope.
         uint operations = 0;
         BoundType? creationSource = null;
         BoundType? creationTarget = null;
-        var rows = 0;
-        var caseCount = this.adaptationBinders!.Count;
+        var caseCount = this.caseBinders.Count;
         var cases = this.adaptationCaseScratch.Rent(caseCount);
         try
         {
-            if (!this.CheckAdaptationRows(conversion, scope, source, target, source, target, shorthand, cases.AsSpan(0, caseCount), 0, ref rows, ref operations, ref creationSource, ref creationTarget))
+            if (!this.CheckAdaptationRows(
+                conversion,
+                scope,
+                source,
+                target,
+                source,
+                target,
+                shorthand,
+                cases.AsSpan(0, caseCount),
+                0,
+                ref operations,
+                ref creationSource,
+                ref creationTarget))
             {
                 return null;
             }
@@ -126,15 +138,20 @@ public sealed partial class Binding
         return Complete(conversion, target);
     }
 
-    private bool CheckAdaptationRows(ConversionKoto conversion, BindingScope scope, BoundType source, BoundType target, BoundType writtenSource, BoundType writtenTarget, bool shorthand, Span<PairCase> cases, int caseCount, ref int rows, ref uint operations, ref BoundType? creationSource, ref BoundType? creationTarget)
+    private bool CheckAdaptationRows(
+        ConversionKoto conversion,
+        BindingScope scope,
+        BoundType source,
+        BoundType target,
+        BoundType writtenSource,
+        BoundType writtenTarget,
+        bool shorthand,
+        Span<PairCase> cases,
+        int caseCount,
+        ref uint operations,
+        ref BoundType? creationSource,
+        ref BoundType? creationTarget)
     {
-        // Stop before the 65th feasible row; exhaustion never certifies a partial operation plan.
-        if (rows == OwnershipAnalysis.CaseBound)
-        {
-            this.FailCaseLimit(conversion, scope, (long)rows + 1, lowerBound: true);
-            return false;
-        }
-
         if (TryAdaptationSelector(source, out var whole) || TryAdaptationSelector(target, out whole))
         {
             var admitted = this.AdmittedSemantics(whole, scope);
@@ -158,7 +175,19 @@ public sealed partial class Binding
                         return false;
                     }
 
-                    if (!this.CheckAdaptationRows(conversion, scope, actual, expected, writtenSource, writtenTarget, shorthand, cases, caseCount + 1, ref rows, ref operations, ref creationSource, ref creationTarget))
+                    if (!this.CheckAdaptationRows(
+                        conversion,
+                        scope,
+                        actual,
+                        expected,
+                        writtenSource,
+                        writtenTarget,
+                        shorthand,
+                        cases,
+                        caseCount + 1,
+                        ref operations,
+                        ref creationSource,
+                        ref creationTarget))
                     {
                         return false;
                     }
@@ -168,7 +197,6 @@ public sealed partial class Binding
             return true;
         }
 
-        rows++;
         var operation = ExplicitAdaptationPlan.Select(source, target, shorthand);
         if (operation == ConversionBinding.None)
         {

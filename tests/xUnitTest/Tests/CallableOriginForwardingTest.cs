@@ -71,8 +71,8 @@ public class CallableOriginForwardingTest
         "func use(x: ref/i32) -> i32\n    let c = func (n: ref/i32 during x) => n@follow\n    return callIt(c@ref, x)\n";
 
     // F1 (PLAN G65): an implementation input written over a fixed Origin of the enclosing body is no per-call input, even at its own
-    // slot (SPEC 8.6, 10.7), so it never fits a required per-call input. A Callable proof (whose Unknown Origin part is the Constraint
-    // record at the argument, SPEC 8.7, 15.6.1), a closure erasure and a Function value conversion each reject it; the closure that
+    // slot (SPEC 8.10, 10.7), so it never fits a required per-call input. A Callable proof (whose Unknown Origin part is the Constraint
+    // record at the argument, SPEC 8.3, 15.6.1), a closure erasure and a Function value conversion each reject it; the closure that
     // stored its argument let a dead stack slot be read.
     [Theory]
     [InlineData(StoringCallable, nameof(DiagnosticCode.UnprovenConstraint_Kd), "c@uniq")]
@@ -86,7 +86,7 @@ public class CallableOriginForwardingTest
         Assert.Equal((code, text), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
     }
 
-    // SPEC 23.3.6.5: a per-call Origin of the required Function Type has no name; it is displayed as omitted at its input Type occurrence,
+    // SPEC 23.1: a per-call Origin of the required Function Type has no name; it is displayed as omitted at its input Type occurrence,
     // which is related.
     [Fact]
     public void AnUnnamedPerCallInputIsDisplayedAsOmitted()
@@ -104,7 +104,7 @@ public class CallableOriginForwardingTest
         Assert.Contains("{\"name\":\"longer\",\"kind\":\"Origin\",\"value\":\"ref/i32\",\"elided\":false,\"origin\":\"omitted\"}", json, StringComparison.Ordinal);
     }
 
-    // SPEC 10.7, 15.6.1, 23.3.6.5: a common Function conversion whose signatures match structurally and whose Origin contract is not
+    // SPEC 10.7, 15.6.1, 23.1: a common Function conversion whose signatures match structurally and whose Origin contract is not
     // proven is one UnprovenOriginContract_Kd at the converted value. Its member is the failing parameter or the result, and its ends
     // are rigid symbols of the comparison, displayed as the required contract writes them, never a call-time Origin of the implementation.
     [Theory]

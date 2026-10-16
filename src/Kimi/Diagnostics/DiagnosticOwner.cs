@@ -7,7 +7,7 @@ using Kimi.Compiler;
 namespace Kimi.Diagnostics;
 
 /// <summary>
-/// Owns the diagnostic facts of one check request and finalizes them into records (SPEC 23.3.6, docs/dev/DIAGNOSTICS.md §4).
+/// Owns the diagnostic facts of one check request and finalizes them into records (SPEC 23.1, docs/dev/DIAGNOSTICS.md §4).
 /// Facts are recorded in partitions and aggregated by problem; recording an Error sets the error state before any
 /// suppression, and finalization forms explanations only for published records. Analysis is single-threaded, so nothing is locked.
 /// </summary>
@@ -23,7 +23,7 @@ public sealed class DiagnosticOwner
     private readonly List<FactList> syntax = [];
     private int unattributed = -1;
 
-    // SPEC 19.5: excluded syntax per source index, created only for documents that have excluded syntax.
+    // SPEC 19.4: excluded syntax per source index, created only for documents that have excluded syntax.
     private Dictionary<int, List<ExcludedRange>>? excludedRanges;
 
     /// <summary>Initializes a new instance of the <see cref="DiagnosticOwner"/> class.</summary>
@@ -103,7 +103,7 @@ public sealed class DiagnosticOwner
     /// <param name="first">The first message argument.</param>
     /// <param name="second">The second message argument.</param>
     /// <param name="note">The environment-dependent text of the failure, such as an exception message; it is published as a bounded Note.</param>
-    /// <remarks>The observed failure, its arguments or else its Note, is the context of the problem (SPEC 23.3.4): two failures of one input are two problems.</remarks>
+    /// <remarks>The observed failure, its arguments or else its Note, is the context of the problem (SPEC 23.2.1): two failures of one input are two problems.</remarks>
     public void Report(DiagnosticPartition partition, DiagnosticCode code, string? path, object? first = null, object? second = null, string? note = null)
     {
         var entry = DiagnosticCollection.Validate(default, code, first, second, null, null);
@@ -115,7 +115,7 @@ public sealed class DiagnosticOwner
     }
 
     /// <summary>Registers an input that a check consumes before its sources, such as its project file, in the source table
-    /// (SPEC 23.3.6.3); a later record that names it keeps that consumption order. An entry no record names is not published.</summary>
+    /// (SPEC 23.1.2); a later record that names it keeps that consumption order. An entry no record names is not published.</summary>
     /// <param name="path">The input path.</param>
     public void RegisterPath(string path)
         => this.PathSource(path);
@@ -158,7 +158,7 @@ public sealed class DiagnosticOwner
     }
 
     /// <summary>
-    /// Finalizes the valid facts of a range of partitions into records (SPEC 23.3.6.4–23.3.6.6): derived problems whose
+    /// Finalizes the valid facts of a range of partitions into records (SPEC 23.1.2–23.1): derived problems whose
     /// prerequisites all lead to published direct Errors are suppressed, and the rest are ordered by source table, span and identity.
     /// </summary>
     /// <param name="first">The first partition.</param>
@@ -253,7 +253,7 @@ public sealed class DiagnosticOwner
             records[i] = this.CreateRecord(facts[order[i]], related[i], repairs[i], omittedRepairs[i], remap);
         }
 
-        // SPEC 23.3.3: every rejected result publishes at least one Error; the fallbacks make this hold, so a violation is a defect.
+        // SPEC 23.2.2: every rejected result publishes at least one Error; the fallbacks make this hold, so a violation is a defect.
         var result = new DiagnosticResult(records, table.ToArray());
         return rejected && !result.HasErrors ? throw Unexplained() : result;
 
@@ -294,7 +294,7 @@ public sealed class DiagnosticOwner
         return related;
     }
 
-    /// <summary>Records excluded syntax of a document, whose diagnostics name the excluding directive (SPEC 19.5, 23.3.6.2).</summary>
+    /// <summary>Records excluded syntax of a document, whose diagnostics name the excluding directive (SPEC 19.4, 23.3).</summary>
     /// <param name="document">The document.</param>
     /// <param name="range">The excluded syntax.</param>
     /// <param name="directive">The innermost excluding directive: an <c>#if</c> Condition or a <c>#case</c> header.</param>
@@ -390,7 +390,7 @@ public sealed class DiagnosticOwner
         => this.documentSources.TryGetValue(document, out var index) && this.sources[index].SyntaxErrors != 0;
 
     /// <summary>Finds the key of a lexical or syntax Error recorded for exactly one span of a module's document, so parser recovery at a
-    /// token the lexer rejected rests on that Error instead of reporting the token again (SPEC 23.3.6.4).</summary>
+    /// token the lexer rejected rests on that Error instead of reporting the token again (SPEC 23.1.2).</summary>
     /// <param name="module">The module.</param>
     /// <param name="source">The source table index of the document.</param>
     /// <param name="range">The span.</param>
@@ -443,7 +443,7 @@ public sealed class DiagnosticOwner
     private static bool Conflicts(string? left, string? right)
         => left is not null && right is not null && left != right;
 
-    // SPEC 23.3.6.5, 23.3.6.9: the first candidates up to the limit are kept; a candidate with too many edits or too much
+    // SPEC 23.1, 23.1.3: the first candidates up to the limit are kept; a candidate with too many edits or too much
     // replacement text is omitted whole, never truncated, and every omission is counted.
     private static DiagnosticRepairFact[]? SelectRepairs(DiagnosticRepairFact[] candidates, out int omitted)
     {
@@ -477,7 +477,7 @@ public sealed class DiagnosticOwner
         _ => value?.ToString() ?? string.Empty,
     };
 
-    // SPEC 23.3.6.5: the borrow `local@ref`, the omitted Origin of `View<T>`, the closure's call receiver.
+    // SPEC 23.1: the borrow `local@ref`, the omitted Origin of `View<T>`, the closure's call receiver.
     private static string OriginPhrase(string kind, string text) => kind switch
     {
         "borrow" => "the borrow " + text,
@@ -485,7 +485,7 @@ public sealed class DiagnosticOwner
         _ => "the closure's " + text,
     };
 
-    // SPEC 23.3.6.2, 23.3.6.5: the code's facts, typed by its catalog schema (arguments, then evidence) and bounded once here;
+    // SPEC 23.3, 23.1: the code's facts, typed by its catalog schema (arguments, then evidence) and bounded once here;
     // the message and the label display the bounded values. The Types of one record are bounded as a pair.
     private static (DiagnosticValue[]? Reason, string Message, string? Label) Describe(DiagnosticEntry entry, in DiagnosticFact fact)
     {
@@ -521,7 +521,7 @@ public sealed class DiagnosticOwner
             {
                 DiagnosticValueKind.Number => value,
                 DiagnosticValueKind.Requirement when value is DiagnosticRequirement requirement && DiagnosticRequirements.TryGetPhrase(requirement, out var phrase) => phrase,
-                // SPEC 23.3.6.5: a borrow, omitted or closure string is named as such, never as an Origin expression.
+                // SPEC 23.1: a borrow, omitted or closure string is named as such, never as an Origin expression.
                 DiagnosticValueKind.Origin when value is DiagnosticOrigin { Kind: not "expression" } display => OriginPhrase(display.Kind, bounded),
                 _ => bounded,
             };
@@ -556,7 +556,7 @@ public sealed class DiagnosticOwner
         return union.Count == left.Length ? left : union.ToArray();
     }
 
-    // SPEC 23.3.6.4: a derived fact is explained when every prerequisite leads, without an unresolved link or a cycle, to a
+    // SPEC 23.1.2: a derived fact is explained when every prerequisite leads, without an unresolved link or a cycle, to a
     // direct Error. Satisfied keys propagate through a queue: each derived fact counts its unsatisfied prerequisites, and one
     // that reaches zero satisfies its own key. This is linear in facts and prerequisites; a cycle never becomes explained.
     private static bool[] Explain(List<DiagnosticFact> facts)
@@ -636,7 +636,7 @@ public sealed class DiagnosticOwner
         return explained;
     }
 
-    // SPEC 23.3.6.6: source table order, then span (none first), then the problem's identity: subject, code, requirement,
+    // SPEC 23.1: source table order, then span (none first), then the problem's identity: subject, code, requirement,
     // condition and context. Distinct problems with equal structural keys fault instead of using arrival order.
     private static int Compare(in DiagnosticFact left, in DiagnosticFact right)
     {
@@ -749,7 +749,7 @@ public sealed class DiagnosticOwner
     /// <param name="fact">The fact.</param>
     /// <param name="related">Its related locations.</param>
     /// <returns>The related locations, with the innermost excluding directive when one applies.</returns>
-    /// <remarks>The location is not a Reason fact, so the code, primary location and Reason stay the same in every Compilation (SPEC 19.5).</remarks>
+    /// <remarks>The location is not a Reason fact, so the code, primary location and Reason stay the same in every Compilation (SPEC 19.4).</remarks>
     private DiagnosticRelatedFact[] WithExcludingDirective(in DiagnosticFact fact, DiagnosticRelatedFact[] related)
     {
         if (fact.Source < 0 || fact.Length < 0 || this.excludedRanges is null || !this.excludedRanges.TryGetValue(fact.Source, out var ranges))
@@ -854,7 +854,7 @@ public sealed class DiagnosticOwner
         return (span, source >= 0 && this.sources[source].Document is { } document ? document.GetSourceRange(span) : null);
     }
 
-    // SPEC 23.3.6.9: the candidate's facts are typed by the kind's schema and bounded once; the title and the phrases of its required
+    // SPEC 23.1.3: the candidate's facts are typed by the kind's schema and bounded once; the title and the phrases of its required
     // conditions display the bounded values, and each edit gets its display range and the bounded text it replaces.
     private RepairCandidate Describe(in DiagnosticRepairFact repair, int[] remap)
     {
@@ -943,7 +943,7 @@ public sealed class DiagnosticOwner
         string? label;
         if (fact.DerivedFrom is not null)
         {
-            // SPEC 23.3.6.4: the requirement left undecided, what it needs, and where each prerequisite is.
+            // SPEC 23.1.2: the requirement left undecided, what it needs, and where each prerequisite is.
             var requirement = fact.Key.Requirement;
             reason =
             [

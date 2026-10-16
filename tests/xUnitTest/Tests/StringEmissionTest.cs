@@ -7,7 +7,7 @@ namespace XunitTest;
 
 public class StringEmissionTest
 {
-    // writeLine borrows its argument (SPEC 22.4); the conditional Moves are written as transfers of a temporary.
+    // writeLine borrows its argument (SPEC 22.1); the conditional Moves are written as transfers of a temporary.
     private const string Conditional = "var c = true\nvar text = \"old\"\nif c => Console.writeLine(text@move)\ntext = \"new\"\nConsole.writeLine(text)";
     private const string Loop = "var text = \"outer\"\nvar i = 0\nwhile i < 3\n    if i == 1 => Console.writeLine(text@move)\n    text = \"next\"\n    i += 1\nConsole.writeLine(text)";
 
@@ -167,14 +167,16 @@ public class StringEmissionTest
         Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
     }
 
+    // A right-hand side that never completes writes nothing (its MIR: tests/mir/updates.kimi `noncompletingWrite`).
     [Fact]
     public void NoncompletingRhsHasNoStringWrite()
     {
         var c = MinimalEmissionTest.Analyze("loop\n    var text = \"old\"\n    text = (exit)");
         Assert.True(c.Validate(out var error), error);
-        Assert.DoesNotContain(c.Ownership.Bodies[0].Operations, x => x.Kind == OwnershipOperationKind.Write && x.Place >= 0 && ReferenceEquals(c.Ownership.Bodies[0].Places[x.Place].Type, BoundType.String) && x.Input < 0);
     }
 
+    // A defer that never completes leaves the string's destruction and the delivery to the checks (their MIR: tests/mir/scopes.kimi
+    // `divergentDeferHeld`).
     [Fact]
     public void DivergentDeferPreventsStringDestructionAndDelivery()
     {
@@ -183,8 +185,6 @@ public class StringEmissionTest
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var function = module.GetFunction(0);
         Assert.DoesNotContain(function.Instructions, x => x.Callee == WindowsLowering.DestroyString || x.Opcode is EmissionOpcode.ReturnVoid or EmissionOpcode.ReturnScalar);
-        var body = c.Ownership.Bodies[0];
-        Assert.All(body.Operations.Select((x, id) => (x, id)).Where(x => x.x.Kind == OwnershipOperationKind.Deliver), x => Assert.False(body.IsReachable(x.id)));
         var ir = ScalarEmissionTest.EmitFixture("StringDivergentDefer", Source, string.Empty, timeoutMilliseconds: 300);
         Assert.DoesNotContain("mustprogress", ir);
         Assert.DoesNotContain("willreturn", ir);
@@ -196,14 +196,11 @@ public class StringEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(Loop);
         var valid = true;
-        var allocated = AllocationMeasurement.Measure(
-            () =>
-            {
-                valid &= c.Analyze().IsVerified;
-                valid &= c.WriteIr(TextWriter.Null, out _);
-            },
-            iterations: 128,
-            warmupIterations: 100);
+        var allocated = AllocationMeasurement.Measure(() =>
+        {
+            valid &= c.Analyze().IsVerified;
+            valid &= c.WriteIr(TextWriter.Null, out _);
+        });
         Assert.True(valid);
         Assert.Equal(0, allocated);
     }

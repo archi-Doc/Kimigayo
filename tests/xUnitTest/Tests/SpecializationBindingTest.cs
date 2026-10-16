@@ -8,7 +8,7 @@ public class SpecializationBindingTest
 {
     private const string Ordinary = "func weight<T>(value: ref/T) -> i32 => 1\n";
 
-    // SPEC 8.8: a length slot is supplied as an evaluated constant and enters the selection key (LengthKey(N)).
+    // SPEC 8.13: a length slot is supplied as an evaluated constant and enters the selection key (LengthKey(N)).
     private const string Lengths = "func pick<length N, T>(values: ref/[N of T]) -> i32 => 0\n";
 
     [Fact]
@@ -18,7 +18,7 @@ public class SpecializationBindingTest
             Lengths + "specialize func pick<3, i32>(values: ref/[3 of i32]) -> i32 => 1\nfunc forward<length N, T>(values: ref/[N of T]) -> i32 => pick<N, T>(values)\nlet a: [3 of i32] = [1, 2, 3]\nlet b: [2 of i32] = [1, 2]\nrequire pick<3, i32>(a@ref) == 1 and pick<2, i32>(b@ref) == 0 and forward<3, i32>(a@ref) == 1 and forward<2, i32>(b@ref) == 0 else => $abort(\"selection\")\nConsole.writeLine(\"ok\")",
             "ok\n");
 
-    // SPEC 8.8.1, 8.8.3: closed compound arguments (Tuple, fixed array) form distinct selection keys.
+    // SPEC 8.13.1, 8.13.3: closed compound arguments (Tuple, fixed array) form distinct selection keys.
     [Fact]
     public void CompoundArgumentsSelectTheirSpecializations()
         => ScalarEmissionTest.EmitFixture(
@@ -26,7 +26,16 @@ public class SpecializationBindingTest
             Ordinary + "specialize func weight<(i32, bool)>(value: ref/(i32, bool)) -> i32 => 2\nspecialize func weight<[2 of i32]>(value: ref/[2 of i32]) -> i32 => 3\nlet pair = (1, true)\nlet array: [2 of i32] = [1, 2]\nlet n: i32 = 0\nrequire weight<(i32, bool)>(pair@ref) == 2 and weight<[2 of i32]>(array@ref) == 3 and weight<i32>(n@ref) == 1 else => $abort(\"weight\")\nConsole.writeLine(\"ok\")",
             "ok\n");
 
-    // SPEC 8.8.2: the original's generic Constraints are inherited; the closed arguments must satisfy them.
+    // SPEC 8.13.3: function references obey the same choice: an explicit Item, an Item selected by its expected signature and an Item
+    // formed in a generic body run the specialization their key selects, and an Item whose key selects none runs the original.
+    [Fact]
+    public void FunctionItemsSelectTheSpecialization()
+        => ScalarEmissionTest.EmitFixture(
+            "SpecializationFunctionItem",
+            Ordinary + "specialize func weight<i32>(value: ref/i32) -> i32 => 2\nfunc relay<T>(value: ref/T) -> i32\n    let item = weight<T>\n    return item(value)\nlet n: i32 = 4\nlet flag = true\nlet f = weight<i32>\nlet g: (ref/i32) -> i32 = weight\nlet h = weight<bool>\nrequire f(n@ref) == 2 and g(n@ref) == 2 and relay<i32>(n@ref) == 2 and h(flag@ref) == 1 and relay<bool>(flag@ref) == 1 else => $abort(\"item\")\nConsole.writeLine(\"ok\")",
+            "ok\n");
+
+    // SPEC 8.13.2: the original's generic Constraints are inherited; the closed arguments must satisfy them.
     private const string Constrained = "func twice<T>(value: T) -> T\n    T is Copy\n    return value\n";
 
     [Fact]
@@ -44,7 +53,7 @@ public class SpecializationBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.UnsatisfiedConstraint_Kd);
     }
 
-    // SPEC 8.8.1: an instance method's specialization restates the receiver at the original's position.
+    // SPEC 8.13.1: an instance method's specialization restates the receiver at the original's position.
     private const string Receiver = "struct Scale\n    var unit: i32 = 1\n    public func weight<U>(self: ref/Self, other: ref/U) -> i32 => self.unit\n";
 
     [Fact]
@@ -67,7 +76,7 @@ public class SpecializationBindingTest
         Assert.Empty(output.ToString());
     }
 
-    // SPEC 8.8.2: the header inherits the original's boundary and defaults; callers still use the original omission rules.
+    // SPEC 8.13.2: the header inherits the original's boundary and defaults; callers still use the original omission rules.
     private const string Defaults = "func find<T>(value: T, count: i32 = 1) -> i32 => count\n";
 
     [Fact]
@@ -89,7 +98,7 @@ public class SpecializationBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd);
     }
 
-    // SPEC 8.8.2: written binder names are inherited from the original; the body serves every admitted binding.
+    // SPEC 8.13.2: written binder names are inherited from the original; the body serves every admitted binding.
     private const string Named = "func first<T>(values: ref/[3 of T] during source) -> ref/T during source => values[0]@ref/T\n";
 
     [Fact]
@@ -164,7 +173,7 @@ public class SpecializationBindingTest
         Assert.Empty(output.ToString());
     }
 
-    // SPEC 8.8.3: specializations never enter the candidate set; an invalid one does not fail calls to the original.
+    // SPEC 8.13.3: specializations never enter the candidate set; an invalid one does not fail calls to the original.
     [Fact]
     public void InvalidSpecializationDoesNotCascadeIntoCalls()
     {
@@ -173,7 +182,7 @@ public class SpecializationBindingTest
         Assert.All(c.Binding.Issues, x => Assert.Equal(Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd, x.Code));
     }
 
-    // SPEC 8.8.1: diagnostics distinguish no target, an input-structure mismatch, multiple targets and a contract mismatch.
+    // SPEC 8.13.1: diagnostics distinguish no target, an input-structure mismatch, multiple targets and a contract mismatch.
     [Theory]
     [InlineData("specialize func missing<i32>(value: ref/i32) -> i32 => 2", Kimi.DiagnosticCode.MissingSpecializationTarget_Kd)]
     [InlineData("specialize func weight<i32, i64>(value: ref/i32) -> i32 => 2", Kimi.DiagnosticCode.MissingSpecializationTarget_Kd)]
@@ -210,6 +219,7 @@ public class SpecializationBindingTest
         Assert.True(c.Bind().IsComplete);
         c.Kotonoha.AddSource(new Kimi.Compiler.SourceDocument("duplicate.kimi", "specialize func weight<i32>(value: ref/i32) -> i32 => 3"));
         Assert.False(c.Bind().IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.MissingSpecializationTarget_Kd);
     }
 
     [Fact]

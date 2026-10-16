@@ -10,7 +10,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 9.6.1, 10.5, 23.3.6.1: a container outside constructor inference needs its Type arguments, with counts on invalid formation; a
+// SPEC 9.7.1, 10.5, 23.1.1: a container outside constructor inference needs its Type arguments, with counts on invalid formation; a
 // reference form that is not yet implemented is one located Unsupported record, also when a later use reads its binding.
 public class ReferenceDiagnosticTest
 {
@@ -104,7 +104,7 @@ public class ReferenceDiagnosticTest
         Assert.Empty(DiagnosticCorpus.Check(Source.Replace("T is Comparable", "T is Comparable and Owned", StringComparison.Ordinal)).Diagnostics);
     }
 
-    // SPEC 15.4.4, 9.6.1.1, 23.3.6.1: an Origin slot that a called member's expression qualifier omits, or names by a binding set that no
+    // SPEC 15.4.4, 9.7.2, 23.1.1: an Origin slot that a called member's expression qualifier omits, or names by a binding set that no
     // clause relates, is inferred from the call. Binding infers it only in a local initializer, for a called function that is neither
     // generic nor a member of a generic Type, from an argument lent at a parameter's own borrow Origin, so any other such call is one
     // location-only Unsupported_Kd at the qualifier. These were NoApplicableOverload_Kd, MissingOriginBinding_Kd or UnprovenConstraint_Kd
@@ -185,7 +185,7 @@ public class ReferenceDiagnosticTest
         }
     }
 
-    // SPEC 15.3.1, 23.3.6.4: `{x}` on a qualifier introduces a new set name and never applies the visible set x, so each reuse is one
+    // SPEC 15.3.1, 23.1.2: `{x}` on a qualifier introduces a new set name and never applies the visible set x, so each reuse is one
     // DuplicateBinding_Kd at the set with the first declaration related. The call and the reference that rest on the failed qualifier
     // report nothing more; they were NoApplicableOverload_Kd and Unsupported_Kd.
     [Fact]
@@ -330,7 +330,7 @@ public class ReferenceDiagnosticTest
         ScalarEmissionTest.EmitFixture("OriginQualifierStoredArguments", Tag + Stored + Slot + Body, string.Empty);
     }
 
-    // SPEC 15.3.1, 23.3.6.4: a set that failed as a repeat declares nothing, and a name that resolves to it, in a clause attached to
+    // SPEC 15.3.1, 23.1.2: a set that failed as a repeat declares nothing, and a name that resolves to it, in a clause attached to
     // the same declaration, in a later declaration or as `during a` beside it, rests on its DuplicateBinding_Kd. Resolving the name to
     // the outer declaration it repeats instead reported relations the program never wrote (UnprovenOriginRelation_Kd "requires
     // h.a == static", InvalidOriginBinding_Kd at a Field's clause).
@@ -347,7 +347,7 @@ public class ReferenceDiagnosticTest
         Assert.Equal((nameof(DiagnosticCode.DuplicateBinding_Kd), new SourceSpan(source.IndexOf(set, StringComparison.Ordinal), 9)), (error.Code, error.Span!.Value));
     }
 
-    // SPEC 23.3.6.4: a problem of a clause that does not rest on the repeated name stays visible beside the repeat, as in the program
+    // SPEC 23.1.2: a problem of a clause that does not rest on the repeated name stays visible beside the repeat, as in the program
     // without the repeat: an unresolved Origin name, a slot name the set's Type does not declare, and an independent Type mismatch.
     [Theory]
     [InlineData("origin x.a == nosuch.a\n", nameof(DiagnosticCode.InvalidOriginBinding_Kd), "nosuch.a")]

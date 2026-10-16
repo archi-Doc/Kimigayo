@@ -11,7 +11,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 23.4.1 at the process boundary: `kimi lsp` writes only protocol frames to standard output and owns the exit code.
+// SPEC 23.4 at the process boundary: `kimi lsp` writes only protocol frames to standard output and owns the exit code.
 public sealed class LspProcessTest : IDisposable
 {
     private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-lsp-process-" + Guid.NewGuid().ToString("N"));

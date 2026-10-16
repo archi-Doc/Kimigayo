@@ -6,46 +6,15 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    /// <summary>How an effect summary classifies a compiler function (SPEC 8.4.10.2).</summary>
-    internal enum CompilerFunctionEffect : byte
-    {
-        /// <summary>The kind names no compiler function, or one the summary cannot classify.</summary>
-        Unclassified,
-
-        /// <summary>The function acts only on its acquired inputs and the allocator, and may Abort.</summary>
-        Inputs,
-
-        /// <summary>The function obtains authority from the environment, which confined excludes.</summary>
-        Environment,
-
-        /// <summary>The function runs a selected formatting witness, which the summary follows before classifying.</summary>
-        Formatting,
-    }
-
-    // SPEC 8.4.10.2: the Storage and Raw families act only on their inputs and the allocator (SPEC 5.6, 22.1.2.5), so they are classified
-    // as families; a storage kind that obtained environment authority would have to be split out of its family. Console output and the
-    // test temporary directory are environment effects. Comparison, formatting and destruction callbacks are summarized separately.
-    internal static CompilerFunctionEffect ClassifyCompilerFunction(CompilerFunctionKind kind) => kind switch
-    {
-        CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
-        CompilerFunctionKind.WriterWrite or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat => CompilerFunctionEffect.Formatting,
-        CompilerFunctionKind.Abort or CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap or CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc or CompilerFunctionKind.MakeArc or CompilerFunctionKind.Clone or
-            >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.TextHeap or
-            CompilerFunctionKind.TextWriter or CompilerFunctionKind.TextUtf8 or CompilerFunctionKind.TextValidateUtf8 or
-            >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus or CompilerFunctionKind.BuiltinFormat or
-            CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.BuiltinArithmetic => CompilerFunctionEffect.Inputs,
-        _ => KimiLibraryCatalog.IsStorageOperation(kind) || KimiLibraryCatalog.IsRawOperation(kind) ? CompilerFunctionEffect.Inputs : CompilerFunctionEffect.Unclassified,
-    };
-
     private EffectSummary? effectSummary;
 
-    // The pass after ownership analysis keeps its own call pool: its contexts differ from the Binding pass (SPEC 8.4.5).
+    // The pass after ownership analysis keeps its own call pool: its contexts differ from the Binding pass (SPEC 8.6).
     private EffectSummary? destructionSummary;
 
     // Cleanup extraction may run while a transitive effect check requests a library body; keep its scratch independent.
     private EffectSummary? cleanupCollector;
 
-    /// <summary>SPEC 4.7.5: summarizes the body of a Kimi operation that publishes its summary, under its own premises with abstract
+    /// <summary>SPEC 4.9.6: summarizes the body of a Kimi operation that publishes its summary, under its own premises with abstract
     /// Type parameters, as its published row permits: the parameter-dependent requirement the row names is covered.</summary>
     /// <param name="operation">The operation.</param>
     /// <param name="confined">Whether the summary is judged under confined.</param>
@@ -63,7 +32,7 @@ public sealed partial class Binding
         => (this.cleanupCollector ??= new(this)).CollectDestructions(source, target, cases);
 
     /// <summary>
-    /// SPEC 8.4.5, 22.1.2.4: checks every effect bound again after ownership analysis, now counting the destructions each
+    /// SPEC 8.6, 22.2.3: checks every effect bound again after ownership analysis, now counting the destructions each
     /// reached body performs, as its planned cleanups show. An implementation whose body ownership analysis did not reach,
     /// such as an unused library Iterator, runs nowhere and is not checked.
     /// </summary>
@@ -95,10 +64,11 @@ public sealed partial class Binding
             (this.callableEffectViolations.TryGetValue(use, out var callable) && callable.Kind == EffectViolation.Limit) ||
             (use is FunctionKoto function && this.virtualEffectViolations?.TryGetValue(function, out var slot) == true && slot.Kind == EffectViolation.Limit);
 
-    // SPEC 8.4.10.4: a conformance checks the complete transitive effect summary of every witness against the bounds that
-    // its Contract and the ancestors declare for the requirement; an effect it cannot classify is a conflict (SPEC 8.4.5).
+    // SPEC 8.11.4: a conformance checks the complete transitive effect summary of every witness against the bounds that
+    // its Contract and the ancestors declare for the requirement; an effect it cannot classify is a conflict (SPEC 8.6).
     // Binding checks the Loans the implementation accesses and the calls it makes. Which values it destroys is known only
-    // from the cleanups ownership analysis plans, so destruction effects are checked afterwards (ValidateDestructionEffects).
+    // from the cleanups ownership analysis plans, so destruction effects are checked afterwards (ValidateDestructionEffects),
+    // as are the selected uses of bounded Callable clauses, which this pass enumerates (SPEC 8.11.6).
     private void ValidateEffectBounds()
     {
         this.effectViolations?.Clear();
@@ -113,6 +83,7 @@ public sealed partial class Binding
         }
 
         this.InvalidateAssociatedEvidence();
+        this.CollectCallableEffectUses();
     }
 
     // The path, marked invalid, when one of its bounded implementations exceeds a bound; null otherwise. One traversal of a
@@ -177,7 +148,7 @@ public sealed partial class Binding
         private readonly List<(BoundType Value, BoundOrigin Storage)> storedValues = new();
         private readonly List<int> selectedArms = new();
 
-        // SPEC 8.4.10.5: the abstract parts of the result, the requirement calls producing values of them, the own-body calls
+        // SPEC 8.11.5: the abstract parts of the result, the requirement calls producing values of them, the own-body calls
         // tentatively compared with no earlier result, and the replacements of values on self paths in the own body.
         private readonly List<BoundType> itemParts = new();
         private readonly List<(object Requirement, BindingSymbol? Contract, Koto Call, Koto? Receiver)> producers = new();
@@ -255,7 +226,7 @@ public sealed partial class Binding
 
             if (node is IdentifierNameKoto or MemberAccessKoto && node.BoundSymbol is { Declaration: PropertyKoto property, Scope.Owner: GroupKoto })
             {
-                // Lazy initialization runs at the first read. SPEC 8.4.10.2: confined reaches no mutable static.
+                // Lazy initialization runs at the first read. SPEC 8.11.2: confined reaches no mutable static.
                 // Ownership analysis plans no cleanups for an initializer other than a constant scalar, so its destructions
                 // are unknown.
                 this.Queue(property.InitializerKoto);
@@ -265,7 +236,7 @@ public sealed partial class Binding
                     return;
                 }
 
-                // SPEC 8.4.10.2: immutability does not protect a pointee, so a raw pointer read from an immutable static
+                // SPEC 8.11.2: immutability does not protect a pointee, so a raw pointer read from an immutable static
                 // obtains authority from the environment.
                 if (this.confined && node.BoundSymbol.Type is { } stored && this.ContainsRawPointer(this.Type(stored), 0))
                 {
@@ -280,7 +251,7 @@ public sealed partial class Binding
                 }
             }
 
-            // SPEC 8.4.10.2: a pointer made from an integer has no provenance; it obtains authority from the environment.
+            // SPEC 8.11.2: a pointer made from an integer has no provenance; it obtains authority from the environment.
             if (this.confined && node is ConversionKoto { ConversionBinding: ConversionBinding.Pointer, Left.BoundType.Kind: BoundTypeKind.Primitive })
             {
                 this.Violate(EffectViolation.IntegerPointer, node);
@@ -346,7 +317,7 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 8.4.8.2: the bounds are judged in the conformance scope (D and the conditions P); the implementation's result
+        // SPEC 8.3.3: the bounds are judged in the conformance scope (D and the conditions P); the implementation's result
         // is normalized there, so a forwarded `I.(LendingIterator).LentItem(step)` is the step-independent `I.Item` under
         // `I is Iterator`. With `destructions`, the values each reached body destroys are summarized too.
         internal bool Check(bool confined, bool preserves, BindingSymbol implementation, BindingScope scope, bool destructions, BoundType? callable = null, SemanticsKind receiver = SemanticsKind.Ref, bool implementationBody = false, BindingSymbol? published = null)
@@ -470,52 +441,6 @@ public sealed partial class Binding
 
         private static LoanRequirement Mode(BoundType? type)
             => type?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref;
-
-        private static bool MaySelect(Specialization candidate, CallPlan call)
-        {
-            for (var i = 0; i < call.TypeArguments.Length; i++)
-            {
-                if (call.TypeArguments[i] is { } argument && candidate.Arguments[i] is { } closed && !MayMatch(argument, closed))
-                {
-                    return false;
-                }
-            }
-
-            for (var i = 0; i < call.LengthArguments.Length; i++)
-            {
-                if (call.LengthArguments[i] is { IsConstant: true } length && !SameLengthSignature(length, candidate.Lengths[i], null!, null!))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        private static bool MayMatch(BoundType pattern, BoundType closed)
-        {
-            if (ReferenceEquals(pattern, closed) || pattern.IsAbstract)
-            {
-                return true;
-            }
-
-            if (pattern.Kind == BoundTypeKind.Primitive || pattern.Kind != closed.Kind || pattern.Semantics != closed.Semantics ||
-                !ReferenceEquals(pattern.Symbol, closed.Symbol) || pattern.Components.Count != closed.Components.Count ||
-                (pattern.LengthExpression is null && pattern.Length != closed.Length))
-            {
-                return false;
-            }
-
-            for (var i = 0; i < pattern.Components.Count; i++)
-            {
-                if (!MayMatch(pattern.Components[i], closed.Components[i]))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
 
         // The receiver parameter of a bound or unbound call, in its declared slot.
         private static BoundType? Receiver(CallPlan call)
@@ -677,7 +602,7 @@ public sealed partial class Binding
             }
         }
 
-        // The reads, writes and borrows of one node, each through the Place path it uses (SPEC 22.1.2.4). A Place is
+        // The reads, writes and borrows of one node, each through the Place path it uses (SPEC 22.2.3). A Place is
         // accessed once, by its outermost use: an operand of a projection, a borrow, a Move or a write is accessed there.
         private void Accesses(Koto node)
         {
@@ -693,9 +618,6 @@ public sealed partial class Binding
                         break;
                     case ExpectedAdaptationKind.SharedBorrow:
                         this.PlaceAccess(node, LoanRequirement.Ref, node);
-                        break;
-                    case ExpectedAdaptationKind.ExclusiveBorrow:
-                        this.PlaceAccess(node, LoanRequirement.Uniq, node);
                         break;
                 }
             }
@@ -800,7 +722,7 @@ public sealed partial class Binding
         }
 
         // The access of a Place path in a mode: through each reference, pair layer or Slice that reaches it (the outermost
-        // one in the mode, the inner ones read), through the reference a Place call publishes, or to the static storage
+        // one in the mode, the inner ones read), or to the static storage
         // of a group variable. An accessor or user indexer Place is its synthesized call, selected by the mode; an owned
         // local or parameter root needs no Loan, and a raw pointer path is unsafe and outside the checked summary.
         private void PlaceAccess(Koto? node, LoanRequirement mode, Koto use)
@@ -830,14 +752,11 @@ public sealed partial class Binding
                         mode = LoanRequirement.Ref;
                         node = follow.Left;
                         break;
-                    case InvocationKoto when ElementAccess.PlaceCallReference(node) is { } reference:
-                        this.Access(reference, mode, use);
-                        return;
                     case IdentifierNameKoto when binding.StorageProjection(node) is { } projection:
                         node = projection;
                         break;
                     case IndexKoto when binding.IndexerCall(node, false) is { } shared:
-                        // SPEC 4.6.9: indexUniq serves updates and exclusive borrows; its receiver argument continues the path.
+                        // SPEC 4.7.1: indexUniq serves updates and exclusive borrows; its receiver argument continues the path.
                         this.Queue(mode == LoanRequirement.Uniq ? binding.IndexerCall(node, true) ?? shared : shared);
                         return;
                     case IndexKoto:
@@ -859,7 +778,7 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 8.4.10.3: only preserves results classifies Loans; confined concerns the environment the summary reaches.
+        // SPEC 8.11.3: only preserves results classifies Loans; confined concerns the environment the summary reaches.
         private void Access(BoundType? type, LoanRequirement mode, Koto use)
         {
             if (type is null || !this.preserves)
@@ -878,7 +797,7 @@ public sealed partial class Binding
             {
                 if (TryPairLayer(layer, out var whole, out var target))
                 {
-                    // SPEC 8.1.1, 8.4.10: in the admitted borrow cases a pair layer is a borrow within its outer-Origin slot; an
+                    // SPEC 8.1.1, 8.11: in the admitted borrow cases a pair layer is a borrow within its outer-Origin slot; an
                     // application without a slot may be a borrow of any Loan.
                     if ((binding.AdmittedSemantics(whole, binding.ConstraintScope(use)) & SemanticsMask.Borrow) != 0)
                     {
@@ -1141,7 +1060,7 @@ public sealed partial class Binding
             symbol = call?.Target ?? symbol;
             if (symbol.CompilerFunction != CompilerFunctionKind.None)
             {
-                var effect = ClassifyCompilerFunction(symbol.CompilerFunction);
+                var effect = IntrinsicDisposition.Effect(symbol.CompilerFunction);
                 if (effect != CompilerFunctionEffect.Inputs && (effect != CompilerFunctionEffect.Environment || this.confined))
                 {
                     this.Violate(effect == CompilerFunctionEffect.Environment ? EffectViolation.ExternalOperation : EffectViolation.Limit, null);
@@ -1200,7 +1119,7 @@ public sealed partial class Binding
 
             if (function.Body is null && function.ExpressionBody is null && !(function.IsConstructor && function.IsGenerated))
             {
-                // SPEC 22.3.1, 8.4.10.2: a foreign function accesses only what its arguments permit, which the arguments
+                // SPEC 22.6, 8.11.2: a foreign function accesses only what its arguments permit, which the arguments
                 // already accessed, and the environment, which confined excludes. Any other bodyless call is unknown.
                 if (!IsLibraryImport(function))
                 {
@@ -1230,7 +1149,7 @@ public sealed partial class Binding
                     {
                         this.Body(candidates[i], null);
                     }
-                    else if (MaySelect(binding.specializations[candidates[i]], call))
+                    else if (MaySelect(binding.specializations[candidates[i]], call.TypeArguments, call.LengthArguments))
                     {
                         this.Specialization(candidates[i], call);
                     }
@@ -1238,8 +1157,8 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 8.4.10.4: a requirement call has the effects that the bounds available under its premises leave. With preserves
-        // results, a call of the one delegated requirement on the one stored value is covered (SPEC 8.4.10.5). Without
+        // SPEC 8.11.4: a requirement call has the effects that the bounds available under its premises leave. With preserves
+        // results, a call of the one delegated requirement on the one stored value is covered (SPEC 8.11.5). Without
         // confined, its environment effects are unknown, which a bound check counts as a conflict. Its inputs are affected
         // in their parameters' modes, which only preserves results classifies.
         private void Requirement(BindingSymbol symbol, CallPlan? call)
@@ -1251,14 +1170,14 @@ public sealed partial class Binding
             }
 
             // The premises are those of the call's own scope and, in the implementation's own body, the conditions of the
-            // conformance (SPEC 8.4.8.2), such as I is Iterator for Self is Iterator when I is Iterator.
+            // conformance (SPEC 8.3.3), such as I is Iterator for Self is Iterator when I is Iterator.
             var conforming = call.ConformingType is { } type ? this.Type(type) : null;
             var reference = call.RequirementContract is { } declared && this.Type(declared.Type!) is { } applied
                 ? ReferenceEquals(applied, declared.Type) ? declared : binding.BoundContractReference(applied) : null;
             var (confined, preserves) = binding.AvailableEffectBounds(requirement, conforming, this.scope!, reference: reference);
             if (ReferenceEquals(requirement.BoundSymbol, this.published))
             {
-                return; // SPEC 4.7.5: the parameter-dependent effect the operation's row publishes.
+                return; // SPEC 4.9.6: the parameter-dependent effect the operation's row publishes.
             }
 
             if (this.stepUse is { } use && (!confined || !preserves))
@@ -1271,7 +1190,7 @@ public sealed partial class Binding
             var untried = false;
             if (this.preserves)
             {
-                // SPEC 8.4.10.5: every requirement call producing a value of an abstract part of the result is recorded.
+                // SPEC 8.11.5: every requirement call producing a value of an abstract part of the result is recorded.
                 var own = this.OwnFieldPathReceiver();
                 var producer = this.Type(call.ReturnType) is { } produced && this.MentionsItemPart(binding.ContractType(produced, this.scope!));
                 if (producer)
@@ -1324,7 +1243,7 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 8.4.10.5: a result keeps Loans only through its abstract parts when its other parts carry no Origin. A value of
+        // SPEC 8.11.5: a result keeps Loans only through its abstract parts when its other parts carry no Origin. A value of
         // such a part is produced only by a requirement call, an argument, or a Field that keeps one across calls, so a call of
         // d on a value w reached from self through a Field path in the implementation's own body is compared with no Loan of
         // an earlier result when every producer is d on w and the body replaces no value on the path to w. Candidates are
@@ -1349,7 +1268,7 @@ public sealed partial class Binding
                 var failure = this.DelegationFailureOf(candidate.Requirement, candidate.Contract, candidate.Receiver, out var blocking);
                 if (failure != DelegationFailure.None)
                 {
-                    // The call's effects are then those of SPEC 8.4.10.4, which reach every Loan of the abstract value.
+                    // The call's effects are then those of SPEC 8.11.4, which reach every Loan of the abstract value.
                     this.Delegation = failure;
                     this.DelegationNode = blocking;
                     this.site = null;
@@ -1576,7 +1495,7 @@ public sealed partial class Binding
             this.context = previous;
         }
 
-        // SPEC 22.1.2.4: the values a body destroys are exactly the cleanups ownership analysis planned for it: a local,
+        // SPEC 22.2.3: the values a body destroys are exactly the cleanups ownership analysis planned for it: a local,
         // parameter or temporary destroyed at its scope end, a replaced value, element or pointee, each reduced to the parts
         // still initialized there. Their Types are read in the current instantiation context. A body without a plan has
         // unknown effects; a body with its own ownership diagnostic is rejected by that diagnostic.
@@ -1924,7 +1843,7 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 8.4.10.5: a Field `s/J during o` borrows the Storage of J, and an associated Type of J without Origin parameters
+        // SPEC 8.11.5: a Field `s/J during o` borrows the Storage of J, and an associated Type of J without Origin parameters
         // cannot name that Storage, so it keeps no Loan of o even though o is an Origin of the conforming Type.
         private void StoredValues(BoundType? receiver)
         {
@@ -2098,7 +2017,7 @@ public sealed partial class Binding
             this.ViolationSite = this.site ?? this.ViolationNode;
         }
 
-        // SPEC 8.10 (PLAN G82): a declared Pattern Type is interpreted in its Subject's context, then composed with any outer call
+        // SPEC 8.15 (PLAN G82): a declared Pattern Type is interpreted in its Subject's context, then composed with any outer call
         // context like an analyzed Type.
         private BoundType? DeclaredType(BoundType type) => this.subjectBody!.SubstituteDefaults(type, this.subjectContext) is { } declared ? this.Type(declared) : null;
 
@@ -2110,7 +2029,7 @@ public sealed partial class Binding
         // the callee's Types as declared.
         private int Context(CallPlan call)
         {
-            if (call.TypeArguments.Length == 0 && call.LengthArguments.Length == 0 && call.Origins.Length == 0 && call.InputOrigins.Length == 0 &&
+            if (call.TypeArguments.Length == 0 && call.Origins.Length == 0 && call.InputOrigins.Length == 0 &&
                 call.DeclaringType is null or { Components.Count: 0, OriginArguments.Count: 0 })
             {
                 return 0;
@@ -2134,7 +2053,7 @@ public sealed partial class Binding
 
         // Collects the replacements of values on self paths in the own body: a write, a Move, an exclusive borrow, or an
         // exclusive acquisition by a call other than a requirement call's receiver, any of which may replace, swap or move the
-        // value (SPEC 8.4.10.5). Nested function literals are separate bodies.
+        // value (SPEC 8.11.5). Nested function literals are separate bodies.
         private sealed class BodyScan(EffectSummary summary) : KotoVisitor
         {
             public override void Visit(Koto node)

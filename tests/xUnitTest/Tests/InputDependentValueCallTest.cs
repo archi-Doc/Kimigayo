@@ -90,7 +90,7 @@ public class InputDependentValueCallTest
     private const string Swap = "func pass(x: ref/i32) -> ref/i32 during x\n    let start: ref/i32 = x\n    var c = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n" +
         "        let old = start\n        start = n\n        return old\n";
 
-    // SPEC 8.6, 15.6.4: an input or result written over a fixed Origin of the calling body, here an input of the enclosing function,
+    // SPEC 8.10, 15.6.4: an input or result written over a fixed Origin of the calling body, here an input of the enclosing function,
     // is no per-call input of the callee: the argument is fitted to it as written and the result keeps it, whatever slot it occupies.
     [Theory]
     [InlineData("TupleInput", "func use(x: ref/i32) -> i32\n    let c = func (pair: (ref/i32 during x, i32)) => pair.0@follow + pair.1\n    return c((x, 1))\nlet n: i32 = 2\nrequire use(n@ref) == 3 else => $abort(\"tuple\")")]

@@ -69,7 +69,7 @@ public sealed partial class OwnershipAnalysis
             {
                 case FunctionKoto closure:
                     // Nested bodies have their own declaration/ownership pass; a capture entry that moves a preceding prepared
-                    // argument is this default's own acquisition (SPEC 7.2.3, 7.6.2).
+                    // argument is this default's own acquisition (SPEC 7.2.3, 7.7.2).
                     this.CheckCaptures(closure);
                     return;
                 case IdentifierNameKoto:

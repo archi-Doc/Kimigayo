@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 23.4.2: document text synchronization with UTF-16 positions and the source line-break rule.
+// SPEC 23.4: document text synchronization with UTF-16 positions and the source line-break rule.
 public sealed class LspDocumentTest
 {
     [Fact]

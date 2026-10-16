@@ -27,7 +27,6 @@ public class OwnedAggregateContinuationTest
         var c = MinimalEmissionTest.Analyze("func f(c: bool) -> i32\n    let t = (\"a\", 4)\n    match t@move\n        " + arms + "\n        _ => ()\n    return 0\nf(true)");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Empty(c.Binding.Issues);
-        Assert.Empty(c.Ownership.ControlFlow!.Issues);
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Validate(out var error), error);
     }

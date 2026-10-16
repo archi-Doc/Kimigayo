@@ -9,7 +9,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 9.3: protected, protected internal and private protected apply only to members of a struct, including Containers
+// SPEC 9.4: protected, protected internal and private protected apply only to members of a struct, including Containers
 // declared directly in it, and to their accessors; they are invalid on root and group declarations, group members and
 // Contract requirements. Binding reports each misplaced form once at the declaration's signature, naming what declares it;
 // a Contract requirement takes no modifier at all, which the parser reports alone.

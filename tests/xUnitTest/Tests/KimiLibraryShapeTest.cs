@@ -131,7 +131,7 @@ public class KimiLibraryShapeTest
         var c = Library.Value;
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
-        Assert.Equal(183, KimiLibraryCatalog.Entries.Length);
+        Assert.Equal(184, KimiLibraryCatalog.Entries.Length);
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
@@ -254,7 +254,7 @@ public class KimiLibraryShapeTest
     }
 
     // Plan 5.8: the intrinsic table gives every compiler function one disposition; an intrinsic serves at most one of them, except Fail,
-    // which carries a fixed SPEC 22.5.4 code; there are at most 30 intrinsics, and the temporary Capacity, FormatBuffer, FormatHint and
+    // which carries a fixed SPEC 22.5.2 code; there are at most 30 intrinsics, and the temporary Capacity, FormatBuffer, FormatHint and
     // FormatFinish (owner approvals 2026-10-11) until R8.
     [Fact]
     public void EveryCompilerFunctionHasOneDisposition()
@@ -314,8 +314,8 @@ public class KimiLibraryShapeTest
     [InlineData(KimiDeclarationId.LeftDividable, "public contract LeftDividable<Lhs>\nassociate Output\nfunc dividedFrom(left: ref/Lhs, self: ref/Self) -> Self.Output")]
     [InlineData(KimiDeclarationId.LeftRemainderProvider, "public contract LeftRemainderProvider<Lhs>\nassociate Output\nfunc remainderFrom(left: ref/Lhs, self: ref/Self) -> Self.Output")]
     [InlineData(KimiDeclarationId.Negatable, "public contract Negatable\nassociate Output\nfunc negated(self: ref/Self) -> Self.Output")]
-    [InlineData(KimiDeclarationId.Indexable, "public contract Indexable<Key>\nassociate Element\nfunc index(self: ref/Self, key: ref/Key) -> place ref/Element during self")]
-    [InlineData(KimiDeclarationId.UniqIndexable, "public contract UniqIndexable<Key>: Indexable<Key>\nfunc indexUniq(self: uniq/Self, key: ref/Key) -> place uniq/Element during self")]
+    [InlineData(KimiDeclarationId.Indexable, "public contract Indexable<Key>\nassociate Element\nfunc index(self: ref/Self, key: ref/Key) -> ref/Element during self")]
+    [InlineData(KimiDeclarationId.UniqIndexable, "public contract UniqIndexable<Key>: Indexable<Key>\nfunc indexUniq(self: uniq/Self, key: ref/Key) -> uniq/Element during self")]
     [InlineData(KimiDeclarationId.LendingIterator, "public contract LendingIterator\nassociate LentItem(step) for uniq/Self during step\nfunc next(self: uniq/Self during step) -> Option<Self.LentItem(step)>")]
     [InlineData(KimiDeclarationId.Iterator, "public contract Iterator: LendingIterator\nassociate Item\nassociate LendingIterator.LentItem(step) is Item\neffect LendingIterator.next preserves results")]
     [InlineData(KimiDeclarationId.Iterable, "public contract Iterable\nassociate IteratorType(source) is ::Kimi.LendingIterator for ref/Self during source\nfunc iterate(self: ref/Self during source) -> Self.IteratorType(source)")]

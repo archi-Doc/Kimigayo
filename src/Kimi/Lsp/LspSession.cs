@@ -8,7 +8,7 @@ using Kimi.Diagnostics;
 namespace Kimi.Lsp;
 
 /// <summary>
-/// The state owner of the language server (SPEC 23.1): the single thread that processes the queue in order and alone
+/// The state owner of the language server (SPEC 23): the single thread that processes the queue in order and alone
 /// changes shared state — documents, revisions, marks, event numbers, bases, adopted results, required units and
 /// publication decisions.
 /// </summary>
@@ -162,7 +162,7 @@ internal sealed partial class LspSession : IDisposable
         this.store.Clear();
     }
 
-    /// <summary>Starts the pending check when its deadline has passed and the worker is free (SPEC 23.4.6).</summary>
+    /// <summary>Starts the pending check when its deadline has passed and the worker is free (SPEC 23.4).</summary>
     /// <param name="now">The current time in milliseconds.</param>
     public void Tick(long now)
     {
@@ -222,7 +222,7 @@ internal sealed partial class LspSession : IDisposable
         where T : class
         => message.ParamsError is { } error ? throw new JsonException(error) : (T?)message.Params;
 
-    // SPEC 23.4.8: two non-empty ranges intersect as half-open ranges; a point lies within a range with the end included; two points are equal.
+    // SPEC 23.4: two non-empty ranges intersect as half-open ranges; a point lies within a range with the end included; two points are equal.
     private static bool Matches(SourceRange sent, SourceRange requested)
     {
         var sentEmpty = sent.Start.CompareTo(sent.End) == 0;
@@ -400,7 +400,7 @@ internal sealed partial class LspSession : IDisposable
             }
         }
 
-        // SPEC 23.4.8: code actions need code action literals and versioned document changes, both optional client features.
+        // SPEC 23.4: code actions need code action literals and versioned document changes, both optional client features.
         this.codeActionsSupported = parameters?.Capabilities?.TextDocument?.CodeAction?.CodeActionLiteralSupport is not null &&
             parameters.Capabilities?.Workspace?.WorkspaceEdit?.DocumentChanges == true;
         this.initialized = true;
@@ -536,7 +536,7 @@ internal sealed partial class LspSession : IDisposable
         this.OpenCloseEvent(now, false, document.Identity);
     }
 
-    // SPEC 23.4.8: answered from the diagnostics last sent for the URI, without a check and without reading context.diagnostics.
+    // SPEC 23.4: answered from the diagnostics last sent for the URI, without a check and without reading context.diagnostics.
     // Candidates are returned only while every contributor's result is valid; an edited, reopened or desynchronized document has
     // no candidates until the next adoption restores them.
     private void OnCodeAction(LspMessage message)
@@ -646,7 +646,7 @@ internal sealed partial class LspSession : IDisposable
         }
     }
 
-    // SPEC 23.4.5: an open, close or watched event marks the file and the listing of its directory that matches it.
+    // SPEC 23.4: an open, close or watched event marks the file and the listing of its directory that matches it.
     private void OpenCloseEvent(long now, bool watched, SourceIdentity identity)
     {
         if (InputKey.TryGetListing(identity, out var listing))
@@ -678,7 +678,7 @@ internal sealed partial class LspSession : IDisposable
     private void Schedule(long now)
         => this.eligibleAt = now + this.settings.QuietPeriod;
 
-    // SPEC 23.4.5: commit the comparisons under the base rule and hand the worker the committed snapshot.
+    // SPEC 23.4: commit the comparisons under the base rule and hand the worker the committed snapshot.
     private void OnCommit(CommitRequest commit)
     {
         if (this.shutdownRequested || this.checkBase < 0)
@@ -718,7 +718,7 @@ internal sealed partial class LspSession : IDisposable
         }
     }
 
-    // SPEC 23.4.3 and 23.4.4: adopt the loaded projects, then change the required units only by an adopted derivation.
+    // SPEC 23.4 and 23.4: adopt the loaded projects, then change the required units only by an adopted derivation.
     private void OnDerivation(DerivationDone derivation)
     {
         this.undeterminedOwners.Clear();
@@ -808,7 +808,7 @@ internal sealed partial class LspSession : IDisposable
         }
     }
 
-    // SPEC 23.4.4: the adopted product results of the current check decide whether the test unit is required.
+    // SPEC 23.4: the adopted product results of the current check decide whether the test unit is required.
     private void OnProducts(ProductsDone products)
     {
         if (this.shutdownRequested || !this.derivationAdopted || !products.Decided || this.undeterminedOwners.Contains(products.Owner))
@@ -850,7 +850,7 @@ internal sealed partial class LspSession : IDisposable
     {
         if (this.shutdownRequested || !this.units.TryGetValue(result.Key, out var unit) || !this.store.TryRegister(result, this.checkBase))
         {
-            return; // SPEC 23.4.6: a stale result, or one of a unit outside the adopted required set, is discarded.
+            return; // SPEC 23.4: a stale result, or one of a unit outside the adopted required set, is discarded.
         }
 
         var previous = unit.Result;
@@ -943,7 +943,7 @@ internal sealed partial class LspSession : IDisposable
         }
     }
 
-    // SPEC 23.4.7: send a URI only when all its contributors are valid; the payload merges them in contributor order.
+    // SPEC 23.4: send a URI only when all its contributors are valid; the payload merges them in contributor order.
     private void Reconsider(IEnumerable<SourceIdentity> uris)
     {
         if (this.shutdownRequested)
@@ -973,7 +973,7 @@ internal sealed partial class LspSession : IDisposable
                         contributions.Add((key, contribution));
                     }
 
-                    // SPEC 23.4.8: a candidate of the URI is one that every contributor sends with equal values.
+                    // SPEC 23.4: a candidate of the URI is one that every contributor sends with equal values.
                     var candidates = result.Repairs.GetValueOrDefault(uri);
                     agreed = first ? candidates : Agree(agreed, candidates);
                     first = false;

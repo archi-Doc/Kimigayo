@@ -1,6 +1,6 @@
 # Shared object runtime verification
 
-IMPL §21.2.3 is authoritative. This record explains the implemented transitions and their checks; it does not define
+IMPL §21.1.3 is authoritative. This record explains the implemented transitions and their checks; it does not define
 language behavior. Weak operations remain gated until their side-table transitions are implemented.
 
 ## Inline rc transitions

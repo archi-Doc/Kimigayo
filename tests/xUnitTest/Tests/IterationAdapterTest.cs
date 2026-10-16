@@ -5,7 +5,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 22.1.2.3: Kimi.Iteration.owning and borrowing adapt a LendingIterator without an entry conformance, and
+/// <summary>SPEC 22.2.2: Kimi.Iteration.owning and borrowing adapt a LendingIterator without an entry conformance, and
 /// a Type may return a BorrowingIterator of itself as its UniqIterable entry.</summary>
 public class IterationAdapterTest
 {
@@ -20,7 +20,7 @@ public class IterationAdapterTest
     private const string Cursor = "struct Cursor\n    Self is LendingIterator\n    associate LentItem(step) is ref/i32 during step\n    var value: i32 = 0\n    public init() => ()\n" +
         "    public func next(self: uniq/Self during step) -> Option<ref/i32 during step>\n        if self.value == 2 => return .None\n        self.value += 1\n        return .Some(self.value@ref)\n";
 
-    // The SPEC 22.1.2.2 example: one item through the borrowed entry, then the rest by value.
+    // The SPEC 22.2.1 example: one item through the borrowed entry, then the rest by value.
     [Fact]
     public void CountdownEnumeratesThroughBorrowedAndOwnedEntries()
     {
@@ -49,14 +49,14 @@ public class IterationAdapterTest
         ScalarEmissionTest.EmitFixture("IterationAdapterLending", Source, "lending\n");
         var c = MinimalEmissionTest.Analyze(Source);
         var valid = true;
-        var bytes = AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 8, warmupIterations: 8);
+        var bytes = AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _));
         Assert.True(valid);
         Assert.Equal(0, bytes);
     }
 
-    // SPEC 22.1.2.3: an adapter is an Iterator exactly when its input is, so generic code may retain its items;
+    // SPEC 22.2.2: an adapter is an Iterator exactly when its input is, so generic code may retain its items;
     // BorrowingIterator steps its input through the borrow of that input's Storage, which no Item of the input keeps
-    // (SPEC 22.1.2.4).
+    // (SPEC 22.2.3).
     [Fact]
     public void AdaptersAreIteratorsWhenTheirInputIs()
     {
@@ -66,7 +66,7 @@ public class IterationAdapterTest
         ScalarEmissionTest.EmitFixture("IterationAdapterIterators", Source, "iterators\n");
     }
 
-    // SPEC 8.4.8.2: a member declared outside the conditional block is judged under the conditions, so the forwarded
+    // SPEC 8.3.3: a member declared outside the conditional block is judged under the conditions, so the forwarded
     // `I.(LendingIterator).LentItem(step)` is the step-independent `I.Item` when `I is Iterator`.
     [Fact]
     public void AUserWrapperDeclaresTheConditionalIterator()
@@ -85,7 +85,7 @@ public class IterationAdapterTest
     {
         var c = MinimalEmissionTest.Analyze(Cursor + NextPair + "var cursor = Cursor.init()\nvar adapter = Kimi.Iteration.borrowing(cursor@uniq)\nlet pair = nextPair(adapter@uniq)");
         Assert.False(c.Binding.Result.IsComplete);
-        // The refuted condition makes the only candidate inapplicable (SPEC 8.4.8.2).
+        // The refuted condition makes the only candidate inapplicable (SPEC 8.3.3).
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NoApplicableOverload_Kd);
     }
 
@@ -96,7 +96,7 @@ public class IterationAdapterTest
     {
         var c = MinimalEmissionTest.Analyze(program);
         Assert.False(c.Binding.Result.IsComplete);
-        // SPEC 8.7: a primitive's conformances are fixed, so the only candidate is inapplicable.
+        // SPEC 8.3: a primitive's conformances are fixed, so the only candidate is inapplicable.
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NoApplicableOverload_Kd);
     }
 }

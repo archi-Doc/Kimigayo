@@ -8,7 +8,7 @@ namespace XunitTest;
 
 public class DynamicArrayIndexTest
 {
-    // SPEC 4.7.2: insert, remove, swap, swapRemove and the try-prefixed accesses resolve a position of any Type.
+    // SPEC 4.9.3: insert, remove, swap, swapRemove and the try-prefixed accesses resolve a position of any Type.
     private const string Operations =
         "var values: Array<i32> = []\nvalues@uniq.insert(^0, 10)\nvalues@uniq.insert(^0, 30)\nlet beforeLast = ^1\nvalues@uniq.insert(beforeLast, 20)\nvalues@uniq.insert(0@u8, 1)\nrequire values.length == 4 and values[0] == 1 and values[1] == 10 and values[2] == 20 and values[3] == 30 else => $abort(\"insert\")\nlet capacity = values.capacity\nlet last = values@uniq.remove(^1)\nlet first = values@uniq.remove(0@i64)\nrequire last == 30 and first == 1 and values.length == 2 and values.capacity == capacity else => $abort(\"remove\")\nlet middle = values@uniq.remove(beforeLast)\nrequire middle == 20 and values[0] == 10 else => $abort(\"saved\")\n" +
         "values@uniq.append(40)\nvalues@uniq.swap(0, ^1)\nrequire values[0] == 40 and values[1] == 10 else => $abort(\"swap\")\nlet moved = values@uniq.swapRemove(0@u16)\nrequire moved == 40 and values.length == 1 and values[0] == 10 else => $abort(\"swapRemove\")\n" +
@@ -56,7 +56,7 @@ public class DynamicArrayIndexTest
             1,
             LibrarySource.Location("Array.kimi", anchor) + ": abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
-    // SPEC 4.6.2, 4.7.2: `^x` construction checks nothing, so later arguments are evaluated before resolution fails.
+    // SPEC 4.6.1, 4.9.3: `^x` construction checks nothing, so later arguments are evaluated before resolution fails.
     [Fact]
     public void NegativeFromEndFailsOnlyInResolution()
         => ScalarEmissionTest.EmitFixture(

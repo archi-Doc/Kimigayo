@@ -8,7 +8,7 @@
 
 ## `is` has several meanings
 
-- **Problem:** `is` is a runtime test, a Type identity or conformance requirement, a conformance declaration, a capability opt-in or opt-out, a Semantics test or an associated-Type binding, chosen by position and name resolution (§7.4, §8.3, §13.6.1).
+- **Problem:** `is` is a runtime test, a Type identity or conformance requirement, a conformance declaration, a capability opt-in or opt-out, a Semantics test or an associated-Type binding, chosen by position and name resolution (§7.5, §8.2, §13.6.4).
 - **Example:**
 
   ```kimi
@@ -40,11 +40,11 @@
   ```
 
 - **Proposed fix:** Reject Origin names that appear only in the result, and require member signatures to reference Type slots in a qualified form such as `self.source`.
-- **Why not applied:** A result-only Origin chosen by the caller is part of the Origin design; `static` cannot replace it when the result contains `T` or is exclusive (§3.3.6, §15.4.3). Names resolve lexically without hiding, adding a slot is already an API change (§15.3.7), and constructors have no `self`. A misspelling is still reported where it matters: the relation it fails names the introduced Origin as an end (§23.3.6.5).
+- **Why not applied:** A result-only Origin chosen by the caller is part of the Origin design; `static` cannot replace it when the result contains `T` or is exclusive (§3.3.2, §15.4.3). Names resolve lexically without hiding, adding a slot is already an API change (§15.3.7), and constructors have no `self`. A misspelling is still reported where it matters: the relation it fails names the introduced Origin as an end (§23.1).
 
 ## A string concatenation operator
 
-- **Problem:** `string + string` and string `+=` read naturally, and the specification once parsed them while deferring their acquisition, Loan, result-ownership and failure rules. An interpolated literal already produces an owning `string` from borrowed parts (§12.3.3), so the operator was a second form of one operation, with undefined ownership.
+- **Problem:** `string + string` and string `+=` read naturally, and the specification once parsed them while deferring their acquisition, Loan, result-ownership and failure rules. An interpolated literal already produces an owning `string` from borrowed parts (§12.4.2), so the operator was a second form of one operation, with undefined ownership.
 - **Example:**
 
   ```kimi
@@ -55,7 +55,7 @@
   ```
 
 - **Proposed fix:** Keep `+` and `+=` for strings and define them as a strict desugaring to interpolation: `a + b` as `"\(a)\(b)"` and `t += v` as `t = "\(t)\(v)"`.
-- **Why not applied:** The desugaring keeps two forms of one operation (Principle 1). A chain `a + b + c` either allocates per step or needs a special fold that one interpolated literal performs by construction, and `+=` would hide the replacement of the whole string behind an update spelling (§13.7.2). Text built in steps belongs to `Text.HeapBuffer` and `Utf8Writer`, whose allocation and failure behavior are stated. The operators are removed instead (§13.3), and the interpolated literal is the one form that joins strings.
+- **Why not applied:** The desugaring keeps two forms of one operation (Principle 1). A chain `a + b + c` either allocates per step or needs a special fold that one interpolated literal performs by construction, and `+=` would hide the replacement of the whole string behind an update spelling (§13.7.2). Text built in steps belongs to `Text.HeapBuffer` and `Utf8Writer`, whose allocation and failure behavior are stated. The operators are removed instead (§13.3.1), and the interpolated literal is the one form that joins strings.
 
 ## Exclusive or owning accessor receivers
 
@@ -78,11 +78,11 @@
   ```
 
 - **Proposed fix:** Keep the ownership-bearing accessor receivers and require a spelling at the use (`meter@uniq.reading`), mark the declaration (`mutating get`), or warn.
-- **Why not applied:** A use spelling conflicts with the implicit acquisition of Receiver Expressions (§7.3) and with the meaning of `tasks@uniq.length`, a declaration mark leaves `x.p` looking like a read at every use, and a warning keeps the failing `let` receiver and the lost Copy update. The receiver of an accessor is fixed per operation instead, `ref/Self` for `get` and `uniq/Self` for `set` (§11.2), and the exclusive or consuming operation is a function named by §4.7.1 (`nextReading`, `intoItem`). `ref/Self` and `uniq/Self` are reachable through object handles by the path rules, so no capability is lost except a getter that returns `self` as a handle.
+- **Why not applied:** A use spelling conflicts with the implicit acquisition of Receiver Expressions (§7.3) and with the meaning of `tasks@uniq.length`, a declaration mark leaves `x.p` looking like a read at every use, and a warning keeps the failing `let` receiver and the lost Copy update. The receiver of an accessor is fixed per operation instead, `ref/Self` for `get` and `uniq/Self` for `set` (§11.3), and the exclusive or consuming operation is a function named by §4.9.1 (`nextReading`, `intoItem`). `ref/Self` and `uniq/Self` are reachable through object handles by the path rules, so no capability is lost except a getter that returns `self` as a handle.
 
 ## Unqualified names find inherited declarations
 
-- **Problem:** Inside a derived struct, an unqualified Name never reaches a declaration inherited from a base, although the inherited Names belong to the derived struct (§6.2.2, §9.6.1). Every inherited declaration needs a qualifier or an explicit receiver: `Self.marker()` for `marker()`, `self.count` for `count` (§9.4).
+- **Problem:** Inside a derived struct, an unqualified Name never reaches a declaration inherited from a base, although the inherited Names belong to the derived struct (§6.2.2, §9.7.1). Every inherited declaration needs a qualifier or an explicit receiver: `Self.marker()` for `marker()`, `self.count` for `count` (§9.5).
 - **Example:**
 
   ```kimi
@@ -101,7 +101,7 @@
   ```
 
 - **Proposed fix:** Search the base layers at lookup stage 2, one layer at a time, so that an unqualified Name inside a derived struct selects the inherited declaration: `marker()` would call `Base.marker`, and a bare nested Type Name would name the inherited Type.
-- **Why not applied:** Members of an external base would be found unqualified, contradicting §18.1, where external members are never found unqualified. They would also be found at stage 2, before the project root and the aliases of stages 5 and 6, through which unqualified Names otherwise reach external declarations last, so the precedence would be reversed. An upstream base that adds `marker` or a nested `Node` would silently retarget a downstream unqualified use: dependency revalidation (§18.7.3) succeeds against the new target and reports nothing. Resolving a base clause would still need an exception, because searching the struct's own base layers there forms a cycle. §9.4 instead examines the base layers only to stop lookup with `QualificationRequired_Kd`, whose repair candidates insert the canonical qualifiers `self.`, `Self.` or `C.`, so an unqualified Name that succeeds always denotes a lexical declaration.
+- **Why not applied:** Members of an external base would be found unqualified, contradicting §18.2, where external members are never found unqualified. They would also be found at stage 2, before the project root and the aliases of stages 5 and 6, through which unqualified Names otherwise reach external declarations last, so the precedence would be reversed. An upstream base that adds `marker` or a nested `Node` would silently retarget a downstream unqualified use: dependency revalidation (§A.2) succeeds against the new target and reports nothing. Resolving a base clause would still need an exception, because searching the struct's own base layers there forms a cycle. §9.5 instead examines the base layers only to stop lookup with `QualificationRequired_Kd`, whose repair candidates insert the canonical qualifiers `self.`, `Self.` or `C.`, so an unqualified Name that succeeds always denotes a lexical declaration.
 
 ## Futures and `async`/`await`
 
@@ -116,7 +116,7 @@
   ```
 
 - **Proposed fix:** Add `async func` and `await expression`, or return a future value that holds the pending computation.
-- **Why not applied:** A future that borrows its caller's locals is a receiver-dependent public result, which is deferred (Appendix D), and a future that borrows itself needs a pinning rule that conflicts with byte-transfer Moves (§21.4.5). Cancelling by dropping a future needs an abrupt completion that §16.2.3 does not have. `async` would also need an implicit current task for cancellation and children (Principle 2), and `await` beside the task argument would be a second spelling of the same suspension point (Principle 1). The task slot is neither a Type nor a value, so it cannot escape, and every suspension point is visible at its call.
+- **Why not applied:** A future that borrows its caller's locals is a receiver-dependent public result, which is deferred (Appendix D), and a future that borrows itself needs a pinning rule that conflicts with byte-transfer Moves (§21.3). Cancelling by dropping a future needs an abrupt completion that §16.2.3 does not have. `async` would also need an implicit current task for cancellation and children (Principle 2), and `await` beside the task argument would be a second spelling of the same suspension point (Principle 1). The task slot is neither a Type nor a value, so it cannot escape, and every suspension point is visible at its call.
 
 ## A no-leak guarantee
 
@@ -131,7 +131,7 @@
   ```
 
 - **Proposed fix:** Guarantee that every non-Owned value is destroyed before its Origins end, and add a scope or join-handle value whose destruction waits for its children.
-- **Why not applied:** The guarantee would bind every future cycle-forming API (`rc` cycles, §16.4) and all unsafe code, and tasks do not need it. Children start only inside a Kimi operation that returns after they complete (§22.1.3.3), and no value represents a running child or a suspended task frame, so safe-code soundness never depends on a destructor running. Future guards and scopes keep that constraint and use the same call-duration shape.
+- **Why not applied:** The guarantee would bind every future cycle-forming API (`rc` cycles, §16.4) and all unsafe code, and tasks do not need it. Children start only inside a Kimi operation that returns after they complete (§22.3.2), and no value represents a running child or a suspended task frame, so safe-code soundness never depends on a destructor running. Future guards and scopes keep that constraint and use the same call-duration shape.
 
 ## Detached tasks and join handles
 
@@ -161,7 +161,7 @@
   ```
 
 - **Proposed fix:** Let Deferred Blocks pass the task, or add an asynchronous `drop`.
-- **Why not applied:** Every exit path would gain resume states in its cleanup, cleanup under cancellation would need an abrupt completion that §16.2.3 does not have, and a Deferred Block that ignored cancellation would hide an unbounded mask that stops outer timeouts. Finalization stays on explicit paths, and one that must run under cancellation is called through `Async.shield` with an explicit grace (§22.1.3.4).
+- **Why not applied:** Every exit path would gain resume states in its cleanup, cleanup under cancellation would need an abrupt completion that §16.2.3 does not have, and a Deferred Block that ignored cancellation would hide an unbounded mask that stops outer timeouts. Finalization stays on explicit paths, and one that must run under cancellation is called through `Async.shield` with an explicit grace (§22.3.3).
 
 ## Overloads with and without a task slot
 
@@ -182,7 +182,7 @@
 - **Problem:** Hover must remain available while diagnostic checks wait, without repeating expensive comment rendering or delaying server events unnecessarily.
 - **Example:** An edit changes a declaration comment but leaves diagnostics empty. A renderer driven only by diagnostic notifications would never refresh it; starting a new check on every Hover would bypass the quiet period.
 - **Proposed fix:** Add a Hover-specific interval, advance checks on requests, remove caching, or require asynchronous rendering before measuring it.
-- **Why not applied:** SPEC §23.4.11 shares check scheduling and refreshes on adoption/revalidation independently of notifications. One labeled previous set bridges pending checks. Synchronous, bounded requests reuse strict agreement and rendering results; cache removal adds repeated work, and mandatory asynchronous jobs add state before a measured need. Later concurrency changes require actual responsiveness evidence. Setting-specific fields are not merged, mandatory contract/effect evidence is not truncated, and display text is not a machine semantic API.
+- **Why not applied:** SPEC §23.4 shares check scheduling and refreshes on adoption/revalidation independently of notifications. One labeled previous set bridges pending checks. Synchronous, bounded requests reuse strict agreement and rendering results; cache removal adds repeated work, and mandatory asynchronous jobs add state before a measured need. Later concurrency changes require actual responsiveness evidence. Setting-specific fields are not merged, mandatory contract/effect evidence is not truncated, and display text is not a machine semantic API.
 
 ## Running full CI before integration into main
 
@@ -193,7 +193,7 @@
 
 ## Instance-evaluated generic defaults
 
-- **Problem:** An omitted generic default is checked once at its declaration and evaluated again inline in each caller (§7.2.3, §8.10). Every declared Type, call and acquisition of that inline replica must be interpreted in the replica's own context, or it disagrees with the declaration check.
+- **Problem:** An omitted generic default is checked once at its declaration and evaluated again inline in each caller (§7.2.3, §8.15). Every declared Type, call and acquisition of that inline replica must be interpreted in the replica's own context, or it disagrees with the declaration check.
 - **Example:**
 
   ```kimi
@@ -220,7 +220,7 @@
   ```
 
 - **Proposed fix:** Treat the slot's relations, such as `a outlives c` above, as premises in every admitted case.
-- **Why not applied:** It is unsound. In the `owner` case nothing stores `a` in `b`, so the call `pick(b, m@ref)` with a local `m` would return a reference to `m` as one that outlives `c`; through a Function Item value call such a program read a dead local (§8.1.2, §8.10, §15.3.7).
+- **Why not applied:** It is unsound. In the `owner` case nothing stores `a` in `b`, so the call `pick(b, m@ref)` with a local `m` would return a reference to `m` as one that outlives `c`; through a Function Item value call such a program read a dead local (§8.1.2, §8.15, §15.3.7).
 
 ## A borrow-only uniq pair follow bounded by its slot alone
 
@@ -234,11 +234,11 @@
   ```
 
 - **Proposed fix:** Give the follow the slot `a` alone.
-- **Why not applied:** The concrete `uniq` follow meets every reaching borrow (§15.5, §15.6.3): `uniq/Box<uniq/i32 during a> during c` cannot return `uniq/i32 during a`, because the result would outlive the exclusive borrow `c` it was reached through. A generic body is never weaker than its concrete case (§8.10).
+- **Why not applied:** The concrete `uniq` follow meets every reaching borrow (§15.5, §15.6.3): `uniq/Box<uniq/i32 during a> during c` cannot return `uniq/i32 during a`, because the result would outlive the exclusive borrow `c` it was reached through. A generic body is never weaker than its concrete case (§8.15).
 
 ## A conditional implicit constructor over an Unknown base premise
 
-- **Problem:** When the omitted base call of a derived structure's implicit constructor depends on a premise that is Unknown at the derived declaration, no implicit constructor exists (§6.2.3.6), although one would be valid in every instantiation where the premise holds.
+- **Problem:** When the omitted base call of a derived structure's implicit constructor depends on a premise that is Unknown at the derived declaration, no implicit constructor exists (§6.3.6), although one would be valid in every instantiation where the premise holds.
 - **Example:**
 
   ```kimi
@@ -251,7 +251,7 @@
   ```
 
 - **Proposed fix:** Synthesize `init()` conditionally, existing only in the instantiations where the base premise holds.
-- **Why not applied:** The condition would be a hidden premise that no declaration states (Principle 3), and a member that appears only in some instantiations contradicts definition-time checking (§8.4.8.2, §8.10). An explicit constructor with the Constraint expresses the same thing in source.
+- **Why not applied:** The condition would be a hidden premise that no declaration states (Principle 3), and a member that appears only in some instantiations contradicts definition-time checking (§8.3.3, §8.15). An explicit constructor with the Constraint expresses the same thing in source.
 
 ## Constructor delegation, whole-`self` placement or a factory for library constructors
 
@@ -265,4 +265,62 @@
   ```
 
 - **Proposed fix:** Add constructor delegation or whole-`self` placement, admit them only in the Kimi library, or spell the operation as a factory function such as `Array.repeating(value, count:)`.
-- **Why not applied:** Delegation and whole-`self` placement would add a second construction path for every structure (§6.2.3.3, §6.2.3.4). A factory splits infallible construction from `init` (§6.2.3.5, STYLE §5.2) and loses constructor inference (§10.8.1). A rule available only to the Kimi library would be a language rule user code cannot use. The compiler instead supplies the constructor's definition with an identical contract (§22.1), which no user Type can obtain.
+- **Why not applied:** Delegation and whole-`self` placement would add a second construction path for every structure (§6.3.3, §6.3.4). A factory splits infallible construction from `init` (§6.3.5, STYLE §5.2) and loses constructor inference (§10.8). A rule available only to the Kimi library would be a language rule user code cannot use. The compiler instead supplies the constructor's definition with an identical contract (§22.1), which no user Type can obtain.
+
+## `place` as sugar for a reference followed at the call
+
+- **Problem:** A function that lends existing storage returns a reference, and the caller writes `@follow` to reach the
+  storage, where a Place result let `f() += 1` act on it directly.
+- **Example:**
+
+  ```kimi
+  func slot(values: uniq/Array<i32>) -> uniq/i32 during values => values[0]@uniq
+  slot(counts@uniq)@follow += 1  // With sugar: slot(counts@uniq) += 1
+  ```
+
+- **Proposed fix:** Keep `-> place uniq/T` as sugar for `-> uniq/T` plus an implicit `@follow` at every call position.
+- **Why not applied:** Two forms of one concept (Principle 1), and a hidden operation whose mode every function Type,
+  Callable signature and call position must carry (Principles 2 and 3). See DECISIONS PR-1.
+
+## Every reference-returning call designates its referent
+
+- **Problem:** `f()` returning `ref/T` is a reference value, so reading or replacing the referent needs `@follow`.
+- **Example:**
+
+  ```kimi
+  let r = first(values@ref)          // ref/i32: the reference is kept
+  let n = first(values@ref)@follow   // i32
+  ```
+
+- **Proposed fix:** Follow every returned reference implicitly, as the index expression does.
+- **Why not applied:** `let r = f()` must keep the reference, and a borrow of a temporary must not silently outlive it
+  (SPEC §3.3.3, §3.6); only the index operator follows, because its element is a Place like a built-in element.
+
+## `receiver[key]` as an ordinary call that the user follows
+
+- **Problem:** The index expression is the one place where a returned reference is followed implicitly.
+- **Example:**
+
+  ```kimi
+  names[1] = "uno"                  // The index expression follows indexUniq's reference.
+  names.indexUniq(1)@follow = "uno" // A written call does not.
+  ```
+
+- **Proposed fix:** Make `x[k]` an ordinary call of `index` or `indexUniq` and require `x[k]@follow`.
+- **Why not applied:** It breaks parity between user and built-in element Places (SPEC §4.7.2): `values[i] = v`,
+  `values[i]@ref` and nested selections would need a spelling that built-in arrays do not.
+
+## Zero-sized raw values told apart by stride, pointer position, `Raw.write`, count, a provenance exemption or a producer list
+
+- **Problem:** Distinct zero-sized values may share an address (§4.1), so raw-storage state kept per address cannot tell them apart: initialization, Take, borrowing, `Raw.slice` and release cannot say which value they act on.
+- **Example:**
+
+  ```kimi
+  let p = Raw.allocate<()>(2)
+  unsafe
+      Raw.initialize(p, ())
+      Raw.initialize(p + 1, ())   // p + 1 == p: per-address state already holds a value here.
+  ```
+
+- **Proposed fix:** Give zero-sized Types a positive stride; carry a logical position in every raw pointer; replace `Raw.initialize` with a `Raw.write` that overwrites without destroying; count zero-sized values per address; exempt zero-byte accesses from provenance, as Rust does; or name "raw elements" by a list of storage producers.
+- **Why not applied:** A positive stride changes §4.1 and the cost of zero-byte allocation. Pointer positions add state to arithmetic, casts, projection and foreign contracts. `Raw.write` still leaves Take, borrowing and `Raw.slice` without a target and adds a second way to abandon a value (Principle 1). Counting restates the capability and Loan rules for each counted group of zero-sized values. Rust can exempt zero-byte accesses because its abstract machine keeps no memory state for zero-byte ranges; Kimigayo keeps initialization, Loans and destruction per zero-sized Place, so an exemption would need a second, size-dependent bound on the Places a pointer reaches, and without it equal zero-byte results would share Places of different owners. A producer list misses storage that contracts provide and values that relocation moves. Raw storage is Storage instead: a placed value occupies a Place, and a raw Place designates one (§3.4, §5.2).

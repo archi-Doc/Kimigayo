@@ -87,7 +87,7 @@ public class SourceEncodingTest
         {
             File.WriteAllBytes(path, [0x2F, 0x2F, 0x20, 0xED, 0xA0, 0x80]);
             compilation.Project.AddKimiFile(path);
-            // SPEC 23.3.3: an input that could not be established blocks the check entry with its own Input Error.
+            // SPEC 23.2.2: an input that could not be established blocks the check entry with its own Input Error.
             var output = CheckService.Run(compilation.Project, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
             Assert.Equal(CheckOutcome.Blocked, output.Outcome);
             var diagnostic = Assert.Single(output.Diagnostics);

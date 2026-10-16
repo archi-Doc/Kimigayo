@@ -1,46 +1,51 @@
-// Milestone 36: lazy static initialization, generic storage keys and reverse shutdown destruction.
+// Milestone 36: setter ownership, borrowed views and Property witnesses.
 struct Resource
     public let id: i32
     public init(id: i32) => self.id = id
     drop
         match self.id
-            1 => Console.writeLine("Static resource 1 destroyed.")
-            2 => Console.writeLine("Static resource 2 destroyed.")
-            3 => Console.writeLine("Static resource 3 destroyed.")
+            1 => Console.writeLine("Resource 1 destroyed.")
+            2 => Console.writeLine("Resource 2 destroyed.")
+            3 => Console.writeLine("Resource 3 destroyed.")
             _ => $abort("Unexpected resource")
 
-group Registry
-    public var count: i32 = Registry.initialCount()
-    public let primary: Resource = Registry.makeResource(1)
-    public var replaced: Resource = Registry.makeResource(2)
-    public let unused: Resource = Resource.init(9) // Never accessed: neither initialized nor destroyed.
-    public func initialCount() -> i32
-        Console.writeLine("Count initialized.")
-        return 10
-    public func makeResource(id: i32) -> Resource
-        match id
-            1 => Console.writeLine("Resource 1 initialized.")
-            2 => Console.writeLine("Resource 2 initialized.")
-            _ => $abort("Unexpected initializer")
-        return Resource.init(id)
+contract Viewed
+    property item: ref/Resource
+        get(self: ref/Self) -> ref/Resource
 
-struct Cache<T>
-    public group Statistics
-        public var hits: i32 = 0
+struct Holder
+    Self is Viewed
+    public var item: Resource
+        set(value: Resource) -> ()
+            Console.writeLine("Setter entered.")
+            storage = value@move
+    public computed view: ref/Resource
+        get() -> ref/Resource => self.item@ref/Resource
+    public init(value: Resource) => self.item = value@move
+
+struct Parcel
+    let item: Resource
+    public init(value: Resource) => self.item = value@move
+    public func intoResult(self: Self) -> Resource => self.item@move
+
+func inspect(value: ref/Resource)
+    require value.id == 2 else => $abort("Wrong borrowed resource")
+    Console.writeLine("Borrowed resource is 2.")
+
+func inspectWitness<T>(value: ref/T)
+    T is Viewed
+    inspect(value.item)
 
 public func main()
-    Console.writeLine("Main started.") // No static value is initialized before its first access.
-    Registry.count = Registry.count + 1 // The read initializes the slot once; the write replaces it.
-    require Registry.count == 11 else => $abort("Static replacement failed")
-    Console.writeLine("Count is 11.")
-    require Registry.primary.id == 1 else => $abort("Static let initialization failed")
-    Console.writeLine("Primary is 1.")
-    Registry.replaced = Resource.init(3) // A first write initializes the slot, then Replacement destroys Resource 2.
-    require Registry.replaced.id == 3 else => $abort("Static var replacement failed")
-    Console.writeLine("Replaced the second resource.")
-    Cache<i32>.Statistics.hits = Cache<i32>.Statistics.hits + 1
-    Cache<string>.Statistics.hits = Cache<string>.Statistics.hits + 5
-    require Cache<i32>.Statistics.hits == 1 and Cache<string>.Statistics.hits == 5 else => $abort("Generic keys merged")
-    Console.writeLine("Generic keys are distinct.")
-    Console.writeLine("Main finished.")
-    // Shutdown destroys static vars, then static lets, each in reverse initialization order: Resource 3, then Resource 1.
+    do
+        var holder = Holder.init(Resource.init(1))
+        holder.item = Resource.init(2)
+        inspect(holder.view)
+        inspectWitness(holder@ref)
+        Console.writeLine("Holder scope finished.")
+    do
+        let parcel = Parcel.init(Resource.init(3))
+        let owned = parcel@move.intoResult()
+        require owned.id == 3 else => $abort("Consuming function transfer failed")
+        Console.writeLine("Consuming function received.")
+    Console.writeLine("Ownership properties finished.")

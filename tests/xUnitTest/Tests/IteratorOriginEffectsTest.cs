@@ -63,12 +63,12 @@ public class IteratorOriginEffectsTest
 
     private const string Point = "struct Point\n    public var x: i32 = 0\n";
     private const string Box = "struct Box\n    Self is UniqIndexable<isize>\n    associate Element is i32\n    var value: i32 = 0\n" +
-        "    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value\n" +
-        "    public func indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/i32 during self => self.value\n";
+        "    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref\n" +
+        "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/i32 during self => self.value@uniq\n";
 
     private const string Bump = "group Helpers\n    public func bump(value: uniq/i32) => value@follow += 1\n";
 
-    // SPEC 22.1.2.4: every write that reaches a Loan of an earlier item conflicts, however the Place is written; the same
+    // SPEC 22.2.3: every write that reaches a Loan of an earlier item conflicts, however the Place is written; the same
     // write through an unrelated Origin does not.
     [Theory]
     [InlineData(Point, "let point: uniq/Point during {0}", "self.point.x += 1")]
@@ -106,7 +106,7 @@ public class IteratorOriginEffectsTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
-    // SPEC 8.4.3, 22.1.2.4: an abstract item may be instantiated with any Loan of the conforming Type's Origins.
+    // SPEC 8.5, 22.2.3: an abstract item may be instantiated with any Loan of the conforming Type's Origins.
     [Theory]
     [InlineData("self.counter@follow += 1", false)]
     [InlineData("self.count += 1", true)]
@@ -141,7 +141,7 @@ public class IteratorOriginEffectsTest
     private const string Counter = "struct Counter\n    Self is Iterator\n    associate Iterator.Item is i32\n    var value: i32 = 0\n    public init() => ()\n" +
         "    public func next(self: uniq/Self) -> Option<i32>\n        if self.value == 3 => return .None\n        self.value += 1\n        return .Some(self.value)\n";
 
-    // SPEC 22.1.2.4: a delegating wrapper forwards one inner iterator's items; that iterator's published bound covers them.
+    // SPEC 22.2.3: a delegating wrapper forwards one inner iterator's items; that iterator's published bound covers them.
     [Fact]
     public void ADelegatingWrapperForwardsItsInnerItems()
     {
@@ -152,7 +152,7 @@ public class IteratorOriginEffectsTest
         ScalarEmissionTest.EmitFixture("AssociatedIteratorWrapper", source, "wrapped\n");
     }
 
-    // SPEC 22.1.2.4: all items come from the one stored Iterator, so its bound covers every step of it, from any number of
+    // SPEC 22.2.3: all items come from the one stored Iterator, so its bound covers every step of it, from any number of
     // call sites.
     [Fact]
     public void AWrapperMayStepItsStoredIteratorFromSeveralCallSites()
@@ -184,7 +184,7 @@ public class IteratorOriginEffectsTest
         MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
-    // SPEC 22.1.2.4 (G28): matching an item of the stored Iterator by value destroys nothing when every arm either matches a
+    // SPEC 22.2.3 (G28): matching an item of the stored Iterator by value destroys nothing when every arm either matches a
     // Case without payload or binds the whole payload and transfers it at once, so a wrapper that inspects an item before
     // returning it keeps the inner bound.
     [Fact]

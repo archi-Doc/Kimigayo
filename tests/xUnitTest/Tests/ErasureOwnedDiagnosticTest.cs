@@ -8,7 +8,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 15.2.3, 7.6.4, 23.3.6.5: a common Function conversion whose signature matches and whose subject is not Owned fails a Constraint,
+// SPEC 15.2.3, 7.7.4, 23.1: a common Function conversion whose signature matches and whose subject is not Owned fails a Constraint,
 // never a Type: a Refuted proof (a capture that depends on a body-local Borrow) is UnsatisfiedConstraint_Kd and a proof still Unknown
 // (a bound Type parameter) is UnprovenConstraint_Kd. The Reason names the subject, the member through which the Origin enters
 // OwnedOrigins and, when one is displayable, that Origin, which is related at its syntax. These were TypeMismatch_Kd with a Note.

@@ -27,7 +27,7 @@ public sealed class TyCtxtTest
         "let fixed: [3 of i32] = [1, 2, 3]\nlet two: [2 of i32] = [4, 5]\nlet box = Box<i32>.init(6)\nlet p = pick(two@ref)\n" +
         "require f(7) == 7 and f(true) and size(fixed@ref) == 3 and p@follow == 4 and same(8) and same(true) and box.orElse() == 6 else => $abort(\"compose\")\n";
 
-    // SPEC 8.3, 8.6: the callee's declared parameter and result Types under a call's substitution are the call's instantiation (SPEC 8.4.2:
+    // SPEC 8.2, 8.10: the callee's declared parameter and result Types under a call's substitution are the call's instantiation (SPEC 8.4.3:
     // a requirement's under its conforming Self and the bound Contract reference it dispatches through, which SubstOf records as its
     // declaring Type), a closure in such a Type has its instance's signature, and a function item's substitution applies as its context does.
     [Theory]
@@ -78,7 +78,7 @@ public sealed class TyCtxtTest
         Assert.True(calls > 0 && problems.Count == 0, $"{calls} calls; {problems.Count} differ:\n{string.Join('\n', problems.Take(40))}");
     }
 
-    // SPEC 8.3: a closure an instance closed is in that instance's substitution and has its signature; a closure no instance closed is
+    // SPEC 8.2: a closure an instance closed is in that instance's substitution and has its signature; a closure no instance closed is
     // in the identity of the function enclosing it, which keeps every Type.
     [Fact]
     public void AClosureIsInItsInstancesSubstitution()
@@ -99,8 +99,24 @@ public sealed class TyCtxtTest
         Assert.Same(closure.Signature, c.Types.Apply(closure.Signature, identity));
     }
 
-    // SPEC 3.4.1, 13.5.5.1: selection follows a reference or object handle as a Deref and a pair layer, the original s/T or an application
-    // s/U, as a PairLayer of the binder in scope, never a raw pointer or an owned value. SPEC 23.3.6.5: a Type is named as diagnostics spell it.
+    // SPEC 8.13.3: a substitution holds one length entry per slot whichever producer forms it, so a direct call, a function item and a
+    // synthesized call of one instance are one substitution.
+    [Fact]
+    public void ASubstitutionHasOneLengthEntryPerSlot()
+    {
+        var c = MinimalEmissionTest.Analyze("func make<T>() -> i32 => 1\nlet f = make<i32>\nrequire make<i32>() == f() else => $abort(\"make\")\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var call = nodes.OfType<InvocationKoto>().Select(static x => x.CallOf()).Single(static x => x is { Kind: CalleeKind.Function, Target.Name: "make" })!;
+        var item = nodes.Select(static x => x.TypeOf()).First(static x => x is { Kind: BoundTypeKind.FunctionItem })!;
+        var subst = c.Types.SubstOf(call)!;
+        Assert.Equal(1, subst.Lengths.Length);
+        Assert.Same(subst, c.Types.SubstOfItem(item));
+        Assert.Same(subst, c.Types.Synthesized(call.Target, null, call.TypeArguments));
+    }
+
+    // SPEC 3.4.3, 13.5.5: selection follows a reference or object handle as a Deref and a pair layer, the original s/T or an application
+    // s/U, as a PairLayer of the binder in scope, never a raw pointer or an owned value. SPEC 23.1: a Type is named as diagnostics spell it.
     [Fact]
     public void LayersAreReferencesHandlesAndPairLayers()
     {
@@ -162,7 +178,7 @@ public sealed class TyCtxtTest
     [Fact]
     public void WarmSubstitutionsAreTheSameAndAllocateNothing()
     {
-        var c = SemanticSnapshotTest.Bind("milestone/Milestone26").Compilation;
+        var c = SemanticSnapshotTest.Bind("milestone/Milestone34").Compilation;
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).Concat(KotoTree.Walk(c.Library.Kotonoha.RootKoto))
             .SelectMany(static x => Enumerable.Range(0, 8).Select(i => (Node: x, Ordinal: i)).TakeWhile(static y => CallPlan.Of(y.Node, y.Ordinal) is not null))
             .Where(x => c.Types.SubstOf(CallPlan.Of(x.Node, x.Ordinal)!) is not null).ToArray();

@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 3.1.1.1, 13.3, 13.5.4.1: Wrapping<T> is the interned wrapping integer Scalar of T, with T's representation and
+// SPEC 3.1.1, 13.3.1, 13.5.4: Wrapping<T> is the interned wrapping integer Scalar of T, with T's representation and
 // operators, wrapping arithmetic, conversions only to and from T, and no position, length, shift-count or member role.
 public class WrappingIntegerTest
 {
@@ -175,7 +175,7 @@ public class WrappingIntegerTest
         Assert.Contains("i16 @", ir); // twice passes and returns the i16 representation of u16.
     }
 
-    // SPEC 13.5.4.2: a direct literal fits Wrapping<U> by the range of U; a failure is a compile-time error.
+    // SPEC 13.5.4: a direct literal fits Wrapping<U> by the range of U; a failure is a compile-time error.
     [Fact]
     public void DirectLiteralsFitTheArgumentRange()
     {
@@ -198,7 +198,7 @@ public class WrappingIntegerTest
         }
     }
 
-    // SPEC 14.8.1, 12.3.4: literal Patterns and Dictionary literal keys fit a wrapping Type by its argument's range.
+    // SPEC 14.8.1, 12.4.3: literal Patterns and Dictionary literal keys fit a wrapping Type by its argument's range.
     [Fact]
     public void LiteralPatternsAndDictionaryKeysUseTheArgumentRange()
     {
@@ -216,7 +216,7 @@ public class WrappingIntegerTest
         }
     }
 
-    // SPEC 8.4.7.3, 10.2.1: a generic body uses the wrapping operators, unary minus, generic literals, the conversions to
+    // SPEC 8.7.4, 10.2.2: a generic body uses the wrapping operators, unary minus, generic literals, the conversions to
     // and from T and the value read; each instance uses its wrapping Scalar.
     [Fact]
     public void GenericBodiesUseTheWrappingScalarOfEachInstance()

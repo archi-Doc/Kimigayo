@@ -35,7 +35,7 @@ public sealed class BoundContract
     /// <summary>Gets the effective associated-Type declarations and their bound declaring Contracts.</summary>
     public IReadOnlyList<BoundRequirement> AssociatedTypes => this.AssociatedStorage;
 
-    /// <summary>Gets the effect bounds this Contract itself declares (SPEC 8.4.10.1); each ancestor exposes its own.</summary>
+    /// <summary>Gets the effect bounds this Contract itself declares (SPEC 8.11.1); each ancestor exposes its own.</summary>
     public IReadOnlyList<BoundEffectBound> EffectBounds => this.EffectBoundStorage;
 
     internal List<BindingSymbol> AncestorStorage { get; } = new();
@@ -46,7 +46,7 @@ public sealed class BoundContract
 
     internal List<IsKoto> ClauseStorage { get; } = new();
 
-    /// <summary>Gets the effect bounds this Contract itself declares (SPEC 8.4.10.1); each ancestor keeps its own.</summary>
+    /// <summary>Gets the effect bounds this Contract itself declares (SPEC 8.11.1); each ancestor keeps its own.</summary>
     internal List<BoundEffectBound> EffectBoundStorage { get; } = new();
 
     /// <summary>Gets or sets the progress of building <see cref="EffectBoundStorage"/> in this pass: 0 unbuilt, 1 building, 2 built.</summary>
@@ -66,7 +66,7 @@ public sealed class BoundContract
     internal bool HasUnresolvedParents { get; set; }
 }
 
-/// <summary>An effect bound a Contract declares for a function requirement, as its effect item states it (SPEC 8.4.10.1).</summary>
+/// <summary>An effect bound a Contract declares for a function requirement, as its effect item states it (SPEC 8.11.1).</summary>
 /// <param name="Identity">The requirement's declaration and bound declaring Contract.</param>
 /// <param name="Bound">The bound.</param>
 /// <param name="Declaration">The effect item.</param>
@@ -193,7 +193,7 @@ public sealed class BoundConformancePath
 
     internal BoundType? InheritedBase { get; set; }
 
-    // SPEC 12.4.4.1, 23.3.6.1: the last completed verification's only unproven part is a witness whose ObjectCallCompatible status
+    // SPEC 12.7, 23.1.1: the last completed verification's only unproven part is a witness whose ObjectCallCompatible status
     // is not computed (OCC-X); a check that needs this conformance rests on its location-only Unsupported_Kd at Use.
     internal bool Unsupported { get; set; }
 

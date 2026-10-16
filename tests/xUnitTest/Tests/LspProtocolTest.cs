@@ -13,7 +13,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 23.4.1: framing, JSON-RPC responses and the lifecycle.
+// SPEC 23.4: framing, JSON-RPC responses and the lifecycle.
 public sealed class LspProtocolTest
 {
     // The start of a JSON \u escape, spelled so that no source escape is involved.

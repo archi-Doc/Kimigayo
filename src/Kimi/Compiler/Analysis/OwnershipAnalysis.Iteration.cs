@@ -28,7 +28,7 @@ public sealed partial class OwnershipAnalysis
         this.Emit(OwnershipOperationKind.Declare, source, iterator);
         this.Emit(OwnershipOperationKind.Write, source, iterator, input);
 
-        // SPEC 3.6.2: the iteration source's temporaries last for its required use, as a match Subject's do; they are destroyed after
+        // SPEC 3.6: the iteration source's temporaries last for its required use, as a match Subject's do; they are destroyed after
         // the iterator, which registered later, when the loop is left.
         var loopTempMark = this.temporaries.Count;
         var head = this.Emit(OwnershipOperationKind.Branch, source);

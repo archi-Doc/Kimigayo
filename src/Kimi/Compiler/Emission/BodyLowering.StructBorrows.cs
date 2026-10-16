@@ -68,7 +68,7 @@ internal sealed partial class BodyLowering
     }
 
     // A Scalar or Unit temporary, join result, by-value parameter or Subject receives its own slot only when it is borrowed
-    // (SPEC 3.6.2, 10.2, 14.8.3); Unit needs only the address.
+    // (SPEC 3.6, 10.2, 14.8.3); Unit needs only the address.
     // A temporary or join result is stored at its borrow from its one prepared value; a parameter is stored once at its
     // entry Produce, which dominates every borrow, so repeated and branch-local borrows share that slot.
     private void PrepareMaterializedScalars(OwnershipBody body)
@@ -166,7 +166,7 @@ internal sealed partial class BodyLowering
                     value.Count == 1 && ReferenceEquals(storedHandle.Components[0], output.Components[0]) &&
                     ReferenceEquals(ValueType(body, Input(body, id, 0)), type) && (!body.IsReachable(id) || this.Dominates(Input(body, id, 0), id)))
                 {
-                    // SPEC 13.5.5.2: @objref of an object handle selected through a reference reads the handle at that address.
+                    // SPEC 13.5.6: @objref of an object handle selected through a reference reads the handle at that address.
                     function.AddScalar(EmissionOpcode.ObjectBorrow, id, [this.PhysicalOperand(body, Input(body, id, 0))]);
                     return true;
                 }

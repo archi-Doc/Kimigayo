@@ -92,7 +92,7 @@ public static class EmissionArtifacts
         }
     }
 
-    // Validates every configured library, even when unused, and selects the backend supply (SPEC 20.8.2).
+    // Validates every configured library, even when unused, and selects the backend supply (SPEC 20.4).
     private static NativeLibraryInput? ResolveBackend(ProjectFile settings)
     {
         if (NativeConfiguration.Validate(settings) is { } failure)
@@ -132,7 +132,7 @@ public static class EmissionArtifacts
         return backend;
     }
 
-    // SPEC 20.8.3: libraries required by external declarations, sorted by Ordinal name. Only the root
+    // SPEC 20.3.2: libraries required by external declarations, sorted by Ordinal name. Only the root
     // module's own self-targeted supplies connect yet: a logical name alone cannot identify another
     // module's requirement, and combined-module native records are not generated.
     private static List<(string Name, string Kind, string Input, string? Sha256)>? ResolveForeignSupplies(Compilation compilation, ProjectFile settings)

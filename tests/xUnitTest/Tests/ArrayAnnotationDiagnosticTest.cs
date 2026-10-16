@@ -71,11 +71,7 @@ public class ArrayAnnotationDiagnosticTest(ITestOutputHelper output)
     public void WarmFailureRecordingAllocatesNothing()
     {
         var c = CompilationTestHelper.ParseSuccess("let values: [_ of [_ of _]] = [[1], [2, 3]]");
-        for (var i = 0; i < 4; i++)
-        {
-            Assert.False(c.Bind().IsComplete);
-        }
-
+        Assert.False(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
 }

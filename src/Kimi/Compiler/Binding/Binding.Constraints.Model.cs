@@ -126,7 +126,7 @@ internal sealed class ConstraintEnvironment
 
     internal bool HasAssociatedProjection { get; set; }
 
-    /// <summary>Gets or sets a value indicating whether a fact identifies a Type parameter with a Type (SPEC 8.3), so that
+    /// <summary>Gets or sets a value indicating whether a fact identifies a Type parameter with a Type (SPEC 8.2), so that
     /// expressions bound in its scope substitute one for the other.</summary>
     internal bool HasParameterIdentity { get; set; }
 

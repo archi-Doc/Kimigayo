@@ -119,31 +119,19 @@ public class StringGuardEmissionTest
     public void WarmCandidateBindingAndEmissionAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Same + "match \"a\"@move\n    let s if same(s, \"a\") => Console.writeLine(s)\n    _ => ()");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
 
         var valid = true;
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
-        {
-            valid &= c.Bind().IsComplete;
-        }
-
-        var bindingBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        var bindingBytes = AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
+        var emissionBytes = AllocationMeasurement.Measure(() =>
         {
             valid &= c.Analyze().IsVerified;
             valid &= c.WriteIr(TextWriter.Null, out _);
-        }
-
-        var emissionBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        });
         Assert.True(valid);
         Assert.Equal(0, bindingBytes);
         Assert.Equal(0, emissionBytes);

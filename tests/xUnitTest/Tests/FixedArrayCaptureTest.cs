@@ -23,7 +23,7 @@ public class FixedArrayCaptureTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(receiver, Assert.Single(c.Ownership.Bodies, x => x.Function.IsAnonymous).Function.ClosureOf()!.Receiver);
+        Assert.Equal(receiver, Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous).ClosureOf()!.Receiver);
         var ir = CompilationTestHelper.WriteIr(c);
         ScalarEmissionTest.WriteFixture("FixedArrayCapture" + name, ir, string.Empty);
         if (name is "Consume" or "PartialMove")
@@ -77,7 +77,7 @@ public class FixedArrayCaptureTest
         var c = MinimalEmissionTest.Analyze("let values: [2 of string] = [\"first\", \"last\"]\nlet f: () -> bool = func [values@move] () => values[0] == \"first\"\nrequire f() else => $abort(\"call\")");
         Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid);
     }
 

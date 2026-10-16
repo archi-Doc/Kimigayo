@@ -91,6 +91,8 @@ public class ElementReplacementEmissionTest
         StringEmissionTest.WriteAuditedFixture("ElementReplacementRhsTransfer", Source, ir, "ok\n", "old=1;ok=1", order: [0, 1]);
     }
 
+    // A cleanup that never completes leaves the destruction of the old element and the placement to the checks (their MIR:
+    // tests/mir/updates.kimi `divergentReplacement`, `divergentReplacementIndex`).
     [Theory]
     [InlineData("Rhs", "a[0] = label work: do\n    defer => loop => ()\n    exit to work \"new\"")]
     [InlineData("Index", "a[(label work: do\n    defer => loop => ()\n    exit to work 0\n)] = \"new\"")]
@@ -101,7 +103,6 @@ public class ElementReplacementEmissionTest
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         var function = module.GetFunction(0);
         Assert.DoesNotContain(function.Instructions, x => x.Callee == WindowsLowering.DestroyString || x.Opcode == EmissionOpcode.DestroyAggregate);
-        Assert.DoesNotContain(c.Ownership.Bodies[0].Operations, x => x.Kind == OwnershipOperationKind.WriteElement);
         ScalarEmissionTest.EmitFixture("ElementReplacementDivergent" + name, source, string.Empty, timeoutMilliseconds: 300);
     }
 
@@ -196,31 +197,18 @@ public class ElementReplacementEmissionTest
     {
         const string Source = "func make() -> (string, i32) => (\"new\", 42)\nvar a = ((\"old\", 0), 1)\nvar i = 0\nloop\n    defer => a.0 = if true => make() else => (\"other\", 1)\n    i += 1\n    if i < 3 => continue\n    exit\na.0.0 = \"last\"";
         var c = MinimalEmissionTest.Analyze(Source);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
-        var success = true;
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
-        {
-            success &= c.Bind().IsComplete;
-        }
-
-        var bindingBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        var success = true;
+        var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        var bytes = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
             success &= c.WriteIr(TextWriter.Null, out _);
-        }
-
-        var bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        });
         Assert.True(success);
         Assert.Equal(0, bindingBytes);
         Assert.Equal(0, bytes);

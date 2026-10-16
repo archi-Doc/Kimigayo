@@ -5,7 +5,7 @@ using Kimi.Compiler;
 
 namespace Kimi.Checking;
 
-/// <summary>Supplies every file input of a check (SPEC 23.3.4): project and lock files, source files and directory listings.</summary>
+/// <summary>Supplies every file input of a check (SPEC 23.2.1): project and lock files, source files and directory listings.</summary>
 /// <remarks>
 /// Commands read the disk. The language server supplies open documents in place of their files and records each read.
 /// Failures surface as the exceptions the disk would raise, so the command paths report them unchanged.
@@ -86,7 +86,7 @@ internal sealed class SourceContent
     public static SourceContent FromText(string text, bool hasBom)
         => new(null, text, hasBom);
 
-    /// <summary>Gets the compiler bytes: the file bytes, or the BOM followed by the UTF-8 text (SPEC 23.3.4).</summary>
+    /// <summary>Gets the compiler bytes: the file bytes, or the BOM followed by the UTF-8 text (SPEC 23.2.1).</summary>
     /// <returns>The bytes, computed once.</returns>
     public byte[] GetBytes()
     {
@@ -142,7 +142,7 @@ internal sealed class SourceContent
     }
 }
 
-/// <summary>Signals a read of an open document that is out of sync (SPEC 23.4.2); the front end reports it as <c>DocumentDesynchronized_Kd</c>.</summary>
+/// <summary>Signals a read of an open document that is out of sync (SPEC 23.4); the front end reports it as <c>DocumentDesynchronized_Kd</c>.</summary>
 internal sealed class DesynchronizedInputException : IOException
 {
     /// <summary>The observed failure of a desynchronized document, which is its unestablished identity.</summary>
@@ -155,7 +155,7 @@ internal sealed class DesynchronizedInputException : IOException
     }
 }
 
-/// <summary>Signals that a check needs an input with an event after its base (SPEC 23.4.6); the check takes no effect.</summary>
+/// <summary>Signals that a check needs an input with an event after its base (SPEC 23.4); the check takes no effect.</summary>
 /// <remarks>It is no <see cref="IOException"/>, so a read handler that reports read failures lets it pass through to the state owner.</remarks>
 internal sealed class PendingInputException : Exception
 {

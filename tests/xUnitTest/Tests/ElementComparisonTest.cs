@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 13.4, 4.6.9: a string comparison reads each operand in place. An operand selected by a dynamic key, below
+/// <summary>SPEC 13.4, 4.7.1: a string comparison reads each operand in place. An operand selected by a dynamic key, below
 /// an element or through a reference is shared-borrowed, like a string argument or a receiver below a shared element, and a
 /// Copy element below a shared element is read as its root.</summary>
 public class ElementComparisonTest
@@ -46,7 +46,7 @@ public class ElementComparisonTest
         "require exclusive(text@uniq) else => $abort(\"uniq\")\nlet names: Array<ref/string> = [text@ref]\n" +
         "for n in names\n    require n == \"admin\" and \"admin\" == n and n != \"user\" else => $abort(\"layers\")\nConsole.writeLine(\"ok\")";
 
-    // SPEC 4.6.9, 10.2: an element storing an exclusive reference or an object handle is read as its shared view when a
+    // SPEC 4.7.1, 10.2: an element storing an exclusive reference or an object handle is read as its shared view when a
     // member is selected below it.
     private const string StoredViewsSource =
         "struct Cell\n    public var value: i32 = 7\nfunc first(r: ref/[1 of uniq/Cell during c]) -> i32 => r[0].value\n" +

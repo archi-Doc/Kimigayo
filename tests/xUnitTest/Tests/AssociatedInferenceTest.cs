@@ -371,11 +371,7 @@ public class AssociatedInferenceTest
     public void WarmInferenceAndRetainedWitnessesAllocateNothing()
     {
         var c = Bound("contract C\n    associate Item\n    func read() -> Option<Self.Item>\nstruct S\n    Self is C\n    public func read() -> Option<i32> => Option<i32>.None");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

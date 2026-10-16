@@ -2,7 +2,7 @@
 
 namespace Kimi.Diagnostics;
 
-/// <summary>The kind of problem a diagnostic code reports (SPEC 23.3.6.1). Each code has exactly one.</summary>
+/// <summary>The kind of problem a diagnostic code reports (SPEC 23.1.1). Each code has exactly one.</summary>
 public enum DiagnosticCategory : byte
 {
     /// <summary>The source violates a language rule.</summary>

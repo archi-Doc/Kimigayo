@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 8.4, 8.4.9: inside a Contract, Self is a dedicated Type parameter, distinct from every reference to the
+/// <summary>SPEC 8.4, 8.6.1: inside a Contract, Self is a dedicated Type parameter, distinct from every reference to the
 /// Contract; every associated-Type projection names its receiver and the Contract reference that declares it.</summary>
 public class ContractSelfTest
 {

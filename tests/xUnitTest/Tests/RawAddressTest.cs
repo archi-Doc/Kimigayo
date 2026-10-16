@@ -55,7 +55,7 @@ public class RawAddressTest
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
 
-    // SPEC 5.4, 8.4.10.2: in an effect summary the address is an access to its Place, an environment effect only on a mutable static.
+    // SPEC 5.4, 8.11.2: in an effect summary the address is an access to its Place, an environment effect only on a mutable static.
     [Theory]
     [InlineData("    let slot = self.count@raw\n", true)]
     [InlineData("    let p = self@raw\n        var slot = p@raw/i32\n        unsafe => slot = (*p).count@raw\n", true)]
@@ -72,7 +72,7 @@ public class RawAddressTest
         }
     }
 
-    // SPEC 13.5.5.2: a slot storing a raw pointer is borrowed like any other slot.
+    // SPEC 13.5.6: a slot storing a raw pointer is borrowed like any other slot.
     [Fact]
     public void APointerSlotIsBorrowable()
     {

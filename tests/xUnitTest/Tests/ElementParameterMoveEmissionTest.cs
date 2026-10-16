@@ -192,31 +192,18 @@ public class ElementParameterMoveEmissionTest
     public void WarmParameterMovesAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Same + "func f(a: ((string, string), string), take: bool)\n    defer\n        let equal = same(a.1, a.1)\n    if take\n        let moved = a.0.0@move\n    else\n        let moved = a.0@move\nf(((\"first\", \"last\"), \"out\"), true)");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
-        var valid = true;
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
-        {
-            valid &= c.Bind().IsComplete;
-        }
-
-        var bindingBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        var valid = true;
+        var bindingBytes = AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        var bytes = AllocationMeasurement.Measure(() =>
         {
             valid &= c.Analyze().IsVerified;
             valid &= c.WriteIr(TextWriter.Null, out _);
-        }
-
-        var bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        });
         Assert.True(valid);
         Assert.Equal(0, bindingBytes);
         Assert.Equal(0, bytes);

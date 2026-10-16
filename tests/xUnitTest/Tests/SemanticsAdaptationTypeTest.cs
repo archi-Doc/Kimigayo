@@ -227,15 +227,12 @@ public class SemanticsAdaptationTypeTest
         var objectType = c.Binding.CaseType(type, objects);
         var referenceType = c.Binding.CaseType(type, references);
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(
-            () =>
-            {
-                valid &= ReferenceEquals(type, c.Binding.SemanticsAdaptation(pair, pair.WholeType!, BoundOrigin.Static));
-                valid &= ReferenceEquals(objectType, c.Binding.CaseType(type, objects));
-                valid &= ReferenceEquals(referenceType, c.Binding.CaseType(type, references));
-            },
-            iterations: 64,
-            warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            valid &= ReferenceEquals(type, c.Binding.SemanticsAdaptation(pair, pair.WholeType!, BoundOrigin.Static));
+            valid &= ReferenceEquals(objectType, c.Binding.CaseType(type, objects));
+            valid &= ReferenceEquals(referenceType, c.Binding.CaseType(type, references));
+        }));
         Assert.True(valid);
     }
 

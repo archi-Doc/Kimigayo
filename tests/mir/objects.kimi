@@ -8,3 +8,9 @@ func shared() -> i32
     let owned = Kimi.Intrinsics.makeObj(Cell.init(3))
     let view = owned@objref
     return counted.value + copy.value + atomic.value + view.value
+func obtainCell(s: string) -> obj/Cell => obtainCell(s@move)
+func obtainedIsCell(s: string) -> bool => obtainCell(s@move) is Cell
+func notCell(x: objref/Cell) -> bool => x is not Cell
+func eitherCell(x: objref/Cell, flag: bool) -> bool
+    require x is not Cell or flag else => return false
+    return x is Cell

@@ -27,7 +27,8 @@ internal sealed partial class MirBuilder
             HirPlaceKind.Field when node is MemberAccessKoto member => this.Member(member),
             HirPlaceKind.Local or HirPlaceKind.Static or HirPlaceKind.Field => this.Named(node),
             HirPlaceKind.Deref or HirPlaceKind.PairLayer => this.Layer(this.Place(Child(node)), shape.Kind),
-            HirPlaceKind.Index or HirPlaceKind.ConstIndex => this.Element((IndexKoto)node, shape.Kind),
+            HirPlaceKind.Index => this.Element((IndexKoto)node),
+            HirPlaceKind.ConstIndex => this.ConstElement((IndexKoto)node),
             HirPlaceKind.CallResult => this.Referent(node),
             HirPlaceKind.Value => this.Value(node),
             _ => this.Unsupported(node),
@@ -69,7 +70,7 @@ internal sealed partial class MirBuilder
         return binder;
     }
 
-    // SPEC 3.4.1, 13.5.5.1: up to count of the layers its Type's selection follows implicitly, stopping at a Place of the target Type.
+    // SPEC 3.4.3, 13.5.5: up to count of the layers its Type's selection follows implicitly, stopping at a Place of the target Type.
     private MirPlace Follow(MirPlace place, int count, BoundType? target = null)
     {
         for (; count > 0 && !(target is not null && MirTypes.Agree(this.body.TypeOf(place), target)) && TyCtxt.Layer(
@@ -84,7 +85,7 @@ internal sealed partial class MirBuilder
     }
 
     // A name by its Res: a local, parameter, prepared parameter or environment binding, a static after its first-access check, or the
-    // storage of the receiver's Property (an accessor's `storage`, SPEC 11.2).
+    // storage of the receiver's Property (an accessor's `storage`, SPEC 11.3).
     private MirPlace Named(Koto node)
     {
         var symbol = HirTables.Symbol(node);
@@ -101,7 +102,7 @@ internal sealed partial class MirBuilder
         }
     }
 
-    // SPEC 11.1, 11.2, 11.3.2: a stored Property's storage, which its standard accessors and its accessors' `storage` read and write: a static
+    // SPEC 11.2, 11.3, 11.8: a stored Property's storage, which its standard accessors and its accessors' `storage` read and write: a static
     // Property's slot, or the Property's Field of its receiver's Place.
     private MirPlace Storage(BindingSymbol property, MirPlace? receiver, Koto node)
     {
@@ -114,7 +115,7 @@ internal sealed partial class MirBuilder
     }
 
     // The Place of a local or a parameter, in a default template a prepared parameter's slot its p_i references (SPEC 7.2.3), or in a
-    // Closure's body of an environment binding: its capture's Field of the environment the receiver reaches (SPEC 7.6.2); null for another
+    // Closure's body of an environment binding: its capture's Field of the environment the receiver reaches (SPEC 7.7.2); null for another
     // symbol.
     private MirPlace? Bound(BindingSymbol symbol)
     {
@@ -135,7 +136,7 @@ internal sealed partial class MirBuilder
         return index < 0 ? null : this.body.Project(this.Follow(new(this.receiver), 16), MirProjectionKind.Field, index);
     }
 
-    // SPEC 22.2.3, plan 5.6.6: a static's Place, after the check of its state that initializes it at its first access, staticEnsure of its
+    // SPEC 22.4.3, plan 5.6.6: a static's Place, after the check of its state that initializes it at its first access, staticEnsure of its
     // slot in the body's statics, which names its initializer's body; a static whose declaration Binding rejected has none, and its use is
     // derived from that error.
     private MirPlace Static(BindingSymbol symbol, Koto node)
@@ -191,9 +192,22 @@ internal sealed partial class MirBuilder
         static int Inherited(BoundType type) => AdtDef.Base(type) is { } parent ? AdtDef.StorageCount(parent) : 0;
     }
 
-    // SPEC 4.6.1, 4.6.9, 15.1.3: a built-in element at an integer position, a ConstIndex where the position is a constant (in range: its
-    // PlaceShape), at a written ^x the length minus x, or at another key's resolution; SPEC 5.3: a raw pointer's p[n] is *(p + n).
-    private MirPlace Element(IndexKoto index, HirPlaceKind kind)
+    // SPEC 15.1.3: a fixed-array element at a literal position in range, grouped or not (its PlaceShape): at the value Binding fitted to
+    // the literal its groups enclose (Folded); the position evaluates nothing.
+    private MirPlace ConstElement(IndexKoto index)
+    {
+        var literal = index.Right;
+        while (HirTables.Op(literal) == HirOp.Group)
+        {
+            literal = Child(literal);
+        }
+
+        return this.body.Project(this.Place(index.Left), MirProjectionKind.ConstIndex, (int)HirTables.PlanOf(literal).Folded!.Value);
+    }
+
+    // SPEC 4.7, 4.7.1: a built-in element at a runtime position: an integer, at a written ^x the length minus x, or at another key's
+    // resolution; SPEC 5.3: a raw pointer's p[n] is *(p + n).
+    private MirPlace Element(IndexKoto index)
     {
         var sequence = this.Place(index.Left);
         var key = ExpansionPlan.Of(index)?.First;
@@ -214,15 +228,10 @@ internal sealed partial class MirBuilder
             return this.body.Project(offset, MirProjectionKind.Deref, 0);
         }
 
-        if (kind == HirPlaceKind.ConstIndex && position.Kind == MirOperandKind.Const)
-        {
-            return this.body.Project(sequence, MirProjectionKind.ConstIndex, (int)this.body.Consts[position.Arg].Bits);
-        }
-
         return this.body.Project(sequence, MirProjectionKind.Index, this.Position(position, index.Right).Root);
     }
 
-    // SPEC 4.6.2: a position as the isize a selection reads, its value compared mathematically: a Type no wider than isize wraps (a same-width
+    // SPEC 4.6.1: a position as the isize a selection reads, its value compared mathematically: a Type no wider than isize wraps (a same-width
     // unsigned value isize cannot hold reads as negative, which the bounds check rejects), a wider one converts checked.
     private MirPlace Position(in MirOperand position, Koto node)
     {
@@ -244,11 +253,13 @@ internal sealed partial class MirBuilder
         return local;
     }
 
-    // SPEC 7.1.1: the referent of the reference a place call, a user index or a getter publishes: its selection's call, else the node's.
+    // SPEC 4.7.1: the referent of the reference that a subscript's selected call returns; the selection's published expansion names that
+    // call, and a missing one is a broken HIR contract.
     private MirPlace Referent(Koto node)
     {
-        var result = this.Temp((ExpansionPlan.Of(node)?.Second ?? CallPlan.Of(node))!.ReturnType, node);
-        this.Into(result, node);
+        var call = ExpansionPlan.Of(node)!.Value.Second!;
+        var result = this.Temp(call.ReturnType, node);
+        this.Call(result, call, node, first: null);
         return this.body.Project(result, MirProjectionKind.Deref, 0);
     }
 

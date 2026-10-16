@@ -20,7 +20,7 @@ public class EmissionPlanTest
         var slot = Assert.Single(entry.Slots);
         Assert.Equal(new[] { 0, 8, 16 }, slot.Value.Layout.FieldOffsets.ToArray());
         Assert.Equal((24, 8, 24), (slot.Value.Layout.Size, slot.Value.Layout.Alignment, slot.Value.Layout.Stride));
-        // SPEC 22.4: writeLine borrows the literal; the caller destroys the temporary after the call.
+        // SPEC 22.1: writeLine borrows the literal; the caller destroys the temporary after the call.
         Assert.Equal([EmissionOpcode.Branch, EmissionOpcode.Label, EmissionOpcode.StoreStaticString, EmissionOpcode.Call, EmissionOpcode.Call, EmissionOpcode.ReturnVoid], entry.Instructions.Select(x => x.Opcode));
         Assert.True(entry.Instructions[2].Operation < entry.Instructions[3].Operation);
         Assert.Same(WindowsLowering.WriteLine, entry.Instructions[3].Callee);
@@ -146,7 +146,7 @@ public class EmissionPlanTest
     [InlineData("f64", "double", "double", 8)]
     public void ScalarRepresentationsFollowTheInitialProfile(string type, string storage, string computation, int size)
     {
-        // SPEC 21.1.4: size, alignment and stride are equal; arguments pass the direct computation Type.
+        // SPEC 21.1.3: size, alignment and stride are equal; arguments pass the direct computation Type.
         var value = WindowsLowering.GetValue(BoundType.Primitives[type])!;
         Assert.Equal((storage, computation, computation), (value.Layout.StorageType, value.ComputationType, value.ArgumentType));
         Assert.Equal((size, size, size), (value.Layout.Size, value.Layout.Alignment, value.Layout.Stride));
@@ -185,7 +185,7 @@ public class EmissionPlanTest
         var ir = output.ToString();
         Assert.Single(ir.Split('\n'), x => x.StartsWith("@__kimi_text", StringComparison.Ordinal));
         Assert.Equal(2, ir.Split("{ ptr @__kimi_text, i64 1, i8 0 }").Length - 1);
-        Assert.Contains("{ ptr null, i64 0, i8 0 }", ir); // Empty literal: Static/null/length zero (SPEC 21.5.6).
+        Assert.Contains("{ ptr null, i64 0, i8 0 }", ir); // Empty literal: Static/null/length zero (SPEC 21.4).
         Assert.Contains("c\"\\48\\65\\6C\\6C\\6F\\2E\\6B\\69\\6D\\69\\3A\\33\\3A\\31\"", ir); // Hello.kimi:3:1
     }
 

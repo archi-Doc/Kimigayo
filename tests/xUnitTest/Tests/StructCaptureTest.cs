@@ -33,7 +33,7 @@ public class StructCaptureTest
     {
         var c = MinimalEmissionTest.Analyze(Packet + source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(receiver, Assert.Single(c.Ownership.Bodies, x => x.Function.IsAnonymous).Function.ClosureOf()!.Receiver);
+        Assert.Equal(receiver, Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous).ClosureOf()!.Receiver);
         ScalarEmissionTest.WriteFixture("StructCapture" + name, CompilationTestHelper.WriteIr(c), "drop\n");
     }
 
@@ -71,10 +71,10 @@ public class StructCaptureTest
         var c = MinimalEmissionTest.Analyze(Packet + "let packet = Packet.init(\"owned\", 7)\nlet f: () -> i32 = func [packet@move] () => packet.twice\nrequire f() == 14 else => $abort(\"call\")");
         Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid);
     }
 

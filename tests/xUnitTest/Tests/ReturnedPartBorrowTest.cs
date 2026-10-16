@@ -54,11 +54,6 @@ public class ReturnedPartBorrowTest
             }
         }
 
-        for (var i = 0; i < 100; i++)
-        {
-            Analyze();
-        }
-
         Assert.Equal(0, AllocationMeasurement.Measure(Analyze));
         Assert.True(c.Bind().IsComplete);
         Assert.False(c.Validate(out _));

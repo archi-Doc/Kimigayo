@@ -9,7 +9,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 7.6.2, 9.3, 14.8: Pattern bindings introduce lexical scopes, not new accessibility declarations.
+// SPEC 7.7.2, 9.4, 14.8: Pattern bindings introduce lexical scopes, not new accessibility declarations.
 public class MatchCaptureTest
 {
     private const string Source = "let k = 7\nmatch 5\n    let m => func [k] () => k\n";

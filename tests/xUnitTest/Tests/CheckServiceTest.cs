@@ -11,7 +11,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 23.3: the shared check entry, compilation-owned diagnostics and immutable check output.
+// SPEC 23.2: the shared check entry, compilation-owned diagnostics and immutable check output.
 public sealed class CheckServiceTest : IDisposable
 {
     private const string Valid = "public func one() -> i32 => 1\n";
@@ -112,7 +112,7 @@ public sealed class CheckServiceTest : IDisposable
         Assert.Equal(SourceIdentity.FromPath(project), Location(output, failure));
     }
 
-    // SPEC 23.3.1, 23.3.3: an unsupported target is an Input problem of its own, Blocked in the check entry and reported by the
+    // SPEC 23.2.1, 23.2.2: an unsupported target is an Input problem of its own, Blocked in the check entry and reported by the
     // command, never an unexplained rejection.
     [Fact]
     public async Task AnUnsupportedTargetIsAnInputProblem()
@@ -132,7 +132,7 @@ public sealed class CheckServiceTest : IDisposable
         Assert.DoesNotContain(nameof(DiagnosticCode.CheckFaulted_Kd), console.Output, StringComparison.Ordinal);
     }
 
-    // SPEC 23.3.3: an invalid test configuration is not established, so test preparation is Blocked before the front end.
+    // SPEC 23.2.2: an invalid test configuration is not established, so test preparation is Blocked before the front end.
     [Fact]
     public void AnInvalidTestProjectIdBlocksTestPreparation()
     {
@@ -351,7 +351,7 @@ public sealed class CheckServiceTest : IDisposable
         Assert.Contains(output.Diagnostics, static x => x.Note?.Contains("Windows x64", StringComparison.Ordinal) == true);
     }
 
-    // SPEC 23.4.6: a pending input is the state owner's decision; loading a project never turns it into a load failure.
+    // SPEC 23.4: a pending input is the state owner's decision; loading a project never turns it into a load failure.
     [Fact]
     public void APendingProjectFileReadIsNotALoadFailure()
     {
@@ -361,7 +361,7 @@ public sealed class CheckServiceTest : IDisposable
         Assert.Same(exception, thrown);
     }
 
-    // SPEC 23.3.3: a check that an input or its configuration blocks before the entry runs publishes one Input Error without a range.
+    // SPEC 23.2.2: a check that an input or its configuration blocks before the entry runs publishes one Input Error without a range.
     [Fact]
     public void ABlockedOutputPublishesOneInputErrorAtItsInput()
     {
@@ -383,7 +383,7 @@ public sealed class CheckServiceTest : IDisposable
         Assert.Null(unlocated.Note);
     }
 
-    // SPEC 23.3.1: the scan is syntactic, so a marker on a local function is found; test preparation then explains the invalid definition.
+    // SPEC 23.2.1: the scan is syntactic, so a marker on a local function is found; test preparation then explains the invalid definition.
     [Fact]
     public void ATestMarkerOnALocalFunctionIsFoundAndThenRejected()
     {

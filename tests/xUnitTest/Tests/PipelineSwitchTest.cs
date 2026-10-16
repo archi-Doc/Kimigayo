@@ -9,7 +9,8 @@ using Xunit;
 namespace XunitTest;
 
 /// <summary>The pipeline switch and the analysis entry points (plan 12.1, 13.2; R3–R5): <c>KIMI_PIPELINE</c> selects the default,
-/// only the mir pipeline publishes the MIR's records and marks the compiler identity, and the legacy output does not depend on it.</summary>
+/// only the mir pipeline publishes the MIR's records and marks the compiler identity, the legacy output does not depend on it, and every
+/// analysis notifies the difference ledger's observer.</summary>
 public sealed class PipelineSwitchTest
 {
     // A fill of a length its instance decides is the MIR's one Unsupported record here, a form no R3 unit builds.
@@ -72,10 +73,66 @@ public sealed class PipelineSwitchTest
         Assert.Equal((diagnostics, ir), Check(c));
     }
 
+    // R4-M17: on both pipelines, every Analyze raises Compilation.Analyzed once, after the old path's records and, under mir, the MIR's
+    // are final: the observer reads the analysis Analyze returns, the MIR's Unsupported record included.
+    [Fact]
+    public void AnalyzeNotifiesTheObserverOnce()
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Source));
+        var observed = new List<AnalysisResult>();
+        void Observe(Compilation x)
+        {
+            if (ReferenceEquals(x, c))
+            {
+                observed.Add(x.Analysis);
+            }
+        }
+
+        Compilation.Analyzed += Observe;
+        try
+        {
+            foreach (var (pipeline, errors) in new[] { (CompilerPipeline.Legacy, 0), (CompilerPipeline.Mir, 1) })
+            {
+                c.Pipeline = pipeline;
+                Assert.True(c.Bind().IsComplete);
+                Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+                var result = c.Analyze();
+                Assert.Equal(errors, result.ErrorCount);
+                Assert.Equal([result], observed);
+                observed.Clear();
+            }
+        }
+        finally
+        {
+            Compilation.Analyzed -= Observe;
+        }
+    }
+
     // Tests read a failure that OwnershipIssue.Code maps to several codes through one helper each: its codes are exactly the images
     // of that failure, whatever the issue's other facts.
     [Fact]
     public void TheMultiCodeHelpersAreTheOwnershipMapping()
+    {
+        var images = new Dictionary<OwnershipFailure, HashSet<DiagnosticCode>>();
+        foreach (var (failure, code) in OwnershipCodes())
+        {
+            Assert.Equal(failure == OwnershipFailure.ComparisonLoanConflict, code.IsLoanConflict());
+            Assert.Equal(failure == OwnershipFailure.UnprovenOrigin, code.IsUnprovenOrigin());
+            images.TryAdd(failure, []);
+            images[failure].Add(code);
+        }
+
+        Assert.Equal(4, images[OwnershipFailure.ComparisonLoanConflict].Count);
+        Assert.Equal(3, images[OwnershipFailure.UnprovenOrigin].Count);
+    }
+
+    /// <summary>Lists the code <see cref="OwnershipIssue.Code"/> gives each failure under every combination of the issue's other facts:
+    /// a call or another source, an Origin obligation refuted or not, another obligation or none, a reservation or not, an activation or
+    /// not.</summary>
+    /// <returns>Each failure with each of its codes, repeated.</returns>
+    internal static IEnumerable<(OwnershipFailure Failure, DiagnosticCode Code)> OwnershipCodes()
     {
         var c = CompilationTestHelper.Parse("f(1)");
         var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().First();
@@ -85,7 +142,6 @@ public sealed class PipelineSwitchTest
             new(BindingObligationKind.OriginOutlives, call, default, Longer: BoundOrigin.Static, Shorter: BoundOrigin.Static),
             new(BindingObligationKind.TypeRole, call, default),
         ];
-        var images = new Dictionary<OwnershipFailure, HashSet<DiagnosticCode>>();
         foreach (var failure in Enum.GetValues<OwnershipFailure>())
         {
             foreach (var source in new Koto[] { call, c.Kotonoha.RootKoto })
@@ -94,18 +150,11 @@ public sealed class PipelineSwitchTest
                 {
                     for (var facts = 0; facts < 4; facts++)
                     {
-                        var code = new OwnershipIssue(source, failure, Reservation: (facts & 1) - 1, Activation: facts >= 2, Obligation: obligation).Code;
-                        Assert.Equal(failure == OwnershipFailure.ComparisonLoanConflict, code.IsLoanConflict());
-                        Assert.Equal(failure == OwnershipFailure.UnprovenOrigin, code.IsUnprovenOrigin());
-                        images.TryAdd(failure, []);
-                        images[failure].Add(code);
+                        yield return (failure, new OwnershipIssue(source, failure, Reservation: (facts & 1) - 1, Activation: facts >= 2, Obligation: obligation).Code);
                     }
                 }
             }
         }
-
-        Assert.Equal(4, images[OwnershipFailure.ComparisonLoanConflict].Count);
-        Assert.Equal(3, images[OwnershipFailure.UnprovenOrigin].Count);
     }
 
     private static (string Diagnostics, string Ir) Check(Compilation c)

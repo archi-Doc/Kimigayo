@@ -37,6 +37,7 @@ fn format @9
   _35: ref/string temp @33 s1
   _36: ref/Utf8Writer temp @121 s1
   s1: lexical in s0 @19
+  flags 4
   bb0:
       StorageLive(_3) @21 s1
       StorageLive(_4) @24 s1
@@ -62,9 +63,9 @@ fn format @9
       StorageLive(_11) @21 s1
       StorageLive(_12) @121 s1
       _12 = &uniq two-phase (*_4): uniq/Utf8Writer @121 s1
-      StorageLive(_13) @27 s1
-      StorageLive(_14) @27 s1
-      _14 = intrinsic FormatBuffer(const 2_isize, const type (i32), const false) -> bb5 @27 s1
+      StorageLive(_13) [clear f0] @27 s1
+      StorageLive(_14) [clear f1] @27 s1
+      _14 = intrinsic FormatBuffer(const 2_isize, const type (i32), const false) -> bb5 [set f1] @27 s1
   bb4:
       _29 = intrinsic Fail(const "KIMI_E_FORMAT") -> ! @27 s1
   bb5:
@@ -82,8 +83,8 @@ fn format @9
       StorageLive(_20) @27 s1
       StorageLive(_21) @27 s1
       _21 = &uniq _15: uniq/Utf8Writer @27 s1
-      StorageLive(_22) @28 s1
-      _22 = const "x=" @28 s1
+      StorageLive(_22) [clear f2] @28 s1
+      _22 = const "x=" [set f2] @28 s1
       StorageLive(_23) @28 s1
       _23 = &_22: ref/string @28 s1
       _19 = write<string>(move _21, move _23) -> bb8 @27 s1
@@ -106,7 +107,7 @@ fn format @9
       _26 = discriminant(_25) @27 s1
       switch copy _26 [0: bb12, otherwise: bb4] @27 s1
   bb12:
-      _13 = intrinsic FormatFinish(move _15, const 2_isize, const type (i32), const false) -> bb13 @27 s1
+      _13 = intrinsic FormatFinish(move _15, const 2_isize, const type (i32), const false) -> bb13 [set f0] @27 s1
   bb13:
       StorageLive(_30) @27 s1
       _30 = &_13: ref/string @27 s1
@@ -119,8 +120,8 @@ fn format @9
       StorageLive(_32) @21 s1
       StorageLive(_33) @121 s1
       _33 = &uniq two-phase (*_4): uniq/Utf8Writer @121 s1
-      StorageLive(_34) @33 s1
-      _34 = const ")" @33 s1
+      StorageLive(_34) [clear f3] @33 s1
+      _34 = const ")" [set f3] @33 s1
       StorageLive(_35) @33 s1
       _35 = &_34: ref/string @33 s1
       _31 = write<string>(move _33, move _35) -> bb16 @21 s1
@@ -136,9 +137,9 @@ fn format @9
   bb20:
       StorageDead(_36) @121 s1
       StorageDead(_35) @33 s1
-      drop _34 -> bb21 @33 s1
+      drop _34 -> bb21 [flag f3] [clear f3] @33 s1
   bb21:
-      StorageDead(_34) @33 s1
+      StorageDead(_34) [clear f3] @33 s1
       StorageDead(_33) @121 s1
       StorageDead(_32) @21 s1
       StorageDead(_31) @21 s1
@@ -149,9 +150,9 @@ fn format @9
       StorageDead(_25) @27 s1
       StorageDead(_24) @27 s1
       StorageDead(_23) @28 s1
-      drop _22 -> bb22 @28 s1
+      drop _22 -> bb22 [flag f2] [clear f2] @28 s1
   bb22:
-      StorageDead(_22) @28 s1
+      StorageDead(_22) [clear f2] @28 s1
       StorageDead(_21) @27 s1
       StorageDead(_20) @27 s1
       StorageDead(_19) @27 s1
@@ -159,17 +160,17 @@ fn format @9
       StorageDead(_17) @27 s1
       StorageDead(_16) @27 s1
       StorageDead(_15) @27 s1
-      drop _14 -> bb23 @27 s1
+      drop _14 -> bb23 [flag f1] [clear f1] @27 s1
   bb23:
-      StorageDead(_14) @27 s1
-      drop _13 -> bb24 @27 s1
+      StorageDead(_14) [clear f1] @27 s1
+      drop _13 -> bb24 [flag f0] [clear f0] @27 s1
   bb24:
-      StorageDead(_13) @27 s1
+      StorageDead(_13) [clear f0] @27 s1
       StorageDead(_12) @121 s1
       StorageDead(_11) @21 s1
       StorageDead(_10) @21 s1
       StorageDead(_9) @26 s1
-      drop _8 -> bb25 @26 s1
+      drop _8 -> bb25 [keep] @26 s1
   bb25:
       StorageDead(_8) @26 s1
       StorageDead(_7) @121 s1
@@ -362,7 +363,7 @@ fn label @36
       _0 = intrinsic FormatFinish(move _4, const 10_isize, const type (i32, string), const false) -> bb19 @41
   bb19:
       StorageDead(_33) @46
-      drop _32 -> bb20 @46
+      drop _32 -> bb20 [keep] @46
   bb20:
       StorageDead(_32) @46
       StorageDead(_31) @41
@@ -374,7 +375,7 @@ fn label @36
       StorageDead(_25) @41
       StorageDead(_24) @41
       StorageDead(_23) @44
-      drop _22 -> bb21 @44
+      drop _22 -> bb21 [keep] @44
   bb21:
       StorageDead(_22) @44
       StorageDead(_21) @41
@@ -387,7 +388,7 @@ fn label @36
       StorageDead(_14) @41
       StorageDead(_13) @41
       StorageDead(_12) @42
-      drop _11 -> bb22 @42
+      drop _11 -> bb22 [keep] @42
   bb22:
       StorageDead(_11) @42
       StorageDead(_10) @41
@@ -397,7 +398,7 @@ fn label @36
       StorageDead(_6) @41
       StorageDead(_5) @41
       StorageDead(_4) @41
-      drop _3 -> bb23 @41
+      drop _3 -> bb23 [keep] @41
   bb23:
       StorageDead(_3) @41
       return @41
@@ -494,7 +495,7 @@ fn show @47
       return @47
   bb15:
       StorageDead(_22) @60 s1
-      drop _21 -> bb16 @60 s1
+      drop _21 -> bb16 [keep] @60 s1
   bb16:
       StorageDead(_21) @60 s1
       StorageDead(_20) @57 s1
@@ -506,7 +507,7 @@ fn show @47
       StorageDead(_14) @57 s1
       StorageDead(_13) @57 s1
       StorageDead(_12) @58 s1
-      drop _11 -> bb17 @58 s1
+      drop _11 -> bb17 [keep] @58 s1
   bb17:
       StorageDead(_11) @58 s1
       StorageDead(_10) @57 s1
@@ -516,10 +517,10 @@ fn show @47
       StorageDead(_6) @57 s1
       StorageDead(_5) @57 s1
       StorageDead(_4) @57 s1
-      drop _3 -> bb18 @57 s1
+      drop _3 -> bb18 [keep] @57 s1
   bb18:
       StorageDead(_3) @57 s1
-      drop _2 -> bb19 @57 s1
+      drop _2 -> bb19 [elide] @57 s1
   bb19:
       StorageDead(_2) @57 s1
       goto bb14 @47
@@ -638,7 +639,7 @@ fn print @61
       StorageDead(_15) @67
       StorageDead(_14) @67
       StorageDead(_13) @68
-      drop _12 -> bb12 @68
+      drop _12 -> bb12 [keep] @68
   bb12:
       StorageDead(_12) @68
       StorageDead(_11) @67
@@ -648,10 +649,10 @@ fn print @61
       StorageDead(_7) @67
       StorageDead(_6) @67
       StorageDead(_5) @67
-      drop _4 -> bb13 @67
+      drop _4 -> bb13 [keep] @67
   bb13:
       StorageDead(_4) @67
-      drop _3 -> bb14 @67
+      drop _3 -> bb14 [keep] @67
   bb14:
       StorageDead(_3) @67
       StorageDead(_2) @63
@@ -787,7 +788,7 @@ fn forms @79
       _2 = intrinsic FormatFinish(move _4, const 2_isize, const type (i32), const false) -> bb13 @84 s1
   bb13:
       StorageDead(_23) @87 s1
-      drop _22 -> bb14 @87 s1
+      drop _22 -> bb14 [keep] @87 s1
   bb14:
       StorageDead(_22) @87 s1
       StorageDead(_21) @84 s1
@@ -800,7 +801,7 @@ fn forms @79
       StorageDead(_14) @84 s1
       StorageDead(_13) @84 s1
       StorageDead(_12) @85 s1
-      drop _11 -> bb15 @85 s1
+      drop _11 -> bb15 [keep] @85 s1
   bb15:
       StorageDead(_11) @85 s1
       StorageDead(_10) @84 s1
@@ -810,7 +811,7 @@ fn forms @79
       StorageDead(_6) @84 s1
       StorageDead(_5) @84 s1
       StorageDead(_4) @84 s1
-      drop _3 -> bb16 @84 s1
+      drop _3 -> bb16 [keep] @84 s1
   bb16:
       StorageDead(_3) @84 s1
       StorageLive(_25) @88 s1
@@ -883,7 +884,7 @@ fn forms @79
   bb30:
       StorageDead(_49) @90 s1
       StorageDead(_47) @93 s1
-      drop _46 -> bb31 @93 s1
+      drop _46 -> bb31 [keep] @93 s1
   bb31:
       StorageDead(_46) @93 s1
       StorageDead(_45) @90 s1
@@ -896,7 +897,7 @@ fn forms @79
       StorageDead(_38) @90 s1
       StorageDead(_37) @90 s1
       StorageDead(_36) @91 s1
-      drop _35 -> bb32 @91 s1
+      drop _35 -> bb32 [keep] @91 s1
   bb32:
       StorageDead(_35) @91 s1
       StorageDead(_34) @90 s1
@@ -906,10 +907,10 @@ fn forms @79
       StorageDead(_30) @90 s1
       StorageDead(_29) @90 s1
       StorageDead(_28) @90 s1
-      drop _27 -> bb33 @90 s1
+      drop _27 -> bb33 [keep] @90 s1
   bb33:
       StorageDead(_27) @90 s1
-      drop _26 -> bb34 @90 s1
+      drop _26 -> bb34 [keep] @90 s1
   bb34:
       StorageDead(_26) @90 s1
       StorageDead(_25) @88 s1
@@ -921,7 +922,7 @@ fn forms @79
       StorageDead(_51) @96 s1
       StorageDead(_50) @94 s1
       _0 = const () @81 s1
-      drop _2 -> bb36 @82 s1
+      drop _2 -> bb36 [keep] @82 s1
   bb36:
       StorageDead(_2) @82 s1
       return @81
@@ -1006,7 +1007,7 @@ fn early @97
       StorageDead(_13) @101 s1
       StorageDead(_12) @101 s1
       StorageDead(_11) @102 s1
-      drop _10 -> bb11 @102 s1
+      drop _10 -> bb11 [keep] @102 s1
   bb11:
       StorageDead(_10) @102 s1
       StorageDead(_9) @101 s1
@@ -1016,10 +1017,10 @@ fn early @97
       StorageDead(_5) @101 s1
       StorageDead(_4) @101 s1
       StorageDead(_3) @101 s1
-      drop _2 -> bb12 @101 s1
+      drop _2 -> bb12 [keep] @101 s1
   bb12:
       StorageDead(_2) @101 s1
-      drop _1 -> bb13 @101 s1
+      drop _1 -> bb13 [elide] @101 s1
   bb13:
       StorageDead(_1) @101 s1
       goto bb9 @97

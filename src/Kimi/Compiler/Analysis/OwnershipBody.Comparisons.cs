@@ -263,7 +263,7 @@ public sealed partial class OwnershipBody
     }
 
     // The receiver Place has the plan's Type or lends its callee (IsBorrowedCallableReceiver). The analyzed Place Type is compared with
-    // the plan's declared receiver Type interpreted where the Loan reads it (SPEC 8.10).
+    // the plan's declared receiver Type interpreted where the Loan reads it (SPEC 8.15).
     private bool CallableReceiverType(int place, CallPlan plan, int read)
     {
         var type = this.Places[place].Type;

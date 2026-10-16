@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 14.9.1, 10.2: result sources that differ only in safe reference layers over one Scalar Type have that
+/// <summary>SPEC 14.9.2, 10.2: result sources that differ only in safe reference layers over one Scalar Type have that
 /// Scalar as their common Type; sources with the same layers keep the borrow result with every dependency.</summary>
 public class ScalarResultUnificationTest
 {

@@ -96,11 +96,7 @@ public class DeclarationContextCertificateBindingTest
     public void WarmContextChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("contract Marker\ngroup Outer\n    group Inner\n        struct S\n            Self is Marker\n        let value: i32 = 1");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

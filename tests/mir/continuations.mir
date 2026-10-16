@@ -30,7 +30,7 @@ fn consume @26
     * _2 = const () @28
       StorageDead(_2) @28
       _0 = const () @28
-      drop _1 -> bb1 @26
+      drop _1 -> bb1 [keep] @26
   bb1:
       return @28
 fn stop @29
@@ -77,6 +77,7 @@ fn consumedThenReturned @42
   s1: lexical in s0 @46
   s2: lexical in s1 @48
   s3: lexical in s2 @51
+  flags 1 [set f0]
   bb0:
       StorageLive(_3) @47 s1
       StorageLive(_4) @49 s2
@@ -96,14 +97,14 @@ fn consumedThenReturned @42
       StorageDead(_5) @50 s2
       StorageLive(_6) @52 s3
       StorageLive(_7) @54 s3
-    * _7 = move _2 @55 s3
+    * _7 = move _2 [clear f0] @55 s3
       _6 = consume(move _7) -> bb5 @52 s3
   bb4:
       StorageDead(_5) @50 s2
       _4 = const () @49 s2
       goto bb2 @49 s2
   bb5:
-      drop _7 -> bb6 @54 s3
+      drop _7 -> bb6 [elide] @54 s3
   bb6:
       StorageDead(_7) @54 s3
       StorageDead(_6) @52 s3
@@ -111,7 +112,7 @@ fn consumedThenReturned @42
   bb7:
       return @42
   bb8:
-      drop _2 -> bb9 @42
+      drop _2 -> bb9 [flag f0] [clear f0] @42
   bb9:
       goto bb7 @42
   bb10:

@@ -27,7 +27,7 @@ public struct Slice<T> {source}
         return SliceIterator<T>.init(self@follow)
 
     /// Starts the same shared enumeration: exclusive access to a Slice lends only its handle, and the elements stay
-    /// shared (SPEC 4.6.7).
+    /// shared (SPEC 4.8.3).
     public func iterateUniq(self: uniq/Self during handle) -> SliceIterator<T> during source
         return SliceIterator<T>.init(self@follow)
 
@@ -37,7 +37,7 @@ public struct Slice<T> {source}
 
     /// Returns a shared reference to the element `index` resolves to, or `None` when it resolves to no element.
     ///
-    /// The result retains `source` and is a reference whatever T's Copy capability (SPEC 4.6.6). A position that
+    /// The result retains `source` and is a reference whatever T's Copy capability (SPEC 4.8.2). A position that
     /// resolves to the length is a boundary, not an element, and yields `None`. Only this operation's own bounds
     /// failure becomes `None`.
     public func tryGet<P>(self: Self, index: P) -> Option<ref/T during source>

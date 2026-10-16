@@ -88,7 +88,7 @@ public class OwnershipJoinTest
         Assert.False(c.Validate(out _));
     }
 
-    // SPEC 14.9.1, 15.6.1: a join of a body-local Borrow with a fixed source waits for every source and takes their meet, so
+    // SPEC 14.9.2, 15.6.1: a join of a body-local Borrow with a fixed source waits for every source and takes their meet, so
     // neither is refitted to the other's Origin; before, the fixed source alone was the expected Type and the Borrow was refuted.
     [Theory]
     [InlineData("IfLocalFirst", "let r = if c => n@ref else => z", "5\n")]

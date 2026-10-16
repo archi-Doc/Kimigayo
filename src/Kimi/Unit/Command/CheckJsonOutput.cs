@@ -9,7 +9,7 @@ using Kimi.Diagnostics;
 namespace Kimi.Command;
 
 /// <summary>
-/// <c>kimi check --Format json</c> (SPEC 23.3.6.8): checks one check unit through the shared check entry, as the language server does
+/// <c>kimi check --Format json</c> (SPEC 23.3): checks one check unit through the shared check entry, as the language server does
 /// for the same inputs, and writes its <see cref="CheckDocument"/> to standard output; everything else goes to standard error.
 /// </summary>
 internal static class CheckJsonOutput
@@ -34,7 +34,7 @@ internal static class CheckJsonOutput
     /// <param name="args">The input.</param>
     /// <param name="cancellationToken">Cancels the check.</param>
     /// <param name="inputSource">The inputs, or the disk by default.</param>
-    /// <returns>The document; a project that cannot be found, loaded or given one target is Blocked (SPEC 23.3.3).</returns>
+    /// <returns>The document; a project that cannot be found, loaded or given one target is Blocked (SPEC 23.2.2).</returns>
     internal static CheckDocument Create(KimiOptions options, string[] args, CancellationToken cancellationToken, CheckInputSource? inputSource = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -67,7 +67,7 @@ internal static class CheckJsonOutput
         }
         else if (target.Length == 0)
         {
-            // SPEC 23.3.1: one unit has one target; a project with several needs --Target.
+            // SPEC 23.2.1: one unit has one target; a project with several needs --Target.
             var targets = project.ProjectFile.Targets;
             if (targets.Length != 1)
             {

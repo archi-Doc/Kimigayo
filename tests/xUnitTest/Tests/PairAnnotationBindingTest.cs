@@ -125,7 +125,7 @@ public class PairAnnotationBindingTest
         Assert.Equal(code is null ? [] : [code], c.Binding.Issues.Select(static x => x.Code.ToString()));
     }
 
-    // SPEC 15.6.1, 23.3.6.4: an unformed pair Field reports its formation once; a fit against it derives from that failure instead of
+    // SPEC 15.6.1, 23.1.2: an unformed pair Field reports its formation once; a fit against it derives from that failure instead of
     // adding a Type mismatch, and a call that reads the Field rests on it (F17, A.11).
     [Fact]
     public void AnUnformedPairFieldReportsOnlyItsFormation()
@@ -148,7 +148,7 @@ public class PairAnnotationBindingTest
         Assert.Equal([DiagnosticCode.InvalidOriginBinding_Kd], c.Binding.Issues.Select(static x => x.Code));
     }
 
-    // SPEC 8.1.2, 23.3.6.4: a pair occurrence's formation publishes each independent cause, a Language cause before a target role that
+    // SPEC 8.1.2, 23.1.2: a pair occurrence's formation publishes each independent cause, a Language cause before a target role that
     // is not proven: a missing slot under an admitted borrow is MissingOriginBinding_Kd, as for its concrete twin, and an unproven Object
     // Target of an admitted object binding is UnprovenConstraint_Kd beside it. An associated specification omits no slot either
     // (SPEC 15.3.3, 15.4.4).

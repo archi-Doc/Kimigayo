@@ -124,7 +124,7 @@
 - **説明**：関数実行中に変更されるメモリについて、その引数由来でない経路とのアクセス競合を禁止する。
 - **メリット**：再 load の削減、命令移動、別名解析を助ける。
 - **デメリット**：借用検査の抜けが誤コンパイルへ直結する。
-- **可否・注意**：通常の `uniq/T` と `ref/T` は有望。SPEC/IMPL §21.5.5 の call-wide 契約が前提。子 Reborrow は許される。ハンドルの先、object-borrow header、環境全体へ自動的に広げない。戻り値は C01。
+- **可否・注意**：通常の `uniq/T` と `ref/T` は有望。SPEC/IMPL §21.2 の call-wide 契約が前提。子 Reborrow は許される。ハンドルの先、object-borrow header、環境全体へ自動的に広げない。戻り値は C01。
 - **状態**：`memcpy` の引数のみ。通常の借用 ABI には未反映。
 - **今後**：ABI に借用モードと保証を保持。activation、capture、static、cleanup、Unsafe/FFI の契約を確認し、直接・間接 call と adapter を検証する。
 
@@ -267,7 +267,7 @@
 - **メリット**：pointer comparison、別名解析、loop address 計算を助ける。
 - **デメリット**：論理的な添字範囲だけで付けると、基底領域・途中計算の誤りを隠す。
 - **可否・注意**：安全な field/fixed-array address が有望。Array/Slice は buffer の由来・範囲も必要。末尾の一つ先を計算できても dereference は別。ゼロ変位、null、負変位、ゼロ stride を区別する。
-- **状態**：Ryu に `inbounds`/`nuw`。通常 emitter は未付与。IMPL §21.5.3 は raw pointer の初期形にこれらを付けないと規定する。
+- **状態**：Ryu に `inbounds`/`nuw`。通常 emitter は未付与。IMPL §21.3.3 は raw pointer の初期形にこれらを付けないと規定する。
 - **今後**：storage の由来と証明済み GEP flags を lowering から渡す。raw pointer は SPEC §5.3 との対応を証明し、初期形の方針を変えるなら実装仕様も更新する。
 
 <a id="b04"></a>
@@ -348,7 +348,7 @@
 - **説明**：物理 storage の有効期間を LLVM に示す。
 - **メリット**：stack slot の再利用、不要 store の削除。
 - **デメリット**：早い end は cleanup や残存参照を無効にする。
-- **可否・注意**：IMPL §21.5.5 に導入余地あり。最後の read、Origin 表記、Move だけでは終点を決めない。zero-sized 値の論理的な destruction は残す。
+- **可否・注意**：IMPL §21.2 に導入余地あり。最後の read、Origin 表記、Move だけでは終点を決めない。zero-sized 値の論理的な destruction は残す。
 - **状態**：未付与。初期化・cleanup の計画は存在する。
 - **今後**：単純な local slot から開始し、branch、loop、defer、借用結果、部分 Move を順に確認する。
 
@@ -430,7 +430,7 @@
 - **説明**：例外による unwind を行わない。
 - **メリット**：unwind を考慮した最適化制約を減らす。
 - **デメリット**：外部 call の契約を誤認すると不正。
-- **可否・注意**：本体と callee を確認した範囲で可能。IMPL §21.5.5 は LibraryImport の no-unwind 契約だけからの機械的推論をしない。OS stack walking 用の `uwtable(async)` は別に維持する。
+- **可否・注意**：本体と callee を確認した範囲で可能。IMPL §21.2 は LibraryImport の no-unwind 契約だけからの機械的推論をしない。OS stack walking 用の `uwtable(async)` は別に維持する。
 - **状態**：一般付与なし。共通属性群には `uwtable(async)` がある。
 - **今後**：閉じた helper から検討。全体方針を変える場合は実装仕様との整合も確認する。
 
@@ -450,7 +450,7 @@
 - **説明**：関数／loop に、終了または環境への観測可能な進行を要求する。
 - **メリット**：副作用のない無用な loop の除去。
 - **デメリット**：合法な非停止を不正に扱い得る。
-- **可否・注意**：IMPL §21.5.5 により一般関数・loop への一律適用不可。個別に進行を証明できる範囲のみ。
+- **可否・注意**：IMPL §21.2 により一般関数・loop への一律適用不可。個別に進行を証明できる範囲のみ。
 - **状態**：未付与。
 - **今後**：一般付与はしない。有限性などが確立した特定 loop で効果が必要な場合だけ検討する。
 
@@ -606,7 +606,7 @@
 - **デメリット**：丸め、NaN、無限大、signed zero、`@bits` で観測する結果を変え得る。
 - **可否・注意**：一般 fast-math は現行仕様に不適合。個別の値域保証は可能性があるが、finite な入力から finite な結果は導けない。`nofpclass` は有限性などを証明した境界だけを候補とする。
 - **状態**：一般 emitter は通常の FP 命令。`denormal-fp-math=ieee,ieee` を使用。対象 flags/`nofpclass` は未付与。
-- **今後**：一括導入しない。初期 emitter の方針変更は IMPL §21.5.4 と整理し、NaN・signed zero・subnormal・bit conversion を検証する。
+- **今後**：一括導入しない。初期 emitter の方針変更は IMPL §21.2 と整理し、NaN・signed zero・subnormal・bit conversion を検証する。
 
 <a id="f05"></a>
 #### F05. ABI 関連：`sret`, `byval`, `signext`, `zeroext`, `fastcc`
@@ -675,11 +675,11 @@
 
 ### 6.1. Kimigayo の仕様・実装
 
-- [SPEC.md](../SPEC.md) / [IMPL.md](../IMPL.md)：規範の入口。[Chapter 21](../impl/21-layout-runtime-and-code-generation.md) の §21.2.4、§21.3.3.4、§21.4、§21.5 が主な根拠。
+- [SPEC.md](../SPEC.md) / [IMPL.md](../IMPL.md)：規範の入口。[Chapter 21](../impl/21-layout-runtime-and-code-generation.md) の §21.1.3、§21.3、§21.3、§21.4 が主な根拠。
 - [所有権・借用](../spec/15-ownership-and-lifetime-analysis.md)：§15.6.4 の call-wide 保護、§15.6.7 の reservation/activation。
 - [raw pointer](../spec/05-raw-pointers-and-unsafe-memory.md)：アクセスの権限、provenance、変位の契約。
 - [演算](../spec/13-operators-and-assignment.md) / [失敗](../spec/17-failure-handling.md)：checked/Wrapping、FP、Abort と評価順序。
-- [runtime/FFI](../spec/22-core-execution-and-foreign-functions.md)：§22.3 の外部境界、§22.5 の allocation と失敗。
+- [runtime/FFI](../spec/22-core-execution-and-foreign-functions.md)：§22.6 の外部境界、§22.5 の allocation と失敗。
 - [CODEMAP.md](CODEMAP.md)：変更箇所と代表テストの探索。機能や責務を変更した場合は対応項目も更新する。
 - [WindowsLowering.cs](../../src/Kimi/Compiler/Emission/WindowsLowering.cs)、[FunctionAbi.cs](../../src/Kimi/Compiler/Emission/FunctionAbi.cs)、[FunctionAbiPool.cs](../../src/Kimi/Compiler/Emission/FunctionAbiPool.cs)：物理表現・属性・ABI cache。
 - [EmissionModule.cs](../../src/Kimi/Compiler/Emission/EmissionModule.cs)、[BodyLowering.Graph.cs](../../src/Kimi/Compiler/Emission/BodyLowering.Graph.cs)、[BodyLowering.Pointers.cs](../../src/Kimi/Compiler/Emission/BodyLowering.Pointers.cs)：確定した命令計画と算術/pointer lowering。

@@ -11,7 +11,7 @@ public class DictionaryOperationsTest
     [Fact]
     public void MilestonePrefixPreservesInputAndStoredEntryDestructionOrder()
     {
-        var source = File.ReadAllText(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone31.kimi")));
+        var source = File.ReadAllText(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone32.kimi")));
         var end = source.IndexOf("    entries[Key.init(1, 0)]", StringComparison.Ordinal);
         Assert.True(end > 0);
         const string Output = "Duplicate returned both inputs.\nRejected item destroyed.\nRejected key destroyed.\nReplacement key destroyed.\nReplacement returned item 10.\nItem 10 destroyed.\nItem 40 destroyed.\nKey 4 destroyed.\nItem 20 destroyed.\nKey 2 destroyed.\nItem 11 destroyed.\nKey 1 destroyed.\n";
@@ -130,6 +130,38 @@ public class DictionaryOperationsTest
             _ = entries.tryInsert(4, Item.init("last"))
             """;
         NativeAllocationAudit.WriteFixture("DictionaryOperationsCleanup", Source, 1, 1, 192, "second\nagain\nthird\nfirst\nlast\n");
+    }
+
+    // SPEC 5.2: each used slot holds one placed Links value. Clearing ends them all, including a free slot's, so the
+    // refill places links again up to and past the old high-water mark; growth and compaction relocate whole slots.
+    [Fact]
+    public void ClearedSlotsArePlacedAgainAndRelocatedWhole()
+    {
+        const string Source = """
+            struct Item
+                public let name: string
+                public init(name: string) => self.name = name@move
+                drop => Console.writeLine(self.name)
+            var entries: Dictionary<i32, Item> = [:]
+            _ = entries.tryInsert(1, Item.init("a"))
+            _ = entries.tryInsert(2, Item.init("b"))
+            _ = entries.tryInsert(3, Item.init("c"))
+            _ = entries.remove(2)
+            entries.clear()
+            var k: i32 = 0
+            while k < 6
+                _ = entries.tryInsert(k, Item.init("n\(k)"))
+                k += 1
+            _ = entries.remove(0)
+            entries.shrinkToFit()
+            var expected: i32 = 1
+            for (key, _) in entries
+                require key == expected else => $abort("order")
+                expected += 1
+            require expected == 6 and entries.length == 5 else => $abort("length")
+            Console.writeLine("end")
+            """;
+        ScalarEmissionTest.EmitFixture("DictionaryOperationsClearedSlots", Source, "b\nc\na\nn0\nend\nn5\nn4\nn3\nn2\nn1\n");
     }
 
     [Fact]

@@ -169,7 +169,7 @@ public class LibraryImportTargetBindingTest
     [InlineData("(value: Option<ref/i32 during a>)", "()", DiagnosticCode.Unsupported_Kd)]
     public void ImportSignaturesFollowTheInitialWindowsCAbi(string parameters, string result, DiagnosticCode? code)
     {
-        // SPEC 22.3.2 permits a nonnull Option of a borrow, whose representation is not laid out yet.
+        // SPEC 22.6 permits a nonnull Option of a borrow, whose representation is not laid out yet.
         var c = AnalyzeImport("group Native\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported" + parameters + " -> " + result, "codec");
         Assert.Equal(code, c.Binding.Issues.Select(x => (DiagnosticCode?)x.Code).FirstOrDefault(x => x is DiagnosticCode.InvalidImportSignature_Kd or DiagnosticCode.Unsupported_Kd));
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.MissingNativeRequirement_Kd);

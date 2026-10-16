@@ -22,7 +22,7 @@ public class TupleCaptureTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(receiver, Assert.Single(c.Ownership.Bodies, x => x.Function.IsAnonymous).Function.ClosureOf()!.Receiver);
+        Assert.Equal(receiver, Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous).ClosureOf()!.Receiver);
         ScalarEmissionTest.WriteFixture("TupleCapture" + name, CompilationTestHelper.WriteIr(c), stdout);
     }
 
@@ -84,7 +84,7 @@ public class TupleCaptureTest
         var c = MinimalEmissionTest.Analyze("let pair = (\"owned\", 7)\nlet f: () -> i32 = func [pair@move] () => pair.1\nrequire f() == 7 else => $abort(\"call\")");
         Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid);
     }
 

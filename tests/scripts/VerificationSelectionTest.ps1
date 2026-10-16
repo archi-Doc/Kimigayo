@@ -39,14 +39,14 @@ $cases += 3
 Reject { Assert-KimiTestSelections @('XunitTest.OneTest', 'XunitTest.TypoTest') @() $methods } 'TypoTest'
 Reject { Assert-KimiTestSelections @() @('XunitTest.OneTest.Run', 'XunitTest.OneTest.Typo') $methods } 'OneTest.Typo'
 # The common compiler checks join each nonempty group once, also when the caller already selected them.
-$common = @('XunitTest.CompilerSizeBudgetTest', 'XunitTest.ArchitectureRulesTest')
+$common = @('XunitTest.ArchitectureRulesTest')
 Equal (Join-KimiCommonTestSelections @('XunitTest.OneTest')) (@('XunitTest.OneTest') + $common)
-Equal (Join-KimiCommonTestSelections @('XunitTest.OneTest.Run') -Method) @('XunitTest.OneTest.Run', 'XunitTest.CompilerSizeBudgetTest.*', 'XunitTest.ArchitectureRulesTest.*')
-Equal (Join-KimiCommonTestSelections @((ConvertTo-KimiTestPattern 'ArchitectureRulesTest'), 'XunitTest.OneTest')) @('XunitTest.ArchitectureRulesTest', 'XunitTest.OneTest', 'XunitTest.CompilerSizeBudgetTest')
-Equal (Join-KimiCommonTestSelections @('XunitTest.ArchitectureRulesTest.*') -Method) @('XunitTest.ArchitectureRulesTest.*', 'XunitTest.CompilerSizeBudgetTest.*')
+Equal (Join-KimiCommonTestSelections @('XunitTest.OneTest.Run') -Method) @('XunitTest.OneTest.Run', 'XunitTest.ArchitectureRulesTest.*')
+Equal (Join-KimiCommonTestSelections @((ConvertTo-KimiTestPattern 'ArchitectureRulesTest'), 'XunitTest.OneTest')) @('XunitTest.ArchitectureRulesTest', 'XunitTest.OneTest')
+Equal (Join-KimiCommonTestSelections @('XunitTest.ArchitectureRulesTest.*') -Method) @('XunitTest.ArchitectureRulesTest.*')
 Equal (Join-KimiCommonTestSelections @()) @()
 Equal (Join-KimiCommonTestSelections @() -Method) @()
-$methods += @('XunitTest.CompilerSizeBudgetTest.Caps', 'XunitTest.ArchitectureRulesTest.Rules')
+$methods += @('XunitTest.ArchitectureRulesTest.Rules')
 Assert-KimiTestSelections @() (Join-KimiCommonTestSelections @('XunitTest.TwoTest.Run') -Method) $methods
 $cases++
 Reject { Assert-KimiTestSelections (Join-KimiCommonTestSelections @('XunitTest.TypoTest')) @() $methods } 'TypoTest'

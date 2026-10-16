@@ -281,7 +281,7 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 10.7, 15.6.1, 23.3.6.5: the record of a conversion whose structural comparison holds but whose implementation conditions do not,
+    // SPEC 10.7, 15.6.1, 23.1: the record of a conversion whose structural comparison holds but whose implementation conditions do not,
     // judged under the comparison's instantiation: the first declared relation, else the first result premise, that is not proven. A meet at
     // the longer end names its first failing operand (SPEC 15.3.6), and a repair writes the required input that supplies it, if any.
     private OriginContractFact? ConditionContractFailure(FunctionKoto function, BoundType actual, BoundType expected, Koto at, Koto use, BoundOrigin[]? origins = null, BoundOrigin[]? inputs = null)

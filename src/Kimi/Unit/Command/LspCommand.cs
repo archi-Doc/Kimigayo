@@ -47,7 +47,7 @@ public class LspCommand : ISimpleCommand<LspCommand.Options>
             }
         }
 
-        // Standard output carries only protocol frames (SPEC 23.3.3): stray console writes go to standard error.
+        // Standard output carries only protocol frames (SPEC 23.2.2): stray console writes go to standard error.
         using var input = Console.OpenStandardInput();
         using var output = Console.OpenStandardOutput();
         Console.SetOut(Console.Error);

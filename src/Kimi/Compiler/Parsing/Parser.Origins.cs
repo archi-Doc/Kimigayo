@@ -141,7 +141,7 @@ public static partial class Parser
         var keyword = reader.Read();
         if (reader.GetSpan(keyword) is "from")
         {
-            // SPEC 3.3.6, 23.3.6.9: the annotation keyword is during; the repair candidate replaces the former spelling.
+            // SPEC 3.3.2, 23.1.3: the annotation keyword is during; the repair candidate replaces the former spelling.
             reader.Diagnostic.AddSyntax(keyword.Span, DiagnosticCode.BorrowOriginKeyword_Kd, repairs: reader.ReplaceToken(keyword.Span, "during"));
             RecoverItem(ref reader, type, reader.Diagnostic.LastError);
         }
@@ -172,7 +172,7 @@ public static partial class Parser
         }
         else if (type is TypeSemanticsKoto { IsNamedType: true, HasOrigin: false } named)
         {
-            // SPEC 3.3.6, 15.3.1: after a named Type, during binds the only slot of a one-slot schema; Binding checks the schema.
+            // SPEC 3.3.2, 15.3.1: after a named Type, during binds the only slot of a one-slot schema; Binding checks the schema.
             named.SetSlotBinding(expression, span);
         }
         else

@@ -52,7 +52,7 @@ public class DynamicArraySharedReadTest
     {
         var c = MinimalEmissionTest.Analyze(Task + source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Bodies.SelectMany(x => x.Issues), x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
         Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
@@ -64,7 +64,7 @@ public class DynamicArraySharedReadTest
     {
         var c = MinimalEmissionTest.Analyze(Task + "var values: Array<Task> = [Task.init(42)]\nlet item = values[0]@ref\n" + mutation + "\nlet id = item.id");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Bodies.SelectMany(x => x.Issues), x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.Contains(c.Problems, static x => x.Code.IsLoanConflict());
         Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
@@ -74,7 +74,7 @@ public class DynamicArraySharedReadTest
     [InlineData("let id = values[0].id")]
     public void AnElementKeepsItsStoredTypeWhateverFollowsIt(string use)
     {
-        // SPEC 4.6.6, 4.6.9, 3.4.1: the element expression has the stored Type; a member below it records the shared
+        // SPEC 4.8.2, 4.7.1, 3.4.3: the element expression has the stored Type; a member below it records the shared
         // borrow as the receiver's adaptation instead of changing the element's Type.
         var c = MinimalEmissionTest.Analyze(Task + "let values: Array<Task> = [Task.init(42)]\nlet view = values[..]\n" + use);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));

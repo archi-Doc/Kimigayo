@@ -17,7 +17,7 @@ public sealed partial class Binding
         Error,
     }
 
-    // SPEC 10.4, 8.4.8.2: the candidates the ordinary comparison ranks; with premises, also each candidate whose applicability is unproven
+    // SPEC 10.4, 8.3.3: the candidates the ordinary comparison ranks; with premises, also each candidate whose applicability is unproven
     // only by an Unknown premise after every argument and result check, ranked as the applicable candidate it would be.
     private static bool Ranked(in EvaluatedCandidate candidate, bool premises)
         => candidate.State is CandidateApplicability.Applicable or CandidateApplicability.Waiting || (premises && candidate is { State: CandidateApplicability.Pending, PremiseUnknown: true });
@@ -25,7 +25,7 @@ public sealed partial class Binding
     private int SelectBest(ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
         => StrictBestCandidate.Select(candidates.Length, new CandidateOrder(candidates, operations, stride, this, false));
 
-    // SPEC 8.4.8.2: an Unknown premise cannot affect the selection when an applicable candidate is strictly best even with every
+    // SPEC 8.3.3: an Unknown premise cannot affect the selection when an applicable candidate is strictly best even with every
     // premise-unproven candidate ranked as applicable; no judgment of those premises then changes the winner. The ordinary comparison
     // decides, so a tie or an incomparable pair still defers.
     private bool PremisesCannotAffect(InvocationKoto call, ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
@@ -184,7 +184,7 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 10.2.1, 10.7: whether the remaining candidates erase one argument in some candidate and take it directly in another.
+    // SPEC 10.2.2, 10.7: whether the remaining candidates erase one argument in some candidate and take it directly in another.
     private static bool ErasureIncomparable(ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride, int arguments)
     {
         for (var a = 0; a < arguments; a++)
@@ -215,7 +215,7 @@ public sealed partial class Binding
         return this.Fail(call, failure, true);
     }
 
-    // SPEC 8.7, 15.6.1: a selection that a single pending Callable proof blocks, explained by that Constraint record.
+    // SPEC 8.3, 15.6.1: a selection that a single pending Callable proof blocks, explained by that Constraint record.
     private BoundType? FailCallableSelection(InvocationKoto call, CallableConstraintFact fact)
     {
         this.MarkWaitingHeaders(call);
@@ -300,6 +300,6 @@ public sealed partial class Binding
     // ClosureReceiver: the one closure argument whose minimum call receiver is the candidate's only refuted condition (TryCandidate).
     private readonly record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, bool Unsolved = false, ClosureReceiverRefutation? ClosureReceiver = null, CallArgumentMap ArgumentMap = default, bool Accessible = true, bool StableConstruction = false, bool IndependentRejection = false, ReferenceConstraintFailure? ConstraintFailure = null, bool PremiseUnknown = false);
 
-    // SPEC 7.6.3, 8.6: the parameter whose Callable Constraint does not permit its closure argument's minimum call receiver.
+    // SPEC 7.7.3, 8.10: the parameter whose Callable Constraint does not permit its closure argument's minimum call receiver.
     private readonly record struct ClosureReceiverRefutation(int Parameter, SemanticsKind Actual, SemanticsKind Required);
 }

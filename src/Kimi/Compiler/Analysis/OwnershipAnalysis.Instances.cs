@@ -13,7 +13,7 @@ public sealed partial class OwnershipAnalysis
     private CallPlan? instance;
     private bool instanceFailed;
 
-    // SPEC 8.10: the Semantics case of the current definition run, one admitted Semantics per resolved pair binder in scope;
+    // SPEC 8.15: the Semantics case of the current definition run, one admitted Semantics per resolved pair binder in scope;
     // empty outside a case run. A case run and an instance are the two substitutions of a declared Type (Concrete).
     private PairCase[] cases = [];
     private int caseCount;
@@ -22,7 +22,7 @@ public sealed partial class OwnershipAnalysis
 
     internal OwnershipBody? FailedInstance { get; private set; }
 
-    // Whether declared Types are substituted in this run: by a closed call (an instance) or by a Semantics case (SPEC 8.10).
+    // Whether declared Types are substituted in this run: by a closed call (an instance) or by a Semantics case (SPEC 8.15).
     private bool Substituting => this.instance is not null || this.caseCount != 0;
 
     /// <summary>Releases the instance plans of the previous generation request.</summary>
@@ -93,7 +93,7 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
-    // SPEC 13.5.5.1: a @follow that selects the referent of a reference. A followed pair layer does so in a Semantics case or an
+    // SPEC 13.5.5: a @follow that selects the referent of a reference. A followed pair layer does so in a Semantics case or an
     // instance whose binding is ref or uniq; for owner it selects the operand Place itself.
     private bool FollowsReference(ConversionKoto conversion)
     {
@@ -110,7 +110,7 @@ public sealed partial class OwnershipAnalysis
         var operand = this.Resolve(conversion.Left.BoundType, this.Active);
         if (Binding.TryPairLayer(operand, out _, out _))
         {
-            // SPEC 8.10: a followed layer belongs to a resolved binder, which every case run and instance substitutes; a layer
+            // SPEC 8.15: a followed layer belongs to a resolved binder, which every case run and instance substitutes; a layer
             // that survives the substitution is an internal invariant failure, never a silent owner view.
             this.body.ReportIssue(new(conversion, this.Substituting ? OwnershipFailure.Internal : OwnershipFailure.Unsupported));
             return false;
@@ -121,13 +121,13 @@ public sealed partial class OwnershipAnalysis
     }
 
     // A pair layer exists in an instance exactly when its operand is a reference to the selected target: an owner binding of
-    // s/(t/U), or of s/T with a reference T, is no layer although its concrete operand is a reference (SPEC 13.5.5.1).
+    // s/(t/U), or of s/T with a reference T, is no layer although its concrete operand is a reference (SPEC 13.5.5).
     private bool PairLayerExists(BoundType? operand, BoundType? target)
         => this.Resolve(operand, this.Active) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } &&
             ReferenceEquals(referent, this.Resolve(target, this.Active));
 
     // The number of concrete safe reference layers of an operand above a target in an instance, or -1 when they do not end
-    // in it (SPEC 13.5.5.1: nested pair layers exist only for their ref or uniq bindings).
+    // in it (SPEC 13.5.5: nested pair layers exist only for their ref or uniq bindings).
     private int ReferenceLayers(BoundType? operand, BoundType? target)
     {
         var terminal = this.Resolve(target, this.Active);
@@ -148,19 +148,19 @@ public sealed partial class OwnershipAnalysis
         return -1;
     }
 
-    // SPEC 13.5.5.1, 13.5.5.2: a followed reference stored in a field or element Place lends through the stored reference:
+    // SPEC 13.5.5, 13.5.6: a followed reference stored in a field or element Place lends through the stored reference:
     // the slot is borrowed only to load the pointer, which is neither moved nor copied as an owner. A pair follows this
     // path in a ref/uniq instance; a local operand is read in place by the ordinary reference paths.
     private bool ReadsStoredReference(ConversionKoto conversion)
     {
         var left = KotoHelper.UnwrapParentheses(conversion.Left);
-        // Published Places acquire their complete stored reference through the ordinary Place call.
+        // A subscript's element acquires its complete stored reference through the reference its selected call returns.
         return left is not IdentifierNameKoto && this.FollowsReference(conversion) &&
             ((conversion.ConversionBinding == ConversionBinding.PairFollow && this.Substituting) ||
                 (conversion.ConversionBinding == ConversionBinding.Follow && (left is not IndexKoto || ElementAccess.IsUserIndex(left))));
     }
 
-    // SPEC 3.4.1, 7.3: a receiver selected through a pair layer lends through the reference stored in it in a ref or uniq
+    // SPEC 3.4.3, 7.3: a receiver selected through a pair layer lends through the reference stored in it in a ref or uniq
     // case or instance; an owner case or instance borrows the receiver Place itself.
     private bool ImplicitlyFollowsReference(Koto node, BoundType type)
         => this.Substituting && this.compilation.Binding.ImplicitPairAdmitted(node) != SemanticsMask.None &&
@@ -170,17 +170,18 @@ public sealed partial class OwnershipAnalysis
 
     private int StoredReference(Koto left, SemanticsKind mode, int reservation = -1)
     {
-        // SPEC 13.5.5.1, 15.6.2: a reference stored in an inline Field, Tuple element or static element of an owned root is
+        // SPEC 13.5.5, 15.6.2: a reference stored in an inline Field, Tuple element or static element of an owned root is
         // reached by borrowing that slot in place; let restricts replacing the slot, not the stored reference's capability.
         var ownedSlot = left is BinaryKoto path && !Binding.IsGetterResult(path) && !this.SpecialField(path) && ElementAccess.OwnedPathRoot(path) is not null;
-        if (ElementAccess.IsUserIndex(left) || ElementAccess.IsPlaceCall(left) || ownedSlot)
+        if (ElementAccess.IsUserIndex(left) || ElementAccess.IsIndexerCall(left) || ownedSlot)
         {
-            var stored = this.Resolve(left.BoundType, this.Active)!;
+            var designated = ElementAccess.DesignatedType(left)!;
+            var stored = this.Resolve(designated, this.Active)!;
             // SPEC 15.6.7: the exclusive slot borrow and the loaded reference of a reserved argument are reserved with it,
             // so a later argument may still inspect the same stored reference until the call activates all three.
             var reserved = ownedSlot && reservation >= 0 && mode == SemanticsKind.Uniq;
-            var slotType = ownedSlot ? this.compilation.Types.Reference(mode, left.BoundType!)
-                : this.compilation.Binding.PreparedBorrowType(left, this.compilation.Types.Reference(mode, left.BoundType!));
+            var slotType = ownedSlot ? this.compilation.Types.Reference(mode, designated)
+                : this.compilation.Binding.PreparedBorrowType(left, this.compilation.Types.Reference(mode, designated));
             var slot = this.BorrowIntermediate(left, slotType, reserved ? reservation : -1);
             if (slot < 0)
             {
@@ -221,7 +222,7 @@ public sealed partial class OwnershipAnalysis
             (followed.ConversionBinding == ConversionBinding.Follow || this.FollowsReference(followed)) &&
             this.Resolve(left.BoundType, this.Active) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } inner)
         {
-            // SPEC 3.4, 13.5.5.1: a selected referent that is itself a reference (r@follow with r: uniq/uniq/T, or a pair layer
+            // SPEC 3.4, 13.5.5: a selected referent that is itself a reference (r@follow with r: uniq/uniq/T, or a pair layer
             // followed in a case or instance where it exists) is read only for its address through the outer reference, as a
             // stored slot is, not copied; an exclusive inner reference is not Copy, and a shared outer path yields its shared
             // capability.
@@ -242,7 +243,7 @@ public sealed partial class OwnershipAnalysis
         return this.ExpressionCore(left, PlaceUseKind.Read, null);
     }
 
-    // SPEC 13.5.5.2: a Reborrow of the referent through a stored reference; the borrowed address is the reference's value.
+    // SPEC 13.5.6: a Reborrow of the referent through a stored reference; the borrowed address is the reference's value.
     private int BorrowStoredReference(ConversionKoto pair, BoundType type, int reservation)
         => this.BorrowStoredReference(pair, KotoHelper.UnwrapParentheses(pair.Left), type, reservation);
 
@@ -262,7 +263,7 @@ public sealed partial class OwnershipAnalysis
         return this.RegisterTemporary(result);
     }
 
-    // SPEC 10.2, 13.5.5.1: two or more existing layers below a pair Subject in a case or instance are loaded into one reference
+    // SPEC 10.2, 13.5.5: two or more existing layers below a pair Subject in a case or instance are loaded into one reference
     // to their terminal target in the Subject's mode; each uniq layer meets its Origin into it and a ref layer restarts it.
     // Returns -2 when the case or instance has fewer layers, which the single-layer paths handle.
     private int ThroughPairLayers(Koto node, SemanticsKind mode)
@@ -277,7 +278,7 @@ public sealed partial class OwnershipAnalysis
         return this.ReadReference(node, mode == SemanticsKind.Uniq ? this.compilation.Types.Reference(SemanticsKind.Uniq, shared.Components[0], shared.Origin) : shared);
     }
 
-    // The Place a node designates once owner pair layers are removed (SPEC 13.5.5.1).
+    // The Place a node designates once owner pair layers are removed (SPEC 13.5.5).
     private Koto SelectedPlace(Koto node)
     {
         while (node is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair && !this.FollowsReference(pair))
@@ -288,7 +289,7 @@ public sealed partial class OwnershipAnalysis
         return node;
     }
 
-    // A declared Type of the analyzed body interpreted in a context (SPEC 7.2.3, 8.10): the context's default substitution, then
+    // A declared Type of the analyzed body interpreted in a context (SPEC 7.2.3, 8.15): the context's default substitution, then
     // the Semantics case's Types or the instance's closed substitution; a case substitution cannot fail.
     private BoundType? Resolve(BoundType? type, InterpretationContext context)
     {

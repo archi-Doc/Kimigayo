@@ -29,12 +29,12 @@ public readonly record struct Token
 
     /// <summary>
     /// Indicates whether this <c>&lt;</c> opens Type arguments or parameters: the tokenizer found its matching <c>&gt;</c> under the
-    /// layout rules (SPEC 2.2.1, 12.4.2). The parser reads a <c>&lt;</c> in an expression as Type arguments only when this holds.
+    /// layout rules (SPEC F.4.1, 12.5.2). The parser reads a <c>&lt;</c> in an expression as Type arguments only when this holds.
     /// </summary>
     public readonly bool OpensTypeArguments; // 1
 
     /// <summary>
-    /// Indicates whether this closer closes no open grouping: the lexer reported it (SPEC 2.2.1), and recovery inside a delimited
+    /// Indicates whether this closer closes no open grouping: the lexer reported it (SPEC F.4.1), and recovery inside a delimited
     /// list skips it as it skips any other token, while elsewhere it ends an expression as a closer does.
     /// </summary>
     public readonly bool ClosesNothing; // 1

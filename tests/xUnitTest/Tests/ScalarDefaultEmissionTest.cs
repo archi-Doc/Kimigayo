@@ -37,8 +37,8 @@ public class ScalarDefaultEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func f(x: (i32, i32), other: (i32, i32), y: i32 = x.0) -> i32 => y\nf((1, 2), (3, 4))");
         Assert.True(c.Validate(out var error), error);
-        var body = Assert.Single(c.Ownership.Bodies, x => x.Function.IsGenerated);
-        var source = Assert.Single(body.Operations, x => x.Kind == OwnershipOperationKind.LocateReceiver).Source;
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f");
+        var source = KotoTree.Walk(function.Parameters[2].DefaultValue!).Single(static x => x.SymbolOf()?.Kind == BindingSymbolKind.Parameter);
         var original = source.SymbolOf()!;
         source.SetSymbol(c.Binding.ParameterSymbol((FunctionKoto)original.Scope.Owner, 1));
         using var writer = new StringWriter();
@@ -54,12 +54,8 @@ public class ScalarDefaultEmissionTest
     public void WarmPreparedElementReadsReuseStorage()
     {
         var c = MinimalEmissionTest.Analyze("func f(x: [2 of i32], i: isize, y: i32 = x[i]) -> i32 => y\nf([1, 2], 0)\nf([3, 4], 1)");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
@@ -91,12 +87,8 @@ public class ScalarDefaultEmissionTest
     public void WarmUnitDefaultPlansReuseStorage()
     {
         var c = MinimalEmissionTest.Analyze("func f(x: bool, first: () = (if x => ()), second: () = first, y: i32 = 3) -> i32 => y\nf(true)\nf(false)");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))
@@ -350,8 +342,7 @@ public class ScalarDefaultEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = x + 1, z: i32 = y + 2) -> i32 => z\nf(2)");
         Assert.True(c.Validate(out var error), error);
-        var body = Assert.Single(c.Ownership.Bodies, x => x.Function.IsGenerated);
-        var call = (InvocationKoto)Assert.Single(body.Operations, x => x.Kind == OwnershipOperationKind.Call).Source;
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => x.CallOf()?.Target.Name == "f");
         var plan = call.CallOf()!;
         var defaults = plan.DefaultArguments.ToArray();
         if (mutation == "missing")
@@ -392,12 +383,8 @@ public class ScalarDefaultEmissionTest
     public void WarmDefaultOwnershipAndEmissionReuseStorage()
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = (label scope: do\n    var n = (loop => exit (do => if x > 0 => (x@i64 + 1)@i32 else => 0))\n    n += 0\n    exit to scope n\n)) -> i32 => y\nlet a = f(1)\nlet b = f(2)");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))

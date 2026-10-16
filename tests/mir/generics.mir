@@ -12,8 +12,8 @@ fn largest @4
   _4: () temp @22 s1
   _5: ArrayIterator<T> temp @22 s1
   _6: Option<ref/T> temp (Subject) @22 s1
-  _7: uniq/ArrayIterator<T> temp @52 s1
-  _8: isize temp @59 s1
+  _7: uniq/ArrayIterator<T> temp @100 s1
+  _8: isize temp @107 s1
   _9: ref/T var value @23 s2
   _10: () temp @25 s2
   _11: () temp @26 s3
@@ -22,7 +22,7 @@ fn largest @4
   _14: ref/T temp @29 s3
   _15: () temp @31 s4
   _16: T temp @32 s4
-  _17: isize temp @60 s1
+  _17: isize temp @108 s1
   _18: T temp @37 s1
   s1: lexical in s0 @18
   s2: lexical in s1 @22
@@ -38,8 +38,8 @@ fn largest @4
       goto bb2 @22 s1
   bb2:
       StorageLive(_6) @22 s1
-      StorageLive(_7) @52 s1
-      _7 = &uniq two-phase _5: uniq/ArrayIterator<T> @52 s1
+      StorageLive(_7) @100 s1
+      _7 = &uniq two-phase _5: uniq/ArrayIterator<T> @100 s1
       _6 = next(move _7) -> bb6 @22 s1
   bb3:
       StorageDead(_5) @22 s1
@@ -48,15 +48,15 @@ fn largest @4
     * _18 = copy _3 @37 s1
       goto bb25 check bb26 @36 s1
   bb4:
-      StorageLive(_17) @60 s1
-      _17 = discriminant(_6) @60 s1
-      switch copy _17 [1: bb16, otherwise: bb5] @60 s1
+      StorageLive(_17) @108 s1
+      _17 = discriminant(_6) @108 s1
+      switch copy _17 [1: bb16, otherwise: bb5] @108 s1
   bb5:
       unreachable @22 s1
   bb6:
-      StorageLive(_8) @59 s1
-      _8 = discriminant(_6) @59 s1
-      switch copy _8 [0: bb7, otherwise: bb4] @59 s1
+      StorageLive(_8) @107 s1
+      _8 = discriminant(_6) @107 s1
+      switch copy _8 [0: bb7, otherwise: bb4] @107 s1
   bb7:
       StorageLive(_9) @23 s2
       _9 = copy (_6 as case 0).0 @23 s2
@@ -77,7 +77,7 @@ fn largest @4
       StorageLive(_15) @31 s4
       StorageLive(_16) @32 s4
     * _16 = copy (*_9) @33 s4
-      drop _3 -> bb12 @31 s4
+      drop _3 -> bb12 [keep] @31 s4
   bb10:
       StorageDead(_12) @27 s3
       _11 = const () @26 s3
@@ -90,15 +90,15 @@ fn largest @4
   bb12:
       _3 = move _16 @31 s4
       _15 = const () @31 s4
-      drop _16 -> bb13 @32 s4
+      drop _16 -> bb13 [elide] @32 s4
   bb13:
       StorageDead(_16) @32 s4
       StorageDead(_15) @31 s4
       _11 = const () @30 s4
       goto bb8 @30 s3
   bb14:
-      StorageDead(_8) @59 s1
-      StorageDead(_7) @52 s1
+      StorageDead(_8) @107 s1
+      StorageDead(_7) @100 s1
       StorageDead(_6) @22 s1
       goto bb2 @4
   bb15:
@@ -108,24 +108,24 @@ fn largest @4
       _4 = const () @22 s1
       goto bb17 @22 s1
   bb17:
-      StorageDead(_17) @60 s1
-      StorageDead(_8) @59 s1
-      StorageDead(_7) @52 s1
+      StorageDead(_17) @108 s1
+      StorageDead(_8) @107 s1
+      StorageDead(_7) @100 s1
       StorageDead(_6) @22 s1
       goto bb3 @4
   bb18:
       return @4
   bb19:
-      drop _2 -> bb20 @4
+      drop _2 -> bb20 [keep] @4
   bb20:
       goto bb18 @4
   bb21:
-      drop _3 -> bb22 @19 s1
+      drop _3 -> bb22 [keep] @19 s1
   bb22:
       StorageDead(_3) @19 s1
       goto bb19 @4
   bb23:
-      drop _18 -> bb24 @37 s1
+      drop _18 -> bb24 [elide] @37 s1
   bb24:
       StorageDead(_18) @37 s1
       goto bb21 @4
@@ -149,3 +149,97 @@ fn use @38
     * _0 = largest<i64>(copy _1, const 0_i64) -> bb1 @44
   bb1:
       return @44
+fn wrapSome @48
+  _0: Option<T> return @48
+  _1: T arg x @48
+  _2: T temp @58
+  bb0:
+      StorageLive(_2) @58
+    * _2 = move _1 @59
+      _0 = Adt case 0(move _2): Option<T> @55
+      drop _2 -> bb1 [elide] @58
+  bb1:
+      StorageDead(_2) @58
+      drop _1 -> bb2 [elide] @48
+  bb2:
+      return @55
+fn unwrapTry @61
+  _0: Option<T> return @61
+  _1: Option<T> arg x @61
+  _2: T temp @70
+  _3: Option<T> temp (Subject) @71
+  _4: isize temp @74
+  _5: T var $try.value @78 s1
+  _6: isize temp @113
+  _7: Option<T> temp @115 s2
+  s1: lexical in s0 @74
+  s2: lexical in s0 @113
+  bb0:
+      StorageLive(_2) @70
+      StorageLive(_3) @71
+    * _3 = move _1 @72
+      StorageLive(_4) @74
+      _4 = discriminant(_3) @74
+      switch copy _4 [0: bb3, otherwise: bb2] @74
+  bb1:
+      StorageDead(_6) @113
+      StorageDead(_4) @74
+      drop _3 -> bb19 [open ((_ as case 0) open (.0 elide))] @71
+  bb2:
+      StorageLive(_6) @113
+      _6 = discriminant(_3) @113
+      switch copy _6 [1: bb6, otherwise: bb5] @113
+  bb3:
+      StorageLive(_5) @78 s1
+      _5 = move (_3 as case 0).0 @78 s1
+    * _2 = move _5 @81 s1
+      drop _5 -> bb4 [elide] @78 s1
+  bb4:
+      StorageDead(_5) @78 s1
+      goto bb1 @80
+  bb5:
+      unreachable @70
+  bb6:
+      StorageLive(_7) @115 s2
+    * _7 = Adt case 1(): Option<T> @115 s2
+      goto bb16 check bb17 @89 s2
+  bb7:
+      return @61
+  bb8:
+      drop _1 -> bb9 [elide] @61
+  bb9:
+      goto bb7 @61
+  bb10:
+      drop _2 -> bb11 [elide] @70
+  bb11:
+      StorageDead(_2) @70
+      goto bb8 @61
+  bb12:
+      StorageDead(_6) @113
+      StorageDead(_4) @74
+      drop _3 -> bb13 [keep] @71
+  bb13:
+      StorageDead(_3) @71
+      goto bb10 @61
+  bb14:
+      drop _7 -> bb15 [elide] @115 s2
+  bb15:
+      StorageDead(_7) @115 s2
+      goto bb12 @61
+  bb16:
+      _0 = move _7 @89 s2
+      goto bb14 @89 s2
+  bb17:
+      drop _7 -> bb18 @115 s2
+  bb18:
+      StorageDead(_7) @115 s2
+      unreachable check bb1 @89
+  bb19:
+      StorageDead(_3) @71
+      _0 = Adt case 0(move _2): Option<T> @67
+      drop _2 -> bb20 [elide] @70
+  bb20:
+      StorageDead(_2) @70
+      drop _1 -> bb21 [elide] @61
+  bb21:
+      return @67

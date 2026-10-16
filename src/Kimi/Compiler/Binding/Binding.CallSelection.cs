@@ -5,7 +5,7 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // SPEC 10.2-10.4, 8.4.8.2: candidate evaluation and selection, shared by a call and by a query that must not publish, the omitted base
-// selection of an implicit constructor (SPEC 6.2.3.6). Evaluation records each candidate's applicability and plan facts in the call's
+// selection of an implicit constructor (SPEC 6.3.6). Evaluation records each candidate's applicability and plan facts in the call's
 // rented scratch; classification decides the selection from them. Neither fails, completes nor records a node.
 public sealed partial class Binding
 {
@@ -91,7 +91,7 @@ public sealed partial class Binding
         var independentRejection = false;
         var premiseUnknown = false;
         ReferenceConstraintFailure? rejectedConstraint = null;
-        // SPEC 4.6.3: a synthesized range construction pins its Kimi target, which source access does not restrict.
+        // SPEC 4.6.2: a synthesized range construction pins its Kimi target, which source access does not restrict.
         var accessible = callee is SyntheticKoto || this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType);
         if (accessible)
         {
@@ -123,7 +123,7 @@ public sealed partial class Binding
         evaluation.FailedPendingSignature ??= state == CandidateApplicability.Pending ? IncompleteSignature(function) ?? this.FailedSignaturePart(function) : null;
         if (state == CandidateApplicability.Pending)
         {
-            // SPEC 8.7, 15.6.1: a Callable proof that is Unknown only in its Origin part is explained by its Constraint record.
+            // SPEC 8.3, 15.6.1: a Callable proof that is Unknown only in its Origin part is explained by its Constraint record.
             evaluation.PendingCount++;
             evaluation.PremisesOnly &= premiseUnknown;
             evaluation.CallableFailure ??= function.TypeConstraints.Count != 0 ? this.CallableOriginFailure(call, function, evaluation.Scratch, evaluation.LengthArguments, evaluation.Mapping, scope, evaluation.Self, declaringType) : null;
@@ -150,7 +150,7 @@ public sealed partial class Binding
     }
 
     // The selection the evaluated candidates determine. A failed candidate declaration or signature leaves the selection resting on
-    // that failure (SPEC 23.3.6.4); an Unknown premise defers it only when it can affect it (SPEC 8.4.8.2).
+    // that failure (SPEC 23.1.2); an Unknown premise defers it only when it can affect it (SPEC 8.3.3).
     private (CallSelection Kind, int Winner) ClassifySelection(ref CallEvaluation evaluation)
     {
         var candidates = evaluation.Evaluated.AsSpan(0, evaluation.Count);

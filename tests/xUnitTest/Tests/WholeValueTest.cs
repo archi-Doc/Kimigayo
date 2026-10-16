@@ -182,8 +182,8 @@ public class WholeValueTest
     [Theory]
     [InlineData("Sealed and ObjectPayload", true)]
     [InlineData("Sealed and Copy and ObjectPayload", true)]
-    [InlineData("Sealed", false)] // SPEC 8.4.7.1: Sealed is not object-formation evidence.
-    [InlineData("ObjectPayload", false)] // SPEC 13.5.5.1: the projection still needs Sealed.
+    [InlineData("Sealed", false)] // SPEC 8.7.2: Sealed is not object-formation evidence.
+    [InlineData("ObjectPayload", false)] // SPEC 13.5.5: the projection still needs Sealed.
     [InlineData("Sealed or ObjectPayload", false)]
     [InlineData("not Sealed and ObjectPayload", false)]
     public void ProjectionUsesDeclaredProofRules(string constraint, bool expected)

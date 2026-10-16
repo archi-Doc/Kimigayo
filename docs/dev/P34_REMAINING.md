@@ -1,6 +1,8 @@
-# P34 Remaining Work (handoff)
+# P40 Remaining Work (handoff)
 
-P34 (rc/arc shared objects, shared object track U7) is IN_PROGRESS. The 2026-10-09 completion audit confirmed 85 findings, 27 of them blocking. Units U7-1 to U7-7 fixed part of them; this file records what remains, grouped by root cause. The partial implementations of the other groups were discarded at the user's request; restart each group from its root cause below, as serial verified units. Line references are approximate (at `404136bf`).
+This filename retains its pre-2026-10-15 ID for archived links; the current program is P40 ([number mapping](../../tests/milestones/README.md#implementation-order)).
+
+P40 (rc/arc shared objects, shared object track U7) is IN_PROGRESS. The 2026-10-09 completion audit confirmed 85 findings, 27 of them blocking. Units U7-1 to U7-7 fixed part of them; this file records what remains, grouped by root cause. The partial implementations of the other groups were discarded at the user's request; restart each group from its root cause below, as serial verified units. Line references are approximate (at `404136bf`).
 
 ## Completed (pushed, each with Unit evidence)
 
@@ -18,7 +20,7 @@ P34 (rc/arc shared objects, shared object track U7) is IN_PROGRESS. The 2026-10-
 
 Severity: **W** wrong code, **G** accepted by check then `GenerationFailed_Kd`, **L** a Language code for a permitted form, **U** a located Unsupported code (acceptable boundary, to implement).
 
-### R1. Selection does not model the object layer reached through reference layers (SPEC 3.4.1, 7.3, 13.5.5.1)
+### R1. Selection does not model the object layer reached through reference layers (SPEC 3.4.3, 7.3, 13.5.5)
 
 Selection passes `ref`/`uniq` layers and stops at an obj/rc/arc/objref/objuniq layer. No single function computes that stop and its authority; Binding, Ownership and Emission each peel one layer or guess from syntax.
 
@@ -30,7 +32,7 @@ Selection passes `ref`/`uniq` layers and stops at an obj/rc/arc/objref/objuniq l
 
 Root fix: one selection model (all ref/uniq layers, then one object layer, with the nearest shared layer) used by Binding authority (PathAuthority, write gate, IsBarePlace), receiver adaptation (AdaptInput, ReceiverThroughLayers recording the prepared reference, TryPayloadProjection), Ownership (lend the held object's view then payload by reusing `BorrowStoredObject`'s tail; one "lends through the stored reference" predicate at every stored site) and Emission (base check fails closed when the core is not a struct value). Replace the separate `IndirectObjectCallee` limit in `Binding.ValueCalls`. Reviews: drop any accessor-only guard; check pair layers (weakest admitted case), get-only Property writes (keep their code), `@move` through a held handle, user-index writes.
 
-### R2. In-place operand consumers bypass the common Place route (SPEC 13.4, 13.5.5.1)
+### R2. In-place operand consumers bypass the common Place route (SPEC 13.4, 13.5.5)
 
 - **W** String comparison use-after-free: `let r = s@ref; if r == take(s@move)` and `let view = values@ref; view[0] == take(values@move)` are accepted and read freed memory. Cause: the comparison is not a use of its operands, so the left reference's Loan ends before the right operand runs.
 - **G** `h@follow@ref == "abc"`, `s@ref == "abc"`, `g@follow@ref.length`, `r@follow@ref[1]`. Cause: `BodyLowering.ValidateStringInspection` and `LowerSequence` match the operation's source by exact syntax equality.
@@ -40,14 +42,14 @@ Root fix: make the comparison value a use of both operand Places (no extra opera
 
 ### R3. Temporary Loan roots are an allow-list
 
-`OwnershipBody.IsTemporaryOriginRoot` and the `BorrowStruct` value route keep separate lists of materialized temporary Types. Generic Parameter/AssociatedProjection/TargetProjection temporaries are not roots, so `keep<T>(make: () -> T)` with `make()@ref` used later passes the definition and fails only at an instance (SPEC 8.10; STATUS limit). Root fix: one shared predicate, including generic Types; run the whole suite.
+`OwnershipBody.IsTemporaryOriginRoot` and the `BorrowStruct` value route keep separate lists of materialized temporary Types. Generic Parameter/AssociatedProjection/TargetProjection temporaries are not roots, so `keep<T>(make: () -> T)` with `make()@ref` used later passes the definition and fails only at an instance (SPEC 8.15; STATUS limit). Root fix: one shared predicate, including generic Types; run the whole suite.
 
 ### R4. obj payload content writes record no Loan on the handle
 
 - **G** `local.value = m@ref` (local: `obj/Cell`, ref Field): the implicit Field write stores without recording the borrow's Loan (`OwnershipAnalysis.WriteBorrowedField`); the explicit `local@follow.value = m@ref` is `Unsupported_Kd`.
 - **L** `var o = [4, 5]@obj; o@follow[0] = 7` is `InvalidAssignment_Kd` although a writable obj path grants Write.
 
-Exclusive-object semantics belong to P33. For P34 completion, at least report both Origin-carrying spellings as one located Unsupported and fix the element-write category; recording Loans on the handle is the root fix.
+Exclusive-object semantics belong to P39. For P40 completion, at least report both Origin-carrying spellings as one located Unsupported and fix the element-write category; recording Loans on the handle is the root fix.
 
 ### R5. Callee remainder
 
@@ -58,8 +60,8 @@ Exclusive-object semantics belong to P33. For P34 completion, at least report bo
 
 - **L** `func get(handle: rc/View) -> ref/i32 during handle.source` is `InvalidOriginBinding_Kd`: `Binding.Origins` resolves `x.source` through borrow layers only, not through an owning obj/rc/arc handle (the binding-set spelling `rc/View{a}` with `a.source` works).
 - Non-blocking audit items (tests to add or STATUS limits): creation forms without a test (borrow/raw inputs, reboxing, independent input inference, generic object formation), objuniq and upcast rows for rc/arc, `during` on rc/arc, no implicit payload follow at fixed Types, object equality vs value equality, owning receivers through rc/arc, aggregate and scope-exit release order, destructor Abort, payload projections without Take.
-- Outside P34, to file as PLAN issues: a borrow of a Moved Place also reports `ComparisonLoanConflict_Kd` beside `MovedPlace_Kd` (all Types); implicit `raw/F` calls need no unsafe context (SPEC 5.2); `Kimi.Weak<rc/T>` is a Language `UnresolvedBinding_Kd` (P35/G4); the omitted-base Unsupported has no evidence; exclusive base receivers through obj (`h.poke()`, OCC-X); a Never-typed `let` initializer reports `InternalInvariant_Kd`.
+- Outside P40, to file as PLAN issues: a borrow of a Moved Place also reports `ComparisonLoanConflict_Kd` beside `MovedPlace_Kd` (all Types); implicit `raw/F` calls need no unsafe context (SPEC 5.2); `Kimi.Weak<rc/T>` is a Language `UnresolvedBinding_Kd` (P41/G4); the omitted-base Unsupported has no evidence; exclusive base receivers through obj (`h.poke()`, OCC-X); a Never-typed `let` initializer reports `InternalInvariant_Kd`.
 
 ## Completion steps after the fixes
 
-README P34 row and Milestone 34 section (also correct the stale P43 row to DONE); PLAN milestone table and U7; STATUS; CODEMAP; `src/Benchmark/SharedObjects.md`; closing Session with `-Milestone 1..24,26..32,34,37,39..43`; `--object-plans` and `benchmark-object-finalization.ps1` with nothing else running.
+README P40 row and expected output; PLAN milestone table and U7; STATUS; CODEMAP; `src/Benchmark/SharedObjects.md`; closing Session with `-Milestone ((1..37) + 40)`; `--object-plans` and `benchmark-object-finalization.ps1` with nothing else running.

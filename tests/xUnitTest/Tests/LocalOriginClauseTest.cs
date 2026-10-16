@@ -9,7 +9,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 15.3.3, 15.4.4, 15.6.1, 23.3.6.5: a local's written Type binds its slots by its attached clauses, and its initializer fits that
+// SPEC 15.3.3, 15.4.4, 15.6.1, 23.1: a local's written Type binds its slots by its attached clauses, and its initializer fits that
 // Type. Each slot of the fit is an Origin relation by the slot's variance, `==` at an invariant position, reported with facts at the
 // initializer; it was a fact-less UnprovenConstraint_Kd at the declaration (q34), hidden whenever Binding failed elsewhere (q30). A
 // slot inside a Type argument follows the generic slot's variance, also at a value call's argument. A clause of a local, Field or Case
@@ -159,7 +159,7 @@ public class LocalOriginClauseTest
     public void AClauseThatDoesNotHoldIsADeclaredRelation(string body, string code, string at, string label, string? borrow, string clause)
         => AssertDeclared(body + Main, code, at, label, borrow, clause);
 
-    // SPEC 7.6.1, 15.3.3: a local clause in an anonymous function, over its own inputs' Origins or over an enclosing function's captured
+    // SPEC 7.7.1, 15.3.3: a local clause in an anonymous function, over its own inputs' Origins or over an enclosing function's captured
     // Origins, that does not hold is a declared relation at the initializer, relating the clause.
     [Theory]
     [InlineData(Holder + "public func main()\n    let one = 1\n    let two = 2\n    let g = func (a: ref/i32, b: ref/i32) -> i32\n        let h0 = H.init(a)\n        let h: H{x} = h0@move\n            origin x.s outlives b\n        return 0\n    Console.writeLine(\"\\(g(one@ref, two@ref))\")\n", "requires a outlives b, which is not proven", "origin x.s outlives b")]
@@ -179,7 +179,7 @@ public class LocalOriginClauseTest
         var error = AssertDeclared(source, nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "origin a == b", "requires a == b, which is not proven", null, "origin a == b");
     }
 
-    // SPEC 15.3.6, 15.4.4: the Milestone 13 and 28 clause shapes, a slot equal to its initializer's or proven by a premise, a covariant
+    // SPEC 15.3.6, 15.4.4: the Milestone 13 and 29 clause shapes, a slot equal to its initializer's or proven by a premise, a covariant
     // inferred slot bounded by both the initializer and a clause (the meet of its upper bounds), and a contravariant slot whose
     // relation a premise proves.
     [Theory]
@@ -297,7 +297,7 @@ public class LocalOriginClauseTest
     public void ATypesClauseThatALocalProvesExecutes()
         => ScalarEmissionTest.EmitFixture("LocalOriginClauseTypePremise", TypePremises, "ok\n");
 
-    // SPEC 15.3.3, 23.3.6.4: a Case whose payload Type failed leaves its clauses unbound, as a Field's does, so they add no record
+    // SPEC 15.3.3, 23.1.2: a Case whose payload Type failed leaves its clauses unbound, as a Field's does, so they add no record
     // derived from that failure (k1 added a Language InvalidOriginBinding_Kd at `v.source`), also beside a payload that bound.
     [Theory]
     [InlineData("enum E {a}\n    One(Missing<i32>{v})\n        origin v.source == a\n    Two\n\n")]
@@ -309,7 +309,7 @@ public class LocalOriginClauseTest
         Assert.Equal((nameof(DiagnosticCode.UnresolvedBinding_Kd), "Missing", source.IndexOf("Missing", StringComparison.Ordinal)), (error.Code, Text(source, error.Span), error.Span!.Value.Start));
     }
 
-    // SPEC 23.3.6.5: a meet's body-local operand is shown by the Borrow that supplies it, found through the local the value reads or
+    // SPEC 23.1: a meet's body-local operand is shown by the Borrow that supplies it, found through the local the value reads or
     // moves; it was the text of the whole function that binds the borrowed parameter's Place. A declared relation keeps the meet whole;
     // a fit names the failing operand that decides its judgment, the Refuted Borrow before the Unknown `a` (SPEC 15.3.6, 15.6.5), and
     // reports every failed chain (SPEC 15.6.1), so the Unknown `a` is its own record at that value.
@@ -413,7 +413,7 @@ public class LocalOriginClauseTest
             "    let h0 = C.init(g@move)\n    let h: C{x} = h0@move\n        origin x.s outlives b\n    return 0\n" + Main;
         var c = CompilationTestHelper.Parse(source);
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete == proven, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete == proven));
         Assert.True(valid);
     }
 
@@ -438,7 +438,7 @@ public class LocalOriginClauseTest
         Assert.NotEmpty(output.Diagnostics);
     }
 
-    // SPEC 23.3.6.8: the console, the language server and JSON carry the declared source and the clause's related location.
+    // SPEC 23.3: the console, the language server and JSON carry the declared source and the clause's related location.
     [Fact]
     public void EveryOutputCarriesTheDeclaredClause()
     {
@@ -496,11 +496,7 @@ public class LocalOriginClauseTest
     public void WarmLocalClauseBindingAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze(Holder + "func f(a: ref/i32, b: ref/i32) -> i32\n    let h0 = H.init(a)\n    let h: H{x} = h0@move\n        origin b outlives x.s\n    let k: H{y} = H.init(a)\n        origin y.s outlives a\n    return h.item@follow + k.item@follow\n" + Main);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)
@@ -516,11 +512,7 @@ public class LocalOriginClauseTest
     public void WarmTypeClauseBindingAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze(Ordered + "func f(p: ref/i32, q: ref/i32, r: ref/i32, s: S{u}, o: Option<S{v}>) -> i32\n    origin u.a == p\n    origin u.b == q\n    origin v.a == p\n    origin v.b == q\n    origin p outlives r\n    origin r outlives q\n    let s2: S{w} = s@move\n        origin w.a == r\n        origin w.b == q\n    let o2: Option<S{z}> = o@move\n        origin z.a == r\n        origin z.b == q\n    return s2.x@follow\n" + Main);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)
@@ -537,7 +529,7 @@ public class LocalOriginClauseTest
         Assert.Equal(code == nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) ? DiagnosticCategory.Language : DiagnosticCategory.Proof, error.Category);
         Assert.Equal((at, label), (Text(source, error.Span), error.Label));
         var reason = error.Reason!;
-        // SPEC 23.3.6.5: a declared relation names no destination; it relates its clause instead.
+        // SPEC 23.1: a declared relation names no destination; it relates its clause instead.
         Assert.Equal(["relation", "longer", "shorter", "source"], reason.Select(static x => x.Name));
         Assert.Equal((label.Contains(" == ", StringComparison.Ordinal) ? "==" : "outlives", "declared"), (reason[0].Value, reason[3].Value));
         var related = error.Related!.Select(x => (x.Role, Text(source, x.Span))).ToArray();

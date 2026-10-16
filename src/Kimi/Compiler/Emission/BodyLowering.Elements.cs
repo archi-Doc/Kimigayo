@@ -33,7 +33,7 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    // SPEC 8.10, 13.5.5.1: the Place an assignment writes: its left side, below a pair layer's follow that selects the operand
+    // SPEC 8.15, 13.5.5: the Place an assignment writes: its left side, below a pair layer's follow that selects the operand
     // itself in an owner case or instance; the reference cases write through WriteReferent and never reach an element write.
     private static Koto WrittenPlace(Koto left)
     {
@@ -500,7 +500,7 @@ internal sealed partial class BodyLowering
         var receiverType = body.Resolve(source.Left.BoundType, body.ContextAt(id))!;
         if (receiverType.Kind == BoundTypeKind.Dictionary)
         {
-            return Fail("Dictionary selection must use its Indexable Place call.", out failure);
+            return Fail("Dictionary selection must use its Indexable index call.", out failure);
         }
 
         var dynamicArray = receiverType.Kind == BoundTypeKind.Array;

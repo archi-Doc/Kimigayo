@@ -6,7 +6,7 @@ using Kimi.Checking;
 
 namespace Kimi.Lsp;
 
-/// <summary>The kind of a language-server unit (SPEC 23.4.4).</summary>
+/// <summary>The kind of a language-server unit (SPEC 23.4).</summary>
 internal enum UnitKind : byte
 {
     /// <summary>A product unit.</summary>
@@ -38,7 +38,7 @@ internal readonly record struct UnitKey(SourceIdentity Owner, UnitKind Kind, str
     }
 }
 
-/// <summary>A loaded project (SPEC 23.4.3): a derived item that records its project file and source listing.</summary>
+/// <summary>A loaded project (SPEC 23.4): a derived item that records its project file and source listing.</summary>
 internal sealed class LoadedProject : DerivedItem
 {
     /// <summary>Gets the project file.</summary>
@@ -88,9 +88,9 @@ internal sealed class UnitResult : DerivedItem
     /// <summary>Gets the check output.</summary>
     public required CheckOutput Output { get; init; }
 
-    /// <summary>Gets the diagnostics per report URI (SPEC 23.4.7), each sorted; a checked source without diagnostics has an empty array.</summary>
+    /// <summary>Gets the diagnostics per report URI (SPEC 23.4), each sorted; a checked source without diagnostics has an empty array.</summary>
     public required Dictionary<SourceIdentity, LspDiagnostic[]> Reports { get; init; }
 
-    /// <summary>Gets the repair candidates per report URI whose edits all lie in that document (SPEC 23.4.8); a URI without candidates has no entry.</summary>
+    /// <summary>Gets the repair candidates per report URI whose edits all lie in that document (SPEC 23.4); a URI without candidates has no entry.</summary>
     public Dictionary<SourceIdentity, LspRepair[]> Repairs { get; init; } = [];
 }

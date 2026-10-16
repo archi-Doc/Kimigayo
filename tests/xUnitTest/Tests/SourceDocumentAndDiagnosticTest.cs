@@ -177,7 +177,7 @@ public class SourceDocumentAndDiagnosticTest
             console.Output);
     }
 
-    // SPEC 23.4.7: related locations follow the excerpt, then the Note.
+    // SPEC 23.4: related locations follow the excerpt, then the Note.
     [Fact]
     public void RendersRelatedLocationsThenNote()
     {

@@ -8,7 +8,7 @@ namespace XunitTest;
 
 /// <summary>
 /// A '&lt;' opens Type arguments only adjacent to a Name and with a matching '&gt;' that the layout rules let continue it
-/// (SPEC 2.2.1, 2.4, 12.4.2); otherwise it compares values. One rule, decided by the tokenizer, serves both phases.
+/// (SPEC F.4.1, 2.4, 12.5.2); otherwise it compares values. One rule, decided by the tokenizer, serves both phases.
 /// </summary>
 public class TypeArgumentRecognitionTest
 {

@@ -42,6 +42,7 @@ fn format @26
   _18: ref/string temp @47 s1
   _19: ref/Utf8Writer temp @199 s1
   s1: lexical in s0 @36
+  flags 1
   bb0:
       StorageLive(_3) @38 s1
       StorageLive(_4) @41 s1
@@ -78,8 +79,8 @@ fn format @26
       StorageLive(_15) @38 s1
       StorageLive(_16) @199 s1
       _16 = &uniq two-phase (*_4): uniq/Utf8Writer @199 s1
-      StorageLive(_17) @47 s1
-      _17 = const ")" @47 s1
+      StorageLive(_17) [clear f0] @47 s1
+      _17 = const ")" [set f0] @47 s1
       StorageLive(_18) @47 s1
       _18 = &_17: ref/string @47 s1
       _14 = write<string>(move _16, move _18) -> bb6 @38 s1
@@ -95,9 +96,9 @@ fn format @26
   bb10:
       StorageDead(_19) @199 s1
       StorageDead(_18) @47 s1
-      drop _17 -> bb11 @47 s1
+      drop _17 -> bb11 [flag f0] [clear f0] @47 s1
   bb11:
-      StorageDead(_17) @47 s1
+      StorageDead(_17) [clear f0] @47 s1
       StorageDead(_16) @199 s1
       StorageDead(_15) @38 s1
       StorageDead(_14) @38 s1
@@ -106,7 +107,7 @@ fn format @26
       StorageDead(_11) @38 s1
       StorageDead(_10) @38 s1
       StorageDead(_9) @43 s1
-      drop _8 -> bb12 @43 s1
+      drop _8 -> bb12 [keep] @43 s1
   bb12:
       StorageDead(_8) @43 s1
       StorageDead(_7) @199 s1
@@ -175,6 +176,7 @@ fn init @66
     * _2 = const () @67
       StorageDead(_2) @67
       _1 = const () @67
+      FakeRead(_0) @66
       StorageDead(_1) @67
       return @67
 fn top-level#0 @68
@@ -254,7 +256,7 @@ fn pick @85
   bb3:
       return @85
   bb4:
-      drop _1 -> bb5 @85
+      drop _1 -> bb5 [keep] @85
   bb5:
       goto bb3 @85
   bb6:

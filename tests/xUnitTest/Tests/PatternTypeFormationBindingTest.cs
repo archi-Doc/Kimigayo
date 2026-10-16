@@ -101,11 +101,7 @@ public class PatternTypeFormationBindingTest
     public void WarmPatternFormationChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nfunc f(value: Option<Box<i32>>) => match value@move\n    .Some(_) => ()\n    .None => ()");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

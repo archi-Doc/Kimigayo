@@ -55,11 +55,7 @@ public class ClosedConformancePrerequisiteBindingTest
     public void WarmFinitePrerequisiteVerificationAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze("public contract C\npublic struct A\n    B is C\n    Self is C\npublic struct B\n    Self is C");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

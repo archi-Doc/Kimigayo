@@ -7,6 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly List<IsKoto> callableEffectClauses = new();
+    private readonly List<CallableEffectUse> callableEffectUses = new(); // Each selected use of a bounded Callable clause, once per pass.
     private readonly Dictionary<Koto, CallableEffectViolation> callableEffectViolations = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Koto, (IsKoto Clause, EffectBoundKoto Bound, FunctionKoto Requirement)> callablePremiseFailures = new(ReferenceEqualityComparer.Instance);
     private EffectSummary? callableEffectSummary;
@@ -49,7 +50,7 @@ public sealed partial class Binding
                 for (var e = 0; e < clause.EffectBounds.Count; e++)
                 {
                     var effect = clause.EffectBounds[e];
-                    if (this.effectBoundRejections?.ContainsKey(effect) == true || IsRecovery(effect, out _))
+                    if (!this.AppliesBound(effect))
                     {
                         continue;
                     }
@@ -69,43 +70,21 @@ public sealed partial class Binding
     internal void ValidateCallableEffects(List<Koto> rejected)
     {
         this.callableEffectViolations.Clear();
-        if (this.callableEffectClauses.Count == 0)
-        {
-            return;
-        }
-
         this.callableEffectSummary?.BeginPass();
-        for (var i = 0; i < this.nodes.Count; i++)
+        foreach (var use in this.callableEffectUses)
         {
-            var node = this.nodes[i];
-            if (node is InvocationKoto { BoundCall: { } call } && this.Library.PresentedTarget(call.Target).Declaration is FunctionKoto function)
+            for (var e = 0; e < use.Clause.EffectBounds.Count; e++)
             {
-                this.CheckCallableEffectUses(node, function.TypeConstraints, function, call.TypeArguments, call.DeclaringType, call, call.LengthArguments);
-            }
-
-            if (node.BoundType is { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto referenced } item &&
-                node.Parent?.BoundType != item && node is not FunctionKoto)
-            {
-                var slots = referenced.GenericArguments.Count;
-                if (item.Components.Count >= ItemTypeArgumentCount(referenced))
+                var bound = use.Clause.EffectBounds[e];
+                if (!this.AppliesBound(bound))
                 {
-                    var arguments = this.typeScratch.Rent(slots);
-                    try
-                    {
-                        CopyItemArguments(item, referenced, arguments);
-                        this.CheckCallableEffectUses(node, referenced.TypeConstraints, referenced, arguments.AsSpan(0, slots), ItemDeclaringType(item, referenced), null, item.LengthArguments);
-                    }
-                    finally
-                    {
-                        this.typeScratch.Return(arguments, clearArray: true);
-                    }
+                    continue;
                 }
-            }
 
-            if (node.BoundType is { Kind: BoundTypeKind.Constructed, Symbol.Declaration: DeclarationContainerKoto container } type &&
-                node.Parent?.BoundType != type)
-            {
-                this.CheckCallableEffectUses(node, container.ConstraintNodes, container, (BoundType[])type.Components, null, null);
+                if (this.CallableEffectFailure(use.Subject, use.Signature, use.Receiver, bound.Bound, use.Use) is { } failure)
+                {
+                    this.callableEffectViolations.TryAdd(use.At, new(use.Clause, bound, failure.Kind, failure.Node));
+                }
             }
         }
 
@@ -144,7 +123,7 @@ public sealed partial class Binding
     private static bool ReceiverCovers(SemanticsMask premise, SemanticsKind receiver)
         => premise == SemanticsMask.Owner || receiver == SemanticsKind.Ref || (premise == SemanticsMask.Uniq && receiver == SemanticsKind.Uniq);
 
-    // Bounds are attached to clauses, never to interned propositions or applicability facts (SPEC 8.4.10.7).
+    // Bounds are attached to clauses, never to interned propositions or applicability facts (SPEC 8.11.6).
     private void PrepareCallableEffects()
     {
         this.callableEffectClauses.Clear();
@@ -207,6 +186,46 @@ public sealed partial class Binding
         return true;
     }
 
+    // SPEC 8.11.6: the selected uses of bounded Callable clauses: each selected call, function reference and Type formation, located at
+    // its argument or Type argument, with its substituted subject, signature and receiver; enumerated once at the end of the Binding pass.
+    private void CollectCallableEffectUses()
+    {
+        this.callableEffectUses.Clear();
+        for (var i = 0; i < this.nodes.Count && this.callableEffectClauses.Count != 0; i++)
+        {
+            var node = this.nodes[i];
+            if (node is InvocationKoto { BoundCall: { } call } && this.Library.PresentedTarget(call.Target).Declaration is FunctionKoto function)
+            {
+                this.CheckCallableEffectUses(node, function.TypeConstraints, function, call.TypeArguments, call.DeclaringType, call, call.LengthArguments);
+            }
+
+            if (node.BoundType is { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto referenced } item &&
+                node.Parent?.BoundType != item && node is not FunctionKoto)
+            {
+                var slots = referenced.GenericArguments.Count;
+                if (item.Components.Count >= ItemTypeArgumentCount(referenced))
+                {
+                    var arguments = this.typeScratch.Rent(slots);
+                    try
+                    {
+                        CopyItemArguments(item, referenced, arguments);
+                        this.CheckCallableEffectUses(node, referenced.TypeConstraints, referenced, arguments.AsSpan(0, slots), ItemDeclaringType(item, referenced), null, item.LengthArguments);
+                    }
+                    finally
+                    {
+                        this.typeScratch.Return(arguments, clearArray: true);
+                    }
+                }
+            }
+
+            if (node.BoundType is { Kind: BoundTypeKind.Constructed, Symbol.Declaration: DeclarationContainerKoto container } type &&
+                node.Parent?.BoundType != type)
+            {
+                this.CheckCallableEffectUses(node, container.ConstraintNodes, container, (BoundType[])type.Components, null, null);
+            }
+        }
+    }
+
     private void CheckCallableEffectUses(Koto use, IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BoundType? declaring, CallPlan? call, ReadOnlySpan<BoundLength?> lengths = default)
     {
         var scope = this.ConstraintScope(use);
@@ -249,19 +268,7 @@ public sealed partial class Binding
                 }
             }
 
-            for (var e = 0; e < clause.EffectBounds.Count; e++)
-            {
-                var bound = clause.EffectBounds[e];
-                if (this.effectBoundRejections?.ContainsKey(bound) == true || IsRecovery(bound, out _))
-                {
-                    continue;
-                }
-
-                if (this.CallableEffectFailure(subject, substituted.RequiredType!, receiver, bound.Bound, use) is { } failure)
-                {
-                    this.callableEffectViolations.TryAdd(at, new(clause, bound, failure.Kind, failure.Node));
-                }
-            }
+            this.callableEffectUses.Add(new(at, use, clause, subject, substituted.RequiredType!, receiver));
         }
     }
 
@@ -290,4 +297,8 @@ public sealed partial class Binding
     }
 
     private readonly record struct CallableEffectViolation(IsKoto Clause, EffectBoundKoto Bound, EffectViolation Kind, Koto? Node);
+
+    // A selected use of a bounded Callable clause: where a failure is located, the use whose premises apply, the clause, and its substituted
+    // subject, signature and receiver.
+    private readonly record struct CallableEffectUse(Koto At, Koto Use, IsKoto Clause, BoundType Subject, BoundType Signature, SemanticsKind Receiver);
 }

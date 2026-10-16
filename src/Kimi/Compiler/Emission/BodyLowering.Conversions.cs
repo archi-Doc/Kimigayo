@@ -8,12 +8,12 @@ internal sealed partial class BodyLowering
     private int[] conversionIndices = [];
     private int[] physicalValues = [];
 
-    // SPEC 4.6.8: positions resolved at compile time. A folded value is an isize constant that its consumers read in place of
+    // SPEC 4.8.6: positions resolved at compile time. A folded value is an isize constant that its consumers read in place of
     // the operation, which emits nothing.
     private bool[] folded = [];
     private Int128[] foldedValues = [];
 
-    // SPEC 13.5.4.3: a wrapping conversion keeps the low bits or extends by the operand's signedness, without a check.
+    // SPEC 13.5.4: a wrapping conversion keeps the low bits or extends by the operand's signedness, without a check.
     internal static ConversionPlan PlanWrap(BoundType source, BoundType target, int pointerWidth)
     {
         var sourceWidth = ScalarTypes.Width(source, pointerWidth);
@@ -109,12 +109,12 @@ internal sealed partial class BodyLowering
             var kind = body.Values[id].Kind;
             var plan = kind != OwnershipValueKind.Convert ? default
                 : body.Values[id].Constant == OwnershipValue.WrapConversion ? PlanWrap(ValueType(body, Input(body, id, 0))!, ValueType(body, id)!, this.pointerWidth)
-                : body.Values[id].Constant == OwnershipValue.BitConversion ? new("bitcast", null, null, 0, 0) // SPEC 13.5.4.4: the same bits, no check.
+                : body.Values[id].Constant == OwnershipValue.BitConversion ? new("bitcast", null, null, 0, 0) // SPEC 13.5.4: the same bits, no check.
                 : body.Values[id].Constant == OwnershipValue.RawPlaceBorrow ? default // SPEC 5.2.2: the address itself.
                 : PlanConversion(ValueType(body, Input(body, id, 0))!, ValueType(body, id)!, this.pointerWidth);
             if (kind == OwnershipValueKind.Convert && body.Values[id].Constant == OwnershipValue.PositionConversion && plan.Operator is null)
             {
-                // SPEC 4.6.9: an unsigned position of the same width reinterpreted as isize is negative exactly when isize
+                // SPEC 4.7.1: an unsigned position of the same width reinterpreted as isize is negative exactly when isize
                 // cannot hold it, so the bounds check of its use rejects it without a conversion check.
                 plan = default;
             }
@@ -132,7 +132,7 @@ internal sealed partial class BodyLowering
             if (kind == OwnershipValueKind.Convert && body.Values[id].Constant == OwnershipValue.PositionConversion && (uint)input < (uint)id &&
                 (this.folded[input] ? new EmissionOperand(EmissionOperandKind.Integer, this.foldedValues[input]) : Operand(body, this.physicalValues[input])) is { Kind: EmissionOperandKind.Integer } position)
             {
-                // SPEC 4.6.9: a literal position is converted at compile time; a value isize cannot hold becomes -1.
+                // SPEC 4.7.1: a literal position is converted at compile time; a value isize cannot hold becomes -1.
                 var limit = this.pointerWidth == 32 ? (Int128)int.MaxValue : long.MaxValue;
                 this.Fold(id, position.Value >= -limit - 1 && position.Value <= limit ? position.Value : -1);
                 this.checks[id] = ArithmeticCheckKind.None;
@@ -145,7 +145,7 @@ internal sealed partial class BodyLowering
         }
     }
 
-    // IMPL 21.5.3: a check whose success follows from a literal right operand is not generated even at O0: the zero check of a
+    // IMPL 21.3.3: a check whose success follows from a literal right operand is not generated even at O0: the zero check of a
     // literal nonzero divisor, the minimum / -1 check of a quotient by a literal other than -1, and the count check of a literal
     // in-range shift count. An integer quotient by a literal -1 keeps its minimum check; the writer negates instead of dividing.
     private ArithmeticCheckKind LiteralOperandCheck(OwnershipBody body, int id, ArithmeticCheckKind check)

@@ -5,9 +5,9 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 22.3.1, 22.3.2: an import is safe unless its callers have obligations its Types cannot state. A ref or uniq borrow of a
+// SPEC 22.6, 22.6: an import is safe unless its callers have obligations its Types cannot state. A ref or uniq borrow of a
 // C-exchangeable referent passes the referent's address and keeps its ordinary Loan for the call; the call is an environment
-// effect (SPEC 8.4.10.2).
+// effect (SPEC 8.11.2).
 public class ForeignBorrowImportTest
 {
     private const string Native = "group Native\n    #LibraryImport(\"kernel32\", \"QueryPerformanceCounter\")\n    public func query(value: uniq/i64) -> i32\n";

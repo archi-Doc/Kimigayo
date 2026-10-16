@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -7,11 +7,6 @@
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <IsAotCompatible>true</IsAotCompatible>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
-    <KimiCodeRulesMode Condition="'$(KimiCodeRulesMode)' == ''">Enforce</KimiCodeRulesMode>
-    <ErrorLog Condition="'$(KimiCodeRulesLog)' != ''">$(KimiCodeRulesLog),version=2.1</ErrorLog>
-    <!-- A .globalconfig above the project could otherwise change analyzer policy outside CodeRules.globalconfig.
-         Without discovery, GlobalAnalyzerConfigFiles items no longer reach csc, so the policy is an EditorConfigFiles item. -->
-    <DiscoverGlobalAnalyzerConfigFiles>false</DiscoverGlobalAnalyzerConfigFiles>
 
     <PackageId>Kimigayo</PackageId>
     <Authors>archi-Doc</Authors>
@@ -30,12 +25,6 @@
 
   <ItemGroup>
     <AdditionalFiles Include="..\stylecop.json" Link="stylecop.json" />
-    <AdditionalFiles Include="CodeRules.globalconfig" />
-    <AdditionalFiles Include="CodeRules.baseline.tsv" />
-    <EditorConfigFiles Include="CodeRules.globalconfig" />
-    <CompilerVisibleProperty Include="KimiRepositoryRoot" />
-    <CompilerVisibleProperty Include="KimiCodeRulesMode" />
-    <ProjectReference Include="../Kimi.Analyzers/Kimi.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>

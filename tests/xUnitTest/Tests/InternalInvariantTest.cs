@@ -5,7 +5,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 21.3.5: an implementation invariant that decides an analysis outcome is checked in every
+// SPEC 21.3.2: an implementation invariant that decides an analysis outcome is checked in every
 // configuration and reported as an internal issue, never left to a Debug-only assertion.
 public class InternalInvariantTest
 {

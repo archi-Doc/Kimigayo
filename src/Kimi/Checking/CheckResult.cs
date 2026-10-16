@@ -4,7 +4,7 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Checking;
 
-/// <summary>The outcome of one check (SPEC 23.3.3).</summary>
+/// <summary>The outcome of one check (SPEC 23.2.2).</summary>
 /// <remarks>
 /// A cancelled check has no output: the check entry lets <see cref="OperationCanceledException"/> propagate, so cancellation
 /// is never published.
@@ -21,7 +21,7 @@ public enum CheckOutcome : byte
     Faulted,
 }
 
-/// <summary>The mode of a check unit (SPEC 23.3.1).</summary>
+/// <summary>The mode of a check unit (SPEC 23.2.1).</summary>
 public enum CheckMode : byte
 {
     /// <summary>The product inputs.</summary>
@@ -31,7 +31,7 @@ public enum CheckMode : byte
     Test,
 }
 
-/// <summary>Whether a product check found <c>#Test</c> functions in the project's own sources (SPEC 23.3.1).</summary>
+/// <summary>Whether a product check found <c>#Test</c> functions in the project's own sources (SPEC 23.2.1).</summary>
 public enum TestPresence : byte
 {
     /// <summary>None was found, and every such source parsed without source errors.</summary>
@@ -48,8 +48,8 @@ public enum TestPresence : byte
 /// <param name="Outcome">The outcome.</param>
 /// <param name="Accepted">Whether every selected target passed the front-end checks.</param>
 /// <param name="Presence">The test presence of a product check.</param>
-/// <param name="Diagnostics">The diagnostic records in result order (SPEC 23.3.6.6).</param>
-/// <param name="Sources">The source table the records refer to (SPEC 23.3.6.3).</param>
+/// <param name="Diagnostics">The diagnostic records in result order (SPEC 23.1).</param>
+/// <param name="Sources">The source table the records refer to (SPEC 23.1.2).</param>
 public sealed record CheckOutput(CheckOutcome Outcome, bool Accepted, TestPresence Presence, CheckDiagnostic[] Diagnostics, DiagnosticSource[] Sources)
 {
     /// <summary>Initializes a new instance of the <see cref="CheckOutput"/> class from finalized diagnostics.</summary>
@@ -68,7 +68,7 @@ public sealed record CheckOutput(CheckOutcome Outcome, bool Accepted, TestPresen
     /// <summary>Gets an optional editor-generation failure for logging, without changing the check outcome.</summary>
     internal string? HoverFault { get; init; }
 
-    /// <summary>Creates the output of a check that an input or its configuration blocked before the check entry ran (SPEC 23.3.3).</summary>
+    /// <summary>Creates the output of a check that an input or its configuration blocked before the check entry ran (SPEC 23.2.2).</summary>
     /// <param name="code">The <c>Input</c> Error that explains it.</param>
     /// <param name="location">The input it concerns, such as the project file, or the default value for none.</param>
     /// <param name="note">The environment-dependent text of the failure, published as a bounded Note.</param>

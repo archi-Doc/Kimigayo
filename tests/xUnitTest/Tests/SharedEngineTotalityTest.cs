@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 13.5.5.1, 15.6.3, 15.8.2: the concrete engine carries a root's Loan into every holder a value flows into, whatever the
+// SPEC 13.5.5, 15.6.3, 15.8.2: the concrete engine carries a root's Loan into every holder a value flows into, whatever the
 // operation: a captured exclusive reference with a declared Origin roots its closure body (E1), a store through an exclusive
 // reference retains the stored value's Loans in the referent (E2), and a closure value holds its entries' Loans (E3).
 public class SharedEngineTotalityTest

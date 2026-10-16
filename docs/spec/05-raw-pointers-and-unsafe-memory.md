@@ -2,239 +2,149 @@
 
 [Specification index](../SPEC.md)
 
-An unsafe context delegates verification; it never exempts a program from a rule. Every ownership, Loan, Origin, initialization, destruction, effect-bound, aliasing and data-race rule applies to unsafe code. Unsafe Blocks (§14.3.3), unsafe function contracts (§7.5) and foreign-function declarations (§22.3.1) mark where the programmer promises what the compiler cannot verify; breaking such a promise is undefined behavior. As long as these promises hold, safe code alone cannot cause undefined behavior.
+An unsafe context delegates verification and exempts no rule, including the data-race rule ([§22.3.7](22-core-execution-and-foreign-functions.md#2237-data-races)). Unsafe Blocks ([§14.3](14-control-flow.md#143-do-and-unsafe)), unsafe functions ([§7.6](07-functions-and-callable-values.md#76-unsafe-functions)) and foreign functions ([§22.6](22-core-execution-and-foreign-functions.md#226-foreign-function-imports)) mark promises the compiler cannot verify; breaking one is undefined behavior ([§1.3](01-overview.md#13-normative-status-and-wording)). Safe code alone never causes undefined behavior.
 
-`raw/T` is a non-owning **raw pointer** to storage for its complete immediate Referent Type `T`. `T` determines access and the element size used by arithmetic. `T` may itself be a reference or pointer Type, as in `raw/ref/i32` and `raw/raw/i32`. Pointers are Copy regardless of `T`. Copying or destroying a pointer neither copies nor destroys its pointee, and frees no storage. The Type name states a capability; `unsafe` marks only the places where a promise is made.
+`raw/T` is a non-owning **raw pointer** to storage for the complete Type `T`, which may itself be a pointer or reference (`raw/raw/i32`). It is Copy for every `T`; copying or destroying it does not touch the pointee.
 
-```kimi
-let first: raw/Foo = obtainPointer()
-let second = first // Copy the pointer, not Foo.
-```
-
-A raw pointer guarantees nothing about its pointee's lifetime, initialization, alignment or access permission. Every access through it must satisfy the conditions of §5.2.1.
-
-A missing required unsafe context, an invalid Type and an unsupported operation are compile-time errors. Violating a runtime memory-safety requirement is undefined behavior; neither detection nor runtime checks are guaranteed.
-
-Only an operation whose violation may be undefined behavior requires an unsafe context:
-
-| Operation | Unsafe context required |
-| --- | --- |
-| Declare, hold, Copy, Move, pass or destroy a raw pointer; create a contextually typed `null`; compare same-Type pointers, or a pointer and `null`, for equality | No |
-| Acquisition and conversion with `@raw/U`: the same raw pointer Type, distinct raw pointer Types, `usize` and Typed Null Formation (§5.4) | No |
-| Taking the address of a Place with `@raw` (§5.4) | No |
-| Forming a raw Place with `*p` or `p[n]`, including borrowing and taking from it (§5.2) | Yes |
-| `p + n`, `p - n`, `p += n`, `p -= n` | Yes |
-| Calling an unsafe function | Yes |
-
-The operations that need no unsafe context do not require the pointer to have access provenance (§5.2). Whether an operation needs an unsafe context is independent of its effect classification: converting an integer to a pointer needs no unsafe context but is an environment effect (§8.4.10.2).
+Only forming a raw Place (`*p`, `p[n]`, [§5.2](#52-raw-places)), pointer arithmetic ([§5.3](#53-pointer-arithmetic-and-indexing)), calling an unsafe function and `noinit` ([§4.3.4](04-arrays-indexing-and-slices.md#434-noinit)) need an unsafe context; outside one, they are compile-time errors. Everything else, including `null`, `==`, `@raw`, `@raw/U` from a raw pointer, `usize` or `null`, and `@usize` from a raw pointer, needs none and needs no valid provenance. Converting an integer to a pointer is still an environment effect ([§8.11.2](08-generics-constraints-and-contracts.md#8112-confined)).
 
 ```kimi
-let address = pointer@usize      // No unsafe context.
 let bytes = pointer@raw/u8       // No unsafe context.
 unsafe
-    let value = bytes[13]        // Forming the raw Place needs one.
+    let value = bytes[13]        // Forming a raw Place needs one.
+let first = bytes[0]             // Error: raw Place outside an unsafe context.
 ```
 
 ## 5.1. Null and equality
 
-`raw/T` permits `null`. The expected Type of a `null` literal must determine `raw/T`; otherwise compilation fails. Safe references (`ref/T`, `uniq/T`, `objref/T`, `objuniq/T`) are never null. A non-null raw pointer is not necessarily valid.
+A `null` literal needs an expected raw pointer Type, or must be the operand of `@raw/U` (Typed Null Formation, [§5.4](#54-addresses-and-conversions)). Safe references (`ref`, `uniq`, `objref`, `objuniq`) are never null. A non-null raw pointer need not be valid.
+
+`==` and `!=` compare the addresses of two pointers of the same Type, or of a pointer and `null`; they read no pointee and work on null and dangling pointers. Null equals null and never equals a non-null pointer. Equal addresses imply neither equal provenance nor permission. Pointers have no ordering.
 
 ```kimi
 let pointer: raw/i32 = null
-let typedNull = null@raw/i32 // Typed Null Formation, not a pointer cast.
-let unknown = null // Error: no pointer Type can be determined.
 let empty = pointer == null
+let typed = null@raw/i32              // Typed Null Formation, not a cast.
+let unknown = null                    // Error: no pointer Type.
+let before = pointer < pointer        // Error: pointers have no ordering.
 ```
 
-`==` and `!=` compare the addresses of two pointers of the same Type and return `bool`; they do not read the pointees. In a comparison with `null`, the literal takes the other operand's pointer Type. Null equals null and never equals a non-null pointer.
+## 5.2. Raw Places
 
-Initialized pointers may be compared even when they are null or dangling. Equal addresses imply neither equal provenance nor ownership or access permission. Comparing pointers of different Types requires an explicit conversion to a common Type. Ordering comparisons are not defined for pointers.
+**Provenance** is the storage a pointer derives from and the range of it that the pointer's accesses may cover (condition 1 of [§5.2.1](#521-access-conditions)). A Place lies within a range when its bytes do or, if it is zero-sized, when its address is in the range or at its end. A Place lies within the pointer's provenance when it lies within the provenance's range and belongs to the provenance's storage; a punned Place belongs to the storage whose bytes it covers.
 
-## 5.2. Dereference and ownership
+`*p` is a **raw Place** of Type `T`, as are `p[n]` and the Fields and elements of a raw Place; a null pointer cannot be dereferenced. A raw Place that an operation acts on designates one Place at the raw Place's address within the pointer's provenance, whose Type is the raw Place's Type under normalized Type identity with Origins treated as equal ([§3.8](03-types-and-values.md#38-type-relations-and-operations)); the base of a Field or element projection designates none. Distinct zero-sized Places of one Type may share an address ([§4.1](04-arrays-indexing-and-slices.md#41-fixed-arrays)); a raw Place may designate any of them, and no address, index or Field name selects one.
 
-**Provenance** records the storage a pointer derives from and the basis for its accesses. `*pointer` denotes a memory Place of Type `T`, a **raw Place**; `p[n]` and the Fields and elements of a raw Place are raw Places too. Forming one requires live storage covering the required range, valid alignment and provenance; null and one-past-the-end pointers cannot be dereferenced.
+Reads and writes follow the ordinary Copy and assignment rules. A whole-value read, replacement, Take or borrow of a raw Place needs a complete value ([§15.1.2](15-ownership-and-lifetime-analysis.md#1512-construction-and-completeness)). A raw pointer supplies no Loan, exclusivity or completeness proof.
 
-Reads and writes of the pointee follow the normal Copy, assignment and replacement rules: a read Copies a Copy value, and assignment replaces an initialized pointee under the normal destruction rules. Initializing uninitialized raw storage requires `Raw.initialize` (§5.6); ordinary assignment cannot do it. A fixed array declared with [`noinit`](04-arrays-indexing-and-slices.md#434-skipping-initial-stores-with-noinit) is already semantically Initialized: ordinary Scalar-pointee assignment may write it, and no special first-write operation is required. Its values must still be written before any read. Binding mutability does not determine pointee write permission.
+**Placement.** Places are initialized through a raw pointer only by construction or relocation (below) that an **operation contract** states, as the contract of `Raw.initialize` ([§5.6](#56-raw-storage-operations)) states construction. An operation contract is the `- safety:` conditions of a foreign import ([§22.6](22-core-execution-and-foreign-functions.md#226-foreign-function-imports)) or the contract of a Kimi function that the implementation supplies without a body ([§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)); a function with a body initializes Places only through the operations it performs. A Place **holds no value** when it is Uninitialized or Moved ([§15.1.1](15-ownership-and-lifetime-analysis.md#1511-initialization-state)). Initializing a Place is a write of it that meets the conditions of [§5.2.1](#521-access-conditions) for the pointer through which it is initialized. That Place must be an existing Place or, in raw storage, a new one; it must hold no value, and no Initialized Place other than its ancestors may hold any of its bytes. A `noinit` array ([§4.3.4](04-arrays-indexing-and-slices.md#434-noinit)) is already Initialized.
 
-```kimi
-let pointer: raw/i32 = obtainPointer()
-unsafe
-    let value = *pointer
-    *pointer = 10
-pointer = other // Error: the let binding cannot be reassigned.
-```
+**Designation.** A set of operations is **closed** when it contains every operation that happens before one of its members ([§22.3.7](22-core-execution-and-foreign-functions.md#2237-data-races)). A closed set is **consistent** when some single choice of the Place each raw Place designates, the Place each placement fills and the values each relocation moves lets its members, safe or unsafe, meet their rules with no data race among them on the chosen Places. Behavior is undefined from an operation X when a closed set that contains X, but no operation that X happens before, is inconsistent while the set without X is consistent. The choice is not part of execution: an operation acts at its address as its Type directs, whatever the choice assigns to it; the choice only decides whether behavior is defined.
 
-Unsafe access obeys the distinction between storage lifetime and content lifetime (§15.7.3): a payload update keeps the allocation but may invalidate pointers and dependencies into the old contents. A raw pointer alone supplies no safe Loan, exclusivity or completeness proof.
+**Type-punned access.** A raw Place whose Type is Copy and positive-sized may, when a read, write or borrow acts on it or `Raw.slice` takes it as an element, instead designate a **punned Place**: a Place of that Type at the raw Place's address within the pointer's provenance, over bytes that Initialized Places hold, none of those bytes in a part that holds no value. A punned Place exists only for the access that acts on it or the Loan that borrows it. Placement, relocation and release disregard its bytes and value, but its Loans count under condition 4 of [§5.2.1](#521-access-conditions). It holds a complete value. A read of it, also through its borrow or as a `Raw.slice` element, needs its bytes to represent a valid value of its Type; padding ([§21.1.1](../impl/21-layout-runtime-and-code-generation.md#2111-common-rules)) and bytes that an enum's active Case does not use represent none. A write through a punned Place, also through its borrow, must leave each Initialized Place that holds a changed byte with a valid value of that Place's Type, and with its active Case unchanged when it is an enum Place whose Type is not Copy, by the time that Place is next accessed other than through a punned Place: punning constructs no payload.
+
+**Relocation.** When an operation contract states that its operation copies the bytes of a source range into raw storage, the operation may relocate, when it completes, values whose Places lie within the source range and the source pointer's provenance. A component moves only with its value: a relocated value moves with its components, and a component of a value that does not relocate, for example because the value's Place extends beyond the source range, stays. Each relocated value, with its components and their state, then occupies the Place at the same offset in the destination, and its source Place holds no value. Each destination Place meets the placement rule, counting the relocated source Places as holding no value, and conditions 3 and 4 of [§5.2.1](#521-access-conditions) apply to each relocated source Place as to a Take.
 
 ### 5.2.1. Access conditions
 
-An access through a raw pointer (a read, write, take or borrow of a raw Place) is valid only when all of the following hold. The compiler does not check them; a violation is undefined behavior.
+A read, write, Take or borrow of a raw Place is undefined behavior unless all of these hold:
 
-1. **Range.** The accessed range lies within the pointer's provenance:
-   - for `P@raw`, the storage of the written Place `P`, with one-past-the-end allowed for arithmetic; `x[0]@raw` cannot reach `x[1]`;
-   - for `Raw.allocate`, the whole allocation;
-   - for an integer conversion or a foreign result, §5.5 and the function's contract.
-2. **Liveness and value.** The storage is live. A read requires an initialized, valid value, and a write follows the initialization and replacement rules above. Replacing the contents keeps the storage but invalidates pointers into the old contents (§15.7.3).
-3. **Authority.** The access does not exceed the authority of the path from which the address was taken:
-   - read only: a `let` binding, a Place reached through `ref`, or any shared path;
-   - read and write: a writable owning path, or the result of `Raw.allocate`;
-   - read and write only while that Loan is live: a Place reached through `uniq`.
-4. **Loans.** The access does not conflict with a live Loan of that storage: a shared Loan forbids writes, and an exclusive Loan forbids every access. An access made inside the Loan of the path from which the pointer was taken does not conflict with that Loan.
+1. **Provenance.** What the access acts on lies within the pointer's provenance ([§5.2](#52-raw-places)): for `P@raw`, the storage of `P` (`x[0]@raw` cannot reach `x[1]`, even at the same address); for `Raw.allocate`, the whole allocation; otherwise [§5.5](#55-integer-addresses) or the operation contract ([§5.2](#52-raw-places)) of the operation that produced the pointer.
+2. **Liveness and value.** The storage is live and aligned for `T`, also when `T` is zero-sized; a read needs a valid, initialized value. Replacing, moving or taking the contents ends only the contents; the storage stays live, but storage that the old contents owned (for example their heap buffer) ends with them.
+3. **Authority.** The access does not exceed the capability that the path from which the address was taken has for that Place ([§13.5.5](13-operators-and-assignment.md#1355-follow) object-payload table, [§11.8](11-properties.md#118-static-storage)) or, for a punned Place ([§5.2](#52-raw-places)), instead for each Place that holds one of its bytes. Reading needs read capability; writing, Take and in-place destruction (`_ = (*p)@move`) need write capability. For example, a `let` binding, a `ref` referent, an immutable static, and a payload reached through `let h: obj/T`, `rc`, `arc` or `objref` are read-only; a writable owning path (including the payload of a writable owning `obj/T`) and a mutable static are readable and writable; a `uniq` or `objuniq` referent is readable and writable only while that Loan is live. `Raw.allocate` storage is readable and writable; a pointer from an integer conversion has the authority that the guarantee of [§5.5](#55-integer-addresses) gives, and a pointer that an operation with an operation contract produces, such as a foreign import, the authority that contract states.
+4. **Loans.** The access conflicts with no live Loan of a Place overlapping what it acts on, except the Loan of the path the pointer was taken from. Loan liveness follows the uses of safe values alone ([§15.6](15-ownership-and-lifetime-analysis.md#156-borrow-checking)).
 
-The liveness of a Loan is decided by the uses of safe values alone (§15.6). Neither `@raw` nor any use of a raw pointer extends a Loan. The liveness of storage is distinct from the liveness of a Loan of it.
+**Local variables.** A local variable's storage lives at one fixed address from its declaration until its scope ends. Moving its value or part of it (`@move`, a Partial Move) or taking from it through a raw Place ends only the lifetime of those contents: the storage stays live, the Places of those contents hold no value, and a later initialization (assignment to a `var`, or `Raw.initialize` through a raw pointer) fills the same Places. A raw pointer to the variable or to one of its parts therefore stays usable, under conditions 2-4, until the scope ends.
 
-- **Local variables.** The storage of a local variable lives until its scope ends or its value is Moved, whichever comes first.
-- **Object payloads.** A payload's address is fixed from publication until destruction begins. Moving, borrowing, cloning, downgrading or upcasting the handle does not move it. A fixed address does not satisfy conditions 3 and 4: a back link to a parent, for example, may be used only when it does not conflict with exclusive access to that parent.
+```kimi
+var a = make()
+let p = a@raw
+consume(a@move)
+a = make()
+unsafe => inspect((*p)@ref)   // Valid: the same Place, initialized again.
+```
 
-**Retained dependencies.** A value moved into raw storage keeps its Origins and Loan requirements. While the value lives, the author must keep those dependencies in the Type of the value that owns the storage, through a Type argument or a `Loan<T>` Field (§15.3.5).
+**Object payloads.** A payload's address is fixed from publication until its destruction begins, whatever happens to the handle.
+
+**Retained dependencies.** A value moved into raw storage keeps its Origins and Loan requirements; the Type owning the storage must keep them through a Type argument or a `Loan<T>` Field ([§15.3.5](15-ownership-and-lifetime-analysis.md#1535-variance-loan-requirements-and-phantom-origins)).
 
 ### 5.2.2. Borrowing raw Places
 
-`@ref`, `@uniq`, `@objref` and `@objuniq` may borrow a raw Place, including a Field or element of one.
-
-- **No recovery.** Neither the original owner nor an existing Loan is recovered from a raw pointer.
-- **Fresh anchor.** The referent of the result is a fresh anchor for a new Loan whose mode is the mode of the borrow. Its region follows uses and result fitting as usual. Its Origin is fitted to the expected Type, result or storage destination and has no upper bound; it may be `static`. Adaptation Targets still carry no written Origin (§13.5.1), and the unique-anchor restriction on safe derivations (§15.2.3) does not apply.
-- **Overlap.** The anchor is not compared with Places not derived from it, such as other raw Places or the original storage (§15.6.2); the absence of such an unknown overlap is the unsafe obligation of §5.2.1. Accesses through the result, Reborrows from it and their children are checked under the anchor as usual.
-- **Caller Loans.** When the result is returned under a signature Origin, the caller keeps the Loan bound to that Origin for the result's region (§15.6.4). Matching an Origin creates neither a Loan nor exclusivity (§15.3.5); the exclusivity of a `uniq` result rests on the unsafe promise alone.
-- **Obligation.** Throughout the use of the result and of every derived value that keeps its Origin, the conditions of §5.2.1 must hold for the borrow's accesses. For `uniq`, no other path, including another raw pointer, may access the storage.
-
-```kimi
-func get(self: ref/Self, index: isize) -> ref/T
-    require 0 <= index and index < self.length else => $abort("Index out of range")
-    unsafe => return self.data[index]@ref   // The Origin is fitted to the result Type (self).
-```
+`@ref`, `@uniq`, `@objref` and `@objuniq` may borrow a raw Place. The result's referent is a fresh anchor ([§3.4.2](03-types-and-values.md#342-lending-points)) for a new Loan; no owner or existing Loan is recovered. Its Origin is fitted to the expected Type or destination and may be `static`; the safe-code rule of [§15.2.3](15-ownership-and-lifetime-analysis.md#1523-static-and-owned) that a `uniq` Origin cannot be bound to `static` does not apply. The anchor is not compared with Places not derived from it ([§15.6.2](15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts)). While the result or any value keeping its Origin is used, the conditions of [§5.2.1](#521-access-conditions) must hold for the borrow's accesses. For `uniq` and `objuniq`, exclusivity rests on this promise alone: no other path, including another raw pointer, accesses a Place overlapping the borrowed one.
 
 ### 5.2.3. Taking from raw Places
 
-Raw Places, and their Fields and elements, offer Take (§15.1.5). Their state is not tracked.
-
-- `(*p)@move` takes the value out and leaves the storage Uninitialized. Preventing a later read or a second destruction, through another pointer or through the original owner, is the author's obligation; the compiler need not identify that owner or suppress its automatic destruction.
-- `_ = (*p)@move` destroys the value in place.
-- Bare acquisition follows the rule for every Place: a Copy value is Copied, and a Non-Copy value is an error (§3.5).
-
-```kimi
-// Foo is Non-Copy; pointer refers to an initialized Foo.
-unsafe
-    let value = (*pointer)@move // Take Foo.
-    use(value)
-    // The author prevents destruction of the taken value by its old owner.
-```
+Raw Places offer Take ([§15.1.5](15-ownership-and-lifetime-analysis.md#1515-access-operations-and-acquisition)) without state tracking. `(*p)@move` takes the value and leaves the designated Place holding no value; the storage stays live, and `Raw.initialize` may place a value there again. Preventing a later read or a second destruction, also by the original owner, is the author's obligation. `_ = (*p)@move` destroys the value in place. Bare acquisition follows [§3.5](03-types-and-values.md#35-copy-and-move).
 
 ## 5.3. Pointer arithmetic and indexing
 
-For `p: raw/T` and `n: isize`, including negative `n`, only these arithmetic and indexing forms exist:
+For `p: raw/T` and `n: isize`, `p + n` and `p - n` displace `p` by `n * stride(T)` bytes, and `p[n]` is `*(p + n)`. `p += n` and `p -= n` are compound assignments ([§13.7.2](13-operators-and-assignment.md#1372-compound-assignment)). No other pointer arithmetic exists.
 
-| Form | Meaning |
-| --- | --- |
-| `p + n` | Pointer displaced by `n * stride(T)` bytes. |
-| `p - n` | Pointer displaced by `-n * stride(T)` bytes. |
-| `p[n]` | The same memory Place as `*(p + n)`. |
+`stride(T)` is the element spacing including padding ([§4.1](04-arrays-indexing-and-slices.md#41-fixed-arrays), [§21.1](../impl/21-layout-runtime-and-code-generation.md#211-storage-layout)). When it is zero, as for `raw/()`, every displacement is zero, so a generic `raw/T` needs no size Constraint; pointer equality then cannot find the end of a sequence of such elements, which is traversed by count.
 
-`p += n` and `p -= n` apply these displacements through [compound assignment](13-operators-and-assignment.md#1372-compound-assignment), under the same unsafe conditions. Pointer increment and decrement are not supported. Pointer-from-pointer subtraction, integer-left addition (`n + p`) and all other pointer arithmetic are forbidden.
-
-`stride(T)` is the complete element spacing including padding (§21.1), the same quantity that fixed arrays and Slice use. There is no source `sizeof` operator. Arithmetic requires a known layout. When `stride(T)` is zero, as for `raw/()`, every displacement is zero, so `p + n` and `p - n` are `p` and `p[n]` is the Place `*p`; distinct zero-sized elements may share an address, as in fixed arrays (§4.1). A generic `raw/T` therefore needs no size Constraint.
-
-A zero displacement preserves the pointer, including null. A nonzero displacement requires live-allocation provenance, and both the source and the result must lie inside the allocation or one past its end. The result keeps the provenance; a matching address alone is not enough. A mathematical displacement outside `isize`, or address wraparound, is undefined behavior.
-
-Arithmetic alone requires neither pointee initialization nor alignment. One-past pointers may be held and used in permitted arithmetic, but not dereferenced. Pointer indexing has no length and no implicit bounds check; it must meet both the arithmetic and the dereference requirements.
+A zero displacement preserves the pointer, including null. A nonzero displacement requires live storage, and both the source and the result must lie within the range of the pointer's provenance ([§5.2](#52-raw-places)) or one past its end; the result keeps the provenance. Overflowing `isize` or wrapping the address is undefined behavior. Indexing has no bounds check.
 
 ```kimi
 unsafe
-    let next = pointer + 1
-    let prev = pointer[-1]
-    pointer[10] = 123
-    pointer[^1]   // Error: an offset is an isize value, not a position.
-    pointer[0..4] // Error: no range indexing.
+    pointer[-1] = 123
+    let next = 1 + pointer       // Error: only p + n and p - n exist.
 ```
 
-## 5.4. Addresses and pointer conversions
+## 5.4. Addresses and conversions
 
 | Form | Meaning |
 | --- | --- |
-| `P@raw` | The address of the Place `P`. The result is `raw/V`, where `V` is the stored Type of `P`. |
-| `E@raw/U` | Raw pointer acquisition and conversion. `E` is a raw pointer, a `usize` value or `null`. |
+| `P@raw` | The address of the Place `P`, of Type `raw/V` for the stored Type `V` of `P` |
+| `E@raw/U` | Conversion of a raw pointer, a `usize` or `null` to `raw/U` |
+| `E@usize` | For a raw pointer `E`, its numeric address ([§5.5](#55-integer-addresses)) |
 
-Bare `@raw` is an operation that takes no Type, like `@follow`; it is not Semantics shorthand (§13.5.1). `@raw/U` only converts and never takes an address. For `p: raw/T`, `p@raw` is the address of the slot `p` (`raw/(raw/T)`), while `p@raw/u8` converts the value of `p`. Annotate a binding to state the expected result Type.
+Bare `@raw` takes no Type and applies to the written slot: for `p: raw/T`, `p@raw` is `raw/raw/T`, and a referent is `r@follow@raw`. It checks like an immediately ending `@ref`, reads nothing and leaves no Loan; for a Temporary Value, the pointer is valid only while the temporary lives. In an effect summary it accesses `P` ([§8.11.2](08-generics-constraints-and-contracts.md#8112-confined)).
 
-**Address.** `@raw` applies to the written slot itself. The referent of a reference is written `r@follow@raw`, the payload of a Sealed object `h@follow@raw`, and a part of a raw Place `(*p).field@raw`. The operation performs the checks of an immediately ending `@ref`: initialization, read capability and Loan conflicts. It reads no value and leaves no Loan. A Temporary Value is materialized as for `@ref`, and the pointer is valid only for the lifetime of that temporary. An implementation treats a local variable whose address is taken as address-observed (impl §21.5.5). In an effect summary, `P@raw` is an access to the Place `P`, an immediately ending borrow; on a mutable static Place it is an environment effect (§8.4.10.2).
+When `U` and the operand's pointee Type are the same after normalization (aliases expanded), not merely of equal layout, `@raw/U` is an ordinary Copy and keeps the Origins. An integer literal operand is fitted to `usize`. A conversion between raw pointer Types preserves address and provenance. No conversion reads a pointee, creates provenance or grants access; access as `U` still needs [§5.2](#52-raw-places) and [§5.2.1](#521-access-conditions).
 
 ```kimi
 var number: i32 = 1
 let p = number@raw            // raw/i32; no Loan is created.
 let r = number@uniq
-let q = r@follow@raw          // Writable only inside r's Loan.
+let q = r@follow@raw
 unsafe
-    *q = 2                    // Valid: an access inside r's Loan.
-    *p = 3                    // Undefined behavior: conflicts with r's exclusive Loan.
-r@follow += 1                 // r is used later, so its Loan is live at both accesses above.
+    *q = 2                    // Valid: inside r's Loan.
+    *p = 3                    // Undefined behavior: conflicts with r's Loan.
+r@follow += 1                 // r's Loan is live above.
 ```
 
-**Same Type.** When two complete raw pointer Types match after normalization (with Type aliases expanded), `@raw/U` performs ordinary same-Type acquisition: it copies the pointer and preserves its address, provenance, and Origin information and constraints. Matching size or memory layout alone does not make Types match. No new access permission or ownership is granted.
+## 5.5. Integer addresses
+
+Pointer/integer conversion requires a target with one address space, whose pointers carry no state beyond the address, whose addresses fit `usize` and whose pointer, `usize` and `isize` widths agree; elsewhere it is Unsupported. Null and zero convert to each other.
+
+A `usize` carries no provenance. Converting an address back yields an equal address but no provenance, lifetime or permission; access through it needs a guarantee documented by the implementation that gives the pointer's provenance ([§5.2](#52-raw-places)), its authority and the values placed within that provenance; conditions 2 and 4 of [§5.2.1](#521-access-conditions) still apply.
 
 ```kimi
-// pointer has Type raw/Node.
-let a = pointer             // Copy.
-let b = pointer@raw/Node    // Same-Type Copy.
+let restored = pointer@usize@raw/i32   // Equal address only; no provenance.
 ```
-
-**Conversions.** Between distinct normalized Types, `@` supports the raw pointer conversions `raw/T -> raw/U`, `raw/T -> usize` and `usize -> raw/T`. An integer literal used as a pointer-cast input is first fitted to `usize`. Within one address space, a pointer cast preserves address and provenance; it changes no memory, initialization or alignment and grants no access as `U`.
-
-```kimi
-let bytes = pointer@raw/u8
-unsafe
-    let typed = (bytes + 13)@raw/i32   // The arithmetic needs the unsafe context, not the casts.
-    // Access through typed still requires i32 alignment and a valid i32.
-```
-
-`raw/u8` permits byte-sized arithmetic, not reads of uninitialized memory. A cast neither reads a pointee nor requires a valid, aligned value of the destination pointee Type; dereference and access do. Conversions create no provenance.
-
-## 5.5. Target and round-trip guarantees
-
-Pointer/integer conversion requires a target whose ordinary data addresses fit losslessly in `usize`, whose pointer-address, address-index, `usize` and `isize` widths agree, and which provides the guarantees below. Multiple address spaces, and integer conversion of pointers that carry extra state such as capabilities, are excluded. An unsupported conversion is a compile-time error; CPU and OS support is target-specific.
-
-Null converts to integer zero, and integer zero converts to null, without requiring an all-zero internal pointer representation.
-
-Converting a pointer to `usize` guarantees only its numeric address. `usize` does not carry provenance in the language; its Copy, Move, argument passing, return and storage follow the ordinary integer rules. Converting the same numeric address back to the original pointer Type within the same execution guarantees an equal address, but neither preserves nor recovers provenance. Integer arithmetic or serialization cannot strengthen this guarantee.
-
-```kimi
-let address = pointer@usize
-let saved = address
-let restored = saved@raw/i32
-// Preserves the address only; access validity is a separate requirement.
-```
-
-Conversion extends no lifetime and restores no permission. Supported targets allow arbitrary integer-to-pointer casts, but a use that depends on provenance requires a documented compiler/target guarantee in addition to the normal lifetime, alignment, initialization and access conditions; an unsafe context alone is not enough. To preserve provenance portably, keep the original pointer. Addresses from another execution have no validity guarantee, and address equality never proves access validity.
 
 ## 5.6. Raw storage operations
 
-The public group `Kimi.Raw` provides the operations on raw storage:
-
 ```kimi
-public group Raw
+public group Raw   // Kimi.Raw
     public func allocate<T>(count: isize) -> raw/T
     public unsafe func release<T>(storage: raw/T)
     public unsafe func initialize<T>(storage: raw/T, value: T)
     public unsafe func slice<T>(storage: raw/T, length: isize) -> Slice<T> during s
 ```
 
-| Function | Contract |
-| --- | --- |
-| `allocate` | Safe. Allocates uninitialized storage for `count` elements. A negative `count`, an overflow of `count * stride(T)` or an allocation failure Aborts (§22.5.2). An alignment above 16 is reported as unsupported at compile time. When the size is zero bytes, nothing is allocated, and a non-null address aligned for `T` is returned instead; its provenance is a region of length zero, so the only valid accesses are to zero-sized pointees, and the address may equal other zero-byte results. |
-| `release` | `storage` is null or the start address of an `allocate` result not yet released, possibly converted to another raw pointer Type; an interior address is not allowed. Every element must already be destroyed or taken; `release` destroys no element. Null and zero-byte results are ignored. After the release, every pointer derived from that allocation is invalid. |
-| `initialize` | `storage` points to live, aligned, writable storage that holds no initialized value. Moves `value` there without destroying any old contents. |
-| `slice` | Forms a shared `Slice` of `length` elements starting at `storage`. `length >= 0` is the caller's obligation. When `length == 0`, `storage` may be anything, including null, and is not accessed. When `length > 0`, `storage` is non-null and aligned for `T`, `length * stride(T)` fits in `isize`, and the elements belong to completed array storage within the provenance. The `noinit` obligations of §4.3.4 apply: formation reads no elements, and their values must be written before any later read. The result Origin `s` is a universal Origin appearing only in the result (§15.3.1, §15.3.4), fixed by the caller's expected Type. Like a raw Place borrow, the result has a fresh anchor (§5.2.2); its elements must not be written for the whole Origin. |
+- **`allocate`** (safe) allocates raw storage for `count` elements; it holds no value. A negative `count`, an overflow of `count * stride(T)` or a failure Aborts ([§17.4.3](17-failure-handling.md#1743-termination-and-cleanup)). The largest alignment `allocate` supports is implementation-defined; a larger alignment of `T` is Unsupported at compile time. A zero-byte request returns a non-null aligned address with zero-length provenance of its own; zero-byte results may equal each other.
+- **`release`** takes null, a zero-byte result or the start of an unreleased `allocate` result, possibly converted to another raw pointer Type; it ignores null and frees nothing for a zero-byte result, which may be released again. Every Non-Copy value placed in the storage must already be destroyed, taken or relocated, whole or, if destroying it whole would only destroy its components ([§16.3.2](16-scope-exit-and-destruction.md#1632-component-destruction)), by its remaining Non-Copy components under the same rule. Afterwards every pointer into the storage is invalid.
+- **`initialize`** moves `value` into a Place of `T` at `storage` under the placement rule of [§5.2](#52-raw-places).
+- **`slice`** forms a shared `Slice` of the `length` elements starting at `storage`; `length >= 0` is the caller's obligation. When `length == 0`, `storage` may be any value, including null, and is not accessed. When `length > 0`, `storage` is non-null and aligned for `T`, `length * stride(T)` fits in `isize`, and for each `i` below `length`, `storage[i]` designates a distinct Place within `storage`'s provenance holding a complete value of `T` (for example placed by `Raw.initialize`) or belonging to a `noinit` array ([§4.3.4](04-arrays-indexing-and-slices.md#434-noinit)); element `i` of the result is that Place. Formation reads no element; an unwritten `noinit` element must still be written before it is read. The result Origin `s` appears only in the result ([§15.3.4](15-ownership-and-lifetime-analysis.md#1534-names-scope-and-quantification)) and has a fresh anchor ([§5.2.2](#522-borrowing-raw-places)); the elements must not be written for the whole Origin.
 
-Elements are taken and destroyed with the operations of §5.2.3. An allocation that does not Abort may later be added as `tryAllocate`, following the naming pair of §4.7.1.
-
-In an effect summary, `allocate` is an allocation, and `release`, `initialize` and `slice` are raw accesses through their pointer arguments; none is an environment effect (§8.4.10.2).
-
-A user container can then be written without compiler-known primitives:
+In an effect summary, `allocate` is an allocation and the others are raw accesses ([§8.11.2](08-generics-constraints-and-contracts.md#8112-confined)).
 
 ```kimi
 public struct Buffer<T>
-    let data: raw/T
-    var length: isize
-    let capacity: isize
+    internal let data: raw/T        // internal: BufferView reads it.
+    internal var length: isize
+    let capacity: isize             // private: only Buffer uses it.
 
     public init(capacity: isize)
         self.data = Raw.allocate<T>(capacity)
@@ -248,19 +158,19 @@ public struct Buffer<T>
 
     public func get(self: ref/Self, index: isize) -> ref/T
         require 0 <= index and index < self.length else => $abort("Index out of range")
-        unsafe => return self.data[index]@ref        // The Origin is fitted to self.
+        unsafe => return self.data[index]@ref
 
     public func items(self: ref/Self) -> Slice<T>
         unsafe => return Raw.slice(self.data, self.length)
 
-    public func view(self: ref/Self) -> BufferView<T>   // source is fitted to self.
+    public func view(self: ref/Self) -> BufferView<T>
         return BufferView<T>.init(self)
 
     drop
         let data = self.data
         while self.length > 0
             self.length -= 1
-            unsafe => _ = data[self.length]@move     // Destroy in reverse order.
+            unsafe => _ = data[self.length]@move   // Destroy in reverse order.
         unsafe => Raw.release(data)
 
 public struct BufferView<T> {source}
@@ -268,7 +178,7 @@ public struct BufferView<T> {source}
     let data: raw/T
     let length: isize
 
-    init(buffer: ref/Buffer<T> during source)
+    internal init(buffer: ref/Buffer<T> during source)   // internal: Buffer.view calls it.
         self.data = buffer.data
         self.length = buffer.length
         self.loan = Loan.init(buffer)
@@ -278,8 +188,4 @@ public struct BufferView<T> {source}
         unsafe => return self.data[index]@ref
 ```
 
-- **Views and borrow checking.** While a `BufferView` lives, the shared Loan of `source` is kept, so `push` on the `Buffer` is an ordinary borrow error. Only the library invariant that `data` points to the `Buffer`'s elements is unsafe.
-- **Elements with references.** When `T` contains references, as `ref/i32 during a` does, `T` appears in the Type `Buffer<T>`, so an inserted value's Loans are kept while the `Buffer` and every value taken or borrowed from it live (§5.2.1).
-- **Variance.** A `raw/T` Field makes `Buffer<T>` invariant in `T` (§15.3.5).
-
-Unsafe Function Types, unsafe function values, unowned references and unsafe weak pointers remain outside this revision ([Appendix D](appendices/D-deferred-features.md)). Example functions such as `obtainPointer` and `use` are illustrative, not standard API declarations.
+Private access covers only the declaring Container and bodies nested in it ([§9.4](09-names-signatures-and-access.md#94-access)), so members the two structs share are `internal`. A live `BufferView` keeps the shared Loan of `source`, so `push` meanwhile is a borrow error. The `raw/T` Field makes `Buffer<T>` invariant in `T` ([§15.3.5](15-ownership-and-lifetime-analysis.md#1535-variance-loan-requirements-and-phantom-origins)). Because `T` appears in `Buffer<T>`, an inserted value keeps its Loans while the `Buffer` and every value taken or borrowed from it live ([§5.2.1](#521-access-conditions)).

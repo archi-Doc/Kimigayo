@@ -102,7 +102,7 @@ public sealed partial class OwnershipAnalysis
 
         if (this.compilation.Binding.ImplicitPairAdmitted(source) != SemanticsMask.None && this.compilation.Binding.TryGetAdaptation(source, out var read))
         {
-            // SPEC 3.5.3, 13.5.5.1: a Scalar read through a pair layer. The owner case reads the operand itself; ref and uniq
+            // SPEC 3.5.3, 13.5.5: a Scalar read through a pair layer. The owner case reads the operand itself; ref and uniq
             // load through the stored reference.
             if (layers == 0)
             {
@@ -113,7 +113,7 @@ public sealed partial class OwnershipAnalysis
         return this.LoadReferent(source, layers);
     }
 
-    // SPEC 3.5.3, 13.5.5.1: the reference expression is read, and the referent is loaded through it (a valid
+    // SPEC 3.5.3, 13.5.5: the reference expression is read, and the referent is loaded through it (a valid
     // address by the reference's Origin, no new Loan) into a fresh Copy temporary, once per layer. The referent
     // stays initialized. The acquired Type retains nested Origins; the outer reference Origin is not attached
     // to an independent snapshot.
@@ -171,7 +171,7 @@ public sealed partial class OwnershipAnalysis
         if (this.compilation.Binding.ImplicitPairAdmitted(source) != SemanticsMask.None &&
             (!this.Substituting || this.ReferenceLayers(source.BoundType, result.Components[0]) == 1))
         {
-            // SPEC 13.5.5.1, 10.2: the inner reference below a pair layer is Copied from the Place itself in the universal
+            // SPEC 13.5.5, 10.2: the inner reference below a pair layer is Copied from the Place itself in the universal
             // verification and an owner instance; a ref or uniq instance loads it through the stored reference below.
             var copy = this.Place(source, result, OwnershipPlaceKind.Temporary, true, AcquisitionKind.Copy);
             var produced = this.Emit(OwnershipOperationKind.Produce, source, copy);
@@ -288,14 +288,15 @@ public sealed partial class OwnershipAnalysis
         return this.Temporary(assignment);
     }
 
-    // SPEC 7.1.1: a value use of a published Place reads the referent through the reference the call returns, like a
+    // SPEC 4.7.1: a value use of a subscript's element reads the referent through the reference its selected call returns, like a
     // selected referent: a Copy snapshot of a proven-Copy stored Type, never a Move.
-    private int ReadPlaceCall(InvocationKoto call, AcquisitionKind? acquisition)
+    private int ReadIndexerElement(InvocationKoto call, AcquisitionKind? acquisition)
     {
-        var stored = this.Resolve(call.BoundType, this.Active);
+        var element = ElementAccess.DesignatedType(call);
+        var stored = this.Resolve(element, this.Active);
         if (acquisition == AcquisitionKind.Move || stored is null || !this.SupportsCopySnapshot(stored, call))
         {
-            if (acquisition is null && call.BoundType is { } element && this.compilation.Binding.ProveCopy(element, call) != ConstraintProof.Proven)
+            if (acquisition is null && element is not null && this.compilation.Binding.ProveCopy(element, call) != ConstraintProof.Proven)
             {
                 var source = call.Parent is IndexKoto index && ReferenceEquals(this.compilation.Binding.IndexerCall(index, false), call) ? (Koto)index : call;
                 this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
@@ -309,7 +310,7 @@ public sealed partial class OwnershipAnalysis
             }
         }
 
-        var reference = this.PlaceCallReference(call);
+        var reference = this.IndexerCallReference(call);
         if (reference < 0)
         {
             return -1;
@@ -321,8 +322,8 @@ public sealed partial class OwnershipAnalysis
         return this.RegisterTemporary(loaded);
     }
 
-    // Evaluates a Place call as the reference it returns.
-    private int PlaceCallReference(InvocationKoto call)
+    // Evaluates a subscript's selected call as the reference it returns (SPEC 4.7.1).
+    private int IndexerCallReference(InvocationKoto call)
     {
         this.referenceCalls.Add(call);
         var reference = this.ExpressionCore(call, PlaceUseKind.Read, null);
@@ -330,14 +331,14 @@ public sealed partial class OwnershipAnalysis
         return reference;
     }
 
-    // SPEC 7.1.1, 13.7: an assignment or compound update through a place uniq/T result secures the right-hand side,
+    // SPEC 4.7.1, 13.7: an assignment or compound update through a subscript's indexUniq call secures the right-hand side,
     // evaluates the call once as its reference, and replaces the referent through it (any stored Type for `=`, numeric for
     // a compound update).
-    private int WritePlaceCall(Koto source, InvocationKoto call)
+    private int WriteIndexerElement(Koto source, InvocationKoto call)
     {
-        var type = call.BoundType;
+        var type = ElementAccess.DesignatedType(call);
         var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
-        if (ElementAccess.PlaceCallReference(call)?.Semantics != SemanticsKind.Uniq || type is null ||
+        if (call.BoundType?.Semantics != SemanticsKind.Uniq || type is null ||
             (operation != KotoKind.Equals && !this.SupportsUpdate(call, type, operation)))
         {
             this.Unsupported(source);
@@ -350,7 +351,7 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        var address = this.PlaceCallReference(call);
+        var address = this.IndexerCallReference(call);
         var pointer = this.Value(address);
         if (pointer < 0)
         {
@@ -384,7 +385,7 @@ public sealed partial class OwnershipAnalysis
         return operation == KotoKind.Equals ? this.Temporary(source) : this.UpdateResult(source, previous, value);
     }
 
-    // SPEC 13.5.5.1, 13.7: r@follow = v and r@follow op= v write the referent of a uniq reference through it, securing the
+    // SPEC 13.5.5, 13.7: r@follow = v and r@follow op= v write the referent of a uniq reference through it, securing the
     // RHS first, as the same replacement.
     private int WriteReferent(Koto source, ConversionKoto followed)
     {
@@ -436,8 +437,8 @@ public sealed partial class OwnershipAnalysis
         return operation == KotoKind.Equals ? this.Temporary(source) : this.UpdateResult(source, previous, value);
     }
 
-    // SPEC 5.2, 7.1.1, 13.5.5.1, 13.7: the one replacement through an address, whether a raw pointer, the reference a Place
-    // call publishes, a followed uniq reference or the exclusive address of a field reached through a reference. The old
+    // SPEC 5.2, 4.7.1, 13.5.5, 13.7: the one replacement through an address, whether a raw pointer, the reference a subscript's
+    // selected call returns, a followed uniq reference or the exclusive address of a field reached through a reference. The old
     // value is destroyed by its Type's destruction plan and the acquired value's responsibility moves into the destination
     // (LowerPointer); no compiler-owned destination or temporary is created for it.
     private void StorePointer(Koto target, int pointer, int value)

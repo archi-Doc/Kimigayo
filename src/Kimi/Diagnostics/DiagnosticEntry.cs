@@ -5,13 +5,13 @@ using System.Text;
 
 namespace Kimi.Diagnostics;
 
-/// <summary>One named, typed fact of a code: a message argument or evidence a report adds to its Reason (SPEC 23.3.6.2).</summary>
+/// <summary>One named, typed fact of a code: a message argument or evidence a report adds to its Reason (SPEC 23.3).</summary>
 /// <param name="Name">The fact's name, fixed by its code.</param>
 /// <param name="Kind">The kind of value in the Reason.</param>
 /// <param name="IsType">Whether the value displays a Type; the Types of one record are bounded as a pair, keeping their differences.</param>
 public readonly record struct DiagnosticParameter(string Name, DiagnosticValueKind Kind, bool IsType);
 
-/// <summary>The catalog definition of one diagnostic code (SPEC 23.3.6.1).</summary>
+/// <summary>The catalog definition of one diagnostic code (SPEC 23.1.1).</summary>
 [TinyhandObject(ImplicitMemberNameAsKey = true, EnumAsString = true)]
 public partial record class DiagnosticEntry
 {

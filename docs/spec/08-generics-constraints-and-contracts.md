@@ -2,132 +2,192 @@
 
 [Specification index](../SPEC.md)
 
-Generic parameters describe the admitted Types and capabilities. Constraints establish the proofs available to a generic body. Contracts name capabilities and map their requirements to implementations. Explicit specialization changes implementation selection, not the original callable contract.
+Constraints state what a generic body may assume and each use must prove. Contracts name capabilities and map requirements to implementations. Explicit specialization changes which implementation runs, never the call contract.
 
-## 8.1. Generic Type parameters
+## 8.1. Generic parameters
 
-This section defines Type slots. Function length slots use the explicit `<length N>` form of [length parameters](04-arrays-indexing-and-slices.md#44-function-length-parameters); a plain `<N>` is a Type slot. A length slot accepts no complete Type and is not decomposed as a pair.
+### 8.1.1. Type slots and pair parameters
 
-### 8.1.1. Slots and projections
+Type slots `<T>` and pair parameters `<s/T>` each consume one complete Type argument `W` and keep its Semantics, nested Types and Origins. Length slots use `<length N>` ([§4.4](04-arrays-indexing-and-slices.md#44-function-length-parameters)); a plain `<N>` is a Type slot. Origin parameters have their own schema ([§15.3](15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations)).
 
-Both parameter forms consume **one complete Type argument**. Binding preserves its Semantics, nested Types and all Origins:
+- `<T>` binds `T` to `W`, a complete value Type, not only a Core.
+- `<s/T>` splits the outer layer of `W`: `s` is the **pair binder** (the outer Semantics) and `T` is the **pair target** (the direct target). The original `s/T` still denotes `W`. When the outer layer is a safe borrow, `W` has an outer Origin `o`, which has no source name. `o` is one fixed Origin of the body ([§15.6.5](15-ownership-and-lifetime-analysis.md#1565-judging-origin-relations)) per pair binder, shared by every occurrence of the original `s/T` and present only in the admitted borrow cases of `s`.
 
-```text
-<T>    : T = W
-<s/T>  : WholeType = W
-         s = OuterSemantics(W)
-         T = DirectTarget(W)
-         o = OuterOrigin(W)       // Present only for an outer safe borrow.
-```
+Before splitting, aliases, completed projections, grouping and redundant `owner/` are normalized; alias cycles are errors. `ref/(uniq/i32 during b) during a` gives `s = ref`, `T = uniq/i32 during b` and outer Origin `a`; `owner/(ref/i32 during a)` has outer Semantics `ref`.
 
-`WholeType`, the projection functions and `o` are explanatory notation, not source bindings. `<s/T>` declares only `s` and `T`; the original `s/T` keeps `W`'s Origins without naming them. `o` is one Origin per pair binder, shared by every occurrence of the original `s/T`: it is present for the admitted borrow bindings of `s` and contributes nothing for the others, it is a fixed Origin of the body ([§15.6.5](15-ownership-and-lifetime-analysis.md#1565-universal-regions)) that no Origin expression writes, and diagnostics display it as `omitted` with the `<s/T>` declaration ([§23.3.6.5](23-compiler-services.md#23365-explanation-and-limits)). Source Origin names use the separate [Origin schema and naming rules](15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations).
-
-An ordinary `T` denotes a complete value Type, not only a bare Core. The pair's `T` has the fixed internal kind **SemanticsTarget**: a complete value Type or an Object View Target. Using it as a standalone value Type in a generic body requires proof of that role under the declared Constraints at definition checking; only the remaining proven symbolic substitution may be a [deferred obligation](#810-generic-body-checking-and-deferred-obligations). Its kind does not change at instantiation.
-
-Before projection, transparent aliases, resolved associated-Type projections, grouping and redundant `owner/` are normalized. Alias cycles are rejected, and nominal declaration identity and parameter Binding Identities are kept; there is no nominal-alias syntax. Only the outer layer is split: `ref/(uniq/i32 during b) during a` yields `s = ref`, `T = uniq/i32 during b` and outer Origin `a`. Since `owner/V` is `V`, `owner/(ref/i32 during a)` has outer Semantics `ref`.
-
-| Outer Semantics | Direct target, and requirements for applying these Semantics to another `U` | Outer Origin |
+| Outer Semantics | Pair target; requirement for applying `s` to another `U` | Outer Origin |
 | --- | --- | --- |
-| `owner` | `DirectTarget(W)` is `W` itself; `owner/U` is `U` for any valid complete value Type | None |
-| `ref`, `uniq` | Complete Referent Type; `uniq` also requires exclusive acquisition and Loans at use | Required |
-| `obj`, `rc`, `arc` | Object Target (§8.4.7.2) | None |
-| `objref`, `objuniq` | Object Target (§8.4.7.2); borrowing requirements are preserved | Required |
-| `raw` | Complete pointee Type; adds no safe-borrow lifetime guarantee | None |
+| `owner` | `W` itself; `owner/U` is `U` | none |
+| `ref`, `uniq` | Complete Referent Type; `uniq` also needs exclusive acquisition and Loans | yes |
+| `obj`, `rc`, `arc` | Object Target ([§8.7.3](#873-objectpayload)) | none |
+| `objref`, `objuniq` | Object Target | yes |
+| `raw` | Complete pointee Type; no lifetime guarantee | none |
 
-These rows do not extend the current runtime-Contract or callable restrictions. The absence of an outer Origin does not erase payload dependencies: in `ref/(View<i32>{v}) during b`, `v.source` belongs to the inner Type and `b` to the outer borrow.
+A missing outer Origin erases no payload dependency: in `ref/(View<i32>{v}) during b`, `v.source` belongs to the inner Type.
 
-Forming an object form over a generic target requires [Object Target](#8472-objectpayload) evidence at definition checking, in signatures and bodies alike. For the pair's own `T`, **pair evidence** suffices: the [admitted Semantics set](#87-constraint-proof-system) of `s` is contained in the object family (`obj`, `rc`, `arc`, `objref`, `objuniq`). The caller-formed `s/T` itself needs no evidence. Applying `s` to another `U` requires `U` to be an Object Target whenever the admitted set of `s` meets the object family, and every admitted Semantics must still form a valid Type with `U` (a View Target `C` admits `obj/C` but not `owner/C`). `T is Sealed` is not object-formation evidence (§8.4.7.1). No evidence is derived from the well-formedness of a written signature, and evidence never flattens nested Type or Origin layers.
+**Pair target as a value Type.** `T` may be used as a standalone value Type in the body (for example `Option<T>`) only when it is a value Type in every admitted case of `s`. It is one for `owner`, `ref`, `uniq` and `raw`. If the admitted set of `s` meets the object family, `T is ObjectPayload` must be Proven ([§8.7.3](#873-objectpayload)). Otherwise the use is an error at definition checking. This is a Type Legality check after lookup has selected `T` ([§9.2](09-names-signatures-and-access.md#92-namespaces-and-lookup-roles)).
 
-Within one parameter list, every bound name must be distinct: `<T, T>`, `<s/T, s/U>` and `<s/s>` are errors. References use Binding Identity under the ordinary scope rules. `<s>` is an ordinary Type slot; there are no standalone Semantics slots. Built-in forms such as `Callable<ref, S>` have their own grammar and are not general Semantics arguments.
+**Object forms.** Forming an object form over a generic target requires Object Target evidence ([§8.7.3](#873-objectpayload)) in signatures and bodies. For the pair's own `T`, **pair evidence** suffices: the admitted set of `s` ([§8.3.4](#834-semantics-admitted-set)) lies in the object family (`obj`, `rc`, `arc`, `objref`, `objuniq`). Applying `s` to another `U` requires `U` to be an Object Target whenever the admitted set meets the object family, and every admitted Semantics must form a valid Type with `U`. Evidence is never derived from a written signature's well-formedness.
 
-### 8.1.2. Reconstruction and Origin annotations
-
-After transparent alias expansion, the original pair expression `s/T` refers to its WholeType `W`. The declared bindings determine this correspondence, not two targets becoming equal after instantiation. `s/U` with another binding applies only the Semantics kind to `U` and does not copy `W`'s outer Origin. Once formed, equal complete Types have no identity differences from their construction history.
-
-An explicit Origin annotation follows the ordinary Type-formation rules. Otherwise the original `s/T` keeps `W`'s Origins, and another `s/U` uses the [position-specific Origin rules](15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision). Storing a Type in a pair slot grants no additional omission permission.
-
-For `W = ref/i32 during a`, `s/T during b` forms `ref/i32 during b`. Formation requires no relationship between the old outer Origin `a` and the new `b` and performs no value conversion, but it still validates the binding of `b`, its annotation position and the formed Type's own inner-Origin outlives constraints. Fitting an actual `{a}` value to this Type separately checks the permitted shortening (`a outlives b`), acquisition and Loans. In particular, `uniq/V` keeps `V` invariant and any required Move or Reborrow; an annotation neither creates nor removes a Reborrow.
-
-For another target `s/U`, omitted Origins follow the position rules symbolically even when `s` is unknown. A direct input records, at definition, an independent outer-Origin slot that is active only when `s` is a safe borrow. Otherwise the slot contributes no binding or constraint; all dependencies of `U` remain, and `owner/U` normalizes to `U`. Fields and nested borrow layers gain no new omission permission. Type formation and body legality must hold for every admitted binding. An explicit `s/T during a` or `s/U during a` binds that occurrence's outer-Origin slot in the same way: the slot is active only for the admitted borrow bindings of `s` and contributes nothing for the others, so `Collection<s/Option<T> during a>` is written the same whatever `s` admits. The original unannotated `s/T` keeps its WholeType and receives no new Origin: its outer-Origin slot is `W`'s own outer Origin `o` (§8.1.1), which an explicit `s/T during a` replaces by `a` for that occurrence while the occurrence remains a pair layer.
-
-Conditional slots and result plans are kept in the [canonical contract](15-ownership-and-lifetime-analysis.md#1537-canonical-contracts-and-verification). Instantiation substitutes that plan; it introduces no binders and discovers no missing definition proofs.
-
-Following a [pair layer](13-operators-and-assignment.md#pair-layers) uses the outer-Origin slot of the followed occurrence, not `W`'s outer Origin for another `s/U`, and the dependencies of each admitted case are those of that [Semantics case](#810-generic-body-checking-and-deferred-obligations): a dependency is active exactly in the cases that produce it.
-
-### 8.1.3. Argument validity
-
-**WellFormedGenericTypeArgument(A)** requires a valid resolved complete Type, or a legitimately dependent Type with retained obligations. Access, Semantics application, generic and associated-Type arguments, Origin bindings, relations and Constraints are checked before any Origin-erased comparison key is used.
-
-| Argument | Rule |
-| --- | --- |
-| Primitive, struct, enum, Unit, Tuple | Allowed under ordinary Type formation |
-| Common Function Type | Allowed under its existing signature, environment and Origin restrictions |
-| Function Item or Closure Type | Allowed through inference or an existing reference form; no new anonymous-Type spelling |
-| Safe borrow, object Type, raw pointer, Origin-bearing aggregate | Allowed as a Type argument; acquisition, storage, erasure and Unsafe checks remain separate |
-| Never | Allowed as a semantic Type argument, without adding a source name or value; a Never expression alone cannot infer an arbitrary unbound Type |
-| Dependent Type | Definition-side bindings and resolvable obligations are kept until their deadlines |
-| Unsized or unspecified representation | No such Type is introduced; a valid Type must also meet the layout requirements of each storage use |
-| Bare Contract, group, bare Semantics, general value argument | Not a complete value Type argument; a Contract can appear only in an already permitted Object View Type |
-
-An explicit argument list supplies every slot in declaration order, with an optional trailing comma. Omitting the entire list uses only the inference that the construct supports: function-own slots and a construction target's own slots share [§10.8](10-overload-resolution-and-inference.md#108-generic-argument-inference), preserving their distinct declaration identities and fixed outer bindings. There are no partial lists, `_` placeholders, defaults, variadic slots or general Const generics; only [function length slots](04-arrays-indexing-and-slices.md#44-function-length-parameters) admit length arguments. `<s/T, U>` takes two arguments, such as `<ref/i32 during a, string>`; `<ref, i32>` cannot supply one pair. Origin parameters have a separate schema and consume no Type argument slots.
-
-A valid Type argument is not permission to use it in every role: the constraints on base Types, associated Types, finite layout, Copy derivation and object payload erasure still apply. Ordinary storage preserves complete Type-argument dependencies under the [storage contracts](15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision), without an Owned or Storable requirement. Static storage instead requires Owned and the [static-source rules](11-properties.md#1132-static-storage).
-
-## 8.2. Constraints
-
-| Term | Meaning | Example |
-| --- | --- | --- |
-| **Contract** | A Declaration Container declared with `contract` that specifies a named capability a Type provides. | `contract Comparable` |
-| **Constraint** | A condition imposed on a Type or Type Semantics. | `T is Comparable` |
-| **Constraints** | The set of conditions required for a declaration to be valid or usable. | The leading clauses of a generic function or structure. |
-| **Conformance** | A Type's fulfillment of a Contract, with the required correspondence between requirements and implementations. | A Type fulfills `Comparable`. |
-
-A **Constraint Clause** expresses a Constraint in the form `subject is requirement`. All clauses of a declaration's Constraints must hold, and they establish capabilities that the implementation may use. Subjects include complete Types, Semantics, valid target projections and `Self` (the enclosing Type), according to each requirement's role; each declaration kind restricts the permitted subjects (see [function Constraints](07-functions-and-callable-values.md#74-function-constraints)). In a struct or enum declaration, `Self is C` declares conformance (§8.4.4). `Self is not C` is permitted there only as the opt-out of an intrinsic requirement that defines one, currently [ObjectPayload](#8472-objectpayload); any other negated `Self` clause in a Type declaration is an error.
-
-A Type requirement may name a capability declared with `contract` or another compile-time Type capability, or a complete Type for [Type identity](#83-requirement-expressions). A Semantics requirement may name a concrete Semantics, such as `ref` or `obj`, or a Semantics category. Requirements combine with `and`, `or`, `not` and parentheses under the [requirement-expression rules](#83-requirement-expressions).
-
-A `struct` header may contain generic parameters and an Origin list. Its ordinary Constraints precede the members, and conditional conformances may appear at member positions (§8.4.8).
+The names of one parameter list are distinct: `<T, T>`, `<s/T, s/U>` and `<s/s>` are errors. `<s>` is an ordinary Type slot; there are no standalone Semantics slots.
 
 ```kimi
-struct Container<s/T> {owner, source}
-    T is Comparable
-    s is reference
+func keep<s/T>(x: s/T)
+    s is ref or uniq
+    let empty: Option<T> = .None      // Valid: T is a Referent Type in both cases.
 
-    var value: s/T
+func lose<s/T>(x: s/T)
+    let empty: Option<T> = .None      // Error: s may be obj, and T is not proven ObjectPayload.
 ```
 
-These clauses constrain the pair's target projection `T` and its Semantics projection `s`; each requirement must accept its subject's role. Constraints may also apply to the enclosing Type:
+### 8.1.2. Pair reconstruction and Origin annotations
+
+The original `s/T` refers to `W` by its declared binding, not by Type equality after instantiation. `s/U` for another `U` applies only the Semantics kind and does not copy the outer Origin of `W`.
+
+- **Annotation.** `s/T during b` or `s/U during b` binds that occurrence's outer-Origin slot, which is active only in the admitted borrow cases of `s`; so `Collection<s/Option<T> during a>` is written the same whatever `s` admits. For `W = ref/i32 during a`, `s/T during b` forms `ref/i32 during b` without relating `a` and `b` or converting a value; fitting a value to it then checks shortening, acquisition and Loans. An annotation neither creates nor removes a Reborrow.
+- **Omission.** `s/U` follows the position rules for omitted Origins ([§15.4](15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision)) symbolically: a direct input gets an independent outer-Origin slot, active only when `s` is a safe borrow. Fields and nested borrow layers gain no omission permission.
+- **Following.** Following a pair layer ([§13.5.5](13-operators-and-assignment.md#1355-follow)) uses the outer-Origin slot of the followed occurrence; each dependency is active exactly in the Semantics cases ([§8.15.2](#8152-semantics-cases)) that produce it.
+
+Type formation and body legality must hold for every admitted binding. Instantiation substitutes the canonical contract ([§15.3.7](15-ownership-and-lifetime-analysis.md#1537-contract-comparison)) and discovers no missing proof.
+
+### 8.1.3. Type arguments
+
+A Type argument is a valid complete Type or a Type depending on the definition's parameters: a primitive, struct, enum, Unit, Tuple, common Function Type, safe borrow, object Type, raw pointer or Never ([§3.1.3](03-types-and-values.md#313-unit-and-never)). A Function Item or Closure Type is supplied through inference or an existing reference form. A Contract, group, Semantics or value is not a Type argument. A Never expression alone cannot infer an unbound Type.
+
+An explicit argument list supplies every slot in order, with an optional trailing comma; omitting the whole list uses the construct's inference ([§10.8](10-overload-resolution-and-inference.md#108-generic-argument-inference)). There are no partial lists, `_` placeholders, defaults, variadic slots or Const generics. `<s/T, U>` takes two arguments, such as `<ref/i32 during a, string>`.
+
+A valid argument is not valid in every role: base-Type, associated-Type, layout ([§8.15.3](#8153-concrete-layout-and-representation)), Copy-derivation and payload rules still apply. Ordinary storage keeps argument dependencies without requiring Owned ([§15.4](15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision)); static storage requires Owned ([§11.8](11-properties.md#118-static-storage)).
 
 ```kimi
-struct ComparableContainer<T>
-    T is Comparable
-    Self is Comparable
+func choose<T>(a: T, b: T) -> T => b@move
 
+let y = choose<Option<string>>(.None, .Some("a"))
+// let z = choose<i32, i32>(1, 2)   // Error: choose has one Type slot.
+```
+
+## 8.2. Constraints and requirement expressions
+
+### 8.2.1. Constraint clauses
+
+A **Constraint Clause** `subject is requirement` states a condition; all clauses of a declaration's **Constraints** must hold, and the body may use what they prove. Subjects are complete Types, pair binders, pair targets, associated-Type projections and `Self`, as the requirement's role permits; each declaration kind restricts them ([§7.5](07-functions-and-callable-values.md#75-function-constraints)). A requirement names a Contract ([§8.4](#84-contracts)) or another capability, a complete Type ([§8.2.3](#823-type-identity-and-identity-premises)), or for a pair binder a Semantics or Semantics category ([§3.3](03-types-and-values.md#33-semantics)).
+
+A struct or enum declares its Constraints before its members; conditional conformances appear at member positions ([§8.8](#88-conditional-conformance)). In a Type declaration, `Self is C` declares conformance ([§8.6.1](#861-conformance-declarations-and-identity)); compiler-intrinsic Contracts and the one negated `Self` clause are covered by [§8.7.1](#871-compiler-intrinsic-contracts).
+
+```kimi
+contract Describe
+    func describe(self: ref/Self) -> string
+
+struct Labeled<T>
+    T is Describe
+    Self is Describe         // Labeled<T> conforms; nothing is derived from T is Describe.
     var value: T
+    public func describe(self: ref/Self) -> string => self.value.describe()
 ```
 
-`T is Comparable` supplies comparison capabilities for the stored value's Type. In a Type declaration, `Self is Comparable` is both a Constraint and a [conformance declaration](#844-conformance): it requires `ComparableContainer<T>` itself to fulfill `Comparable` and derives no implementation from the clause on `T`. (The required members are omitted here.) The built-in `Self is Copy` keeps its own [derivation rules](03-types-and-values.md#351-copy-capability-and-explicit-duplication).
+### 8.2.2. Requirement expressions
 
-## 8.3. Requirement expressions
-
-`subject is requirement` tests a Type or Type Semantics in Constraint Clauses and in associated-Type declarations and specifications. Its result is a compile-time `bool`; an unresolved requirement never becomes a runtime test. Each context keeps its permitted subjects, grammar and validation rules. Requirement Tests are not allowed in `#if` or `#case` Conditions. Ordinary expressions use [runtime type tests](13-operators-and-assignment.md#1361-runtime-is-tests) instead. The syntax context, including through parentheses, fixes the interpretation before lookup, with no fallback between the Type and Value namespaces.
-
-`is` binds on its left at comparison precedence, and its right side consumes a requirement expression through `or` precedence. An immediately following `not` negates the entire right side:
+`subject is requirement` is a compile-time test in Constraint Clauses and associated-Type declarations and specifications. It is never a runtime test and is not allowed in `#if` or `#case`; expressions use runtime `is` tests ([§13.6.4](13-operators-and-assignment.md#1364-runtime-is-tests)). Requirements combine with `and`, `or`, `not` and parentheses (grammar: `IsRequirement`, [§F.6](appendices/F-syntax-summary.md#f6-declarations)); a `not` directly after `is` negates the whole right side:
 
 | Form | Meaning |
 | --- | --- |
-| `T is A and B` | `T` satisfies both `A` and `B`. |
-| `T is A or B` | `T` satisfies `A` or `B`. |
-| `T is not A or B` | `T` does not satisfy `(A or B)`. |
-| `T is A and not B` | `T` satisfies `A` and does not satisfy `B`. |
+| `T is A and B` / `T is A or B` | `T` satisfies both / either. |
+| `T is not A or B` | `T` satisfies neither. |
+| `T is (not A) or B` | `T` does not satisfy `A`, or satisfies `B`. |
 
-**Type identity.** A requirement that names a complete Type instead of a capability, `X is U`, requires `X` and `U` to be the same Type. It is Proven when both normalize to the same Type, including the same binders, Refuted when both are fully bound and differ, and Unknown otherwise (§8.7). An available identity premise makes `X` and `U` one Type in its scope: Type checking there, including fitting, member lookup, overload resolution and associated-Type normalization, substitutes one for the other. The scope is the constrained declaration, or the conformance scope and implementation block of a conditional conformance (§8.4.8.1). Identity implies no conversion between different Types.
+A Requirement Test cannot be part of a Boolean expression such as `(T is A) and enabled`.
 
-Write `T is (not A) or B` to limit the negation to `A`. A complete Requirement Test cannot be embedded in an ordinary Boolean expression such as `(T is A) and enabled`; no source syntax provides such a mixed context. Use separate Constraint Clauses for requirements and environment directives for independently configured source selection. Value equality uses `==`.
+### 8.2.3. Type identity and identity premises
 
-## 8.4. Static contracts
+`X is U` with a complete Type `U` requires `X` and `U` to be the same Type. Identity implies no conversion.
 
-A **Contract** is a Declaration Container that defines a named capability through function requirements, Property requirements, associated Types and Constraints. It has no executable implementations or storage. `Self` in a requirement denotes the conforming concrete Type.
+**Identity premises.** In a scope, the available Type-identity facts (premises `X is U` that name complete Types, and associated-Type specifications) group Types into classes: the smallest equivalence relation that contains these facts and is closed under replacing a Type by an identical one inside any Type, including projections (if `X` and `U` are one Type, so are `Option<X>` and `Option<U>`, and `X.(C).Item` and `U.(C).Item`). Two Types are identical when they normalize into the same class, and all Type checking in the scope treats them as one Type. The scope is the constrained declaration, or the conformance scope and block of a conditional conformance ([§8.8.1](#881-conditions-and-implementation-blocks)). A declaration is an error when one class contains two different fully bound Types, or when a Type would have to contain itself as a proper part. Identity is never decomposed: `Option<U> is Option<i32>` does not imply `U is i32`.
+
+```kimi
+func same<T, U>(value: T) -> i32
+    T is Option<U>
+    T is Option<i32>
+    return 0      // Option<U> and Option<i32> are one Type here; U and i32 are not.
+
+func cyclic<T, U>(value: T) -> i32
+    T is Option<U>
+    U is Option<T>  // Error: T would contain itself.
+    return 0
+```
+
+## 8.3. Constraint proof
+
+### 8.3.1. Propositions and outcomes
+
+Generic checking proves Constraints only by the rules of this section, never by SAT solving, theorem proving, enumeration of Types or optimizer facts. Fully determined concrete conditions use Boolean evaluation. Callable effect bounds are not propositions ([§8.11.6](#8116-callable-effect-bounds)).
+
+Requirement precedence applies first: `T is (A and B)` supplies `(T is A) and (T is B)`. Propositions are identified by bound Symbols and normalized complete Types, not spelling. Parentheses are transparent and `not not P` is `P`; there is no other logical normalization.
+
+| Outcome | Meaning |
+| --- | --- |
+| **Proven** | The rules establish the proposition. |
+| **Refuted** | The rules establish its negation; absence of proof is not enough. |
+| **Unknown** | Neither polarity is established. |
+| **Error** | Invalid names, subjects or declarations, or contradictory evidence. |
+
+Evidence comes from the declaration's input Constraints, built-in capability rules and verified conformances; environment directives supply none. An input Constraint is assumed in the body and proven at each use. A required Constraint succeeds only when Proven.
+
+### 8.3.2. Proof rules
+
+| Rule | Derivation |
+| --- | --- |
+| Exact assumption | An available `P` proves `P`; an available `not P` refutes it. |
+| Conjunction | An available `P and Q` supplies both; `P and Q` is Proven when both are, Refuted when either is. |
+| Disjunction | `P or Q` is Proven when either is (no evidence for the other), Refuted when both are. |
+| Negation | `not P` exchanges Proven and Refuted. |
+| Concrete judgment | Concrete Type-identity, Semantics, category and built-in capability tests, and the closed-world rule below. |
+| Admitted set | A requirement on a pair binder is decided by [§8.3.4](#834-semantics-admitted-set). |
+| Verified conformance | A verified explicit, conditional ([§8.8](#88-conditional-conformance)) or inherited ([§8.6.2](#862-inherited-conformance)) conformance supplies evidence once its implementations are identified and compatible ([§8.6.3](#863-implementation-matching)); effect bounds are checked separately ([§8.11.4](#8114-checking-and-use)). |
+| Contract refinement | `T is C` supplies each ancestor conformance and inherited Constraint, with `T` for `Self`. |
+| Type and associated-Type identity | Proven when both sides are in one identity class ([§8.2.3](#823-type-identity-and-identity-premises)), after substituting completed associated-Type bindings; Refuted when both are fully bound and differ. Proof never searches members or chooses a Type. |
+| Closed implication | `T is PrimitiveInteger` supplies `T is Position` ([§8.7.4](#874-primitiveinteger)). |
+| Other cases | Unknown. |
+
+Error absorbs any result; otherwise a Refuted operand refutes a conjunction and a Proven one proves a disjunction despite Unknown operands. `P or Q` with `not P` does not prove `Q`: there is no case analysis or proof by contradiction. Directly available `P` and `not P`, or evidence for both polarities of a queried proposition, is contradictory evidence (Error).
+
+**Closed world.** Unbound Types and unresolved prerequisites are never negative results. Absence of a conformance is Refuted only when every applicable path (declaration, inherited and conditional conformances, prerequisites) is complete and ruled out; a failed lookup proves nothing. A primitive Type's conformances are fixed (intrinsic capabilities and built-in comparison, formatting, Position and arithmetic, [§13.3.3](13-operators-and-assignment.md#1333-arithmetic-contracts)), so its conformance to any other resolved Contract is Refuted.
+
+```kimi
+func pick<T>(value: T) -> T
+    T is Copy or Describe
+    return value     // Error: Copy or Describe does not prove Copy, so value needs @move.
+```
+
+### 8.3.3. Recursion and Finality
+
+**Recursion.** A conformance cannot use itself as evidence: an obligation revisited while it is being proven supplies no evidence, and no coinduction is assumed. Recursive declarations alone are valid; structural analyses such as Owned use [§15.3.5](15-ownership-and-lifetime-analysis.md#1535-variance-loan-requirements-and-phantom-origins). When a Contract's associated-Type Constraint leads back to the same Contract, the Contract is valid, but no concrete Type can be proven to conform. The depth of a proof search is limited by an implementation-defined resource limit; a proof that exceeds it is a resource failure ([§23.1.1](23-compiler-services.md#2311-categories)), never Unknown or Refuted.
+
+**Finality.** A judgment uses every fact of the program that does not depend on that judgment; the order in which an implementation checks declarations never changes the result. A fact that depends on its own judgment, directly or through other declarations, supplies no evidence. Where proof is required, Unknown is an error (unproven requirement); it is never accepted or treated as Refuted. A generic definition is judged under its declared premises when it is checked; instantiation adds no semantic use condition and never repeats lookup or overload selection, and only layout and representation obligations depend on instantiation ([§8.15.3](#8153-concrete-layout-and-representation)).
+
+```kimi
+contract Tree
+    associate Child is Tree      // Valid declaration.
+
+struct Node
+    Self is Tree                 // Error: proving Node is Tree needs Node is Tree.
+    associate Tree.Child is Node
+```
+
+### 8.3.4. Semantics admitted set
+
+The Semantics premises at a point give the **admitted set** of a pair binder `s`: a Semantics name contributes itself and a category its members ([§3.3](03-types-and-values.md#33-semantics)); `and`, `or` and `not` are intersection, union and complement over the nine Semantics; separate clauses intersect; without premises all nine are admitted. `s is R` is Proven when the admitted set lies within the members of `R`, Refuted when they are disjoint and Unknown otherwise; an empty set is Error. This decides every Semantics requirement, including pair evidence, `Weak<S>` over a pair ([§3.2.2](03-types-and-values.md#322-weak-references)) and borrow annotations on a pair binder ([§15.3](15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations)).
+
+```kimi
+func peek<s/T>(value: s/T) -> i32
+    s is object                         // Admitted set {obj, rc, arc}.
+    let view: objref/T = value@objref   // Valid: pair evidence for T.
+    return 0
+```
+
+## 8.4. Contracts
+
+### 8.4.1. Contract declarations
+
+A **Contract** is a Declaration Container declared with `contract` that defines a capability through function requirements, Property requirements, associated Types and Constraints, with no implementations or storage. `Self` denotes the conforming Type. Contracts are static; runtime Contract Views are [§8.12](#812-runtime-contracts). A Contract may declare Type parameters (not Origin or length parameters) and inherits its enclosing environment ([§6.1.3](06-declarations-and-containers.md#613-inherited-environments-and-declaration-references)). `Indexable<isize>` and `Indexable<string>` are distinct bound Contract references ([§8.6.1](#861-conformance-declarations-and-identity)).
 
 ```kimi
 contract Source
@@ -139,21 +199,19 @@ contract Sized
 
 contract SizedSource: Source, Sized
     func reset(self: uniq/Self) -> ()
-```
 
-This revision defines static conformance checking and generic use; runtime Contract Views remain a [future extension](#85-runtime-contracts). A Contract may declare its own **Type parameters** with the ordinary generic-parameter syntax, but no Origin or length parameters. It also inherits the enclosing environment under §6.1.3, including unused Type/Semantics and Origin bindings. The same Type-argument syntax is used at the declaration, at references, in parent lists and in conformance declarations, and it binds complete Types under the ordinary generic rules. `Indexable<isize>` and `Indexable<string>` are therefore distinct bound Contract references with independent requirements and associated Types (§8.4.9). Separately specified built-in requirements such as `Callable<...>` keep their own grammar.
-
-```kimi
 contract Indexable<Key>
     associate Element
-    func index(self: ref/Self, key: ref/Key) -> place ref/Element during self
+    func index(self: ref/Self, key: ref/Key) -> ref/Element during self
 ```
 
-### 8.4.1. Function requirements
+### 8.4.2. Function requirements
 
-A function requirement declares a Name, optional function generic parameters, implicitly introduced signature Origins (§15.3.4), an optional task slot ([§24.2.1](24-suspension-and-asynchronous-tasks.md#2421-form)), explicitly typed parameters (the receiver may use the shorthand of §7.3) and an optional result Type or Place result (§7.1.1); an omitted result means Unit. A requirement with a receiver is an instance function; one without a receiver is a Type function. Receiver, parameter labels, ownership, Origins and safe/unsafe conditions follow the ordinary function rules.
+A function requirement has a Name, optional generic parameters, implicit signature Origins ([§15.3.4](15-ownership-and-lifetime-analysis.md#1534-names-scope-and-quantification)), an optional task slot ([§24.2.1](24-suspension-and-asynchronous-tasks.md#2421-form)), typed parameters (receiver shorthand: [§7.3](07-functions-and-callable-values.md#73-receivers)) and an optional result Type; an omitted result is Unit. With a receiver it is an instance function, otherwise a Type function. An optional indented region after the header holds its own Constraint Clauses, Origin relations ([§15.3.3](15-ownership-and-lifetime-analysis.md#1533-declaration-attached-relations)) and effect clauses ([§8.11.1](#8111-declarations)), with subjects rooted in its generic parameters. These are premises for compatibility ([§8.6.3](#863-implementation-matching)), not added to the implementation.
 
-Function-specific Constraints occupy an optional indented region immediately after the header. The region contains one or more Constraint Clauses, Origin relations or effect clauses and no executable statements, `return`, local declarations or single-item body. It may also hold Origin relations (§15.3.3) and effect clauses (§8.4.10). Its subjects are the function's generic parameters or associated-Type projections rooted in them. Contract-wide Constraints belong at the Contract body level.
+- Same-name requirements with receivers in one Contract, inherited ones included, share one receiver shape ([§7.3](07-functions-and-callable-values.md#73-receivers)); all same-name requirements share one task-slot shape ([§24.2.3](24-suspension-and-asynchronous-tasks.md#2423-not-a-parameter-one-shape-per-function-group)).
+- Requirements allow the `!` boundary ([§7.2](07-functions-and-callable-values.md#72-parameters)) but no defaults. A call through a requirement supplies every ordinary argument under the requirement's name-omission permissions.
+- Requirements take no access modifiers ([§9.4.6](09-names-signatures-and-access.md#946-conformance-accessibility)). Property requirements use `has` ([§11.9](11-properties.md#119-contract-property-requirements)).
 
 ```kimi
 contract Factory
@@ -161,47 +219,28 @@ contract Factory
         T is Copy
 ```
 
-Requirement Constraints are premises for checking implementation compatibility; they are not silently added to the implementation declaration. Same-name requirements with receivers in one Contract, including those inherited through refinement (§8.4.2), must share one receiver shape ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)), and all same-name requirements in one Contract, including inherited ones, must share one task-slot shape ([§24.2.3](24-suspension-and-asynchronous-tasks.md#2423-not-a-parameter-and-one-shape-per-group)); a Contract that violates either is a declaration error. Requirements permit the `!` argument-name boundary (§7.2) but prohibit defaults. A call through a requirement supplies every ordinary argument and follows the requirement's name-omission permissions; defaults or name-omission permissions on the implementation do not change this call surface. Requirements and required accessors have no [access modifiers](09-names-signatures-and-access.md#934-conformance-accessibility) of their own.
+### 8.4.3. Refinement
 
-Property requirements use `has`; their selection and compatibility rules are in [Contract Property requirements](11-properties.md#114-contract-property-requirements).
+`contract C: A, B` refines each parent, given as a bound Contract reference ([§9.7.1](09-names-signatures-and-access.md#971-bound-container-paths)), as in `contract UniqIndexable<Key>: Indexable<Key>`, and inherits its requirements, associated Types and Constraints. Parent order gives no priority, and cycles are errors. Inside a Contract, `Self is C` for a user Contract does not declare refinement (intrinsic parents: [§8.7.1](#871-compiler-intrinsic-contracts)). Conformance to a child entails every ancestor, with `Self` the final conforming Type. A child may add but never remove or weaken. Paths to one ancestor declaration with equal bindings give one requirement ([§8.9.2](#892-merging-paths-and-cycles)); independent same-named declarations stay distinct, and one implementation may satisfy several.
 
-### 8.4.2. Refinement
+A refinement is an error when its requirements can neither coexist as separate implementations ([§8.6.3](#863-implementation-matching), [§9.1](09-names-signatures-and-access.md#91-signatures)) nor be satisfied by one implementation. Labels alone never distinguish overloads, and different result Types alone prove no conflict, since result compatibility ([§10.7](10-overload-resolution-and-inference.md#107-callable-signature-compatibility)) applies. Unknown proves no conflict.
 
-`contract C: A, B` refines every listed parent Contract. Parents resolve as bound Contract references (§9.6.1), which may carry arguments on outer path segments and the parent Contract's own Type arguments (§8.4), as in `contract UniqIndexable<Key>: Indexable<Key>`. All requirements, associated Types and Constraints are inherited. Parent order gives no priority, and direct or indirect cycles are errors. `Self is C` does not declare refinement inside a Contract.
+## 8.5. Associated Types
 
-```text
-Source                 Sized
-  Element, read()        count
-       \                 /
-             SizedSource
-               reset()
-```
+### 8.5.1. Declaration and specification
 
-Conformance to a child entails conformance to every ancestor, and inherited `Self` still denotes the final conforming Type. A child may add requirements or Constraints but cannot remove or weaken inherited ones.
+An associated Type denotes a complete Type. Binding, projecting or expanding it neither rebinds its Origins nor supplies `static`. `associate` declares one in a Contract and specifies one in a conforming Type, always with `is`:
 
-Paths to the same ancestor declaration with the same normalized bindings introduce one Requirement Identity or associated-Type identity. Distinct bindings remain distinct requirements, and all path conditions and validation obligations are preserved (§8.4.9). Independent declarations from different parents remain distinct even when their names match; one compatible implementation may satisfy several requirements.
-
-A refinement is rejected when its requirements cannot coexist as separate implementations under the ordinary declaration rules and provably cannot be satisfied by one implementation. The check uses both the [implementation-identification key](#845-implementation-matching) and the ordinary [Signature](09-names-signatures-and-access.md#91-signatures) rules: labels affect matching but cannot by themselves distinguish overloads. Different result Types alone do not prove a conflict; the defined result compatibility, including the subtype and Never rules, applies. Genuinely dependent checks wait until their prerequisites resolve; Unknown is not a proof of contradiction.
-
-### 8.4.3. Associated types
-
-An associated Type denotes a **complete Type**: Semantics, Type arguments, nested structure and internal Origins, like a generic Type argument or `Self`. Semantics compose layers and never overwrite an existing layer. Binding a complete Type into an associated Type, projecting it or expanding an alias neither rebinds its Origins nor supplies `static`.
-
-`associate` declares a new associated Type inside a Contract and specifies an existing associated Type inside a conforming Type. Both forms use `is`, never `=`:
-
-| Form | Meaning and location |
+| Form | Meaning |
 | --- | --- |
-| `associate Element` | Declares an associated Type in a Contract. |
-| `associate Element is Equatable` | Declares it with a capability requirement, or constrains the uniquely identified associated Type in an implementation. |
-| `associate Element is i32` | Declares it with a fixed Type, or specifies that Type in an implementation. |
-| `associate C.Element is T` | Specifies identity with a Type `T` for the associated Type declared by `C`. |
-| `associate LentItem(step)` | Declares an associated Type with an Origin parameter (below). |
-| `associate LentItem(step) for uniq/Self during step` | Declares it with a formation Type that bounds the domain of `step` (below). |
-| `associate C.LentItem(a) is ref/E during a` | Specifies an Origin-parameterized associated Type; `a` is the implementation's parameter for the first requirement parameter. |
+| `associate Element` | Declares it in a Contract; in a conforming Type it is an error (use `is`). |
+| `associate Element is R` | In a Contract, declares it with requirement `R`. In a conforming Type, specifies or constrains the uniquely named associated Type. |
+| `associate C.Element is R` | Specifies or constrains the one declared by `C`. |
+| `associate LentItem(step) ...` | With Origin parameters ([§8.5.4](#854-origin-parameters)). |
 
-Each associated Type is determined uniquely by explicit specifications, available Type-identity Constraints, inherited bindings or [bounded declaration inference](associated-type-inference.md). Inference completes an omitted non-family binding from the declared value result of an implementation uniquely identified under frozen premises. It never uses bodies, call sites, instantiated Types, implicit adaptations, Copy judgments or capability search. Contradictory identity facts are rejected. Available bindings are substituted for identification; newly inferred bindings complete compatibility without reselecting an implementation.
+In a conforming Type, `associate C.X is R` specifies `X` when conjunction elimination ([§8.3.2](#832-proof-rules)) of `R` yields a Type-identity atom; otherwise it leaves `X` to be specified elsewhere or inferred ([§8.5.5](#855-inference)). In both cases the completed Type must satisfy all of `R`. Several identity atoms follow [§8.2.3](#823-type-identity-and-identity-premises). Each associated Type of a conformance is determined uniquely by specifications, identity Constraints, inherited bindings or inference; one left undetermined is an error.
 
-**Qualified specifications.** `associate C.Element is T` selects an associated Type through a direct conformance or its ancestor `C`; `C` may carry the Contract's Type arguments. An unqualified `associate Element is T` is valid only when exactly one distinct associated-Type identity with that name is available across those conformances and refinements. As in §8.4.2, several paths to the same declaration with the same normalized bindings count once; distinct bindings remain distinct even when the declaration is shared. For example, `C<i32>.Element` and `C<i64>.Element` need their respective bound qualifiers when both are available. Ambiguous names require qualification, and a short form never applies to all same-named identities. A bare `associate Element` is not an implementation specification.
+**Qualification.** `C` in `associate C.Element` is a direct conformance or an ancestor, with its Type arguments. The unqualified form is valid only when one associated Type with that name is available across the conformances and refinements (paths to one declaration with equal bindings count once, [§8.9.2](#892-merging-paths-and-cycles)); `C<i32>.Element` and `C<i64>.Element` need qualifiers when both are available.
 
 ```kimi
 contract Destination
@@ -213,9 +252,21 @@ struct Pipe
     associate Source.Element is i32
     associate Destination.Element is string
     public func read(self: ref/Self) -> i32 => 42
+
+struct A
+    Self is Source
+    associate Source.Element is i32 and Copy   // Specifies i32; Copy is checked.
+    public func read(self: ref/Self) -> i32 => 0
+
+struct B
+    Self is Source
+    associate Source.Element is i32 or i64     // Leaves Element to inference; the result must be i32 or i64.
+    public func read(self: ref/Self) -> i64 => 0
 ```
 
-**Projections.** `T.(C).Element` is the associated Type of `T`'s conformance to the bound Contract reference `C`, and `T.(C).LentItem(a)` also applies Origin arguments (§8.4.3.1). `T.Element` is the short form; outside a Contract it is valid only when the requirement is unique under the available Constraints, and inside a Contract a short name refers to that Contract's own or inherited requirement. `C` is resolved by ordinary Contract-name and alias lookup, not by member lookup on `T`, and an unparenthesized `T.C.Element` is an ordinary qualified path, never a projection. Conformance evidence is required and is never discovered by searching for a same-named Contract. The Type-side base may be a named or constructed Core, a parameter, `Self` or another associated-Type projection. A projection is not a value or a Semantics-applied expression; a projected complete Type keeps its Semantics and does not become a Core qualifier merely because it is a projection.
+### 8.5.2. Projections
+
+`T.(C).Element` is the associated Type of `T`'s conformance to the bound Contract reference `C`; `T.(C).LentItem(a)` applies Origin arguments. `T.Element` is valid outside a Contract only when the associated Type is unique under the available Constraints; inside a Contract a short name means its own or inherited one. `C` is found by Contract-name lookup, and `T.C.Element` is an ordinary path. Conformance evidence is required and never found by name search. The base may be a Core, a parameter, `Self` or another projection. A projection is a Type that keeps its Semantics. A function's leading Constraints apply to the projections of its signature ([§7.5](07-functions-and-callable-values.md#75-function-constraints)). Distinct successful interpretations are ambiguous.
 
 ```kimi
 func readOne<T>(source: ref/T) -> T.(Source).Element
@@ -228,208 +279,225 @@ func readInt<T>(source: ref/T) -> i32
     return source.read()
 ```
 
-Leading function Constraints are collected before the projections in the signature are resolved (§7.4). Type context fixes a projection's namespace, and the dotted syntax is kept until Binding resolves the Contract and associated-Type roles. Distinct successful interpretations are ambiguous; neither expected results nor fallback to value-member lookup resolves the ambiguity.
+### 8.5.3. Constraints on inherited associated Types
 
-**Refinement Constraints.** A child may constrain an inherited associated Type through `Self.(C).Element`, where `C` is an ancestor. In a Contract-body Constraint subject, a bare associated-Type name is also permitted when it is unique among the own and inherited declarations. These clauses constrain existing declarations; they create no replacement Types or conformances. A child may also refine an inherited Origin-parameterized requirement with `associate Parent.LentItem(a) is E`, which requires the equality for every `a` in the parent's domain; `Iterator` does this with `associate LendingIterator.LentItem(step) is Item` (§22.1.2.1). `E` need not use `a`, but the actual Loan independence of values is checked separately (§15.6.3).
+A child Contract may constrain an inherited associated Type with `Self.(C).Element` for an ancestor `C`, or with a bare name unique among own and inherited declarations; this creates no new Type. It may refine an inherited family with `associate Parent.LentItem(a) is E`, which holds for every `a` in the parent's domain, as `Iterator` does with `associate LendingIterator.LentItem(step) is Item` ([§22.2.1](22-core-execution-and-foreign-functions.md#2221-iterator-contracts)). Loan independence is checked separately ([§15.6.3](15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting)).
 
 ```kimi
-contract Equatable
-    func equals(self: ref/Self, other: ref/Self) -> bool
-
 contract OrderedSource: Source
     Self.(Source).Element is Equatable
 
 contract IntSource: Source
-    Self.(Source).Element is i32
+    Self.(Source).Element is i32    // Conformances need not repeat the binding.
 ```
 
-An `IntSource` implementation need not repeat the inherited `Source.Element is i32` binding. Explicit Type-identity facts support substitution and normalization, and contradictory bindings are errors. Unresolved bindings remain obligations until the required finalization point. Only [bounded declaration inference](associated-type-inference.md) can supply an omitted binding; it does not extend the [limited proof rules](#87-constraint-proof-system).
+### 8.5.4. Origin parameters
 
-#### 8.4.3.1. Origin parameters
+An associated Type may declare **Origin parameters**, simple Names in parentheses. Their scope is the declaration's right-hand side, formation Type and attached clauses, not sibling requirements; a same-spelled Origin in a method signature is a different binder that applies the family, as in `Self.LentItem(step)`. Names follow [§15.3.4](15-ownership-and-lifetime-analysis.md#1534-names-scope-and-quantification).
 
-An associated Type may declare **Origin parameters**, one or more simple Names in parentheses after its Name:
+**Application.** In Type context, `LentItem(a)` substitutes Origin atoms positionally and denotes an ordinary complete Type; an intersection is parenthesized, as in `LentItem((a and b))`. Counts must match. A specification in a conforming Type repeats the parameter count; its parameter names correspond to the requirement's parameters by position, and renaming them does not change the Contract. An unapplied family, `_` and omitted arguments are errors, and an unapplied family is neither a Type argument nor aliasable. Only a parenthesized list directly after a named Type in Type context is an application, and it is an error unless that Type is an associated Type with Origin parameters; braces name a binding set ([§15.3.1](15-ownership-and-lifetime-analysis.md#1531-borrow-annotations-and-binding-sets)). The applied Type gets the ordinary variance, shortening and Reborrow checks.
 
-```text
-associate LentItem(step)                          // A requirement
-associate LentItem(step) is E                     // Fixed: an owned value, for example
-associate LentItem(step) is ref/E during step
-associate LentItem(step) is uniq/E during step
-associate LentItem(step) is ref/E during source   // source is bound in the enclosing environment
-associate LentItem(step) for uniq/Self during step // A requirement whose domain a formation Type bounds
-```
+**Formation conditions.** The Contract and the declaration's attached `origin` relations fix the domain. A fixed right-hand side publishes its well-formedness: for `associate View(a) is ref/E during a`, the Origins in OwnedOrigins(E) outlive `a` ([§15.6.1](15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness)). A capability requirement fixes no Type, but may end with a **formation Type** `for Type`, which publishes the formation conditions of `Type`, as in `associate IteratorType(source) is LendingIterator for ref/Self during source`; `Type` must be provable from the enclosing Constraints. Clauses such as `origin source outlives a` are processed in the order of [§15.3.3](15-ownership-and-lifetime-analysis.md#1533-declaration-attached-relations): equalities bind unbound Origins of the right-hand side, and the rest form the domain. Without right-hand side or conditions, every Origin the Contract allows is admitted.
 
-A parameter is an Origin binder whose scope is the right-hand side of its declaration, its formation Type and the attached clauses. It is not visible to sibling requirements. A same-spelled Origin in a method signature is a different binder, which applies the associated Type explicitly, as in `Self.LentItem(step)`. Duplicate and hiding names follow the ordinary Origin naming rules (§15.3.4).
-
-In Type context, `LentItem(a)` substitutes existing Origin atoms positionally for the parameters and denotes an ordinary complete Type. Arguments use the same atoms as `during`; an intersection is parenthesized, as in `LentItem((a and b))`. Declaration and application take one or more arguments, and their counts must match. Unapplied, partially applied, `_` and omitted arguments are invalid, and an unapplied family cannot be passed as a Type argument or aliased. Renaming a parameter does not change the Contract. An application is never a runtime call, a Type computation or a Place Type. Covariance of an associated Type is not assumed: the applied Type undergoes the ordinary variance, shortening and Reborrow checks.
-
-**Formation conditions.** The enclosing Contract and the requirement's attached `origin` relations fix the domain of a new requirement. A requirement whose right-hand side is a fixed complete Type automatically publishes that Type's Origin well-formedness conditions; a capability requirement such as `is LendingIterator` fixes no Type. A requirement with Origin parameters and without a fixed Type may end its header with a **formation Type**, `for Type`, which publishes the Origin formation conditions of `Type` without fixing the associated Type. It follows any capability requirement, as in `associate IteratorType(source) is LendingIterator for ref/Self during source`. The structure, Semantics, capabilities and lengths of `Type` are first proven from the enclosing public Constraints; no capability is inferred, and a Place result is not a `Type`.
+A use proves the substituted conditions; a pair layer publishes its outer-Origin conditions only in its binder's cases with an outer Origin ([§8.1.2](#812-pair-reconstruction-and-origin-annotations)). An implementation proves the remaining conditions after binding its right-hand side and cannot add call conditions. Origin parameters create no Loan and have no runtime representation.
 
 ```kimi
-// E is a complete Type parameter of the enclosing Contract.
-associate View(a) is ref/E during a
-
-associate LentItem(step) for uniq/Self during step
+contract Lender<E>
+    associate View(a) is ref/E during a
+    associate LentItem(step) for uniq/Self during step
+    func lend(self: uniq/Self during step) -> Self.LentItem(step)
+    // func bad(self: ref/Self) -> Self.LentItem   // Error: the family is unapplied.
 ```
 
-The first publishes the condition that the observable Origins of `E` outlive `a`; the second fixes no Type and admits every `step` for which `uniq/Self during step` is well formed. An attached `origin` clause may also relate a parameter to an existing Origin, as in `origin source outlives a`. Formation conditions create no Loan or capability; actual borrows are checked separately.
+### 8.5.5. Inference
 
-Attached clauses are processed in the order of §15.3.3. Equalities first bind the unbound Origins of the right-hand side, which fixes the complete Type; the remaining conditions become the published domain. For example, `BorrowingIterator<Self>{view}` with `origin view.source == a` defines the unbound `source` as `a`. Naming a set alone creates no Origin, and a bound Type is never rebound. A use proves the substituted conditions. A pair layer publishes the conditions of its outer-Origin slot only for its binder's admitted cases that have an outer Origin (§8.1.2): a use proves them in those cases of its substituted binding, unconditionally for a concrete borrow and in the caller binder's cases for a pair layer, and an implementation relies on them only in those cases. An implementation or a refining requirement proves the remaining conditions and inherited obligations after binding its right-hand side; it can neither add nor strengthen call conditions from its right-hand side or body. A requirement with neither a right-hand side nor conditions admits every Origin the Contract allows. Closed contradictions, circular self-proof and treating Unknown as success are rejected. Conditions, bindings and formation obligations are static metadata; Origin parameters add no runtime representation.
+A struct or enum conformance may omit an associated Type without Origin parameters; inference completes it from the declared result of an implementation. Inference never runs at instantiation, and an inferred binding is the same contract as an equal explicit one.
 
-#### 8.4.3.2. Origin application and binding sets
+**Frozen premises.** Each conformance path's premises are frozen first: its specifications, the identity Constraints of its Contract and ancestors, its inherited bindings and their consequences ([§8.3](#83-constraint-proof)). Only premises valid throughout the path count; premises of one requirement or implementation never determine a binding. An associated identity is the conforming Type, the associated declaration and the bound defining Contract; equal names do not establish it, and an identity conditional on one path is not unconditional on another. Fixed identities substitute forward: Iterator's `LentItem(step) is Item` exposes `Item`.
 
-The role of a parenthesized or braced suffix is fixed by its syntactic position, never by whitespace, lookup results or Type-check success:
+The current definition is one struct or enum with its conformances; nested definitions are separate. No value inferred for it enters its frozen premises. A value inferred for another definition may be used as soon as that value is determined, without waiting for the other definition's remaining values. Evidence for a value of the current definition that depends, directly or through other definitions' values, on a value inferred in the current definition supplies no evidence.
 
-| Syntax | Meaning |
-| --- | --- |
-| `associate LentItem(a)` in a declaration or specification | Introduces Origin parameters |
-| `Self.LentItem(a)` or `T.(C).LentItem(a)` in Type context | Applies existing Origins; the resolved requirement must declare corresponding parameters |
-| `View<T>{v}` on a named Type | Names a binding set (§15.3.1); requires a nonempty known schema |
-| `Self.LentItem(a){v}` | Names the binding set of an applied Type; valid only when its internal schema is known |
+**Identification.** Each requirement's implementation is identified once by the key of [§8.6.3](#863-implementation-matching) under the frozen premises, never filtered by result, Origins, Constraints or Effects. The outcome is **pending** when some candidate's key comparison depends on a missing associated Type of the definition; otherwise it is **unique**, **missing** or **ambiguous**. Only a unique match supplies evidence. After completion, only pending identifications are identified again, for compatibility only; missing and ambiguous ones are final. Function results supply evidence, `index` and `indexUniq` among them; Property and accessor results supply none. The implementation's result is its declared result, or Unit when omitted. Bodies, call sites and instantiations supply nothing.
 
-Only a parenthesized list directly after a named Type in Type context is an Origin application. Type grouping, Tuple and Function Types, and value-context calls keep their meanings and are never reinterpreted. Origin application on an ordinary Type, a wrong argument count and an unapplied family are errors. Braces are never read as positional Origin arguments.
+**Extraction.** The normalized results are traversed only along structure leading to missing associated Types: a missing position takes the complete implementation Type (a whole Function Type included); same nominal constructions and Tuples follow corresponding arguments; fixed arrays follow elements only when lengths are already equal; concrete Semantics layers follow the same layer. Function Types, unresolved projections and unresolved Semantics applications are not entered. The extracted Type keeps everything, including Origins, and every binder in it must be valid in the conformance scope: a method's generic parameter, per-call Origin or elided receiver Origin makes it unusable. Other result parts get ordinary compatibility; there is no Origin solving, conversion, Copy judgment or search for a capable Type.
 
-### 8.4.4. Conformance
-
-In a Type declaration, `Self is C` is both a Constraint and an explicit declaration of conformance to `C`. Same-named members alone do not register conformance. A negated `Self` clause never declares or denies conformance (§8.2).
+**Completion.** Evidence from another path is usable when the destination's premises prove the source's premises. All usable evidence for an identity must be one complete Type, which becomes the binding; differing Types, including differing Origins, are an error, and no evidence needs an explicit specification. Then all ordinary checks apply ([§8.6.3](#863-implementation-matching)); a compatibility failure never reselects. Explicit bindings keep ordinary result compatibility (under `longer outlives shorter`, `ref/T during longer` satisfies a binding `ref/T during shorter`), but inference never finds such a Type. Inherited bindings are not inferred again ([§8.6.2](#862-inherited-conformance)). Acceptance never depends on an inference work budget; exhausting a limit is a resource failure ([§23.1.1](23-compiler-services.md#2311-categories)).
 
 ```kimi
 struct NumberSource
     Self is Source
-    associate Source.Element is i32
-    public func read(self: ref/Self) -> i32 => 42
+    public func read(self: ref/Self) -> i32 => 42   // Infers Source.Element is i32.
+
+contract P
+    associate X
+    associate Z
+    func x(self: ref/Self) -> Self.X
+    func z(self: ref/Self) -> Self.Z
+
+contract Q
+    associate Y
+    associate W
+    func y(self: ref/Self) -> Self.Y
+    func w(self: ref/Self) -> Self.W
+
+struct PA
+    Self is P
+    public func x(self: ref/Self) -> PB.(Q).Y => 0   // PA.X is i64, from PB.Y.
+    public func z(self: ref/Self) -> i32 => 0
+
+struct PB
+    Self is Q
+    public func y(self: ref/Self) -> i64 => 0
+    public func w(self: ref/Self) -> PA.(P).Z => 0   // PB.W is i32, from PA.Z.
 ```
 
-**Conformance Identity** is the pair of the concrete Type identity and the Contract identity. Different associated-Type bindings do not create different conformances to the same Contract. An explicit conformance and a conformance implied by refinement for the same pair are one conformance; all simultaneously applicable associated-Type bindings and requirement-to-implementation mappings must agree under the path checks of §8.4.8. A redundant explicit parent conformance is allowed, and no warning is required.
+## 8.6. Conformance
 
-An unconditional conformance of a generic Type must hold for every binding the Type Constraints allow; a conditional conformance uses the additional premises and use checks of §8.4.8. Successful selected instantiations do not validate an unconstrained definition. Ancestor conformances and all effective mappings are verified. Conformance declarations generate no implementations, except explicitly specified intrinsic derivations and the limited standard Property witness bridges of §11.4.2.
+### 8.6.1. Conformance declarations and identity
 
-The verified requirement-to-Member Identity mapping and the associated-Type bindings are retained. Contract calls use this mapping instead of rediscovering members in the caller's source environment or after instantiation. There is no external registration, replacement conformance, default implementation or access-bypassing witness thunk.
+In a Type declaration, `Self is C` declares conformance to `C` (compiler-intrinsic Contracts: [§8.7.1](#871-compiler-intrinsic-contracts)); same-named members alone never do.
 
-**Inherited conformance.** A verified conformance `(B, C)` is inherited by `D : B` only if the retained mapping satisfies every requirement with the requirement-side Self replaced by `D`. A Member `M` declared in `A` keeps `A` as its implementation-side Self, even through `A -> B -> D`. The Type and Origin substitutions along `D`'s base path to `A` are applied, and associated-Type bindings are kept. Only an eligible borrowed receiver may use [base-subobject projection](09-names-signatures-and-access.md#951-base-subobject-receiver-projection); other parameters and results gain no base conversion, and owning receivers gain no slicing. The access, Origin, Effect and premise checks of §8.4.5 and the Property rules of §11.4 apply. Projected calls require published ObjectCallCompatible Proven (§12.4.4).
+**Conformance Identity** is the pair of the complete conforming Type and the bound Contract reference: the Contract declaration together with the normalized bindings of its own Type arguments and of its enclosing declarations. `Self is Multipliable<f64>` and `Self is Multipliable<Vec2>` are two conformances. Associated-Type bindings do not distinguish conformances, and an explicit conformance and one implied by refinement with the same bound reference are one conformance; a redundant explicit one is allowed. Contract identity ([§6.1.2](06-declarations-and-containers.md#612-container-fragments)) identifies declarations only. Equal bound references of one Type are duplicates, whatever their conditions; other direct conformances to one Contract declaration follow [§8.9.1](#891-direct-conformance-collisions).
 
-| Requirement shape | Inheritance through this path |
+An unconditional conformance of a generic Type must hold for every binding its Constraints allow (conditional: [§8.8](#88-conditional-conformance)); instantiations never validate it. Ancestor conformances and mappings are verified. A conformance generates no implementations except intrinsic derivations ([§8.7.1](#871-compiler-intrinsic-contracts)) and Property witness bridges ([§11.9.2](11-properties.md#1192-standard-access-witnesses)). Its requirement-to-member mapping and associated-Type bindings are fixed by the conformance, and calls through the Contract use them, never a lookup at the caller or after instantiation. There is no external registration, replacement conformance or default implementation.
+
+```kimi
+contract C
+
+struct Twice<T>
+    Self is C
+    Self is C when T is Copy        // Error: the same bound reference twice.
+```
+
+### 8.6.2. Inherited conformance
+
+A verified conformance of `B` to `C` is inherited by `D : B` only when its mapping satisfies every requirement with the requirement-side `Self` replaced by `D`. A member declared in `A` keeps `A` as its implementation-side `Self`, even through `A -> B -> D`, with the base-path substitutions applied. Only an eligible borrowed receiver may use base-subobject projection ([§9.6.1](09-names-signatures-and-access.md#961-base-subobject-receiver-projection)); other parameters gain no base conversion, and owning receivers no slicing. Projected calls require ObjectCallCompatible Proven ([§12.7](12-expressions.md#127-object-receiver-compatibility)).
+
+| Requirement shape | Inherited by `D` |
 | --- | --- |
-| `Self` only in a borrowed receiver, as in Utf8Format | Possible if all other checks and ObjectCallCompatible succeed |
-| `other: ref/Self`, as in Equatable/Comparable | Fails: `ref/A` does not match `ref/D` |
-| `func empty() -> Self` | Fails: `A`'s result does not supply `D` |
-| An owning `Self` receiver, as in `IntoIterable.intoIterator` | Fails: no owning receiver projection |
-| A fixed `Self.Element` that normalizes to the same Type | The normalized Types are matched; the spelling `Self` alone does not prevent inheritance |
+| `Self` only in a borrowed receiver | Yes, if the other checks succeed |
+| `other: ref/Self` | No: `ref/A` does not match `ref/D` |
+| `func empty() -> Self` | No |
+| An owning `Self` receiver | No |
+| `Self.Element` normalizing to the same Type | Yes |
 
-One failed inheritance path does not invalidate `D`'s declaration. `(D, C)` is determined from all explicit, conditional and Contract-refinement paths under §8.7; it is Refuted only when all candidates are proven to fail. Unresolved generic dependencies remain Unknown until their deadline, and invalid declarations or inconsistent evidence are Error. Successful paths must agree on associated Types and implementation mappings. A new explicit conformance uses ordinary implementation lookup; same-named declarations do not replace inherited mappings.
+A failed path does not invalidate `D`; `D`'s conformance is Refuted only when every explicit, conditional and refinement path is proven to fail, and successful paths must agree ([§8.9.2](#892-merging-paths-and-cycles)). An explicit conformance of `D` uses ordinary lookup, and same-named declarations do not replace inherited mappings.
 
-Copy, Owned, Callable and other intrinsic capabilities keep their own derivation rules. In particular, struct Copy requires the derived declaration's own opt-in and Copy stored components; it is not inherited automatically.
+```kimi
+contract Same
+    func same(self: ref/Self, other: ref/Self) -> bool
 
-No warning is required merely because an open base has a conformance that its descendants cannot inherit. When a derived `Self is C` or a Constraint use fails, the diagnostic identifies the requirement and the cause: Self mismatch, owning receiver, access, Origin or premise failure, or ObjectCallCompatible NotProven with the responsible implementation. An unresolved proof is diagnosed as Unknown, not Refuted. For example, an Equatable `Shape` may have a valid `Circle : Shape` that is not Equatable; requiring `Circle`'s conformance reports the `ref/Shape` versus `ref/Circle` mismatch and the inherited-Name prohibition. When descendants need such Self-dependent Contracts, implement them on leaf Types or use composition; the base's own conformance remains valid.
+open struct Shape
+    Self is Same
+    public func same(self: ref/Self, other: ref/Self) -> bool => true
 
-### 8.4.5. Implementation matching
+struct Circle : Shape
+    Self is Same    // Error: the inherited same takes ref/Shape, not ref/Circle.
+```
 
-Ordinary declarations are validated first: functions that differ only in result Type, Origins, Constraints or `unsafe` are duplicate declarations under the Signature rules (§9.1), before any conformance matching.
+### 8.6.3. Implementation matching
 
-After `Self`, the conforming Type's arguments and available associated Types are substituted, a function implementation is identified by the following key. [Bounded inference](associated-type-inference.md#2-identify-once) retains the result of this identification under frozen premises; an input key depending on a missing associated Type cannot supply inference evidence:
+Duplicate declarations ([§9.1](09-names-signatures-and-access.md#91-signatures)) and overlap checks ([§7.4](07-functions-and-callable-values.md#74-parameter-acquisition-shape), [§8.9.1](#891-direct-conformance-collisions)) compare completed headers, after associated-Type completion. Associated-Type inference never depends on these checks, so explicit and inferred bindings give the same result.
 
-| Component | Required match |
-| --- | --- |
-| Name | Exact name. |
-| Function kind | Type function or instance function. |
-| Function generic parameters | Same count, kinds and order; they correspond by position, not spelling. |
-| Task slot | Same presence ([§24.2.4](24-suspension-and-asynchronous-tasks.md#2424-compatibility)); an implementation that never suspends still declares the task slot of its requirement. |
-| Ordinary parameters | Same count, order and external labels; internal names and K need not match. |
-| Receiver | Same presence and normalized Type structure, with only the inherited receiver correspondence allowed by §8.4.4. |
-| Parameter Types | Same normalized Type structure. |
-| Result category | Value result or Place result with the same mode (§7.1.1). |
+After substituting `Self`, the Type's arguments and the available associated Types, the implementation of a function requirement is identified by: exact name; function kind; generic parameter count, kinds and order; task-slot presence ([§24.2.4](24-suspension-and-asynchronous-tasks.md#2424-compatibility)); ordinary parameter count, order and external labels; receiver presence and structure (with the correspondence of [§8.6.2](#862-inherited-conformance)); and normalized parameter Type structure. Type structure includes Semantics, arguments and completed associated Types; Origins are excluded, but kept for compatibility. Identification uses no contravariance or adaptation, never filters by the result and never ranks by preferences, Origins, Constraints or Effects. Zero candidates is a missing implementation; several are ambiguous. `Callable` uses [§10.7](10-overload-resolution-and-inference.md#107-callable-signature-compatibility) instead.
 
-Type structure includes resolved Core identity, Semantics, nested structure, Type arguments and the substituted complete associated Types, including Origin-parameterized ones matched by parameter position. Origin names, bindings and lifetime relations are excluded from identification but kept for compatibility. Identification uses no parameter-structure contravariance, no Function Type contravariance and no call-site implicit adaptation. Implementations are not ranked by call overload preferences, adaptations, omitted arguments, Origins, Constraints, conditional-member applicability or Effects; unlike direct-call applicability (§8.4.8), conditions are checked after identification.
-
-These rules identify Contract implementations; `Callable` and common Function Types keep their separate [callable signature compatibility](10-overload-resolution-and-inference.md#107-callable-signature-compatibility) rules.
-
-Zero candidates means a missing implementation; several candidates are ambiguous, even if only one would pass compatibility. For exactly one candidate:
+One implementation may satisfy several requirements, including requirements of different bindings of one Contract, when it passes identification and every compatibility obligation for each requirement. Distinct implementation declarations must obey the ordinary coexistence rules ([§9.1](09-names-signatures-and-access.md#91-signatures)); result Types alone never distinguish them. Conformance collisions and agreement still follow [§8.9](#89-collisions-and-proof-paths), and distinct requirements remain distinct call candidates ([§8.6.4](#864-calls-through-requirements)).
 
 | Aspect | Compatibility obligation |
 | --- | --- |
-| Constraints | The Type/conformance and requirement premises must prove the implementation's Constraints and any conditional-member premises. |
-| Input Origins | Every input allowed by the requirement remains valid; no stronger lifetime precondition. |
-| Result Type | The same Type or a subtype permitted by the Type rules. |
-| Result Origins | At least the required lifetime guarantees; a Place result may publish a stronger guarantee, such as `during self.source` for a required `during self`. |
-| Access | Usable throughout the [conformance's effective domain](09-names-signatures-and-access.md#934-conformance-accessibility). |
-| Calling context and Effects | No stronger calling context than the requirement permits, and no effect outside the effect bounds that apply to the conformance (§8.4.10). |
+| Constraints | The Type, conformance and requirement premises prove the implementation's Constraints and conditions. |
+| Inputs | Every input the requirement admits stays valid; a call-local borrow is not narrowed to `static`. |
+| Result Type | Result compatibility ([§10.7](10-overload-resolution-and-inference.md#107-callable-signature-compatibility)). |
+| Result Origins | At least the required guarantees, and no mutable-static anchor ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)). |
+| Access | Usable throughout the conformance's domain ([§9.4.6](09-names-signatures-and-access.md#946-conformance-accessibility)). |
+| Context and Effects | No stronger calling context; a safe requirement never needs unsafe. No effect outside the applicable bounds ([§8.11](#811-effect-bounds)). |
 
-A Contract may publish **effect bounds** for its requirements (§8.4.10). Conformance then checks the complete transitive effect summary of every implementation, including callees, specializations, accessors, defaults, lazy initialization and destruction, against each bound that applies; an effect that the summary cannot classify under §8.4.10.2 is a conflict, never an empty effect. Generic and erased callers use the bounds available under §8.4.10.4.
-
-Origin contracts use the [common compatibility procedure](15-ownership-and-lifetime-analysis.md#1537-canonical-contracts-and-verification), preserving ordinary variance and Loan rules, including invariance where required. A requirement that admits a call-local borrow cannot be implemented by a function that requires that input to be `static`. Origin-free identification neither erases dependencies nor relaxes exclusive access.
-
-The existing Safety, ownership, Origin and Access Effect checks apply; no effect system is defined beyond the closed vocabulary of §8.4.10. A safe requirement cannot require an unsafe calling context. Result compatibility inserts no numeric or user conversion, Copy, Borrow/Reborrow or erasure. Core inheritance alone does not prove compatibility of complete Types. A compatibility failure is reported as a conformance error without searching for another implementation. Properties use the corresponding [accessor rules](11-properties.md#114-contract-property-requirements).
-
-Receiver adaptations in custom accessors and generated Contract witnesses distinguish proven complete Sealed payload calls from protected object and base calls (§12.4.4). Property permissions, right-hand-side-first assignment, witness identity and public premises are preserved; Sealed never changes ObjectViewCompatible.
-
-### 8.4.6. Calls and shared requirements
-
-Under `T is C`, generic code may use the requirements and associated Types of `C` and its ancestors. A Type function is called through the conforming Type, as in `T.empty()`, and needs no instance.
+Bounds are checked against each implementation's effect summary ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)), with destruction as in [§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release); an effect the summary cannot classify is a conflict, never an empty effect. Bounds are checked when [§8.11.4](#8114-checking-and-use) states. Origin contracts use [§15.3.7](15-ownership-and-lifetime-analysis.md#1537-contract-comparison). Compatibility inserts no conversion, Copy, Borrow or erasure, and a failure is a conformance error, never a reason to try another implementation. Properties and accessor witnesses follow [§11.9](11-properties.md#119-contract-property-requirements) and [§12.7](12-expressions.md#127-object-receiver-compatibility).
 
 ```kimi
-contract EmptyConstructible
-    func empty() -> Self
+contract Maker<T>
+    func make() -> T
 
-func makeEmpty<T>() -> T
-    T is EmptyConstructible
-    return T.empty()
+contract Both: Maker<i32>, Maker<string>
+
+struct Stop
+    Self is Both
+    public func make() -> Never => $abort("No value") // One implementation satisfies both requirements.
+
+struct Incomplete
+    Self is Both
+    public func make() -> i32 => 1                   // Error: does not satisfy Maker<string>.
+    // public func make() -> string => "one"         // Error if added: duplicate Signature.
+
+struct S
+    Self is Source
+    public func read(self: ref/Self) -> i32 => 1    // Infers Source.Element is i32.
+    public func take(value: Self.Element) -> () => ()
+    public func take(value: i32) -> () => ()        // Error: duplicate of the previous take.
 ```
 
-`EmptyConstructible.empty()` is invalid because it identifies no implementation Type, which is never inferred backward from the expected result. A concrete call such as `Buffer.empty()` uses ordinary Type-member lookup; generic requirement calls keep their conformance mapping.
+### 8.6.4. Calls through requirements
 
-A function reference to a requirement through a constrained Type, such as `T.compare` under `T is Comparable`, is the requirement's Function Item instantiated with the binding of `Self` ([§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries-and-specialization)); its calls keep the conformance mapping.
-
-Distinct Requirement Identities may form one call candidate only when their exposed signatures and conditions are equivalent **and** their mappings select the same effective implementation Member Identity for every valid Type substitution the current Constraints allow. The comparison covers function generics, task-slot presence ([§24.2.4](24-suspension-and-asynchronous-tasks.md#2424-compatibility)), parameters and labels, normalized K (§7.2.2), receiver, results, Origins, Constraints and calling conditions, plus the implementation's Type substitutions and receiver correspondence. Equal code, runtime addresses or optimizer sharing supply no proof. The conformance requirements themselves remain distinct. Repeated paths to the same Requirement Identity are already one requirement and need no such proof.
-
-```text
-A.reset --+-- equivalent call contract and same mapping proved
-B.reset --+                         |
-                               one call candidate
-```
-
-Only the defined proof rules are used, not enumeration of instantiations or arbitrary theorem proving. If equivalence cannot be proven, the candidates remain separate and ordinary call selection applies; a non-unique result is ambiguous. A coincidental match in one instantiation cannot make an otherwise invalid generic call valid. There is no qualified-call syntax such as `value@A.reset()`; `@` keeps its adaptation meaning.
-
-### 8.4.7. Intrinsic and closed contracts
-
-`Copy`, `Owned`, `Callable`, `Sealed`, `ObjectPayload` and `PrimitiveInteger` are **compiler-intrinsic** Contracts. Each has only the special acquisition, destruction, layout, concurrency or code-generation effects explicitly defined for it. These effects belong to the compiler-recognized Contract identity; a user Contract with the same name or requirements does not gain them, so `Self is MyCopy` does not make a Type Copy. Compiler-derived conformance exists only where individually specified, and `Self is Copy` must pass its ordinary derivation checks.
-
-The [required Kimi declaration table](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) also fixes the identities and signatures of `Utf8Format`, `BufferWriter`, `Equatable`, `Comparable`, the iteration Contracts and the Indexable Contracts. Their source conformance follows the ordinary static Contract rules, with the effect bounds they declare (§8.4.10); their special behavior is otherwise limited to the specified formatting, comparison, iteration and indexing mappings.
-
-The standard [arithmetic Contracts](arithmetic-contracts.md#1-declarations-and-conformance) are ordinary requirement declarations with identity-recognized provider eligibility and built-in witnesses. Their published eligibility conditions are proved at definitions and usable at constrained uses; outer owner never substitutes for the independent Owned capability.
-
-**Closed Contracts.** `Kimi.Position` and `Kimi.PositionRange` are **closed** Contracts: ordinary Contracts declared in the Kimi Kotonoha whose conforming Types are fixed by §22.1. `Position` is satisfied by the twelve integer Types, `FromEnd<T>`, `Start` and `End`, and `PositionRange` by `Range<S, E>`, `ClosedRange<S, E>` and `ResolvedRange` (§4.6.2, §4.6.4). A conformance declaration to a closed Contract in any other Type is an error, and a same-spelled user declaration grants nothing. Their capabilities follow the ordinary refinement and Contract Constraint rules; the one special proof rule is that `T is PrimitiveInteger` implies `T is Position` (§8.4.7.3). The integer conformance to `Position` is built in: its implementation is a Kimi internal function, and integers gain no members. Every implementation of a closed Contract reads only its boundaries and the length and has no other effect, so a generic API over them needs no published effect bound of its own.
-
-Conformance proves only statically specified requirements. The type system does not enforce documented laws such as the symmetry or transitivity of equality. Conformance does not prove current initialization, absence of conflicting Loans, storage representation or direct Field access; ordinary usage checks and documented unsafe obligations still apply.
-
-#### 8.4.7.1. Sealed
-
-`Kimi.Sealed` is a compiler-intrinsic requirement. A normalized Type satisfies it exactly when its outer Semantics is `owner` and its Core is valid, is not Never and is not an open struct. A sealed Core admits no derived Types; Scalars, `string`, Unit, enums, Tuples, fixed arrays, collections, Function Items, concrete Closures and common Function Types are sealed. Callable and runtime Contract Views are requirements or views, not Cores.
-
-Only the outer Core is tested: a non-open `Cell<T>` is Sealed even when `T` is open or contains borrows. `ref/X`, `uniq/X`, object handles and borrows, and raw pointers are not Sealed. Sealed implies neither Copy, Owned nor exclusive access. User conformance, implementations and same-spelled declarations cannot grant it.
-
-Sealed is not object-formation evidence: forming `obj/T` or `objuniq/T` over a generic `T` needs Object Target evidence (§8.4.7.2), and a Sealed Type may still opt out of ObjectPayload. Proof uses the ordinary conjunction, disjunction and negation rules of §8.7; Unknown is not false, and `T is not Sealed` proves neither `owner` Semantics nor an open Core.
+Under `T is C`, generic code may use the requirements and associated Types of `C` and its ancestors. A Type function is called through the Type: under `T is Empty`, where `Empty` declares `func empty() -> Self`, write `T.empty()`; `Empty.empty()` is invalid, since the Type is never inferred from the expected result. `T.compare` under `T is Comparable` is the requirement's Function Item with `Self` bound ([§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries)). Distinct requirements are distinct call candidates, and a call that matches several is ambiguous. There is no qualified requirement call; call through a helper constrained by one Contract.
 
 ```kimi
-struct Cell<T>
-    public var value: T
+contract ResetA
+    func reset(self: uniq/Self)
+contract ResetB
+    func reset(self: uniq/Self)
 
-func readPayload<T>(source: objref/T) -> ref/T during source
-    T is Sealed and ObjectPayload   // Sealed for @follow, ObjectPayload to form objref/T
-    return source@follow@ref
+func resetA<T>(x: uniq/T)
+    T is ResetA
+    x.reset()          // Valid: only ResetA.reset is available.
+
+func resetBoth<T>(x: uniq/T)
+    T is ResetA
+    T is ResetB
+    x.reset()          // Error: ResetA.reset and ResetB.reset are distinct requirements.
 ```
 
-#### 8.4.7.2. ObjectPayload
+## 8.7. Compiler-intrinsic and closed Contracts
 
-`Kimi.ObjectPayload` is a compiler-intrinsic requirement stating that a value of the Type may become the payload of a new object. A normalized Type satisfies it exactly when its outer Semantics is `owner`, its Core is a valid complete Core other than Never, and neither the Core's nominal declaration nor any of its bases opts out. Open structs, Scalars, `string`, Unit, enums, Tuples, fixed arrays, collections, Function Items, concrete Closures and common Function Types all qualify. Only the outer Core is tested: `Box<Parser>` satisfies it whenever `Box` does not opt out. Callable requirements and runtime Contract Views are not Cores and do not satisfy it. Object ownership does not require heap allocation (§3.3.3); these rules govern Type formation and creation whatever the representation.
+### 8.7.1. Compiler-intrinsic Contracts
 
-**Opt-out.** A struct or enum declaration opts out by writing `Self is not ObjectPayload` in its leading Constraint region. The clause is unconditional (no `when`), stands alone (no `and`/`or`), may not be repeated in one declaration, and must resolve to `Kimi.ObjectPayload` (qualify it when a user declaration shadows the name). It is a declaration, not a conformance obligation or a proposition to verify: inside the Type and its derived Types, `Self is ObjectPayload` is Refuted. Derived structs inherit the opt-out; restating it is redundant but allowed, and no positive clause restores the capability. Users cannot grant ObjectPayload: `Self is ObjectPayload` in a Type declaration is an error. Just as `Self is Copy` grants Copy, `Self is not ObjectPayload` renounces ObjectPayload; both are declarations about intrinsic capabilities.
+Copy, Owned, Callable, Sealed, ObjectPayload, PrimitiveInteger and Transferable are the **compiler-intrinsic Contracts** declared by Kimi ([§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)). Each has only the effects defined for it; a user Contract with the same name or members gains none. In a struct or enum declaration:
 
-**Proof.** When the outer structure the definition needs (outer Semantics, Core and opt-out state) is determined, the judgment is direct even with unbound Type arguments: `Box<T>` is Proven when `Box` does not opt out, an opted-out `Parser<T>` and `ref/T` are Refuted, and an invalid Type is Error. The outer Semantics of a pair's own `s/T` is judged from the admitted set of `s` (§8.7). Where the outer structure is undetermined (Type parameters, pair targets, unresolved associated projections), the only evidence is a declared premise `T is ObjectPayload` or its derivation by Contract refinement (§8.7); `T is Sealed` does not imply it. A Proven `T is ObjectPayload` establishes that `T` is a complete value Type with `owner` outer Semantics, which also supplies the value-Type role of a pair target (§8.1.1). It implies neither Copy, Owned, Sealed nor any thread-transfer property.
+| X | `Self is X` (optionally `when P`) |
+| --- | --- |
+| Copy | Requests derived Copy ([§3.5.2](03-types-and-values.md#352-copy-capability)). |
+| Owned | Checked assertion: the Type must be Owned ([§15.2.3](15-ownership-and-lifetime-analysis.md#1523-static-and-owned)) for every binding its Constraints (and `P`) admit. It grants nothing. |
+| Sealed, ObjectPayload, PrimitiveInteger, Callable, Transferable | Error. These are decided by the Type's structure alone. |
 
-**Object Target.** A Type `X` is an Object Target when `X is ObjectPayload` is Proven, when `X` is a valid runtime Contract View Target (§8.5), or when `X` is the target `T` of a pair `<s/T>` whose admitted Semantics set is contained in the object family (pair evidence, §8.1.1: the caller's valid `s/T` already establishes the target). Forming `obj/X`, `rc/X`, `arc/X`, `objref/X` or `objuniq/X` anywhere requires `X` to be an Object Target: in signatures, Fields, locals, Type arguments, upcast and checked-cast results, `Weak<rc/X>`, and the object form implied by a runtime `is` test (§13.6.1). Pair evidence and View Targets do not prove ObjectPayload. Creating a new object from a value (§13.5.8, and any future value-to-View erasure, §8.5) requires ObjectPayload itself. Operations on an existing handle, such as borrows, view changes and casts, re-prove nothing; they are checked by result-Type formation and their own conditions, such as `Supports` for upcasts, Owned for the first erasure and the Loan rules.
+In a struct or enum declaration, `Self is not ObjectPayload` is the only negated `Self` clause; it is the opt-out of [§8.7.3](#873-objectpayload). In a Contract, `Self is X` (and `Self is not ObjectPayload`) is a requirement that every conforming Type satisfies X by X's own rules; listing X as a refinement parent (`contract C: Copy`) means the same as `Self is X` in its body.
 
-An opted-out Core is never an Object Target. Every object form over it is rejected, including object receivers and Fields inside its own declaration, creation, upcasts, casts, `is` tests and Weak handles, and it cannot conform to a Contract whose environment proves `Self is ObjectPayload`. Nothing else is affected: values, `ref`/`uniq`/`raw`, storage as a Field, payload, Tuple or element of another Type, objects over such containing Types (`obj/Box<X>`), Closure captures, common Function Types, static storage, and the Copy, Owned and Sealed judgments. The opt-out prevents direct object creation; it does not guarantee that a value never reaches the heap. Because generic bodies are verified once (§8.10), instantiation never discovers an opt-out; callers meet the declared `T is ObjectPayload` requirement instead.
+The identities of `Utf8Format`, `BufferWriter`, `Equatable`, `Comparable`, the iteration and the Indexable Contracts are fixed by [§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations); they are ordinary Contracts with their declared bounds. The arithmetic Contracts are ordinary declarations with built-in witnesses ([§13.3.3](13-operators-and-assignment.md#1333-arithmetic-contracts)). Conformance proves only the stated requirements: documented laws such as symmetry of equality are not enforced, and nothing is proven about initialization, Loans or representation.
 
-**Contracts.** Inside a Contract, `Self is ObjectPayload` and `Self is not ObjectPayload` are Self-dependent implementation requirements (§6.1.3.1) and change no opt-out. A Contract whose requirement signatures form object forms over `Self` must have `Self is ObjectPayload` Proven in its Constraint environment, declared directly or inherited by refinement (§8.4.2); a user deriving `T is C` obtains `T is ObjectPayload` by Contract refinement without restating it. A positive and a negative form in one environment are contradictory evidence (§8.7). An opted-out derived Type fails the inherited-conformance path of such a Contract (§8.4.4); the base's own conformance stays valid.
+```kimi
+struct Pair<T>
+    Self is Copy when T is Copy     // Derived Copy.
+    Self is Owned when T is Owned   // Checked; grants nothing.
+    var first: T
+    var second: T
+
+struct Plain
+    Self is Sealed                  // Error: Sealed is structural.
+```
+
+### 8.7.2. Sealed
+
+`Kimi.Sealed` holds for a normalized Type exactly when its outer Semantics is `owner` and its Core is valid, not Never and not an open struct. Scalars, `string`, Unit, enums, Tuples, fixed arrays, collections, Function Items, concrete Closures and common Function Types are sealed. Only the outer Core is tested: a non-open `Cell<T>` is Sealed even when `T` is open. Sealed implies neither Copy, Owned, exclusive access nor Object Target, and `T is not Sealed` proves neither `owner` nor an open Core.
+
+### 8.7.3. ObjectPayload
+
+`Kimi.ObjectPayload` holds exactly when the outer Semantics is `owner`, the Core is valid and not Never, and neither the Core's declaration nor any base opts out. Only the outer Core is tested: `Box<Parser>` qualifies when `Box` does not opt out. Every Core that satisfies it can be a concrete object payload ([§3.3.1](03-types-and-values.md#331-object-views-and-identity)); object ownership needs no heap allocation ([§3.3](03-types-and-values.md#33-semantics)).
+
+**Opt-out.** `Self is not ObjectPayload` in a struct or enum's leading Constraint region opts out. It is unconditional, stands alone, appears once and must resolve to `Kimi.ObjectPayload`. Derived structs inherit the opt-out, and nothing restores the capability.
+
+**Proof.** With the outer Semantics, Core and opt-out determined, the judgment is direct even with unbound arguments: `Box<T>` is Proven, an opted-out `Parser<T>` and `ref/T` are Refuted. For a pair's own `s/T`, the outer Semantics is judged from the admitted set of `s` ([§8.3.4](#834-semantics-admitted-set)). Otherwise (Type parameters, pair targets, unresolved projections) the only evidence is a premise `T is ObjectPayload` or its refinement. A Proven `T is ObjectPayload` makes `T` a complete value Type with `owner` Semantics; it implies neither Copy, Owned, Sealed nor Transferable.
+
+**Object Target.** `X` is an Object Target when `X is ObjectPayload` is Proven, when `X` is a runtime Contract View Target ([§8.12](#812-runtime-contracts)), or when `X` is a pair target with pair evidence ([§8.1.1](#811-type-slots-and-pair-parameters)). Every object form over `X` (`obj`, `rc`, `arc`, `objref`, `objuniq`, including `Weak<rc/X>`, casts and runtime `is` tests) requires an Object Target. Creating an object from a value ([§13.6.2](13-operators-and-assignment.md#1362-object-creation-clone-and-lifecycle)) requires ObjectPayload itself; operations on an existing handle re-prove nothing. An opted-out Core is never an Object Target, even in its own declaration, and cannot conform to a Contract that proves `Self is ObjectPayload`; values, borrows, storage inside other Types (`obj/Box<X>`) and captures are unaffected.
+
+**Contracts.** A Contract whose requirement signatures form object forms over `Self` must have `Self is ObjectPayload` Proven, declared or inherited; `T is C` then supplies `T is ObjectPayload`. A positive and a negative form together are contradictory evidence.
 
 ```kimi
 struct Parser
@@ -440,34 +508,20 @@ func boxed<T>(value: T) -> obj/T
     T is ObjectPayload
     return Kimi.Intrinsics.makeObj(value@move)
 
-func inspect<s/T>(handle: s/T) -> i32
-    s is object                          // Admitted set {obj, rc, arc}: pair evidence for T.
-    let view: objref/T = handle@objref   // No ObjectPayload needed.
-    return 0
-
-contract Shape
-    Self is ObjectPayload
-    func area(self: objref/Self) -> f64
-
 // let o = boxed(Parser.init())   // Error: Parser is not ObjectPayload.
 ```
 
-**Compatibility.** The opt-out is part of a declaration's public summary (§18.7, §21.3.4). Adding an opt-out or a `T is ObjectPayload` requirement invalidates dependents. Removing an opt-out changes a published capability whose negative results dependents may have used, and removing a requirement widens a candidate's applicability (§10.1); dependents are revalidated in both cases.
+### 8.7.4. PrimitiveInteger
 
-#### 8.4.7.3. PrimitiveInteger
+`Kimi.PrimitiveInteger` has no members. It holds exactly for `owner` Semantics over the twelve integer Types (`i8` to `i128`, `u8` to `u128`, `isize`, `usize`). A proven `T is PrimitiveInteger` supplies:
 
-`Kimi.PrimitiveInteger` is a compiler-intrinsic requirement without members. A normalized Type satisfies it exactly when its outer Semantics is `owner` and its Core is `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `i128`, `u128`, `isize` or `usize`. Floating-point Types, `char`, references and user Types never satisfy it, and neither user conformance nor a same-spelled declaration grants it.
+- Scalar, Copy, Owned, `Position` ([§4.6.1](04-arrays-indexing-and-slices.md#461-positions)) and the built-in Equatable, Comparable and Utf8Format conformances; a reference to `T` is read by value ([§3.5.3](03-types-and-values.md#353-value-read)).
+- The arithmetic Contracts and operators of [§13.3.3](13-operators-and-assignment.md#1333-arithmetic-contracts) and [§13.3.4](13-operators-and-assignment.md#1334-route-selection); unary `-` is unavailable.
+- Checked `value@U` between PrimitiveInteger Types, `value@Wrapping<T>` and back, and `value@wrap<U>` ([§13.5.4](13-operators-and-assignment.md#1354-numeric-wrapping-and-bit-conversions)).
+- Untyped literals 0 through 127, which fit all twelve Types ([§12.3](12-expressions.md#123-literal-typing)).
+- `Wrapping<T>` ([§3.1.1](03-types-and-values.md#311-wrapping-integer-types)) with these capabilities and unary `-`.
 
-A proven `T is PrimitiveInteger` supplies every built-in capability common to the twelve Types:
-
-- **Capabilities:** Scalar, Copy and Owned, `Position` (§4.6.2), and the built-in Equatable, Comparable and Utf8Format conformances. A reference to `T` is read by the [value read](03-types-and-values.md#353-value-read).
-- **Arithmetic Contracts:** the five standard binary conformances with counterpart and Output `T`; no Negatable. `Wrapping<T>` supplies all five with counterpart and Output `Wrapping<T>`, plus Negatable ([arithmetic mapping](arithmetic-contracts.md#11-built-in-conformance)).
-- **Operators:** the built-in integer arithmetic, bitwise, shift and comparison operators, compound assignment, increment and decrement, with their ordinary operand, result and failure rules (§13.2–13.4). Unary `-` requires a signed integer and is unavailable.
-- **Conversions:** checked numeric conversion `value@U` between Types that satisfy PrimitiveInteger, the conversions `value@Wrapping<T>` and `value@T` between `T` and its wrapping integer Type, and the wrapping conversion `value@wrap<U>` to any integer Type or proven-PrimitiveInteger Type `U` and to its `Wrapping<U>` (§13.5.4). The bit conversion `@bits` is unavailable while either Type depends on a Type parameter.
-- **Literals:** an untyped literal fits an unbound `T` only when it fits all twelve Types, that is, 0 through 127. A literal-only expression fits `T` under the same condition (§12.3.1).
-- **Wrapping integers:** the formation of `Wrapping<T>` ([§3.1.1.1](03-types-and-values.md#3111-wrapping-integer-types)), which is then a Scalar and a read Type with the capabilities above, with its own unary `-` on every instantiation, and with its literals 0 through 127.
-
-A generic body is checked once against these capabilities, and each instantiation uses the operations of its concrete Type. This is a dedicated proof rule: a choice such as `T is i8 or u8 or …` supplies none of these capabilities, because §8.7 has no case analysis, and there is no user-extensible numeric Contract. An implementation profile that restricts an operation for some Types, such as 128-bit division (§21.5.3), diagnoses the concrete instantiation; the restriction does not weaken this requirement.
+The body is checked once against these capabilities; each instantiation performs the operations of its concrete Type (for example its overflow checks). `T is i8 or u8 or ...` supplies none of this, because proof has no case analysis.
 
 ```kimi
 func sum<T>(values: Range<T, T>) -> T
@@ -477,112 +531,87 @@ func sum<T>(values: Range<T, T>) -> T
         total += value     // -value would be an error: unary - needs a signed Type.
     return total
 
-let small = sum(1..5@u8)   // T = u8; 10
-let large = sum(0..1000)   // T = i32; 499500
-
-func scramble<T>(value: Wrapping<T>, key: Wrapping<T>) -> Wrapping<T>
-    T is PrimitiveInteger
-    return -(value ^ key) * 31 // Wrapping<T> has unary -, and the product wraps.
-
-func foldToU64<T>(value: T) -> u64
-    T is PrimitiveInteger
-    return value@wrap<u64>     // Legal for every width; a signed value is sign-extended.
+let small = sum(1..5@u8)   // 10
 ```
 
-### 8.4.8. Conditional conformance
+### 8.7.5. Closed Contracts
 
-A generic struct or enum may declare `Self is C when P`. Its ordinary Type Constraints `D` govern every use of the Type, while `P` governs only this conformance to `C` and does not constrain Type formation. Normal Type, storage, Semantics and Origin validity still apply.
+`Kimi.Position` and `Kimi.PositionRange` are **closed**: their conforming Types are fixed by [§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations). `Position` is satisfied by the twelve integer Types, `FromEnd<T>`, `Start` and `End`; `PositionRange` by `Range<S, E>`, `ClosedRange<S, E>` and `ResolvedRange` ([§4.6.1](04-arrays-indexing-and-slices.md#461-positions), [§4.6.3](04-arrays-indexing-and-slices.md#463-resolution)). A conformance to them in any other Type is an error. Integers gain no members, and every implementation reads only its boundaries and the length and has no other effect.
+
+```kimi
+struct Offset
+    Self is Position    // Error: Position is closed.
+```
+
+## 8.8. Conditional conformance
+
+### 8.8.1. Conditions and implementation blocks
+
+A generic struct or enum may declare `Self is C when P` at a member position. The Type's Constraints `D` govern every use; `P` governs only this conformance. `P` is a comma-separated list of clauses that must all hold, with subjects among the enclosing parameters, pair binders and targets, and projections, and positive requirements joined by `and` (grammar: `ConformanceCondition`, [§F.6](appendices/F-syntax-summary.md#f6-declarations)); `or`, `not` and value tests are errors. An identity atom between enclosing parameters makes them one Type in the conformance scope ([§8.2.3](#823-type-identity-and-identity-premises)).
+
+An optional indented **implementation block** declares members in the Type's namespace: functions, computed members where the Type kind allows them and associated-Type specifications, but no Fields, Cases, constructors, `drop`, nested Types or conformances. Layout never changes. `P` is a precondition of each block member only. The block may be omitted when existing members or an intrinsic derivation satisfy `C`. There is no external registration, extension declaration or partial specialization.
 
 ```kimi
 enum Option<T>
-    Self is Copy when T is Copy
+    Self is Copy when T is Copy   // Option<i32> is Copy; Option<Resource> stays usable.
     Some(T)
     None
-```
-
-`Option<Resource>` remains a usable Type when `Resource` is Non-Copy, and this declaration makes `Option<i32>` Copy. In contrast, a leading `T is Copy` would restrict every use of the Type, and an unconditional `Self is Copy` would promise Copy for every binding `D` admits.
-
-#### 8.4.8.1. Conditions and implementation scope
-
-The declaration targets one Contract and appears at a Type member position; ordinary Type Constraint Clauses still precede the members. `when` is contextual only here. Conditions are comma-separated `subject is requirement` clauses, all of which must hold. Subjects are the enclosing generic parameters, their Semantics and target projections, and associated-Type projections valid under the existing rules. Requirements must accept their subject's role, and no new parameters are introduced.
-
-Conditions allow positive requirement atoms joined by `and` and parentheses, with the existing Requirement Test interpretations. A Type-identity atom `E is S` between the enclosing parameters (§8.3) makes `E` and `S` one Type in the conformance scope and the implementation block, so a block member may use a value of `E` where `S` is required. `or`, `not`, value tests and arbitrary Boolean expressions are rejected, even inside parentheses. This restricted grammar does not change the ordinary PositiveRequirement.
-
-```kimi
-Self is C when T is A and B, U is D
-// Requires T is A, T is B, and U is D.
-```
-
-An optional indented implementation block declares members in the enclosing Type's namespace. It is a condition scope, not a new Type or Value namespace. It allows functions, computed members where the Type kind permits them (enums still forbid them), and associated-Type specifications; it rejects Fields, enum Cases, constructors, `drop`, nested Types and nested conformance declarations. Conditional conformance never changes storage layout or Case structure.
-
-```kimi
-contract Describe
-    func describe(self: ref/Self) -> string
 
 struct Box<T>
     var value: T
-
     Self is Describe when T is Describe
         public func describe(self: ref/Self) -> string
             return self.value.describe()
 ```
 
-`P` is a published static precondition of each block member and does not leak to other members of the Type. `D` and `P` are collected before dependent signatures, associated-Type specifications and bodies are resolved, and their conditions and noncircular evidence are validated. The block may be omitted only when existing members or an explicitly specified intrinsic derivation satisfy the requirements; ordinary Contract implementations are never generated.
+### 8.8.2. Verification and use
 
-#### 8.4.8.2. Verification and use
+At definition, `C` is verified under `D` and `P` for every admitted binding, even if no Type satisfies `P`. Implementations are identified by [§8.6.3](#863-implementation-matching); completion uses frozen path-wide premises ([§8.5.5](#855-inference)). Each requirement is checked in a **conformance scope** of `D`, `P` and the requirement's premises, with both sides normalized there; under `I is Iterator`, `Option<I.(LendingIterator).LentItem(step)>` is `Option<I.Item>`. An implementation outside the block keeps its own signature.
 
-At definition, `C` is verified under `D` and `P` for every admitted binding. Implementations are identified by §8.4.5 (Property implementations by §11.4), not by call overload ranking. Each requirement's premises are added when proving the selected implementation's published conditions, access, Origins, ownership and Effects. Associated-Type completion and path agreement use only the frozen path-wide premises of §8.4.3; function-specific premises never determine a public associated binding. For each already identified requirement, compatibility and effect verification use a **conformance scope** formed by those premises and the requirement's premises, and both sides are normalized in that scope before they are compared. An implementation declared outside the block keeps its own signature and preconditions; only the judgment uses `P`. For example, under `I is Iterator` a declared result `Option<I.(LendingIterator).LentItem(step)>` is `Option<I.Item>`. A compatibility failure never retries a different implementation. Requirement-to-Member mappings, Field bridges where applicable, and associated-Type bindings are fixed and retained at this stage.
+At a use, a proof of `P` for the substituted arguments enables the verified conformance; implementations are never selected again. A block member, or a conditional member ([§7.5](07-functions-and-callable-values.md#75-function-constraints)) with its clauses joined to `P`, is applicable after lookup and inference only as `P` is judged; the same applies to function references and computed access:
 
-At a use, Type arguments are substituted; for a Type satisfying `D`, a proof of `P` enables the verified conformance. Implementations are never selected again by caller lookup or favorable instantiations.
-
-Direct member use has its own applicability step: after lookup commits a function group and Type inference and substitution complete, the member's `P` must be proven before Best Candidate comparison. A [conditional member](07-functions-and-callable-values.md#74-function-constraints) uses the same step, with its own clauses on the declaring Type's parameters joined to `P`. The same condition applies to function references and computed access. Associated-Type projections require evidence of the relevant conformance.
-
-| Judgment of `P` | Member applicability | Conformance use |
+| `P` | Member applicability | Conformance use |
 | --- | --- | --- |
-| Proven | Condition satisfied; other applicability rules are checked | This conformance path is available |
-| Refuted | Inapplicable | This path supplies no conformance; the Type remains usable |
-| Unknown | Applicability unproven | Evidence for neither conformance nor absence |
-| Error | Diagnosed even if another candidate succeeds | Invalid declaration or condition is diagnosed |
+| Proven | Satisfied | Path available |
+| Refuted | Inapplicable | No conformance from this path |
+| Unknown | Unproven ([§10.1](10-overload-resolution-and-inference.md#101-candidate-applicability)) | Neither conformance nor absence |
+| Error | Error | Error |
 
-Conditions never change lookup's committed layer or the inherited-Name prohibition, and an inapplicable member cannot reopen outer or base lookup. Applicable members of the committed group are compared by the ordinary overload rules, without ranking condition strength. A Loan or initialization failure after selection does not cause reselection. A generic definition cannot restore a member rejected for lack of proof merely because a later instantiation satisfies `P`. An Unknown premise cannot affect selection when an applicable candidate is strictly best (§10.4) with every candidate whose applicability is unproven compared as though applicable; that candidate is selected. Otherwise the decision is deferred instead of committing to an alternative.
+Conditions never change the committed lookup layer, an inapplicable member never reopens lookup, condition strength does not rank candidates, and a later Loan failure never causes reselection. Step 5 of [§10.1](10-overload-resolution-and-inference.md#101-candidate-applicability) owns how Unknown applicability affects selection.
 
-Unknown dependencies and deadlines follow §8.7 and §8.10; a required proof still missing at its deadline is an error. Neither the declaration itself nor a circular conformance search supplies evidence. Concrete absence requires completing all relevant paths, including ancestor conformances. Conditional syntax and definitions are checked even if no current Type arguments satisfy `P`; environment-only `#if`/`#switch` cannot replace these checks.
+### 8.8.3. Parent Contracts
 
-#### 8.4.8.3. Uniqueness and parent contracts
-
-At most one direct conformance declaration is allowed per generic Type and Contract, counting unconditional and conditional declarations together after fragment merging. Proving conditions disjoint, choosing priorities or specializing implementations does not permit a second declaration.
+For `Child: Parent`, Parent evidence comes from either the direct Parent conformance or the Child conformance, and the child path needs only the child's conditions. Every parent implementation that the child path uses must therefore be applicable under the child's conditions. A member inside the parent's conditional block carries the parent's condition and cannot serve. Implement it outside the block, either unconditionally or with a condition that the child's conditions prove. Paths must agree ([§8.9.2](#892-merging-paths-and-cycles)). Block members with equal Signatures that differ only in conditions are duplicates.
 
 ```kimi
-Self is C when T is A
-Self is C when T is B // Error: duplicate direct conformance.
+contract Named
+    func name(self: ref/Self) -> string
+contract Tagged: Named
+    func tag(self: ref/Self) -> i32
+
+struct Tag<T>
+    var value: T
+    public func name(self: ref/Self) -> string => "tag"   // Outside both blocks.
+    Self is Named when T is Copy
+    Self is Tagged when T is Equatable
+        public func tag(self: ref/Self) -> i32 => 1
+// Moving name into a Self is Named when T is Copy block makes the Tagged declaration an error.
 ```
 
-Block members obey the ordinary duplicate rules: equal Signatures that differ only in their conditions are duplicates, while distinct Signatures may overload under the applicability rules above.
+## 8.9. Collisions and proof paths
 
-Conformance Identity is still the pair of concrete Type identity and Contract identity. A direct declaration and Contract refinement may provide several evidence paths to the same conformance. At definition, every pair of paths is checked under `D` and both paths' conditions: equal implementation mappings and associated-Type bindings must be proven unless §8.7 establishes that the paths cannot hold together. A failure to prove agreement is a definition error, not a deferred instantiation check, and stronger optional condition solvers cannot broaden acceptance.
+A conformance is identified as [§8.6.1](#861-conformance-declarations-and-identity) states; a requirement or associated Type by its defining declaration and the bindings of its defining Contract. Bindings are substituted along refinement, and inherited input conditions become the child's public inputs.
 
-A child conformance must satisfy its ancestor Contracts under its own conditions. For `Child : Parent`, the verified declarations `Self is Parent when T is A` and `Self is Child when T is B` supply Parent evidence if either `T is A` or `T is B` is proven. The child path does not additionally require `T is A`, but every implementation it uses must be applicable. Redundant explicit parent declarations are valid only with the required path agreement.
+### 8.9.1. Direct conformance collisions
 
-#### 8.4.8.4. Intrinsics and boundaries
+Direct conformances and merging paths use one collision test:
 
-`Self is Copy when P` requests compiler-derived Copy under `D` and `P`. Every complete own Field or payload Type and the direct base are checked under §3.5; user-defined Copy bodies remain forbidden. Deriving Copy for a `ref/T` component needs no `T is Copy` premise, but an explicitly written `T is Copy` condition is still required and cannot be weakened. An unconditional `Self is Copy` keeps its all-bindings guarantee. Unknown Copy is never assumed to be Non-Copy; a bare acquisition of a Type not proven to be an exclusive reference needs Copy evidence (§8.9, §8.10).
+1. Group by Contract declaration; different declarations never collide. Normalize with the identity premises and Origin rules.
+2. Unify parameters and fixed structure (nominal Types, Tuples, Function Types and applications of a determined Semantics) with an occurs check; local function binders are renamed apart.
+3. A mismatch of fixed structure proves non-collision; otherwise the substitution is a collision condition.
+4. The remaining unresolved terms are residual conditions: unresolved associated projections, applications of a pair binder, non-constant length expressions, Origin intersections and orderings, and other non-free terms. Unresolved residuals mean a possible collision; `A.Item` and `B.Item` may be equal.
 
-Conditional conformance defines static conformance and generic use only. It adds no external registration, extension declarations, partial Type specialization, condition-based implementation replacement or runtime Contract View feature.
-
-### 8.4.9. Bound Contracts, collisions, and proof paths
-
-A conformance is identified by the conforming full Type and the bound Contract reference, including the Contract's own Type arguments. A requirement or associated Type is identified by its defining declaration and the bindings of its defining Contract. Several paths to one requirement are one requirement only when their associated Types, Origin conditions and implementation mappings agree; independent same-named requirements are never merged. Bindings are substituted along refinement, and `Self` is the final conforming Type. Inherited input conditions become part of the child's public inputs without turning declaration obligations into assumptions or implementation requirements. Full Origin bindings remain part of the evidence.
-
-#### 8.4.9.1. Direct conformance collisions
-
-Direct conformances and merging proof paths use one collision test:
-
-1. Group by Contract declaration; different declarations do not collide. Normalize bindings with the established Type equalities, associated specifications and Origin rules.
-2. Unify parameters and fixed free-term structure (nominal Types, Tuples, Function Types) with variable kinds and an occurs-check. The same binder or slot on both sides is one variable. Local function binders are alpha-normalized and not unified as outer input slots.
-3. A provable fixed-structure mismatch establishes non-collision. Otherwise, the substitution and equalities are kept as collision conditions.
-4. Unresolved associated projections, Semantics applications, length expressions, Origin intersections and ordering, and other non-free terms remain residual conditions. Syntactic differences alone do not prove non-collision, and unresolved residuals mean a possible collision. In particular, `A.Item` and `B.Item` need not differ when `A` and `B` differ.
-
-Under the Type's ordinary input conditions, every pair of direct conformances must be proven non-colliding at definition time. Duplicate equal references and possible collisions are errors, and mutually exclusive `when` conditions do not exempt direct conformances. This finite check adds no call-site inference, implementation priority, automatic merging or selection after instantiation.
+Every pair of direct conformances must be proven non-colliding under the Type's Constraints; mutually exclusive `when` conditions do not exempt them.
 
 ```kimi
 struct Family<T>
@@ -592,97 +621,107 @@ struct Good
     Self is Family<i32>.Marker
     Self is Family<string>.Marker
 
-// Invalid: A and B can become equal.
 struct Bad<A, B>
     Self is Family<A>.Marker
-    Self is Family<B>.Marker
+    Self is Family<B>.Marker   // Error: A and B can be the same Type.
 ```
 
-#### 8.4.9.2. Merging paths and cycles
+### 8.9.2. Merging paths and cycles
 
-For other combinations of direct conformance, refinement and effective base conformance, each path's availability conditions are added to the collision conditions. When paths may meet, consistent associated bindings and requirements must be proven, and for conformance definitions also consistent implementation mappings. If meeting cannot be excluded and consistency cannot be proven, the definition is rejected. Equal references may share structure but never lose assumptions or obligations. For example, `Family<A>.C` and `Family<B>.C` cannot specify one associated Type as `i32` and `string` while `A = B` remains possible.
+Refinement paths to the same ancestor declaration with the same normalized bindings give one requirement and one associated Type. Their associated-Type bindings, Origin conditions and implementation mappings must agree; if agreement cannot be proven, the definition is an error. Paths with different bindings, and independent declarations with the same name, stay distinct requirements.
 
-A refinement path that revisits a Contract declaration, even with different arguments, is rejected, including `Outer<T>.C` to `Outer<List<T>>.C`. Distinct instantiations on separate paths are not cyclic for that reason alone; processed references are tracked separately from the declarations on the current path. Defaults, external conformance and implementation priority are not introduced.
+Other combinations of direct, refined and inherited conformances add each path's conditions to the collision conditions; paths that may meet must agree: `Family<A>.C` and `Family<B>.C` cannot specify one associated Type as `i32` and `string`. A refinement path that revisits a Contract declaration, even with different arguments (`Outer<T>.C` to `Outer<List<T>>.C`), is an error. Different instantiations of one Contract on separate paths (for example `contract C: A<i32>, A<i64>`) are not a cycle.
 
-### 8.4.10. Requirement effect bounds
+## 8.10. Callable constraints
 
-A Contract may publish an **effect bound** for a function requirement: a guarantee about what a call may access, which every conforming implementation must satisfy and on which generic and erased callers may rely. The vocabulary is closed: `confined` (§8.4.10.2) and `preserves results` (§8.4.10.3). There is no other effect syntax, no user-defined bound and no runtime tag. Callable Constraints also declare these bounds for constraint-based calls (§8.4.10.7), and original [virtual slots](virtual-dispatch.md#6-effects-results-and-conformance) declare them in their Constraint region for all implementations. A bound obliges implementations and, for a Callable Constraint, its bound Types, so who declares it does not affect soundness; capabilities that grant authority, such as the standard storage boundary (§22.1.2.5), remain bound to declaration identity. An unsafe context exempts an implementation from neither bound (§5): being inside an Unsafe Block is no evidence that a bound holds, and the classification of §8.4.10.2 is the same for safe and unsafe code.
+`F is Callable<r, S>` requires calls with receiver access `r` (`ref`, `uniq` or `owner`) and signature `S`, `(A1, ..., An) -> R` or `(task; A1, ..., An) -> R` ([§24.2](24-suspension-and-asynchronous-tasks.md#242-task-slots)); `Callable<S>` means `Callable<ref, S>`. Function Items, concrete Closures and common Function Types with compatible signatures ([§10.7](10-overload-resolution-and-inference.md#107-callable-signature-compatibility)) qualify; no `call` member is searched, and `F` need not be Copy or Owned. The result may keep input Origins but cannot borrow the hidden callable receiver.
 
-#### 8.4.10.1. Declarations
+| `r` | Receiver acquired | Callee may be |
+| --- | --- | --- |
+| `ref` | `ref/F` | Shared |
+| `uniq` | `uniq/F` | Shared or Exclusive |
+| `owner` | `F` by value | Shared, Exclusive or Consuming |
 
-```text
-RequirementConstraints := IndentedList<ConstraintClause | OriginRelation | EffectClause>
-EffectClause           := "effect" EffectBound
-EffectSpecification    := "effect" ContractSelector "." Name EffectBound
-EffectBound            := "confined" | "preserves" "results"
-```
+**Per-call Origins.** An omitted Origin on each direct borrowed parameter of `S` is bound independently per call, and conformance must hold for every call-time Origin; nested and capture Origins stay fixed. `S` writes no `during` ([§15.3.1](15-ownership-and-lifetime-analysis.md#1531-borrow-annotations-and-binding-sets)). Aggregate occurrences in `S` may name binding sets owned by the containing declaration; their input slots must be fixed by complete Types or by equality to outer Origin expressions. Omitted result Origins come from the per-call input Origins ([§15.4](15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision)), their meet for several inputs. A result that requires exclusive access keeps the corresponding exclusive Loan.
 
-`effect`, `confined`, `preserves` and `results` are contextual words in these positions only.
+**Calls.** `ref` calls through shared access. `uniq` keeps exclusive access (the callee is a Receiver Expression, [§7.3](07-functions-and-callable-values.md#73-receivers)). `owner` acquires by Copy or `@move`, borrows the value for a Shared or Exclusive body or transfers it to a Consuming one (the acquired temporary is exclusively accessible even when copied from a `let` binding), and destroys the rest after the call; instantiation never turns it into a borrow.
 
-- An `EffectClause` in a requirement Constraint region declares a Contract bound; in an original virtual function it declares the slot bound. Overrides inherit it and cannot redeclare it.
-- An `EffectSpecification` is a Contract item (Appendix F). It declares a bound of the enclosing Contract for the function requirement `Name` inherited from the ancestor `ContractSelector`. `Name` must identify exactly one function requirement of that ancestor. A requirement of the Contract itself takes an `EffectClause` instead.
-- Declaring the same bound twice for the same requirement in one Contract is an error.
-- Restating a bound that an ancestor already declares for the same requirement is permitted. Together with the ancestor's declaration it forms one guarantee, so it adds neither obligation nor guarantee; it remains if the ancestor's declaration is later removed. Each bound is still checked once per witness (§8.4.10.4).
-- Effect specifications appear only in Contracts; effect clauses appear in requirement Constraint regions or under Callable Constraints (§8.4.10.7). Implementations, ordinary functions, Property requirements and Function Types declare no bounds of their own, and an implementation can neither add nor remove a requirement bound.
-- A bound is a guarantee of conformance to the Contract that declares it; it does not strengthen the requirement declaration. `T is C` guarantees the bounds that `C` and its ancestors declare, and no others.
-- Adding a bound kind requires a specification change. Bounds belong to the Contract's public contract and to its verified semantic record (§18.7.1).
+**Several Constraints.** The distinct normalized signatures of the Callable Constraints on `F` are the call's candidates, each with the weakest receiver declared with it. The call is an error unless they share one receiver, task-slot shape ([§24.2.3](24-suspension-and-asynchronous-tasks.md#2423-not-a-parameter-one-shape-per-function-group)) and parameter acquisition shape ([§7.4](07-functions-and-callable-values.md#74-parameter-acquisition-shape)); they are then compared under [§10.1](10-overload-resolution-and-inference.md#101-candidate-applicability) and [§10.4](10-overload-resolution-and-inference.md#104-best-candidate). Different signatures are not contradictory evidence ([§8.3.2](#832-proof-rules)); a Type bound to `F` must satisfy each of them. Callable effect bounds are defined in [§8.11.6](#8116-callable-effect-bounds).
 
 ```kimi
-contract Source
+func applyTwice<F>(value: i32, transform: uniq/F) -> i32
+    F is Callable<uniq, (i32) -> i32>
+    let first = transform(value)
+    return transform(first)
+
+let count: i32 = 0
+var bump = func [var count] (value: i32) -> i32
+    count += 1
+    return value + count
+let result = applyTwice(10, bump@uniq)   // 13
+```
+
+## 8.11. Effect bounds
+
+An **effect bound** is a guarantee about what a call may access, which every conforming implementation satisfies and generic callers rely on. The vocabulary is closed: `confined` and `preserves results`. The classification is the same in safe and unsafe code ([§5](05-raw-pointers-and-unsafe-memory.md#5-raw-pointers-and-unsafe-memory)).
+
+### 8.11.1. Declarations
+
+Bounds are declared in four positions (grammar: `EffectClause`, `EffectSpecification`, [§F.6](appendices/F-syntax-summary.md#f6-declarations); keywords: [§F.3](appendices/F-syntax-summary.md#f3-keywords)):
+
+- an `effect` clause in a function requirement's Constraint region bounds that requirement;
+- a Contract item `effect A.r bound` bounds the requirement `r` inherited from the ancestor `A`, which must identify exactly one function requirement;
+- an `effect` clause under a Callable Constraint bounds calls through it ([§8.11.6](#8116-callable-effect-bounds));
+- an `effect` clause in the leading region ([§7.5](07-functions-and-callable-values.md#75-function-constraints)) of an original virtual function bounds the slot; overrides inherit it.
+
+An effect item in any other body, including an override, a non-virtual function or after the leading region, is an error. Implementations cannot add or remove a requirement's bound. The same bound twice for one requirement in one Contract is an error; restating an ancestor's bound forms one guarantee. `T is C` guarantees exactly the bounds of `C` and its ancestors.
+
+```kimi
+contract Take
     associate Item
     func take(self: uniq/Self) -> Option<Self.Item>
 
-contract StableSource: Source
-    effect Source.take preserves results
+contract StableTake: Take
+    effect Take.take preserves results
 
 func takeTwo<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)
-    S is StableSource
+    S is StableTake
     let first = source.take()
     let second = source.take() // Valid: the bound excludes the Loans of first.
     return (first@move, second@move)
+
+open struct Base
+    public virtual func score(self: objref/Self) -> i32
+        effect confined          // Slot bound, inherited by overrides.
+        return 1
+
+struct Derived : Base
+    override func score(self: objref/Self) -> i32
+        // effect confined       // Error: an override cannot declare a bound.
+        return 2
 ```
 
-With only `S is Source`, the second call is rejected while `first` is live, because the call may write through its `uniq` receiver to the referent of a Loan of `first`. A Type that declares only `Self is Source` is not checked against the bound and gives no guarantee; `Self is StableSource` is checked and guarantees it. `LendingIterator` and `Iterator` are related in the same way (§22.1.2.1).
+With only `S is Take`, the second `take` is rejected while `first` is live.
 
-A restatement typically arises when an ancestor gains a bound in a later version:
+### 8.11.2. `confined`
 
-```kimi
-contract Feed
-    associate Item
-    func take(self: uniq/Self) -> Option<Self.Item>
-        effect preserves results          // Added in a later version of Feed.
-
-contract StableFeed: Feed
-    effect Feed.take preserves results    // Valid: written before Feed declared it; one guarantee.
-
-contract StrictFeed: Feed
-    effect Feed.take confined
-    effect Feed.take confined             // Error: declared twice in the same Contract.
-```
-
-#### 8.4.10.2. `confined`
-
-The transitive effect summary of an implementation (§8.4.5: callees, specializations, accessors, defaults, lazy initialization and destruction) contains no **environment effect** and no effect that cannot be classified.
-
-An environment effect is an operation that obtains authority over mutable state from the environment rather than from the inputs. Accesses made with authority once obtained, whether through safe references or raw pointers, are no further environment effects. Operations are classified as follows:
+The effect summary ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)) of a `confined` implementation contains no **environment effect** and no unclassifiable effect. An environment effect obtains authority over mutable state from the environment instead of from the inputs; accesses with authority once obtained are no further effects.
 
 | Operation | Classification |
 | --- | --- |
-| Obtaining a reference or pointer by following references or pointers from an input (the receiver, each argument and the task slot), including the input itself | Not an environment effect. Ordinary Loan checking applies even when the referent has static storage. |
-| Obtaining the current task's state through the task slot (`TaskBoundary.current`, [§22.1.3.1](22-core-execution-and-foreign-functions.md#22131-task-boundary)) | Not an environment effect. That state matches no user Loan. |
-| Obtaining it from Storage created within the call, including an allocation such as `Raw.allocate` (§5.6) | Not an environment effect. |
-| Taking the address of a Place with `@raw` (§5.4) | An access to that Place, classified like the Place's other accesses: an environment effect exactly when the Place is a mutable static Field. |
-| Converting between raw pointer Types, or from a raw pointer to `usize` (§5.4) | Not an environment effect. |
-| A raw access, including a raw Place borrow and the pointer arguments of `Raw.release`, `Raw.initialize` and `Raw.slice` | Not an environment effect. It is compared with held Loans under the anchor rule of §5.2.2. |
-| Reading an immutable static whose value contains no raw pointer, `rc` handle or Weak of an `rc` | Not an environment effect. The initializer enters the summary. |
-| Accessing a mutable static Field: a read, borrow, write, replacement, destruction or first-access initialization | Environment effect. |
-| A standard operation that accesses state outside the program, such as Console output | Environment effect. |
-| A call of a foreign function (§22.3.1) | Environment effect, together with the accesses its signature permits through its arguments. |
-| Reading from an immutable static a value that contains a raw pointer, `rc` handle or Weak of an `rc`, at any depth | Environment effect. A raw pointer grants mutable authority; an `rc` or its Weak reaches non-atomic runtime state. The rule also applies before any pointee access or handle operation. |
-| Converting an integer to a pointer | Environment effect, although it needs no unsafe context. The pointer has no provenance, and an access through it relies on a target-environment guarantee (§5.5). |
-| A call whose environment effects are unknown | An effect that cannot be classified, a conflict under either bound (§8.4.5). |
+| Following an input (receiver, argument or task slot), or the input itself | Not an environment effect; Loan checking still applies. |
+| Using Storage created in the call, including `Raw.allocate` ([§5.6](05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations)) | Not an environment effect. |
+| `@raw` of a Place ([§5.4](05-raw-pointers-and-unsafe-memory.md#54-addresses-and-conversions)) | Classified like the Place's other accesses. |
+| Converting between raw pointer Types or from a raw pointer to `usize`; a raw access ([§5.4](05-raw-pointers-and-unsafe-memory.md#54-addresses-and-conversions)) | Not an environment effect; raw accesses are compared with Loans by [§5.2.2](05-raw-pointers-and-unsafe-memory.md#522-borrowing-raw-places). |
+| Reading or borrowing an immutable static whose Type is proven Transferable ([§15.2.4](15-ownership-and-lifetime-analysis.md#1524-transferable)) | Not an environment effect; its initializer enters the summary. |
+| Reading or borrowing any other immutable static (Transferable refuted or unproven) | Environment effect. |
+| Any access to a mutable static Field, including first-access initialization | Environment effect. |
+| A Kimi operation that accesses state outside the program, such as Console output | Environment effect. |
+| Calling a foreign function ([§22.6](22-core-execution-and-foreign-functions.md#226-foreign-function-imports)); converting an integer to a pointer ([§5.5](05-raw-pointers-and-unsafe-memory.md#55-integer-addresses)) | Environment effect. |
+| Destroying or replacing a value whose destruction depends on a Type the definition leaves abstract, such as a Type parameter or associated-Type projection not proven Copy | An effect that cannot be classified: a conflict under either bound. |
+| A call or a destruction whose environment effects are unknown, including erased destruction ([§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release)) | An effect that cannot be classified: a conflict under either bound. |
 
-Allocation and Abort are permitted. The classification is the same in safe and unsafe code. An access through a raw pointer is classified where the pointer was obtained, so the access itself is no environment effect; avoiding conflicts with held Loans and meeting the provenance conditions remain the obligations of §5.2.1. The two rows that obtain a raw pointer from the environment apply even when the pointer is never used. A foreign function cannot be called from a `confined` implementation; a `preserves results` implementation may call one when its argument accesses do not conflict with the Loans of earlier results. No declaration form states the effects of a foreign function (Appendix D).
+The test is on the static's Type, so a base-object view, runtime-Contract view or common Function Type in that Type counts as hidden `rc` or raw-pointer content, and an abstract Type needs a Transferable premise. Allocation and Abort are permitted. A pointer obtained from the environment is an effect even if unused. A foreign call also makes the accesses its signature permits through its arguments; a `preserves results` implementation may call a foreign function when those accesses do not conflict with the Loans of earlier results. Task operations are classified in [§22.3.3](22-core-execution-and-foreign-functions.md#2233-cancellation-and-waits). A static borrow passed in as an argument is authority from the input.
 
 ```kimi
 contract Sink
@@ -693,521 +732,203 @@ group Metrics
     var puts: isize = 0
     public func record() => Metrics.puts += 1
 
-struct CountingSink
+struct Item
+    public var value: i32 = 7
+
+group Shared
+    public let limit: i32 = 10
+    public let node: rc/Item = Kimi.Intrinsics.makeRc(Item.init())
+
+struct Reader
     Self is Sink
     var count: isize = 0
     public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>
         self.count += 1              // Valid: authority from self.
-        return .Ok(())
-
-struct LoggingSink
-    Self is Sink
-    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>
+        let a = Shared.limit         // Valid: i32 is Transferable.
+        let b = Shared.node@ref      // Error: rc/Item is not Transferable.
         Metrics.record()             // Error: reaches the mutable static Metrics.puts.
         return .Ok(())
 
-struct Forward<W>
-    W is Sink
-    Self is Sink
-    var inner: W
-    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>
-        return self.inner.put(value) // Valid: W.put is confined; its effects go through self.inner.
-
-struct DeviceSink
-    Self is Sink
-    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>
-        let register = 0x40000000@raw/i32       // Error: a pointer made from an integer obtains environment authority.
-        unsafe => *register = value
-        return .Ok(())
-```
-
-A borrow of static storage received as an input is authority from the input:
-
-```kimi
-struct Counter
-    var count: isize = 0
-    public func increment(self: uniq/Self) => self.count += 1
-
-contract Tally
-    func add(self: ref/Self, total: uniq/Counter)
+contract Reset
+    func reset(self: uniq/Self)
         effect confined
 
-group Totals
-    var total: Counter = Counter.init()
+struct Slot<T>
+    Self is Reset
+    var item: Option<T>
+    public func reset(self: uniq/Self)
+        self.item = .None   // Error: destroying the old T has unknown effects.
 
-struct Adder
-    Self is Tally
-    public func add(self: ref/Self, total: uniq/Counter)
-        total.increment()                   // Valid: authority from the input total.
-
-func addToGlobal<T>(tally: ref/T)
-    T is Tally
-    tally.add(Totals.total@uniq)            // The caller passes the static borrow explicitly.
+struct CopySlot<T>
+    T is Copy
+    Self is Reset
+    var item: Option<T>
+    public func reset(self: uniq/Self)
+        self.item = .None   // Valid: a Copy value has no destruction effects.
 ```
 
-#### 8.4.10.3. `preserves results`
+### 8.11.3. `preserves results`
 
-**Eligibility.** The receiver is a borrow (`ref/Self`, `uniq/Self`, `objref/Self` or `objuniq/Self`), and the canonical result contract of the requirement (§15.3.7) satisfies the [independence of published results](15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting) under every admitted binding: a result depends neither on the receiver Loan of its call nor on the receiver's Storage. Eligibility is judged on semantic dependencies after normalizing the declaring Contract's premises (associated-Type specifications and Constraints), result Origin defaults (§15.4.3) and aliases, never on spelling. Result compatibility (§8.4.5) carries the independence to every implementation.
+**Eligibility.** The receiver is a borrow (`ref`, `uniq`, `objref` or `objuniq` of `Self`), and in every admitted binding no result of the canonical contract ([§15.3.7](15-ownership-and-lifetime-analysis.md#1537-contract-comparison)) depends on the receiver Loan of its call or on the receiver's Storage ([§15.6.3](15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting)), judged after normalizing premises, result Origin defaults ([§15.4.3](15-ownership-and-lifetime-analysis.md#1543-result-defaults)) and aliases. Otherwise the bound is an error.
 
-**Guarantee.** When `T is C` and `C` declares `preserves results` for a requirement `r`, the effects of a call of `r` on a value `v` of `T` conflict with no Loan kept by a result that an earlier call of `r` on `v` returned, including Loans kept through ordinary transfer or Reborrow of that result. These effects include reads, writes, borrows, the Loans of the new result, access to statics and captures, and cleanup inside the call. The identity of `v`, across Moves, follows the existing Loan and dependency tracking. Destroying or replacing `v` as a whole, calls of other requirements, Loans unrelated to results and dependencies that the user adds after a result was returned are outside the guarantee, which promises no purity.
-
-**Verification.** Conformance verification compares the implementation's transitive effect summary with the Loans that its results may keep, using the common root, Loan and effect summaries and region splitting (§15.6.3): split children and transferred values do not conflict with accesses to the remainder.
+**Guarantee.** Under `T is C` with `preserves results` on `r`, a call of `r` on a value `v` conflicts with no Loan kept by a result of an earlier call of `r` on `v`, including Loans kept after transfer or Reborrow of that result. The excluded effects include reads, writes, borrows, the Loans of the new result, access to statics and captures, and cleanup inside the call; dependencies added to a result after it was returned are outside the guarantee. Destroying or replacing `v`, other requirements and unrelated Loans are outside it; it promises no purity. Conformance compares the implementation's summary with the Loans its results may keep, using region splitting ([§15.6.3](15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting)).
 
 ```kimi
-contract Cursor
-    associate Lent(step) for uniq/Self during step
-    func advance(self: uniq/Self during step) -> Option<Self.Lent(step)>
-        effect preserves results // Error: the result may depend on the receiver borrow step.
-
 contract Peek
     associate Item
     func peek(self: ref/Self) -> Option<ref/Self.Item>
         effect preserves results // Error: the elided result Origin is self.
 ```
 
-#### 8.4.10.4. Checking and use
+### 8.11.4. Checking and use
 
-**Implementations.** A conformance `T is C` checks each witness against the bounds that `C` declares. Ancestor bounds are checked through the ancestor conformances that `T is C` entails (§8.4.2), and a conditional conformance is checked under its conditions (§8.4.8.2). A witness is checked against each bound once, and one traversal of its summary serves both bounds.
+A conformance supplies evidence ([§8.3.2](#832-proof-rules)) once its implementations are identified and their signatures, associated Types and premises are compatible ([§8.6.3](#863-implementation-matching)). Its effect bounds are a separate obligation of the conformance, checked against the completed transitive summaries, including the recursive fixed point of [§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls). A bound violation makes the conformance declaration an error; it never changes a selection that used the conformance as evidence. Ancestor bounds are checked through the ancestor conformances, conditional ones under their conditions.
 
-**Available bounds.** A requirement call whose effects are not known from a concrete implementation, such as a generic requirement call or an erased `Utf8Writer` reservation, may use the bounds that the Contracts proven by its premises (§8.7) declare for its Requirement Identity. Bounds are never searched for in implementations. Requirement Identities merged into one call candidate under §8.4.6 may use the bounds of all of them, because they select the same implementation.
+A requirement call without a known concrete callee uses the bounds that the Contracts proven by its premises declare for the requirement, never bounds of implementations. Its effects, in implementation checks and at callers, are:
 
-**Requirement call effects.** The effects of such a call are derived from its available bounds, by the same rules inside implementation checks and at callers:
+1. *Through inputs:* every Place reachable from the receiver and arguments in each parameter's access mode, only shared past a shared layer ([§15.6.2](15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts)); an abstract input may reach every Loan its Origins may denote; destroying an owned handle argument adds [§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release).
+2. *Environment:* none with `confined`; otherwise unknown, affecting static Loans as [§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls) states. A task call is also compared with static Loans ([§24.3](24-suspension-and-asynchronous-tasks.md#243-task-calls)).
+3. *Earlier results:* with `preserves results`, the Loans kept by earlier results of the same requirement on the same value are excluded.
 
-1. *Effects through inputs.* The call may affect every Place reachable through references from the receiver and from each argument, in the access mode of its parameter, and only with shared access past a shared layer (§15.6.2): reads and shared borrows for shared access, and also writes, replacement and destruction for exclusive access. This holds with or without bounds. An input of an abstract Type may reach every Loan that its Type's Origins may denote. Destroying an owned handle argument contributes the effects of §16.3.3.
-2. *Environment effects.* None with `confined`; otherwise unknown. Bound verification treats unknown effects as conflicts (§8.4.5); elsewhere §15.6.4 applies. Whatever the available bounds, a task call is also compared in its calling body with every potentially affected static Loan as a call with unknown environment effects ([§24.3](24-suspension-and-asynchronous-tasks.md#243-task-calls)), and such a conflict carries the Reason of [§24.5](24-suspension-and-asynchronous-tasks.md#245-diagnostics).
-3. *Earlier results.* With `preserves results`, the Loans kept by earlier results of the same requirement on the same value are excluded from the comparison.
-
-The derived effects are compared with the active Loans by the conflict rules of §15.6.2. A result without Loans takes no part in the comparison. `preserves results` is one way to prove non-conflict, not a condition of acceptance.
+A possible conflict with a live Loan ([§15.6.2](15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts)) is an error at the later call. An invalid effect item supplies no bound.
 
 ```kimi
-contract View
-    func read(self: ref/Self) -> ref/i32
+contract Feed
+    func next(self: uniq/Self) -> Option<i32>
         effect confined
 
-func sumTwo<V>(view: ref/V) -> i32
-    V is View
-    let first = view.read()
-    let second = view.read() // Valid: a shared-receiver call only reads and conflicts with no shared Loan of first.
-    return first + second
+group Feeds
+    public func pull<F>(feed: uniq/F) -> Option<i32>
+        F is Feed
+        return feed.next()
+
+struct Countdown
+    Self is Feed
+    var left: i32
+    public func next(self: uniq/Self) -> Option<i32>
+        if self.left == 0 => return .None
+        self.left -= 1
+        return Feeds.pull(self)   // Valid: Countdown is Feed is evidence; the bound is checked on the completed summary.
 ```
 
-`read` cannot declare `preserves results`, because its result depends on the receiver borrow. `confined` removes unknown environment effects, so a caller of `sumTwo` whose `view` borrows static storage sees no conflict either (§15.6.4).
+### 8.11.5. Delegation
 
-#### 8.4.10.5. Delegation
-
-Delegation is no special rule; it follows from rule 3 of §8.4.10.4 and the tracking of where a result's Loans come from.
-
-When the implementation of a requirement `r` that has `preserves results` is verified, the Loans that a result of `r` may keep are traced through the existing dependency tracking (§15.6). A Loan that comes from the result of a call of a requirement `d` on a value `w`, reached from `self` through a Field path, is treated as a Loan of an earlier result of `d` on `w`. Rule 3 of §8.4.10.4 then applies unchanged: when `d` has the `preserves results` bound available for `w`, the effects of `d` on `w` in a later call of `r` are not compared with that Loan.
-
-- **Path.** A Field path includes reaching through a borrowed Field `s/J during o`. Because the results of `d` depend neither on `w`'s Storage nor on the receiver borrow (eligibility, §8.4.10.3), effects reached through the borrowed Field conflict with no such result.
-- **Value identity.** If the body of `r` replaces, swaps or moves any value on the path to `w`, such as a Field value or the referent of a borrowed Field, `w` is not treated as the same value across calls, and no Loan is excluded.
-- **Other Loans.** Loans that come from arguments, from results of other requirements or from results on other values are not excluded and are compared normally.
-
-Consequently, several Fields of one Type, results wrapped in another value and composite adapters need no special treatment: each is accepted or rejected by the Loan rules. `confined` needs no delegation rule, because rules 1 and 2 of §8.4.10.4 compose it.
+When an implementation of `r` with `preserves results` is verified, a Loan that its result keeps from the result of a requirement `d` called on a value `w`, reached from `self` through a Field path (borrowed Fields included), counts as a Loan of an earlier result of `d` on `w`; rule 3 of [§8.11.4](#8114-checking-and-use) excludes it when `d` has `preserves results` for `w`. If the body replaces, swaps or moves a value on the path to `w`, nothing is excluded. Loans from arguments, other requirements or other values are compared normally.
 
 ```kimi
 struct Drain<J>
     J is Iterator
-    Self is StableSource
-    associate Source.Item is J.Item
+    Self is StableTake
+    associate Take.Item is J.Item
     var inner: J
     public func take(self: uniq/Self) -> Option<J.Item>
         return self.inner.next()                // Valid.
 
-struct Numbered<J>
-    J is Iterator
-    Self is StableSource
-    associate Source.Item is (isize, J.Item)
-    var inner: J
-    var index: isize = 0
-    public func take(self: uniq/Self) -> Option<(isize, J.Item)>
-        match self.inner.next()
-            .Some(let item)
-                self.index += 1
-                return .Some((self.index, item@move))   // Valid: the wrapped Loans come from inner's next.
-            .None => return .None
-
 struct Merge<J>
     J is Iterator
-    Self is StableSource
-    associate Source.Item is J.Item
+    Self is StableTake
+    associate Take.Item is J.Item
     var left: J
     var right: J
     public func take(self: uniq/Self) -> Option<J.Item>
         match self.left.next()                  // Error: may conflict with an earlier result from right.
             .Some(let item) => return .Some(item@move)
             .None => return self.right.next()
-
-contract Refill
-    associate Item
-    func take(self: uniq/Self, spare: Option<Self.Item>) -> Option<Self.Item>
-        effect preserves results
-
-struct Topped<J>
-    J is Iterator
-    Self is Refill
-    associate Refill.Item is J.Item
-    var inner: J
-    public func take(self: uniq/Self, spare: Option<J.Item>) -> Option<J.Item>
-        match self.inner.next()                 // Error: may conflict with an earlier result that came from spare.
-            .Some(let item) => return .Some(item@move)
-            .None => return spare@move
 ```
 
-`Topped` is rejected because the Loans of `spare` are not excluded: the effects of `self.inner.next()` may reach exclusively every Loan that `J`'s Origins may denote (rule 1 of §8.4.10.4).
+### 8.11.6. Callable effect bounds
 
-#### 8.4.10.6. Diagnostics and recovery
+A Callable Constraint may carry an indented list of `effect` clauses (grammar: `CallableEffects`, [§F.6](appendices/F-syntax-summary.md#f6-declarations)) when its whole requirement is one `Callable<...>`. The list is allowed in function, struct, enum and function-requirement Constraint regions (conditional-member premises included), not in Contract-wide clauses, associated-Type declarations or conformance conditions, and it does not end a leading region ([§7.5](07-functions-and-callable-values.md#75-function-constraints)). Each kind appears at most once in one Constraint; `preserves results` needs receiver `ref` or `uniq`.
 
-- **Declarations.** An unidentified, ambiguous or non-ancestor target, a bound declared twice in the same Contract, an effect item outside a Contract, Callable Constraint or original virtual Constraint region, `preserves results` without a borrowed receiver, or a dependent result is the Language Error `InvalidEffectBound_Kd`. The primary location is the effect item and the related location the target requirement. For a dependent result, the Reason names the dependent part and its path, such as an associated-Type specification or an elided Origin; no automatic repair is offered, because the dependency is the meaning of the API.
-- **Conformance.** A bound violation is `IncompatibleContractImplementation_Kd` (§23.3.6.1). Its Reason names the bound, the declaring Contract and the requirement, and distinguishes a definite violation (an environment effect or a conflicting Loan) from an unknown effect treated as a conflict. For an environment effect, the Reason names the kind of operation that obtained the authority (§8.4.10.2), and that operation is the primary location. For a conflict with a Loan of an earlier result, the Reason states why the Loan was not excluded (§8.4.10.5): it comes from an argument, from another requirement or from another value, or the body replaces a value on the path; the source or the replacement is a related location. Otherwise, the primary location is the first violating effect in the implementation's own body. Related locations also give the effect path, the `Self is C` declaration and the bound. An implementation alone cannot remove an inherited bound.
-- **Callers.** A derived requirement-call effect that may conflict with an active Loan is the Language Error `CallEffectConflict_Kd` at the later call. A task call's comparison with static Loans (rule 2 of §8.4.10.4, [§24.3](24-suspension-and-asynchronous-tasks.md#243-task-calls)) is not reported with this code: its conflict is `ComparisonLoanConflict_Kd` with the Reason `suspension point (other tasks)` (§15.6.4, [§24.5](24-suspension-and-asynchronous-tasks.md#245-diagnostics)). Related locations give the conflicting Loan and the call that created it. The Reason names the access, the input it goes through and the Loan, and states that no available bound excludes the access under the premises; it does not assert that a conflict occurs. A conflict with the receiver borrow itself keeps the existing diagnostics, such as `CallActivationConflict_Kd`.
-- **Recovery.** A conformance that violates a bound is invalid, as before. An invalid effect item gives no guarantee, and the caller conflicts it would have resolved are derived from the declaration error (§23.3.6.4).
-- **Inspection.** Semantic inspection and language-server hover expose the bounds a Contract declares and, at a requirement call, each available bound together with every Contract that declares it (§8.4.10.1) and the premise that proved it. Given the declarations of §8.4.10.1 and `contract SafeSource: StableSource`, the call `source.take()` under `S is SafeSource` shows:
+A Type bound to `F is Callable<r, S>` must satisfy each bound for a call acquired under `r`, including acquisition and, for `owner`, destroying the rest. Captures are reached through the receiver, an input. A bound covers only the call; destroying a value elsewhere contributes its destruction effects to the enclosing summary ([§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release)). `preserves results` excludes conflict with Loans of earlier results of the same callable value.
 
-```text
-Call: source.take()
-Requirement: Source.take
-Available bound: preserves results
-Declared by: StableSource
-Premise: S is SafeSource
-```
+Applicability ([§10.1](10-overload-resolution-and-inference.md#101-candidate-applicability)) and proofs ([§8.3](#83-constraint-proof)) ignore bounds. A bound is an obligation of the selected call, function reference ([§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries)) or Type formation, checked on completed summaries. A selected callable argument that violates an effect bound of its Callable Constraint is an error at that argument or Type argument.
 
-#### 8.4.10.7. Callable effect bounds
+| Bound Type | Evidence |
+| --- | --- |
+| Function Item, nonvirtual | Its effect summary ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)). |
+| Function Item of a virtual slot | Slot bound, for `confined` only ([§6.4.6](06-declarations-and-containers.md#646-effects-and-contract-witnesses)). |
+| Function Item of a requirement | Available bounds, for `confined` only. |
+| Concrete Closure | Its body summary with acquisition and environment destruction. |
+| Type parameter or projection | A premise on it with the same signature, an equal or stronger receiver (`ref` < `uniq` < `owner`) and the bound. |
+| Common Function Type | None. |
 
-A Callable Constraint may declare the closed bounds `confined` and `preserves results` for calls through that Constraint:
+Binding a Function Item or Closure whose result may carry a mutable-static anchor to a Callable-constrained Type is an error ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)). A call through `F` uses the bounds of premises with its signature and an equal or stronger receiver, under rules 1 to 3 of [§8.11.4](#8114-checking-and-use). Callers compose a declaration's calls through Callable inputs with the actual argument ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)). An implementation cannot add an unrequired Callable bound.
 
 ```kimi
 func apply<F>(transform: ref/F, value: i32) -> i32
     F is Callable<(i32) -> i32>
         effect confined
     return transform(value)
-```
 
-```text
-ConstraintClause := ConstraintSubject "is" IsRequirement CallableEffects?
-CallableEffects  := IndentedList<EffectClause>
-```
-
-**Declaration.** The whole `IsRequirement` must be one `CallableRequirement`, without `and`, `or`, `not` or parentheses. Other requirements on that subject use separate clauses. A list is permitted in function Constraint regions (conditional-member premises included), struct and enum Constraint regions, and function-requirement Constraint regions; it is not permitted in Contract-wide clauses, associated-Type declarations or specifications, or conditional-conformance conditions. The list belongs to its clause and does not end a body's leading Constraint prefix (§7.4). Each bound kind appears at most once in one Constraint. `preserves results` requires receiver `ref` or `uniq`; §8.6 already excludes results borrowing the hidden callable receiver. In a function requirement, an effect clause at the Constraint region's own level still bounds the requirement; a clause indented under a Callable Constraint bounds that Constraint:
-
-```kimi
 contract Mapper
     func map<F>(self: uniq/Self, transform: ref/F) -> i32
         F is Callable<(i32) -> i32>
-            effect confined
-        effect confined
+            effect confined      // Bounds calls of transform.
+        effect confined          // Bounds the requirement map.
 ```
 
-**Meaning.** A Type bound to `F is Callable<r, S>` must satisfy the Callable requirement and every declared effect bound for a call acquired under `r`. `confined` excludes environment and unclassifiable effects (§8.4.10.2). Captures are reached through the callable receiver, an input; accessing them is not an environment effect. Acquisition is included, and an `owner` call includes destroying the remaining acquired storage after a Shared or Exclusive body returns (§8.6, §16.4). Destruction outside a call is not covered. `preserves results` excludes conflict with every Loan retained by a result of an earlier call of the same callable value, including ordinary transfer and Reborrow (§8.4.10.3). It promises neither purity nor stable returned values.
+## 8.12. Runtime Contracts
 
-**Selection and obligations.** Candidate applicability (§10.1 step 5), conditional-member premises (§7.4) and proposition proofs (§8.7) judge a Callable Constraint without its bounds. Bounds are obligations of the selected call, selected function reference (§10.5, for both explicit and inferred Type arguments), or Type formation (§8.1.3). They are checked after selection against completed summaries, after the recursive fixed point of §15.6.4. A failed bound never excludes a candidate or causes reselection. It is part of checking the declared contract (§8.10), not a new condition inferred at instantiation.
+Runtime Contract Views (Object Views over a Contract) need a runtime-use designation that is not yet defined, so they cannot be formed in this revision; these rules apply to that extension. A bare Contract name is never a value Type.
 
-| Type bound to the subject | Evidence for a bound |
-| --- | --- |
-| Function Item of a nonvirtual declaration | Its transitive summary, computed in this build or published and validated under §18.7.2. Missing summaries are unclassifiable and fail. |
-| Function Item of a virtual slot | Its public slot bound proves `confined`; it does not establish Callable `preserves results` ([virtual effects](virtual-dispatch.md#62-function-values-and-tasks)). |
-| Function Item of a requirement through a constrained Type (§8.4.6) | For `confined`, the bounds available for that requirement. It never establishes `preserves results`: the requirement guarantees preservation only on one receiver value, whereas the callable may receive different receiver arguments on successive calls. |
-| Concrete Closure | Its body summary, plus acquisition and, with `owner`, remaining-environment destruction. |
-| Abstract Type parameter or associated-Type projection | An exact Callable premise proves the proposition (§8.7). Each bound must be declared by a premise with the same normalized subject and signature and receiver equal to or stronger than the required receiver, ordered `ref`, `uniq`, `owner`. A weaker receiver cannot certify stronger acquisition or destruction. |
-| Common Function Type | No bound is established: erasure preserves none. |
-
-Generic bodies use summaries verified under their enclosing premises, never bodies rechecked under favorable instantiated Types (§8.10). When an implementation's Callable Constraints must follow from the requirement and conformance premises (§8.4.5), the proposition is proven normally and each bound must separately be declared by a qualifying premise. Implementations cannot add an unrequired Callable bound.
-
-**Use and composition.** A constraint-based call selected with receiver `r` and signature `S` uses every bound of a premise on the same subject and normalized signature whose receiver is `r` or stronger. §8.4.10.4 rules 1–3 apply: inputs include the acquired callable receiver; `confined` removes unknown environment effects; `preserves results` excludes Loans of earlier results of that callable value. Without a bound, environment effects remain unknown.
-
-A declaration's summary records calls through Callable-constrained inputs against those inputs, including their receiver mode, arguments and result dependencies. At a call of the declaration, compose those calls through the actual arguments: use a concrete Function Item or Closure's summary, or an abstract Type's available bounds. Preserve this information in published summaries (§18.7.2), rather than replacing the calls by unknown effects. This composition describes effects at the caller; it does not rebind or reverify the generic body. Recursive composition reaches a fixed point before acceptance. Bounds remain explicit requirements even if a particular caller's argument would have permitted a less restrictive body.
-
-A task call still performs the independent static-Loan comparison of §24.3, whatever its available bounds; bounds do not account for other tasks that can run while the caller is suspended.
-
-**Compatibility.** Callable bounds belong to public contracts and verified semantic records (§18.7). Adding a bound to a function restricts callers; removing it admits more callers and requires reverifying the body without it. Adding a Type bound invalidates formations with violating callable arguments. Adding a Callable bound to a function requirement restricts generic callers and relaxes implementations; removing it invalidates implementations that still require it. Ordinary functions and Function Types declare no bounds of their own.
-
-**Diagnostics and inspection.** Invalid form or position, a duplicate kind in one Constraint, or `preserves results` with `owner` is `InvalidEffectBound_Kd` at the effect item. Relate the carrying Constraint when present, otherwise the identified requirement. The Reason distinguishes the rejected form; the Note states that Contracts and Callable Constraints declare bounds and an implementation cannot add or remove a requirement's bound. An implementation requiring an unprovided bound is `IncompatibleContractImplementation_Kd`, naming the bound and the requirement premise lacking it.
-
-A failing binding is the Language Error `UnsatisfiedEffectBound_Kd` in Ownership, after selection, at the argument or Type argument. Message: "The callable given here does not satisfy an effect bound of its Callable Constraint". Relate the bounded Constraint and the first violating effect when visible. The Reason names the bound and distinguishes a definite environment-effect kind, an unknown effect, a premise lacking the bound, a requirement Function Item's per-receiver guarantee, or erasure to a common Function Type.
-
-Static call-effect conflicts retain `ComparisonLoanConflict_Kd` (§15.6.4). Effects through inputs that conflict with earlier-result Loans retain `CallEffectConflict_Kd`; its message covers both requirement and Callable calls. Invalid effect items supply no bound; dependent failures follow §23.3.6.4.
-
-Hover and semantic inspection list every contributing premise, using the typed block of §8.4.10.6:
-
-```text
-Call: transform(value)
-Callable: F is Callable<(i32) -> i32>
-Available bound: confined
-Declared by: apply
-Premise: F is Callable<(i32) -> i32> effect confined
-```
-
-## 8.5. Runtime contracts
-
-**Extension scope.** Contracts in this revision are static. Runtime-use designation and View associated-Type binding syntax remain to be defined. This section records the runtime design for that extension and grants no permission to form such Views in this revision. Object Views with concrete Core targets keep their existing rules. There is no implicit runtime designation and no `where` syntax.
-
-Compile-time conformance and runtime View usability are separate. A runtime Contract exposes requirements through dynamic dispatch without instance state. A bare Contract name is never a value Type; the extension uses explicit Object Semantics such as `objref/C`, `objuniq/C` and `obj/C`.
-
-An **ObjectViewCompatible** Contract is one that, with its associated Types fixed, can be the View Target of an Object View Type such as `obj/C`, `objref/C` or `objuniq/C`. The Contract is the View Target, not the object's Dynamic Type, which remains the concrete Core actually constructed. This Contract property is distinct from the ObjectCallCompatible guarantee of each implementation's call operations.
-
-**`ObjectViewCompatible(C)`** holds exactly when `C` is explicitly designated for runtime use, has no Type-function requirements (including inherited ones), and, with its associated Types fixed, every instance requirement satisfies the following:
-
-| Aspect | Initial requirement |
-| --- | --- |
-| Receiver | Shared or Exclusive object access, without consuming ownership |
-| Operation | Safe method or Property accessor |
-| `Self` | No implementation-dependent `Self` outside the receiver |
-| Binding | No unbound associated Types or method-specific generic parameters |
-| Signature | Parameter and result Types are determined without knowing the hidden concrete Type |
-| Origins | Expressible through the borrowed receiver, explicit inputs and `static`; no hidden payload Origin, Contract-level abstract Origin or higher-ranked requirement |
-
-Every getter result and setter requirement is checked separately. Forming `objref/C` or another object form requires `ObjectViewCompatible(C)`, even when the concrete payload is unknown, but does not require searching all implementations. Erasing a value or a concrete payload into a View creates an object, so the complete data Type must satisfy ObjectPayload (§8.4.7.2) as well as the Owned proof of §15.8.1. Changing the View of an existing handle re-proves neither and follows the `Supports`, Owned and Loan rules. Pair evidence admits View Targets but never creation from a value. Unsupported requirements cannot simply be removed from the view: for example, `equals(other: Self)` cannot become a heterogeneous comparison between arbitrary `objref/C` values.
-
-**`Implements(D, C)`** checks explicit or [validly inherited conformance](#844-conformance): every requirement has one implementation for `D` with compatible signature, access and Origins, and published ObjectCallCompatible Proven (§12.4.4). Unknown does not establish this guarantee.
-
-The unique static conformance for the concrete Type and Contract identity is used; changing View bindings cannot create another conformance. Static conformance does not generally persist in derived Types, so the extension must ensure that the ObjectViewCompatible restrictions, fixed associated-Type bindings and published implementation guarantees preserve the Supports relation through every derived layer; static conformance alone does not prove that invariant.
-
-Contract refinement follows [static refinement](#842-refinement). There is no replacement conformance, default implementation or external registration. Registration and artifact consistency follow the [metadata rules](../impl/21-layout-runtime-and-code-generation.md#2121-type-identity-and-descriptors).
-
-```text
-Speaker requires Shared speak() -> string
-    ├─ Dog implements Speaker.speak
-    └─ Cat implements Speaker.speak
-```
+**ObjectViewCompatible(C)** holds when `C` is designated for runtime use, has no Type-function requirements, and, with its associated Types fixed, each instance requirement is a safe method or accessor with a non-consuming object receiver, uses `Self` only in the receiver, has no unbound associated Types or method generics, and has Types and Origins expressible without the hidden Type (through the receiver, inputs and `static`). Each getter result and setter requirement is checked separately. Forming an object form over `C` requires it. Erasing a value into a View requires ObjectPayload ([§8.7.3](#873-objectpayload)) and Owned ([§15.8.1](15-ownership-and-lifetime-analysis.md#1581-object-payload-erasure)). **Implements(D, C)** needs an explicit or inherited conformance ([§8.6.2](#862-inherited-conformance)) with ObjectCallCompatible Proven ([§12.7](12-expressions.md#127-object-receiver-compatibility)); the unique conformance for the bound Contract reference ([§8.6.1](#861-conformance-declarations-and-identity)) is used.
 
 ```kimi
-// Runtime extension: assume runtime designation, conformance, and makeDog() -> obj/Dog.
-func announce(value: objref/Speaker) -> string
+contract Speaker
+    Self is ObjectPayload
+    func speak(self: objref/Self) -> string
+
+func announce(value: objref/Speaker) -> string   // Error in this revision: runtime Contract Views cannot be formed.
     return value.speak()
-
-let dog = makeDog()
-let message = announce(dog@objref/Speaker)
 ```
 
-Only requirements accessible through `Speaker` are available from that view. Lifetime-preserving view formation also obeys [object upcasts](13-operators-and-assignment.md#1357-object-upcasts).
+## 8.13. Explicit full function specialization
 
-## 8.6. Callable constraints
+An **explicit full specialization** supplies the implementation of a generic function for one closed set of static generic arguments. It keeps the call contract but may behave differently, and a matching specialization must be used.
 
-`F is Callable<r, S>` is a built-in Constraint requiring calls with receiver access `r` and signature `S`; `Callable<S>` abbreviates `Callable<ref, S>`. In this revision `r` is the literal Semantics `ref`, `uniq` or `owner`, and `S` is `(A1, ..., An) -> R` or, with a task slot, `(task; A1, ..., An) -> R` ([§24.2](24-suspension-and-asynchronous-tasks.md#242-task-slots)), where `R` may be a Place result (§7.1.1); the task slot is no parameter, and the per-call Origin rules concern only `A1` to `An`. The result may keep input Origins or already-bound external dependencies but cannot borrow the hidden environment receiver.
+### 8.13.1. Declaration and target
 
-| Constraint receiver | Receiver acquired by a generic call | Admitted minimum call requirement |
-| --- | --- | --- |
-| `ref` | `ref/F` | Shared |
-| `uniq` | `uniq/F` | Shared or Exclusive |
-| `owner` | `F` acquired by value | Shared, Exclusive or Consuming |
+`specialize func` declares one: a single unqualified Name, explicit arguments for every slot in order (lengths by [§4.4](04-arrays-indexing-and-slices.md#44-function-length-parameters)), a task slot exactly when the original has one, typed parameters, an optional result and a body. It declares no Type parameters and cannot see the original's names. An omitted result is Unit. The arguments must be closed: no unbound Type parameter or pair binder, unresolved projection or outer generic parameter. The target is a generic root function, Type function or method with an ordinary body, not a constructor, `drop`, accessor or operator; there is no partial, conditional or Container-argument specialization.
 
-The admitted Types are Function Items, concrete Closures and common Function Types with [compatible signatures](10-overload-resolution-and-inference.md#107-callable-signature-compatibility); no user `call` member is searched. `S` is a contract, not a conversion to an erased container. `F`'s complete dependencies are preserved under generic substitution, and neither Copy nor Owned is required of `F`: `owner` denotes acquisition, whereas `Owned` denotes the absence of non-static dependencies. The result restriction does not constrain direct concrete-Closure calls.
-
-**Per-call input Origins.** An omitted Origin on each direct borrowed parameter of `S` (§15.4.2), `objref/T` and `objuniq/T` as well as `ref/T` and `uniq/T`, is bound independently **per call**, for all three receiver kinds. Conformance must hold for every valid call-time Origin under the ordinary Type and Loan rules, not for one fixed long-lived Origin. Origins nested within `T`, and capture-derived Origins within `F`, remain fixed and are not quantified. This adds no general higher-ranked Origin binder syntax. No new named scalar Origin is introduced inside `S`, and Callable signatures keep their ban on written borrow annotations (§15.3.1): `S` writes `during` on no borrow layer of its parameters, at any depth, and none on its result. Aggregate occurrences may introduce binding-set names owned by the containing declaration; their input slots must be fixed by complete Types or by equality to outer Origin expressions. Result slots follow the signature's ordinary completion rules (§15.4), without exposing its internal per-call binders through an external projection.
-
-Omitted result Origins are completed under §15.4 from those per-call input Origins, keeping already-bound dependencies; the receiver of `F` is not an elision input. For example, `Callable<(ref/T) -> ref/T>` returns a borrow valid for its argument's Origin. With several direct borrowed inputs, result elision uses their meet and keeps all input Loans. A result that requires exclusive access must also preserve the corresponding exclusive Loan; shortening an Origin grants no access capability.
-
-```kimi
-func selectRef<T, F>(value: ref/T, select: ref/F) -> ref/T during value
-    F is Callable<(ref/T) -> ref/T>
-    return select(value)
-```
-
-```kimi
-func applyBorrowed<T, U, F>(value: ref/T, transform: ref/F) -> U
-    U is Owned
-    F is Callable<(ref/T) -> U>
-    return transform(value)
-```
-
-**Constraint-based calls.** A call first acquires the receiver required by `r` and then adapts to the implementation's minimum requirement:
-
-- `ref`: call through shared access.
-- `uniq`: keep exclusive access for the call, and Reborrow exclusively or share it for the actual body. The callee is a Receiver Expression ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)): an owned callable Place is acquired exclusively without a spelling, and a `uniq/F` value is Reborrowed (§7.6.3).
-- `owner`: acquire by bare Copy or `@move`; borrow the acquired value for a Shared or Exclusive body, or transfer it to a Consuming body. Remaining acquired storage is destroyed when the call completes. This owned temporary has normal writable, exclusive access even when it was copied or transferred from a `let` binding.
-
-Instantiation cannot turn an `owner` acquisition into a borrow merely because the body is Shared. Conversely, copying a Consuming callable does not satisfy a `ref` or `uniq` constraint. One public signature is selected. The distinct signatures of the available Callable Constraints on `F`, compared after normalization and the substitution of available identity premises (§8.7), including task-slot presence, result mode and Origin contracts, are the candidates of a call through `F`; each takes the weakest receiver declared with it, in the order `ref`, `uniq`, `owner`. As for requirements gathered from Constraints (§9.5), the call is an error, whatever its arguments, unless the candidates have one receiver, one task-slot shape (§24.2.3) and one parameter acquisition shape (§7.3.1); the call then checks and compares them under §10.1 and §10.4 with its positional arguments, and no unique best candidate is an error. Differing signatures are not contradictory evidence (§8.7): they may coincide after substitution, and a call that binds `F` to a Type satisfying only some of them fails the others. A later initialization, access or Loan failure cannot select another signature or receiver. Constraint strength is not an overload-ranking rule.
-
-```kimi
-func applyTwice<F>(value: i32, transform: uniq/F) -> i32
-    F is Callable<uniq, (i32) -> i32>
-    let first = transform(value)
-    return transform(first)
-
-let count: i32 = 0
-var transform = func [var count] (value: i32) -> i32
-    count += 1
-    return value + count
-
-let result = applyTwice(10, transform@uniq) // 13; captured count is now 2.
-```
-
-A Shared callable also qualifies, but a `uniq/F` argument still needs ordinary exclusive access. `transform` is passed at an argument position, not as a Receiver Expression, so the owned Closure Place is written `transform@uniq`; the calls `transform(value)` inside `applyTwice` acquire the `uniq/F` parameter implicitly. Shared environment access does not prevent use of the normal exclusive capability of a separate `uniq/T` argument. By-value `F` parameters use ordinary acquisition (a Copy or `@move`); the constraint neither borrows them silently nor guarantees repeated calls or non-escape. Generic conformance and result Origin and Loan obligations must resolve before finalization. A returned input borrow need not keep the callable receiver, and no result may borrow call-local storage, including an `owner` receiver temporary.
-
-Callable Constraints may declare effect bounds under §8.4.10.7; they change the call's guarantees and selected-use obligations, not its signature or candidate ranking.
-
-## 8.7. Constraint proof system
-
-Callable effect bounds are not part of the propositions proven here; selected uses and implementation compatibility discharge them separately (§8.4.10.7). Constraint meaning and available proof are distinct. `and`, `or` and `not` keep their Boolean meanings, but generic checking uses only the rules below. Accepted programs must not depend on optional SAT solving, arbitrary theorem proving, enumeration of Types or optimizer-derived facts. Fully determined concrete conditions still use ordinary Boolean evaluation.
-
-In this section `P` and `Q` denote validated, bound propositions. Requirement expressions are parsed under [requirement precedence](#83-requirement-expressions) before interpretation: `T is (A and B)` supplies the propositions `(T is A) and (T is B)`, and likewise for `or` and the scope of `not`; source precedence is unchanged. Proposition identity uses bound subject and requirement Symbols, substitutions and normalized complete Types, including Semantics and Origins where applicable; equal source spellings alone are insufficient. Parentheses are transparent, and `not not P` normalizes to `P`. There is no De Morgan, distributive or other logical-equivalence normalization.
-
-The proof judgment has four outcomes, distinct from those of the Condition evaluator:
-
-| Outcome | Meaning |
-| --- | --- |
-| **Proven** | The permitted rules establish the proposition. |
-| **Refuted** | The permitted rules establish its negation; absence of proof is insufficient. |
-| **Unknown** | Neither polarity is established by the permitted rules. This is not a Boolean value or an automatic right to defer. |
-| **Error** | Invalid names, subjects, requirements or declarations, or detected contradictory evidence, prevent a valid judgment. |
-
-Evidence comes from the current declaration's validated input Constraints, the defined built-in capability rules, and verified unconditional, conditional or inherited conformance. Facts keep their Binding Identity, substitutions and lexical or instantiation scope. A generic input Constraint is an assumption inside the constrained body and must be discharged at each use. A conformance declaration or `Self is C` obligation cannot prove its own implementation merely by being declared; its required implementations and prerequisite Constraints are validated under the conformance rules. Built-in derivations such as `Self is Copy` keep their own rules.
-
-| Proof rule | Permitted derivation |
-| --- | --- |
-| Exact assumption | A matching available proposition proves itself; an available `not P` refutes `P`. |
-| Conjunction elimination | An available `P and Q` supplies both `P` and `Q`, recursively. |
-| Conjunction introduction | `P and Q` is Proven when both operands are Proven. |
-| Disjunction introduction | `P or Q` is Proven when either operand is Proven; this grants no evidence for the other operand. |
-| Negation | `not P` exchanges Proven and Refuted; Unknown remains Unknown and Error remains Error. Double negation is normalized as above. |
-| Boolean refutation | `P and Q` is Refuted if either operand is Refuted; `P or Q` is Refuted if both are Refuted. |
-| Concrete atomic judgment | The defined concrete Type-identity, Semantics/category and built-in capability tests, or the closed conformance judgment below. |
-| Semantics admitted set | A requirement on a Semantics binding is decided by containment of the binding's admitted set, defined below. |
-| Verified conformance | A verified explicit or inherited mapping, after its prerequisites are proven, including inheritance matching (§8.4.4) and conditional premises (§8.4.8). Legitimate unresolved prerequisites are retained; cyclic declarations alone prove nothing. |
-| Contract refinement | From an available `T is C`, each ancestor conformance and inherited requirement Constraint, substituting `T` for `Self`. This does not discharge an unverified declaration's implementation obligations. |
-| Associated-Type identity | Substitute and normalize completed associated-Type bindings and available Type-identity Constraints under the [associated-Type rules](#843-associated-types). Bounded declaration inference completes metadata separately; proof never searches members or chooses a satisfying Type. |
-| Type identity | `X is U` is Proven when both normalize to the same Type after substituting available identity premises, including the same binders, and Refuted when both are fully bound and differ. No equation is solved beyond this substitution. |
-| Closed implication | `T is PrimitiveInteger` supplies `T is Position` (§8.4.7.3). |
-| Other cases | Unknown, unless validation requires Error. |
-
-All proof operands are validated, and Error absorbs even a determined truth result. Otherwise, a Refuted operand can refute a conjunction and a Proven operand can prove a disjunction despite Unknown operands. Exact compound assumptions are usable directly, but only conjunction elimination exposes their parts. `P or Q` together with `not P` cannot prove `Q`: there is no case analysis, contraposition, proof by contradiction or inference from contradiction. These limits govern symbolic proof, not the Boolean evaluation of determined concrete judgments.
-
-**Concrete and closed-world judgments.** Fully bound Types are compared by normalized identity, and determined Semantics, category and built-in capability tests use their defined rules. Unbound Types and unresolved prerequisites are not negative results. The absence of a conformance is Refuted only after the concrete declaration, the inherited and potentially applicable conditional conformances, and every relevant merge, selection, binding and prerequisite in the fixed environment have been completed, and the specified proofs have ruled out all alternatives. A failed lookup alone proves no absence; a malformed conformance is Error, and an unsupported associated-Type operation is not a concrete negative. A primitive Type's conformances are fixed: its intrinsic capabilities and its designated built-in conformances, including comparison, formatting, integer Position and [arithmetic](arithmetic-contracts.md#11-built-in-conformance). No declaration adds another (§8.4.8.4), so its conformance to any other Contract is Refuted once the Contract is resolved; a call whose only candidate requires such a conformance has no applicable overload.
-
-**Semantics admitted set.** The Semantics premises available at a point determine the **admitted set** of a Semantics binding `s`. A concrete name contributes that one Semantics and a category its members (§3.3); `and`, `or` and `not` take the intersection, union and complement over the nine Semantics; separate clauses intersect; without premises all nine are admitted. A requirement `s is R` whose member set is `S` is Proven when the admitted set is contained in `S`, Refuted when the two are disjoint and Unknown otherwise; an empty admitted set is contradictory evidence and Error. This rule decides every Semantics requirement, including pair evidence for object forms (§8.4.7.2), `Weak<S>` over a pair (§3.2.2) and borrow annotations on a Semantics parameter (§8.1.2, §15.3). It adds no reasoning about Type requirements.
-
-**Recursion.** An active obligation revisited with identical arguments supplies no evidence; cycles and in-progress registrations establish neither conformance nor refutation. Independent finite evidence, including evidence found after a temporary cycle result, is considered. Otherwise the result stays Unknown until its deadline and is diagnosed if still required. Recursive declarations alone are valid. Built-in structural analyses use their own recursion and fixed-point rules; no general coinduction is implied.
-
-**Contradictions.** After the specified normalization and conjunction elimination, directly available `P` and `not P` are contradictory evidence and produce Error; so is evidence establishing both polarities of a queried proposition. Arbitrary capabilities are never derived from an inconsistent environment. Detecting more complex contradictions through excluded logical transformations is not required and cannot supply proof.
-
-**Use and finalization.** A required Constraint succeeds only when Proven. Refuted fails the requirement, and Error reports invalid input or contradictory evidence. Unknown may be retained only when an identified later binding, instantiation or prerequisite analysis can resolve it before the applicable deadline; otherwise it is an unproven-requirement error wherever proof is required. Every required concrete-call or instantiation obligation is resolved before finalization. Unknown is never accepted, converted to Refuted or used as evidence for a negated Constraint. Associated-Type inference beyond the [bounded declaration rule](associated-type-inference.md) and stronger symbolic reasoning remain design boundaries.
-
-## 8.8. Explicit full function specialization
-
-An **explicit full specialization** supplies an implementation for one closed set of static generic arguments of an existing generic function. It preserves that function's call contract but may produce different results or side effects. Selecting a matching specialization is mandatory, not an optional optimization.
-
-Generic arguments here include function length slots, which are evaluated under the [length rules](04-arrays-indexing-and-slices.md#44-function-length-parameters) and leave no unbound length. `LengthKey(N)` identifies a length by its integer value. The Type and Origin checks below apply to Type slots.
-
-### 8.8.1. Declaration and target identification
+The specialization and its target belong to the same declaration scope: a root function's SourceDocument execution scope ([§6.1.1](06-declarations-and-containers.md#611-source-root-and-nested-containers)), or the same Container for a member. The target is the unique function there with the same name, kind and slot count whose substituted task slot, receiver and parameters match the header's normalized structure, Origins excluded. Zero or several matches are errors; results, Constraints and order never break ties.
 
 ```kimi
 func classify<T>(value: ref/T) -> i32 => 0
 specialize func classify<i32>(value: ref/i32) -> i32 => 1
 
-func process<T>(value: T) -> ()
-    ()
-specialize func process<i32>(value: i32) -> ()
-    ()
-```
-
-`specialize` is a contextual declaration introducer before `func`. A specialization has a single unqualified Name, explicit Type arguments, a task slot exactly when the original has one ([§24.2.1](24-suspension-and-asynchronous-tasks.md#2421-form)), explicitly typed parameters (the fixed bare `self` shorthand of §7.3 is permitted), an optional result Type and a common single-item or indented Body (§14.2). It declares no Type parameters and does not bring the original function's Type parameter names into its body. Origin binders are inherited, not newly declared. An omitted result means Unit, even if the original's substituted result is non-Unit; write that result explicitly.
-
-All of the function's own generic slots are supplied in declaration order, with their original kinds; ordinary and pair Type slots each take one complete Type. After alias and associated-Type normalization, every Core and Semantics component must be fixed: no unbound Type or Semantics parameter, unresolved projection or outer generic parameter may remain. `List<i32>` is closed; `List<T>` with an unbound `T` is not. `Self` is allowed only when ordinary resolution meets the same rule. Origins are checked separately (§8.8.2). These restrictions apply to specialization declarations, not to dependent Types in ordinary generic bodies.
-
-The target must be a named generic Type function or instance method with an ordinary implementation; constructors, `drop`, accessors and dedicated operator declarations are excluded. There is no partial or conditional specialization, omitted argument, placeholder, priority rule, general Const argument, specialization of a generic Container's arguments, specialization of a method with unbound outer generic parameters, or explicit target-identity syntax.
-
-Duplicate ordinary declarations are rejected first. Then the original function is identified:
-
-1. Collect same-name generic functions in the same Declaration Container with the same function kind (Type function or instance method) and generic slot count.
-2. Bind the written generic arguments using each candidate's slot definitions. Match task-slot presence (§24.2.4), the substituted receiver presence and Type structure, and the ordinary parameters' count, order and normalized Type structure. Complete Types are formed and validated before Origins are excluded for this structural comparison.
-3. Zero matches is an error, and several matches make the specialization declaration ambiguous. For exactly one match, the inherited contract is validated.
-
-Result Types, parameter names, Constraint satisfaction, Origin relationships, implicit adaptation, slot kind alone, overload ranking and declaration or file order never resolve an ambiguity. A failed contract check cannot select another target.
-
-```kimi
 func inspect<T>(value: T) -> () => ()
 func inspect<T>(value: i32) -> () => ()
 specialize func inspect<i32>(value: i32) -> () => ()
-// Error: both ordinary declarations have the same substituted input structure.
+// Error: both declarations have the same substituted input structure.
 ```
 
-Diagnostics distinguish no target, an input-structure mismatch, several targets and a contract mismatch after selection. They include the candidate declaration locations and the relevant task-slot, Type, receiver or arity differences; diagnostic comparison never chooses a nearest candidate.
+### 8.13.2. Inherited contract
 
-### 8.8.2. Inherited contract
+The header restates the original's substituted receiver shape ([§7.3](07-functions-and-callable-values.md#73-receivers)), parameters and result without adaptation, and its external names; internal names may change with `external => internal: Type`. Access, defaults, the `!` boundary, Constraints, Attributes, Safety, effect bounds and Origin binders are inherited and never written. Callers keep the original's defaults: `find<i32>(10)` evaluates the original default, then runs the specialization. The body must work for every Origin binding the original admits. A specialization cannot add Origin restrictions, narrow applicability or replace a required proof; it may leave ObjectCallCompatible ([§12.7.2](12-expressions.md#1272-implementation-families)) NotProven. Override headers follow the same discipline ([§6.4.1](06-declarations-and-containers.md#641-declarations)).
 
-This contract-inheritance discipline also governs [override headers](virtual-dispatch.md#1-declarations-and-contracts), with their specified receiver-Self correspondence and declaration restrictions.
+### 8.13.3. Selection
 
-The specialization header identifies and checks the original contract; it is not an independent call Signature.
-
-| Item | Specialization rule |
-| --- | --- |
-| Task slot | Written exactly when the original has one (§24.2.1) |
-| Receiver and ordinary parameters | Restate count, order and substituted Type structure, keeping the original's receiver shape (§7.3); no implicit adaptation |
-| Result | Match the substituted Type; omission means Unit |
-| External parameter names | Match the original; not used to identify the target |
-| Internal names | Ordinary parameter names may change using `external => internal: Type`; an inherited receiver remains `self` under §7.3 |
-| Origin and Loan contract | Inherit the binders and preserve every admitted Origin binding |
-| Access, defaults, name-omission permissions, generic Constraints | Inherited; never redeclared, strengthened or weakened |
-| Attributes, Safety, calling convention, Effect requirements | Inherited under the existing rules; no Attributes or additional modifiers on the specialization declaration |
-
-A specialization header contains neither an `!` boundary nor parameter defaults. It inherits the original external names, K and defaults; the absence of a boundary does not mean K = N. Callers still use the original omission and default-evaluation rules:
+The selection key is the original declaration with its normalized static arguments, excluding only Origins; `obj/D` and `rc/D` differ. Two specializations with one key are an error. Calls and function references use ordinary lookup, overload resolution and the original contract; specializations are never candidates. Once the arguments determine a key, the matching specialization runs, whether the arguments were known at the call or after generic substitution; Dynamic Types never matter. A specialization has no name and cannot be bypassed; calling the same function with the same arguments inside it recurses. Specializations belong to the original's Kotonoha and declaration scope (§8.13.1), and declaration or loading order never affects selection.
 
 ```kimi
-func find<T>(value: T, count: i32 = 1) -> () => ()
-specialize func find<i32>(value: i32, count: i32) -> () => ()
-find<i32>(10) // Evaluate the original default, then call the specialization.
-```
+func classify<T>(value: ref/T) -> i32 => 0
+specialize func classify<i32>(value: ref/i32) -> i32 => 1
 
-These restrictions concern the specialization declaration, not ordinary syntax inside its body. A specialization of an unsafe function inherits its Safety contract, but unsafe operations in its body still need an Unsafe Block. Contract inheritance introduces no unsupported exception-Effect or variadic feature, and a task slot is restated, not inherited implicitly (§24.2.1).
-
-Omitted specialization Origins are inherited, not quantified. The normalized input structure is matched first, mapping pending Origin positions to each candidate, and exactly one target is selected; Origin conditions and results never break ties. The Origins are then completed from that contract, and explicit bindings, result, formation, bounds and Loans are validated. A failed validation never retries another candidate. After the inherited binders are matched, the body must work for **every Origin binding the original contract permits**. A specialization cannot add an Origin parameter or lifetime restriction, narrow applicability by Origin, or register another implementation for different Origins. It cannot rescue an invalid ordinary implementation or replace a declaration-required proof; [deferred generic checking](#810-generic-body-checking-and-deferred-obligations) keeps its stated design boundary.
-
-Inferred ObjectCallCompatible is a [common implementation guarantee](12-expressions.md#12443-implementation-families), not an additional declaration obligation inherited from the ordinary body. A specialization may make that public guarantee NotProven without becoming invalid for that reason; the declared Signature, Constraints, Safety and Effect requirements still apply.
-
-### 8.8.3. Selection and declaration ownership
-
-Selection uses the [Implementation Selection Key](../impl/21-layout-runtime-and-code-generation.md#2132-identity-and-generation-keys): the original function's declaration identity and its ordered, normalized static generic arguments, excluding only Origins. Nominal identity, nested structure and every Semantics layer, including an outer object handle, are preserved, so `obj/D` and `rc/D` have different keys even when they identify the same dynamic payload Type. Two specialization declarations with the same key are an error.
-
-Calls and function references first use ordinary lookup, overload resolution, inference and the original contract's Type, Constraint, Origin and Loan checks. Specializations never enter the candidate set or supply inference evidence. Once the static generic arguments determine a key, the matching specialization is used, or the ordinary implementation if there is none. A value's Dynamic Type, including behind a base or Contract View, never changes this selection.
-
-```kimi
-// classify and its i32 specialization are declared above.
 func forward<T>(value: ref/T) -> i32 => classify<T>(value)
 let number: i32 = 10
-let result = forward<i32>(number@ref) // 1, including with shared generic code.
+let result = forward<i32>(number@ref) // 1: the i32 specialization runs.
 ```
 
-A generic caller cannot be fixed to the ordinary implementation merely because its generic arguments were initially unknown. This guarantee is independent of code sharing, separate compilation, optimization level and LTO. Function references obey the same choice and their existing restrictions, including the ban on unsafe function values.
+## 8.14. Generic access effects
 
-There is no direct name for the specialization and no syntax that bypasses it to call the ordinary body. Calling the same function with the same generic arguments from inside its specialization selects that specialization again and recurses; move common work to a helper. An error in a specialization body never falls back to another body or overload.
+An acquisition or adaptation has a statically unique **Access Effect**: an acquisition (Copy or Move), a Loan action (shared Borrow, exclusive Borrow or Reborrow), and its target Place and Origin dependencies. Consume is not a kind of acquisition; it names the static check of [§15](15-ownership-and-lifetime-analysis.md#15-ownership-and-lifetime-analysis) that a use may perform an access operation of [§15.1.5](15-ownership-and-lifetime-analysis.md#1515-access-operations-and-acquisition). Exclusive call adaptations use reservation ([§15.6.7](15-ownership-and-lifetime-analysis.md#1567-call-reservations)).
 
-Specializations belong to the original function's Kotonoha and Declaration Container. Existing Container fragments may place them in another file; unrelated extensions and other Kotonoha libraries cannot add or replace them. The defining Kotonoha closes the specialization set after environment selection and declaration collection, including generated sources, before it finalizes affected call targets and no later than artifact finalization. Declaration and loading order cannot affect selection. Verification, artifact information and invalidation follow [generic code generation](../impl/21-layout-runtime-and-code-generation.md#213-generic-code-generation).
+- A bare Place follows [§3.5](03-types-and-values.md#35-copy-and-move) in each admitted case: it Copies where Copy is proven and Reborrows where its Type is proven a `uniq` or `objuniq` reference. A case with neither is an error at definition checking, never an inferred Move.
+- `@copy` Copies with the same evidence; `@move` transfers.
+- `@s`, `@s/T` and `@Type` follow the adaptation table ([§13.5](13-operators-and-assignment.md#135-explicit-operations)); where `s` admits `owner`, `value@s` is a same-Type acquisition there and needs Copy evidence.
 
-## 8.9. Generic access effects
-
-Before ownership and Loan analysis is finalized for an acquisition or adaptation, its **Access Effect** is determined statically and uniquely:
-
-```text
-Access Effect
-├─ acquisition: Copy / Move / Consume
-├─ Loan action: shared Borrow / exclusive Borrow / Reborrow
-└─ target Place and Origin dependencies
-```
-
-A broad Borrow-versus-acquisition category is insufficient: Copy is distinguished from Move, shared from exclusive, and Borrow from Reborrow. Symbolic generic Types and Origins are allowed if the required effect and dependencies are uniquely expressible. This rule applies to ordinary acquisition and to all generic `@s`, `@s/T` and `@Type` forms.
-
-An eligible exclusive call adaptation uses [reservation and activation](15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations) once its Access Effect is determined. Reservation neither relaxes the definition-side proof of any admitted effect nor introduces a new Semantics or runtime operation.
-
-```text
-Generic analysis
-├─ effect known -> analyze normally
-└─ legitimate dependency -> retain obligation
-                            -> constraints / instantiation
-                            -> determine effect -> finalize ownership and cleanup
-```
-
-A by-value acquisition's effect follows its spelling:
-
-- a bare Place follows the bare acquisition of §3.5 in each admitted case: it Copies where Copy is proven and Reborrows in the same Semantics where its stored Type is proven to be a `uniq` or `objuniq` reference; a case with neither proof is an error at definition checking, never deferred checking or an inferred Move, and the Copy proof is part of a candidate's applicability (§10.1);
-- `@copy` Copies and requires the same evidence;
-- `@move` transfers;
-- `@s`, `@s/T` and `@Type` use the resolved adaptation table (§13.5), including object creation (§13.5.8). Value acquisition follows the ordinary Copy, explicit Move and temporary-transfer rules; borrow cases use their specified Borrow or Reborrow.
-
-Unresolved Copy capability is never treated as proof of Non-Copy. Borrow effects may remain symbolic until instantiation only if every admitted case is legal, including subsequent uses, Loans and cleanup. This delays the determination of an effect, not the discovery of a required capability. Environment-changing directives still obey their earlier [selection deadlines](19-compile-time-directives.md#194-name-resolution-boundary).
-
-Following a [pair layer](13-operators-and-assignment.md#pair-layers) has such a symbolic effect, the Access Effect row of the pair-layer table (Borrow for `owner`, Reborrow for `uniq`, and Reborrow or the Copy of the shared-reference adaptation for `ref`). `@s` and `@follow` correspond in how they treat the outer layer, but they are not inverse operations: `@s` applies Semantics to a value, and `@follow` selects a Place and never restores a Take.
-
-**Conditional acquisition plans.** When the admitted cases of a bare Place differ, its plan is a finite conditional plan: a Copy or a Reborrow for each admitted case. The body is verified under each of its [Semantics cases](#810-generic-body-checking-and-deferred-obligations), in which the acquisition is that case's Copy or Reborrow with its own dependencies, together with the later uses, Loans and cleanup of the body. The cases are never merged into one plan, so a case that Copies receives no Loan that only a Reborrow case creates. No implicit Constraint, general solver or reselection after instantiation is added, and a plan that the finite proof rules of §8.7 cannot express is a definition error.
+Unknown Copy is never Non-Copy, and compile-time directives never select Access Effects ([§19.3](19-compile-time-directives.md#193-evaluation-and-selection)). When the admitted cases differ, the plan is a Copy or Reborrow per case, verified per Semantics case ([§8.15.2](#8152-semantics-cases)). `@s` and `@follow` are not inverses: `@follow` selects a Place and never restores a Take.
 
 ```kimi
 func inspectLocal<s/T>(value: s/T)
@@ -1217,36 +938,26 @@ func inspectLocal<s/T>(value: s/T)
     // _ = value              // Error at definition: in the uniq case it conflicts with local.
     _ = local
 
-// The two cases of inspectLocal, as its ownership analysis sees them:
-// func inspectOwner<T>(value: T)                         // s = owner: local is a Copy of T.
-// func inspectUniq<T, origin o>(value: uniq/T during o)  // s = uniq: local is a Reborrow within o.
-
 func invalid<T>(value: T)
     let local = value         // Error at definition: neither Copy nor an exclusive reference is proven.
 ```
 
-Instantiations may have different effects. The already-verified effect plan is substituted, and each concrete body's cleanup is derived from it; an analysis for a different effect is never reused without validation. Compile-time directives neither test Types nor select Access Effects. The [generic verification principle](#810-generic-body-checking-and-deferred-obligations) requires the ordinary body to be valid independently of explicit specializations.
-
-```kimi
-// s is a declared Semantics parameter; value is an initialized owned value.
-value@s
-use(value)
+```text
+Conceptual cases of inspectLocal:
+  s = owner: func inspectOwner<T>(value: T)                         // local is a Copy of T.
+  s = uniq:  func inspectUniq<T, origin o>(value: uniq/T during o)  // local is a Reborrow within o.
 ```
 
-For `s = ref`, discarding the first result ends its shared Loan; `s = uniq` also requires exclusive writability. The later use is checked after that Loan ends. If the Constraints admit `s = owner`, the first use is a bare same-Type acquisition and needs `T is Copy` at definition; without it the definition is invalid, so restrict `s` to borrows or prove Copy. If the result is retained, subsequent uses are checked throughout its Loan lifetime.
+## 8.15. Generic body checking
 
-## 8.10. Generic body checking and deferred obligations
+### 8.15.1. Universal verification
 
-**Universal body verification.** An ordinary generic body must be semantically valid for every well-formed Type, length and Origin argument binding that satisfies its declared Constraints, any enclosing conditional-conformance premises and its public Signature requirements. This is verified before the definition is accepted or exported, including definitions with no uses. Verification uses the limited proof system of §8.7 and symbolic Type, Origin and effect rules; it enumerates the Semantics cases of pair binders (below), which are finite and declared, but neither enumerates available Types nor infers a hidden capability Constraint from the body, and the case enumeration belongs to the effect and ownership analysis and adds no premise to the proofs of §8.7. Failing to establish a required proof is a definition error, and explicit specializations cannot rescue an invalid ordinary body.
+A generic body must be valid for every well-formed Type, length and Origin binding that satisfies its Constraints, the premises of an enclosing conditional conformance and its Signature. It is checked when the definition is checked, uses or not, with the rules of [§8.3](#83-constraint-proof). Types are never enumerated and no hidden Constraint is inferred: what the contract cannot express or prove makes the definition invalid. A generic call proves its callee's requirements from the caller's premises. Specializations cannot rescue an invalid body.
 
-**Semantics cases.** Legality on a [pair layer](13-operators-and-assignment.md#pair-layers) is judged once for all admitted cases: whether it may be followed, its capabilities and modes as the weakest admitted case, that Take is never offered, and ranking by the worst class (§13.5.5.1). The ownership analysis of the body is then performed under each of its **Semantics cases**: one admitted Semantics (§8.7) for each pair binder in scope of the body, its own, its container's and, for a Closure, its enclosing declarations'. In a case every pair layer is the complete Type of that case (`T`, `ref/T during o`, `uniq/T during o`, …), and its Access Effect (§8.9), selected Place, dependencies, Loans, cleanup and Closure receiver (§7.6.3) are those of that Type under the ordinary rules. A definition is accepted only when every case is. Cases are never merged, so a case that Copies receives no Loan that only a Reborrow case creates, and a conditional dependency (§8.1.2, §13.5.5.1) is simply the dependency of the case that produces it. Where every admitted case of a binder has the same analysis, because no operation of the body applies a per-case rule to its layers, the cases need not be distinguished. An instantiation is the closed case its arguments select (§8.1.2). A diagnostic found under some cases names them ([§23.3.6.4](23-compiler-services.md#23364-problems-prerequisites-and-suppression)).
+The public obligations of a declaration are the well-formedness conditions of its Signature, schema, associated Types, Constraints and conditional-member premises, never a body requirement such as Copy. A read that leaves its source initialized needs `T is Copy`, a borrow or reinitialization; match Subjects and iteration items follow [§15.1.6](15-ownership-and-lifetime-analysis.md#1516-match-and-for-subjects). Stored acquisitions, elements and getter results keep their declared Types ([§4.7](04-arrays-indexing-and-slices.md#47-indexing)). ObjectCallCompatible ([§12.7](12-expressions.md#127-object-receiver-compatibility)) is a guarantee of the implementation, not an applicability premise, and instantiations never strengthen it.
 
-This requirement fixes meaning, not a compiler-pass schedule. Dependencies on other declarations may delay checking within the build, but an unverified definition cannot be accepted merely because selected concrete instantiations succeed. In particular, a generic call to another generic function must prove that function's declared requirements from the caller's declared premises.
-
-Unknown Copy never changes an acquisition's effect: in each admitted case, a bare by-value Place requires Copy evidence or a proven exclusive-reference Type, under a finite conditional plan where the cases differ (§8.9), a shared or exclusive Subject binds references, and an owned Subject or iteration item transfers its parts (§15.1.6). A read that must leave the source Initialized therefore needs an explicit `T is Copy`, a borrow that avoids acquisition, or a valid reinitialization before reuse. `T is Copy` is never added to a caller's applicability conditions after the body is checked.
-
-~~~kimi
-func transfer<T>(value: T) -> T => value@move // Moves a Copy or Non-Copy T alike; bare `value` would need Copy evidence.
+```kimi
+func transfer<T>(value: T) -> T => value@move   // Moves a Copy or Non-Copy T alike.
 
 func twice<T>(value: T) -> (T, T)
     T is Copy
@@ -1254,27 +965,38 @@ func twice<T>(value: T) -> (T, T)
 
 func invalidTwice<T>(value: T) -> (T, T)
     return (value, value) // Error at definition: Copy is not guaranteed.
-~~~
+```
 
-Generic stored acquisition, element Places and custom, computed and required getter results keep their declared Types (Chapter 11, §4.6.1). No operation has a Copy-dependent result Type family, and a bare read of an unknown `T` needs Copy evidence wherever it appears.
+### 8.15.2. Semantics cases
 
-A **Deferred Obligation** records remaining substitution or representation work for a verified definition; it is never an unproven body capability. It records its kind, defining bindings and environment, source location, declared premises, symbolic proof and effect plan, dependencies and deadline. Unknown names, missing conformance, possible use after Move and unresolved overload ambiguity cannot be deferred in the hope of a favorable instantiation.
+Legality on a pair layer ([§13.5.5](13-operators-and-assignment.md#1355-follow)) is judged once for all admitted cases. Ownership analysis then runs under each **Semantics case**: one admitted Semantics ([§8.3.4](#834-semantics-admitted-set)) for each pair binder in scope (the body's, its Container's and, for a Closure, its enclosing declarations'). In a case each pair layer is that case's complete Type, with its ordinary Access Effect, dependencies, Loans, cleanup and Closure receiver ([§7.7.3](07-functions-and-callable-values.md#773-call-receiver)). Cases are never merged, so a case that Copies receives no Loan that only a Reborrow case creates. An instantiation is the case its arguments select. Semantics cases are used only by this analysis; they add no premise to the proofs of [§8.3](#83-constraint-proof).
 
-| Stage | Required work |
-| --- | --- |
-| Definition | Resolve definition-side names and roles; prove body Type correctness, selected operations, capability requirements, and symbolic ownership/Origin/cleanup legality under the declared contract |
-| Permitted dependency | Retain proven symbolic Type/effect families and explicit representation obligations; Unknown is neither success nor evidence of Non-Copy |
-| Instantiation | Check the call's declared contract and ordinary argument/Loan validity; substitute verified plans; resolve concrete layout, representation and exact effects without adding semantic use conditions |
-| Finalization | Discharge representation obligations and complete concrete ownership/cleanup plans before lowering executable operations; never retry committed lookup or overload selection |
+A generic definition is valid when every Semantics case is valid; how an implementation enumerates, shares or factors the cases is not specified. The number of Semantics cases an implementation analyzes for one definition is implementation-defined, and exceeding that limit is a resource failure ([§23.1.1](23-compiler-services.md#2311-categories)), not a ruling that the program is invalid.
 
-For example, using the target projection `T` as a local Type inside `func f<s/T>(x: s/T)` must be justified by the declaration's Constraints and slot rules. If an admitted binding could make it an Object View Target instead of a value Type, the use is rejected at definition time, not only for the affected callers. Positions that prohibit generic parameters outright, such as a base Type, remain prohibited.
+```kimi
+func count<s/T>(value: s/T) -> i32
+    s is ref or uniq          // s is a pair binder; the body is checked for ref and for uniq.
+    let view = value@follow@ref
+    return 0
+```
 
-**Public dependent obligations.** Only the Type and Origin well-formedness conditions implied by the written Signature, generic schema, associated-Type requirements, Constraints and published conditional-member premises may restrict semantic applicability. They are fixed when the declaration is checked and must be available to callers and artifacts without inspecting a private body; they cannot contain a newly inferred body requirement such as Copy, an extra Contract or a favorable acquisition case. There is no source syntax for arbitrary hidden requirements: a need that the existing contract cannot express or prove makes the definition invalid.
+### 8.15.3. Concrete layout and representation
 
-Concrete layout and representation validity may still depend on substitution or the prepared target, including finite representable storage for an otherwise well-typed body local. Such dependencies are recorded in the definition artifact, with their source and target requirements, before clients instantiate it. These checks concern representability only and cannot disguise a Type, capability or lifetime restriction. A call that satisfies the public contract must not fail later because its callee newly discovers a semantic body requirement. Ordinary caller-side initialization and Loan checks, specified runtime checks, target representation failures and documented compiler resource exhaustion remain distinct; resource exhaustion is not semantic invalidity.
+A concrete Type's layout obligations (layout-mode restrictions such as C-layout zero-sized Fields, alignment limits and size limits) are checked when the program stores, creates, passes or returns a value of that Type by value, or needs its size (Fields, locals, array elements, object payloads, raw allocation). Forming the Type only behind a borrow, raw pointer or object handle, or naming it in a Constraint, does not check them. A failed obligation is a Language error at the use that needs the layout, reported by checking ([§23.2.2](23-compiler-services.md#2322-results-and-acceptance)); an exceeded implementation limit is a resource failure, not semantic invalidity; a layout the implementation cannot generate is reported as Unsupported ([§23.1.1](23-compiler-services.md#2311-categories)).
 
-**Sealed, ObjectPayload and complete payloads.** Sealed, ObjectPayload, Object Target and complete-payload uses are checked in both signatures and bodies under the declared premises. Missing Type roles, capabilities or lifetime evidence are definition errors; only representation obligations such as finite layout and profile-specific payload alignment may be deferred. A change of openness or of an ObjectPayload opt-out requires rechecking positive and negative Sealed and ObjectPayload results, inheritance, projections and public effects, including all permitted specializations (§18.3).
+These checks cover every instantiation that a checked nongeneric body requires, directly or through other instantiations, whether or not the body is reachable or generated; layout obligations are always checked for this checked set. A generic body that no checked nongeneric body instantiates is checked only symbolically. Whether `check`, rather than a build, reports a target's unsupported operations is implementation-defined, but whichever command reports them covers the whole checked set.
 
-**ObjectCallCompatible** (§12.4.4) is a completed public operation guarantee used by projection and object-call legality; it is neither a conditional applicability premise nor a deferred body requirement. Its common implementation family is verified before publication, and caller-specific instantiations cannot strengthen it. Changes use the dependency revalidation of §21.3.4.
+Polymorphic recursion, where a generic function calls itself with a growing Type argument, is valid. An implementation that generates one copy per instantiation may reach an implementation-defined limit; that is a resource failure, not an invalid program.
 
-**Diagnostics.** A definition error identifies the body use and the missing declared proof. An instantiation diagnostic identifies the already-published dependent or representation obligation, the definition site, the arguments and the failed condition; an instance the implementation cannot analyze or generate is instead the location-only `Unsupported_Kd` record of §23.3.6.1. Verified summaries and plans are preserved in compile-time metadata even when runtime keys erase Origins. Caller aliases and extensions are not added, overload choice is not redone for favorable concrete Types, and obligation strength does not rank candidates. Environment directives provide no Type or capability evidence and keep their earlier selection deadlines.
+```kimi
+func divide<T>(a: T, b: T) -> T
+    T is PrimitiveInteger
+    return a / b
+
+func unusedA(a: i128, b: i128) -> i128 => a / b        // Unsupported where i128 division is unsupported.
+func unusedB(a: i128, b: i128) -> i128 => divide(a, b)  // Same: divide<i128> is in the checked set.
+
+func depth<T>(value: T, n: i32) -> i32
+    require n > 0 else => return 0
+    return depth<Option<T>>(.Some(value@move), n - 1) + 1   // Valid; may reach a resource limit.
+```

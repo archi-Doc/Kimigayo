@@ -103,12 +103,8 @@ public class UnresolvedCapabilityProofBindingTest
         Assert.Equal(0, provisional.InvalidCount);
         var function = Function(c);
         var bound = function.Parameters[0].Type.TypeOf()!;
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveCopy(bound, function));
-            Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(bound, function));
-        }
-
+        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveCopy(bound, function));
+        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(bound, function));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (c.Binding.ProveCopy(bound, function) != ConstraintProof.Unknown || c.Binding.ProveOwned(bound, function) != ConstraintProof.Unknown)

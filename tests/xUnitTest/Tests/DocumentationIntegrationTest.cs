@@ -169,26 +169,10 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
     public void CollectionWithoutCandidatesAllocatesNoExtraStorage()
     {
         const string source = "func f() -> i32 => 42";
-        for (var i = 0; i < 20; i++)
-        {
-            DocumentationCommentTest.Parse(source, i % 2 == 0);
-        }
-
-        var off = Measure(false);
-        var on = Measure(true);
-        output.WriteLine($"32 parses without documentation: disabled={off} bytes; enabled={on} bytes");
+        var off = AllocationMeasurement.Measure(() => DocumentationCommentTest.Parse(source, false));
+        var on = AllocationMeasurement.Measure(() => DocumentationCommentTest.Parse(source, true));
+        output.WriteLine($"{AllocationMeasurement.MeasuredOperations} parses without documentation: disabled={off} bytes; enabled={on} bytes");
         Assert.Equal(off, on);
-
-        long Measure(bool collect)
-        {
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            for (var i = 0; i < 32; i++)
-            {
-                DocumentationCommentTest.Parse(source, collect);
-            }
-
-            return GC.GetAllocatedBytesForCurrentThread() - before;
-        }
     }
 
     [Fact]
@@ -290,20 +274,16 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
         var diagnostics = c.Kotonoha.DiagnosticCollection;
         var source = new SourceDocument("many.kimi", string.Concat(Enumerable.Range(0, 256).Select(i => $"/// item {i}\nfunc f{i}() => ()\n")));
         var ordinary = new SourceDocument(source.Path, source.SourceText.Replace("///", "// ", StringComparison.Ordinal));
-        for (var i = 0; i < 20; i++)
-        {
-            Lex(source, false);
-            Lex(source, true);
-            Lex(ordinary, false);
-        }
-
+        Lex(source, false);
+        Lex(source, true);
+        Lex(ordinary, false);
         Assert.Empty(TestDiagnostics.Of(c));
 
         // Each measurement retires the allocation context first, so a runtime pause cannot charge its unused tail to one side.
-        var baseline = AllocationMeasurement.Measure(() => Lex(ordinary, false), 64);
-        var bytes = AllocationMeasurement.Measure(() => Lex(source, false), 64);
+        var baseline = AllocationMeasurement.Measure(() => Lex(ordinary, false));
+        var bytes = AllocationMeasurement.Measure(() => Lex(source, false));
         Assert.Equal(baseline, bytes);
-        output.WriteLine($"64 lexical passes, 256 declarations: ordinary={baseline} bytes; documentation disabled={bytes} bytes");
+        output.WriteLine($"{AllocationMeasurement.MeasuredOperations} lexical passes, 256 declarations: ordinary={baseline} bytes; documentation disabled={bytes} bytes");
 
         void Lex(SourceDocument input, bool collect)
         {

@@ -5,10 +5,10 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>The keyword classes of SPEC 2.5.1, written out here independently of the token enumeration's layout.</summary>
+/// <summary>The keyword classes of SPEC F.3, written out here independently of the token enumeration's layout.</summary>
 public class KeywordClassificationTest
 {
-    /// <summary>Every reserved spelling of SPEC 2.5.1, including the access and inheritance words.</summary>
+    /// <summary>Every reserved spelling of SPEC F.3, including the access and inheritance words.</summary>
     private static readonly string[] ReservedSpellings =
     [
         "isize", "usize", "i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128", "f32", "f64", "bool", "char", "string",
@@ -19,7 +19,7 @@ public class KeywordClassificationTest
         "Self", "init", "drop", "base", "switch", "as", "_",
     ];
 
-    /// <summary>Contextual spellings that the lexer distinguishes; outside their contexts they are Names (SPEC 2.5.1).</summary>
+    /// <summary>Contextual spellings that the lexer distinguishes; outside their contexts they are Names (SPEC F.3).</summary>
     private static readonly string[] ContextualSpellings =
     [
         "alias", "rootgroup", "group", "struct", "enum", "contract", "computed", "property", "extension",

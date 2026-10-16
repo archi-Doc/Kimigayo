@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 3.3.6, 15.6.2: `p.0@ref` of a borrowed root `p` whose element holds a reference borrows that element's slot in the
+// SPEC 3.3.2, 15.6.2: `p.0@ref` of a borrowed root `p` whose element holds a reference borrows that element's slot in the
 // caller's storage. It was lowered as a borrow of a temporary copy of the stored reference, so a result `during p`
 // pointed into the callee's frame (non-generic), or failed generation in a generic instance with a reference argument.
 public class BorrowedSlotReferenceTest
@@ -27,15 +27,12 @@ public class BorrowedSlotReferenceTest
     public void AReferenceElementIsBorrowedInItsSlot(string name, string source)
         => ScalarEmissionTest.EmitFixture("BorrowedSlotReference" + name, Clobber + source, string.Empty);
 
+    // A stored reference is borrowed in its slot, never through a temporary copy (its MIR: tests/mir/places.kimi `slotBorrow`).
     [Fact]
     public void TheSlotIsBorrowedInPlace()
     {
         var c = MinimalEmissionTest.Analyze("func pick(p: ref/(ref/i32 during a, i32)) -> ref/(ref/i32 during a) during p => p.0@ref\nvar value = 1\nlet t = (value@ref, 2)\nlet r = pick(t@ref)\nrequire r == 1 else => $abort(\"slot\")");
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        var pick = Assert.Single(c.Ownership.Bodies, static body => body.Function.Name == "pick");
-        Assert.Contains(pick.Operations, static operation => operation.Kind == OwnershipOperationKind.Borrow && operation.Source.ToString() == "p.0");
-        // No temporary holds a copy of the stored `ref/i32` for the borrow.
-        Assert.DoesNotContain(pick.Places, static place => place.Kind == OwnershipPlaceKind.Temporary && place.Type is { Kind: BoundTypeKind.Semantics, Components: [{ Kind: BoundTypeKind.Primitive }] });
     }
 
     // A stored Origin that is not known to outlive the result's stays a mismatch at the result.

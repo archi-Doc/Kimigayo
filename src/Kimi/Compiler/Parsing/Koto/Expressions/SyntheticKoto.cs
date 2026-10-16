@@ -3,7 +3,7 @@
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>A compiler-synthesized node that is already resolved: the pinned callee of a range construction, or one of
-/// its explicit Type arguments (SPEC 4.6.3). It has no source spelling of its own.</summary>
+/// its explicit Type arguments (SPEC 4.6.2). It has no source spelling of its own.</summary>
 internal sealed class SyntheticKoto(Koto root) : ExpressionKoto(root.CodeContext, root.Span)
 {
     public override KotoKind Akind => KotoKind.Invalid;

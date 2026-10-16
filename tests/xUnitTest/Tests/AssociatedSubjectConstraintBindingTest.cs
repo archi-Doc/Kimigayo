@@ -113,11 +113,7 @@ public class AssociatedSubjectConstraintBindingTest
     public void WarmAssociatedSubjectChecksAllocateNothing(bool enumeration)
     {
         var c = MinimalEmissionTest.Analyze(Source(enumeration, "i32", "Copy and i32"));
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

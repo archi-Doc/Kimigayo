@@ -1,25 +1,59 @@
-// Signatures implemented by the compiler; loaded into Kimi.Storage (SPEC 22.1.2.5).
+// Signatures implemented by the compiler; loaded into Kimi.Storage (SPEC 22.2). Their comments state their operation
+// contracts (SPEC 5.2).
 // Borrowed results depend on the remainder's source, never on the state borrow or slot. The exclusive variant of each
-// borrowing operation has its own Name, borrowStorageUniq (SPEC 7.3.1).
+// borrowing operation has its own Name, borrowStorageUniq (SPEC 7.4).
+// Array element storage is raw storage (SPEC 3.4). Its pointer is null while the capacity is zero, and otherwise a
+// zero-byte `Raw.allocate` result or the start of an unreleased allocation of `capacity` elements, which `Raw.release`
+// accepts as an `allocate` result. A pointer to it has that storage as provenance, a zero-byte result its own
+// zero-length provenance, and is readable and writable like an `allocate` result (SPEC 5.2.1). The storage stays live
+// until the capacity changes or its owner, the Array or the OwnedRemainder that ownStorage transfers it to, releases
+// it. Each `storage[i]` below the length designates a distinct Place holding a complete element, and the storage holds
+// no other value. The remainder's `storage` points to it, `position` is 0 and `count` is the length; ownStorage also
+// transfers the storage with its `capacity`, the elements and their destruction responsibility.
 internal func borrowStorage<E>(value: ref/Array<E> during a) -> RefRemainder<E> during a
 internal func borrowStorageUniq<E>(value: uniq/Array<E> during a) -> UniqRemainder<E> during a
 internal func ownStorage<E>(value: Array<E>) -> OwnedRemainder<E>
-// Publishes completed elements within the existing allocation. The caller proves the length is in capacity
-// and every new element is initialized; this primitive neither reads nor destroys any element.
+/// Publishes `length` completed elements within the existing allocation; it neither reads nor destroys any element.
+///
+/// - safety: `length` is within the capacity, each `storage[i]` below it designates a distinct Place holding a complete
+///   value, and the storage holds no other value.
 internal unsafe func setArrayLength<E>(value: uniq/Array<E> during a, length: isize)
+// For a Dictionary, the remainder's `storage` is the value of the Handle's `buffer` (see dictionaryStorage), `stride`
+// is the slot stride, and `link` and `count` are the first live link and the live count. ownStorage also gives the
+// last live link as `tail` and transfers the storage, the entries and their destruction responsibility.
 internal func borrowStorage<K, V>(value: ref/Dictionary<K, V> during a) -> DictionaryRefRemainder<K, V> during a
     K is Equatable
 internal func borrowStorageUniq<K, V>(value: uniq/Dictionary<K, V> during a) -> DictionaryUniqRemainder<K, V> during a
     K is Equatable
 internal func ownStorage<K, V>(value: Dictionary<K, V>) -> DictionaryOwnedRemainder<K, V>
     K is Equatable
+/// Returns the address of the key in the slot that starts at `slot`, with the provenance and authority of `slot`.
+///
+/// - safety: `slot` starts a slot in the slot storage of a `Dictionary<K, V>`.
 internal unsafe func keyAt<K, V>(slot: raw/u8) -> raw/K
+/// Returns the address of the value in the slot that starts at `slot`, with the provenance and authority of `slot`.
+///
+/// - safety: `slot` starts a slot in the slot storage of a `Dictionary<K, V>`.
 internal unsafe func valueAt<K, V>(slot: raw/u8) -> raw/V
+// For a fixed array, the remainder's `storage` points to the first element of the array that `value` borrows, with the
+// provenance, authority and excepted Loan (SPEC 5.2.1 conditions 1, 3 and 4) that `@raw` of the argument's referent
+// has in the caller, and `count` is its length; FixedOwnedRemainder holds the array itself.
 internal func borrowStorage<E, length N>(value: ref/[N of E] during a) -> RefRemainder<E> during a
 internal func borrowStorageUniq<E, length N>(value: uniq/[N of E] during a) -> UniqRemainder<E> during a
 internal func ownStorage<E, length N>(value: [N of E]) -> FixedOwnedRemainder<E, [N of E]>
+// The remainder's `storage` and `count` are the view's own pointer and length.
 internal func borrowStorageUniq<E>(value: uniq/(UniqSlice<E> during source) during a) -> UniqRemainder<E> during a
-// Private physical projection: mutable handle address and entry stride. No entry is acquired.
+/// Returns the address of the Dictionary that `value` borrows, with the provenance, authority and excepted Loan
+/// (SPEC 5.2.1 conditions 1, 3 and 4) that `@raw` of the argument's referent has in the caller, and the slot stride;
+/// no entry is acquired.
+///
+/// A Dictionary's one inline component is a `DictionaryStorage.Handle` Place at its address, Initialized from the start
+/// of its construction until its destruction, so the Handle's Fields, `buffer` included, are ordinary Places. They hold
+/// no valid value (SPEC 5.2.1 condition 2) until the construction calls `DictionaryStorage.initialize`, which writes
+/// them through a pointer with the provenance and authority that `@raw` gives for the Dictionary under construction.
+///
+/// - safety: Writes through the result keep the Handle consistent with its slot storage and the slot invariant that
+///   DictionaryStorage.Links states.
 internal unsafe func dictionaryStorage<K, V>(value: uniq/Dictionary<K, V>) -> (raw/u8, isize)
     K is Equatable
 // Fails with the caller location carried by the standard operation's private ABI.
@@ -28,11 +62,20 @@ internal func indexBounds() -> Never
 internal func argumentOutOfRange() -> Never
 internal func countOverflow() -> Never
 internal func allocationSizeExceeded() -> Never
-// The nullable form of Alloc (SPEC 22.5.2): null wherever Alloc would Abort; Raw.release releases the result.
+// The nullable form of Alloc (SPEC 21.4.3): null wherever Alloc would Abort. A nonnull result is the start of an
+// unreleased allocation of `bytes` bytes that holds no value; that allocation is its provenance, and it is readable and
+// writable (SPEC 5.2.1). `Raw.release` accepts it as the start of an `allocate` result, never as a zero-byte result
+// even when `bytes` is 0, so it is released at most once.
 internal func tryAllocateBytes(bytes: isize) -> raw/u8
-// Copies `count` bytes between nonoverlapping allocated ranges whatever their initialization state; no responsibility
-// moves and no user code runs.
+/// Copies `count` bytes from `source` into the raw storage at `destination` and runs no user code; it may relocate the
+/// values in the source range (SPEC 5.2), whatever the initialization state of the bytes.
+///
+/// - safety: `count >= 0`, the two ranges do not overlap and each lies within its pointer's provenance, `source` is
+///   readable and `destination` writable for its range.
 internal unsafe func transferBytes(destination: raw/u8, source: raw/u8, count: isize)
-// Appends one slot, growing the storage first, and transfers `key` and `value` into it. The ordinary source decides that
-// no equal key is stored; growth failure Aborts at the standard operation's caller location.
+/// Appends one slot, growing the storage first, and places `key` and `value` in it (SPEC 5.2); growth failure Aborts at
+/// the standard operation's caller location.
+///
+/// - safety: `handle` is the address that `dictionaryStorage<K, V>` returned, and the Dictionary stores no key equal to
+///   `key`, as the ordinary source decides.
 internal unsafe func placeEntry<K, V>(handle: raw/u8, key: K, value: V)

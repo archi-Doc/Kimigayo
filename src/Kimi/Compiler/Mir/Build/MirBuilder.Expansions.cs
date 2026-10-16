@@ -15,7 +15,7 @@ internal sealed partial class MirBuilder
 
     // SPEC 14.6.2: the Subject acquired by the entry call into the iterator once, then each next() result decomposed as its plan's Some/None
     // match: Some binds the item for the body, None completes the loop with Unit. The body end and a continue clean the iteration up and call
-    // next() again; an exit or a transfer out cleans it up, then the iterator and the Subject. SPEC 4.6.3.4: a ResolvedRange loop counts
+    // next() again; an exit or a transfer out cleans it up, then the iterator and the Subject. SPEC 4.6.4: a ResolvedRange loop counts
     // its isize positions from start to end instead, checked, without an iterator value.
     private void For(MirPlace destination, ForKoto loop)
     {
@@ -60,7 +60,7 @@ internal sealed partial class MirBuilder
         this.Close(after);
     }
 
-    // SPEC 4.6.3.4: a ResolvedRange loop: the interval copied once, its position compared with its end before each iteration and advanced
+    // SPEC 4.6.4: a ResolvedRange loop: the interval copied once, its position compared with its end before each iteration and advanced
     // after it (where a continue goes), checked.
     private void Count(MirPlace destination, ForKoto loop)
     {
@@ -124,7 +124,7 @@ internal sealed partial class MirBuilder
         this.scope = outer;
     }
 
-    // SPEC 13.7.2, 11.2: the right operand secured, then the target located once, its old value read, the result computed and written back
+    // SPEC 13.7.2, 11.3: the right operand secured, then the target located once, its old value read, the result computed and written back
     // once. Reading and writing are selected independently: a Property's custom getter (First) and setter (Second, taking the result as its
     // Evaluated argument) are called on its receiver, located once, and a standard accessor reads or writes its storage, as a Place target is
     // read and written in place. The old value is read by a built-in operation, or by a user arithmetic call (CallPlan.Of) with the secured
@@ -162,7 +162,7 @@ internal sealed partial class MirBuilder
         if (plan.First is { } getter)
         {
             // A receiver both accessors take keeps the setter's acquisition as its Adjust; the getter takes it as its own operation does
-            // (shared, SPEC 11.2): in place by that adaptation, or by its bare acquisition (a stored reference Copied).
+            // (shared, SPEC 11.3): in place by that adaptation, or by its bare acquisition (a stored reference Copied).
             var given = plan.Second is null ? null : receiver;
             var operand = default(MirOperand);
             foreach (ref readonly var argument in getter.ArgumentOperations)
@@ -239,7 +239,7 @@ internal sealed partial class MirBuilder
         CollectionsMarshal.SetCount(this.located, mark);
     }
 
-    // SPEC 4.6.4, 4.6.5: a built-in range selection: the receiver located once and its range resolved against its length, a range written
+    // SPEC 4.6.3, 4.8.1: a built-in range selection: the receiver located once and its range resolved against its length, a range written
     // directly at each boundary (omitted: 0 or the length; ^x: the length minus x; a closed end q: q + 1), else the ResolvedRange its key
     // is or its key's resolution (First) gives; checked once (0 <= start <= end <= length, else KIMI_E_INDEX_BOUNDS), then the Slice RawSlice
     // serves (R3 decision 5) of the elements from the address of element start, any address for none (SPEC 5.6).
@@ -315,8 +315,8 @@ internal sealed partial class MirBuilder
         this.Serve(destination, CompilerFunctionKind.RawSlice, null, [element], at, index);
     }
 
-    // A selection's position (SPEC 4.6.2, 4.6.9): an integer as the isize it reads; a written ^x, which resolves only for 0 <= x <= L, the
-    // length minus x. An offset below 0 fails as an out-of-bounds position (KIMI_E_INDEX_BOUNDS, SPEC 22.5.4), a literal one in range proving
+    // A selection's position (SPEC 4.6.1, 4.7.1): an integer as the isize it reads; a written ^x, which resolves only for 0 <= x <= L, the
+    // length minus x. An offset below 0 fails as an out-of-bounds position (KIMI_E_INDEX_BOUNDS, SPEC 22.5.2), a literal one in range proving
     // it, so the subtraction cannot overflow; an offset past the length gives a negative position, which the selection's bounds check rejects.
     private MirPlace Boundary(Koto node, MirPlace length)
     {
@@ -344,7 +344,7 @@ internal sealed partial class MirBuilder
         return position;
     }
 
-    // SPEC 4.6.4: a key resolved against the length of the selection's receiver by its resolution call (First), whose Evaluated argument is
+    // SPEC 4.6.3: a key resolved against the length of the selection's receiver by its resolution call (First), whose Evaluated argument is
     // that length: the receiver is not evaluated again.
     private MirPlace Resolve(CallPlan key, IndexKoto index, MirPlace sequence)
     {
@@ -355,10 +355,11 @@ internal sealed partial class MirBuilder
         return result;
     }
 
+    // A located sequence's length, a part of its selection made before the boundaries or key that may not complete (Make).
     private MirPlace Length(MirPlace sequence, Koto node)
     {
         var length = this.Temp(BoundType.ISize, node);
-        this.Set(length, MirRvalue.Len(sequence), node);
+        this.Make(length, MirRvalue.Len(sequence), node);
         return length;
     }
 
@@ -374,7 +375,7 @@ internal sealed partial class MirBuilder
         this.Pass(MirOperand.Copy(test), 1, fail, node);
     }
 
-    // SPEC 4.7.4, 12.3.2: a dynamic Array literal: its elements evaluated in order, then the empty Array, an aggregate of no operand,
+    // SPEC 4.9.5, 12.4.1: a dynamic Array literal: its elements evaluated in order, then the empty Array, an aggregate of no operand,
     // reserved for their count and each appended (ArrayReserve, ArrayAppend: R3 decision 5).
     private void Collection(MirPlace destination, ArrayLiteralKoto array, BoundType type)
     {
@@ -401,9 +402,10 @@ internal sealed partial class MirBuilder
         this.arguments.RemoveRange(start, count);
     }
 
-    // SPEC 12.3.4: a dictionary literal: the empty Dictionary, then each entry in source order: its key evaluated once and retained, looked
+    // SPEC 12.4.3: a dictionary literal: the empty Dictionary, then each entry in source order: its key evaluated once and retained, looked
     // up among the entries inserted (its plan's findEntry call), a duplicate failing with KIMI_E_DUPLICATE_KEY before the value is evaluated,
-    // then the value evaluated and the pair placed (the placeEntry body, over the handle dictionaryStorage gives).
+    // then the value evaluated and the pair placed (the placeEntry body, over the handle dictionaryStorage gives). The empty Dictionary is a
+    // part made before the entries, which may not complete (Make).
     private void Dictionary(MirPlace destination, DictionaryLiteralKoto dictionary)
     {
         if (CallPlan.Of(dictionary) is not { } find)
@@ -415,7 +417,7 @@ internal sealed partial class MirBuilder
         var type = TypeOf(dictionary);
         var layout = compilation.Library.Function(CompilerFunctionKind.StorageDictionaryLayout)!.Type!;
         ReadOnlySpan<BoundType?> slots = [type.Components[0], type.Components[1]];
-        this.Set(destination, MirRvalue.Aggregate(MirAggregateKind.FixedArray, this.body.Operands.Length, 0, type), dictionary);
+        this.Make(destination, MirRvalue.Aggregate(MirAggregateKind.FixedArray, this.body.Operands.Length, 0, type), dictionary);
         foreach (var entry in dictionary.Entries)
         {
             var key = this.Temp(type.Components[0], entry.Key);

@@ -21,7 +21,7 @@ namespace Kimi.Compiler;
 /// <param name="Evaluated">The argument of the key resolution that reads the length of the receiver the selection evaluated, or of the
 /// setter that takes the value the update computed; -1 when none.</param>
 /// <param name="Direct">An interpolation passed directly as the one argument of <c>Console.writeLine</c>, whose writes the instance places
-/// in a stack region when they are bounded within the profile's limit (utf8-formatting 6.1).</param>
+/// in a stack region when they are bounded within the profile's limit (SPEC 22.7).</param>
 internal readonly record struct ExpansionPlan(ExpansionKind Kind, CallPlan? First = null, CallPlan? Second = null, int Evaluated = -1, bool Direct = false)
 {
     /// <summary>Gets the expansion of a published node, or null when its Op is none.</summary>
@@ -72,16 +72,16 @@ internal readonly record struct ExpansionPlan(ExpansionKind Kind, CallPlan? Firs
 
 /// <summary>The expansions the MIR builder desugars (plan 5.3); each names its calls in <see cref="CallPlan.Of"/>'s order. A step without
 /// a call is served as the rows of <see cref="IntrinsicDisposition"/> are (plan 5.8): an interpolation's buffer, hints and end are the
-/// temporary intrinsics FormatBuffer, FormatHint and FormatFinish over the estimates its instance computes (utf8-formatting 5.1, 6.1), and
+/// temporary intrinsics FormatBuffer, FormatHint and FormatFinish over the estimates its instance computes (SPEC 22.10.5, 22.7), and
 /// a failed write a Fail of KIMI_E_FORMAT; a dictionary literal's duplicate key (found by the requireAbsent body) a Fail of
 /// KIMI_E_DUPLICATE_KEY and its insertion the placeEntry body; a `^x` key the receiver's MIR length minus x.</summary>
 internal enum ExpansionKind : byte
 {
     Iteration, // A for loop: a user loop's entry and step calls with its Some/None Pattern plan; a ResolvedRange loop has none and binds each isize position.
-    Try, // Its Pattern plan's arms: the payload, or the failure the generated return transfers (SPEC 17.2.4).
-    Format, // An interpolation's buffer and adapter calls, then its writes; a $tryWrite's writes, then its status (utf8-formatting 5).
-    DictionaryLiteral, // Its key lookup (SPEC 12.3.4), for each entry before its insertion.
+    Try, // Its Pattern plan's arms: the payload, or the failure the generated return transfers (SPEC 17.3).
+    Format, // An interpolation's buffer and adapter calls, then its writes; a $tryWrite's writes, then its status (SPEC 22.10).
+    DictionaryLiteral, // Its key lookup (SPEC 12.4.3), for each entry before its insertion.
     Range, // A key applied directly: each written boundary an isize position, a `^x` one the length of the selection's receiver minus x.
-    Index, // A built-in element or slice, by its key or its key's resolution, or a user or view selection's selected call (SPEC 4.6.9).
+    Index, // A built-in element or slice, by its key or its key's resolution, or a user or view selection's selected call (SPEC 4.7.1).
     CompoundAssign, // Its Place, or its Property's getter and setter, read and written once; its arithmetic call, or a primitive operation.
 }

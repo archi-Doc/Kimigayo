@@ -3,7 +3,7 @@
 namespace Kimi.Diagnostics;
 
 /// <summary>
-/// The limits of explanations, in one place (SPEC 23.3.6.5). They apply per record and never change a problem's identity,
+/// The limits of explanations, in one place (SPEC 23.1). They apply per record and never change a problem's identity,
 /// category, survival, location or the acceptance of its result.
 /// </summary>
 internal static class DiagnosticLimits
@@ -26,7 +26,7 @@ internal static class DiagnosticLimits
     /// <summary>The related locations of one record.</summary>
     internal const int Related = 8;
 
-    /// <summary>The repair candidates of one record; later candidates are omitted whole (SPEC 23.3.6.9).</summary>
+    /// <summary>The repair candidates of one record; later candidates are omitted whole (SPEC 23.1.3).</summary>
     internal const int Repairs = 4;
 
     /// <summary>The edits of one repair candidate; a candidate with more is omitted whole, never truncated.</summary>
@@ -36,7 +36,7 @@ internal static class DiagnosticLimits
     internal const int RepairText = 2048;
 }
 
-/// <summary>The one bounded form of displayed Types, Constraints and names (SPEC 23.3.6.5).</summary>
+/// <summary>The one bounded form of displayed Types, Constraints and names (SPEC 23.1).</summary>
 internal static class DiagnosticText
 {
     /// <summary>The elision mark.</summary>

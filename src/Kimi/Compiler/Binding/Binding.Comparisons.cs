@@ -17,7 +17,7 @@ public sealed partial class Binding
         return type;
     }
 
-    // SPEC 13.4, 13.5.5.1: the Type a comparison operand denotes once its qualifying pair layers are followed; the operand is
+    // SPEC 13.4, 13.5.5: the Type a comparison operand denotes once its qualifying pair layers are followed; the operand is
     // then shared-borrowed through the layer where a reference to it is required.
     private BoundType ComparisonThroughPairs(Koto operand, BoundType type)
     {

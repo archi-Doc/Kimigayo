@@ -7,7 +7,7 @@ dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --inheritance-plans > art
 ```
 
 The shared runner measures Binding, ownership and IR emission for the unchanged
-Milestone 25 and `VerificationWorkloads.InheritedPlans`: depths 1, 8 and 32 with one
+Milestone 38 (former 25) and `VerificationWorkloads.InheritedPlans`: depths 1, 8 and 32 with one
 Field per layer, and four layers with 8 or 32 Fields each. Each generated input
 updates and checks the last Field of every layer and calls an inherited method
 and computed getter. `InheritedPlanReuseTest` verifies the same inputs natively
@@ -31,7 +31,7 @@ inputs are below; each cell is before → after.
 
 | Input | Binding | Ownership | IR emission |
 | --- | --- | --- | --- |
-| Milestone 25 | 6.587 → 6.739 | 0.431 → 0.429 | 0.988 → 0.986 |
+| Milestone 25 (current 38) | 6.587 → 6.739 | 0.431 → 0.429 | 0.988 → 0.986 |
 | Depth 32, one Field per layer | 6.924 → 6.973 | 0.453 → 0.420 | 0.685 → 0.544 |
 | Four layers, 32 Fields per layer | 6.747 → 6.678 | 0.341 → 0.216 | 0.430 → 0.259 |
 

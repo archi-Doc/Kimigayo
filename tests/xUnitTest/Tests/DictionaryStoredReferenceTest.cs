@@ -80,14 +80,14 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
     [InlineData("Exclusive", "indexUniq", "uniq", "found@follow = 99")]
     public void DirectPlaceEntriesPreserveTheStoredCapability(string name, string entry, string mode, string use)
     {
-        var source = Header + "    let found = entries." + entry + "(1)@follow@" + mode + "\n    entries.clear()\n    " + use +
+        var source = Header + "    let found = entries." + entry + "(1)@follow@follow@" + mode + "\n    entries.clear()\n    " + use +
             "\nvar value = 42\nrun(value@uniq)\nrequire value == " + (mode == "uniq" ? "99" : "42") + " else => $abort(\"result\")";
         ScalarEmissionTest.EmitFixture("DictionaryStoredReferenceDirect" + name, source, string.Empty);
     }
 
     [Theory]
-    [InlineData("entries.index(1)@follow@ref", "entries.indexUniq(1)@follow = 99")]
-    [InlineData("entries.indexUniq(1)@follow@uniq", "let read: i32 = entries.index(1)@follow")]
+    [InlineData("entries.index(1)@follow@follow@ref", "entries.indexUniq(1)@follow@follow = 99")]
+    [InlineData("entries.indexUniq(1)@follow@follow@uniq", "let read: i32 = entries.index(1)@follow@follow")]
     public void DirectPlaceEntriesCannotBypassStoredChildren(string child, string access)
     {
         var source = Header + "    let found = " + child + "\n    " + access + "\n    require found == 42 else => $abort(\"value\")";
@@ -282,11 +282,7 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(optionalTuple
             ? "func run(value: uniq/i32 during a)\n    var entries = [1: (value@move, 7)]\n    let found = match entries.tryGet(1)\n        .Some(let item) => item.0@follow@ref\n        .None => $abort(\"missing\")\n    entries.clear()\n    require found == 42 else => $abort(\"value\")"
             : Header + "    let found = entries[1]@follow@ref\n    entries.clear()\n    require found == 42 else => $abort(\"value\")");
-        for (var i = 0; i < 8; i++)
-        {
-            Assert.True(c.Analyze().IsVerified);
-        }
-
+        Assert.True(c.Analyze().IsVerified);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
     }
 }

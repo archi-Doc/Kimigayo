@@ -1,4 +1,4 @@
-/// The standard adapters (SPEC 22.1.2.3): an owned or exclusively borrowed LendingIterator becomes an ordinary
+/// The standard adapters (SPEC 22.2.2): an owned or exclusively borrowed LendingIterator becomes an ordinary
 /// enumerable value that forwards each item with its actual dependencies, without allocation or advance collection.
 public group Iteration
     /// Transfers `iterator` into an adapter that owns it; a Non-Copy Place is written `@move`.

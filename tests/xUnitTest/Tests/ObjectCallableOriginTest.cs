@@ -20,7 +20,7 @@ public class ObjectCallableOriginTest
         ScalarEmissionTest.EmitFixture("ObjectCallableOrigin" + mode, source, string.Empty);
     }
 
-    // SPEC 7.3, 7.6.3, 13.5.5.1: a direct call through an object handle or view, or of its written payload follow, acquires the
+    // SPEC 7.3, 7.7.3, 13.5.5: a direct call through an object handle or view, or of its written payload follow, acquires the
     // complete payload through the same checked borrow as h@follow@ref (Shared) or h@follow@uniq (Exclusive).
     [Theory]
     [InlineData("RcItem", "func seven() -> i32 => 7\nlet h = Kimi.Intrinsics.makeRc(seven)\nrequire h() == 7 else => $abort(\"item\")")]
@@ -54,9 +54,9 @@ public class ObjectCallableOriginTest
         var c = MinimalEmissionTest.Analyze("let n: i32 = 4\nlet h = Kimi.Intrinsics.makeRc(func [n] () -> i32 => n + 1)\nlet v = h@objref\nrequire h() == 5 and v() == 5 and h@follow() == 5 else => $abort(\"call\")");
         Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
         bool verified = true, written = true, bound = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => verified &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => written &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => bound &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => verified &= c.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => written &= c.WriteIr(TextWriter.Null, out _)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => bound &= c.Bind().IsComplete));
         Assert.Equal((true, true, true), (verified, written, bound));
     }
 
@@ -68,7 +68,7 @@ public class ObjectCallableOriginTest
     {
         var c = MinimalEmissionTest.Analyze(Program(mode));
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind(), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
     }
 
     private static string Program(string mode)

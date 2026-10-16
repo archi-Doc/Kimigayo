@@ -6,7 +6,7 @@ using static XunitTest.ParseTestHelper;
 
 namespace XunitTest;
 
-// SPEC 8.4.10.1: effect clauses and effect specifications use contextual words in these positions only.
+// SPEC 8.11.1: effect clauses and effect specifications use contextual words in these positions only.
 public class EffectBoundSyntaxTest
 {
     [Fact]

@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 22.3.1: whether a function carries the import Attribute; its validity is checked separately.
+    // SPEC 22.6: whether a function carries the import Attribute; its validity is checked separately.
     internal static bool IsLibraryImport(FunctionKoto function)
     {
         for (var attribute = function.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
@@ -66,8 +66,8 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 22.3: validate each selected import declaration and its defining module's
-    // native requirement (SPEC 20.8.2.1) without reading native files.
+    // SPEC 22.6: validate each selected import declaration and its defining module's
+    // native requirement (SPEC 20.4) without reading native files.
     private void ValidateLibraryImports()
     {
         string? target = null;
@@ -90,24 +90,24 @@ public sealed partial class Binding
                 continue;
             }
 
-            // SPEC 20.8.2.1/20.8.2.4: the Kind of the defining module's requirement, after self-targeted
+            // SPEC 20.4/20.8.2.4: the Kind of the defining module's requirement, after self-targeted
             // supply expansion, decides dllimport generation; reserved supplies have their fixed kinds.
             string? kind = null;
             if (name is Kernel32Imports.LibraryName)
             {
-                kind = "import"; // The generated kernel32 import library (SPEC 20.8.2.4).
+                kind = "import"; // The generated kernel32 import library (SPEC 20.4).
                 if (Array.IndexOf(Kernel32Imports.Symbols, symbol) < 0)
                 {
-                    // SPEC 20.8.2.4: the reserved supply exports only the reviewed project-owned definition.
+                    // SPEC 20.4: the reserved supply exports only the reviewed project-owned definition.
                     this.Fail(attribute, BindingFailure.UnavailableReservedImport);
                 }
             }
             else if (name is WindowsProfile.BackendLibrary)
             {
-                kind = "static"; // The compiler-managed backend archive (SPEC 20.8.2.4).
+                kind = "static"; // The compiler-managed backend archive (SPEC 20.4).
                 if (Array.IndexOf(WindowsProfile.ProvidedSymbols, symbol) < 0)
                 {
-                    // SPEC 21.5.7: the backend archive supplies only its catalog, whose names are reserved above.
+                    // SPEC 21.4.7: the backend archive supplies only its catalog, whose names are reserved above.
                     this.Fail(attribute, BindingFailure.UnavailableReservedImport);
                 }
             }
@@ -133,7 +133,7 @@ public sealed partial class Binding
             }
             else if (signature is not null)
             {
-                // SPEC 21.5.2/22.5.6: the runtime's own kernel32 declarations share the same final symbol
+                // SPEC 21.2/22.5.6: the runtime's own kernel32 declarations share the same final symbol
                 // table; an import joins one only through the reserved kernel32 supply with an equal
                 // physical Type, and never a declaration carrying an inexpressible ABI attribute.
                 if (IsRuntimeDeclaration(symbol, out var declared) && (name != Kernel32Imports.LibraryName || declared != signature))
@@ -141,7 +141,7 @@ public sealed partial class Binding
                     this.Fail(attribute, BindingFailure.ConflictingRuntimeSymbol);
                 }
 
-                // SPEC 21.5.2: one final symbol table; same-named declarations share only an equal physical
+                // SPEC 21.2: one final symbol table; same-named declarations share only an equal physical
                 // Type and dllimport setting. An unresolved kind already has its own diagnostic.
                 if (!symbols.TryAdd(symbol, (signature, kind)))
                 {
@@ -165,11 +165,11 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 22.3.1: a direct group or receiverless struct type function without
+        // SPEC 22.6: a direct group or receiverless struct type function without
         // generic/Origin parameters, specializations or argument defaults.
         static bool IsImportShape(FunctionKoto function)
         {
-            // Safe or unsafe; borrow annotations introduce the import's own signature Origins (SPEC 22.3.1).
+            // Safe or unsafe; borrow annotations introduce the import's own signature Origins (SPEC 22.6).
             if (function.BoundSymbol is not { ReceiverIndex: < 0 } symbol ||
                 symbol.Scope.Owner is not (GroupKoto or StructKoto) || function.GenericArguments.Count != 0 ||
                 function.IsSpecialization || function.IsConstructor || function.IsDestructor || function.IsAnonymous || function.IsRequirement)
@@ -197,7 +197,7 @@ public sealed partial class Binding
             return true;
         }
 
-        // SPEC 22.3.1: one declaration selects one external symbol, so a repeated import is invalid.
+        // SPEC 22.6: one declaration selects one external symbol, so a repeated import is invalid.
         static bool RepeatedImport(FunctionKoto function)
         {
             var imports = 0;
@@ -212,7 +212,7 @@ public sealed partial class Binding
             return false;
         }
 
-        // SPEC 22.5.6 declarations generated beside the runtime; the signature is null when none can agree.
+        // SPEC 21.4.7 declarations generated beside the runtime; the signature is null when none can agree.
         static bool IsRuntimeDeclaration(string symbol, out string? declared)
         {
             foreach (var declaration in WindowsProfile.RuntimeDeclarations)
@@ -228,7 +228,7 @@ public sealed partial class Binding
             return false;
         }
 
-        // SPEC 21.5.2 reserves compiler, LLVM and profile-supply external names; the supply names
+        // SPEC 21.2 reserves compiler, LLVM and profile-supply external names; the supply names
         // are the profile's own catalog, so the two cannot drift apart.
         static bool IsReservedExternalName(string symbol)
             => symbol.StartsWith("__kimi_", StringComparison.Ordinal) || symbol.StartsWith("llvm.", StringComparison.Ordinal) ||
@@ -241,7 +241,7 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 22.3.2: the initial Windows C ABI accepts fixed-width integers, f32/f64 and raw
+    // SPEC 22.6: the initial Windows C ABI accepts fixed-width integers, f32/f64 and raw
     // pointers, with Unit only as a result. The signature is one physical code per result and
     // parameter (i8/u8 share i8, every raw/T is ptr); it is null when a Type failed to bind,
     // since that Type already has its own diagnostic. A nonnull Option of a borrow is permitted
@@ -293,7 +293,7 @@ public sealed partial class Binding
         return BindingFailure.None;
     }
 
-    // SPEC 22.3.2: a raw pointer, or a ref/uniq borrow of a C-exchangeable referent, passes as a pointer; scalars by width. A nonnull
+    // SPEC 22.6: a raw pointer, or a ref/uniq borrow of a C-exchangeable referent, passes as a pointer; scalars by width. A nonnull
     // Option of such a borrow is '?', unsupported.
     private char PhysicalCode(BoundType type)
         => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components.Count: 1 } || this.IsImportBorrow(type) ? 'p' :
@@ -313,7 +313,7 @@ public sealed partial class Binding
     private bool IsImportBorrow(BoundType type)
         => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } && this.CExchangeable(referent, 0);
 
-    // IMPL 21.1.6: the initially C-exchangeable storage: owned fixed-width integers and f32/f64, raw pointers, ref/uniq borrows of
+    // IMPL 21.2: the initially C-exchangeable storage: owned fixed-width integers and f32/f64, raw pointers, ref/uniq borrows of
     // eligible referents, positive-length fixed arrays of eligible elements and owned C-layout structs with eligible Fields.
     // The nonnull Option representation of a borrow is not yet laid out, so Option<ref/T> is not admitted.
     private bool CExchangeable(BoundType type, int depth)

@@ -17,17 +17,18 @@ fn init @17
       StorageLive(_3) @20 s1
       StorageLive(_4) @21 s1
     * _4 = move _1 @25 s1
-      drop _0.1 -> bb2 @20 s1
+      drop _0.1 -> bb2 [elide] @20 s1
   bb2:
       _0.1 = move _4 @20 s1
       _3 = const () @20 s1
-      drop _4 -> bb3 @21 s1
+      drop _4 -> bb3 [elide] @21 s1
   bb3:
       StorageDead(_4) @21 s1
       StorageDead(_3) @20 s1
       _2 = const () @19 s1
+      FakeRead(_0) @17 s1
       StorageDead(_2) @19
-      drop _1 -> bb4 @17
+      drop _1 -> bb4 [elide] @17
   bb4:
       return @19
 fn init @33
@@ -45,7 +46,7 @@ fn init @33
     * _4 = move _1 @37
       _0.base1 = init(move _4) -> bb1 @34
   bb1:
-      drop _4 -> bb2 @36
+      drop _4 -> bb2 [elide] @36
   bb2:
       StorageDead(_4) @36
     * _0.0 = const 7_i32 @32
@@ -57,8 +58,9 @@ fn init @33
       StorageDead(_6) @43 s1
       StorageDead(_5) @42 s1
       _3 = const () @41 s1
+      FakeRead(_0) @33 s1
       StorageDead(_3) @41
-      drop _1 -> bb3 @33
+      drop _1 -> bb3 [elide] @33
   bb3:
       return @41
 fn top-level#0 @52
@@ -90,7 +92,7 @@ fn make @54
   bb3:
       _3 = intrinsic MakeObj<Leaf>(move _4) -> bb4 @73 s1
   bb4:
-      drop _4 -> bb5 @81 s1
+      drop _4 -> bb5 [elide] @81 s1
   bb5:
       StorageDead(_4) @81 s1
       StorageLive(_5) @87 s1
@@ -106,14 +108,14 @@ fn make @54
   bb8:
       return @54
   bb9:
-      drop _5 -> bb10 @87 s1
+      drop _5 -> bb10 [keep] @87 s1
   bb10:
       StorageDead(_5) @87 s1
-      drop _3 -> bb11 @71 s1
+      drop _3 -> bb11 [keep] @71 s1
   bb11:
       StorageDead(_3) @71 s1
       StorageDead(_2) @65 s1
-      drop _1 -> bb12 @57 s1
+      drop _1 -> bb12 [keep] @57 s1
   bb12:
       StorageDead(_1) @57 s1
       goto bb8 @54
@@ -144,5 +146,6 @@ fn init @107
       StorageLive(_1) @108
     * _0.0 = const 1_i32 @51
     * _1 = const () @108 s1
+      FakeRead(_0) @107 s1
       StorageDead(_1) @108
       return @108

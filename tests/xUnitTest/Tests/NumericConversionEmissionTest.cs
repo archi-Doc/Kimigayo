@@ -120,7 +120,7 @@ public class NumericConversionEmissionTest
         Assert.False(c.Validate(out _));
     }
 
-    // SPEC 13.5.4.2: a direct floating-point literal converted to an integer Type is truncated toward zero from its exact decimal
+    // SPEC 13.5.4: a direct floating-point literal converted to an integer Type is truncated toward zero from its exact decimal
     // value at compile time; the folded payload is the target's sign-extended bit pattern.
     [Theory]
     [InlineData("3.9@i32", "i32", "3")]
@@ -223,9 +223,7 @@ public class NumericConversionEmissionTest
         var c = MinimalEmissionTest.Analyze($"let x: {sourceType} = {value}\nlet y = x@{targetType}\nConsole.writeLine(\"ok\")");
         using var original = new StringWriter();
         Assert.True(c.WriteIr(original, out var error), error);
-        var body = c.Ownership.Bodies[0];
-        var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Convert);
-        var conversion = Assert.IsType<ConversionKoto>(body.Operations[id].Source);
+        var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>());
         conversion.SetConversion(ConversionBinding.Integer);
         using var failed = new StringWriter();
         Assert.False(c.WriteIr(failed, out _));
@@ -251,12 +249,8 @@ public class NumericConversionEmissionTest
     public void WarmNumericAnalysisAndWritingAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("func convert(x: f64) -> u64 => x@f32@u64\nlet x = 5000000000@f64\nlet y = convert(x)@f32\nif y > 0.0 => Console.writeLine(\"ok\")");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))

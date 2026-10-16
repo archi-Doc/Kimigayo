@@ -9,7 +9,7 @@ using System.Threading.Channels;
 
 namespace Kimi.Lsp;
 
-/// <summary>Reads <c>Content-Length</c> frames (SPEC 23.4.1) with bounded headers and payloads.</summary>
+/// <summary>Reads <c>Content-Length</c> frames (SPEC 23.4) with bounded headers and payloads.</summary>
 internal sealed class LspFrameReader
 {
     /// <summary>The largest accepted header section.</summary>

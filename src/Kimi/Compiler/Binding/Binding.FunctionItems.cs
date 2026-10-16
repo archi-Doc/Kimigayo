@@ -48,7 +48,7 @@ public sealed partial class Binding
             }
 
             var inputs = function.Parameters.Count == 0 ? BoundType.Unit : this.types.Tuple(parameters.AsSpan(0, function.Parameters.Count));
-            return this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, boundResult], resultMode: ResultModeOf(function.ReturnType));
+            return this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, boundResult]);
         }
         finally
         {
@@ -306,7 +306,7 @@ public sealed partial class Binding
             this.BindHeader(candidate);
             if (candidate.Declaration is not FunctionKoto function || UnsupportedReference(candidate, unbound, declaring))
             {
-                return this.Fail(use, BindingFailure.Unsupported); // No later context makes the form a value (SPEC 23.3.6.1).
+                return this.Fail(use, BindingFailure.Unsupported); // No later context makes the form a value (SPEC 23.1.1).
             }
 
             if (function.GenericArguments.Count == 0 && function.TypeConstraints.Count != 0 && !ContainerBound(candidate, declaring))

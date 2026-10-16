@@ -80,7 +80,7 @@ public static partial class KotoHelper
 
     /// <summary>
     /// Reads the qualified Name of a root group: Names separated by dots, whitespace allowed between the parts. A reserved word or
-    /// any other token where a Name belongs is where the Name was expected (SPEC 2.5.1, DIAGNOSTICS.md §4.4); the caller then
+    /// any other token where a Name belongs is where the Name was expected (SPEC F.3, DIAGNOSTICS.md §4.4); the caller then
     /// skips the declaration with its body.
     /// </summary>
     /// <param name="reader">The token reader.</param>
@@ -160,7 +160,7 @@ public static partial class KotoHelper
 
     /// <summary>
     /// Parses the dot-separated qualified Name of an alias target. A reserved word or any other token where a Name belongs is
-    /// where the Name was expected (SPEC 2.5.1, DIAGNOSTICS.md §4.4); the caller then skips the declaration.
+    /// where the Name was expected (SPEC F.3, DIAGNOSTICS.md §4.4); the caller then skips the declaration.
     /// </summary>
     /// <param name="reader">The token reader.</param>
     /// <returns>The parsed name segments, or <see langword="null"/> after the Error; the separator after the Name is consumed.</returns>

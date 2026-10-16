@@ -6,7 +6,7 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler.Mir;
 
 // Operators (SPEC 13.2-13.5): the built-in operators, a sequence's metadata, `and`/`or` and the conversions, each a MIR rvalue of its operands
-// with its check Proven where IMPL 21.5.3 omits it.
+// with its check Proven where IMPL 21.3.3 omits it.
 internal sealed partial class MirBuilder
 {
     private static MirBinaryOp? BinaryOp(KotoKind kind) => kind switch
@@ -30,7 +30,7 @@ internal sealed partial class MirBuilder
         _ => null,
     };
 
-    // SPEC 13.2, 13.3: a built-in operator on its operands, its check Proven where IMPL 21.5.3 omits it; or a sequence's metadata. The left
+    // SPEC 13.2, 13.3.1: a built-in operator on its operands, its check Proven where IMPL 21.3.3 omits it; or a sequence's metadata. The left
     // operand is pending while the right one is evaluated, so a transfer there ends a comparison's inspection Loan (SPEC 13.4, 14.10.3).
     private void Primitive(MirPlace destination, Koto node, BoundType type)
     {
@@ -65,9 +65,9 @@ internal sealed partial class MirBuilder
         }
     }
 
-    // SPEC 4.6.1, 4.6.3: a sequence's length, whether it is empty (its length equals 0) and its indices (the ResolvedRange of start 0 and
+    // SPEC 4.7, 4.6.2: a sequence's length, whether it is empty (its length equals 0) and its indices (the ResolvedRange of start 0 and
     // end its length), from Len of the receiver; of a Utf8Slice, the one struct Binding serves as a sequence (SequenceMember), Len of its
-    // byte Slice. SPEC 4.7.4: an Array's or a Dictionary's capacity is the temporary intrinsic Capacity of a shared view of the handle
+    // byte Slice. SPEC 4.9.5: an Array's or a Dictionary's capacity is the temporary intrinsic Capacity of a shared view of the handle
     // (owner decision 2026-10-11) until R8's representation structs make it a Field read.
     private void Metadata(MirPlace destination, MemberAccessKoto member)
     {
@@ -104,29 +104,35 @@ internal sealed partial class MirBuilder
         }
     }
 
-    // SPEC 13.3: `and` and `or` evaluate the right operand only where the left does not decide the result: the left into the destination,
-    // then the branch on it to the right operand or past it.
+    // SPEC 13.4: `and` and `or` evaluate the right operand only where the left does not decide the result: the left into a bool, then the
+    // branch on it to the right operand into the destination or, where the left decides the result (false for `and`, true for `or`), to the
+    // left's value into it, so that each path writes the destination once (a let binding is initialized once).
     private void Logical(MirPlace destination, BinaryKoto logical)
     {
-        this.Assign(destination, logical.Left);
+        var left = this.Temp(BoundType.Boolean, logical.Left);
+        this.Assign(left, logical.Left);
         var right = this.body.AddBlock();
+        var decided = this.body.AddBlock();
         var join = this.body.AddBlock();
         var and = logical.Akind == KotoKind.And;
-        this.Branch(destination, logical.Left, and ? join : right, and ? right : join);
+        this.Branch(left, logical.Left, and ? decided : right, and ? right : decided);
+        this.current = decided;
+        this.Use(destination, MirOperand.Copy(left), logical);
+        this.body.Terminate(decided, MirTerminator.Goto(join, this.Info(logical)));
         this.current = right;
         this.Assign(destination, logical.Right);
         this.Join(join, logical.Right);
         this.current = join;
     }
 
-    // SPEC 13.5.4, 13.5.7, 5.4: a numeric, wrapping, bit, pointer or object conversion, a Cast of its operand, Proven where it checks
+    // SPEC 13.5.4, 13.6.1, 5.4: a numeric, wrapping, bit, pointer or object conversion, a Cast of its operand, Proven where it checks
     // nothing; a folded direct literal is its constant and evaluates nothing, a fitted literal is its operand, and a Never operand only
-    // diverges. A case adaptation (SPEC 8.9), whose operation each Semantics case selects (an acquisition, a borrow, an address or an object
-    // creation), has no MIR form: the only case-dependent forms are PairLayer and PairAcquire (R3 U16a: an owner decision).
+    // diverges. A case adaptation (SPEC 8.14) is an Adapt, whose operation each Semantics case selects.
     private void Convert(MirPlace destination, BinaryKoto conversion, BoundType type)
     {
-        var binding = (ConversionBinding)HirTables.PlanOf(conversion).Mode;
-        if (HirTables.PlanOf(conversion).Folded is { } folded)
+        ref readonly var row = ref HirTables.PlanOf(conversion);
+        var binding = (ConversionBinding)row.Mode;
+        if (row.Folded is { } folded)
         {
             this.Use(
                 destination,
@@ -144,11 +150,11 @@ internal sealed partial class MirBuilder
         }
         else if (binding == ConversionBinding.CaseAdaptation)
         {
-            this.Unsupported(conversion, destination);
+            this.Adapt(destination, conversion, (ExplicitAdaptationPlan)row.Plan!);
         }
         else
         {
-            // SPEC 13.5.7: an upcast to a view of another Semantics borrows its operand's payload in the view's mode, then changes the view.
+            // SPEC 13.6.1: an upcast to a view of another Semantics borrows its operand's payload in the view's mode, then changes the view.
             var borrowed = HirTables.AdjustOf(conversion.Left).Adaptation is HirAdaptation.SharedBorrow or HirAdaptation.ExclusiveBorrow &&
                 TypeOf(conversion.Left).Components is [var payload]
                 ? compilation.Types.Reference(type.Semantics, payload) : null;
@@ -159,12 +165,12 @@ internal sealed partial class MirBuilder
                 ConversionBinding.Wrap => MirCastKind.Wrap,
                 ConversionBinding.Bits => MirCastKind.Bits,
                 ConversionBinding.ObjectUpcast => MirCastKind.Upcast,
-                ConversionBinding.Pointer => source.Semantics == SemanticsKind.Raw ? MirCastKind.Pointer : MirCastKind.IntToPointer,
+                ConversionBinding.Pointer => MirTypes.PointerCast(source),
                 _ when source.IsFloatingPoint == type.IsFloatingPoint => source.IsFloatingPoint ? MirCastKind.Floating : MirCastKind.Integer,
                 _ => MirCastKind.Numeric,
             };
 
-            // IMPL 21.5.3: an integer conversion whose source range lies within its target's checks nothing (T and Wrapping<T>, u8@u32,
+            // IMPL 21.3.3: an integer conversion whose source range lies within its target's checks nothing (T and Wrapping<T>, u8@u32,
             // i8@i64), nor does a widening floating-point one or one from an integer to a floating-point Type.
             var proven = kind switch
             {
@@ -179,7 +185,19 @@ internal sealed partial class MirBuilder
         }
     }
 
-    // IMPL 21.5.3: whether an operation cannot Abort: it checks nothing (a comparison, a bit operation, or an operation of a floating-point,
+    // SPEC 8.14, 13.5.3: a case adaptation of its plan (MirCases.Adapt resolves it per Semantics case): the operand acquired by value, a
+    // Place Copied (Binding proved Copy where a case acquires it by value) or a temporary moved, beside the token of Binding's source Type;
+    // the payload is the Place one implicit layer below the operand's, which an object borrow borrows.
+    private void Adapt(MirPlace destination, BinaryKoto conversion, ExplicitAdaptationPlan plan)
+    {
+        var temporary = HirTables.AdjustOf(conversion.Left).Acquire == HirAcquire.Temporary;
+        var operand = temporary ? this.Value(conversion.Left) : this.Place(conversion.Left);
+        var start = this.body.AddOperand(temporary ? MirOperand.Move(operand) : MirOperand.Copy(operand));
+        this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.TypeToken, plan.Source))));
+        this.Set(destination, MirRvalue.Adapt(start, this.Follow(operand, 1), plan.Target, plan.IsShorthand), conversion);
+    }
+
+    // IMPL 21.3.3: whether an operation cannot Abort: it checks nothing (a comparison, a bit operation, or an operation of a floating-point,
     // raw pointer or wrapping Type), or a literal right operand proves its check: a divisor other than 0 and, for a checked signed
     // quotient, -1; a shift count below the left operand's width.
     private bool Proven(MirBinaryOp op, BoundType type, in MirOperand right)

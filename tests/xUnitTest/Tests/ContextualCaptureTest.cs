@@ -9,7 +9,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 7.6.2: contextual self and a setter's value are never captured implicitly, and explicit captures of them obey the
+// SPEC 7.7.2: contextual self and a setter's value are never captured implicitly, and explicit captures of them obey the
 // receiver, accessor, construction and destruction restrictions.
 public class ContextualCaptureTest
 {

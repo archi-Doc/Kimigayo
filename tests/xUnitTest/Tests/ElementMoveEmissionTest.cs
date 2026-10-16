@@ -153,8 +153,7 @@ public class ElementMoveEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("var a: [1000000 of string]\nlet taken = a[42]@move");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.UninitializedPlace_Kd);
-        Assert.Equal(2, c.Ownership.Bodies[0].MovePathCount); // Root plus the one referenced element.
+        Assert.Contains(c.Problems, x => x.Code == DiagnosticCode.UninitializedPlace_Kd); // Its paths: MirInitTest.AnElementMoveAddsOnlyItsOwnPath.
     }
 
     [Theory]
@@ -193,7 +192,7 @@ public class ElementMoveEmissionTest
     }
 
     // SPEC 13.7.2: the RHS completes before the target is located, so a target moved there is Moved at the
-    // update, whereas the located receiver stays protected while its index operands evaluate (SPEC 4.6.4).
+    // update, whereas the located receiver stays protected while its index operands evaluate (SPEC 4.6.3).
     [Theory]
     [InlineData("var a = ((\"held\", 40), 0)\na.0.1 += label work: do\n    let taken = a.0@move\n    exit to work 2", DiagnosticCode.MovedPlace_Kd)]
     [InlineData("var a: (string, [1 of i32]) = (\"held\", [40])\na.1[(label work: do\n    let taken = a.0@move\n    exit to work 0\n)] += 2", DiagnosticCode.ComparisonLoanConflict_Kd)]
@@ -235,31 +234,19 @@ public class ElementMoveEmissionTest
     {
         const string Source = "func f(take: bool)\n    var a = ((\"first\", \"last\"), \"sibling\")\n    if take\n        let taken = a.0.0@move\n    a.0 = (\"newFirst\", \"newLast\")\n    let whole = a@move\nf(true)\nf(false)";
         var c = MinimalEmissionTest.Analyze(Source);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
 
         var success = true;
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
-        {
-            success &= c.Bind().IsComplete;
-        }
-
-        var bindingBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
+        var bytes = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
             success &= c.WriteIr(TextWriter.Null, out _);
-        }
-
-        var bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        });
         Assert.True(success);
         Assert.Equal(0, bindingBytes);
         Assert.Equal(0, bytes);

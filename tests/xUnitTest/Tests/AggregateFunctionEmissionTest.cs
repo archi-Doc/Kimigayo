@@ -254,9 +254,11 @@ public class AggregateFunctionEmissionTest
         GC.Collect();
         Assert.False(tree.IsAlive);
         var c = MinimalEmissionTest.Analyze(Echo.Replace("echo", "renamed") + "()");
-        Assert.Same(first, pool.Get(0, c.Ownership.Bodies[1].Function, layouts));
+        var renamed = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "renamed");
+        Assert.Same(first, pool.Get(0, renamed, layouts));
         var empty = MinimalEmissionTest.Analyze("func f(value: [0 of string]) -> [0 of string] => value@move\n()");
-        var omitted = pool.Get(0, empty.Ownership.Bodies[1].Function, layouts);
+        var f = KotoTree.Walk(empty.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f");
+        var omitted = pool.Get(0, f, layouts);
         Assert.NotSame(first, omitted);
         Assert.Empty(omitted.Parameters);
         GC.KeepAlive(layouts);
@@ -268,31 +270,18 @@ public class AggregateFunctionEmissionTest
     {
         const string Source = "func f(text: ref/string, value: (string, i32)) -> (string, i32) => value@move\nvar n = 0\nlet text = \"text\"\nloop\n    defer => f(text, (\"a\", n))\n    n += 1\n    if n < 3 => continue\n    exit";
         var c = MinimalEmissionTest.Analyze(Source);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
-        var success = true;
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
-        {
-            success &= c.Bind().IsComplete;
-        }
-
-        var bindingBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        var success = true;
+        var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        var bytes = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
             success &= c.WriteIr(TextWriter.Null, out _);
-        }
-
-        var bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        });
         Assert.True(success);
         Assert.Equal(0, bindingBytes);
         Assert.Equal(0, bytes);
@@ -302,7 +291,7 @@ public class AggregateFunctionEmissionTest
     private static WeakReference Populate(FunctionAbiPool pool, AggregateLayoutPool layouts, out FunctionAbi abi)
     {
         var c = MinimalEmissionTest.Analyze(Echo + "()");
-        var function = c.Ownership.Bodies[1].Function;
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "echo");
         abi = pool.Get(0, function, layouts);
         layouts.Clear();
         return new WeakReference(function);

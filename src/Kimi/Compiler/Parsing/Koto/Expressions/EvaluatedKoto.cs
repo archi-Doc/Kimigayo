@@ -4,7 +4,7 @@ namespace Kimi.Compiler.Parsing;
 
 /// <summary>
 /// A synthesized operand that denotes a value its enclosing desugaring has already evaluated, such as the receiver whose
-/// length a range key reads (SPEC 4.6.4) or the receiver a property update locates. A desugaring never lowers source syntax
+/// length a range key reads (SPEC 4.6.3) or the receiver a property update locates. A desugaring never lowers source syntax
 /// a second time: it refers to the value through this node, which has the Type of <see cref="Source"/> (or of the operand
 /// the desugaring registers, such as a borrow of it), and every later phase reads the operand the desugaring registered for
 /// that source. The source is not a child, so no traversal evaluates it here.

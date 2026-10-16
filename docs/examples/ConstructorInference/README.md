@@ -16,4 +16,4 @@ drop 1
 
 Writing `Pair<Token>.init(...)` produces the same acquisition, evaluation and cleanup behavior. Explicit
 arguments may still be required when evidence is missing or the inferred selection would change after
-fixing the construction Type. See [SPEC §10.8.1](../../spec/10-overload-resolution-and-inference.md#1081-constructor-type-inference).
+fixing the construction Type. See [SPEC §10.8](../../spec/10-overload-resolution-and-inference.md#108-generic-argument-inference).

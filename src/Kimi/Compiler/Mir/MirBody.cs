@@ -36,8 +36,10 @@ internal readonly record struct MirOperand(MirOperandKind Kind, MirPlace Place, 
 
 /// <summary>An rvalue. Its operands are <see cref="Count"/> entries of <see cref="MirBody.Operands"/> from <see cref="Start"/>;
 /// <see cref="Op"/> is a Ref's <see cref="MirRefKind"/>, an operator's <see cref="MirBinaryOp"/> or <see cref="MirUnaryOp"/>, a Cast's
-/// <see cref="MirCastKind"/> or an aggregate's <see cref="MirAggregateKind"/>; <see cref="Arg"/> is an Adt aggregate's Case ordinal or an
-/// Opaque's site; <see cref="Type"/> is a Ref's reference Type, a Cast's target Type or an aggregate's or Opaque's Type.</summary>
+/// <see cref="MirCastKind"/>, an aggregate's <see cref="MirAggregateKind"/> or an Adapt's 1 for the Semantics shorthand;
+/// <see cref="Arg"/> is an Adt aggregate's Case ordinal or an Opaque's site; <see cref="Place"/> is a Ref's, Discriminant's or Len's
+/// Place or an Adapt's payload; <see cref="Type"/> is a Ref's reference Type, a Cast's or an Adapt's target Type or an aggregate's or
+/// Opaque's Type.</summary>
 internal readonly record struct MirRvalue(
     MirRvalueKind Kind,
     byte Op = 0,
@@ -78,6 +80,16 @@ internal readonly record struct MirRvalue(
     internal static MirRvalue Len(MirPlace place) => new(MirRvalueKind.Len, Place: place);
 
     internal static MirRvalue Opaque(BoundType type, int site) => new(MirRvalueKind.Opaque, Arg: site, Type: type);
+
+    // From the first, the operand acquired by value and the token of Binding's source Type; the payload is the Place one implicit layer
+    // below the operand's, which an object borrow borrows.
+    internal static MirRvalue Adapt(int operands, MirPlace payload, BoundType target, bool shorthand) => new(
+        MirRvalueKind.Adapt,
+        (byte)(shorthand ? 1 : 0),
+        payload,
+        operands,
+        2,
+        Type: target);
 }
 
 /// <summary>A statement: an Assign of its rvalue to its Place, or StorageLive, StorageDead, FakeRead or EndBorrow of its Place.</summary>
@@ -184,15 +196,21 @@ internal readonly record struct MirProjection(int Prefix, MirProjectionKind Kind
 internal readonly record struct MirSwitchCase(long Value, int Target);
 
 /// <summary>A static the body's Places root at: its symbol and Type, whether it is mutable and whether its value holds a raw pointer, an
-/// rc handle or a Weak of one at any depth (SPEC 8.4.10.2).</summary>
+/// rc handle or a Weak of one at any depth (SPEC 8.11.2).</summary>
 internal readonly record struct MirStatic(BindingSymbol Symbol, BoundType Type, bool Mutable, bool RawHolding);
 
 /// <summary>The site of an Opaque value: the syntax it replaces and the roots that syntax reads, writes or borrows, <see cref="Count"/>
 /// entries of <see cref="MirBody.OpaqueRoots"/> from <see cref="Start"/> (plan 5.4).</summary>
 internal readonly record struct MirOpaque(SourceRef Source, int Start, int Count);
 
+/// <summary>A failure body that must not complete (SPEC 14.11): entered at <see cref="Entry"/>, its end <see cref="End"/> an
+/// Unreachable block without a check target that no runtime path from <see cref="Entry"/> may reach; <see cref="Subject"/> the failure
+/// body.</summary>
+internal readonly record struct MirMustNotComplete(int Entry, int End, SourceRef Subject);
+
 /// <summary>The MIR of one body (plan 5.4): struct arrays that the builder appends to (<see cref="AddLocal"/>, <see cref="AddBlock"/>,
-/// <see cref="Push"/>, <see cref="Terminate"/>, <see cref="AddOperand"/>, <see cref="Const"/>, <see cref="Project"/> and the other adders)
+/// <see cref="Push"/>, <see cref="Terminate"/>, <see cref="AddOperand"/>, <see cref="Const"/>, <see cref="Project"/>,
+/// <see cref="AddMustNotComplete"/> and the other adders)
 /// and that a reset keeps, so a pooled body rebuilt to the same size allocates nothing.</summary>
 internal sealed class MirBody
 {
@@ -210,6 +228,7 @@ internal sealed class MirBody
     private MirStatic[] statics = [];
     private MirOpaque[] opaques = [];
     private int[] opaqueRoots = [];
+    private MirMustNotComplete[] ends = [];
     private int localCount;
     private int blockCount;
     private int statementCount;
@@ -221,8 +240,12 @@ internal sealed class MirBody
     private int staticCount;
     private int opaqueCount;
     private int opaqueRootCount;
+    private int endCount;
 
     internal MirDefKey Key { get; private set; }
+
+    /// <summary>Gets or sets the body's position in its program (<see cref="MirProgram.Bodies"/>), set where the program begins it.</summary>
+    internal int Ordinal { get; set; }
 
     /// <summary>Gets the syntax of the body, where a finding without a statement is located.</summary>
     internal SourceRef Source { get; private set; }
@@ -252,8 +275,17 @@ internal sealed class MirBody
 
     internal ReadOnlySpan<int> OpaqueRoots => this.opaqueRoots.AsSpan(0, this.opaqueRootCount);
 
+    /// <summary>Gets the failure bodies of the requires built in this body, each added where its require is finished, so one inside
+    /// another's failure body precedes it; a default copy has none, A3 judges its template (SPEC 7.2.3).</summary>
+    internal ReadOnlySpan<MirMustNotComplete> MustNotComplete => this.ends.AsSpan(0, this.endCount);
+
     /// <summary>Gets a value indicating whether a value of the body is Opaque: an error or Unsupported form replaced it.</summary>
     internal bool HasOpaque => this.opaqueCount > 0;
+
+    /// <summary>Gets the subject of a finding or problem at a location: the syntax its source names, else the body's.</summary>
+    /// <param name="source">The source of a statement, a terminator or a local.</param>
+    /// <returns>The syntax.</returns>
+    internal SourceRef Subject(in SourceInfo source) => source.Syntax.Id != 0 ? source.Syntax : this.Source;
 
     /// <summary>Gets the Type of a Place: its last projection's, or its root's.</summary>
     /// <param name="place">A Place of the body.</param>
@@ -333,7 +365,7 @@ internal sealed class MirBody
     {
         (this.Key, this.Source) = (key, source);
         this.localCount = this.blockCount = this.statementCount = this.operandCount = this.caseCount = this.constCount = 0;
-        this.projectionCount = this.scopeCount = this.staticCount = this.opaqueCount = this.opaqueRootCount = 0;
+        this.projectionCount = this.scopeCount = this.staticCount = this.opaqueCount = this.opaqueRootCount = this.endCount = 0;
         this.projectionIds.Clear();
         this.constIds.Clear();
         this.Binders.Clear();
@@ -431,6 +463,8 @@ internal sealed class MirBody
 
         return Add(ref this.opaques, ref this.opaqueCount, new MirOpaque(source, start, roots.Length));
     }
+
+    internal void AddMustNotComplete(in MirMustNotComplete row) => Add(ref this.ends, ref this.endCount, row);
 
     private static int Add<T>(ref T[] items, ref int count, in T item)
     {

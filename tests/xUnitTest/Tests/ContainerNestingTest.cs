@@ -84,7 +84,7 @@ public class ContainerNestingTest
     [Fact]
     public void ABaseTypeParameterIsNoInheritedMember()
     {
-        // SPEC 9.1, 9.6: Base's T belongs to Base's own scope, so Derived's nested T collides with nothing.
+        // SPEC 9.1, 9.7: Base's T belongs to Base's own scope, so Derived's nested T collides with nothing.
         var c = CompilationTestHelper.Parse("open struct Base<T>\n    public var a: i32 = 0\nstruct Derived: Base<i32>\n    public var b: i32 = 0\n    public struct T\n        public var w: i32 = 0\nlet t = Derived.T.init()");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }

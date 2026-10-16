@@ -117,11 +117,7 @@ public class ProjectedConstraintCallBindingTest
     public void WarmProjectedConstraintsAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Source("([2 of Source.Origin.Item], i32)", "([2 of i32], i32)"));
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

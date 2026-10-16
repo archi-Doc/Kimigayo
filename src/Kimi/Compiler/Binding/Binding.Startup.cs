@@ -143,7 +143,7 @@ public sealed partial class Binding
             }
             else
             {
-                // SPEC 23.3.6.2: a startup function is located at its signature, never over its whole body.
+                // SPEC 23.3: a startup function is located at its signature, never over its whole body.
                 issue.Node.Report(DiagnosticRequirement.Startup, issue.Code, span: issue.Node is FunctionKoto { SignatureSpan.Length: > 0 } function ? function.SignatureSpan : null);
             }
         }

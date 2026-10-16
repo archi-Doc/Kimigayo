@@ -9,7 +9,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 8.4.10.7: bounds constrain selected uses, never overload applicability.
+// SPEC 8.11.6: bounds constrain selected uses, never overload applicability.
 public class CallableEffectBoundTest
 {
     private const string Apply = "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n        effect confined\n    return f()\n";

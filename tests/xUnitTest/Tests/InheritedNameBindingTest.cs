@@ -106,11 +106,7 @@ public class InheritedNameBindingTest
     public void WarmInheritedNameChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("open struct Base<T>\n    private func f(x: T) => ()\nopen struct Middle<U>: Base<U>\nstruct S: Middle<i32>\n    public func f() => ()");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

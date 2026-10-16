@@ -19,6 +19,17 @@ func same<T>(a: T, b: T) -> bool
 func apply<F>(action: ref/F) -> i32
     F is Callable<ref, () -> i32>
     return action()
-func first(values: ref/[3 of i32]) -> place ref/i32 during values => values[0]
+func first(values: ref/[3 of i32]) -> ref/i32 during values => values[0]@ref
 func read(values: ref/[3 of i32]) -> i32 => first(values)
 func stop() -> Never => $abort("stopped")
+struct Pair
+    Self is UniqIndexable<isize>
+    associate Element is i32
+    var first: i32 = 1
+    public init() => ()
+    public func index(self, key: ref/isize) -> ref/i32 during self => self.first@ref
+    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/i32 during self => self.first@uniq
+func indexed(pair: uniq/Pair) -> i32
+    pair[0]
+    pair[0] += 1
+    return pair[0]

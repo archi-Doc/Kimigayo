@@ -74,37 +74,15 @@ public class UserIterationTest
     {
         const string Source = Counter + Three + "func count<B>(batch: B) -> isize\n    B is IntoIterable\n    var count: isize = 0\n    for _ in batch@move => count += 1\n    return count\nrequire count(Three.init()) == 3 else => $abort(\"count\")";
         var c = MinimalEmissionTest.Analyze(Source);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
-        var success = true;
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
-        {
-            success &= c.Bind().IsComplete;
-        }
-
-        var bindingBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
-        {
-            success &= c.Analyze().IsVerified;
-        }
-
-        var ownershipBytes = GC.GetAllocatedBytesForCurrentThread() - before;
-        before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
-        {
-            success &= c.WriteIr(TextWriter.Null, out _);
-        }
-
-        var generationBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        var success = true;
+        var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        var ownershipBytes = AllocationMeasurement.Measure(() => success &= c.Analyze().IsVerified);
+        var generationBytes = AllocationMeasurement.Measure(() => success &= c.WriteIr(TextWriter.Null, out _));
         Assert.True(success);
         Assert.Equal(0, bindingBytes);
         Assert.Equal(0, ownershipBytes);
@@ -162,8 +140,8 @@ public class UserIterationTest
     [Fact]
     public void UnchangedMilestoneExecutes()
     {
-        var path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone28.kimi"));
-        ScalarEmissionTest.EmitFixture("UserIterationMilestone28", File.ReadAllText(path), "Owned iterator acquired.\nContinue after item 1.\nItem 1 destroyed.\nExit after item 2.\nItem 2 destroyed.\nItem 4 destroyed.\nItem 3 destroyed.\nOwned iteration finished.\nBorrowed iterator acquired.\nExternal first is 10; remaining total is 50.\nBorrowed iterator acquired.\nGeneral iteration finished.\n");
+        var path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone29.kimi"));
+        ScalarEmissionTest.EmitFixture("UserIterationMilestone29", File.ReadAllText(path), "Owned iterator acquired.\nContinue after item 1.\nItem 1 destroyed.\nExit after item 2.\nItem 2 destroyed.\nItem 4 destroyed.\nItem 3 destroyed.\nOwned iteration finished.\nBorrowed iterator acquired.\nExternal first is 10; remaining total is 50.\nBorrowed iterator acquired.\nGeneral iteration finished.\n");
     }
 
     [Fact]

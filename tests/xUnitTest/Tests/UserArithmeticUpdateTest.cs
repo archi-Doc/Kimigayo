@@ -47,12 +47,12 @@ public class UserArithmeticUpdateTest
 
     [Theory]
     [InlineData("Follow", "func add(target: uniq/Counter, right: ref/Counter) => target@follow += right\nvar total = Counter.init(21)\nlet right = Counter.init(21)\nadd(total@uniq, right)\nrequire total.value == 42 else => $abort(\"follow\")")]
-    [InlineData("Place", "func slot(target: uniq/Counter) -> place uniq/Counter during target\n    Console.writeLine(\"locate\")\n    return target@follow\nvar total = Counter.init(21)\nlet right = Counter.init(21)\nslot(total@uniq) += right\nrequire total.value == 42 else => $abort(\"place\")")]
+    [InlineData("ReturnedReference", "func slot(target: uniq/Counter) -> uniq/Counter during target\n    Console.writeLine(\"locate\")\n    return target\nvar total = Counter.init(21)\nlet right = Counter.init(21)\nslot(total@uniq)@follow += right\nrequire total.value == 42 else => $abort(\"returned\")")]
     [InlineData("Field", "struct Box\n    public var item: Counter\n    public init() => self.item = Counter.init(21)\nvar box = Box.init()\nbox.item += box.item\nrequire box.item.value == 42 else => $abort(\"field\")")]
     [InlineData("Tuple", "var pair = (Counter.init(21), 7)\npair.0 += pair.0\nrequire pair.0.value == 42 and pair.1 == 7 else => $abort(\"tuple\")")]
     [InlineData("Raw", "var total = Counter.init(21)\nlet right = Counter.init(21)\nlet pointer = total@raw\nunsafe => *pointer += right\nrequire total.value == 42 else => $abort(\"raw\")")]
     public void AddressTargetsAreLocatedOnce(string name, string program)
-        => ScalarEmissionTest.EmitFixture("UserArithmeticUpdate" + name, Counter + "\n" + program, name == "Place" ? "locate\n" : string.Empty);
+        => ScalarEmissionTest.EmitFixture("UserArithmeticUpdate" + name, Counter + "\n" + program, name == "ReturnedReference" ? "locate\n" : string.Empty);
 
     [Theory]
     [InlineData("Fixed", "[2 of Counter]")]
@@ -67,7 +67,7 @@ public class UserArithmeticUpdateTest
     [InlineData("Field", "struct Box\n    public var item: Counter\n    public init() => self.item = Counter.init(21)\nfunc locate(box: uniq/Box) -> uniq/Box during box\n    Console.writeLine(\"locate\")\n    return box\nfunc add(box: uniq/Box, right: ref/Counter) => locate(box).item += right\nvar box = Box.init()\nlet right = Counter.init(21)\nadd(box@uniq, right)\nrequire box.item.value == 42 else => $abort(\"borrowed field\")", "locate\n")]
     [InlineData("Fixed", "func select() -> isize\n    Console.writeLine(\"index\")\n    return 0\nfunc add(values: uniq/[2 of Counter]) => values[select()] += values[0]\nvar values: [2 of Counter] = [Counter.init(21), Counter.init(7)]\nadd(values@uniq)\nrequire values[0].value == 42 and values[1].value == 7 else => $abort(\"borrowed fixed\")", "index\n")]
     [InlineData("Array", "func select() -> isize\n    Console.writeLine(\"index\")\n    return 0\nfunc add(values: uniq/Array<Counter>) => values[select()] += values[0]\nvar values: Array<Counter> = [Counter.init(21), Counter.init(7)]\nadd(values@uniq)\nrequire values[0].value == 42 and values[1].value == 7 else => $abort(\"borrowed array\")", "index\n")]
-    [InlineData("Indexer", "struct Box\n    Self is UniqIndexable<isize>\n    associate Element is Counter\n    var item: Counter\n    public init() => self.item = Counter.init(21)\n    public func index(self, key: ref/isize) -> place ref/Counter during self => self.item\n    public func indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/Counter during self\n        Console.writeLine(\"indexUniq\")\n        return self.item\nvar box = Box.init()\nlet right = Counter.init(21)\nbox[0] += right\nrequire box[0].value == 42 else => $abort(\"user index\")", "indexUniq\n")]
+    [InlineData("Indexer", "struct Box\n    Self is UniqIndexable<isize>\n    associate Element is Counter\n    var item: Counter\n    public init() => self.item = Counter.init(21)\n    public func index(self, key: ref/isize) -> ref/Counter during self => self.item@ref\n    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/Counter during self\n        Console.writeLine(\"indexUniq\")\n        return self.item@uniq\nvar box = Box.init()\nlet right = Counter.init(21)\nbox[0] += right\nrequire box[0].value == 42 else => $abort(\"user index\")", "indexUniq\n")]
     public void BorrowedTargetsRetainTheirEvaluatedLocation(string name, string program, string output)
         => ScalarEmissionTest.EmitFixture("UserArithmeticUpdateBorrowed" + name, Counter + "\n" + program, output);
 
@@ -202,10 +202,10 @@ public class UserArithmeticUpdateTest
         var c = MinimalEmissionTest.Analyze(Counter + source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid);
     }
 }

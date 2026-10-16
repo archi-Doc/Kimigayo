@@ -33,7 +33,7 @@ public class SpecReviewTest
     [InlineData("func f()\n    -> i32\n    return 1\nlet next = 2")]
     public void ArrowHeaderContinuationNestsDelimitersFromItsOwnLine(string source)
     {
-        // SPEC 2.2.1 and the §15.5 result example: content inside a delimiter opened on the "->" line is one level deeper.
+        // SPEC F.4.1 and the §15.5 result example: content inside a delimiter opened on the "->" line is one level deeper.
         var parsed = ParseSuccess(source);
         var function = Assert.IsType<FunctionKoto>(GetChildren(parsed.RootKoto)[0]);
         Assert.NotNull(function.ReturnType);

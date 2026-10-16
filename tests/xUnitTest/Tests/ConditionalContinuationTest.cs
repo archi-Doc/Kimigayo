@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
-using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -30,12 +29,15 @@ public class ConditionalContinuationTest
     [Trait("Purpose", "Allocation")]
     public class AllocationTests
     {
+        // The dead tail after two returning branches is reached only by the checks (its MIR: tests/mir/control.kimi `deadTail`), also after
+        // a reload.
         [Theory]
         [InlineData(false)]
         [InlineData(true)]
         public void DeadTailAfterTerminalBranchesIsRecomputedAfterReload(bool reload)
         {
-            var c = MinimalEmissionTest.Analyze(Source("var x: i32", "x = 1\n        return", "x = 2\n        return", "Console.writeLine(\"dead\")") + "\nf(true)");
+            var source = Source("var x: i32", "x = 1\n        return", "x = 2\n        return", "Console.writeLine(\"dead\")") + "\nf(true)";
+            var c = MinimalEmissionTest.Analyze(source);
             if (reload)
             {
                 c = CompilationTestHelper.Reload(c);
@@ -45,10 +47,11 @@ public class ConditionalContinuationTest
             }
 
             Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-            var body = Assert.Single(c.Ownership.Bodies, b => b.Function.Name == "f");
-            var calls = Enumerable.Range(0, body.Operations.Count).Where(i => body.Operations[i].Source is InvocationKoto).ToArray();
-            Assert.NotEmpty(calls);
-            Assert.All(calls, i => Assert.False(body.IsReachable(i)));
+            if (reload)
+            {
+                Assert.Equal(MirDumpTest.Dump(MinimalEmissionTest.Analyze(source)), MirDumpTest.Dump(c));
+            }
+
             c.Bind();
             Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
             Assert.True(c.Analyze().IsVerified);

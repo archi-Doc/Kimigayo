@@ -273,11 +273,11 @@ public sealed partial class OwnershipBody
 
     internal InterpretationContext ContextOf(int place) => new(this.Places[place].DefaultContext);
 
-    // SPEC 8.10: after full default substitution every free generic parameter belongs to this body, so a capability of a Type
+    // SPEC 8.15: after full default substitution every free generic parameter belongs to this body, so a capability of a Type
     // resolved inside a default is proved where the outermost omitting call was written; null in the root context.
     internal Koto? ProofAnchor(InterpretationContext context) => context.IsRoot ? null : this.DefaultContexts![context.Index].Anchor;
 
-    // SPEC 7.2.3, 8.10: declared information is interpreted once per stage, in a fixed order: the context's call, recorded when
+    // SPEC 7.2.3, 8.15: declared information is interpreted once per stage, in a fixed order: the context's call, recorded when
     // its interval began and already composing every enclosing default's substitution, then the body's case or instance.
     internal BoundType? Resolve(BoundType? type, InterpretationContext context) => this.Concrete(this.SubstituteDefaults(type, context));
 

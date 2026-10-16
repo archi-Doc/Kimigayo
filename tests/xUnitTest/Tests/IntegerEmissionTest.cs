@@ -85,7 +85,7 @@ public class IntegerEmissionTest
     [InlineData("IntegerUnsignedUnderflow", "var x: u64 = 1\n0 - x", Overflow, 2, 1)]
     [InlineData("IntegerBeforeCleanup", "func f() -> u8\n    defer => Console.writeLine(\"bad\")\n    return 255 + 1\nf()", Overflow, 3, 12)]
     [InlineData("IntegerDuringCleanup", "defer => Console.writeLine(\"bad\")\ndefer\n    var x: i8 = -128\n    x /= -1", Overflow, 4, 5)]
-    [InlineData("IntegerShiftLiteralNegative", "var x: u8 = 1\nx << -1", ShiftCount, 2, 1)] // SPEC 12.3.1: the count is an i32.
+    [InlineData("IntegerShiftLiteralNegative", "var x: u8 = 1\nx << -1", ShiftCount, 2, 1)] // SPEC 12.3: the count is an i32.
     [InlineData("IntegerShiftLiteralWide", "var x: i8 = 1\nx << 200", ShiftCount, 2, 1)]
     public void LiteralAndDeferredChecksRetainRuntimeFailure(string name, string source, string reason, int line, int column)
         => Abort(name, source, reason, line, column);
@@ -146,14 +146,8 @@ public class IntegerEmissionTest
         Assert.DoesNotContain("zeroext", ir);
         var c = MinimalEmissionTest.Analyze(Mixed);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        for (var i = 0; i < c.Ownership.Bodies.Count; i++)
-        {
-            if (c.Ownership.Bodies[i].Function.Name == "small")
-            {
-                var function = Enumerable.Range(0, module.FunctionCount).Select(module.GetFunction).First(x => x.Abi.Parameters.Length == 6);
-                Assert.Empty(function.Slots);
-            }
-        }
+        var function = Enumerable.Range(0, module.FunctionCount).Select(module.GetFunction).First(x => x.Abi.Parameters.Length == 6);
+        Assert.Empty(function.Slots);
     }
 
     [Fact]
@@ -188,14 +182,11 @@ public class IntegerEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(Mixed);
         var valid = true;
-        var allocated = AllocationMeasurement.Measure(
-            () =>
-            {
-                valid &= c.Analyze().IsVerified;
-                valid &= c.WriteIr(TextWriter.Null, out _);
-            },
-            iterations: 128,
-            warmupIterations: 100);
+        var allocated = AllocationMeasurement.Measure(() =>
+        {
+            valid &= c.Analyze().IsVerified;
+            valid &= c.WriteIr(TextWriter.Null, out _);
+        });
         Assert.True(valid);
         Assert.Equal(0, allocated);
     }

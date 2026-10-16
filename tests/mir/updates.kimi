@@ -9,3 +9,18 @@ func counters(meter: uniq/Meter, values: uniq/[3 of i32], i: isize) -> i32
     values[i] -= after
     values[1] = count
     return meter.level--
+func divergentReplacement()
+    var a: [1 of string] = ["old"]
+    a[0] = label work: do
+        defer => loop => ()
+        exit to work "new"
+func divergentReplacementIndex()
+    var a: [1 of string] = ["old"]
+    a[(label work: do
+        defer => loop => ()
+        exit to work 0
+    )] = "new"
+func noncompletingWrite()
+    loop
+        var text = "old"
+        text = (exit)

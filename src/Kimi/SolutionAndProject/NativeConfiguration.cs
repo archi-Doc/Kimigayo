@@ -4,10 +4,10 @@ using Kimi.Compiler;
 
 namespace Kimi;
 
-/// <summary>Validates definition-side native requirements and supplies without reading native files (SPEC 20.8.2.1).</summary>
+/// <summary>Validates definition-side native requirements and supplies without reading native files (SPEC 20.4).</summary>
 internal static class NativeConfiguration
 {
-    internal const string SupersededBindings = "NativeBindings is superseded. Declare definition-side requirements in NativeRequirements and supplies as NativeLibraries records (SPEC 20.8.2.1).";
+    internal const string SupersededBindings = "NativeBindings is superseded. Declare definition-side requirements in NativeRequirements and supplies as NativeLibraries records (SPEC 20.4).";
 
     private static readonly System.Buffers.SearchValues<char> HexDigits = System.Buffers.SearchValues.Create("0123456789ABCDEFabcdef");
 
@@ -115,7 +115,7 @@ internal static class NativeConfiguration
         return null;
     }
 
-    // Checks supplies that target resolved dependency modules against those modules' own requirements (SPEC 20.8.2.1).
+    // Checks supplies that target resolved dependency modules against those modules' own requirements (SPEC 20.4).
     // A supply can neither create nor change another module's requirement, so a supply for a name that module does not require stays unused.
     internal static string? ValidatePackageSupplies(ProjectFile file, DependencyNode[] nodes)
     {
@@ -149,7 +149,7 @@ internal static class NativeConfiguration
         return null;
     }
 
-    // Several supplies of one module's native name merge only when their contracts agree (SPEC 20.8.2.1). Content
+    // Several supplies of one module's native name merge only when their contracts agree (SPEC 20.4). Content
     // agreement needs the actual files; ContractId and Sha256 assertions that can never both hold are rejected here.
     internal static string? ValidateSupplyAgreement(DependencyNode[] nodes, out int module)
     {

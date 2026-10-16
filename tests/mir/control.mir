@@ -342,6 +342,8 @@ fn statements @98
   s3: lexical in s2 @110
   s4: lexical in s1 @117
   s5: unsafe in s1 @124
+  must not complete bb20 from bb10 @117
+  flags 1 [set f0]
   bb0:
       StorageLive(_3) @103 s1
       StorageLive(_4) @108 s2
@@ -399,12 +401,12 @@ fn statements @98
       StorageDead(_11) @125 s5
       StorageDead(_10) @123 s1
       StorageLive(_14) @137 s1
-    * _14 = move _2 @138 s1
-      drop _14 -> bb21 @137 s1
+    * _14 = move _2 [clear f0] @138 s1
+      drop _14 -> bb21 [keep] @137 s1
   bb12:
       return @98
   bb13:
-      drop _2 -> bb14 @98
+      drop _2 -> bb14 [flag f0] [clear f0] @98
   bb14:
       goto bb12 @98
   bb15:
@@ -477,17 +479,102 @@ fn spin @142
 fn short @152
   _0: bool return @152
   _1: bool arg flag @152
+  _2: bool temp @156
   bb0:
-    * _0 = copy _1 @156
-      switch copy _0 [0: bb2, otherwise: bb1] @156
+      StorageLive(_2) @156
+    * _2 = copy _1 @156
+      switch copy _2 [0: bb2, otherwise: bb1] @156
   bb1:
-      goto bb4 check bb5 @158
+      goto bb6 check bb7 @158
   bb2:
-      return @155
+      _0 = copy _2 @155
+      goto bb3 @155
   bb3:
-      return @152
+      StorageDead(_2) @156
+      return @155
   bb4:
-      _0 = const false @158
-      goto bb3 @158
+      return @152
   bb5:
-      unreachable check bb2 @157
+      StorageDead(_2) @156
+      goto bb4 @152
+  bb6:
+      _0 = const false @158
+      goto bb5 @158
+  bb7:
+      unreachable check bb3 @157
+fn deadTail @160
+  _0: () return @160
+  _1: bool arg c @160
+  _2: i32 var mut x @163 s1
+  _3: Never temp @166 s1
+  _4: bool temp @167 s1
+  _5: () temp @169 s2
+  _6: i32 temp @170 s2
+  _7: () temp @174 s3
+  _8: i32 temp @175 s3
+  _9: () temp @178 s1
+  _10: string temp @182 s1
+  _11: ref/string temp @182 s1
+  s1: lexical in s0 @162
+  s2: lexical in s1 @168
+  s3: lexical in s1 @173
+  bb0:
+      StorageLive(_2) @163 s1
+      StorageLive(_3) @166 s1
+      StorageLive(_4) @167 s1
+    * _4 = copy _1 @167 s1
+      switch copy _4 [0: bb3, otherwise: bb2] @167 s1
+  bb1:
+      StorageDead(_3) @166 s1
+      StorageLive(_9) @178 s1
+      StorageLive(_10) @182 s1
+    * _10 = const "dead" @182 s1
+      StorageLive(_11) @182 s1
+      _11 = &_10: ref/string @182 s1
+      _9 = writeLine(move _11) -> bb11 @178 s1
+  bb2:
+      StorageDead(_4) @167 s1
+      StorageLive(_5) @169 s2
+      StorageLive(_6) @170 s2
+    * _6 = const 1_i32 @171 s2
+      _2 = move _6 @169 s2
+      _5 = const () @169 s2
+      StorageDead(_6) @170 s2
+      StorageDead(_5) @169 s2
+    * goto bb7 check bb8 @172 s2
+  bb3:
+      StorageDead(_4) @167 s1
+      StorageLive(_7) @174 s3
+      StorageLive(_8) @175 s3
+    * _8 = const 2_i32 @176 s3
+      _2 = move _8 @174 s3
+      _7 = const () @174 s3
+      StorageDead(_8) @175 s3
+      StorageDead(_7) @174 s3
+    * goto bb9 check bb10 @177 s3
+  bb4:
+      return @160
+  bb5:
+      StorageDead(_2) @163 s1
+      goto bb4 @160
+  bb6:
+      StorageDead(_3) @166 s1
+      goto bb5 @160
+  bb7:
+      _0 = const () @172 s2
+      goto bb6 @172 s2
+  bb8:
+      unreachable check bb1 @168 s1
+  bb9:
+      _0 = const () @177 s3
+      goto bb6 @177 s3
+  bb10:
+      unreachable check bb1 @173 s1
+  bb11:
+      StorageDead(_11) @182 s1
+      drop _10 -> bb12 @182 s1
+  bb12:
+      StorageDead(_10) @182 s1
+      StorageDead(_9) @178 s1
+      StorageDead(_2) @163 s1
+      unreachable @162

@@ -27,7 +27,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         Function,
     }
 
-    /// <summary>The member state of one Declaration Container body, shared by its directive targets and arms (SPEC 19.5).</summary>
+    /// <summary>The member state of one Declaration Container body, shared by its directive targets and arms (SPEC 19.4).</summary>
     /// <param name="parseTypeConstraints">Whether ordinary type constraints are accepted.</param>
     /// <param name="parseDeclarationContainers">Whether nested Declaration Containers are accepted.</param>
     /// <param name="acceptsTypeConstraints">Whether this fragment may still define the container's Constraints.</param>
@@ -722,7 +722,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         if (token.Kind == TokenKind.Associate)
         {
-            // An associate declaration takes no attributes (SPEC 6.5).
+            // An associate declaration takes no attributes (SPEC 6.7).
             Parser.ReportPendingAttributes(ref reader);
             reader.Advance();
             if (Parser.IsTypeConstraintStart(ref reader, declarationContext: true))
@@ -1002,7 +1002,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <param name="state">The member state of the enclosing body, shared by its directive targets and arms.</param>
     /// <param name="stopAtCaseGroupBoundary">Whether Case Group recovery must leave its next arm or end unconsumed.</param>
     /// <remarks>
-    /// Directive targets and arms are parsed by this same loop (SPEC 19.5): selected syntax goes into this container, and
+    /// Directive targets and arms are parsed by this same loop (SPEC 19.4): selected syntax goes into this container, and
     /// excluded syntax into a detached container of the same kind, so it registers nothing here but keeps source order.
     /// </remarks>
     private void ParseMemberItems(ref TokenReader reader, ref MemberParseState state, bool stopAtCaseGroupBoundary = false)
@@ -1078,8 +1078,8 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void ParseMemberItem(ref TokenReader reader, ref MemberParseState state)
     {
-        // SPEC 8.4.10.1: an effect specification is a Contract item; elsewhere it is kept for Binding to reject. Like the
-        // Constraints and relations below, it takes no attributes (SPEC 6.5).
+        // SPEC 8.11.1: an effect specification is a Contract item; elsewhere it is kept for Binding to reject. Like the
+        // Constraints and relations below, it takes no attributes (SPEC 6.7).
         if (Parser.IsEffectStart(ref reader, specification: true))
         {
             Parser.ReportPendingAttributes(ref reader);
@@ -1087,7 +1087,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             return;
         }
 
-        // Count and uniqueness rules are judged after selection, so excluded syntax skips them (SPEC 19.5).
+        // Count and uniqueness rules are judged after selection, so excluded syntax skips them (SPEC 19.4).
         var acceptsTypeConstraints = state.AcceptsTypeConstraints || reader.InExcludedSyntax;
         if (Parser.IsOriginRelationStart(ref reader))
         {
@@ -1173,7 +1173,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         var token = reader.CurrentToken;
         if (token.Kind == TokenKind.StartBlock)
         {
-            // An indented block that no member header introduces is skipped whole; it never ends the Container (SPEC 2.2.1).
+            // An indented block that no member header introduces is skipped whole; it never ends the Container (SPEC F.4.1).
             Parser.OmitDeclaration(ref reader, reader.Unexpected(SyntaxForm.IndentedBody));
             return;
         }
@@ -1202,7 +1202,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <param name="state">The member state that keeps the detached container.</param>
     /// <returns>The container that receives the excluded declarations.</returns>
     /// <remarks>The detached container shares this container's generic parameters, so excluded members are parsed under the same
-    /// header as selected ones, such as a member's Constraint on the declaring Type's parameters (SPEC 7.4, 19.5).</remarks>
+    /// header as selected ones, such as a member's Constraint on the declaring Type's parameters (SPEC 7.5, 19.4).</remarks>
     private DeclarationContainerKoto ExcludedOwner(ref TokenReader reader, ref MemberParseState state)
     {
         if (reader.InExcludedSyntax)

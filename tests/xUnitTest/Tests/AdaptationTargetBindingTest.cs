@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 8.4.7.2 and 13.5.1: payload role evidence and independent adaptation-target lookup.</summary>
+/// <summary>SPEC 8.7.3 and 13.5.1: payload role evidence and independent adaptation-target lookup.</summary>
 public class AdaptationTargetBindingTest
 {
     [Theory]

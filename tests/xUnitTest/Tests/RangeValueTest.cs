@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 4.6.2–4.6.4: FromEnd&lt;T&gt;, Start, End, Range&lt;S, E&gt;, ClosedRange&lt;S, E&gt; and ResolvedRange are
+/// <summary>SPEC 4.6.1–4.6.3: FromEnd&lt;T&gt;, Start, End, Range&lt;S, E&gt;, ClosedRange&lt;S, E&gt; and ResolvedRange are
 /// library structs. Range syntax constructs the Type of its shape from independently typed boundaries, construction checks
 /// nothing, and resolution against a length produces or refuses a ResolvedRange.</summary>
 public class RangeValueTest
@@ -38,11 +38,11 @@ public class RangeValueTest
         "let reversed = 3..1\nlet negative = ^(-1)\nrequire reversed.start == 3 and negative.offset == -1 else => $abort(\"unchecked\")\n" +
         "Console.writeLine(\"\\(bounds) \\(resolved) \\(..=^2) \\(2..) \\(..)\")\nConsole.writeLine(\"ok\")";
 
-    // SPEC utf8-formatting §4.2: `^` and the offset, nothing for Start and End, and each boundary of a range as written.
+    // SPEC 22.10.2: `^` and the offset, nothing for Start and End, and each boundary of a range as written.
     private const string Formats =
         "let whole = ..\nlet n: u8 = 7\nConsole.writeLine(\"\\(^2) [\\(whole.start)] [\\(whole.end)] \\(0..=3) \\(..^1) \\(^n..) \\(..=^(0@i64)) \\((1..4).resolve(9))\")";
 
-    // SPEC 4.6.3.4: an entry copies the boundaries, so a returned iterator keeps no borrow of its local range.
+    // SPEC 4.6.4: an entry copies the boundaries, so a returned iterator keeps no borrow of its local range.
     private const string Entries =
         "func makeNumbers() -> RangeIterator<i32>\n    let numbers = 0..3\n    return numbers.iterate()\n" +
         "func makeClosed() -> ClosedRangeIterator<u8>\n    let numbers = 250@u8..=255\n    return numbers.intoIterator()\n" +
@@ -70,7 +70,7 @@ public class RangeValueTest
     [InlineData("for i in 0@i32..3@i64 => ()")]
     public void RangeWithoutOneIntegerTypeIsNotIterable(string source)
     {
-        // SPEC 4.6.3.4, 14.6.2: the conditional entry conformances need `S is PrimitiveInteger` and `E is S`; a refuted
+        // SPEC 4.6.4, 14.6.2: the conditional entry conformances need `S is PrimitiveInteger` and `E is S`; a refuted
         // condition supplies no conformance, so the Subject refutes the loop's requirement.
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));

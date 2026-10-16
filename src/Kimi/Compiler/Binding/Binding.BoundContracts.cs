@@ -115,7 +115,7 @@ public sealed partial class Binding
                 members.Add(requirement);
             }
 
-            // SPEC 8.4.2, 8.4.9: a bound reference keeps the declaration's associated identities, and its ancestors are the
+            // SPEC 8.4.3, 8.6.1: a bound reference keeps the declaration's associated identities, and its ancestors are the
             // parents' bound references under this reference's substitution (Indexable<Key> of UniqIndexable<isize> is
             // Indexable<isize>); an ancestor without Type arguments keeps its declaration identity.
             for (var i = 0; i < original.AssociatedStorage.Count; i++)
@@ -188,7 +188,7 @@ public sealed partial class Binding
         return this.MayUnify(this.ContractType(a.Type!, scope), this.ContractType(b.Type!, scope));
     }
 
-    // SPEC 8.4.9.1 steps 2-4, shared with the parameter acquisition shape (SPEC 7.3.1): Type parameters are variables with an
+    // SPEC 8.9.1 steps 2-4, shared with the parameter acquisition shape (SPEC 7.4): Type parameters are variables with an
     // occurs check, residual terms unify, and only a fixed-structure mismatch proves two Types apart. Unification calls back into
     // nothing, so one scratch map serves every check (a warm bind allocates none).
     private bool MayUnify(BoundType left, BoundType right, FunctionKoto? leftBinder = null, FunctionKoto? rightBinder = null, bool shared = false)

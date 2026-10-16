@@ -1,405 +1,226 @@
 # Language milestones
 
-Forty-three independent programs are planned from the current [SPEC](../../docs/SPEC.md).
-Every program has a source file; programs 34–39 were authored on 2026-09-27 and Program 40 on 2026-10-03.
-They are staged compiler implementation targets. Execution evidence and support
-boundaries are recorded in [STATUS.md](../../docs/STATUS.md); expected output alone is
-not an execution claim. Programs not marked DONE in the status table below are
-authored targets beyond current verified executable coverage; the table distinguishes
-untested programs from attempted builds that failed.
-Milestones 6–9 were originally added without compiler capability checks, builds,
-or execution; subsequent verification is documented per program below.
-Milestones 10–14 were originally added from the specification without compiler
-capability checks, builds, or execution. Subsequent verification is recorded below
-and in [STATUS.md](../../docs/STATUS.md).
+These 43 independent Applications follow the adopted compiler implementation progression.
+Programs 1–18 retain the established foundations; later numbers follow the completed tracks
+and the remaining implementation order in [PLAN](../../docs/dev/PLAN.md#4-milestones-execution-order).
+An earlier program can use a supported subset of a feature whose general coverage comes later.
+The numbering is not a claim that every feature first appears at its own milestone.
 
-| Program | Added concepts |
-| --- | --- |
-| [Milestone1](Milestone1.kimi) | Hello World, top-level startup, owned string argument |
-| [Milestone2](Milestone2.kimi) | `let`/`var`, `i32`, arithmetic, `while`, `if`/`else`, `$abort` |
-| [Milestone3](Milestone3.kimi) | Explicit `main`, function calls, arguments/results, `return`, `defer` |
-| [Milestone4](Milestone4.kimi) | `struct`, `init`, fields, whole-value Move, owned parameters, `drop` |
-| [Milestone5](Milestone5.kimi) | `uniq`/`ref`, returned borrow, `during`, scope and destruction lifetimes |
-| [Milestone6](Milestone6.kimi) | Value-producing `loop`, guarded `match`, `continue`, named `exit`, `yield`, `require` |
-| [Milestone7](Milestone7.kimi) | Fixed-array inference, borrowed `noinit` writes, nested `for`, cross-loop transfers, Slice reads |
-| [Milestone8](Milestone8.kimi) | Groups nested in a struct, generic struct/function, generic Copy/Move acquisition |
-| [Milestone9](Milestone9.kimi) | Length/type parameters, Copy constraint, callbacks/capture, generic enum, borrowed storage |
-| [Milestone10](Milestone10.kimi) | Generic enum/Tuple patterns, guards, value-producing loop/match/if, cross-loop transfers |
-| [Milestone11](Milestone11.kimi) | Immutable static member, multiple type/length instantiations, generic forwarding, explicit specialization, sharing invariants |
-| [Milestone12](Milestone12.kimi) | Mutable/nested/Move captures, exclusive Callable, concrete and common function values |
-| [Milestone13](Milestone13.kimi) | Generic Iterator conformance, Slice storage, external Origins, retained element borrows |
-| [Milestone14](Milestone14.kimi) | Generic Slice pipeline, Iterator, exclusive borrowed capture, obj creation/Move/destruction |
-| [Milestone15](Milestone15.kimi) | Initialization/Move/Loan joins, loop backedges, repair before continue |
-| [Milestone16](Milestone16.kimi) | Multiple external Origins, aggregate/enum forwarding, intersection, exclusive reborrow |
-| [Milestone17](Milestone17.kimi) | Partial Move repair, element exchange/swap/replace, secured results and destruction order |
-| [Milestone18](Milestone18.kimi) | Generic composite/Non-Copy arguments, results, temporaries, Copy acquisition and destruction |
-| [Milestone19](Milestone19.kimi) | Contract requirements, associated Types/equalities, conditional and nested conformance |
-| [Milestone20](Milestone20.kimi) | Type/length/Origin inference, ordinary defaults and generic forwarding |
-| [Milestone21](Milestone21.kimi) | Full length/Type specialization, inherited defaults/Origins and preserved implementation selection |
-| [Milestone22](Milestone22.kimi) | Concrete generic entries, compound layouts, specialization forwarding and distinct destruction operations |
-| [Milestone23](Milestone23.kimi) | Standard/custom/computed Copy Properties, direct storage and assignment evaluation order |
-| [Milestone24](Milestone24.kimi) | Non-Copy setter replacement, a borrowed getter, a consuming function and a standard-operation Contract witness |
-| [Milestone25](Milestone25.kimi) | Inline base construction, inherited standard Properties and Type members, whole-derived Move and layered destruction |
-| [Milestone26](Milestone26.kimi) | Generic compound captures, external borrowed captures, shared/exclusive/consuming Callable and owning function-value erasure |
-| [Milestone27](Milestone27.kimi) | Saved bounds, shared/exclusive child views, Move, Slice.toArray, `noinit` view writes, backing/element Origins, and user Places |
-| [Milestone28](Milestone28.kimi) | User IntoIterable/Iterator mappings, owned elements, continue/early-exit cleanup and retained external element borrows |
-| [Milestone29](Milestone29.kimi) | Dynamic `Array<T>` reserve/append/insert/remove/pop/clear, indexed replacement of Non-Copy elements, owning iteration with early exit |
-| [Milestone30](Milestone30.kimi) | User/generic comparison Contracts, borrow/Tuple composition, retained witnesses and NaN-reflexive equality through specialization |
-| [Milestone31](Milestone31.kimi) | Dictionary duplicate rejection, retained equal keys, replacement/removal, insertion-order iteration and exact entry cleanup |
-| [Milestone32](Milestone32.kimi) | User/generic UTF-8 formatting, independent owning strings, short-circuit writes, fixed-buffer reuse and bounded Console interpolation |
-| [Milestone33](Milestone33.kimi) | Exclusive objects, base views, struct Type tests/refinement, complete Sealed payload exchange and dynamic layered destruction |
+This README owns the program catalog, expected output and source/native status.
+[PLAN](../../docs/dev/PLAN.md) owns active scope, completion conditions and next actions;
+[STATUS](../../docs/STATUS.md) owns compiler support boundaries;
+[PLAN_HISTORY](../../docs/dev/PLAN_HISTORY.md) and verification artifacts retain run history.
 
-## Verification responsibilities
+## Implementation order
 
-Milestone harnesses preserve the original source bytes and filename and use separate O0/O2 output directories. Their shared runner records exact stdout/stderr/exit status, source/compiler hashes, compiler configuration, toolchain verification status and preparation/build/run timings. Release is the default compiler configuration; Debug is opt-in. Historical variant/check counts below describe their dated evidence, not the current harness workload. Behavioral and rejection requirements remain in the specification and dedicated tests; they are not generated by milestone scripts.
+The **Former ID** column maps the numbering used before 2026-10-15. Historical commits,
+drafts, report names and evidence paths keep their original IDs. Current filenames, harnesses,
+tests and plan references use the new IDs; there are no compatibility aliases.
 
-| Contract | Dedicated test families |
-| --- | --- |
-| Startup, output, scalars and control flow | `MinimalEmissionTest`, `ScalarEmissionTest`, `ControlFlowConformanceTest`, `CurrentControlFlowTest` |
-| Ownership, Origins, Patterns and closures | `OwnershipAnalysisTest`, `OwnershipJoinTest`, `OriginRedesignTest`, `MatchOwnershipTest`, `ConcreteClosureTest` |
-| Generics, Contracts and specialization | `ContractBindingTest`, `SpecializationBindingTest`, `AssociatedOriginBindingTest`, `DefaultOwnershipTest` |
-| Properties, collections and iteration | `PropertyCompletionBindingTest`, `CopyPropertyEmissionTest`, `IndexableContractTest`, `RangeValueTest`, `IntegerRangeTest`, `IterationAdapterTest`, `ComparisonContractTest`, `WorkloadCostTest` and collection fixture families |
-| Formatting and output failures | `Utf8ConsoleTest`, `Utf8IntegrationTest`, `Utf8InterpolationTest`, `Utf8TryWriteTest` |
-| CLI source/project/exe execution, automatic build and no-build | `src/backend/windows-x64/test-cli.ps1` |
-| Installation identity and generated imports | `NativeToolchainTest`, `Kernel32ImportsTest`, `src/backend/windows-x64/test-toolchain-verification.ps1` |
+| Program | Former ID | Main subject |
+| --- | --- | --- |
+| [1](Milestone1.kimi) | 1 | Hello World, top-level startup, owned string argument |
+| [2](Milestone2.kimi) | 2 | `let`/`var`, `i32`, arithmetic, `while`, `if`/`else`, `$abort` |
+| [3](Milestone3.kimi) | 3 | Explicit `main`, function calls, arguments/results, `return`, `defer` |
+| [4](Milestone4.kimi) | 4 | `struct`, `init`, fields, whole-value Move, owned parameters, `drop` |
+| [5](Milestone5.kimi) | 5 | `uniq`/`ref`, returned borrow, `during`, scope and destruction lifetimes |
+| [6](Milestone6.kimi) | 6 | Value-producing `loop`, guarded `match`, `continue`, named `exit`, `yield`, `require` |
+| [7](Milestone7.kimi) | 7 | Fixed-array inference, borrowed `noinit` writes, nested `for`, cross-loop transfers, Slice reads |
+| [8](Milestone8.kimi) | 8 | Groups nested in a struct, generic struct/function, generic Copy/Move acquisition |
+| [9](Milestone9.kimi) | 9 | Length/type parameters, Copy constraint, callbacks/capture, generic enum, borrowed storage |
+| [10](Milestone10.kimi) | 10 | Generic enum/Tuple patterns, guards, value-producing loop/match/if, cross-loop transfers |
+| [11](Milestone11.kimi) | 11 | Generic instantiations, immutable static member, forwarding and explicit specialization selection |
+| [12](Milestone12.kimi) | 12 | Mutable/nested/Move captures, exclusive Callable, function values and shared calls with an owned capture |
+| [13](Milestone13.kimi) | 13 | Generic Iterator conformance, Slice storage, external Origins, retained element borrows |
+| [14](Milestone14.kimi) | 14 | Generic Slice pipeline, Iterator, exclusive borrowed capture, obj creation/Move/destruction |
+| [15](Milestone15.kimi) | 15 | Initialization/Move/Loan joins, loop backedges, repair before continue |
+| [16](Milestone16.kimi) | 16 | Multiple external Origins, aggregate/enum forwarding, intersection, exclusive reborrow |
+| [17](Milestone17.kimi) | 17 | Partial Move repair, element exchange/swap/replace, secured results and destruction order |
+| [18](Milestone18.kimi) | 18 | Generic composite/Non-Copy arguments, results, temporaries, Copy acquisition and destruction |
+| [19](Milestone19.kimi) | 22 | Concrete generic entries, compound layouts, specialization forwarding and distinct destruction operations |
+| [20](Milestone20.kimi) | 19 | Contract requirements, associated Types/equalities, conditional and nested conformance |
+| [21](Milestone21.kimi) | 20 | Type/length/Origin inference, ordinary defaults and generic forwarding |
+| [22](Milestone22.kimi) | 21 | Full length/Type specialization, inherited defaults/Origins and preserved implementation selection |
+| [23](Milestone23.kimi) | 29 | Dynamic `Array<T>` reserve/append/insert/remove/pop/clear, indexed replacement of Non-Copy elements, owning iteration with early exit |
+| [24](Milestone24.kimi) | 32 | User/generic UTF-8 formatting, independent owning strings, short-circuit writes, fixed-buffer reuse and bounded Console interpolation |
+| [25](Milestone25.kimi) | 30 | User/generic comparison Contracts, borrow/Tuple composition, retained witnesses and NaN-reflexive equality through specialization |
+| [26](Milestone26.kimi) | 23 | Standard/custom/computed Copy Properties, direct storage and assignment evaluation order |
+| [27](Milestone27.kimi) | 27 | Saved bounds, shared/exclusive child views, Move, Slice.toArray, `noinit` view writes, backing/element Origins, and user Places |
+| [28](Milestone28.kimi) | 39 | Semantics-generic follow and reference-valued collection elements |
+| [29](Milestone29.kimi) | 28 | User IntoIterable/Iterator mappings, owned elements, continue/early-exit cleanup and retained external element borrows |
+| [30](Milestone30.kimi) | 41 | Positions, ranges, resolution, iteration and formatting |
+| [31](Milestone31.kimi) | 42 | Wrapping integers, integer results, conversions and generic arithmetic |
+| [32](Milestone32.kimi) | 31 | Dictionary duplicate rejection, retained equal keys, replacement/removal, insertion-order iteration and exact entry cleanup |
+| [33](Milestone33.kimi) | 40 | Disjoint exclusive Array and fixed-array element access |
+| [34](Milestone34.kimi) | 26 | Generic compound captures, external borrowed captures, shared/exclusive/consuming Callable and owning function-value erasure |
+| [35](Milestone35.kimi) | 37 | Integrated collection, borrow, iteration and closure workload |
+| [36](Milestone36.kimi) | 24 | Non-Copy setter replacement, a borrowed getter, a consuming function and a standard-operation Contract witness |
+| [37](Milestone37.kimi) | 43 | User arithmetic Contracts, Function values, element replacement and Result propagation |
+| [38](Milestone38.kimi) | 25 | Inline base construction, inherited standard Properties and Type members, whole-derived Move and layered destruction |
+| [39](Milestone39.kimi) | 33 | Exclusive objects, base views, struct Type tests/refinement, complete Sealed payload exchange and dynamic layered destruction |
+| [40](Milestone40.kimi) | 34 | rc/arc creation, clone, shared access and final strong release |
+| [41](Milestone41.kimi) | 35 | Weak downgrade/upgrade, expiration and cyclic construction |
+| [42](Milestone42.kimi) | 36 | Static initialization, generic storage keys and shutdown |
+| [43](Milestone43.kimi) | 38 | Integrated Properties, inheritance, objects, static state and formatting |
+
+Programs 1–37 are complete within their recorded boundaries. The remaining main track is
+**38 (inheritance) → 39 (exclusive objects) → 41 (Weak) → 42 (static storage) → OCC-X → 43 (integration)**.
+Program **40 (shared objects)** is the alternating track; its strong ownership and nonnull
+Option prerequisites precede Weak. The compiler reduction and owner holds in PLAN still govern
+when implementation resumes. Renumbering does not start or complete any compiler work.
 
 ## Program status
 
-As of **2026-09-26**, the execution order was revised: the collection track (27, 39, 28, 31, 40, 26, 37) precedes the Property/object track, and Program 27 owns the Place foundation ([PLAN.md](../../docs/dev/PLAN.md#3-current-position)). Programs 34–39 were authored on 2026-09-27 and Program 40 on 2026-10-03; Program 37 runs natively and the others record their first diagnostics ([authoring verification](#programs-3439-authoring-verification-2026-09-27)). Program 23 is complete with 67 Debug/Release harness checks in the [Copy Property session](../../docs/dev/PLAN_HISTORY.md#p23-completion). That session also passes both full suites; earlier-program native regressions stopped at the user's request after programs 1–16. Programs 1–22 and 29–32 retain their Release harness evidence from the [Dictionary source session](../../docs/dev/PLAN_HISTORY.md#p31-kimigayo-library); older Debug results retain their original verification scope. Programs 30 and 31 are complete; Program 31's capacity callback construction moved to P26 and was completed there (G20, 2026-10-05). Build means a native
-Application build including LLVM verification and linking; tests mean native
-output/exit checks. Since 2026-09-30, each harness builds the original source once per O0/O2 and directly executes each binary once; feature and rejection checks live in dedicated tests. Parser
-coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
-
-This table is the source/native status record. `MilestoneSourcesTest` checks the exact
-authored source set against it, checks the explicit Binding column, requires complete Binding for passed programs, and
-checks each pending program's stage, its first published Error in result order (SPEC 23.3.6.6) and that
-Error's underlined source text against [stage-baselines.json](stage-baselines.json). It also binds the recorded supported
-declaration prefix independently. A changed failure or a newly successful stage requires
-review and fresh evidence; neither is accepted as an arbitrary pending failure. These
-checks supplement the focused feature tests and native harnesses; they do not certify
-unreached parts of a pending program.
-
-Affected programs now use postfix `during` annotations with the same intended behavior.
-An unchanged target run compiles the checked-in program without test-specific edits.
-A program source is re-spelled only for a specification change or for an authoring
-correction, where the source contradicts its own specification-derived output. The
-table below records each re-spelling with its cause, and the program's status row
-names it. A completed program keeps DONE when
-[PLAN §5](../../docs/dev/PLAN.md#5-completion-conditions-every-program-milestone)
-conditions 1–3 (unchanged target run, harness and Session verification) hold for the
-re-spelled source. The 2026-09-25 place, borrowing and iteration change re-spelled
-programs 13, 14 and 16 (DONE) and the pending programs 28 and 33, the 2026-09-26
-rename of `@deref` to `@follow` re-spelled 14, 16 and 33 again, and a 2026-10-04
-authoring correction re-spelled the pending program 36:
-
-| Program | Re-spelling | Cause |
-| --- | --- | --- |
-| 13 | `associate Iterator.Item` replaces `Iterator.Element` | SPEC 22.1.2.1 |
-| 14 | `accumulator@follow@uniq` replaces `accumulator@uniq/Pipeline.Accumulator` | SPEC 13.5.5.2 |
-| 16 | `target@follow@uniq` replaces `target@uniq/Cell` | SPEC 13.5.5.2 |
-| 28 | `IntoIterable` with `IteratorType` and `intoIterator` replaces `Iterable`; `Iterator.Item` replaces `Iterator.Element` | SPEC 22.1.2.1, 22.1.2.2 |
-| 33 | `@follow@ref`/`@follow@uniq` payload borrows; `owner@move@obj/Base` transfers the bare Place | SPEC 3.5, 13.5.5.2, 13.5.7 |
-| 36 | `Resource.drop` gains the `2 =>` arm | Authoring correction; SPEC 11.3.2, 13.7.1, 22.2.3 |
-| 39 | `Collection<ref/Node>.init(...)` and `Collection<uniq/Node>.init(...)` supply the construction Type arguments (PLAN G24, approved 2026-09-27) | SPEC 6.2.3.2, 15.4.4 |
+`PASS` records verification of the authored program, not all forms of its feature family.
+`NOT_RUN` is neither success nor failure. DONE additionally requires the completion conditions
+in [PLAN §5](../../docs/dev/PLAN.md#5-completion-conditions-every-program-milestone), including
+any explicitly recorded owner decision. The pending diagnostic baselines remain unchanged.
 
 | Program | Created | Binding | Build | Tests | Implementation | Evidence / boundary |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
-| 2 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
-| 3 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
-| 4 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
-| 5 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
-| 6 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
-| 7 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 Harness re-spelled 2026-09-30 for P41: an `i32` row or key is now a valid position, so the rejections use `f64` instead. |
-| 8 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
-| 9 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
-| 10 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
-| 11 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
-| 12 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
-| 13 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target (re-spelled 2026-09-25: `Iterator.Item`), O0/O2 variants and required rejections (harness added 2026-09-23); [evidence](../../docs/dev/PLAN_HISTORY.md#program20-completion) |
-| 14 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 (re-spelled 2026-09-25 and 2026-09-26: `@follow@uniq` reborrows) |
-| 15 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and rejections; [completion](../../docs/dev/PLAN_HISTORY.md#program15-completion) |
-| 16 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target (re-spelled 2026-09-25 and 2026-09-26: `@follow@uniq` reborrow), O0/O2 variants and rejections; [completion](../../docs/dev/PLAN_HISTORY.md#program16-completion) |
-| 17 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and rejections; [evidence](../../docs/dev/PLAN_HISTORY.md#program17-completion) |
-| 18 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 composite transfers, variants and rejections; [evidence](../../docs/dev/PLAN_HISTORY.md#program18-completion) |
-| 19 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections; [evidence](../../docs/dev/PLAN_HISTORY.md#program19-completion) |
-| 20 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections; [evidence](../../docs/dev/PLAN_HISTORY.md#program20-completion) |
-| 21 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections (harness added 2026-09-23) |
-| 22 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections (the InfiniteLayout rejection added 2026-09-23); [evidence](../../docs/dev/PLAN_HISTORY.md#program22-completion) |
-| 23 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (67 checks/configuration) | DONE | Unchanged target, name/value/compound/restricted-read/setter-Type variants and required rejections pass; focused lifetime/projection/Move tests and both full suites pass. Earlier-program harness scope was reduced by the user. |
-| 24 | YES | PASS | PASS (Release, O0/O2) | PASS | DONE (2026-10-07) | Original source exercises Non-Copy replacement, borrowed getter results, standard borrow witnesses and owned receiver consumption. Focused ownership/permission tests and warm compiler measurements accompany Session evidence in PLAN. |
-| 25 | YES | PASS | PASS (Release, O0/O2) | PASS (focused projection checks) | IN_PROGRESS | Original-source harness, inherited storage, omitted base calls, derived implicit constructors, qualification diagnostics, shared inherited requirement dispatch, inherited standard Property bridges, shared base methods/getters and allocation reuse pass. Remaining: exclusive receiver projections (OCC-X). |
-| 26 | YES | PASS | PASS (Release, O0/O2) | PASS (Release) | DONE | Completed 2026-10-05 by user decision with recorded gaps: the unchanged source passes its original-source harness; the held follow-ups (PLAN G75, G76, G77) and the located limits (N25b, N26b, N27b, N27c, N24, LR, `T.compare`) are listed in the PLAN P26 row, and their behavior is in STATUS. [P26 completion](../../docs/dev/PLAN_HISTORY.md#p26-completion). |
-| 27 | YES | PASS | PASS (Debug, O0/O2) | PASS (Debug) | DONE | 97 Debug harness checks (`artifacts/verify/20260926-154051-101-unit-m27-harness1`): the program, 12 variants (Index/Range/ResolvedRange keys, try-prefixed operations, saved bounds reapplied, bounds Aborts) and 11 rejections. [P27 completion](../../docs/dev/PLAN_HISTORY.md#p27-completion). Re-spelled 2026-09-30 for P41 (`FromEnd<i32>` and `Range<S, E>` in place of `Index`/`IndexRange`); the re-spelled harness passes in Release (`artifacts/verify/20260929-163311-215-unit-p41-u45`). |
-| 28 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (43 checks per configuration) | DONE | Completed 2026-09-29. The unchanged target executes through user `IntoIterable`/`Iterator` calls, with owned item cleanup, continue/exit, generic Option extraction and retained external references; the harness also checks exhaustion, empty enumeration, return, unnamed items and five rejection variants. Every standard collection now iterates through Kimigayo entries over `Kimi.Storage` (Array, Dictionary, fixed array, Slice), with LendingIterator, the `Kimi.Iteration` adapters and associated families. Session `artifacts/verify/20260929-132623-627-session-p28-completion` passes the Debug/Release suites and the harnesses of every completed program. |
-| 29 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged source, shared-view/cleanup variants and required rejections pass through test-milestone29.ps1 (129 checks per configuration); shared string iteration and zero-sized elements are positive cases (reopened and completed 2026-09-29). Allocation/cost probes pass. Harness re-spelled 2026-09-30 for P41: position variants use `^(0@u8)`/`^(1@i64)`, and an invalid position Aborts at the `insertAt`/`removeAt` call of the Kimigayo entry in `Array.kimi`. |
-| 30 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | DONE | Unchanged target, 43 checks per harness, recursive Tuple/borrow mappings, preserved IEEE/Contract semantics and allocation probes; [completion evidence](../../docs/dev/PLAN_HISTORY.md#review-remediation). |
-| 31 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | DONE | Completed 2026-10-03 (user decision G58). Unchanged target, 71 checks per harness, mandatory static duplicate rejection, Kimigayo storage algorithms, slot reuse/cleanup and zero-allocation warm compilation; every public operation dispatches through Kimigayo source, and the capacity callback construction moved to P26 and was completed there (G20, 2026-10-05). [Evidence](../../docs/dev/PLAN_HISTORY.md#p31-kimigayo-library). |
-| 32 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | DONE: unchanged target, O0/O2 UTF-8/NUL/empty/numeric/failure variants and required rejections pass through `test-milestone32.ps1`; runtime costs and full-session regressions pass. [Evidence](../../docs/dev/PLAN_HISTORY.md#program32-completion). |
-| 33 | YES | FAIL | FAIL (prior Debug/Release native probes) | NOT_RUN | IN_PROGRESS | Re-spelled 2026-09-25 and 2026-09-26 (`@follow` payload borrows, `@move` transfer). Current Binding first stops at refinement-dependent `view.extra` with `UnresolvedBinding_Kd`. Explicit base construction, concrete runtime Type tests and complete dynamic destruction have focused native coverage. |
-| 34 | YES | PASS | PASS (Release, O0/O2) | PASS | IN_PROGRESS | The unchanged source executes through its original-source harness (2026-10-04, U5). rc/arc creation, clone, shared views and final release are verified; dependent handle updates are verified by G70/U6 (2026-10-06). The milestone completion review and all-prior-program harness condition remain in PLAN U7. |
-| 35 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `Unsupported_Kd` at `Weak` in `Weak<rc/Node>`: `Weak` and the Weak/cyclic intrinsics are cataloged without declarations (PLAN G4). |
-| 36 | YES | PASS | NOT_RUN | NOT_RUN | IN_PROGRESS | Authored 2026-09-27; re-spelled 2026-10-04 (authoring correction: `Resource.drop` gains the `2 =>` arm). Binding passes; ownership analysis stops at the static group `Registry` with `Unsupported_Kd` (static stored Properties are not analyzed or generated). |
-| 37 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-09-27. The unchanged target, five variants (two views, alternate threshold, early stop, out-of-range removal Abort) and four rejections pass 47 harness checks in Debug and Release (`test-milestone37.ps1`, `artifacts/verify/20260926-201111-530-session-p39-pair-layers`). `WorkloadCostTest` observes three heap allocations for the workload and logarithmic allocations for a scaled workload. Harness re-spelled 2026-09-30 for P41: the out-of-range removal Aborts at the `removeAt` call of the Kimigayo entry in `Array.kimi`. |
-| 38 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `Unsupported_Kd` at `Weak` in `Weak<rc/Lamp>` in the static registry (PLAN G4); payload follow through a refined view and the custom setter through an owning handle report later `TypeMismatch_Kd` diagnostics (P33–P35 scope). Device, Lamp and Sensor bind. |
-| 39 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored 2026-09-27 per SPEC §13.5.5.1 (pair layers) and completed the same day; the two constructions were re-spelled with their Type arguments (G24). The unchanged re-spelled target, two variants and four rejections pass 29 harness checks in Debug and Release (`test-milestone39.ps1`, `artifacts/verify/20260926-225920-160-session-p39-completion`). |
-| 40 | YES | PASS | PASS (Release, O0/O2) | PASS | DONE | Completed 2026-10-04 with unchanged source; sibling fields, calls and stored exclusive references keep their split identities. Session `20261003-154434-122-session-p40-u1-u2-session` passes all 34 completed harnesses ([Milestone 40](#milestone-40-disjoint-exclusive-element-access)). |
-| 41 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-09-30 per SPEC §4.6 (positions and ranges, P41); Session `20260929-171813-572-session-p41-completion`. The unchanged target, nine variants (wide positions, direct and saved ranges, expected boundary Types, closed iteration below the maximum, Array positions, and four Aborts) and seven rejections pass 77 Release harness checks (`test-milestone41.ps1`, `artifacts/verify/20260929-171515-671-unit-p41-program`); see [Milestone 41](#milestone-41-positions-and-ranges). |
-| 42 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-10-01 per SPEC §3.1.1.1, §13.3 and §13.5.4 (wrapping integers, integer results and conversions, P42). The unchanged target passes the original-source harness at O0 and O2 (`test-milestone42.ps1`); the separate checks are the P42 unit tests; see [Milestone 42](#milestone-42-wrapping-integers-integer-results-and-conversions). |
-| 43 | YES | PASS | PASS (Release) | PASS (Release) | IN_PROGRESS | Arithmetic Contracts: Non-Copy operators, numeric-left literals, generic witnesses and Function values, borrowed element replacement and explicit Result propagation; original-source harness `test-milestone43.ps1`. |
+| 1 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 2 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 3 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 4 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 5 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 6 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 7 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 8 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 9 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 10 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 11 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Explicit specialization selection; generic code sharing is deferred (IMPL §21.3.1). |
+| 12 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 13 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 14 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 15 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 16 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 17 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 18 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 19 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 20 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 21 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 22 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 23 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 24 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 25 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 26 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 27 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 28 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 29 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 30 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 31 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 32 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Owner completion (G58); capacity callback work subsequently completed with the closure track. |
+| 33 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Original-source O0/O2 evidence; focused semantic tests cover neighboring forms. |
+| 34 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Owner completion with recorded gaps; G10/G65/G75/G78 and STATUS retain the remaining boundaries. |
+| 35 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Integrated workload; `WorkloadCostTest` retains allocation and scaling checks. |
+| 36 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Non-Copy setter, borrowed getter, standard witness and consuming function; SPEC §11.3. |
+| 37 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Arithmetic completion is recorded in [PLAN_HISTORY](../../docs/dev/PLAN_HISTORY.md#arithmetic-completion); G10/G83 and native 128-bit division remain separate limits. |
+| 38 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | IN_PROGRESS | O0/O2 target passes; exclusive receiver projections belong to OCC-X. Completion review remains with the owner. |
+| 39 | YES | FAIL | FAIL (prior native probe) | NOT_RUN | IN_PROGRESS | Binding: `UnresolvedBinding_Kd` at `view.extra`; flow refinement remains incomplete. |
+| 40 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | IN_PROGRESS | Original-source O0/O2 passes; U7 defects and completion audit remain in [shared-object work](../../docs/dev/P34_REMAINING.md). |
+| 41 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Binding: `Unsupported_Kd` at `Weak`; Weak/cyclic construction declarations remain incomplete (G4). |
+| 42 | YES | PASS | NOT_RUN | NOT_RUN | IN_PROGRESS | Binding passes; Ownership: `Unsupported_Kd` at `Registry`; static initialization/shutdown remain incomplete. |
+| 43 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Binding: `Unsupported_Kd` at `Weak`; also depends on refinement, object accessors and OCC-X. |
 
-[Restructuring audit](../../docs/dev/PLAN_HISTORY.md#programs38-restructure) records source/DLL
-identities and exact commands: Release compiler/test-project build PASS with zero
-warnings/errors; 57 alias/syntax tests PASS; 577 checks across the existing
-program 1–12/14 harnesses PASS; program 13 passes two native O0/O2 executions.
-That historical audit covered the 24 sources then present. Later completions
-supersede its failed probes; the table above records current support. Debug,
-full managed regressions and NativeAOT were not run for that restructuring.
+`MilestoneSourcesTest` checks the exact 43-file set, these Binding results and every pending
+stage, first published Error and underlined source anchor in [stage-baselines.json](stage-baselines.json).
+It also binds the supported declaration prefix independently. A different failure or a newly
+successful stage needs reviewed evidence; an arbitrary pending failure never passes.
 
-Earlier [program 14 regressions](../../docs/dev/PLAN_HISTORY.md#program14-completion),
-[units 62–67 audit](../../docs/dev/PLAN_HISTORY.md#units62-67-verification) and
-[18–20 authoring probes](../../docs/dev/PLAN_HISTORY.md#programs18-20-design) remain historical
-records of their own inputs. In particular, the old combined program-20 result
-is not evidence for new program 20 or 21. The current table uses the new audit.
+## Running and verifying
 
-Each file is a separate Application; do not combine them into one project.
-Under [single-source input rules](../../docs/impl/20-compilation-configuration.md#20861-input-resolution-and-implicit-projects),
-the intended build/run commands, once the required features are implemented, are:
+Each source is a separate Application. Do not combine the files into one project.
+With Kimi and the Windows x64 toolchain installed:
 
 ```powershell
 kimi build tests/milestones/Milestone1.kimi
 kimi run tests/milestones/Milestone1.kimi
 ```
 
-Replace `1` with the milestone number. `run` executes an existing build; it does
-not compile source. No separate project file is needed. Output uses fixed string
-literals so programs 1–29 do not require numeric formatting or interpolation.
-Programs 2–29 use `Console.writeLine` through the default Kimi alias. Only the
-Hello World program keeps `::Kimi.Console.writeLine`; no extra alias is needed.
+`run` builds a source input automatically; `run --no-build` requires an existing build.
+See [input resolution](../../docs/impl/20-compilation-configuration.md#2031-input-resolution-and-implicit-projects).
+Replace `1` with the desired number. Programs with a pending stage cannot yet run.
 
-## Roadmap from program 15 to core completion
+From a source checkout, select the related verification explicitly:
 
-The current plan has **42 programs**, including **28 programs numbered 15–42**.
-All have sources; 34–39 were authored on 2026-09-27 and 40 on 2026-10-03. Programs 39 and 40
-were added on 2026-09-26 for the two collection designs that the Place foundation
-leaves open (PLAN issues G21 and G22); their execution order is in [PLAN.md](../../docs/dev/PLAN.md#4-milestones-execution-order).
-Source creation is not implemented capability. This count is a decomposition of scope, not an effort or delivery
-estimate. Passing programs 13/14 does not
-establish general Slice, Iterator, callable, or object support.
+```powershell
+./scripts/verify.ps1 -Class MilestoneSourcesTest -Milestone 1
+./scripts/verify.ps1 -Mode Session -Milestone ((1..38) + 40)
+```
 
-Here, core completion means combining the finalized language features and basic
-collections in a useful single Application. Full Package distribution, Mod host
-integration, the test runner, and comprehensive FFI/platform integration are
-separate product work. Unintroduced/deferred features in
-[Appendix D](../../docs/spec/appendices/D-deferred-features.md) are excluded, including
-additional UniqSlice APIs, Cursor Contracts, virtual/override members and runtime
-Contract Views. "Complete generics" means the adopted specification, not future
-generic forms. ObjectCallCompatible's same-build inference, use-time enforcement and
-publication ([effect verification](../../docs/spec/12-expressions.md#12442-effect-verification))
-are in scope; only its release comparison remains
-[deferred](../../docs/spec/appendices/D-deferred-features.md#objectcallcompatible).
+The second command selects all 39 existing harnesses, including the executable targets
+38 and 40 whose broader implementation work remains IN_PROGRESS. There are no harnesses
+for 39, 41, 42 or 43 yet. Release is the default compiler configuration; Debug is opt-in.
 
-| Program | Main subject | Intended coverage |
-| --- | --- | --- |
-| 15 | Ownership and control-flow joins | Initialization, Move and Loans across branches, backedges and continue |
-| 16 | General Origins | Multiple Origins, returned references, reborrowing and aggregate/enum dependencies |
-| 17 | Ownership, cleanup and updates | Partial Move, repair, defer/drop, whole-value updates and call effects |
-| 18 | Generic value operations | Composite and Non-Copy arguments, results, temporaries and destruction |
-| 19 | Contracts and associated Types | Constraints, conditional conformance, associated Types and requirement calls |
-| 20 | Generic inference and defaults | Type/length/Origin inference, ordinary optional arguments and forwarding; no specialization |
-| 21 | Explicit full specialization | Closed Type/length selection, inherited default/Origin contracts and generic forwarding |
-| 22 | Generic generation | Monomorphized bodies (initial profile), compound ABI and finite generation limits; separate internal checks. Code sharing is deferred (§21.3.1) |
-| 23 | Basic Properties | Standard/custom/computed access over Copy values, permissions and evaluation order |
-| 24 | Ownership-bearing Properties | Non-Copy setters, borrowed getter results, temporary lifetimes, receiver consumption through a function and Contract witnesses |
-| 25 | Inheritance | Base storage, construction/destruction, inherited members and already-verified Property operations |
-| 26 | General closures and Callable | Composite/generic captures, dependency retention, function values and permitted erasure |
-| 27 | General Slice, positions and ranges, and the Place foundation | Partial/nested slices, bounds evaluation, permitted element Types and retained Origins; `place ref/T`/`place uniq/T` results, Contract Type parameters and user `Indexable`/`UniqIndexable` conformances |
-| 28 | General Iterator/Iterable | User Iterable protocols, owned/borrowed elements, early exit and remaining-element cleanup |
-| 29 | Dynamic Array | Capacity, insertion/removal/replacement, Non-Copy elements and owning iteration |
-| 30 | Comparison Contracts | Equatable/Comparable, generic requirement calls and composed comparisons before Dictionary |
-| 31 | Dictionary | Key equality, mutation, insertion order, iteration, Loans and allocation/complexity requirements |
-| 32 | Utf8Format and interpolation | User/generic UTF-8 formatting, buffer reuse, short-circuit writes and owning interpolation |
-| 33 | Exclusive objects and views | obj, base views, runtime struct tests/refinement, identity and dynamic destruction |
-| 34 | Shared object ownership | rc/arc creation, explicit clone, Move, shared access and final strong release |
-| 35 | Weak | Downgrade/upgrade, expiration, cyclic construction and final weak-table release |
-| 36 | General static storage | First initialization, effects, cycles, shutdown and inherited generic environment keys |
-| 37 | Integrated processing application | Collections, borrows, iteration and closures in one realistic workload |
-| 38 | Integrated core application | Properties, inheritance, objects and formatting combined with established features |
-| 39 | Semantics-generic follow | A pair `s/T` Place followed to its stored target under the admitted Semantics set; generic accessors over `Collection<s/T>` returning `ref/T` or `uniq/T` |
-| 40 | Disjoint exclusive element access | Simultaneous exclusive borrows of distinct elements of one collection through a splitting operation over the internal storage boundary |
-| 41 | Positions and ranges | From-end positions, independently typed range boundaries, closed ranges, generic position/range APIs, value read, resolution and formatting |
-| 42 | Wrapping integers, integer results and conversions | `Wrapping<T>` arithmetic, `MIN % -1`, `@wrap` and `@bits`, exact direct literals, generic `Wrapping<T>` bodies, wrapping keys and Patterns, a hash and a generator |
+Each `test-milestone<N>.ps1` uses the shared original-source harness: one build and one direct
+execution at each of O0/O2, preserving the source bytes and filename. It checks exact UTF-8
+stdout, empty stderr and exit 0 and records source/compiler hashes, configuration, toolchain
+verification status and timings. Historical variant counts describe older harness versions.
+NativeAOT is separate and was not requested.
 
-### Number migration from the 34-program plan
+Feature legality, failure paths and cost guarantees belong to focused tests:
 
-Programs 1–19 retain their numbers and subjects. Former program 20 is split into
-20 (inference/defaults) and 21 (specialization); both source files are independent.
-Earlier program-20 build evidence describes the combined source, not either new
-target. Remaining changes affect planned scopes only:
+| Contract | Representative tests |
+| --- | --- |
+| Startup, scalars and control flow | `MinimalEmissionTest`, `ScalarEmissionTest`, `ControlFlowConformanceTest` |
+| Ownership, Origins and closures | `OwnershipAnalysisTest`, `OwnershipJoinTest`, `OriginRedesignTest`, `ConcreteClosureTest` |
+| Generics and Contracts | `ContractBindingTest`, `SpecializationBindingTest`, `AssociatedOriginBindingTest` |
+| Properties, collections and iteration | `PropertyCompletionBindingTest`, `IndexableContractTest`, `IterationAdapterTest`, `ComparisonContractTest`, `WorkloadCostTest` |
+| Formatting and output failure | `Utf8ConsoleTest`, `Utf8IntegrationTest`, `Utf8InterpolationTest`, `Utf8TryWriteTest` |
+| CLI and installation | `test-cli.ps1`, `NativeToolchainTest`, `Kernel32ImportsTest` |
 
-| Former number | Current number(s) | Change |
-| --- | --- | --- |
-| 21 | 22 | Generic generation |
-| 22 | 23, 24 | Separate basic access from ownership/borrow/witness behavior |
-| 23–27 | 25–29 | Inheritance, closures, Slice, Iterator, Array |
-| 28 | 31 | Dictionary follows comparison Contracts |
-| 29 | 30, 32 | Separate comparison from Utf8Format/interpolation |
-| 30 | 33, 34 | Separate exclusive objects/views from shared ownership |
-| 31–34 | 35–38 | Weak, static storage and the two integration targets |
-| — | 39, 40 | Added 2026-09-26: Semantics-generic follow and disjoint exclusive element access |
+A program has one main subject and only the interactions needed to observe it; integration
+programs combine established subjects. Invalid inputs and Abort probes stay in dedicated tests.
+Correct stdout alone does not prove ownership legality, ABI, allocation or complexity guarantees.
+The [SPEC](../../docs/SPEC.md) and [IMPL](../../docs/IMPL.md) remain the authority for those contracts.
 
-The dependency direction is ownership/Origins, then generic foundations, then
-general member/call/sequence operations, collections and runtime integration.
-Implement prerequisites needed by a target even if their broader program comes
-later; the ordering does not postpone correctness checks. Revisit generality
-after each group rather than accumulating program-specific special cases.
+## Source corrections
 
-Keep one main subject and one or two interactions per program. Existing programs
-are intentionally short; there is no minimum line count. Split independent
-mechanisms rather than compressing them into dense expressions. Do not pad a
-program to 80–180 lines or put every negative/performance case in its main body.
-Integration programs may be larger. Programs remain independent Applications.
+Renumbering preserves each program body except these authoring corrections:
 
-Each implementation target needs three kinds of evidence:
+- Program 11 describes concrete instantiation and explicit specialization, removing obsolete
+  shared-generation/automatic-specialization claims (IMPL §21.3.1).
+- Program 36 (former 24) calls `Parcel.intoResult` a consuming function in its Abort/output text;
+  it is not a getter (SPEC §11.3). Its harness and expected output use the same wording.
+- Programs 24 and 37 (former 32 and 43) now have numbered introductory comments.
 
-- **Successful execution:** exact output, exit status, values, evaluation order
-  and destruction responsibilities, with LLVM verification and native O0/O2
-  execution on the specified Windows x64 profile.
-- **Required rejection:** separate variants for invalid Moves, escaping Origins,
-  conflicting Loans and failed constraints. Do not edit the canonical program
-  to run a variant; reject invalid sources before artifact publication.
-- **Implementation contracts:** inspect the active generation profile and ABI and measure the
-  relevant allocation, complexity and resource bounds. Correct stdout alone
-  cannot prove these requirements. No NativeAOT verification is implied.
+Specification respellings:
 
-Map evidence to the owning specification clauses. A representative program's
-success closes only its exercised slice, not an entire feature family. The
-programs and the exercises below define future targets; they are not an automated
-conformance suite. Companion fixtures and verification scripts belong to the
-subsequent implementation work.
+- Programs 27 and 28 (2026-10-16, Place result removal, SPEC §7.1 and §4.7.1): `index` and `indexUniq` return
+  `ref/T during self` and `uniq/T during self` and borrow explicitly (`self.first@ref`, `self.items[key]@uniq`), and
+  Program 27's `firstPlace` returns `items[0]@ref`. The uses, including `firstPlace(counts) == 42` (a comparison through
+  the reference), and the expected output are unchanged.
 
-This README owns program design and expected behavior. [PLAN.md](../../docs/dev/PLAN.md)
-continues to own active execution scope, acceptance tracking, dependencies,
-states and exact next actions; [PLAN_HISTORY.md](../../docs/dev/PLAN_HISTORY.md) owns run
-history. This roadmap does not replace the active target or mark any work done.
+Earlier specification respellings and authoring corrections remain in Git and PLAN_HISTORY.
+No target was simplified to fit an implementation limit. In particular, the refinement, Weak,
+static-storage and integrated-object targets retain their specified behavior and pending stages.
 
-### Verification scopes for programs 22–41
+## Expected output
 
-Every row inherits the three evidence gates above. The canonical program is a
-small successful Application. Rejection/Abort cases use separate source copies;
-IR, allocation, runtime-state and complexity checks use companion tests or tools.
-Prerequisites name the main exercised capabilities, not permission to postpone
-required legality checks. Where public operations use static-effect summaries,
-verify those summaries before accepting calls even though the static-storage
-demonstration is program 36. ObjectCallCompatible's same-build inference, enforcement
-and publication are in scope; its release comparison stays deferred.
+Every block ends with LF and expects empty stderr and exit 0. For pending programs these are
+specification-derived expectations, not execution claims; consult the status table above.
+The completed-source output is checked byte for byte by its native harness.
 
-| Program / main prerequisites | Canonical program | Separate semantic checks | Implementation evidence |
-| --- | --- | --- | --- |
-| 22 / 18–21 | Pass compound generic values through per-substitution concrete bodies; preserve different Type operations and selected specializations. | Different layouts and same-layout/different-destructor Types; finite recursion, growing substitutions, invalid infinite layout and required resource-limit diagnostics. | Inspect concrete FunctionAbi and ordinary frames, selected body identities and deterministic finite generation; measure relevant warm allocations. Shared contexts, scratch frames and optional sharing budgets are deferred (§21.3.1). |
-| 23 / 4, 7 | Read/write stored standard, custom and computed Copy Properties with observable evaluation order. | Access permissions, differing setter inputs where permitted, single receiver/RHS/getter evaluation; reject writes or exclusive borrows into getter-result temporaries. | Distinguish direct Places from accessor calls; verify standard storage access and custom dispatch without invented get/set round trips. |
-| 24 / 16–19, 23 | Replace a Non-Copy value through a setter and return a borrowed view through a getter; use a Contract Property requirement. | Receiver consumption through an `into` function, discarded setter inputs, temporary-borrow escape, conflicting Loans, invalid shared extraction and incompatible requirement operations. | Exact old/input/result destruction, getter-temporary lifetime, standard-operation witness identity and permitted bridges; no hidden Copy or storage exposure through a Contract. |
-| 25 / 17, 23–24 | Construct a derived value, access inherited members/Properties and destroy complete derived/base storage. | Base initialization order/completeness, inherited access, prohibited redeclarations and invalid Partial Moves; separate early-transfer/Abort construction cases. | Base offsets and declaring-receiver projection, stable member mappings, one construction/destruction responsibility per layer. |
-| 26 / 12, 14, 16, 18–22 | Capture a compound/generic value and an external borrow, then invoke through the required Callable mode; separately demonstrate permitted function-value erasure. | Shared/exclusive/consuming calls, nested captures, function items, moved closures, escaping dependencies and erasure without required Copy/Owned evidence. | Environment layout, direct versus common entries, capture destruction, no per-call environment allocation; optional erasure allocation accounted separately. |
-| 27 / 7, 13, 16, 19 | Resolve saved bounds; retain shared/exclusive child views; Move exclusive handles, copy Slice elements into independent Arrays and write through views of `noinit` storage; publish user Places through `Indexable`/`UniqIndexable`. | Empty/full/from-end bounds, one-time evaluation and Abort order; reject conflicting mutation, escaping views, Non-Copy indexed acquisition and shared-path updates; preserve inner element dependencies after copying. | O(1) view formation without element copying or backing allocation; Slice.toArray has independent storage and its specified allocation bound. Place results use the reference ABI; Slice stays shared. |
-| 28 / 13, 18–19, 27 | Implement user Iterable/Iterator protocols, yield owned or externally borrowed elements, then stop early. | Exhaustion, continue/exit/return, correct associated Element/Iterator equality, retained previous borrowed results; reject lending results and missing capability proofs. | Receiver acquisition once, exact yielded/unyielded responsibilities and reverse remaining-element cleanup; no hidden element clone. |
-| 29 / 17–18, 27–28 | Grow, insert, replace and remove Non-Copy Array elements; consume an iterator and stop early. | Empty/pop/clear, directional indices, capacity/no-op paths, live and empty-Slice conflicts, retained borrowed contents, normal argument abandonment and Abort. | Count internal allocations; verify within-capacity/no-op/removal guarantees, reverse current-index cleanup, growth amortization and shrink failure preserving original placement. |
-| 30 / 19, 21 | Compare user Types through Equatable/Comparable and generic calls, including composed Tuple/borrow comparisons. | Missing/incompatible conformance, equality/order agreement, operand order and no Non-Copy consumption; built-in floating comparison versus NaN-reflexive Equatable mapping. | Retained requirement mappings and specialization preserving comparison meaning; no pointer-identity substitute or synthesized user equality. |
-| 31 / 19, 28–30 | Insert/reject/replace/remove Dictionary entries with user-defined equal keys; inspect and iterate insertion order. | Result/Option ownership, duplicate literal diagnostics and runtime duplicates, stored-key preservation, missing-key assignment Abort, lookup/mutation Loans and dependency retention. | Equality effects and invocation order, value-before-key/reverse-insertion cleanup, allocation-free duplicate/lookup/replacement paths, churn reuse and specified management bounds. No public Hash requirement is added. |
-| 32 / 18–19 | Interpolate user/generic values through Utf8Format, retaining the original Non-Copy values and independent resulting strings; reuse a fixed buffer through `$tryWrite`. | UTF-8/NUL/empty text, source-order evaluation, once-only formatting, temporary cleanup, missing conformance, exclusive root acquisition and Abort before later interpolation. | Verified Utf8Format writes, buffer ownership and cleanup, no retained source Loan in the combined result; required allocation bounds and the bounded Console stack path. |
-| 33 / 14, 24–25 | Create an obj, use a base object view, perform specified struct `is` tests/refinement, preserve identity and destroy the complete Dynamic Type. | Sealed payload projection, borrow/reborrow, legal whole-payload updates, invalid view/acquisition/escape; test expression effects and refinement invalidation. | Header/view identity, dynamic destruction before original storage release, unchanged identity across updates. No runtime Contract View, checked-cast spelling or ObjectCallCompatible inference. |
-| 34 / 33 | Create rc and arc values, explicitly clone strong handles, Move them and observe final strong release. | Shared-only access even at count one, no implicit clone, moved-handle rejection, external payload dependencies and separate count-overflow failure probes. | Exact retain/release counts, clone without allocation/payload copy, complete payload destruction once; inspect atomic arc ordering with internal tests. No source concurrency or obj/rc/arc conversion is added. |
-| 35 / 26, 34 | Downgrade, upgrade and expire Weak handles; then demonstrate a cyclic factory's Building-to-Alive transition. | Weak clone/Move, upgrade before publication and after final release, payload dependencies, factory Owned/Callable constraints and failed construction. | Separate payload/object/table lifetimes, allocation-free upgrade/clone, final table release; internally test arc upgrade/final-release races without introducing source threading. |
-| 36 / 19, 22, 24–25, 34 | Initialize static values on first access, distinguish enclosing generic keys and at shutdown destroy static vars, then static lets, each in reverse successful-initialization order. | First write before replacement, unused storage, alias paths to one key, effects/reentry, non-Owned storage rejection; initialization cycles and invalid shutdown access, including a static `let`'s `drop` that reaches a static `var`, in separate Abort inputs. | Per-key state/address/destruction identity, preserved keys across body sharing and Origin erasure, no initialization from untaken paths or effect summaries alone. |
-| 37 / 26–32 | One bounded processing workload using collections, borrowed views, iteration and closures with exact results and cleanup. | Empty input, alternate values, early stop, rejection/Abort paths and representative Loan violations derived from the workload. | Workload allocation/complexity observations and regressions of prerequisites; no new language mechanism introduced to make the application work. |
-| 38 / 24–25, 32–36; 37 as needed | A second application using Properties, inheritance, objects and formatted output with exact lifetime behavior. | Alternate object lifetimes, replacement, empty/expired states, shutdown and relevant rejected accesses. | Cross-feature identity/cleanup/ownership checks and prerequisite regressions. It need not repeat every program-37 collection operation; no new feature family is deferred to this final target. |
-| 39 / 8, 18, 27 | Generic code over `Collection<s/T>` follows a pair Place to its stored target for every admitted `s`: shared under `value or valueborrow`, exclusive under `owner or uniq`. | Reject an exclusive follow whose admitted set includes `ref`, Take through the followed Place and any layer choice that would differ between instantiations; the followed Place depends on the outer borrow Origin whenever `s` is a borrow. | The Access Effect is fixed per admitted set at definition checking; monomorphized bodies select the owner Place or the referent without a runtime test and without allocation. Written after the G21 decision. |
-| 40 / 27–29, 31 | Borrow two distinct elements of an Array exclusively at once through a splitting operation, update both, and observe `None` for equal indices. | Reject two `@uniq` element borrows of one collection, conflicting whole-collection access while a split part is live, and retention of a part after the collection is moved or resized. | Region splitting through `Kimi.Storage` in O(1) without allocation; both child Loans end before the parent is reused. Written after the G22 decision. |
-| 41 / 7, 27, 29 | Select, slice, resolve and format positions and ranges of independently typed boundaries through fixed arrays, Slices, Arrays and generic `P is Position`/`R is PositionRange` code; iterate closed ranges up to a Type's maximum. | Element positions of every integer Type, expected boundary Types, saved and direct keys, Array position entries; reject cross-shape equality, iteration of a `FromEnd` range, arithmetic on positions, floating keys, construction outside syntax and user conformance. | One bounds check per directly applied key, a counted loop for closed ranges, no allocation or target retention by positions and ranges. |
+### Milestone 1
 
-Owning clauses: [Properties](../../docs/spec/11-properties.md),
-[generics and Contracts](../../docs/spec/08-generics-constraints-and-contracts.md),
-[sequences and collections](../../docs/spec/04-arrays-indexing-and-slices.md),
-[interpolation](../../docs/spec/12-expressions.md#1233-interpolation-formatting),
-[comparison and objects](../../docs/spec/13-operators-and-assignment.md),
-[generation/runtime representation](../../docs/impl/21-layout-runtime-and-code-generation.md),
-and [startup/static storage](../../docs/spec/22-core-execution-and-foreign-functions.md).
-These scopes partition work; neither source brevity nor one passing representative
-program certifies the full owning chapter. Package/Mod/test-runner/FFI integration
-remains separate product work, as defined above.
-
-## Milestone 1: Hello World
-
-Expected stdout:
+[Source](Milestone1.kimi) — Hello World, top-level startup, owned string argument.
 
 ```text
 Hello, world!
 ```
 
-Focus: [startup and console output](../../docs/spec/22-core-execution-and-foreign-functions.md).
+### Milestone 2
 
-Milestone 1 uses the existing compiler implementation without source changes.
-With the pinned Windows x64 LLVM toolchain installed, reproduce its full checks:
-
-```powershell
-dotnet build Kimigayo.slnx -c Release --no-restore
-./src/backend/windows-x64/test-milestone1.ps1 -Configuration Release
-```
-
-The script builds this exact file as an implicit single-source Application, then
-tests byte-identical renamed copies at O0/O2 through ordinary project settings.
-It verifies LLVM IR through the normal build pipeline, runs the generated native
-executables and CLI `run`, and checks exact UTF-8 stdout, empty stderr, and exit 0.
-Separate variants cover owned string Move, Unicode, embedded NUL, empty strings,
-and ten rejected inputs. Results and build identities are retained under
-`artifacts/verify/milestone1/<configuration>/<run-id>/`. Debug is also supported. The compiler
-must be built before running the script; it does not build or publish NativeAOT.
-
-The program numbers here are independent of PLAN.md's broader M stages.
-
-## Milestone 2: control flow and Abort
-
-Compute 1 through 10's sum and compare it with `expected`.
+[Source](Milestone2.kimi) — `let`/`var`, `i32`, arithmetic, `while`, `if`/`else`, `$abort`.
 
 ```text
 Sum is 55.
 Done.
 ```
 
-Change `expected` from `55` to `54` to take the Abort branch. The process must
-emit an Abort diagnostic to stderr, exit with code 1, and never print `Done.`.
-Abort is process termination, not a catchable exception.
+### Milestone 3
 
-Focus: [control flow](../../docs/spec/14-control-flow.md) and
-[explicit Abort](../../docs/spec/17-failure-handling.md#173-abort-termination).
-
-Milestone 2 is verified through native execution, including the `expected = 54`
-variant. Reproduce with the pinned Windows x64 toolchain:
-
-```powershell
-dotnet build Kimigayo.slnx -c Release --no-restore
-./src/backend/windows-x64/test-milestone2.ps1 -Configuration Release
-```
-
-The script builds the original file as a single-source Application, checks
-byte-identical renamed copies and separate Abort variants at O0/O2, and verifies
-native execution plus both forms of CLI `run`. Normal output is exactly
-`Sum is 55.\nDone.\n`, stderr is empty, and exit is 0. The Abort variant has empty
-stdout, reports `KIMI_E_ABORT: Unexpected sum` at line 13, column 5 on stderr,
-and exits 1 without printing `Done.`. Six invalid inputs must fail before IR or
-executable publication. Reports and build identities remain under
-`artifacts/verify/milestone2/<configuration>/<run-id>/`; Debug is also supported.
-
-`AbortEmissionTest` additionally generates native fixtures for UTF-8/NUL/empty
-messages, owned strings, shadowing, nested Abort, one-time argument evaluation,
-argument return/overflow, skipped cleanup and Never conditions. After running the
-managed tests, execute them with
-`./src/backend/windows-x64/test-scalars.ps1 -FixturePattern 'Abort*.ll'`.
-
-## Milestone 3: function calls and cleanup
-
-Extract the sum into `sumTo`. Its result is secured before its deferred cleanup;
-the caller receives that result after cleanup completes.
+[Source](Milestone3.kimi) — Explicit `main`, function calls, arguments/results, `return`, `defer`.
 
 ```text
 Leaving sumTo.
@@ -407,38 +228,9 @@ Sum is 55.
 Leaving main.
 ```
 
-Change `sumTo(10)` to `sumTo(-1)` to exercise Abort. Neither deferred message
-runs, even though both defers have been registered: Abort does not unwind.
-Normal runs must not mix explicit `main` with top-level executable statements.
+### Milestone 4
 
-Focus: [functions](../../docs/spec/07-functions-and-callable-values.md) and
-[cleanup and result delivery](../../docs/spec/16-scope-exit-and-destruction.md#162-scope-exit-destruction).
-
-Milestone 3 passes with the existing compiler, including the explicit Abort
-implementation completed for Milestone 2. With the pinned Windows x64 toolchain:
-
-```powershell
-dotnet build Kimigayo.slnx -c Release --no-restore
-./src/backend/windows-x64/test-milestone3.ps1 -Configuration Release
-```
-
-The script builds the original single-source input and byte-identical renamed
-copies at O0/O2. It checks exact stdout/stderr and exit codes through native
-execution and both CLI `run` forms. Additional copies test `sumTo(-1)` (no output
-or deferred cleanup, Abort at 5:9, exit 1), `sumTo(9)` (only `Leaving sumTo.` before
-the caller Aborts at 18:9), and deferred mutation of `total` after securing its
-return value (the original successful output remains unchanged). Ten invalid
-argument/result/startup/defer/ownership inputs must fail before emission.
-All variants are generated separately; the milestone file is never edited.
-Reports and source/compiler/build identities remain in
-`artifacts/verify/milestone3/<configuration>/<run-id>/`; Debug is also supported.
-
-## Milestone 4: struct ownership and destruction
-
-`Counter.init()` initializes its field. `finish(counter)` transfers the entire
-Non-Copy struct into an owned parameter. Move does not rerun `init` or `drop`.
-The parameter is destroyed once when `finish` exits, after its defer; the moved
-source in `main` has no remaining destruction responsibility.
+[Source](Milestone4.kimi) — `struct`, `init`, fields, whole-value Move, owned parameters, `drop`.
 
 ```text
 Counter created.
@@ -448,40 +240,9 @@ Counter destroyed.
 Done.
 ```
 
-As a separate rejection exercise, add `counter.value` after `finish(counter)`:
-reading a moved value must be rejected. A struct with user-defined `drop`
-cannot opt into Copy or permit Partial Move that makes it incomplete.
+### Milestone 5
 
-Focus: [construction](../../docs/spec/06-declarations-and-containers.md#623-constructors),
-[Move](../../docs/spec/15-ownership-and-lifetime-analysis.md#1515-movable-places), and
-[destruction](../../docs/spec/16-scope-exit-and-destruction.md#163-aggregate-destruction-and-drop).
-
-Reproduce Milestone 4 with the pinned Windows x64 toolchain:
-
-```powershell
-dotnet build Kimigayo.slnx -c Release --no-restore
-./src/backend/windows-x64/test-milestone4.ps1 -Configuration Release
-```
-
-The script builds the unchanged single-source Application and byte-identical renamed
-copies at O0/O2, verifies LLVM through the normal pipeline, and compares native and
-both CLI `run` forms against exact output and exit status. Successful runs print
-the five lines above, have empty stderr, and exit 0. A separate loop-limit-9 variant
-prints only `Counter created.`, reports Abort at 14:9 and exits 1 without either
-defer or drop. A destructor-inspection variant verifies the value is still 55
-at destruction. Twelve invalid inputs must fail before IR/executable publication.
-Variants never edit the checked-in program. Reports and build/source/compiler
-identities are under `artifacts/verify/milestone4/<configuration>/<run-id>/`; Debug is supported.
-After running managed tests, related structure fixtures (including string release
-audits) can be executed with
-`./src/backend/windows-x64/test-scalars.ps1 -FixturePattern 'Struct*.ll'`.
-
-## Milestone 5: borrowing, Origins, and Lifetime
-
-`add` mutates through an exclusive borrow without acquiring the Counter's
-ownership. `borrowCounter` returns a shared reference whose validity is bounded
-by its input Origin. `CounterView` stores that reference under its declared
-`source` Origin; creating the view never extends the Counter's lifetime.
+[Source](Milestone5.kimi) — `uniq`/`ref`, returned borrow, `during`, scope and destruction lifetimes.
 
 ```text
 Borrowed sum is 55.
@@ -491,94 +252,18 @@ Counter destroyed.
 Done.
 ```
 
-The `do` scope destroys `view` before mutation resumes. Its drop observes the
-borrowed Counter, keeping that shared Loan active through destruction even after
-the last explicit `view.read()` call. Destroying a shared reference does not
-destroy its referent. After the view's cleanup, another exclusive borrow and
-then a whole-value Move are legal.
+### Milestone 6
 
-Try each of these independently as a compile-time rejection exercise:
-
-- Insert `add(counter@uniq, 1)` at the end of the `do` body: mutation conflicts
-  with the shared Loan still needed by `view`'s destruction.
-- Insert `finish(counter)` at the same location: Move conflicts with that Loan.
-- Replace `borrowCounter`'s body with construction of a local Counter followed
-  by `return local@ref`: a local lifetime cannot satisfy the caller's Origin.
-
-Focus: [Origins](../../docs/spec/15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations),
-[Loans and lifetimes](../../docs/spec/15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting),
-and [destruction lifetime checking](../../docs/spec/15-ownership-and-lifetime-analysis.md#1566-destruction-lifetime-checking).
-
-Milestone 5 is verified through native execution. Reproduce with the pinned
-Windows x64 toolchain:
-
-```powershell
-dotnet build Kimigayo.slnx -c Release --no-restore
-./src/backend/windows-x64/test-milestone5.ps1 -Configuration Release
-```
-
-The script verifies LLVM IR and native linking, then checks native execution and
-both forms of CLI `run`. Its Debug/Release checks cover the
-unchanged input, byte-identical renamed O0/O2 copies, alternate numeric values,
-immediate temporary borrows, two Abort paths and fourteen rejected inputs.
-Normal output is exactly the five lines above, with empty stderr and exit 0.
-The Abort variants exit 1 with the expected diagnostic and no termination cleanup.
-Invalid cases include mutation/Move/replacement while drop needs the borrow,
-temporary escape, shared writes, exclusive aliasing and parent access during a
-required reborrow. Reports and source/compiler/build identities are retained under
-`artifacts/verify/milestone5/<configuration>/<run-id>/`. The script does not run NativeAOT.
-
-## Milestone 6: value-producing control flow
-
-Search the positive integers with a `loop`, skip even values and 3 using
-`continue`, and leave the loop with 7 through a guarded `match` arm. The label
-on the loop makes the result destination explicit. An indented `if` supplies
-its result with `yield`; a labeled `do` supplies its result with named `exit`.
-The `require` failure body exits that `do`, while the final require Aborts.
+[Source](Milestone6.kimi) — Value-producing `loop`, guarded `match`, `continue`, named `exit`, `yield`, `require`.
 
 ```text
 Selected 7.
 Control flow passed.
 ```
 
-Change `yield found * 10` to `yield 0` to take the do's early false exit and
-the final Abort. An unlabeled `exit` would skip the `do` rather than return its
-result. `require` is an ordinary statement, distinct from test-only `$require`.
+### Milestone 7
 
-Focus: [loop results](../../docs/spec/14-control-flow.md#1463-loop),
-[transfer targets](../../docs/spec/14-control-flow.md#1452-target-lookup),
-and [require](../../docs/spec/14-control-flow.md#1411-require-statement).
-
-Milestone 6 uses the existing compiler implementation without compiler source
-changes. Reproduce its complete checks with the pinned Windows x64 toolchain:
-
-```powershell
-dotnet build Kimigayo.slnx -c Release --no-restore
-./src/backend/windows-x64/test-milestone6.ps1 -Configuration Release
-```
-
-The script builds the unchanged input and byte-identical renamed copies, verifies
-LLVM IR and native linking at O0/O2, and runs the executables and both CLI `run`
-forms. Exact normal stdout is the two lines above, with empty stderr and exit 0.
-The alternate search threshold confirms that the literal `3` arm continues before
-the guard and produces 5. Other variants check guard side effects, the if/else
-paths, early require failure, final comparison failure and cleanup through
-continue/yield/named exit. Abort variants check exact diagnostics, exit 1 and
-suppression of pending main cleanup. Twelve invalid inputs cover missing or
-wrong transfer targets, result mismatches (including unreachable results), implicit
-Unit, a normally continuing require failure body, non-bool guards, non-exhaustive
-match and escaped arm-local bindings. Rejections must precede IR/executable
-publication. Reports and source/compiler/build
-identities remain under `artifacts/verify/milestone6/<configuration>/<run-id>/`. Debug is also
-supported. The script does not build or run NativeAOT.
-
-## Milestone 7: arrays and nested iteration
-
-Traverse a fully initialized 3-by-4 fixed array using its `indices` snapshots.
-These are iterable ResolvedRange values with isize indices; iterating `0..3`
-instead yields the `i32` values of a `Range<i32, i32>`, which are also valid element positions. Double each visited cell, skip the
-row beginning with 0, and stop both loops before changing the cell holding 7.
-The accumulated total is `2 + 4 + 6 + 8 + 10 + 12 = 42`.
+[Source](Milestone7.kimi) — Fixed-array inference, borrowed `noinit` writes, nested `for`, cross-loop transfers, Slice reads.
 
 ```text
 Row finished.
@@ -589,52 +274,9 @@ Borrowed row total is 20.
 Inferred arrays and noinit writes verified.
 ```
 
-Normal row completion, `continue to rows`, and `exit to rows` each run the row's
-defer exactly once. The final Slice borrows the first row instead of acquiring
-its elements by ownership. Iteration over the Slice's indices and indexed reads
-Copy its i32 elements for arithmetic. Direct Slice iteration would instead yield
-`ref/i32`; safe references cannot be converted to owned integers with `@i32`.
-Fixed-array storage and Slice creation need no extra heap allocation for element
-storage.
+### Milestone 8
 
-The added inference checks cover nested fixed dimensions through `if`, block-local numeric evidence through a
-labeled `do`, dynamic inner rows under a leaf hole, an empty array and a generic result fitted from `i64`.
-The `noinit` bool array is initialized through scalar exclusive-reference calls before its whole-array Copy.
-
-As separate rejection exercises, change the outer length to 2 without removing
-a row, or attempt to write an element through the Slice. To exercise runtime
-bounds failure, change the final `matrix[2][2]` check to `matrix[3][2]`.
-
-Focus: [arrays](../../docs/spec/04-arrays-indexing-and-slices.md),
-[iteration acquisition](../../docs/spec/14-control-flow.md#1462-iteration-protocol-and-acquisition),
-and [transfer cleanup](../../docs/spec/16-scope-exit-and-destruction.md#162-scope-exit-destruction).
-
-Milestone 7 is verified through native execution. Reproduce with the pinned
-Windows x64 toolchain:
-
-```powershell
-dotnet build Kimigayo.slnx -c Release --no-restore
-./src/backend/windows-x64/test-milestone7.ps1 -Configuration Release
-```
-
-The harness builds the current original source once at O0 and O2 and executes each binary once, checking exact
-stdout/stderr and exit codes. Related functional, rejection and allocation cases live in the xUnit suites, including
-`ArrayAnnotationHoleTest`, `ArrayAnnotationDiagnosticTest` and `NoInitTest`. Successful output is the six lines above,
-stderr is empty and exit is 0. Reports and source/compiler/
-build identities are retained under `artifacts/verify/milestone7/<configuration>/<run-id>/`.
-Debug is supported; NativeAOT is not used.
-
-The current executable subset supports the `indices` ResolvedRange adapter and
-inferred full Slice views with scalar indexed reads. It does not establish the
-broader Slice and Iterator milestones (programs 27 and 28), general user-defined iteration, direct Slice iteration,
-or all specified Kimi sequence APIs. Those remain separate implementation work.
-
-## Milestone 8: nested containers and generic ownership
-
-The Toolkit struct contains two static groups. `Toolkit.Storage` contains
-`Box<T>`, while its sibling `Toolkit.Selection` contains `choose<T>`. These
-declarations add no Toolkit instance or implicit receiver. Both groups and
-structs can contain further declaration containers.
+[Source](Milestone8.kimi) — Groups nested in a struct, generic struct/function, generic Copy/Move acquisition.
 
 ```text
 Chosen item.
@@ -642,27 +284,9 @@ Boxed array total is 12.
 Generic scope finished.
 ```
 
-`choose` acquires both arguments, returns one, and cleans up the other. Neither
-it nor `Box` requires Copy: the generic definitions must handle both Copy and
-Move acquisition. `take` consumes the Box; a string field Moves out, while the
-fixed i32 array field Copies out. The examples exercise both cases. Explicit
-public members make the paths accessible from outside their declaring groups.
+### Milestone 9
 
-As separate rejection exercises, reuse `selected` after `selected.take()`, or
-add a `drop` to Box while retaining its generic extracting `take`: the latter
-cannot permit a Non-Copy field Move that makes a destructor-bearing Box incomplete.
-
-Focus: [nested containers](../../docs/spec/06-declarations-and-containers.md#611-root-and-nested-containers),
-[generic checking](../../docs/spec/08-generics-constraints-and-contracts.md#810-generic-body-checking-and-deferred-obligations),
-and [partial Move](../../docs/spec/15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move).
-
-## Milestone 9: a generic search pipeline
-
-`Batch<T>` owns initialized storage and lends an explicitly typed `ref/T` tied
-to its receiver. `find<length N, T>` borrows a fixed array, calls a predicate,
-and returns a generic enum containing either an index/value pair or no match.
-The Copy constraint permits reading a T from shared storage, supplying it to
-the callback, and using it again in the successful result.
+[Source](Milestone9.kimi) — Length/type parameters, Copy constraint, callbacks/capture, generic enum, borrowed storage.
 
 ```text
 Found 6 at index 3.
@@ -671,148 +295,26 @@ Search finished.
 Batch destroyed.
 ```
 
-The first call uses an anonymous function explicitly capturing the Copy target.
-The second instantiates N as zero, demonstrating safe exhaustion without any
-element access. The result match uses payload binding and a guard, followed by
-an unguarded Found arm and Missing arm so that it remains exhaustive. The defer
-runs before Batch destruction. For the i32 instantiations shown, returned values
-retain no borrow of Batch; in general, a Copy T can itself carry Origin dependencies.
+### Milestone 10
 
-The callback avoids assuming an undeclared comparison capability on arbitrary T.
-`@ref/T` in `view` explicitly borrows the stored slot, preserving its layer even
-if another instantiation supplies a reference Type as T.
-
-As separate rejection exercises, remove `T is Copy`, use a mismatched explicit
-length in the first call, or remove the unguarded Found fallback. The guarded
-Found arm alone does not prove coverage of every Found value.
-
-Focus: [function length parameters](../../docs/spec/04-arrays-indexing-and-slices.md#44-function-length-parameters),
-[function expressions](../../docs/spec/07-functions-and-callable-values.md#76-function-expressions),
-[enum results](../../docs/spec/06-declarations-and-containers.md#63-enums), and
-[Origins](../../docs/spec/15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision).
-
-Reproduce the Milestone 9 integration checks with the pinned Windows x64 toolchain:
-
-```powershell
-dotnet build Kimigayo.slnx -c Release --no-restore
-./src/backend/windows-x64/test-milestone9.ps1 -Configuration Release
-```
-
-The script verifies the unchanged program and byte-identical renamed O0/O2 copies,
-then executes each native binary and both CLI `run` forms. It checks exact output,
-empty stderr and exit 0, including defer-before-destructor ordering. Variants cover
-first/last/singleton matches, absence, nonempty exhaustion, i64 instantiation and
-Abort without cleanup. Eight invalid programs check payload/callback Types, arity,
-Copy constraints, lengths, coverage, moved callbacks and local borrow escape.
-Reports and build identities are
-retained under `artifacts/verify/milestone9/<configuration>/<run-id>/`. Debug is also supported;
-the script does not build or run NativeAOT.
-
-## Milestone 10: patterns inside result-producing control flow
-
-A fixed array contains generic enum commands whose Data payload is a Tuple.
-The guarded `.Data((let value, true))` arm accepts only positive enabled values;
-an unguarded Data arm covers every remaining payload. Skip and rejected Data
-commands continue the inner for. Stop exits the labeled outer loop with the
-running total, so the trailing 100 is never processed. Exhaustion has its own
-result exit. Finally an indented if combines require with yield.
+[Source](Milestone10.kimi) — Generic enum/Tuple patterns, guards, value-producing loop/match/if, cross-loop transfers.
 
 ```text
 Accepted total is 12.
 Pattern run finished.
 ```
 
-The conditional Copy declaration makes the command array Copy for this Tuple
-instantiation. As separate exercises, remove the unguarded Data arm to produce
-a coverage error, or replace the array's Stop input with Skip to reach 112 and
-the final Abort.
-On Abort the main defer does not run.
+### Milestone 11
 
-Focus: [patterns and matching](../../docs/spec/14-control-flow.md#148-match-expressions-and-patterns),
-[transfer targets](../../docs/spec/14-control-flow.md#1452-target-lookup), and
-[conditional conformance](../../docs/spec/08-generics-constraints-and-contracts.md#848-conditional-conformance).
-
-Reproduce the complete program checks with the pinned Windows x64 toolchain:
-
-```powershell
-dotnet build Kimigayo.slnx -c Release --no-restore
-./src/backend/windows-x64/test-milestone10.ps1 -Configuration Release
-```
-
-The script covers the unchanged source,
-byte-identical renamed O0/O2 copies, alternate values, exhaustion, empty input,
-immediate Stop, guard cleanup, Abort, and nine invalid inputs. It checks LLVM
-verification, native linking, exact UTF-8 stdout/stderr and exit status through
-direct execution and both CLI `run` forms. Normal output is the two lines above,
-stderr is empty and exit is 0. Abort exits 1 without the main defer. Invalid
-payload/pattern shapes, duplicate names, candidate assignment, wrong guard Types,
-missing Cases/targets, uninitialized storage and escaped bindings fail before
-IR or executable publication. Reports with source/compiler/build identities are
-retained under `artifacts/verify/milestone10/<configuration>/<run-id>/`. Debug is also supported;
-the script does not build or run NativeAOT. This independent program's completion
-does not imply completion of program 9 or of broader compiler plan stages.
-
-## Milestone 11: generic sharing and implementation selection
-
-The same total/forward definitions process i32, i64, and bool arrays, with lengths
-3 and 2. Borrowed element access needs no Copy constraint or per-element owned
-temporary. The default weight reads `Weights.defaultWeight`, an immutable static
-i32 stored Property initialized to 1; the explicit i32 specialization returns 2.
-Group members are inherently static; a `static` modifier is not valid syntax.
-The one group slot is shared by all calls and is not instantiated per generic
-Type or length. The generic forwarding call must preserve specialization selection.
-
-This static-member step uses only a literal initializer and Copy reads, with no
-mutation, user-defined cleanup, or initialization dependencies. It still obeys
-[per-slot first-access initialization](../../docs/spec/22-core-execution-and-foreign-functions.md#2223-os-entry-static-initialization-and-shutdown);
-constant folding may remove machinery only when it preserves the specified
-behavior. It does not establish coverage of general static initialization.
+[Source](Milestone11.kimi) — Generic instantiations, immutable static member, forwarding and explicit specialization selection.
 
 ```text
 Generic weights are 6, 3, 2.
 ```
 
-This is a code-generation target, not a promise that the source forces one
-machine-code body. The compiler establishes a correct baseline sharing plan and
-may apply bounded automatic specialization or other permitted optimization.
-The result must stay identical across sharing/specialization budget choices;
-an automatic specialization budget of zero must still select the explicit i32
-implementation. Ordinary output alone cannot prove physical code sharing.
-Generation verification inspects emitted body/context identities and selected
-call targets in addition to execution, before permitted inlining or elimination.
+### Milestone 12
 
-As a source exercise, remove the explicit specialization and change the expected
-Tuple to `(3, 3, 2)`. Do not add a specialization directive: `specialize func`
-selects a source implementation, while baseline sharing is a compiler policy.
-
-Focus: [full specialization](../../docs/spec/08-generics-constraints-and-contracts.md#88-explicit-full-function-specialization)
-and [generic code generation](../../docs/impl/21-layout-runtime-and-code-generation.md#213-generic-code-generation).
-
-Reproduce the current executable integration with the pinned Windows x64 toolchain:
-
-```powershell
-dotnet build Kimigayo.slnx -c Release --no-restore
-./src/backend/windows-x64/test-milestone11.ps1 -Configuration Release
-```
-
-The script checks the unchanged original and byte-identical renamed O0/O2 copies,
-exact stdout/stderr and exit status through native execution and both CLI run
-forms. Separate variants change default/specialized weights, the specialization
-key, array lengths and identifiers; ten invalid inputs must fail before emission.
-Debug is also supported. Reports and build/source/compiler hashes are retained
-under `artifacts/verify/milestone11/<configuration>/<run-id>/`. This literal-only static path
-does not implement effectful initialization or mutable static storage. Closed
-Type specializations without inherited defaults, Constraints or explicit Origin
-binders are supported here; broader specialization forms remain explicit limits.
-
-## Milestone 12: capture acquisition and call requirements
-
-`next` owns a mutable snapshot of count; two exclusive calls produce 11 and 13
-while the outer count stays zero. `applyTwice` expresses the receiver requirement
-with `Callable<uniq, ...>` and accepts the concrete closure without erasing it.
-The nested factory copies offset through both capture environments. Its returned
-Shared, Owned, Copy closure can also convert to a common function value while
-the concrete source remains usable. The common value itself is Non-Copy.
+[Source](Milestone12.kimi) — Mutable/nested/Move captures, exclusive Callable, function values and shared calls with an owned capture.
 
 ```text
 Stateful result is 13.
@@ -822,24 +324,9 @@ Captured message.
 Closure run finished.
 ```
 
-The final closure explicitly Moves its string capture and consumes it during
-the call. As separate rejection exercises, call send twice, change next's
-binding to let while keeping its exclusive call, or convert next to a common
-`(i32) -> i32` value: common function values admit only Shared call requirements.
-Removing offset from the outer factory's explicit capture list must also fail;
-the inner closure cannot bypass the enclosing capture boundary.
+### Milestone 13
 
-Focus: [captures and calls](../../docs/spec/07-functions-and-callable-values.md#76-function-expressions),
-[Callable constraints](../../docs/spec/08-generics-constraints-and-contracts.md#86-callable-constraints),
-and [closure generation](../../docs/impl/21-layout-runtime-and-code-generation.md#2125-concrete-closures-and-common-function-values).
-
-## Milestone 13: a Slice-backed Iterator
-
-Cursor implements the Kimi Iterator Contract and explicitly binds its Element
-to `ref/T during source`. It stores a borrowed Slice and a position; it owns no
-Sample elements. Its next method yields a borrow of external backing storage,
-not of the Cursor or next's exclusive receiver. This makes it non-lending:
-the first reference remains valid while later calls advance the iterator.
+[Source](Milestone13.kimi) — Generic Iterator conformance, Slice storage, external Origins, retained element borrows.
 
 ```text
 Even sample total is 6; first is still 1.
@@ -847,29 +334,9 @@ Iterator remains exhausted.
 Middle slice total is 5.
 ```
 
-The first sample is secured separately, then Option matching and require/continue
-select 2 and 4. Repeated next calls after exhaustion return None. The final for
-uses Slice's built-in Iterable/Iterator conformance over the half-open range
-`1..3`, yielding shared Sample references for values 2 and 3. Field reads Copy
-i32 values; no conversion from a safe scalar reference to an owned integer is
-assumed. The fixed backing array, Slice, and Cursor need no separate heap buffer.
+### Milestone 14
 
-As separate rejection exercises, declare the associated Element as i32 without
-changing next's result, or Move samples while first still has a later use.
-Changing the next result Origin to self would break the advertised external
-Element contract and the retained-reference use case.
-
-Focus: [Kimi iteration contracts](../../docs/spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations),
-[associated Types](../../docs/spec/08-generics-constraints-and-contracts.md#843-associated-types),
-and [Slice iteration](../../docs/spec/04-arrays-indexing-and-slices.md#467-slice-iteration-and-nested-origins).
-
-## Milestone 14: an object-backed processing pipeline
-
-The generic run function uses a Slice's iterator and an exclusive Callable,
-stopping after three accepted jobs or exhaustion. Its callback rejects -1,
-adds 2, 4, and 6, and stops before 100. Kimi.Intrinsics.makeObj acquires a fully initialized
-Accumulator into a new exclusive object without repeating construction.
-Its methods read or update fields while preserving whole-object completeness.
+[Source](Milestone14.kimi) — Generic Slice pipeline, Iterator, exclusive borrowed capture, obj creation/Move/destruction.
 
 ```text
 Accepted three jobs.
@@ -879,48 +346,9 @@ Accumulator destroyed.
 Pipeline finished.
 ```
 
-An explicit uniq local projected from the Sealed Accumulator payload is Moved into the callback's environment using an
-ordinary capture. The callback remains concrete: its external borrow and
-Exclusive call requirement cannot be erased into a common function value.
-The do scope ends its Loan before the owning handle is read or Moved again.
-Whole-value exchange then installs fresh payload contents without changing object
-Identity. The returned old contents retain their own destruction responsibility;
-the program restores the total before they are destroyed. A consuming closure
-then transfers that handle to finish; normal parameter
-cleanup destroys the payload once and releases its object storage. Neither
-object borrowing nor moving the handle creates another object.
+### Milestone 15
 
-As separate rejection exercises, read accumulator inside the do before the
-callback's final use, reuse accumulator after capture into complete, or call
-complete twice. Change the acceptance limit from 3 to 4 to process 100 as well:
-the accepted-count check then Aborts and skips ordinary cleanup.
-
-Focus: [object creation](../../docs/spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing),
-[object calls](../../docs/spec/12-expressions.md#1243-object-member-calls),
-[Callable contracts](../../docs/spec/08-generics-constraints-and-contracts.md#86-callable-constraints),
-and [destruction](../../docs/spec/16-scope-exit-and-destruction.md#163-aggregate-destruction-and-drop).
-
-Verified program-14 reproduction (build the selected compiler configuration first):
-
-```powershell
-./src/backend/windows-x64/test-milestone14.ps1 -Configuration Release -ToolchainRoot ./toolchain
-```
-
-Debug is also supported. The script checks the unchanged target, O0/O2 copies,
-input/name/limit variants and rejected ownership/call variants. It writes reports
-under `artifacts/verify/milestone14/<configuration>/<run-id>/` and does not run NativeAOT.
-[STATUS](../../docs/STATUS.md) and [execution evidence](../../docs/dev/PLAN_HISTORY.md#program14-completion)
-record the verified source state and remaining object/generic boundaries.
-
-## Milestone 15: ownership across control-flow joins
-
-Both calls exercise the same function with different initialization branches.
-The first and third iterations select different shared Loan sources, then resume
-mutation of current after the selected reference's last use. The second iteration
-Moves current into consume, repairs it, and continues. The loop must reach a
-consistent usable state on both backedges; cleanup still runs on continue.
-
-Verified stdout:
+[Source](Milestone15.kimi) — Initialization/Move/Loan joins, loop backedges, repair before continue.
 
 ```text
 Iteration finished.
@@ -940,42 +368,9 @@ Item destroyed.
 Ownership joins finished.
 ```
 
-For each call, totals are initial + 30 (40 and 42), and the repaired current ends
-at 21. Exactly three Items are destroyed: the consumed original, fallback, then
-the repaired current. Initialization on mutually exclusive paths must not cause
-double destruction or an uninitialized read.
+### Milestone 16
 
-Separate rejection exercises:
-
-- Remove the else initialization: the following current.value read is invalid.
-- Remove repair before continue: a later iteration/final read can see Moved storage.
-- Read current immediately after consume and before repair.
-- Inside the selected scope, mutate current before the selected.value read;
-  one incoming Loan can still refer to current.
-
-`src/backend/windows-x64/test-milestone15.ps1 -Configuration Release` reproduces
-the harness checks: unchanged source, byte-identical renamed O0/O2 copies, renamed symbols,
-different values, reversed selection, zero/five iterations, distinguishable
-destructor messages and mutation after the last borrow use, plus five invalid
-variants at both O0/O2. Normal runs check exact stdout, empty stderr and exit 0
-through direct execution and both CLI run forms. Builds verify LLVM before
-linking. Debug is also supported; NativeAOT is not run. Source/compiler hashes
-and reports are saved under `artifacts/verify/milestone15/<configuration>/<run-id>/`.
-
-Focus: [initialization and Move](../../docs/spec/15-ownership-and-lifetime-analysis.md#151-initialization-and-consume-analysis),
-[Loan conflicts](../../docs/spec/15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts),
-and [scope-exit cleanup](../../docs/spec/16-scope-exit-and-destruction.md#162-scope-exit-destruction).
-This target does not alone close arbitrary CFG, divergent cleanup or effect analysis.
-
-## Milestone 16: forwarding external Origins
-
-Pair stores two independently named Origins. choose returns an enum whose stored
-reference has their intersection, preserving both input dependencies. Moving and
-matching that enum forwards the external reference through a named exit from do.
-The Pair and enum Subject end before the selected reference is used; neither
-wrapper's storage is its referent. Both selection paths execute.
-
-Expected stdout (not execution evidence):
+[Source](Milestone16.kimi) — Multiple external Origins, aggregate/enum forwarding, intersection, exclusive reborrow.
 
 ```text
 External borrow survived.
@@ -985,42 +380,9 @@ Both sources updated.
 Origin forwarding finished.
 ```
 
-The selected values are 10 and 20 in the two calls. Once the retained borrow is
-finished, add exclusively reborrows each source, then resumes access through the
-parent parameter. Final values are 13 and 24. Copying the shared reference or
-destroying its wrappers never copies or destroys either Cell.
+### Milestone 17
 
-Separate rejection exercises:
-
-- Replace choose's result Origin with static: the input sources cannot prove it.
-- Declare only self.left as the result Origin while keeping the right-source arm;
-  no outlives relation between the two abstract Origins is declared.
-- Construct first inside the result-producing do and attempt to return its borrow
-  to the existing outer use.
-- Mutate either source before selected's final read. The declared intersection
-  does not allow dropping the other input dependency based on the selected arm.
-- In add, access target between the child declaration and its final read/write.
-
-Future verification should add named Origin arguments, explicit outlives bounds,
-and a Missing-path variant handled without Abort. Those variants extend coverage;
-this program alone does not certify the full Origin solver, variance, recursive
-dependencies or universal-region checking.
-
-Focus: [Origin intersections](../../docs/spec/15-ownership-and-lifetime-analysis.md#1522-ordering-and-intersection),
-[abstract Origins](../../docs/spec/15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations),
-[call propagation](../../docs/spec/15-ownership-and-lifetime-analysis.md#1564-calls-and-origin-propagation),
-and [reborrowing](../../docs/spec/15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting).
-
-## Milestone 17: repair, replacement and ordered cleanup
-
-The fixed array has no user drop. Moving its complete Resource element is
-permitted even though Resource itself has drop; moving one of Resource's
-Non-Copy fields would be a different operation. Repair restores array completeness.
-Exchange transfers Resource 2 into old without destroying it, swap transfers
-Resources 3/4 without destruction, and replace destroys Resource 3 at its target.
-Literal indices 0 and 1 provide disjoint static paths for the simultaneous Loans.
-
-Verified stdout (Debug/Release compilers, O0/O2):
+[Source](Milestone17.kimi) — Partial Move repair, element exchange/swap/replace, secured results and destruction order.
 
 ```text
 Exchange scope finished.
@@ -1034,55 +396,9 @@ Resource 4 destroyed.
 Cleanup finished.
 ```
 
-The returned array contains Resources 4 and 5. Return secures it before the
-prepare defer and extracted's cleanup; items has no remaining destruction
-responsibility. Caller cleanup destroys array elements in reverse order. Each
-of the five constructed Resources is destroyed exactly once.
+### Milestone 18
 
-Separate rejection exercises:
-
-- Remove items[0]'s repair: returning the incomplete array is forbidden.
-- Read items[0] between extraction and repair, or read old after its do ends.
-- Change swap's second target to items[0]: the exclusive targets overlap.
-- Pass items[1] itself as exchange's later replacement argument: the established
-  target Loan conflicts with acquiring that value.
-- Add a defer that reads items before return: deferred execution would read the
-  source after return has Moved it.
-
-The [dedicated tests](../xUnitTest/Tests/StaticElementUpdateTest.cs) also cover
-incomplete-array cleanup, early return, nested paths, retained disjoint borrows,
-replacement destruction that Aborts, and serialized reload. Resource identities
-and exact output detect duplicate, missing or reordered destruction. Updates use
-the existing inline storage and transfer instructions. Generic storage, arbitrary
-borrowed-content dependencies and general interprocedural effects remain broader
-requirements.
-
-```powershell
-./src/backend/windows-x64/test-milestone17.ps1 -Configuration Release
-./src/backend/windows-x64/test-milestone17.ps1 -Configuration Debug
-```
-
-Each run checks the unchanged target, byte-identical O0/O2 renamed copies,
-name/value/implicit/typed/literal-index variants, and nine rejection cases at both
-optimization levels. Reports include compiler/source hashes, exact output and
-exit checks; [the completion record](../../docs/dev/PLAN_HISTORY.md#program17-completion)
-describes the managed and native regression scope. NativeAOT is not used.
-
-Focus: [partial Move](../../docs/spec/15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move),
-[whole-value updates](../../docs/spec/15-ownership-and-lifetime-analysis.md#157-whole-value-updates),
-[secured results](../../docs/spec/16-scope-exit-and-destruction.md#1622-results-and-transfers),
-and [aggregate cleanup](../../docs/spec/16-scope-exit-and-destruction.md#1632-field-cleanup).
-
-## Milestone 18: generic composite values and destruction
-
-`choose` accepts two temporary Boxes containing Non-Copy Resource arrays. It
-secures the selected result before destroying the unselected parameter. `take`,
-`relay` and `package` then forward the selected array through a generic field,
-local, result and enum payload. None of these transfers duplicates ownership.
-The same `relay` also accepts a nested owned-string Tuple and a Copy array; the
-Copy source remains usable. No generic function assumes that arbitrary T is Copy.
-
-Verified stdout (exit 0, empty stderr, Debug/Release O0/O2):
+[Source](Milestone18.kimi) — Generic composite/Non-Copy arguments, results, temporaries, Copy acquisition and destruction.
 
 ```text
 Resource 4 destroyed.
@@ -1097,51 +413,23 @@ Generic result secured.
 Generic values finished.
 ```
 
-Resources 3/4 are destroyed inside choose, and 1/2 after the receiving match arm.
-Each array destroys in reverse element order. The relay defer executes after
-securing its result; its moved local/parameter must not destroy the result again.
+### Milestone 19
 
-Separate rejection exercises:
+[Source](Milestone19.kimi) — Concrete generic entries, compound layouts, specialization forwarding and distinct destruction operations.
 
-- Use selected after selected.take(), or delivered after its consuming match.
-- Return `(value, value)` from an unconstrained generic duplicate function:
-  selected Copy instantiations cannot justify a universally invalid definition.
-- Add a Box drop while retaining extraction of its Non-Copy field.
-- Add a deferred read of pending in relay: the return may Move that storage.
-
-The [native harness](../../src/backend/windows-x64/test-milestone18.ps1) checks the
-unchanged target, byte-identical renamed O0/O2 copies, renamed declarations,
-changed ids, the second Box, early return and unused Delivery cleanup. It also
-rejects seven invalid variants at both optimization levels.
-
-```powershell
-./src/backend/windows-x64/test-milestone18.ps1 -Configuration Debug
-./src/backend/windows-x64/test-milestone18.ps1 -Configuration Release
+```text
+Compound layouts preserved.
+Specialization preserved.
+Red received.
+Red destroyed.
+Blue received.
+Blue destroyed.
+Generic generation finished.
 ```
 
-Companion tests cover complete Resource/array/struct payloads, nested and partial
-bindings, inactive Cases, zero-size and zero-length arrays, aborting cleanup,
-equal-size Types with distinct destructors, invalid universal ownership, corrupt
-plans and serialized reload. The canonical IR retains five shared bodies and
-seven concrete entries with fixed scratch reservations. General shared
-ABI/frame/resource guarantees remain program 22's broader acceptance criteria;
-program 18 does not require later dedicated features.
+### Milestone 20
 
-Focus: [generic body checking](../../docs/spec/08-generics-constraints-and-contracts.md#810-generic-body-checking-and-deferred-obligations),
-[generic generation](../../docs/impl/21-layout-runtime-and-code-generation.md#213-generic-code-generation),
-and [secured results and cleanup](../../docs/spec/16-scope-exit-and-destruction.md#1622-results-and-transfers).
-
-## Milestone 19: Contracts, associated Types and conditional conformance
-
-Source requires a Copy Core Element and a shared read operation. NumberSource
-and FlagSource explicitly bind that associated Type. Wrapper has unconditional
-storage but fulfills Source only when its stored T does. The conditional block
-forwards both the associated identity and the verified requirement call.
-readTwice returns two associated values; readNumber additionally requires their
-Type to equal i32. Nested Wrappers must compose the same evidence. Wrapper<i32>
-is legal storage without gaining Source merely because a read member exists.
-
-Verified stdout (Debug/Release, native O0/O2; exit 0, empty stderr):
+[Source](Milestone20.kimi) — Contract requirements, associated Types/equalities, conditional and nested conformance.
 
 ```text
 Associated numbers are 21, 21.
@@ -1149,62 +437,9 @@ Associated flags are true, true.
 Contract forwarding finished.
 ```
 
-Separate rejection exercises:
+### Milestone 21
 
-- Call readNumber(flag@ref): bool does not satisfy the i32 equality.
-- Call readTwice(storageOnly@ref): the conditional Source premise is absent.
-- Remove a concrete associated-Type specification: method results do not infer it.
-- Change NumberSource.read to an exclusive receiver: it cannot implement a
-  requirement callable through a shared receiver.
-- Remove `T is Source` from readTwice: favorable concrete callers cannot provide
-  missing definition-side evidence.
-
-Verification uses another numeric value, renamed Types/members, false Boolean
-values, a deeper Wrapper and observable read effects. The harness also rejects
-contradictory associated bindings and duplicate conformances, in addition to the
-five cases above, before publishing LLVM or executable artifacts.
-
-```powershell
-./src/backend/windows-x64/test-milestone19.ps1 -Configuration Debug
-./src/backend/windows-x64/test-milestone19.ps1 -Configuration Release
-```
-
-Each configuration checks the canonical single-source O2 build/run, six
-O0/O2 variants through native/executable/input run modes, and seven O0/O2 rejection
-cases. `AssociatedForwardingTest` checks projection normalization, retained
-requirement/member identities, ownership, invalid evidence, and concrete tuple
-results. The focused associated-projection/proof warm Binding test allocates zero
-bytes; this is not a whole-program allocation guarantee.
-
-Associated identities normalize after container substitution, including nested
-conditional conformances. Requirement calls use verified mappings and concrete
-per-substitution bodies; they do not perform caller-side member search or runtime
-Contract dispatch. Current native evidence covers the canonical scalar results
-and a constructed Copy tuple result. Whole aggregate-field acquisition through a
-shared receiver still diagnoses unsupported ownership; general bound/refinement
-composition retains the limits in STATUS. Existing Binding tests cover broader
-refinement/conditional-proof validity without establishing general native support.
-Contract Property operations belong to program 24; complete generation migration
-and resource limits belong to program 22.
-
-Debug/Release full suites pass 11,342 tests each; all existing milestone harnesses
-(1–12 and 14–19) pass in Release, and program 13 passes exact-source O0/O2 probes.
-Reports and identities are linked from the [completion record](../../docs/dev/PLAN_HISTORY.md#program19-completion).
-No NativeAOT verification was run.
-
-Focus: [associated Types](../../docs/spec/08-generics-constraints-and-contracts.md#843-associated-types),
-[implementation matching](../../docs/spec/08-generics-constraints-and-contracts.md#845-implementation-matching),
-and [conditional conformance](../../docs/spec/08-generics-constraints-and-contracts.md#848-conditional-conformance).
-
-## Milestone 20: inference and ordinary defaults
-
-pick infers length, element Type and source Origin from a borrowed fixed array.
-There is no specialization in this file. An omitted index evaluates defaultIndex
-exactly once; an explicit index suppresses it. forward propagates length, Type
-and Origin through a dependent call. A second element Type/length and a shorter
-local lifetime exercise independent inference inputs without implementation selection.
-
-Expected stdout (verified natively at O0/O2 by `src/backend/windows-x64/test-milestone20.ps1`):
+[Source](Milestone21.kimi) — Type/length/Origin inference, ordinary defaults and generic forwarding.
 
 ```text
 Default index evaluated.
@@ -1219,393 +454,22 @@ Local selection is 7.
 Inference and defaults finished.
 ```
 
-Separate rejection exercises:
+### Milestone 22
 
-- Supply `<2, i32>` with numbers: the fixed-array lengths disagree.
-- Supply only `<3>`: partial generic argument lists are not introduced.
-- Return the borrow of local outside its do scope, then use it.
-- Change pick's result Origin to static: its input supplies no such guarantee.
-- Add `func make<T>(value: T = $abort("No value")) -> T => value` and call
-  `make()` without a result annotation: defaults cannot infer an unbound T.
-
-Companion verification covers conflicting Type/length/Semantics evidence,
-expected-result inference, Origin bounds/intersections and ambiguous inference;
-defaults inspected at declaration time; receiver/supplied/default evaluation order;
-prepared argument slots and cleanup when normal transfer abandons a call. Keep
-owned/default-result dependencies and rejected Move/retention cases in focused
-fixtures. Explicit specialization belongs to 21; generation budgets belong to 22.
-The canonical program does not attempt to close the entire inference/default family.
-
-Focus: [inference](../../docs/spec/10-overload-resolution-and-inference.md#108-generic-argument-inference),
-[Origin inference](../../docs/spec/15-ownership-and-lifetime-analysis.md#1536-limited-origin-inference),
-and [argument preparation](../../docs/spec/07-functions-and-callable-values.md#72-parameters-and-defaults).
-
-## Milestone 21: explicit full specialization and inherited contracts
-
-All calls supply explicit Type/length arguments to separate selection from
-program 20's inference target. Selected references are read as their Copy
-referents (SPEC §3.3); prefix `*` belongs to raw pointers only. The complete `<3, i32>` specialization reverses
-indexing. It inherits the original universal source Origin and default contract,
-without redeclaring an Origin binder or optional marker. Both the direct call
-and generic forward must retain that selection. A two-element i64 array selects
-the ordinary body; a shorter-lived i32 array uses the same specialization under
-another valid Origin binding. Omitted index evaluation still belongs to the
-original declaration; supplying it skips that evaluation.
-
-Expected stdout (verified natively at O0/O2 by `src/backend/windows-x64/test-milestone21.ps1`):
+[Source](Milestone22.kimi) — Full length/Type specialization, inherited defaults/Origins and preserved implementation selection.
 
 ```text
-Default index evaluated.
-Specialized selection is 30.
+${default}Specialized selection is 30.
 Explicit selection is 10.
-Default index evaluated.
-Forwarded selection is 30.
-Default index evaluated.
-Ordinary selection is 4.
-Default index evaluated.
-Local selection is 9.
+${default}Forwarded selection is 30.
+${default}Ordinary selection is 4.
+${default}Local selection is 9.
 Specialization finished.
 ```
 
-Separate rejection exercises:
+### Milestone 23
 
-- Redeclare `index?` or a default on the specialization, or add an Origin binder.
-- Change its result Origin to static or otherwise narrow the inherited contract.
-- Mismatch its result Type, labels, parameter structure or receiver contract.
-- Declare a partial specialization, duplicate normalized selection key or an
-  ambiguous original target. Invalid ordinary generic bodies remain invalid.
-
-Companion verification covers constrained originals, receiver specializations,
-closed compound/pair arguments and inherited defaults/Origins, with positive and
-negative contract matching. Remove the specialization and adjust expected values
-to 10/30/10/4/7; supply every index to suppress default messages; vary source
-lifetimes without changing selection. Inspect direct and forwarded selected
-Member Identities. Program 22 separately checks concrete entry ABI and finite
-generation limits; this program introduces no partial/conditional specialization.
-
-Focus: [full specialization](../../docs/spec/08-generics-constraints-and-contracts.md#88-explicit-full-function-specialization)
-and [implementation selection and generation](../../docs/impl/21-layout-runtime-and-code-generation.md#213-generic-code-generation).
-
-## Milestone 22: concrete generic generation
-
-`forward` calls `relay` with a dependent Type argument. A fixed array and a nested
-Tuple exercise different compound layouts; the original Copy array remains usable.
-Direct and forwarded `i32` calls select the explicit specialization. `Red` and
-`Blue` have identical field layouts but different destruction operations, each
-performed once after transfer through both generic entries.
-
-Expected stdout (verified natively at O0/O2 by `src/backend/windows-x64/test-milestone22.ps1`):
-
-```text
-Compound layouts preserved.
-Specialization preserved.
-Red received.
-Red destroyed.
-Blue received.
-Blue destroyed.
-Generic generation finished.
-```
-
-Separate checks: vary layouts and array lengths; remove the specialization and
-expect 10/20; reuse a moved Non-Copy argument (reject); exercise finite recursive
-calls with an unchanged key, growing `T -> Box<T>` substitutions, excessive finite
-substitution sets and invalid infinitely recursive inline layouts. Resource limits
-must diagnose rather than hang, crash or publish incomplete artifacts.
-
-Native stdout does not prove monomorphization. Companion implementation checks
-must inspect concrete entries and call signatures, selected member identities,
-per-substitution Type operations and ordinary frames, and confirm removal of the
-transitional shared fallback. Allocation measurements belong to implementation
-completion. Shared contexts, scratch frames and optional sharing-budget tests are
-deferred, not acceptance conditions of this initial profile.
-
-Focus: [generation policy](../../docs/impl/21-layout-runtime-and-code-generation.md#2131-policy-and-sharing-conditions),
-[finite generation](../../docs/impl/21-layout-runtime-and-code-generation.md#2135-generation-limits-and-code-merging),
-and [calls and frames](../../docs/impl/21-layout-runtime-and-code-generation.md#214-checked-lowering-and-internal-abi).
-
-## Milestone 23: basic Copy Properties
-
-Construction first-places `raw` and `level` without accessor calls. Standard
-`raw` access is direct. Assigning to the custom `level` evaluates the RHS before
-the receiver, once each, then calls the setter without a getter. One explicit
-read invokes the custom getter. The computed `doubled` has no storage and updates
-`raw` through its setter; its getter is evaluated once.
-
-Verified stdout (unchanged source, Debug/Release and O0/O2; exit 0, empty stderr):
-
-```text
-Standard access finished.
-Input evaluated.
-Receiver evaluated.
-Custom set.
-Custom get.
-Computed set.
-Computed get.
-Copy properties finished.
-```
-
-Separate checks: restrict `raw`'s setter and reject an external write/exclusive
-borrow while allowing a read; vary values; use a computed setter with a different
-input Type; check compound assignment's receiver/getter/RHS/setter order. Reject
-writes and exclusive borrows into owned getter-result temporaries, including
-nested projections. Verify direct standard operations do not synthesize accessor
-calls and custom operations do not expose backing storage.
-
-`src/backend/windows-x64/test-milestone23.ps1 -Configuration Release` reproduces
-67 checks: 39 native/CLI executions and 28 diagnostic rejections. Debug also
-passes. `CopyPropertyEmissionTest` adds 41 focused cases, including 21 fixtures
-verified and executed at O0/O2, abrupt RHS evaluation, prefix/postfix updates,
-getter-result projection/borrowing, and direct Move permissions. Completed
-Debug/Release full suites each pass 12,440 tests. Evidence is in
-`artifacts/verify/20260924-111727-097-session-p23-completion`; the earlier-program
-regression portion was cancelled at the user's request, and target verification
-finished separately. No later-program implementation was started.
-
-Focus: [standard operations](../../docs/spec/11-properties.md#111-standard-access-and-acquisition),
-[accessor functions](../../docs/spec/11-properties.md#112-accessor-functions),
-[construction](../../docs/spec/11-properties.md#1131-construction-and-destruction),
-and [assignment](../../docs/spec/13-operators-and-assignment.md#137-assignment).
-
-## Milestone 24: ownership-bearing Properties
-
-`Holder` first-places Resource 1 without calling its setter. Replacement transfers
-Resource 2 to the setter and destroys Resource 1 before installing it. The computed
-view returns a receiver-bounded borrow. `Viewed.item` maps to the standard shared
-slot-borrow operation, even though the implementation has a custom setter; it does
-not expose a Move or exclusive borrow. `Parcel.intoResult()` consumes its receiver
-(an accessor receiver is always shared for `get`, SPEC §11.2) and returns its owned
-field, whose destruction responsibility transfers to `owned`.
-
-Expected stdout (original-source Release, O0/O2 harness):
-
-```text
-Setter entered.
-Resource 1 destroyed.
-Borrowed resource is 2.
-Borrowed resource is 2.
-Holder scope finished.
-Resource 2 destroyed.
-Owned getter received.
-Resource 3 destroyed.
-Ownership properties finished.
-```
-
-Separate checks: a setter that discards its input must destroy that input and keep
-the old value; direct standard replacement witnesses and explicit computed
-implementations must preserve requirement contracts. Borrow an owned getter result
-for one call (allowed), then retain the borrow past its temporary lifetime (reject).
-Reject a computed getter with a `uniq/Self`, owning or object-form receiver.
-Reject replacement while a view remains live, shared extraction of a Non-Copy
-field, use of a consumed Parcel, direct Move/exclusive borrow through the custom
-setter, and incompatible requirement operations. Verify exact destruction counts,
-temporary lifetimes and retained witness identity without hidden copies.
-
-Focus: [Non-Copy setters](../../docs/spec/11-properties.md#1124-non-copy-custom-setters),
-[getter temporaries](../../docs/spec/11-properties.md#1123-getter-results-and-temporaries),
-and [standard witnesses](../../docs/spec/11-properties.md#1142-standard-operation-witnesses).
-
-## Milestone 25: inheritance, base storage and layered cleanup
-
-`Derived` constructs its inline `Base` before evaluating its own Field initializer
-and constructor body. The base's private `resource` and the derived Field of the
-same Name remain distinct. An inherited standard Property reads and writes the
-base slot, and the inherited Type function keeps its declaring identity. Moving
-the complete derived value transfers both layers; cleanup runs derived `drop`,
-derived Fields, base `drop`, then base Fields, exactly once.
-
-Expected stdout (original-source O0/O2 harness):
-
-```text
-Base field initialized.
-Base constructor finished.
-Derived field initialized.
-Derived constructor finished.
-Inherited access finished.
-Derived value moved.
-Derived drop.
-Derived resource destroyed.
-Base drop.
-Base resource destroyed.
-Inheritance finished.
-```
-
-Separate checks: omitted/defaulted base arguments, multiple inheritance layers,
-generic base substitution, protected/private access, incomplete construction and
-ordinary transfers before construction starts. Abort during base/derived
-construction must not promise unwinding. Reject accessible inherited-Name
-redeclarations, derivation from a sealed Type, invalid base calls, use after Move
-and Partial Moves across a user-`drop` layer. Inspect base offsets, distinct
-Field identities and each layer's construction/cleanup state. Inherited standard
-storage and Type members require no ObjectCallCompatible proof. A base method or
-custom accessor with a borrowed receiver, used through base-subobject projection,
-requires Proven status established in the same build
-([object receiver compatibility](../../docs/spec/12-expressions.md#1244-object-receiver-compatibility));
-with a `ref/Self` receiver it is Proven by its shape
-([effect verification](../../docs/spec/12-expressions.md#12442-effect-verification)).
-This program calls no such member.
-
-Focus: [inheritance](../../docs/spec/06-declarations-and-containers.md#622-inheritance-and-open-structures),
-[constructors](../../docs/spec/06-declarations-and-containers.md#623-constructors),
-[member projection](../../docs/spec/09-names-signatures-and-access.md#951-base-subobject-receiver-projection),
-and [layered cleanup](../../docs/spec/16-scope-exit-and-destruction.md#1632-field-cleanup).
-
-## Milestone 26: general closures, Callable and owning erasure
-
-`inspectTwice` moves an unconstrained generic value into a concrete environment
-and retains a borrowed visitor whose own capture borrows external `bias`. Shared
-Callable calls inspect the Packet twice and destroy it once on helper return.
-An exclusive Callable mutates a captured Tuple snapshot; a consuming Callable
-transfers a Packet out of its environment. A separate shared closure with an
-Owned, Non-Copy Packet environment is moved into a common Function Type, moved
-again as that same Type, called twice and destroyed once. A Function Item is
-also copied into a common value while remaining independently callable.
-
-Expected stdout (verified in Release at O0/O2):
-
-```text
-Packet destroyed.
-Generic capture total is 20.
-Compound capture advanced to 8.
-Consumed packet.
-Packet destroyed.
-Erased calls finished.
-Packet destroyed.
-General closures finished.
-```
-
-Separate checks: nested captures and capture order, alternative compound Types,
-result borrows from external captures, zero-sized captures and common values
-with inline versus heap environments. Reject bare capture of unproven-Copy `T`,
-escaping external dependencies, moved-closure reuse, exclusive calls on immutable
-owned closures, consuming calls through borrowed receivers and erasure of
-non-Owned or exclusive/consuming-only environments. Inspect concrete entries,
-indirect-call ABI and exact remaining-capture cleanup. Measure no per-call
-environment allocation; account for permitted erasure allocation separately.
-
-Focus: [captures and invocation](../../docs/spec/07-functions-and-callable-values.md#76-function-expressions),
-[Callable](../../docs/spec/08-generics-constraints-and-contracts.md#86-callable-constraints),
-[closure dependencies](../../docs/spec/15-ownership-and-lifetime-analysis.md#1582-closure-dependencies-and-call-results),
-and [environment/erasure layout](../../docs/impl/21-layout-runtime-and-code-generation.md#2125-concrete-closures-and-common-function-values).
-
-## Milestone 27: general Slice, positions and ranges
-
-The two boundaries of the saved `Range<isize, FromEnd<i32>>` evaluate once in source order. Resolving against a row
-length produces `[1, 3)`; slicing nested rows preserves the element Type and
-backing storage. `middle` survives the local handles used to form it, is split
-without copying elements, and supports a from-end empty view and a generic tail.
-`^0` is a boundary but not an element, and applying the saved range to a shorter
-length fails through `tryResolve`. Shared string access preserves its Non-Copy
-owner. A `Slice<ref/i32>` read copies the inner reference with its original
-dependency, distinct from the Slice's backing-slot dependency.
-
-`Pair<T>` publishes its two stored Places through `Indexable<isize>` and
-`UniqIndexable<isize>` (§4.6.9, §7.1.1): `names[1]` at a `ref/string` parameter
-selects `index` and borrows the second Place; `counts[0] = ...` selects `indexUniq`
-and replaces the first Copy value in place (a Non-Copy replacement through a Place
-shares the reference-write boundary, STATUS); `names[0]@ref` keeps one reference
-from one search; and the generic `firstPlace` forwards a Place result through the
-Contract requirement without acquiring a value, for `Pair<i32>` and `Pair<string>`.
-
-Exclusive-view checks add relative child bounds, mutation through a `let` exclusive reference, a moved handle,
-empty shared children and independent copies from fixed and dynamic storage. Copying a view of references preserves
-the element Origins while releasing the outer storage Loan. A `noinit` array is written through a view before copying.
-
-Expected stdout (the original-source harness checks O0/O2):
-
-```text
-Start evaluated.
-End evaluated.
-Nested views retain 20 and 30.
-End boundary is not an element.
-Short target rejected.
-Last text.
-Last text.
-Slice Origins preserved.
-Pair second.
-Pair replaced.
-Exclusive views and independent copies verified.
-```
-
-Separate checks: full/empty/closed ranges, `FromEnd` construction, zero-sized elements,
-`tryGet`/`trySlice`/`trySplitAt` success and failure, saved bounds reapplied to
-different targets, receiver/boundary evaluation and negative-bound Abort order.
-Reject escaping local or temporary backing, mutation conflicting with a retained
-view (including an empty one), Non-Copy indexed Move, Slice element writes and
-element-Type covariance. Check that resolving metadata adds no storage Loan;
-views and reslices preserve the original Loan footprint and nested Origins.
-Measure O(1) view operations without backing allocation or element copying.
-Slice remains shared; the added UniqSlice cases exercise exclusive element access separately.
-
-Place checks: a bare read of a Non-Copy published Place, `@move` of a published
-Place, an update through `index` alone (a `let` pair or a `ref/Pair` receiver),
-a Place result that designates a local or a by-value parameter, an `if` whose
-branches designate Places without their own `return`, a mismatched `Element`
-specification, and a conformance that omits `indexUniq` while claiming
-`UniqIndexable` are rejected. A retained `pair[0]@ref` conflicts with a later
-`pair[0] = ...`; the exclusive receiver of `indexUniq` is reserved before the key
-is evaluated (§15.6.7). The Place result ABI is the reference ABI (§21.2).
-
-Focus: [bounds and failure](../../docs/spec/04-arrays-indexing-and-slices.md#464-resolution-evaluation-and-failure),
-[Slice lifetimes](../../docs/spec/04-arrays-indexing-and-slices.md#465-slice-storage-lifetime-and-permissions),
-[element results](../../docs/spec/04-arrays-indexing-and-slices.md#466-slice-operations-and-element-results),
-[Indexable Contracts](../../docs/spec/04-arrays-indexing-and-slices.md#469-indexable-contracts),
-[Place results](../../docs/spec/07-functions-and-callable-values.md#711-place-results),
-and [required costs](../../docs/spec/04-arrays-indexing-and-slices.md#468-representation-and-performance).
-
-## Milestone 28: user Iterable/Iterator and element responsibilities
-
-`Batch<T>` maps Iterable's Element and Iterator to `T` and `Drain<T>`. Its consuming
-`iterate` runs once, transferring the cursor; each `next` exchanges one Option
-slot with `None`. A `continue` destroys Item 1 before the next call. Early exit
-destroys Item 2, then the cursor's unyielded Items 4 and 3 in reverse Field order.
-`View<T>` separately maps to a cursor over external Slice storage, with explicit
-associated-Type Origin equality. A retained first reference survives subsequent
-`next` calls and exhaustion; a temporary View also drives a `for` loop.
-
-Expected stdout (verified natively at O0/O2 in Debug and Release by `src/backend/windows-x64/test-milestone28.ps1`):
-
-```text
-Owned iterator acquired.
-Continue after item 1.
-Item 1 destroyed.
-Exit after item 2.
-Item 2 destroyed.
-Item 4 destroyed.
-Item 3 destroyed.
-Owned iteration finished.
-Borrowed iterator acquired.
-External first is 10; remaining total is 50.
-Borrowed iterator acquired.
-General iteration finished.
-```
-
-Separate checks: owned exhaustion and repeated `None`, empty external input,
-exhaustive `for`, return/named exit through a loop, receiver evaluation once,
-retaining multiple previously yielded references and dependent/non-Copy `T`.
-Reject missing Iterable/Iterator proof, mismatched associated Element identity,
-bare iteration over a user owner without shared conformance, moved iterable reuse
-and lending results that borrow the iterator or its owned storage. Inspect the
-retained requirement mappings, short `next` receiver Loans and exact yielded/
-unyielded cleanup. No hidden clone or array of iteration values is permitted;
-measure O(1) iterator state and no per-element management allocation.
-
-Focus: [iteration acquisition](../../docs/spec/14-control-flow.md#1462-iteration-protocol-and-acquisition),
-[associated Types](../../docs/spec/08-generics-constraints-and-contracts.md#843-associated-types),
-[Kimi protocol requirements](../../docs/spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations),
-and [component cleanup](../../docs/spec/16-scope-exit-and-destruction.md#1632-field-cleanup).
-
-## Milestone 29: dynamic Array growth, mutation and owning iteration
-
-A typed empty literal has length and capacity zero and allocates nothing. `reserve`
-takes an additional count and never shrinks. `append` and `insert` add Non-Copy
-elements by transfer; `insert(^0, ...)` appends and `remove(^1)` transfers the last
-element out, preserving capacity. Indexed replacement destroys the old element
-before installing the new one, `pop` returns an Option that owns the element, and
-`clear` destroys every element in reverse index order while keeping capacity. The
-owning iteration consumes the Array; leaving the loop early destroys the current
-binding and then the unyielded elements. `last` is destroyed at scope exit.
-
-Expected stdout (verified in Debug/Release at O0/O2):
+[Source](Milestone23.kimi) — Dynamic `Array<T>` reserve/append/insert/remove/pop/clear, indexed replacement of Non-Copy elements, owning iteration with early exit.
 
 ```text
 No tasks.
@@ -1624,43 +488,22 @@ Array run finished.
 Task 4 destroyed.
 ```
 
-Separate checks: `pop` and `remove(^1)` on an empty Array (`None` and Abort),
-`remove(^0)` and out-of-range `insert`/`remove` indices (Abort), `reserve` within
-capacity and `reserve(additional: 0)` as no-ops that preserve placement, growth
-beyond capacity, `shrinkToFit`, `clear` of an empty Array, a bare read of a
-Non-Copy element (shared, never a Move), `values[i]@move` on an Array (reject), a
-live element or Slice borrow across a mutation (reject), an exclusive mutation
-through a shared receiver (reject), abandonment of an appended argument when an
-earlier argument transfer fails normally, and Abort inside a destructor during
-`clear`. Count internal allocations: none within capacity, on removal, on
-`clear` or for the empty literal; growth is amortized O(1) per `append`.
+### Milestone 24
 
-These runtime and rejection checks pass through `test-milestone29.ps1` and the
-`DynamicArray*` native fixtures. Instrumented native probes verify allocation and
-growth-transfer bounds, failed shrink preservation and representable capacity
-limits; repeated shared views allocate no storage, and warm Binding, ownership,
-validation, emission and whole-pipeline probes allocate zero bytes. Zero-sized
-elements and shared string iteration, which are outside the verified generation
-boundary, are rejected by ownership analysis with `Unsupported_Kd`.
+[Source](Milestone24.kimi) — User/generic UTF-8 formatting, independent owning strings, short-circuit writes, fixed-buffer reuse and bounded Console interpolation.
 
-Focus: [Array operations](../../docs/spec/04-arrays-indexing-and-slices.md#472-array-operations),
-[capacity](../../docs/spec/04-arrays-indexing-and-slices.md#474-capacity-and-allocation),
-[Loans and effects](../../docs/spec/04-arrays-indexing-and-slices.md#475-loans-retained-dependencies-and-call-effects)
-and [commit and destruction order](../../docs/spec/04-arrays-indexing-and-slices.md#476-commit-failure-and-destruction-order).
+```text
+source retained
+reading destroyed
+value=Reading(42)
+君: value=Reading(42)
+done=true
+My number is 42
+```
 
-## Milestone 30: comparison Contracts and composed mappings
+### Milestone 25
 
-`Key` explicitly implements Comparable and its inherited Equatable requirement.
-Its `compare` returns -7, 0 or 9, so expressions must inspect the sign rather than
-assume -1/1. Generic equality, forwarding and an explicit `f64` specialization
-retain the selected mapping. Owner and borrowed operands remain usable after
-comparison. Tuples compose user mappings through shared-borrow elements.
-
-Floating Contract equality treats all NaNs as equal and both signed zeros as
-equal; ordinary floating and Tuple comparison expressions retain IEEE equality.
-The unchanged source exercises both rules through the common recursive comparison plan.
-
-Expected stdout (verified unchanged target, Debug/Release O0/O2):
+[Source](Milestone25.kimi) — User/generic comparison Contracts, borrow/Tuple composition, retained witnesses and NaN-reflexive equality through specialization.
 
 ```text
 User comparisons keep their operands.
@@ -1669,39 +512,102 @@ Floating Contract equality is NaN-reflexive.
 Comparison contracts finished.
 ```
 
-`src/backend/windows-x64/test-milestone30.ps1` checks the unchanged target, renamed
-declarations, changed values and an `f32` variant at O0/O2. Its independent
-rejections cover missing conformance/premises, incompatible or missing witnesses,
-an exclusive equality receiver, mixed operand Types, floating Comparable and a
-Move conflicting with the left operand's Loan. `-Cases Rejections` checks those
-cases independently of the canonical target. Companion managed/native
-tests cover primitive boundaries, evaluation/destruction order and NaN mapping.
-The review remediation unit now passes the unchanged target and every Debug
-harness case, 415 related managed tests and 146 native O0/O2 executions
-(`artifacts/verify/20260924-021918-773-unit-comparison-composition-regressions`).
-Composite comparisons preserve witness effects and short-circuit order; floating
-Tuple operators retain unordered NaN results, while Contract equality is reflexive.
-The measured warm Tuple-operator Binding and native floating-composition workloads
-allocate zero bytes. Debug/Release full suites and all 26 Release harnesses now pass; see the
-[completion session](../../docs/dev/PLAN_HISTORY.md#review-remediation). The [earlier failed probes](../../docs/dev/PLAN_HISTORY.md#p30-session1) are historical evidence.
+### Milestone 26
 
-Focus: [comparison mapping](../../docs/spec/13-operators-and-assignment.md#1341-contract-comparison-mapping),
-[floating key equality](../../docs/spec/12-expressions.md#1234-dictionary-construction-and-duplicate-keys),
-[Contracts](../../docs/spec/08-generics-constraints-and-contracts.md), and
-[required declarations](../../docs/spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations).
+[Source](Milestone26.kimi) — Standard/custom/computed Copy Properties, direct storage and assignment evaluation order.
 
-## Milestone 31: Dictionary keys, insertion order and entry ownership
+```text
+Standard access finished.
+Input evaluated.
+Receiver evaluated.
+Custom set.
+Custom get.
+Computed set.
+Computed get.
+Copy properties finished.
+```
 
-`Key.equals` compares an immutable logical code and ignores the tag identifying
-each individual key value. `tryInsert` returns both rejected inputs in `Err`;
-`insertOrReplace` keeps the original stored key and position, destroys the unused
-input key before delivering the old Item, and indexed assignment destroys the
-replaced Item. Shared lookup and iteration inspect entries without consuming
-them. Removing and reinserting an equal key appends its new entry while retaining
-capacity. Owning iteration stops after the first pair; cleanup destroys that
-pair, then the unyielded entries in reverse insertion order, value before key.
+### Milestone 27
 
-Expected stdout (verified unchanged target with Debug/Release O0/O2; completed 2026-10-03):
+[Source](Milestone27.kimi) — Saved bounds, shared/exclusive child views, Move, Slice.toArray, `noinit` view writes, backing/element Origins, and user Places.
+
+```text
+Start evaluated.
+End evaluated.
+Nested views retain 20 and 30.
+End boundary is not an element.
+Short target rejected.
+Last text.
+Last text.
+Slice Origins preserved.
+Pair second.
+Pair replaced.
+Exclusive views and independent copies verified.
+```
+
+### Milestone 28
+
+[Source](Milestone28.kimi) — Semantics-generic follow and reference-valued collection elements.
+
+```text
+Owned element updated to 5.
+Borrowed elements total 30.
+Exclusive referent updated to 33.
+Totals are 6, 30 and 73.
+Semantics-generic follow finished.
+```
+
+### Milestone 29
+
+[Source](Milestone29.kimi) — User IntoIterable/Iterator mappings, owned elements, continue/early-exit cleanup and retained external element borrows.
+
+```text
+Owned iterator acquired.
+Continue after item 1.
+Item 1 destroyed.
+Exit after item 2.
+Item 2 destroyed.
+Item 4 destroyed.
+Item 3 destroyed.
+Owned iteration finished.
+Borrowed iterator acquired.
+External first is 10; remaining total is 50.
+Borrowed iterator acquired.
+General iteration finished.
+```
+
+### Milestone 30
+
+[Source](Milestone30.kimi) — Positions, ranges, resolution, iteration and formatting.
+
+```text
+First 12, last 50.
+Inner 1..^1 has 4; tail 44 and 50; head 3.
+Span 2..^1 resolves to 2..5, sum 100.
+1..=4 covers 4
+^8.. does not resolve
+The end boundary is not an element.
+A closed end past the length is refused.
+Queue 4 2 3 1 after removing 9.
+Closed ranges reach 255 without overflow.
+```
+
+### Milestone 31
+
+[Source](Milestone31.kimi) — Wrapping integers, integer results, conversions and generic arithmetic.
+
+```text
+Wrapped 4, -128, 0, -128, -128.
+Half is 1069547520 in bits; 300 wraps to 44; 4 leaves the wrapping Type.
+Literals 3, 9007199254740993, 100000000000000000000000000000000000000.
+Hashes 1093368299 and 2595871832.
+Draws 0 98 46 35; checksums 10 and 15781573103004042447.
+Counter wrapped to 4, a key seen 3 times.
+```
+
+### Milestone 32
+
+[Source](Milestone32.kimi) — Dictionary duplicate rejection, retained equal keys, replacement/removal, insertion-order iteration and exact entry cleanup.
 
 ```text
 Duplicate returned both inputs.
@@ -1725,312 +631,9 @@ Key 4 destroyed.
 Dictionary run finished.
 ```
 
-Separate checks: nonempty literals, mandatory literal duplicate diagnostics,
-runtime duplicates before value evaluation, NaN/signed-zero keys, missing-key
-assignment Abort, empty/clear/shrink paths, complete owning iteration and generic
-keys. Reject missing Equatable, moved inputs, key mutation and structural mutation
-while a retained lookup/iteration borrow is live; preserve nested dependencies
-through rejected inputs and removed/replaced results. Check argument/equality
-effects, one-time indexed evaluation and destructor Abort. Measure internal
-allocations for empty construction, lookup, duplicate/absence, replacement and
-full-capacity churn, plus the specified management bounds; unchanged capacity
-alone is not evidence of allocation-free execution. No public Hash is required.
+### Milestone 33
 
-Focus: [Dictionary operations](../../docs/spec/04-arrays-indexing-and-slices.md#473-dictionary-operations-and-indexed-replacement),
-[duplicate keys](../../docs/spec/12-expressions.md#1234-dictionary-construction-and-duplicate-keys),
-[Loans and effects](../../docs/spec/04-arrays-indexing-and-slices.md#475-loans-retained-dependencies-and-call-effects),
-[cleanup](../../docs/spec/04-arrays-indexing-and-slices.md#476-commit-failure-and-destruction-order)
-and [required costs](../../docs/spec/04-arrays-indexing-and-slices.md#477-performance-and-extension-boundary).
-
-## Milestone 33: exclusive object views and complete dynamic destruction
-
-An exclusively owned `Leaf` is inspected through `objref/Base`. A stable
-parameter's `is Leaf` test enables the Leaf-only standard Field on the right of
-`and`, and a new narrowed binding supports complete Sealed payload projection.
-A call-result Type test evaluates its observable operand once. An exclusive base
-view is refined before exchanging the complete Leaf payload: the old contents
-are destroyed separately, while the object's Dynamic Type remains Leaf and
-subsequent reads see the new `let` Field contents. An owning upcast finally moves
-the whole object into `obj/Base`; scope exit still destroys the complete Leaf,
-its Resource and its Base before releasing object storage.
-
-Expected stdout (specification-derived; native execution is blocked):
-
-```text
-Base view refined to Leaf.
-Type-test operand evaluated.
-Complete payload replaced.
-Leaf drop.
-Original resource destroyed.
-Base drop.
-Updated object remains a Leaf.
-Owning base view retains the complete Leaf.
-Leaf drop.
-Replacement resource destroyed.
-Base drop.
-Exclusive object run finished.
-```
-
-Separate checks: same-target shared/exclusive reborrows, deeper bases and generic
-struct identity, failed/unrelated tests, `not`/`or`/join refinement and test-operand
-cleanup. Reject implicit or downward upcasts, open/base payload projection,
-borrow escape, conflicting access, moved-handle reuse, ObjectPayload opt-outs and
-refinement assumed through `var`, aliases or stored Booleans. Check whole-payload
-replacement/swap, field-fact invalidation, retained dependencies and destruction
-Abort. Inspect header/view identity, unchanged allocation/metadata across payload
-updates, and release through the original allocation after dynamic destruction;
-the source makes no address-equality claim. Direct standard Fields and complete
-Sealed projections require no ObjectCallCompatible proof. Runtime
-Contract Views and checked-cast syntax remain outside this program.
-
-Focus: [object views](../../docs/spec/03-types-and-values.md#335-object-views-and-identity),
-[upcasts](../../docs/spec/13-operators-and-assignment.md#1357-object-upcasts),
-[runtime tests](../../docs/spec/13-operators-and-assignment.md#1361-runtime-is-tests),
-[refinement](../../docs/spec/14-control-flow.md#1410-type-refinement),
-[payload projection](../../docs/spec/13-operators-and-assignment.md#13551-follow)
-and [dynamic release](../../docs/spec/16-scope-exit-and-destruction.md#1633-ownership-object-release-and-reentry).
-
-## Milestone 34: shared object ownership
-
-`rc` and `arc` handles are created from complete payloads, cloned explicitly,
-moved and consumed; the payload is destroyed exactly once when the last strong
-handle is released. Object borrows read the payload without changing counts, and
-a payload that keeps a borrow retains that dependency in its handle.
-
-Expected stdout (specification-derived; the original-source harness verifies Release O0/O2):
-
-```text
-Handle reads payload 1.
-Cloned handle shares payload 1.
-Released one strong handle.
-Payload 1 destroyed.
-Arc views read payload 2.
-Payload 2 destroyed.
-Borrowed counter is 5.
-Shared ownership finished.
-```
-
-Separate checks: reject exclusive payload access through `rc`/`arc`
-(`first@follow@uniq`, a setter call), implicit handle duplication (`let alias = first`),
-reuse of a moved handle, escape of a handle whose payload borrows a local, and
-`obj`/`rc`/`arc` conversions. Inspect exact retain/release counts, clone without
-allocation or payload copy, single destruction and `arc` atomic ordering through
-internal tests; count-overflow Aborts use separate probes. No source concurrency
-is introduced.
-
-Focus: [object ownership creation and sharing](../../docs/spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing),
-[payload follow](../../docs/spec/13-operators-and-assignment.md#13551-follow),
-[object views and identity](../../docs/spec/03-types-and-values.md#335-object-views-and-identity)
-and [object release](../../docs/spec/16-scope-exit-and-destruction.md#1633-ownership-object-release-and-reentry).
-
-## Milestone 35: Weak references and cyclic construction
-
-A Weak is downgraded from a live `rc`, upgraded while the strong exists, and stays
-a present but expired value after the final strong release; cloning and moving it
-change no strong count. A cyclic factory passes its builder a Weak that cannot
-upgrade during Building and upgrades after publication; the node's stored Weak
-releases the table when the node is destroyed.
-
-Expected stdout (specification-derived; native execution is blocked):
-
-```text
-Upgrade succeeded while alive.
-Item destroyed.
-Upgrade failed after the final release.
-Weak clone stays expired.
-Upgrade fails while Building.
-Self weak upgrades after publication.
-Weak run finished.
-Node destroyed.
-```
-
-Separate checks: reject `downgrade` of `obj` or object borrows, payload access
-through a Weak, a Weak that outlives a payload borrow, a factory payload that is
-not Owned and a builder that is not `Callable<owner, (Weak<rc/T>) -> T>`; an Abort
-inside the builder publishes nothing. Inspect separate payload/object/table
-lifetimes, allocation-free `upgrade`/`clone`, the final table release and the
-`arc` upgrade/final-release race internally.
-
-Focus: [Weak reference values](../../docs/spec/03-types-and-values.md#322-weak-reference-values),
-[Weak reference operations](../../docs/spec/13-operators-and-assignment.md#1359-weak-reference-operations)
-and [cyclic construction](../../docs/spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing).
-
-## Milestone 36: general static storage
-
-Static values initialize on first access, with their effects, in access order: a
-read of `count` runs its initializer once before the replacement, a `let`
-initializes when first read, and a first write initializes the slot and then
-replaces its value. A never-accessed static is neither initialized nor destroyed.
-Nested groups of a generic struct keep one key per enclosing binding. Shutdown
-destroys static vars, then static lets, each in reverse initialization order, after
-main's locals: Resource 3 with the vars, then Resource 1 with the lets.
-
-Expected stdout (specification-derived; native execution is blocked):
-
-```text
-Main started.
-Count initialized.
-Count is 11.
-Resource 1 initialized.
-Primary is 1.
-Resource 2 initialized.
-Static resource 2 destroyed.
-Replaced the second resource.
-Generic keys are distinct.
-Main finished.
-Static resource 3 destroyed.
-Static resource 1 destroyed.
-```
-
-Separate checks: alias paths (`Cache<ref/i32 during a>` and `during b`) reach one
-key; reject non-Owned static storage, a `let` write, a borrow `during static` of
-mutable storage, and initialization from untaken branches or effect summaries
-alone. Separate Abort inputs report the start of the Place expression that
-designates the slot: an initialization cycle reports `KIMI_E_STATIC_CYCLE` at the
-access that meets the Initializing slot, and a static `let` whose `drop` reaches a
-static `var` reports `KIMI_E_STATIC_SHUTDOWN` at that access to the `var`, as does
-any other access to a Finished or Not started slot during shutdown
-([Abort codes](../../docs/spec/22-core-execution-and-foreign-functions.md#2254-abort-diagnostics-and-exit)).
-Inspect per-key state/address/destruction identity and preserved keys across body
-sharing and Origin erasure.
-
-Focus: [static storage](../../docs/spec/11-properties.md#1132-static-storage),
-[`static` and `Owned`](../../docs/spec/15-ownership-and-lifetime-analysis.md#1523-static-and-owned),
-[static initialization and shutdown](../../docs/spec/22-core-execution-and-foreign-functions.md#2223-os-entry-static-initialization-and-shutdown)
-and [inherited environments](../../docs/spec/22-core-execution-and-foreign-functions.md#2224-static-storage-in-inherited-environments).
-
-## Milestone 37: integrated order processing
-
-A bounded workload over five orders: a generic predicate count with a capturing
-closure over the whole Array and a borrowed tail view, a first-match search that
-returns a borrow into the Slice, a mutating closure driven through an exclusive
-`Callable`, category totals kept in a Dictionary and read back in insertion order,
-an early-stopped shared loop, and removal of one order before the remaining
-orders are destroyed in reverse index order.
-
-Expected stdout (verified natively at O0/O2 through the Debug harness):
-
-```text
-No orders to count.
-Large orders: 3 overall, 2 in the tail.
-First order over 40 is 3.
-Running total is 155.
-Category 10 totals 75.
-Category 20 totals 20.
-Category 30 totals 60.
-Stopped at order 4.
-Removed order 1.
-Order 1 destroyed.
-Processing finished.
-Order 5 destroyed.
-Order 4 destroyed.
-Order 3 destroyed.
-Order 2 destroyed.
-```
-
-Separate checks: the harness keeps the output for from-end and resolved tail
-selections and rejects a bare Non-Copy return (`TransferRequired_Kd`), an append
-while the tail view is live (`CallActivationConflict_Kd`) and reuse of a consumed
-Array (`MovedPlace_Kd`). Alternate values, an empty Dictionary result, Abort paths
-and the workload's allocation/complexity observations remain for P37; no new
-language mechanism is introduced.
-
-Focus: [function expressions](../../docs/spec/07-functions-and-callable-values.md#76-function-expressions),
-[Callable constraints](../../docs/spec/08-generics-constraints-and-contracts.md#86-callable-constraints),
-[Slice operations](../../docs/spec/04-arrays-indexing-and-slices.md#466-slice-operations-and-element-results),
-[Dictionary operations](../../docs/spec/04-arrays-indexing-and-slices.md#473-dictionary-operations-and-indexed-replacement)
-and [iteration](../../docs/spec/14-control-flow.md#146-iteration-constructs).
-
-## Milestone 38: integrated device registry
-
-An open `Device` base with a validating custom setter and a computed Property, a
-`Lamp` that formats itself and a `Sensor` are used through owning objects and
-base views: refinement selects the complete Lamp payload for formatting, handle
-replacement destroys the old object first, and each derived object destroys its
-Leaf before its base. A static registry holds an optional Weak to an `rc` Lamp:
-empty at first, live while a clone exists, expired after the final release and
-destroyed at shutdown.
-
-Expected stdout (specification-derived; native execution is blocked):
-
-```text
-desk (40 W, level 30)
-Lamp desk destroyed.
-Device desk released.
-shelf (25 W, level 0)
-Lamp shelf destroyed.
-Device shelf released.
-door at level 50
-Device door released.
-Registry starts empty.
-hall (60 W, level 0)
-Hall lamp still owned once.
-Lamp hall destroyed.
-Device hall released.
-Registry entry expired.
-Application finished.
-```
-
-Separate checks: an out-of-range level Aborts through the setter, and a computed
-getter through `objref/Device` is accepted (its `ref/Self` receiver is Proven by
-its shape). Reject payload follow through an open view; a setter call through `rc`
-or `objref`; a setter or method whose body replaces the whole receiver, used
-through an open view or base projection (NotProven); and a static Weak whose
-payload borrows a local. Check identity across replacement, the single destruction
-of each object and the shutdown release of the registry.
-
-Focus: [Properties](../../docs/spec/11-properties.md),
-[inheritance](../../docs/spec/06-declarations-and-containers.md#622-inheritance-and-open-structures),
-[object views](../../docs/spec/03-types-and-values.md#335-object-views-and-identity),
-[Weak operations](../../docs/spec/13-operators-and-assignment.md#1359-weak-reference-operations),
-[static storage](../../docs/spec/11-properties.md#1132-static-storage)
-and [UTF-8 formatting](../../docs/spec/utf8-formatting.md).
-
-## Milestone 39: Semantics-generic follow
-
-`Collection<E>` publishes its element Places through the Indexable Contracts.
-Generic accessors over `Collection<s/T>` follow the pair Place to its stored
-target: `view` returns `ref/T` for every `s` in `value or valueborrow`, `viewUniq`
-returns `uniq/T` for `owner or uniq`, and `total` calls a Contract requirement on
-each element through the pair layer implicitly. The same bodies serve
-`Collection<Node>`, `Collection<ref/Node>` and `Collection<uniq/Node>`: the owner
-instantiation borrows the element itself, and the reference instantiations
-reborrow the referent with the outer borrow's dependency.
-
-Expected stdout (verified natively in Debug and Release by `src/backend/windows-x64/test-milestone39.ps1`):
-
-```text
-Owned element updated to 5.
-Borrowed elements total 30.
-Exclusive referent updated to 33.
-Totals are 6, 30 and 73.
-Semantics-generic follow finished.
-```
-
-Separate checks: reject `viewUniq` on `Collection<ref/Node>` (`s is owner or uniq`
-Refuted), an exclusive follow whose admitted set includes `ref`, Take through the
-followed Place (`c[i]@follow@move`), a follow whose admitted set includes an object
-or `unsafe` Semantics, and a result that drops the outer borrow's dependency.
-Inspect that monomorphized bodies select the owner Place or the referent without a
-runtime test or allocation.
-
-Focus: [reference-path selection](../../docs/spec/03-types-and-values.md#341-reference-path-selection),
-[slots and projections](../../docs/spec/08-generics-constraints-and-contracts.md#811-slots-and-projections),
-[generic access effects](../../docs/spec/08-generics-constraints-and-contracts.md#89-generic-access-effects),
-[follow](../../docs/spec/13-operators-and-assignment.md#13551-follow) and
-[pair layers](../../docs/spec/13-operators-and-assignment.md#pair-layers).
-
-## Milestone 40: Disjoint exclusive element access
-
-`tryGetPairUniq` splits the exclusive capability of one collection into two exclusive references to distinct elements.
-`transfer` selects two accounts of an `Array<Account>` by positions of any `Position` Type (`0`, `^1`, `1@u8`) and
-updates both balances through the pair; the same account (`1` and `^2` of three), a missing one and an overdraft are
-refused, and both references end before the caller uses the collection again. Both Non-Copy elements are then
-replaced through one pair, destroying each old value once, and the Array grows again after the pair's last use.
-`settle` holds two neighbors of a fixed array exclusively at once to exchange them, `^1` and `3` name one element and
-give `None`, and a pair over an `Array<uniq/i32>` reaches both referents, which are free again after its last use.
-
-Expected stdout (verified at Release O0/O2):
+[Source](Milestone33.kimi) — Disjoint exclusive Array and fixed-array element access.
 
 ```text
 Balances 20, 25, 25.
@@ -2050,141 +653,173 @@ Closed Ben.
 Closed Eve.
 ```
 
-Completed 2026-10-04: the unchanged source builds and runs through `test-milestone40.ps1` at Release O0/O2.
-Sibling exclusive references acquired from owned Tuple payloads keep their independent capabilities through field
-access, call arguments, Reborrows and stored exclusive-reference reads. A child still suspends its own parent, and
-both siblings keep the original collection borrowed. Session `20261003-154434-122-session-p40-u1-u2-session` passes
-15,830 tests, 338 native regression executions and all 34 completed milestone harnesses, completing P40.
+### Milestone 34
 
-Separate feature checks (`DisjointArrayPairTest`, `DisjointSplitLoanTest`): an empty Array and zero-sized elements give `None` or distinct
-logical positions; rejections of a whole-collection read, write, `append` or Move while a pair reference is live, of
-`tryGetPairUniq` on a shared receiver, of two ordinary `receiver[i]@uniq` borrows with runtime indices (no inference
-from runtime inequality) and of a pair reference used after the collection's borrow ends.
-
-Focus: [disjoint exclusive element pairs](../../docs/spec/04-arrays-indexing-and-slices.md#4610-disjoint-exclusive-element-pairs),
-[region splitting](../../docs/spec/15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting),
-[Place overlap](../../docs/spec/15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts) and the
-[standard storage boundary](../../docs/spec/22-core-execution-and-foreign-functions.md#22125-standard-storage-boundary).
-
-## Milestone 41: Positions and ranges
-
-Readings in a fixed array are selected by positions of several Types (`u8`, `u64`, `^1`) and sliced by ranges whose
-boundaries are typed independently: `1..^1` is `Range<i32, FromEnd<i32>>` and `from..^1` with `from: i64` is
-`Range<i64, FromEnd<i64>>`. Saved ranges resolve against each target they select from; generic code resolves any
-`R is PositionRange` and selects with any `P is Position`; the try-prefixed operations return `None` for an end
-boundary used as an element and for a closed end past the length; Array `insert`, `remove` and `swap` take from-end
-positions; a closed `u8` range reaches 255 without overflow; and a reference to a position is read as its value.
-
-Expected stdout:
+[Source](Milestone34.kimi) — Generic compound captures, external borrowed captures, shared/exclusive/consuming Callable and owning function-value erasure.
 
 ```text
-First 12, last 50.
-Inner 1..^1 has 4; tail 44 and 50; head 3.
-Span 2..^1 resolves to 2..5, sum 100.
-1..=4 covers 4
-^8.. does not resolve
-The end boundary is not an element.
-A closed end past the length is refused.
-Queue 4 2 3 1 after removing 9.
-Closed ranges reach 255 without overflow.
+Packet destroyed.
+Generic capture total is 20.
+Compound capture advanced to 8.
+Consumed packet.
+Packet destroyed.
+Erased calls finished.
+Packet destroyed.
+General closures finished.
 ```
 
-Separate checks (`test-milestone41.ps1`): wide element positions, a directly written range, expected boundary Types, a
-closed range below the maximum, Array positions of other Types, Aborts for `values[^0]`, a `u64` from-end offset beyond
-isize, a reversed closed range and `remove(^0)`; rejections of `(0..3) == (0..=2)`, iteration of `1..^1`, `^1 + 1`, a
-floating key, `FromEnd<i32>.init`, a boundary of another Type and `Self is Position` in a user struct.
+### Milestone 35
 
-Focus: [positions](../../docs/spec/04-arrays-indexing-and-slices.md#462-positions),
-[ranges](../../docs/spec/04-arrays-indexing-and-slices.md#463-ranges),
-[resolution](../../docs/spec/04-arrays-indexing-and-slices.md#464-resolution-evaluation-and-failure),
-[value read](../../docs/spec/03-types-and-values.md#353-value-read) and
-[closed Contracts](../../docs/spec/08-generics-constraints-and-contracts.md#847-intrinsic-and-closed-contracts).
-
-## Milestone 42: Wrapping integers, integer results and conversions
-
-An integer Type Aborts on an unrepresentable result and `MIN % -1` is 0; `Wrapping<T>` wraps modulo 2^N through
-`+=`, `++`, `*`, negation and the signed minimum / −1, and formats as its argument. `@Type` keeps the value over the
-same argument, `@wrap` wraps across a width or sign boundary (`-1@wrap<u64>`, `(200 + 100)@wrap<u8>`) and `@bits`
-reinterprets a float's bits in both directions. Direct literals convert from their exact value (`3.9@i32`,
-`9007199254740993.0@i64`, `1e38@u128`). FNV-1a over the bytes of a text and of a float's bits, an xorshift64*
-generator whose state is `Wrapping<u64>`, and a generic `checksum<T>` over `Wrapping<T>` are built on these; a wrapping
-Type is a Dictionary key and a Pattern subject by its argument's values.
-
-Expected stdout:
+[Source](Milestone35.kimi) — Integrated collection, borrow, iteration and closure workload.
 
 ```text
-Wrapped 4, -128, 0, -128, -128.
-Half is 1069547520 in bits; 300 wraps to 44; 4 leaves the wrapping Type.
-Literals 3, 9007199254740993, 100000000000000000000000000000000000000.
-Hashes 1093368299 and 2595871832.
-Draws 0 98 46 35; checksums 10 and 15781573103004042447.
-Counter wrapped to 4, a key seen 3 times.
+No orders to count.
+Large orders: 3 overall, 2 in the tail.
+First order over 40 is 3.
+Running total is 155.
+Category 10 totals 75.
+Category 20 totals 20.
+Category 30 totals 60.
+Stopped at order 4.
+Removed order 1.
+Order 1 destroyed.
+Processing finished.
+Order 5 destroyed.
+Order 4 destroyed.
+Order 3 destroyed.
+Order 2 destroyed.
 ```
 
-Separate checks are unit tests: `WrappingIntegerTest` (capability matrix, arithmetic, generic bodies, keys, Patterns and
-rejections), `WrapConversionTest`, `BitConversionTest`, `NumericConversionEmissionTest` (direct literals) and
-`DivisionEmissionTest` (integer results) and `ConversionReadTest` (the hash and the checksum convert the iterated
-`ref/u8` and `ref/T` values directly: a conversion operand is a read position, SPEC §13.5.2).
+### Milestone 36
 
-Focus: [wrapping integer Types](../../docs/spec/03-types-and-values.md#3111-wrapping-integer-types),
-[integer results](../../docs/spec/13-operators-and-assignment.md#133-arithmetic-bitwise-and-shift-operators),
-[numeric conversions and literals](../../docs/spec/13-operators-and-assignment.md#1354-numeric-conversions-and-literals) and
-[PrimitiveInteger](../../docs/spec/08-generics-constraints-and-contracts.md#8473-primitiveinteger).
+[Source](Milestone36.kimi) — Non-Copy setter replacement, a borrowed getter, a consuming function and a standard-operation Contract witness.
 
-### Programs 22–24 authoring verification (2026-09-22)
+```text
+Setter entered.
+Resource 1 destroyed.
+Borrowed resource is 2.
+Borrowed resource is 2.
+Holder scope finished.
+Resource 2 destroyed.
+Consuming function received.
+Resource 3 destroyed.
+Ownership properties finished.
+```
 
-All three sources pass the syntax catalog. Native Application builds were probed
-with Debug and Release compilers, each at O0 and O2, using byte-identical source
-copies in separate Application projects. Program 22 now builds and runs through
-its harness (varied layouts and lengths, specialization removed, finite recursion,
-moved Non-Copy reuse, growing keys and an invalid infinitely recursive inline layout,
-rejected at Binding with `InvalidInlineLayout_Kd`); its remaining separate check, excessive
-finite substitution sets (bounded at 1024 contexts per body), is covered by a unit test. Programs 23
-and 24 fail final Binding; no native output/exit test ran for them, and their
-expected outputs and separate checks above are targets, not passing test claims.
-See [session evidence](../../docs/dev/PLAN_HISTORY.md#programs22-24-authoring).
+### Milestone 37
 
-### Programs 25–28 authoring verification (2026-09-24)
+[Source](Milestone37.kimi) — User arithmetic Contracts, Function values, element replacement and Result propagation.
 
-All four sources pass syntax parsing. The source catalog explicitly records them
-as pending Binding, alongside 23–24, and checks that all 30 authored sources are
-present. Sixteen byte-identical-source Application builds were attempted with the
-Debug and Release compilers at O0 and O2; all fail Binding before native execution.
-The table records those failures, not successful native tests. Full managed
-regressions pass 12,119 tests in each configuration with warning-free compiler
-builds; the final source catalog/alias checks pass 58 tests in each configuration.
-No new milestone completion, rejection-harness or allocation evidence is claimed.
-Existing native harness results retain their prior scope. Source/compiler hashes,
-commands, diagnostics and logs are recorded in the
-[authoring session](../../docs/dev/PLAN_HISTORY.md#programs25-28-authoring).
+```text
+Shared operators and function values: 4, 6.
+One located element replaced: 4, 6.
+Explicit Result propagation: 42, error 7.
+```
 
-### Programs 31 and 33 authoring verification (2026-09-24)
+### Milestone 38
 
-Both sources pass syntax parsing and are explicitly pending in the Binding source
-catalog, which now covers 33 authored programs. Source catalog/alias checks pass
-58 tests; the final Debug/Release compiler builds are warning-free and each full
-managed suite passes 12,169 tests. Eight Application builds use byte-identical
-source copies and the Debug/Release compilers at O0/O2; all fail Binding before
-native execution. Their native tests are NOT_RUN, and expected output above is
-specification-derived. P31/P33 remain TODO, with no new native harness, rejection
-or allocation evidence; existing harness results retain their prior scope.
-Commands, source/compiler hashes and diagnostics are in the
-[authoring session](../../docs/dev/PLAN_HISTORY.md#programs31-33-authoring).
+[Source](Milestone38.kimi) — Inline base construction, inherited standard Properties and Type members, whole-derived Move and layered destruction.
 
-### Programs 34–39 authoring verification (2026-09-27)
+```text
+Base field initialized.
+Base constructor finished.
+Derived field initialized.
+Derived constructor finished.
+Inherited access finished.
+Derived value moved.
+Derived drop.
+Derived resource destroyed.
+Base drop.
+Base resource destroyed.
+Inheritance finished.
+```
 
-All six sources pass syntax parsing, and the source catalog records their stages:
-Programs 34, 35, 38 and 39 fail Binding at the anchors in the status table,
-Program 36 binds and stops at ownership analysis of its static group, and
-Program 37 binds, verifies and runs natively through its Debug harness
-(27 checks in `artifacts/verify/20260926-161205-335-unit-p37-2`: unchanged target,
-`IndexTail` and `ResolvedTail` variants and three rejections at O0/O2). Expected output for the
-pending programs is specification-derived (Program 39: proposal-derived), not a
-passing test claim, and their native tests are NOT_RUN. Program 37's Release
-harness, allocation observations and remaining separate checks are P37 scope.
-Catalog/alias checks and both full suites pass in the
-[authoring session](../../docs/dev/PLAN_HISTORY.md#programs34-39-authoring).
+### Milestone 39
 
-For all unmodified programs, successful output lines end with LF, stderr is empty,
-and normal termination returns exit code 0. Abort variants skip any remaining
-ordinary cleanup and return exit code 1 under the specified Windows runtime.
+[Source](Milestone39.kimi) — Exclusive objects, base views, struct Type tests/refinement, complete Sealed payload exchange and dynamic layered destruction.
+
+```text
+Base view refined to Leaf.
+Type-test operand evaluated.
+Complete payload replaced.
+Leaf drop.
+Original resource destroyed.
+Base drop.
+Updated object remains a Leaf.
+Owning base view retains the complete Leaf.
+Leaf drop.
+Replacement resource destroyed.
+Base drop.
+Exclusive object run finished.
+```
+
+### Milestone 40
+
+[Source](Milestone40.kimi) — rc/arc creation, clone, shared access and final strong release.
+
+```text
+Handle reads payload 1.
+Cloned handle shares payload 1.
+Released one strong handle.
+Payload 1 destroyed.
+Arc views read payload 2.
+Payload 2 destroyed.
+Borrowed counter is 5.
+Shared ownership finished.
+```
+
+### Milestone 41
+
+[Source](Milestone41.kimi) — Weak downgrade/upgrade, expiration and cyclic construction.
+
+```text
+Upgrade succeeded while alive.
+Item destroyed.
+Upgrade failed after the final release.
+Weak clone stays expired.
+Upgrade fails while Building.
+Self weak upgrades after publication.
+Weak run finished.
+Node destroyed.
+```
+
+### Milestone 42
+
+[Source](Milestone42.kimi) — Static initialization, generic storage keys and shutdown.
+
+```text
+Main started.
+Count initialized.
+Count is 11.
+Resource 1 initialized.
+Primary is 1.
+Resource 2 initialized.
+Static resource 2 destroyed.
+Replaced the second resource.
+Generic keys are distinct.
+Main finished.
+Static resource 3 destroyed.
+Static resource 1 destroyed.
+```
+
+### Milestone 43
+
+[Source](Milestone43.kimi) — Integrated Properties, inheritance, objects, static state and formatting.
+
+```text
+desk (40 W, level 30)
+Lamp desk destroyed.
+Device desk released.
+shelf (25 W, level 0)
+Lamp shelf destroyed.
+Device shelf released.
+door at level 50
+Device door released.
+Registry starts empty.
+hall (60 W, level 0)
+Hall lamp still owned once.
+Lamp hall destroyed.
+Device hall released.
+Registry entry expired.
+Application finished.
+```

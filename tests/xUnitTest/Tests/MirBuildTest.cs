@@ -92,13 +92,13 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.True(views.Keys.Max() <= 64, $"{views.Keys.Max()} views");
     }
 
-    // The same compilation builds the same MIR, fresh or after a warm rebind, and a fresh compilation of the same source does too; Milestone38
+    // The same compilation builds the same MIR, fresh or after a warm rebind, and a fresh compilation of the same source does too; Milestone43
     // keeps Opaque values where Binding rejected it.
     [Fact]
     public void BuildIsDeterministic()
     {
-        var first = Dump(SemanticSnapshotTest.Bind("milestone/Milestone38").Compilation);
-        var (c, _) = SemanticSnapshotTest.Bind("milestone/Milestone38");
+        var first = Dump(SemanticSnapshotTest.Bind("milestone/Milestone43").Compilation);
+        var (c, _) = SemanticSnapshotTest.Bind("milestone/Milestone43");
         Assert.Equal(first, Dump(c));
         c.Binding.Bind(BindingMode.Final);
         Assert.Equal(first, Dump(c));
@@ -107,7 +107,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
 
     // Plan 6.2: a form without a building rule is one record at its location, however many times a body meets it (a defer body, built at
     // each way out of its scope), and an Opaque value naming the locals its syntax touches. A node the lexer or Binding rejected is a derived
-    // Opaque without a record (SPEC 23.3.6.4): Binding's Error, a use of a local whose declaration is an Error, and the Field initializer of a
+    // Opaque without a record (SPEC 23.1.2): Binding's Error, a use of a local whose declaration is an Error, and the Field initializer of a
     // declaration Binding did not bind (a struct with a misplaced `length` slot), in each constructor. Building goes on after each. The
     // unbuilt form is a fill of a length its instance decides, which no R3 unit builds.
     [Fact]
@@ -134,12 +134,12 @@ public sealed class MirBuildTest(ITestOutputHelper output)
     }
 
     // V11: publishing, building and validating an unchanged compilation again, and selecting every Semantics case view of its bodies with
-    // their locals' case Types, allocates nothing, owning interpolations (Milestone41) and pair-generic bodies (Milestone39) included.
+    // their locals' case Types, allocates nothing, owning interpolations (Milestone30) and pair-generic bodies (Milestone28) included.
     [Trait("Purpose", "Allocation")]
     [Theory]
-    [InlineData("milestone/Milestone26")]
-    [InlineData("milestone/Milestone39")]
-    [InlineData("milestone/Milestone41")]
+    [InlineData("milestone/Milestone34")]
+    [InlineData("milestone/Milestone28")]
+    [InlineData("milestone/Milestone30")]
     public void WarmRebuildAllocatesNothing(string name)
     {
         var (c, _) = SemanticSnapshotTest.Bind(name);
@@ -160,7 +160,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
                 }
             }
         }));
-        Assert.Equal((bodies, version + 16), (c.BuildMir().Bodies.Length, c.BuildMir().Version)); // Eight warm-up and eight measured rebuilds.
+        Assert.Equal((bodies, version + AllocationMeasurement.WarmupOperations + AllocationMeasurement.MeasuredOperations), (c.BuildMir().Bodies.Length, c.BuildMir().Version)); // Warm-up and measured rebuilds.
     }
 
     // V11, plan 5.6.4: N defers, then N returns that each leave all of them, build each defer once per target (one drop tree shared by
@@ -229,7 +229,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
             .Select(static x => $"{x.Terminator.Callee.Symbol!.Name}#{x.Terminator.Callee.Arg - 1}").ToArray();
     }
 
-    // IMPL 21.3.5, plan 5.6.2: a copy that would take a body past 65,536 MIR statements is not made. Defaults that copy the one below
+    // IMPL 21.3.2, plan 5.6.2: a copy that would take a body past 65,536 MIR statements is not made. Defaults that copy the one below
     // twice at each level report DefaultExpansionLimit_Kd once, at the omitting call where the limit is met; that template fails, so the
     // calls that omit it take an Opaque value without another record.
     [Fact]
@@ -286,21 +286,23 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         }));
     }
 
-    // V11: a body of N statement groups of the common forms (a local from a call, a condition with an update, a match with a binding, a
-    // loop with a transfer, an interpolation) grows its MIR and its cold build's allocation linearly with N, and a warm rebuild allocates
-    // nothing.
+    // V11: a body of N statement groups of the common forms (a local from a call, its case adaptation, a condition with an update, a match
+    // with a binding, a loop with a transfer, an interpolation) grows its MIR and its cold build's allocation linearly with N, and a warm
+    // rebuild, whose validation resolves each adaptation under both case views, allocates nothing. The build analyzes (R4-M17); the output
+    // gives A1's dense arena words for the body, which grow with heads × flow paths (R4-M20, V16's reading).
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void BodiesScaleLinearly()
     {
-        var (sizes, work, allocated) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
+        var (sizes, work, allocated, arena) = (new[] { 16, 32, 64 }, new long[3], new long[3], new long[3]);
         Compilation c = null!;
         for (var i = 0; i < sizes.Length; i++)
         {
-            var text = new StringBuilder("enum Shape\n    Dot\n    Line(i32)\nfunc touch(n: i32) -> i32 => n\nfunc work(flag: bool, shape: Shape) -> i32\n    var total = 0\n");
+            var text = new StringBuilder("enum Shape\n    Dot\n    Line(i32)\nfunc touch(n: i32) -> i32 => n\nfunc work<s/T>(flag: bool, shape: Shape) -> i32\n");
+            text.Append("    s is owner or ref\n    var total = 0\n");
             for (var n = 0; n < sizes[i]; n++)
             {
-                text.Append($"    let v{n} = touch({n})\n    if flag and v{n} > 0 => total += v{n}\n    match shape\n        .Line(let x) => total += x\n        _ => ()\n");
+                text.Append($"    let v{n} = touch({n})\n    _ = v{n}@s\n    if flag and v{n} > 0 => total += v{n}\n    match shape\n        .Line(let x) => total += x\n        _ => ()\n");
                 text.Append("    while total > 1000\n        total -= 1\n        if flag => exit\n    Console.writeLine(\"\\(total)\")\n");
             }
 
@@ -311,9 +313,14 @@ public sealed class MirBuildTest(ITestOutputHelper output)
             allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
             work[i] = body.Blocks.Length + body.Statements.Length;
             Assert.True(!body.HasOpaque && program.Records.Count == 0 && program.Findings.Count == 0, $"{sizes[i]} groups");
+            var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData());
+            flow.Begin(body);
+            moves.Build(body, flow);
+            arena[i] = MirInitTest.ArenaWords(body, flow, moves);
         }
 
-        output.WriteLine($"N {string.Join(", ", sizes)}: MIR size {string.Join(", ", work)}, cold build allocation {string.Join(", ", allocated)}");
+        output.WriteLine($"N {string.Join(", ", sizes)}: MIR size {string.Join(", ", work)}, cold build allocation {string.Join(", ", allocated)}, " +
+            $"A1 arena words {string.Join(", ", arena)}");
         Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"MIR size {string.Join(", ", work)}");
         Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold build allocation {string.Join(", ", allocated)}");
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
@@ -323,7 +330,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         }));
     }
 
-    // Plan 5.6.1, SPEC 8.9, 8.10, 13.5.5.1: one body serves every Semantics case. Under each view of tests/mir/cases (one binder, two
+    // Plan 5.6.1, SPEC 8.14, 8.15, 13.5.5: one body serves every Semantics case. Under each view of tests/mir/cases (one binder, two
     // binders, a Closure, which has its enclosing function's binders, a default template and its copy, which names the omitting caller's
     // binder), a PairLayer step is its Place itself in the owner case and the referent of the case's reference otherwise, and a
     // PairAcquire Reborrows in the uniq case and Copies in the others.
@@ -377,9 +384,97 @@ public sealed class MirBuildTest(ITestOutputHelper output)
             lines);
     }
 
-    // SPEC 8.10, 23.3.6.1: the views are not bounded here. Six binders of two cases give 64 distinct views in the old analysis's order (the
-    // last binder fastest); a seventh gives 128, a body Binding accepts (it has no case adaptation) and the MIR builds without an Opaque
-    // value, record or finding, since the definition check decides the bound once (R3: the old analysis's OwnershipCaseLimit_Kd).
+    // SPEC 8.14, 8.15, 13.5.3: an explicit case adaptation is one Adapt, which each Semantics case view of tests/mir/adaptations resolves to
+    // the operation Binding selects in that case, as the operation's ordinary rvalue: a Place Copied, a temporary moved or an object
+    // created from either (Use), an address or a borrow of the operand's Place, or for an object view of the whole object below its pair
+    // layer (Ref; an objuniq upcast's Reborrow too), an owning or objref upcast and a pointer conversion (Cast); in a Closure under its
+    // enclosing function's binder, in a default template under its own and in the template's copy under the omitting caller's. An
+    // adaptation Binding rejected is a derived Opaque, without an Adapt or a record.
+    [Fact]
+    public void ViewsResolveAdaptations()
+    {
+        var c = Compile(File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "mir", "adaptations.kimi")));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Records);
+        var cases = new MirCases(c.Types);
+        var lines = new List<string>();
+        foreach (var body in program.Bodies)
+        {
+            var name = body.Key.Decl?.Name is { Length: > 0 } declared ? $"{body.Key.Kind} {declared}" : body.Key.Kind.ToString();
+            foreach (var adapt in body.Statements.ToArray().Select(static x => x.Rvalue).Where(static x => x.Kind == MirRvalueKind.Adapt))
+            {
+                for (var view = 0L; view < MirCases.Count(body); view++)
+                {
+                    var selected = cases.Select(body, view).ToArray();
+                    var resolved = cases.Adapt(adapt, out var operation);
+                    lines.Add($"{name} [{string.Join(", ", selected.Select(static x => x.Semantics))}]: {operation} {Form(body, resolved)}");
+                }
+            }
+        }
+
+        output.WriteLine(string.Join('\n', lines));
+        Assert.Equal(
+            [
+                "DefaultTemplate take [Owner]: Identity Move _1",
+                "DefaultTemplate take [Obj]: ObjectCreation Move _1",
+                "DefaultTemplate take [Rc]: ObjectCreation Move _1",
+                "DefaultTemplate take [Arc]: ObjectCreation Move _1",
+                "Fn discard [Owner]: Identity Copy _1",
+                "Fn discard [Ref]: Borrow Shared _1: ref/i32",
+                "Fn discard [Obj]: ObjectCreation Copy _1",
+                "Fn discard [Rc]: ObjectCreation Copy _1",
+                "Fn discard [Arc]: ObjectCreation Copy _1",
+                "Fn address [Obj]: ObjectCreation Copy _1",
+                "Fn address [Raw]: Address Raw _1: raw/i32",
+                "Fn widen [Obj]: ObjectUpcast Upcast: obj/Base",
+                "Fn widen [Rc]: ObjectUpcast Upcast: rc/Base",
+                "Fn widen [Arc]: ObjectUpcast Upcast: arc/Base",
+                "Fn inspect [Obj]: ObjectUpcast Shared _1.PairLayer: objref/Base",
+                "Fn inspect [Rc]: ObjectUpcast Shared _1.PairLayer: objref/Base",
+                "Fn inspect [Arc]: ObjectUpcast Shared _1.PairLayer: objref/Base",
+                "Fn mixed [Ref]: Borrow Shared _3: ref/ref/T",
+                "Fn mixed [Obj]: Identity Move _3",
+                "Closure [Owner]: Identity Copy _2",
+                "Closure [Obj]: ObjectCreation Copy _2",
+                "Closure [Rc]: ObjectCreation Copy _2",
+                "Closure [Arc]: ObjectCreation Copy _2",
+                "Fn give [Owner]: Identity Move _3",
+                "Fn give [Obj]: ObjectCreation Move _3",
+                "Fn give [Rc]: ObjectCreation Move _3",
+                "Fn give [Arc]: ObjectCreation Move _3",
+                "Fn peek [Obj]: ObjectUpcast Shared _1.PairLayer: objref/Base",
+                "Fn peek [ObjRef]: ObjectUpcast Upcast: objref/Base",
+                "Fn poke [Obj]: ObjectUpcast Uniq _2.PairLayer: objuniq/Base",
+                "Fn poke [ObjUniq]: ObjectUpcast Uniq _2.PairLayer: objuniq/Base",
+                "Fn cast [Raw]: Pointer Pointer: raw/u8",
+                "Fn cast [Raw]: Pointer IntToPointer: raw/u8",
+            ],
+            lines);
+
+        var rejected = Compile("func wrong<s/T>() -> s/i64\n    s is object\n    return 1@s/i64\n");
+        var built = rejected.BuildMir();
+        Assert.Empty(built.Findings);
+        Assert.Empty(built.Records);
+        var wrong = built.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "wrong");
+        Assert.True(wrong.HasOpaque);
+        Assert.DoesNotContain(wrong.Statements.ToArray(), static x => x.Rvalue.Kind == MirRvalueKind.Adapt);
+
+        static string Form(MirBody body, in MirRvalue rvalue) => rvalue.Kind switch
+        {
+            MirRvalueKind.Use => $"{body.Operands[rvalue.Start].Kind} {Place(body, body.Operands[rvalue.Start].Place)}",
+            MirRvalueKind.Ref => $"{(MirRefKind)rvalue.Op} {Place(body, rvalue.Place)}: {TyCtxt.Name(rvalue.Type!)}",
+            _ => $"{(MirCastKind)rvalue.Op}: {TyCtxt.Name(rvalue.Type!)}",
+        };
+
+        static string Place(MirBody body, MirPlace place) => $"_{place.Root}{(place.Projection == 0 ? string.Empty : "." + body.Projections[place.Projection].Kind)}";
+    }
+
+    // SPEC 8.15, 23.1.1: Binding decides the case bound once per definition (Binding.CaseLimits), so no built body has more than 64 views.
+    // Six binders of two cases give 64 distinct views of the body, its Closure and its default's template, in the old analysis's order (the
+    // last binder fastest). A seventh puts the definition beyond the bound: Binding binds its parts but publishes none of them, so no body,
+    // Closure or default template of it is built, also where another default omits its default, and a call that omits it takes an Opaque
+    // value without a record or finding.
     [Fact]
     public void TheDefinitionCheckDecidesTheCaseBound()
     {
@@ -387,27 +482,83 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         {
             var names = "abcdegh"[..count].ToCharArray();
             var text = new StringBuilder("func f<").AppendJoin(", ", names.Select(static x => $"{x}/{char.ToUpperInvariant(x)}")).Append(">(");
-            text.AppendJoin(", ", names.Select(static x => $"p{x}: {x}/{char.ToUpperInvariant(x)}")).Append(") -> ()\n");
-            text.AppendJoin(string.Empty, names.Select(static x => $"    {x} is owner or uniq\n")).Append("    _ = pa@move\n");
+            text.AppendJoin(", ", names.Select(static x => $"p{x}: {x}/{char.ToUpperInvariant(x)}")).Append(", k: i32 = 1 + 2) -> i32\n");
+            text.AppendJoin(string.Empty, names.Select(static x => $"    {x} is owner or uniq\n"));
+            text.Append("    let add = func (x: i32) -> i32 => x + k\n    _ = pa@move\n    return add(k)\npublic func main() -> ()\n    var n: i32 = 1\n");
+            text.Append("    _ = f(n, n@uniq").Append(string.Concat(Enumerable.Repeat(", n", count - 2))).Append(")\n");
+            text.Append("func g(x: i32 = f(1").Append(string.Concat(Enumerable.Repeat(", 1", count - 1))).Append(")) -> i32 => x\n");
             var c = Compile(text.ToString());
+            Assert.Equal(count == 6, c.Binding.Result.IsComplete);
+            Assert.Equal(count == 6 ? [] : new[] { DiagnosticCode.OwnershipCaseLimit_Kd }, c.Binding.Issues.Select(static x => x.Code));
             var program = c.BuildMir();
             Assert.Empty(program.Findings);
             Assert.Empty(program.Records);
-            var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
-            Assert.False(body.HasOpaque);
-            Assert.Equal(1L << count, MirCases.Count(body));
-            var (cases, views) = (new MirCases(c.Types), new List<string>());
-            for (var view = 0L; view < MirCases.Count(body); view++)
+            var parts = program.Bodies.ToArray().Where(static x => x.Source.Module == 0 && (x.Key.Decl?.Name == "f" || x.Key.Kind == MirBodyKind.Closure)).ToArray();
+            var main = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "main");
+            Assert.Equal(count == 7, program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "g" && x.Key.Kind == MirBodyKind.DefaultTemplate).HasOpaque);
+            if (count == 7)
             {
-                views.Add(string.Concat(cases.Select(body, view).ToArray().Select(static x => x.Semantics == SemanticsKind.Owner ? 'o' : 'u')));
+                Assert.Empty(parts);
+                Assert.Single(main.OpaqueSites.ToArray());
+            }
+            else
+            {
+                Assert.Equal([MirBodyKind.DefaultTemplate, MirBodyKind.Fn, MirBodyKind.Closure], parts.Select(static x => x.Key.Kind));
+                Assert.All(parts, static x => Assert.Equal(64L, MirCases.Count(x)));
+                Assert.False(main.HasOpaque);
+                var (cases, views) = (new MirCases(c.Types), new List<string>());
+                for (var view = 0L; view < MirCases.Count(parts[1]); view++)
+                {
+                    views.Add(string.Concat(cases.Select(parts[1], view).ToArray().Select(static x => x.Semantics == SemanticsKind.Owner ? 'o' : 'u')));
+                }
+
+                Assert.Equal(64, views.Distinct().Count());
+                Assert.Equal(new[] { "oooooo", "ooooou", "uuuuuu" }, new[] { views[0], views[1], views[^1] });
             }
 
-            Assert.Equal(1 << count, views.Distinct().Count());
-            Assert.Equal(new[] { new string('o', count), new string('o', count - 1) + "u", new string('u', count) }, new[] { views[0], views[1], views[^1] });
             c.Analyze();
-            Assert.Equal(count == 7, c.Problems.Any(static x => x.Code == DiagnosticCode.OwnershipCaseLimit_Kd));
-            Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
+            Assert.DoesNotContain(c.Problems, static x => x.Code is DiagnosticCode.OwnershipCaseLimit_Kd or DiagnosticCode.InternalInvariant_Kd);
         }
+    }
+
+    // SPEC 8.15, 23.1.1: a definition whose only part is a parameter default is bounded too, and beyond the bound the default has no
+    // template. Seven unconstrained binders give 9^7 cases; a requirement's default is itself rejected (MisplacedSyntax_Kd).
+    [Fact]
+    public void ADefaultBeyondTheCaseBoundHasNoTemplate()
+    {
+        var c = Compile("contract C\n    func need<a/A, b/B, c/C, d/D, e/E, g/G, h/H>(self: ref/Self, p: a/A, q: b/B, r: c/C, u: d/D, v: e/E, w: g/G, y: h/H, k: i32 = 1 + 2) -> ()\n" +
+            "public func main() -> ()\n    ()\n");
+        Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.OwnershipCaseLimit_Kd);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Bodies.ToArray(), static x => x.Source.Module == 0 && x.Key.Kind == MirBodyKind.DefaultTemplate);
+    }
+
+    // SPEC 8.15, 23.1.1: an accessor's body is a part of its Property, so beyond the bound neither it nor a Field initializer, a method or
+    // the synthesized constructor of a seven-binder struct is built, although Binding binds them.
+    [Fact]
+    public void NoMemberOfAContainerBeyondTheCaseBoundIsBuilt()
+    {
+        var c = Compile("struct S<a/A, b/B, c/C, d/D, e/E, g/G, h/H>\n" + string.Concat("abcdegh".Select(static x => $"    {x} is owner or uniq\n")) +
+            "    var count: i32 = 1 + 2\n    computed size: i32\n        get(self: ref/Self) -> i32 => self.count + 1\n" +
+            "    func touch(self: ref/Self) -> i32 => self.count + 2\npublic func main() -> ()\n    ()\n");
+        Assert.Equal(4, c.Binding.Issues.Count(static x => x.Code == DiagnosticCode.OwnershipCaseLimit_Kd));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.All(program.Bodies.ToArray().Where(static x => x.Source.Module == 0), static x => Assert.True(x.Key.Decl is null || x.Key.Decl.Name == "main", x.Key.ToString()));
+    }
+
+    // SPEC 22.2, 16.3.2 (InlineStorage's contract in Storage.kimi): the compiler never destroys an InlineStorage's contents, so the
+    // destructor body of a fixed array's owning remainder, which destroys the remaining elements itself, ends without a Drop of its
+    // receiver or of any of its parts.
+    [Fact]
+    public void AnInlineStorageIsNeverDestroyed()
+    {
+        var program = Compile("public func main()\n    let values: [3 of string] = [\"a\", \"b\", \"c\"]\n    for value in values@move => ()\n").BuildMir();
+        Assert.Empty(program.Findings);
+        var drop = program.Bodies.ToArray()
+            .Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "drop" } && x.Locals[1].Type.Symbol?.Name == "FixedOwnedRemainder");
+        Assert.DoesNotContain(drop.Blocks.ToArray(), static x => x.Terminator.Kind == MirTerminatorKind.Drop && x.Terminator.Place.Root == 1);
     }
 
     internal static Compilation Compile(string source, bool test = false)

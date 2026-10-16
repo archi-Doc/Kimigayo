@@ -13,7 +13,7 @@ public sealed class StructKoto : DeclarationContainerKoto
     private FunctionKoto? implicitConstructor;
 
     /// <summary>Gets the synthesized constructor once it exists: at once without a base, and for a structure with a base only
-    /// after its omitted base clause selects a base constructor (SPEC 6.2.3.6).</summary>
+    /// after its omitted base clause selects a base constructor (SPEC 6.3.6).</summary>
     internal FunctionKoto? ImplicitConstructor => this.ImplicitConstructorPending ? null : this.SynthesizedConstructor;
 
     /// <summary>Gets the synthesized constructor the declarations admit, available or still pending; the indexer visits it.</summary>
@@ -28,7 +28,7 @@ public sealed class StructKoto : DeclarationContainerKoto
     /// <see cref="ConstructorAvailability.MissingInitializer"/>.</summary>
     internal PropertyKoto? UninitializedField { get; private set; }
 
-    // SPEC 6.2.3.6: decided from the merged, selected members every pass. A structure with a base keeps its synthesized constructor
+    // SPEC 6.3.6: decided from the merged, selected members every pass. A structure with a base keeps its synthesized constructor
     // pending until Binding completes the omitted base selection (CompleteImplicitConstructor).
     internal void PrepareImplicitConstructor(bool compilerManaged)
     {

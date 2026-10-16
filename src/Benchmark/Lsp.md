@@ -111,13 +111,13 @@ no language rule or advertised capability changed.
 
 - Document text holding an escaped lone surrogate was rejected as invalid params, so
   the server dropped a change that the client had applied. Such text is now read, and
-  the check reports `InvalidSourceEncoding_Kd` as §23.3.4 requires.
+  the check reports `InvalidSourceEncoding_Kd` as §23.2.1 requires.
 - A string request ID holding an escaped lone surrogate made the sender throw while
   echoing it; the pump stopped and no later frame was written. Such an ID is now an
   invalid request (-32600), and a value that cannot be serialized drops only its frame.
 - An unreadable change entry (null, or without text) dropped the whole notification
   and left the server text silently stale. The entries before it still apply, and the
-  document is desynchronized (§23.4.2) until a full-text event.
+  document is desynchronized (§23.4) until a full-text event.
 - An unexpected input failure left the session waiting forever; the receive loop now
   always ends the input.
 

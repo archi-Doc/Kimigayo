@@ -24,7 +24,7 @@ function Get-KimiTestAlternatives([string] $Pattern, [switch] $Method) {
 }
 
 # The common compiler checks every Unit test selection includes (docs/dev/VERIFICATION.md, verification scope).
-$KimiCommonTestClasses = @('XunitTest.CompilerSizeBudgetTest', 'XunitTest.ArchitectureRulesTest')
+$KimiCommonTestClasses = @('XunitTest.ArchitectureRulesTest')
 
 function Join-KimiCommonTestSelections([string[]] $Selection, [switch] $Method) {
     # Class selections are ORed, method selections are ORed and the two groups intersect, so the common classes

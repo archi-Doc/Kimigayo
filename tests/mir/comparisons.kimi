@@ -9,3 +9,6 @@ func generic<T>(left: ref/T, right: ref/T) -> bool
     T is Comparable
     return left >= right
 func text(name: string, other: string) -> bool => name == other or name == "kimi"
+func elementComparison() -> bool
+    let a = ("held", "sibling")
+    return a.0 == a.0

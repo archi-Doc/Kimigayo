@@ -6,13 +6,13 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 4.6.2, 4.6.3: prefix ^ and range syntax construct FromEnd<T>, Range<S, E> and ClosedRange<S, E> through the
+    // SPEC 4.6.1, 4.6.2: prefix ^ and range syntax construct FromEnd<T>, Range<S, E> and ClosedRange<S, E> through the
     // internal Kimi group PositionSyntax. Each synthesized call pins its target declaration, so neither a same-named source
     // declaration nor the source's access rules affect it; its arguments are the source operands, bound beforehand under the
     // ordinary rules. A key applied directly (below) constructs no value and has no call.
     private readonly Dictionary<Koto, InvocationKoto> rangeCalls = new(ReferenceEqualityComparer.Instance);
 
-    // SPEC 4.6.4, 4.6.9: a position or range key of a built-in selection that is not applied directly resolves against the
+    // SPEC 4.6.3, 4.7.1: a position or range key of a built-in selection that is not applied directly resolves against the
     // receiver's length by a synthesized PositionSyntax.resolved<P> or resolvedRange<R> call whose length argument reads
     // the receiver the selection evaluated (an EvaluatedKoto), so any receiver is evaluated once. A failed resolution
     // yields a value that the selection's own bounds check rejects. A ResolvedRange key is applied as written and rechecked.
@@ -54,7 +54,7 @@ public sealed partial class Binding
         node.BindingFailure = BindingFailure.None;
     }
 
-    // SPEC 4.6.2: `^a` whose operand is literal-only (SPEC 12.3.1).
+    // SPEC 4.6.1: `^a` whose operand is literal-only (SPEC 12.3).
     private static bool IsLiteralOnlyFromEnd(Koto node) => node is FromEndIndexKoto fromEnd && IsIntegerLiteralOnly(fromEnd.Operand);
 
     // A literal-only integer or `^a` position.
@@ -74,7 +74,7 @@ public sealed partial class Binding
     private bool IsSyntaxPositionType(BoundType type)
         => type.Kind == BoundTypeKind.Constructed && (ReferenceEquals(type.Symbol, this.Library.FromEnd) || ReferenceEquals(type.Symbol, this.Library.Range) || ReferenceEquals(type.Symbol, this.Library.ClosedRange));
 
-    // SPEC 12.3.1: the default Type of a literal-only `^a` or range: i32 boundaries and offsets, Start and End for omitted ones.
+    // SPEC 12.3: the default Type of a literal-only `^a` or range: i32 boundaries and offsets, Start and End for omitted ones.
     private BoundType? LiteralPositionDefault(Koto node) => node switch
     {
         FromEndIndexKoto => this.FromEndType(BoundType.I32),
@@ -89,7 +89,7 @@ public sealed partial class Binding
     private BoundType LiteralBoundaryDefault(Koto? boundary, BoundType omitted)
         => boundary is null ? omitted : KotoHelper.UnwrapParentheses(boundary) is FromEndIndexKoto ? this.FromEndType(BoundType.I32) : BoundType.I32;
 
-    // SPEC 4.6.3.1, 12.3.1: whether a literal-only `^a` or range fits a candidate Type: a range fits the Type of its shape
+    // SPEC 4.6.2, 12.3: whether a literal-only `^a` or range fits a candidate Type: a range fits the Type of its shape
     // when each written boundary fits its S or E and each omitted one is Start or End.
     private bool FitsLiteralPosition(Koto node, BoundType type, BindingScope scope) => node switch
     {
@@ -144,7 +144,7 @@ public sealed partial class Binding
         this.positionWarnings.Clear();
     }
 
-    // SPEC 4.6.1, 4.6.9: the key of a fixed-array, Slice or Array selection. An integer key of any PrimitiveInteger Type and
+    // SPEC 4.7, 4.7.1: the key of a fixed-array, Slice or Array selection. An integer key of any PrimitiveInteger Type and
     // a written `^x` are applied directly by the element paths of the caller (false with no result); a range whose written
     // boundaries are integers or `^x` is applied directly here; any other position or range key is resolved by a
     // synthesized call. Returns false without binding for other receivers.
@@ -181,7 +181,7 @@ public sealed partial class Binding
         }
         else if (source.Right is FromEndIndexKoto fromEnd)
         {
-            // SPEC 4.6.9: `^x` resolves as `length - x` within the element access's one bounds check.
+            // SPEC 4.7.1: `^x` resolves as `length - x` within the element access's one bounds check.
             var offset = this.FromEndOffset(fromEnd, scope, null);
             if (offset is null)
             {
@@ -200,7 +200,7 @@ public sealed partial class Binding
             if (key is not null && (ReferenceEquals(key, BoundType.Never) || this.IsIntegerOperand(key, scope)))
             {
                 this.CheckLiteralKey(source, core);
-                return false; // SPEC 4.6.9: an integer key is converted to an isize position by the element access.
+                return false; // SPEC 4.7.1: an integer key is converted to an isize position by the element access.
             }
         }
 
@@ -247,7 +247,7 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 4.6.1, 4.6.9: a key binds without an expected Type, so a literal-only key is i32; a reference to a read Type is
+    // SPEC 4.7, 4.7.1: a key binds without an expected Type, so a literal-only key is i32; a reference to a read Type is
     // read as its value (SPEC 3.5.3), whose Type is returned.
     private BoundType? BindPositionKey(Koto key, BindingScope scope)
     {
@@ -282,16 +282,16 @@ public sealed partial class Binding
         return this.BindCall(call, scope, null) is null ? null : call;
     }
 
-    // SPEC 4.6.4: a range key whose written boundaries are integers of any PrimitiveInteger Type, read through references,
+    // SPEC 4.6.3: a range key whose written boundaries are integers of any PrimitiveInteger Type, read through references,
     // or `^x` with such an operand, is applied directly: each boundary becomes an isize position without a range value.
-    // Literal-only boundaries take the other boundary's integer Type, else i32 (SPEC 4.6.3.1). Returns false, with
+    // Literal-only boundaries take the other boundary's integer Type, else i32 (SPEC 4.6.2). Returns false, with
     // `failed` unset, when a boundary has another Position Type, so the range is constructed instead.
     private bool BindDirectRange(RangeKoto range, BindingScope scope, out bool failed)
     {
         failed = false;
         if (range.IsInclusive && range.End is null)
         {
-            this.Fail(range, BindingFailure.TypeMismatch); // SPEC 4.6.3.1: an inclusive end cannot be omitted.
+            this.Fail(range, BindingFailure.TypeMismatch); // SPEC 4.6.2: an inclusive end cannot be omitted.
             failed = true;
             return false;
         }
@@ -358,7 +358,7 @@ public sealed partial class Binding
 
         if (fromEnd is not null)
         {
-            this.Fail(boundary, BindingFailure.TypeMismatch); // SPEC 4.6.2: `^x` needs an integer operand.
+            this.Fail(boundary, BindingFailure.TypeMismatch); // SPEC 4.6.1: `^x` needs an integer operand.
             failed = true;
         }
 
@@ -383,14 +383,14 @@ public sealed partial class Binding
         return !IsUnfittedLiteral(boundary) || this.RequireType(boundary, scope, other ?? BoundType.I32) is not null;
     }
 
-    // SPEC 4.6.3: a range value. Its shape is fixed by the syntax; each written boundary is a value of a Type satisfying
+    // SPEC 4.6.2: a range value. Its shape is fixed by the syntax; each written boundary is a value of a Type satisfying
     // Position, known independently of the context, and a literal-only boundary takes the S or E of an expected range of
-    // the same shape, else the integer Type of the other boundary, else i32 (SPEC 4.6.3.1). Construction checks nothing.
+    // the same shape, else the integer Type of the other boundary, else i32 (SPEC 4.6.2). Construction checks nothing.
     private BoundType? BindRangeValue(RangeKoto range, BindingScope scope, BoundType? expected)
     {
         if (range.IsInclusive && range.End is null)
         {
-            return this.Fail(range, BindingFailure.TypeMismatch); // SPEC 4.6.3.1: an inclusive end cannot be omitted.
+            return this.Fail(range, BindingFailure.TypeMismatch); // SPEC 4.6.2: an inclusive end cannot be omitted.
         }
 
         var shape = range.IsInclusive ? this.Library.ClosedRange : this.Library.Range;
@@ -452,7 +452,7 @@ public sealed partial class Binding
         }
         else if (!this.ProvesClosedContract(type, this.Library.Position, scope))
         {
-            this.Fail(boundary, BindingFailure.TypeMismatch); // SPEC 4.6.3.1: each boundary satisfies Position.
+            this.Fail(boundary, BindingFailure.TypeMismatch); // SPEC 4.6.2: each boundary satisfies Position.
             failed = true;
             return null;
         }
@@ -468,7 +468,7 @@ public sealed partial class Binding
             : this.RequireType(boundary, scope, expected ?? integer);
     }
 
-    // SPEC 4.6.2: `^x` constructs FromEnd<T> from an operand of any PrimitiveInteger Type T, read through references.
+    // SPEC 4.6.1: `^x` constructs FromEnd<T> from an operand of any PrimitiveInteger Type T, read through references.
     private BoundType? BindFromEnd(FromEndIndexKoto node, BindingScope scope, BoundType? expected)
     {
         var offset = this.FromEndOffset(node, scope, expected);
@@ -481,7 +481,7 @@ public sealed partial class Binding
         return this.BindCall(call, scope, null) is null ? Complete(node, null) : Complete(node, this.FromEndType(offset));
     }
 
-    // The T of `^x`: a literal-only operand takes the T of an expected FromEnd<T>, else i32 (SPEC 4.6.3.1).
+    // The T of `^x`: a literal-only operand takes the T of an expected FromEnd<T>, else i32 (SPEC 4.6.2).
     private BoundType? FromEndOffset(FromEndIndexKoto node, BindingScope scope, BoundType? expected)
     {
         if (IsUnfittedLiteral(node.Operand))
@@ -495,7 +495,7 @@ public sealed partial class Binding
 
     // A synthesized call of the PositionSyntax function `name`, cached per source node, with the Type arguments `firstType`
     // and `secondType` (each null when absent) and the source operands `first` and `second` as arguments. The callee is
-    // pinned to the declaration, so ordinary lookup, shadowing and access do not apply to it (SPEC 4.6.3).
+    // pinned to the declaration, so ordinary lookup, shadowing and access do not apply to it (SPEC 4.6.2).
     private InvocationKoto PositionSyntaxCall(Koto root, string name, BoundType? firstType, BoundType? secondType, Koto? first, Koto? second)
     {
         var count = (first is null ? 0 : 1) + (second is null ? 0 : 1);

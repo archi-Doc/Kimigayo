@@ -8,11 +8,11 @@ namespace XunitTest;
 
 public class AssociatedForwardingTest
 {
-    internal static string MilestoneSource => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone19.kimi")).Replace("\r\n", "\n", StringComparison.Ordinal);
+    internal static string MilestoneSource => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone20.kimi")).Replace("\r\n", "\n", StringComparison.Ordinal);
 
     [Fact]
     public void EmitsUnchangedMilestone()
-        => ScalarEmissionTest.EmitFixture("AssociatedForwardingMilestone19", MilestoneSource, "Associated numbers are 21, 21.\nAssociated flags are true, true.\nContract forwarding finished.\n");
+        => ScalarEmissionTest.EmitFixture("AssociatedForwardingMilestone20", MilestoneSource, "Associated numbers are 21, 21.\nAssociated flags are true, true.\nContract forwarding finished.\n");
 
     [Fact]
     public void EmitsMilestoneWithAnInferredBinding()
@@ -27,11 +27,7 @@ public class AssociatedForwardingTest
         var source = MilestoneSource[..MilestoneSource.IndexOf("public func main", StringComparison.Ordinal)] +
             "func project(value: Wrapper<Wrapper<NumberSource>>.Source.Element) -> i32 => value\n()";
         var c = MinimalEmissionTest.Analyze(source);
-        for (var i = 0; i < 8; i++)
-        {
-            Assert.True(c.Binding.Bind(BindingMode.Final).IsComplete);
-        }
-
+        Assert.True(c.Binding.Bind(BindingMode.Final).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
 
@@ -40,14 +36,14 @@ public class AssociatedForwardingTest
     {
         var c = MinimalEmissionTest.Analyze(MilestoneSource);
         Assert.True(c.Binding.Result.IsComplete);
-        var requirement = c.Ownership.Bodies.SelectMany(x => x.Operations).Select(x => x.Source).OfType<InvocationKoto>()
-            .Select(x => x.CallOf()).First(x => x?.Target.Declaration is FunctionKoto { IsRequirement: true })!;
-        var main = c.Ownership.Bodies.Single(x => x.Function.Name == "main");
-        foreach (var operation in main.Operations)
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var requirement = nodes.OfType<InvocationKoto>().Select(x => x.CallOf()).First(x => x?.Target.Declaration is FunctionKoto { IsRequirement: true })!;
+        var main = nodes.OfType<FunctionKoto>().Single(x => x.Name == "main");
+        foreach (var invocation in KotoTree.Walk(main).OfType<InvocationKoto>())
         {
-            if (operation.Source is InvocationKoto invocation && invocation.CallOf() is { } call && call.Target.Name is "readTwice" or "readNumber")
+            if (invocation.CallOf() is { } call && call.Target.Name is "readTwice" or "readNumber")
             {
-                Assert.Equal(ConstraintProof.Proven, c.Binding.ResolveConformance(call.TypeArguments[0]!, requirement.Target.Scope.Owner.SymbolOf()!, main.Function, out var path));
+                Assert.Equal(ConstraintProof.Proven, c.Binding.ResolveConformance(call.TypeArguments[0]!, requirement.Target.Scope.Owner.SymbolOf()!, main, out var path));
                 Assert.True(path!.IsVerified);
                 var implementation = path.GetImplementation(new(requirement.Target, requirement.RequirementContract!));
                 Assert.NotNull(implementation);

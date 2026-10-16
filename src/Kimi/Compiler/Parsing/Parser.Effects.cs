@@ -47,7 +47,7 @@ public static partial class Parser
         }
     }
 
-    /// <summary>Determines whether the reader stands at an effect item (SPEC 8.4.10.1).</summary>
+    /// <summary>Determines whether the reader stands at an effect item (SPEC 8.11.1).</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="specification">Whether a Contract selector may follow <c>effect</c>, as among a container's items. A body's
     /// Constraint prefix takes a Name only, so <c>effect(x)</c> stays a call there.</param>
@@ -63,7 +63,7 @@ public static partial class Parser
         return next.IsIdentifierOrContextualKeyword() || (specification && next is TokenKind.OpenParenthesis or TokenKind.ColonColon);
     }
 
-    /// <summary>Parses an effect clause or an effect specification; the reader stands at <c>effect</c> (SPEC 8.4.10.1).</summary>
+    /// <summary>Parses an effect clause or an effect specification; the reader stands at <c>effect</c> (SPEC 8.11.1).</summary>
     /// <param name="reader">The token reader.</param>
     /// <returns>The item. A missing or unknown bound reports the Error and leaves the item as its recovery.</returns>
     internal static EffectBoundKoto ParseEffectBound(ref TokenReader reader)

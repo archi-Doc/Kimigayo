@@ -170,11 +170,7 @@ public class ConstraintProjectionApiAccessBindingTest
     public void WarmConstraintProjectionChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("public contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic contract Api\n    associate Item is S.C.Element\npublic group Functions\n    public func expose<T>(value: T)\n        T is S.C.Element\n        ()");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

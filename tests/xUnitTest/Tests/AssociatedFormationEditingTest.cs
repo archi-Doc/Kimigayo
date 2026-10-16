@@ -50,7 +50,7 @@ public class AssociatedFormationEditingTest
         }
     }
 
-    // SPEC 8.1.2, 8.4.3: editing a pair-layer family's admitted set or its specification revokes its formation, and restoring the
+    // SPEC 8.1.2, 8.5: editing a pair-layer family's admitted set or its specification revokes its formation, and restoring the
     // clause restores it, without any state left from the edited pass.
     [Theory]
     [InlineData("s is owner or ref", "s is owner or obj")]

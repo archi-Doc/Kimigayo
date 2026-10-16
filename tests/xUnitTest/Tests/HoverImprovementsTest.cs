@@ -303,26 +303,17 @@ public sealed class HoverImprovementsTest
             Assert.NotNull(state.Find(text, position).Body);
         }
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 1000; i++)
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             foreach (var position in positions)
             {
                 state.Find(text, position);
             }
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        }));
         Assert.True(state.Edited(0, 0, 1));
         Assert.True(text.TryApply(new(0, 0), new(0, 0), " "));
         Assert.StartsWith(HoverRenderer.PreviousNotice, state.Find(text, positions[0]).Body);
-        before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 1000; i++)
-        {
-            state.Find(text, positions[0]);
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => state.Find(text, positions[0])));
     }
 
     private static HoverDocument Project(string source, bool accepted = true)

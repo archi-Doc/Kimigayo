@@ -155,7 +155,7 @@ public class ContextualFunctionReferenceTest(ITestOutputHelper output)
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
 
-    // SPEC 7.3.1: waiting slots acquired in different modes violate the group's parameter acquisition shape; the declaration
+    // SPEC 7.4: waiting slots acquired in different modes violate the group's parameter acquisition shape; the declaration
     // reports it, and the call selects no candidate instead of reporting an unsupported form.
     [Theory]
     [InlineData("choose")]

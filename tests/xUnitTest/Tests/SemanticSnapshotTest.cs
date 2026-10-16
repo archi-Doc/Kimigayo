@@ -6,6 +6,7 @@ using System.Text.Json;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -247,21 +248,16 @@ public sealed class SemanticSnapshotTest
             var text = this.text;
             var (binding, startup, ownership) = (compilation.Binding.Result, compilation.Binding.Startup, compilation.Analysis);
             text.Append("= binding ").Append(binding.Mode).Append(' ').Append(binding.ResolvedCount).Append('/').Append(binding.UnresolvedCount).Append('/').Append(binding.InvalidCount)
-                .Append(" startup ").Append(startup.Kind).Append(' ').Append(startup.IsComplete).Append(' ').Append(Location(startup.Function))
+                .Append(" startup ").Append(startup.Kind).Append(' ').Append(startup.IsComplete).Append(' ').Append(LegacyRecords.Location(startup.Function))
                 .Append(" ownership ").Append(ownership.IsVerified).Append(' ').Append(ownership.BodyCount).Append('/').Append(ownership.ErrorCount).Append('\n');
-            foreach (var issue in compilation.Binding.Issues)
+            foreach (var (requirement, code, node) in LegacyRecords.Of(compilation))
             {
-                text.Append("? binding ").Append(issue.Code).Append(' ').Append(issue.Failure).Append(' ').Append(Location(issue.Node)).Append('+').Append(issue.Node.Span.Length).Append('\n');
-            }
-
-            foreach (var issue in compilation.Ownership.ControlFlow?.Issues ?? [])
-            {
-                text.Append("? flow ").Append(issue.Code).Append(' ').Append(Location(issue.Node)).Append('+').Append(issue.Node.Span.Length).Append('\n');
-            }
-
-            foreach (var issue in compilation.Ownership.Issues)
-            {
-                text.Append("? ownership ").Append(issue.Code).Append(' ').Append(issue.Failure).Append(' ').Append(Location(issue.Source)).Append('+').Append(issue.Source.Span.Length).Append('\n');
+                text.Append(requirement.Partition switch
+                {
+                    DiagnosticPartition.Binding => $"? binding {code} {(BindingFailure)requirement.Kind} ",
+                    DiagnosticPartition.ControlFlow => $"? flow {code} ",
+                    _ => $"? ownership {code} {(OwnershipFailure)requirement.Kind} ",
+                }).Append(LegacyRecords.Location(node)).Append('+').Append(node.Span.Length).Append('\n');
             }
 
             foreach (var diagnostic in TestDiagnostics.Of(compilation))
@@ -273,21 +269,12 @@ public sealed class SemanticSnapshotTest
         internal void Fail(Exception exception)
             => this.text.Append("exception ").Append(exception.GetType().Name).Append(": ").Append(exception.Message.Split('\n')[0]).Append('\n');
 
-        private static string Document(Koto? node)
-        {
-            var path = node?.CodeContext?.SourceDocument?.Path;
-            return path is null ? "?" : path.StartsWith("compiler://", StringComparison.Ordinal) ? "Kimi/" + path[(path.LastIndexOf('/') + 1)..] : path;
-        }
-
-        private static string Location(Koto? node)
-            => node is null ? "?" : Document(node) + ":" + node.Span.Start;
-
         private static string Symbol(BindingSymbol? symbol)
-            => symbol is null ? "-" : $"{symbol.Kind}:{symbol.Name}@{Location(symbol.Declaration)}";
+            => symbol is null ? "-" : $"{symbol.Kind}:{symbol.Name}@{LegacyRecords.Location(symbol.Declaration)}";
 
         private static string Length(BoundLength? length)
             => length is null ? "_" : length.IsConstant ? length.Value.ToString(CultureInfo.InvariantCulture) :
-                length.Parameter is { } parameter ? "$" + parameter.Name + "@" + Location(parameter.Declaration) : $"({Length(length.Left)} {length.Operation} {Length(length.Right)})";
+                length.Parameter is { } parameter ? "$" + parameter.Name + "@" + LegacyRecords.Location(parameter.Declaration) : $"({Length(length.Left)} {length.Operation} {Length(length.Right)})";
 
         private static string Origin(BoundOrigin origin)
         {
@@ -300,7 +287,7 @@ public sealed class SemanticSnapshotTest
 
             if (origin.Binder is { } binder)
             {
-                builder.Append('@').Append(Location(binder)).Append('#').Append(origin.Slot);
+                builder.Append('@').Append(LegacyRecords.Location(binder)).Append('#').Append(origin.Slot);
             }
 
             if (origin.Operands.Count != 0)
@@ -332,17 +319,12 @@ public sealed class SemanticSnapshotTest
             builder.Append(type.Name);
             if (type.Kind != BoundTypeKind.Primitive && type.Symbol is { } symbol)
             {
-                builder.Append('@').Append(Location(symbol.Declaration));
+                builder.Append('@').Append(LegacyRecords.Location(symbol.Declaration));
             }
 
             if (type.Semantics != SemanticsKind.Owner)
             {
                 builder.Append('/').Append(type.Semantics);
-            }
-
-            if (type.ResultMode != FunctionResultMode.Value)
-            {
-                builder.Append('!').Append(type.ResultMode);
             }
 
             if (type.Components.Count != 0)
@@ -428,7 +410,7 @@ public sealed class SemanticSnapshotTest
             }
 
             var text = this.text;
-            text.Append(this.depth).Append(' ').Append(Location(node)).Append('+').Append(node.Span.Length).Append(' ').Append(node.Akind);
+            text.Append(this.depth).Append(' ').Append(LegacyRecords.Location(node)).Append('+').Append(node.Span.Length).Append(' ').Append(node.Akind);
             if (node.StateOf() != BindingState.Unvisited)
             {
                 text.Append(' ').Append(node.StateOf());
@@ -540,11 +522,6 @@ public sealed class SemanticSnapshotTest
             {
                 text.Append(label).Append('=').Append(call.Kind == CalleeKind.Virtual ? call.VirtualIsDirect ? "virtual-direct" : "virtual" : "direct")
                     .Append(' ').Append(Symbol(call.Target)).Append(" -> ").Append(this.Type(call.ReturnType));
-                if (call.ResultMode != FunctionResultMode.Value)
-                {
-                    text.Append('!').Append(call.ResultMode);
-                }
-
                 if (call.TypeArguments.Length != 0)
                 {
                     text.Append(" types=[").AppendJoin(',', call.TypeArguments.ToArray().Select(this.Type)).Append(']');

@@ -4,7 +4,7 @@
 `tests/Workloads/VerificationWorkloads.PairCaseFamilies`: one generic definition with one pair binder
 (`s is owner or uniq`, two cases) whose uniq case Reborrows a local, stores it through an exclusive
 reference, captures it in a closure and passes it bare, one definition with two binders (four cases),
-the closure body and `main`, all valid in every case (SPEC §8.10). The stored-reference workload of
+the closure body and `main`, all valid in every case (SPEC §8.15). The stored-reference workload of
 `Benchmark --borrow-storage` (32 locals, stored) runs beside it as a reference. It measures the first
 ownership-analysis allocation, the bytes of one warm analysis, five samples of eight warm analyses after
 eight fixed warm-ups, and five samples of eight warm rebindings after 32 warm-ups. Parsing is outside the

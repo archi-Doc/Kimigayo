@@ -109,7 +109,7 @@ public class SharedObjectOwnershipTest(ITestOutputHelper output)
         Assert.False(c.Validate(out _));
     }
 
-    // SPEC 3.6.2, 8.10: a generic definition is judged with the temporary handle's Loan before any instance exists.
+    // SPEC 3.6, 8.15: a generic definition is judged with the temporary handle's Loan before any instance exists.
     [Fact]
     public void GenericDefinitionsKeepTheTemporaryHandleLoan()
     {
@@ -118,13 +118,13 @@ public class SharedObjectOwnershipTest(ITestOutputHelper output)
         Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "let r = make()@objref"), (error.Code, Source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
     }
 
-    // SPEC 3.6.2: an iteration source's temporaries, a value or a handle, last for the loop, as a match Subject's do.
+    // SPEC 3.6: an iteration source's temporaries, a value or a handle, last for the loop, as a match Subject's do.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void IterationSourcesKeepTheirTemporariesForTheLoop()
         => SharedObjectRuntimeTest.WriteModes("IterationTemporary", "func values() -> Array<i32> => [1, 2]\nfunc handles() -> rc/Array<i32> => Kimi.Intrinsics.makeRc(values())\nvar sum: i32 = 0\nfor x in values()@ref\n    sum += x@follow\nfor y in handles()@follow@ref\n    sum += y@follow\nrequire sum == 6 else => $abort(\"for\")\nConsole.writeLine(\"done\")", 3, 3, 72, "done\n");
 
-    // SPEC 13.5.5.2: object borrows, implicit object views and payload follows retain nothing; the run shows one release.
+    // SPEC 13.5.6: object borrows, implicit object views and payload follows retain nothing; the run shows one release.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -137,7 +137,7 @@ public class SharedObjectOwnershipTest(ITestOutputHelper output)
         Assert.DoesNotContain("call void @__kimi_clone_", ir, StringComparison.Ordinal);
     }
 
-    // SPEC 13.5.8, 15.1: strong duplication is only clone, so a bare handle is never implicitly duplicated, and a Moved
+    // SPEC 13.6.2, 15.1: strong duplication is only clone, so a bare handle is never implicitly duplicated, and a Moved
     // handle is never reused; reading, moving or cloning it again reports the Move.
     [Theory]
     [InlineData("let alias = first", "TransferRequired_Kd", true)]
@@ -157,7 +157,7 @@ public class SharedObjectOwnershipTest(ITestOutputHelper output)
         }
     }
 
-    // SPEC 13.5.5.1, 13.5.8, 16.2.2: a payload follow, a Field borrow and a receiver-borrow result keep a Loan on the handle,
+    // SPEC 13.5.5, 13.6.2, 16.2.2: a payload follow, a Field borrow and a receiver-borrow result keep a Loan on the handle,
     // and a handle whose payload borrows a local keeps that local's Loan wherever it goes.
     [Theory]
     [InlineData("var owner = Kimi.Intrinsics.makeRc(Item.init())\nlet payload = owner@follow@ref\nlet moved = owner@move\nrequire payload.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd", "owner@move", 5)]

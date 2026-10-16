@@ -84,7 +84,7 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
-    // SPEC 9.5.1, 13.7.2: the getter's receiver from the one located receiver. A getter selected through a base path reborrows the whole
+    // SPEC 9.6.1, 13.7.2: the getter's receiver from the one located receiver. A getter selected through a base path reborrows the whole
     // receiver at its own Type and lends the base prefix, as its call does (PrepareCallArgument), never the receiver as the base.
     private int ReborrowPropertyReceiver(InvocationKoto getter, int receiver)
     {

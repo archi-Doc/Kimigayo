@@ -202,7 +202,7 @@ public sealed partial class OwnershipAnalysis
             else
             {
                 var value = -1;
-                // An anonymous function is an expression arm: its value is the closure it creates (SPEC 7.6, 14.2).
+                // An anonymous function is an expression arm: its value is the closure it creates (SPEC 7.7, 14.2).
                 if (KotoHelper.IsBodyExpression(arm.Syntax.Body) && (arm.Syntax.Body is not UnitLiteralKoto || KotoHelper.IsResultRequiringSelection(syntax)))
                 {
                     value = this.Expression(arm.Syntax.Body);

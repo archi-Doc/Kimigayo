@@ -92,6 +92,8 @@ public class FunctionEmissionTest
         Assert.DoesNotContain("@__kimi_entry_body", writer.ToString());
     }
 
+    // A Never call has no return edge and a cleanup that never completes reaches no delivery (their MIR: tests/mir/continuations.kimi
+    // `divergingArgument`; tests/mir/scopes.kimi `divergingDefer` and `divergentDeferHeld`).
     [Fact]
     public void NeverCallsAndDivergentCleanupHaveNoReturnDelivery()
     {
@@ -102,14 +104,9 @@ public class FunctionEmissionTest
         Assert.True(call.Callee!.NoReturn);
         Assert.Equal(EmissionOpcode.Unreachable, main.Instructions[^1].Opcode);
         Assert.DoesNotContain(main.Instructions, x => x.Opcode is EmissionOpcode.ReturnVoid or EmissionOpcode.ReturnScalar or EmissionOpcode.Phi);
-        var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "main");
-        var invoke = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call && ((InvocationKoto)x.Source).CallOf()!.ReturnType == BoundType.Never);
-        Assert.All(body.Edges.Where(x => x.From == invoke), x => Assert.Equal(OwnershipEdgeKind.Abort, x.Kind));
 
         c = MinimalEmissionTest.Analyze("func f() -> i32\n    defer => loop => ()\n    return 1\nf()");
         Assert.True(c.Emission.TryPrepare(out module, out error), error);
-        body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "f");
-        Assert.All(body.Deliveries, x => Assert.False(body.IsReachable(x.Operation)));
         var f = module.GetFunction(1);
         Assert.False(f.Abi.NoReturn); // A fixed i32 signature does not become Never.
         Assert.DoesNotContain(f.Instructions, x => x.Opcode is EmissionOpcode.ReturnVoid or EmissionOpcode.ReturnScalar);
@@ -190,7 +187,7 @@ public class FunctionEmissionTest
         Assert.False(old.Source.TryGetTarget(out _));
 
         var c = MinimalEmissionTest.Analyze($"func renamed(x: {type}) -> {type} => x\n()");
-        var function = Assert.Single(c.Ownership.Bodies, x => !x.Function.IsGenerated).Function;
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "renamed");
         var abi = pool.Get(0, function);
         Assert.Same(old.Abi, abi);
         c.Bind();
@@ -199,7 +196,7 @@ public class FunctionEmissionTest
         Assert.Same(abi, pool.Get(0, function));
         Assert.Equal("__kimi_f0", abi.Name);
         var changed = MinimalEmissionTest.Analyze("func renamed(x: bool) -> bool => x\n()");
-        Assert.NotSame(abi, pool.Get(0, Assert.Single(changed.Ownership.Bodies, x => !x.Function.IsGenerated).Function));
+        Assert.NotSame(abi, pool.Get(0, KotoTree.Walk(changed.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "renamed")));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -210,14 +207,11 @@ public class FunctionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(parameters ? "func f(a: i32, b: (), c: bool) -> i32 => if c => a else => 0\nvar x = 0\nwhile x < 100\n    x += f(c: true, b: (), a: 1)" : Snapshot);
         var valid = true;
-        var allocated = AllocationMeasurement.Measure(
-            () =>
-            {
-                valid &= c.Analyze().IsVerified;
-                valid &= c.WriteIr(TextWriter.Null, out _);
-            },
-            iterations: 128,
-            warmupIterations: 100);
+        var allocated = AllocationMeasurement.Measure(() =>
+        {
+            valid &= c.Analyze().IsVerified;
+            valid &= c.WriteIr(TextWriter.Null, out _);
+        });
 
         Assert.Equal(0, allocated);
         Assert.True(valid);
@@ -227,7 +221,7 @@ public class FunctionEmissionTest
     private static (WeakReference<FunctionKoto> Source, FunctionAbi Abi) RegisterTemporary(FunctionAbiPool pool, string type)
     {
         var c = MinimalEmissionTest.Analyze($"func temporary(x: {type}) -> {type} => x\n()");
-        var function = Assert.Single(c.Ownership.Bodies, x => !x.Function.IsGenerated).Function;
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "temporary");
         return (new(function), pool.Get(0, function));
     }
 }

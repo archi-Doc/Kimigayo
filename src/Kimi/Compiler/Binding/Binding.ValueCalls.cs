@@ -96,7 +96,7 @@ public sealed partial class Binding
     private static SemanticsMask CallableReceiverMask(SemanticsKind receiver)
         => receiver switch { SemanticsKind.Ref => SemanticsMask.Ref, SemanticsKind.Uniq => SemanticsMask.Uniq, _ => SemanticsMask.Owner };
 
-    // SPEC 15.6.4, 8.6: the binder of a callee's own per-call input Origins: its Item or closure declaration, otherwise the
+    // SPEC 15.6.4, 8.10: the binder of a callee's own per-call input Origins: its Item or closure declaration, otherwise the
     // Function Type of the signature, whose own inputs are the only Input atoms it binds at an outer layer.
     private static Koto? CalleeBinder(BoundType? callee, BoundType signature)
     {
@@ -251,7 +251,7 @@ public sealed partial class Binding
 
     private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver) => this.TryCallable(type, scope, out signature, out receiver, out _);
 
-    // SPEC 8.6, 10.5: the one call signature of a callable value. Distinct Callable signatures on one F are call candidates
+    // SPEC 8.10, 10.5: the one call signature of a callable value. Distinct Callable signatures on one F are call candidates
     // (`several`); with them there is no single signature S.
     private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver, out bool several)
     {
@@ -327,7 +327,7 @@ public sealed partial class Binding
     // Exclusive one, through the same checked projection as the explicit spelling; the payload offers no Take.
     // The checks follow SPEC 7.3's order: the operation's legality and authority (a payload offers no Take and rc/arc/objref only Read),
     // then the acquisition, whose unimplemented forms are located limits; a Shared call needs no Sealed proof, as an open View's
-    // shared receiver does not (SPEC 13.5.5.1).
+    // shared receiver does not (SPEC 13.5.5).
     private bool TryPayloadReceiver(InvocationKoto call, Koto handle, SemanticsKind receiver, BindingScope scope, out BoundArgumentOperation operation)
     {
         operation = default;
@@ -370,7 +370,7 @@ public sealed partial class Binding
 
     private BoundType? BindValueCall(InvocationKoto call, BindingScope scope, BoundType signature, SemanticsKind receiver = SemanticsKind.Ref)
     {
-        // A function value has no Type parameters of its own, so explicit Type arguments select nothing (SPEC 7.6, 12.4.2);
+        // A function value has no Type parameters of its own, so explicit Type arguments select nothing (SPEC 7.7, 12.5.2);
         // the receiver checks below read the bound callee, which a generic application never is.
         if (call.Method is GenericsKoto)
         {
@@ -395,7 +395,7 @@ public sealed partial class Binding
                 return this.FailWrite(call, call.Method);
             }
 
-            // SPEC 7.3, 7.6.3: the callee is a Receiver Expression, acquired exclusively without a spelling when
+            // SPEC 7.3, 7.7.3: the callee is a Receiver Expression, acquired exclusively without a spelling when
             // its lending point is exclusively writable; a let-bound closure Place is never Copied instead.
             if (receiverType.Semantics == SemanticsKind.Owner && IsBarePlace(call.Method) && !this.BorrowablePlace(call.Method, scope, true))
             {
@@ -411,7 +411,7 @@ public sealed partial class Binding
                 return this.FailWrite(call, call.Method);
             }
 
-            // SPEC 7.6.3: a Consuming call Copies a Copy closure; a Non-Copy closure Place needs c@move().
+            // SPEC 7.7.3: a Consuming call Copies a Copy closure; a Non-Copy closure Place needs c@move().
             if (receiverType.Semantics == SemanticsKind.Owner && IsBarePlace(call.Method) && this.ProveCopy(receiverType, call) != ConstraintProof.Proven)
             {
                 return this.FailAcquisition(call, BindingFailure.TransferRequired, call.Method);
@@ -549,9 +549,9 @@ public sealed partial class Binding
 
             var inputs = count == 0 ? BoundType.Unit : this.types.Tuple(instantiated.AsSpan(0, count));
             var declaredSignature = signature;
-            signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, result], resultMode: signature.ResultMode);
+            signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, result]);
             (call.CallStorage ??= new()).SetValue(call.Method, signature, operations.AsSpan(0, count), declaredSignature, receiverOperation, receiver);
-            return Complete(call, signature.ResultMode == FunctionResultMode.Value ? result : result.Components[0]);
+            return Complete(call, result);
         }
         finally
         {

@@ -1,62 +1,41 @@
-// Milestone 26: generic compound captures, external dependencies and owning erasure.
-struct Packet
-    public let text: string
-    public let number: i32
-    public init(text: string, number: i32)
-        self.text = text@move
-        self.number = number
-    drop => Console.writeLine("Packet destroyed.")
+// Milestone 26: standard Places and Copy accessor calls stay distinct.
+struct Meter
+    public var raw: i32
+    public var level: i32
+        get() -> i32
+            Console.writeLine("Custom get.")
+            return storage
+        set(value: i32) -> ()
+            Console.writeLine("Custom set.")
+            storage = value
+    public computed doubled: i32
+        get() -> i32
+            Console.writeLine("Computed get.")
+            return self.raw * 2
+        set(value: i32) -> ()
+            Console.writeLine("Computed set.")
+            self.raw = value / 2
+    public init()
+        self.raw = 2
+        self.level = 3
 
-func shared<F>(action: ref/F) -> i32
-    F is Callable<ref, () -> i32>
-    return action()
+func receiver(value: uniq/Meter during source) -> uniq/Meter during source
+    Console.writeLine("Receiver evaluated.")
+    return value
 
-func inspectTwice<T, F>(value: T, visitor: ref/F) -> i32
-    F is Callable<ref, (ref/T) -> i32>
-    // T is neither Copy nor Owned by assumption. Move it and retain visitor's borrow.
-    let read = func [value@move, visitor] () -> i32 => visitor(value@ref)
-    return shared(read@ref) + shared(read@ref)
-
-func advance<F>(action: uniq/F) -> i32
-    F is Callable<uniq, () -> i32>
-    return action()
-
-func consume<T, F>(action: F) -> T
-    F is Callable<owner, () -> T>
-    return action@move()
-
-func increment(value: i32) -> i32 => value + 1
+func input() -> i32
+    Console.writeLine("Input evaluated.")
+    return 8
 
 public func main()
-    let bias: i32 = 4
-    let visitor = func [bias@ref] (value: ref/Packet) -> i32 => value.number + bias
-    let total = inspectTwice(Packet.init("Captured packet.", 6), visitor@ref)
-    require total == 20 and bias == 4 else => $abort("Generic capture failed")
-    Console.writeLine("Generic capture total is 20.")
-
-    let pair: (i32, i32) = (2, 3)
-    var next = func [var pair] () -> i32
-        pair.0 = pair.0 + pair.1
-        return pair.0
-    require advance(next@uniq) == 5 and advance(next@uniq) == 8 else => $abort("Compound mutation failed")
-    require pair.0 == 2 else => $abort("Capture was not a snapshot")
-    Console.writeLine("Compound capture advanced to 8.")
-
-    do
-        let packet = Packet.init("Consumed packet.", 9)
-        let take = func [packet@move] () -> Packet => packet@move
-        let received: Packet = consume(take@move)
-        require received.number == 9 else => $abort("Consuming call failed")
-        Console.writeLine(received.text)
-    do
-        let packet = Packet.init("Erased packet.", 11)
-        let concrete = func [packet@move] () -> i32 => packet.number
-        // The shared body and Owned environment permit erasure of a Non-Copy closure.
-        let erased: () -> i32 = concrete@move
-        let moved = erased@move
-        require moved() == 11 and moved() == 11 else => $abort("Erased call failed")
-        let item = increment
-        let common: (i32) -> i32 = item
-        require item(1) == 2 and common(11) == 12 else => $abort("Function item failed")
-        Console.writeLine("Erased calls finished.")
-    Console.writeLine("General closures finished.")
+    var meter = Meter.init()
+    meter.raw = 4
+    require meter.raw == 4 else => $abort("Standard access failed")
+    Console.writeLine("Standard access finished.")
+    receiver(meter@uniq).level = input()
+    let level = meter.level
+    require level == 8 else => $abort("Custom access failed")
+    meter.doubled = 12
+    let doubled = meter.doubled
+    require doubled == 12 and meter.raw == 6 else => $abort("Computed access failed")
+    Console.writeLine("Copy properties finished.")

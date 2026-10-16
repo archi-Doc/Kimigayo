@@ -187,12 +187,8 @@ public class WideIntegerEmissionTest
     public void WarmWidePlansAndFormattingAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze($"func f(x: u128) -> u128 => x * 1\nvar x: u128 = {UnsignedMax}\nlet y = if true => f(x) else => 0\nlet z = y@i128");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))

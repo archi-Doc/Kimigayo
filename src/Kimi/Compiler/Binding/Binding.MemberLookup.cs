@@ -151,7 +151,7 @@ public sealed partial class Binding
                     return new(candidate, type, path);
                 }
 
-                // Inaccessible declarations are diagnostic evidence, never a layer that stops lookup (SPEC 9.3).
+                // Inaccessible declarations are diagnostic evidence, never a layer that stops lookup (SPEC 9.4).
                 hidden ??= candidate;
             }
         }

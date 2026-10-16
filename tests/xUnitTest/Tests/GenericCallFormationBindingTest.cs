@@ -98,11 +98,7 @@ public class GenericCallFormationBindingTest
     public void WarmGenericCallChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take<T>() => ()\n    func call() => take<Box<i32>>()");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

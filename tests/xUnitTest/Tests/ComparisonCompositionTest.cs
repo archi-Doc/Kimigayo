@@ -38,11 +38,11 @@ public class ComparisonCompositionTest
     [Fact]
     public void MilestoneComposesBorrowedAndTupleWitnesses()
     {
-        var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone30.kimi"));
+        var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone25.kimi"));
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         const string expected = "User comparisons keep their operands.\nTuple comparisons compose witnesses.\nFloating Contract equality is NaN-reflexive.\nComparison contracts finished.\n";
-        ScalarEmissionTest.EmitFixture("ComparisonCompositionMilestone30", source, expected);
+        ScalarEmissionTest.EmitFixture("ComparisonCompositionMilestone25", source, expected);
     }
 
     [Trait("Purpose", "Allocation")]

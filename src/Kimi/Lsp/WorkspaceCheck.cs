@@ -12,7 +12,7 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Lsp;
 
-/// <summary>The role of an open document (SPEC 23.4.2).</summary>
+/// <summary>The role of an open document (SPEC 23.4).</summary>
 internal enum DocumentRole : byte
 {
     /// <summary>A <c>.kimi</c> source document.</summary>
@@ -49,7 +49,7 @@ internal sealed record CheckStart
 
     public required LspSettings Settings { get; init; }
 
-    /// <summary>Gets a value indicating whether the client accepts related locations as <c>relatedInformation</c> (SPEC 23.4.7).</summary>
+    /// <summary>Gets a value indicating whether the client accepts related locations as <c>relatedInformation</c> (SPEC 23.4).</summary>
     public bool RelatedInformation { get; init; }
 
     public required Dictionary<SourceIdentity, LoadedProject> Projects { get; init; }
@@ -72,7 +72,7 @@ internal sealed record CheckStart
 /// <param name="Committed">Completes with the committed snapshot.</param>
 internal sealed record CommitRequest(List<(InputKey Key, InputState State)> Comparisons, TaskCompletionSource<StoreSnapshot> Committed);
 
-/// <summary>The products of discovery and derivation (SPEC 23.4.3, 23.4.4).</summary>
+/// <summary>The products of discovery and derivation (SPEC 23.4, 23.4).</summary>
 internal sealed record DerivationDone
 {
     public required List<LoadedProject> NewProjects { get; init; }
@@ -103,7 +103,7 @@ internal sealed record ProductsDone(SourceIdentity Owner, bool Decided, bool Req
 /// <param name="Failure">An unexpected exception, or null.</param>
 internal sealed record CheckDone(Exception? Failure);
 
-/// <summary>Runs one workspace check on the worker (SPEC 23.4.6): re-validation, discovery, derivation and visiting.</summary>
+/// <summary>Runs one workspace check on the worker (SPEC 23.4): re-validation, discovery, derivation and visiting.</summary>
 internal sealed class WorkspaceCheck
 {
     private readonly CheckStart start;
@@ -120,7 +120,7 @@ internal sealed class WorkspaceCheck
     /// <summary>Gets the host target for implicit projects, or empty when the host has none.</summary>
     public static string HostTarget { get; } = OperatingSystem.IsWindows() && RuntimeInformation.OSArchitecture == Architecture.X64 ? WindowsProfile.Target : string.Empty;
 
-    /// <summary>Places a check's diagnostics at their report URIs (SPEC 23.4.7), each URI's list in display-range and result order.</summary>
+    /// <summary>Places a check's diagnostics at their report URIs (SPEC 23.4), each URI's list in display-range and result order.</summary>
     /// <param name="output">The check output.</param>
     /// <param name="sources">The source files the check read.</param>
     /// <param name="display">The project file or implicit source.</param>
@@ -130,7 +130,7 @@ internal sealed class WorkspaceCheck
         => Place(output, sources, display, relatedInformation, null);
 
     /// <summary>Places a check output's records in their report URIs and, when asked, each record's repair candidates whose edits all lie in the
-    /// record's own document (SPEC 23.4.8).</summary>
+    /// record's own document (SPEC 23.4).</summary>
     /// <param name="output">The output.</param>
     /// <param name="sources">The checked sources.</param>
     /// <param name="display">The file where diagnostics without a usable location are shown.</param>
@@ -229,7 +229,7 @@ internal sealed class WorkspaceCheck
         return result;
     }
 
-    /// <summary>Merges the ordered payloads of several contributors (SPEC 23.4.7): display range, then contributor, then result order;
+    /// <summary>Merges the ordered payloads of several contributors (SPEC 23.4): display range, then contributor, then result order;
     /// equal sent values from different contributors keep the largest count that one contributor sends.</summary>
     /// <param name="contributions">The contributors' payloads in contributor order.</param>
     /// <returns>The merged payload.</returns>
@@ -332,7 +332,7 @@ internal sealed class WorkspaceCheck
         this.start.Post(new CheckDone(failure));
     }
 
-    // SPEC 23.4.8: a candidate becomes a quick fix of its document when every edit lies in that document; its title carries the
+    // SPEC 23.4: a candidate becomes a quick fix of its document when every edit lies in that document; its title carries the
     // required phrases, so the client shows what the edit still rests on.
     private static void PlaceRepairs(LspDiagnostic placed, RepairCandidate[] candidates, SourceIdentity document, int source, SourceIdentity?[] identities, Dictionary<SourceIdentity, List<LspRepair>> repairs)
     {
@@ -366,7 +366,7 @@ internal sealed class WorkspaceCheck
         }
     }
 
-    // SPEC 23.4.7: the message, then the label, the text of unsent related locations, omissions, the Note and, for a moved record, its
+    // SPEC 23.4: the message, then the label, the text of unsent related locations, omissions, the Note and, for a moved record, its
     // original location, on separate lines.
     private static string Text(CheckDiagnostic diagnostic, DiagnosticSource? moved, List<string>? related)
     {
@@ -516,7 +516,7 @@ internal sealed class WorkspaceCheck
         return false;
     }
 
-    // SPEC 23.4.5: compare marked inputs, disk inputs whose stamp changed, and unestablished inputs.
+    // SPEC 23.4: compare marked inputs, disk inputs whose stamp changed, and unestablished inputs.
     private List<(InputKey Key, InputState State)> Revalidate()
     {
         var comparisons = new List<(InputKey, InputState)>();
@@ -590,7 +590,7 @@ internal sealed class WorkspaceCheck
         return DiskReader.ReadFile(path);
     }
 
-    // SPEC 23.4.3 and 23.4.4: grow the loaded projects to a fixed point, then derive the required units and their plans.
+    // SPEC 23.4 and 23.4: grow the loaded projects to a fixed point, then derive the required units and their plans.
     private List<UnitPlan> Discover(CheckInputs inputs)
     {
         var settings = this.start.Settings;
@@ -825,7 +825,7 @@ internal sealed class WorkspaceCheck
         loaded.Add(path, item);
     }
 
-    // SPEC 23.4.6: the most recently edited owners first, product units before the test unit.
+    // SPEC 23.4: the most recently edited owners first, product units before the test unit.
     private void Visit(CheckInputs inputs, List<UnitPlan> plans)
     {
         var lastEvents = new Dictionary<SourceIdentity, long>();

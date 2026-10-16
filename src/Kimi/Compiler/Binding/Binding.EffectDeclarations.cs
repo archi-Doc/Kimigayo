@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 8.4.10.4: every bound declared in this pass, for requirement calls whose conforming Type is concrete.
+    // SPEC 8.11.4: every bound declared in this pass, for requirement calls whose conforming Type is concrete.
     private readonly List<BoundEffectBound> boundedRequirements = [];
 
     private readonly Dictionary<FunctionKoto, (EffectBoundKoto? Confined, EffectBoundKoto? Preserves)> virtualEffectBounds = new(ReferenceEqualityComparer.Instance);
@@ -15,16 +15,16 @@ public sealed partial class Binding
     // The Contracts of this pass, recorded when their shapes are built, so the bound tables need no second scan of the nodes.
     private readonly List<BoundContract> contractShapes = [];
 
-    // SPEC 8.4.10.6: the first violating effect of each conformance a bound rejects, keyed by its Self clause; recorded only
+    // SPEC 8.11.1: the first violating effect of each conformance a bound rejects, keyed by its Self clause; recorded only
     // when one is rejected and reused across passes.
     private Dictionary<Koto, EffectViolationRecord>? effectViolations;
 
-    // SPEC 8.4.10.6: the cause of each rejected effect item, recorded only when one fails. The store is reused across passes,
+    // SPEC 8.11.1: the cause of each rejected effect item, recorded only when one fails. The store is reused across passes,
     // so a warm rebind allocates nothing.
     private Dictionary<EffectBoundKoto, EffectBoundRejection>? effectBoundRejections;
     private EffectSyntaxCompleter? effectSyntax;
 
-    /// <summary>SPEC 8.4.10.6: the kind of the first effect of an implementation that violates a bound.</summary>
+    /// <summary>SPEC 8.11.1: the kind of the first effect of an implementation that violates a bound.</summary>
     internal enum EffectViolation : byte
     {
         /// <summary>No violation.</summary>
@@ -36,7 +36,7 @@ public sealed partial class Binding
         /// <summary>A standard operation on state outside the program, such as Console output, which confined excludes.</summary>
         ExternalOperation,
 
-        /// <summary>A call of a foreign function, an environment effect that confined excludes (SPEC 22.3.1).</summary>
+        /// <summary>A call of a foreign function, an environment effect that confined excludes (SPEC 22.6).</summary>
         ForeignCall,
 
         /// <summary>A read of a raw pointer from an immutable static, which obtains environment authority.</summary>
@@ -73,7 +73,7 @@ public sealed partial class Binding
         Limit,
     }
 
-    /// <summary>SPEC 8.4.10.5: why the Loans of earlier results were not excluded for a requirement call.</summary>
+    /// <summary>SPEC 8.11.5: why the Loans of earlier results were not excluded for a requirement call.</summary>
     internal enum DelegationFailure : byte
     {
         /// <summary>The Loans were excluded, or exclusion was not tried.</summary>
@@ -98,7 +98,7 @@ public sealed partial class Binding
         Untraced,
     }
 
-    // SPEC 8.4.10.6: why an effect item declares no bound.
+    // SPEC 8.11.1: why an effect item declares no bound.
     private enum EffectRejection : byte
     {
         SpecificationInRequirement,
@@ -131,7 +131,7 @@ public sealed partial class Binding
         };
 
     /// <summary>
-    /// Gets the bound that a Contract or one of its ancestors declares for a requirement (SPEC 8.4.10.1): <c>T is C</c>
+    /// Gets the bound that a Contract or one of its ancestors declares for a requirement (SPEC 8.11.1): <c>T is C</c>
     /// guarantees exactly these.
     /// </summary>
     /// <param name="shape">The Contract.</param>
@@ -158,7 +158,7 @@ public sealed partial class Binding
     }
 
     /// <summary>
-    /// SPEC 8.4.10.4: the bounds available to a requirement call: those that the Contracts its premises prove for the conforming
+    /// SPEC 8.11.4: the bounds available to a requirement call: those that the Contracts its premises prove for the conforming
     /// Type declare for the Requirement Identity, through constraint facts in scope or a concrete Type's conformance. Bounds
     /// are never searched for in implementations.
     /// </summary>
@@ -272,7 +272,7 @@ public sealed partial class Binding
         }
     }
 
-    /// <summary>Gets the bounds available to a requirement call under the premises in scope at a node (SPEC 8.4.10.4).</summary>
+    /// <summary>Gets the bounds available to a requirement call under the premises in scope at a node (SPEC 8.11.4).</summary>
     /// <param name="requirement">The Requirement Identity.</param>
     /// <param name="conforming">The conforming Type of the call.</param>
     /// <param name="at">The call.</param>
@@ -281,7 +281,7 @@ public sealed partial class Binding
         => this.AvailableEffectBounds(requirement, conforming, this.ConstraintScope(at), reference: (at as InvocationKoto)?.BoundCall?.RequirementContract);
 
     /// <summary>
-    /// SPEC 8.4.10.6: reports a conformance that a bound rejects at the first violating effect in the implementation's own body.
+    /// SPEC 8.11.1: reports a conformance that a bound rejects at the first violating effect in the implementation's own body.
     /// The Reason names the violation, the bound and its declaring Contract; the Note tells a definite violation from an
     /// unknown effect counted as a conflict; the related locations give the effect, the conformance and the bound.
     /// </summary>
@@ -309,25 +309,25 @@ public sealed partial class Binding
         var contract = item is null ? violation.Contract.Symbol.Name : DeclaringContract(item)?.BoundSymbol?.Name ?? violation.Contract.Symbol.Name;
         var spelling = EffectBoundKoto.Spelling(bound);
 
-        // SPEC 8.4.10.6: an environment effect is named by the operation that obtained the authority (SPEC 8.4.10.2).
+        // SPEC 8.11.1: an environment effect is named by the operation that obtained the authority (SPEC 8.11.2).
         var effect = EffectCause(violation.Kind);
         var definite = violation.Kind is EffectViolation.MutableStatic or EffectViolation.ExternalOperation or EffectViolation.ForeignCall or
             EffectViolation.StaticPointer or EffectViolation.IntegerPointer or EffectViolation.ResultLoan;
 
-        // SPEC 8.4.10.5: why the Loans of earlier results were not excluded, with the source or replacement as a related location.
+        // SPEC 8.11.5: why the Loans of earlier results were not excluded, with the source or replacement as a related location.
         var (delegation, label) = violation.Delegation switch
         {
-            DelegationFailure.CallSite => ("; the Loans of earlier results are not excluded, because the call is not made on a value reached through a Field path of self in the implementation's own body (SPEC 8.4.10.5)", null),
-            DelegationFailure.Replaced => ("; the Loans of earlier results are not excluded, because the body replaces, swaps or moves a value on the path to the called value (SPEC 8.4.10.5)", "the replaced value on the path"),
-            DelegationFailure.Argument => ("; the Loans of earlier results are not excluded, because an earlier result may keep the Loans of an argument (SPEC 8.4.10.5)", "the argument an earlier result may keep"),
-            DelegationFailure.OtherRequirement => ("; the Loans of earlier results are not excluded, because an earlier result may come from another requirement (SPEC 8.4.10.5)", "the other source of a result"),
-            DelegationFailure.OtherValue => ("; the Loans of earlier results are not excluded, because an earlier result may come from the same requirement on another value (SPEC 8.4.10.5)", "the other source of a result"),
-            DelegationFailure.Untraced => ("; the Loans of earlier results are not excluded, because the source of a result cannot be traced to a call on a Field path of self (SPEC 8.4.10.5)", "the untraced source of a result"),
+            DelegationFailure.CallSite => ("; the Loans of earlier results are not excluded, because the call is not made on a value reached through a Field path of self in the implementation's own body (SPEC 8.11.5)", null),
+            DelegationFailure.Replaced => ("; the Loans of earlier results are not excluded, because the body replaces, swaps or moves a value on the path to the called value (SPEC 8.11.5)", "the replaced value on the path"),
+            DelegationFailure.Argument => ("; the Loans of earlier results are not excluded, because an earlier result may keep the Loans of an argument (SPEC 8.11.5)", "the argument an earlier result may keep"),
+            DelegationFailure.OtherRequirement => ("; the Loans of earlier results are not excluded, because an earlier result may come from another requirement (SPEC 8.11.5)", "the other source of a result"),
+            DelegationFailure.OtherValue => ("; the Loans of earlier results are not excluded, because an earlier result may come from the same requirement on another value (SPEC 8.11.5)", "the other source of a result"),
+            DelegationFailure.Untraced => ("; the Loans of earlier results are not excluded, because the source of a result cannot be traced to a call on a Field path of self (SPEC 8.11.5)", "the untraced source of a result"),
             _ => (string.Empty, (string?)null),
         };
         var note = (definite
             ? $"{name} must satisfy {spelling}, declared by {contract}, and this effect violates it"
-            : $"{name} must satisfy {spelling}, declared by {contract}; this effect cannot be classified, so verification treats it as a conflict (SPEC 8.4.5)") + delegation;
+            : $"{name} must satisfy {spelling}, declared by {contract}; this effect cannot be classified, so verification treats it as a conflict (SPEC 8.6)") + delegation;
         if (instanceContext is not null)
         {
             note += "; " + instanceContext;
@@ -400,7 +400,7 @@ public sealed partial class Binding
             ? origin : null;
     }
 
-    // SPEC 8.4.10.3: the outermost part of a canonical result Type that may depend on the receiver borrow, with the atom it
+    // SPEC 8.11.3: the outermost part of a canonical result Type that may depend on the receiver borrow, with the atom it
     // names. An omitted borrow-layer Origin, with no atom yet or completed as the receiver input, defaults to the meet of
     // every direct borrowed input, the receiver included (SPEC 15.4.3).
     private static BoundType? ReceiverDependentPart(BoundType type, FunctionKoto function, int receiver, BoundOrigin? receiverOrigin, out BoundOrigin? atom)
@@ -435,7 +435,7 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 8.4.10.1: the bounds of every Contract, checked once per pass after the requirement headers are bound and before
+    // SPEC 8.11.1: the bounds of every Contract, checked once per pass after the requirement headers are bound and before
     // conformances are verified against them.
     private void PrepareEffectBounds()
     {
@@ -450,7 +450,7 @@ public sealed partial class Binding
         this.PrepareVirtualEffectBounds();
     }
 
-    // A Contract's ancestors are checked first, so a bound already declared above is known (SPEC 8.4.10.1).
+    // A Contract's ancestors are checked first, so a bound already declared above is known (SPEC 8.11.1).
     private void EnsureEffectBounds(BoundContract shape)
     {
         if (shape.EffectState != 0 || shape.Symbol.Declaration is not ContractKoto contract)
@@ -536,7 +536,7 @@ public sealed partial class Binding
 
     private void DeclareEffectBound(BoundContract shape, EffectBoundKoto effect, BoundRequirement requirement, BindingScope scope)
     {
-        // SPEC 8.4.10.1: a bound declared twice in one Contract is an error; restating an ancestor's bound forms one guarantee.
+        // SPEC 8.11.1: a bound declared twice in one Contract is an error; restating an ancestor's bound forms one guarantee.
         var previous = this.activeRequirementContract;
         try
         {
@@ -573,7 +573,7 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 8.4.10.1: the selector names an ancestor of the Contract, and Name exactly one function requirement of that ancestor.
+    // SPEC 8.11.1: the selector names an ancestor of the Contract, and Name exactly one function requirement of that ancestor.
     private BoundRequirement? EffectTarget(BoundContract shape, EffectBoundKoto effect, BindingScope scope)
     {
         var selector = effect.Selector!;
@@ -651,7 +651,7 @@ public sealed partial class Binding
         return target;
     }
 
-    // SPEC 8.4.10.3: preserves results needs a borrowed receiver and a result that depends neither on the receiver Loan nor
+    // SPEC 8.11.3: preserves results needs a borrowed receiver and a result that depends neither on the receiver Loan nor
     // on the receiver's Storage under the declaring Contract's premises. One judgement on the canonical result Type.
     private EffectBoundRejection? PreservesResultsRejection(BindingSymbol requirement, BindingScope scope)
     {
@@ -677,13 +677,16 @@ public sealed partial class Binding
     private void RejectEffectBound(EffectBoundKoto effect, EffectBoundRejection rejection)
         => (this.effectBoundRejections ??= new(ReferenceEqualityComparer.Instance))[effect] = rejection;
 
-    // SPEC 8.4.10.1: an effect item declares a bound of its Contract. A rejected bound word leaves a recovery whose checks
+    // SPEC 8.11.1: an effect item declares a bound of its Contract. A rejected bound word leaves a recovery whose checks
     // rest on the syntax Error; an item outside a Contract declares nothing.
+    // Whether an effect bound applies: one the declaration checks rejected, or a recovery, declares nothing.
+    private bool AppliesBound(EffectBoundKoto bound) => this.effectBoundRejections?.ContainsKey(bound) != true && !IsRecovery(bound, out _);
+
     private BoundType? BindEffectBound(EffectBoundKoto effect)
     {
         if (effect.Selector is { } selector)
         {
-            // The selector and Name designate declarations; their failures are the effect item's (SPEC 8.4.10.6).
+            // The selector and Name designate declarations; their failures are the effect item's (SPEC 8.11.1).
             this.effectSyntax ??= new();
             this.effectSyntax.Visit(selector);
             this.effectSyntax.Visit(effect.Name!);
@@ -702,7 +705,7 @@ public sealed partial class Binding
         return this.effectBoundRejections?.ContainsKey(effect) == true ? this.Fail(effect, BindingFailure.InvalidEffectBound) : Complete(effect, BoundType.Unit);
     }
 
-    // SPEC 8.4.10.6: the Reason names the cause, the Note its path and the related locations the target requirement and an
+    // SPEC 8.11.1: the Reason names the cause, the Note its path and the related locations the target requirement and an
     // earlier bound. The text is formed here, only for published records.
     private void ReportEffectBound(EffectBoundKoto effect, DiagnosticRequirement requirement)
     {

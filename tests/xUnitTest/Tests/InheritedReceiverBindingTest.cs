@@ -186,7 +186,7 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void AdaptationAdvantagesAcrossSourceArgumentsAreIncomparable()
     {
-        // SPEC 7.3: the receiver shape is common to the group, so only the explicit arguments are compared. SPEC 7.3.1: the
+        // SPEC 7.3: the receiver shape is common to the group, so only the explicit arguments are compared. SPEC 7.4: the
         // positions keep one mode each where the Types overlap, so the two-layer inputs decide the classes (Reborrow against one
         // shared reference through two layers) at the disjoint positions.
         var c = CompilationTestHelper.ParseSuccess("struct S\n    public func f(self: uniq/Self, x: ref/i32, y: uniq/(uniq/i64 during a)) -> i32 => 1\n    public func f(self: uniq/Self, x: uniq/(uniq/i32 during a), y: ref/i64) -> i32 => 2\nfunc use(s: uniq/S, x: uniq/(uniq/i32 during a), y: uniq/(uniq/i64 during a)) -> i32 => s.f(x, y)");
@@ -301,7 +301,7 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void NamedArgumentsAreComparedBySourcePosition()
     {
-        // SPEC 7.3.1: the positions and the names keep one mode each where the Types overlap, so the second declaration's Types are disjoint.
+        // SPEC 7.4: the positions and the names keep one mode each where the Types overlap, so the second declaration's Types are disjoint.
         var c = CompilationTestHelper.ParseSuccess("struct S\n    public func f(self: ref/Self, a: i32, b: uniq/i32) -> i32 => 1\n    public func f(self: ref/Self, b: ref/i64, a: i64) -> i32 => 2\nfunc use(s: ref/S, x: uniq/i32) -> i32 => s.f(b: x, a: 1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal(2, Call(c).CallOf()!.ArgumentToParameter[0]);
@@ -470,11 +470,6 @@ public class InheritedReceiverBindingTest
 
         var c = CompilationTestHelper.ParseSuccess(source.ToString());
         Assert.True(c.Bind().IsComplete, Describe(c));
-        for (var i = 0; i < 8; i++)
-        {
-            c.Binding.Bind(BindingMode.Final);
-        }
-
         var allocated = AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final));
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
         Assert.Equal(0, allocated);

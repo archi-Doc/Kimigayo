@@ -5,7 +5,7 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
-/// <summary>What a parameter requires of a bare owned Place argument, judged on the outer Semantics of its normalized Type (SPEC 7.3.1).</summary>
+/// <summary>What a parameter requires of a bare owned Place argument, judged on the outer Semantics of its normalized Type (SPEC 7.4).</summary>
 public enum AcquisitionMode : byte
 {
     /// <summary><c>owner</c>, <c>obj</c>, <c>rc</c>, <c>arc</c> or <c>raw</c>: the argument is acquired by value.</summary>
@@ -22,7 +22,7 @@ public sealed partial class Binding
 {
     private const string ParameterShapeNote = "The overlap comes from a generic slot or a non-constant length: the check unifies the Types without Constraints, enclosing Type arguments or length values";
 
-    // SPEC 7.3.1: the conflicting parameters of a later declaration, or of a group gathered at a use, recorded only when the check
+    // SPEC 7.4: the conflicting parameters of a later declaration, or of a group gathered at a use, recorded only when the check
     // fails. The stores are reused across passes, so a warm rebind of the failure allocates nothing.
     private readonly Dictionary<Koto, (int Start, int Count)> parameterShapeConflicts = new(ReferenceEqualityComparer.Instance);
     private readonly List<ParameterShapeConflict> parameterShapeStore = [];
@@ -39,7 +39,7 @@ public sealed partial class Binding
         All = ByValue | Shared | Exclusive,
     }
 
-    // The matching key of a parameter (SPEC 7.3.1): Value(U), Object(U), either family over U for a pair application, or any key.
+    // The matching key of a parameter (SPEC 7.4): Value(U), Object(U), either family over U for a pair application, or any key.
     private enum ParameterKey : byte
     {
         Value,
@@ -79,7 +79,7 @@ public sealed partial class Binding
     // A pair slot's whole Type and a pair application name the pair's target symbol; an ordinary slot names a Type parameter.
     private static bool IsPairWhole(BoundType type) => type.Kind == BoundTypeKind.Parameter && type.Symbol?.Kind == BindingSymbolKind.SemanticsTarget;
 
-    // SPEC 7.3.1: a key that still depends on a slot or a non-constant length, which the check does not resolve (the Note).
+    // SPEC 7.4: a key that still depends on a slot or a non-constant length, which the check does not resolve (the Note).
     private static bool IsConservative(BoundType type)
     {
         if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection ||
@@ -105,15 +105,16 @@ public sealed partial class Binding
         => a.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection &&
             a.Kind == b.Kind && (ReferenceEquals(a, b) || (sameGenerics && PermittedSlotSharing(fa, fb) && SignatureEquals(a, b, CallSlotOwner(fa), CallSlotOwner(fb))));
 
-    // SPEC 7.3, 7.3.1: a shape violation is an error of the group, not of the declaration's own signature or conditions, so the
-    // declaration stays a candidate and the calls that select it are checked normally. SPEC 9.3: a misplaced protected form is
-    // an error of the modifier alone, so the declaration and its uses are checked as written too.
-    private static bool IsFormFailure(Koto declaration)
+    // SPEC 7.3, 7.4: a shape violation is an error of the group, not of the declaration's own signature or conditions, so the
+    // declaration stays a candidate and the calls that select it are checked normally. SPEC 9.4: a misplaced protected form is
+    // an error of the modifier alone, so the declaration and its uses are checked as written too. SPEC 8.15, 23.1.1: a definition
+    // beyond the case bound keeps its signature, and its parts are bound but not verified per case (Binding.CaseLimits).
+    private static bool KeepsSignature(Koto declaration)
         => declaration is DeclarationKoto { BindingState: BindingState.Invalid } &&
-            (declaration.BindingFailure == BindingFailure.ProtectedPlacement ||
+            (declaration.BindingFailure is BindingFailure.ProtectedPlacement or BindingFailure.CaseLimit ||
             declaration is FunctionKoto { BindingFailure: BindingFailure.ParameterShapeMismatch or BindingFailure.ReceiverShapeMismatch });
 
-    // SPEC 7.3.1, 10.1, 10.8: explicit Type arguments reach only the declarations whose generic parameter lists have the same
+    // SPEC 7.4, 10.1, 10.8: explicit Type arguments reach only the declarations whose generic parameter lists have the same
     // length and the same kinds position by position; a length slot takes no explicit Type argument.
     private static bool SameExplicitArgumentShape(FunctionKoto a, FunctionKoto b)
     {
@@ -160,7 +161,7 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 7.3.1: the acquisition modes a parameter may require (one per admitted case) and its matching key.
+    // SPEC 7.4: the acquisition modes a parameter may require (one per admitted case) and its matching key.
     private ParameterShape ShapeOf(BoundType type, Koto function, bool sameGenerics)
     {
         switch (type.Kind)
@@ -196,7 +197,7 @@ public sealed partial class Binding
     private SemanticsMask PairSlotAdmitted(BoundType whole, Koto function)
         => this.scopes.TryGetValue(function, out var scope) ? this.AdmittedSemantics(whole, scope) : SemanticsMask.All;
 
-    // SPEC 7.3.1: two keys overlap when steps 2-4 of the collision test of SPEC 8.4.9.1 unify them; Value and Object never meet.
+    // SPEC 7.4: two keys overlap when steps 2-4 of the collision test of SPEC 8.9.1 unify them; Value and Object never meet.
     private bool KeysOverlap(in ParameterShape a, in ParameterShape b, FunctionKoto? left = null, FunctionKoto? right = null, bool shared = false)
     {
         if (a.Key == ParameterKey.Any || b.Key == ParameterKey.Any)
@@ -212,7 +213,7 @@ public sealed partial class Binding
         return this.MayUnify(a.Target, b.Target, left, right, shared);
     }
 
-    // SPEC 7.3.1: whether the parameters i of `earlier` and j of `later` are invalid together, with the colliding case of each.
+    // SPEC 7.4: whether the parameters i of `earlier` and j of `later` are invalid together, with the colliding case of each.
     private bool ParameterShapesConflict(FunctionKoto earlier, int i, FunctionKoto later, int j, out AcquisitionMode mode, out AcquisitionMode other, out ParameterShape shape, out bool conservative)
     {
         mode = other = default;
@@ -252,7 +253,7 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 7.3.1: appends to the party store every parameter of `earlier` that corresponds to parameter j of `later` and conflicts
+    // SPEC 7.4: appends to the party store every parameter of `earlier` that corresponds to parameter j of `later` and conflicts
     // with it, in the unbound sequence, the bound sequence and by external name. The first conflict supplies the record's facts.
     private void CollectParameterShapeParties(FunctionKoto earlier, BindingSymbol earlierSymbol, FunctionKoto later, BindingSymbol laterSymbol, int j, ref ParameterShapeConflict facts, ref bool found)
     {
@@ -346,7 +347,7 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 7.3.1: the declarations of one group in source order; one record per corresponding parameter of each later declaration,
+    // SPEC 7.4: the declarations of one group in source order; one record per corresponding parameter of each later declaration,
     // with the overlapping earlier parameters as its parties. `subject` chooses the failed node for a declaration outside `owner`.
     private void ValidateParameterShapes(IReadOnlyList<BindingSymbol> members, Koto? owner)
     {
@@ -414,7 +415,7 @@ public sealed partial class Binding
         scratch.Clear();
     }
 
-    // SPEC 8.4.2: a Contract's requirements with those inherited by refinement; an inherited one precedes the Contract's own,
+    // SPEC 8.4.3: a Contract's requirements with those inherited by refinement; an inherited one precedes the Contract's own,
     // so a conflict between them is reported at the refining declaration.
     private void ValidateContractParameterShapes(ContractKoto contract, List<BoundRequirement> members)
     {
@@ -437,7 +438,7 @@ public sealed partial class Binding
         scratch.Clear();
     }
 
-    // SPEC 7.3.1, 9.4.1, 9.5: a group gathered at a use from several declaration sources is checked there, with the use as the
+    // SPEC 7.4, 9.5.1, 9.6: a group gathered at a use from several declaration sources is checked there, with the use as the
     // subject and one record relating every overlapping declaration; its arguments play no part.
     private bool CheckGatheredParameterShapes(Koto use, IReadOnlyList<BindingSymbol> members, bool aliasStage)
     {
@@ -473,7 +474,7 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 7.3.1: one record per conflicting parameter, located at its Type (or at the use), with both modes, the ground of
+    // SPEC 7.4: one record per conflicting parameter, located at its Type (or at the use), with both modes, the ground of
     // correspondence and the unified key as facts and the overlapping earlier parameters as related locations.
     private void ReportParameterShapes(Koto node, DiagnosticRequirement requirement, (int Start, int Count) range)
     {

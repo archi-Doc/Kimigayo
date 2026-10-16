@@ -95,11 +95,7 @@ public class AssociatedTypeFormationBindingTest
     public void WarmAssociatedFormationChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ncontract C\n    associate Item\nstruct S\n    Self is C\n    associate C.Item is Box<i32>");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

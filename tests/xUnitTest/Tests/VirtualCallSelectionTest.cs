@@ -124,6 +124,6 @@ public class VirtualCallSelectionTest
     public void WarmSelectionReusesTheSemanticRecords()
     {
         var c = MinimalEmissionTest.Analyze(Types + "()");
-        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind(), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
     }
 }

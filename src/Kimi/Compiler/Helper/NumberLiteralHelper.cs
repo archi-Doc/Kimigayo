@@ -216,7 +216,7 @@ GeneralLiteral:
             ParseDecimalInteger(numberLiteral, out value);
     }
 
-    /// <summary>Truncates the exact value of a decimal floating-point literal toward zero (SPEC 13.5.4.2).</summary>
+    /// <summary>Truncates the exact value of a decimal floating-point literal toward zero (SPEC 13.5.4).</summary>
     /// <remarks>The exponent moves the decimal point, the digits in front of it form the integer and the rest are dropped, so
     /// neither a floating-point Type nor arbitrary-precision arithmetic takes part.</remarks>
     /// <param name="text">The literal text with a fraction, an exponent or both; separators are ignored.</param>

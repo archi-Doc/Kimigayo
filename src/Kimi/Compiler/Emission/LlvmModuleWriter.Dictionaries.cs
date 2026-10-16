@@ -19,7 +19,7 @@ internal static partial class LlvmModuleWriter
 
         """.Replace("REASON_DUPLICATE", Reason(WindowsLowering.DuplicateKeyReason), StringComparison.Ordinal);
 
-    // SPEC 22.1.2.5, 22.5.2: the nullable form of Alloc returns null wherever Alloc would Abort, and the byte copy moves no
+    // SPEC 22.2, 21.4.3: the nullable form of Alloc returns null wherever Alloc would Abort, and the byte copy moves no
     // responsibility; neither has a location to report.
     private static readonly string StorageBytePrimitives = """
         define internal ptr @__kimi_try_allocate(i64 %bytes) #0 {

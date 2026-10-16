@@ -166,14 +166,10 @@ public class DictionaryLiteralEmissionTest
     public void WarmLiteralCompilationAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze("let entries = [(1, 2): \"one\", (2, 3): \"two\"]");
-        for (var i = 0; i < 4; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete || !c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))

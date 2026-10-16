@@ -30,3 +30,12 @@ func replace(first: string, second: string) -> string
     held = second@move
     let view = held@ref
     return held@move
+func grouped(a: [3 of string]) -> string => a[(0x2)]@move
+func unfinished(flag: bool)
+    let entries: Dictionary<i32, bool> = [1: flag, 2: (return)]
+func cut(values: ref/Array<i32>) -> Slice<i32> during values => values[^1..$abort("stop")]
+func settled(a: bool, b: bool) -> bool
+    let both = a and b
+    return both or a
+func diverge() -> Never => loop => ()
+func neverConverted() => diverge()@u8

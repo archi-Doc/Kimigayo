@@ -34,7 +34,7 @@ public partial class Compilation
     /// <summary>Gets the owning compiler service, which renders finalized diagnostics.</summary>
     public Kimigayo Kimigayo { get; }
 
-    /// <summary>Gets the diagnostic owner of this compilation's check request (SPEC 23.3.6).</summary>
+    /// <summary>Gets the diagnostic owner of this compilation's check request (SPEC 23.1).</summary>
     public DiagnosticOwner Diagnostics { get; }
 
     /// <summary>
@@ -301,7 +301,7 @@ public partial class Compilation
         // No Mod execution exists yet, so there is no reader or mutation between provisional
         // and final Binding. The final pass resets every semantic field; do not run it twice.
         // When Mods are implemented, bind provisionally before their queries and after append,
-        // then run this final pass over the complete selected declaration set (SPEC 20.7.2).
+        // then run this final pass over the complete selected declaration set (SPEC 20).
         return this.Binding.Bind(BindingMode.Final);
     }
 

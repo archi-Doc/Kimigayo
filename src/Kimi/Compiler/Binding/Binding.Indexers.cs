@@ -6,10 +6,10 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 4.6.9: receiver[key] on a user Type resolves through its Indexable<Key> conformance to a synthesized call of
+    // SPEC 4.7.1: receiver[key] on a user Type resolves through its Indexable<Key> conformance to a synthesized call of
     // index, and of indexUniq for updates and exclusive borrows. The synthesized calls are ordinary method calls of the
-    // conforming Type's implementations, so receiver acquisition, key adaptation, Place results and generic instantiation
-    // follow the ordinary rules; the index expression designates the published Place.
+    // conforming Type's implementations, so receiver acquisition, key adaptation, reference results and generic instantiation
+    // follow the ordinary rules; the index expression designates the referent of the reference the selected call returns (LentElement).
     private readonly Dictionary<(IndexKoto Source, bool Exclusive), InvocationKoto> indexerCalls = new();
     private readonly HashSet<IndexKoto> exclusiveIndexers = new(ReferenceEqualityComparer.Instance);
 
@@ -27,7 +27,7 @@ public sealed partial class Binding
     internal bool HasExclusiveIndexer(Koto node)
         => KotoHelper.UnwrapParentheses(node) is IndexKoto index && this.exclusiveIndexers.Contains(index);
 
-    // SPEC 8.4.2: whether the Contract, a bound reference or a declaration, is the declaration or refines it.
+    // SPEC 8.4.3: whether the Contract, a bound reference or a declaration, is the declaration or refines it.
     private static bool RefinesDeclaration(BindingSymbol contract, Koto declaration)
     {
         if (ReferenceEquals(contract.Declaration, declaration))
@@ -47,16 +47,21 @@ public sealed partial class Binding
         return false;
     }
 
+    // SPEC 4.7.1: the element a selected index or indexUniq call lends, the referent of the reference its plan returns; the index
+    // expression designates it, whatever the call node itself is typed.
+    private static BoundType? LentElement(InvocationKoto? call)
+        => call?.BoundCall?.ReturnType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var element] } ? element : null;
+
     private bool TryBindIndexer(IndexKoto source, BindingScope scope, BoundType? receiver, out BoundType? result)
     {
         result = null;
         var core = receiver;
         while (core is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
         {
-            core = core.Components[0]; // SPEC 3.4.1: selection continues at the referent.
+            core = core.Components[0]; // SPEC 3.4.3: selection continues at the referent.
         }
 
-        // SPEC 4.6, 4.6.9: a Dictionary or user receiver takes a key of the key's own Type, a range literal among them, when it
+        // SPEC 4.7, 4.7.1: a Dictionary or user receiver takes a key of the key's own Type, a range literal among them, when it
         // takes a Range key; for any other receiver a range reads as the slice that only the concrete sequences offer
         // (NotIndexable_Kd).
         this.exclusiveIndexers.Remove(source);
@@ -77,7 +82,7 @@ public sealed partial class Binding
                     return false;
                 }
 
-                // SPEC 4.6.9: several Key conformances are distinct; the key's own Type selects one, and the call then selects
+                // SPEC 4.7.1: several Key conformances are distinct; the key's own Type selects one, and the call then selects
                 // that conformance's index by the same key. An unfitted literal key could fit several and stays ambiguous.
                 this.BindNode(source.Right, scope);
                 if (this.ConformanceForKey(owner, indexable, source.Right) is null)
@@ -95,7 +100,7 @@ public sealed partial class Binding
         }
         else if (core.Kind == BoundTypeKind.Parameter && this.HasContractFact(core, indexable, scope))
         {
-            // SPEC 4.6.9, 8.4: a constrained Type parameter indexes through its Indexable fact; the synthesized call
+            // SPEC 4.7.1, 8.4: a constrained Type parameter indexes through its Indexable fact; the synthesized call
             // resolves to the requirement, and the instance supplies the conforming Type's implementation.
             exclusiveAvailable = this.Library.UniqIndexable is { } uniqIndexable && this.HasContractFact(core, uniqIndexable, scope);
         }
@@ -110,13 +115,13 @@ public sealed partial class Binding
         }
 
         var shared = this.BindIndexerCall(source, scope, false);
-        if (shared?.BoundType is not { } element)
+        if (LentElement(shared) is not { } element)
         {
             result = Complete(source, null);
             return true;
         }
 
-        // SPEC 4.6.9: indexUniq is selected for updates and exclusive borrows. It is bound when the conformance offers it and
+        // SPEC 4.7.1: indexUniq is selected for updates and exclusive borrows. It is bound when the conformance offers it and
         // the receiver path can lend exclusively; a use that needs it through another path is diagnosed by that path.
         if (this.exclusiveIndexers.Contains(source) && PathAuthority(source.Left) != SemanticsKind.Ref &&
             (source.Left.BoundType?.Semantics == SemanticsKind.Uniq || Writable(source.Left)))
@@ -181,12 +186,12 @@ public sealed partial class Binding
         return found;
     }
 
-    // SPEC 8.4.8.2: a registered conformance supplies its requirements to this instance only when its conditions hold here;
+    // SPEC 8.3.3: a registered conformance supplies its requirements to this instance only when its conditions hold here;
     // a refuted or unproven condition supplies nothing, and the Type stays usable through its other conformances.
     private bool ConformsHere(BoundType type, BoundConformance? conformance, BindingScope scope)
         => conformance is not null && this.ProveConformance(type, conformance.Contract, scope) == ConstraintProof.Proven;
 
-    // SPEC 8.4.2, 8.7: whether an available Constraint fact makes the subject conform to the Contract declaration or a refinement.
+    // SPEC 8.4.3, 8.3: whether an available Constraint fact makes the subject conform to the Contract declaration or a refinement.
     private bool HasContractFact(BoundType subject, BindingSymbol contract, BindingScope scope)
     {
         for (var current = scope; current is not null; current = current.Parent)

@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 4.3, 4.5 and 4.6.1: the compiler-managed Array Type binds; its operations are not generated yet (PLAN P29).</summary>
+/// <summary>SPEC 4.3, 4.5 and 4.7: binding rules for the compiler-managed Array Type (PLAN P23).</summary>
 public class ArrayBindingTest
 {
     private const string Task = "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n";
@@ -17,7 +17,7 @@ public class ArrayBindingTest
     private static readonly string TaskLiterals = Task.Replace("drop => ()", "drop\n        match self.id\n            1 => Console.writeLine(\"Task 1 destroyed.\")\n            2 => Console.writeLine(\"Task 2 destroyed.\")\n            _ => Console.writeLine(\"Task 3 destroyed.\")", StringComparison.Ordinal) +
         "var tasks: Array<Task> = [Task.init(1), Task.init(2), Task.init(3)]\nrequire tasks.length == 3 and tasks.capacity >= 3 else => $abort(\"literal\")\nvar values: Array<i32> = [10, 20, 30]\nmatch values@uniq.pop()\n    .Some(let last) => require last == 30 else => $abort(\"pop\")\n    .None => $abort(\"empty\")\nlet names: Array<string> = [\"alpha\", \"beta\"]\nrequire names.length == 2 else => $abort(\"names\")\nlet flags: Array<bool> = [true, false, true]\nrequire flags.length == 3 else => $abort(\"flags\")\nlet dynamic = [1, 2, 3, 4]\nrequire dynamic.length == 4 and dynamic.capacity >= 4 else => $abort(\"dynamic\")\nlet x: u8 = 7\nvar mixed = [x, 1]\nmatch mixed@uniq.pop()\n    .Some(let one) => require one == 1 else => $abort(\"mixed\")\n    .None => $abort(\"mixed empty\")\nConsole.writeLine(\"Done.\")";
 
-    // SPEC 4.6.1: a borrowed handle shares access for the metadata operation and is read through the reference.
+    // SPEC 4.7: a borrowed handle shares access for the metadata operation and is read through the reference.
     [Fact]
     public void BorrowedHandlesReadMetadataThroughTheReference()
         => ScalarEmissionTest.EmitFixture(
@@ -102,7 +102,7 @@ public class ArrayBindingTest
         Assert.True(c.Validate(out _));
     }
 
-    // SPEC 4.7.4: the typed empty literal is a zeroed handle that allocates nothing; destruction releases the buffer.
+    // SPEC 4.9.5: the typed empty literal is a zeroed handle that allocates nothing; destruction releases the buffer.
     [Fact]
     public void EmptyHandleLifecycleRunsNatively()
         => ScalarEmissionTest.EmitFixture(
@@ -122,7 +122,7 @@ public class ArrayBindingTest
         Assert.DoesNotContain("@HeapAlloc(", ir[free..ir.IndexOf("\n}\n", free, StringComparison.Ordinal)]);
     }
 
-    // SPEC 4.7.2, 4.7.4: the mutation operations are catalog compiler functions of the Array struct with an exclusive receiver.
+    // SPEC 4.9.3, 4.9.5: the mutation operations are catalog compiler functions of the Array struct with an exclusive receiver.
     [Theory]
     [InlineData("values@uniq.reserve(additional: 4)")]
     [InlineData("values@uniq.append(1)")]
@@ -139,7 +139,7 @@ public class ArrayBindingTest
         var ir = CompilationTestHelper.WriteIr(c);
     }
 
-    // SPEC 4.7.2, 4.7.4: growth, insertion, removal, pop, shrinking and clearing over scalar elements.
+    // SPEC 4.9.3, 4.9.5: growth, insertion, removal, pop, shrinking and clearing over scalar elements.
     [Fact]
     public void MutationOperationsRunNativelyOverScalars()
         => ScalarEmissionTest.EmitFixture(
@@ -147,7 +147,7 @@ public class ArrayBindingTest
             "var values: Array<i32> = []\nvalues@uniq.reserve(additional: 4)\nrequire values.length == 0 and values.capacity >= 4 else => $abort(\"reserve\")\nvalues@uniq.append(1)\nvalues@uniq.insert(0, 2)\nvalues@uniq.append(3)\nlet removed: i32 = values@uniq.remove(0)\nmatch values@uniq.pop()\n    .Some(let last) => require last == 3 else => $abort(\"pop\")\n    .None => $abort(\"empty\")\nvalues@uniq.shrinkToFit()\nrequire removed == 2 and values.length == 1 and values.capacity == 1 else => $abort(\"ops\")\nvalues@uniq.clear()\nmatch values@uniq.pop()\n    .Some(_) => $abort(\"cleared\")\n    .None => ()\nvar flags: Array<bool> = []\nflags@uniq.append(true)\nflags@uniq.append(false)\nrequire flags@uniq.remove(0) and flags.length == 1 else => $abort(\"bool\")\nif flags@uniq.remove(0) => $abort(\"bool\")\nConsole.writeLine(\"ok\")",
             "ok\n");
 
-    // SPEC 4.7.6: removed and popped elements transfer out; clear and destruction destroy the remaining elements in reverse index order.
+    // SPEC 4.9.7: removed and popped elements transfer out; clear and destruction destroy the remaining elements in reverse index order.
     [Fact]
     public void MutationOperationsDestroyElementsInReverseOrder()
         => ScalarEmissionTest.EmitFixture(
@@ -162,14 +162,14 @@ public class ArrayBindingTest
             "var names: Array<string> = []\nnames@uniq.append(\"alpha\")\nnames@uniq.append(\"gamma\")\nnames@uniq.insert(1, \"beta\")\nlet second = names@uniq.remove(1)\nConsole.writeLine(second)\nmatch names@uniq.pop()\n    .Some(let last) => Console.writeLine(last)\n    .None => $abort(\"empty\")\nrequire names.length == 1 else => $abort(\"length\")\nnames@uniq.clear()\nnames@uniq.append(\"delta\")\nConsole.writeLine(\"ok\")",
             "beta\ngamma\nok\n");
 
-    // SPEC 4.7.1, 4.7.2: an invalid position Aborts in the Kimigayo entry's resolution, before the collection changes.
+    // SPEC 4.9.1, 4.9.3: an invalid position Aborts in the Kimigayo entry's resolution, before the collection changes.
     [Theory]
     [InlineData("InsertBounds", "var values: Array<i32> = []\nvalues@uniq.append(1)\nConsole.writeLine(\"before\")\nvalues@uniq.insert(2, 5)\nConsole.writeLine(\"after\")", "before\n", "self.insertAt(-1")]
     [InlineData("RemoveEmpty", "var values: Array<i32> = []\nlet removed = values@uniq.remove(0)\nConsole.writeLine(\"after\")", "", "self.removeAt(position)")]
     public void PositionOperationsAbortInResolution(string name, string source, string stdout, string anchor)
         => ScalarEmissionTest.EmitFixture("ArrayOperations" + name, source, stdout, 1, LibrarySource.Location("Array.kimi", anchor) + ": abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
-    // SPEC 4.7.4: a negative reserve amount Aborts before the collection changes.
+    // SPEC 4.9.5: a negative reserve amount Aborts before the collection changes.
     [Theory]
     [InlineData("NegativeReserve", "var values: Array<i32> = []\nlet n: isize = -1\nvalues@uniq.reserve(n)\nConsole.writeLine(\"after\")", "", "Hello.kimi:3:1: abort KIMI_E_ARG_RANGE: Argument out of range\n")]
     public void MutationOperationsAbortOnInvalidPositionsAndAmounts(string name, string source, string stdout, string stderr)

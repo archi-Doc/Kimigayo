@@ -7,8 +7,8 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 22.1.2.5: the standard storage boundary splits Array Storage into non-overlapping regions, so the
-/// standard exclusive iterator's items are independent children (SPEC 15.6.3, 22.1.2.4).</summary>
+/// <summary>SPEC 22.2: the standard storage boundary splits Array Storage into non-overlapping regions, so the
+/// standard exclusive iterator's items are independent children (SPEC 15.6.3, 22.2.3).</summary>
 public class StorageBoundaryTest
 {
     private const string Values = "var values: Array<i32> = [1, 2, 3]\n";
@@ -55,7 +55,7 @@ public class StorageBoundaryTest
         Assert.False(c.Analysis.IsVerified);
     }
 
-    // SPEC 22.1.2.5, 15.3.5: a remainder holds the Loan of its source slot although no field stores a safe reference, so a
+    // SPEC 22.2, 15.3.5: a remainder holds the Loan of its source slot although no field stores a safe reference, so a
     // live iterator protects its source: no replacement or growth, and no read beside an exclusive iterator.
     [Theory]
     [InlineData("var it = values.iterateUniq()\nvalues.append(4)")]
@@ -143,7 +143,7 @@ public class StorageBoundaryTest
         Assert.DoesNotContain("__kimi_array_take_first_", ir);
     }
 
-    // SPEC 4.7.6, 22.1.2.5: a taken element is destroyed by its owner; the unreturned elements are destroyed with the
+    // SPEC 4.9.7, 22.2: a taken element is destroyed by its owner; the unreturned elements are destroyed with the
     // iterator in reverse index order, then the buffer is released.
     [Fact]
     public void OwningIteratorDestroysUnreturnedElements()
@@ -156,7 +156,7 @@ public class StorageBoundaryTest
         Assert.DoesNotContain("__kimi_array_owned_drop_", ir);
     }
 
-    // SPEC 9.3, 22.1.2.5: the boundary is internal to the Kimi Kotonoha; no user source reaches it.
+    // SPEC 9.4, 22.2: the boundary is internal to the Kimi Kotonoha; no user source reaches it.
     [Theory]
     [InlineData("let r = Kimi.Storage.borrowStorage(values@ref)")]
     [InlineData("let r = Storage.borrowStorage(values@ref)")]
@@ -190,7 +190,7 @@ public class StorageBoundaryTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
-    // SPEC 5.2.2, 22.1.2.5: a library helper lends a remainder element by borrowing its raw Place.
+    // SPEC 5.2.2, 22.2: a library helper lends a remainder element by borrowing its raw Place.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

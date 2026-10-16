@@ -125,7 +125,7 @@ public class RuntimeTypeTest
         var c = CompilationTestHelper.ParseSuccess($"struct Animal\nstruct Dog<T>\nfunc f<T>(x: objref/Animal) -> bool => x is {target}");
         Assert.True(c.Bind().IsComplete == valid, Describe(c));
         Assert.Equal(valid, Test(c).RuntimeTestOf().HasValue);
-        // SPEC 13.6.1: a bare Type parameter target is invalid; Type arguments that depend on one are valid but not implemented.
+        // SPEC 13.6.4: a bare Type parameter target is invalid; Type arguments that depend on one are valid but not implemented.
         if (target is "Dog<T>" or "T")
         {
             Assert.Contains(c.Binding.Issues, x => x.Node == Test(c) && x.Code == (target == "T" ? DiagnosticCode.InvalidTypeFormation_Kd : DiagnosticCode.Unsupported_Kd));
@@ -296,7 +296,7 @@ public class RuntimeTypeTest
         Assert.False(flow.Nodes[Test(c)].CanCompleteNormally);
     }
 
-    // SPEC 7.4: the leading `is` items of every body are Constraints, selected before lookup whatever the function's
+    // SPEC 7.5: the leading `is` items of every body are Constraints, selected before lookup whatever the function's
     // generic parameters; `x` is not a permitted subject. Parentheses make the test executable.
     [Theory]
     [InlineData("f<T>")]
@@ -327,6 +327,7 @@ public class RuntimeTypeTest
         Assert.Null(clause.RuntimeTestOf());
     }
 
+    // The test borrows its operand and takes the Type as a constant (its MIR: tests/mir/matches.kimi `isLeaf`).
     [Fact]
     public void OwnershipBorrowsTheOperandAndNeverReadsItsType()
     {
@@ -336,22 +337,14 @@ public class RuntimeTypeTest
         var test = Test(c);
         Assert.Empty(c.Problems);
         Assert.DoesNotContain(c.Problems, issue => c.SyntaxOf(issue.Subject) == test.Right);
-        var body = Assert.Single(c.Ownership.Bodies, body => body.Function.Name == "f");
-        Assert.Single(body.Operations, op => op.Source == test.Left && op.Kind == OwnershipOperationKind.Borrow);
-        Assert.DoesNotContain(body.Operations, op => op.Source == test.Right);
-        Assert.DoesNotContain(body.Operations, op => op.Source == test.Left && op.Kind == OwnershipOperationKind.Consume);
     }
 
+    // The tested operand is evaluated once: one call, one Move (its MIR: tests/mir/objects.kimi `obtainedIsCell`).
     [Fact]
     public void EvaluationRetainsCallEffectsExactlyOnce()
     {
         var c = CompilationTestHelper.ParseSuccess("struct Dog\nfunc obtain(s: string) -> obj/Dog => obtain(s@move)\nfunc f(s: string) -> bool => obtain(s@move) is Dog");
         AssertBound(c);
-        c.Analyze();
-        var test = Test(c);
-        var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "f");
-        Assert.Single(body.Operations, op => op.Source == test.Left && op.Kind == OwnershipOperationKind.Call);
-        Assert.Single(body.Operations, op => op.Kind == OwnershipOperationKind.Consume);
         Assert.Empty(c.AnalyzeControlFlow().Warnings);
     }
 

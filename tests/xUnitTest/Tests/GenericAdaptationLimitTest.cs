@@ -11,7 +11,8 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 8.10, 23.3.6.1: the common 64-case bound also applies before Binding commits a generic adaptation plan.
+// SPEC 8.15, 23.1.1: a definition beyond the 64-case bound verifies none of its cases, so its generic adaptations depend on its one
+// record and none of their plans is committed.
 public class GenericAdaptationLimitTest
 {
     [Theory]
@@ -76,7 +77,7 @@ public class GenericAdaptationLimitTest
             source.Append("    ").Append((char)('a' + i)).Append(" is owner or obj\n");
         }
 
-        // Two independent expressions exceed the same definition limit and must produce one resource cause.
+        // Two expressions under the same definition beyond the bound give its one resource record.
         for (var expression = 0; expression < 2; expression++)
         {
             source.Append("    _ = value");

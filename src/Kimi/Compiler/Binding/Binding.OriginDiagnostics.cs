@@ -199,7 +199,7 @@ public sealed partial class Binding
 
     // SPEC 15.3.2: a storage name that no declaration of any role matches is reported once, at the name. The Reason says that own
     // slots are declared only in the header; the header,
-    // or the Type name without one, is the related location. `during self` is explained by the storage rule of SPEC 11.3 instead.
+    // or the Type name without one, is the related location. `during self` is explained by the storage rule of SPEC 11.6 instead.
     private bool ReportUndeclaredStorageOrigin(Koto use, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         if (use is not IdentifierNameKoto { IdentifierName: var name } || StorageOriginType(use) is not { } type)
@@ -209,7 +209,7 @@ public sealed partial class Binding
 
         if (name == "self")
         {
-            const string SelfNote = "A stored value cannot borrow from the value that stores it: self creates no self-borrowing storage contract (SPEC 11.3)";
+            const string SelfNote = "A stored value cannot borrow from the value that stores it: self creates no self-borrowing storage contract (SPEC 11.6)";
             use.Report(requirement, code, note: SelfNote, evidence: ["self is not a storage Origin"]);
             return true;
         }

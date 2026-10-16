@@ -53,11 +53,7 @@ public class EnumInputFormationBindingTest
     public void WarmPayloadInputChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "contract C\nenum E\n    A(Source<i32>.Origin.Item)\n    Self is C\ngroup G\n    func make() -> E => E.A(1)");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

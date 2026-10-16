@@ -230,10 +230,6 @@
     Description="the Constraint prefix leads the body and names a generic parameter"
     Phrase="Constraint prefix"
 
-  + Name="Syntax.PlaceResultSuffix"
-    Description="a Place result takes no '?'"
-    Phrase="'?' after a Place result"
-
   + Name="Syntax.SemanticsShorthandSuffix"
     Description="a bare operation target takes no '?'"
     Phrase="'?' after a bare operation target"
@@ -510,9 +506,6 @@
   + Name="Binding.ExclusivePathTake"
     Description="the path grants Take"
 
-  + Name="Binding.PlaceRequired"
-    Description="the Place result is a Place"
-
   + Name="Binding.ReceiverShapeMismatch"
     Description="the functions of one Name share a receiver shape"
 
@@ -648,11 +641,8 @@
   + Name="Ownership.StorageLimit"
     Description="ownership analysis storage stays within its resource limit"
 
-  + Name="Ownership.CaseLimit"
-    Description="the Semantics cases of the definition stay within the implementation bound"
-
   + Name="Binding.CaseLimit"
-    Description="the Semantics cases of the definition stay within the implementation bound before an operation plan is committed"
+    Description="the Semantics cases of the definition stay within the implementation bound"
 
   + Name="Emission"
     Description="generation succeeds"

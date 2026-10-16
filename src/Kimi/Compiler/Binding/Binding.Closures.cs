@@ -9,7 +9,7 @@ namespace Kimi.Compiler;
 
 public readonly record struct BoundCapture(BindingSymbol Source, BindingSymbol Environment)
 {
-    // How the entry initializes its environment binding (SPEC 7.6.2), as the HIR Adjust column states acquisitions.
+    // How the entry initializes its environment binding (SPEC 7.7.2), as the HIR Adjust column states acquisitions.
     internal HirAdjust Adjust => HirAdjust.Of(this.Environment.CaptureAcquisition);
 }
 
@@ -24,7 +24,7 @@ public sealed class BoundClosure
 
     public SemanticsKind Receiver { get; internal set; } = SemanticsKind.Ref;
 
-    // The first capture use that made the call Exclusive, and whether it Reborrows a captured exclusive reference (SPEC 7.6.3).
+    // The first capture use that made the call Exclusive, and whether it Reborrows a captured exclusive reference (SPEC 7.7.3).
     internal Koto? ExclusiveUse { get; set; }
 
     internal bool ExclusiveReborrow { get; set; }
@@ -38,10 +38,10 @@ public sealed class BoundClosure
     internal static BoundClosure? Of(FunctionKoto function) => function.BoundClosure;
 }
 
-// A capture name repeated by a later entry or by a parameter (Parameter), at Later, and the entry it repeats, at Earlier (SPEC 7.6.2).
+// A capture name repeated by a later entry or by a parameter (Parameter), at Later, and the entry it repeats, at Earlier (SPEC 7.7.2).
 internal readonly record struct CaptureRepeat(SourceSpan Later, SourceSpan Earlier, string Name, bool Parameter);
 
-// The repeats of one capture list, and the first other entry that failed independently of them (SPEC 23.3.6.4): its failure, none
+// The repeats of one capture list, and the first other entry that failed independently of them (SPEC 23.1.2): its failure, none
 // when every other entry is valid, and the Type its facts name, null for an entry without facts, such as an unresolved name.
 internal readonly record struct CaptureListFailure(CaptureRepeat[] Repeats, CaptureKoto Entry, BindingFailure Failure, BoundType? Type, BindingSymbol? Source);
 
@@ -78,7 +78,7 @@ public sealed partial class Binding
     // independent failure of another entry.
     private Dictionary<Koto, CaptureListFailure>? captureRepeats;
 
-    // SPEC 7.6.2: each capture name that an earlier entry repeats, then each that a parameter repeats; null for a valid list, which
+    // SPEC 7.7.2: each capture name that an earlier entry repeats, then each that a parameter repeats; null for a valid list, which
     // allocates nothing.
     private static CaptureRepeat[]? RepeatedCaptures(FunctionKoto function, CaptureKoto[] captures)
     {
@@ -123,7 +123,7 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 7.6.2: the receiver `self` of a named function, accessor, constructor or destructor, and a setter's `value`.
+    // SPEC 7.7.2: the receiver `self` of a named function, accessor, constructor or destructor, and a setter's `value`.
     private static bool IsContextualBinding(BindingSymbol symbol)
         => symbol.Kind == BindingSymbolKind.Parameter && symbol.Declaration switch
         {
@@ -201,7 +201,7 @@ public sealed partial class Binding
             expected is { Kind: BoundTypeKind.Semantics, Components.Count: 1, OriginArguments.Count: 0, Origin: not null } && expected.Semantics == written.Semantics &&
             ReferenceEquals(expected.Components[0], written.Components[0]);
 
-    // SPEC 7.6.2, 23.3.6.4: a repeated capture name is one problem at the later entry or parameter, with the entry it repeats related.
+    // SPEC 7.7.2, 23.1.2: a repeated capture name is one problem at the later entry or parameter, with the entry it repeats related.
     // Another entry that failed on its own is reported beside the repeats, exactly as it is in a list that repeats no name.
     private void ReportCaptureRepeats(Koto function, CaptureListFailure list, DiagnosticRequirement requirement, DiagnosticCode code)
     {
@@ -230,8 +230,8 @@ public sealed partial class Binding
             var repeat = repeats[i];
             var name = repeat.Name;
             var note = repeat.Parameter
-                ? $"The capture entry {name} and the parameter {name} would both declare {name} in the anonymous function's body; a parameter cannot repeat a capture name (SPEC 7.6.2)"
-                : $"The capture list names {name} twice; each entry declares its own environment binding, so a name is captured once (SPEC 7.6.2)";
+                ? $"The capture entry {name} and the parameter {name} would both declare {name} in the anonymous function's body; a parameter cannot repeat a capture name (SPEC 7.7.2)"
+                : $"The capture list names {name} twice; each entry declares its own environment binding, so a name is captured once (SPEC 7.7.2)";
             function.Report(
                 requirement,
                 code,
@@ -249,7 +249,7 @@ public sealed partial class Binding
         => repeats is not null ? this.FailExplained(ref this.captureRepeats, function, BindingFailure.Duplicate, new CaptureListFailure(repeats, capture, failure, type, source))
             : type is not null ? this.FailExplained(ref this.captureFailures, function, failure, (capture, type, source)) : this.Fail(function, failure);
 
-    // SPEC 7.6.3, 8.6: the one closure argument whose minimum call receiver the Callable Constraint of its parameter does not permit;
+    // SPEC 7.7.3, 8.10: the one closure argument whose minimum call receiver the Callable Constraint of its parameter does not permit;
     // none when no argument or several do. A common Function parameter has no Callable Constraint and is never named here.
     private ClosureReceiverRefutation? ClosureReceiverMismatch(InvocationKoto call, FunctionKoto function, int[] mapping)
     {
@@ -356,7 +356,7 @@ public sealed partial class Binding
             }
 
             var parameters = count == 0 ? BoundType.Unit : this.types.Tuple(types.AsSpan(0, count));
-            return this.FailMismatch(function, function, this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result], resultMode: ResultModeOf(function.ReturnType)), expected);
+            return this.FailMismatch(function, function, this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result]), expected);
         }
         finally
         {
@@ -366,7 +366,7 @@ public sealed partial class Binding
 
     private bool ClosureSignatureFits(FunctionKoto function, BoundType expected, bool openResult = false)
     {
-        if (expected.Kind != BoundTypeKind.Function || ResultModeOf(function.ReturnType) != expected.ResultMode)
+        if (expected.Kind != BoundTypeKind.Function)
         {
             return false;
         }
@@ -402,7 +402,7 @@ public sealed partial class Binding
     {
         if (expected is not null && !this.ClosureSignatureFits(function, expected, openResult))
         {
-            // SPEC 10.5, 23.3.6.4: the written header disagrees with the fixed signature; the omitted parameter Types that
+            // SPEC 10.5, 23.1.2: the written header disagrees with the fixed signature; the omitted parameter Types that
             // signature would have supplied rest on this failure.
             for (var i = 0; i < function.Parameters.Count; i++)
             {
@@ -425,7 +425,7 @@ public sealed partial class Binding
     {
         if (entry is null && IsContextualBinding(source))
         {
-            return null; // SPEC 7.6.2: contextual self and a setter's value are never captured implicitly.
+            return null; // SPEC 7.7.2: contextual self and a setter's value are never captured implicitly.
         }
 
         if (scope.Parent?.Function is { } outer && !ReferenceEquals(source.Scope.Function, outer))
@@ -452,7 +452,7 @@ public sealed partial class Binding
             return null;
         }
 
-        // SPEC 7.6.2: an environment holds any Type with slot storage, including enums (Option, Result), Arrays, Dictionaries,
+        // SPEC 7.7.2: an environment holds any Type with slot storage, including enums (Option, Result), Arrays, Dictionaries,
         // Slices, object Views and raw pointers. All safe borrows use the same representation boundary.
         if (!(ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) ||
                 (function.ClosureStorage?.EnvironmentType is not null && (type.Kind == BoundTypeKind.Parameter || SlotTypes.IsResult(type) ||
@@ -501,10 +501,10 @@ public sealed partial class Binding
         return environment;
     }
 
-    // SPEC 23.3.6.5: the `closure` display `call result`, the shorter end of a result that outlives its call.
+    // SPEC 23.1: the `closure` display `call result`, the shorter end of a result that outlives its call.
     private BoundOrigin CallResultOrigin(FunctionKoto function) => this.OriginAtom(function, OriginKind.Projection, CallResultSlot);
 
-    // SPEC 7.6.2: each explicit entry initializes one environment binding exactly as `let x = x` or `let x = x@op` would.
+    // SPEC 7.7.2: each explicit entry initializes one environment binding exactly as `let x = x` or `let x = x@op` would.
     // A bare entry Copies a Copy binding and Reborrows a binding storing an exclusive reference; `x@ref` and `x@uniq`
     // borrow the outer binding's slot, adding a reference layer, and an exclusive slot borrow needs a writable slot.
     private BindingFailure? CaptureEntry(FunctionKoto function, CaptureKoto capture, BindingSymbol source, BindingSymbol environment)
@@ -516,7 +516,7 @@ public sealed partial class Binding
                 environment.CaptureAcquisition = CaptureAcquisition.Move;
                 return null;
             case null:
-                // SPEC 8.9: by case, each case run and instance acquires as its case Type does.
+                // SPEC 8.14: by case, each case run and instance acquires as its case Type does.
                 var bare = this.BareAcquire(type, function, out _);
                 if (bare == HirAcquire.Move)
                 {
@@ -569,9 +569,9 @@ public sealed partial class Binding
 
         if (function.Captures is { } captures)
         {
-            // SPEC 7.6.2: a repeated capture name and a collision with a parameter are judged from the written list, so a closure bound
+            // SPEC 7.7.2: a repeated capture name and a collision with a parameter are judged from the written list, so a closure bound
             // again keeps the environment bindings of its earlier binding. The other entries are still bound, and the first that
-            // fails on its own is reported beside the repeats (SPEC 23.3.6.4).
+            // fails on its own is reported beside the repeats (SPEC 23.1.2).
             var repeats = RepeatedCaptures(function, captures);
             foreach (var capture in captures)
             {
@@ -583,7 +583,7 @@ public sealed partial class Binding
                 var source = this.Lookup(capture.Name, scope.Parent!, function, false);
                 if (source is { Kind: BindingSymbolKind.Parameter, Name: "self", Declaration: FunctionKoto { IsConstructor: true } or FunctionKoto { IsDestructor: true } })
                 {
-                    // SPEC 7.6.2, 6.2.3, 16.3: an explicit capture obeys the construction and destruction restrictions, under
+                    // SPEC 7.7.2, 6.3, 16.3: an explicit capture obeys the construction and destruction restrictions, under
                     // which self is reached only through its Fields.
                     return this.FailCaptureEntry(function, repeats, capture, BindingFailure.Capture, source.Type ?? BoundType.Unit, source);
                 }
@@ -627,11 +627,6 @@ public sealed partial class Binding
         {
             var result = this.RequireType(expression, scope, symbol.Type);
             symbol.Type ??= result;
-            if (function.ReturnType is PlaceResultKoto place && !ReferenceEquals(result, BoundType.Never))
-            {
-                var placeItem = expression is CodeBlockKoto { IsExpressionBody: true, Items.Count: 1 } single ? single.Items[0] : expression;
-                this.CheckPlaceResultOperand(placeItem, place, ReferenceEquals(placeItem, expression) ? function : expression);
-            }
         }
 
         if (symbol.Type is null)
@@ -658,7 +653,7 @@ public sealed partial class Binding
             }
 
             var inputs = function.Parameters.Count == 0 ? BoundType.Unit : this.types.Tuple(((BoundType[])(object)buffer).AsSpan(0, function.Parameters.Count));
-            plan.Signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, symbol.Type], resultMode: ResultModeOf(function.ReturnType));
+            plan.Signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, symbol.Type]);
             for (var i = 0; i < plan.Storage.Count; i++)
             {
                 buffer[i] = plan.Storage[i].Environment.Type!;
@@ -682,7 +677,7 @@ public sealed partial class Binding
         return Complete(function, plan.EnvironmentType);
     }
 
-    // One reusable visitor classifies each closure's receiver from the uses of its captures (SPEC 7.6.3); it never visits a
+    // One reusable visitor classifies each closure's receiver from the uses of its captures (SPEC 7.7.3); it never visits a
     // nested function's body, so one closure is classified at a time.
     private sealed class ClosureEffects(Binding binding) : KotoVisitor
     {
@@ -715,7 +710,7 @@ public sealed partial class Binding
                             continue;
                         }
 
-                        // SPEC 7.6.2, 7.6.3: moving an outer environment value is Consuming; Reborrowing it or borrowing its slot
+                        // SPEC 7.7.2, 7.7.3: moving an outer environment value is Consuming; Reborrowing it or borrowing its slot
                         // exclusively needs exclusive access to the outer environment.
                         if (capture.Environment.CaptureAcquisition == CaptureAcquisition.Move)
                         {
@@ -768,7 +763,7 @@ public sealed partial class Binding
                 }
 
                 var memberBorrow = memberOperation.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection;
-                // A Copy payload Field read lends the captured handle; it does not consume that handle (SPEC 3.4.1).
+                // A Copy payload Field read lends the captured handle; it does not consume that handle (SPEC 3.4.3).
                 if ((use.Parent is BinaryKoto assignment && assignment.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals && ReferenceEquals(assignment.Left, use)) ||
                     use.Parent is UnaryKoto { Akind: KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement } ||
                     (receiver && called!.ReceiverKind == SemanticsKind.Uniq) || (memberBorrow && memberOperation.ParameterType?.Semantics == SemanticsKind.Uniq) ||
@@ -789,7 +784,7 @@ public sealed partial class Binding
                     (receiver && called!.ReceiverKind == SemanticsKind.Owner) || (memberCall is not null && memberOperation.Kind == ArgumentOperationKind.Value && !memberBorrow &&
                         use.BoundType is { } receiverType && binding.ProveCopy(receiverType, this.function) == ConstraintProof.Refuted))
                 {
-                    // SPEC 7.6.3, 13.5.3: transferring a capture out of the environment makes the call Consuming. A bare Non-Copy
+                    // SPEC 7.7.3, 13.5.3: transferring a capture out of the environment makes the call Consuming. A bare Non-Copy
                     // Place is never moved, so every other use, such as `items.length`, a shared element read, a bare `for` or
                     // `match` Subject or a borrowed argument, only borrows the capture; ownership rejects a Move out of a capture
                     // in a Shared or Exclusive call.
@@ -800,7 +795,7 @@ public sealed partial class Binding
             node.VisitChildren(this);
         }
 
-        // SPEC 7.6.3: a capture used in a way that needs it, or the referent of a captured exclusive reference, exclusively:
+        // SPEC 7.7.3: a capture used in a way that needs it, or the referent of a captured exclusive reference, exclusively:
         // Reborrowed exclusively (bare, at an expected uniq Type or as a uniq argument), or reached through Fields, elements or a
         // follow to a Place that is written, incremented, borrowed exclusively or used as an exclusive receiver. Such a body
         // mutates the environment or a captured referent, so the call is Exclusive.

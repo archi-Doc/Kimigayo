@@ -6,3 +6,5 @@ func largest<T>(values: ref/Array<T>, fallback: T) -> T
         if value > best => best = value@follow
     return best
 func use(values: ref/Array<i64>) -> i64 => largest(values, 0)
+func wrapSome<T>(x: T) -> Option<T> => .Some(x@move)
+func unwrapTry<T>(x: T?) -> T? => .Some(try x@move)

@@ -83,7 +83,7 @@ public class ElementEmissionTest
         Assert.Empty(writer.ToString());
     }
 
-    // SPEC 12.4.1: a tuple selector names an element of a Tuple only, so another receiver is a Type error at the selection.
+    // SPEC 12.5.1: a tuple selector names an element of a Tuple only, so another receiver is a Type error at the selection.
     [Theory]
     [InlineData("struct S\n    public var v: i32 = 0\nlet s = S.init()\nlet x = s.0", "s.0")]
     [InlineData("func f<T>(t: T) -> ()\n    let x = t.0\npublic func main() => ()", "t.0")]
@@ -134,15 +134,13 @@ public class ElementEmissionTest
         Assert.True(c.WriteIr(TextWriter.Null, out error), error);
     }
 
+    // Intermediate projections copy nothing; each read copies its final element once (its MIR: tests/mir/places.kimi `nestedProjections`).
     [Fact]
     public void IntermediateProjectionsDoNotCopyAndTheFinalAggregateCopiesOnce()
     {
         const string Source = "let a = (((42, true), 3), \"held\")\nlet b = a.0.0\nlet n = a.0.0.0";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies[0];
-        Assert.Equal(5, body.Projections.Count);
-        Assert.Equal(2, body.Projections.Count(x => x.Output >= 0));
         var instructions = module.GetFunction(0).Instructions;
         Assert.Single(instructions, x => x.Opcode == EmissionOpcode.TransferAggregate && x.OperandCount == 1);
         Assert.Single(instructions, x => x.Opcode == EmissionOpcode.LoadElement);
@@ -187,31 +185,18 @@ public class ElementEmissionTest
     {
         const string Source = "func get(a: [2 of i32], i: isize) -> i32 => a[i]\nlet a: [2 of i32] = [1, 42]\nvar n = 0\nloop\n    defer => get(a, 1)\n    n += 1\n    if n < 3 => continue\n    exit\nlet p = ((42, true), \"held\")\nlet q = p.0\nif q.1 => get(a, 0)";
         var c = MinimalEmissionTest.Analyze(Source);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
-        var success = true;
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
-        {
-            success &= c.Bind().IsComplete;
-        }
-
-        var bindingBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        var success = true;
+        var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        var bytes = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
             success &= c.WriteIr(TextWriter.Null, out _);
-        }
-
-        var bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        });
         Assert.True(success);
         Assert.Equal(0, bindingBytes);
         Assert.Equal(0, bytes);

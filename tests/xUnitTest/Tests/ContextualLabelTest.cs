@@ -226,7 +226,7 @@ public class ContextualLabelTest
     [Fact]
     public void DictionaryKeysAndValuesBindWithUngroupedLabels()
     {
-        // Runtime nonempty Dictionary literals remain the independent P31 limitation.
+        // Runtime nonempty Dictionary literals belong to the independent Dictionary track (PLAN P32).
         var c = Parse("let values: Dictionary<i32, i32> = [label key: do => 1: label value: do => 2]");
         Assert.Empty(TestDiagnostics.Of(c));
         Assert.True(c.Bind().IsComplete);

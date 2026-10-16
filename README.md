@@ -25,7 +25,7 @@ Native execution currently targets Windows x64. See [STATUS.md](docs/STATUS.md) 
 | `src/third_party/` | Vendored source code and its licenses. |
 | `tests/` | Regression tests and milestone acceptance programs. |
 | `tests/xUnitTest/` | Managed regression tests and test data. |
-| `tests/milestones/` | Programs that define end-to-end implementation milestones. |
+| [`tests/milestones/`](tests/milestones/README.md) | 43 independent acceptance programs numbered in compiler implementation order; catalog, status and expected output. |
 | `docs/` | Specifications, guides, library reference and development records. |
 | `docs/spec/` | Language specification chapters, indexed by [SPEC.md](docs/SPEC.md). |
 | `docs/impl/` | Implementation contracts, indexed by [IMPL.md](docs/IMPL.md). |
@@ -77,7 +77,9 @@ dotnet src/Kimi/bin/Release/net10.0/Kimi.dll run docs/examples/Hello/Hello.kimip
 Use `kimi <command> [project.kimiproj | solution.kimisln | directory] [options]`.
 Omitting the path searches the current directory for a solution or projects.
 
-- `build`: compile and link; requires the LLVM toolchain above.
+- `build`: check product sources and write a successful build record. Applications
+  also compile and link an executable, requiring the LLVM toolchain above;
+  Libraries need no LLVM tools and produce only the record.
 - `run`: build the current source, then run the resulting executable and forward
   its output and exit code. Requires the LLVM toolchain; a failed build does not run.
   Add `--no-build` to run the existing executable without compiling or requiring LLVM.
@@ -119,7 +121,7 @@ For a source checkout, replace `kimi` in these examples with `dotnet src/Kimi/bi
 
 `check <project> --Format json` checks one project through the same entry the language server uses and writes a single JSON document (`kimi.check/1`, schema in [docs/spec/schemas/check-output.schema.json](docs/spec/schemas/check-output.schema.json)) to standard output: the outcome, the source table with the SHA-256 of every input that was read, and the diagnostic records with their repair candidates, which are structured edits with their verified and required conditions. Everything else goes to standard error, and the exit code follows acceptance as in the text form.
 
-Run `restore <project.kimiproj>` before checking a project with dependencies. Restore resolves exact local Project references and writes deterministic product/test partitions to `<project>.kimi.lock.json`. Source commands validate the required lock and never rewrite it; `--locked` is supported. Source edits require rechecking, but no restore. Supported source-module bodies share final Application generation. Library `emit` produces inspection IR with no OS entry; Library native build/run, package inputs and full module/native supply records remain unfinished.
+Run `restore <project.kimiproj>` before checking a project with dependencies. Restore resolves exact local Project references and writes deterministic product/test partitions to `<project>.kimi.lock.json`. Source commands validate the required lock and never rewrite it; `--locked` is supported. Source edits require rechecking, but no restore. Supported source-module bodies share final Application generation. Library `build` records successful product checks; Library `emit` produces inspection IR with no OS entry. Source `run` and `build --Manifest` require Applications. Package inputs and full module/native supply records remain unfinished.
 
 See the [transitive source dependency example](docs/examples/SourceDependencies/README.md).
 
@@ -291,7 +293,7 @@ Functional and allocation/reuse regressions both run in every Session. Unit defa
 
 LSP tests require directory-listing access from the OS temporary directory through every
 ancestor to the filesystem root: project discovery must distinguish an unreadable directory
-from one containing no projects (SPEC §23.4.3). Session verification and selections of the
+from one containing no projects (SPEC §23.4). Session verification and selections of the
 implicit-source LSP test classes check this access before building. If the preflight fails,
 inspect `lsp-discovery-access.log` in the evidence directory and rerun in a process with the
 required access, outside a restricting sandbox. Do not treat an unreadable directory as empty
@@ -359,7 +361,7 @@ Ctrl+F5 needs no `launch.json`. If another language's configuration is selected,
 
 The extension colors `.kimi` files and ```` ```kimi ```` fenced blocks in the Markdown editor with a TextMate grammar; no Kimi executable is needed. Keywords, comments and documentation, strings with interpolation, numbers, Attributes, directives, Semantics such as `ref/` and explicit operations such as `@move` are recognized from the text. Contextual keywords such as `during`, `get` and `of` are colored only in their usual positions, and UpperCamelCase names are colored as Types, following the naming conventions in [STYLE.md](docs/STYLE.md); an UpperCamelCase enum Case declaration is therefore shown as a Type, while a `.Case` reference is shown as a Case. The grammar does not resolve names. The Markdown preview is not colored.
 
-Kimi files indent with four spaces, as SPEC §2.2 requires; Enter indents after a header such as `func`, `if` or `match` without `=>`, and continues `///` documentation. Indented blocks fold.
+Kimi files indent with four spaces, as SPEC §F.4.1 requires; Enter indents after a header such as `func`, `if` or `match` without `=>`, and continues `///` documentation. Indented blocks fold.
 
 ### Settings and troubleshooting
 
@@ -386,7 +388,7 @@ $env:KIMI_TEST_SERVER_PATH = (Resolve-Path src/Kimi/bin/Release/net10.0/Kimi.exe
 npm --prefix src/kimi-ext run test:integration
 ```
 
-The unit tests also check the grammar against the reserved keywords of SPEC §2.5.1, the repository's Kimi sources and the Kimi examples in `docs/spec` and `docs/impl`. Integration tests use isolated VS Code profiles. Set `VSCODE_EXECUTABLE_PATH` to reuse an installed VS Code; otherwise the test runner downloads it. Compiler-dependent cases are skipped without `KIMI_TEST_SERVER_PATH`. Open this repository and select **Kimi Extension** in Run and Debug to launch its development host.
+The unit tests also check the grammar against the reserved words of SPEC §F.3.1, the repository's Kimi sources and the Kimi examples in `docs/spec` and `docs/impl`. Integration tests use isolated VS Code profiles. Set `VSCODE_EXECUTABLE_PATH` to reuse an installed VS Code; otherwise the test runner downloads it. Compiler-dependent cases are skipped without `KIMI_TEST_SERVER_PATH`. Open this repository and select **Kimi Extension** in Run and Debug to launch its development host.
 
 The npm override for Mocha selects supported `glob` 13 while `@vscode/test-cli` still depends on Mocha 11. Keep integration tests passing when updating this override, and remove it when the upstream dependency no longer selects deprecated `glob` 10. Packaging uses the locally installed, locked `@vscode/vsce` rather than an independent `npx` download. The prepublish step bundles the extension and its runtime dependencies with esbuild, retaining license notices; the VSIX excludes tests, build tools and `node_modules`.
 

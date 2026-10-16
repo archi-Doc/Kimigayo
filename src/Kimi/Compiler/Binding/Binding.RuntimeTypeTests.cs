@@ -55,7 +55,7 @@ public sealed partial class Binding
             return Complete(test, null);
         }
 
-        // SPEC 13.6.1: a target that is itself a Type parameter or an associated Type is invalid; a struct Core whose Type
+        // SPEC 13.6.4: a target that is itself a Type parameter or an associated Type is invalid; a struct Core whose Type
         // arguments depend on them is valid but not implemented.
         var associated = test.Right.BoundSymbol?.Kind == BindingSymbolKind.AssociatedType;
         if (!associated && target.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection) && HasRuntimeTypeDependency(target))
@@ -68,7 +68,7 @@ public sealed partial class Binding
             return this.Fail(test, BindingFailure.InvalidTypeFormation);
         }
 
-        // SPEC 13.6.1: refinement would give the operand an object form of the target, which an opt-out forbids.
+        // SPEC 13.6.4: refinement would give the operand an object form of the target, which an opt-out forbids.
         if (target.Symbol!.ObjectPayloadOptOut is { } renounced)
         {
             return this.FailObjectPayload(test, renounced);

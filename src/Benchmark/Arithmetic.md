@@ -1,5 +1,7 @@
 # Arithmetic measurements
 
+Program IDs in dated measurements retain the pre-2026-10-15 numbering; see the [current mapping](../../tests/milestones/README.md#implementation-order).
+
 Build the whole solution in Release, then run these commands separately, without concurrent builds or measurements:
 
 ```powershell
@@ -32,4 +34,4 @@ linked runtime, so it is a whole-program comparison, not an isolated function si
 `ArithmeticCostTest` independently asserts zero warm compiler allocation and counts actual native HeapAlloc/HeapFree
 calls and bytes with `NativeAllocationAudit`, retaining the checksum and normal startup/cleanup. Instrumented fixtures
 are used only for allocation verification, never timing. Alias, effects, failure, destruction and setter semantics are
-covered by the functional tests and Program 43. Do not infer speedups or universal allocation guarantees from this workload.
+covered by the functional tests and current Program 37 (former 43). Do not infer speedups or universal allocation guarantees from this workload.

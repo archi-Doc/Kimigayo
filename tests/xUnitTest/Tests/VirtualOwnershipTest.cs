@@ -3,6 +3,7 @@
 using Kimi;
 using Kimi.Checking;
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Kimi.Lsp;
@@ -20,8 +21,10 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(Shared);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Bodies, x => x.Function.IsVirtual);
-        Assert.Contains(c.Ownership.Bodies, x => x.Function.IsOverride);
+        var mir = c.BuildMir();
+        var functions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().ToArray();
+        Assert.NotNull(mir[new(Assert.Single(functions, static x => x.IsVirtual).SymbolOf(), MirBodyKind.Fn)]);
+        Assert.NotNull(mir[new(Assert.Single(functions, static x => x.IsOverride).SymbolOf(), MirBodyKind.Fn)]);
         Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
     }
 
@@ -115,7 +118,7 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze("struct Item\n    public init() => ()\n    drop => " + operation + "\nopen struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n        _ = Item.init()\n        return 1\n()");
         Assert.Equal(accepted, c.Analysis.IsVerified);
         var consistent = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => consistent &= c.Analyze().IsVerified == accepted, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => consistent &= c.Analyze().IsVerified == accepted));
         Assert.True(consistent);
     }
 
@@ -126,7 +129,7 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(Shared);
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var verified = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => verified &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => verified &= c.Analyze().IsVerified));
         Assert.True(verified);
     }
 }

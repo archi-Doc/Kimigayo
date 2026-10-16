@@ -308,9 +308,9 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
         Assert.True(valid);
     }
 
@@ -406,9 +406,9 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(LocalChild(true, live, "uniq") + "\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete);
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified == !live, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified == !live));
         Assert.True(valid);
     }
 

@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 13.5.4.4: E@bits<U> reinterprets the bits between a floating-point Type and a same-width integer or wrapping integer
+// SPEC 13.5.4: E@bits<U> reinterprets the bits between a floating-point Type and a same-width integer or wrapping integer
 // Type without a check; a direct literal is converted at compile time.
 public class BitConversionTest
 {

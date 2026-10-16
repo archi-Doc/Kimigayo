@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 8.4.7.2: ObjectPayload, the opt-out declaration and Object Target evidence.</summary>
+/// <summary>SPEC 8.7.3: ObjectPayload, the opt-out declaration and Object Target evidence.</summary>
 public class ObjectPayloadTest
 {
     private const string Parser = "struct Parser\n    Self is not ObjectPayload\n    public var pos: i32 = 0\n";
@@ -184,7 +184,7 @@ public class ObjectPayloadTest
     [InlineData("contract Payload\ncontract Shape: Payload\n", false)]
     public void AnInheritedObjectPayloadClauseHoldsForTheRefiningSelf(string contracts, bool expected)
     {
-        // SPEC 8.4.7.2: the clause may be declared directly or inherited by refinement.
+        // SPEC 8.7.3: the clause may be declared directly or inherited by refinement.
         var c = CompilationTestHelper.Parse(contracts + "    func area(self: ref/Self, other: objref/Self) -> f64");
         Assert.True(expected == c.Bind().IsComplete, Describe(c));
     }

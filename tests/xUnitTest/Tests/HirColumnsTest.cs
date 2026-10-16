@@ -125,6 +125,39 @@ public sealed class HirColumnsTest
         Assert.Equal(HirCompletion.Completes, First<RequireKoto>("count"));
     }
 
+    // SPEC 7.2.3, 14.1: a default's transfers target only constructs inside it, so its completion is its own: a default that never
+    // completes leaves the body of its function completing.
+    [Theory]
+    [InlineData("do => 1", true)]
+    [InlineData("loop => exit 1", true)]
+    [InlineData("label choice: do => exit to choice 1", true)]
+    [InlineData("if true => 1 else => 2", true)]
+    [InlineData("loop => continue", false)]
+    public void ADefaultHasItsOwnCompletion(string expression, bool completes)
+    {
+        var c = MinimalEmissionTest.Analyze("func f(x: i32 = (" + expression + ")) => ()\nf(3)");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        HirTables.Publish(c);
+        Assert.Empty(Problems(c.Kotonoha));
+        var function = Reachable(c.Kotonoha).OfType<FunctionKoto>().Single(static x => x.Name == "f");
+        Assert.Equal(completes ? HirCompletion.Completes : HirCompletion.Diverges, HirTables.CompletionOf(function.Parameters[0].DefaultValue!));
+        Assert.Equal(HirCompletion.Completes, HirTables.CompletionOf(function.ExpressionBody!));
+    }
+
+    // SPEC 14.7: a yield in a selection inside a match arm ends that selection, not the match.
+    [Fact]
+    public void AYieldInAMatchArmTargetsItsSelection()
+    {
+        var c = MinimalEmissionTest.Analyze("func f(x: bool) -> i32 => match x\n    true => (if x\n        yield 1\n    else\n        yield 2\n    )\n    false => 0");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        HirTables.Publish(c);
+        Assert.Empty(Problems(c.Kotonoha));
+        var f = Reachable(c.Kotonoha).OfType<FunctionKoto>().Single(static x => x.Name == "f");
+        var jumps = Reachable(c.Kotonoha).Where(x => HirTables.Op(x) is HirOp.Jump or HirOp.Continue && IsWithin(x, f)).ToArray();
+        Assert.Equal(2, jumps.Length);
+        Assert.All(jumps, static x => Assert.IsType<IfKoto>(HirTables.PlanOf(Assert.IsType<YieldKoto>(x)).Plan));
+    }
+
     // SPEC 3.5, 10.2, 15.1.5, 15.1.6: a Copy Place is Copied, a stored exclusive reference Reborrowed, a Place a ref parameter takes
     // shared-borrowed in place, an @move operand moved, a Subject borrowed in place, and a value taken as a Temporary.
     [Fact]
@@ -157,7 +190,7 @@ public sealed class HirColumnsTest
         Assert.Equal(expected, adjusted);
     }
 
-    // SPEC 3.5, 8.9: a bare Place whose Type's Copy is unproven needs a Move (the ownership analysis reports TransferRequired), and a pair
+    // SPEC 3.5, 8.14: a bare Place whose Type's Copy is unproven needs a Move (the ownership analysis reports TransferRequired), and a pair
     // layer whose every admitted case Copies or Reborrows is acquired by case.
     [Fact]
     public void ABarePlaceIsAcquiredAsBindingDecides()
@@ -170,8 +203,8 @@ public sealed class HirColumnsTest
         Assert.Equal([HirAcquire.Move, HirAcquire.ByCase], Reachable(c.Kotonoha).OfType<JumpKoto>().Select(static x => HirTables.AdjustOf(x.Expression!).Acquire));
     }
 
-    // SPEC 3.4.1, 4.6.9, 7.1.1, 15.1.3, 15.1.6: a Field through two reference layers follows both, a literal fixed-array position is a
-    // ConstIndex and a runtime one an Index, a user index publishes the element Place, which an update through its Field takes by indexUniq
+    // SPEC 3.4.3, 4.7.1, 15.1.3, 15.1.6: a Field through two reference layers follows both, a literal fixed-array position is a
+    // ConstIndex and a runtime one an Index, a user index designates the referent of its selected call's reference, which an update through its Field takes by indexUniq
     // (its receiver borrowed exclusively) and a read by index, and a borrowed Case payload is its Downcast.
     [Fact]
     public void PlaceShapeStatesThePlaceForms()
@@ -179,8 +212,8 @@ public sealed class HirColumnsTest
         const string Source = "struct Point\n    public var x: i32\n    public init(x: i32) => self.x = x\n" +
             "struct Pair<T>\n    Self is UniqIndexable<isize>\n    associate Element is T\n    var first: T\n    var second: T\n" +
             "    public init(first: T, second: T)\n        self.first = first@move\n        self.second = second@move\n" +
-            "    public func index(self, key: ref/isize) -> place ref/T during self => self.first\n" +
-            "    public func indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/T during self => self.first\n" +
+            "    public func index(self, key: ref/isize) -> ref/T during self => self.first@ref\n" +
+            "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.first@uniq\n" +
             "func through(p: ref/(ref/Point during a)) -> i32 => p.x\nfunc pick(value: Option<Point>) -> i32\n    match value\n        .Some(let inner) => return inner.x\n        .None => return 0\n" +
             "var pts = Pair<Point>.init(Point.init(1), Point.init(2))\npts[0].x = 5\nlet fixed: [3 of i32] = [1, 2, 3]\nlet i: isize = 2\nlet p = Point.init(3)\nlet r = p@ref\n" +
             "require through(r@ref) == 3 and pick(.Some(Point.init(4))) == 4 and pts[1].x == 5 and fixed[1] + (fixed)[i] == 5 else => $abort(\"place\")\n";
@@ -191,7 +224,7 @@ public sealed class HirColumnsTest
         var start = Source.IndexOf("func through", StringComparison.Ordinal);
         var places = Reachable(c.Kotonoha).Where(x => x.Span.Start >= start && HirTables.PlaceOf(x).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value))
             .Select(x => $"{Source.Substring(x.Span.Start, x.Span.Length)} {HirTables.PlaceOf(x).Kind}+{HirTables.PlaceOf(x).Layers} {HirTables.AdjustOf(x).Adaptation}");
-        // A Field's receiver keeps the access Binding recorded for it (SPEC 3.4.1: one reference through its layers, a shared access of a
+        // A Field's receiver keeps the access Binding recorded for it (SPEC 3.4.3: one reference through its layers, a shared access of a
         // user index's element); its layers are followed from its own Type.
         string[] expected =
         [
@@ -203,7 +236,7 @@ public sealed class HirColumnsTest
         Assert.Equal(expected, places);
     }
 
-    // SPEC 4.6.9, 11.3, 13.4, utf8-formatting 6.1: a Property update names its getter and its setter, which takes the computed value; a user
+    // SPEC 4.7.1, 11.6, 13.4, SPEC 22.7: a Property update names its getter and its setter, which takes the computed value; a user
     // index its selected index or indexUniq call, a view its element or slice call; a key resolution reads the evaluated receiver's length;
     // an interpolation passed directly to writeLine is marked; a ResolvedRange loop Copies its positions.
     [Fact]
@@ -211,8 +244,8 @@ public sealed class HirColumnsTest
     {
         const string Source = "struct Pair<T>\n    Self is UniqIndexable<isize>\n    associate Element is T\n    var first: T\n    var second: T\n" +
             "    public init(first: T, second: T)\n        self.first = first@move\n        self.second = second@move\n" +
-            "    public func index(self, key: ref/isize) -> place ref/T during self => self.first\n" +
-            "    public func indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/T during self => self.first\n" + CopyPropertyEmissionTest.Meter +
+            "    public func index(self, key: ref/isize) -> ref/T during self => self.first@ref\n" +
+            "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.first@uniq\n" + CopyPropertyEmissionTest.Meter +
             "var m = Meter.init()\nm.level += 1\nm.doubled -= 2\nvar pts = Pair<i32>.init(1, 2)\npts[0] += 5\nvar values: [2 of i32] = [1, 2]\nvar view = values.sliceUniq()\n" +
             "view[0] = 7\nlet range = (0..2).resolve(2)\nlet tail = ^1\nvar total: isize = 0\nfor i in values.indices\n    total += i\n" +
             "Console.writeLine(\"n=\\(total)\")\nlet text = \"\\(pts[1])\"\n" +
@@ -237,7 +270,7 @@ public sealed class HirColumnsTest
         Assert.Equal(new HirAdjust(HirAcquire.Copy, HirAdaptation.None), HirTables.AdjustOf(loop.Bindings[0]));
     }
 
-    // SPEC 4.6.1, 4.7.4, 6.2.3.6, 11.2: an accessor's executing function takes its receiver and its input (a static setter only its input),
+    // SPEC 4.7, 4.9.5, 6.3.6, 11.3: an accessor's executing function takes its receiver and its input (a static setter only its input),
     // an implicit constructor of a derived structure initializes its Fields and calls the base constructor its omitted base clause selects,
     // and each sequence metadata member is published with its form.
     [Fact]
@@ -270,63 +303,13 @@ public sealed class HirColumnsTest
     public void PublishIsInvisible(string name)
         => Assert.Equal(SemanticSnapshotTest.Take(name, false).Text, SemanticSnapshotTest.Take(name, true).Text);
 
-    // Not a gate (R2b U3): with KIMI_ADJUST_SHADOW naming a file, writes each consumed node of the corpus with its Adjust beside the Copy,
-    // Move, read, borrow and Pattern operations the ownership analysis records at it, and a count per pair, for the R4 difference ledger.
-    [Fact]
-    public void AdjustShadowReport()
-    {
-        var path = Environment.GetEnvironmentVariable("KIMI_ADJUST_SHADOW");
-        if (string.IsNullOrEmpty(path))
-        {
-            return;
-        }
-
-        var rows = new List<string> { "case\tlocation\tkind\top\tadjust\townership" };
-        var pairs = new Dictionary<string, int>(StringComparer.Ordinal);
-        foreach (var name in Corpus.Select(static x => x.Data))
-        {
-            var (c, module) = SemanticSnapshotTest.Bind(name);
-            HirTables.Publish(c);
-            c.Analyze();
-            var operations = new Dictionary<Koto, SortedSet<string>>(ReferenceEqualityComparer.Instance);
-            foreach (var operation in c.Ownership.Bodies.SelectMany(static x => x.Operations))
-            {
-                var kind = operation.Kind switch
-                {
-                    OwnershipOperationKind.Consume or OwnershipOperationKind.AcquirePattern => operation.Kind + ":" + operation.Acquisition,
-                    OwnershipOperationKind.Borrow => operation.LoanMode == LoanRequirement.Uniq ? "ExclusiveBorrow" : "SharedBorrow",
-                    OwnershipOperationKind.Read => "Read",
-                    _ => null,
-                };
-
-                if (kind is not null && operation.Source is { } source)
-                {
-                    (operations.TryGetValue(source, out var set) ? set : operations[source] = new(StringComparer.Ordinal)).Add(kind);
-                }
-            }
-
-            foreach (var node in Reachable(module))
-            {
-                if (HirTables.AdjustOf(node) is { Acquire: not HirAcquire.Unset } adjust)
-                {
-                    var key = $"{adjust.Acquire}/{adjust.Adaptation}\t{(operations.TryGetValue(node, out var set) ? string.Join('+', set) : "-")}";
-                    rows.Add($"{name}\t{node.CodeContext.SourceDocument?.Path}:{node.Span.Start}\t{node.Akind}\t{HirTables.Op(node)}\t{key}");
-                    pairs[key] = pairs.GetValueOrDefault(key) + 1;
-                }
-            }
-        }
-
-        File.WriteAllLines(path, rows);
-        File.WriteAllLines(path + ".summary.txt", pairs.OrderByDescending(static x => x.Value).ThenBy(static x => x.Key, StringComparer.Ordinal).Select(static x => $"{x.Value}\t{x.Key}"));
-    }
-
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void WarmPublishAllocatesNothing(bool virtualBodies)
     {
-        var c = virtualBodies ? MinimalEmissionTest.Analyze(VirtualSource) : SemanticSnapshotTest.Bind("milestone/Milestone26").Compilation;
+        var c = virtualBodies ? MinimalEmissionTest.Analyze(VirtualSource) : SemanticSnapshotTest.Bind("milestone/Milestone34").Compilation;
         HirTables.Publish(c);
         var nodes = Reachable(c.Kotonoha).Concat(Reachable(c.Library.Kotonoha)).ToArray();
         var (cold, warm) = (ReadViews(nodes), 0);
@@ -597,7 +580,7 @@ public sealed class HirColumnsTest
     // R3 U1's views at an evaluated node or a body: an enum Case value has its construction; a sequence's metadata its member, of the Type
     // that member has, and no other node a built-in form; an accessor's executing
     // function its result and its receiver and input; a parameter read the function's own parameter; an implicit constructor its receiver,
-    // which every Field's initializer initializes, and its base call exactly where the structure has a base (SPEC 6.2.3.6).
+    // which every Field's initializer initializes, and its base call exactly where the structure has a base (SPEC 6.3.6).
     private static bool ViewsAgree(Koto node, HirOp op)
     {
         var construction = BoundEnumConstruction.Of(node);
@@ -675,7 +658,7 @@ public sealed class HirColumnsTest
         return binders;
     }
 
-    // SPEC 3.4.1, 13.5.5.1: a reference, object handle or pair layer, which selection follows implicitly.
+    // SPEC 3.4.3, 13.5.5: a reference, object handle or pair layer, which selection follows implicitly.
     private static bool IsLayer(BoundType? type) => TyCtxt.Layer(type, out _, out _) != HirPlaceKind.Value;
 
     private static bool Peel(BoundType? type, int layers, out BoundType? result)

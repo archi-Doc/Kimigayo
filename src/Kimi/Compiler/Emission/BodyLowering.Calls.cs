@@ -180,7 +180,7 @@ internal sealed partial class BodyLowering
         }
 
         if (body.Resolve(plan.ReturnType, InterpretationContext.Root) is not { } returnType ||
-            !ReferenceEquals(body.Resolve(ElementAccess.PlaceCallReference(call) ?? call.BoundType, body.ContextAt(id)), returnType))
+            !ReferenceEquals(body.Resolve(call.BoundType, body.ContextAt(id)), returnType))
         {
             return Fail($"Call {library.PresentedTarget(plan.Target).Name} has inconsistent expression and retained result Types: {Binding.DiagnosticTypeName(call.BoundType ?? (object)"unresolved")} / {Binding.DiagnosticTypeName(plan.ReturnType)}.", out failure);
         }
@@ -197,7 +197,7 @@ internal sealed partial class BodyLowering
             return Fail("Strong clone requires a shared handle-slot borrow with the same result mode and payload.", out failure);
         }
 
-        // A selected explicit specialization (SPEC 21.3.4) is called directly; its ABI is the entry's ABI.
+        // A selected explicit specialization (SPEC 21.3) is called directly; its ABI is the entry's ABI.
         var callee = clone ? returnType.HandleMode?.Counting switch { ObjectCountingStep.NonAtomic => WindowsLowering.CloneRc, ObjectCountingStep.Atomic => WindowsLowering.CloneArc, _ => null }
             : runtime ? WindowsLowering.GetCompilerFunction(plan.Target.CompilerFunction) : creation?.Physical.Abi ?? generic?.Selected ?? generic?.Abi ?? this.functions!.GetValueOrDefault(target);
         var virtualSlot = -1;
@@ -249,7 +249,7 @@ internal sealed partial class BodyLowering
                 ? new BoundArgumentOperation(omitted.Expression, omitted.Expression.BoundType, omitted.ParameterType, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: parameter)
                 : plan.ArgumentOperations[i];
             var sourceArgument = i < 0 ? plan.Receiver! : isDefault ? omitted.Expression : call.ArgumentNodes[i];
-            // The call plan is already resolved in the call's context (CallAt); only the body's root stage remains (SPEC 8.10).
+            // The call plan is already resolved in the call's context (CallAt); only the body's root stage remains (SPEC 8.15).
             var parameterType = body.Resolve(acquisition.ParameterType, InterpretationContext.Root);
             if ((uint)parameter >= (uint)target.Parameters.Count || this.parameterArguments[parameter] != -1 ||
                 !ReferenceEquals(acquisition.Source, sourceArgument) ||

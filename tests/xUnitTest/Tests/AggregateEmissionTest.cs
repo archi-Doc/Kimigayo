@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -52,14 +53,11 @@ public class AggregateEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("let value = (\"a\", (2, \"b\"))\nlet moved = value@move\nlet array: [2 of i32] = [1, 2]\nlet copied = array");
         var valid = true;
-        var allocated = AllocationMeasurement.Measure(
-            () =>
-            {
-                valid &= c.Analyze().IsVerified;
-                valid &= c.WriteIr(TextWriter.Null, out _);
-            },
-            iterations: 128,
-            warmupIterations: 100);
+        var allocated = AllocationMeasurement.Measure(() =>
+        {
+            valid &= c.Analyze().IsVerified;
+            valid &= c.WriteIr(TextWriter.Null, out _);
+        });
         Assert.True(valid);
         Assert.Equal(0, allocated);
     }
@@ -103,9 +101,9 @@ public class AggregateEmissionTest
     public void TupleLayoutKeepsLogicalOrderAndStableAlignmentSorting()
     {
         var c = MinimalEmissionTest.Analyze("let value: (u8, string, u64, string, ()) = (200, \"a\", 255, \"b\", ())");
-        var type = c.Ownership.Bodies[0].Constructions[0].Place;
+        var type = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<TupleLiteralKoto>()).TypeOf()!;
         var pool = new AggregateLayoutPool();
-        var layout = Assert.IsType<AggregateLayout>(pool.Get(c.Ownership.Bodies[0].Places[type].Type));
+        var layout = Assert.IsType<AggregateLayout>(pool.Get(type));
         Assert.Equal(new[] { 56, 0, 24, 32, 57 }, layout.Value.Layout.FieldOffsets.ToArray());
         Assert.Equal(64, layout.Value.Layout.Size);
         Assert.Equal(8, layout.Value.Layout.Alignment);

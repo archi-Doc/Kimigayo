@@ -55,7 +55,7 @@ internal sealed class TestCatalog
         return string.IsNullOrWhiteSpace(id) || id.Contains('\0') ? throw new InvalidDataException("TestProjectId must be nonempty text without NUL.") : id;
     }
 
-    /// <summary>Gets the SiteId of a verification, which code generation passes for its site (SPEC 22.6.3, plan 5.6.7).</summary>
+    /// <summary>Gets the SiteId of a verification, which code generation passes for its site (SPEC 20.6.2, plan 5.6.7).</summary>
     /// <param name="verification">The verification's syntax.</param>
     /// <returns>The SiteId, or -1 for a verification discovery did not number.</returns>
     internal int SiteOf(SourceRef verification) => this.siteIds.GetValueOrDefault(verification, -1);

@@ -537,7 +537,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
     private string CallUse(CallPlan call, Koto syntax)
     {
         var text = new StringBuilder("Result: ").Append(this.TypeName(call.ReturnType));
-        if (call.TypeArguments.Length != 0 || call.LengthArguments.Length != 0)
+        if (call.TypeArguments.Length != 0)
         {
             text.AppendLine().Append("Static arguments: ");
             for (var i = 0; i < call.TypeArguments.Length; i++)
@@ -551,7 +551,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
                 {
                     text.Append(this.TypeName(argument));
                 }
-                else if (i < call.LengthArguments.Length && call.LengthArguments[i] is { } length)
+                else if (call.LengthArguments[i] is { } length)
                 {
                     text.Append(query.LengthName(length, this.budget));
                 }
@@ -590,7 +590,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
         }
 
         var text = new StringBuilder("type;");
-        text.Append((int)type.Kind).Append(',').Append((int)type.Semantics).Append(',').Append((int)type.ResultMode).Append(',').Append(type.Length).Append(';');
+        text.Append((int)type.Kind).Append(',').Append((int)type.Semantics).Append(',').Append(type.Length).Append(';');
         AppendKey(text, type.Name);
         text.Append(type.Components.Count).Append(',').Append(type.OriginArguments.Count).Append(',').Append(type.LengthArguments.Length).Append(';');
         var parts = new HoverKey[4 + type.Components.Count + type.OriginArguments.Count + type.LengthArguments.Length];
@@ -624,7 +624,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
 
     private HoverKey CallIdentity(CallPlan call)
     {
-        var text = FormattableString.Invariant($"call;{call.TypeArguments.Length},{call.LengthArguments.Length},{call.Origins.Length},{call.InputOrigins.Length}");
+        var text = FormattableString.Invariant($"call;{call.TypeArguments.Length},{call.Origins.Length},{call.InputOrigins.Length}");
         var parts = new HoverKey[6 + call.TypeArguments.Length + call.LengthArguments.Length + call.Origins.Length + call.InputOrigins.Length];
         parts[0] = this.TypeIdentity(call.ReturnType);
         parts[1] = this.TypeIdentity(call.DeclaringType);

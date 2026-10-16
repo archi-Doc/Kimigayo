@@ -195,11 +195,7 @@ public class NamedArgumentBoundaryTest
             Assert.Equal(Enumerable.Range(0, count).Reverse(), call.CallOf()!.ArgumentToParameter.ToArray());
         }
 
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
     }
 

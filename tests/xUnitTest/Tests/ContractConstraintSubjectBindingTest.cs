@@ -97,11 +97,7 @@ public class ContractConstraintSubjectBindingTest
     public void WarmContractSubjectChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Implementation("Origin.Item is Copy", "i32"));
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

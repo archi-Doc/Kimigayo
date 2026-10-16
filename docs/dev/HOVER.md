@@ -1,6 +1,6 @@
 # Hover implementation and verification
 
-[SPEC §23.4.11](../spec/lsp-hover.md) defines observable behavior. These notes record implementation policy and evidence;
+[SPEC §23.4.11](../spec/23-compiler-services.md) defines observable behavior. These notes record implementation policy and evidence;
 they do not change language guarantees or mark pending work as supported.
 
 ## Ownership and reuse

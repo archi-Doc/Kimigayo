@@ -13,7 +13,7 @@ namespace Kimi.Compiler;
 /// <summary>The Type context of a compilation (<c>Compilation.Types</c>): it interns every constructed Type and every
 /// substitution, so identity is equality for both, forms the Types the MIR builder needs and applies a substitution. It lives as
 /// long as its Binding and is never cleared, since it holds only immutable hash-consed values.</summary>
-internal sealed class TyCtxt(Binding binding, KimiLibrary library)
+internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 {
     private readonly Dictionary<int, List<BoundType>> types = new();
     private readonly Dictionary<int, List<Subst>> substs = new();
@@ -23,7 +23,10 @@ internal sealed class TyCtxt(Binding binding, KimiLibrary library)
     private BoundLength?[] composedLengths = [];
     private BoundOrigin[] composedOrigins = [];
 
-    // SPEC 3.4.1, 13.5.5.1: the layer selection follows implicitly at a Type, a Deref of a reference or object handle or a PairLayer of a
+    // The lengths of a substitution whose binder has no length slot; never written, so every entry is null.
+    private BoundLength?[] noLengths = [];
+
+    // SPEC 3.4.3, 13.5.5: the layer selection follows implicitly at a Type, a Deref of a reference or object handle or a PairLayer of a
     // pair layer, with the Type below it and the pair binder whose Semantics case decides the PairLayer (its SemanticsTarget, the
     // PairBinder.Target); Value, below which is the Type itself, for any other Type.
     internal static HirPlaceKind Layer(BoundType? type, out BoundType? below, out BindingSymbol? binder)
@@ -45,10 +48,10 @@ internal sealed class TyCtxt(Binding binding, KimiLibrary library)
         return HirPlaceKind.Value;
     }
 
-    // SPEC 23.3.6.5: a Type as diagnostics spell it, which the MIR dump writes.
+    // SPEC 23.1: a Type as diagnostics spell it, which the MIR dump writes.
     internal static string Name(BoundType type) => Binding.DiagnosticTypeName(type);
 
-    // SPEC 7.3, 6.2.3.2: a function's parameter Type at a slot as it declares it (an accessor's self and value included), or at -1 the Type
+    // SPEC 7.3, 6.3.2: a function's parameter Type at a slot as it declares it (an accessor's self and value included), or at -1 the Type
     // its call gives (a constructor's: its object), under a call's substitution; null past its parameters or where the substitution does
     // not instantiate it. The MIR validator checks calls and bodies by it.
     internal static BoundType? Signature(BindingSymbol function, Subst? subst, int slot, out int count)
@@ -59,7 +62,7 @@ internal sealed class TyCtxt(Binding binding, KimiLibrary library)
         return type is null || subst is null ? type : declaration.CodeContext.Compilation.Types.Apply(type, subst);
     }
 
-    // SPEC 8.3, 8.4: a Type in a definition's body as its premises make it (S for E under `E is S`, T.Element under `T.Element is i32`), as
+    // SPEC 8.2, 8.4: a Type in a definition's body as its premises make it (S for E under `E is S`, T.Element under `T.Element is i32`), as
     // Binding compares Types there.
     internal static BoundType Premised(BindingSymbol definition, BoundType type)
     {
@@ -67,11 +70,16 @@ internal sealed class TyCtxt(Binding binding, KimiLibrary library)
         return binding.CallableContractType(type, binding.ConstraintScope(definition.Declaration));
     }
 
-    // SPEC 8.10: the complete Type a Type takes in one Semantics case, each pair layer of a binder the cases name the Type of its Semantics
+    // SPEC 8.14, 13.5.3: the operation an explicit adaptation from a complete Type to a complete Type is, Binding's one selection, by which
+    // the MIR's case views resolve a case adaptation.
+    internal static ConversionBinding Adaptation(BoundType source, BoundType target, bool shorthand)
+        => ExplicitAdaptationPlan.Select(source, target, shorthand);
+
+    // SPEC 8.15: the complete Type a Type takes in one Semantics case, each pair layer of a binder the cases name the Type of its Semantics
     // over its direct target, which the MIR's case views give every Type by.
     internal BoundType CaseType(BoundType type, ReadOnlySpan<PairCase> cases) => binding.CaseType(type, cases);
 
-    internal BoundType Intern(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null, CallPlan? closureContext = null, ReadOnlySpan<BoundLength?> lengthArguments = default, FunctionResultMode resultMode = FunctionResultMode.Value)
+    internal BoundType Intern(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null, CallPlan? closureContext = null, ReadOnlySpan<BoundLength?> lengthArguments = default)
     {
         if (kind == BoundTypeKind.SemanticsAdaptation && components.Length > 0)
         {
@@ -87,7 +95,7 @@ internal sealed class TyCtxt(Binding binding, KimiLibrary library)
             }
         }
 
-        // SPEC 3.1.1.1: Wrapping<T> over an integer Type is the interned wrapping Scalar of that Type, identified by Core
+        // SPEC 3.1.1: Wrapping<T> over an integer Type is the interned wrapping Scalar of that Type, identified by Core
         // and never represented as the declared struct; over a Type parameter it stays constructed until substitution.
         if (symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping && components.Length == 1 && components[0].IsInteger &&
             semantics == SemanticsKind.Owner && origin is null && originArguments.Length == 0)
@@ -123,7 +131,6 @@ internal sealed class TyCtxt(Binding binding, KimiLibrary library)
         hash.Add(closureContext is null ? 0 : RuntimeHelpers.GetHashCode(closureContext));
         hash.Add(symbol is null ? 0 : RuntimeHelpers.GetHashCode(symbol));
         hash.Add(semantics);
-        hash.Add(resultMode);
         hash.Add(length);
         hash.Add(lengthExpression is null ? 0 : RuntimeHelpers.GetHashCode(lengthExpression));
         foreach (var argument in lengthArguments)
@@ -148,7 +155,7 @@ internal sealed class TyCtxt(Binding binding, KimiLibrary library)
             for (var i = 0; i < bucket.Count; i++)
             {
                 var type = bucket[i];
-                if (type.Kind != kind || type.ResultMode != resultMode || type.Symbol != symbol || !ReferenceEquals(type.ClosureContext, closureContext) || type.Semantics != semantics || type.Length != length || !ReferenceEquals(type.LengthExpression, lengthExpression) || !lengthArguments.SequenceEqual(type.LengthArguments) || type.Components.Count != components.Length || !ReferenceEquals(type.Origin, origin) || type.OriginArguments.Count != originArguments.Length)
+                if (type.Kind != kind || type.Symbol != symbol || !ReferenceEquals(type.ClosureContext, closureContext) || type.Semantics != semantics || type.Length != length || !ReferenceEquals(type.LengthExpression, lengthExpression) || !lengthArguments.SequenceEqual(type.LengthArguments) || type.Components.Count != components.Length || !ReferenceEquals(type.Origin, origin) || type.OriginArguments.Count != originArguments.Length)
                 {
                     continue;
                 }
@@ -175,7 +182,7 @@ internal sealed class TyCtxt(Binding binding, KimiLibrary library)
             this.types.Add(key, bucket = new(1));
         }
 
-        var created = new BoundType(symbol?.Name ?? kind.ToString(), kind, symbol, semantics, components.ToArray(), length, origin, originArguments.ToArray(), lengthExpression, lengthArguments.ToArray(), resultMode) { ClosureContext = closureContext };
+        var created = new BoundType(symbol?.Name ?? kind.ToString(), kind, symbol, semantics, components.ToArray(), length, origin, originArguments.ToArray(), lengthExpression, lengthArguments.ToArray()) { ClosureContext = closureContext };
         bucket.Add(created);
         return created;
     }
@@ -188,14 +195,14 @@ internal sealed class TyCtxt(Binding binding, KimiLibrary library)
 
     internal BoundType Tuple(ReadOnlySpan<BoundType> elements) => this.Intern(BoundTypeKind.Tuple, null, SemanticsKind.Owner, elements);
 
-    // SPEC 8.6, 10.5: a selected call's substitution, as its selection committed it; a value call has none. A direct base call's is its
+    // SPEC 8.10, 10.5: a selected call's substitution, as its selection committed it; a value call has none. A direct base call's is its
     // implementation's in the Type implementing it, which it calls (virtual-dispatch 4).
     internal Subst? SubstOf(CallPlan call) => call.Kind == CalleeKind.Value ? null
         : call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true, VirtualImplementation.BoundSymbol: { } implementation }
             ? this.Intern(implementation, null, call.VirtualImplementingType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins)
             : this.Intern(call.Target, call.ConformingType, call.DeclaringType ?? BoundContract(call), call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
 
-    // SPEC 8.3: a closure's substitution, the context of the instance that closed it; a closure no instance closed is in the identity of
+    // SPEC 8.2: a closure's substitution, the context of the instance that closed it; a closure no instance closed is in the identity of
     // the declaration enclosing it.
     internal Subst? SubstOfClosure(BoundType closure)
     {
@@ -222,7 +229,7 @@ internal sealed class TyCtxt(Binding binding, KimiLibrary library)
     // arguments; its Origins are the analyses' to relate.
     internal Subst Synthesized(BindingSymbol target, BoundType? declaring, ReadOnlySpan<BoundType?> types) => this.Intern(target, null, declaring, types, [], [], []);
 
-    // SPEC 8.3, 8.6: a declared Type in the instance a substitution makes, which Binding's storage instantiation computes until R7 moves it
+    // SPEC 8.2, 8.10: a declared Type in the instance a substitution makes, which Binding's storage instantiation computes until R7 moves it
     // here; the identity keeps the Type.
     internal BoundType? Apply(BoundType type, Subst subst)
         => subst.IsIdentity ? type : binding.InstantiateStorageType(type, subst.Target, subst.Declaring, subst.Types, subst.Lengths, subst.Origins, subst.Inputs, subst.Self);
@@ -262,25 +269,29 @@ internal sealed class TyCtxt(Binding binding, KimiLibrary library)
         }
 
         return failed ? null : this.Intern(inner.Target, inner.Self is { } self ? this.Apply(self, outer) : null, declaring, types, lengths, origins[..inner.Origins.Length], origins[inner.Origins.Length..]);
-
-        static Span<T> Fit<T>(ref T[] scratch, int length)
-        {
-            if (scratch.Length < length)
-            {
-                scratch = new T[length * 2];
-            }
-
-            return scratch.AsSpan(0, length);
-        }
     }
 
-    // SPEC 8.4.2: the bound Contract reference a requirement call dispatches through (Indexable<isize>), which declares the requirement as a
+    // SPEC 8.4.3: the bound Contract reference a requirement call dispatches through (Indexable<isize>), which declares the requirement as a
     // generic container's instance declares a member; null for a reference to the requirement's own Contract or another call.
     private static BoundType? BoundContract(CallPlan call)
         => call is { Kind: CalleeKind.Requirement, RequirementContract: { Type: { } bound } contract } && !ReferenceEquals(bound.Symbol, contract) ? bound : null;
 
+    private static Span<T> Fit<T>(ref T[] scratch, int length)
+    {
+        if (scratch.Length < length)
+        {
+            scratch = new T[length * 2];
+        }
+
+        return scratch.AsSpan(0, length);
+    }
+
+    // SPEC 8.13.3: a substitution holds one length entry per slot, the selection key's form, as a CallPlan does. The lengths are empty (the
+    // binder has no length slot) or one per slot of the Types.
     private Subst Intern(BindingSymbol target, BoundType? self, BoundType? declaring, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs)
     {
+        System.Diagnostics.Debug.Assert(lengths.IsEmpty || lengths.Length == types.Length);
+        lengths = lengths.IsEmpty ? Fit(ref this.noLengths, types.Length) : lengths;
         var hash = default(HashCode);
         hash.Add(RuntimeHelpers.GetHashCode(target));
         hash.Add(self is null ? 0 : RuntimeHelpers.GetHashCode(self));
@@ -347,7 +358,7 @@ internal sealed class Subst(BindingSymbol target, BoundType? self, BoundType? de
     // In declaration-slot order; length slots are null.
     internal ReadOnlySpan<BoundType?> Types => types;
 
-    // In declaration-slot order; Type slots are null.
+    // In declaration-slot order, one per slot of Types; Type slots are null.
     internal ReadOnlySpan<BoundLength?> Lengths => lengths;
 
     // The substitution of the binder's declared Origins.
@@ -357,5 +368,5 @@ internal sealed class Subst(BindingSymbol target, BoundType? self, BoundType? de
     internal ReadOnlySpan<BoundOrigin> Inputs => inputs;
 
     // Binds nothing: the binder's own body.
-    internal bool IsIdentity => self is null && declaring is null && types.Length == 0 && lengths.Length == 0 && origins.Length == 0 && inputs.Length == 0;
+    internal bool IsIdentity => self is null && declaring is null && types.Length + origins.Length + inputs.Length == 0;
 }

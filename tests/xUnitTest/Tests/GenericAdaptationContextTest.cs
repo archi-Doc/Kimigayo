@@ -4,7 +4,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 7.2.3, 8.10 and 13.5: selection and physical validation use the same stored and default-call Types.
+// SPEC 7.2.3, 8.15 and 13.5: selection and physical validation use the same stored and default-call Types.
 public class GenericAdaptationContextTest
 {
     [Theory]

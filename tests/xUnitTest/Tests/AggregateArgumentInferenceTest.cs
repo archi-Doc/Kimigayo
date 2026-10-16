@@ -47,7 +47,7 @@ public class AggregateArgumentInferenceTest
     [InlineData("func use(value: ref/(i32, bool)) => ()\nuse((1, true))")]
     [InlineData("func use<T>(value: ref/T) => ()\nuse((1, true))")]
     [InlineData("func use(value: ()) => ()\nuse(())")]
-    [InlineData("func use(value: (u8, bool)) => ()\nuse((1 + 2, true))")] // SPEC 12.3.1: a literal-only element fits u8.
+    [InlineData("func use(value: (u8, bool)) => ()\nuse((1 + 2, true))")] // SPEC 12.3: a literal-only element fits u8.
     public void PreservesIndependentTupleInferenceAndTemporaryBorrows(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -98,11 +98,7 @@ public class AggregateArgumentInferenceTest
     public void WarmAggregateCandidateInferenceAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze("func use<length N, T>(value: ([N of T], bool)) => ()\nlet n: u8 = 2\nuse(([255, n], true))");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

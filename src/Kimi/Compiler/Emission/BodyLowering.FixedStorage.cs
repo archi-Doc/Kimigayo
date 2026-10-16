@@ -5,7 +5,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-/// <summary>PLAN G33, SPEC 22.1.2.5: a consumed fixed array moves into the inline storage of its owning remainder, and
+/// <summary>PLAN G33, SPEC 22.2: a consumed fixed array moves into the inline storage of its owning remainder, and
 /// inlineBase publishes that storage's element address for the Kimigayo remainder operations.</summary>
 internal sealed partial class BodyLowering
 {

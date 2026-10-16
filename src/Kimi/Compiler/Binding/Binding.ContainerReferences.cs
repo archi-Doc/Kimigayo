@@ -31,7 +31,7 @@ public sealed partial class Binding
         return -1;
     }
 
-    // SPEC 12.4.2: the member is the called function of its invocation, possibly with explicit Type arguments and inside
+    // SPEC 12.5.2: the member is the called function of its invocation, possibly with explicit Type arguments and inside
     // parentheses, as in (Holder.twice)(n@ref).
     private static bool IsCallee(MemberAccessKoto member)
     {
@@ -163,10 +163,10 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 15.4.4, 9.6.1.1: an Origin slot that a called member's expression qualifier omits, or names by a binding set that no clause
+    // SPEC 15.4.4, 9.7.2: an Origin slot that a called member's expression qualifier omits, or names by a binding set that no clause
     // of its declaration relates, is inferred from the call. Binding has no inference variables in bodies yet, so such a call is one
     // Unsupported at the qualifier, never a failed selection or a missing Origin. A written part of the qualifier that failed
-    // explains the member instead (SPEC 23.3.6.4).
+    // explains the member instead (SPEC 23.1.2).
     private bool RejectedOriginQualifier(MemberAccessKoto member, BoundType qualified, BindingSymbol? called)
     {
         if (FailedQualifierPart(member.Left) is { } failed)

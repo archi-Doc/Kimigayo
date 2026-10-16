@@ -282,7 +282,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         diagnostics.Invalidate(DiagnosticPartition.Emission);
         Assert.False(diagnostics.HasErrors);
 
-        // SPEC 23.3.6.4: two problems at one offset are both published, and a repeated report of one merges.
+        // SPEC 23.1.2: two problems at one offset are both published, and a repeated report of one merges.
         var document = new SourceDocument("main.kimi", "x");
         c.Kotonoha.DiagnosticCollection.Add(new(0, 1), DiagnosticCode.TypeMismatch_Kd, sourceDocument: document);
         c.Kotonoha.DiagnosticCollection.Add(new(0, 1), DiagnosticCode.InvalidCharacter_Kd, "x", sourceDocument: document);
