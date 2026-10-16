@@ -25,7 +25,7 @@
 # -Pipeline mir (R3-R5) runs every compiler process of the run with KIMI_PIPELINE=mir; the default is legacy.
 #   ./scripts/verify.ps1 -Class XunitTest.PipelineSwitchTest -Pipeline mir
 #
-# Tests run up to -TestParallel collections at a time (default up to 4), respecting disabled
+# Tests run up to -TestParallel collections at a time (default up to 8), respecting disabled
 # parallelization on test classes. Use -TestParallel 1 for serial execution.
 # Unit -TestPurpose Functional/Allocation narrows a focused check; Session always runs both.
 # Native fixtures run up to -NativeParallel at a time (default up to 4), with individual logs.
@@ -52,7 +52,7 @@ param(
     # Milestone harnesses run concurrently, each in its own process with its own work directory and log.
     [ValidateRange(1, 2147483647)] [int] $Parallel = [Math]::Min(8, [Environment]::ProcessorCount),
     [ValidateRange(1, 2147483647)] [int] $NativeParallel = [Math]::Min(4, [Environment]::ProcessorCount),
-    [ValidateRange(1, 2147483647)] [int] $TestParallel = [Math]::Min(4, [Environment]::ProcessorCount)
+    [ValidateRange(1, 2147483647)] [int] $TestParallel = [Math]::Min(8, [Environment]::ProcessorCount)
 )
 $ErrorActionPreference = 'Stop'
 if ($Mode -eq 'Session' -and $TestPurpose -ne 'All') { throw 'Session verification must include functional and allocation regressions (-TestPurpose All).' }
@@ -116,7 +116,7 @@ function Invoke-Build([string] $configuration) {
     $timer = Start-Step "build $configuration"
     $log = Join-Path $evidence "build-$configuration.log"
     # --no-incremental recompiles every project, so analyzers (StyleCop) report on sources another build left up to date.
-    & dotnet build (Join-Path $repo $buildTarget) --no-restore --no-incremental -c $configuration --disable-build-servers -m:1 -warnaserror -p:EmitCompilerGeneratedFiles=false -v quiet *> $log
+    & dotnet build (Join-Path $repo $buildTarget) --no-restore --no-incremental -c $configuration -warnaserror -p:EmitCompilerGeneratedFiles=false -v quiet *> $log
     Add-Step "build $configuration" ($LASTEXITCODE -eq 0) $log $timer.Elapsed.TotalSeconds
 }
 
@@ -198,13 +198,12 @@ try {
     Add-Step 'input manifest' $true "$($beforeInputs.files.Count) source/configuration files, $($beforeInputs.dependencies.Count) NuGet inputs" $timer.Elapsed.TotalSeconds
 }
 catch { Add-Step 'input manifest' $false $_.Exception.Message $timer.Elapsed.TotalSeconds }
+$scriptRuns = @()
 if (-not $failed) {
-    foreach ($scriptTest in @('VerificationSelectionTest', 'VerificationInputsTest')) {
-        $timer = Start-Step $scriptTest
-        $log = Join-Path $evidence "$scriptTest.log"
-        $ok = Invoke-Script { & (Join-Path $repo "tests/scripts/$scriptTest.ps1") } $log
-        Add-Step $scriptTest $ok $log $timer.Elapsed.TotalSeconds
-    }
+    # The script regressions need no compiler build; they run while it compiles.
+    $scriptRuns = @('VerificationSelectionTest', 'VerificationInputsTest' | ForEach-Object {
+        Start-ScriptJob $_ (Join-Path $repo "tests/scripts/$_.ps1") (Join-Path $evidence "$_.log") @{}
+    })
 }
 $filters = @()
 foreach ($c in $Class) {
@@ -233,6 +232,7 @@ foreach ($pattern in $classPatterns) {
 if ($needsLspAccess) { $null = Test-LspDiscoveryAccess }
 
 if (-not $failed) { Invoke-Build $Configuration }
+foreach ($run in $scriptRuns) { Complete-ScriptJob $run }
 $toolchainVerification = 'not-performed'
 if (-not $failed -and $VerifyToolchain) {
     $timer = Start-Step 'toolchain verify'

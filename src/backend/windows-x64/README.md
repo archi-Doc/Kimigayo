@@ -17,7 +17,7 @@ Use the repository's `scripts/verify.ps1` for implementation-unit and end-of-ses
 Both modes default to one Release compiler build and keep non-incremental builds with warnings as errors.
 Use `-Configuration Debug` explicitly for Debug verification. Unit mode runs the selected tests;
 Session mode runs the full suite once. Builds, tests, fixture selection and milestone harnesses all use
-the selected compiler configuration; native O0/O2 coverage is unchanged. Test collections run up to four at a time,
+the selected compiler configuration; native O0/O2 coverage is unchanged. Test collections run up to eight at a time,
 respecting each test class's disabled-parallelization setting. Milestone harnesses run in separate
 processes, up to eight at a time; both defaults are capped by the logical processor count.
 Use `-TestParallel 1 -Parallel 1` for serial execution, or set either limit independently. Every

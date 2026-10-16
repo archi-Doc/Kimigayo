@@ -56,10 +56,12 @@ Choose an existing method from the test source or runner discovery (`-list metho
 Before a formal run, Verify's build flags catch analyzer and StyleCop failures in minutes; the result is feedback, not evidence:
 
 ```powershell
-dotnet build tests/xUnitTest/xUnitTest.csproj --no-restore --no-incremental -c Release --disable-build-servers -warnaserror -p:EmitCompilerGeneratedFiles=false
+dotnet build tests/xUnitTest/xUnitTest.csproj --no-restore --no-incremental -c Release -warnaserror -p:EmitCompilerGeneratedFiles=false
 ```
 
 At Unit completion, `scripts/verify.ps1` builds the test project and its Kimi dependency non-incrementally with warnings as errors. At Session completion it builds the entire solution, including Benchmark and Playground, then runs all managed regressions. Both modes retain the installed build analyzers and warnings-as-errors policy. Changes to Benchmark or Playground need the Session build before completion. Neither mode runs NativeAOT.
+
+The build uses parallel project builds and the shared compiler server; the script regressions run while it compiles. Tests run up to eight collections at once (`-TestParallel`). The test host uses Server GC without dynamic heap-count adaptation (`xUnitTest.csproj`): under the workstation GC, raising the threads from 4 to 14 made each test 2.7 times slower, so the run shrank only from 756 s to 622 s.
 
 ```powershell
 ./scripts/verify.ps1 -Class DeferredEmissionTest -Fixtures 'Deferred*.ll'
