@@ -19,8 +19,9 @@ fn sum @4
   _11: bool temp @19 s3
   _12: () temp @24 s3
   _13: i32 temp @26 s3
-  _14: isize temp @92 s1
-  _15: i32 temp @28 s1
+  _14: uniq/i32 temp @24 s3
+  _15: isize temp @92 s1
+  _16: i32 temp @28 s1
   s1: lexical in s0 @10
   s2: lexical in s1 @14
   s3: lexical in s2 @17
@@ -41,13 +42,13 @@ fn sum @4
   bb3:
       StorageDead(_4) @14 s1
       StorageDead(_3) @14 s1
-      StorageLive(_15) @28 s1
-    * _15 = copy _2 @28 s1
+      StorageLive(_16) @28 s1
+    * _16 = copy _2 @28 s1
       goto bb21 check bb22 @27 s1
   bb4:
-      StorageLive(_14) @92 s1
-      _14 = discriminant(_5) @92 s1
-      switch copy _14 [1: bb16, otherwise: bb5] @92 s1
+      StorageLive(_15) @92 s1
+      _15 = discriminant(_5) @92 s1
+      switch copy _15 [1: bb16, otherwise: bb5] @92 s1
   bb5:
       unreachable @14 s1
   bb6:
@@ -67,8 +68,11 @@ fn sum @4
       StorageLive(_12) @24 s3
       StorageLive(_13) @26 s3
     * _13 = copy (*_8) @26 s3
-      _2 = Add(copy _2, move _13) @24 s3
+      StorageLive(_14) @24 s3
+      _14 = &uniq two-phase _2: uniq/i32 @24 s3
+      (*_14) = Add(copy (*_14), move _13) @24 s3
       _12 = const () @24 s3
+      StorageDead(_14) @24 s3
       StorageDead(_13) @26 s3
       StorageDead(_12) @24 s3
       _9 = const () @17 s3
@@ -101,7 +105,7 @@ fn sum @4
       _3 = const () @14 s1
       goto bb17 @14 s1
   bb17:
-      StorageDead(_14) @92 s1
+      StorageDead(_15) @92 s1
       StorageDead(_7) @91 s1
       StorageDead(_6) @84 s1
       StorageDead(_5) @14 s1
@@ -112,13 +116,13 @@ fn sum @4
       StorageDead(_2) @11 s1
       goto bb18 @4
   bb20:
-      StorageDead(_15) @28 s1
+      StorageDead(_16) @28 s1
       goto bb19 @4
   bb21:
-      _0 = move _15 @27 s1
+      _0 = move _16 @27 s1
       goto bb20 @27 s1
   bb22:
-      StorageDead(_15) @28 s1
+      StorageDead(_16) @28 s1
       StorageDead(_2) @11 s1
       unreachable @10
 fn positions @29
@@ -137,7 +141,8 @@ fn positions @29
   _12: bool temp @46 s3
   _13: () temp @51 s3
   _14: isize temp @53 s3
-  _15: isize temp @55 s1
+  _15: uniq/isize temp @51 s3
+  _16: isize temp @55 s1
   s1: lexical in s0 @34
   s2: lexical in s1 @39
   s3: lexical in s2 @44
@@ -172,8 +177,8 @@ fn positions @29
       StorageDead(_5) @41 s1
       StorageDead(_4) @41 s1
       StorageDead(_3) @39 s1
-      StorageLive(_15) @55 s1
-    * _15 = copy _2 @55 s1
+      StorageLive(_16) @55 s1
+    * _16 = copy _2 @55 s1
       goto bb18 check bb19 @54 s1
   bb5:
       StorageLive(_9) @40 s2
@@ -188,8 +193,11 @@ fn positions @29
       StorageLive(_13) @51 s3
       StorageLive(_14) @53 s3
     * _14 = copy _9 @53 s3
-      _2 = Add(copy _2, move _14) @51 s3
+      StorageLive(_15) @51 s3
+      _15 = &uniq two-phase _2: uniq/isize @51 s3
+      (*_15) = Add(copy (*_15), move _14) @51 s3
       _13 = const () @51 s3
+      StorageDead(_15) @51 s3
       StorageDead(_14) @53 s3
       StorageDead(_13) @51 s3
       _10 = const () @44 s3
@@ -225,13 +233,13 @@ fn positions @29
       StorageDead(_2) @35 s1
       goto bb15 @29
   bb17:
-      StorageDead(_15) @55 s1
+      StorageDead(_16) @55 s1
       goto bb16 @29
   bb18:
-      _0 = move _15 @54 s1
+      _0 = move _16 @54 s1
       goto bb17 @54 s1
   bb19:
-      StorageDead(_15) @55 s1
+      StorageDead(_16) @55 s1
       StorageDead(_2) @35 s1
       unreachable @34
 fn pairs @56
@@ -251,8 +259,9 @@ fn pairs @56
   _13: bool temp @73 s3
   _14: () temp @75 s4
   _15: i32 temp @77 s4
-  _16: isize temp @105 s1
-  _17: i32 temp @79 s1
+  _16: uniq/i32 temp @75 s4
+  _17: isize temp @105 s1
+  _18: i32 temp @79 s1
   s1: lexical in s0 @63
   s2: lexical in s1 @67
   s3: lexical in s2 @71
@@ -276,13 +285,13 @@ fn pairs @56
       StorageDead(_5) @70 s1
       StorageDead(_4) @67 s1
       StorageDead(_3) @67 s1
-      StorageLive(_17) @79 s1
-    * _17 = copy _2 @79 s1
+      StorageLive(_18) @79 s1
+    * _18 = copy _2 @79 s1
       goto bb20 check bb21 @78 s1
   bb4:
-      StorageLive(_16) @105 s1
-      _16 = discriminant(_6) @105 s1
-      switch copy _16 [1: bb13, otherwise: bb5] @105 s1
+      StorageLive(_17) @105 s1
+      _17 = discriminant(_6) @105 s1
+      switch copy _17 [1: bb13, otherwise: bb5] @105 s1
   bb5:
       unreachable @67 s1
   bb6:
@@ -309,8 +318,11 @@ fn pairs @56
       StorageLive(_14) @75 s4
       StorageLive(_15) @77 s4
     * _15 = copy (*_9) @77 s4
-      _2 = Add(copy _2, move _15) @75 s4
+      StorageLive(_16) @75 s4
+      _16 = &uniq two-phase _2: uniq/i32 @75 s4
+      (*_16) = Add(copy (*_16), move _15) @75 s4
       _14 = const () @75 s4
+      StorageDead(_16) @75 s4
       StorageDead(_15) @77 s4
       StorageDead(_14) @75 s4
       _12 = const () @74 s4
@@ -332,7 +344,7 @@ fn pairs @56
       _3 = const () @67 s1
       goto bb14 @67 s1
   bb14:
-      StorageDead(_16) @105 s1
+      StorageDead(_17) @105 s1
       StorageDead(_8) @104 s1
       StorageDead(_7) @97 s1
       StorageDead(_6) @67 s1
@@ -347,13 +359,13 @@ fn pairs @56
       StorageDead(_2) @64 s1
       goto bb16 @56
   bb19:
-      StorageDead(_17) @79 s1
+      StorageDead(_18) @79 s1
       goto bb18 @56
   bb20:
-      _0 = move _17 @78 s1
+      _0 = move _18 @78 s1
       goto bb19 @78 s1
   bb21:
-      StorageDead(_17) @79 s1
+      StorageDead(_18) @79 s1
       StorageDead(_2) @64 s1
       drop _1 -> bb22 @56
   bb22:

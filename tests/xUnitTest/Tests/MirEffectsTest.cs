@@ -442,6 +442,18 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
                 $"group H\n    public func find<K>(table: ref/Dictionary<Box<K>, i32>, key: ref/Box<K>)\n        K is {premise}\n        _ = table.tryGet(key)\n" +
                 WithField("boxes: Dictionary<Box<Key>, i32> = [:]") + $"        {statement}\n        return .Ok(())\n"));
 
+    // SPEC 15.3.5, 16.3.3, 8.15: a growing recursive Type, Nest<(T, T)> below a Sealed rc payload, ends at the destruction walk's bound,
+    // since the payload's walk goes on below its handle: a body destroying one is analyzed (it hung before), and where it owes confined
+    // that destruction is a limit, the located Unsupported_Kd.
+    [Fact]
+    public void AGrowingRecursiveDestructionEndsAtTheBound()
+    {
+        const string Nest = "struct Nest<T>\n    var value: T\n    var next: Option<rc/Nest<(T, T)>>\n    public init(value: T)\n" +
+            "        self.value = value@move\n        self.next = .None\n";
+        Assert.Empty(Problems(Nest + "func release(nest: Nest<i32>) => ()\n"));
+        Assert.Equal(["Unsupported_Kd Self is Sink 1"], Problems(Sink + Loud + Nest + Witness + "        _ = Nest<i32>.init(value: 1)\n        return .Ok(())\n"));
+    }
+
     // V16 (plan "New V-checks"): A4 is linear: an N-deep call chain whose last member prints and an N-member ring of mutual calls (one
     // member prints), each with one problem, grow the evaluations and the cold allocation of a fresh A4 over the program (the library
     // included) linearly; a warm re-analysis of the same program allocates nothing. N is 256/512/1024 so that the program's own bodies,
@@ -468,15 +480,16 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
             var program = c.BuildMir();
             Assert.Equal([Failed], Problems(c, program));
             var (cases, report) = (new MirCases(c.Types), new MirReport());
-            var effects = new MirEffects(c.Types, cases, new MirReach());
+            var flow = new MirDataflow(new MirReach());
+            var effects = new MirEffects(c.Types, cases, flow);
             var before = GC.GetAllocatedBytesForCurrentThread();
-            Analyze(effects, cases, program, report);
+            Analyze(effects, flow, cases, program, report);
             allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
             evaluations[i] = effects.Evaluations;
             Assert.Equal(0, AllocationMeasurement.Measure(() =>
             {
                 report.Clear();
-                Analyze(effects, cases, program, report);
+                Analyze(effects, flow, cases, program, report);
             }));
         }
 
@@ -485,11 +498,95 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
         Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold A4 allocation {string.Join(", ", allocated)}");
     }
 
-    // The driver's A4 rows over a built program and its A2 table: each body's views' local facts, then the run.
-    private static void Analyze(MirEffects effects, MirCases cases, MirProgram program, MirReport report)
+    // SPEC 15.6.4, 16.3.3, 22.4.4 (R4-M38, P5): the keys of a Call or a Drop are the mutable static Fields what it runs may access,
+    // composed through its callees and destructors, each Field once and written where any access writes it; a call through a common
+    // Function value or its destruction is unknown, and a site that runs nothing static has none. A call through an abstract Callable
+    // input is unknown, unless its bound is confined; an abstract part's destruction is unknown in its generic body and resolved where
+    // its caller's substitution makes it concrete, and the Drop of a moved value runs nothing. Mutually recursive callees share their
+    // keys.
+    [Fact]
+    public void KeysAreTheStaticFieldsASiteRuns()
+    {
+        var c = MirBuildTest.Compile(
+            "group G\n    public var x: i32 = 0\n    public var y: i32 = 0\nfunc writeX() => G.x = 1\nfunc readY() -> i32 => G.y\n" +
+            "func both() -> i32\n    writeX()\n    return readY()\nfunc plain() -> i32 => 1\nstruct Noisy\n    public var n: i32 = 0\n" +
+            "    drop => G.x = 2\nfunc caller(action: () -> ())\n    writeX()\n    _ = readY()\n    _ = both()\n    _ = plain()\n    action()\n" +
+            "    let noisy = Noisy.init()\nfunc anyCall<F>(f: ref/F)\n    F is Callable<() -> ()>\n    f()\nfunc confinedCall<F>(f: ref/F)\n" +
+            "    F is Callable<() -> ()>\n        effect confined\n    f()\nfunc absorb<T>(value: T) => ()\nfunc absorbed() => absorb(Noisy.init())\n" +
+            "func ping(n: i32)\n    G.x = n\n    if n > 0 => pong(n - 1)\nfunc pong(n: i32)\n    _ = G.y\n    if n > 0 => ping(n - 1)\nfunc pinged() => ping(3)\n");
+        var program = c.BuildMir();
+        var (cases, report) = (new MirCases(c.Types), new MirReport());
+        var flow = new MirDataflow(new MirReach());
+        var effects = new MirEffects(c.Types, cases, flow);
+        Analyze(effects, flow, cases, program, report);
+        Assert.Equal(["writeX:x!", "readY:y", "both:x!,y", "plain:", "value:?", "init:", "drop:x!", "drop:?"], Sites(effects, flow, program, "caller"));
+        Assert.Equal(["value:?"], Sites(effects, flow, program, "anyCall"));
+        Assert.Equal(["value:"], Sites(effects, flow, program, "confinedCall"));
+        Assert.Equal(["drop:?"], Sites(effects, flow, program, "absorb"));
+        Assert.Equal(["init:", "absorb:x!", "drop:"], Sites(effects, flow, program, "absorbed"));
+        Assert.Equal(["ping:x!,y"], Sites(effects, flow, program, "pinged"));
+        Assert.Equal(["pong:x!,y"], Sites(effects, flow, program, "ping"));
+    }
+
+    // V16, R4-M38: keys join once per component of the read graph after the fixed point, so a chain whose callers come first, each
+    // writing its own static, keeps its linear evaluations, and the head's call has every member's key.
+    [Fact]
+    public void KeysKeepTheEvaluationsLinear()
+    {
+        int[] sizes = [64, 128, 256];
+        var evaluations = new int[sizes.Length];
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            var (statics, members) = (new StringBuilder("group G\n"), new StringBuilder("group H\n"));
+            for (var n = 0; n < sizes[i]; n++)
+            {
+                statics.Append(System.Globalization.CultureInfo.InvariantCulture, $"    public var v{n}: i32 = 0\n");
+                var next = n + 1 == sizes[i] ? "()" : $"H.step{n + 1}()";
+                members.Append(System.Globalization.CultureInfo.InvariantCulture, $"    public func step{n}()\n        G.v{n} = 1\n        {next}\n");
+            }
+
+            var c = MirBuildTest.Compile(statics.Append(members).Append("func chainHead() => H.step0()\n").ToString());
+            var program = c.BuildMir();
+            var (cases, report) = (new MirCases(c.Types), new MirReport());
+            var flow = new MirDataflow(new MirReach());
+            var effects = new MirEffects(c.Types, cases, flow);
+            Analyze(effects, flow, cases, program, report);
+            evaluations[i] = effects.Evaluations;
+            var keys = Assert.Single(Sites(effects, flow, program, "chainHead"));
+            Assert.Equal($"step0:{string.Join(",", Enumerable.Range(0, sizes[i]).Select(static n => $"v{n}!").Order(StringComparer.Ordinal))}", keys);
+        }
+
+        output.WriteLine($"N {string.Join(", ", sizes)}: evaluations {string.Join(", ", evaluations)}");
+        Assert.True(evaluations[2] - evaluations[1] <= 2 * (evaluations[1] - evaluations[0]), $"evaluations {string.Join(", ", evaluations)}");
+    }
+
+    // The keys of each Call (other than an intrinsic) and Drop of a function's body: the callee's name ("value" for a callable value,
+    // "drop"), its keys in order, a written one marked !, and ? where it is unknown.
+    private static List<string> Sites(MirEffects effects, MirDataflow flow, MirProgram program, string function)
+    {
+        var body = program.Bodies.ToArray().Single(x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == function);
+        flow.Begin(body);
+        var sites = new List<string>();
+        for (var block = 0; block < body.Blocks.Length; block++)
+        {
+            var terminator = body.Blocks[block].Terminator;
+            if (terminator.Kind == MirTerminatorKind.Drop || terminator is { Kind: MirTerminatorKind.Call, Callee.Kind: not MirCalleeKind.Intrinsic })
+            {
+                var keys = effects.Keys(body, 0, block, out var unknown).ToArray().Select(static x => x.Field.Name + (x.Write ? "!" : string.Empty));
+                var name = terminator.Kind == MirTerminatorKind.Drop ? "drop" : terminator.Callee.Symbol?.Name ?? "value";
+                sites.Add($"{name}:{string.Join(",", keys.Order(StringComparer.Ordinal))}{(unknown ? "?" : string.Empty)}");
+            }
+        }
+
+        return sites;
+    }
+
+    // The driver's A4 rows over a built program and its A2 table: each body begun, its views' local facts, then the run.
+    private static void Analyze(MirEffects effects, MirDataflow flow, MirCases cases, MirProgram program, MirReport report)
     {
         foreach (var body in program.Bodies)
         {
+            flow.Begin(body);
             for (var view = 0L; view < MirCases.Count(body); view++)
             {
                 cases.Select(body, view);

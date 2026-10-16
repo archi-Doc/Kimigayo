@@ -302,6 +302,9 @@ partition(L,ℓ,k,X) :- k = destroy, root(X) a body root, L ∈ σ_in(_0) and L 
 disturbed at ℓ     :- ℓ writes, Moves or destroys a direct D ⊑ recv(c), or writes through a Place hitting recv(c)
                    ⇒  Φ_c is replaced by Φ_c^dist in every σ (by holder, like ended)
 excused(L,ℓ)       :- Call c2 at ℓ, preserves(c2), L = Φ_c1 (not ^dist), callee(c1) = callee(c2), recv(c1) ≡ recv(c2).
+excused(L,ℓ)       :- ℓ forms an argument reservation of a Call c2 with excused(L, c2's location).
+                      // erratum (prototype round 7, 33c): MIR forms c2's receiver reservation before the Call, so
+                      // without this row SPEC's takeTwo (§8.11.3) is rejected at that formation; takeAcross still errs
 // Φ_c: place = recv(c)'s referent with its content, mode uniq, issued into the result of an abstract requirement or
 // Callable call whose result descends (§8.11.4). Conformance (H, S2 text): an escaped Φ_prev on (*self) with a fresh
 // anchor at entry; a self-Field-path call of a preserves requirement undisturbed since entry is excused against it.
@@ -541,3 +544,5 @@ The SPEC simplifications land before the R4 exit (plan §5.3). Until then, a vio
 - **A3, confirmed** (review round 3): N1 transit uses only live or escaped targets, as the plan's `stored` does; N2 the
   kill passes own Derefs ("borrow Deref"); N3 S1 needs P3 and the own-site check; N4 a destroying call's `destroy`
   reports only the observing part beyond its shallow activation.
+- **A3 erratum** (prototype round 7, unit 0b): `excused` also covers the argument reservations of the excused Call (33c),
+  so SPEC's `takeTwo` stays valid. For unit 2f (F6).

@@ -128,8 +128,9 @@ internal sealed partial class MirBuilder
     // once. Reading and writing are selected independently: a Property's custom getter (First) and setter (Second, taking the result as its
     // Evaluated argument) are called on its receiver, located once, and a standard accessor reads or writes its storage, as a Place target is
     // read and written in place. The old value is read by a built-in operation, or by a user arithmetic call (CallPlan.Of) with the secured
-    // operand, whose result replaces it. A compound assignment gives Unit; an increment or decrement its old value (postfix) or its result
-    // (prefix), SPEC 13.2, the Property not read again.
+    // operand, whose result replaces it. A destination written in place is reserved once located and read and written through that
+    // reservation, which the write activates (writeback protection). A compound assignment gives Unit; an increment or decrement its old
+    // value (postfix) or its result (prefix), SPEC 13.2, the Property not read again.
     private void Update(MirPlace destination, Koto node)
     {
         var (target, right) = node is BinaryKoto update ? (update.Left, update.Right) : (((UnaryKoto)node).Operand, null);
@@ -156,6 +157,11 @@ internal sealed partial class MirBuilder
         if (accessor is not null && (plan.First is null || plan.Second is null))
         {
             storage = this.Storage(HirTables.Symbol(target)!, receiver is null ? null : this.located[mark].Place, target);
+        }
+
+        if (plan.Second is null)
+        {
+            storage = this.Writeback(storage, node);
         }
 
         var read = plan.First is null ? storage : this.Temp(plan.First.ReturnType, target);
@@ -239,13 +245,32 @@ internal sealed partial class MirBuilder
         CollectionsMarshal.SetCount(this.located, mark);
     }
 
+    // SPEC 13.7.2: an update's located destination reserved by a two-phase exclusive borrow, made where it is located, and the Place
+    // through it, which the update reads and writes; the write activates it.
+    private MirPlace Writeback(MirPlace destination, Koto node)
+    {
+        var reference = compilation.Types.Reference(SemanticsKind.Uniq, this.body.TypeOf(destination) ?? BoundType.Unit);
+        var reservation = this.Temp(reference, node);
+        this.Make(reservation, this.Ref(destination, reference, input: true), node);
+        return this.body.Project(reservation, MirProjectionKind.Deref, 0);
+    }
+
     // SPEC 4.6.3, 4.8.1: a built-in range selection: the receiver located once and its range resolved against its length, a range written
     // directly at each boundary (omitted: 0 or the length; ^x: the length minus x; a closed end q: q + 1), else the ResolvedRange its key
     // is or its key's resolution (First) gives; checked once (0 <= start <= end <= length, else KIMI_E_INDEX_BOUNDS), then the Slice RawSlice
-    // serves (R3 decision 5) of the elements from the address of element start, any address for none (SPEC 5.6).
+    // serves (R3 decision 5) of the elements from the address of element start, any address for none (SPEC 5.6), backed by what the
+    // Slice retains (DECISIONS R4-M40): a shared borrow of an array's whole Place, or a Slice receiver's copied handle.
     private void Slice(MirPlace destination, IndexKoto index)
     {
         var sequence = this.Place(index.Left);
+        var handle = this.body.TypeOf(sequence) is { Kind: BoundTypeKind.Slice } view ? this.Temp(view, index) : (MirPlace?)null;
+        if (handle is { } copy)
+        {
+            // SPEC 4.7.4, 4.8.1: a Slice receiver's handle is copied first; its reslice retains the copy's source, no handle variable.
+            this.Make(copy, MirRvalue.Use(this.body.AddOperand(MirOperand.Copy(sequence))), index);
+            sequence = copy;
+        }
+
         var range = HirTables.Op(index.Right) == HirOp.Range ? index.Right as RangeKoto : null;
         var length = this.Length(sequence, index);
         var zero = MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize)));
@@ -312,6 +337,7 @@ internal sealed partial class MirBuilder
         this.current = join;
         this.arguments.Add(MirOperand.Move(pointer));
         this.arguments.Add(MirOperand.Copy(count));
+        this.arguments.Add(handle is { } source ? MirOperand.Move(source) : this.Borrow(SemanticsKind.Ref, sequence, index));
         this.Serve(destination, CompilerFunctionKind.RawSlice, null, [element], at, index);
     }
 

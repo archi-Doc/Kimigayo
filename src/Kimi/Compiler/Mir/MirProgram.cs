@@ -35,7 +35,8 @@ internal sealed class MirProgram
     internal ulong Version { get; set; }
 
     /// <summary>Gets the located records of construction, one per code and location, which the <c>mir</c> pipeline publishes: an
-    /// Unsupported form's <c>Unsupported_Kd</c> (plan 6.2) and the default expansion limit's <c>DefaultExpansionLimit_Kd</c> (Resource).</summary>
+    /// Unsupported form's <c>Unsupported_Kd</c> (plan 6.2), the default expansion limit's <c>DefaultExpansionLimit_Kd</c> (Resource), and
+    /// a broken HIR contract's <c>InternalInvariant_Kd</c> (a published fact missing; DECISIONS R4-M42).</summary>
     internal List<Problem> Records { get; } = [];
 
     /// <summary>Gets the validator's findings, which the <c>mir</c> pipeline publishes as <c>InternalInvariant_Kd</c>.</summary>
@@ -68,7 +69,7 @@ internal sealed class MirProgram
 
     /// <summary>Records a problem of construction at its location, once however many bodies meet it.</summary>
     /// <param name="site">The syntax.</param>
-    /// <param name="code">An Unsupported form, or the default expansion limit.</param>
+    /// <param name="code">An Unsupported form, the default expansion limit, or a broken HIR contract.</param>
     internal void Report(SourceRef site, DiagnosticCode code = DiagnosticCode.Unsupported_Kd)
     {
         if (this.reported.Add(new(code, site)))

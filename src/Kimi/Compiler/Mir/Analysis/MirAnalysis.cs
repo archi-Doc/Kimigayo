@@ -28,13 +28,13 @@ internal sealed class MirAnalysis
     /// <param name="types">The Type context of the programs, which the case views read.</param>
     internal MirAnalysis(TyCtxt types)
     {
-        var reach = new MirReach(); // The one reachability walk: A3's runtime walks and the dataflow's block order.
+        var reach = new MirReach(); // The one reachability walk: A3's runtime walks, the dataflow's block order and phases.
         this.cases = new(types);
         this.lints = new(reach);
         this.flow = new(reach);
         this.drops = new(this.moves, this.cases);
         this.init = new(this.flow, this.moves, this.cases, this.drops);
-        this.effects = new(types, this.cases, reach);
+        this.effects = new(types, this.cases, this.flow);
     }
 
     /// <summary>Analyzes a program unless this version already was: a new version starts without problems, and one with validator

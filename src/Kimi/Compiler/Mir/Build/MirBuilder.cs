@@ -2,7 +2,7 @@
 
 // Owns construction and validation of one MIR body per definition or closure.
 // Input: syntax children, published HIR/plans, declaration views and TyCtxt. Output: a validated MirProgram.
-// Op, Adjust and PlaceShape decide lowering; unsupported forms use the one located Unsupported path.
+// Op, Adjust and PlaceShape decide lowering; unsupported forms use the one located Unsupported path, a missing published fact Broken.
 // Must not read Binding internals, infer from parents or let consumers rebuild missing facts.
 
 using System.Runtime.InteropServices;
@@ -13,7 +13,8 @@ namespace Kimi.Compiler.Mir;
 /// <summary>The MIR builder (plan P6, R3 shadow): once per Binding pass it publishes the HIR, builds one body for each definition the
 /// HIR names (<see cref="HirOp.Body"/>: a function, an accessor, a static's initializer; a <see cref="HirOp.Closure"/>) and validates it.
 /// It reads syntax children, the HIR columns and plans and <see cref="TyCtxt"/> only. A form no rule builds goes through
-/// <see cref="Unsupported(Koto, MirPlace)"/>, and building continues; an Error node of Binding becomes a derived Opaque.
+/// <see cref="Unsupported(Koto, MirPlace)"/>, and building continues; a published fact found missing goes through
+/// <see cref="Broken(Koto, MirPlace)"/>; an Error node of Binding becomes a derived Opaque.
 /// The program, its bodies and the builder's scratch are reused, so a warm
 /// rebuild allocates nothing.</summary>
 /// <param name="compilation">The compilation.</param>
@@ -404,6 +405,18 @@ internal sealed partial class MirBuilder(Compilation compilation)
         if (!Rejected(node))
         {
             this.program.Report(SourceRef.Of(node));
+        }
+
+        this.Opaque(node, destination);
+    }
+
+    // A fact Binding publishes for the node and did not (a call's plan): a broken HIR contract, InternalInvariant_Kd at the node (AGENTS),
+    // with an Opaque value in its place, unless Binding rejected the node, whose error the value is derived from (DECISIONS R4-M42).
+    private void Broken(Koto node, MirPlace destination)
+    {
+        if (!Rejected(node))
+        {
+            this.program.Report(SourceRef.Of(node), DiagnosticCode.InternalInvariant_Kd);
         }
 
         this.Opaque(node, destination);

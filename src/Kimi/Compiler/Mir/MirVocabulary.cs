@@ -18,7 +18,8 @@ internal enum MirStatementKind : byte
     StorageLive, // The storage of a Var or Temp local begins; its value is uninitialized.
     StorageDead, // The storage of a Var or Temp local ends.
     FakeRead, // The Place is read for the analyses only (a match subject, a discarded value); nothing is generated.
-    EndBorrow, // The Loans a reference local holds end (an abandoned comparison, reservation or guard borrow).
+    EndBorrow, // A use of a reference local, after which every Loan issued into it must be dead; its carrying ends (an abandoned comparison or
+    // reservation, which ends unactivated, or a guard candidate at its cleanup).
 }
 
 /// <summary>A MIR rvalue (plan 5.4). Abort on a failed check is implicit in the rvalue; Proven marks a check IMPL 21.3.3 omits.</summary>
@@ -110,7 +111,7 @@ internal enum MirRefKind : byte
 {
     Shared,
     Uniq,
-    TwoPhaseUniq, // Reserved at the borrow and activated at the Call that uses it.
+    TwoPhaseUniq, // Reserved at the borrow, activated at the Call that uses it or at the write through it (a compound update's writeback).
     Raw, // An address, through an immediately ending shared borrow (SPEC 5.4).
 }
 

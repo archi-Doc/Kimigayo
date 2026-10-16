@@ -7,10 +7,10 @@ namespace Kimi.Compiler.Mir;
 
 // Scopes and drop trees (SPEC 16, plan 5.6.4). A Var or Temp local lives from its StorageLive to its StorageDead, a value whose Type may
 // need drop (MirTypes.MayNeedDrop) is dropped first, and a defer runs where its scope is left. Each open scope keeps its registrations in
-// order: a block its locals and defers, a statement or a condition its temporaries, the body its parameters, a destructor's self as its
-// layer's parts (SPEC 16.3.2). The normal end of a scope cleans them up in reverse order; a transfer leaves through the drop tree of its
-// target, whose node for a scope's first registrations and the rest of the tree is built once and shared by every exit that reaches it
-// (rustc's drop tree), a defer body included.
+// order: a block its locals and defers, a statement or a condition its temporaries (a guard candidate also its EndBorrow), the body its
+// parameters, a destructor's self as its layer's parts (SPEC 16.3.2). The normal end of a scope cleans them up in reverse order; a
+// transfer leaves through the drop tree of its target, whose node for a scope's first registrations and the rest of the tree is built
+// once and shared by every exit that reaches it (rustc's drop tree), a defer body included.
 internal sealed partial class MirBuilder
 {
     private readonly List<DropScope> scopes = []; // The open scopes, innermost last.
@@ -27,6 +27,7 @@ internal sealed partial class MirBuilder
         Drop,
         Fields,
         Defer,
+        EndBorrow,
     }
 
     // Opens a scope of a block's locals and defers, or of temporaries.
@@ -125,6 +126,9 @@ internal sealed partial class MirBuilder
         {
             case Cleanup.StorageDead:
                 this.body.Push(this.current, MirStatement.Of(MirStatementKind.StorageDead, new(registration.Local), source));
+                break;
+            case Cleanup.EndBorrow:
+                this.body.Push(this.current, MirStatement.Of(MirStatementKind.EndBorrow, new(registration.Local), source));
                 break;
             case Cleanup.Drop:
                 this.DropAt(new(registration.Local), source);
