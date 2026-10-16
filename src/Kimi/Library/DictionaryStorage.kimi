@@ -12,17 +12,33 @@ group DictionaryStorage
         public var tail: isize
         public var free: isize
 
+    // Slot invariant (SPEC 5.2): a live slot holds its placed Links, key and value; a free slot below `used` holds only
+    // its Links; the slots from `used` up to the capacity hold no value. Growth and compaction relocate whole slots, and
+    // a release needs no destruction of Links, whose Fields are Copy (SPEC 5.6).
     #Layout("C")
     struct Links
         public var previous: isize
         public var next: isize
+
+        internal init(! previous: isize, next: isize)
+            self.previous = previous
+            self.next = next
 
     internal func clearEntries<K, V>(value: uniq/Dictionary<K, V>)
         K is Equatable
         unsafe
             let layout = Storage.dictionaryStorage(value)
             let handle = layout.0@raw/Handle
-            Storage.destroyDictionaryEntries<K, V>((*handle).buffer, layout.1, (*handle).tail, (*handle).length)
+            let buffer = (*handle).buffer
+            Storage.destroyDictionaryEntries<K, V>(buffer, layout.1, (*handle).tail, (*handle).length)
+            // Free slots hold links too; all of them end before clearLinks lets appendSlot place links again. No step of
+            // the loop can Abort, so it vanishes where ending a Links does nothing.
+            var slot = buffer
+            var remaining = (*handle).used
+            while remaining > 0
+                remaining -= 1
+                _ = (*(slot@raw/Links))@move
+                slot += layout.1
             clearLinks(handle)
 
     internal func removeEntry<K, V>(value: uniq/Dictionary<K, V>, key: ref/K) -> Option<(K, V)>
@@ -175,8 +191,12 @@ group DictionaryStorage
             let slot = buffer + index * stride
             let links = slot@raw/Links
             let tail = (*handle).tail
-            (*links).previous = tail
-            (*links).next = 0
+            // A fresh slot holds no value, so its links are placed; a free slot's links from unlink are replaced.
+            let appended = Links.init(previous: tail, next: 0)
+            if free == 0
+                Raw.initialize(links, appended@move)
+            else
+                *links = appended@move
             if tail == 0
                 (*handle).head = link
             else

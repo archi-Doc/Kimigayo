@@ -50,23 +50,26 @@ SPEC correctness and the native O2 run-time and allocation guarantees are constr
 # Documentation
 
 - Write documentation in concise, clear English; Japanese documentation uses concise, clear Japanese and [SPECJ_TERMINOLOGY](docs/SPECJ_TERMINOLOGY.md).
-- Each document owns the topics below and states current rules in short rows; narrative, history and evidence belong in commits, PLAN_HISTORY and artifacts.
+- **Update scope.** This table owns document maintenance policy, including where an older document asks for routine updates. A specific document row takes precedence over the general README/usage row. Auto means update only the affected facts when its condition holds in the current task; being related to a change is not a condition. Explicit means the user's request includes revising that document or its subject; an implementation request alone does not authorize policy changes, translation, guide synchronization or history maintenance. An authorized revision needs no separate permission for each affected file.
+- Read only the relevant owning sections. Do not scan every document to prove that no update is needed. Keep current facts in short rows; unit history, test lists, measurements and verification evidence belong in commits and artifacts, without copying them into several documents. Unlisted documents require explicit instruction, except correcting usage instructions directly invalidated by the current change. Add no management document for routine bookkeeping.
 
-| Document | Owns |
-| --- | --- |
-| [SPEC](docs/SPEC.md) and chapters | Language rules; self-contained; drafts are not authority. |
-| [IMPL](docs/IMPL.md) | Implementation contracts; never overrides language rules. |
-| [COMPILER_ARCHITECTURE](docs/dev/COMPILER_ARCHITECTURE.md) | Phases, dependencies, canonical components, structure limits, vocabularies, stage ledger and migration rules. |
-| [DECISIONS](docs/dev/DECISIONS.md) | Compiler design decisions with reasons and rejected options, above planning and handoff files; a superseded entry stays and names its replacement. |
-| [VERIFICATION](docs/dev/VERIFICATION.md) | Verification commands, selection, measurements and evidence. |
-| [CODEMAP](docs/dev/CODEMAP.md) | Navigation to owning components, entry points and representative tests; updated in the same commit. |
-| [PLAN](docs/dev/PLAN.md) | Current scope, order, completion conditions, next actions and open issues, under 200 lines; deferred items belong in SPEC Appendix D. |
-| [STATUS](docs/STATUS.md) | Verified support boundaries and remaining limits; never claims unverified support. |
-| [PLAN_HISTORY](docs/dev/PLAN_HISTORY.md) | A few lines per session. |
-| [SETTLED](docs/SETTLED.md) | Rejected design changes with their reasons; consult before design reviews, reopen only when a reason no longer holds. |
-| [STYLE](docs/STYLE.md) / [LIBRARY](docs/LIBRARY.md) | Conventions / public declarations and guarantees, following SPEC (§4.9.1 naming pairs). The [Library README](src/Kimi/Library/README.md) owns implementation policy. |
+| Document | Owns | Update condition |
+| --- | --- | --- |
+| [SPEC](docs/SPEC.md), [IMPL](docs/IMPL.md), their chapters, appendices and schemas | Language rules / implementation contracts; IMPL never overrides SPEC; drafts are not authority. | Explicit specification or contract revision. Update affected authoritative definitions together. |
+| [COMPILER_ARCHITECTURE](docs/dev/COMPILER_ARCHITECTURE.md) | Phases, dependencies, components, structure limits, vocabularies, stage ledger and migration rules. | Auto when an authorized change alters a recorded contract, responsibility or stage state. Policy, limits and exceptions retain their owner-approval rules. |
+| [DIAGNOSTICS](docs/dev/DIAGNOSTICS.md), [HOVER](docs/dev/HOVER.md), [SHARED_OBJECT_RUNTIME](docs/dev/SHARED_OBJECT_RUNTIME.md) | Their area's implementation contracts. | Auto when a documented contract changes; no implementation diary or unrelated audit. |
+| [DECISIONS](docs/dev/DECISIONS.md) | Compiler decisions, reasons and rejected options; authoritative over planning/handoff files. | Auto for decisions required by Implementation Design; a superseded entry stays and names its replacement. No entry for ordinary progress. |
+| [VERIFICATION](docs/dev/VERIFICATION.md) | Commands, check selection, measurements and evidence procedures. | Auto when changed tooling invalidates a documented procedure. Verification policy changes require explicit instruction. |
+| [CODEMAP](docs/dev/CODEMAP.md) | Navigation to owners, entry points and representative tests. | Auto when a move, removal or responsibility change makes navigation inaccurate; no entry for each new method or test. |
+| [PLAN](docs/dev/PLAN.md) | Current scope, order, completion conditions, next actions and open issues; under 200 lines. | Auto when position, next actions or blockers change, including a new open issue. No per-unit progress, session timestamps or test counts. Deferred features belong in SPEC Appendix D. |
+| [STATUS](docs/STATUS.md) | Verified support boundaries, known defects and remaining limits. | Auto when a supported boundary or known limit changes. Edit its existing area row; no session records or test inventories. Never claim unverified support. |
+| [LIBRARY](docs/LIBRARY.md) | Public declarations and guarantees, following SPEC (§4.9.1 naming pairs). | Auto when public declarations or guarantees change within the authorized scope. |
+| README and usage instructions | Commands and operation of the documented component. | Auto only where this change invalidates a command, path or instruction. |
+| [SPECJ](docs/SPECJ.md), [GUIDE](docs/GUIDE.md) | Translation / non-normative explanation. | Explicit translation or guide update; no automatic synchronization. Record the source revision when updated; use SPEC/IMPL for implementation decisions. |
+| [PLAN_HISTORY](docs/dev/PLAN_HISTORY.md) | Selected historical summaries and existing evidence references. | Explicit history maintenance; no per-session entry. Preserve historical records and links during ordinary work. |
+| AGENTS, [STYLE](docs/STYLE.md), [SETTLED](docs/SETTLED.md), [terminology](docs/SPECJ_TERMINOLOGY.md), [Library policy](src/Kimi/Library/README.md), [prompts](docs/dev/prompts), [DIAGNOSTIC_WORKFLOW](docs/dev/DIAGNOSTIC_WORKFLOW.md) | Work policy, conventions, rejected language changes and authoring procedures. | Explicit revision of the relevant policy or document. Consult relevant SETTLED entries before design reviews; reopen only when a reason no longer holds. |
 
-- Never narrow the specification to fit missing implementation: report Unsupported and record the boundary in STATUS and PLAN. Deliberate spec improvements need no approval: state the rationale and how the Principles hold, and update affected chapters, examples, tests and milestone programs together; pre-alpha changes need no version bump.
+- Never narrow the specification to fit missing implementation: report Unsupported and record a changed boundary in STATUS; update PLAN only under its condition above. If implementation work reveals a specification gap or proposed improvement, report it without rewriting the rules. An explicitly requested specification revision states the rationale and how the Principles hold, and updates affected authoritative chapters, examples, tests and milestone programs together; translations, guides and history still need their own explicit scope. Pre-alpha changes need no version bump.
 - Create or change proposal text only on explicit instruction, in `draft/Proposals` (prototypes in `draft/Sketches`). Record each intake and its proposal-to-spec mapping in `draft/INTEGRATED.md` in the same commit. An open proposal is 一部取り込み (partially integrated); its integrated text is frozen. A closed proposal moves to `draft/Changes` as 取り込み済み (integrated) if anything was incorporated, otherwise to `draft/Obsolete` as 完了 (closed).
 - Never change frozen text, including typos; record corrections in INTEGRATED. Integration and closure never imply support.
 

@@ -10,9 +10,9 @@ public class GenericPointerEmissionTest
     [Fact]
     public void ConcreteReadsPreserveCopyMoveAndCleanup()
     {
-        var source = """
+        var source = $$"""
             struct Resource
-                public var value: i32
+                public var value: i32 = 0
                 drop
                     require self.value == 0 else => $abort("value")
                     Console.writeLine("drop")
@@ -21,27 +21,34 @@ public class GenericPointerEmissionTest
             enum Choice<T>
                 None
                 Some(T)
-            group Native
-                #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: raw/u8, size: u64, kind: u32, protect: u32) -> raw/u8
-                #LibraryImport("kernel32", "VirtualFree")
-                public unsafe func free(address: raw/u8, size: u64, kind: u32) -> i32
+            {{ForeignEmissionTest.Pages()}}
             func take<E>(pointer: raw/E) -> E
                 unsafe => return (*pointer)@move
             func at<E>(pointer: raw/E, index: isize) -> E
                 unsafe => return pointer[index]@move
             func reads(bytes: raw/u8)
                 unsafe
+                    // Each value is placed, then taken once; a Take leaves its Place holding no value for the next.
+                    Raw.initialize(bytes@raw/i32, 0)
                     let integer = take(bytes@raw/i32)
                     require integer == 0 else => $abort("integer")
+                    Raw.initialize(bytes@raw/bool, false)
                     require take(bytes@raw/bool) == false else => $abort("bool")
+                    Raw.initialize(bytes@raw/raw/i32, null)
                     require take(bytes@raw/raw/i32) == null else => $abort("pointer")
+                    Raw.initialize(bytes@raw/Resource + 1, Resource.init())
                     let item = at(bytes@raw/Resource, 1)
+                    Raw.initialize((bytes + 32)@raw/(Resource, Resource), (Resource.init(), Resource.init()))
                     let tuple = take((bytes + 32)@raw/(Resource, Resource))
+                    Raw.initialize((bytes + 64)@raw/[2 of Resource] + 1, [Resource.init(), Resource.init()])
                     let array = at((bytes + 64)@raw/[2 of Resource], 1)
+                    Raw.initialize((bytes + 128)@raw/Empty, Empty.init())
                     let empty = take((bytes + 128)@raw/Empty)
+                    Raw.initialize(bytes@raw/(), ())
                     let unit = take(bytes@raw/())
+                    Raw.initialize((bytes + 160)@raw/string, "")
                     let text = take((bytes + 160)@raw/string)
+                    Raw.initialize((bytes + 224)@raw/Choice<Resource>, Choice<Resource>.None)
                     let choice = take((bytes + 224)@raw/Choice<Resource>)
                     Console.writeLine("scope")
             public func main()
