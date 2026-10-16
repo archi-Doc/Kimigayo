@@ -8,7 +8,7 @@ returns. Every helper is called from `main`. Source construction is outside timi
 | --- | --- | --- |
 | 1 | `PreparationTokenizerParser` | `Compilation.CreateForTest`, target `Prepare`, document creation and `Kotonoha.AddSource` (registration, tokenization and parsing) |
 | 2 | `BindingAndStartup` | `Compilation.Bind` and application `CheckStartup` |
-| 3 | `MirPublishBuildValidate` | `Compilation.BuildMir`: HIR publication, MIR construction and validation of every body, the source's and the Kimi library's |
+| 3 | `MirPublishBuildValidate` | `Compilation.BuildMir`: HIR publication, MIR construction and validation of every body, the source's and the Kimi library's, and the MIR analyses (R4; V18 later times them as their own intervals) |
 | 4 | `ControlFlowAndOwnership` | `Ownership.Analyze` |
 | 5 | `EmissionLowering` | `LlvmEmitter.TryPrepare`: emission preconditions, layouts, ABI and lowered output model |
 | 6 | `LlvmIrWriting` | `EmissionModule.WriteIr`: serialize that prepared model to LLVM IR |

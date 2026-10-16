@@ -111,7 +111,7 @@ internal static partial class LlvmModuleWriter
             """);
     }
 
-    // IMPL 21.2.3: rc remains inline until Weak operations become executable. Clone changes only the count;
+    // IMPL 21.1.3: rc remains inline until Weak operations become executable. Clone changes only the count;
     // final release stores zero before destruction, and never accesses the header after finalization.
     private static void WriteRcObjects(TextWriter output)
     {

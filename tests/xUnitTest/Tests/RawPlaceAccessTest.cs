@@ -9,7 +9,7 @@ using Xunit;
 namespace XunitTest;
 
 // SPEC 5.2.3: raw Places, and their Fields and elements, offer Take without tracked state. (*p)@move takes the value and leaves
-// the storage Uninitialized, _ = (*p)@move destroys it in place, and a bare acquisition follows the rule for every Place: a
+// the designated Place holding no value, _ = (*p)@move destroys it in place, and a bare acquisition follows the rule for every Place: a
 // Copy value is Copied and a Non-Copy or Copy-unproven value needs @move (SPEC 3.5).
 public class RawPlaceAccessTest
 {
@@ -27,7 +27,7 @@ public class RawPlaceAccessTest
         var diagnostic = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.TransferRequired_Kd), diagnostic.Code);
 
-        // SPEC 5.2.3, 23.3.6.9: a raw Place takes with @move, around the whole dereference so that it does not apply to the pointer.
+        // SPEC 5.2.3, 23.1.3: a raw Place takes with @move, around the whole dereference so that it does not apply to the pointer.
         var repair = Assert.Single(diagnostic.Repairs!);
         Assert.Equal("Repair.Transfer", repair.Kind);
         Assert.Equal([RepairCondition.Take], repair.Verified);

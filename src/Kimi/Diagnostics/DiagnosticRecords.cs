@@ -7,7 +7,7 @@ using System.Text.Json.Serialization;
 
 namespace Kimi.Diagnostics;
 
-/// <summary>The kind of a Reason value (SPEC 23.3.6.2).</summary>
+/// <summary>The kind of a Reason value (SPEC 23.3).</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<DiagnosticValueKind>))]
 public enum DiagnosticValueKind : byte
 {
@@ -26,11 +26,11 @@ public enum DiagnosticValueKind : byte
     /// <summary>A requirement by its stable name, such as <c>Syntax.Expression</c>; a message displays its phrase.</summary>
     Requirement,
 
-    /// <summary>An Origin display (SPEC 23.3.6.5): its bounded string, with its display kind in <see cref="DiagnosticValue.Origin"/>.</summary>
+    /// <summary>An Origin display (SPEC 23.1): its bounded string, with its display kind in <see cref="DiagnosticValue.Origin"/>.</summary>
     Origin,
 }
 
-/// <summary>An Origin as a Reason names it (SPEC 23.3.6.5): a display kind and a bounded string.</summary>
+/// <summary>An Origin as a Reason names it (SPEC 23.1): a display kind and a bounded string.</summary>
 /// <param name="Kind">The display kind: <c>expression</c>, <c>borrow</c>, <c>omitted</c> or <c>closure</c>.</param>
 /// <param name="Text">The display string, such as <c>x</c>, <c>(a and b)</c>, <c>local@ref</c> or <c>call receiver</c>.</param>
 public readonly record struct DiagnosticOrigin(string Kind, string Text)
@@ -39,12 +39,12 @@ public readonly record struct DiagnosticOrigin(string Kind, string Text)
     public override string ToString() => this.Text;
 }
 
-/// <summary>One typed fact of a record's Reason (SPEC 23.3.6.2).</summary>
+/// <summary>One typed fact of a record's Reason (SPEC 23.3).</summary>
 /// <param name="Name">The fact's name, fixed by its code.</param>
 /// <param name="Kind">The kind of value.</param>
 /// <param name="Value">The exact value, or the bounded display text.</param>
 /// <param name="Elided">Whether a bounded display value omits part of its text.</param>
-/// <param name="Origin">The display kind of an Origin value (SPEC 23.3.6.5); present exactly when <paramref name="Kind"/> is Origin.</param>
+/// <param name="Origin">The display kind of an Origin value (SPEC 23.1); present exactly when <paramref name="Kind"/> is Origin.</param>
 public readonly record struct DiagnosticValue(string Name, DiagnosticValueKind Kind, string Value, bool Elided = false, string? Origin = null)
 {
     /// <summary>Creates an enumeration value.</summary>
@@ -57,7 +57,7 @@ public readonly record struct DiagnosticValue(string Name, DiagnosticValueKind K
         => new(name, DiagnosticValueKind.Enumeration, value.ToString());
 }
 
-/// <summary>A part of a record that a limit omitted (SPEC 23.3.6.2).</summary>
+/// <summary>A part of a record that a limit omitted (SPEC 23.3).</summary>
 /// <param name="Part">What was omitted, such as <c>related locations</c> or <c>excerpt lines</c>.</param>
 /// <param name="Count">How many were omitted.</param>
 public readonly record struct DiagnosticOmission(string Part, int Count)
@@ -67,7 +67,7 @@ public readonly record struct DiagnosticOmission(string Part, int Count)
     public override string ToString() => $"{this.Count} more {this.Part} omitted";
 }
 
-/// <summary>One source a result's records name (SPEC 23.3.6.3).</summary>
+/// <summary>One source a result's records name (SPEC 23.1.2).</summary>
 /// <param name="Path">The display path: a file path, a <c>compiler://</c> identity, or a name given by the source's creator.</param>
 /// <param name="IsInput">Whether the source is an input the check read, so its spans are positions in that input.</param>
 public sealed record DiagnosticSource(string Path, bool IsInput);
@@ -91,7 +91,7 @@ public sealed record DiagnosticDisplay(SourceRange? Range, DiagnosticExcerptLine
         => HashCode.Combine(this.Range, this.Excerpt.Length);
 }
 
-/// <summary>A location related to a record, with its role (SPEC 23.3.6.2).</summary>
+/// <summary>A location related to a record, with its role (SPEC 23.3).</summary>
 /// <param name="Role">The role, such as <c>prerequisite</c> or <c>declaration</c>.</param>
 /// <param name="Source">The source table index, or -1 without a source.</param>
 /// <param name="Span">The span, or <see langword="null"/> for the whole input.</param>
@@ -99,7 +99,7 @@ public sealed record DiagnosticDisplay(SourceRange? Range, DiagnosticExcerptLine
 /// <param name="Label">A short description of the location.</param>
 public sealed record DiagnosticRelated(string Role, int Source, SourceSpan? Span, SourceRange? Range, string? Label)
 {
-    /// <summary>Gets the alternative text of the location (SPEC 23.4.7): its role, where it is and its label.</summary>
+    /// <summary>Gets the alternative text of the location (SPEC 23.4): its role, where it is and its label.</summary>
     /// <param name="path">The displayed path of its source, or <see langword="null"/> without a source.</param>
     /// <returns>The text, such as <c>prerequisite: main.kimi:3:5: the program has a valid startup</c>.</returns>
     public string Describe(string? path)
@@ -115,7 +115,7 @@ public sealed record DiagnosticRelated(string Role, int Source, SourceSpan? Span
     }
 }
 
-/// <summary>One published problem with its explanation (SPEC 23.3.6.2). No compiler object escapes into it.</summary>
+/// <summary>One published problem with its explanation (SPEC 23.3). No compiler object escapes into it.</summary>
 /// <param name="Code">The code name.</param>
 /// <param name="Severity">The severity.</param>
 /// <param name="Category">The category.</param>
@@ -142,7 +142,7 @@ public sealed record CheckDiagnostic(string Code, DiagnosticSeverity Severity, D
     /// <summary>Gets the presentation data.</summary>
     public DiagnosticDisplay? Display { get; init; }
 
-    /// <summary>Gets the repair candidates (SPEC 23.3.6.9): alternative structured edits that resolve the problem, in catalog order then position.</summary>
+    /// <summary>Gets the repair candidates (SPEC 23.1.3): alternative structured edits that resolve the problem, in catalog order then position.</summary>
     public RepairCandidate[]? Repairs { get; init; }
 
     public bool Equals(CheckDiagnostic? other)
@@ -156,7 +156,7 @@ public sealed record CheckDiagnostic(string Code, DiagnosticSeverity Severity, D
         => HashCode.Combine(this.Code, this.Source, this.Span, this.Message);
 }
 
-/// <summary>The finalized diagnostics of one result: records in result order and the sources they name (SPEC 23.3.6).</summary>
+/// <summary>The finalized diagnostics of one result: records in result order and the sources they name (SPEC 23.1).</summary>
 /// <param name="Diagnostics">The records.</param>
 /// <param name="Sources">The source table.</param>
 public sealed record DiagnosticResult(CheckDiagnostic[] Diagnostics, DiagnosticSource[] Sources)

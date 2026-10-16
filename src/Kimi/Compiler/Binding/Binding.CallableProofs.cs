@@ -5,7 +5,7 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
-// SPEC 8.7, 15.6.1, 23.3.6.5: a Callable Constraint whose proof is Unknown only in the Origin part of its whole-contract comparison: the
+// SPEC 8.3, 15.6.1, 23.1: a Callable Constraint whose proof is Unknown only in the Origin part of its whole-contract comparison: the
 // value whose Type binds F, the clause, that Type, and the first member of the comparison that fails with its relation.
 internal readonly record struct CallableConstraintFact(Koto At, IsKoto Clause, BoundType Subject, OriginContractFact Contract);
 
@@ -13,7 +13,7 @@ public sealed partial class Binding
 {
     private Dictionary<Koto, CallableConstraintFact>? callableConstraints;
 
-    // SPEC 8.6, 8.7, 15.6.1, 23.3.6.5: the Reason names the Type bound to F, the clause, the failing member and the relation with both ends
+    // SPEC 8.10, 8.3, 15.6.1, 23.1: the Reason names the Type bound to F, the clause, the failing member and the relation with both ends
     // as Origin displays; the clause is related as `constraint`, an omitted end at its Type occurrence and a closure's call receiver at
     // the anonymous function's header.
     private static void ReportCallableConstraint(Koto node, CallableConstraintFact fact, DiagnosticRequirement requirement, DiagnosticCode code)
@@ -46,12 +46,12 @@ public sealed partial class Binding
 
         if (receiver is not null)
         {
-            // SPEC 8.6: a Callable result cannot borrow the hidden environment receiver of the closure.
+            // SPEC 8.10: a Callable result cannot borrow the hidden environment receiver of the closure.
             var header = SourceSpan.FromBounds(receiver.Span.Start, Math.Max(receiver.Span.Start, receiver.HeaderEnd));
             node.Report(
                 requirement,
                 code,
-                note: $"{clause} is not proven: {relation}, and a Callable result cannot borrow the closure's hidden environment receiver (SPEC 8.6)",
+                note: $"{clause} is not proven: {relation}, and a Callable result cannot borrow the closure's hidden environment receiver (SPEC 8.10)",
                 evidence: evidence,
                 related: [.. related],
                 relatedSpans: [("origin", receiver, header, null)],
@@ -62,7 +62,7 @@ public sealed partial class Binding
         node.Report(
             requirement,
             code,
-            note: $"{clause} compares whole contracts and is not proven: {relation}; its Origin part is judged from the premises alone (SPEC 8.6, 10.7, 15.6.1)",
+            note: $"{clause} compares whole contracts and is not proven: {relation}; its Origin part is judged from the premises alone (SPEC 8.10, 10.7, 15.6.1)",
             evidence: evidence,
             related: [.. related],
             at: fact.At);
@@ -76,7 +76,7 @@ public sealed partial class Binding
         };
     }
 
-    // SPEC 8.7, 15.6.1: the first Callable Constraint of a candidate whose proof is Unknown because only the Origin part of its whole-contract
+    // SPEC 8.3, 15.6.1: the first Callable Constraint of a candidate whose proof is Unknown because only the Origin part of its whole-contract
     // comparison fails, explained at the argument whose Type binds F; null when no such clause is found.
     private CallableConstraintFact? CallableOriginFailure(InvocationKoto call, FunctionKoto function, BoundType?[] slots, BoundLength?[] lengths, int[] mapping, BindingScope scope, BoundType? self, BoundType? declaringType)
     {

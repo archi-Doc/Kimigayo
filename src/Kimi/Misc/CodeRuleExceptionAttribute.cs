@@ -4,7 +4,7 @@ using System.Diagnostics;
 
 namespace Kimi;
 
-// Source-only approval of an exceptional statement or nesting bound; the analyzer validates every use.
+// Source-only approval of an exceptional statement or nesting bound; review checks the reason and limit against COMPILER_ARCHITECTURE.
 [Conditional("KIMI_CODE_RULES_ATTRIBUTES")]
 [AttributeUsage(
     AttributeTargets.Method | AttributeTargets.Constructor | AttributeTargets.Property | AttributeTargets.Field | AttributeTargets.Event,

@@ -5,7 +5,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 22.1.2.5: the shared Dictionary remainder lends each live entry once, in insertion order, as
+/// <summary>SPEC 22.2: the shared Dictionary remainder lends each live entry once, in insertion order, as
 /// (ref/K, ref/V) for the Dictionary's Loan, and returns None when nothing remains.</summary>
 public class DictionaryRemainderTest
 {
@@ -50,7 +50,7 @@ public class DictionaryRemainderTest
         ScalarEmissionTest.WriteFixture("DictionaryRemainderShared", CompilationTestHelper.WriteIr(c), "dictionary storage\n");
     }
 
-    // SPEC 22.1.2.3: Dictionary.iterate returns the standard Iterator; an earlier item stays valid across later steps.
+    // SPEC 22.2.2: Dictionary.iterate returns the standard Iterator; an earlier item stays valid across later steps.
     [Fact]
     public void ExplicitIterationRetainsEarlierItems()
     {
@@ -126,7 +126,7 @@ public class DictionaryRemainderTest
         ScalarEmissionTest.WriteFixture("DictionaryRemainderExclusive", CompilationTestHelper.WriteIr(c), "exclusive\n");
     }
 
-    // SPEC 22.1.2.3, 4.7.6: owning enumeration transfers each returned entry once; the unreturned entries are destroyed with
+    // SPEC 22.2.2, 4.9.7: owning enumeration transfers each returned entry once; the unreturned entries are destroyed with
     // the iterator in reverse insertion order, each value before its key, and the buffer is released.
     [Fact]
     public void OwningIterationTransfersEntriesAndDestroysTheRest()
@@ -184,14 +184,10 @@ public class DictionaryRemainderTest
     public void WarmExclusiveDictionaryLoopAllocatesNothing(string stage)
     {
         var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, string> = [:]\n_ = entries.tryInsert(1, \"a\")\nfor (key, value) in entries@uniq\n    Console.writeLine(value)");
-        for (var i = 0; i < 32; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             var valid = stage switch

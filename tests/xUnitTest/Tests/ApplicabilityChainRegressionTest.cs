@@ -11,7 +11,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// PLAN G76: the blocking review cases, with expectations from SPEC 10.4, 10.5, 10.7 and 23.3.6.4.
+// PLAN G76: the blocking review cases, with expectations from SPEC 10.4, 10.5, 10.7 and 23.1.2.
 public class ApplicabilityChainRegressionTest
 {
     [Theory]

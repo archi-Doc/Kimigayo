@@ -9,7 +9,7 @@ namespace XunitTest;
 
 // SPEC 14.10.3 checks unreachable source under a type-checking continuation, which this analysis does not provide: it never
 // checks unreachable operations, and a body without another ownership issue reports its first unreachable use of a Local or
-// Parameter as the location-only Unsupported_Kd (SPEC 23.3.6.1).
+// Parameter as the location-only Unsupported_Kd (SPEC 23.1.1).
 public class UnreachableOwnershipTest
 {
     // A deferred body repeated at its dead scope end performs the use already checked on the reachable exit.
@@ -19,7 +19,7 @@ public class UnreachableOwnershipTest
     public void DeadSourceWithoutVariableUsesVerifies(string source)
     {
         var c = Parse(source);
-        Assert.True(c.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]
@@ -31,7 +31,7 @@ public class UnreachableOwnershipTest
     public void NonCompletingBodiesDoNotRequireSyntheticResults(string source)
     {
         var c = Parse(source);
-        Assert.True(c.Analyze().IsVerified, Describe(c));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]
@@ -88,10 +88,6 @@ public class UnreachableOwnershipTest
     private static Compilation Parse(string source)
         => CompilationTestHelper.BindSuccess(source);
 
-    private static string Describe(Compilation c)
-        => string.Join("\n", c.Problems.Select(x => $"{x.Code}: {c.SyntaxOf(x.Subject)}")) +
-            string.Join("\n", c.Ownership.ControlFlow!.Issues.Select(x => x.Message));
-
     private static int LineOf(string source, int offset)
         => source.AsSpan(0, offset).Count('\n') + 1;
 
@@ -114,7 +110,7 @@ public class UnreachableOwnershipTest
 
             source.Append("    return\n");
             var c = Parse(source.ToString());
-            Assert.True(c.Analyze().IsVerified, Describe(c));
+            Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
             var bindingBytes = AllocationMeasurement.Measure(() => c.Bind());
             var analysisBytes = AllocationMeasurement.Measure(() => c.Analyze());
             var combinedBytes = AllocationMeasurement.Measure(() =>
@@ -125,7 +121,7 @@ public class UnreachableOwnershipTest
             Assert.True(
                 bindingBytes == 0 && analysisBytes == 0 && combinedBytes == 0,
                 $"Binding: {bindingBytes}; analysis: {analysisBytes}; combined: {combinedBytes}");
-            Assert.True(c.Analysis.IsVerified, Describe(c));
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         }
     }
 }

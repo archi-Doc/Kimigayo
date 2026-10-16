@@ -68,7 +68,7 @@ public class ImplicitBaseCallTest
         }
     }
 
-    // SPEC 6.2.3.6: a derived structure without an explicit constructor whose Fields all have initializers receives init() when its
+    // SPEC 6.3.6: a derived structure without an explicit constructor whose Fields all have initializers receives init() when its
     // omitted base clause selects a base constructor; it runs that constructor once, then the own initializers, and drops derived first.
     [Theory]
     [InlineData("Public", "open struct Base\n    public var count: i32 = 1\n    public init() => Console.writeLine(\"base\")\nstruct Leaf: Base\n    public let extra: i32 = 2\nlet leaf = Leaf.init()\nrequire leaf.count == 1 and leaf.extra == 2 else => $abort(\"fields\")", "base\n")]
@@ -89,7 +89,7 @@ public class ImplicitBaseCallTest
     public void ASynthesizedConstructorEvaluatesTheBaseDefaults()
         => ScalarEmissionTest.EmitFixture("ImplicitBaseDerivedAbort", "group Helpers\n    public func fail() -> i32 => $abort(\"default\")\nopen struct Base\n    protected init(x: i32 = Helpers.fail()) => ()\nstruct Leaf: Base\nlet leaf = Leaf.init()\nConsole.writeLine(\"after\")", string.Empty, 1, "Hello.kimi:2:34: abort KIMI_E_ABORT: default\n");
 
-    // SPEC 6.2.3.6: without a selected base constructor a derived structure has no constructor. A construction reports the reason, an
+    // SPEC 6.3.6: without a selected base constructor a derived structure has no constructor. A construction reports the reason, an
     // Unknown premise that can change the selection, or the base clause failure the decision rests on; an unused Type says nothing, and
     // the decision does not depend on declaration order.
     [Theory]
@@ -123,7 +123,7 @@ public class ImplicitBaseCallTest
         }
     }
 
-    // SPEC 6.2.3.6: base clause Constraints that are not Proven leave the decision resting on the clause, whose check reports them; the
+    // SPEC 6.3.6: base clause Constraints that are not Proven leave the decision resting on the clause, whose check reports them; the
     // construction adds no record of its own.
     [Fact]
     public void AnUnsatisfiedBaseClauseLeavesTheConstructionDerived()
@@ -170,7 +170,7 @@ public class ImplicitBaseCallTest
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
-    // SPEC 6.2.3.6: the omitted base query, which publishes nothing, decides as the bound base call does: the same selected
+    // SPEC 6.3.6: the omitted base query, which publishes nothing, decides as the bound base call does: the same selected
     // constructor or the same class of failed selection. It leaves the obligations and diagnostics of the pass unchanged.
     [Theory]
     [InlineData("open struct Base\n    public init() => ()\nstruct Leaf: Base\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Selected))]
@@ -189,7 +189,7 @@ public class ImplicitBaseCallTest
     [InlineData("open struct Base<T>\n    protected init() => ()\n    protected init(x: i32 = 0)\n        T is Equatable\n        ()\nstruct Leaf<U>: Base<U>\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Selected))]
     [InlineData("open struct Base<T>\n    protected init() => ()\nstruct Leaf: Base<i64>\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Selected))]
     [InlineData("open struct Base {a}\n    public var n: i32 = 1\n    public init() => ()\nstruct Leaf {b}: Base during b\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Selected))]
-    // SPEC 23.3.6.4: a base constructor whose premise rests on a conformance limited by OCC-X leaves the selection resting on that
+    // SPEC 23.1.2: a base constructor whose premise rests on a conformance limited by OCC-X leaves the selection resting on that
     // conformance.
     [InlineData(LimitedBumps + "open struct Holder<T>\n    protected init()\n        T is Bumps and Owned\n        ()\nstruct Derived: Holder<Leaf>\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Dependent))]
     [InlineData(LimitedBumps + "open struct Holder<T>\n    protected init()\n        T is not Bumps\n        ()\nstruct Derived: Holder<Leaf>\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Dependent))]
@@ -212,11 +212,11 @@ public class ImplicitBaseCallTest
         Assert.True(c.Bind().IsComplete);
         var constructor = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.HasOmittedBaseInitializer);
         var selected = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => selected &= c.Binding.SelectOmittedBaseConstructor(constructor).Outcome == OmittedBaseOutcome.Selected, iterations: 64, warmupIterations: 16));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => selected &= c.Binding.SelectOmittedBaseConstructor(constructor).Outcome == OmittedBaseOutcome.Selected));
         Assert.True(selected);
     }
 
-    // SPEC 6.2.3.6: a base without constructors is one Language absence at the base call target, omitted or written, placed alike by the
+    // SPEC 6.3.6: a base without constructors is one Language absence at the base call target, omitted or written, placed alike by the
     // CLI and the language server, whether the base lacks an initializer or its own omitted base clause selects no constructor.
     [Theory]
     [InlineData("open struct Base\n    public var count: i32\n", "Base has no constructor: its Field count has no initializer")]
@@ -238,7 +238,7 @@ public class ImplicitBaseCallTest
         }
     }
 
-    // SPEC 8.4.8.2: an Unknown premise of a base constructor defers the omitted and the written base call alike, and only when it can
+    // SPEC 8.3.3: an Unknown premise of a base constructor defers the omitted and the written base call alike, and only when it can
     // affect the selection: the plain init() beats a conditional one that uses a default, and a better conditional one stays unproven.
     [Theory]
     [InlineData("protected init() => ()\n    protected init(x: i32 = 0)\n        T is Equatable\n        ()", null)]

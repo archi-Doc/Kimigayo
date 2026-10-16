@@ -9,7 +9,7 @@ namespace Kimi.Diagnostics;
 
 /// <summary>
 /// The identity of one check (docs/dev/DIAGNOSTICS.md §4.1): its subject, requirement, condition and context. A syntax node is
-/// compared by reference; any other subject is its location. The location also orders subjects (SPEC 23.3.6.6).
+/// compared by reference; any other subject is its location. The location also orders subjects (SPEC 23.1).
 /// </summary>
 internal readonly struct DiagnosticKey : IEquatable<DiagnosticKey>
 {
@@ -63,7 +63,7 @@ internal readonly struct DiagnosticKey : IEquatable<DiagnosticKey>
     public override int GetHashCode()
         => HashCode.Combine(this.Subject is null ? HashCode.Combine(this.Source, this.Start, this.Length) : RuntimeHelpers.GetHashCode(this.Subject), this.Requirement, this.Condition, this.Context is string text ? text.GetHashCode(StringComparison.Ordinal) : this.Context is null ? 0 : RuntimeHelpers.GetHashCode(this.Context));
 
-    /// <summary>Compares two subjects at one location by structure (SPEC 23.3.6.6): the enclosing node first, then the node kind.</summary>
+    /// <summary>Compares two subjects at one location by structure (SPEC 23.1): the enclosing node first, then the node kind.</summary>
     /// <param name="other">The other key.</param>
     /// <returns>The order; zero when the subjects cannot be told apart by structure.</returns>
     public int CompareSubject(in DiagnosticKey other)
@@ -136,19 +136,19 @@ internal readonly struct DiagnosticKey : IEquatable<DiagnosticKey>
 /// <param name="DerivedFrom">The check keys of the unmet prerequisites.</param>
 /// <param name="Evidence">The code's evidence facts, captured as values, or <see langword="null"/> when the report has none.</param>
 /// <param name="Related">Locations the recorder relates to the problem, such as the candidates of a failed selection.</param>
-/// <param name="Repairs">The repair candidates the recorder offers (SPEC 23.3.6.9), validated and ordered at the recording boundary, or <see langword="null"/> for none.</param>
+/// <param name="Repairs">The repair candidates the recorder offers (SPEC 23.1.3), validated and ordered at the recording boundary, or <see langword="null"/> for none.</param>
 internal readonly record struct DiagnosticFact(
     DiagnosticCode Code, DiagnosticKey Key, int Source, int Start, int Length, object? First, object? Second, string? Note, DiagnosticKey[]? DerivedFrom,
     object?[]? Evidence = null, DiagnosticRelatedFact[]? Related = null, DiagnosticRepairFact[]? Repairs = null);
 
-/// <summary>One edit of a repair candidate as recorded: a span of a recorded input and its replacement (SPEC 23.3.6.9).</summary>
+/// <summary>One edit of a repair candidate as recorded: a span of a recorded input and its replacement (SPEC 23.1.3).</summary>
 /// <param name="Source">The source table index of the recorded input.</param>
 /// <param name="Start">The span start.</param>
 /// <param name="Length">The span length; zero for an insertion point.</param>
 /// <param name="Text">The replacement text; empty for a deletion.</param>
 internal readonly record struct DiagnosticEditFact(int Source, int Start, int Length, string Text);
 
-/// <summary>A repair candidate as recorded (SPEC 23.3.6.9): its kind, the kind's facts captured as values, its edits and the
+/// <summary>A repair candidate as recorded (SPEC 23.1.3): its kind, the kind's facts captured as values, its edits and the
 /// judgment of its relevant conditions. A refuted condition is never recorded; the recorder withholds the candidate instead.</summary>
 /// <param name="Kind">The kind.</param>
 /// <param name="Facts">The kind's facts, or <see langword="null"/> when the kind names none.</param>

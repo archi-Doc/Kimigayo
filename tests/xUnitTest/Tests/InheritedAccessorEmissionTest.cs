@@ -40,7 +40,7 @@ public class InheritedAccessorEmissionTest
     public void SharedInheritedGettersUseTheOrdinaryCallPipeline(string name, string body, string stdout = "")
         => ScalarEmissionTest.EmitFixture("InheritedAccessor" + name, Source + body, stdout);
 
-    // SPEC 13.7.2, 9.5.1: a compound update of an inherited Property with a custom `get` and a standard `set` reads through the getter
+    // SPEC 13.7.2, 9.6.1: a compound update of an inherited Property with a custom `get` and a standard `set` reads through the getter
     // with the whole located receiver lent at its base prefix, as a getter call does (it failed generation with "Borrow source has no
     // matching aggregate storage" or "Reborrow has no matching reference source").
     [Theory]

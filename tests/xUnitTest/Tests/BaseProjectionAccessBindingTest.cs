@@ -90,11 +90,7 @@ public class BaseProjectionAccessBindingTest
     public void WarmBaseAccessChecksAllocateNothing()
     {
         var c = Check(Prefix + "internal struct Api: Source.C.Element", true);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

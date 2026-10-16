@@ -39,7 +39,7 @@ public class ElementUpdateEmissionTest
     public void UpdatesExecute(string name, string source)
         => ScalarEmissionTest.EmitFixture("ElementUpdate" + name, source, "ok\n");
 
-    // SPEC 8.4.7.3, 13.7: a generic integer is numeric in every instance, so a compound update of one through an Array element,
+    // SPEC 8.7.4, 13.7: a generic integer is numeric in every instance, so a compound update of one through an Array element,
     // a followed reference or a fixed-array element verifies in the definition, as through a local or a borrowed Field, and each
     // instance updates its concrete Scalar.
     [Fact]
@@ -67,7 +67,7 @@ public class ElementUpdateEmissionTest
         ScalarEmissionTest.EmitFixture("ElementUpdateGenericInteger", Source, "ok\n");
     }
 
-    // SPEC 13.3: a string destination has no compound update, through a raw pointer or as a local; Binding rejects it before
+    // SPEC 13.3.1: a string destination has no compound update, through a raw pointer or as a local; Binding rejects it before
     // any update plan, so neither the analysis nor emission sees it.
     [Theory]
     [InlineData("func append(p: raw/string)\n    unsafe => *p += \"x\"")]
@@ -106,7 +106,7 @@ public class ElementUpdateEmissionTest
     [InlineData("Remainder", "%=", "85", "43", "42")]
     [InlineData("NegativeDivide", "/=", "-85", "2", "-42")]
     [InlineData("NegativeRemainder", "%=", "-85", "43", "-42")]
-    [InlineData("RemainderMinimum", "%=", "-9223372036854775808", "-1", "0")] // SPEC 13.3: the remainder by -1 is 0.
+    [InlineData("RemainderMinimum", "%=", "-9223372036854775808", "-1", "0")] // SPEC 13.3.1: the remainder by -1 is 0.
     public void DivisionAndRemainderUseCheckedIntegerRules(string name, string op, string initial, string rhs, string expected)
         => ScalarEmissionTest.EmitFixture("ElementUpdate" + name, $"var a: [1 of i64] = [{initial}]\na[0] {op} {rhs}\nif a[0] == {expected} => Console.writeLine(\"ok\")", "ok\n");
 
@@ -178,7 +178,7 @@ public class ElementUpdateEmissionTest
         Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
     }
 
-    // The located receiver stays protected while its index operands evaluate (SPEC 4.6.4).
+    // The located receiver stays protected while its index operands evaluate (SPEC 4.6.3).
     [Theory]
     [InlineData("var a: [1 of i32] = [0]\na[(label work: do\n    a[0]++\n    exit to work 0\n)]++")]
     [InlineData("var a: [1 of i32] = [21]\nlet x = a[(label work: do\n    a[0]++\n    exit to work 0\n)]")]
@@ -309,31 +309,19 @@ public class ElementUpdateEmissionTest
     {
         const string Source = "var a: (string, [2 of i32]) = (\"held\", [0, 2])\nvar b: [1 of isize] = [0]\nvar i = 0\nloop\n    defer => a.1[0]++\n    let amount = a.1[1]\n    a.1[b[0]++] += if true => amount else => 0\n    --b[0]\n    i += 1\n    if i < 3 => continue\n    exit";
         var c = MinimalEmissionTest.Analyze(Source);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
 
         var success = true;
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
-        {
-            success &= c.Bind().IsComplete;
-        }
-
-        var bindingBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
+        var bytes = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
             success &= c.WriteIr(TextWriter.Null, out _);
-        }
-
-        var bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        });
         Assert.True(success);
         Assert.Equal(0, bindingBytes);
         Assert.Equal(0, bytes);

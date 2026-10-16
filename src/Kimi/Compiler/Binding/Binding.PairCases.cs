@@ -6,12 +6,12 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-/// <summary>Semantics cases of pair binders (SPEC 8.10): the outer Origin <c>o</c> of a pair's whole Type (SPEC 8.1.1), the
-/// complete Type every pair layer takes in one admitted case, the bare-acquisition plan per case (SPEC 8.9) and the binders in
+/// <summary>Semantics cases of pair binders (SPEC 8.15): the outer Origin <c>o</c> of a pair's whole Type (SPEC 8.1.1), the
+/// complete Type every pair layer takes in one admitted case, the bare-acquisition plan per case (SPEC 8.14) and the binders in
 /// scope of a body.</summary>
 public sealed partial class Binding
 {
-    /// <summary>The Semantics in <see cref="SemanticsMask"/> bit order, the enumeration order of Semantics cases (SPEC 8.10).</summary>
+    /// <summary>The Semantics in <see cref="SemanticsMask"/> bit order, the enumeration order of Semantics cases (SPEC 8.15).</summary>
     internal static readonly SemanticsKind[] SemanticsOrder =
     [
         SemanticsKind.Owner, SemanticsKind.Ref, SemanticsKind.Uniq, SemanticsKind.Obj, SemanticsKind.Rc, SemanticsKind.Arc, SemanticsKind.ObjRef, SemanticsKind.ObjUniq, SemanticsKind.Raw,
@@ -38,8 +38,8 @@ public sealed partial class Binding
         }
     }
 
-    /// <summary>Tells whether a bare acquisition of a pair-layer Place Reborrows in some admitted case (SPEC 8.9): the use is then
-    /// exclusive in that case, the strongest a Closure's receiver can be over its cases (SPEC 7.6.3).</summary>
+    /// <summary>Tells whether a bare acquisition of a pair-layer Place Reborrows in some admitted case (SPEC 8.14): the use is then
+    /// exclusive in that case, the strongest a Closure's receiver can be over its cases (SPEC 7.7.3).</summary>
     /// <param name="type">The stored Type of the Place.</param>
     /// <param name="node">The acquiring syntax, whose scope supplies the premises.</param>
     /// <returns>Whether an admitted case Reborrows.</returns>
@@ -55,10 +55,10 @@ public sealed partial class Binding
     }
 
     /// <summary>Formats the Semantics cases in which a bare acquisition of a pair layer neither Copies nor Reborrows, for a Note
-    /// (SPEC 8.9, 23.3.6.4); empty for another Type or when every case has a plan.</summary>
+    /// (SPEC 8.14, 23.1.2); empty for another Type or when every case has a plan.</summary>
     /// <param name="type">The stored Type.</param>
     /// <param name="node">The acquiring syntax.</param>
-    /// <returns>The Note's tail, such as <c> in the Semantics case s = owner (SPEC 8.9)</c>.</returns>
+    /// <returns>The Note's tail, such as <c> in the Semantics case s = owner (SPEC 8.14)</c>.</returns>
     internal string FailingCaseNote(BoundType type, Koto node)
     {
         if (!TryPairLayer(type, out var whole, out _) || (this.BareAcquisition(type, node, out _) is var failing && failing == SemanticsMask.None))
@@ -69,7 +69,7 @@ public sealed partial class Binding
         var text = new StringBuilder(" in the Semantics case").Append(BitOperations.PopCount((uint)failing) == 1 ? " " : "s ");
         text.Append(whole.Symbol is { } symbol ? symbol.Pair?.Name ?? symbol.Name : "s").Append(" = ");
         AppendSemantics(text, failing, " or ");
-        return text.Append(" (SPEC 8.9)").ToString();
+        return text.Append(" (SPEC 8.14)").ToString();
     }
 
     /// <summary>Tells whether a pair layer is invariant in its target (SPEC 15.3.5): its binder admits <c>uniq</c>, <c>obj</c>,
@@ -190,7 +190,7 @@ public sealed partial class Binding
         return this.OuterOrigin(type);
     }
 
-    /// <summary>Forms the complete Type a Type takes in one Semantics case (SPEC 8.10): every pair layer of a binder in
+    /// <summary>Forms the complete Type a Type takes in one Semantics case (SPEC 8.15): every pair layer of a binder in
     /// <paramref name="cases"/> becomes the Type of that binder's Semantics over its direct target with the layer's outer-Origin
     /// slot (<c>U</c> for owner, <c>s/U during o</c> for a borrow, <c>s/U</c> otherwise), other Types map their components, and
     /// a Type that mentions no such layer is returned as is.</summary>
@@ -236,7 +236,7 @@ public sealed partial class Binding
             }
 
             return changed
-                ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), type.Length, type.Origin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, type.ClosureContext, type.LengthArguments, type.ResultMode)
+                ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), type.Length, type.Origin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, type.ClosureContext, type.LengthArguments)
                 : type;
         }
         finally
@@ -245,7 +245,7 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 3.5, 8.9, 15.1.5: the bare acquisition of a Place storing the Type, taken by value without an operator: a Copy-proven Type
+    // SPEC 3.5, 8.14, 15.1.5: the bare acquisition of a Place storing the Type, taken by value without an operator: a Copy-proven Type
     // Copies, a pair layer whose every admitted case Copies or Reborrows acquires by case, a stored exclusive reference Reborrows in its
     // own mode, and any other Place needs an explicit Move; the proof tells an unproven Copy from a refuted one.
     internal HirAcquire BareAcquire(BoundType type, Koto node, out ConstraintProof proof)
@@ -256,7 +256,7 @@ public sealed partial class Binding
             : type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } ? HirAcquire.Reborrow : HirAcquire.Move;
     }
 
-    /// <summary>Plans the bare acquisition of a pair-layer Place per admitted case (SPEC 3.5, 8.9): a Copy for a shared or raw
+    /// <summary>Plans the bare acquisition of a pair-layer Place per admitted case (SPEC 3.5, 8.14): a Copy for a shared or raw
     /// reference and for an owner whose target is proven Copy, a Reborrow for an exclusive reference, and otherwise a case
     /// without a plan, which is a definition error naming that case.</summary>
     /// <param name="type">The stored Type of the Place, a pair layer.</param>

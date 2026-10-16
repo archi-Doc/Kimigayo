@@ -21,7 +21,7 @@ public class NeverContinuationTest
     [InlineData("stop() < wide", "bool")]
     public void ANonCompletingLeftOperandFitsTheOtherOperand(string expression, string type)
     {
-        // SPEC 3.1.5, 13.3, 13.4: Never fits the other operand's Type; it imposes no expected Never on that operand.
+        // SPEC 3.1.3, 13.3.1, 13.4: Never fits the other operand's Type; it imposes no expected Never on that operand.
         var c = MinimalEmissionTest.Analyze(Stop + "let wide: i64 = 2\nlet n: " + type + " = " + expression);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }

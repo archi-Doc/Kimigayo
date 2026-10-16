@@ -6,7 +6,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-/// <summary>SPEC 4.7.2, 4.7.4, 4.7.6: the Array mutation operations lower to runtime capacity routines and per-element helpers over the {buffer, length, capacity} handle.</summary>
+/// <summary>SPEC 4.9.3, 4.9.5, 4.9.7: the Array mutation operations lower to runtime capacity routines and per-element helpers over the {buffer, length, capacity} handle.</summary>
 internal sealed partial class BodyLowering
 {
     private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar, int Remainder, int Option, RemainderFields Fields), ArrayHelper> arrayHelpers = new();
@@ -25,7 +25,7 @@ internal sealed partial class BodyLowering
         internal long Stride => this.Value.Layout.Stride;
     }
 
-    // SPEC 22.1.2.5: the storage boundary writes a remainder record {storage, position, count[, capacity]} by Field name.
+    // SPEC 22.2: the storage boundary writes a remainder record {storage, position, count[, capacity]} by Field name.
     private static RemainderFields GetRemainderFields(AggregateLayout layout, BoundType type, bool capacity)
     {
         var storage = AdtDef.IndexOf(type, "storage");
@@ -288,7 +288,7 @@ internal sealed partial class BodyLowering
 
                 break;
             case CompilerFunctionKind.ArraySwap:
-                // SPEC 4.7.2: both indices are checked, then the two element slots exchange their bytes; no element is
+                // SPEC 4.9.3: both indices are checked, then the two element slots exchange their bytes; no element is
                 // Copied as a value and no destructor runs.
                 callee = this.GetArrayHelper(ArrayHelperKind.Swap, element).Abi;
                 if (!this.ScalarArrayArgument(body, id, 1, BoundType.ISize, out var first) || !this.ScalarArrayArgument(body, id, 2, BoundType.ISize, out var second))
@@ -319,7 +319,7 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    // SPEC 22.1.2.5: borrowStorage and ownStorage transfer the Array handle to a remainder; lend and split
+    // SPEC 22.2: borrowStorage and ownStorage transfer the Array handle to a remainder; lend and split
     // publish one pointer-backed capability. The source functions advance the untaken range.
     private bool LowerStorageOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
@@ -428,7 +428,7 @@ internal sealed partial class BodyLowering
         EmissionOperand pointer;
         if (kind == CompilerFunctionKind.StorageOwn)
         {
-            // The Array's acquired slot is transferred into the remainder; the call consumes it (SPEC 22.1.2.5).
+            // The Array's acquired slot is transferred into the remainder; the call consumes it (SPEC 22.2).
             var entry = this.parameterArguments[0];
             var place = entry < 0 ? -1 : body.Operations[entry].Place;
             if (place < 0 || !ReferenceTypes.StorageMatches(argumentType, body.Places[place].Type) || !this.IsSlotValue(body.Places[place]) ||

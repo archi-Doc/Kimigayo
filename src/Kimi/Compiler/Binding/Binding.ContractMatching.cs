@@ -138,7 +138,7 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 12.4.4.1, 23.3.6.1: a witness whose ObjectCallCompatible status is not computed leaves the verification Unknown; it is the
+    // SPEC 12.7, 23.1.1: a witness whose ObjectCallCompatible status is not computed leaves the verification Unknown; it is the
     // conformance's limit (Unsupported) only when nothing else is unproven.
     private static ConstraintProof UnsupportedProof(BoundConformancePath path, ConstraintProof proof)
     {
@@ -238,7 +238,7 @@ public sealed partial class Binding
                     var identity = shape.AssociatedTypes[i];
                     if (this.SpecificationPart(conformance, identity) is { } part)
                     {
-                        // SPEC 23.3.6.4: an identity whose explicit specification did not bind is never inferred; its absence rests on
+                        // SPEC 23.1.2: an identity whose explicit specification did not bind is never inferred; its absence rests on
                         // that specification, while every other missing identity still reports.
                         specification ??= part;
                         continue;
@@ -442,7 +442,7 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        // SPEC 23.3.6.4: the conformance rests on a specification that did not bind or failed. It may fail only later, as its formation
+        // SPEC 23.1.2: the conformance rests on a specification that did not bind or failed. It may fail only later, as its formation
         // at the Definition deadline, so the link is kept whatever its state is now and settled at publication; the failure is derived
         // only when the specification has failed (IsDerived).
         ConstraintProof RestOnSpecification(IsKoto clause)
@@ -455,7 +455,7 @@ public sealed partial class Binding
 
     private bool? MatchesRequirement(FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope, MemberSelection selection)
     {
-        if (implementation.IsSpecialization || !SameGenericShape(requirement, implementation) || requirement.Parameters.Count != implementation.Parameters.Count || ResultModeOf(requirement.ReturnType) != ResultModeOf(implementation.ReturnType))
+        if (implementation.IsSpecialization || !SameGenericShape(requirement, implementation) || requirement.Parameters.Count != implementation.Parameters.Count)
         {
             return false;
         }
@@ -522,12 +522,6 @@ public sealed partial class Binding
             return formation;
         }
 
-        // SPEC 7.1.1, 8.4.5: the retained identification preserves the result category and mode.
-        if (ResultModeOf(requirement.ReturnType) != ResultModeOf(implementation.ReturnType))
-        {
-            return ConstraintProof.Error;
-        }
-
         var identity = new BoundRequirement(requirement.BoundSymbol!, conformance.Contract);
         var key = (conformance, identity);
         if (!this.witnessScopes.TryGetValue(key, out var premises))
@@ -586,7 +580,7 @@ public sealed partial class Binding
                     for (var e = 0; e < clause.EffectBounds.Count; e++)
                     {
                         var bound = clause.EffectBounds[e];
-                        if (this.effectBoundRejections?.ContainsKey(bound) == true || IsRecovery(bound, out _))
+                        if (!this.AppliesBound(bound))
                         {
                             continue; // An invalid item declares no obligation for the implementation.
                         }
@@ -610,7 +604,7 @@ public sealed partial class Binding
             witness.ObjectCompatibility = selection.Path is not null && receiverIndex >= 0 ? ProjectedReceiverProof(implementation.BoundSymbol!) : ConstraintProof.Proven;
             if (witness.ObjectCompatibility == ConstraintProof.Unknown)
             {
-                conformance.Unsupported = true; // SPEC 12.4.4.1: OCC-X (UnsupportedProof).
+                conformance.Unsupported = true; // SPEC 12.7: OCC-X (UnsupportedProof).
                 return proof;
             }
 

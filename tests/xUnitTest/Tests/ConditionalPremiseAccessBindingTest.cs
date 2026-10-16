@@ -119,11 +119,7 @@ public class ConditionalPremiseAccessBindingTest
     public void WarmConditionalAccessChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Source("public", "internal", "internal", "public", "([2 of Source.Hidden.Item], i32)"));
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

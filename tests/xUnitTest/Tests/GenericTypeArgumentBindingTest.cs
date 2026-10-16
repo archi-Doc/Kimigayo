@@ -109,11 +109,7 @@ public class GenericTypeArgumentBindingTest
     public void WarmNestedTypeArgumentBindingAllocatesNothing()
     {
         var c = Parse("struct Box<T>\nfunc f(value: Box<([2 of i32])>) => ()\nfunc take<T>() => ()\ntake<([2 of i32])>()");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete, Describe(c));
-        }
-
+        Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

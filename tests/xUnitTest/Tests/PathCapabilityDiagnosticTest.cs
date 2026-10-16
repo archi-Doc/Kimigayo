@@ -5,7 +5,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 3.4, 3.4.1, 15.1.5: one path computation decides writes, Moves and exclusive borrows; the diagnostic names the
+/// <summary>SPEC 3.4, 3.4.3, 15.1.5: one path computation decides writes, Moves and exclusive borrows; the diagnostic names the
 /// layer that denies the capability. A shared access Binding synthesizes for an element is not such a layer.</summary>
 public class PathCapabilityDiagnosticTest
 {
@@ -49,7 +49,7 @@ public class PathCapabilityDiagnosticTest
     [Fact]
     public void AFieldThroughSeveralLayersIsABarePlaceSubject()
     {
-        // SPEC 15.1.6, 3.4.1: `r.n` through `ref/(ref/S)` is a Place, so the Subject is Shared and binds `ref/i32`.
+        // SPEC 15.1.6, 3.4.3: `r.n` through `ref/(ref/S)` is a Place, so the Subject is Shared and binds `ref/i32`.
         var c = MinimalEmissionTest.Analyze(S + "func f(r: ref/(ref/S during a)) -> i32\n    match r.n\n        let v => return v@follow");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }

@@ -124,7 +124,7 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze("open struct Base\n    public virtual func read(self: objref/Self) -> i32 => 1\n()");
         var complete = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete));
         Assert.True(complete);
         Assert.Empty(c.Binding.Issues);
     }

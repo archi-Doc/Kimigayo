@@ -18,7 +18,7 @@ public class UnsafeFunctionValueBindingTest
     [InlineData("unsafe func raw() -> i32 => 1\nlet pair = (raw, 1)")]
     public void UnsafeFunctionsCannotBeAcquiredAsValues(string source)
     {
-        // SPEC 7.7: an unsafe function supports direct calls only.
+        // SPEC 7: an unsafe function supports direct calls only.
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsafeFunctionValue_Kd);
         Assert.False(c.Binding.Result.IsComplete);
@@ -34,7 +34,7 @@ public class UnsafeFunctionValueBindingTest
     [InlineData("unsafe func raw() -> i32 => 1\nfunc take(c: () -> i32 = raw) -> i32 => c()")]
     public void UnsafeFunctionsAreRejectedInEveryRemainingValuePosition(string source)
     {
-        // SPEC 7.7: the rejection is the complement of the direct-call callee, not a position list.
+        // SPEC 7: the rejection is the complement of the direct-call callee, not a position list.
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsafeFunctionValue_Kd);
         Assert.False(c.Binding.Result.IsComplete);

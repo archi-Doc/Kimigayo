@@ -169,7 +169,7 @@ internal sealed partial class BodyLowering
 
                 if (type is { IsFloatingPoint: true } || body.Resolve(operation.Source.BoundType, body.ContextAt(id)) is { IsFloatingPoint: true })
                 {
-                    // SPEC 13.5.4.2: a direct literal converted at compile time carries its folded bits.
+                    // SPEC 13.5.4: a direct literal converted at compile time carries its folded bits.
                     var folded = operation.Source is Parsing.ConversionKoto { FoldedConstant: { } constant } ? constant : (Int128?)null;
                     if (!ReferenceEquals(type, body.Resolve(operation.Source.BoundType, body.ContextAt(id))) ||
                         (folded is null ? !ScalarTypes.TryFloatLiteral(operation.Source, out var bits) || bits != value.Constant : folded != value.Constant))
@@ -215,7 +215,7 @@ internal sealed partial class BodyLowering
                     var number = KotoHelper.SignedNumber(source, out var negative);
                     if (source is Parsing.ConversionKoto { FoldedConstant: { } folded })
                     {
-                        // SPEC 13.5.4.2: a direct literal converted at compile time carries its folded payload.
+                        // SPEC 13.5.4: a direct literal converted at compile time carries its folded payload.
                         if (folded != value.Constant || !ReferenceEquals(type, body.Resolve(source.BoundType, body.ContextAt(id))))
                         {
                             return false;
@@ -276,7 +276,7 @@ internal sealed partial class BodyLowering
         return false;
     }
 
-    // SPEC 4.6.4, 4.6.9: an element key, a directly applied range boundary or a written `^` operand of another integer Type
+    // SPEC 4.6.3, 4.7.1: an element key, a directly applied range boundary or a written `^` operand of another integer Type
     // becomes an isize position after it is evaluated; a value isize cannot hold becomes -1.
     private static bool IsPositionConversion(Parsing.Koto source, BoundType? input, BoundType? target)
         => ReferenceEquals(target, BoundType.ISize) && ScalarTypes.Width(input) != 0 && !ReferenceEquals(input, BoundType.ISize) &&

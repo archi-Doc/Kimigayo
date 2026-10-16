@@ -38,7 +38,7 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
-    // SPEC 8.4.5, 22.1.2.4: an effect bound counts the destructions its implementation's bodies perform, which are the
+    // SPEC 8.6, 22.2.3: an effect bound counts the destructions its implementation's bodies perform, which are the
     // cleanups planned here; Binding re-checks each bound with them once every reached body is analyzed.
     private void ValidateEffectBounds()
     {

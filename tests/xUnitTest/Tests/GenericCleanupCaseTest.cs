@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 13.5.8, 22.1.2.4: each feasible Semantics case destroys only initialized parts that were not transferred.
+// SPEC 13.6.2, 22.2.3: each feasible Semantics case destroys only initialized parts that were not transferred.
 public class GenericCleanupCaseTest
 {
     [Theory]

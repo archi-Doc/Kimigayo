@@ -81,11 +81,7 @@ public class BaseInputFormationBindingTest
     public void WarmBaseInputChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "contract C\nstruct S: Source<i32>.Origin.Item\n    Self is C");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

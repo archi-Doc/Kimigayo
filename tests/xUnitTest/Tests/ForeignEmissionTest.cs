@@ -231,11 +231,7 @@ public class ForeignEmissionTest
         var c = MinimalEmissionTest.Analyze(body);
         Assert.Equal(mismatch, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.TypeMismatch_Kd));
         using var writer = new StringWriter();
-        Assert.Equal(!mismatch, c.WriteIr(writer, out var error));
-        if (!mismatch)
-        {
-            Assert.Empty(c.Ownership.ControlFlow!.Issues);
-        }
+        Assert.Equal(!mismatch, c.WriteIr(writer, out _));
     }
 
     [Fact]
@@ -281,15 +277,17 @@ public class ForeignEmissionTest
     }
 
     [Theory]
-    [InlineData("let p: raw/i32 = null\nlet n: i32 = 1\nlet q = unsafe => p + n")]
-    [InlineData("var p: raw/i32 = null\nlet n: i32 = 1\nunsafe => p += n")]
-    [InlineData("var p: raw/i32 = null\nunsafe => p *= 2")]
-    [InlineData("let p: raw/i32 = null\nlet q = unsafe => 1 + p")]
-    [InlineData("let p: raw/i32 = null\nlet q: raw/i32 = null\nlet d = unsafe => p - q")]
-    public void InvalidPointerArithmeticIsRejected(string body)
+    [InlineData("let p: raw/i32 = null\nlet n: i32 = 1\nlet q = unsafe => p + n", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("var p: raw/i32 = null\nlet n: i32 = 1\nunsafe => p += n", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("var p: raw/i32 = null\nunsafe => p *= 2", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("let p: raw/i32 = null\nlet q = unsafe => 1 + p", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("let p: raw/i32 = null\nlet q: raw/i32 = null\nlet d = unsafe => p - q", DiagnosticCode.TypeMismatch_Kd)]
+    public void InvalidPointerArithmeticIsRejected(string body, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(body);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.ControlFlow!.Issues.Count == 0);
+        c.Binding.ReportDiagnostics();
+        c.ReportAnalysis();
+        Assert.Contains(TestDiagnostics.Of(c), x => x.Code == code.ToString());
         using var writer = new StringWriter();
         Assert.False(c.WriteIr(writer, out _));
     }
@@ -319,7 +317,8 @@ public class ForeignEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("let p: raw/i32 = null\nvar v: i32 = 0\nv = *p");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.ControlFlow!.Issues, x => x.Message.Contains("Unsafe", StringComparison.Ordinal));
+        c.ReportAnalysis();
+        Assert.Contains(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.UnsafeBlockRequired_Kd));
     }
 
     [Fact]
@@ -528,14 +527,11 @@ public class ForeignEmissionTest
         Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
 
         var success = true;
-        var bytes = AllocationMeasurement.Measure(
-            () =>
-            {
-                success &= c.Analyze().IsVerified;
-                success &= c.WriteIr(TextWriter.Null, out _);
-            },
-            iterations: 128,
-            warmupIterations: 100);
+        var bytes = AllocationMeasurement.Measure(() =>
+        {
+            success &= c.Analyze().IsVerified;
+            success &= c.WriteIr(TextWriter.Null, out _);
+        });
         Assert.True(success);
         Assert.Equal(0, bytes);
     }
@@ -623,7 +619,7 @@ public class ForeignEmissionTest
         Assert.Empty(writer.ToString());
     }
 
-    // SPEC 23.3.6.4: an offset whose syntax failed to parse rests on that syntax Error, so no Type mismatch cascades from it.
+    // SPEC 23.1.2: an offset whose syntax failed to parse rests on that syntax Error, so no Type mismatch cascades from it.
     [Fact]
     public void AMalformedPointerOffsetRestsOnItsSyntaxError()
     {
@@ -643,7 +639,8 @@ public class ForeignEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("let p: raw/i32 = null\n" + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.ControlFlow!.Issues, x => x.Message.Contains("Unsafe", StringComparison.Ordinal));
+        c.ReportAnalysis();
+        Assert.Contains(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.UnsafeBlockRequired_Kd));
         using var writer = new StringWriter();
         Assert.False(c.WriteIr(writer, out _));
     }
@@ -657,7 +654,8 @@ public class ForeignEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("var p: raw/i32 = null\n" + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.ControlFlow!.Issues, x => x.Message.Contains("Unsafe", StringComparison.Ordinal));
+        c.ReportAnalysis();
+        Assert.Contains(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.UnsafeBlockRequired_Kd));
         using var writer = new StringWriter();
         Assert.False(c.WriteIr(writer, out _));
     }
@@ -719,7 +717,7 @@ public class ForeignEmissionTest
         ScalarEmissionTest.EmitFixture("ForeignPointerIncrement" + name, source, string.Empty, 1, "Hello.kimi:8:15: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
     }
 
-    // SPEC 13.2, 13.3: a pointer itself has no increment; a float pointee needs an integer operand and a bool pointee a numeric one.
+    // SPEC 13.2, 13.3.1: a pointer itself has no increment; a float pointee needs an integer operand and a bool pointee a numeric one.
     [Theory]
     [InlineData("i32", "p++", DiagnosticCode.TypeMismatch_Kd)]
     [InlineData("f64", "(*p)++", DiagnosticCode.NonIntegerOperand_Kd)]
@@ -859,7 +857,7 @@ public class ForeignEmissionTest
                 var holders: raw/Holder = null
                 unsafe => holders = (bytes + 256)@raw/Holder
                 unsafe
-                    // Zeroed handles are valid empty Static strings (SPEC 22.5.5).
+                    // Zeroed handles are valid empty Static strings (SPEC 22.7).
                     (*holders).label = "kept"
                     (*holders).count = 41
                     (*holders).count += 1
@@ -1038,7 +1036,7 @@ public class ForeignEmissionTest
                 unsafe => return (*p)@move
             func use(p: raw/string, flag: bool)
                 unsafe
-                    // Zeroed handles are valid empty Static strings (SPEC 22.5.5).
+                    // Zeroed handles are valid empty Static strings (SPEC 22.7).
                     *p = "first"
                     p[0] = "second"
                     Console.writeLine(take(p))
@@ -1071,12 +1069,10 @@ public class ForeignEmissionTest
     [InlineData("p[0]")]
     public void StringPointerComparisonsDoNotInventAnOwningRead(string expression)
     {
-        // SPEC 5.2: the handle is inspected in place; no temporary owner, Move or cleanup.
+        // SPEC 5.2: the handle is inspected in place; no temporary owner, Move or cleanup (its MIR: tests/mir/raw.kimi `derefCompare`,
+        // `indexCompare`).
         var c = MinimalEmissionTest.Analyze($"func compare(p: raw/string)\n    unsafe\n        let equal = {expression} == \"text\"\npublic func main() => ()");
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "compare");
-        Assert.DoesNotContain(body.Values, x => x.Kind == OwnershipValueKind.PointerLoad);
-        Assert.DoesNotContain(body.Places, x => ReferenceEquals(x.Type, BoundType.String) && x.Source.ToString() == expression);
         var ir = CompilationTestHelper.WriteIr(c);
     }
 

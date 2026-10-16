@@ -6,13 +6,56 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 8.11.4: what a requirement runs on a Self that is not abstract, as a call's instantiation resolves it under a definition's
+    // premises, each target with its declaring instance: a built-in comparison's plan leaves, another built-in target itself (no
+    // instance), else the conformance's witness, an inherited one included; false where none resolves. The requirement takes `ref/Self`
+    // (SPEC 4.9.6's rows and the comparisons), which no virtual function implements (virtual-dispatch 1, 6.3).
+    internal bool Witnesses(BindingSymbol requirement, BoundType self, BindingSymbol? definition, List<(BindingSymbol Target, BoundType? Declaring)> into)
+    {
+        var target = this.CompilerRequirementTarget(requirement, self);
+        var contract = requirement.Scope.Owner.BoundSymbol!;
+        if (target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare)
+        {
+            return this.ComparisonPlan(target, self, contract.LibraryDeclaration!.Value, operators: false) is { } plan && Leaves(plan, into);
+        }
+
+        if (target.CompilerFunction != CompilerFunctionKind.None)
+        {
+            into.Add((target, null));
+            return true;
+        }
+
+        if (this.ConformanceWitness(requirement, self, contract, this.EffectPremises(definition), out var witness) is not { } declaring)
+        {
+            return false;
+        }
+
+        into.Add((witness.Implementation, declaring));
+        return true;
+
+        static bool Leaves(BoundComparison plan, List<(BindingSymbol Target, BoundType? Declaring)> into)
+        {
+            if (plan.Implementation is { } call)
+            {
+                into.Add((call.Target, call.DeclaringType));
+            }
+
+            foreach (var part in plan.Parts)
+            {
+                _ = Leaves(part, into);
+            }
+
+            return true;
+        }
+    }
+
     // Use the verified declaration mapping, never repeat member lookup at a concrete call.
     private CallPlan? InstantiateRequirementCall(CallPlan call, CallPlan outer, CallPlan? destination = null)
     {
         var requirement = (FunctionKoto)call.Target.Declaration;
         if (call.ConformingType is { } open && open.HasAbstractPart)
         {
-            // SPEC 8.10: substituted into a generic caller, such as a default's replica, a requirement call on a still abstract Type
+            // SPEC 8.15: substituted into a generic caller, such as a default's replica, a requirement call on a still abstract Type
             // stays that Type's requirement call, as in the caller's own body; only a closed Type selects its witness. The
             // intermediate call is reused per inner call, so the result is copied into its own storage.
             var forwarded = destination ?? new CallPlan();
@@ -43,18 +86,16 @@ public sealed partial class Binding
 
         if (call.ConformingType is { } integer && call.RequirementContract is { } positionContract && IsIntegerPosition(integer, positionContract))
         {
-            return this.InstantiateIntegerPosition(call, integer, destination); // SPEC 4.6.2.
+            return this.InstantiateIntegerPosition(call, integer, destination); // SPEC 4.6.1.
         }
 
         if (call.ConformingType is not { } self || this.InstanceReference(call, self, outer) is not { } contract ||
-            this.ResolveConformance(self, contract, outer.Target.Declaration, out var path) != ConstraintProof.Proven ||
-            path is not { IsVerified: true } || !path.WitnessMap.TryGetValue(new(call.Target, contract), out var witness) ||
-            witness.Function is not { ObjectCompatibility: ConstraintProof.Proven } function ||
-            this.StoredType(function.DeclaringType, self) is not { } declaring)
+            this.ConformanceWitness(call.Target, self, contract, this.ConstraintScope(outer.Target.Declaration), out var witness) is not { } declaring)
         {
             return null;
         }
 
+        var function = witness.Function!;
         var origins = this.originScratch.Rent(function.Origins.Length);
         var inputs = this.originScratch.Rent(function.InputOrigins.Length);
         try
@@ -79,6 +120,16 @@ public sealed partial class Binding
                 result[i] = source[i] is { } origin ? this.SubstituteStoredOrigin(origin, requirement, call.Origins, call.InputOrigins) : null!;
             }
         }
+    }
+
+    // SPEC 8.11.4: the witness a verified conformance of a Self to a Contract maps a requirement to, and the instance of the Type
+    // that declares it (a base's for an inherited witness); null where none resolves.
+    private BoundType? ConformanceWitness(BindingSymbol requirement, BoundType self, BindingSymbol contract, BindingScope scope, out BoundWitness witness)
+    {
+        witness = default;
+        return this.ResolveConformance(self, contract, scope, out var path) == ConstraintProof.Proven && path is { IsVerified: true } &&
+            path.WitnessMap.TryGetValue(new(requirement, contract), out witness) && witness.Function is { ObjectCompatibility: ConstraintProof.Proven } function
+            ? this.StoredType(function.DeclaringType, self) : null;
     }
 
     // The requirement already acquired and verified its receiver. Its Proven witness lends only the base prefix;
@@ -113,7 +164,7 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 8.4.9: the Contract reference the call selected, as the instance's Type conforms to it: a Contract without Type
+    // SPEC 8.6.1: the Contract reference the call selected, as the instance's Type conforms to it: a Contract without Type
     // arguments is its own reference, and a bound reference has its Type arguments instantiated (`Indexable<Name>`, or
     // `C<E>` read as `C<i32>`). Null when the call recorded none or the instance has no such conformance.
     private BindingSymbol? InstanceReference(CallPlan call, BoundType self, CallPlan outer)

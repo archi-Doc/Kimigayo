@@ -34,18 +34,7 @@ public sealed class HoverStateTest
             Assert.Contains("Documentation truncated", first.Body);
         }
 
-        for (var warm = 0; warm < 32; warm++)
-        {
-            state.Find(text, new(0, 8));
-        }
-
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 1000; i++)
-        {
-            state.Find(text, new(0, 8));
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => state.Find(text, new(0, 8))));
         Assert.Equal(1, state.CachedCount);
         Assert.Same(first.Body, state.Find(text, new(0, 8)).Body);
     }
@@ -203,23 +192,11 @@ public sealed class HoverStateTest
         using var text = new TextDocument("struct Sample\n");
         var state = State(Entry(), Entry());
         Assert.NotNull(state.Find(text, new(0, 8)).Body);
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 1000; i++)
-        {
-            state.Find(text, new(0, 8));
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => state.Find(text, new(0, 8))));
         Assert.True(state.Edited(0, 0, 1));
         Assert.True(text.TryApply(new(0, 0), new(0, 0), " "));
         Assert.NotNull(state.Find(text, new(0, 9)).Body);
-        before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 1000; i++)
-        {
-            state.Find(text, new(0, 9));
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => state.Find(text, new(0, 9))));
     }
 
     [Fact]

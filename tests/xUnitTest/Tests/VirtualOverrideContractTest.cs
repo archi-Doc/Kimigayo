@@ -43,22 +43,21 @@ public class VirtualOverrideContractTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Original + "override func choose(self: objref/Self, value: ref/i32) -> ref/i32 => value\n()");
         var complete = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete));
         Assert.True(complete, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]
     [InlineData("objref")]
     [InlineData("objuniq")]
-    public void PlaceResultsAndRepeatedInputBindersUseTheOriginalDependency(string receiver)
+    public void ReferenceResultsAndRepeatedInputBindersUseTheOriginalDependency(string receiver)
     {
-        var source = "open struct Base\n    public virtual func choose(self: " + receiver + "/Self, a: ref/i32 during source, b: ref/i32 during source) -> place ref/i32 during source => a@follow\nstruct Derived : Base\n    override func choose(self: " + receiver + "/Self, a => x: ref/i32, b => y: ref/i32) -> place ref/i32 => x@follow\n()";
+        var source = "open struct Base\n    public virtual func choose(self: " + receiver + "/Self, a: ref/i32 during source, b: ref/i32 during source) -> ref/i32 during source => a\nstruct Derived : Base\n    override func choose(self: " + receiver + "/Self, a => x: ref/i32, b => y: ref/i32) -> ref/i32 => x\n()";
         var c = MinimalEmissionTest.Analyze(source);
         var implementation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsOverride);
         var origin = implementation.Parameters[1].Type.TypeOf()!.Origin;
         Assert.Same(origin, implementation.Parameters[2].Type.TypeOf()!.Origin);
         Assert.Same(origin, implementation.SymbolOf()!.Type!.Origin);
-        Assert.Equal(FunctionResultMode.PlaceRef, Binding.ResultModeOf(implementation.ReturnType));
         Assert.Equal(receiver == "objref", c.Binding.Result.IsComplete);
         Assert.Equal(receiver == "objref" ? 0 : 2, c.Binding.Issues.Count);
         Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.Unsupported_Kd, x.Code));
@@ -123,7 +122,7 @@ public class VirtualOverrideContractTest(ITestOutputHelper output)
         const string Source = "open struct Base\n    public virtual func choose(self: objref/Self, a: ref/i32 during first, b: ref/i32 during second) -> ref/i32 during second\n        origin first outlives second\n        return a\nstruct Derived : Base\n    override func choose(self: objref/Self, a: ref/i32 during first, b: ref/i32 during second) -> ref/i32 during second\n        origin first outlives second\n        return a\n()";
         var c = MinimalEmissionTest.Analyze(Source);
         var complete = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete));
         Assert.True(complete, MinimalEmissionTest.Describe(c, null));
     }
 

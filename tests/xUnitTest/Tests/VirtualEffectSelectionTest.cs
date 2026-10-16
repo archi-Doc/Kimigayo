@@ -116,6 +116,6 @@ public class VirtualEffectSelectionTest(ITestOutputHelper output)
     public void WarmPublicEffectChecksReuseTheirStorage()
     {
         var c = MinimalEmissionTest.Analyze("open struct Base\n    public virtual func get(self: objref/Self) -> i32\n        effect confined\n        return 1\n" + Reader + "()");
-        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind(), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
     }
 }

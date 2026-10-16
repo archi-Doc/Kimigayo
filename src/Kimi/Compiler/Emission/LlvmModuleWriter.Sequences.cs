@@ -4,7 +4,7 @@ namespace Kimi.Compiler;
 
 internal static partial class LlvmModuleWriter
 {
-    // SPEC 4.6.4, 4.6.8: the absolute interval of a directly applied range whose boundaries are constants and whose
+    // SPEC 4.6.3, 4.8.6: the absolute interval of a directly applied range whose boundaries are constants and whose
     // receiver is a fixed array, when it resolves; an interval that fails keeps its runtime check and Aborts when executed.
     private static bool TryConstantSlice(long fixedLength, Int128 shape, EmissionOperand start, EmissionOperand end, out Int128 first, out Int128 last)
     {
@@ -84,7 +84,7 @@ internal static partial class LlvmModuleWriter
                 output.Write(", align 8\n");
             }
 
-            // SPEC 4.6.8: a constant position proven inside a fixed array needs no runtime check.
+            // SPEC 4.8.6: a constant position proven inside a fixed array needs no runtime check.
             if (arrayRead && operands[1].Kind == EmissionOperandKind.Integer && operands[1].Value >= 0 && operands[1].Value < operands[2].Value)
             {
                 WriteArithmeticFailure(output, constants, instruction, ProvenValid, function.Abi.CallerLocation);
@@ -170,7 +170,7 @@ internal static partial class LlvmModuleWriter
 
         if (instruction.ScalarOperator is "SliceRange" or "SliceResolved")
         {
-            // SPEC 4.6.4: a closed range names its last element q and applies [start, q + 1) when start <= q < length; a
+            // SPEC 4.6.3: a closed range names its last element q and applies [start, q + 1) when start <= q < length; a
             // half-open one applies [start, end) when start <= end <= length. A from-end boundary is `length - offset`, and
             // every boundary that does not resolve compares out of range as an unsigned value, so one check covers all.
             var shape = instruction.ScalarOperator == "SliceRange" ? operands[4].Value : 0;
@@ -181,7 +181,7 @@ internal static partial class LlvmModuleWriter
             var constantSlice = instruction.ScalarOperator == "SliceRange" && TryConstantSlice(fixedLength, shape, operands[2], operands[3], out constantStart, out constantEnd);
             if (constantSlice)
             {
-                // SPEC 4.6.8: constant boundaries proven inside a fixed array need no runtime check.
+                // SPEC 4.8.6: constant boundaries proven inside a fixed array need no runtime check.
                 Name(output, "  %slicestart", id);
                 output.Write(" = or i64 0, ");
                 WriteNumber(output, constantStart);
@@ -193,7 +193,7 @@ internal static partial class LlvmModuleWriter
             }
             else if (instruction.ScalarOperator == "SliceResolved")
             {
-                // SPEC 4.6.4: a ResolvedRange key supplies both absolute boundaries from its {start, end} value, whose Field
+                // SPEC 4.6.3: a ResolvedRange key supplies both absolute boundaries from its {start, end} value, whose Field
                 // offsets are operands 3 and 4.
                 DefineField(output, function, operands[2], "%slicefield", id, operands[3].Value);
                 Name(output, "  %slicestart", id);
@@ -308,7 +308,7 @@ internal static partial class LlvmModuleWriter
         }
         else if (instruction.ScalarOperator == "capacity")
         {
-            // SPEC 4.7.4: an Array handle stores its capacity after the buffer and length.
+            // SPEC 4.9.5: an Array handle stores its capacity after the buffer and length.
             Name(output, "  %seqcapptr", id);
             output.Write(" = getelementptr i8, ptr ");
             Address();
@@ -320,7 +320,7 @@ internal static partial class LlvmModuleWriter
         }
         else if (instruction.ScalarOperator == "fromEnd")
         {
-            // SPEC 4.6.9: `length - offset` wraps without a check; the element access's bounds check follows.
+            // SPEC 4.7.1: `length - offset` wraps without a check; the element access's bounds check follows.
             Name(output, "  %v", id);
             output.Write(" = sub i64 ");
             End();

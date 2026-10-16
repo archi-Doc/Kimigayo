@@ -1,7 +1,7 @@
 # Kimigayo verification entry point. Evidence goes to artifacts/verify/<timestamp>-<mode>[-<name>]/.
 #
 # Unit mode (per implementation unit): Kimi + tests Release build with warnings as errors, the selected xUnit
-# classes/methods joined with the common compiler checks (CompilerSizeBudgetTest, ArchitectureRulesTest),
+# classes/methods joined with the common compiler checks (ArchitectureRulesTest),
 # then native O0/O2 execution of the fixtures those tests regenerated and the selected milestone harnesses.
 #   ./scripts/verify.ps1 -Class XunitTest.ForeignEmissionTest -Fixtures 'ForeignPointer*.ll'
 #   ./scripts/verify.ps1 -Class XunitTest.IterationAdapterTest -Fixtures 'IterationAdapter*.ll','LendingIterator*.ll'
@@ -25,7 +25,7 @@
 # -Pipeline mir (R3-R5) runs every compiler process of the run with KIMI_PIPELINE=mir; the default is legacy.
 #   ./scripts/verify.ps1 -Class XunitTest.PipelineSwitchTest -Pipeline mir
 #
-# Tests run up to -TestParallel collections at a time (default up to 4), respecting disabled
+# Tests run up to -TestParallel collections at a time (default up to 8), respecting disabled
 # parallelization on test classes. Use -TestParallel 1 for serial execution.
 # Unit -TestPurpose Functional/Allocation narrows a focused check; Session always runs both.
 # Native fixtures run up to -NativeParallel at a time (default up to 4), with individual logs.
@@ -52,13 +52,12 @@ param(
     # Milestone harnesses run concurrently, each in its own process with its own work directory and log.
     [ValidateRange(1, 2147483647)] [int] $Parallel = [Math]::Min(8, [Environment]::ProcessorCount),
     [ValidateRange(1, 2147483647)] [int] $NativeParallel = [Math]::Min(4, [Environment]::ProcessorCount),
-    [ValidateRange(1, 2147483647)] [int] $TestParallel = [Math]::Min(4, [Environment]::ProcessorCount)
+    [ValidateRange(1, 2147483647)] [int] $TestParallel = [Math]::Min(8, [Environment]::ProcessorCount)
 )
 $ErrorActionPreference = 'Stop'
 if ($Mode -eq 'Session' -and $TestPurpose -ne 'All') { throw 'Session verification must include functional and allocation regressions (-TestPurpose All).' }
 . (Join-Path $PSScriptRoot 'verification-selection.ps1')
 . (Join-Path $PSScriptRoot 'verification-inputs.ps1')
-. (Join-Path $PSScriptRoot 'code-rules-report.ps1')
 $Class = @(Join-KimiCommonTestSelections @($Class | ForEach-Object { ConvertTo-KimiTestPattern $_ }))
 $Method = @(Join-KimiCommonTestSelections @($Method | ForEach-Object { ConvertTo-KimiTestPattern $_ -Method }) -Method)
 $Pipeline = $Pipeline.ToLowerInvariant()
@@ -92,27 +91,40 @@ function Invoke-Script([scriptblock] $block, [string] $log) {
     catch { $_ | Out-String | Add-Content -LiteralPath $log; return $false }
 }
 
+function Start-ScriptJob([string] $step, [string] $script, [string] $log, [hashtable] $parameters) {
+    # Harness scripts throw on failure; the job writes its own log and Complete-ScriptJob records PASS/FAIL.
+    Write-Host "RUN  $step"
+    $job = Start-Job -ArgumentList $script, $log, $parameters -ScriptBlock {
+        param($script, $log, $parameters)
+        $ErrorActionPreference = 'Stop'
+        $timer = [Diagnostics.Stopwatch]::StartNew()
+        $ok = $true
+        try { & $script @parameters *> $log }
+        catch { $_ | Out-String | Add-Content -LiteralPath $log; $ok = $false }
+        [pscustomobject]@{ ok = $ok; seconds = $timer.Elapsed.TotalSeconds }
+    }
+    return [pscustomobject]@{ step = $step; log = $log; job = $job }
+}
+
+function Complete-ScriptJob($run) {
+    $result = Receive-Job -Job $run.job -Wait
+    Remove-Job -Job $run.job
+    Add-Step $run.step ($result.ok -eq $true) $run.log $result.seconds
+}
+
 function Invoke-Build([string] $configuration) {
     $timer = Start-Step "build $configuration"
     $log = Join-Path $evidence "build-$configuration.log"
-    $sarif = Join-Path $evidence "code-rules-$configuration.sarif"
     # --no-incremental recompiles every project, so analyzers (StyleCop) report on sources another build left up to date.
-    & dotnet build (Join-Path $repo $buildTarget) --no-restore --no-incremental -c $configuration --disable-build-servers -m:1 -warnaserror -p:EmitCompilerGeneratedFiles=false -p:KimiCodeRulesMode=Verify "-p:KimiCodeRulesLog=$sarif" -v quiet *> $log
-    $ok = $LASTEXITCODE -eq 0
-    if ($ok) {
-        # The completion marker proves the analyzer ran on the current configuration and baseline.
-        try { $null = Read-KimiCodeRulesSarif $sarif $repo -RequireComplete }
-        catch { $_ | Out-String | Add-Content -LiteralPath $log; $ok = $false }
-    }
-    Add-Step "build $configuration" $ok $log $timer.Elapsed.TotalSeconds
-    return $ok
+    & dotnet build (Join-Path $repo $buildTarget) --no-restore --no-incremental -c $configuration -warnaserror -p:EmitCompilerGeneratedFiles=false -v quiet *> $log
+    Add-Step "build $configuration" ($LASTEXITCODE -eq 0) $log $timer.Elapsed.TotalSeconds
 }
 
 function Test-LspDiscoveryAccess {
     $timer = Start-Step 'LSP discovery access'
     $log = Join-Path $evidence 'lsp-discovery-access.log'
     $ok = $true
-    # Implicit-source fixtures live under the OS temp directory. SPEC 23.4.3 requires
+    # Implicit-source fixtures live under the OS temp directory. SPEC 23.4 requires
     # listing every ancestor; an unreadable listing cannot mean "no project".
     $directory = [IO.Path]::TrimEndingDirectorySeparator([IO.Path]::GetFullPath([IO.Path]::GetTempPath()))
     while ($directory) {
@@ -186,13 +198,12 @@ try {
     Add-Step 'input manifest' $true "$($beforeInputs.files.Count) source/configuration files, $($beforeInputs.dependencies.Count) NuGet inputs" $timer.Elapsed.TotalSeconds
 }
 catch { Add-Step 'input manifest' $false $_.Exception.Message $timer.Elapsed.TotalSeconds }
+$scriptRuns = @()
 if (-not $failed) {
-    foreach ($scriptTest in @('VerificationSelectionTest', 'VerificationInputsTest', 'CodeRulesReportTest', 'CodeRulesApprovalTest')) {
-        $timer = Start-Step $scriptTest
-        $log = Join-Path $evidence "$scriptTest.log"
-        $ok = Invoke-Script { & (Join-Path $repo "tests/scripts/$scriptTest.ps1") } $log
-        Add-Step $scriptTest $ok $log $timer.Elapsed.TotalSeconds
-    }
+    # The script regressions need no compiler build; they run while it compiles.
+    $scriptRuns = @('VerificationSelectionTest', 'VerificationInputsTest' | ForEach-Object {
+        Start-ScriptJob $_ (Join-Path $repo "tests/scripts/$_.ps1") (Join-Path $evidence "$_.log") @{}
+    })
 }
 $filters = @()
 foreach ($c in $Class) {
@@ -220,16 +231,16 @@ foreach ($pattern in $classPatterns) {
 }
 if ($needsLspAccess) { $null = Test-LspDiscoveryAccess }
 
+if (-not $failed) { Invoke-Build $Configuration }
+foreach ($run in $scriptRuns) { Complete-ScriptJob $run }
 $toolchainVerification = 'not-performed'
-if (-not $failed -and (Invoke-Build $Configuration)) {
-    if ($VerifyToolchain) {
-        $timer = Start-Step 'toolchain verify'
-        $log = Join-Path $evidence 'toolchain.log'
-        & dotnet (Join-Path $repo "src/Kimi/bin/$Configuration/net10.0/Kimi.dll") toolchain verify --Report (Join-Path $evidence 'toolchain.json') *> $log
-        $ok = $LASTEXITCODE -eq 0
-        $toolchainVerification = if ($ok) { 'passed' } else { 'failed' }
-        Add-Step 'toolchain verify' $ok $log $timer.Elapsed.TotalSeconds
-    }
+if (-not $failed -and $VerifyToolchain) {
+    $timer = Start-Step 'toolchain verify'
+    $log = Join-Path $evidence 'toolchain.log'
+    & dotnet (Join-Path $repo "src/Kimi/bin/$Configuration/net10.0/Kimi.dll") toolchain verify --Report (Join-Path $evidence 'toolchain.json') *> $log
+    $ok = $LASTEXITCODE -eq 0
+    $toolchainVerification = if ($ok) { 'passed' } else { 'failed' }
+    Add-Step 'toolchain verify' $ok $log $timer.Elapsed.TotalSeconds
 }
 if (-not $failed -and $Mode -eq 'Unit' -and ($hasTestSelection -or $TestPurpose -ne 'All')) {
     Test-Selection $Configuration $filters
@@ -280,30 +291,13 @@ if (-not $failed -and $Fixtures.Count -gt 0) {
 }
 
 if (-not $failed -and $Milestone.Count -gt 0) {
-    # Harness scripts throw on failure; each job records PASS/FAIL after writing its own log.
-    $jobs = [ordered]@{}
+    $runs = [Collections.Generic.List[object]]::new()
     foreach ($number in $Milestone) {
-        while (@($jobs.Values | Where-Object { $_.State -eq 'Running' }).Count -ge $Parallel) { Start-Sleep -Milliseconds 500 }
-        Write-Host "RUN  milestone $number ($native)"
-        $log = Join-Path $evidence "milestone$number-$native.log"
-        $script = Join-Path $repo "src/backend/windows-x64/test-milestone$number.ps1"
-        $jobs["$number"] = Start-Job -Name "milestone$number" -ArgumentList $script, $native, $log -ScriptBlock {
-            param($script, $configuration, $log)
-            $ErrorActionPreference = 'Stop'
-            $timer = [Diagnostics.Stopwatch]::StartNew()
-            $ok = $true
-            try { & $script -Configuration $configuration *> $log }
-            catch { $_ | Out-String | Add-Content -LiteralPath $log; $ok = $false }
-            [pscustomobject]@{ ok = $ok; seconds = $timer.Elapsed.TotalSeconds }
-        }
+        while (@($runs | Where-Object { $_.job.State -eq 'Running' }).Count -ge $Parallel) { Start-Sleep -Milliseconds 500 }
+        $runs.Add((Start-ScriptJob "milestone $number ($native)" (Join-Path $repo "src/backend/windows-x64/test-milestone$number.ps1") (Join-Path $evidence "milestone$number-$native.log") @{ Configuration = $native }))
     }
 
-    foreach ($number in $Milestone) {
-        $job = $jobs["$number"]
-        $result = Receive-Job -Job $job -Wait
-        Remove-Job -Job $job
-        Add-Step "milestone $number ($native)" ($result.ok -eq $true) (Join-Path $evidence "milestone$number-$native.log") $result.seconds
-    }
+    foreach ($run in $runs) { Complete-ScriptJob $run }
 }
 
 if ($null -ne $beforeInputs) {

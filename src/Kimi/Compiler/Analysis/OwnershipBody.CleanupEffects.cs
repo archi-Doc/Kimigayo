@@ -54,7 +54,7 @@ public sealed partial class OwnershipBody
 
         var cases = this.cleanupCases!;
         var count = cases.Count / this.cleanupCaseWidth;
-        var applicable = count == OwnershipAnalysis.CaseBound ? ulong.MaxValue : (1UL << count) - 1;
+        var applicable = count == PairBinder.CaseBound ? ulong.MaxValue : (1UL << count) - 1;
         for (var slot = 0; slot < this.cleanupCaseWidth && applicable != 0; slot++)
         {
             if (cases[slot].Target.WholeType is not { } whole || binding.InstantiateStorageType(whole, call) is not { } resolved)

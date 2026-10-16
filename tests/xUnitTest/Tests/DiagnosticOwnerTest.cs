@@ -8,7 +8,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 23.3.3 and 23.3.6: one owner per check request, partitions with an error state independent of display,
+// SPEC 23.2.2 and 23.1: one owner per check request, partitions with an error state independent of display,
 // records ordered by source table and span, one fault record, and a JSON form that keeps every field.
 public sealed class DiagnosticOwnerTest
 {
@@ -119,7 +119,7 @@ public sealed class DiagnosticOwnerTest
         }
     }
 
-    // SPEC 23.3.6.3: the project file is consumed before every source, so a fault at it that no kept record names takes the
+    // SPEC 23.1.2: the project file is consumed before every source, so a fault at it that no kept record names takes the
     // first source table entry, and the kept records keep their own sources.
     [Fact]
     public void AFaultAtTheProjectFileKeepsConsumptionOrder()
@@ -178,7 +178,7 @@ public sealed class DiagnosticOwnerTest
         Assert.Equal(result, JsonSerializer.Deserialize(json, DiagnosticJsonContext.Default.DiagnosticResult));
     }
 
-    // SPEC 23.3.6.8, 23.3.6.9: the JSON form keeps every field of a repair candidate, and equality compares candidates.
+    // SPEC 23.3, 23.1.3: the JSON form keeps every field of a repair candidate, and equality compares candidates.
     [Fact]
     public void TheJsonFormKeepsRepairCandidates()
     {
@@ -283,7 +283,7 @@ public sealed class DiagnosticOwnerTest
         Assert.Equal(DiagnosticFault.UndefinedOrder, Assert.Throws<DiagnosticContractException>(() => owner.Finalize()).Fault);
     }
 
-    // SPEC 23.3.6.2, 23.3.6.5: the Reason is typed by the catalog; two long Types keep their differences and elide the rest;
+    // SPEC 23.3, 23.1: the Reason is typed by the catalog; two long Types keep their differences and elide the rest;
     // environment text is a bounded Note; limits count what they omit.
     [Fact]
     public void ExplanationsAreTypedBoundedAndCountTheirOmissions()

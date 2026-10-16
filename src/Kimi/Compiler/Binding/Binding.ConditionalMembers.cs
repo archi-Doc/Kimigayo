@@ -32,7 +32,9 @@ public sealed partial class Binding
             return ConstraintProof.Proven;
         }
 
-        if (declaration.BindingState == BindingState.Invalid || (member.Declaration.BindingState == BindingState.Invalid && !IsFormFailure(member.Declaration)) || this.scopes[declaration].Constraints?.Invalid == true)
+        if (declaration.BindingState == BindingState.Invalid ||
+            (member.Declaration.BindingState == BindingState.Invalid && !KeepsSignature(member.Declaration)) ||
+            this.scopes[declaration].Constraints?.Invalid == true)
         {
             return ConstraintProof.Error;
         }

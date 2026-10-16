@@ -64,7 +64,7 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 8.4.2, 8.4.9: a Contract named without Type arguments, as an associated Type's owner is, is satisfied by any
+    // SPEC 8.4.3, 8.6.1: a Contract named without Type arguments, as an associated Type's owner is, is satisfied by any
     // bound reference of its declaration.
     private static bool SatisfiesDeclaration(BindingSymbol candidate, BindingSymbol parent)
         => IsBoundContractReference(candidate) && !IsBoundContractReference(parent) && ReferenceEquals(candidate.Declaration, parent.Declaration);
@@ -92,11 +92,11 @@ public sealed partial class Binding
             IdentifierNameKoto or TypeSemanticsKoto { Type: null, SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null } => true,
             MemberAccessKoto member => IsRefinementName(member.Left) && IsRefinementName(member.Right),
             SyntaxFormKoto { Akind: KotoKind.RootName, Operands.Length: 1 } root => IsRefinementName(root.Operands[0]),
-            GenericsKoto { Identifier: { } identifier } => IsRefinementName(identifier), // SPEC 8.4.2: a parent with Type arguments.
+            GenericsKoto { Identifier: { } identifier } => IsRefinementName(identifier), // SPEC 8.4.3: a parent with Type arguments.
             _ => false,
         };
 
-    // SPEC 8.4.2: the Type-argument application of a refinement parent, below transparent wrappers and a root-name form.
+    // SPEC 8.4.3: the Type-argument application of a refinement parent, below transparent wrappers and a root-name form.
     private static GenericsKoto? GenericParentApplication(Koto name)
     {
         if (name is SyntaxFormKoto { Akind: KotoKind.RootName, Operands: [{ } rooted] })
@@ -112,7 +112,7 @@ public sealed partial class Binding
     }
 
     /// <summary>
-    /// SPEC 8.4.4, 8.4.9: the registered conformance of a Type declaration to a Contract, whether registered under the
+    /// SPEC 8.6, 8.6.1: the registered conformance of a Type declaration to a Contract, whether registered under the
     /// Contract declaration itself or under one bound reference of it. Several bound references of one declaration are
     /// distinct conformances, so a query by declaration alone is ambiguous there.
     /// </summary>
@@ -331,7 +331,7 @@ public sealed partial class Binding
                 name = inner;
             }
 
-            // SPEC 8.4.2: a parent with Type parameters takes exactly its arguments, possibly below a root-name form, and a
+            // SPEC 8.4.3: a parent with Type parameters takes exactly its arguments, possibly below a root-name form, and a
             // parent without takes none; an empty list is never an application, and a generic parent is never deferred.
             var generic = GenericParentApplication(name);
             var parent = this.TypeName(name, this.scopes[contract], false);
@@ -510,7 +510,7 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 8.4.7.2: derived structs inherit the opt-out. Bases are resolved by name here,
+        // SPEC 8.7.3: derived structs inherit the opt-out. Bases are resolved by name here,
         // before headers bind, so that every later object formation sees the effective state.
         for (var n = 0; n < this.nodes.Count; n++)
         {
@@ -529,7 +529,7 @@ public sealed partial class Binding
             }
             else if (constraint.Contract is { } closed && this.IsClosedContractGrant(closed, type))
             {
-                this.Fail(use, BindingFailure.ClosedContractConformance); // SPEC 8.4.7: the conforming Types of a closed Contract are fixed.
+                this.Fail(use, BindingFailure.ClosedContractConformance); // SPEC 8.7: the conforming Types of a closed Contract are fixed.
             }
             else if (constraint is { Kind: ConstraintKind.Contract, Contract: { Intrinsic: IntrinsicKind.None or IntrinsicKind.Copy or IntrinsicKind.Owned, Contract: not null } contract })
             {
@@ -541,15 +541,15 @@ public sealed partial class Binding
             }
             else if (constraint.Contract?.Intrinsic == IntrinsicKind.ObjectPayload)
             {
-                this.Fail(use, BindingFailure.InvalidSelfClause); // SPEC 8.4.7.2: users cannot grant ObjectPayload.
+                this.Fail(use, BindingFailure.InvalidSelfClause); // SPEC 8.7.3: users cannot grant ObjectPayload.
             }
             else if (constraint.Contract?.Intrinsic == IntrinsicKind.PrimitiveInteger)
             {
-                this.Fail(use, BindingFailure.ClosedContractConformance); // SPEC 8.4.7.3: exactly the twelve integer Types conform.
+                this.Fail(use, BindingFailure.ClosedContractConformance); // SPEC 8.7.4: exactly the twelve integer Types conform.
             }
             else if (constraint.Kind == ConstraintKind.Not)
             {
-                // SPEC 8.2, 8.4.7.2: the only negated Self clause is the standalone, unrepeated ObjectPayload opt-out.
+                // SPEC 8.2, 8.7.3: the only negated Self clause is the standalone, unrepeated ObjectPayload opt-out.
                 if (standalone && constraint.Left is { Kind: ConstraintKind.Contract, Contract.Intrinsic: IntrinsicKind.ObjectPayload } && !ReferenceEquals(type.ObjectPayloadOptOut, type))
                 {
                     type.ObjectPayloadOptOut = type;
@@ -666,9 +666,9 @@ public sealed partial class Binding
         // Refinement assumptions are input evidence, not in-progress registrations.
         var premise = IsContractSelf(type) && type.Symbol!.SelfOf is { } own && this.AvailableContractPremise(own) && IsRefinement(own, contract);
 
-        // SPEC 8.4.7.3: a proven PrimitiveInteger supplies the built-in comparison and formatting conformances of the twelve
+        // SPEC 8.7.4: a proven PrimitiveInteger supplies the built-in comparison and formatting conformances of the twelve
         // Types and their conformance to the closed Contract Position; Wrapping<T> over it has the comparison and formatting
-        // conformances of its argument but is never a Position (SPEC 3.1.1.1).
+        // conformances of its argument but is never a Position (SPEC 3.1.1).
         premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Utf8Format or KimiDeclarationId.Position && this.IsGenericInteger(type, scope);
         premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Utf8Format && this.IsGenericWrapping(type, scope);
         for (var current = scope; current is not null && !premise; current = current.Parent)
@@ -729,7 +729,7 @@ public sealed partial class Binding
             var scope = this.scopes[this.nodes[n]];
             if (scope.Owner is ContractKoto contract)
             {
-                // SPEC 8.4.7.2: inside a Contract, an inherited Self clause holds for its Self, as one declared directly does.
+                // SPEC 8.7.3: inside a Contract, an inherited Self clause holds for its Self, as one declared directly does.
                 this.AddContractPremises(contract.BoundSymbol!.Contract!, this.ContractSelfType(contract.BoundSymbol), scope);
             }
 
@@ -828,7 +828,7 @@ public sealed partial class Binding
             {
                 if (conformance.Unsupported && mode == BindingMode.Final)
                 {
-                    this.Fail(conformance.Use, BindingFailure.Unsupported); // SPEC 12.4.4.1, 23.3.6.1: the limit's one location
+                    this.Fail(conformance.Use, BindingFailure.Unsupported); // SPEC 12.7, 23.1.1: the limit's one location
                     continue;
                 }
 

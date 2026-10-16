@@ -8,9 +8,9 @@ namespace XunitTest;
 
 public class RequireContinuationTest
 {
+    internal const string Default = "func value(c: bool, y: i32 = (do\n    var n: i32\n    do\n        require c else\n            n = 1\n            loop => continue\n        n = 2\n        loop => continue\n    0\n)) -> i32 => y\n";
     private const string Stop = "func stop() -> Never => $abort(\"stop\")\n";
     private const string Counter = "\nstruct Counter\n    public var value: i32 = 0";
-    private const string Default = "func value(c: bool, y: i32 = (do\n    var n: i32\n    do\n        require c else\n            n = 1\n            loop => continue\n        n = 2\n        loop => continue\n    0\n)) -> i32 => y\n";
 
     [Theory]
     [InlineData("Return", "var x: i32", "require c else\n            x = 1\n            return", "x = 2\n        stop()", false, "done\n")]

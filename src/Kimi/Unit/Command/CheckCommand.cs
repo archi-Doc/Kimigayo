@@ -22,7 +22,7 @@ public sealed class CheckCommand : ISimpleCommand<KimiOptions>
     {
         if (string.Equals(options.Format, "json", StringComparison.OrdinalIgnoreCase))
         {
-            // SPEC 23.3.6.8: one check unit through the shared check entry, written as one JSON document.
+            // SPEC 23.3: one check unit through the shared check entry, written as one JSON document.
             Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, () => Task.FromResult(CheckJsonOutput.Run(options, args, cancellationToken)));
             return;
         }

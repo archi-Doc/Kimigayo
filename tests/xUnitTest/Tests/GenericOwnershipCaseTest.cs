@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 8.10 Semantics cases: the family corpus of <c>tests/diagnostics/pair-cases.json</c>, written from the SPEC. A generic
+/// <summary>SPEC 8.15 Semantics cases: the family corpus of <c>tests/diagnostics/pair-cases.json</c>, written from the SPEC. A generic
 /// definition is rejected at definition, with owner-only callers, exactly in the cases the SPEC rejects (at the stated operation with
 /// the stated Loan holder), and the valid families run natively in every instance.</summary>
 public class GenericOwnershipCaseTest

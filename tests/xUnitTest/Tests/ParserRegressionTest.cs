@@ -874,7 +874,7 @@ public class ParserRegressionTest
 
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
 
-        // The excluded target is parsed with the ordinary grammar but contributes nothing (SPEC 19.5).
+        // The excluded target is parsed with the ordinary grammar but contributes nothing (SPEC 19.4).
         Assert.Equal(nameof(DiagnosticCode.MissingSyntax_Kd), Assert.Single(TestDiagnostics.Of(kotonoha)).Code);
         Assert.Equal("retained", Assert.IsType<FieldKoto>(Assert.Single(GetChildren(kotonoha.RootKoto))).NameKoto.IdentifierName);
     }
@@ -980,7 +980,7 @@ public class ParserRegressionTest
         Assert.Equal("replacement", change.Text);
     }
 
-    // SPEC 7.4: every function, constructor, destructor and accessor body begins with its Constraint prefix. A subject the
+    // SPEC 7.5: every function, constructor, destructor and accessor body begins with its Constraint prefix. A subject the
     // declaration does not permit is diagnosed, never read as a runtime test; parentheses make the test executable.
     [Theory]
     [InlineData("func f(value: i32)\n    value is Dog\n    ()", 1)]
@@ -998,7 +998,7 @@ public class ParserRegressionTest
         Assert.Equal(unexpected, diagnostics.Count(x => x.Code == nameof(DiagnosticCode.MisplacedSyntax_Kd)));
     }
 
-    // SPEC 8.4.3: a Contract-qualified projection names its Contract in parentheses, also in Constraint subjects and
+    // SPEC 8.5: a Contract-qualified projection names its Contract in parentheses, also in Constraint subjects and
     // requirement Types.
     [Theory]
     [InlineData("struct W<I>\n    I is LendingIterator\n    associate LendingIterator.LentItem(step) is I.(LendingIterator).LentItem(step)\n")]

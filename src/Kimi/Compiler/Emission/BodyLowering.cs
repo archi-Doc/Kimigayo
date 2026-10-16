@@ -5,7 +5,7 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 /// <summary>
-/// Lowers one verified ownership body into a physical function (SPEC 21.4). It consumes the existing
+/// Lowers one verified ownership body into a physical function (SPEC 21.3). It consumes the existing
 /// operation/Place identities and edge cleanup plans, and never guesses a representation, terminator or cleanup.
 /// </summary>
 /// <remarks>
@@ -475,7 +475,7 @@ internal sealed partial class BodyLowering
                 var place = body.Places[operation.Place];
                 if (ReferenceEquals(place.Type, BoundType.Unit))
                 {
-                    break; // Unit retains its verified effects but has no physical value (SPEC 21.3.3).
+                    break; // Unit retains its verified effects but has no physical value (SPEC 21.3).
                 }
 
                 return Fail("A produced value needs unsupported value lowering.", out failure);

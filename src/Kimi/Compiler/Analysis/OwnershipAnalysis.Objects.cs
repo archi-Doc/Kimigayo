@@ -14,7 +14,7 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        // SPEC 13.5.5.1: selection lends the complete payload; the ordinary Copy read retains its internal Origins.
+        // SPEC 13.5.5: selection lends the complete payload; the ordinary Copy read retains its internal Origins.
         var type = this.compilation.Binding.PayloadReadReference(source, payload);
         var reference = this.BorrowStruct(source, type);
         if (reference < 0)

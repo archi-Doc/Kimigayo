@@ -111,23 +111,17 @@ public class AbortEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("let text = \"x\"\n$abort(text@move)");
         c = CompilationTestHelper.Reload(c);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out _));
-        }
+        Assert.True(c.Bind().IsComplete);
+        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out _));
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
         var success = true;
-        for (var i = 0; i < 128; i++)
+        var allocated = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
             success &= c.WriteIr(TextWriter.Null, out _);
-        }
-
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        });
         Assert.True(success);
         Assert.Equal(0, allocated);
     }

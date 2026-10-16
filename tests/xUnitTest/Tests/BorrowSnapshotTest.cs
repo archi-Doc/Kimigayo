@@ -24,12 +24,7 @@ public class BorrowSnapshotTest
             }
         }
 
-        for (var i = 0; i < 3; i++)
-        {
-            Analyze();
-        }
-
-        Assert.Equal(0, AllocationMeasurement.Measure(Analyze, 2));
+        Assert.Equal(0, AllocationMeasurement.Measure(Analyze));
         ScalarEmissionTest.EmitFixture($"BorrowSnapshot{count}False", source, string.Empty);
     }
 }

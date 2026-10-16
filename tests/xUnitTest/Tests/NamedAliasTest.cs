@@ -157,11 +157,7 @@ public class NamedAliasTest
     public void WarmAliasResolutionAllocatesNothing()
     {
         var c = Parse("alias O => Kimi.Console\nalias O => ::Kimi.Console\nalias Kimi.Console\nO.writeLine(\"a\")\nwriteLine(\"b\")");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete, Describe(c));
-        }
-
+        Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
     }
 

@@ -1,0 +1,43 @@
+open struct Base
+    public let value: i32 = 9
+struct Derived: Base
+    public init() => ()
+func discard<s/T>(value: i32) -> ()
+    s is owner or ref or object
+    _ = value@s
+func address<s/T>(value: i32) -> ()
+    s is obj or raw
+    _ = value@s
+func widen<s/T>(value: s/Derived) -> s/Base
+    s is object
+    return value@move@s/Base
+func inspect<s/T>(value: s/Derived) -> i32
+    s is object
+    let view = value@objref/Base
+    return view.value
+func mixed<s/T>(value: s/T) -> ()
+    s is obj or ref
+    T is ObjectPayload
+    _ = value@move@s
+func make<s/T>() -> ()
+    s is owner or object
+    let create = func [] (value: i32) -> s/i32 => value@s
+    _ = create(7)@move
+func take<s/T>(value: s/i32 = 7@s) -> s/i32
+    s is owner or object
+    return value@move
+func give<t/U>() -> t/i32
+    t is owner or object
+    return take<t/U>()
+func peek<s/T>(value: s/Derived) -> i32
+    s is obj or objref
+    let view = value@objref/Base
+    return view.value
+func poke<s/T>(value: s/Derived) -> ()
+    s is obj or objuniq
+    var slot = value@move
+    _ = slot@objuniq/Base
+func cast<s/T>(pointer: raw/i32, address: usize) -> ()
+    s is raw
+    _ = pointer@s/u8
+    _ = address@s/u8

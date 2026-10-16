@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 3.4.1: a member or Tuple element selected through several reference layers is reached through one
+/// <summary>SPEC 3.4.3: a member or Tuple element selected through several reference layers is reached through one
 /// reference to its declaring Type, shared when any layer is shared and exclusive otherwise.</summary>
 public class MemberThroughLayersTest
 {

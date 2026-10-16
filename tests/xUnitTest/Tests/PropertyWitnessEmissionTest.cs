@@ -16,7 +16,7 @@ public class PropertyWitnessEmissionTest
     private const string Viewed = "contract Viewed\n    property count: ref/i32\n        get(self: ref/Self) -> ref/i32\npublic open struct Base\n    public var count: i32 = 1\npublic struct Leaf : Base\n    Self is Viewed\n    public init() => ()\n" +
         "func view<T>(x: ref/T) -> ref/i32\n    T is Viewed\n    return x.count\nvar x = Leaf.init()\nlet r = view(x@ref)\n";
 
-    // SPEC 11.4.2: an inherited standard bridge reaches the Field from the requirement receiver over the conforming Type, as a direct
+    // SPEC 11.9.2: an inherited standard bridge reaches the Field from the requirement receiver over the conforming Type, as a direct
     // access does, in every storage kind (it failed generation with "Concrete requirement call lacks a verified implementation mapping").
     public static TheoryData<string, string, string> InheritedBridges => new()
     {
@@ -46,7 +46,7 @@ public class PropertyWitnessEmissionTest
     public void InheritedBridgesKeepTheirChecks(string source, string code)
         => Assert.Contains(code, DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
 
-    // SPEC 11.4.2: an inherited bridge is a verified ordinary body that warm passes reuse, also when no call reaches it.
+    // SPEC 11.9.2: an inherited bridge is a verified ordinary body that warm passes reuse, also when no call reaches it.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void InheritedBridgeBodiesAreReused()
@@ -63,7 +63,7 @@ public class PropertyWitnessEmissionTest
         Assert.True(uncalled.WriteIr(TextWriter.Null, out error), MinimalEmissionTest.Describe(uncalled, error));
     }
 
-    // SPEC 11.4.2: a bridge is checked and executed under its conformance path's premises, so the Copy that `when T is Copy` grants
+    // SPEC 11.9.2: a bridge is checked and executed under its conformance path's premises, so the Copy that `when T is Copy` grants
     // holds in its body (it was TransferRequired_Kd at `has get`).
     [Fact]
     public void AConditionalStorageCopyBridgeUsesItsConformancePremises()
@@ -167,7 +167,7 @@ public class PropertyWitnessEmissionTest
         Assert.Equal(code, Assert.Single(DiagnosticCorpus.Check(source).Diagnostics).Code);
     }
 
-    // SPEC 11.4: a Property requirement is instance-only, so a Type names none.
+    // SPEC 11.9: a Property requirement is instance-only, so a Type names none.
     [Fact]
     public void ARequirementPropertyIsNoTypeMember()
     {

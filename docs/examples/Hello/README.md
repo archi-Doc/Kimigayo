@@ -20,7 +20,7 @@ It validates the existing LLVM **22.1.8** installation, copies the required exec
 
 `Hello.kimiproj` uses Tinyhand indentation syntax and needs no LLVM/backend paths. `OutputPath` defaults to `bin/<target>/Hello.ll`; `Optimization` accepts `O0` or `O2` and defaults to `O2`. Source builds find the checkout's toolchain; standalone compiler distributions use toolchain beside Kimi.exe/Kimi.dll. Use `--ToolchainRoot` or `KIMI_TOOLCHAIN_ROOT` to select another root. Legacy LlvmBin and explicit kimi_backend entries remain supported as overrides.
 
-`kernel32.lib` is generated and validated during setup/update, then shared from `toolchain/windows_x64`. No Windows SDK is required. Ordinary builds skip tool identity checks; `kimi toolchain verify` explicitly checks LLVM versions, installed hashes, adopted backend and import generation conditions. See [§20.8.8](../../impl/20-compilation-configuration.md#2088-toolchain-storage-and-native-library-lifecycle).
+`kernel32.lib` is generated and validated during setup/update, then shared from `toolchain/windows_x64`. No Windows SDK is required. Ordinary builds skip tool identity checks; `kimi toolchain verify` explicitly checks LLVM versions, installed hashes, adopted backend and import generation conditions. See [§20.3.2](../../impl/20-compilation-configuration.md#2032-builds-and-artifacts).
 
 ## Build and run
 

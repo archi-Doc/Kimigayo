@@ -141,11 +141,7 @@ public class RequirementTypeParsingTest
     public void WarmTupleAndConstructedProjectionBindingAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze("public contract C\n    associate Element\npublic struct Box<T>\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func use<T>(value: T)\n        T is (Box<i32>.C.Element, string)\n        ()");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

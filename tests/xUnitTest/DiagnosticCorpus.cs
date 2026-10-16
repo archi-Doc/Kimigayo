@@ -51,7 +51,7 @@ internal sealed record SyntaxEdit(string Text, string? At = null, string? After 
     public SyntaxLocation Location => new(this.At, this.After, this.Skip, this.Length);
 }
 
-/// <summary>One repair candidate a syntax record must offer (SPEC 23.3.6.9), as its kind and located edits.</summary>
+/// <summary>One repair candidate a syntax record must offer (SPEC 23.1.3), as its kind and located edits.</summary>
 /// <param name="Kind">The stable kind name, such as <c>Repair.ReplaceToken</c>.</param>
 /// <param name="Edits">The edits in position order.</param>
 internal sealed record SyntaxRepair(string Kind, SyntaxEdit[] Edits);
@@ -97,11 +97,17 @@ internal static class DiagnosticCorpus
     private static readonly Lazy<SyntaxCase[]> SyntaxCorpus = new(static () =>
         JsonSerializer.Deserialize<SyntaxCase[]>(File.ReadAllText(RepositoryPath("tests", "diagnostics", "syntax.json")))!);
 
+    private static readonly Lazy<(string Name, string Source)[]> SpecCorpus = new(ReadSpecBlocks);
+
     /// <summary>Gets the mutation cases of <c>tests/diagnostics/mutations.json</c>.</summary>
     internal static IReadOnlyList<MutationCase> Mutations => MutationCases.Value;
 
     /// <summary>Gets the syntax cases of <c>tests/diagnostics/syntax.json</c>.</summary>
     internal static IReadOnlyList<SyntaxCase> SyntaxCases => SyntaxCorpus.Value;
+
+    /// <summary>Gets every <c>kimi</c> code block of the specification (<c>docs/spec/**/*.md</c>), named by its file below <c>docs/spec</c>
+    /// without the extension, a slash and the line of its opening fence.</summary>
+    internal static IReadOnlyList<(string Name, string Source)> SpecBlocks => SpecCorpus.Value;
 
     /// <summary>Gets a syntax case by name.</summary>
     /// <param name="name">The case name.</param>
@@ -109,7 +115,13 @@ internal static class DiagnosticCorpus
     internal static SyntaxCase Syntax(string name)
         => SyntaxCases.Single(x => x.Name == name);
 
-    /// <summary>Checks one source as the product of a minimal Application project through the shared check entry (SPEC 23.3.2).</summary>
+    /// <summary>Gets the source of a specification block by name.</summary>
+    /// <param name="name">The block name.</param>
+    /// <returns>The source text.</returns>
+    internal static string Spec(string name)
+        => SpecBlocks.Single(x => x.Name == name).Source;
+
+    /// <summary>Checks one source as the product of a minimal Application project through the shared check entry (SPEC 23.2.2).</summary>
     /// <param name="source">The source text of <c>Program.kimi</c>.</param>
     /// <returns>The finalized output.</returns>
     internal static CheckOutput Check(string source)
@@ -157,5 +169,39 @@ internal static class DiagnosticCorpus
         var index = source.IndexOf(mutation.Before, StringComparison.Ordinal);
         Assert.True(index >= 0 && index == source.LastIndexOf(mutation.Before, StringComparison.Ordinal), $"{mutation.Name}: the replaced text must occur exactly once.");
         return string.Concat(source.AsSpan(0, index), mutation.After, source.AsSpan(index + mutation.Before.Length));
+    }
+
+    // A fenced block (CommonMark, as docs/spec/02-source-and-lexical-structure.md states) opens at a line that begins with three or more backticks
+    // or tildes and closes at the next line that is the same fence; the content of any block, kimi or not, is not searched for further
+    // fences.
+    private static (string Name, string Source)[] ReadSpecBlocks()
+    {
+        var root = RepositoryPath("docs", "spec");
+        var blocks = new List<(string Name, string Source)>();
+        foreach (var file in Directory.GetFiles(root, "*.md", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
+        {
+            var name = Path.ChangeExtension(Path.GetRelativePath(root, file), null).Replace('\\', '/');
+            var lines = File.ReadAllText(file).Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+            for (var line = 0; line < lines.Length; line++)
+            {
+                var marker = lines[line].StartsWith('~') ? '~' : '`';
+                var fence = lines[line][..(lines[line].Length - lines[line].TrimStart(marker).Length)];
+                if (fence.Length < 3)
+                {
+                    continue;
+                }
+
+                var end = Array.FindIndex(lines, line + 1, x => x.TrimEnd() == fence);
+                end = end < 0 ? lines.Length : end;
+                if (lines[line][fence.Length..].Trim() == "kimi")
+                {
+                    blocks.Add(($"{name}/{line + 1}", string.Join('\n', lines[(line + 1)..end])));
+                }
+
+                line = end;
+            }
+        }
+
+        return [.. blocks];
     }
 }

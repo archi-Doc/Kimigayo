@@ -42,14 +42,11 @@ public class TimeLibraryTest
     {
         var c = MinimalEmissionTest.Analyze("var watch = Kimi.Time.Stopwatch.init()\nwatch.start()\nwatch.stop()\nlet duration = watch.elapsed()");
         var valid = true;
-        var bytes = AllocationMeasurement.Measure(
-            () =>
-            {
-                valid &= c.Analyze().IsVerified;
-                valid &= c.WriteIr(TextWriter.Null, out _);
-            },
-            iterations: 128,
-            warmupIterations: 100);
+        var bytes = AllocationMeasurement.Measure(() =>
+        {
+            valid &= c.Analyze().IsVerified;
+            valid &= c.WriteIr(TextWriter.Null, out _);
+        });
         Assert.True(valid);
         Assert.Equal(0, bytes);
     }

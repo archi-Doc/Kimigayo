@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 21.3.5: a Type that contains itself by value without indirection is a semantic error of the
+// SPEC 21.3.2: a Type that contains itself by value without indirection is a semantic error of the
 // declaration (InvalidInlineLayout_Kd); exceeding the inline nesting depth bound is a resource limit.
 public class InlineLayoutTest
 {

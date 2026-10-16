@@ -1,455 +1,349 @@
 # 10. Overload resolution and inference
 
-[Associated-Type inference](associated-type-inference.md) is declaration completion under frozen conformance premises. It does not change the call-site selection, adaptation or Type/Origin inference rules in this chapter.
-
 [Specification index](../SPEC.md)
 
-Container qualifiers are resolved under §9.6.1 before call inference. This chapter infers a function's own arguments or the selected construction target's own arguments (§10.8.1), keeping their declaration identities distinct. An omitted outer Container environment is never inferred from call arguments or an expected result. Candidate identity includes the retained environment, and a failed later constraint does not reopen qualifier lookup.
-
-Argument adaptation, expected-result compatibility and acquisition legality are separate judgments ([Type relations and expression operations](03-types-and-values.md#38-type-relations-and-expression-operations)). A successful subtype proof neither selects nor authorizes a value operation.
+This chapter selects the declaration that a call, function reference or construction uses and infers its own Type, Semantics, length and Origin arguments. Container qualifiers are resolved first ([§9.7.1](09-names-signatures-and-access.md#971-bound-container-paths)); an omitted outer Container environment is never inferred, and a later failure never reopens qualifier lookup. Argument adaptation, expected-result compatibility and acquisition legality are separate judgments ([§3.8](03-types-and-values.md#38-type-relations-and-operations)). Associated-Type inference ([§8.5.5](08-generics-constraints-and-contracts.md#855-inference)) does not change the rules of this chapter.
 
 ## 10.1. Candidate applicability
 
-First verify the acquisition-shape contract of the entire committed group (§7.3.1), before candidate filtering. Each declaration is then checked as follows, within the shared-expectation and body-checking boundaries of §10.5. A nested call or anonymous body is never checked separately for each candidate.
+Resolution first checks that the committed function group satisfies the parameter acquisition shape ([§7.4](07-functions-and-callable-values.md#74-parameter-acquisition-shape)). Each declaration is then checked:
 
-1. Validate the explicit Type-argument count and kinds.
-2. Match positional and named arguments and record omitted defaults.
-3. Infer Type arguments from the receiver and the explicit arguments and, in the same fixed point, by matching each parameter's fixed expected call signature against its argument's known call signature (§10.5, §10.8).
-4. Use an independently known expected result Type to fill the remaining Type arguments, without changing those already fixed.
-5. After substitution and before Best Candidate comparison, check permitted argument adaptations, including the Copy proof that a bare Place's by-value acquisition needs (§3.5), Function Types, Constraints and any conditional-member premises (§7.4, §8.4.8).
-6. If an expected result exists, reject a candidate whose instantiated result the use position cannot admit (§10.3).
+1. Check the count and kinds of the explicit Type arguments.
+2. Match arguments to parameters and record the defaults used ([§10.1.1](#1011-argument-matching)).
+3. Infer Type arguments from the receiver and the arguments, including call-signature matching ([§10.8](#108-generic-argument-inference)).
+4. Let an independently known expected result Type fill the remaining Type arguments, without changing fixed ones.
+5. After substitution, check the argument adaptations ([§10.2](#102-common-adaptation)), including the Copy proof a bare Place's by-value acquisition needs ([§3.5](03-types-and-values.md#35-copy-and-move)), the Constraints and any conditional-member premises ([§7.5](07-functions-and-callable-values.md#75-function-constraints), [§8.8](08-generics-constraints-and-contracts.md#88-conditional-conformance)).
+6. With an expected result, reject a candidate whose result the use position cannot admit ([§10.3](#103-expected-results)).
 
-Having no applicable candidate is an error. Candidate checking records plans; it neither executes nor commits runtime Copy/Move, Loans or defaults. Declaration errors, such as unknown Types, malformed Constraints or duplicate Signatures, remain errors even when another candidate succeeds.
+Waiting arguments ([§10.5.1](#1051-argument-kinds)) are not checked per candidate; they are checked as that section states.
 
-Waiting arguments (§10.5), such as nested calls and anonymous function bodies, are checked against the candidates that remain applicable. How a bare Place argument is acquired never depends on which candidate remains: the functions of one Name acquire corresponding parameters of overlapping Types in one mode ([§7.3.1](07-functions-and-callable-values.md#731-parameter-acquisition-shape)).
+**Unknown applicability.** A Constraint or premise that is Unknown at step 5 leaves the candidate's applicability unproven. Unproven candidates are compared as though applicable. If one candidate is strictly best ([§10.4](#104-best-candidate)), it is selected; each of its Unknown judgments becomes an obligation checked after selection, and it is an error unless it is Proven under Finality ([§8.3](08-generics-constraints-and-contracts.md#83-constraint-proof)). If no candidate is strictly best, the call is ambiguous (error). Selection is never deferred or retried, and an unproven candidate is never dropped so that another wins.
 
-**Argument matching.** The task argument binds no parameter. A call writes it, first in its argument list, exactly when its callee has a task slot ([§24.2.2](24-suspension-and-asynchronous-tasks.md#2422-passing)); otherwise the call is a `TaskArgumentMismatch_Kd` error ([§24.5](24-suspension-and-asynchronous-tasks.md#245-diagnostics)). Positional arguments precede named arguments and bind parameters in declaration order. At a direct call, an ordinary parameter accepts a positional argument only when it precedes the `!` boundary or the declaration has no boundary (§7.2). Positional matching never skips a name-required parameter, a parameter with a default, or a parameter supplied later by name, and never searches by Type for another position. A bound method first removes its receiver position from this sequence (§7.3). Named arguments use external names, may be reordered, and cannot bind a parameter twice. An unbound ordinary parameter takes its default if it has one; otherwise the call is a missing-argument error, whatever the boundary. Unknown labels, excess positional arguments and positional arguments targeting name-required parameters are rejected. Explicit arguments are evaluated in source order, then omitted defaults in parameter order under the [declaration-site rules](07-functions-and-callable-values.md#72-parameters-and-defaults); defaults supply no generic-inference evidence. Function-value calls supply every argument after any task argument positionally.
+No applicable candidate is an error. Checking a candidate performs no Copy, Move, borrow or default evaluation. A declaration error stays an error even when another candidate succeeds. The acquisition mode of a bare Place argument never depends on which candidates remain ([§7.4](07-functions-and-callable-values.md#74-parameter-acquisition-shape)). Callable effect bounds neither filter nor rank candidates; the selected call or function reference discharges them ([§8.11.6](08-generics-constraints-and-contracts.md#8116-callable-effect-bounds)), and a failure never reselects.
+
+```kimi
+func keep<T>(value: T) -> ()
+    T is Owned
+func keep<T>(value: T, tag: i32 = 0) -> () => ()
+func store(view: ref/i32)
+    keep(view)     // The first is strictly best (fewer defaults); Error: T is Owned is not proven.
+    keep(view, 1)  // The second: the only candidate with two parameters.
+```
+
+### 10.1.1. Argument matching
+
+- A call writes the task argument first exactly when its callee has a task slot ([§24.2.2](24-suspension-and-asynchronous-tasks.md#2422-passing)); otherwise it is an error. The task argument binds no parameter.
+- Positional arguments precede named arguments and bind parameters in declaration order, only before the `!` boundary of a direct call ([§7.2.1](07-functions-and-callable-values.md#721-argument-name-boundary)). Positional matching never skips a name-required parameter, a parameter with a default or one supplied later by name, and never searches by Type. A method call ([§7.3.3](07-functions-and-callable-values.md#733-method-calls)) first removes its receiver position.
+- Named arguments use external names, may be reordered and bind a parameter at most once. Unknown labels and excess positional arguments are errors.
+- An unbound parameter takes its default, or the call is an error. Defaults supply no inference evidence.
+- Explicit arguments are evaluated in source order, then the defaults in parameter order ([§7.2.3](07-functions-and-callable-values.md#723-default-evaluation)). A function-value call passes all arguments positionally.
 
 ```kimi
 func scale(value: i32 ! by => factor: i32) -> i32 => value * factor
-scale(by: 4, value: 3) // Valid; evaluate by before value.
-scale(3, value: 4)     // Error: value supplied twice.
-scale(3, factor: 4)    // Error: factor is an internal name.
+scale(by: 4, value: 3) // by is evaluated before value.
 
 func configure(! mode: i32 = 0, count: i32 = 1) => ()
-configure(count: 3) // Valid; use the default for mode.
-configure(3)        // Error: mode requires its name; do not skip to count.
-
-func pair(first: i32 = 1, second: i32 = 2) => ()
-pair(3)            // first = 3, second = 2.
-pair(second: 3)    // first = 1, second = 3.
+configure(count: 3)    // mode takes its default.
+configure(3)           // Error: mode requires its name; matching does not skip to count.
 ```
 
-Callable effect bounds do not filter or rank candidates: selected calls and function references discharge the obligations of §8.4.10.7 after effect summaries complete. A failing bound never retries selection.
+## 10.2. Common adaptation
 
-## 10.2. Common adaptation at expected types
+Common adaptation fits a value to a fixed expected Type: at arguments, annotated initializers, assignment sources, by-value results, aggregate elements, enum payloads, defaults and the sources of a fixed Target Result Type ([§14.9.2](14-control-flow.md#1492-target-result-type-and-expression-type)). The expected Type is never derived backward from a borrow or a value read. Positions without one use bare acquisition ([§3.5](03-types-and-values.md#35-copy-and-move)).
 
-This section owns the implicit adaptation of a value to a position whose expected Type is fixed: arguments, annotated initializers, assignment sources, by-value results, aggregate elements, enum payloads, defaults, and the sources of a fixed Target Result Type (arms, `yield`, `exit` and single-item bodies, §14.9.1). The expected Type comes from the declaration, the structure or ordinary common-Type inference; it is never derived backward from a borrow or a value read. §14.9.1 finds the common Type of result sources, including sources that differ only in reference layers over one read Type (§3.5.3); sources without a common Type, such as `ref/Node` and `Node`, need an annotation, or an explicit `@follow` when `Node` is Copy. The call form, explicit Type arguments and aliases do not change these rules. Positions without an expected Type use bare acquisition (§3.5), and Place results follow §7.1.1.
-
-In the table, `U` is the complete Type named in the Expected column; the shared-reference and value-read rows may reach it through several input layers, including qualifying pair layers (§3.4.1) with the dependencies of §13.5.5.1.
+`U` is the complete expected Type. The shared-reference and value-read rows may follow several layers, including qualifying pair layers ([§3.4.3](03-types-and-values.md#343-reference-path-selection), [§13.5.5](13-operators-and-assignment.md#1355-follow)).
 
 | Input | Expected | Operation |
 | --- | --- | --- |
-| Readable Place storing `U` | `ref/U` | New shared borrow |
+| Readable Place storing `U`, except a reference or handle slot | `ref/U` | New shared borrow |
 | Owner `U` temporary | `ref/U` | Materialize once and shared-borrow |
-| Safe value-reference layers ending in `U` | `ref/U` | One shared reference to `U` (below) |
-| `uniq/U` | `uniq/U` | Exclusive Reborrow for the required extent |
-| Readable owning object handle `obj/U`, `rc/U` or `arc/U` | `objref/U` | Shared object borrow; no reference-count change |
-| `objuniq/U` | `objuniq/U` or `objref/U` | The corresponding object Reborrow |
-| Safe value-reference layers ending in `U` of a read Type | `U` | Value read (§3.5.3) |
-| Function Item or concrete Closure (value or Place) | Common Function Type `U` | Erasure (§7.6.4): the source is acquired as the last row acquires it, then owned by a new `U` |
-| Any other value or Place | Its complete Type | Bare acquisition, explicit transfer, or transfer of a temporary (§3.5) |
+| Safe value-reference layers ending in `U` | `ref/U` | One shared reference to `U` |
+| `uniq/U` | `uniq/U` | Exclusive Reborrow |
+| Readable `obj/U`, `rc/U` or `arc/U` | `objref/U` | Shared object borrow; no count change |
+| `objuniq/U` | `objuniq/U` or `objref/U` | Object Reborrow |
+| Safe value-reference layers ending in a read Type `U` | `U` | Value read ([§3.5.3](03-types-and-values.md#353-value-read)) |
+| Function Item or concrete Closure | Common Function Type `U` | Erasure ([§7.7.4](07-functions-and-callable-values.md#774-function-references-and-erasure)) |
+| Any other value or Place | Its complete Type | Bare acquisition or transfer ([§3.5](03-types-and-values.md#35-copy-and-move)) |
 
-Exactly one table operation is selected; the required Origin relations of the fit are judged after selection ([§15.6.1](15-ownership-and-lifetime-analysis.md#1561-constraints)). The erasure row applies only at a position whose expected Type this section fixes: the common-Type search of §14.9.1 compares the sources' own Types and never selects `U` through it. Adaptations are never chained; the shared-reference and value-read rows each count as one operation however many layers they follow. The table is applied to the input's original complete Type: the Reborrow that bare acquisition gives a stored exclusive reference (§3.5) is never performed first and then adapted, so a stored `uniq/U` at an expected `ref/U` takes the shared-reference row directly. A same-Type temporary is transferred as is. The shared-reference and Reborrow rows operate on the existing reference values and add no dependency on a temporary slot holding them.
+A **reference or handle slot** is a Place whose Type is a reference (`ref`, `uniq`, `objref`, `objuniq`) or an owning object handle (`obj`, `rc`, `arc`). The first row never borrows it implicitly; write `clone(handle@ref)`. The other rows still adapt its referent or object, for example `obj/U` to `objref/U`. Other named Types, including `Weak<S>`, take the first row.
 
-**One shared reference through layers.** An input of safe reference layers ending in `U` yields one `ref/U`. When a `ref` layer exists, the innermost `ref` layer is Copied with its own Origin, each `uniq` layer below it is Reborrowed as shared, and the result's Origin is the meet of those layers' Origins. The layers above the innermost `ref` layer add no dependency: a shared reference is Copy, and reading it only requires them to be valid at that moment. Without a `ref` layer, the result is a shared Reborrow through every layer, with the meet of all their Origins. Thus a single `ref/U` is Copied with permitted Origin shortening, and a single `uniq/U` is shared-Reborrowed. Every layer is checked for initialization, capability and Loans, as for the value read.
+Explicit acquisition runs before implicit adaptation. `@move` transfers the value and responsibility and marks a source Place Moved; no later adaptation replaces or undoes that transfer. A transferred exclusive reference that directly fits the expected Type is passed unchanged, without Reborrow. Otherwise, select one row using the acquired value's complete Type and category; for a bare input, use its original Type and category. At most one implicit adaptation runs: a stored `uniq/U` at `ref/U` takes the shared-reference row directly. Explicit acquisition does not count as an implicit adaptation. The ordinary temporary lifetime, Loan and erasure rules apply, and Origin relations are judged after selection ([§15.6.1](15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness)).
+
+**One shared reference through layers.** With a `ref` layer, the innermost `ref` is Copied, each `uniq` layer below it is shared-Reborrowed, and the Origin is the meet of those layers' Origins; outer layers add no dependency. Without one, the result is a shared Reborrow through every layer. Every layer is checked for initialization, capability and Loans. The shared-reference and Reborrow rows add no dependency on a temporary slot holding the reference.
+
+**No other implicit operation.** There is no implicit object payload follow, `rc`/`arc` duplication, exclusive borrow of a temporary, object upcast, numeric or user conversion. A bare Non-Copy or Copy-unproven Place is never acquired by value, except that bare acquisition Reborrows a stored exclusive reference; a candidate that needs that Copy is inapplicable. A new exclusive borrow of an owned Place needs `@uniq` or `@objuniq`, except for a Receiver Expression ([§7.3](07-functions-and-callable-values.md#73-receivers)), so a bare owned Place, or one reached through an exclusive reference ([§15.1.5](15-ownership-and-lifetime-analysis.md#1515-access-operations-and-acquisition)), never fits a `uniq` or `objuniq` parameter. An annotation never adds lifetime or capability.
+
+**Temporaries.** An owner temporary is evaluated once into a Temporary Place with the ordinary lifetime ([§3.6](03-types-and-values.md#36-temporaries)), which is never extended for a borrow: using `view` after `let view: ref/Node = makeNode()` is an error.
 
 ```kimi
 func validate(node: ref/Node) -> () => ()
-func report(found: ref/Node? during a)
-    match found                  // A bare Place: Shared.
-        .Some(let hit) => validate(hit) // hit: ref/(ref/Node); the inner reference is Copied.
-        .None => ()
+func normalize(node: uniq/Node) -> () => ()
 
-var first = Node.init()
-var second = Node.init()
-let nodes: [2 of uniq/Node] = [first@uniq, second@uniq]
-for node in nodes                // node: ref/(uniq/Node)
-    validate(node)               // Shared Reborrow through both layers.
-```
-
-There is no implicit borrow of a reference or handle slot, no implicit payload follow of an object, no implicit `rc`/`arc` strong duplication or exclusive borrow of a temporary, and no implicit object upcast, numeric (including integer/float) or user conversion. Apart from a Place storing an exclusive reference, which bare acquisition Reborrows (§3.5), a bare Non-Copy or Copy-unproven Place cannot be acquired by value, and a candidate that needs that Copy is inapplicable (§10.1). An explicit `@move` executes first and is not corrected by a later adaptation, so a transferred reference is passed to a same-Type expectation as that value.
-
-A new exclusive borrow of an owned Place requires `@uniq`/`@objuniq`; only a Receiver Expression acquires one implicitly ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)). An annotation, assignment or result never adds lifetime or capability. A bare owned Place is therefore never applicable to a `uniq`/`objuniq` parameter, and implicit exclusive borrowing never switches candidates. Likewise, a bare Place's by-value acquisition and a new shared borrow of the same Place never choose between candidates: the parameter acquisition shape of §7.3.1 keeps a by-value parameter and a borrowing parameter of overlapping Types out of one position, so the acquisition follows from the Name and the position alone.
-
-```kimi
 func work(node: uniq/Node)
-    validate(node)       // validate: ref/Node. Shared Reborrow.
-    normalize(node)      // normalize: uniq/Node. Exclusive Reborrow.
-    let transferred = node@move // The reference value itself.
+    validate(node)              // Shared Reborrow.
+    normalize(node)             // Exclusive Reborrow.
+    let transferred: uniq/Node = node@move // Transfers the reference; no Reborrow.
 
 var node = Node.init()
-validate(node)           // Shared borrow of the owned value.
-normalize(node@uniq)     // A new exclusive borrow is explicit.
-let view: ref/Node = node // The same shared borrow at an annotated initializer.
-
-func positiveOrZero(value: ref/Option<i32>) -> i32
-    return match value
-        .Some(let number) if number > 0 => number // ref/i32; a value read at i32.
-        _ => 0
+validate(node)                  // Shared borrow of the owned value.
+normalize(node@uniq)
+// normalize(node)              // Error: no implicit exclusive borrow.
+validate(node@move)             // Transfer, then borrow the temporary; node is Moved.
 ```
 
-**Temporaries.** An owner temporary may be borrowed at every value position, not only at arguments. It is evaluated once and materialized in a Temporary Place with the ordinary temporary lifetime (§3.6.2), which lasts at least through a call; that lifetime is neither shortened nor extended to keep a borrow valid. Using `view` after `let view: ref/Node = makeNode()`, or returning that borrow, is rejected with a diagnostic naming the expired temporary and the use. A borrow that ends within the full expression, such as inside an aggregate literal passed to a call, passes the same lifetime check. A known source Type infers `U`; an unfitted literal follows **Literals** below.
+### 10.2.1. Literals
 
-**Literals.** An untyped integer literal or integer numeric [literal-only expression](12-expressions.md#1231-type-inference) fits a candidate integer or wrapping Type under the leaf/operator rules; floating-point literals and floating-point numeric literal-only expressions fit `f32` or `f64`. Position/range forms retain their own fitting rules. Literals are not defaulted to `i32`/`f64` before fitting, narrower widths are not preferred, and defaults never break overload ambiguity. Generic inference processes receiver, other-argument and known-result constraints first, then candidate fitting, and applies the ordinary value defaults last. Outside candidate comparison, an independent expression without an expected Type uses the ordinary numeric defaults. `null`, empty collections and untyped functions gain no universal fallback Type.
+Literal arguments fit a candidate's Type under the fitting rules of [§12.3](12-expressions.md#123-literal-typing); position and range forms keep their own rules. Narrower widths are not preferred.
+
+Literal defaults (`i32`, `f64`, and `isize` in length contexts; [§12.3](12-expressions.md#123-literal-typing)) are applied only after Best Candidate selection, and only to the selected candidate. During applicability and comparison, a slot whose only evidence is a Literal argument ([§10.5.1](#1051-argument-kinds)) stays unbound ([§10.8](#108-generic-argument-inference), Unbound slots), so step 2 of [§10.4](#104-best-candidate) makes the pair incomparable. A default never breaks an ambiguity. After the defaults, the selected candidate's checks that needed the slot (fits, Constraints) use the defaulted Type; a failure is an error and never reselects. A slot still unbound after the defaults is an error.
+
+An expression without an expected Type uses the defaults directly. `null`, empty collections and untyped functions have no fallback Type.
 
 ```kimi
 func choose(value: i32) -> () => ()
 func choose(value: i64) -> () => ()
-choose(1)      // Error: both integer Types fit.
-let x = 1      // Independently defaults to i32.
-choose(x)      // Exact i32.
-choose(1@i64)  // Exact i64.
+choose(1)        // Error: ambiguous; both integer Types fit.
+choose(1@i64)    // choose(i64).
 
-func inspect<T>(value: ref/T) -> () => ()
-func makeValue() -> i64 => 1
-inspect(makeValue()) // Infer T = i64 and borrow the temporary.
-inspect(1) // T defaults to i32 after constraints.
+func f(value: i32) -> () => ()
+func f<T>(value: T) -> () => ()
+f(1)             // Error: ambiguous; T is unbound while candidates are compared.
+f(1@i32)         // f(i32): T = i32 is evidence, and step 3 prefers the non-generic function.
 
-func chooseBorrow(value: ref/i32) -> () => ()
-func chooseBorrow(value: ref/i64) -> () => ()
-chooseBorrow(1) // Error: both fit; default i32 does not break the tie.
+func g<T>(value: T) -> () => ()
+g(1)             // The only candidate; T defaults to i32 after selection.
 ```
 
-### 10.2.1. Inference and adaptation classes
+### 10.2.2. Inference and adaptation classes
 
-Type inference and acquisition planning are separate: inferring a Type performs no Copy, Move or borrow.
+Inferring a Type performs no Copy, Move or borrow.
 
-1. Bind explicit Type arguments, then infer the remaining Type arguments from the original complete Types of the receiver and the arguments. A bare `T` binds the original Type, except that a parameter whose Type is a read Type under the declaration's Constraints (§3.5.3), that is, a `T` whose Constraints imply `Position`, `PositionRange` or `PrimitiveInteger`, or `Wrapping<T>` under `T is PrimitiveInteger`, binds, from an argument of safe reference layers, the terminal referent Type: only value Types are read Types, so no other binding exists, and the argument is then value-read. Thus `ref/Wrapping<u32>` binds `T = u32` for a `Wrapping<T>` parameter. A declared `ref/T` or `uniq/T` binds `T` to an owned argument's complete Type or to the immediate referent of a borrow value's outermost layer, and the rows of the table that follow several layers apply only after `T` is fixed. A [pair layer](13-operators-and-assignment.md#pair-layers) is not a borrow value here: `T` binds to its complete Type `W`, so `inspect(c[i])` for an element Type `s/U` binds `s/U` and shared-borrows the element slot as `c[i]@ref` does, while `inspect(c[i]@follow)` binds `U`. Constraints over several arguments are solved together, and no argument fixes `T` first by traversal order.
-2. An independently known expected result Type fills still-unbound parts by ordinary Type matching; apart from the exception of step 1, it never selects an unknown Type by inverting a borrow or value read, and never changes an established Type. Origin inference and shortening follow the ordinary rules, keeping bound internal Origins.
-3. Normalize the parameter Types and plan the acquisition of each argument under §3.5 and this section. An existing reference passed to a borrow parameter is Reborrowed in a generic call as elsewhere; consuming the reference value itself needs `@move`.
+1. Explicit Type arguments bind first; the rest are inferred together from the original complete Types of the receiver and the arguments, never by traversal order. A bare `T` binds the argument's Type, except that a parameter of a read Type ([§3.5.3](03-types-and-values.md#353-value-read)) binds the terminal referent of reference layers, and the argument is value-read. A declared `ref/T` or `uniq/T` binds `T` to an owned argument's Type or to the referent of a borrow's outermost layer. A pair layer ([§13.5.5](13-operators-and-assignment.md#1355-follow)) is not a borrow: for an element Type `s/U`, `inspect(c[i])` binds `T = s/U` and borrows the slot, while `inspect(c[i]@follow)` binds `U`.
+2. An independently known expected result fills still-unbound parts by Type matching; it never inverts a borrow or value read and never changes an established Type.
+3. Each argument's acquisition and adaptation are planned under [§3.5](03-types-and-values.md#35-copy-and-move) and [§10.2](#102-common-adaptation). A directly fitting exclusive reference is Reborrowed when bare and transferred under `@move`.
 
 ```kimi
-// n: ref/i32; r: uniq/Node; identity<T>(value: T) -> T returns value@move.
+// n: ref/i32; r: uniq/Node; identity<T>(value: T) -> T; double<T> with T is PrimitiveInteger.
 let a = identity(n)        // T = ref/i32.
 let b = identity<i32>(n)   // Value read at the fixed i32.
-let c = identity(r)        // T = uniq/Node; the argument is an exclusive Reborrow.
-// While c is live, conflicting uses of r are rejected.
-let d = identity(r@move)   // After c's last use: the reference value is transferred and r is Moved.
-
-// double<T>(value: T) -> T with T is PrimitiveInteger; values.remove<P>(index: P) with P is Position.
+let c = identity(r)        // T = uniq/Node; an exclusive Reborrow, like let saved = r.
 let e = double(n)          // T = i32; n is value-read.
-values.remove(n)           // P = i32.
 ```
 
-An unannotated local initializer is bare acquisition (§3.5). Adding or removing an annotation of the same complete Type and Origin conditions therefore changes no acquisition, Loan or cleanup: for `r: uniq/Node`, `let saved = r` and `let saved: uniq/Node = r` both Reborrow, and `let saved = r@move` transfers. An annotation that requires a shared reference or a value read selects that adaptation instead, such as `let view: ref/Node = r`. Omitting the result of a named function is not such an annotation: the function returns Unit (§7.1).
-
-```kimi
-func validate(node: ref/Node) => ()
-func normalize(node: uniq/Node) => ()
-
-func work(r: uniq/Node)
-    validate(r)               // A shared Reborrow.
-    normalize(r)              // An exclusive Reborrow in the same Semantics.
-    let saved = r             // The same Reborrow as let saved: uniq/Node = r.
-    normalize(saved)
-```
-
-Candidates are checked for applicability with their acquisition plans, and the selected plan acquires each argument once. The adaptation classes are compared in this order, best first, with no further preference within a class:
+Adaptations are ranked by class, best first, with no preference within a class:
 
 | Class | Meaning |
 | --- | --- |
-| Exact | Normalized Type compatibility requiring no adaptation operation, including no borrow or Reborrow |
-| Literal fitting | Directly fitting an unresolved literal or literal-only expression to the candidate's Type |
+| Exact | No adaptation operation, including no borrow or Reborrow |
+| Literal fitting | Fitting a Literal argument ([§10.5.1](#1051-argument-kinds)) directly to the candidate's Type; when an acquisition such as borrowing a temporary is also needed, that acquisition's class applies |
 | Same-Semantics Reborrow | A Reborrow that preserves the input's outer Semantics |
-| Cross-Semantics adaptation | Any other borrow or Reborrow of the table, one shared reference through more than one layer, or a value read |
+| Cross-Semantics adaptation | Any other borrow or Reborrow, one shared reference through several layers, or a value read |
 
-Exact describes Type adaptation, not value transfer: an Exact by-value argument still Copies when bare or transfers under `@move`, and Copy versus transfer adds no ranking preference. A required exclusive Reborrow is not Exact even when the written Types match. Type and declaration permissions and the Place-versus-temporary form are checked during applicability; flow-dependent initialization and active Loan conflicts are checked after selection (§10.6). Selected exclusive adaptations use [call reservation and activation](15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations).
-
-Explicit transfer, Take and the Copy proof of a bare by-value acquisition are part of applicability, so adding a candidate never introduces an implicit Move or borrow (§7.3.1). A generic body verifies acquisition, adaptation and candidate ranking symbolically from its published Constraints and rejects at definition what it cannot prove; instantiation neither reselects candidates nor redistributes Copy and Move. Pattern binding Types are unaffected.
-
-[Inherited receiver projection](09-names-signatures-and-access.md#951-base-subobject-receiver-projection) and the complete Sealed payload follow of a receiver (§12.4.4) are member-receiver operations supplied by implicit receiver acquisition (§7.3); they do not apply to ordinary arguments or unbound calls and take no part in candidate comparison. The erasure row of §10.2 ([common function conversion](07-functions-and-callable-values.md#764-function-references-and-common-type-conversion)) belongs to no class of this table: in step 1 of §10.4, two erasures at one argument are equal, and an erasure and any other row are incomparable.
+Exact concerns Types: a by-value argument still Copies when bare or transfers under `@move`, with no preference between them, and a required exclusive Reborrow is never Exact. Permissions and the Place-versus-temporary form are checked during applicability; initialization and Loan conflicts after selection ([§10.6](#106-usage-legality-and-operators)), with call borrow reservations ([§15.6.7](15-ownership-and-lifetime-analysis.md#1567-call-reservations)). A generic body checks acquisition and ranking from its declared Constraints at definition; instantiation never reselects. Erasure belongs to no class: two erasures at one argument are equal, and an erasure and any other row are incomparable.
 
 ## 10.3. Expected results
 
-This section is the static expected-result judgment of [the relation table](03-types-and-values.md#38-type-relations-and-expression-operations): a known result is filtered by the acquisition or common adaptation its use position admits (§10.2), without ranking candidates.
+An expected result may complete inference (step 4 of [§10.1](#101-candidate-applicability)) and excludes a candidate only when the use position admits no acquisition or adaptation of its known result. It never ranks candidates. Only the structural part of the fit is judged before selection; Origin relations are judged after ([§15.6.1](15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness)), while Constraints involving Origins (`Owned`, `Callable`, Type identity) still take part. No conversion is inserted to keep a candidate. Discarding a call supplies no Unit expectation ([§14.2](14-control-flow.md#142-bodies-and-evaluation-contexts)).
 
-An expected result may complete inference. It excludes a candidate only when the use position admits no acquisition or adaptation of that candidate's known result (**Result adaptation**, below). Origins are instantiated, but their relations, including permitted covariant shortening, never exclude a candidate: applicability (§10.1 steps 5–6) and result filtering use only the structural part of each fit, and its required Origin relations are judged after selection ([§15.6.1](15-ownership-and-lifetime-analysis.md#1561-constraints)). Constraints still take part in applicability, including those whose proof involves Origins: `Owned`, `Callable` and Type identity (§8.7). No numeric or user conversion is inserted to keep a candidate, and a function body's literal is never retyped to change its established return Type.
+| Use position | Rule applied to the known result |
+| --- | --- |
+| Fixed expected Type | Common adaptation ([§10.2](#102-common-adaptation)) with the position's lifetime check |
+| No expected Type | Bare acquisition ([§3.5](03-types-and-values.md#35-copy-and-move)) |
+| Explicit operation or discard | That operation's rule |
 
-Expected results never rank candidates, including by the amount of result adaptation. Result Loan/Origin propagation and Copy/Move still apply. An expectation comes from a surrounding annotation, a fixed parameter or a declared result, subject to §10.5; it cannot circularly select its own source candidate. Discarding a call supplies no expected Unit Type, even in a construct whose Target Result Type is fixed as Unit (§14.2).
+An unknown result `T` is never inferred backward from the adapted Type.
 
 ```kimi
 func fetch(value: i32) -> string => "text"
 func fetch(value: i64) -> i64 => value
-let text: string = fetch(1) // Selects fetch(i32) by result compatibility.
-fetch(1)                   // Error: discarding leaves both candidates.
-```
+let text: string = fetch(1) // fetch(i32): only its result fits.
+fetch(1)                    // Error: discarding leaves both candidates.
 
-These declarations have distinct parameter Signatures; declarations that differ only in return Type or result mode (§7.1.1) are invalid regardless of call-site expectations.
-
-**Result adaptation.** Once a candidate's published result Type and result category are fixed, the acquisition or adaptation that the use position admits is part of its applicability. The same procedure applies to ordinary values, Place results and value reads:
-
-| Use position | Rule applied to the known result |
-| --- | --- |
-| Value position or result source with a fixed expected Type | The common adaptation of §10.2, with the position's own lifetime check |
-| Value position without an expected Type | Bare acquisition (§3.5) |
-| Position that requires a Place | The Place's Type, capabilities and Origin are checked; an ordinary value is never materialized into a Place result |
-| Explicit operation or discard | That operation's own rule; discarding supplies no Unit expectation |
-
-This check uses fixed declaration information only. An unknown result `T` is never inferred backward from the adapted Type, a Place's published Type is never inferred from a borrow adaptation, and Origins and Loans follow the acquisition actually selected. A candidate returning `T` therefore cannot survive an expected `ref/T` by borrowing a temporary result outside the lifetime rules of §10.2, and an outer `@ref` never prefers a Place-returning candidate.
-
-```kimi
-func read(x: i32) -> ref/i32
-func read(x: i64) -> i32
-// let value: i32 = read(1)   // Error: both results fit through a value read or exactly.
-let value: i32 = read(1@i32)  // The argument selects; the result is then read.
+func read(x: i32, from: ref/i32) -> ref/i32 => from
+func read(x: i64, from: ref/i32) -> i32 => 0
+// let other: i32 = read(1, limit@ref) // Error: both results fit, by a value read or exactly.
 ```
 
 ## 10.4. Best candidate
 
-Pairwise comparison yields better, worse, equivalent or incomparable. **Only equivalent candidates proceed to the next step.** A candidate is selected only if it is better than every other applicable candidate:
+Pairwise comparison yields better, worse, equivalent or incomparable; only equivalent pairs proceed to the next step. A candidate is selected only if it is better than every other applicable candidate:
 
-1. Compare adaptation quality for each explicit source argument. The receiver is excluded: its acquisition is common to the function group, because every function with a receiver in the group shares one receiver shape ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)). A dominates B only if it is no worse everywhere and better somewhere; all-equal proceeds, and opposing advantages are incomparable. Named arguments are matched by the same source expression, not by candidate parameter order. Defaults are excluded, and numeric costs are never summed.
-2. Compare substituted parameter Types at the same positions. A dominates B if every Type is equal or a defined subtype and at least one is a strict subtype; all-equal proceeds, and unrelated Types or opposing subtype advantages are incomparable. Parameter Types are compared by their structural part ([§15.6.1](15-ownership-and-lifetime-analysis.md#1561-constraints)); Origin bindings never rank candidates.
-3. Prefer a function with no generic parameters of its own, including length parameters. A generic enclosing Type alone does not make the function generic.
-4. Prefer fewer defaults used by this call.
-5. Otherwise, report ambiguity.
+1. For each explicit source argument, compare the adaptation classes ([§10.2.2](#1022-inference-and-adaptation-classes)); the receiver is excluded ([§7.3](07-functions-and-callable-values.md#73-receivers)). A dominates B when it is no worse everywhere and better somewhere; opposing advantages are incomparable. Named arguments are matched by source expression. Defaults are excluded, and costs are never summed.
+2. For each source argument, compare the substituted parameter Types that step 1 matched to it by their structural part (Origins ignored); parameters filled by defaults are not compared. If all are identical, go to the next step; otherwise the candidates are incomparable.
+3. Prefer a function with no generic parameters of its own, including length parameters; a generic enclosing Type does not count.
+4. Prefer fewer defaults used.
+5. Otherwise the call is ambiguous (error).
 
-Numeric Types are not ranked by width, Constraints not by strength or clause count, and generic declarations not by general pattern partial ordering. `uniq/T <: ref/T` is never invented from the ability to reborrow. Incomparability at an earlier step cannot be rescued by nongeneric status or fewer defaults, and declaration, file, alias and name order never break ties.
+Widths, Constraint strength, pattern generality and declaration order never rank candidates, and a later step never rescues an earlier incomparability. The two `inspect` keys below do not overlap ([§7.4](07-functions-and-callable-values.md#74-parameter-acquisition-shape)).
 
 ```kimi
 func inspect(value: uniq/(uniq/Node)) -> () => ()
-func inspect(value: ref/Node) -> () => ()   // Value(uniq/Node) and Value(Node) do not overlap (§7.3.1).
-
+func inspect(value: ref/Node) -> () => ()
 func work(x: uniq/(uniq/Node))
-    inspect(x)          // The first candidate: a same-Semantics Reborrow beats one shared reference through two layers.
-    inspect(x@follow)   // The second: the selected Place stores uniq/Node, which only the shared candidate adapts.
-let action: (ref/Node) -> () = inspect
+    inspect(x)          // The first: a same-Semantics Reborrow beats a cross-Semantics reference.
+    inspect(x@follow)   // The second: only it adapts the selected uniq/Node Place.
+
+func g(x: i32) -> () => ()
+func g(x: i32, y: i32 = 0) -> () => ()
+g(1@i32)                // g(x): steps 1–3 tie on x; step 4 prefers fewer defaults.
 ```
 
-The first candidate wins for the two-layer input because its Semantics match, not because exclusivity is stronger. `f<T>(T)` and `f<U>(Box<U>)` remain tied for `Box<i32>` when substitution makes both parameter Types equal and the later steps tie.
+## 10.5. Inference boundaries
 
-A bare Place reached through an exclusive reference is also never applicable to an exclusive candidate; `@uniq` selects that candidate (§15.1.5). Field Move eligibility and its generic limits follow [Field Move](11-properties.md#1112-move-paths-and-inherited-fields).
+- Local Types are fixed at their declaration; fixed-array annotation holes ([§4.3.1](04-arrays-indexing-and-slices.md#431-array-literals-and-annotation-holes)) are resolved from that initializer.
+- Named functions have a written result or Unit ([§7.1](07-functions-and-callable-values.md#71-declarations-bodies-and-results)); bodies and callers never infer their signatures. Anonymous functions are inferred ([§7.7.1](07-functions-and-callable-values.md#771-syntax-and-inference)).
+- Explicit specializations take no part in inference or applicability; one is chosen after the original declaration and its arguments are determined.
+- Substitution preserves bound Origins and Loan requirements, including nested ones, and creates no borrow ([§15](15-ownership-and-lifetime-analysis.md#15-ownership-and-lifetime-analysis)).
+- A `try` operand has no expected Type ([§17.3](17-failure-handling.md#173-try-propagation)), nor does an explicitly discarded expression ([§14.2.4](14-control-flow.md#1424-explicit-discard)).
+
+### 10.5.1. Argument kinds
+
+Each argument of a call is exactly one of:
+
+- **Literal**: an untyped literal, a literal-only expression ([§12.3](12-expressions.md#123-literal-typing)), or a control-flow expression whose result sources ([§14.9](14-control-flow.md#149-result-validation)) are all such. Each candidate's parameter Type propagates to every source; it is ranked by the Literal fitting row of [§10.2.2](#1022-inference-and-adaptation-classes); it is no evidence for a slot, and its default applies after selection ([§10.2.1](#1021-literals)).
+- **Independently typable**: any other argument whose complete Type is fixed with no expectation from the call and no literal default, such as a typed value or Place (with any explicit `@` operation) or a function reference that does not need `S` ([§10.5.3](#1053-function-references)). A nested call qualifies only when it has exactly one applicable candidate without an expected result. An anonymous function never qualifies. Its Type is evidence for the outer candidate's slots.
+- **Waiting**: every other argument, such as an anonymous function, a function reference that needs `S`, or a nested call that is not independently typable. It is checked only against the expected Type shared by the remaining outer candidates, or that of the selected candidate, and is never evidence for an outer slot.
+
+Inner calls are never resolved once per outer candidate. Eliminated candidates are not revived. A waiting nested call that neither a shared expectation nor an already selected candidate types requires an annotation, explicit Type arguments or a typed binding; anonymous functions follow [§10.5.4](#1054-anonymous-functions).
 
 ```kimi
-func bumped(score: Score) -> Score   // A by-value variant and an exclusive variant need different names (§7.3.1).
-func bump(score: uniq/Score) -> ()
+func identity<T>(value: T) -> T => value@move
+func take(value: i64) -> () => ()
+func makeValue() -> i64 => 1
+func inspect<T>(value: ref/T) -> () => ()
+func makeBox<T>(value: T) -> Box<T> => Box.init(value@move)  // Box<T>: an application struct.
+func outer<U>(value: Box<U>) -> () => ()
+func choose(value: i32) -> () => ()
+func choose(value: i64) -> () => ()
 
-struct Game
-    var score: Score
-    func play(self: uniq/Self)
-        bump(self.score@uniq)        // The exclusive borrow is written.
-        // bump(self.score)          // Error: the only candidate needs @uniq; no by-value candidate takes the call and discards its update.
+inspect(makeValue())            // Independently typable: T = i64.
+take(identity(1))               // Waiting: the expected i64 fixes the inner T.
+outer(makeBox(1))               // Error: U is unbound; a waiting argument is no evidence. Write makeBox(1@i32).
+choose(if ready => 1 else => 2) // Error: ambiguous; both candidates fit the literals.
 ```
 
-## 10.5. Inference boundaries and specialization
+### 10.5.2. Call signatures
 
-Local Types are fixed at their declaration, and later uses cannot infer them backward. [Fixed-array annotation holes](04-arrays-indexing-and-slices.md#431-local-fixed-array-annotations) retain only written structure as an expectation and are resolved from the initializer at that declaration; they do not add signature holes or inverse length solving. [Named functions](07-functions-and-callable-values.md#7-functions-and-callable-values), including local functions, methods and Contract requirements, have an explicit result or Unit, independent of access and body form; neither bodies nor callers infer their signatures. [API accessibility](09-names-signatures-and-access.md#932-api-signature-accessibility) is checked, and substituting a written generic result does not reanalyze the body. Local binding inference and [anonymous-function inference](07-functions-and-callable-values.md#761-syntax-and-inference) remain available.
+The **known call signature** of a Type is the signature a value of it is called with ([§7.7.3](07-functions-and-callable-values.md#773-call-receiver)): a Function Item's declaration signature with bound arguments substituted, a concrete Closure's internal signature, a common Function Type's structure, or, for a generic parameter, the one signature its `Callable` Constraints give ([§8.10](08-generics-constraints-and-contracts.md#810-callable-constraints)). An anonymous function supplies only the parameter and result Types written in its header, and has a task slot exactly when it writes one ([§24.2.1](24-suspension-and-asynchronous-tasks.md#2421-form)).
 
-Explicit Type arguments follow the [slot rules](08-generics-constraints-and-contracts.md#81-generic-type-parameters). Explicit specializations take no part in inference or overload applicability; an implementation is selected only after the original declaration and its static generic arguments are determined.
-
-Generic inference and substitution use the [complete-Type slots and projections](08-generics-constraints-and-contracts.md#81-generic-type-parameters) and preserve all bound Origins and inferred Loan requirements, including nested dependencies. A surrounding borrow such as `ref/T` keeps `T`'s internal dependencies alongside its own Origin and Loan. Substitution alone creates no Borrow or Reborrow, releases no Loan and extends no lifetime; actual call-site checks follow the [ownership and Origin rules](15-ownership-and-lifetime-analysis.md#15-ownership-and-lifetime-analysis).
-
-**Try boundary.** A `try` operand is resolved in Value Context with no expected Type (§17.2.4). Neither the success expectation nor the return target feeds operand inference or retries its overload selection. Explicit discard also supplies no expectation (§14.2.4).
-
-**Nested calls.** Bidirectional checking supports literals, function references, anonymous functions and expressions directly checkable against a candidate Type. It never searches combinations by rerunning an inner overload resolution for every outer candidate in `f(g(x))`:
-
-- Independently typable arguments and explicit Type information are processed first.
-- An inner expression may use an expected Type shared by all remaining outer candidates.
-- If one outer candidate is already determined, its expectation is used, and eliminated candidates are not revived after a failure.
-- Otherwise an annotation, explicit Type arguments or a typed intermediate binding is required.
+A position has a **fixed expected call signature** `S` when its expected Type is a common Function Type (then `S` is that Type), or is `F`, `ref/F` or `uniq/F` for an unbound slot `F` whose `Callable` Constraints all give one signature `S`. With several outer candidates, only an `S` common to all is used. The slots in `S` are unknowns for [§10.8](#108-generic-argument-inference); only parts without unbound slots guide the argument.
 
 ```kimi
-func inner(value: i32) -> i32 => value
-func inner(value: i64) -> i64 => value
-func outer(value: i32) -> () => ()
-func outer(value: i64) -> () => ()
-outer(inner(1))                    // Error: would require nested search.
-let intermediate: i64 = inner(1)  // Expected result fixes the inner call.
-outer(intermediate)
+func make<T>(action: () -> T) -> T => action()
+func makeLarge() -> i64 => 2
+let large = make(makeLarge)               // T = i64 from makeLarge's signature; then erased.
+let written = make(func () -> i64 => 2)   // T = i64 from the written result Type.
+// let open = make(func () => 2)          // Error: only the body could fix T.
 ```
 
-**Call signatures.** The **known call signature** of a callable Type is the signature with which a value of that Type is called directly (§7.6.3, §8.6), and an argument's known call signature is that of its Type:
+### 10.5.3. Function references
 
-| Type | Known call signature |
-| --- | --- |
-| Function Item Type | The declaration's signature with its bound arguments substituted |
-| Concrete Closure Type | Its internal call signature |
-| Common Function Type | Its structure |
-| Generic parameter `G` | The one signature that the `Callable` Constraints on `G` give, when they give one (§8.6) |
+A reference's candidates are its group's declarations that pass step 1 of [§10.1](#101-candidate-applicability); a Type-qualified instance reference takes `self` as an ordinary parameter ([§7.3](07-functions-and-callable-values.md#73-receivers)). It **needs `S`** when two or more candidates remain or a candidate has own slots that explicit arguments do not bind. Without `S`, such a reference is an error; one that does not need `S` is independently typable ([§10.5.1](#1051-argument-kinds)).
 
-An anonymous function argument supplies only the parameter Types and result Type written in its header, as the corresponding parts of its known call signature; an omitted part supplies nothing. A task slot is never an omitted part: the known call signature has one exactly when the header writes one ([§24.2.1](24-suspension-and-asynchronous-tasks.md#2421-form)).
+A reference that needs `S` is selected once every parameter Type of `S` is closed. Each candidate binds its own slots by matching its parameter Types against those of `S`, and its result against the closed parts of the result of `S` ([§10.8](#108-generic-argument-inference)), without adaptation. It is applicable when all slots are bound, its Constraints and premises pass step 5 of [§10.1](#101-candidate-applicability) (an Unknown judgment follows the Unknown applicability rule there), and its substituted signature is compatible with the closed parts of `S` ([§10.7](#107-callable-signature-compatibility)), including arity and task-slot presence. Candidates are compared by [§10.4](#104-best-candidate), where steps 1 and 4 tie.
 
-A position has a **fixed expected call signature** `S` in two cases. When its expected Type (§10.2) is a common Function Type, `S` is that Type. When its expected Type is `F`, `ref/F` or `uniq/F` for an unbound slot `F` of the outer candidate, `S` is the one signature common to all `Callable` Constraints on `F`, whatever their receivers; if their signatures differ, there is no `S`. While several outer candidates remain, only an `S` common to all of them is used, as for nested calls. As evidence, the slots in `S` are unknowns of the matching of §10.8; as an expectation, only the parts of `S` that contain no unbound slot of the outer candidate guide the argument.
+After selection, the unsafe and `drop` prohibitions and the erasure conditions ([§7.6](07-functions-and-callable-values.md#76-unsafe-functions), [§7.7.4](07-functions-and-callable-values.md#774-function-references-and-erasure)) are checked and never reselect. At `F`, `ref/F` or `uniq/F`, `F` binds to the Function Item Type without erasure; at `ref/F` the temporary is borrowed. The selected signature never fills an open result of `S`.
 
-A **waiting argument** is an argument checked only against an expectation from the call: an anonymous body, a nested call, or a function reference that needs a fixed expected call signature.
-
-**Function references.** The candidates of a function reference are the declarations of its committed function group that pass the explicit Type-argument check of §10.1 step 1. A Type-qualified instance function reference is the unbound form of §7.3: its `self` is an ordinary parameter at its declared position. A reference needs `S` when two or more candidates remain or when a candidate has own slots that explicit Type arguments do not bind. A reference that does not need `S` is an independently typable argument, and its known call signature is evidence under §10.8. A reference at a position without `S` is a value only when exactly one candidate remains and that candidate has no own slots or has all of them bound explicitly, so an unresolved overload set is not a value.
-
-A reference that needs `S` is selected once every parameter Type of `S` is closed; the result Type of `S` may stay open:
-
-1. Each candidate's own slots are bound by matching its parameter Types against those of `S`, and its result Type against only the closed parts of the result of `S`, under §10.8 and without the adaptations of §10.2.
-2. A candidate is applicable when all its own slots are bound, its Constraints and conditional-member premises are Proven (§10.1 step 5), and its substituted signature is compatible with the closed parts of `S` under §10.7, which includes equal arity and task-slot presence.
-3. Applicable candidates are compared under §10.4 unchanged. A reference has no source arguments and uses no defaults, so steps 1 and 4 always tie, and results never rank candidates.
-
-After selection, the prohibition on unsafe functions and `drop` (§7.5, §7.6.4) and the erasure conditions (§7.6.4) are checked; a failure of either is an error and never selects another candidate. At an expected `F`, `ref/F` or `uniq/F`, `F` binds to the selected Function Item Type without erasure; the reference is a temporary, so at `ref/F` it is materialized and borrowed shared (§10.2). A reference that needed `S` is a waiting argument: the selected Item's signature is used for checking but never fills the open result of `S`. Function values have no labels or defaults. A conformance failure cannot change the chosen overload or capture mode.
-
-**Requirement references.** A requirement referenced through a constrained Type, such as `T.compare` under `T is Comparable`, is the Function Item of the requirement declaration instantiated with the binding of `Self`. Its signature is the requirement's, with `Self` and the associated Types substituted, and its calls reach the implementation as §8.4.6 states. Instantiation never replaces it with the implementation's own Function Item (§10.2.1). `Comparable.compare` identifies no implementation and is invalid as a reference too (§8.4.6).
+A requirement referenced through a constrained Type, such as `T.compare` under `T is Comparable`, is the requirement's Function Item with `Self` and associated Types substituted; its calls reach the implementation ([§8.6](08-generics-constraints-and-contracts.md#86-conformance)). It stays the requirement's Function Item after instantiation. `Comparable.compare` is invalid.
 
 ```kimi
 func show(value: i32) -> () => ()
 func show<T>(value: T) -> () => ()
 func identity<T>(value: T) -> T => value@move
-func inspect<T>(value: ref/T) -> () => ()
 
-func invoke<F>(action: ref/F) -> ()
-    F is Callable<(i32) -> ()>
-    action(1)
-
-let a: (i32) -> () = show         // show(i32): §10.4 step 3 prefers the non-generic function.
-invoke(show)                      // The same selection; F is its Function Item Type, and the temporary is borrowed.
+let a: (i32) -> () = show         // show(i32): step 3 prefers the non-generic function.
 let b: (i32) -> i32 = identity    // T = i32 from S; then erased.
-let c: (ref/Node) -> () = inspect // T = Node; the per-call Origin stays outside T.
-let d = show<i32>                 // No S: one candidate remains after the explicit arguments.
 // let e = show                   // Error: no S and two candidates.
 // let f = identity               // Error: no S and T is unbound.
 // let g: (ref/Node) -> ref/Node = identity // Error: T would hold a per-call Origin.
 ```
 
-**Anonymous body context.** Explicit Types, independently typable arguments and generic constraints are processed before the body is checked, independently of argument order. Arity and explicit Types may filter candidates, and the Types written in the header are evidence as parts of the anonymous function's known call signature (§10.8). The written signature, a common remaining expectation, or an already selected candidate's signature is used; the fixed expected call signature guides the omitted parameter Types while `F` keeps its concrete Closure Type. When the remaining candidates share no expectation, they are compared under §10.4 without the body, with waiting positions compared as §10.8 states, and the selected candidate's signature is used; a candidate that is not selected never needs to provide one. If the expectation used does not supply a part that the body needs, such as an omitted parameter Type, an annotation is required. Return expressions are never inspected to select candidates, bodies and captures are never retried across candidates, and parameters are never inferred from later uses.
+### 10.5.4. Anonymous functions
 
-Waiting arguments see only the candidates that remain applicable (§10.1); their bodies and results never select a candidate and are never evidence for an outer slot (§10.8).
+Explicit Types, independently typable arguments ([§10.5.1](#1051-argument-kinds)) and Constraints are processed before an anonymous body, in any argument order. Header arity and Types may filter candidates and are evidence. The body is checked against its written signature, a common remaining expectation, or the selected candidate's signature. At `F`, `ref/F` or `uniq/F`, the fixed expected call signature ([§10.5.2](#1052-call-signatures)) guides omitted parameter Types and `F` binds the concrete Closure Type without erasure. When candidates share no expectation, they are compared without the body. A part the body needs but no expectation supplies requires an annotation. Bodies never select candidates and are never retried, and parameters are never inferred from later uses.
 
-If the normalized return Type is Unit before the body is checked, the single-item expression is discarded (§7.1); otherwise it is in Value Context, including for return inference. That return inference infers the anonymous function's own result only; it is never evidence for an outer slot (§10.8). Unit inferred from another argument before body checking is allowed, whatever its spelling or source. The body and captures are not reinterpreted after later Unit inference or generic instantiation. A standalone lambda without an expectation can infer its return, while an already typed function value cannot erase its return to Unit. There is no overload preference between using and discarding lambda results.
+If the return Type is Unit before the body is checked, a single-item body is discarded ([§7.1](07-functions-and-callable-values.md#71-declarations-bodies-and-results)); otherwise the body is in Value Context; a return Type inferred from it belongs to the anonymous function only and is never outer evidence ([§10.5.1](#1051-argument-kinds)). Unit fixed by another argument before the body is checked counts; a body is never reinterpreted after later inference, and a typed function value never erases its return to Unit.
 
-~~~kimi
+```kimi
 func run(action: () -> ()) => action()
 func run(action: () -> i32) => action()
-run(func () => compute()) // Error: differing expectations; compute returns i32.
-run(func ()
-    return compute()
-) // Same error: an explicit return does not select an expected signature.
-run(func () -> i32 => compute()) // Explicit return Type selects the second overload.
-func apply<U>(value: U, action: () -> U) -> U => action()
-apply((), func () => compute()) // U is Unit before checking the lambda; discard its value.
-// func make<T>() -> T => 123 is invalid for arbitrary T; instantiation cannot rescue it.
-~~~
+run(func () => compute())        // Error: the candidates differ in expectation; the body never selects.
+run(func () -> i32 => compute()) // The written result Type selects the second.
+```
 
-**Constraints after inference.** The [limited proof system](08-generics-constraints-and-contracts.md#87-constraint-proof-system) applies: Proven satisfies a requirement, Refuted rejects it, and Error diagnoses invalid or contradictory evidence. Unknown may keep only a legitimate dependency that resolves by its deadline; it proves neither applicability nor negation. Generic capabilities must be proven at definition acceptance (§8.10). Nondependent Names bind at the definition and use the declared Constraints; failing to prove `T is C` does not prove `T is not C`. Deferred members keep the [definition environment](18-modules-and-dependencies.md#18-modules-and-dependencies), never caller imports. All necessary Constraints are proven before concrete finalization. Arbitrary theorem proving, Type enumeration and constraint-strength ranking are not allowed.
+### 10.5.5. Constraints after inference
 
-Environment-selected membership follows §19.4: excluded declarations neither merge nor enter candidate sets. Conditional-conformance members (§8.4.8) and conditional members (§7.4) remain in ordinary lookup; their published conditions affect applicability, not lookup stopping or syntax selection. Each defining generic environment is preserved.
+Constraints are judged by [§8.3](08-generics-constraints-and-contracts.md#83-constraint-proof): Proven satisfies, Refuted rejects, Error reports invalid evidence, and Unknown follows step 5 of [§10.1](#101-candidate-applicability). Generic capabilities are proven when the definition is checked ([§8.15](08-generics-constraints-and-contracts.md#815-generic-body-checking)); failing to prove `T is C` never proves `T is not C`. Members keep their definition environment, never the caller's imports ([§18](18-modules-and-dependencies.md#18-modules-and-dependencies)). There is no theorem proving, Type enumeration or Constraint-strength ranking. Declarations in excluded syntax never enter candidate sets ([§19.4](19-compile-time-directives.md#194-excluded-syntax)); conditional members stay in lookup and affect applicability only ([§7.5](07-functions-and-callable-values.md#75-function-constraints), [§8.8](08-generics-constraints-and-contracts.md#88-conditional-conformance)).
 
 ## 10.6. Usage legality and operators
 
-After selection, unsafe permission, initialization and Move state, actual Loans and lifetimes, required accessor access, write capability, and other control-flow or ownership conditions are checked. Static Type and declaration permissions needed for adaptation were checked earlier; flow-dependent failures never change the selected overload.
+After selection, unsafe permission, initialization, Move state, Loans, lifetimes, accessor access and write capability are checked. A failure is an error and never changes the selection, so adding a better overload can invalidate existing calls.
+
+An implementation may bound resolution work; exceeding the bound is an error, never a selection.
+
+Built-in operations, comparison mappings ([§13.4.1](13-operators-and-assignment.md#1341-contract-comparison-mapping)) and the arithmetic Contracts ([§13.3.4](13-operators-and-assignment.md#1334-route-selection)), which own their selection, define operator candidates. The Indexable Contracts define index-expression candidates; the key selects one conformance by unique fit, without ranking or expected-result filtering ([§4.7.1](04-arrays-indexing-and-slices.md#471-index-expression-resolution)).
 
 ```kimi
 unsafe func inspect(value: i32) -> () => ()
 func inspect(value: i64) -> () => ()
 let number: i32 = 1
-inspect(number) // Select Exact i32, then reject without an Unsafe Block.
+inspect(number) // Error: inspect(i32) is selected, then rejected outside an Unsafe Block.
 ```
-
-Adding a better overload can invalidate existing calls, even if the new overload then fails usage legality. A failed Move, Loan or Property permission check cannot retry with a borrow, a getter or a same-name declaration.
-
-Operator operands keep the fixed syntax, evaluation order and permitted adaptations. Built-in operations, the comparison mappings of §13.4.1 and the [arithmetic Contracts](arithmetic-contracts.md#2-selection-and-inference) define operator candidates; the [Indexable Contracts](04-arrays-indexing-and-slices.md#469-indexable-contracts) define index-expression candidates. Arithmetic fixes provider direction first, requires a unique structurally fitting conformance and checks Origin fitting after selection; ordinary call ranking and expected-result filtering do not select its conformance. No other extension candidates or ambiguity-resolution syntax are introduced (§10.9).
-
-**Diagnostics** distinguish undefined, wrong-role and inaccessible names, path or value-kind conflicts, missing receivers and inherited declarations named without a qualifier (§9.4), Type-argument or argument mismatches, no applicable overload, ambiguity, a gathered group that violates the parameter acquisition shape (§7.3.1), inference boundaries, dependency cycles, declaration errors and usage errors. Ambiguity diagnostics show the candidate Signatures and declaration locations and keep useful rejection reasons without dumping every tentative error.
-
-For an ambiguous function reference (§10.5), the diagnostic shows the fitting candidates with their substituted signatures and declaration locations. When a per-call Origin leaves the Origin of a reference's slot unsolved, the diagnostic is `MissingOriginBinding_Kd` (§15.3.6). It shows that slot and the corresponding parameter of the fixed expected call signature (§10.5). A required structural slot that neither explicit Type arguments nor evidence bind, at a function reference without a fixed expected call signature (§10.5) or at the selected candidate of a call (§10.8), is the inference-boundary diagnostic `UnboundTypeArgument_Kd` (Error, `Language`) at the reference or the call; its Reason names the slot, and the declaration is related. When the slot appears in the fixed expected call signature of a waiting argument, that argument is related too. None of these diagnostics offers a repair candidate (§23.3.6.9).
-
-A call whose gathered group violates the parameter acquisition shape is reported at the called Name as §7.3.1 states; it fixes no callee, acquisition plan or result, explicit operations and inner calls already inside its arguments are not undone, independent problems stay visible, and problems that depend on the call, including an expectation it could not supply, follow the prerequisite rules of §23.3.6.4. Exhausting a resource limit is distinct from language ambiguity or mismatch; it must request annotations or smaller expressions and never chooses the first candidate.
 
 ## 10.7. Callable signature compatibility
 
-Callable variance uses the static Type relations of [the relation table](03-types-and-values.md#38-type-relations-and-expression-operations). Common Function Type conversion and receiver acquisition are separate operations, and receiver adaptation adds no argument conversions.
+Common Function Type erasure ([§7.7.4](07-functions-and-callable-values.md#774-function-references-and-erasure)) and `Callable<r, S>` ([§8.10](08-generics-constraints-and-contracts.md#810-callable-constraints)) use this rule. An implementation `(A1, ..., An) -> R` is compatible with a required `(P1, ..., Pn) -> Q` when both or neither have a task slot ([§24.2.4](24-suspension-and-asynchronous-tasks.md#2424-compatibility)), the arities are equal, `Pi <: Ai` ([§3.8](03-types-and-values.md#38-type-relations-and-operations)) at every position, and `R` is result-compatible with `Q`. Labels and defaults cannot bridge a mismatch.
 
-Common Function Type conversion and `Callable<r, S>` use one rule. For implementation `(A1, ..., An) -> R` and required `(P1, ..., Pn) -> Q`, either of which may begin with a task slot, both must have a task slot or neither ([§24.2.4](24-suspension-and-asynchronous-tasks.md#2424-compatibility)), the arity of the remaining parameters must be equal, `Pi <: Ai` must hold at every position, and `R <: Q` must hold. Here `<:` means normalized complete-Type identity or an already defined subtype relation, keeping Semantics and Origins. A Never result satisfies any value result `Q`, since Never fits every value Type (§3.8). Parameter labels, name-omission permissions and defaults cannot bridge a mismatch.
+**Result compatibility.** An implementation result `R` is compatible with a required result `Q` when `R <: Q` or `R` is Never. Contract implementation matching, refinement conflict checks, Callable compatibility and common Function Type erasure all use this one relation. A value of one common Function Type relates to another only by subtyping, and Never fitting ([§3.8](03-types-and-values.md#38-type-relations-and-operations)) is a separate relation from subtyping.
 
-Compare parameter/result Origins and Loans for every admitted call using [canonical Origin contracts](15-ownership-and-lifetime-analysis.md#1537-canonical-contracts-and-verification). Required quantifiers are rigid; only the implementation's call-time Origins are inferred. Fixed captures cannot become fresh quantifiers. Compatibility inserts no Borrow/Reborrow, follow, numeric or user conversion, or argument/result erasure, and never reinfers committed Types. Covariant Origin shortening remains valid, while exclusive Core invariance and result Loans remain mandatory.
+Origins and Loans are compared by canonical Origin contracts ([§15.3.7](15-ownership-and-lifetime-analysis.md#1537-contract-comparison)): required quantifiers are rigid, and only the implementation's call-time Origins are inferred. Compatibility inserts no borrow, conversion or erasure. A direct match and an erasure are incomparable ([§10.2.2](#1022-inference-and-adaptation-classes)).
 
-Implicit erasure applies only after the expected common Function Type is fixed. No overload ordering is defined between a concrete direct match and an erasure: they are incomparable (§10.2.1), so use an annotation or typed intermediate where that comparison would be needed. Allocation cost never ranks candidates, and a receiver, Copy, Owned or Loan failure cannot reopen selection.
+```kimi
+contract Empty
+    func empty() -> Self
+
+struct Impossible
+    Self is Empty
+    public func empty() -> Never => $abort("no value")   // OK: Never satisfies Self.
+```
 
 ## 10.8. Generic argument inference
 
-The additional [fixed-array inference rules](04-arrays-indexing-and-slices.md#44-function-length-parameters) apply to lengths and literal element counts. Lengths are kept alongside Type, Semantics and Origin bindings within each candidate.
+Explicit arguments bind first. Type, Semantics, length ([§4.4](04-arrays-indexing-and-slices.md#44-function-length-parameters)) and Origin constraints are then collected together from the receiver and the independently typable arguments ([§10.5.1](#1051-argument-kinds)), and the expected result fills only unbound parts. A call without explicit Type arguments to a group whose validity relies on correlated slots must establish each correlation as [§7.4](07-functions-and-callable-values.md#74-parameter-acquisition-shape) requires.
 
-Within each candidate, explicit arguments bind first. The remaining structural Type, Semantics and Origin constraints are collected together from the receiver and the independently typable arguments under §10.2.1, never by fixing the first input and adapting later inputs to it.
+**Call-signature matching.** Each parameter with a fixed expected call signature `S` ([§10.5.2](#1052-call-signatures)) matches `S` against the known call signature of its argument, or for `F`, `ref/F` or `uniq/F` of the Type the argument binds to `F`. Task-slot presence, structure and Semantics match by normalized identity and Origins by limited inference ([§15.3.6](15-ownership-and-lifetime-analysis.md#1536-origin-inference)), without adaptation or search. Only parts containing an unbound slot are matched this way; other parts must fit as [§10.7](#107-callable-signature-compatibility) requires (erasure at a common Function Type, the Callable Constraint at `F`), so header Types need only be compatible. A per-call Origin never solves an Origin inside a slot: `(T) -> ()` against `(ref/i32) -> ()` gives `T = ref/i32` with its Origin left to other evidence.
 
-In the same fixed point as these constraints, each parameter with a fixed expected call signature `S` (§10.5) matches `S` against a known call signature. A common Function Type parameter matches it against the argument's known call signature, whether the argument is a Function Item, a concrete Closure, a common Function value or a value of a generic parameter. A parameter of Type `F`, `ref/F` or `uniq/F` under `F is Callable<r, S>` matches it against the known call signature of the Type that the argument itself binds to `F` (§10.2.1 step 1). In either case, an anonymous function argument supplies only the parts written in its header (§10.5). The matching covers task-slot presence, the result shape (value or Place), the parameter Types and the result Type: a known call signature without a task slot never matches an `S` with one, or the reverse ([§24.2.4](24-suspension-and-asynchronous-tasks.md#2424-compatibility)), and structure and Semantics are matched by normalized identity and Origins by limited inference (§15.3.6), with no adaptation, subtype search or conversion search. Only a parameter Type or the result Type of `S` that contains an unbound slot is matched this way, because only it supplies evidence. Every other parameter or result Type of `S` is met by the fit that the position applies under §10.7: the erasure condition (§7.6.4) at a common Function Type, whose Origin part is judged after selection, or the Callable Constraint (§8.6) at `F`, judged as §10.3 states. The structural part of that fit is judged during applicability, so the Types written in an anonymous function's header still filter candidates; they need to be compatible with those Types, not equal to them. A per-call Origin (§8.6) never becomes the solution of an Origin inside a slot. The match still supplies the slot's structure and Semantics: `S = (T) -> ()` matched against `(ref/i32) -> ()` gives `T = ref/i32`, whose Origin is left to other evidence or to §15.3.6, and the per-call Origin of the argument's known call signature is instantiated to it under §10.7. These matches are solved together with the argument Types: a failed match and conflicting evidence for one slot are both mismatches that make the candidate inapplicable, and no argument fixes a slot first by traversal order. Evidence conflicts only in structure or Semantics: Origin evidence for a slot never makes a candidate inapplicable (§15.3.6, §15.6.1). An explicit Type argument is kept; otherwise a binding at an invariant position is the slot's solution, the first such binding when there are several, and covariant bindings meet. Each argument's Origin relation to that solution is then judged after selection: `put<T>(slot: uniq/T, value: T)` solves `T` from `slot`, so a `value` that does not fit is the reported argument, in either argument order. Waiting arguments (§10.5) are never evidence: even when `F` is fixed as the concrete Closure of an anonymous function after its waiting body is checked, that Closure's result Type fills no outer slot.
+**Solving.** A failed match, or conflicting structure or Semantics evidence, makes the candidate inapplicable; Origin evidence never does ([§15.6.1](15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness)). An explicit Type argument is kept. Otherwise the slot's solution is its binding at invariant positions: all such bindings must agree in structure and Semantics (a disagreement makes the candidate inapplicable), and their Origins must be equal. Without an invariant binding, the solution is the meet of the covariant bindings. Each argument's Origin fit to the solution is judged after selection. An unresolved associated projection such as `T.Element` is never inverted: an argument of Type `i32` at `value: T.Element` binds no `T`, and another parameter such as `witness: Tag<T>` must bind it. Traversal order, conversion chains, common-base search and Constraint strength never choose a solution. A waiting argument's completed Closure fills no outer slot.
+
+**Semantics.** Under an expected `s/T`, the Literal operand of `n@s` fits `T` (not for object targets, [§13.6.2](13-operators-and-assignment.md#1362-object-creation-clone-and-lifecycle)); a typed operand keeps its Type. An unbound `s` is inferred from the source's outer Semantics with no conversion search: `owner` and `ref` evidence for one `s` conflict. `s is reference` checks the Semantics projection and the pair's `T is C` its target projection; an ordinary `T` keeps its complete Semantics.
+
+**Unbound slots.** A slot that no evidence binds once steps 3 and 4 of [§10.1](#101-candidate-applicability) are complete (literal defaults are not yet applied, [§10.2.1](#1021-literals)), such as one only a Literal or waiting argument could fix, is not a mismatch: the candidate stays applicable on its other checks, and Constraints needing the slot are not judged. A parameter Type containing it is identical to, and a subtype of, no other Type. A parameter `F`, `ref/F` or `uniq/F` bound by a waiting argument is not such a slot: equal forms compare equal in step 2 of [§10.4](#104-best-candidate). Infinite substitutions such as `X = ref/X` are errors, and cycles supply no evidence.
 
 ```kimi
-func consume<T, F>(action: F) -> T
-    F is Callable<owner, () -> T>
-    return action@move()
-
 func both<T, F, G>(first: ref/F, second: ref/G) -> T
     F is Callable<() -> T>
     G is Callable<() -> T>
     return first()
 
-func make<T>(action: () -> T) -> T => action()
 func makeSmall() -> i32 => 1
 func makeLarge() -> i64 => 2
-
-let small = consume(makeSmall)             // T = i32 from the known call signature of makeSmall.
-let large = make(makeLarge)                // T = i64 likewise; the argument is then erased.
-let written = consume(func () -> i64 => 2) // T = i64 from the written result Type.
-// let open = consume(func () => 2)        // Error: only the body could fix T; write its result Type or annotate open.
-// let mixed = both(makeSmall, makeLarge)  // Error: conflicting evidence for T; neither argument fixes it first.
+// let mixed = both(makeSmall, makeLarge)  // Error: conflicting evidence for T.
 ```
-
-An independently known expected result fills only still-unbound parts. The nested-expression boundaries and literal fitting apply, and literal defaults are used only after all other evidence. Except for object targets, which fix the input independently under [§13.5.8](13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing), an expected Type propagates through a Semantics-preserving adaptation to an untyped literal: under an expected `s/T`, the untyped literal or literal-only operand `n` of `n@s` is fitted to `T`. A typed operand keeps its own Type there, so the borrow forms from its Place and never from a value read of it.
-
-An unbound `s` is inferred directly from the source's outer Semantics. No implicit Borrow, Reborrow or other conversion is searched to find a common Semantics: `owner` and `ref` evidence for the same `s` conflict. Once a target Type is fixed, including by explicit arguments, normal adaptation is checked separately. Origin inference uses the [limited principal-solution rules](15-ownership-and-lifetime-analysis.md#1536-limited-origin-inference).
-
-Structural, Semantics and Origin constraints are solved to a fixed point, and every required slot must be resolved uniquely and consistently. A structural slot that no evidence binds once steps 3 and 4 of §10.1 and the literal defaults of §10.2 are complete, such as a slot that only a waiting argument could fix, is not a mismatch: its candidate stays applicable on its other checks, the parts of its matches and fits that do not contain the slot are still checked, and the Constraints and premises whose judgment needs the slot are not judged. §10.4 compares such a candidate unchanged, and a parameter Type that contains the slot is neither identical to nor a subtype of another Type (§3.8). A parameter of Type `F`, `ref/F` or `uniq/F` whose `F` a waiting argument binds is not such a slot: candidates whose parameters at that position have the same form compare as equal there in step 2 of §10.4, because the waiting argument is completed only for the selected candidate (§10.5). If a candidate with an unsolved slot is selected, the slot is reported as §10.6 states, and the checks that need it are derived (§23.3.6.4). An occurs-check rejects infinite substitutions such as `X = ref/X`; nominal recursive Types instead require a valid layout. Cycles supply no result. Unresolved work is kept only for an identified dependency that can resolve by its deadline.
-
-Argument or candidate traversal order, arbitrary conversion chains, common-base search and Constraint strength never choose a solution. Constraint substitution uses the same binding table as Type expressions: `s is reference` checks the Semantics projection, and the pair's `T is C` checks its target projection and that requirement's role; an ordinary `T` keeps its complete Semantics. Then fixed-target argument adaptation, substituted Constraints and expected-result compatibility are checked; flow-dependent acquisition, Loans and cleanup follow selection.
 
 ### 10.8.1. Constructor Type inference
 
-Construction uses the common inference rules, with the selected structure's own slots in place of function-own slots. The declaration and outer environment are fixed under §9.6 before inference. Explicit arguments and existing bindings stay fixed; independent argument Types and written callable headers contribute first, then an independent expected result fills only unbound parts, and literal fitting/defaults follow at their ordinary points. Information shortage is not a mismatch: check independent parts and retain the candidate under §10.8 until selection. Defaults, Field initializers and constructor bodies supply no inference evidence.
+Construction applies [§10.8](#108-generic-argument-inference) to the selected structure's own slots after its declaration and environment are fixed ([§9.7](09-names-signatures-and-access.md#97-type-name-selection)). An expected result supplies slots only by direct structural match with an owner Type of the same declaration, never by inverting a borrow, object creation, upcast, conversion or associated projection. Defaults, Field initializers and constructor bodies supply no evidence. Literal arguments fit and default as in [§10.2.1](#1021-literals). Enum Cases follow [§6.5.2](06-declarations-and-containers.md#652-case-references).
 
-An expected result supplies constructor slots only by direct structural matching with an owner Type of the same structure declaration and outer environment. Do not invert borrowing, object creation, upcasting, a conversion or an associated projection. Once a Type is fixed, its ordinary result adaptation remains available. Enum Case construction keeps its separate expected-Type-first rule (§6.3.2), and `try` keeps its inference boundary (§10.5).
+**Fixed-binding check.** An inferred construction is accepted only if fixing its inferred construction Type explicitly would select the same constructor from the original group, with the original argument mapping and untyped literals. Otherwise explicit Type arguments are required; candidates are never switched. A waiting argument needing another context also requires them; waiting alone never rejects a single candidate.
 
 ```kimi
 func wrap<T>(value: T) -> Box<T>
-    return Box.init(value@move)
-
-// Given Holder<T>.init(value: T.Element), an i32 input cannot determine T.
-// With init(value: T.Element, witness: Tag<T>), Tag<K> can bind T = K;
-// the ordinary forward resolution then checks K.Element.
-// At an expected ref/Empty<i32>, Empty.init() cannot infer T by undoing a borrow;
-// Empty<i32>.init() can use the normal temporary-borrow rules.
+    return Box.init(value@move)   // T from the argument.
+// For C<T>.init(x: ref/i32, y: ref/T) and init(x: ref/T, y: ref/T),
+// C.init(x, y) with x: ref/(ref/i32) and y: ref/i32 is an error:
+// inference picks the first, but with C<i32> fixed both are ambiguous.
 ```
 
-**Fixed-binding reference check.** An inferred construction is accepted only if explicitly fixing its inferred complete construction Type would select the same constructor. This check defines acceptance independently of optimization or proof strength:
+## 10.9. Excluded forms
 
-1. Keep the inferred declaration and construction Type as tentative, and retain the original group, including declarations rejected by inference conflicts.
-2. Fix the construction Type's arguments and apply ordinary applicability and Best Candidate to that group, using the original argument mapping and independent input facts. Literals start from their original untyped facts, not a candidate's fitted Types. Perform no new name lookup, Type inference, Type enumeration or candidate-specific body analysis.
-3. Accept only when the same declaration is uniquely best, using the common fixed-binding fit and acquisition plan. A different winner, no winner or ambiguity requires explicit Type arguments; do not switch candidates. Requiring another expected context for a waiting argument also requires explicit arguments without attempting that analysis.
-
-Keep waiting arguments incomplete up to the boundaries of §10.5 and §10.8. Preserve any expectation or call signature already supplied. A single completion in that context may fix a concrete Closure slot; verify that completed binding without reinferring the body from the resulting Type. Do not reuse its context-dependent result as independent evidence for another candidate or context. A single candidate is subject to the same rule; waiting alone is not a reason to reject it. Actual acquisition, Origin/Loan and cleanup checks run once after selection, with no fallback.
-
-```text
-C<T> constructors:
-  init(x: ref/i32, y: ref/T)
-  init(x: ref/T,   y: ref/T)
-Input Types: x is ref/ref/i32; y is ref/i32.
-```
-
-Inference can provisionally choose the first constructor at `T = i32`, while the second has conflicting inference evidence. With `C<i32>` fixed, both parameter lists become equal under ordinary fitting and are ambiguous. The inferred form therefore requires explicit arguments; it must not silently succeed. Explicit arguments do not promise to resolve the remaining ambiguity.
-
-This extra equivalence guarantee applies to constructors. Explicit function Type arguments retain their existing effect on the candidate set. No partial lists, placeholders, default Type arguments, structure length parameters, constructor-own generic parameters or new anonymous-Type spelling are introduced.
-
-The [complete example](../examples/ConstructorInference/README.md) demonstrates input and expected-result inference,
-borrow dependencies, a concrete Closure, evaluation order and cleanup.
-
-## 10.9. Inference and operation design boundaries
-
-The following are not specified in this revision, and implementations must not invent them through broader search:
-
-- General Const arguments beyond [function lengths](04-arrays-indexing-and-slices.md#44-function-length-parameters), standalone Semantics slots, partial, default or variadic generic arguments, and partial or conditional specialization.
-- Implicit argument or receiver adaptations beyond the common adaptation table, and exact contextual-binding boundaries for additional accessor or function forms. The explicit Borrow table adds no implicit overload preferences.
-- Operator candidate collection and explicit selection syntax beyond the built-in operators, the comparison mappings and the Indexable Contracts. Constructor collection is defined under [constructors](06-declarations-and-containers.md#623-constructors); external/internal parameter names and the `!` boundary are defined in §7.2.
+Implementations must not add constructor-own generic parameters, structure length parameters, implicit adaptations beyond [§10.2](#102-common-adaptation), operator candidates beyond those of [§10.6](#106-usage-legality-and-operators), or explicit overload-selection syntax; other generic forms outside this revision are listed in [§D.2](appendices/D-deferred-features.md#d2-declarations-functions-and-generics).

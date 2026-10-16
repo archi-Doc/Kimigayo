@@ -79,7 +79,7 @@ public class ReferenceEmissionTest
     [InlineData("func identity(a: ref/string) -> ref/string => a\n()", true)]
     [InlineData("func save(a: ref/string)\n    let saved = a\n()", true)]
     [InlineData("func compare(a: ref/string, b: string) -> bool => a == b\n()", true)]
-    [InlineData("func good(a: ref/string)\n    Console.writeLine(a)\n()", true)] // SPEC 22.4: writeLine accepts an existing shared reference.
+    [InlineData("func good(a: ref/string)\n    Console.writeLine(a)\n()", true)] // SPEC 22.1: writeLine accepts an existing shared reference.
     [InlineData("let a = \"a\"\na@ref", true)]
     [InlineData("func unused(a: ref/string) => 1.0 + 2.0\n()", true)]
     public void ReferenceUsesAndIndependentFloatResultsRespectSupport(string source, bool emitted = false)
@@ -140,7 +140,7 @@ public class ReferenceEmissionTest
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         var body = c.Ownership.Bodies[0];
         var function = module.GetFunction(0);
-        Assert.Equal(3, body.Operations.Count(x => x.Kind == OwnershipOperationKind.Borrow)); // Two for same, one for writeLine (SPEC 22.4).
+        Assert.Equal(3, body.Operations.Count(x => x.Kind == OwnershipOperationKind.Borrow)); // Two for same, one for writeLine (SPEC 22.1).
         Assert.DoesNotContain(function.Slots, x => ReferenceTypes.IsString(body.Places[x.Place].Type));
         var borrowed = module.GetFunction(1);
         Assert.Empty(borrowed.Slots);
@@ -161,31 +161,18 @@ public class ReferenceEmissionTest
     public void WarmBindingAndEmissionAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Same + "func forward(a: ref/string, b: ref/string) -> bool => same(a, b)\nlet a = \"a\"\nforward(a, a)");
-        for (var i = 0; i < 100; i++)
-        {
-            c.Bind();
-            c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        var valid = true;
-        for (var i = 0; i < 128; i++)
-        {
-            valid &= c.Bind().IsComplete;
-        }
-
-        var bindingBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        var valid = true;
+        var bindingBytes = AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        var emissionBytes = AllocationMeasurement.Measure(() =>
         {
             valid &= c.Analyze().IsVerified;
             valid &= c.WriteIr(TextWriter.Null, out _);
-        }
-
-        var emissionBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        });
         Assert.True(valid);
         Assert.Equal(0, bindingBytes);
         Assert.Equal(0, emissionBytes);
@@ -236,15 +223,17 @@ public class ReferenceEmissionTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var pool = new FunctionAbiPool();
-        var abi = pool.Get(0, c.Ownership.Bodies[1].Function);
-        var oldType = c.Ownership.Bodies[1].Function.Parameters[0].Type.TypeOf();
+        var same = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "same");
+        var abi = pool.Get(0, same);
+        var oldType = same.Parameters[0].Type.TypeOf();
         c = MinimalEmissionTest.Analyze(Source.Replace("same", "renamed", StringComparison.Ordinal));
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
         Assert.True(c.Emission.TryPrepare(out module, out error), error);
-        Assert.NotSame(oldType, c.Ownership.Bodies[1].Function.Parameters[0].Type.TypeOf());
-        Assert.Same(abi, pool.Get(0, c.Ownership.Bodies[1].Function));
+        var renamed = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "renamed");
+        Assert.NotSame(oldType, renamed.Parameters[0].Type.TypeOf());
+        Assert.Same(abi, pool.Get(0, renamed));
     }
 
     [Fact]
@@ -285,12 +274,12 @@ public class ReferenceEmissionTest
     [Fact]
     public void OverloadRankingRetainsExactOwnedAcquisition()
     {
-        // SPEC 7.3.1: the borrowing candidate at the same position has a disjoint Type; the owned temporary takes the by-value one exactly.
+        // SPEC 7.4: the borrowing candidate at the same position has a disjoint Type; the owned temporary takes the by-value one exactly.
         const string Source = "func pick(a: string) -> bool => true\nfunc pick(a: ref/i64) -> bool => false\nif pick(\"a\") => Console.writeLine(\"owned\")";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.Empty(c.Binding.Issues);
-        var call = c.Ownership.Bodies[0].Operations.First(x => x.Kind == OwnershipOperationKind.Call && x.Source is InvocationKoto { BoundCall.Target.Name: "pick" });
-        Assert.Equal(ArgumentOperationKind.Value, ((InvocationKoto)call.Source).CallOf()!.ArgumentOperations[0].Kind);
+        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().First(static x => x.CallOf()?.Target.Name == "pick");
+        Assert.Equal(ArgumentOperationKind.Value, call.CallOf()!.ArgumentOperations[0].Kind);
         ScalarEmissionTest.EmitFixture("ReferenceOverload", Source, "owned\n");
     }
 
@@ -298,7 +287,7 @@ public class ReferenceEmissionTest
     private static WeakReference Populate(FunctionAbiPool pool)
     {
         var c = MinimalEmissionTest.Analyze(Same + "()");
-        var function = c.Ownership.Bodies[1].Function;
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "same");
         pool.Get(0, function);
         return new WeakReference(function);
     }

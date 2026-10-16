@@ -10,7 +10,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 7.2.3, 7.6.4: a default of a closed common Function Type erases a closed Function Item, or an anonymous function whose
+// SPEC 7.2.3, 7.7.4: a default of a closed common Function Type erases a closed Function Item, or an anonymous function whose
 // call is Shared and whose entries Copy preceding parameters. Each omission evaluates the default at the call, against the
 // slots that call prepared, and delivers one owned value to the parameter.
 public class FunctionDefaultTest
@@ -51,7 +51,7 @@ public class FunctionDefaultTest
         { "Recursive", "func countDown(n: i32, step: (i32) -> i32 = func [n] (x) => x + n) -> i32\n    if n == 0 => return step(0)\n    return countDown(n - 1) + step(0)\nrequire countDown(2) == 3 else => $abort(\"recursive\")" },
         { "ExclusiveReceiver", "struct Counter\n    public var value: i32\n    public init(value: i32) => self.value = value\n    public func inc(value: i32) -> i32 => value + 1\n    public func apply(self: uniq/Self, action: (i32) -> i32 = inc) -> i32\n        self.value = action(self.value)\n        return self.value\nvar c = Counter.init(1)\nrequire c.apply() == 2 and c.apply() == 3 else => $abort(\"exclusive\")" },
 
-        // SPEC 14.2, 14.9.1: selections, `do` bodies and their transfers deliver erased sources; conditions stay scalar.
+        // SPEC 14.2, 14.9.2: selections, `do` bodies and their transfers deliver erased sources; conditions stay scalar.
         { "Selection", Steps + "func run(up: bool, action: (i32) -> i32 = if up => inc else => dec) -> i32 => action(10)\nrequire run(true) == 11 and run(false) == 9 else => $abort(\"selection\")" },
         { "Match", Steps + "func run(n: i32, action: (i32) -> i32 = match n\n    0 => inc\n    _ => dec\n) -> i32 => action(10)\nrequire run(0) == 11 and run(1) == 9 else => $abort(\"match\")" },
         { "MatchYield", Steps + "func run(n: i32, action: (i32) -> i32 = match n\n    0\n        let k = 2\n        yield inc\n    _ => dec\n) -> i32 => action(10)\nrequire run(0) == 11 and run(1) == 9 else => $abort(\"yield\")" },
@@ -140,7 +140,7 @@ public class FunctionDefaultTest
         NativeAllocationAudit.WriteFixture(Prefix + "AuditNoncompleting", Source, 0, 0, 0, "begin\n", exit: 1, stderr: $"Hello.kimi:1:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
     }
 
-    // SPEC 7.6.4, IMPL 21.2.5.3: the environment allocation of an omitted default reports the default expression.
+    // SPEC 7.7.4, IMPL 21: the environment allocation of an omitted default reports the default expression.
     [Fact]
     public void AllocationFailureIsLocatedAtTheDefault()
     {
@@ -152,7 +152,7 @@ public class FunctionDefaultTest
         ScalarEmissionTest.WriteFixture(Prefix + "AllocationFailure", ir, string.Empty, 1, $"Hello.kimi:1:{column}: abort KIMI_E_ALLOC: Failed to allocate memory\n");
     }
 
-    // SPEC 7.2.3, 7.6.2: an omitted capture list only Copies. A non-Copy preceding argument is the default's own error, at
+    // SPEC 7.2.3, 7.7.2: an omitted capture list only Copies. A non-Copy preceding argument is the default's own error, at
     // the closure, and the pending call still owns its prepared argument.
     [Fact]
     public void NonCopyCaptureOfAPreparedArgumentIsOneTransferRequired()
@@ -164,7 +164,7 @@ public class FunctionDefaultTest
     }
 
     // SPEC 7.2.3: a default is checked for every binding, as a generic body is, and binds no slot. In a default, a capture of a
-    // preceding argument can neither move it nor keep a borrow of it, and the erased environment must be Owned (SPEC 7.6.4), so no candidate
+    // preceding argument can neither move it nor keep a borrow of it, and the erased environment must be Owned (SPEC 7.7.4), so no candidate
     // proposes @move, @ref, @uniq, a Reborrow of self, or keeping the concrete closure. Outside a default the records are kept.
     // The anchor is unique in the source; every row is one record without repair candidates, a Proof record for an unproven
     // Constraint and a Language record otherwise.
@@ -191,17 +191,17 @@ public class FunctionDefaultTest
     [InlineData("func m<T, U>(x: T, y: (T, U) = (1, true)) -> () => ()\npublic func main() => ()\n", "(1, true)", "1", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
     [InlineData("func runT(text: string, action: () -> bool = func () => text == \"a\") -> bool => action()\npublic func main() -> ()\n    let a = runT(\"a\")\n", "= func () => text", "func () => text == \"a\"", nameof(DiagnosticCode.TransferRequired_Kd), "The omitted capture list captures text only by Copy; it never infers a Move, a borrow or a Reborrow, and a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)")]
     [InlineData(Steps + "func run(a: (i32) -> i32 = inc, b: (i32) -> i32 = func [a] (x) => a(x)) -> i32 => b(a(1))\npublic func main() => ()\n", "func [a]", "a", nameof(DiagnosticCode.TransferRequired_Kd), "The bare capture entry a initializes its environment binding as let a = a would; (i32) -> i32 is not proven Copy, and a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)")]
-    [InlineData("func runT(text: string, action: () -> bool = func [text@ref] () => text@follow == \"a\") -> bool => action()\npublic func main() => ()\n", "= func [text@ref]", "func [text@ref] () => text@follow == \"a\"", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "Common Function conversion requires an Owned environment (SPEC 7.6.4, 15.2.3); the capture text depends on the borrow text@ref, which is not static; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)")]
-    [InlineData("func run(k: i32, f: () -> i32 = func [k@ref] () => k@follow) -> i32 => f()\npublic func main() => ()\n", "= func [k@ref]", "func [k@ref] () => k@follow", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "Common Function conversion requires an Owned environment (SPEC 7.6.4, 15.2.3); the capture k depends on the borrow k@ref, which is not static; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)")]
-    [InlineData("func runT(text: ref/string, action: () -> bool = func () => text@follow == \"a\") -> bool => action()\npublic func main() => ()\n", "= func ()", "func () => text@follow == \"a\"", nameof(DiagnosticCode.UnprovenConstraint_Kd), "Common Function conversion requires an Owned environment (SPEC 7.6.4, 15.2.3); the capture text depends on text, which is not static; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)")]
-    [InlineData("struct Counter\n    public var value: i32\n    public init(value: i32) => self.value = value\n" + "func bump(c: uniq/Counter, g: () -> i32 = func [c] () => c.value) -> i32 => g()\npublic func main() => ()\n", "= func [c]", "func [c] () => c.value", nameof(DiagnosticCode.UnprovenConstraint_Kd), "Common Function conversion requires an Owned environment (SPEC 7.6.4, 15.2.3); the capture c depends on c, which is not static; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)")]
+    [InlineData("func runT(text: string, action: () -> bool = func [text@ref] () => text@follow == \"a\") -> bool => action()\npublic func main() => ()\n", "= func [text@ref]", "func [text@ref] () => text@follow == \"a\"", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "Common Function conversion requires an Owned environment (SPEC 7.7.4, 15.2.3); the capture text depends on the borrow text@ref, which is not static; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)")]
+    [InlineData("func run(k: i32, f: () -> i32 = func [k@ref] () => k@follow) -> i32 => f()\npublic func main() => ()\n", "= func [k@ref]", "func [k@ref] () => k@follow", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "Common Function conversion requires an Owned environment (SPEC 7.7.4, 15.2.3); the capture k depends on the borrow k@ref, which is not static; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)")]
+    [InlineData("func runT(text: ref/string, action: () -> bool = func () => text@follow == \"a\") -> bool => action()\npublic func main() => ()\n", "= func ()", "func () => text@follow == \"a\"", nameof(DiagnosticCode.UnprovenConstraint_Kd), "Common Function conversion requires an Owned environment (SPEC 7.7.4, 15.2.3); the capture text depends on text, which is not static; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)")]
+    [InlineData("struct Counter\n    public var value: i32\n    public init(value: i32) => self.value = value\n" + "func bump(c: uniq/Counter, g: () -> i32 = func [c] () => c.value) -> i32 => g()\npublic func main() => ()\n", "= func [c]", "func [c] () => c.value", nameof(DiagnosticCode.UnprovenConstraint_Kd), "Common Function conversion requires an Owned environment (SPEC 7.7.4, 15.2.3); the capture c depends on c, which is not static; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)")]
     [InlineData("func f(k: i32, g: () -> i32 = func [k@uniq] () => k@follow) -> i32 => g()\npublic func main() => ()\n", "[k@uniq]", "k@uniq", nameof(DiagnosticCode.InvalidAssignment_Kd), "The capture entry k@uniq borrows the slot of the let binding k exclusively, as let k = k@uniq would; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)")]
-    [InlineData("struct Counter\n    public var value: i32\n    public init(value: i32) => self.value = value\n" + "    public func bump(self: uniq/Self, f: () -> i32 = func () => self.value) -> i32 => f()\npublic func main() => ()\n", "=> self.value)", "self", nameof(DiagnosticCode.InvalidCaptureBinding_Kd), "Contextual self is never captured implicitly; an anonymous function without a capture list captures only ordinary bindings (SPEC 7.6.2); a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)")]
-    [InlineData("struct Counter\n    Self is Copy\n    public var value: i32\n    public init(value: i32) => self.value = value\n    public func peek(self: Self, f: () -> i32 = func () => self.value) -> i32 => f()\npublic func main() => ()\n", "=> self.value)", "self", nameof(DiagnosticCode.InvalidCaptureBinding_Kd), "Contextual self is never captured implicitly; an anonymous function without a capture list captures only ordinary bindings (SPEC 7.6.2); a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)")]
+    [InlineData("struct Counter\n    public var value: i32\n    public init(value: i32) => self.value = value\n" + "    public func bump(self: uniq/Self, f: () -> i32 = func () => self.value) -> i32 => f()\npublic func main() => ()\n", "=> self.value)", "self", nameof(DiagnosticCode.InvalidCaptureBinding_Kd), "Contextual self is never captured implicitly; an anonymous function without a capture list captures only ordinary bindings (SPEC 7.7.2); a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)")]
+    [InlineData("struct Counter\n    Self is Copy\n    public var value: i32\n    public init(value: i32) => self.value = value\n    public func peek(self: Self, f: () -> i32 = func () => self.value) -> i32 => f()\npublic func main() => ()\n", "=> self.value)", "self", nameof(DiagnosticCode.InvalidCaptureBinding_Kd), "Contextual self is never captured implicitly; an anonymous function without a capture list captures only ordinary bindings (SPEC 7.7.2); a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)")]
     [InlineData("func run(text: string) -> bool\n    let action = func () => text == \"a\"\n    return action()\npublic func main() => ()\n", "= func () => text", "func () => text == \"a\"", nameof(DiagnosticCode.TransferRequired_Kd), "The omitted capture list captures text only by Copy; it never infers a Move, a borrow or a Reborrow")]
-    [InlineData("func runT(text: string) -> bool\n    let action: () -> bool = func [text@ref] () => text@follow == \"a\"\n    return action()\npublic func main() => ()\n", "= func [text@ref]", "func [text@ref] () => text@follow == \"a\"", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "Common Function conversion requires an Owned environment (SPEC 7.6.4, 15.2.3); the capture text depends on the borrow text@ref, which is not static")]
+    [InlineData("func runT(text: string) -> bool\n    let action: () -> bool = func [text@ref] () => text@follow == \"a\"\n    return action()\npublic func main() => ()\n", "= func [text@ref]", "func [text@ref] () => text@follow == \"a\"", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "Common Function conversion requires an Owned environment (SPEC 7.7.4, 15.2.3); the capture text depends on the borrow text@ref, which is not static")]
     [InlineData("func f(k: i32) -> i32\n    let g = func [k@uniq] () => k@follow\n    return g()\npublic func main() => ()\n", "[k@uniq]", "k@uniq", nameof(DiagnosticCode.InvalidAssignment_Kd), "The capture entry k@uniq borrows the slot of the let binding k exclusively, as let k = k@uniq would")]
-    [InlineData("struct Counter\n    public var value: i32\n    public init(value: i32) => self.value = value\n" + "    public func bump(self: uniq/Self) -> i32\n        let f = func () => self.value\n        return f()\npublic func main() => ()\n", "=> self.value\n", "self", nameof(DiagnosticCode.InvalidCaptureBinding_Kd), "Contextual self is never captured implicitly; an anonymous function without a capture list captures only ordinary bindings (SPEC 7.6.2)")]
+    [InlineData("struct Counter\n    public var value: i32\n    public init(value: i32) => self.value = value\n" + "    public func bump(self: uniq/Self) -> i32\n        let f = func () => self.value\n        return f()\npublic func main() => ()\n", "=> self.value\n", "self", nameof(DiagnosticCode.InvalidCaptureBinding_Kd), "Contextual self is never captured implicitly; an anonymous function without a capture list captures only ordinary bindings (SPEC 7.7.2)")]
     public void DefaultDiagnosticsStateTheDeclarationRule(string source, string anchor, string text, string code, string? note)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
@@ -213,7 +213,7 @@ public class FunctionDefaultTest
         Assert.True(error.Repairs is null or { Length: 0 });
     }
 
-    // SPEC 8.4.7.3, 7.2.3: a literal default fits every binding of a PrimitiveInteger T and is checked even without an instance.
+    // SPEC 8.7.4, 7.2.3: a literal default fits every binding of a PrimitiveInteger T and is checked even without an instance.
     [Fact]
     public void GenericLiteralDefaultUnderItsConstraintIsNoMismatch()
     {
@@ -319,12 +319,8 @@ public class FunctionDefaultTest
     public void WarmFunctionDefaultPlansReuseStorage()
     {
         var c = MinimalEmissionTest.Analyze(Steps + Heap + "func run(offset: i32, a: (i32) -> i32 = inc, b: (i32) -> i32 = func [offset] (x) => x + offset) -> i32 => b(a(1))\nrequire run(10) == 12 and runE(1, 2) == 3 else => $abort(\"warm\")");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Analyze().IsVerified || !c.WriteIr(TextWriter.Null, out _))

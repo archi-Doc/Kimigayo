@@ -83,7 +83,7 @@ public class VirtualOverrideBindingTest(ITestOutputHelper output)
         const string Source = "open struct Base<T>\n    public virtual func read(self: objref/Self, value: ref/T) -> i32 => 1\nstruct Derived : Base<i32>\n    override func read(self: objref/Self, value: ref/i32) -> i32 => 2\n()";
         var c = MinimalEmissionTest.Analyze(Source);
         var complete = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete));
         Assert.True(complete);
         Assert.Empty(c.Binding.Issues);
     }

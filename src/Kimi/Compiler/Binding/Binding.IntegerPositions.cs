@@ -4,7 +4,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// SPEC 4.6.2, 8.4.7, 22.1: every integer Type conforms to the closed Contract Position. The conformance is built in: its
+// SPEC 4.6.1, 8.7, 22.1: every integer Type conforms to the closed Contract Position. The conformance is built in: its
 // witness is the receiver function `tryResolve<I>` of the internal Kimi group IntegerPosition, instantiated at the
 // integer Type, and integers gain no members.
 public sealed partial class Binding
@@ -22,7 +22,7 @@ public sealed partial class Binding
     private static bool IsIntegerPosition(BoundType? type, BindingSymbol contract)
         => type is { IsInteger: true, Semantics: SemanticsKind.Owner } && contract.LibraryDeclaration == KimiDeclarationId.Position;
 
-    // SPEC 8.4.7: only the Kimi Types that §22.1 names conform to Position and PositionRange; a declaration elsewhere, including
+    // SPEC 8.7: only the Kimi Types that §22.1 names conform to Position and PositionRange; a declaration elsewhere, including
     // one of a user Contract that refines either, is an error rather than a conformance.
     private bool IsClosedContractGrant(BindingSymbol contract, BindingSymbol type)
         => (IsRefinement(contract, this.Library.Position) || IsRefinement(contract, this.Library.PositionRange)) &&
@@ -66,19 +66,25 @@ public sealed partial class Binding
 
         var count = parameter.Slot + 1;
         var types = this.RentTypes(count);
-        var lengths = this.lengthScratch.Rent(count);
         try
         {
-            // SPEC 8.8.3: the call holds every generic slot, a Type slot with a null length, so that the explicit
-            // specializations of the witness (such as `tryResolve<i32>`) are selected.
             types[parameter.Slot] = self;
             var resolved = destination ?? new CallPlan();
-            resolved.Set(target, call.ReturnType, call.Receiver, call.ArgumentToParameter, types.AsSpan(0, count), origins: call.Origins, inputOrigins: call.InputOrigins, operations: call.ArgumentOperations, receiverOperation: call.ReceiverOperation, defaults: call.DefaultArguments, lengthArguments: lengths.AsSpan(0, count));
+            resolved.Set(
+                target,
+                call.ReturnType,
+                call.Receiver,
+                call.ArgumentToParameter,
+                types.AsSpan(0, count),
+                origins: call.Origins,
+                inputOrigins: call.InputOrigins,
+                operations: call.ArgumentOperations,
+                receiverOperation: call.ReceiverOperation,
+                defaults: call.DefaultArguments);
             return resolved;
         }
         finally
         {
-            this.lengthScratch.Return(lengths, clearArray: true);
             this.typeScratch.Return(types, clearArray: true);
         }
     }

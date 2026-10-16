@@ -73,7 +73,7 @@ public sealed class GroupKoto : DeclarationContainerKoto
     /// <param name="stopAtCaseGroupBoundary">Whether Case Group recovery must leave its next arm or end unconsumed.</param>
     /// <remarks>
     /// Root directive targets and arms keep the root item grammar, including aliases and <c>rootgroup</c> (SPEC 6.1.1, 19.1).
-    /// Excluded syntax is parsed into a detached group and contributes no root item (SPEC 19.5).
+    /// Excluded syntax is parsed into a detached group and contributes no root item (SPEC 19.4).
     /// </remarks>
     private void ParseRootItems(ref TokenReader reader, ref RootParseState state, bool stopAtCaseGroupBoundary = false)
     {
@@ -242,7 +242,7 @@ public sealed class GroupKoto : DeclarationContainerKoto
     private GroupKoto ExcludedRootOwner(ref TokenReader reader, ref RootParseState state)
         => reader.InExcludedSyntax ? this : state.Detached ??= (GroupKoto)CreateStandalone(reader.CodeContext, TokenKind.Group, default, this.Span, string.Empty);
 
-    /// <summary>The source-order state of SourceDocument root items (SPEC 18.1.1, 19.5).</summary>
+    /// <summary>The source-order state of SourceDocument root items (SPEC 18.2.1, 19.4).</summary>
     private struct RootParseState
     {
         /// <summary>Whether an ordinary declaration or executable item precedes, so a later alias is misplaced.</summary>

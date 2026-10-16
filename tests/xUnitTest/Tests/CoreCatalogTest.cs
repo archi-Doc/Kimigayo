@@ -130,11 +130,7 @@ public class CoreCatalogTest
     {
         var c = Compilation.CreateForTest();
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "Console.writeLine(\"x\")");
-        for (var i = 0; i < 8; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         var copy = c.Library.Copy;
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
         Assert.Same(copy, c.Library.Copy);

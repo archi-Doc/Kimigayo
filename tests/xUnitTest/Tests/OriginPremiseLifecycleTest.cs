@@ -77,11 +77,7 @@ public class OriginPremiseLifecycleTest
     public void WarmProofAllocatesNothing(string family)
     {
         var c = MinimalEmissionTest.Analyze(OriginProofWorkloads.Create(family, 8));
-        for (var i = 0; i < 20; i++)
-        {
-            Reanalyze(c);
-        }
-
+        Reanalyze(c);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
     }

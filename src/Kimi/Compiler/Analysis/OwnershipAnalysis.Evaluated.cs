@@ -24,7 +24,7 @@ public sealed partial class OwnershipAnalysis
         return -1;
     }
 
-    // The key of a selection whose receiver the selection evaluated. SPEC 4.6.4, 4.6.9: a position or range key that is not
+    // The key of a selection whose receiver the selection evaluated. SPEC 4.6.3, 4.7.1: a position or range key that is not
     // applied directly resolves against the length of that receiver, read through the synthesized call's EvaluatedKoto. A
     // sequence's written `^x` key is `length - x` against that receiver, and its integer key of another Type is converted
     // to isize, so the element access's one bounds check rejects every invalid position.

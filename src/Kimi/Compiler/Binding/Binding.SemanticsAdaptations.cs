@@ -65,7 +65,7 @@ public sealed partial class Binding
             if (type.IsAbstract)
             {
                 return this.RequestCapability(type, this.Library.ObjectPayload, scope) == ConstraintProof.Proven ||
-                    this.RequestCapability(type, this.Library.Sealed, scope) == ConstraintProof.Proven ||
+                    this.ProveSealed(type, scope) == ConstraintProof.Proven ||
                     this.RequestCapability(type, this.Library.PrimitiveInteger, scope) == ConstraintProof.Proven
                     ? SemanticsMask.Owner : this.AdmittedSemantics(type, scope);
             }

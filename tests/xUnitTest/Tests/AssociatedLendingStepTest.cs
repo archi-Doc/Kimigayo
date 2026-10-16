@@ -66,14 +66,10 @@ public class AssociatedLendingStepTest
     {
         const string source = Declarations + "var iterator = Counter.init()\nvar count: i32 = 0\nvar total: i32 = 0\nwhile count < 100\n    let item = advance(iterator@uniq)\n    total += item\n    count += 1\nrequire total == 5050 else => $abort(\"lending total\")";
         var c = MinimalEmissionTest.Analyze(source);
-        for (var i = 0; i < 32; i++)
-        {
-            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
-            c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        c.Binding.CheckStartup(OutputKind.Application);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>

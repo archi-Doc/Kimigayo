@@ -103,11 +103,7 @@ public class AssociatedProjectionCertificateBindingTest
     public void WarmAssociatedProofsAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Prefix("public") + Consumer(0));
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

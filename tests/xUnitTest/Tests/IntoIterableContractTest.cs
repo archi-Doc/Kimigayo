@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 22.1.2: Kimi.IntoIterable is declared in Kimigayo source and validated by shape and identity;
+/// <summary>SPEC 22.2: Kimi.IntoIterable is declared in Kimigayo source and validated by shape and identity;
 /// associated Types use the same complete-Type rules as ordinary Contracts.</summary>
 public class IntoIterableContractTest
 {
@@ -55,7 +55,7 @@ public class IntoIterableContractTest
     [Theory]
     [InlineData("struct Broken\n    Self is IntoIterable\n    public func intoIterator(self: Self) -> i32 => 0", DiagnosticCode.UnsatisfiedConstraint_Kd)]
     [InlineData(Counter + "struct Broken\n    Self is IntoIterable\n    associate IntoIterable.IteratorType is Counter", DiagnosticCode.MissingContractImplementation_Kd)]
-    // SPEC 8.7: a primitive's conformances are fixed, so `i32 is LendingIterator` is refuted, not unknown.
+    // SPEC 8.3: a primitive's conformances are fixed, so `i32 is LendingIterator` is refuted, not unknown.
     [InlineData("struct Broken\n    Self is IntoIterable\n    associate IntoIterable.IteratorType is i32\n    public func intoIterator(self: Self) -> i32 => 0", DiagnosticCode.UnsatisfiedConstraint_Kd)]
     public void IncompleteConformancesAreRejected(string source, DiagnosticCode code)
     {

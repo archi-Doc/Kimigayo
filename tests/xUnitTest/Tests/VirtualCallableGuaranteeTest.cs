@@ -116,7 +116,7 @@ public class VirtualCallableGuaranteeTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(ConfinedProgram(bounded));
         Assert.Equal(bounded, c.Analysis.IsVerified);
         var consistent = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => consistent &= c.Analyze().IsVerified == bounded, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => consistent &= c.Analyze().IsVerified == bounded));
         Assert.True(consistent);
     }
 

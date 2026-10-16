@@ -48,11 +48,7 @@ public class PatternCoverageCompletionTest
     public void WarmCoverageFailureAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze(Source("public"));
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.False(c.Bind().IsComplete);
-        }
-
+        Assert.False(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (c.Bind().IsComplete)

@@ -67,11 +67,7 @@ public class RefinementNameBindingTest
     public void WarmRootQualifiedParentBindingAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze("public group Api\n    public contract Origin\npublic contract Child: ::Api.Origin");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

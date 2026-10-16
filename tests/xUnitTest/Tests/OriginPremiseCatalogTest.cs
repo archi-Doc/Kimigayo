@@ -55,7 +55,7 @@ public class OriginPremiseCatalogTest
             "func leak(p: ref/i32, q: ref/i32) -> (Option<ref/i32 during p>, ref/i32 during p)\n    return (.None, q)\n" + Main
         },
 
-        // R4, SPEC 8.4.3.1, 15.3.7: the formation condition of an associated application in a signature is a premise there and an
+        // R4, SPEC 8.5.4, 15.3.7: the formation condition of an associated application in a signature is a premise there and an
         // obligation of each call.
         {
             nameof(OriginPremiseRule.Associated),

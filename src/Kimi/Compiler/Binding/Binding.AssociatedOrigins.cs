@@ -53,7 +53,7 @@ public sealed partial class Binding
                 HasSupportedAssociatedFormation(type.Components[0]);
         }
 
-        // SPEC 8.1.2, 8.4.3: an original, annotated or applied pair layer whose binder admits only value or valueborrow Semantics is a
+        // SPEC 8.1.2, 8.5: an original, annotated or applied pair layer whose binder admits only value or valueborrow Semantics is a
         // conditional borrow of its target, supported when its target is; object families and raw layers wait for their tracks.
         if (type.Kind != BoundTypeKind.SemanticsAdaptation && TryPairLayer(type, out var whole, out var target) && whole.Symbol is { Scope: { } scope } pair &&
             pair.Declaration.CodeContext.Compilation.Binding.AdmittedSemantics(whole, scope) is var admitted && admitted != SemanticsMask.None &&
@@ -66,7 +66,7 @@ public sealed partial class Binding
             (type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed && type.Symbol?.Declaration is StructKoto or EnumKoto))
         {
             // A forwarded family, `I.(C).Item(a)`, applies the specification's own parameters to another family; its
-            // formation conditions are that family's, checked at each application (SPEC 8.4.3).
+            // formation conditions are that family's, checked at each application (SPEC 8.5).
             for (var i = 0; i < type.Components.Count; i++)
             {
                 if (!HasSupportedAssociatedFormation(type.Components[i]))
@@ -101,7 +101,7 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 8.4.3, 8.7: whether a fact states `type`: its own subject, or a universal family pattern that holds at every
+    // SPEC 8.5, 8.3: whether a fact states `type`: its own subject, or a universal family pattern that holds at every
     // application, including the Origins of `type`. `required` is the fact's Type at those Origins.
     private bool FactStates(BoundConstraint fact, BoundType type, out BoundType? required)
     {

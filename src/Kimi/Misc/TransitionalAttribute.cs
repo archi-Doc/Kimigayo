@@ -4,7 +4,7 @@ using System.Diagnostics;
 
 namespace Kimi;
 
-// Source-only removal obligation; the analyzer validates the stage and publishes it in the shared audit inventory.
+// Source-only removal obligation; review checks the stage and reason against the migration ledger.
 [Conditional("KIMI_CODE_RULES_ATTRIBUTES")]
 [AttributeUsage(
     AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Interface | AttributeTargets.Enum | AttributeTargets.Delegate |

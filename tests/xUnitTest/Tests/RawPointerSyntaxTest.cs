@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 2.5.1, 3.3, 5: the raw pointer Semantics is spelled raw; unsafe marks only the places where a promise is made.
+// SPEC F.3, 3.3, 5: the raw pointer Semantics is spelled raw; unsafe marks only the places where a promise is made.
 public class RawPointerSyntaxTest
 {
     [Fact]

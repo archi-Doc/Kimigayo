@@ -24,7 +24,7 @@ public class VirtualEffectObligationTest(ITestOutputHelper output)
         Assert.False(c.WriteIr(TextWriter.Null, out var failure));
         if (!fails)
         {
-            // The unrelated mutable group storage is still outside generation (P36).
+            // The unrelated mutable group storage is still outside generation (P42).
             Assert.Contains("declaration container", failure!, StringComparison.Ordinal);
         }
     }
@@ -119,7 +119,7 @@ public class VirtualEffectObligationTest(ITestOutputHelper output)
     public void WarmObligationChecksReuseTheirEvidence(string body)
     {
         var c = MinimalEmissionTest.Analyze("group State\n    public var count: i32 = 0\nopen struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n        return 1\nstruct Derived : Base\n    override func read(self: objref/Self) -> i32 => " + body + "\n()");
-        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind(), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
     }
 
     [Theory]

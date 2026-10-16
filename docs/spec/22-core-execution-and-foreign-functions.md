@@ -1,105 +1,71 @@
 # 22. Kimi, program execution, and foreign functions
 
-Normal object creation uses the [common adaptation/factory contract](13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing). The three factory APIs remain available with ordinary call inference and function-value uses; adaptation input inference is independent.
-
 [Specification index](../SPEC.md)
 
-This chapter defines the required declarations of the Kimi Kotonoha, process startup and shutdown, the foreign-call boundary, minimal standard output, the initial Windows runtime and test execution. Kimi names the foundation library; Core remains a Type component.
-
-<a id="221-required-core-declarations"></a>
+This revision defines one executable target profile, windows-x64 ([§21.4](../impl/21-layout-runtime-and-code-generation.md#214-windows-x64-runtime)). Whether a program is valid does not depend on the target except through Conditions ([§19.2](19-compile-time-directives.md#192-conditions)) and the size limits of concrete layouts ([§8.15.3](08-generics-constraints-and-contracts.md#8153-concrete-layout-and-representation)); an Unsupported report may depend on it. Building, running or testing a program for any other target is Unsupported.
 
 ## 22.1. Required Kimi declarations
 
-Every Compilation binds exactly one compiler-compatible **Kimi Kotonoha** under the reserved direct reference name `Kimi`. User dependencies and project-root declarations cannot use that name. `Kimi` is not a keyword, so inner scopes follow normal shadowing; `::Kimi` bypasses locals and aliases. The mandatory default alias opens Kimi under §18.1.3.
+Every Compilation binds exactly one **Kimi Kotonoha** under the reserved direct reference name `Kimi` ([§18.4.1](18-modules-and-dependencies.md#1841-identities-and-reference-names)). `Kimi` is not a keyword: inner scopes may shadow it; `::Kimi` cannot be shadowed. The mandatory default alias opens `Kimi` ([§18.2.3](18-modules-and-dependencies.md#1823-default-aliases)).
 
-The Types and Contracts below are public at the library root. Ownership operations belong to the public `Intrinsics` group (§22.1.1), and `writeLine` to the public `Console` group (§22.4). Qualified paths such as `::Kimi.Option<T>` identify these declarations regardless of local shadowing. Compiler metadata records their originating Kotonoha, version and Symbol Identities. The compiler recognizes a Kimi declaration by its original declaration Identity, never by name or user conformance: a same-spelled user declaration or a replacement alias never receives its special behavior.
+A Kimi declaration is recognized by its declaration identity, never by name or by a user conformance; a same-spelled user declaration or a replacement alias never gets its special behavior. A Kimi Kotonoha is compatible when it declares every row below with the stated shape; it may declare more. Whether a compiler accepts a Kimi Kotonoha other than its own is implementation-defined. Every Kimi declaration, including `Kimi.Windows` and `Kimi.Time`, exists on every target.
 
-A missing, duplicate or incompatible Kimi definition is rejected before finalization. The compiler may synthesize these definitions, but synthesized and loaded definitions must have the same language identities and contracts. Kimi itself is built with these identities designated by the compiler.
+This table is the only list of required Kimi declarations (names relative to `Kimi`; "the iteration entries" means `Iterable`, `UniqIterable` and `IntoIterable` with the items of [§14.6.2](14-control-flow.md#1462-iteration-protocol)):
 
-The table is the minimal set that language rules name, not a promise of a general standard library:
-
-| Declaration | Required shape or operation |
+| Declaration | Required shape |
 | --- | --- |
-| `Option<T>` | enum with Some(T), None in that order; Self is Copy with condition-atom set {T is Kimi.Copy} |
-| `Result<T,E>` | enum with Ok(T), Err(E) in that order; Self is Copy with condition-atom set {T is Kimi.Copy, E is Kimi.Copy} |
-| `Weak<s/T>` | Compiler-managed Non-Copy struct requiring `s is rc or arc`; always holds a target table, with no empty constructor. Kimi.Intrinsics.downgrade / upgrade / clone follow §3.2.2 and §13.5.9 |
-| `Array<T>` | Non-Copy owning dynamic sequence over a valid complete T; no Owned requirement; public read-only length/capacity: isize and indices: ResolvedRange; `UniqIndexable<isize>` (§4.6.9), §4.7 mutation/capacity APIs, the read operations of §4.6.6 and view methods of §4.6.11, literals, and the `Iterable`/`UniqIterable`/`IntoIterable` conformances with the items of §14.6.2 |
-| `Position: Equatable, Utf8Format` | Closed Contract (§8.4.7) with `Self is Copy`, `Self is Owned` and `func tryResolve(self: Self, length: isize) -> Option<isize>`; conforming Types exactly the twelve integer Types, `FromEnd<T>`, `Start` and `End`. The integer conformance is built in and bound to a Kimi internal function; integers gain no members (§4.6.2) |
-| `PositionRange: Equatable, Utf8Format` | Closed Contract with `Self is Copy`, `Self is Owned` and `func tryResolve(self: Self, length: isize) -> Option<ResolvedRange>`; conforming Types exactly `Range<S, E>`, `ClosedRange<S, E>` and `ResolvedRange` (§4.6.4) |
-| `FromEnd<T>`, `Start`, `End` | Copy, Owned, Equatable positions; `FromEnd<T>` requires `T is PrimitiveInteger` and stores only a read-only `offset: T`, and `Start` and `End` store nothing; construction by `^x` and omitted range boundaries only; `tryResolve`, `resolve` and formatting under §4.6.2 |
-| `Wrapping<T>` | The wrapping integer Scalar of §3.1.1.1 over an integer Type `T`: a fieldless public struct declaration with `T is PrimitiveInteger`, no public constructor and no members, whose instantiations the compiler represents exactly as `T` with wrapping arithmetic (§13.3), the conversions of §13.5.4.1 and the built-in Copy, Owned, Equatable, Comparable and Utf8Format conformances of `T`, plus its [arithmetic conformances](arithmetic-contracts.md#11-built-in-conformance); it satisfies neither PrimitiveInteger nor Position |
-| `Range<S, E>`, `ClosedRange<S, E>` | Copy, Owned, Equatable intervals requiring `S is Position` and `E is Position`, storing only read-only `start: S` and `end: E`; syntax construction only, `tryResolve`, `resolve`, formatting, and the three iteration conformances under `S is PrimitiveInteger, E is S` returning `RangeIterator<S>` or `ClosedRangeIterator<S>` (§4.6.3, §4.6.4) |
-| `ResolvedRange` | Copy, Owned, Equatable validated interval produced by `indices` and resolution; read-only fields, `length`, `isEmpty`, `tryResolve`, `resolve`, formatting, and the three iteration conformances returning `RangeIterator<isize>` (§4.6.3.3) |
-| `RangeIterator<T>`, `ClosedRangeIterator<T>` | Owned, Non-Copy Iterators with `Item` `T`, requiring `T is PrimitiveInteger`; no public constructor or entry conformance (§4.6.3.4) |
-| `Slice<T> {source}` | Copy shared view with all public operations in §4.6.6; `Indexable<isize>` publishing `place ref/T during self.source`; the three iteration conformances with item `ref/T during source`; backing Origin is explicit or inferred under ordinary rules |
-| `UniqSlice<T> {source}` | Non-Copy exclusive view over complete T, without Copy/Owned constraints on T; read-only length/isEmpty/indices, `UniqIndexable<isize>` and shared/exclusive view methods of §4.6.11; no element ownership or iteration conformance |
-| `Dictionary<K,V>` | Non-Copy owning collection over valid complete K/V requiring K is Equatable; no Owned requirement; literal construction, `UniqIndexable<K>` existing-key indexing, public read-only length/capacity: isize, §4.7 lookup/mutation/capacity APIs and the three iteration conformances with the pair items of §14.6.2 |
-| UTF-8 formatting declarations | `Utf8Format`, `BufferWriter`, `WriteWindow`, `Utf8Writer`, `BufferFull` at the root, and the `Text` group: exact signatures, shape, `Loan<T>` Fields and operations in the [formatting profile](utf8-formatting.md#1-contracts-and-declarations) |
+| `Never` | public, non-open, non-generic struct with no Origins, base or members; the compiler-intrinsic uninhabited value Type of [§3.1.3](03-types-and-values.md#313-unit-and-never) |
+| `Option<T>` | enum `Some(T)`, `None` in that order; Copy when `T` is Copy |
+| `Result<T, E>` | enum `Ok(T)`, `Err(E)` in that order; Copy when `T` and `E` are Copy |
 | `Equatable` | `func equals(self: ref/Self, other: ref/Self) -> bool` |
-| `Comparable: Equatable` | `func compare(self: ref/Self, other: ref/Self) -> i32`; negative/zero/positive for less/equal/greater |
-| `LendingIterator`, `Iterator: LendingIterator` | The exact declarations of §22.1.2.1: LendingIterator's `LentItem(step)` and `next`; Iterator's step-independent `Item` and its `preserves results` bound for `next` (§8.4.10, §22.1.2.4) |
-| `Iterable`, `UniqIterable`, `IntoIterable` | The exact declarations of §22.1.2.2: `IteratorType(source)` or `IteratorType` bound to a LendingIterator, and `iterate`, `iterateUniq` or `intoIterator` |
-| `Indexable<Key>`, `UniqIndexable<Key>: Indexable<Key>` | `associate Element`; `index(self: ref/Self, key: ref/Key) -> place ref/Element during self` and `indexUniq(self: uniq/Self, key: ref/Key) -> place uniq/Element during self` (§4.6.9) |
-| `Iteration` group | `OwningIterator<I>`, `BorrowingIterator<I>` and `owning`, `borrowing` under §22.1.2.3 |
-| `Storage` internal group | `RefRemainder<S>`, `UniqRemainder<S>`, `OwnedRemainder<S>`, `borrowStorage`, `borrowStorageUniq`, `ownStorage`, `splitFirst`, `takeFirst` under §22.1.2.5; usable only inside the Kimi Kotonoha |
-| `Async` group | `Cancelled`, `SendFailure`, `Raced<A, B>`, `Sender<T>`, `Receiver<T>`, `run`, `sleep`, `checkpoint`, `shield`, `join`, `joinOk`, `race`, `each`, `eachReceived` and `pipe` with the declarations and contracts of §22.1.3 |
-| `TaskBoundary` internal group | `enter`, `current`, `park` and `resume` under §22.1.3.1; usable only inside the Kimi Kotonoha |
-| `Raw` group | `allocate`, `release`, `initialize` and `slice` with the signatures and contracts of §5.6 |
-| `Loan<T>` | Compiler-managed zero-sized struct over a complete borrow Type `T` whose outer Semantics is `ref`, `uniq`, `objref` or `objuniq`; safe `init(value: T)`; analyzed as storing `T`, Copy exactly when `T` is Copy (§15.3.5) |
-| Arithmetic Contracts | The eleven public root Contracts, associated Output declarations, shared requirement signatures and built-in conformances of [arithmetic Contracts §1](arithmetic-contracts.md#1-declarations-and-conformance); their requirement references use ordinary Function Item/Callable/common Function rules |
-| Copy, Owned, Callable, Sealed, ObjectPayload, PrimitiveInteger | Compiler-intrinsic requirement identities with exactly their existing derivation, ownership and call rules (§8.4.7 for Sealed, ObjectPayload and PrimitiveInteger); not ordinary user-implementable replacements |
-| Object ownership intrinsics | Kimi.Intrinsics.makeObj / makeRc / makeArc, strong and Weak Kimi.Intrinsics.clone, Kimi.Intrinsics.downgrade / upgrade, Kimi.Intrinsics.makeRcCyclic / makeArcCyclic, with §13.5.8–9 names, Types and acquisition contracts; every creation declares `T is ObjectPayload` (§8.4.7.2) |
-| Whole-value update intrinsics | Ordinary generic declarations `Intrinsics.replace`, `Intrinsics.exchange`, `Intrinsics.swap`, with §15.7 signatures and acquisition/destruction contracts; their signatures impose no Sealed requirement, and completeness is checked at each actual storage target |
-| `Console.writeLine` | Overloads `(text: ref/string) -> ()` and `(text: Text.Utf8Slice) -> ()`; §22.4 and the [formatting profile](utf8-formatting.md#61-console-output) |
-| `Test.tempDirectory` | `public func tempDirectory() -> string`; independently owned case-directory path, restricted to test-only bodies under the [test profile](../impl/testing-profile.md#environment-and-temporary-directory) |
+| `Comparable: Equatable` | `func compare(self: ref/Self, other: ref/Self) -> i32`, negative, zero or positive for less, equal or greater |
+| `Copy`, `Owned`, `Callable`, `Sealed`, `ObjectPayload`, `PrimitiveInteger`, `Transferable` | compiler-intrinsic Contracts ([§8.7](08-generics-constraints-and-contracts.md#87-compiler-intrinsic-and-closed-contracts)); `Transferable` is public and has no parameters, parents or members |
+| Arithmetic Contracts | the eleven Contracts of [§13.3.3](13-operators-and-assignment.md#1333-arithmetic-contracts) |
+| `Position: Equatable, Utf8Format` | closed Contract, `Self is Copy`, `Self is Owned`, `func tryResolve(self: Self, length: isize) -> Option<isize>`; conforming Types exactly the twelve integer Types, `FromEnd<T>`, `Start`, `End` ([§4.6.1](04-arrays-indexing-and-slices.md#461-positions)) |
+| `PositionRange: Equatable, Utf8Format` | closed Contract, `Self is Copy`, `Self is Owned`, `func tryResolve(self: Self, length: isize) -> Option<ResolvedRange>`; conforming Types exactly `Range`, `ClosedRange`, `ResolvedRange` ([§4.6.3](04-arrays-indexing-and-slices.md#463-resolution)) |
+| `FromEnd<T>`, `Start`, `End` | Copy, Owned, Equatable positions created only by `^x` and omitted range boundaries; `FromEnd<T>` requires `T is PrimitiveInteger` and stores only `offset: T` ([§4.6.1](04-arrays-indexing-and-slices.md#461-positions)) |
+| `Range<S, E>`, `ClosedRange<S, E>` | Copy, Owned, Equatable intervals over `S, E is Position`, storing `start: S`, `end: E`, created only by syntax; the iteration entries when `S is PrimitiveInteger` and `E is S` ([§4.6.2](04-arrays-indexing-and-slices.md#462-ranges), [§4.6.3](04-arrays-indexing-and-slices.md#463-resolution)) |
+| `ResolvedRange` | Copy, Owned, Equatable validated interval; `length`, `isEmpty`, `resolve`; the iteration entries ([§4.6.2](04-arrays-indexing-and-slices.md#462-ranges)) |
+| `Wrapping<T>` | fieldless struct, `T is PrimitiveInteger`, no members; represented as `T` with wrapping arithmetic, the conversions of [§13.5.4](13-operators-and-assignment.md#1354-numeric-wrapping-and-bit-conversions), the conformances of `T` and of [§13.3.3](13-operators-and-assignment.md#1333-arithmetic-contracts); neither `PrimitiveInteger` nor `Position` ([§3.1.1](03-types-and-values.md#311-wrapping-integer-types)) |
+| `Array<T>` | Non-Copy owning sequence; `capacity` and the metadata of [§4.7.3](04-arrays-indexing-and-slices.md#473-length-metadata); `UniqIndexable<isize>`; the operations of [§4.8.2](04-arrays-indexing-and-slices.md#482-slice-operations), [§4.8.4](04-arrays-indexing-and-slices.md#484-views-and-uniqslice), [§4.8.5](04-arrays-indexing-and-slices.md#485-disjoint-exclusive-element-pairs), [§4.9](04-arrays-indexing-and-slices.md#49-dynamic-collections); the iteration entries |
+| `Dictionary<K, V>` | Non-Copy owning collection, `K is Equatable`; `length`, `capacity`; `UniqIndexable<K>` for existing keys; the operations of [§4.9](04-arrays-indexing-and-slices.md#49-dynamic-collections); the iteration entries |
+| `Slice<T> {source}` | Copy shared view over `ref/T during source`; the metadata of [§4.7.3](04-arrays-indexing-and-slices.md#473-length-metadata); the operations of [§4.8.2](04-arrays-indexing-and-slices.md#482-slice-operations); `Indexable<isize>`; the iteration entries |
+| `UniqSlice<T> {source}` | Non-Copy exclusive view; `length`, `isEmpty`, `indices`; `UniqIndexable<isize>`; the views of [§4.8.4](04-arrays-indexing-and-slices.md#484-views-and-uniqslice) |
+| `Loan<T>` | zero-sized struct over a borrow Type `T` with outer Semantics `ref`, `uniq`, `objref` or `objuniq`; `init(value: T)`; Copy exactly when `T` is ([§15.3.5](15-ownership-and-lifetime-analysis.md#1535-variance-loan-requirements-and-phantom-origins)) |
+| `Weak<s/T>` | Non-Copy struct, `s is rc or arc` ([§13.6.3](13-operators-and-assignment.md#1363-weak-references)) |
+| `LendingIterator`, `Iterator`; `Iterable`, `UniqIterable`, `IntoIterable` | [§22.2.1](#2221-iterator-contracts) |
+| `Indexable<Key>`, `UniqIndexable<Key>: Indexable<Key>` | `associate Element`; `index(self: ref/Self, key: ref/Key) -> ref/Element during self`; `indexUniq(self: uniq/Self, key: ref/Key) -> uniq/Element during self`; `receiver[key]` designates the referent of the returned reference ([§4.7.1](04-arrays-indexing-and-slices.md#471-index-expression-resolution)) |
+| Standard iterators | `ArrayIterator<T>`, `ArrayUniqIterator<T>`, `ArrayOwningIterator<T>`, `FixedArrayOwningIterator<T, A>`, `SliceIterator<T>`, `DictionaryIterator<K, V>`, `DictionaryUniqIterator<K, V>`, `DictionaryOwningIterator<K, V>`, `RangeIterator<T>`, `ClosedRangeIterator<T>` ([§22.2.2](#2222-standard-adapters-and-iterators)) |
+| `Iteration` group | `OwningIterator<I>`, `BorrowingIterator<I>`, `owning`, `borrowing` ([§22.2.2](#2222-standard-adapters-and-iterators)) |
+| `Intrinsics` group | non-generic; `makeObj`, `makeRc`, `makeArc`, `makeRcCyclic`, `makeArcCyclic`, `clone`, `downgrade`, `upgrade` ([§13.6.2](13-operators-and-assignment.md#1362-object-creation-clone-and-lifecycle), [§13.6.3](13-operators-and-assignment.md#1363-weak-references)); `replace`, `exchange`, `swap` ([§15.7](15-ownership-and-lifetime-analysis.md#157-whole-value-updates)) |
+| `Raw` group | `allocate`, `release`, `initialize`, `slice` ([§5.6](05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations)) |
+| `Async` group | `Cancelled`, `SendFailure`, `Raced` (arities 2–4), `Sender<T>`, `Receiver<T>`, `run`, `sleep`, `checkpoint`, `shield`, `join`, `joinOk`, `race`, `each`, `eachReceived`, `pipe`, `offload`, `offloadEach` ([§22.3](#223-asynchronous-tasks)) |
+| `Console` group | `writeLine` ([§22.7](#227-console-output)) |
+| `Time` group | `Duration`, `Stopwatch` ([§22.8](#228-time)) |
+| `Windows` group | `queryPerformanceCounter`, `queryPerformanceFrequency` ([§22.8.3](#2283-windows-counter-functions)) |
+| UTF-8 formatting | `Utf8Format`, `BufferWriter`, `WriteWindow`, `Utf8Writer`, `BufferFull`, `Text` group ([§22.9](#229-utf-8-text-and-buffers)) |
+| `Test` group | `tempDirectory() -> string`, only in test-only bodies ([§17.6.1](17-failure-handling.md#1761-forms-and-placement); [§20.6.3](../impl/20-compilation-configuration.md#2063-case-execution)) |
 
-The iteration and indexing Contracts are static Contracts. Their associated Types are complete Types and may take Origin parameters (§8.4.3.1). Table signatures follow the normal associated-Type, receiver, result-Origin and lifetime rules.
+The iteration and indexing Contracts are static; their associated Types are complete and may take Origin parameters ([§8.5.4](08-generics-constraints-and-contracts.md#854-origin-parameters)). `Array`, `Dictionary`, `Slice`, `UniqSlice`, `Wrapping`, `Loan`, `Weak` and `Never` have exactly the constructors their Kimi declarations declare, such as `Array<T>.init(capacity:)` (`Weak`, `Wrapping` and `Never` declare none); none is synthesized ([§6.3.6](06-declarations-and-containers.md#636-implicit-constructor)).
 
-A Kimi Type whose representation the compiler manages, such as `Array<T>`, `Dictionary<K, V>`, `Slice<T>`, `UniqSlice<T>`, `Wrapping<T>` and `Loan<T>`, has exactly the constructors that its Kimi declaration declares, such as `Array<T>.init(capacity:)` and `Loan<T>.init(value:)`; §6.2.3.6 synthesizes none for it. An empty Dictionary is written `[:]` (§12.3.4).
+Every fixed array `[N of T]`, for every element Type and length, including a length parameter, has built-in public members (the metadata of [§4.7.3](04-arrays-indexing-and-slices.md#473-length-metadata), the read operations of [§4.8.2](04-arrays-indexing-and-slices.md#482-slice-operations), the views of [§4.8.4](04-arrays-indexing-and-slices.md#484-views-and-uniqslice) and [§4.8.5](04-arrays-indexing-and-slices.md#485-disjoint-exclusive-element-pairs)) and built-in conformances to `UniqIndexable<isize>` and the iteration entries. These cannot be declared in source.
 
-Fixed arrays conform to `UniqIndexable<isize>` and to the three iteration entries with the items of §14.6.2, and provide the read operations of §4.6.6. The standard iterators are concrete Kimi Types with the item Types and dependencies of §4.6 and §14.6.2, and they have the common guarantees of §22.1.2.3. A range iterator stores only integer state; a Slice iterator stores a copied handle, a position and the external source Loan; neither owns the elements it yields. Dependent Types preserve source dependencies through associated Types and Option payloads. Receiving the result of `next` extends no lifetime. These requirements add no public iterator constructors.
+Array is Owned when `T` is, and Dictionary when `K` and `V` are. The keyword `string` denotes the built-in UTF-8 string Type: literals, interpolation, comparison and `Utf8Format`, no concatenation operator ([§13.3.2](13-operators-and-assignment.md#1332-strings-and-raw-pointers)).
 
-The primitive keyword `string` denotes the compiler's UTF-8 string Core, not a shadowable alias. It supports literal and interpolation construction, comparison and Utf8Format, and has no concatenation operator ([§13.3](13-operators-and-assignment.md#133-arithmetic-bitwise-and-shift-operators)). The [formatting profile](utf8-formatting.md) defines separate mutable buffers, validated views and `Text.toString` for string copying; it adds no character indexer or formatting options. Fixed-array syntax and layout follow [sequence Types](04-arrays-indexing-and-slices.md#4-arrays-indexing-and-slices); metadata, indexed Place acquisition and shared reading follow [indexing and slicing](04-arrays-indexing-and-slices.md#46-indexing-and-slicing).
+**Placement.** Opening `Kimi` makes its groups visible, never their members ([§18.2.3](18-modules-and-dependencies.md#1823-default-aliases)). An alias such as `alias Memory => Kimi.Intrinsics` keeps the declarations' identities. There are no root-level names such as `Kimi.replace` or `Kimi.writeLine`. Built-in operations such as `$abort` and `$tryWrite` belong to no group.
 
-The Copy conditions of Option and Result are compared as atom sets, using the proposition identity and conjunction elimination of §8.7. `T` and `E` denote the corresponding parameter slots, and `Kimi.Copy` the recognized Symbol. Order, transparent grouping and duplicate atoms do not change a set. A missing or unconditional Copy, a missing or extra atom, or a different identity is incompatible. All other required-shape checks remain, without general logical-equivalence reasoning. Generated sources may use the canonical order `T`, `E`, but loaded Kimi definitions cannot be required to use it.
+```kimi
+let watch = Time.Stopwatch.init()      // Time is visible through the default alias.
+Console.writeLine("ready")
+// writeLine("ready")                 // Error: Console's members are not opened.
+var slot: i32 = 1
+let old = Intrinsics.exchange(slot@uniq, with: 2)
+// let bad = Kimi.exchange(slot@uniq, with: 3)   // Error: no root-level name.
+```
 
-Option and Result Copy and Owned follow the ordinary enum rules; no extra copying is introduced. A changed Kimi contract invalidates dependent capability, acquisition and generation results under §21.3.4. Unchanged Case order and payload structure do not establish binary compatibility with older Kimi artifacts.
+## 22.2. Iteration
 
-Array and Dictionary contents, generic enum payloads and fixed-array elements preserve complete Type, Origin and Loan dependencies under §15.4. Array's Owned classification follows `T`, and Dictionary's follows `K` and `V`, independently of runtime contents. No container grants permission to hide dependencies or extend a referent's lifetime. Checked-cast designs use the required Kimi Option Identity despite deferred View syntax. Dictionary need not expose hashing. Dynamic mutation, allocation, ordering, retained dependencies, effects and complexity follow §4.7; further library APIs remain separate designs.
-
-### 22.1.1. Declaration placement and function reference
-
-`Kimi.Intrinsics` is a public, non-generic group with no Origin parameters. It contains the whole-value update and object ownership operations as one family. `Copy`, `Owned`, `Callable`, `Sealed`, `ObjectPayload` and `PrimitiveInteger` remain directly under `Kimi`; `writeLine` remains under `Kimi.Console`. The default Kimi alias does not recursively open the `Async`, `Console`, `Intrinsics`, `Test`, `Text` or `Iteration` groups or the internal `Storage` and `TaskBoundary` groups. Use `Intrinsics.replace(...)` or `Console.writeLine(...)`, a fully qualified path, or an explicit alias that opens the group. A named alias such as `alias Memory => Kimi.Intrinsics` preserves the original declarations' Identities. There are no root-level compatibility declarations such as `Kimi.replace` or `Kimi.makeObj`.
-
-The following reference collects the public function names. Types are abbreviated relative to `Kimi`; the linked sections own all constraints, overload requirements, Origins, acquisition and failure behavior.
-
-| Fully qualified function | Signature / input and result Types | Owning rules |
-| --- | --- | --- |
-| `Kimi.Console.writeLine` | `(text: ref/string) -> ()`, `(text: Text.Utf8Slice) -> ()` | §22.4 |
-| `Kimi.Text` functions | `fixed`, `heap`, `writer`, `utf8`, `validateUtf8`, `toString`, `tryFormat` | [Text operations](utf8-formatting.md#2-text-operations) |
-| `Kimi.Test.tempDirectory` | `() -> string` | [Test profile](../impl/testing-profile.md#environment-and-temporary-directory) |
-| `Kimi.Intrinsics.replace<T>` | `(target: uniq/T, with => value: T) -> ()` | §15.7 |
-| `Kimi.Intrinsics.exchange<T>` | `(target: uniq/T, with => value: T) -> T` | §15.7 |
-| `Kimi.Intrinsics.swap<T>` | `(first: uniq/T, second: uniq/T) -> ()` | §15.7 |
-| `Kimi.Intrinsics.makeObj<T>` | `(value: T) -> obj/T` | §13.5.8 |
-| `Kimi.Intrinsics.makeRc<T>` | `(value: T) -> rc/T` | §13.5.8 |
-| `Kimi.Intrinsics.makeArc<T>` | `(value: T) -> arc/T` | §13.5.8 |
-| `Kimi.Intrinsics.clone<s/T>` | Strong: `ref/(s/T) -> s/T`; Weak: `ref/Weak<s/T> -> Weak<s/T>`; both require `s is rc or arc` | §13.5.8–9 |
-| `Kimi.Intrinsics.downgrade<s/T>` | `ref/(s/T) -> Weak<s/T>` | §13.5.9 |
-| `Kimi.Intrinsics.upgrade<s/T>` | `ref/Weak<s/T> -> Option<s/T>` | §13.5.9 |
-| `Kimi.Intrinsics.makeRcCyclic<T, F>` | `F -> rc/T` | §13.5.8 |
-| `Kimi.Intrinsics.makeArcCyclic<T, F>` | `F -> arc/T` | §13.5.8 |
-| `Kimi.Iteration.owning<I>` | `I -> OwningIterator<I>` | §22.1.2.3 |
-| `Kimi.Iteration.borrowing<I>` | `uniq/I during source -> BorrowingIterator<I> during source` | §22.1.2.3 |
-| `Kimi.Async` functions | `run`, `sleep`, `checkpoint`, `shield`, `join`, `joinOk`, `race`, `each`, `eachReceived`, `pipe` | §22.1.3 |
-
-Container members stay with their owning Types and Contracts: the iteration and Indexable requirements are in §22.1.2 and §4.6.9; collection, indexing, range and Slice APIs in §4.6–7; comparison requirements in §22.1; formatting members in the [profile](utf8-formatting.md). `Option.Some` / `None` and `Result.Ok` / `Err` are enum Cases. Compiler built-ins such as `$abort` and `$tryWrite` are not declarations in these groups.
-
-This reference specifies required APIs, including unimplemented ones. [STATUS.md](../STATUS.md#kimi-library-and-whole-value-updates) records current declaration and runtime coverage separately.
-
-### 22.1.2. Iteration and storage
-
-#### 22.1.2.1. LendingIterator and Iterator
+### 22.2.1. Iterator Contracts
 
 ```kimi
 contract LendingIterator
@@ -110,18 +76,7 @@ contract Iterator: LendingIterator
     associate Item
     associate LendingIterator.LentItem(step) is Item
     effect LendingIterator.next preserves results
-```
 
-Every enumeration calls `LendingIterator.next`, which delivers the next item as a value. `LendingIterator.next` itself declares no effect bound. Each call binds `step` to the receiver borrow of that call and keeps the actual Loan dependencies. An **Iterator** is the ordinary case: its `Item` is one complete Type that names no Origin of `next`, so generic code may retain its items across later calls (§22.1.2.4). A conforming Type writes `associate Iterator.Item is T` and `func next(self: uniq/Self) -> Option<T>`; the inherited `LentItem(step)` is `Item` for every `step`. A **LendingIterator** that is not an Iterator may instead lend items that borrow the Iterator. A general LendingIterator may return `Some` after `None`; `for` stops at the first `None`, and §22.1.2.3 states the guarantees of standard iterators. `None` carries no Loan.
-
-| `LentItem(step)` of a LendingIterator | Retention and the next `next` |
-| --- | --- |
-| `ref/E during step`, `uniq/E during step` | Depends on that call's receiver borrow and conflicts with the next `next` while retained |
-| A Type without `step`, such as `E` or `ref/E during source` | Retained under the ordinary Loan rules (§15.6.3); generic code keeps it across the next `next` only under a Contract that declares `preserves results` for `next`, such as Iterator (§8.4.10, §22.1.2.4) |
-
-#### 22.1.2.2. Iteration entries
-
-```kimi
 contract Iterable
     associate IteratorType(source) is LendingIterator for ref/Self during source
     func iterate(self: ref/Self during source) -> Self.IteratorType(source)
@@ -135,16 +90,17 @@ contract IntoIterable
     func intoIterator(self: Self) -> Self.IteratorType
 ```
 
-The three capabilities are independent; `for` requires the conformance of the entry that its Subject mode selects (§14.6.2). The borrowing entries keep the per-call `source`, and the owning entry keeps the dependencies inside `Self`. The item Type is the `LentItem(step)` of the selected `IteratorType` (§14.6.2); the entry mode forces neither `ref`, `uniq` nor an owned item. `UniqIterable` guarantees only the exclusive receiver borrow. The exclusive Place result of `UniqIndexable` is a guarantee of that requirement signature, not of the name `Uniq`. A Type may conform to `Iterator` and to entries at the same time. There is no duck typing by member name, no automatic conformance of references or arbitrary Iterators, no derived Contract and no default body. No standard conformance advances an Iterator through a shared borrow.
+Every enumeration calls `LendingIterator.next`, which returns the next item as a value; each call binds `step` to that call's receiver borrow. `None` carries no Loan. A LendingIterator may return `Some` after `None`; `for` stops at the first `None`.
+
+- An **Iterator** has one complete `Item` Type that names no Origin of `next`; a conforming Type writes `associate Iterator.Item is T` and `func next(self: uniq/Self) -> Option<T>`.
+- A LendingIterator that is not an Iterator may lend items that borrow it: an item such as `ref/E during step` conflicts with the next `next` while retained. An item without `step` follows the ordinary Loan rules ([§15.6.3](15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting)), but generic code keeps it across the next `next` only under a `preserves results` bound.
+
+The three entries are independent; `for` requires the entry that its Subject mode selects, and its item is the `LentItem(step)` of the selected `IteratorType` ([§14.6.2](14-control-flow.md#1462-iteration-protocol)). The borrowing entries keep the per-call `source`; the owning entry keeps the dependencies inside `Self`. A Type may conform to `Iterator` and to entries at once. There is no conformance by member name, no automatic conformance of references or Iterators and no default body. No standard conformance advances an Iterator through a shared borrow.
 
 ```kimi
 struct Countdown
     Self is Iterator
-    Self is IntoIterable
-    Self is UniqIterable
     associate Iterator.Item is i32
-    associate IntoIterable.IteratorType is Self
-    associate UniqIterable.IteratorType(a) is Kimi.Iteration.BorrowingIterator<Self> during a
     var remaining: i32 = 3
 
     public func next(self: uniq/Self) -> Option<i32>
@@ -152,318 +108,167 @@ struct Countdown
         self.remaining -= 1
         return .Some(self.remaining)
 
-    public func intoIterator(self: Self) -> Self
-        return self@move
-
-    public func iterateUniq(self: uniq/Self during source)
-        -> Kimi.Iteration.BorrowingIterator<Self> during source
-        return Kimi.Iteration.borrowing(self)
-
-var total: i32 = 0
-var countdown = Countdown.init()
-for number in countdown@uniq
-    total += number
-    exit                       // One item; countdown is reusable once its Loans end.
-for number in countdown@move
-    total += number            // Consumes the rest.
+for number in Kimi.Iteration.owning(Countdown.init()) => use(number)   // 2, 1, 0
+// for number in Countdown.init() => use(number)   // Error: Countdown declares no entry.
 ```
 
-#### 22.1.2.3. Standard adapters
+### 22.2.2. Standard adapters and iterators
 
-The public group `Kimi.Iteration` declares the following functions and result Types. `I` is a LendingIterator; each result is an ordinary generic struct that conforms to `LendingIterator`, `IntoIterable` (transferring itself) and `UniqIterable` (returning `BorrowingIterator<Self>`).
+`Kimi.Iteration` declares two adapters over a LendingIterator `I`. Each result conforms to `LendingIterator`, to `IntoIterable` (itself) and to `UniqIterable` (`BorrowingIterator<Self>`), and to `Iterator` exactly when `I` does, with the same `Item`, dependencies and effect bound. Adapters keep their input's exhaustion guarantee, allocate nothing and take no item in advance.
 
-| Operation | Result Type | Contract |
-| --- | --- | --- |
-| `owning(iterator)` | `OwningIterator<I>` | Takes `I` by value and forwards its `LentItem(step)` and dependencies; a Non-Copy Place is written `@move` |
-| `borrowing(iterator)` | `BorrowingIterator<I>` | Takes `uniq/I` and advances it without Moving it; items keep `I`'s contract |
+- `owning(iterator) -> OwningIterator<I>` takes `I` by value (a Non-Copy Place is written `@move`) and forwards its `LentItem(step)` and dependencies.
+- `borrowing(iterator) -> BorrowingIterator<I>` takes `uniq/I` and advances it without moving it; its `source` is the outer Origin of the input; its items keep the contract of `I`, and the `step` of each item is the actual Reborrow of `next`.
 
-`BorrowingIterator`'s slot `source` is the outer Origin of its input, and the `step` of each item is the actual Reborrow of `next`. `OwningIterator` and `BorrowingIterator` inherit their input's exhaustion guarantee. They conform to `Iterator` exactly when `I` does, with the same `Item`, dependencies and effect bound.
-
-No adapter allocates, updates a reference count or materializes items in advance. Draining is an ordinary Iterator API that publishes how items are taken and how an early exit treats the remainder; it is not a language protocol.
+**Standard iterators.** The `IteratorType` of each standard entry is one of the ten standard iterator Types of [§22.1](#221-required-kimi-declarations). Each is a Non-Copy Iterator whose `Item` is the item of [§14.6.2](14-control-flow.md#1462-iteration-protocol); `RangeIterator<T>` and `ClosedRangeIterator<T>` require `T is PrimitiveInteger` and are Owned. None has a public constructor or an entry conformance; enumerate an iterator value through `Iteration.owning` or `Iteration.borrowing`. A standard iterator keeps returning `None` after the first `None`; yields each element exactly once, in the order of [§14.6.2](14-control-flow.md#1462-iteration-protocol); never returns overlapping live exclusive items; calls no user code in `next`; when owning, owns the unreturned elements and destroys them in the order of [§4.9.7](04-arrays-indexing-and-slices.md#497-failure-and-destruction-order), and when borrowing, destroys nothing; and meets the bounds of [§4.8.6](04-arrays-indexing-and-slices.md#486-costs) at each step.
 
 ```kimi
-// iterator: a writable owned variable conforming to UniqIterable.
-for item in iterator@uniq
-    inspect(item)
-    exit // The remaining items stay; iterator is reusable once the retained Loans end.
+let values: Array<i32> = [1, 2]
+var it = values.iterate()
+for x in Kimi.Iteration.borrowing(it@uniq) => use(x)
+// for x in values.iterate() => use(x)   // Error: an iterator has no entry conformance.
 ```
 
-**Standard iterators.** Every standard iterator of the Types in §14.6.2 is an Iterator and keeps returning `None` after the first `None`. In exclusive enumeration, a collection iterator proves the non-overlap of its exclusive items by region splitting (§15.6.3). An owning iterator owns the unreturned elements and transfers only the returned element's responsibility; owning Array and Dictionary iterators destroy unreturned elements in §4.7.6 order. A borrowing iterator never destroys the collection.
+### 22.2.3. Iterator independence
 
-#### 22.1.2.4. Iterator independence
+An Iterator's items satisfy the independence of published results ([§15.6.3](15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting)): an item depends neither on the receiver Loan of its call nor on the Iterator's Storage. An exclusive item is a child split from the Iterator's authority or a value it transfers out, so moving or freeing the Iterator invalidates no returned item, and an item of an Iterator reached through a borrow keeps no Loan of that borrow.
 
-An Iterator's `Item` names no Origin parameter of `next`, so its items satisfy the [independence of published results](15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting) (§15.6.3): an item depends neither on the receiver Loan of that call nor on the Iterator's own Storage. An exclusive item is either a child split from the Iterator's authority (§22.1.2.5) or a value the Iterator transfers out, such as a stored `uniq` reference, so moving or freeing the Iterator's Storage invalidates no returned item. Consequently, an item of an Iterator `J` stored behind a borrow `s/J during o` keeps no Loan of `o`: a wrapper may reach and step `J` through `o` while earlier items of `J` are retained.
-
-`Iterator` declares `effect LendingIterator.next preserves results` (§8.4.10.3): the effects of `next` conflict with no Loan kept by an item that the same Iterator returned earlier, including Loans kept through ordinary transfer or Reborrow of that item. A Move of the Iterator carries the bound. Its declaration, verification, use by generic and erased callers and delegation are those of §8.4.10 (§8.4.10.5); every implementation, including specializations and callees, must satisfy it, user Types that declare `Self is Iterator` undergo the same verification, and nothing is derived from `LendingIterator` automatically. The `next` of a standard collection iterator only traverses, splits and transfers; it calls no user comparison, destructor or callback.
+`preserves results` ([§8.11.3](08-generics-constraints-and-contracts.md#8113-preserves-results)) means that the effects of `next` conflict with no Loan kept by an item the same Iterator returned earlier, including through transfer or Reborrow of that item. A Move of the Iterator carries the bound; every implementation, including user Types that declare `Self is Iterator`, is verified under [§8.11](08-generics-constraints-and-contracts.md#811-effect-bounds). Destroying a whole Iterator is a separate effect: a destruction that conflicts with a retained item is rejected. Unknown and parameter-dependent effects follow [§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls), [§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release) and [§4.9.6](04-arrays-indexing-and-slices.md#496-loans-dependencies-and-call-effects). A wrapper that borrows itself for its result, or adds conflicting effects to `next`, is only a LendingIterator.
 
 ```kimi
 func nextPair<I>(iterator: uniq/I) -> (Option<I.Item>, Option<I.Item>)
     I is Iterator
     let first = iterator.next()
-    let second = iterator.next() // The preserves results bound permits retaining first.
+    let second = iterator.next()   // preserves results permits retaining first.
     return (first@move, second@move)
 ```
 
-Destroying or replacing the whole Iterator is an effect separate from `next`: a remainder destructor that conflicts with a retained item is rejected. Standard borrowing iterators end only their handle; owning iterators follow the destruction summary of the remaining element Type. Generic code may accumulate the items of a borrowing Iterator. An owning `collect<I>(it: I)` must also prove that results and cleanup do not conflict. Unknown effects are never treated as empty, and no hidden call condition postpones the check to instantiation. Dependencies that a user adds after an item was returned, and the protection of the original collection, are checked ordinarily. A delegating wrapper that borrows itself for its result cannot declare a step-independent `Item`, so it is a LendingIterator; a wrapper that adds conflicting effects to `next` fails the bound. For a LendingIterator that is not an Iterator, a lent item is used up before the next call, or non-conflict is proven case by case from its published contract.
+## 22.3. Asynchronous tasks
 
-#### 22.1.2.5. Standard storage boundary
+`Kimi.Async` provides the asynchronous tasks of [§24](24-suspension-and-asynchronous-tasks.md#24-suspension-and-asynchronous-tasks). Tasks have no handles: no value represents a pending computation, a running child or a suspended task frame. How tasks are implemented (task frames, waiters, the executor and its per-thread state) is implementation-defined; the implementation must provide every guarantee of this section and of [§24](24-suspension-and-asynchronous-tasks.md#24-suspension-and-asynchronous-tasks). Library code that implements it is unsafe code ([§5](05-raw-pointers-and-unsafe-memory.md#5-raw-pointers-and-unsafe-memory)), and a broken guarantee is undefined behavior.
 
-The internal group `Kimi.Storage` holds the operations that split standard collection Storage into non-overlapping regions. The group, its Types and its operations are `internal`, so only the Kimi Kotonoha uses them (§9.3). Their capability is bound to the standard declaration identities: no alias, re-export or same-spelled declaration grants it. Public Iterators keep these Types in private Fields and never expose them in results or associated Types. The operations are ordinary Kimigayo built on raw pointers (§5); only the representations of Array and Dictionary stay compiler-managed.
-
-| Type | Responsibility |
-| --- | --- |
-| `RefRemainder<E>` | The shared Loan of its `source` slot and the untaken contiguous elements; it does not own them |
-| `UniqRemainder<E>` | The parent Loan of its `source` slot and exclusive access to the untaken contiguous elements |
-| `OwnedRemainder<E>` | Heap Storage transferred from `Array<E>` and the destruction responsibility for unreturned elements, retaining `E`'s internal dependencies |
-
-The contiguous remainders are parameterized by the complete element Type `E`, with `storage: raw/E`, a traversal position and an untaken count; the heap-owning remainder also keeps its allocation capacity. A borrowing remainder keeps the Loan of the Array or fixed-array source from which it was constructed in a `Loan<ref/E during source>` or `Loan<uniq/E during source>` Field (§15.3.5); the Dictionary remainders use `Loan<ref/(K, V) during source>` and `Loan<uniq/(K, V) during source>`. Their safe results keep that source and the element Types' internal dependencies; the raw pointer Field grants no independent safe capability. In the borrowing signatures below, `S` is `Array<E>` or `[N of E]`, with `length N` on the fixed-array overloads. The exclusive operation also accepts `UniqSlice<E>{source}`: its result retains the new borrow of that handle and its original storage dependency. This projection reads only the data pointer and count; it reads no element, allocates nothing and retains the Loan even when the count is zero. The ordinary view bodies (§4.6.11) use the same remainder to select a range.
-
-| Signature template | Contract |
-| --- | --- |
-| `borrowStorage(value: ref/S during a) -> RefRemainder<E> during a` | Holds the shared Loan and traverses from the first element |
-| `borrowStorageUniq(value: uniq/S during a) -> UniqRemainder<E> during a` | Transfers the received whole-collection capability to the untaken part; no independent whole access remains. The exclusive variant has its own Name (§7.3.1) |
-| `ownStorage(value: Array<E>) -> OwnedRemainder<E>` | Transfers the heap Storage and its cleanup responsibility |
-| `splitFirst(state: uniq/RefRemainder<E>) -> Option<ref/E during state.source>` | Lends the untaken first element for shared access and advances |
-| `splitFirst(state: uniq/UniqRemainder<E>) -> Option<uniq/E during state.source>` | Splits the untaken first element off as a child Loan and updates the remainder |
-| `takeFirst(state: uniq/OwnedRemainder<E>) -> Option<E>` | Moves the unreturned first element out, updating its state and responsibility first |
-
-Fixed-array owning storage and Dictionary storage use distinct internal remainder families, with their own `ownStorage`, `borrowStorage`, `borrowStorageUniq`, `splitFirst` and `takeFirst` overloads as applicable. A fixed-array owning remainder retains inline storage and its remaining initialization state; it does not deallocate inline memory. Dictionary remainders retain the ordered-entry state and both complete stored Types `K` and `V`, including their constraints and dependencies. Their shared, exclusive and owning items are respectively `(ref/K during source, ref/V during source)`, `(ref/K during source, uniq/V during source)` and `(K, V)`; keys never become exclusive references. These families have the same Loan, transfer and cleanup guarantees below, but are not instantiations of the contiguous heap-owning remainder.
-
-```kimi
-internal func splitFirst<E>(state: uniq/RefRemainder<E>)
-    -> Option<ref/E during state.source>
-internal func splitFirst<E>(state: uniq/UniqRemainder<E>)
-    -> Option<uniq/E during state.source>
-internal func takeFirst<E>(state: uniq/OwnedRemainder<E>)
-    -> Option<E>
-```
-
-Borrowed results depend on `source`, never on the `state` borrow or slot. The shared form needs no non-overlap proof but still delivers each element once, in order.
-
-The contiguous owning remainder's `takeFirst` and `drop` bodies use ordinary Kimigayo: they take or destroy elements as raw Places (§5.2.3) and release the original heap region with `Raw.release` (§5.6) after every initialized element is transferred or destroyed.
-
-The internal unsafe `setArrayLength<E>(value: uniq/Array<E> during a, length: isize)` publishes completed elements in existing storage. It writes only the handle length. The caller proves that the new length is within capacity, all added elements are initialized, and no removed element needs destruction. `Array.appendCopies` checks capacity and overflow before copying the ordered tail, then publishes the length; `Slice.toArray` shares this algorithm. Repeating construction (§4.7.4) reserves through `init(capacity:)`, places the Copies with `Raw.initialize` and publishes the length the same way. None of these operations introduces a second copy mechanism.
-
-The `splitFirst` bodies are ordinary Kimigayo. They lend an element by borrowing its raw Place, `@ref` for a shared remainder and `@uniq` for an exclusive one, and return it under `during state.source` (§5.2.2, §15.6.3); the Dictionary forms borrow the raw Places that `keyAt` and `valueAt` address. Before an exclusive element is published, the body removes exactly that element from the untaken remainder and never lends it again. The range, non-overlap and initialization guarantees are unsafe obligations (§5.2.1) that the Kimi library bears. `InlineStorage<A>` places `A` at offset 0, so `storage@follow@raw@raw/E` addresses the first element of a fixed-array owning remainder. The compiler-known representation operations that remain are `borrowStorage`, `borrowStorageUniq`, `ownStorage`, `setArrayLength`, `dictionaryStorage`, `keyAt`, `valueAt` and `placeEntry`, because the Array and Dictionary representations are compiler-managed; the UniqSlice projection constructs an erased Loan while preserving its complete element Type and both dependency layers. The only other compiler-known operations of `Kimi.Storage` are private primitives that hold no collection logic, of three kinds: an Abort with one fixed §22.5.4 code at the caller context that the calling body carries (§22.5.1); the nullable form of Alloc, which returns null wherever Alloc would Abort and whose result `Raw.release` releases like an `allocate` result (§22.5.2); and an unsafe copy of a byte count between nonoverlapping allocated ranges, which copies the bytes whatever their initialization state, transfers no responsibility and calls no user code, and which Kimigayo cannot express because a `raw/u8` read requires initialized memory (§5.4). In an effect summary they are an Abort, an allocation and a raw access through their pointer arguments, none an environment effect (§8.4.10.2). Their names and signatures are internal. None of these operations can be replaced by user declarations or reached from user source.
-
-The Kimigayo implementation of `tryGetPairUniq` (§4.6.10) consumes an exclusive contiguous remainder. It validates and orders the two logical positions, relinquishes skipped prefixes, and splits each selected element once before discarding the remainder. It splits with the same raw Place borrow; field updates only restrict the original authority and never grant access outside it. Returning the two children in argument order does not change their source dependencies or non-overlap.
-
-The following also hold for empty and zero-sized Storage:
-
-1. the constructed target is complete; representation, construction, duplication and initialization-state changes are confined to these operations, and ordinary Field operations grant no capability;
-2. `splitFirst` and `takeFirst` return `None` when nothing remains and otherwise the first untaken element exactly once, in the order of §14.6.2, calling no user callback, comparison or destructor;
-3. an `OwnedRemainder` remains a complete handle over the unreturned part; it publishes neither a reference to the whole `S` with holes nor Take through a borrow;
-4. destroying a `RefRemainder` or `UniqRemainder` ends only the capabilities it holds; destroying an `OwnedRemainder` destroys the unreturned part once in the ordinary cleanup order and frees the region, ending no returned Loan or responsibility and publishing the external effects of that destruction.
-
-The internal operations obey the complexity bounds of §4.6.8. Array and fixed-array traversal keeps the valid untaken range as a start and a count, so a nonempty check proves the next element valid without a public `index` call or a second bounds check. Dictionary traversal uses the ordering information of live entries, distinct from hash-probe tombstones, and never charges a capacity scan to "amortization". The Kimi library guarantees Storage validity, dynamic non-overlap and initialization state as unsafe obligations. Everything else an Iterator does, including user delegation, is checked ordinarily.
-
-**Published effects.** Result anchors, parent Loans, remainder non-overlap and the effects on statics, captures and cleanup enter the public summary of each operation (§15.6.4). Generic, separately compiled and indirect calls compose those summaries without reanalyzing private bodies and treat unknown effects conservatively. They never erase an existing Loan because a conversion or erasure dropped a guarantee. An Unsafe designation grants neither independence nor a longer Origin. The effect bound of an Iterator's `next` (§22.1.2.4) is checked at each use, separately from the whole-value destruction summary; element-dependent cleanup uses the symbolic summaries of §4.7.5. No runtime tag is added; the only effect declarations are the bounds of §8.4.10.
-
-### 22.1.3. Asynchronous tasks
-
-The public group `Kimi.Async` provides the operations of the asynchronous tasks of Chapter 24, and the internal group `Kimi.TaskBoundary` the four operations that the compiler knows. Every other part, including the executor, timers, I/O completion and channels, is ordinary Kimigayo over the task boundary and raw storage (§5). Tasks have no handles: no value represents a pending computation, a running child or a suspended task frame.
-
-#### 22.1.3.1. Task boundary
-
-The group, its Types and its operations are `internal`, so only the Kimi Kotonoha uses them (§9.3). Their capability is bound to their declaration identities: no alias, re-export or same-spelled declaration grants it, as for the storage boundary (§22.1.2.5).
-
-```kimi
-internal group TaskBoundary
-    // The only way to start a task. Returns true when body completed without suspending.
-    internal unsafe func enter<F, R>(context: raw/TaskRecord, body: F, result: raw/R) -> bool
-        F is Callable<owner, (task;) -> R>
-    // The record of the current task: the only access to task state, through the task slot.
-    internal func current(task;) -> raw/TaskRecord
-    // The only suspension: records the current task frame in waiter and suspends it.
-    internal unsafe func park(task; waiter: raw/Waiter) -> ()
-    // The only transfer of control into another task frame (obligation 1).
-    internal unsafe func resume(handle: raw/TaskFrame) -> ()
-```
-
-- **Children.** A child with extra parameters is wrapped in a Closure of the `(task;) -> R` shape. For `each`, the wrapper is `func [child, item@move] (task;) => child(task; item@move)`: the bare entry copies the `ref/F`, and moving the captured item out makes the body Consuming (§7.6.2, §7.6.3), which `Callable<owner, ...>` admits (§8.6).
-- **Dependencies.** `enter` takes `body` by value and moves it into the child's task frame, so no Type records the child's dependencies. `TaskRecord`, `Waiter` and `TaskFrame` appear only in private locals and Fields. Only the argument Loans of the public operation that received the child (§15.6.4) and obligation 2 protect them.
-- **Task state.** Code that has a task slot reaches the current task's record, and through it the executor state, only through `current`; `Async.run`, which has no task, reaches the per-thread executor state directly, an environment effect (§22.1.3.3). The only input of `current` is its task slot, an input (§8.4.10.2), so following pointers from the record is no environment effect, and that state matches no user Loan. `current` and `park` are task calls like any other (§24.3); `current` never suspends.
-- **Trusted base.** The compiler does not check the obligations below. They are unsafe obligations that the Kimi library bears (§5.2.1), as for the storage boundary, and they form the trusted base of tasks: a Kimi implementation that violates one makes safe programs unsound, which is undefined behavior (§7.5). The caller conditions of obligations 1, 2 and 3 are also the safety contracts of `resume`, `enter` and `park`; `current` is safe, because returning a raw pointer obliges its caller to nothing (§7.5). The barrier clause of obligation 4 is a lowering obligation of the compiler ([§21.6](../impl/21-layout-runtime-and-code-generation.md#216-tasks)). In obligation 5, which `Result` a wait returns is a library contract; that a value moves only at its commit is an unsafe obligation. Obligation 2 is the basis of borrowing across concurrent children.
-
-The Kimi library bears these obligations:
-
-1. **Resumption.** `resume` takes only a suspended task frame whose wait has ended: its waiter was woken, or the task call at which it is suspended has completed. It resumes each suspension at most once, and runs only while every task of that frame's tree is suspended or complete. A task frame is never resumed after it completes and never destroyed before it completes.
-2. **Child completion.** A child started by `enter` completes, and its result is taken, before the task frame that executed `enter` completes, and therefore before the public operation returns. A helper that returns without joining its children must not call `enter`. Because the `bool` result of `enter` keeps none of `body`'s dependencies, the checker ends `body`'s Loans when `enter` returns. Until the child completes, the task frame that executed `enter` treats them as its own live Loans: it performs no operation that would conflict with them if `body` were still one of its locals (§15.6.2), including destroying, replacing or moving a value that they borrow.
-3. **Wait registrations.** Every wait registration (ready link, timer node, I/O control block, channel waiter, join count) lives in the waiting task frame or its task record and is removed before the wait returns. An I/O wait, even a cancelled one, returns only after its completion is dequeued, so its registration stays until then.
-4. **Shared handles.** A handle whose state another task may change (`Async.Sender`, `Async.Receiver`) never has its inline storage written while it is borrowed. Its mutable state lives in Kimi-internal raw storage behind a loaded pointer, and waiting intrinsics are compiler barriers for that state.
-5. **Commit of observing waits.** A cancellation request for a task applies to every cancellation-observing wait in that task's subtree, whether pending now or started later. A request that applies to the caller of `Async.shield` reaches the body's subtree only once the call's grace has elapsed; requests made by operations inside the body apply as usual (§22.1.3.4). Each such wait **commits** exactly once, either by its operation, at the commit point in the table below, or by cancellation, whichever comes first. It returns what it committed to. Cancellation is reported in the wait's `Result`: as `Err(Async.Cancelled)`, as `Err((value, .Cancelled(reason)))` for `send`, or as the `Cancelled` Case of a domain error (§22.1.3.4).
-   - A wait that starts while a request applies is committed by cancellation at the call, before its operation starts.
-   - A request commits a pending wait at once, except an I/O wait: there the request only cancels the backend operation, and the completion commits the wait.
-   - A commit is final. A later request, close or counterpart leaves it unchanged, and a resumed wait returns its commit, not the state of the request.
-   - A value moves only at a commit. `send` gives its value to the buffer or the receiver only when its operation commits it to `Ok(())`; every other commit returns the value in `Err`. `receive` removes an item only when its operation commits it to `Ok(Some(item))`.
-   - Cancellation never interrupts, unwinds or destroys a task frame, and adds no completion kind.
-
-| Wait | Its operation commits it when |
-| --- | --- |
-| `send` | The value leaves the sender, into the buffer or to the receiver: `Ok(())`. The receiver is closed: `Err` with the value and `Closed` |
-| `receive` | An item leaves the buffer or a waiting sender for the receiver: `Ok(Some(item))`. The channel is closed and drained: `Ok(None)` |
-| `sleep` | The executor removes its expired timer node: `Ok(())` |
-| `checkpoint` | At the call when it does not yield, otherwise when it is resumed: `Ok(())` |
-| I/O | An immediate success that delivers no completion, at the call; otherwise when the executor maps its dequeued completion to it. A completion that reports the operation aborted with no data transferred commits it to cancellation; any other completion commits the outcome that the I/O operation maps from it |
-
-On one thread every commit is made by Kimi code between task steps, so commits are totally ordered.
-
-#### 22.1.3.2. Declarations
-
-The bodyless declarations show signatures only.
+### 22.3.1. Declarations
 
 ```kimi
 public group Async
     public func run<F, R>(root: F) -> R
         F is Callable<owner, (task;) -> R>
-
     public func sleep(task; duration: Time.Duration) -> Result<(), Cancelled>
     public func checkpoint(task;) -> Result<(), Cancelled>
-
     public func shield<F, R>(task; body: F ! grace: Time.Duration) -> R
         F is Callable<owner, (task;) -> R>
-
     public func join<A, B, RA, RB>(task; first: A, second: B) -> (RA, RB)
         A is Callable<owner, (task;) -> RA>
         B is Callable<owner, (task;) -> RB>
-
     public func joinOk<A, B, TA, TB, E>(task; first: A, second: B) -> Result<(TA, TB), E>
         A is Callable<owner, (task;) -> Result<TA, E>>
         B is Callable<owner, (task;) -> Result<TB, E>>
-
     public func race<A, B, RA, RB>(task; first: A, second: B) -> Raced<RA, RB>
         A is Callable<owner, (task;) -> RA>
         B is Callable<owner, (task;) -> RB>
-
     public func each<I, F>(task; items: I, child: ref/F ! limit: isize) -> Result<(), Cancelled>
         I is Iterator
         F is Callable<(task; I.Item) -> ()>
-
     public func eachReceived<T, F>(task; items: uniq/Receiver<T>, child: ref/F ! limit: isize)
         -> Result<(), Cancelled>
         F is Callable<(task; T) -> ()>
-
     public func pipe<P, C, T, R>(task; producer: P, consumer: C ! capacity: isize) -> R
         P is Callable<owner, (task; uniq/Sender<T>) -> ()>
         C is Callable<owner, (task; uniq/Receiver<T>) -> R>
 
-    public struct Cancelled                 // Fieldless, Copy and Owned; only Kimi creates it.
+    public struct Cancelled                 // Fieldless; only Kimi creates it.
         Self is Copy
         internal init() => ()
-
     public enum SendFailure
         Closed
         Cancelled(Async.Cancelled)
-
-    public enum Raced<A, B>                 // The Case names the winner; both final results are kept.
+    public enum Raced<A, B>                 // The Case names the winner; every final result is kept.
         First(A, B)
         Second(A, B)
-
     public struct Sender<T>
         public func send(task; self: uniq/Self, value: T) -> Result<(), (T, SendFailure)>
-
     public struct Receiver<T>
         public func receive(task; self: uniq/Self) -> Result<Option<T>, Cancelled>
 ```
 
-- **Arity.** `join`, `joinOk` and `race` have one overload per arity from two children up; there are no variadic Type arguments (§8.1). `Raced` likewise has one declaration per arity, with one Case per child in order (`First`, `Second`, `Third`, ...), each holding every final result.
-- **Children.** A **one-shot child** (of `join`, `joinOk`, `race`, `pipe` and `shield`) is consumed by its call, so it is received as `Callable<owner, ...>` and may have a Shared, Exclusive or Consuming body (§8.6). A Non-Copy child held in a `let` is passed with `@move`; a Closure whose captures are all Copy is copied. `each` and `eachReceived` call their child concurrently, so they borrow it shared (`ref/F`), which admits only a Shared body.
-- **Named bounds.** `limit` is the maximum number of children that run at once. `capacity` is the number of items a channel buffers; `capacity: 0` is a rendezvous. `grace` is defined in §22.1.3.4. All three are required named arguments without defaults. `limit < 1` and `capacity < 0` Abort as contract violations (§17.3); `grace` needs no check, because `Time.Duration` is nonnegative (§22.7.2).
-- **Results.** An operation that takes a task and returns `Result` reports its own failure and, for waits, cancellation in that `Result`.
-- **Ownership.** A child's Loans are dependencies of an argument of the operation. A one-shot child's Loans last until the operation destroys it, and through results that depend on them; an `each` or `eachReceived` child's Loans are shared argument Loans for the call (§15.6.4). Shared borrows fan out as copies of `ref`; exclusive borrows must be disjoint, and overlapping exclusive captures are ordinary Loan conflicts (§7.6.2, §15.6.7). Children need no Owned; only erased jobs (§22.1.3.5) do.
-
-#### 22.1.3.3. Running and structured operations
-
-`Async.run(root)` starts `root` as the root of a new task tree, all of whose tasks run on the current thread, and returns the root's result when every task of the tree has completed.
-
-- **Bridge.** `run` is the only way for code without a task to call task-taking operations. Inside a task it follows the same definition; a nested `run` needs no special rule.
-- **Enclosing trees.** No task of an enclosing tree runs inside `run`, because the enclosing task is executing the call that reached `run` (§24.3). So no task of an enclosing tree sees a static slot in the Initializing state (§22.2.3), and reentry within the tree is the ordinary same-thread cycle Abort. A nested `run` therefore suspends every task of the enclosing trees until it returns, and an inner tree that waits for one of them, for example on a channel endpoint whose peer is an outer task, cannot progress.
-- **Effects.** `run` takes no task, so it is no task call. It accesses per-thread executor state, an environment effect, so it is not `confined` (§8.4.10.2); that Kimi-internal state matches no user Loan.
-- **Progress.** A tree that cannot progress diverges. Detecting this is an optional diagnostic, never an Abort.
-- **One thread.** Every task of a tree runs on the thread of its `run`, so children may capture `rc` handles, whose counts are not atomic.
-- **Leaks.** No value represents a running child or a suspended task frame, so an `rc` cycle (§16.4) or an unsafe leak cannot end a parent's Loans early: safe-code soundness never depends on a destructor running. This specification makes no guarantee that every non-Owned value is destroyed before its Origins end.
+- **Arity.** `join`, `joinOk` and `race` have exactly one overload for each arity from 2 to 4 children, and `Raced` one declaration for each arity from 2 to 4 with Cases `First`, `Second`, `Third` and `Fourth` in child order, each holding every final result. A call with more children has no candidate; nest calls or use `each`.
+- **Children.** A one-shot child (of `join`, `joinOk`, `race`, `pipe` and `shield`) is consumed, so it may have a Shared, Exclusive or Consuming body ([§8.10](08-generics-constraints-and-contracts.md#810-callable-constraints)); a Non-Copy child in a `let` is passed with `@move`. `each` and `eachReceived` borrow their child shared and call it concurrently, so it needs a Shared body.
+- **Bounds.** `limit` is the most children running at once; `capacity` is the number of items a channel buffers (`0` is a rendezvous). `limit < 1` and `capacity < 0` Abort with `KIMI_E_ARG_RANGE`.
+- **Ownership.** A child's Loans are dependencies of an argument ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)); a one-shot child's Loans last until the operation destroys it and through results that depend on them. Overlapping exclusive captures are ordinary Loan conflicts ([§15.6.7](15-ownership-and-lifetime-analysis.md#1567-call-reservations)). Children need no Owned.
 
 ```kimi
-func loadConfig(path: ref/string) -> Result<Config, Io.Error>      // No task slot.
-    return Async.run(func [path] (task;) => readConfig(task; path))
+func loadAll(task;) -> (Config, Users, Rules)
+    return Async.join(task; loadConfig, loadUsers, loadRules)   // Three children.
+// Async.join(task; f1, f2, f3, f4, f5)   // Error: no overload for five children.
 ```
 
-Every structured operation returns only after all its children complete. At its **decision event** it may request cancellation of the children still running.
+### 22.3.2. Running and structured operations
 
-| Operation | Decision event | Then | Result | Observes cancellation |
-| --- | --- | --- | --- | --- |
-| `join` | Last completion | — | Every result | No |
-| `joinOk` | First `Err`, otherwise last `Ok` | Cancels the others | The first `Err`, or `Ok` of every result; unreturned results are destroyed | No |
-| `race` | First completion | Cancels the others | `Raced` with every final result | No |
-| `each` | Iterator exhausted and last child complete | — | `Ok(())`, or `Err` once a request stops pulling and all children are joined | Before each pull |
-| `eachReceived` | Receiver closed and drained, last child complete | — | `Ok(())`, or `Err` once a request stops receiving and all children are joined | While receiving |
-| `pipe` | Consumer completion | Closes the receiver, cancels the producer | The consumer's result | No |
-| `shield` | Body completion | — | The body's result | No; it delays requests that apply to the caller (§22.1.3.4) |
+`Async.run(root)` starts `root` as the root of a new task tree whose tasks all run on the current thread, and returns the root's result once every task of the tree has completed. It is the only way for code without a task to call task operations. No task of an enclosing tree runs inside a nested `run`, so an inner tree that waits for an outer task cannot progress. A tree that cannot progress diverges; detecting this is an optional diagnostic, never an Abort. Children may capture `rc` handles; no non-Owned value is guaranteed to be destroyed before its Origins end. A user function that passes its task on is part of the same task.
 
-**`each`.** `each` calls `next` only in its own task frame and only while fewer than `limit` of its children are running; it takes no item before a child can start. Before each pull it checks for a request that applies to it; once one applies, it pulls no more items. It starts one child per item in the order that `next` returns them, stops at the first `None`, as `for` does (§22.1.2.1), and destroys the Iterator only after its last child completes. `I is Iterator` makes this sound without another Contract:
+Every structured operation returns only after all its children complete. At its **decision event** it may cancel the children still running.
 
-- An item depends neither on the receiver Loan of its call nor on the Iterator's Storage (§15.6.3, §22.1.2.4), and simultaneously live exclusive items are disjoint (§15.6.2, §22.1.2.3).
-- The `preserves results` bound excludes the Loans that earlier items keep through ordinary transfer or Reborrow (§8.4.10.3), including an item moved into a child's wrapper.
-- Children run only during task calls of `each` (§24.3), and `next` is not one, so no call of `next` overlaps a child's execution.
-- Destroying the whole Iterator is outside the bound (§8.4.10.3), and a remainder destructor that conflicts with a retained item is rejected (§22.1.2.4), so obligation 2 places it after the last child.
+| Operation | Decision event | Then | Result |
+| --- | --- | --- | --- |
+| `join` | Last completion | — | Every result |
+| `joinOk` | First `Err`, otherwise last `Ok` | Cancels the others | The first `Err`, or `Ok` of every result; unreturned results are destroyed |
+| `race` | First completion | Cancels the others | `Raced` with every final result |
+| `each` | Iterator exhausted, last child complete | — | `Ok(())`, or `Err` once a request stops pulling and all children are joined |
+| `eachReceived` | Receiver closed and drained, last child complete | — | Likewise, a request stops receiving |
+| `pipe` | Consumer completion | Closes the receiver, cancels the producer | The consumer's result |
+| `shield` | Body completion | — | The body's result |
 
-The checker cannot enforce this inside `each`, because `enter` ends an item's Loans when it returns; the `Iterator` constraint and obligation 2 are the guarantee. `eachReceived` likewise receives only while fewer than `limit` children run, and starts a child with each received item before it waits again.
+`join`, `joinOk` and `race` start their children in argument order, and each child runs until it first suspends or completes before the next starts; a child started after the decision event starts with the cancellation request applied ([§22.3.3](#2233-cancellation-and-waits)). The order in which ready tasks resume is unspecified.
+
+`each` calls `next` only in its own task frame and only when fewer than `limit` children run. Before each pull it checks for a request that applies to it and, once one applies, pulls no more. This check is not a wait and has no commit point. It starts one child per item in order, stops at the first `None`, and destroys the Iterator after its last child completes. `eachReceived` likewise receives only when fewer than `limit` children run, and starts a child with each received item before it receives again.
 
 ```kimi
-func fillBoth(task; left: uniq/Buffer, right: uniq/Buffer) -> ()
-    let fillLeft = func [left] (task;) => fill(task; left)          // Exclusive body.
-    let fillRight = func [right] (task;) => fill(task; right)
-    _ = Async.join(task; fillLeft@move, fillRight@move)
-
-func normalizeAll(task; rows: uniq/Array<Row>, limits: ref/Limits) -> Result<(), Async.Cancelled>
-    let fix = func [limits] (task; row: uniq/Row) => normalize(task; row, limits)
-    return Async.each(task; rows.iterateUniq(), fix@ref, limit: 16)   // Disjoint uniq/Row items.
+func pick(task;) -> i32
+    let a = func [] (task;) -> i32 => 1
+    let b = func [] (task;) -> i32 => 2
+    match Async.race(task; a, b)
+        .First(let x, _) => return x     // Always First: a completes before b starts.
+        .Second(_, let y) => return y
 ```
 
-A user function that passes its task on is part of the same task, not a task boundary.
+### 22.3.3. Cancellation and waits
 
-#### 22.1.3.4. Cancellation
+Only Kimi operations request cancellation, for the children they started ([§22.3.2](#2232-running-and-structured-operations)); no value represents a request. A request for a task applies to every **cancellation-observing wait** in that task's subtree, pending now or started later: `sleep`, `checkpoint`, I/O waits, `send` and `receive`. Each observing wait **commits** exactly once, by its operation (table below) or by cancellation, whichever comes first, and returns what it committed to; cancellation is `Err(Async.Cancelled)`, `Err((value, .Cancelled(reason)))` for `send`, or the `Cancelled` Case of a domain error.
 
-- **Sources.** Only Kimi operations request cancellation, for the children they started, under their contracts (§22.1.3.3). A request is task state; no value represents it, and no public operation makes one.
-- **Observation.** Only waits for events other than the completion of the caller's own children observe a request (obligation 5): `sleep`, `checkpoint`, I/O, `send` and `receive`, including the receives of `eachReceived`. In addition, `each` checks for a request that applies to it before each pull; that check is not a wait and has no commit point.
-- **One Type.** A wait whose only failure is cancellation returns `Result<T, Async.Cancelled>`. `try` combines no error Types (§17.2.4), so converting `Async.Cancelled` into a domain error is explicit: `.Err(let reason) => return .Err(.Cancelled(reason))`.
-- **`checkpoint`.** Reports a pending request. It yields only when another task is ready, or when the task has passed an implementation-defined budget of `checkpoint` calls since it last suspended, so that the executor can poll timers and I/O. It reads no clock.
-- **`sleep`.** `sleep(task; d)` returns `Ok(())` no earlier than `d` after the call, as measured by the elapsed-time counter of §22.7, and registering the wait allocates nothing. `sleep` itself reads no clock: the executor converts its duration into a deadline before its next wait for completions, which comes after the call.
-- **Effects.** `sleep`, `checkpoint`, `shield`, the structured operations and the endpoint operations reach executor state only through `TaskBoundary.current`, and they read no clock. Apart from the effects of the children they call, of the Iterator that `each` steps and destroys, and of destroying the values they own, such as unreturned results and buffered items, they are therefore no environment effects and are usable in `confined` implementations. I/O waits call foreign functions and are environment effects. The executor's own clock and I/O calls run inside `Async.run`.
-- **Shielding.** `Async.shield(task; body, grace: g)` runs `body` as a child of the calling task while the other tasks keep running, and returns the body's result after the child completes.
-  - A request that applies to the calling task, made before or during the call, reaches the child's subtree only once `g` has elapsed since the later of the request and the start of the call. Until then, waits inside behave as if it had not been made.
-  - Requests made by operations inside the body apply as usual, so a `race` with `sleep` inside the body still times out.
-  - The caller's request stays pending, so its next observing wait after `shield` returns reports it. Nested shields add their graces.
-- **Cleanup and Abort.** Cleanup neither suspends nor observes cancellation (§16.2.3); Abort ends the process (§17.3.3).
-- **Timeouts.** A timeout is `race` with `sleep`. Because `race` joins every child, the timeout ends the other child only when that child reaches a cancellation-observing wait, and each `shield` on its path adds at most its grace; a loop without such a wait runs to completion.
+- A wait that starts while a request applies commits by cancellation at the call. A request commits a pending wait at once, except an I/O wait.
+- A commit is final; a later request, close or counterpart changes nothing. Commits within one task tree are totally ordered.
+- A value moves only at a commit: `send` gives its value away only when committing to `Ok(())` and otherwise returns it in `Err`; `receive` removes an item only when committing to `Ok(Some(item))`.
+- Cancellation never interrupts, unwinds or destroys a task frame.
 
-```kimi
-func fetchAfter(task; url: ref/Url, delay: Time.Duration) -> Result<Page, Net.Error>
-    match Async.sleep(task; delay)
-        .Ok(_) => ()
-        .Err(let reason) => return .Err(.Cancelled(reason))
-    return fetchPage(task; url)
-```
+| Wait | Its operation commits it when |
+| --- | --- |
+| `send` | The value leaves the sender: `Ok(())`; the receiver is closed: `Err` with the value and `Closed` |
+| `receive` | An item reaches the receiver: `Ok(Some(item))`; the channel is closed and drained: `Ok(None)` |
+| `sleep` | Its deadline has passed when the executor resumes it |
+| `checkpoint` | At the call when it does not yield, otherwise when it is resumed |
+| I/O | At the call when the operation completes immediately, otherwise when its completion is received |
 
-**Finalization.** A waiting finalization, such as a flush or a graceful close, is a named operation with a task slot; each path handles its `Result`. While a request applies, such a wait reports cancellation unless its operation completes first. To finalize even then, call it through `Async.shield`: the request reaches it only after the grace, and the other tasks keep running. A Deferred Block cannot pass the task (§24.2.2), so finalization stays on explicit paths, and `drop` never waits. Constructors have no task slot, so asynchronous construction uses a factory function (§6.2.3.5).
+**I/O.** Kimi requires no I/O operation. Each I/O operation an implementation provides takes a task slot and is a cancellation-observing wait. A request does not commit a pending I/O wait; it asks the platform to cancel the operation, and the completion commits the wait: to cancellation when it reports that the operation was cancelled before any data was transferred, otherwise to the outcome it reports. An I/O wait, even a cancelled one, returns only after its completion is received. How completions are delivered is implementation-defined.
+
+- **`checkpoint`** reports a pending request; it yields only when another task is ready or after an implementation-defined number of calls, and reads no clock.
+- **`sleep(task; d)`** returns `Ok(())` no earlier than `d` after the call; registering it allocates nothing. `sleep` and `shield` measure monotonic elapsed time, the clock of `Time.Stopwatch`. Deadlines and sums of nested graces are exact: a large `Time.Duration` never Aborts, and a deadline beyond the clock's range is never reached.
+- **`shield(task; body, grace: g)`** runs `body` as a child while other tasks keep running. A request that applies to the caller reaches the body's subtree only once `g` has elapsed since the later of the request and the start of the call; requests made inside the body apply as usual. The caller's request stays pending for its next observing wait. Nested shields add their graces.
+- **Effects.** A Kimi operation that runs children (`run`, `shield`, `join`, `joinOk`, `race`, `each`, `eachReceived`, `pipe`, `offload`, `offloadEach`) has in its effect summary the effects of calling each child through its Callable input, parameter-relative ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)), including every part that runs after a suspension. Apart from those child effects, the effects of the Iterator that `each` steps and destroys, and the destruction of values the operation owns, `sleep`, `checkpoint`, `shield`, `join`, `joinOk`, `race`, `each`, `eachReceived`, `pipe`, `send` and `receive` have no environment effect and may be used in `confined` implementations. `run` accesses per-thread executor state, an environment effect, so it is never `confined`. I/O waits are environment effects.
+- **Other rules.** Converting `Async.Cancelled` into a domain error is explicit ([§17.3](17-failure-handling.md#173-try-propagation)). A timeout is `race` with `sleep`; the other child ends only at an observing wait. A Deferred Block cannot pass the task ([§24.2.2](24-suspension-and-asynchronous-tasks.md#2422-passing)), so a waiting finalization is an explicit call, made through `shield` to run even under cancellation.
 
 ```kimi
-func appendLineAlways(task; path: ref/string, line: ref/string) -> Result<(), Io.Error>
-    var file = try Io.File.open(task; path)
-    let written = file.write(task; line)                  // No try: flush after every outcome.
-    let finish = func [file@uniq] (task;) -> Result<(), Io.Error> => file.flush(task;)
+func flushAlways(task; log: uniq/Log) -> Result<(), LogError>
+    let finish = func [log] (task;) -> Result<(), LogError> => log.flush(task;)
     let grace = Time.Duration.init(microseconds: 2000000)
-    let flushed = Async.shield(task; finish@move, grace: grace)   // Up to 2 s more under cancellation.
-    try written@move
-    return flushed@move
+    return Async.shield(task; finish@move, grace: grace)   // Up to 2 s more under cancellation.
 ```
 
-#### 22.1.3.5. Channels
+### 22.3.4. Channels
 
-- **Endpoints.** `receive` returns `Ok(None)` once the channel is closed and drained, and on every later call, as standard iterators do (§22.1.2.3). A delivered item depends on neither the receiver borrow nor the channel storage. `send` returns a rejected value in its `Err`. Endpoint operations obtain authority from their inputs (§8.4.10.2), and interleaving with the other endpoint happens only at task calls (§24.3). Endpoints are operated only through `uniq/Self`.
-- **`pipe`** is the only way to create a channel. It creates the channel state in its own task frame and lends one endpoint to each child as `uniq`. With `capacity >= 1` it takes a buffer of `capacity` items from the task's own storage, with no heap allocation in steady state. When the consumer completes, `pipe` closes the receiver, requests cancellation of the producer and joins it; a pending `send` of the producer then commits to `Closed`. When the producer returns first, the sender closes, and `receive` returns the buffered items and then `Ok(None)`. Cancelling `pipe` cancels both children. Items left in the buffer are destroyed with the channel when `pipe` returns, including values whose `send` returned `Ok(())`: with `capacity >= 1`, `Ok` means that the buffer took the value, not that the consumer received it.
-- **Generators** are `pipe` with capacity 0. No value owns a suspended task frame, and stopping uses `Closed` and `Cancelled`.
-- **Dynamic work** uses `eachReceived`; there are no detached tasks. Jobs of different kinds are sent as erased Function values of Type `(task;) -> ()`, under the erasure conditions of §7.6.4. A job that consumes its captures cannot be erased; send its state as the channel item instead, and keep the code in the `eachReceived` child.
+`pipe` is the only way to create a channel; it lends one endpoint to each child as `uniq`. With `capacity >= 1` it buffers items without heap allocation in steady state. When the consumer completes, `pipe` closes the receiver and cancels and joins the producer, whose pending `send` commits to `Closed`. When the producer returns first, the sender closes and `receive` returns the buffered items, then `Ok(None)` on every later call. `Ok` from `send` means the channel took the value, not that the consumer received it. A delivered item depends on neither the receiver borrow nor the channel storage. Endpoints interleave only at task calls ([§24.3](24-suspension-and-asynchronous-tasks.md#243-task-calls)).
+
+Delivery is FIFO in the commit order of successful sends. Before `pipe` returns, remaining buffered items are destroyed in reverse successful-send commit order, each completely before the next. These orders are independent of task resumption order.
+
+There are no detached tasks: dynamic work uses `eachReceived` with erased jobs of Type `(task;) -> ()` ([§7.7.4](07-functions-and-callable-values.md#774-function-references-and-erasure)). A generator is `pipe` with capacity 0.
 
 ```kimi
 func sumEvens(task; limit: u64) -> Result<u64, Async.Cancelled>
@@ -481,21 +286,15 @@ func sumEvens(task; limit: u64) -> Result<u64, Async.Cancelled>
                 .Some(let value) => total += value
                 .None => return .Ok(total)
     return Async.pipe(task; produce, consume, capacity: 0)
-
-func runJobs(task; jobs: uniq/Async.Receiver<(task;) -> ()>) -> Result<(), Async.Cancelled>
-    let runOne = func [] (task; job: (task;) -> ()) => job(task;)
-    return Async.eachReceived(task; jobs, runOne@ref, limit: 8)
 ```
 
-#### 22.1.3.6. Sequences and the scope of task operations
+### 22.3.5. Sequences and blocking calls
 
-An asynchronous sequence is read by repeating a task call in a `loop` with `match`, whether it is pulled from a source that returns without suspending when data is buffered or received from another task through `Async.Receiver<T>`. `for` is unchanged (§14.6.2): `LendingIterator.next` has no task slot, and an iterator cannot hold a task.
+An asynchronous sequence is read by repeating a task call in a `loop`; `for` is unchanged, since `next` has no task slot ([§14.6.2](14-control-flow.md#1462-iteration-protocol)). Apart from `Async.run`, every Kimi operation that may wait has a task slot and no task-free counterpart, except `Console.writeLine`, which blocks the thread and runs no other task meanwhile.
 
-Apart from `Async.run`, every Kimi operation that may wait, for I/O, a timer, a channel or its own children, has a task slot and no task-free counterpart. `Console.writeLine` (§22.4) is the one exception: it stays synchronous, blocks the thread, and its implementation runs no other task (obligation 1).
+### 22.3.6. Structured worker offload
 
-#### 22.1.3.7. Structured worker offload
-
-Structured computation may run on worker threads through these operations only. Their implementation, together with all asynchronous tasks, is deferred (Appendix D.5.2); these are required contracts, not a claim of support.
+Computation runs on other threads only through these operations:
 
 ```kimi
 public group Async
@@ -503,7 +302,6 @@ public group Async
         F is Callable<owner, () -> R>
             effect confined
         F is Transferable
-
     public func offloadEach<I, F>(task; items: I, child: ref/F ! limit: isize) -> Result<(), Cancelled>
         I is Iterator
         I.Item is Transferable
@@ -512,460 +310,210 @@ public group Async
         F is Transferable
 ```
 
-The worker child has no task slot, runs to completion, and is joined before its public operation returns. No task executes on a worker; `confined` excludes `Async.run`, and the ordinary structured task operations never move a task tree between threads. `offload` acquires its child by value under `owner`, including cleanup of its remaining environment. `offloadEach` borrows its child shared for all worker calls, each receiving one item by value; overlapping exclusive item dependencies are ordinary Loan conflicts. Its Iterator stays on the parent thread and need not be Transferable.
+- A worker child has no task slot, never runs a task, and neither observes cancellation nor unwinds; a timeout cannot preempt it. `offload` acquires its child by value; `offloadEach` borrows it shared and passes each item by value, keeping its Iterator on the parent thread, and otherwise follows `each` ([§22.3.2](#2232-running-and-structured-operations)).
+- Both operations keep the child, its arguments and their Loans until the worker finishes, and join on every path before returning; no partially started operation returns while a child is live. A failure to start a worker Aborts with `KIMI_E_THREAD`.
+- `confined` ([§8.11.2](08-generics-constraints-and-contracts.md#8112-confined)) excludes environment authority, such as mutable statics, foreign calls and Console output, and lets a worker and every callee in its transitive summary read an immutable static only as that section allows. The static Loans of the operation's inputs are checked separately ([§24.3](24-suspension-and-asynchronous-tasks.md#243-task-calls), [§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)). `Transferable` ([§15.2.4](15-ownership-and-lifetime-analysis.md#1524-transferable)) excludes thread-unsafe inputs.
+- The result needs no Transferable or Owned bound; it is delivered after join. Abort in a worker follows [§17.4.3](17-failure-handling.md#1743-termination-and-cleanup).
 
-`offloadEach` has the `each` contract (§22.1.3.3): `limit < 1` Aborts before pulling an item; at most `limit` children run, `next` is called on the parent thread in input order only when a child can start, children need not complete in order, and the Iterator is destroyed after its last child completes. Before each pull, a request applying to the caller stops further pulls; return `Err` only after joining every started child, otherwise `Ok(())`. Worker computations neither observe cancellation nor unwind. `offload` and worker joins do not observe cancellation themselves; a request cannot discard a child's result or end its lifetime early. A timeout therefore cannot preempt a running worker computation.
+### 22.3.7. Data races
 
-**Trusted-base obligation 6: worker completion.** The public operation's task frame holds the child, arguments and all their Loans until the worker finishes, and joins before that frame completes, including every cleanup path. Until join it performs no conflicting access to borrowed storage. This is an additional obligation to §22.1.3.1 because workers do not pass through `TaskBoundary.enter`. There is no running-child handle, detached child or destructor-based join. Resource failure before a worker can be started Aborts; no partially started operation may return while a child remains live.
+Two accesses **conflict** when they touch overlapping Places ([§3.4](03-types-and-values.md#34-places-and-storage)) or the reference counts of one object ([§13.6.2](13-operators-and-assignment.md#1362-object-creation-clone-and-lifecycle)), at least one of them writes, and they are not both atomic accesses made by the implementation (such as `arc` count updates). Takes, destructions and placements count as writes; a relocation also writes its source Places, and a release writes every Place in its storage. A **data race** is a pair of conflicting accesses from different threads that happens-before does not order. Happens-before is per-thread sequencing plus these edges, closed transitively:
 
-`confined` excludes environment authority (§8.4.10.2), including mutable statics, foreign calls, Console output, and raw pointers or `rc`/Weak values read from immutable statics. Captured borrows are input authority, so §24.3 separately rejects potentially affected static Loans in the operation's inputs even with this bound. Shared borrows of immutable static slots are permitted only when Transferable and ordinary Loan checking succeed. `Transferable` (§15.2.4) excludes thread-unsafe input storage. Neither guarantee replaces the other.
+- everything the parent does before a worker child starts happens before that child's accesses;
+- everything the worker child does, including destruction of the child value and construction of its result, happens before the parent continues after join;
+- publishing an Initialized static slot happens before every access that observes it ([§22.4.3](#2243-static-initialization-and-shutdown)).
 
-The result `R` requires no Transferable or Owned bound. It is delivered only after join; ordinary lifetime rules reject references to worker-local storage. Non-transferable state newly created in a confined worker may be returned because no worker access survives join. Such state cannot be obtained from forbidden inputs or immutable statics, and erasure does not make hidden input storage Transferable. Later offloads still check their own inputs.
+The `arc` count protocol ([§13.6.2](13-operators-and-assignment.md#1362-object-creation-clone-and-lifecycle)) orders handle state and lifetime only, not payload accesses. A data race is undefined behavior; safe code cannot cause one: Loan checking and `Transferable` admit no conflicting accesses between threads outside these edges. Loans create no ordering at runtime; they only forbid conflicting accesses. Other threading features are outside this revision ([§D.5](appendices/D-deferred-features.md#d5-concurrency)).
 
-**Synchronization and memory model.** All parent operations sequenced before worker start happen before the worker's accesses; all worker operations, including child cleanup and result construction, happen before the parent continues after join. Offloaded items are published before their worker starts. These edges are transitive and preserve ordinary per-thread sequencing; no order is promised between sibling workers beyond these edges, ordinary Loans and the `arc` protocol (§21.2.3.3). Safe programs admitted by these restrictions have no data races. Shared borrowing still grants no mutation of source payloads. `arc` synchronizes runtime handle state and lifetime, not arbitrary payload writes. No general atomic-ordering API, source thread creation or concurrent foreign reentry is introduced.
+## 22.4. Program startup and static storage
 
-**Static initialization.** The static-slot states and storage identity of §22.2.3–§22.2.4 are shared across threads. Exactly one thread changes Not started to Initializing and owns initialization. A different thread accessing that slot waits until initialization completes; publication of Initialized releases all initializer writes, and an access observing it acquires them before accessing the value. Access by the initializing thread Aborts with `KIMI_E_STATIC_CYCLE`. Cross-thread wait cycles may deadlock; this revision promises neither deadlock detection nor termination. Abort terminates the process and does not leave a recoverable half-initialized slot. Shutdown starts only after all structured workers join; successful initialization order is recorded consistently for reverse-order destruction, and the existing var-before-let shutdown rule remains.
+### 22.4.1. Startup selection
 
-Offloading blocking foreign calls remains outside this contract until foreign effect declarations exist. Per-thread I/O executors and cross-thread channels remain deferred designs (Appendix D.2). Any future cross-thread channel must keep the single-commit ownership guarantees of §22.1.3.1 with an atomic commit winner; an overlapped handle stays associated with its original thread's completion port.
+An Application has exactly one startup form, judged on the current project's root items after Condition selection and source generation: one SourceDocument with top-level runtime body items, or one root-level `public func main() -> ()`. Mixed forms, several candidates and no candidate are errors. Runtime body items are expressions, control expressions, `unsafe`, `defer`, `require` and discard statements, and local `let`/`var`, even without an initializer; declarations, aliases and excluded syntax are not, and a generated item counts as the item it produces. A minimal empty Application is the Unit expression `()`.
 
-## 22.2. Program startup and static initialization
+The chosen document's body items run once, in source order, in the document's execution scope ([§6.1.1](06-declarations-and-containers.md#611-source-root-and-nested-containers)); its top-level bindings are document-local, not static Properties, and the body has no return target ([§14.5.2](14-control-flow.md#1452-targets-and-barriers)).
 
-### 22.2.1. Startup selection
+### 22.4.2. Explicit main and Library
 
-After directive selection, Mods, and Binding, an Application must select exactly one of:
+An explicit main is exactly `public func main()` at the source root ([§6.1.1](06-declarations-and-containers.md#611-source-root-and-nested-containers)): a safe function with a body, a Unit result (which may be omitted), and no task slot, parameters, receiver, generic or Origin parameters; not an import or a specialization. Every root-level `public main` of an Application is checked against this; an invalid one is an error. `public` exports no native symbol. Normal completion ends the process with a successful exit status; Abort follows [§17.4.3](17-failure-handling.md#1743-termination-and-cleanup).
 
-- One SourceDocument with top-level runtime body items.
-- One eligible root-level `public func main() -> ()`.
-
-Mixed forms, multiple candidate documents or mains, and no candidate are rejected. Only the current project is searched, not dependencies; enumeration order and optimization never select the winner. EntrySource is not an initial selection mechanism, and naming an empty document cannot make an Application valid.
-
-HasTopLevelRuntimeBodyItem is determined once per document from the selected root items, without descending into functions or Containers. The classification does not require that machine instructions survive:
-
-| Root item | Counts as a runtime body item |
-| --- | --- |
-| Expression/control expression, unsafe/defer/require/explicit-discard statement | Yes, including Unit and removable expressions |
-| Local let/var | Yes, even without an initializer |
-| Function declaration, including main | No |
-| Container or alias | No |
-| Attribute argument, Type expression, constant evaluation, Mod execution itself | No |
-| Excluded syntax | No |
-| Selected legal generated item | Classify the resulting item by these rules |
-
-Top-level bindings remain SourceDocument-local, not static Properties. Container static Properties do not count and keep first-access initialization. Generated items must be legal in their target context; neither generation nor startup classification expands that grammar.
-
-The chosen document's body items execute in source order, with its source scope, CodeContext, local-function visibility, lifetimes and cleanup. The body is lowered to a private internal function; no public main is synthesized. This physical function creates no source-level return target (§14.5.3).
-
-```kimi
-// Implicit startup; the uninitialized local itself also counts.
-let pending: i32
-::Kimi.Console.writeLine("Hello, world!")
-```
-
-A minimal intentionally empty Application is the Unit expression `()`. Empty files and declaration-only files supply no implicit body.
-
-### 22.2.2. Explicit main and Library
-
-An Application's explicit main is exactly lowercase `main`, public and directly at the source root. It has no task slot (§24.2.1), parameters, receiver, generic parameters or Origin parameters, and a Unit result; ordinary result omission is allowed. It is a safe ordinary function with a body, not unsafe, a foreign import or a specialization. A main inside a group, a struct or another function is not a candidate. Root-level public main is shared-root declaration syntax under §6.1.1 and retains declaration-site aliases; `public` promises no unmangled native symbol or export.
-
-Every root-level public main in an Application is validated as a startup signature. An invalid declaration is diagnosed; no convenient overload is selected instead. Normal Unit return and fallthrough are permitted, and no special ownership rules apply. Code without a task, `main` included, reaches task operations through `Async.run` (§22.1.3.3).
+A Library needs no startup form and never calls `main` automatically; there `main` is an ordinary function, and top-level runtime body items are errors.
 
 ```kimi
 public func main() -> ()
     let message = "Hello, world!"
-    ::Kimi.Console.writeLine(message)
-    // message is borrowed for output and remains usable.
+    Console.writeLine(message)          // message is borrowed and stays usable.
+// Console.writeLine("Top level")       // Error: mixes the two startup forms.
 ```
 
-Adding a top-level `::Kimi.Console.writeLine("Top level")` to this project is an error because it mixes startup forms. Integer-returning main and a safe Kimi.exit API are not initial features; normal termination is 0 and Abort is 1. Runtime.Exit remains internal.
+### 22.4.3. Static initialization and shutdown
 
-A Library requires no startup candidate, never calls main automatically and emits no OS entry. In a Library, main is an ordinary function without the Application signature restriction. Top-level runtime body items, including uninitialized let/var, are rejected. A Library may be consumed as a Project or distributed as a source package (§18.4–18.6) and then participate in common final generation. Its inspection `.ll` is neither that distribution format nor an external library or DLL ABI; language functions remain internal even when public. Optimization may remove all functions from standalone inspection output, so inspect pre-optimization IR.
-
-### 22.2.3. OS entry, static initialization, and shutdown
-
-The initial Windows Application emits the compiler-reserved external `__kimi_start` with physical signature `void ()`, Windows x64 ccc, `noreturn` and the profile attributes (§21.5), linked with `/entry:__kimi_start`. It performs the required runtime initialization, calls the selected body once, completes normal shutdown and calls Runtime.Exit(0). Empty initialization and shutdown helpers may be omitted. Ordinary mangling prevents source names from colliding with this reserved symbol.
-
-```llvm
-; Fragment: profile attributes and internal helper definitions are omitted.
-; Each helper has one internal definition, not an additional same-name declare.
-define void @__kimi_start() noreturn {
-entry:
-  call void @__kimi_entry_body()
-  call void @__kimi_shutdown()
-  call void @__kimi_runtime_exit(i32 0)
-  unreachable
-}
-```
-
-The entry body is the implicit body or a call to the selected main. Required runtime initialization precedes it; heap and standard-handle acquisition may instead occur inside each runtime operation.
-
-The entry handles Kimigayo initialization and cleanup only; it runs no executable CRT startup or C/C++ static constructors. Foreign initialization must already be satisfied, for example by OS DLL loading, or by an explicitly supported adapter. /NODEFAULTLIB is not initialization.
-
-Static stored Properties initialize per slot under §11.3.2. A slot is in one of four states, Not started, Initializing, Initialized or Finished, and every read, Borrow, write or other storage operation on it checks that state:
+Static stored Properties ([§11.8](11-properties.md#118-static-storage)) initialize per slot on first access. A program starts on one thread; only structured worker offload ([§22.3.6](#2236-structured-worker-offload)) runs code on other threads. A slot is Not started, Initializing, Initialized or Finished, and every read, Borrow, write or other access checks its state:
 
 | State | Action |
 | --- | --- |
-| Not started | Before shutdown: mark Initializing; evaluate the declaration initializer; after normal completion mark Initialized, then perform the operation. During shutdown: Abort with KIMI_E_STATIC_SHUTDOWN |
-| Initializing | Abort with KIMI_E_STATIC_CYCLE |
-| Initialized | Perform the operation without rerunning initialization |
-| Finished | Abort with KIMI_E_STATIC_SHUTDOWN |
+| Not started | Before shutdown: exactly one accessing thread marks the slot Initializing and runs the initializer; after normal completion it marks the slot Initialized, then performs the access. During shutdown: Abort with `KIMI_E_STATIC_SHUTDOWN` |
+| Initializing | Accessed by the initializing thread: Abort with `KIMI_E_STATIC_CYCLE`. Accessed by another thread: wait until the slot is Initialized; a cross-thread wait cycle may deadlock |
+| Initialized | Perform the access |
+| Finished | Abort with `KIMI_E_STATIC_SHUTDOWN` |
 
-A first write initializes before Replacement. Actual access determines dependency order, not fragment, file or link order. Computed execution initializes only the storage it actually accesses. A Type or function reference, an untaken branch or an effect summary initializes no unrelated Field. All initializers are checked even if unused; unused Fields need not be initialized and are not destroyed. An implementation without static execution support diagnoses the uses that require it.
+A first write initializes before it replaces. Only accesses that execute initialize: a Type or function reference, an untaken branch or an effect summary initializes nothing. Every initializer is checked even if unused; an uninitialized slot is not destroyed. These rules apply to the slots of every Kotonoha, dependencies included.
 
-Normal body exit cleans up its locals exactly once, and shutdown then begins. Shutdown destroys every Initialized static `var` slot and afterwards every Initialized static `let` slot, each group in reverse order of successful initialization, and marks a slot Finished before destroying its value. These rules apply to the static slots of every Kotonoha, dependencies included, although multi-Kotonoha linking is outside the initial profile.
-
-As a result, a slot is Finished only during shutdown, and no slot is Initializing when shutdown begins. Destroying a static `let` slot Aborts with KIMI_E_STATIC_SHUTDOWN whenever that destruction accesses a static `var` slot: every Initialized `var` slot is already Finished, and a Not started slot cannot be initialized during shutdown. Whether such an access Aborts thus depends on declarations alone, not on which slots execution initialized or in what order.
+After the startup body completes and its locals are cleaned up, shutdown destroys every Initialized static `var` slot and then every Initialized static `let` slot, each phase in reverse order of the moment each slot became Initialized (one order across all threads), marking each slot Finished before destroying its value. When destroying a static `let` slot accesses another static `let` slot, the access succeeds if that slot finished initialization earlier (it is destroyed later), and otherwise Aborts with `KIMI_E_STATIC_SHUTDOWN`; the outcome depends on the run-time initialization order. An Abort during shutdown follows [§17.4.3](17-failure-handling.md#1743-termination-and-cleanup).
 
 ```kimi
-struct Probe
-    public let id: i32
-
-    public init(id: i32) => self.id = id
-
-    drop => Console.writeLine("Count is \(Registry.count).")
-
 group Registry
-    public var count: i32 = 0
-    public let probe: Probe = Probe.init(1)
-
-public func main()
-    Registry.count = 1
-    require Registry.probe.id == 1 else => $abort("Unexpected probe")
+    public let names: Names = Names.init()
+    public let probe: Probe = Probe.init()   // Probe's drop reads Registry.names.
+// Initialized names, then probe: probe is destroyed first and its drop succeeds.
+// Initialized probe, then names: names is Finished first, so probe's drop Aborts.
 ```
 
-Shutdown destroys `count` in the `var` phase and `probe` in the `let` phase. The `drop` of `probe` then reads the Finished `count` and Aborts with KIMI_E_STATIC_SHUTDOWN, reported at the start of `Registry.count` (§22.5.4). Declaring `probe` with `var`, or keeping its `drop` away from static storage, avoids the Abort.
+### 22.4.4. Static storage keys
 
-**Non-normative note.** No shutdown dependency check is needed. In safe code a `during static` borrow is anchored only in a static `let` slot or in constant data (§11.3.2, §15.2.3), and a `let` slot's value, including payloads reached through its handles, cannot change after its initialization completes (§11.3.2, §13.5.5.1, §15.1.5). A `let` therefore depends only on `let` slots that completed earlier, and no value depends on a `var` slot's storage. Raw-pointer derivations keep the obligations of §5.2.1.
-
-Each cleanup finishes before subsequent cleanup or Exit. Abort stops normal cleanup and unwinding and attempts diagnostics before Runtime.Exit(1) (§17.3, §22.5); secured results are then neither delivered nor separately destroyed.
-
-Execution starts on one thread; structured workers are permitted only by §22.1.3.7, whose synchronization and cross-thread static-initialization rules extend the table above. General source thread creation and concurrent foreign reentry remain deferred. Atomic arc counts do not expand that permission. Tasks share that thread: every task of a tree runs on the thread of its `Async.run` (§22.1.3.3), and while a task executes a call that is not a task call, no other task of its tree that started before that call runs (§24.3).
-
-### 22.2.4. Static storage in inherited environments
-
-A Field directly in a group is static even when that group is nested in a struct. Its storage key is the Field declaration Identity plus the normalized enclosing bindings with Origins recursively erased. The key retains Type structure and every Semantics layer, including unused arguments. Distinct keys have distinct storage, and code sharing never merges them. Different paths to one key use one initialization state, one Loan and effect identity and one destruction responsibility.
+A Field directly in a group is static even when the group is nested in a struct. Its **static storage key** is the Field declaration plus the enclosing Type arguments with Origins erased; Semantics layers and unused arguments still distinguish keys. A summary that cannot keep a key exact uses the Field's open key, which overlaps every key of that Field ([§15.6.2](15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts), [§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)). Each key has one slot, with one initialization state and one destruction, whatever path reaches it. The stored value must be Owned and meet the static-storage conditions ([§11.8](11-properties.md#118-static-storage)); the enclosing Type arguments need not be Owned, and access keeps the full Origins for Loan and lifetime checking. The initializer and destruction must be valid for every Origin binding that shares the key (universal checking, [§8.15](08-generics-constraints-and-contracts.md#815-generic-body-checking)); otherwise the declaration is an error. The rules of [§22.4.3](#2243-static-initialization-and-shutdown) apply.
 
 ```kimi
 struct Cache<T>
     public group Statistics
         public var count: i32 = 0
+// Cache<i32>.Statistics.count and Cache<string>.Statistics.count are separate slots.
+// Cache<ref/i32 during a> and Cache<ref/i32 during b> share one slot.
 ```
 
-Cache<i32>.Statistics.count and Cache<string>.Statistics.count are separate. Cache<ref/i32 during a>.Statistics.count and the corresponding b reference use one key after both full references pass their checks.
+## 22.5. Abort locations and codes
 
-The stored value must be Owned and satisfy the existing static-storage conditions; enclosing Type arguments need not be Owned. Full Origins are preserved for access and lifetime checking. Under §8.10 and §21.3, one representation, initialization and destruction plan is verified for all valid Origin bindings that share a key, including the required operations, evidence and callees. Owned storage alone does not prove that an initializer can be shared. Verified typed plans are reused and concrete layout is finalized at instantiation; a plan is never chosen by the first accessing Origin, and a failing plan is never split into Origin-specific storage. Initializers may depend on ordinary runtime state.
+The Abort contract is [§17.4.3](17-failure-handling.md#1743-termination-and-cleanup); the windows-x64 output format is in [§21.4.2](../impl/21-layout-runtime-and-code-generation.md#2142-process-entry-and-exit).
 
-The rules of §22.2.3 apply: lazy initialization, the slot states and their Aborts, the shutdown order, and the rules for Type and function references and for unused Fields and initializers.
+### 22.5.1. Abort location
 
-Shared code reaches a key through a supplied initialize-and-address operation (§21.3.3.4), either fixed directly or represented by an existing entry/context pair. Its immutable private context retains the storage and state references and the required initializer and destructor operations; mutable initialization state stays with the storage. No new GenericContext slot kind, per-call context construction or runtime Type search is required. Direct-call optimization must preserve initialization checks, cycle detection and storage Identity.
+An Abort reports one source location, the same at every optimization level and instantiation:
 
-## 22.3. Foreign function imports
-
-### 22.3.1. Declaration and call contract
-
-`#LibraryImport("library", "symbol")` on a bodyless func, safe or unsafe, selects the target C calling convention. Both arguments are required nonempty, non-interpolated, NUL-free string literals. The first is a case-sensitive logical native requirement name belonging to the defining Kotonoha (§20.8.2), not a consumer alias or DLL path. Requirements may come from NativeRequirements or a self-targeted combined NativeLibraries record. The second argument is the exact external symbol, independent of the source function name. §20.8.2 validates the actual supply, kind and member closure; that validation does not replace the source and ABI obligations below.
-
-Imports are allowed only directly in a group or rootgroup, or as receiverless struct type functions. Task slots (§24.2.1), receivers, generic parameters, Origin parameters inherited from an enclosing Container, parameter defaults, varargs, specializations and executable bodies are rejected; borrow annotations introduce signature Origins as usual (§22.3.2). Ordinary parameter-name rules apply, including the `!` boundary and external/internal renaming; name contracts change source argument matching only, not the foreign ABI. Every argument value is required. Calls are direct only; imported functions cannot be acquired as values. Ordinary access and unsafe-call rules apply.
-
-**Declaration promise.** An import declaration promises that, for every call satisfying its signature and its `- safety:` conditions, the foreign implementation behaves as a Kimigayo function with the same signature would:
-
-- it accesses only what its arguments permit: reads through `ref`, and exclusive access through `uniq` for the duration of the call;
-- when it writes a borrowed Field of a received value, the new value satisfies that Field's Type, Origin and authority;
-- it retains no borrow beyond the Origins of its result;
-- it returns a valid value of its result Type;
-- it keeps the unwinding restrictions below.
-
-A false promise is undefined behavior, and the author of the declaration is responsible for it. An import is an `unsafe func` only when its callers have obligations that its Types cannot express, which its `- safety:` item states (§7.5). The effects of a call are the accesses its signature permits through its arguments and an environment effect (§8.4.10.2); no declaration form states other effects.
-
-```kimi
-group Native
-    #LibraryImport("observer", "observe_record")
-    public func observe(record: uniq/NativeRecord) -> ()
-
-    #LibraryImport("observer", "observe_raw")
-    public unsafe func observeRaw(record: raw/NativeRecord) -> ()
-```
-
-NativeRecord can be the C-layout example in §21.1.3; the corresponding C declarations are `void observe_record(NativeRecord *record);` and `void observe_raw(NativeRecord *record);`. `observe` is safe: the exclusive borrow states that the record is written only during the call and not retained. `observeRaw` is unsafe because a raw pointer states nothing; its `- safety:` item must give the layout, validity, lifetime, write, retention and ownership conditions, and the absence of conflicting Loans.
-
-Arguments are acquired once, from left to right, and then passed under the selected ABI. No automatic marshalling, retention, allocation, freeing or ownership acquisition occurs. Normal return resumes ordinary cleanup. C++ exceptions, SEH unwind, longjmp, callbacks and reentry must not cross Kimigayo frames; control handled entirely inside the foreign code is allowed. Violations carry no result or cleanup guarantee. The FP boundary contract of §21.5.4 applies, and §21.5.5 governs `nounwind` and `landingpad` generation.
-
-Unresolved logical libraries and unsupported ABI signatures are compilation errors. Required link inputs are recorded; unresolved native symbols fail manual linking or loading before entry. C aggregate passing, export, callbacks, varargs and extra calling conventions remain extensions; C storage layout (§21.1) is specified separately and does not enable them.
-
-### 22.3.2. Initial Windows C ABI
-
-The physical signature is computed once and shared between declaration and call:
-
-| Kimigayo parameter/result | C value | LLVM Type |
-| --- | --- | --- |
-| i8 / u8 | int8_t / uint8_t | i8 |
-| i16 / u16 | int16_t / uint16_t | i16 |
-| i32 / u32 | int32_t / uint32_t | i32 |
-| i64 / u64 | int64_t / uint64_t | i64 |
-| f32 / f64 | float / double | float / double |
-| raw/T | Corresponding data pointer | ptr, address space 0 |
-| ref/T | `const T *`, non-null | ptr, address space 0 |
-| uniq/T | `T *`, non-null | ptr, address space 0 |
-| Option<ref/T>, Option<uniq/T> | Pointer that may be null | ptr, address space 0 |
-| Unit, result only | void | void |
-
-These entries use ccc with no signext, zeroext, inreg, byval or sret. i8 and i16 are not widened to i32, and vararg default promotions are not applied. Other numeric conversions are separate language operations. LLVM handles registers, stack arguments beyond the fourth, shadow space and stack alignment; unused upper bits are not meaningful. Additional optimization attributes need independent proof.
-
-```llvm
-declare dllimport i8 @native_i8(i8)
-declare dllimport i16 @native_u16(i16)
-```
-
-In the borrow rows, `T` is C-exchangeable storage (impl §21.1.6). A borrow annotation introduces signature Origins as usual (§15.3.4), and result Origins follow §15.4; Origin parameters inherited from an enclosing Container remain rejected. An argument passes the address of its referent: the Scalar by-value optimization of `ref` parameters (impl §21.5.5) does not apply. An Option uses the one-word nonnull representation (impl §21.1.5), with None as the null pointer.
-
-All other parameter and result Types are excluded, including bool, char, string, object handles and borrows of other Types, aggregates (even C-exchangeable structs and arrays), function and Closure values, i128/u128 and isize/usize. Raw pointees are not passed by value and need not be C-exchangeable when opaque. Future aggregate passing needs a separate argument and result C ABI classification and tests, not direct translation to LLVM aggregate parameters.
-
-## 22.4. Minimal console output
-
-```kimi
-Console.writeLine("Hello")
-::Kimi.Console.writeLine("Hello")
-```
-
-Opening Console explicitly, or through an additional default alias, permits the bare name:
-
-```kimi
-alias Kimi.Console
-writeLine("Hello")
-```
-
-There is no `Kimi.writeLine`, old `Core` compatibility reference or forwarding API. `Core` is an ordinary user name. Console is a group, not a value or special syntax. An intrinsic is a declaration whose Identity has compiler-recognized meaning; no public `Intrinsic` namespace or `Kimi.Intrinsic` group is introduced. Aliases retain that Identity. `$abort`, `$expect`, `$require` and the Composition Root retain their existing roles.
-
-Kimi's public group `Console` provides two ordinary public overloads, `writeLine(text: ref/string) -> ()` and `writeLine(text: Text.Utf8Slice) -> ()`. The default alias makes `Console.writeLine` available without opening Console (§22.1.1). Each overload is safe and nongeneric, with one required argument and no receiver, defaults, formatting parameters or result borrow. Neither overload has a task slot: the call stays synchronous, and while it blocks, its implementation runs no other task (§22.1.3.6). The string overload borrows its argument; the view overload copies its borrowed handle. The compiler and runtime supply the implementation; it is not a source LibraryImport taking a string and does not expand the FFI Type surface.
-
-The text is borrowed for the call under the ordinary argument adaptation rules: a string Place stays usable, and a literal, interpolation or `Text.toString` result is materialized and borrowed as a temporary. Both overloads write all UTF-8 bytes of the text plus one LF to standard output. NUL is data. Contents are preserved without normalization, CRLF conversion or locale encoding. Failure may leave partial output; no rollback or device atomicity is promised. The call returns Unit after the host accepts the bytes and this call's runtime buffer is flushed, not necessarily after display or durable storage. Failure to complete initiates Abort under the normal diagnostic and termination rules, even if stdout is unavailable. The call destroys nothing; a temporary argument follows its ordinary lifetime. If the backend cannot provide this operation, an unsupported target or feature is diagnosed.
-
-**Complete application example (implicit startup in one SourceDocument).**
-
-```kimi
-::Kimi.Console.writeLine("Hello, world!")
-```
-
-The required standard-output bytes are UTF-8 `Hello, world!` followed by LF; normal completion exits with code zero under §22.2. No source main function, user alias, unsafe block, interpolation or user-declared foreign function is needed. General I/O error and result APIs remain outside this minimal operation.
-
-The initial Windows implementation of this operation is specified in §22.5; output settings, the manifest and manual build steps are in §20.8. [STATUS.md](../STATUS.md#4-llvm-generation-coverage) records the first executable implementation milestone and which settings exist or are proposed. A prototype supporting only that subset must identify itself as partial; the milestone does not relax the Kimi identity, shape or validation requirements of a fully conforming Compilation. Unused executable Kimi bodies need not be emitted, but a same-spelled stub without the required identity and contract is not a compatible Kimi definition.
-
-## 22.5. Initial Windows runtime
-
-### 22.5.1. Operations and source context
-
-The compiler emits these six logical operations in the same LLVM module. They are internal abstractions, not source APIs or a dedicated runtime DLL:
-
-```text
-Alloc(size: usize) -> ptr
-Free(memory: ptr) -> ()
-WriteStdout(data: ptr, length: usize) -> ()
-Exit(code: u32) -> Never
-TryWriteStderr(data: ptr, length: usize) -> bool
-Abort(reason: DiagnosticText, sourceLocation: SourceLocation) -> Never
-```
-
-Failures of Alloc and WriteStdout, and detected Free failures, Abort. TryWriteStderr returns false without initiating Abort. Abort attempts diagnostics, then calls Exit(1); Exit never returns and performs no Kimigayo cleanup. The normal language path calls Exit(0) only after cleanup.
-
-Physical helpers carry any required private diagnostic context through the compiler-selected internal ABI (§21.4.2); its position and representation are not fixed. Lowering preserves the static logical path, line and column of the original operation, including failures inside Alloc, Free and WriteStdout and generated-source CodeContext provenance. This does not depend on PDBs or stack traces.
-
-A standard operation implemented by Kimigayo helper calls carries that same context through every helper to every failure that its helpers detect: precondition failures, the failures of their allocations and releases, including those of `Raw.allocate` and `Raw.release` (§5.6), and their generated arithmetic checks. An implementation helper's source position never replaces the caller's operation. User code that the operation calls, such as a user-written `equals` or `drop`, is not a helper: it reports its own positions, and a standard operation that it calls carries its own context. An implicit iteration entry or step initiated by `for` reports the start of that `for` expression. Explicit user `$abort` keeps the position of its own expression.
-
-A standard operation called through a Function Item, Callable contract or common Function value carries the location of that invocation. For `let f = Raw.allocate<u8>`, `f(n)` supplies the context; moving, storing or reusing `f` does not change this rule. If a user helper calls `f(n)`, the context is that inner call, not the outer call of the helper. The standard-helper forwarding rule above still applies; user callbacks, `drop` and explicit `$abort` retain their own positions. Erasure allocation failures report the conversion instead. Logical path, line and column are invariant under generic instantiation and optimization.
-
-Outside the helpers of a standard operation, generated arithmetic checks report the start of the failing arithmetic expression. Compound assignment and increment/decrement report the start of the complete update expression. These locations remain the same across optimization levels.
-
-### 22.5.2. Allocation and release
-
-Allocation uses the process heap, MaxObjectSize = 2^63 - 1, and alignment support up to 16: every Alloc result is aligned to 16, and so is every `Raw.allocate` result of nonzero size, which is an Alloc result. §5.6 promises only the alignment of `T`, so code relying on more is specific to this runtime; the Kimi library's byte-addressed Dictionary buffers rely on it. `length * stride`, headers and alignment rounding are checked before allocation; an overflow or limit failure Aborts. Alloc also checks its own limit, obtains GetProcessHeap and calls HeapAlloc(heap, 0, max(size, 1)); a null heap or allocation Aborts. It returns uninitialized raw memory, not an Initialized language value. The substitute byte for size zero does not change a Type's size or stride.
-
-Free(null) succeeds without work. Otherwise Free requires the original live pointer returned by this allocator, never an interior pointer or literal backing. GetProcessHeap failure or a detected HeapFree(heap, 0, memory) failure Aborts. Lowered cleanup runs destruction before Free; Free itself invokes no destructor. Correct ownership and pointers are a duty of static analysis and generation; detection of double frees or arbitrary corruption is not guaranteed.
-
-HeapAlloc flags remain zero: no exception generation, and process-heap synchronization stays enabled. HeapAlloc supplies no last-error on failure, so a stale GetLastError value is never reported for a null allocation. Last-error is obtained immediately after the APIs that provide it, including failed HeapFree and WriteFile.
-
-HeapBuffer completion may use the [optional in-place shrink](utf8-formatting.md#34-optional-in-place-shrinking). This is a non-failing optimization, never a replacement allocation. An implementation using HeapReAlloc must request in-place-only behavior and retain the original allocation on failure.
-
-### 22.5.3. Synchronous byte output
-
-WriteStdout and TryWriteStderr share a checked byte-write adapter. They add no newline, NUL scan, encoding conversion, buffer or pointer retention. Length zero succeeds before handle acquisition or pointer access. A positive length requires length <= MaxObjectSize, nonnull data, a readable live range within one allocation, and no unsigned 64-bit overflow in baseAddress + (length - 1). Numeric checks do not prove allocation validity or lifetime.
-
-GetStdHandle(-11) obtains stdout and GetStdHandle(-12) stderr; null or INVALID_HANDLE_VALUE fails. These handles are never closed. Initial support requires synchronous standard handles. WriteFile receives a 32-bit written-count slot and a null OVERLAPPED; a supplied last-error is captured before another API is called.
-
-```text
-remaining = length
-while remaining > 0:
-    chunk = min(remaining, UINT32_MAX)
-    request chunk bytes with WriteFile
-    fail if the call fails, written == 0, or written > chunk
-    remaining -= written
-    if remaining > 0:
-        advance within the original buffer with checked pointer arithmetic
-```
-
-No next pointer is computed after completion. Partial writes advance by actual progress, and zero progress is never retried indefinitely. WriteStdout turns any detected failure into Abort; TryWriteStderr returns false and must not call Abort, WriteStdout or Alloc. Output may be partial, with no rollback, atomicity, display, durability or bounded synchronous-wait guarantee. Success means that the OS accepted all bytes. These checked buffer rules do not change general unsafe pointer arithmetic.
-
-### 22.5.4. Abort diagnostics and exit
-
-Fixed diagnostics use an ASCII identifier, an English reason and the source location, optionally followed by a valid numeric OS error:
-
-```text
-Main.kimi:3:5: abort KIMI_E_STDOUT: Failed to write to stdout (win32=6)
-```
-
-Catalog codes are unique. They include KIMI_E_ALLOC_SIZE (allocation size exceeds limit), KIMI_E_PROCESS_HEAP, KIMI_E_ALLOC, KIMI_E_FREE, KIMI_E_STDOUT, KIMI_E_INT_OVERFLOW (Integer overflow), KIMI_E_INT_DIV_ZERO (Integer division or remainder by zero), KIMI_E_INT_SHIFT_COUNT (Shift count out of range), KIMI_E_INT_CONVERSION (Integer conversion out of range), KIMI_E_INDEX_BOUNDS (Index out of bounds) and KIMI_E_REF_COUNT (Reference count limit exceeded). The codes are used as follows:
-
-- Integer division or remainder by zero uses KIMI_E_INT_DIV_ZERO; the signed minimum divided by -1 uses KIMI_E_INT_OVERFLOW, while its remainder is 0 and does not Abort (§13.3). Wrapping integer Types raise neither code for an unrepresentable result.
-- A shift count outside `0 <= count < left operand bit width` uses KIMI_E_INT_SHIFT_COUNT. Discarded left-shift bits do not trigger overflow.
-- A runtime integer conversion outside the target range uses KIMI_E_INT_CONVERSION, as does a float-to-integer failure, including NaN and infinities. A conversion of a finite source that rounds to floating infinity uses `KIMI_E_FLOAT_CONVERSION: Floating conversion out of range`. These codes identify the failures required by §13.5.4; direct literal fitting failures remain compile-time errors.
-- Ordinary element indexing outside the receiver bounds uses KIMI_E_INDEX_BOUNDS, including constant indices and zero-length arrays. Dictionary indexing with an absent key uses `KIMI_E_MISSING_KEY: Dictionary key was not found`; an absent result from a try-prefixed operation is not an Abort.
-- An increment of a strong or weak count at its maximum (§13.5.8, §13.5.9) uses KIMI_E_REF_COUNT before updating. It reports the start of the call expression of the explicit operation, `clone`, `downgrade` or `upgrade`; no count is incremented implicitly.
-- `KIMI_E_STATIC_CYCLE: Static initialization cycle` and `KIMI_E_STATIC_SHUTDOWN: Static storage unavailable during shutdown` are the static-storage Aborts of §22.2.3. Each reports the start of the Place expression that designates the slot, including its qualifier: `Values.first` reports `Values`, and `Cache<i32>.Statistics.count` (§22.2.4) reports `Cache`. An unqualified name, including `storage` in the Field's own accessor, reports itself.
-- A standard operation's numeric argument outside its permitted range uses `KIMI_E_ARG_RANGE: Argument out of range`, including a negative allocation count, capacity or requested length and a reversed range used for iteration. The code is shared across collections, raw storage and formatting; it does not replace the more specific indexing, arithmetic or conversion codes above. Formatting failures use `KIMI_E_FORMAT: Formatting failed`; their triggers are in the [formatting profile](utf8-formatting.md).
-- An equivalent key encountered while constructing a Dictionary literal uses `KIMI_E_DUPLICATE_KEY: Dictionary literal contains an equivalent key`, reported at the later key expression. This is distinct from a missing key or a try-prefixed operation's ordinary unsuccessful result.
-- A detected invalid string release tag uses `KIMI_E_STRING_RELEASE: Invalid string release kind`. This indicates invalid runtime representation, not a normal source-level precondition; safe well-formed generated values do not trigger it. As with Free, detecting arbitrary corruption is not guaranteed.
-
-In the following application, `main` starts initializing `first`, whose initializer starts initializing `second`, whose initializer reads `first` while it is Initializing:
+- a failure inside a Kimi operation (a public function, accessor or member of the Kimi Kotonoha) that user code invokes by a call or by syntax (indexing, slicing, literals), including the operation's internal code, allocations, static-storage accesses and `$abort`: the start of the invoking user expression; for a call through a function value, that call, not where the value was formed; a duplicate Dictionary literal key reports the later key expression;
+- user code that a Kimi operation calls, such as `equals` or `drop`: that code's own location;
+- an implicit iteration entry or `next` call of `for`: the start of the `for` expression;
+- an arithmetic, shift or conversion check in user code: the start of the failing expression; for compound assignment and `++`/`--`, the whole update expression;
+- a static-storage Abort in user code: the start of the Place expression that designates the slot, including its qualifier (`Cache<i32>.Statistics.count` reports `Cache`);
+- `$abort` in user code: the `$abort` expression;
+- allocation of an erased function value: the conversion expression.
 
 ```kimi
 group Values
     public let first: i64 = Values.second + 1
-    public let second: i64 = Values.first + 1 // This access finds first Initializing.
-
-public func main()
-    let value = Values.first
+    public let second: i64 = Values.first + 1   // Reading Values.first finds it Initializing: KIMI_E_STATIC_CYCLE, reported at `Values`.
+let value = Values.first
 ```
 
-```text
-Main.kimi:3:30: abort KIMI_E_STATIC_CYCLE: Static initialization cycle
+```kimi
+let items: Array<i32> = [1]
+let x = items[5]          // KIMI_E_INDEX_BOUNDS at the start of items[5], not inside Kimi code.
 ```
 
-The reported location is that read, neither the declaration of `first` nor the first access in `main`.
+### 22.5.2. Abort codes
 
-Unavailable OS codes are omitted, and FormatMessageW is not used. Displayed logical paths escape non-ASCII and control characters as `\u{HEX}` and backslash as `\\`; the actual path and provenance are preserved internally.
+Every Abort cause of [§17.4.1](17-failure-handling.md#1741-causes) and of the Kimi operations maps to exactly one row of this closed table.
 
-Diagnostics are output from constants, valid input strings and small fixed work areas, without requiring heap allocation or one concatenated dynamic string. Explicit `$abort(expression)` keeps ordinary one-time argument evaluation and outputs the resulting UTF-8 string after KIMI_E_ABORT, without translating or escaping its contents. Once Abort starts, that string is not normally destroyed.
-
-TryWriteStderr failure truncates diagnostics and proceeds to Exit(1), with no recursive diagnostic path. Runtime.Exit forwards its u32 to ExitProcess and ends its caller block with `unreachable`. It runs no cleanup; successful shutdown and Abort reach it through their distinct §22.2 paths.
-
-### 22.5.5. String handle and writeLine
-
-The initial internal string storage representation is `{ ptr, i64, i8 }`: data, byteLength and releaseKind. DataLayout determines padding and alignment. Function passing is selected independently under §21.4.2 and need not use aggregate argument or result slots. This storage representation is not a public FFI or binary ABI.
-
-| Component/state | Validity and responsibility |
+| Code and reason | Cause |
 | --- | --- |
-| Length | 0..MaxObjectSize; contents are valid UTF-8 |
-| Positive length | Nonnull readable data with the required lifetime |
-| Static = 0 | Compiler constant backing, never freed; null permitted only at length zero |
-| Heap = 1 | Nonnull original live Runtime.Alloc pointer, capacity >= length, exactly one owning release responsibility |
-| Empty Heap | Keep and free the original pointer even at length zero; allocation-free empties use Static |
-| Other releaseKind | Invalid; destruction's default branch Aborts instead of freeing an unknown pointer |
-| Moved source slot | Unusable as a value; no bit clearing or rewriting is required |
+| `KIMI_E_INT_OVERFLOW: Integer overflow` | A checked integer result is not representable, including the signed minimum divided by -1 |
+| `KIMI_E_INT_DIV_ZERO: Integer division or remainder by zero` | Integer `/` or `%` by zero, also for wrapping Types |
+| `KIMI_E_INT_SHIFT_COUNT: Shift count out of range` | Shift count outside `0 <= count < bit width` |
+| `KIMI_E_INT_CONVERSION: Integer conversion out of range` | Runtime integer conversion outside the target, or float-to-integer failure including NaN and infinities |
+| `KIMI_E_FLOAT_CONVERSION: Floating conversion out of range` | A finite source rounds to floating infinity |
+| `KIMI_E_INDEX_BOUNDS: Index out of bounds` | Any failed resolution of a position or range: indexing, slicing, `resolve`, and positions of `insert`/`remove` |
+| `KIMI_E_MISSING_KEY: Dictionary key was not found` | Dictionary indexing with an absent key |
+| `KIMI_E_DUPLICATE_KEY: Dictionary literal contains an equivalent key` | Runtime duplicate key in a Dictionary literal |
+| `KIMI_E_ARG_RANGE: Argument out of range` | A numeric argument out of range: negative count, capacity or length, `limit < 1`, `capacity < 0`, iteration over a reversed range |
+| `KIMI_E_FORMAT: Formatting failed` | Formatting failure ([§22.10](#2210-formatting-and-interpolation)) |
+| `KIMI_E_REF_COUNT: Reference count limit exceeded` | Strong or weak count at its maximum in `clone`, `downgrade` or `upgrade` |
+| `KIMI_E_STATIC_CYCLE: Static initialization cycle` | Access to a slot that the same thread is initializing |
+| `KIMI_E_STATIC_SHUTDOWN: Static storage unavailable during shutdown` | Access to a Finished slot, or a first access during shutdown |
+| `KIMI_E_ALLOC_SIZE: Allocation size exceeds limit` | A requested size overflows or exceeds the maximum object size |
+| `KIMI_E_ALLOC: Failed to allocate memory` | The allocator returns no memory |
+| `KIMI_E_FREE: Failed to free memory` | A detected release failure |
+| `KIMI_E_PROCESS_HEAP: Failed to obtain process heap` | The runtime heap is unavailable |
+| `KIMI_E_STDOUT: Failed to write to stdout` | Standard output fails |
+| `KIMI_E_STRING_RELEASE: Invalid string release kind` | A detected invalid string representation during destruction (detection not guaranteed) |
+| `KIMI_E_CLOCK: Elapsed-time counter failed` | The elapsed-time counter fails, reports a nonpositive frequency or goes backward |
+| `KIMI_E_THREAD: Failed to start worker` | A worker cannot be started ([§22.3.6](#2236-structured-worker-offload)) |
+| `KIMI_E_REQUIRE: <reason>` | The Abort of a false `$require` ([§17.6.2](17-failure-handling.md#1762-evaluation-and-failure)); the reason is its evaluated `message:` unchanged, or `Test requirement failed` when omitted |
+| `KIMI_E_ABORT: <message>` | Explicit `$abort(message)`; the message is written unchanged |
 
-Validity is established at construction, not by revalidating UTF-8 or allocations on every use; corruption detection is not guaranteed. Literal backing may be shared without granting Copy to string. Hello world needs no heap allocation.
+## 22.6. Foreign function imports
 
-The required Kimi.Console.writeLine Symbol (§22.4) receives a reference to a string handle, reads its data and length, calls WriteStdout(data, length), calls WriteStdout on a one-byte LF constant and returns Unit. It neither releases nor modifies the handle; the caller keeps ownership of the string and destroys a temporary argument at its ordinary lifetime. An empty string still emits LF. No concatenation buffer is required.
+`#LibraryImport("library", "symbol")` on a bodyless `func`, safe or unsafe, declares a C function. Both arguments are nonempty, non-interpolated string literals without NUL: a case-sensitive logical native library name of the defining Kotonoha, resolved when the program is built ([§20.4](../impl/20-compilation-configuration.md#204-native-libraries)), and the exact external symbol.
 
-The Utf8Slice overload passes the view's data and length directly to the same byte-output path. It creates no string handle and transfers no release responsibility. Its declaration has a distinct Kimi overload Identity; an expected Function Type selects an overload, while an untyped function reference is ambiguous.
+An import is declared directly in a group or rootgroup, or as a receiverless struct type function, and has no task slot, receiver, parameter default, varargs, specialization or body. An import must not be generic: neither the import nor any enclosing Container may declare a generic parameter of any kind (Type, Semantics, length or Origin, [§6.1.3](06-declarations-and-containers.md#613-inherited-environments-and-declaration-references)), even an unused one; Origins introduced by borrow annotations in its own signature are allowed. Every argument is required; imports are only called directly, never used as function values.
 
-Raw UTF-8 bytes are written to redirected files and pipes without changing the console code page. Non-ASCII console appearance depends on console configuration; universal Unicode console display is not initially guaranteed. A GetConsoleMode/WriteConsoleW adapter is a future extension, not implicit UTF-16 output.
+The declaration promises that, for every call meeting its signature and `- safety:` conditions, the foreign function behaves as a Kimigayo function with that signature would: it accesses only what its arguments permit, and only during the call: reads through `ref`, exclusive access through `uniq`, and through `raw/T` what its `- safety:` conditions allow; stores only valid values, constructs or overwrites only values whose Type has no user `drop`, recursively (a relocation, [§5.2](05-raw-pointers-and-unsafe-memory.md#52-raw-places), moves values and does neither), retains no borrow beyond its result's Origins, returns a valid result, and lets no unwinding, non-local jump, callback or reentry cross Kimigayo frames. A false promise is undefined behavior. An import is `unsafe` only when callers have obligations its Types cannot express ([§7.6](07-functions-and-callable-values.md#76-unsafe-functions)). A call's effects are the accesses its signature permits plus an environment effect ([§8.11.2](08-generics-constraints-and-contracts.md#8112-confined)). Arguments are evaluated once, left to right, and passed without marshalling, retention or ownership transfer; the floating-point boundary contract of [§21.2](../impl/21-layout-runtime-and-code-generation.md#212-foreign-function-abi) applies.
 
-### 22.5.6. Windows external symbols
+| Parameter or result Type | C meaning |
+| --- | --- |
+| `i8`…`i64`, `u8`…`u64`, `f32`, `f64` | `int8_t`…`int64_t`, `uint8_t`…`uint64_t`, `float`, `double` |
+| `raw/T` | data pointer; `T` need not be C-exchangeable |
+| `ref/T`, `uniq/T` | non-null `const T *`, `T *`; `T` C-exchangeable |
+| `Option<ref/T>`, `Option<uniq/T>` | pointer, `None` is null |
+| Unit (result only) | `void` |
 
-WindowsRuntimeSymbols retains each external name, physical signature, calling convention, dllimport setting and link input. Declarations are shared through the module symbol table (§21.5.2), including matching LibraryImport declarations. Only the needed APIs are emitted, using Windows x64 ccc:
+A C-exchangeable Type is a fixed-width integer, `f32` or `f64`, `raw/T`, `ref/T` or `uniq/T` over a C-exchangeable referent and their `Option`, a positive-length fixed array of C-exchangeable elements, or a C-layout struct ([§21.1.2](../impl/21-layout-runtime-and-code-generation.md#2112-layout-modes)) whose Fields are all C-exchangeable. A parameter or result whose Type has no C counterpart — `string`, dynamic collections, object handles, function and Closure values, and borrows of such Types — is an error. Any other Type outside the table — `bool`, `char`, `isize`/`usize`, `i128`/`u128`, Tuples, enums, structs or fixed arrays passed by value, and borrows of a referent that is not C-exchangeable — is Unsupported.
 
-```llvm
-declare dllimport ptr @GetProcessHeap()
-declare dllimport ptr @HeapAlloc(ptr, i32, i64)
-declare dllimport i32 @HeapFree(ptr, i32, ptr)
-declare dllimport ptr @GetStdHandle(i32)
-declare dllimport i32 @WriteFile(ptr, ptr, i32, ptr, ptr)
-declare dllimport i32 @GetLastError()
-declare dllimport void @ExitProcess(i32) noreturn
+```kimi
+group Native
+    #LibraryImport("observer", "observe_record")
+    public func observe(record: uniq/NativeRecord) -> ()     // C: void observe_record(NativeRecord *);
+
+    #LibraryImport("observer", "observe_raw")
+    public unsafe func observeRaw(record: raw/NativeRecord) -> ()   // - safety: states layout, lifetime, retention.
+
+    // #LibraryImport("observer", "print")
+    // public func print(text: ref/string) -> ()   // Error: string has no C counterpart.
 ```
 
-HANDLE and data pointers use `ptr`, SIZE_T uses `i64`, DWORD, UINT and BOOL use `i32`, and LPDWORD is a `ptr` to a 32-bit slot. Windows BOOL is not `i1`. Empty parameter parentheses mean no parameters, not omitted Types. `dllimport` specifies reference generation, not automatic linking; the kernel32 input (§20.8.2) supplies these symbols.
+## 22.7. Console output
 
-The Utf8Slice overload needs no additional external symbol. If optional shrinking is emitted, register `declare dllimport ptr @HeapReAlloc(ptr, i32, ptr, i64)` with kernel32 in the same symbol table; otherwise omit it.
+The group `Kimi.Console` declares two safe, non-generic overloads, `writeLine(text: ref/string) -> ()` and `writeLine(text: Text.Utf8Slice) -> ()`. Overload resolution picks the string overload for strings and the view overload for views; there is no implicit conversion, and a function reference without an expected Type is ambiguous. Neither overload has a task slot: the call is synchronous ([§22.3.5](#2235-sequences-and-blocking-calls)).
 
-## 22.6. Test execution and reporting
+The text is borrowed for the call: a string Place stays usable, and a literal or interpolation is a borrowed temporary. Each call writes all UTF-8 bytes of the text and one LF to standard output, with no normalization, line-ending or encoding conversion; NUL is data. It returns after the host has accepted the bytes, not necessarily after display or durable storage. Failure Aborts with `KIMI_E_STDOUT` and may leave partial output. The call destroys nothing.
 
-### 22.6.1. Test startup and active case
-
-The test build uses a dedicated generated startup and requires no product Application entry. Explicit main functions and every selected top-level runtime body are verified under the ordinary Type, ownership and control-flow rules but never executed automatically. This applies equally to normal sources and TestSources, and produces no warning merely because startup is not executed. An ordinary build still validates its Application or Library startup rules; passing tests does not establish a valid product entry. Test startup does not initialize top-level let/var, which remain SourceDocument-local runtime bindings (§22.2.1), and tests cannot capture them. Shared preparation belongs in ordinary helpers that each test calls explicitly, or in ordinary lazy static Properties. Product/test membership is defined in §18.8, and discovery in §20.9.
-
-```text
-assign case -> prepare minimal reporting runtime -> activate case
-  -> user initialization / test body / cleanup / shutdown
-  -> report completion -> deactivate case -> child exit
-  -> parent recovers processes, channels and temporary storage -> final result
+```kimi
+Console.writeLine("Hello, world!")       // Writes "Hello, world!" and LF; exits successfully.
+::Kimi.Console.writeLine("Hello")
+// writeLine("Hello")                    // Error: Console is not opened.
 ```
 
-All permitted verifications from user initialization through shutdown belong to the same case. Reports distinguish the initialization, body, cleanup and shutdown phases and restore the outer phase after nested initialization or cleanup. Static initialization remains demand-driven under §22.2.3; tests add no eager initialization. A runtime preparation failure is a startup or execution error. A verification without an active case is misuse, whatever its condition. The required initialization and destruction order and ordinary Abort behavior are unchanged. Test host generation introduces no Entry/Provider selection syntax; Composition Root extensions remain deferred (§13.8).
+## 22.8. Time
 
-### 22.6.2. Process isolation and recovery
+The group `Kimi.Time` measures monotonic elapsed time. No civil-clock adjustment applies; the clock source and its resolution are implementation-defined. Time operations allocate nothing.
 
-Each selected case runs once in a new child process of the same immutable native executable for its project, which receives the CaseId. Cases share no static state and are not retried automatically, and the executable and its diagnostic table are not replaced during the run. An unsupported execution target is an execution error. The working directory is fixed to the target project root, and each case receives a unique temporary directory that is reclaimed after every outcome. The parent's environment is captured once and project settings are applied; then only reserved case-specific settings, including TMP/TEMP, are overridden. The [test profile](../impl/testing-profile.md) defines the temporary-directory API, environment, stdin and limits. Separate per-case stdout and stderr streams are drained continuously, without interleaving the stored logs of different cases.
+### 22.8.1. Duration
 
-External files, databases and ports may remain shared. Tests use case-specific resources or the serial mode of §20.9 where needed; temporary-directory recovery performs no user defer or external rollback. Parallel cases are separate processes and add no language-level threads or memory model.
+`Time.Duration` is a Copy interval of whole microseconds, not a date or timestamp. `init(! microseconds: u64)` creates the exact value (every `u64` is representable), read back through `rawMicroseconds: u64`. The getters `seconds`, `milliseconds` and `microseconds: f64` are `rawMicroseconds@f64` divided by 1,000,000, 1,000 and 1 ([§13.5](13-operators-and-assignment.md#135-explicit-operations)).
 
-The parent's monotonic clock measures a finite execution deadline and the recovery grace. The execution deadline covers child launch through exit, including runtime preparation, initialization, body, cleanup, shutdown and completion reporting, but not build or queue time. Normal exit, abnormal exit, timeout and cancellation enter the same bounded recovery process. Timed-out and cancelled cases are stopped, and remaining managed descendants are recovered even after a normal child exit.
+### 22.8.2. Stopwatch
 
-The process group is managed from launch with an OS management unit or equivalent; later PID enumeration alone is insufficient. The recovery grace bounds process termination waits, channel draining and EOF waits, and temporary cleanup. Surviving processes and unrecovered resources are reported after the grace, preserving the original termination reason. Storage still used by a live process is never claimed as recovered. Forced termination does not guarantee user cleanup. No guarantee extends to external processes outside OS management. An unrecoverable resource shortage fails the run. The [test profile](../impl/testing-profile.md) defines the adopted limits and management mechanism.
+`Time.Stopwatch` is Non-Copy. It holds accumulated whole microseconds and, while running, the start of its current interval; the read-only `isRunning: bool` reports whether it runs.
 
-### 22.6.3. Diagnostic identity
-
-| ID | Identity |
+| Declaration | Behavior |
 | --- | --- |
-| ArtifactId | Executable and static diagnostic table for the compiler, target, settings and inputs |
-| TestId | A test declaration within its project |
-| CaseId | One case of a definition; initially one default case per TestId |
-| SiteId | A verification site within the artifact, with source expression, location and display Types |
-| IssueId | One recorded failure occurrence within a case, including repeat visits to one SiteId |
+| `init()`, `reset(self: uniq/Self) -> ()` | Zero, stopped; reads no clock |
+| `start(self: uniq/Self) -> ()` | Starts a new interval when stopped; no effect when running |
+| `stop(self: uniq/Self) -> ()` | Adds the current interval and stops; no effect when stopped |
+| `restart(self: uniq/Self) -> ()` | Zero, then starts a new interval |
+| `elapsed(self: ref/Self) -> Duration` | Accumulated time plus the running interval, without mutation; reads no clock when stopped |
 
-TestId and CaseId must be stable for the same source and settings and cannot depend only on display names, line numbers, absolute paths or execution order. TestId is distinguished by project, Container, Signature and, where needed, relative source path. Combined with the within-definition case identity, it makes CaseId unique in the execution scope. Renaming or moving declarations need not preserve IDs. SiteId display strings and locations are generated from the current source under §18.7.4, including when semantic plans are reused; changed diagnostic tables affect ArtifactId. Mod source-observation invalidation is preserved.
+For a counter difference `d` and counter frequency `f`, an interval contributes exactly `floor(d × 1,000,000 / f)` microseconds, computed without intermediate overflow when the result fits `u64`. `stop` discards the interval's sub-microsecond fraction; no fraction carries between intervals. Accumulating beyond `u64` Aborts with `KIMI_E_INT_OVERFLOW`; a clock failure Aborts with `KIMI_E_CLOCK`.
 
-Unique integer IssueIds connect basic failures, saved values and added messages; details are never attached to an implicit last failure. Nested verifications during a message receive their own IDs. A basic failure is preserved even if no details arrive. Omitted failures need no individual ID. IDs are never reused or wrapped; exhaustion switches to bounded detail omission (§22.6.5).
+```kimi
+var watch = Time.Stopwatch.init()
+watch.start()
+// Measured work.
+watch.stop()
+let seconds: f64 = watch.elapsed().seconds
+```
 
-### 22.6.4. Reporting and result classification
+### 22.8.3. Windows counter functions
 
-Results use a channel separate from stdout and stderr. At startup, the ArtifactId and CaseId are matched, and results for another artifact are rejected. Per-case event order is preserved, and counts, failure state, omission data and completion are validated. Each retained basic failure is sent independently before subsequent user condition cleanup or message execution, not only at child exit. Data the parent has received survives a later child Abort. A reporting failure is an execution error, never success.
-
-On a normal path, the child reports completion after shutdown and exits with code zero; the completion information carries verification failures. This exit code is distinct from the overall CLI exit status (§20.9). **Success requires valid completion, normal child exit, consistent communication, completed recovery and no verification failure.** A normal case with no verifications succeeds. Neither exit zero nor a completion message alone establishes success.
-
-| Outcome | Report |
-| --- | --- |
-| All success conditions met | Success |
-| Normal completion with verification failures | Verification failure |
-| Failed `$require` reaching its Abort, reliably identified | Verification failure with Abort termination |
-| Other Abort or crash | Abnormal termination, retaining known verification failures |
-| Execution deadline exceeded | Timeout |
-| User cancellation | Cancelled, including unstarted selected cases; not success or executed skips |
-| Startup, communication or recovery failure | Execution error, retaining known termination reason and verification failures |
-
-Failure records, the termination reason and management errors are kept separately; a recovery failure cannot overwrite an earlier Abort or timeout. Abort reasons are inferred only from reliable received information, never from exit code 1 alone. Missing diagnostics may yield an unknown abnormal termination; user code and cleanup never resume after Abort. Cases excluded by a filter are not executed skips.
-
-A `$require` failure neither produces normal completion nor resumes the test function; the parent recovers that case's process and continues managing other cases. A `$require`-initiated Abort is identified from reliable termination information associated with its verification site. A recorded false condition alone does not establish that reason: condition cleanup, message evaluation or message cleanup may Abort or diverge before the operation reaches its own Abort. In those cases, both the already recorded failure and the actual termination reason are retained.
-
-Results are provided in human-readable and versioned machine-readable forms under the [test profile](../impl/testing-profile.md). They include the project, target and settings, IDs, source locations and expressions, retained values and messages, phases, durations, termination state, management errors, log paths and omission information. Terminal formatting is not the machine-readable interface.
-
-### 22.6.5. Bounded diagnostics and storage
-
-Per-case and whole-run budgets limit diagnostic counts and bytes, covering failures, saved values and messages, stdout and stderr, and disk spill. An initial storable portion and omission information are retained. Message retention, frames, pending queues and read buffers are bounded. Once budgets are exhausted:
-
-- Ordinary condition, failure-message and cleanup evaluation continues; only storage is omitted.
-- Failure state stays latched. Separate finite space is reserved for first-failure notification, completion and abnormal-control information.
-- Counts and omission counts saturate and display lower bounds; they never wrap. Abnormal termination reports the observed lower bounds when final counts are unknown.
-- The child also limits detail output; omitted events are never transferred into an unbounded parent/child queue.
-- Communication is still drained, required information processed and excess discarded, within the execution and recovery bounds.
-
-Intentional detail omission is not an extra execution error. Missing or corrupt required control data, or a failed write of retained data, is an execution error. A storage budget does not bound allocations performed by the user's own message expression.
-
-Verification lowering is shared; only the failure continuation changes (§17.5). Static expression, location and Type tables and compact ID/value events are used, with formatting in the parent. Parent worker slots and buffers are reused, and per-case state is reset. The immutable artifact snapshot is validated once at run startup instead of being copied or revalidated per case, while each child's ID handshake is retained. Reflective registration, per-verification UUIDs and heap objects are not required. Measurements must cover empty or short, I/O-heavy and failure-heavy cases, including startup and recovery, time, parent and child memory, communication and generated code size; no unmeasured speedup is promised.
-
-## 22.7. Windows APIs and elapsed time
-
-### 22.7.1. Windows native counter functions
-
-The public group `Kimi.Windows` exposes Windows-specific APIs through ordinary §22.3 imports:
+The group `Kimi.Windows` declares two ordinary imports ([§22.6](#226-foreign-function-imports)). They exist on every target; their imports resolve only when a program is built for windows-x64.
 
 ```kimi
 public group Windows
@@ -976,53 +524,166 @@ public group Windows
     public func queryPerformanceFrequency(value: uniq/i64) -> i32
 ```
 
-They preserve the native success flag: nonzero is success and zero is failure. Counter output is a count; frequency output is counts per second. The exclusive borrow supplies live, writable, aligned i64 storage without conflicting access for the call; neither function retains it, so both declarations are safe (§22.3.1). These functions do not allocate or convert errors into Abort themselves. They belong to the Windows x64 profile, not a cross-platform native ABI.
+Each returns the native flag (nonzero is success) and writes a count, or counts per second, into the borrowed `i64`. They are safe, allocate nothing and do not Abort.
+
+## 22.9. UTF-8 text and buffers
+
+Lengths and capacities in this section and [§22.10](#2210-formatting-and-interpolation) are byte counts of Type `isize`.
+
+### 22.9.1. Declarations
 
 ```kimi
-func readCounter() -> i64
-    var value: i64 = 0
-    require Windows.queryPerformanceCounter(value@uniq) != 0 else
-        $abort("Performance counter query failed")
-    return value
+contract BufferWriter
+    func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>
+        effect confined
+
+contract Utf8Format
+    func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
 ```
 
-### 22.7.2. Duration
+Both are ordinary, user-implementable static Contracts; `Utf8Format` is the only formatting Contract, and formatting has no options, locales or runtime format strings. The result Origin of `reserve` elides to `self`. The outer borrow of a `Utf8Writer` and its `target` are independent input Origins; the target must outlive the outer borrow.
 
-`Kimi.Time` is the public group for elapsed-time facilities. `Time.Duration` is Copy and stores a nonnegative whole number of microseconds. Its required declarations are:
+- `BufferFull` (in `Kimi`) and `Text.InvalidUtf8` are stateless Copy structs with a public `init()`.
+- `WriteWindow {source}` and `Utf8Writer {target}` (in `Kimi`) and `Text.FixedBuffer {source}` are Non-Copy structs with a `Loan<uniq/u8 during source>` (or `target`) Field ([§15.3.5](15-ownership-and-lifetime-analysis.md#1535-variance-loan-requirements-and-phantom-origins)) and are not ObjectPayloads.
+- `Text.HeapBuffer` is a Non-Copy struct owning a growable allocation; `Text.Utf8Slice {source}` is a Copy view of valid UTF-8 with required Loan `ref`.
 
-| Declaration | Meaning |
-| --- | --- |
-| `init(! microseconds: u64)` | Creates the exact duration. |
-| `rawMicroseconds: u64` | Immutable exact storage. |
-| `seconds: f64` | Shared computed getter: `rawMicroseconds@f64 / 1000000.0`. |
-| `milliseconds: f64` | Shared computed getter: `rawMicroseconds@f64 / 1000.0`. |
-| `microseconds: f64` | Shared computed getter: `rawMicroseconds@f64`. |
+`WriteWindow`, `Utf8Writer`, `FixedBuffer`, `HeapBuffer` and `Utf8Slice` have no public constructor; they are obtained only through the operations of [§22.9.2](#2292-text-operations) and [§22.9.4](#2294-reservation-and-windows).
 
-All u64 inputs, including its maximum value, are representable in rawMicroseconds. Floating-point conversions may round under §13.5; they never replace the integer storage. Duration denotes an interval, not a date, time zone or civil timestamp. Construction and getters allocate nothing.
+Only `Text.fixed`, `Text.writer` and `reserve` form these Loans; windows, views and adapters allocate nothing.
 
-### 22.7.3. Stopwatch
+`BufferWriter.reserve` has the `confined` bound ([§8.11.2](08-generics-constraints-and-contracts.md#8112-confined)). `Utf8Writer` erases the Writer Type, so `format` is not generic over it. The adapter calls only the Writer's `reserve`, never owns, moves or exposes the Writer, and the Writer keeps its Loans; an erased `reserve` call is checked against the `confined` bound ([§8.11.4](08-generics-constraints-and-contracts.md#8114-checking-and-use)).
 
-`Time.Stopwatch` is Non-Copy. It stores accumulated whole microseconds as u64 and an optional platform start counter. Its read-only `isRunning: bool` getter reports whether that counter is present. Required functions are:
-
-| Declaration | Behavior |
-| --- | --- |
-| `init()` | Zero accumulated time, stopped; no clock access. |
-| `start(self: uniq/Self) -> ()` | No effect if running; otherwise reads the clock and starts a new interval, retaining accumulated time. |
-| `stop(self: uniq/Self) -> ()` | No effect if stopped; otherwise adds the current interval's whole microseconds and stops. |
-| `reset(self: uniq/Self) -> ()` | Zero accumulated time, stopped; no clock access. |
-| `restart(self: uniq/Self) -> ()` | Reads the clock, replaces accumulated time with zero and starts a new interval. |
-| `elapsed(self: ref/Self) -> Duration` | Returns accumulated time plus the running interval's whole microseconds, without mutation. A stopped snapshot reads no clock. |
-
-For nonnegative counter difference d and positive frequency f, one interval contributes exactly floor(d × 1,000,000 / f) microseconds. Accumulation is integer arithmetic. Each stop discards that interval's sub-microsecond fraction; snapshots discard the running fraction only in their returned value. No discarded fraction is carried between intervals. Conversion must not overflow an intermediate when the mathematical result fits u64; no 128-bit representation is required. Adding an interval beyond u64 Aborts under ordinary checked arithmetic.
-
-The Windows adapter uses §22.7.1. It caches a positive i64 counter frequency in an immutable static Field initialized once on first use (§22.2.3), before the first start/restart counter read. Clock failure, nonpositive frequency, a negative counter or a counter preceding the interval start Aborts. Time is monotonic elapsed time; no civil-clock adjustment is applied. A microsecond storage unit does not promise microsecond hardware resolution. Operations allocate no heap storage. Synchronization follows the single-thread execution boundary of §22.2.3.
+### 22.9.2. Text operations
 
 ```kimi
-var watch = Kimi.Time.Stopwatch.init()
-watch.start()
-// Measured work.
-watch.stop()
-let elapsed = watch.elapsed()
-let seconds: f64 = elapsed.seconds
-let exact: u64 = elapsed.rawMicroseconds
+group Text
+    public func fixed<length N>(destination: uniq/[N of u8]) -> FixedBuffer
+    public func heap(capacity: isize) -> HeapBuffer
+    public func writer<W>(destination: uniq/W) -> Utf8Writer
+        W is BufferWriter
+    public func utf8(text: ref/string) -> Utf8Slice
+    public func validateUtf8(bytes: Slice<u8>) -> Result<Utf8Slice during bytes.source, InvalidUtf8>
+    public func toString<T>(value: ref/T) -> string
+        T is Utf8Format
+    public func tryFormat<T, length N>(value: ref/T, destination: uniq/[N of u8])
+        -> Result<Utf8Slice during destination, BufferFull>
+        T is Utf8Format
+```
+
+- `fixed` borrows an initialized array: length zero, capacity `N`. `heap` has length zero and at least the requested capacity; zero allocates nothing, and a negative capacity Aborts with `KIMI_E_ARG_RANGE`. `writer` creates an adapter with no recorded failure.
+- `utf8` views a string's bytes; `validateUtf8` validates bytes once; neither allocates or copies.
+- `toString` formats into a new string, Aborting with `KIMI_E_FORMAT` on `BufferFull`; it is also how a string is copied.
+- `tryFormat` formats once into the array, without a pre-pass or retry. The result keeps the exclusive Loan of `destination`, so while it is live the array is read only through the view. On `BufferFull` the array may hold partial bytes.
+
+```kimi
+var bytes: [3 of u8] = [3 of 0]
+let result = Text.tryFormat(123, bytes@uniq)
+// let first = bytes[0]  // Error: result still holds the exclusive Loan.
+match result@move
+    .Ok(let text) => Console.writeLine(text)
+    .Err(_) => Console.writeLine("too small")
+```
+
+### 22.9.3. Buffers and validation
+
+`FixedBuffer` and `HeapBuffer` implement `BufferWriter`. Each has a committed `length`, a `capacity` (getters) and a validated length, with `0 <= validated <= length <= capacity`; committed bytes are initialized, and the first `validated` bytes are valid UTF-8.
+
+| Operation | Receiver | Behavior |
+| --- | --- | --- |
+| `bytes()` | `ref/Self` | `Slice<u8>` of the committed bytes |
+| `text()` | `ref/Self` | `Result<Utf8Slice, InvalidUtf8>`; validates the unvalidated suffix, records nothing |
+| `validate()` | `uniq/Self` | `Result<(), InvalidUtf8>`; records validation only on complete success |
+| `clear()` | `uniq/Self` | Sets both lengths to zero and keeps capacity |
+| `intoText()` (FixedBuffer) | `owner/Self` | `Result<Utf8Slice during self.source, InvalidUtf8>`; validates the suffix |
+| `intoString()` (HeapBuffer) | `owner/Self` | `Result<string, InvalidUtf8>`; validates the suffix and transfers the allocation without copying |
+
+`intoText` keeps the exclusive Loan of the original array, so it may return a view of the caller's array but never lets a local array escape. A raw `commit` leaves the validated length unchanged; an adapter commit advances it only when `validated == length` at reservation, so writing only through adapters needs no later scan.
+
+Validation accepts exactly the UTF-8 encodings of Unicode scalar values and rejects truncated sequences, overlong encodings, surrogates and out-of-range values, with no replacement or normalization; NUL is data. A `Utf8Slice` has `length` and `bytes() -> Slice<u8> during self.source`. `FixedBuffer`, `WriteWindow` and `Utf8Writer` have no `drop`; `HeapBuffer` frees its allocation once.
+
+### 22.9.4. Reservation and windows
+
+A successful `reserve(minimum)` returns a window with `written == 0` and `remaining >= minimum` and changes no committed byte; a negative `minimum` Aborts with `KIMI_E_ARG_RANGE`. `FixedBuffer` returns `BufferFull` exactly when its unused capacity is too small. `HeapBuffer` never returns `BufferFull`: if `length + minimum` exceeds the maximum object size it Aborts with `KIMI_E_ALLOC_SIZE`; if it exceeds the capacity, the buffer grows to `max(length + minimum, 2 * capacity)` (to `length + minimum` when `2 * capacity` exceeds the maximum object size), copying the committed bytes.
+
+| Window operation | Behavior |
+| --- | --- |
+| `written`, `remaining` | Bytes written and capacity left |
+| `push(byte: u8)`, `append(bytes: Slice<u8>)` | `Result<(), BufferFull>`; fits completely or changes nothing |
+| `limit(maximum: isize)` (`owner/Self`) | The window with capacity `min(capacity, maximum)`; `maximum < written` Aborts with `KIMI_E_ARG_RANGE` |
+| `commit()` (`owner/Self`) | Commits the written prefix and returns its length |
+
+A window writes contiguously from its start; dropping it uncommitted changes nothing. A user Writer forwards or limits the windows of a standard buffer; the adapter checks each user window (`written == 0`, `remaining >= minimum`) and on violation drops it and records `BufferFull`.
+
+```kimi
+struct Limited
+    Self is BufferWriter
+    var inner: Text.HeapBuffer
+    let maximum: isize
+
+    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>
+        let remaining = self.maximum - self.inner.length
+        if minimum > remaining => return .Err(BufferFull.init())
+        let window = try self.inner.reserve(minimum)
+        return .Ok(window@move.limit(remaining))
+```
+
+## 22.10. Formatting and interpolation
+
+### 22.10.1. Writer adapter
+
+`Utf8Writer` has `write<T>(self: uniq/Self, value: ref/T) -> Result<(), BufferFull>` with `T is Utf8Format`, and `status(self: ref/Self) -> Result<(), BufferFull>`, which returns the recorded failure. Every adapter `write`, including those of interpolation and `Text` operations, returns the recorded failure without formatting if there is one; otherwise it calls `format` once and, if `format` returns `BufferFull` or a nested write recorded one, records and returns the first failure, so a formatter cannot hide a failed write. There is no reset: after a failure, end the adapter's uses, optionally `clear` the buffer and create a new adapter. Committed output is never rolled back. A direct call to `format` has no such guard. Passing an interpolated literal to `write` first builds an owning string.
+
+`format` borrows its input, and its output depends on neither that borrow nor the Writer. Successful output is the complete representation, the same for the same value and external state whatever the destination; a Writer reports `BufferFull` rather than abbreviating. User formatting may have effects and runs once. Built-in formatting reserves the exact encoded length once (nothing for empty output) and commits complete UTF-8, so `123` fits a three-byte destination.
+
+### 22.10.2. Default representations
+
+| Value | Representation |
+| --- | --- |
+| Integer, `Wrapping<T>` | ASCII decimal, `-` only for negatives, no leading zeros |
+| `bool`, `char`, Unit | `true`/`false`; the UTF-8 encoding; `()` |
+| `string`, `Utf8Slice` | Their bytes, including NUL |
+| `FromEnd<T>`, `Start`, `End` | `^` and the offset (`^1`, `^-1`); empty; empty |
+| `Range`, `ClosedRange`, `ResolvedRange` | Start, `..` or `..=`, end: `1..^1`, `..=3`, `2..`, `1..4` |
+
+A finite nonzero float uses the fewest significant digits that round back to the same value in its own width (nearest-even); ties go to the closest candidate, then to an even last digit. With normalized decimal exponent `e`, fixed notation is used for `-4 <= e < 16`, otherwise scientific notation with lowercase `e`, no `+` and no leading exponent zeros; the decimal point is `.`, with no unnecessary trailing zeros or decimal point, and the output does not depend on locale. Special values are `0`, `-0`, `Infinity`, `-Infinity` and `NaN` (whatever the NaN's sign and payload). Borrows do not forward conformance (interpolation adapts them); object handles, pointers, Tuples, arrays and user Types have no automatic conformance.
+
+### 22.10.3. Owning interpolation
+
+The lexical form is [§2.9](02-source-and-lexical-structure.md#29-string-literals). Each embedded expression is passed as `write<T>(value: ref/T)` ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation)) with `T is Utf8Format`: an owned Place or temporary is borrowed shared with `T` its Type; `ref/U` passes as is and `uniq/U` is Reborrowed shared, both with `T = U`. A bare expression does not move its source; `\(x@move)` borrows the moved temporary. Expressions are evaluated once, left to right, each write completing before the next expression. The first failure Aborts with `KIMI_E_FORMAT`; on success the result is an owning string.
+
+```kimi
+let count = 3
+let message = "count = \(count), range = \(1..^1)"   // "count = 3, range = 1..^1"
+```
+
+### 22.10.4. `$tryWrite`
+
+`$tryWrite(writer, literal)` is a built-in operation with result `Result<(), BufferFull>`; it builds no combined string and is not a function value. The first operand is acquired as `uniq/Utf8Writer` and is not a Receiver Expression ([§7.3](07-functions-and-callable-values.md#73-receivers)): a bare owned Place there is an error, a borrow value is Reborrowed. The second is an ordinary or raw string literal, with or without substitutions (grammar: [§F](appendices/F-syntax-summary.md#appendix-f-grammar)). The first operand is evaluated once and its borrow starts before any embedded expression; segments and values are then written left to right as in [§22.10.3](#22103-owning-interpolation). At the first failure, or if the adapter has already failed, later expressions are not evaluated (they are still checked). Embedded expressions cannot use the adapter or its buffer. Temporary scopes and the targets of `return`, `exit` and `yield` are unchanged.
+
+```kimi
+func printNumber(n: i64) -> Result<(), BufferFull>
+    var scratch: [64 of u8] = [64 of 0]
+    var buffer = Text.fixed(scratch@uniq)
+    var writer = Text.writer(buffer@uniq)
+    try $tryWrite(writer@uniq, "My number is \(n)")
+    // try $tryWrite(writer, "x")     // Error: a bare owned Place is not borrowed implicitly.
+    match buffer.text()
+        .Ok(let text) => Console.writeLine(text)
+        .Err(_) => $abort("unexpected invalid UTF-8")
+    return .Ok(())
+```
+
+### 22.10.5. Allocation
+
+A value is **bounded** when the Type that its write formats ([§22.10.3](#22103-owning-interpolation)) is a primitive integer, `Wrapping<T>`, `bool`, `char`, Unit, `f32` or `f64`; every other Type is unbounded.
+
+- Built-in formatting into a `FixedBuffer`, or into a `HeapBuffer` with enough capacity, allocates nothing.
+- `text`, `validate`, `intoText` and `intoString` scan nothing when the buffer is fully validated.
+- An interpolation makes at most one heap allocation when every value is bounded, or when its only unbounded value is one `string` or `Utf8Slice` preceded only by literal text.
+- `Text.toString` makes at most one heap allocation when built-in formatting reserves the whole output once. It calls the formatter once, without a sizing pass or retry.
+- These bounds count private output-buffer allocations, including the storage retained by the resulting string, but exclude allocations by embedded expressions or user formatters. All other private-buffer allocation counts for interpolation and `Text.toString` are implementation-defined. An implementation may elide, merge, delay or place them on the stack, so their allocation failures need not occur; results, output, evaluation order and count, and user effects never depend on this.
+
+```kimi
+let s = "xyz"
+let line = "abc\(s)def"     // One unbounded value preceded only by literals: at most one allocation.
 ```

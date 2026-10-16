@@ -24,7 +24,7 @@ public sealed partial class OwnershipAnalysis
     private readonly List<int> arguments = new();
     private readonly HashSet<InvocationKoto> referenceCalls = new(ReferenceEqualityComparer.Instance);
 
-    // SPEC 8.4.10.4: one effect region per abstract input Type of the body's generic requirement calls.
+    // SPEC 8.11.4: one effect region per abstract input Type of the body's generic requirement calls.
     private readonly Dictionary<BoundType, int> effectRegions = new(ReferenceEqualityComparer.Instance);
     private ControlFlowAnalysis? flow;
     private OwnershipBody body = null!;
@@ -177,7 +177,7 @@ public sealed partial class OwnershipAnalysis
             var requirement = Requirement(issue);
             if (issue.Failure == OwnershipFailure.Unsupported)
             {
-                // SPEC 23.3.6.1: a form outside the implemented subset is located only, in an instance too.
+                // SPEC 23.1.1: a form outside the implemented subset is located only, in an instance too.
                 issue.Source.Report(requirement, issue.Code, condition: Condition(issue), span: SignatureSpan(issue.Source));
                 continue;
             }
@@ -186,14 +186,6 @@ public sealed partial class OwnershipAnalysis
             {
                 var span = SignatureSpan(issue.Source) ?? issue.Source.Span;
                 issue.Source.Report(requirement, issue.Code, issue.RequiredBytes, issue.LimitBytes, note: Note(null), evidence: [issue.StorageTable], related: Locations(null), span: span, condition: Condition(issue));
-                continue;
-            }
-
-            if (issue.Failure == OwnershipFailure.CaseLimit)
-            {
-                // SPEC 8.10, 23.3.6.1: the bound on the Semantics cases of one body is a resource limit, shown at the signature.
-                var span = SignatureSpan(issue.Source) ?? issue.Source.Span;
-                issue.Source.Report(requirement, issue.Code, this.CaseProduct((FunctionKoto)issue.Source), (long)CaseBound, note: Note(null), related: Locations(null), span: span, condition: Condition(issue));
                 continue;
             }
 
@@ -251,7 +243,7 @@ public sealed partial class OwnershipAnalysis
 
             if (issue.Failure == OwnershipFailure.EffectBound && this.compilation.Binding.ReportEffectViolation(issue.Source, requirement, issue.Code, instanceContext, instanceSite))
             {
-                continue; // SPEC 8.4.10.6: a destruction the bound excludes, reported at the violating effect.
+                continue; // SPEC 8.11.1: a destruction the bound excludes, reported at the violating effect.
             }
 
             if (issue.Failure == OwnershipFailure.CallableEffectBound && this.compilation.Binding.ReportCallableEffectViolation(issue.Source, requirement))
@@ -275,7 +267,7 @@ public sealed partial class OwnershipAnalysis
             }
 
             // A use at the function itself, such as a constructor's completion, is shown at its signature, not its whole body. A bare
-            // Place that needs @move offers the transfer as a repair candidate where its path does not refute Take (SPEC 23.3.6.9).
+            // Place that needs @move offers the transfer as a repair candidate where its path does not refute Take (SPEC 23.1.3).
             var transfer = issue.Failure == OwnershipFailure.TransferRequired;
             var judgment = transfer ? Binding.TakeJudgment(issue.Source) : AcquisitionJudgment.Refuted;
             var found = this.CaseFact(issue, out var single);
@@ -290,7 +282,7 @@ public sealed partial class OwnershipAnalysis
                 repairs: transfer && judgment != AcquisitionJudgment.Refuted ? Binding.TransferRepair(issue.Source, issue.Source, judgment) : null);
         }
 
-        // SPEC 23.3.3: an unverified result without an Error in this or an earlier phase reports one fallback at its first
+        // SPEC 23.2.2: an unverified result without an Error in this or an earlier phase reports one fallback at its first
         // incomplete subject, a control-flow obligation still pending after complete Binding. It marks a missing report.
         if (requirementOverride is null && this.compilation.Binding.Result.IsComplete && !this.Result.IsVerified && this.flow is { } flow &&
             !diagnostics.HasErrorsThrough(DiagnosticPartition.Ownership) && FirstPending(flow) is { } pending)
@@ -307,7 +299,7 @@ public sealed partial class OwnershipAnalysis
             issue.Source.Report(Requirement(issue), issue.Code, note: Note(null), related: Locations(null), condition: Condition(issue), span: span);
         }
 
-        // SPEC 7.6.2: an omitted list never infers a Move, a borrow or a Reborrow, so a capture without Copy needs an entry. In a
+        // SPEC 7.7.2: an omitted list never infers a Move, a borrow or a Reborrow, so a capture without Copy needs an entry. In a
         // default, no entry can take a preceding argument other than by Copy (SPEC 7.2.3).
         void ReportCapture(in OwnershipIssue issue, FunctionKoto function, BindingSymbol source)
         {
@@ -319,7 +311,7 @@ public sealed partial class OwnershipAnalysis
             issue.Source.Report(Requirement(issue), issue.Code, note: Note(note), related: Locations(null), condition: Condition(issue), evidence: [name]);
         }
 
-        // SPEC 8.4.10.6: the Reason names the access and the Loan; the Note states that no available bound excludes it, without
+        // SPEC 8.11.1: the Reason names the access and the Loan; the Note states that no available bound excludes it, without
         // asserting that a conflict occurs; the related locations give the Place keeping the Loan and the call that created it.
         void ReportCallEffect(in OwnershipIssue issue)
         {
@@ -332,7 +324,7 @@ public sealed partial class OwnershipAnalysis
             issue.Source.Report(
                 Requirement(issue),
                 issue.Code,
-                note: Note($"{name} may affect every Loan that the Type of its inputs may denote, and {holder} keeps such a Loan from an earlier call; under the premises here no bound excludes it (SPEC 8.4.10.4)"),
+                note: Note($"{name} may affect every Loan that the Type of its inputs may denote, and {holder} keeps such a Loan from an earlier call; under the premises here no bound excludes it (SPEC 8.11.4)"),
                 evidence: [$"{name} may affect a Loan that {holder} keeps"],
                 related: Locations(related),
                 condition: Condition(issue));
@@ -363,9 +355,9 @@ public sealed partial class OwnershipAnalysis
                 condition: Condition(issue));
         }
 
-        // SPEC 8.10, 23.3.6.4: a problem found under some Semantics cases names them in its Note.
+        // SPEC 8.15, 23.1.2: a problem found under some Semantics cases names them in its Note.
         static string? CaseNote(string? note, string? found, bool single)
-            => found is null ? note : (note is null ? "Found" : note + "; found") + (single ? " under the Semantics case " : " under the Semantics cases ") + found + " (SPEC 8.10)";
+            => found is null ? note : (note is null ? "Found" : note + "; found") + (single ? " under the Semantics case " : " under the Semantics cases ") + found + " (SPEC 8.15)";
 
         // The `case` fact closes the evidence alternative of the codes that carry it; a code without the alternative keeps its Note.
         static object?[]? CaseEvidence(DiagnosticCode code, object? target, string? found)
@@ -451,7 +443,7 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
-    // SPEC 8.10: a definition whose scope has a resolved pair binder is verified once per Semantics case; any other body once.
+    // SPEC 8.15: a definition whose scope has a resolved pair binder is verified once per Semantics case; any other body once.
     private void Build(FunctionKoto function, int declarationDefault = -1)
     {
         if (this.instance is null && this.ResolveCases(function))
@@ -503,7 +495,7 @@ public sealed partial class OwnershipAnalysis
         }
         else if (this.caseBody is { } caseBody)
         {
-            this.body = caseBody; // A Semantics case other than the first (SPEC 8.10); never listed.
+            this.body = caseBody; // A Semantics case other than the first (SPEC 8.15); never listed.
         }
         else
         {
@@ -635,7 +627,7 @@ public sealed partial class OwnershipAnalysis
         this.CompleteBody(function);
     }
 
-    // SPEC 7.6.2, 7.6.3: Shared and Exclusive calls only borrow their captures, and the environment destroys them afterwards, so a
+    // SPEC 7.7.2, 7.7.3: Shared and Exclusive calls only borrow their captures, and the environment destroys them afterwards, so a
     // Move out of a capture belongs to a Consuming call; Binding classifies the receiver, and this check keeps that classification
     // honest.
     private void CheckEnvironmentMoves(FunctionKoto function)
@@ -691,7 +683,7 @@ public sealed partial class OwnershipAnalysis
         var invalidCopy = false;
         var acquisition = plannedAcquisition.GetValueOrDefault();
         // A case, an instance or a default's replica resolves a committed CopyOrMove to the exact effect of its substituted Type
-        // (SPEC 8.10, 21.3.1); a fixed acquisition or an explicit transfer is never reselected.
+        // (SPEC 8.15, 21.3.1); a fixed acquisition or an explicit transfer is never reselected.
         if (plannedAcquisition is null || acquisition == AcquisitionKind.CopyOrMove)
         {
             var proof = this.CopyProof(type, source, this.Active, neverResult);
@@ -714,7 +706,7 @@ public sealed partial class OwnershipAnalysis
         return id;
     }
 
-    // SPEC 3.5.1, 8.10 (PLAN G82): the Copy capability of a Type resolved in a context, proved in that context's environment: a
+    // SPEC 3.5.2, 8.15 (PLAN G82): the Copy capability of a Type resolved in a context, proved in that context's environment: a
     // default's replica at its root invocation, the root context at the operation's own source. Primitive classification needs
     // no environment.
     private ConstraintProof CopyProof(BoundType type, Koto source, InterpretationContext context, bool neverResult = false)
@@ -722,7 +714,7 @@ public sealed partial class OwnershipAnalysis
             ? (type.Name == "string" ? ConstraintProof.Refuted : ConstraintProof.Proven)
             : this.compilation.Binding.ProveCopy(type, this.body.ProofAnchor(context) ?? source);
 
-    // SPEC 3.5, 8.10: the exact acquisition of an analyzed Type. An Unknown proof stays the finite conditional plan CopyOrMove only
+    // SPEC 3.5, 8.15: the exact acquisition of an analyzed Type. An Unknown proof stays the finite conditional plan CopyOrMove only
     // while the Type keeps a free generic part of the analyzed body; a closed Type with an Unknown proof is an internal failure.
     private AcquisitionKind ExactAcquisition(ConstraintProof proof, BoundType type, Koto source)
     {
@@ -756,14 +748,6 @@ public sealed partial class OwnershipAnalysis
         }
 
         return id;
-    }
-
-    // A temporary of a Type other than the syntax's own: the reference a Place call returns.
-    private int ReferenceTemporary(Koto source, BoundType type)
-    {
-        var id = this.Place(source, type, OwnershipPlaceKind.Temporary, true);
-        this.Emit(OwnershipOperationKind.Produce, source, id);
-        return this.RegisterTemporary(id);
     }
 
     private int RegisterTemporary(int place)
@@ -839,8 +823,8 @@ public sealed partial class OwnershipAnalysis
         var stored = this.body.PlaceStorage[place];
         if (acquisition is null)
         {
-            // SPEC 15.1.5, 8.9: a bare exclusive reference is reborrowed in its own mode; @move transfers it. A pair Place
-            // stores its case Type (SPEC 8.10), so the exclusive cases Reborrow here and the Copy cases Copy below.
+            // SPEC 15.1.5, 8.14: a bare exclusive reference is reborrowed in its own mode; @move transfers it. A pair Place
+            // stores its case Type (SPEC 8.15), so the exclusive cases Reborrow here and the Copy cases Copy below.
             if (stored.Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 })
             {
                 return this.BorrowStruct(source, stored.Type);
@@ -937,11 +921,6 @@ public sealed partial class OwnershipAnalysis
         {
             this.Block(unsafeBlock.Body);
         }
-        else if (KotoHelper.UnwrapParentheses(node) is InvocationKoto call && ElementAccess.IsPlaceCall(call))
-        {
-            // SPEC 7.1.1: an unacquired Place statement performs the call but reads and destroys no stored value.
-            this.Call(call);
-        }
         else
         {
             this.Expression(node);
@@ -958,7 +937,7 @@ public sealed partial class OwnershipAnalysis
                 return this.LoadReferent(node);
             }
 
-            // A reference read also serves a receiver that is read for member selection (SPEC 3.4.1); a borrow
+            // A reference read also serves a receiver that is read for member selection (SPEC 3.4.3); a borrow
             // adaptation is formed only where the value is acquired.
             if (adaptation.Kind == ExpectedAdaptationKind.ReferenceRead && acquisition is null && use is PlaceUseKind.Consume or PlaceUseKind.Read)
             {
@@ -1002,7 +981,7 @@ public sealed partial class OwnershipAnalysis
     {
         if (node is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair && !this.FollowsReference(pair))
         {
-            // SPEC 13.5.5.1: the owner case selects the operand itself.
+            // SPEC 13.5.5: the owner case selects the operand itself.
             return this.ExpressionCore(KotoHelper.UnwrapParentheses(pair.Left), use, acquisition);
         }
 
@@ -1025,7 +1004,7 @@ public sealed partial class OwnershipAnalysis
 
         if (this.compilation.Binding.IndexerCall(node, false) is { } indexer)
         {
-            return this.Expression(indexer, use, acquisition); // SPEC 4.6.9: receiver[key] through a user conformance reads the published Place.
+            return this.Expression(indexer, use, acquisition); // SPEC 4.7.1: receiver[key] through a user conformance reads the referent of its selected call's reference.
         }
 
         if (this.compilation.Binding.ViewRangeCall(node) is { } viewRange)
@@ -1035,7 +1014,7 @@ public sealed partial class OwnershipAnalysis
 
         if (this.compilation.Binding.RangeValueCall(node) is { } rangeValue)
         {
-            return this.Expression(rangeValue, use, acquisition); // SPEC 4.6.2, 4.6.3: prefix ^ and range syntax construct Kimi values.
+            return this.Expression(rangeValue, use, acquisition); // SPEC 4.6.1, 4.6.2: prefix ^ and range syntax construct Kimi values.
         }
 
         if (this.compilation.Binding.StorageProjection(node) is { } storage)
@@ -1119,7 +1098,7 @@ public sealed partial class OwnershipAnalysis
 
                 if (node.BoundSymbol?.Kind == BindingSymbolKind.Function && this.Resolve(node.BoundType, this.Active)?.Kind == BoundTypeKind.Function)
                 {
-                    // SPEC 7.6.4: a Function Item converted to its fixed common Function Type is a new owned value without an
+                    // SPEC 7.7.4: a Function Item converted to its fixed common Function Type is a new owned value without an
                     // environment; the item itself is not a Place.
                     var item = this.Temporary(node);
                     this.SetValue(this.Value(item), OwnershipValueKind.ClosureErasure, []);
@@ -1136,14 +1115,14 @@ public sealed partial class OwnershipAnalysis
             case ArrayLiteralKoto array when array.BoundType?.Kind == BoundTypeKind.FixedArray:
                 return this.ConstructAggregate(array, array.Elements);
             case ArrayLiteralKoto array when array.BoundType?.Kind == BoundTypeKind.Array:
-                // SPEC 4.3, 4.7.4: an Array literal acquires its elements as payloads that construction moves into the buffer.
+                // SPEC 4.3, 4.9.5: an Array literal acquires its elements as payloads that construction moves into the buffer.
                 return this.ConstructAggregate(array, array.Elements);
             case DictionaryLiteralKoto { BoundType.Kind: BoundTypeKind.Dictionary } dictionary:
                 return this.ConstructDictionary(dictionary);
             case TupleTypeKoto { ElementNodes.Count: 0 }:
                 return this.Temporary(node);
-            case InvocationKoto call when ElementAccess.IsPlaceCall(call) && !this.referenceCalls.Remove(call):
-                return this.ReadPlaceCall(call, acquisition); // SPEC 7.1.1: a value use of the published Place.
+            case InvocationKoto call when ElementAccess.IsIndexerCall(call) && !this.referenceCalls.Remove(call):
+                return this.ReadIndexerElement(call, acquisition); // SPEC 4.7.1: a value use of the subscript's element.
             case InvocationKoto call:
                 return this.Call(call);
             case IsKoto { IsRuntimeTest: true } test:
@@ -1247,7 +1226,7 @@ public sealed partial class OwnershipAnalysis
 
                 if (this.FollowsReference(conversion))
                 {
-                    // SPEC 13.5.5.1: a value use of a selected referent copies one proven-Copy layer.
+                    // SPEC 13.5.5: a value use of a selected referent copies one proven-Copy layer.
                     return this.LoadReferent(conversion.Left, 1);
                 }
 
@@ -1381,14 +1360,9 @@ public sealed partial class OwnershipAnalysis
                 return this.WriteReferent(binary, followed);
             }
 
-            if (target is InvocationKoto placeCall && ElementAccess.IsPlaceCall(placeCall))
-            {
-                return this.WritePlaceCall(binary, placeCall); // SPEC 7.1.1: a write through a place uniq/T result.
-            }
-
             if (target is IndexKoto userIndex && this.compilation.Binding.IndexerCall(userIndex, true) is { } exclusiveIndexer)
             {
-                return this.WritePlaceCall(binary, exclusiveIndexer); // SPEC 4.6.9: an update selects indexUniq.
+                return this.WriteIndexerElement(binary, exclusiveIndexer); // SPEC 4.7.1: an update selects indexUniq.
             }
 
             if (ElementAccess.IsRawPlace(target))
@@ -1479,7 +1453,7 @@ public sealed partial class OwnershipAnalysis
 
         if (binary.Akind is KotoKind.Slash or KotoKind.Percent && ScalarTypes.Width(this.body.Places[left].Type, this.compilation.PointerWidth) == 128)
         {
-            // SPEC 8.4.7.3, IMPL 21.5.3: an instance of a generic integer body diagnoses the profile's 128-bit division.
+            // SPEC 8.7.4, IMPL 21.3.3: an instance of a generic integer body diagnoses the profile's 128-bit division.
             this.Unsupported(binary);
             return -1;
         }
@@ -1670,8 +1644,8 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        // SPEC 7.1.1: a Place call returns the reference it publishes; the use selects the referent.
-        var result = ElementAccess.IsPlaceCall(call) ? this.ReferenceTemporary(call, plan.ReturnType) : this.Temporary(call);
+        // SPEC 7.1: a call produces its result Type, a returned reference included; only a subscript reads through it (SPEC 4.7.1).
+        var result = this.Temporary(call);
         var scalar = ScalarResult(this.body.Places[result].Type);
         if (scalar || SlotTypes.IsResult(this.body.Places[result].Type))
         {
@@ -1693,7 +1667,7 @@ public sealed partial class OwnershipAnalysis
             this.body.CallLoans.Add(new(invoke, this.Value(result), loanEnd, ReferenceTypes.IndependentResult(plan.ReturnType) ? LoanRequirement.None : LoanRequirement.Ref));
         }
 
-        // SPEC 4.7.5: a Kimi operation with a published summary is no unbounded generic call; its inputs are accessed in their
+        // SPEC 4.9.6: a Kimi operation with a published summary is no unbounded generic call; its inputs are accessed in their
         // parameter modes and its result keeps the dependencies its row states, which the ordinary Loans track.
         if (this.instance is null && plan.Target.Declaration is FunctionKoto callee && plan.Target.CompilerFunction == CompilerFunctionKind.None &&
             !KimiLibraryCatalog.PublishesSummary(call.BoundSymbol))
@@ -1706,7 +1680,7 @@ public sealed partial class OwnershipAnalysis
         return result;
     }
 
-    // SPEC 8.4.10.4: a call in a generic body may affect every Loan that its abstract inputs' Types may denote, in the inputs'
+    // SPEC 8.11.4: a call in a generic body may affect every Loan that its abstract inputs' Types may denote, in the inputs'
     // modes, and its result may keep those Loans. A requirement call's effects are bounded by the bounds available to it; an
     // ordinary generic function's are not, since its body is not part of the caller's contract. Concrete inputs keep their
     // Origins, which the ordinary Loans track. Each instance runs concrete code, so only the definition records these effects.
@@ -1810,7 +1784,7 @@ public sealed partial class OwnershipAnalysis
             this.compilation.Binding.CollectFixedArrayWitnesses(this.witnessScratch);
         }
 
-        // SPEC 4.6.2: an integer Type argument reaches the Kimi integer Position witness through its built-in conformance.
+        // SPEC 4.6.1: an integer Type argument reaches the Kimi integer Position witness through its built-in conformance.
         if (type.IsInteger && !this.integerPositionWitness)
         {
             this.integerPositionWitness = true;
@@ -1846,7 +1820,7 @@ public sealed partial class OwnershipAnalysis
             if (function.GenericArguments.Count != 0 && function.BoundSymbol is { } original &&
                 this.compilation.Binding.Specializations(original) is { } specializations)
             {
-                // SPEC 8.8.3: an instance may select any specialization at emission.
+                // SPEC 8.13.3: an instance may select any specialization at emission.
                 foreach (var specialization in specializations)
                 {
                     this.CollectLibraryBody(specialization);
@@ -2144,7 +2118,7 @@ public sealed partial class OwnershipAnalysis
 
     private void Unsupported(Koto source) => this.body.ReportIssue(new(source, OwnershipFailure.Unsupported));
 
-    // SPEC 21.3.5: a state that a complete Binding never leaves for this analysis.
+    // SPEC 21.3.2: a state that a complete Binding never leaves for this analysis.
     private void Internal(Koto source) => this.body.ReportIssue(new(source, OwnershipFailure.Internal));
 
     private readonly record struct Registration(int Place, Koto Source, int Sequence, bool IsSubject = false);
@@ -2184,7 +2158,7 @@ public sealed partial class OwnershipAnalysis
             {
                 this.owner.CheckDefaultDeclarations(function);
                 // Requirement declarations and foreign imports have no body to verify; a body missing because of a syntax Error,
-                // and the body of a declaration that is itself a recovery of one, are explained by that Error (SPEC 23.3.6.4).
+                // and the body of a declaration that is itself a recovery of one, are explained by that Error (SPEC 23.1.2).
                 if (function.CodeContext.RecoveryCause(function) is null &&
                     (function.Body is not null || function.ExpressionBody is not null || !(function.IsRequirement || function.MissingBody || Parser.HasLibraryImport(function.AttributeChain))))
                 {

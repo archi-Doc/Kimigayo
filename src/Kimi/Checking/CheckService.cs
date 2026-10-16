@@ -7,7 +7,7 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Checking;
 
-/// <summary>Runs one check unit through the shared check entry and returns its immutable output (SPEC 23.3).</summary>
+/// <summary>Runs one check unit through the shared check entry and returns its immutable output (SPEC 23.2).</summary>
 /// <remarks>
 /// The unit's compilation lives only for one call: its diagnostics become <see cref="CheckDiagnostic"/> records, and the
 /// compilation is released. The service holds no state, so any number of callers may share it.
@@ -24,7 +24,7 @@ internal static class CheckService
     /// <param name="collectHover">Whether to collect documentation and optional editor information.</param>
     /// <returns>The output.</returns>
     /// <exception cref="PendingInputException">The check needs an input with an event after its base.</exception>
-    /// <exception cref="OperationCanceledException">The check was cancelled; a cancelled check has no output (SPEC 23.3.3).</exception>
+    /// <exception cref="OperationCanceledException">The check was cancelled; a cancelled check has no output (SPEC 23.2.2).</exception>
     public static CheckOutput Run(Project project, string target, CheckMode mode, bool debug, CheckInputSource inputs, CancellationToken cancellationToken, bool collectHover = false)
     {
         var context = new CheckContext(inputs, collectHover);
@@ -40,12 +40,12 @@ internal static class CheckService
         }
         catch (InvalidDataException ex) when (context.Compilation is null)
         {
-            // Test preparation reports an invalid configuration as an exception before the front end (SPEC 23.3.3: Blocked).
+            // Test preparation reports an invalid configuration as an exception before the front end (SPEC 23.2.2: Blocked).
             context.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, location, note: ex.Message);
         }
         catch (DiagnosticContractException ex)
         {
-            // SPEC 23.3.3: a violated contract discards every partial record.
+            // SPEC 23.2.2: a violated contract discards every partial record.
             return Faulted(ex.Fault, ex.Message, location);
         }
         catch (Exception ex) when (ex is not (PendingInputException or OperationCanceledException))
@@ -56,7 +56,7 @@ internal static class CheckService
         DiagnosticResult result;
         try
         {
-            // SPEC 23.3.3, 23.3.6.7: a rejected result that publishes no Error violates the diagnostic contract; the front end
+            // SPEC 23.2.2, 23.1: a rejected result that publishes no Error violates the diagnostic contract; the front end
             // reports its fallback where the command does, so a violation here is a defect of the check entry's input path.
             result = context.Diagnostics.Finalize(rejected: failure is null && !accepted);
         }
@@ -70,7 +70,7 @@ internal static class CheckService
             return Faulted(DiagnosticFault.Exception, failure.Message, location, result);
         }
 
-        // SPEC 23.3.3: the outcome follows from how the check ended; a front end that never ran leaves the check Blocked.
+        // SPEC 23.2.2: the outcome follows from how the check ended; a front end that never ran leaves the check Blocked.
         if (context.Compilation is not { } compilation)
         {
             return new(CheckOutcome.Blocked, false, TestPresence.Unknown, result);
@@ -83,7 +83,7 @@ internal static class CheckService
         return new(CheckOutcome.Completed, accepted, presence, result) { Hover = hover, HoverFault = hoverFault };
     }
 
-    // SPEC 23.4.11.6: optional projection has no authority to alter finalized diagnostics, acceptance or TestPresence.
+    // SPEC 23.4: optional projection has no authority to alter finalized diagnostics, acceptance or TestPresence.
     // Pass state separately so the production factory is a shared static delegate, without a closure per check.
     internal static HoverSnapshot? TryCreateHover<T>(T state, Func<T, HoverSnapshot> create, out string? fault)
     {
@@ -99,11 +99,11 @@ internal static class CheckService
         }
     }
 
-    // SPEC 23.3.3: exactly one CheckFaulted_Kd Error explains a Faulted result; earlier records are kept only when collection stayed intact.
+    // SPEC 23.2.2: exactly one CheckFaulted_Kd Error explains a Faulted result; earlier records are kept only when collection stayed intact.
     private static CheckOutput Faulted(DiagnosticFault fault, string? detail, string? location, DiagnosticResult? kept = null)
         => new(CheckOutcome.Faulted, false, TestPresence.Unknown, DiagnosticFaults.Create(fault, detail, location, kept));
 
-    // SPEC 23.3.1: a syntax-level scan of the project's own sources; semantic failures never hide a marker.
+    // SPEC 23.2.1: a syntax-level scan of the project's own sources; semantic failures never hide a marker.
     private static TestPresence ScanTestPresence(Compilation compilation)
     {
         var finder = new MarkerFinder();

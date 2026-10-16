@@ -73,7 +73,7 @@ public class FunctionCaptureTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze("let inner: () -> i32 = func () => 7\nlet outer: () -> i32 = func [inner@move] () => inner() + 1\nrequire outer() == 8 else => $abort(\"call\")");
         Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid);
     }
 

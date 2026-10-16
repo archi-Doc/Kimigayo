@@ -98,11 +98,7 @@ public class BaseTypeFormationBindingTest
     public void WarmBaseChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("open struct Base<T>\n    T is i32\ncontract C\nopen struct Middle<T>: Base<T>\n    T is i32\nstruct S<U>: Middle<U>\n    U is i32\n    Self is C");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

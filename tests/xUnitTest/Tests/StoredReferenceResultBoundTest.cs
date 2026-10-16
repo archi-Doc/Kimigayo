@@ -5,7 +5,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 15.6.3, 15.5, 3.3.6: a Reborrow through an exclusive reference stored in a Place is contained in the Origin of each safe
+// SPEC 15.6.3, 15.5, 3.3.2: a Reborrow through an exclusive reference stored in a Place is contained in the Origin of each safe
 // borrow through which a function reaches it, up to and including the first shared layer, so a published result through a
 // receiver or parameter stays within that borrow unless `preserves results` makes it independent.
 public class StoredReferenceResultBoundTest

@@ -119,13 +119,13 @@ internal static class OwnershipFlow
     // SPEC 15.6.3: the flow row of each value kind (SharedEngineTotalityTest checks that none is Unclassified).
     internal static ValueFlow FlowOf(OwnershipValueKind kind) => kind switch
     {
-        // A copied value, a reference loaded through another reference (SPEC 3.4.1, 10.2) or a field read through a reference.
+        // A copied value, a reference loaded through another reference (SPEC 3.4.3, 10.2) or a field read through a reference.
         OwnershipValueKind.Alias or OwnershipValueKind.PointerLoad or OwnershipValueKind.BorrowedField => ValueFlow.Operand,
 
-        // SPEC 14.6.2, 4.6: an element borrowed or read through a sequence descends from its receiver.
+        // SPEC 14.6.2, 4.7: an element borrowed or read through a sequence descends from its receiver.
         OwnershipValueKind.Sequence => ValueFlow.Receiver,
 
-        // SPEC 7.6.2, 15.8.2: the closure environment holds the entries' Loans.
+        // SPEC 7.7.2, 15.8.2: the closure environment holds the entries' Loans.
         OwnershipValueKind.Closure => ValueFlow.Entries,
 
         // No source Place: an exclusive input is its own root (VerifyBorrows) and a Capture's binding is a carrier
@@ -152,7 +152,7 @@ internal static class OwnershipFlow
         // The operation carries the update; a borrowed field write has a scalar input.
         OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate => ValueFlow.None,
 
-        // SPEC 7.6.4: an erased Function value holds no Loan.
+        // SPEC 7.7.4: an erased Function value holds no Loan.
         OwnershipValueKind.ClosureErasure => ValueFlow.None,
 
         // SPEC 5.2, 5.2.2, 5.4, 13.5.4: a conversion yields an owned scalar, a raw pointer without an Origin or a raw Place borrow

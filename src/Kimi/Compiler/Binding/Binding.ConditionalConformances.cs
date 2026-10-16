@@ -204,7 +204,7 @@ public sealed partial class Binding
 
                 if (this.IsClosedContractGrant(contract, container.BoundSymbol!))
                 {
-                    this.Fail(target, BindingFailure.ClosedContractConformance); // SPEC 8.4.7: the conforming Types of a closed Contract are fixed.
+                    this.Fail(target, BindingFailure.ClosedContractConformance); // SPEC 8.7: the conforming Types of a closed Contract are fixed.
                 }
                 else if (contract.Intrinsic is IntrinsicKind.None or IntrinsicKind.Copy or IntrinsicKind.Owned)
                 {
@@ -216,7 +216,7 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    // SPEC 8.4.7.2: ObjectPayload is never granted, conditionally or otherwise.
+                    // SPEC 8.7.3: ObjectPayload is never granted, conditionally or otherwise.
                     this.Fail(syntax, contract.Intrinsic == IntrinsicKind.ObjectPayload ? BindingFailure.InvalidSelfClause : BindingFailure.InvalidConstraint);
                 }
 
@@ -301,7 +301,7 @@ public sealed partial class Binding
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : this.ComparisonProof(type, contract, scope, false);
         }
 
-        // SPEC 4.6.2, 8.4.7: every integer Type conforms to the closed Contract Position through the Kimi integer witness.
+        // SPEC 4.6.1, 8.7: every integer Type conforms to the closed Contract Position through the Kimi integer witness.
         if (this.contractHeadersReady && IsIntegerPosition(type, contract))
         {
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
@@ -314,8 +314,8 @@ public sealed partial class Binding
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
         }
 
-        // SPEC 8.7: a primitive's conformances are its intrinsic capabilities and the built-in comparison and formatting
-        // conformances above; no declaration can add another (SPEC 8.4.8.4), so its fixed environment refutes the rest.
+        // SPEC 8.3: a primitive's conformances are its intrinsic capabilities and the built-in comparison and formatting
+        // conformances above; no declaration can add another (SPEC 8.7.1), so its fixed environment refutes the rest.
         if (this.contractHeadersReady && this.capabilityMode == BindingMode.Final && type.Kind == BoundTypeKind.Primitive && !ReferenceEquals(type, BoundType.Never) &&
             contract.Intrinsic == IntrinsicKind.None)
         {
@@ -349,7 +349,7 @@ public sealed partial class Binding
 
         if (identity is null && !IsBoundContractReference(contract))
         {
-            // SPEC 8.4.9: a Contract named without Type arguments (a requirement's owner) is satisfied by the one conformance
+            // SPEC 8.6.1: a Contract named without Type arguments (a requirement's owner) is satisfied by the one conformance
             // to a bound reference of its declaration; several such conformances stay undecided here.
             identity = this.ConformanceByDeclaration(symbol, contract, out var ambiguous);
             if (ambiguous)
@@ -383,7 +383,7 @@ public sealed partial class Binding
                 var definition = this.VerifyConformance(path);
                 if (path.Unsupported && this.conformanceChecks == 0)
                 {
-                    // SPEC 23.3.6.1, 23.3.6.4: a check that needs a conformance limited by OCC-X rests on its one record (TakeFailedConformance).
+                    // SPEC 23.1.1, 23.1.2: a check that needs a conformance limited by OCC-X rests on its one record (TakeFailedConformance).
                     this.failedConformance ??= path;
                     definition = ConstraintProof.Error;
                 }

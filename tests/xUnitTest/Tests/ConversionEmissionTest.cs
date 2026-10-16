@@ -108,7 +108,7 @@ public class ConversionEmissionTest
     [InlineData("let flag = true\nflag@char", "TypeMismatch")]
     [InlineData("let s = \"x\"\ns@bool", "TypeMismatch")]
     [InlineData("256@owner/u8", "InvalidLiteral")]
-    [InlineData("1.5@Wrapping<i32>", "TypeMismatch")] // SPEC 13.5.4.2: a floating literal never enters a wrapping Type.
+    [InlineData("1.5@Wrapping<i32>", "TypeMismatch")] // SPEC 13.5.4: a floating literal never enters a wrapping Type.
     [InlineData("func f(x: i32) => ()\nf(1@u8)", "NoApplicableCandidate")]
     public void InvalidAndUnimplementedAdaptationsHaveDistinctFailures(string source, string failure)
     {
@@ -125,7 +125,7 @@ public class ConversionEmissionTest
         Assert.Empty(writer.ToString());
     }
 
-    // IMPL 21.5.3: a conversion whose source range lies within the destination range carries no check even at O0; a range that
+    // IMPL 21.3.3: a conversion whose source range lies within the destination range carries no check even at O0; a range that
     // exceeds the destination on one side keeps that side's check only.
     [Fact]
     public void ContainedRangesOmitTheCheck()
@@ -175,14 +175,11 @@ public class ConversionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(Consumers);
         var valid = true;
-        var allocated = AllocationMeasurement.Measure(
-            () =>
-            {
-                valid &= c.Analyze().IsVerified;
-                valid &= c.WriteIr(TextWriter.Null, out _);
-            },
-            iterations: 128,
-            warmupIterations: 100);
+        var allocated = AllocationMeasurement.Measure(() =>
+        {
+            valid &= c.Analyze().IsVerified;
+            valid &= c.WriteIr(TextWriter.Null, out _);
+        });
         Assert.True(valid);
         Assert.Equal(0, allocated);
     }
@@ -209,7 +206,7 @@ public class ConversionEmissionTest
         Assert.Equal(ConversionBinding.Integer, nodes[1].ConversionOf().Kind);
         Assert.Equal(ConversionBinding.Literal, nodes[2].ConversionOf().Kind);
         var complete = true;
-        var allocated = AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete, iterations: 128, warmupIterations: 100);
+        var allocated = AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete);
         Assert.True(complete);
         Assert.Equal(0, allocated);
     }
@@ -248,13 +245,13 @@ public class ConversionEmissionTest
         Assert.Empty(writer.ToString());
     }
 
+    // A conversion of an operand that never completes has no value (its MIR: tests/mir/values.kimi `neverConverted`) and no instruction.
     [Fact]
     public void NoncompletingOperandsHaveNoConversionValueOrInstruction()
     {
         const string Source = "func stop() -> Never => loop => ()\nstop()@u8";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.All(c.Ownership.Bodies, body => Assert.DoesNotContain(body.Values, x => x.Kind == OwnershipValueKind.Convert));
         for (var i = 0; i < module.FunctionCount; i++)
         {
             Assert.DoesNotContain(module.GetFunction(i).Instructions, x => x.Opcode == EmissionOpcode.Convert);

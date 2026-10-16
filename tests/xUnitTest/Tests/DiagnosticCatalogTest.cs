@@ -8,7 +8,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 23.3.6.1 and 23.3.6.7: every code has one catalog entry with a severity and a category, and a
+// SPEC 23.1.1 and 23.1: every code has one catalog entry with a severity and a category, and a
 // malformed catalog or report is a contract violation, never silently repaired.
 public sealed class DiagnosticCatalogTest
 {
@@ -97,7 +97,7 @@ public sealed class DiagnosticCatalogTest
         Assert.Null(table[(int)DiagnosticCode.IndentationLevelMismatch_Kd]);
     }
 
-    // SPEC 23.3.6.9: every repair kind has one catalog entry whose title, facts and conditions are consistent.
+    // SPEC 23.1.3: every repair kind has one catalog entry whose title, facts and conditions are consistent.
     [Fact]
     public void TheRepairCatalogDefinesEveryKindOnce()
     {

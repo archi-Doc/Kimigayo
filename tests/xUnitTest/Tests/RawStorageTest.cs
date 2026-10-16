@@ -8,7 +8,7 @@ namespace XunitTest;
 
 // SPEC 5.6: Kimi.Raw. allocate is safe and Aborts on a negative count or an unrepresentable size; a zero-byte request returns a
 // nonnull substitute that release ignores. release and initialize are unsafe; initialize moves its value in and destroys
-// nothing, and elements leave the storage only through raw Place Take.
+// nothing, and placed values leave the storage only through raw Place Take or relocation (SPEC 5.2).
 public class RawStorageTest
 {
     private const string Resource = "struct Resource\n    public var value: i32\n    public init(value: i32) => self.value = value\n    drop => Console.writeLine(\"drop\")\n";
@@ -90,6 +90,60 @@ public class RawStorageTest
         ScalarEmissionTest.EmitFixture("RawStorageSlice", source, "sliced\n");
     }
 
+    // SPEC 3.4, 5.2: a value placed in raw storage occupies its own Place, so zero-sized values at one address are placed,
+    // taken and destroyed one by one, also by an owning iterator that stops early, and a component of a placed value is
+    // taken alone before release.
+    [Fact]
+    public void ZeroSizedValuesOccupyTheirOwnPlaces()
+    {
+        var source = """
+            struct Token
+                drop => Console.writeLine("drop")
+            struct Buffer<T>
+                let data: raw/T
+                var length: isize
+                let capacity: isize
+                public init(capacity: isize)
+                    self.data = Raw.allocate<T>(capacity)
+                    self.length = 0
+                    self.capacity = capacity
+                public func push(self: uniq/Self, value: T)
+                    require self.length < self.capacity else => $abort("full")
+                    unsafe => Raw.initialize(self.data + self.length, value@move)
+                    self.length += 1
+                drop
+                    let data = self.data
+                    while self.length > 0
+                        self.length -= 1
+                        unsafe => _ = data[self.length]@move
+                    unsafe => Raw.release(data)
+            func buffer()
+                var tokens = Buffer<Token>.init(capacity: 2)
+                tokens.push(Token.init())
+                tokens.push(Token.init())
+                Console.writeLine("buffer")
+            func owning()
+                let values: Array<Token> = [Token.init(), Token.init(), Token.init()]
+                for item in values@move
+                    Console.writeLine("item")
+                    exit
+            func component()
+                let p = Raw.allocate<(i64, Token)>(1)
+                unsafe
+                    Raw.initialize(p, (7, Token.init()))
+                    _ = (*p).1@move
+                    require (*p).0 == 7 else => $abort("component")
+                    Raw.release(p)
+                Console.writeLine("component")
+            public func main()
+                buffer()
+                owning()
+                component()
+            """;
+        ScalarEmissionTest.EmitFixture(
+            "RawStorageZeroSizedPlaces", source, "buffer\ndrop\ndrop\nitem\ndrop\ndrop\ndrop\ndrop\ncomponent\n");
+    }
+
     [Theory]
     [InlineData("Negative", "-1", "abort KIMI_E_ARG_RANGE: Argument out of range")]
     [InlineData("Oversized", "4611686018427387904", "abort KIMI_E_ALLOC_SIZE: Allocation size exceeds limit")]
@@ -114,7 +168,7 @@ public class RawStorageTest
         }
     }
 
-    // SPEC 5.6, 8.4.10.2: allocate is an allocation and release and initialize are raw accesses; none is an environment effect.
+    // SPEC 5.6, 8.11.2: allocate is an allocation and release and initialize are raw accesses; none is an environment effect.
     [Fact]
     public void RawOperationsAreNoEnvironmentEffects()
     {

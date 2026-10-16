@@ -53,8 +53,8 @@ public class StoredObjectReferenceTest
         var c = MinimalEmissionTest.Analyze(Item + Owner + "let view = owner@objref\nlet slot = view@ref\nrequire slot.id == 7 else => $abort(\"field\")");
         Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid);
     }
 }

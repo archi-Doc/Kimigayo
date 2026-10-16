@@ -5,7 +5,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>Checks front-end control-flow behavior against the SPEC 2.2 and 14 examples and boundaries.</summary>
+/// <summary>Checks front-end control-flow behavior against the SPEC 2.1 and 14 examples and boundaries.</summary>
 public class ControlFlowConformanceTest
 {
     [Theory]

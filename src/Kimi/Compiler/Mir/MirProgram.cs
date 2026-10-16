@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns MIR bodies by definition key and the records of construction and validation.
-// Input: built definitions and findings. Output: reusable bodies identified by MirDefKey.
+// Owns MIR bodies by definition key, the records of construction and validation, and the problems and drop table the analyses find.
+// Input: built definitions, findings and problems. Output: reusable bodies identified by MirDefKey and numbered in order, and a callee's body.
 // One key identifies one body; warm rebuilding reuses body storage.
 // Must not re-bind definitions or maintain a second body map in a consumer.
 
@@ -11,7 +11,7 @@ namespace Kimi.Compiler.Mir;
 
 /// <summary>The key of a MIR body (R3 decision 6): its definition's symbol (a Closure's own, an accessor's the function its calls
 /// target), which body of it and the index of a default template (0 otherwise), so that a callee's symbol and its declaration name its
-/// body. A module's top-level statements (SPEC 22.2.1) have no symbol; their index is the module's ordinal. R7's declaration table
+/// body. A module's top-level statements (SPEC 22.4.1) have no symbol; their index is the module's ordinal. R7's declaration table
 /// replaces the symbol.</summary>
 /// <param name="Decl">The definition, or null for a module's top-level statements.</param>
 /// <param name="Kind">The body of the definition.</param>
@@ -41,7 +41,21 @@ internal sealed class MirProgram
     /// <summary>Gets the validator's findings, which the <c>mir</c> pipeline publishes as <c>InternalInvariant_Kd</c>.</summary>
     internal List<MirFinding> Findings { get; } = [];
 
+    /// <summary>Gets the problems the analyses found in this version (R4: unpublished, compared by the difference ledger); only
+    /// <see cref="MirAnalysis"/> resets them, once per version.</summary>
+    internal MirReport Problems { get; } = new();
+
+    /// <summary>Gets drop elaboration's verdicts and flags in this version, by body ordinal (A2, DECISIONS R4-M6a); only
+    /// <see cref="MirAnalysis"/> resets them, once per version.</summary>
+    internal MirDropTable Drops { get; } = new();
+
     internal MirBody? this[MirDefKey key] => this.bodies.TryGetValue(key, out var body) ? body : null;
+
+    /// <summary>Gets the body a Fn callee runs: a default template's (its Arg, the index plus 1), else its function's, getter's or setter's.</summary>
+    /// <param name="callee">The callee.</param>
+    /// <returns>The body, or null for a function without one.</returns>
+    internal MirBody? Callee(in MirCallee callee) => callee.Arg > 0 ? this[new(callee.Symbol, MirBodyKind.DefaultTemplate, callee.Arg - 1)]
+        : this[new(callee.Symbol, MirBodyKind.Fn)] ?? this[new(callee.Symbol, MirBodyKind.Getter)] ?? this[new(callee.Symbol, MirBodyKind.Setter)];
 
     internal void Clear()
     {
@@ -75,7 +89,7 @@ internal sealed class MirProgram
         }
 
         var body = this.pool[this.count] ??= new();
-        this.count++;
+        body.Ordinal = this.count++;
         body.Reset(key, source);
         this.bodies.Add(key, body);
         return body;

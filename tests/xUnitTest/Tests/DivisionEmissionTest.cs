@@ -28,7 +28,7 @@ public class DivisionEmissionTest
         { "DivisionRemainderDuringCleanup", "var x = -2147483648\ndefer\n    x %= -1\n    if x == 0 => Console.writeLine(\"ok\")\nConsole.writeLine(\"ok\")" },
     };
 
-    // SPEC 13.3: a % -1 is 0 for every dividend, including the minimum, with a literal or a dynamic divisor.
+    // SPEC 13.3.1: a % -1 is 0 for every dividend, including the minimum, with a literal or a dynamic divisor.
     [Theory]
     [InlineData("%", false)]
     [InlineData("%=", false)]
@@ -82,7 +82,7 @@ public class DivisionEmissionTest
 
     [Theory]
     [InlineData("DivisionInnerFailure", "var x = -2147483648\nvar a = 1\nvar b = 0\nx /= a / b", "", 4, 6, false)]
-    [InlineData("QuotientLiteralMinusOneMinimum", "var x = -2147483648\nlet y = x / -1", "", 2, 9, true)] // IMPL 21.5.3: the minimum check stays.
+    [InlineData("QuotientLiteralMinusOneMinimum", "var x = -2147483648\nlet y = x / -1", "", 2, 9, true)] // IMPL 21.3.3: the minimum check stays.
     [InlineData("DivisionOuterFailure", "var x = -2147483648\nvar a = 1\nvar b = -1\nx /= a / b", "", 4, 1, true)]
     [InlineData("DivisionBeforeCleanup", "let y = label work: do\n    defer => Console.writeLine(\"bad\")\n    exit to work 1 / 0\nConsole.writeLine(\"bad\")", "", 3, 18, false)]
     [InlineData("DivisionDuringCleanup", "defer => Console.writeLine(\"bad\")\ndefer\n    Console.writeLine(\"begin\")\n    1 / 0\n    Console.writeLine(\"bad\")", "begin\n", 4, 5, false)]
@@ -90,7 +90,7 @@ public class DivisionEmissionTest
     public void FailureStopsAtTheActualEvaluation(string name, string source, string stdout, int line, int column, bool overflow)
         => ScalarEmissionTest.EmitFixture(name, source, stdout, 1, $"Hello.kimi:{line}:{column}: abort {(overflow ? OverflowReason : ZeroReason)}\n");
 
-    // IMPL 21.5.3: a literal nonzero divisor needs no zero check even at O0, a literal other than -1 needs no minimum check,
+    // IMPL 21.3.3: a literal nonzero divisor needs no zero check even at O0, a literal other than -1 needs no minimum check,
     // and a literal -1 keeps only the minimum check of an integer quotient; every signed quotient by -1 is a negation.
     [Fact]
     public void LiteralDivisorsOmitTheirChecks()
@@ -128,7 +128,7 @@ public class DivisionEmissionTest
             var quotient = instruction.Check == ArithmeticCheckKind.Division;
             Assert.Equal(quotient ? "sdiv" : "srem", instruction.ScalarOperator);
             Assert.Contains($"br i1 {(quotient ? "%invalid" : "%zero")}{instruction.Operation}, label %abort{instruction.Operation}, label %b{instruction.Place}\n", ir);
-            // The instruction lies in the success block, after the -1 substitution of a dynamic remainder divisor (SPEC 13.3).
+            // The instruction lies in the success block, after the -1 substitution of a dynamic remainder divisor (SPEC 13.3.1).
             var block = ir.IndexOf($"b{instruction.Place}:\n", StringComparison.Ordinal);
             var division = ir.IndexOf($"\n  %v{instruction.Operation} = {instruction.ScalarOperator} i32 ", block, StringComparison.Ordinal);
             var next = ir.IndexOf("\nb", block + 1, StringComparison.Ordinal);
@@ -272,14 +272,11 @@ public class DivisionEmissionTest
         Assert.True(c.Analyze().IsVerified);
         Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         var success = true;
-        var bytes = AllocationMeasurement.Measure(
-            () =>
-            {
-                success &= c.Analyze().IsVerified;
-                success &= c.WriteIr(TextWriter.Null, out _);
-            },
-            iterations: 128,
-            warmupIterations: 100);
+        var bytes = AllocationMeasurement.Measure(() =>
+        {
+            success &= c.Analyze().IsVerified;
+            success &= c.WriteIr(TextWriter.Null, out _);
+        });
         Assert.Equal(0, bytes);
         Assert.True(success);
     }

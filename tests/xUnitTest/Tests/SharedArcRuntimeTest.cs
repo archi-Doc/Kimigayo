@@ -137,8 +137,8 @@ public class SharedArcRuntimeTest
         var c = MinimalEmissionTest.Analyze(Scalar);
         Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid);
     }
 
@@ -150,8 +150,8 @@ public class SharedArcRuntimeTest
         NativeAllocationAudit.WriteFixture("SharedArcMeasuredWorkload", source, 1, 1, 20, "drop\n");
         var c = MinimalEmissionTest.Analyze(source);
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 

@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 8.4.10.1, 8.4.10.3, 8.4.10.6: effect items declare bounds of their Contract; an invalid item is InvalidEffectBound_Kd
+// SPEC 8.11.1, 8.11.3, 8.11.1: effect items declare bounds of their Contract; an invalid item is InvalidEffectBound_Kd
 // at the item, with the cause as its Reason and the target requirement as a related location.
 public class EffectBoundDeclarationTest
 {
@@ -57,7 +57,7 @@ public class EffectBoundDeclarationTest
         }
     }
 
-    // SPEC 8.4.10.1, 8.4.10.6: a bound declared twice in one Contract relates the target requirement and the earlier bound;
+    // SPEC 8.11.1, 8.11.1: a bound declared twice in one Contract relates the target requirement and the earlier bound;
     // restating an ancestor's bound is valid (AcceptsClausesAndSpecifications).
     [Fact]
     public void RelatesTheRequirementAndTheEarlierBound()

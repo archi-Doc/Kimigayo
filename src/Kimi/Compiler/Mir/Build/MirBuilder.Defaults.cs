@@ -13,7 +13,7 @@ namespace Kimi.Compiler.Mir;
 // component of the omission graph, found once by Tarjan's algorithm), a call of the template.
 internal sealed partial class MirBuilder
 {
-    private const int ExpansionLimit = 65_536; // No copy takes a body past this many MIR statements (IMPL 21.3.5).
+    private const int ExpansionLimit = 65_536; // No copy takes a body past this many MIR statements (IMPL 21.3.2).
     private readonly Dictionary<DefaultDecl, int> visited = new(); // Each default's node in the omission graph.
     private readonly List<Omission> omissions = []; // The nodes in visit order.
     private readonly List<int> component = []; // The nodes whose component is open (Tarjan's stack).
@@ -69,12 +69,13 @@ internal sealed partial class MirBuilder
         return index;
     }
 
-    // A default's template, MirDefKey(function, DefaultTemplate, index); one with an Opaque value or a finding failed.
+    // A default's template, MirDefKey(function, DefaultTemplate, index); one with an Opaque value or a finding failed. A default the publisher
+    // did not evaluate, of an unresolved function such as one beyond the case bound, has none: its omitting calls take an Opaque value.
     private void Template(int index)
     {
         var decl = this.omissions[index].Decl;
         var findings = this.program.Findings.Count;
-        if (HirTables.Symbol(decl.Function) is { } function && decl.Parameter(decl.Index) is { } type)
+        if (HirTables.Symbol(decl.Function) is { } function && decl.Parameter(decl.Index) is { } type && HirTables.Op(decl.Expression) != HirOp.Syntax)
         {
             this.Body(new(function, MirBodyKind.DefaultTemplate, decl.Index), decl.Function, function, type, decl.Expression);
             ref var node = ref CollectionsMarshal.AsSpan(this.omissions)[index];
@@ -155,7 +156,8 @@ internal sealed partial class MirBuilder
     // builder targets no entry block) and its returns going on after it; each Type applied and each callee's substitution composed
     // (TyCtxt.Compose), each Place projected again, so that a pair layer the substitution decides is its case's layer and a case-dependent
     // acquisition its case's (Acquire), each static and constant added again, and a Drop the instance's Type does not need left out. A Type
-    // or callee the call does not instantiate is unsupported at the call.
+    // or callee the call does not instantiate is unsupported at the call. No MustNotComplete row is copied: a copy's verdict is its
+    // template's, which A3 judges once (SPEC 7.2.3).
     private void Inline(MirBody template, Subst? subst, int at, MirPlace slot, Koto node)
     {
         var map = this.folded;
@@ -308,7 +310,8 @@ internal sealed partial class MirBuilder
                 this.arguments.Add(FoldOperand(template.Operands[rvalue.Start + i]));
             }
 
-            var place = rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Discriminant or MirRvalueKind.Len ? FoldPlace(rvalue.Place) : default;
+            var place = rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Discriminant or MirRvalueKind.Len or MirRvalueKind.Adapt
+                ? FoldPlace(rvalue.Place) : default;
             return rvalue with { Place = place, Start = this.Flush(start), Type = rvalue.Type is { } type ? FoldType(type) : null };
         }
     }

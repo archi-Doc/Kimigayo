@@ -127,8 +127,8 @@ public class GenericObjectFactoryTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(atomic ? SharedObjectRuntimeTest.ArcSource(Source) : Source);
         Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid);
     }
 

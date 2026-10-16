@@ -119,7 +119,7 @@ public sealed partial class Binding
             foreach (var fact in environment.DirectFacts)
             {
                 var bound = this.SubstituteConstraint(fact, owner, (BoundType[])selection.DeclaringType.Components);
-                // Closed propositions are obligations, not assumptions (SPEC 8.4.8.2).
+                // Closed propositions are obligations, not assumptions (SPEC 8.3.3).
                 if (!bound.HasUnresolved && bound.Kind != ConstraintKind.Error && DependentConstraint(bound))
                 {
                     current.Add(bound);
@@ -332,7 +332,7 @@ public sealed partial class Binding
         {
             var bound = this.SubstituteConstraint(fact, slot.DeclaringType.Symbol!.Declaration, (BoundType[])slot.DeclaringType.Components);
             // Applicability belongs to the public slot. A refuted substituted premise supplies no
-            // body evidence; ordinary definition checks still run (SPEC 8.4.8.2). Generation keeps
+            // body evidence; ordinary definition checks still run (SPEC 8.3.3). Generation keeps
             // the inapplicable slot's position without requesting its body.
             var proof = this.ProveConstraint(bound, premises);
             if (proof == ConstraintProof.Refuted)
@@ -437,10 +437,9 @@ public sealed partial class Binding
         }
 
         if (original.BoundSymbol!.Type is { } required && implementation.BoundSymbol!.Type is { } actual && this.MemberType(required, slot.DeclaringType) is { } bound &&
-            (ResultModeOf(original.ReturnType) != ResultModeOf(implementation.ReturnType) ||
-                !SignatureEquals(this.ContractType(bound, this.scopes[implementation]), this.ContractType(actual, this.scopes[implementation]), original, implementation)))
+            !SignatureEquals(this.ContractType(bound, this.scopes[implementation]), this.ContractType(actual, this.scopes[implementation]), original, implementation))
         {
-            this.FailOverride(implementation, BindingFailure.OverrideContractMismatch, "the result Type and value/Place mode must match the original slot; result covariance is not allowed", original, at: implementation.ReturnType, required: bound, actual: actual);
+            this.FailOverride(implementation, BindingFailure.OverrideContractMismatch, "the result Type must match the original slot; result covariance is not allowed", original, at: implementation.ReturnType, required: bound, actual: actual);
         }
     }
 
@@ -463,7 +462,7 @@ public sealed partial class Binding
         }
         else if (failure.Required is BoundType required && failure.Actual is BoundType actual)
         {
-            reason = $"expected {ResultModeOf(failure.First!.ReturnType)} {DiagnosticTypeName(required)}, found {ResultModeOf(function.ReturnType)} {DiagnosticTypeName(actual)}; {reason}";
+            reason = $"expected {DiagnosticTypeName(required)}, found {DiagnosticTypeName(actual)}; {reason}";
         }
         else if (failure.Required is string requiredName && failure.Actual is string actualName)
         {

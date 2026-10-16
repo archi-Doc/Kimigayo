@@ -49,8 +49,8 @@ public class SyntaxEditInvalidationTest
     public void AnEditedRoleLeavesNoStaleSynthesizedCall()
     {
         const string Indexed = "struct Box\n    Self is UniqIndexable<isize>\n    associate Element is i32\n    var value: i32 = 0\n    public init() => ()\n" +
-            "    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value\n" +
-            "    public func indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/i32 during self => self.value\n" +
+            "    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref\n" +
+            "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/i32 during self => self.value@uniq\n" +
             "var box = Box.init()\nlet n = box[0]\n";
         var c = MinimalEmissionTest.Analyze(Indexed);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));

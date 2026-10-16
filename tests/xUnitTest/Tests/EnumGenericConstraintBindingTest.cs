@@ -83,11 +83,7 @@ public class EnumGenericConstraintBindingTest
     public void WarmNestedEnumChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nenum E<T>\n    Empty\ngroup Consumer\n    func make() -> E<Box<i32>> => .Empty");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

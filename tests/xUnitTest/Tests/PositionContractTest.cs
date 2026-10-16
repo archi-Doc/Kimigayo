@@ -5,7 +5,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 4.6.2, 8.4.7, 8.4.7.3: Position and PositionRange are closed Contracts. Every integer Type conforms to
+/// <summary>SPEC 4.6.1, 8.7, 8.7.4: Position and PositionRange are closed Contracts. Every integer Type conforms to
 /// Position through a built-in conformance without gaining members, PrimitiveInteger implies Position, and the Contracts'
 /// refinement and Self clauses supply Copy, Owned, Equatable and Utf8Format.</summary>
 public class PositionContractTest
@@ -36,7 +36,7 @@ public class PositionContractTest
     [InlineData("struct S\n    Self is Position\n    public func tryResolve(self: Self, length: isize) -> Option<isize> => .None\n()")]
     [InlineData("struct W<T>\n    let value: T\n    Self is PositionRange when T is Copy\n()")]
     [InlineData("struct N\n    Self is PrimitiveInteger\n()")]
-    // A user Contract that refines a closed Contract grants no conformance to it either (SPEC 8.4.7).
+    // A user Contract that refines a closed Contract grants no conformance to it either (SPEC 8.7).
     [InlineData("contract MyPos: Position\nstruct S\n    Self is Copy\n    Self is MyPos\n    public func tryResolve(self: Self, length: isize) -> Option<isize> => .Some(0)\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => .Ok(())\n    public init() => ()\nlet values: Array<i32> = [1, 2, 3]\nlet b = values[S.init()]")]
     [InlineData("contract MyRange: PositionRange\nstruct W<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\n    Self is Copy when T is Copy\n    Self is MyRange when T is Copy and Owned\n        public func tryResolve(self: Self, length: isize) -> Option<ResolvedRange> => (0..1).tryResolve(length)\n        public func equals(self: ref/Self, other: ref/Self) -> bool => true\n        public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => .Ok(())\nlet values: Array<i32> = [1, 2, 3]\nlet b = values[W<i32>.init(value: 3)]")]
     public void UserTypesCannotConform(string source)

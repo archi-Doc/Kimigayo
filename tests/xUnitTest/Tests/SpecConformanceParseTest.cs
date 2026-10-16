@@ -334,7 +334,7 @@ public class SpecConformanceParseTest
     [InlineData("struct Resource\n    #Marker\n    init()\n        ()")]
     public void RejectsDestructorAndConstructorFormsOutsideTheirGrammar(string source)
     {
-        // drop accepts no modifiers, and init only an access modifier (SPEC 16.3, 6.2.3).
+        // drop accepts no modifiers, and init only an access modifier (SPEC 16.3, 6.3).
         Assert.NotEmpty(TestDiagnostics.Of(Parse(source)));
     }
 

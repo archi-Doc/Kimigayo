@@ -363,11 +363,6 @@ public class PropertyBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess("contract C\n    property item: ref/i32 has get, set\ncontract D\n    property value: i32 has get\nopen struct Base<T>\n    public var value: T\nstruct S: Base<i32>\n    Self is D");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        for (var i = 0; i < 8; i++)
-        {
-            c.Binding.Bind(BindingMode.Final);
-        }
-
         var allocated = AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final));
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
         Assert.Equal(0, allocated);
@@ -411,11 +406,6 @@ public class PropertyBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var property = Property(c, "S0", "item");
         var mapping = Conformance(c, "S0", "C");
-        for (var i = 0; i < 8; i++)
-        {
-            c.Binding.Bind(BindingMode.Final);
-        }
-
         var allocated = AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final));
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
         Assert.Same(property, Property(c, "S0", "item"));

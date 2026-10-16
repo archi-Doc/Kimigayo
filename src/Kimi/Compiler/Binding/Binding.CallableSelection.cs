@@ -11,7 +11,7 @@ public sealed partial class Binding
     private readonly Dictionary<Koto, (int Start, int Count, int Position, AcquisitionMode Mode, AcquisitionMode Other)> callableSelectionFailures = new(ReferenceEqualityComparer.Instance);
     private readonly List<CallableCandidate> callableSelectionParties = [];
 
-    // SPEC 8.3, 8.4: a Type as a scope's premises make it, its associated projections normalized and its Type-identity premises substituted.
+    // SPEC 8.2, 8.4: a Type as a scope's premises make it, its associated projections normalized and its Type-identity premises substituted.
     internal BoundType CallableContractType(BoundType type, BindingScope scope)
         => this.SubstituteIdentityPremises(this.ContractType(type, scope), scope);
 
@@ -257,12 +257,6 @@ public sealed partial class Binding
         }
 
         var result = signature.Components[1];
-        if (PlaceExpected(signature.ResultMode, expected) is { } stored)
-        {
-            return this.FitsStructurallyAt(result.Components[0], this.ContractType(stored, scope), call)
-                ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
-        }
-
         return expected is not null && !this.FitsStructurallyAt(result, expected, call) && this.ExpectedAdaptation(call, result, expected, recordPair: false) is null
             ? CandidateApplicability.Inapplicable : CandidateApplicability.Applicable;
     }
@@ -312,13 +306,13 @@ public sealed partial class Binding
                 failure.Other,
                 evidence: [$"position {failure.Position + 1} of a Callable call", "overlapping Types"],
                 related: related,
-                note: "All available Callable signatures must agree on acquisition before arguments exclude any candidate (SPEC 8.6, 7.3.1)");
+                note: "All available Callable signatures must agree on acquisition before arguments exclude any candidate (SPEC 8.10, 7.4)");
         }
         else
         {
-            var note = code == DiagnosticCode.ReceiverShapeMismatch_Kd ? "Distinct Callable signatures require one receiver; each signature uses its weakest declared receiver (SPEC 8.6)"
+            var note = code == DiagnosticCode.ReceiverShapeMismatch_Kd ? "Distinct Callable signatures require one receiver; each signature uses its weakest declared receiver (SPEC 8.10)"
                 : code == DiagnosticCode.AmbiguousBinding_Kd ? "No Callable signature is better than every other applicable signature under the ordinary argument ranking rules (SPEC 10.4)"
-                : "No Callable signature applies; candidate checks use positional arguments and any fixed expected result (SPEC 8.6, 10.1)";
+                : "No Callable signature applies; candidate checks use positional arguments and any fixed expected result (SPEC 8.10, 10.1)";
             node.Report(requirement, code, evidence: code == DiagnosticCode.ReceiverShapeMismatch_Kd ? null : [failure.Count], related: related, note: note);
         }
 

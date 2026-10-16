@@ -157,11 +157,7 @@ public sealed class DuplicateDiagnosticTest(ITestOutputHelper output)
         public void WarmDuplicateChecksReuseTheirGroups()
         {
             var c = CompilationTestHelper.ParseSuccess("func f(x: i32) -> i32 => x\nfunc f(y: i32) -> i32 => y\nfunc f(z: i32) -> i32 => z");
-            for (var i = 0; i < 4; i++)
-            {
-                Assert.False(c.Bind().IsComplete);
-            }
-
+            Assert.False(c.Bind().IsComplete);
             Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
         }
     }

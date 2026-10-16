@@ -54,7 +54,7 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
         Assert.Equal((nameof(DiagnosticCode.NoApplicableOverload_Kd), "make()"), (error.Code, Text(source, error.Span)));
     }
 
-    // SPEC 10.5, 23.3.6.4: the closed parameter Types of S type the body, so its independent problem stays visible; an omitted parameter
+    // SPEC 10.5, 23.1.2: the closed parameter Types of S type the body, so its independent problem stays visible; an omitted parameter
     // whose Type S leaves open rests on the call.
     [Fact]
     public void ClosedPartsStillTypeTheBody()
@@ -109,7 +109,7 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
         Assert.Equal(2, error.Related!.Count(static x => x.Role == "candidate"));
     }
 
-    // SPEC 10.5, 23.3.6.4: the body of the selected candidate's argument keeps its own error without a fallback to another candidate, and
+    // SPEC 10.5, 23.1.2: the body of the selected candidate's argument keeps its own error without a fallback to another candidate, and
     // a failed selection leaves the omitted header Types derived.
     [Theory]
     [InlineData("func run<F>(action: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    return action(1)\nfunc run<T, F>(action: ref/F, extra: i32 = 0) -> i32\n    F is Callable<(T) -> T>\n    return 0\npublic func main() -> ()\n    let r = run(func (n) => n + missing)\n", nameof(DiagnosticCode.UnresolvedBinding_Kd), "missing")]
@@ -121,7 +121,7 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
         Assert.Equal((code, at), (error.Code, Text(source, error.Span)));
     }
 
-    // SPEC 23.3.6: the record and its related locations reach the CLI, the language server and JSON.
+    // SPEC 23.1: the record and its related locations reach the CLI, the language server and JSON.
     [Fact]
     public void EveryOutputCarriesTheSlotAndTheWaitingArgument()
     {

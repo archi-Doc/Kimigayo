@@ -18,8 +18,8 @@ public class ConcreteClosureTest
     {
         var c = MinimalEmissionTest.Analyze(declaration + "\nlet outer = func [n] () => func [n" + acquisition + "] () => " + result + "\nlet first = outer()\nlet second = outer()\nrequire first() == 7 and second() == 7 else => $abort(\"nested\")");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var outer = Assert.Single(c.Ownership.Bodies, x => x.Function.IsAnonymous && x.Function.ClosureOf()!.Captures[0].Source.Kind == BindingSymbolKind.Local);
-        Assert.Equal(receiver, outer.Function.ClosureOf()!.Receiver);
+        var outer = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous && x.ClosureOf()!.Captures[0].Source.Kind == BindingSymbolKind.Local);
+        Assert.Equal(receiver, outer.ClosureOf()!.Receiver);
         ScalarEmissionTest.WriteFixture("ConcreteClosureNested" + name, CompilationTestHelper.WriteIr(c), string.Empty);
     }
 
@@ -31,7 +31,7 @@ public class ConcreteClosureTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var closure = Assert.Single(c.Ownership.Bodies, x => x.Function.IsAnonymous).Function.ClosureOf()!;
+        var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous).ClosureOf()!;
         Assert.Equal(BoundTypeKind.Closure, closure.EnvironmentType!.Kind);
         Assert.Equal(receiver, closure.Receiver);
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
@@ -90,7 +90,7 @@ public class ConcreteClosureTest
         Assert.Empty(output.ToString());
     }
 
-    // SPEC 7.6.2: creating a closure acquires its entries even where its value is discarded, as a statement or a statement
+    // SPEC 7.7.2: creating a closure acquires its entries even where its value is discarded, as a statement or a statement
     // match arm, so a later use of a moved entry is MovedPlace_Kd at that use.
     [Theory]
     [InlineData("public func main() -> ()\n    let s = \"x\"\n    let n = 1\n    match n\n        0 => func [s@move] () => ()\n        _ => ()\n    Console.writeLine(s)\n")]

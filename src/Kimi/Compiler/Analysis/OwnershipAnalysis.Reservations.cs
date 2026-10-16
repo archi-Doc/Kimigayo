@@ -94,7 +94,7 @@ public sealed partial class OwnershipAnalysis
             this.body.Operations[value].Kind == OwnershipOperationKind.Borrow;
     }
 
-    // SPEC 9.5.1: a shared receiver selected through a base path is the whole receiver, borrowed at its own Type (`whole`), whose base
+    // SPEC 9.6.1: a shared receiver selected through a base path is the whole receiver, borrowed at its own Type (`whole`), whose base
     // prefix is then lent at the parameter Type (`type`). Binding rejects an exclusive or unproven projection first (OCC-X).
     private bool BaseBorrowTypes(Koto source, in BoundArgumentOperation argument, out BoundType type, out BoundType whole)
     {
@@ -127,8 +127,8 @@ public sealed partial class OwnershipAnalysis
             return reference < 0 ? -1 : this.BorrowThrough(call, reference, type, -1);
         }
 
-        // SPEC 4.6.9: a string element reached through a sequence or a reference is borrowed through the common element borrow.
-        var stringElement = ElementAccess.IsBorrowedSelection(BorrowedArgumentSource(source)) || ElementAccess.IsPlaceCall(BorrowedArgumentSource(source)) || ElementAccess.IsUserIndex(BorrowedArgumentSource(source));
+        // SPEC 4.7.1: a string element reached through a sequence or a reference is borrowed through the common element borrow.
+        var stringElement = ElementAccess.IsBorrowedSelection(BorrowedArgumentSource(source)) || ElementAccess.IsIndexerCall(BorrowedArgumentSource(source)) || ElementAccess.IsUserIndex(BorrowedArgumentSource(source));
         if (argument.Kind == ArgumentOperationKind.Borrow && ReferenceTypes.IsString(argument.ParameterType) && !stringElement && !this.SpecialField(BorrowedArgumentSource(source)))
         {
             // Preserve the call-wide inspection plan for implicit string arguments.
@@ -141,7 +141,7 @@ public sealed partial class OwnershipAnalysis
                 (argument.Kind == ArgumentOperationKind.Value && IsDirectExclusiveBorrow(source))))
         {
             // Binding's acquisition keeps the source dependency before parameter lifetime fitting. In particular,
-            // Reborrowing a reference stored in a published Place keeps the referent's Origin, not the slot's Origin.
+            // Reborrowing a reference stored in a subscript's element keeps the referent's Origin, not the slot's Origin.
             // The common borrowing path still records the actual Loan footprint and call reservation.
             var type = argument.AdaptedType ?? this.compilation.Binding.PreparedBorrowType(source, argument.ParameterType!);
             var direct = KotoHelper.UnwrapParentheses(source);

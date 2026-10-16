@@ -138,11 +138,7 @@ public class TypeArityBindingTest
     public void WarmArityBindingAllocatesNothing()
     {
         var c = Parse("alias A\nalias B\ngroup A\n    public struct Box\ngroup B\n    public struct Box<T>\nfunc f(x: Box, y: Box<i32>) => ()");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

@@ -48,7 +48,7 @@ public class MilestoneSourcesTest
                 continue;
             }
 
-            // The first diagnostic is the first published Error in result order (SPEC 23.3.6.6); its anchor is the underlined text.
+            // The first diagnostic is the first published Error in result order (SPEC 23.1); its anchor is the underlined text.
             var stage = "Binding";
             c.Binding.ReportDiagnostics();
             if (c.Binding.Result.IsComplete)

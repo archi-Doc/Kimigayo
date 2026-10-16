@@ -636,7 +636,7 @@ internal sealed partial class BodyLowering
 
         var signed = integer && ScalarTypes.Signed(operandType);
 
-        // SPEC 13.3: wrapping arithmetic is the plain instruction without nsw/nuw; checked arithmetic names its overflow intrinsic.
+        // SPEC 13.3.1: wrapping arithmetic is the plain instruction without nsw/nuw; checked arithmetic names its overflow intrinsic.
         var wrapping = operandType.IsWrappingInteger;
         var op = NumericArithmetic.Instruction(value.Operator, operandType) ?? value.Operator switch
         {

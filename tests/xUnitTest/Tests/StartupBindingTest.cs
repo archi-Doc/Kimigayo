@@ -178,7 +178,7 @@ public class StartupBindingTest
         Assert.Equal("()", call.ReturnType.Name);
         Assert.Equal(new[] { 0 }, call.ArgumentToParameter.ToArray());
         var function = Assert.IsType<FunctionKoto>(call.Target.Declaration);
-        var parameter = Assert.Single(function.Parameters).Type.TypeOf()!; // SPEC 22.4: writeLine(text: ref/string) borrows its argument.
+        var parameter = Assert.Single(function.Parameters).Type.TypeOf()!; // SPEC 22.1: writeLine(text: ref/string) borrows its argument.
         Assert.Equal((BoundTypeKind.Semantics, SemanticsKind.Ref), (parameter.Kind, parameter.Semantics));
         Assert.Equal("string", Assert.Single(parameter.Components).Name);
         Assert.Null(function.Body);
@@ -265,19 +265,13 @@ public class StartupBindingTest
         }
 
         var c = Parse(source.ToString());
-        for (var i = 0; i < 12; i++)
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        var allocated = AllocationMeasurement.Measure(() =>
         {
-            Assert.True(c.Bind().IsComplete, Describe(c));
-            Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        }
-
-        var allocated = AllocationMeasurement.Measure(
-            () =>
-            {
-                c.Bind();
-                c.Binding.CheckStartup(OutputKind.Application);
-            },
-            16);
+            c.Bind();
+            c.Binding.CheckStartup(OutputKind.Application);
+        });
         Assert.Equal(0, allocated);
     }
 

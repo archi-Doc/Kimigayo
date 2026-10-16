@@ -5,7 +5,7 @@ using Kimi.Checking;
 
 namespace Kimi.Lsp;
 
-/// <summary>Reads disk inputs as observations (SPEC 23.3.4): absence, content or the failure kind and message.</summary>
+/// <summary>Reads disk inputs as observations (SPEC 23.2.1): absence, content or the failure kind and message.</summary>
 internal static class DiskReader
 {
     /// <summary>Merges matching open documents into a retained disk listing, preserving canonical disk spellings.</summary>

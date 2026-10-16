@@ -93,11 +93,7 @@ public class PendingRefinementDeclarationBindingTest
     public void WarmAncestorPropagationAllocatesNothing()
     {
         var c = Parse("public contract Origin\npublic struct Source\npublic contract Marker\n    Source is Origin\npublic contract Child: Marker");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
-        }
-
+        Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (c.Binding.Bind(BindingMode.Provisional).InvalidCount != 0)

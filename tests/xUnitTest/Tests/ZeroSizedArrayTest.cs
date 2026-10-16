@@ -4,7 +4,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 4.5, 4.7: an Array of a zero-sized element keeps its length and element operations without allocating
+/// <summary>SPEC 4.5, 4.9: an Array of a zero-sized element keeps its length and element operations without allocating
 /// (stride zero; the buffer is a fixed nonnull substitute) and still runs each element's destruction exactly once.</summary>
 public class ZeroSizedArrayTest
 {

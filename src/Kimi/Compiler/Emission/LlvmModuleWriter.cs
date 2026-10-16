@@ -11,7 +11,7 @@ namespace Kimi.Compiler;
 /// </summary>
 internal static partial class LlvmModuleWriter
 {
-    // Every generated definition carries the same profile attributes (SPEC 21.5.1).
+    // Every generated definition carries the same profile attributes (SPEC 21.3.1).
     private const string Footer =
         "attributes #0 = { uwtable(" + WindowsProfile.UnwindTables + ") \"target-cpu\"=\"" + WindowsProfile.Cpu + "\" \"target-features\"=\"" + WindowsProfile.Features +
         "\" \"denormal-fp-math\"=\"ieee,ieee\" }\n!llvm.module.flags = !{!0}\n!0 = !{i32 8, !\"PIC Level\", i32 2}\n";
@@ -47,7 +47,7 @@ internal static partial class LlvmModuleWriter
         declare { i64, i1 } @llvm.umul.with.overflow.i64(i64, i64)
         """ + "\n";
 
-    // Target information, shared Types, and exactly one strong _fltused definition (SPEC 21.5.7).
+    // Target information, shared Types, and exactly one strong _fltused definition (SPEC 21.4.7).
     private static readonly string Header =
         "; Kimigayo checked pre-optimization IR (" + WindowsProfile.Name + ")\ntarget triple = \"" + WindowsProfile.Target + "\"\ntarget datalayout = \"" + WindowsProfile.DataLayout + "\"\n" +
         WindowsLowering.String.Layout.StorageType + " = type { ptr, i64, i8 }\n@" + WindowsProfile.FloatMarker + " = global i32 0, align 4\n";
@@ -210,8 +210,8 @@ internal static partial class LlvmModuleWriter
             .Replace("{{reason_size}}", Reason(WindowsLowering.AllocationSizeReason), StringComparison.Ordinal);
     }
 
-    // SPEC 22.3: one declaration per foreign symbol. A kernel32 import that the written runtime already
-    // declares shares that declaration; Binding proved their physical Types equal (SPEC 21.5.2).
+    // SPEC 22.6: one declaration per foreign symbol. A kernel32 import that the written runtime already
+    // declares shares that declaration; Binding proved their physical Types equal (SPEC 21.2).
     private static void WriteExternals(EmissionModule module, TextWriter output)
     {
         foreach (var external in module.Externals)
@@ -306,7 +306,7 @@ internal static partial class LlvmModuleWriter
             }
         }
 
-        // Fixed-size allocas precede calls in the entry block (SPEC 21.5.5).
+        // Fixed-size allocas precede calls in the entry block (SPEC 21.2).
         foreach (var slot in function.Slots)
         {
             output.Write("  %p");

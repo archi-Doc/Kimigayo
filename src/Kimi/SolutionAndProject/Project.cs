@@ -200,21 +200,30 @@ public partial class Project
     public Task<bool> Check(CancellationToken cancellationToken)
         => this.BuildCore(false, cancellationToken);
 
-    /// <summary>Generates LLVM inputs, verifies them and links a native Application.</summary>
-    /// <param name="cancellationToken">Cancels generation and native tool processes.</param>
-    /// <returns>Whether a new native executable was built successfully.</returns>
+    /// <summary>Checks product sources and records a Library build or links an Application.</summary>
+    /// <param name="cancellationToken">Cancels checking, generation and native tool processes.</param>
+    /// <returns>Whether this OutputKind's checks and artifacts succeeded.</returns>
     public async Task<bool> Build(CancellationToken cancellationToken = default)
     {
         try
         {
             var paths = ArtifactPaths.Create(this);
             NativeToolchain.Invalidate(paths);
-            if (!await this.BuildCore(true, cancellationToken, paths).ConfigureAwait(false))
+            var application = this.ProjectFile.OutputKind == OutputKind.Application;
+            if (!await this.BuildCore(application, cancellationToken, paths).ConfigureAwait(false))
             {
                 return false;
             }
 
-            await NativeToolchain.Build(this, paths, (severity, message) => this.kimigayo.WriteLine(severity, message), cancellationToken).ConfigureAwait(false);
+            if (application)
+            {
+                await NativeToolchain.Build(this, paths, (severity, message) => this.kimigayo.WriteLine(severity, message), cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                NativeToolchain.RecordLibrary(this, paths, cancellationToken);
+            }
+
             return true;
         }
         catch (Exception ex) when (NativeToolchain.IsToolchainFailure(ex))
@@ -236,7 +245,7 @@ public partial class Project
     public Task<bool> Generate(CancellationToken cancellationToken = default)
         => this.BuildCore(true, cancellationToken);
 
-    /// <summary>Checks one unit through the shared check entry (SPEC 23.3.2), with inputs and failures carried by a context.</summary>
+    /// <summary>Checks one unit through the shared check entry (SPEC 23.2.2), with inputs and failures carried by a context.</summary>
     /// <param name="context">The check context; its caller finalizes the diagnostics.</param>
     /// <param name="cancellationToken">Cancels between compilation targets.</param>
     /// <returns>Whether every selected target passes front-end checks.</returns>
@@ -264,6 +273,7 @@ public partial class Project
 
     // Retain the Task exception/cancellation contract at the public boundary. Each target
     // is synchronous; do not build another async state machine around every compilation.
+    // paths requests build artifacts, including a Library's record even when emit is false.
     private async Task<bool> BuildCore(bool emit, CancellationToken cancellationToken = default, ArtifactPaths? paths = null)
         => this.BuildTargetsAndPublish(emit, cancellationToken, paths, null);
 
@@ -347,9 +357,9 @@ public partial class Project
             targets = [this.KimiOptions.Target];
         }
 
-        if (emit && (targets.Length != 1 || targets[0] != WindowsProfile.Target))
+        if ((emit || paths is not null) && (targets.Length != 1 || targets[0] != WindowsProfile.Target))
         {
-            this.Fail(diagnostics, "Emission currently requires exactly one configured Windows x64 target.");
+            this.Fail(diagnostics, "Artifact production currently requires exactly one configured Windows x64 target.");
             return false;
         }
 
@@ -401,7 +411,7 @@ public partial class Project
         };
         if (this.FilePath is { } file)
         {
-            compilation.Diagnostics.RegisterPath(file); // SPEC 23.3.6.3: the project file is consumed before every source.
+            compilation.Diagnostics.RegisterPath(file); // SPEC 23.1.2: the project file is consumed before every source.
         }
 
         var accepted = false;
@@ -414,12 +424,12 @@ public partial class Project
         }
         catch (Exception ex) when (context is null && this.kimigayo.RendersDiagnostics && ex is not OperationCanceledException)
         {
-            // SPEC 23.3.3: a command renders the Faulted result the check entry publishes; the command then fails.
+            // SPEC 23.2.2: a command renders the Faulted result the check entry publishes; the command then fails.
             fault = ex;
         }
         finally
         {
-            // The one finalization point of the front-end result (SPEC 23.3.6.8).
+            // The one finalization point of the front-end result (SPEC 23.3).
             this.Publish(compilation.Diagnostics, DiagnosticPartition.Input, DiagnosticPartition.Ownership, context, completed && !accepted, fault);
         }
 
@@ -438,7 +448,7 @@ public partial class Project
         var projectKotonoha = compilation.Kotonoha;
         var inputs = context?.Inputs ?? CheckInputSource.Disk;
 
-        // SPEC 23.3.2: every file input is read before parsing, and the reads are consumed in
+        // SPEC 23.2.2: every file input is read before parsing, and the reads are consumed in
         // command order, so a failure is reported exactly where the command reported it.
         var reads = graph is null ? this.ReadSources(inputs, testSources) : null;
         var testReads = compilation.IsTestBuild && testSources is not null ? ReadTestSources(inputs, testSources) : null;
@@ -486,7 +496,7 @@ public partial class Project
 
         if (context is not null)
         {
-            context.Compilation = compilation; // SPEC 23.3.2, step 3: every input is established; the front end runs from here on.
+            context.Compilation = compilation; // SPEC 23.2.2, step 3: every input is established; the front end runs from here on.
         }
 
         var binding = compilation.Bind();
@@ -496,7 +506,7 @@ public partial class Project
         var analysis = compilation.Analyze();
         compilation.ReportAnalysis();
 
-        // SPEC 23.3.3: acceptance reads the error state of every front-end partition, never the displayed list.
+        // SPEC 23.2.2: acceptance reads the error state of every front-end partition, never the displayed list.
         var accepted = binding.IsComplete && startup.IsComplete && analysis.IsVerified && !compilation.Diagnostics.HasErrorsThrough(DiagnosticPartition.Ownership);
         if (accepted && prepared is not null)
         {
@@ -535,7 +545,7 @@ public partial class Project
     {
         if (!EmissionArtifacts.Publish(compilation, paths, out var pathIr, out var failure))
         {
-            // SPEC 21.3.5: an exceeded mandatory generation limit is a resource diagnostic, not a semantic error.
+            // SPEC 21.3.2: an exceeded mandatory generation limit is a resource diagnostic, not a semantic error.
             compilation.Emission.ReportFailure(failure);
             this.Publish(compilation.Diagnostics, DiagnosticPartition.Emission, DiagnosticPartition.Emission, context);
             return false;
@@ -572,7 +582,7 @@ public partial class Project
     private void Fail(DiagnosticOwner diagnostics, string message)
         => diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, this.FilePath, note: message);
 
-    // SPEC 23.3.3: input preparation that ends without an Error reports its fallback, in the command and the check entry alike.
+    // SPEC 23.2.2: input preparation that ends without an Error reports its fallback, in the command and the check entry alike.
     private bool PreparationFailed(DiagnosticOwner diagnostics)
     {
         if (!diagnostics.HasErrorsThrough(DiagnosticPartition.Input))
@@ -583,7 +593,7 @@ public partial class Project
         return false;
     }
 
-    // SPEC 23.3.6.8: a command renders each result once it is finalized; a check request's caller finalizes its own.
+    // SPEC 23.3: a command renders each result once it is finalized; a check request's caller finalizes its own.
     private void Publish(DiagnosticOwner diagnostics, DiagnosticPartition first, DiagnosticPartition last, CheckContext? context, bool rejected = false, Exception? fault = null)
     {
         if (context is null && this.kimigayo.RendersDiagnostics)
@@ -591,14 +601,14 @@ public partial class Project
             DiagnosticResult result;
             try
             {
-                // SPEC 23.3.3: an exception keeps the valid records and adds the fault; a violated contract discards them.
+                // SPEC 23.2.2: an exception keeps the valid records and adds the fault; a violated contract discards them.
                 result = fault is DiagnosticContractException contract ? DiagnosticFaults.Create(contract.Fault, contract.Message, this.FilePath) :
                     fault is not null ? DiagnosticFaults.Create(DiagnosticFault.Exception, fault.Message, this.FilePath, diagnostics.Finalize(first, last)) :
                     diagnostics.Finalize(first, last, rejected);
             }
             catch (DiagnosticContractException ex)
             {
-                // SPEC 23.3.3: a violated contract discards every partial record and reports the fault.
+                // SPEC 23.2.2: a violated contract discards every partial record and reports the fault.
                 result = DiagnosticFaults.Create(ex.Fault, ex.Message, this.FilePath);
             }
 

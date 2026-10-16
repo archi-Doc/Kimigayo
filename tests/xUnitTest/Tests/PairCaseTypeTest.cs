@@ -7,8 +7,8 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 8.10 Semantics cases: the outer Origin <c>o</c> of a pair binder (SPEC 8.1.1), the complete Type every pair
-/// layer takes in one admitted case, the bare-acquisition plan per case (SPEC 8.9) and the binders in scope of a body.</summary>
+/// <summary>SPEC 8.15 Semantics cases: the outer Origin <c>o</c> of a pair binder (SPEC 8.1.1), the complete Type every pair
+/// layer takes in one admitted case, the bare-acquisition plan per case (SPEC 8.14) and the binders in scope of a body.</summary>
 public class PairCaseTypeTest
 {
     private const string Box = "struct Box<E>\n    public var item: E\n    public init(item: E) => self.item = item@move\n";

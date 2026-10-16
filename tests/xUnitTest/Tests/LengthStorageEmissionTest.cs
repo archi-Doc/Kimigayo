@@ -20,11 +20,7 @@ public class LengthStorageEmissionTest
     public void WarmArrayCallBindingAllocatesNothing(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
     }
 
@@ -146,14 +142,10 @@ public class LengthStorageEmissionTest
         // Measure the new length-call path independently of existing require-expression
         // analysis and shared-module construction (which allocate their own plans).
         c = MinimalEmissionTest.Analyze(Keep + "let a = keep<2, i32>([4, 9])");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.Validate(out _));
-        }
-
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.Validate(out _));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

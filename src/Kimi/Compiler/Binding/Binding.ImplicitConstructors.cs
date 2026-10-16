@@ -4,7 +4,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-/// <summary>The outcome of an omitted base clause's selection (SPEC 6.2.3.6).</summary>
+/// <summary>The outcome of an omitted base clause's selection (SPEC 6.3.6).</summary>
 internal enum OmittedBaseOutcome : byte
 {
     /// <summary>A base constructor is selected.</summary>
@@ -19,7 +19,7 @@ internal enum OmittedBaseOutcome : byte
     /// <summary>More than one base constructor remains best.</summary>
     Ambiguous,
 
-    /// <summary>An Unknown premise of a candidate can affect the selection (SPEC 8.4.8.2).</summary>
+    /// <summary>An Unknown premise of a candidate can affect the selection (SPEC 8.3.3).</summary>
     Unproven,
 
     /// <summary>The selection rests on another failure, such as an invalid declaration.</summary>
@@ -48,7 +48,7 @@ public sealed partial class Binding
     /// <summary>Gets the omitted base queries of the latest declaration pass when <see cref="CaptureOmittedBaseQueries"/> is set.</summary>
     internal IReadOnlyDictionary<FunctionKoto, OmittedBaseSelection>? OmittedBaseQueries => this.omittedBaseQueries;
 
-    // SPEC 6.2.3.6: the omitted base clause's ordinary selection over the direct base's constructors with no arguments, made from the
+    // SPEC 6.3.6: the omitted base clause's ordinary selection over the direct base's constructors with no arguments, made from the
     // derived constructor's scope with the evaluation and classification of a call (Binding.CallSelection), without publishing. The
     // obligations and per-call state that evaluation touches are restored; its fits bound no omitted Origin (EvaluateCallCandidates).
     // The constructor's base initializer is the retained zero-argument call of its omitted base clause.
@@ -143,7 +143,7 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 6.2.3.6: decides each pending synthesized constructor of a derived structure once the declarations are bound, base first.
+    // SPEC 6.3.6: decides each pending synthesized constructor of a derived structure once the declarations are bound, base first.
     // A selected base constructor makes it a member of the structure's `init` group; any other outcome withdraws it from the pass.
     private void CompleteImplicitConstructors()
     {
@@ -262,7 +262,7 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 6.2.3.6: the declaration-time decisions must hold after bodies. The selection is judged again, and an existing synthesized
+    // SPEC 6.3.6: the declaration-time decisions must hold after bodies. The selection is judged again, and an existing synthesized
     // constructor's bound base call selected the same constructor; a disagreement fails closed at the base clause.
     private void RevalidateImplicitConstructors()
     {

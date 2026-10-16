@@ -11,7 +11,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 23.3.6: independent expectations for aggregation, prerequisite graphs and finalization boundaries.
+// SPEC 23.1: independent expectations for aggregation, prerequisite graphs and finalization boundaries.
 public sealed class DiagnosticContractTest(ITestOutputHelper output)
 {
     [Theory]
@@ -42,7 +42,7 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
         Assert.Equal(new SourceSpan(2, 1), result.Diagnostics[^1].Span);
     }
 
-    // SPEC 23.3.6.5: a mismatch keeps its differing parts; a Type lying wholly inside the other, as T in ref/T, is bounded on
+    // SPEC 23.1: a mismatch keeps its differing parts; a Type lying wholly inside the other, as T in ref/T, is bounded on
     // its own rather than shown as a bare elision mark.
     [Fact]
     public void AMismatchedTypeInsideTheOtherStaysReadable()
@@ -56,7 +56,7 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
         Assert.True(first.Text.Length <= DiagnosticLimits.ValueLength && second.Text.Length <= DiagnosticLimits.ValueLength);
     }
 
-    // SPEC 23.3.6.5: bounding and pair elision never split a surrogate pair, so displayed values stay valid UTF-16.
+    // SPEC 23.1: bounding and pair elision never split a surrogate pair, so displayed values stay valid UTF-16.
     [Theory]
     [InlineData(63)]
     [InlineData(64)]
@@ -297,7 +297,7 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
         }
     }
 
-    // SPEC 23.3.6.9: a candidate is finalized with its title, bounded facts, located edits and judged conditions; candidates are
+    // SPEC 23.1.3: a candidate is finalized with its title, bounded facts, located edits and judged conditions; candidates are
     // ordered by kind and then by their first edit, and two insertions at one point are one edit.
     [Fact]
     public void RepairCandidatesAreFinalizedInCatalogOrder()
@@ -330,7 +330,7 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
         Assert.Null(record.Omissions);
     }
 
-    // SPEC 23.3.6.5, 23.3.6.9: a candidate beyond the count limit, or with too many edits or too much text, is omitted whole and counted.
+    // SPEC 23.1, 23.1.3: a candidate beyond the count limit, or with too many edits or too much text, is omitted whole and counted.
     [Fact]
     public void RepairCandidatesBeyondTheLimitsAreOmittedWhole()
     {
@@ -355,7 +355,7 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
         Assert.Equal([new DiagnosticOmission("repair candidates", 3)], record.Omissions!);
     }
 
-    // SPEC 23.3.6.7: a malformed candidate is a compiler defect, never a property of the checked source.
+    // SPEC 23.1: a malformed candidate is a compiler defect, never a property of the checked source.
     [Theory]
     [InlineData("no edits", DiagnosticFault.InvalidArgument)]
     [InlineData("overlap", DiagnosticFault.InvalidLocation)]
@@ -400,7 +400,7 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
         Assert.Equal(fault, exception.Fault);
     }
 
-    // SPEC 23.3.6.8: a command renders each candidate after the Note with its title, one line per edit and its conditions.
+    // SPEC 23.3: a command renders each candidate after the Note with its title, one line per edit and its conditions.
     [Fact]
     public void TheCommandRendersRepairCandidates()
     {

@@ -120,7 +120,7 @@ public sealed partial class OwnershipAnalysis
         return obligation is not { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null };
     }
 
-    // SPEC 3.4: each branch below is one Place route (raw, stored reference, published Place, Reborrow, object payload, sequence
+    // SPEC 3.4: each branch below is one Place route (raw, stored reference, subscript element, Reborrow, object payload, sequence
     // element, borrowed path, owned static path), chosen from the selection's form; designator outcomes are alternatives, never
     // fallback stages. Only the final Value route evaluates its source, and a Place selection that no route reached fails closed
     // there (PLAN G59 U1). An address-producing use (`@raw`, an address adaptation) observes the borrowed address itself.
@@ -143,38 +143,38 @@ public sealed partial class OwnershipAnalysis
         if (this.Substituting && this.compilation.Binding.ImplicitPairAdmitted(unwrapped) != SemanticsMask.None &&
             this.ReferenceLayers(unwrapped.BoundType, type.Components[0]) > 1)
         {
-            // SPEC 3.4.1, 10.2, 13.5.5.1: several existing layers yield one reference in the receiver's mode (exclusive only
+            // SPEC 3.4.3, 10.2, 13.5.5: several existing layers yield one reference in the receiver's mode (exclusive only
             // through exclusive layers, which Binding checked), which the receiver borrows through.
             var reference = this.ReadReference(unwrapped, type);
             return reference < 0 ? -1 : this.BorrowThrough(unwrapped, reference, type, reservation);
         }
 
-        if ((ElementAccess.IsUserIndex(unwrapped) || ElementAccess.IsPlaceCall(unwrapped)) && ReferenceTypes.IsBorrow(unwrapped.BoundType) &&
-            ReferenceEquals(unwrapped.BoundType!.Components[0], type.Components[0]))
+        if ((ElementAccess.IsUserIndex(unwrapped) || ElementAccess.IsIndexerCall(unwrapped)) && ElementAccess.DesignatedType(unwrapped) is { } designated && ReferenceTypes.IsBorrow(designated) &&
+            ReferenceEquals(designated.Components[0], type.Components[0]))
         {
             return this.BorrowStoredReference(unwrapped, unwrapped, type, reservation);
         }
 
         if (unwrapped is IndexKoto userIndex && this.compilation.Binding.IndexerCall(userIndex, type.Semantics == SemanticsKind.Uniq) is { } indexer)
         {
-            return this.BorrowStruct(indexer, type, reservation); // SPEC 4.6.9: a borrow of receiver[key] selects index or indexUniq.
+            return this.BorrowStruct(indexer, type, reservation); // SPEC 4.7.1: a borrow of receiver[key] selects index or indexUniq.
         }
 
-        if (unwrapped is InvocationKoto placeCall && ElementAccess.IsPlaceCall(placeCall))
+        if (unwrapped is InvocationKoto selectedCall && ElementAccess.IsIndexerCall(selectedCall))
         {
-            // SPEC 7.1.1: a borrow of a published Place is a Reborrow through the reference the call returns; the call is
-            // evaluated as that reference below, and the borrowed address is its value.
-            this.referenceCalls.Add(placeCall);
+            // SPEC 4.7.1: a borrow of a subscript's element is a Reborrow through the reference its selected call returns; the
+            // call is evaluated as that reference below, and the borrowed address is its value.
+            this.referenceCalls.Add(selectedCall);
         }
 
         if (unwrapped is ConversionKoto storedFollow && this.ReadsStoredReference(storedFollow))
         {
-            return this.BorrowStoredReference(storedFollow, type, reservation); // SPEC 13.5.5.1: a Reborrow through the stored reference.
+            return this.BorrowStoredReference(storedFollow, type, reservation); // SPEC 13.5.5: a Reborrow through the stored reference.
         }
 
         if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } selected)
         {
-            // SPEC 13.5.5.2: a Reborrow or payload borrow lends the referent's capability through the parent
+            // SPEC 13.5.6: a Reborrow or payload borrow lends the referent's capability through the parent
             // reference or handle, which is read but never moved; the borrowed address is the parent's value.
             return this.BorrowStruct(selected.Left, type, reservation);
         }
@@ -190,7 +190,7 @@ public sealed partial class OwnershipAnalysis
         if (unwrapped is IndexKoto element && element.Right is not RangeKoto && type.Semantics == SemanticsKind.Uniq &&
             (element.Left.BoundType?.Kind == BoundTypeKind.Array || ElementAccess.IsExclusiveArrayElement(element)))
         {
-            // SPEC 4.6.9, 4.5: an exclusive element borrow uses the array's existing exclusive capability (an owned
+            // SPEC 4.7.1, 4.5: an exclusive element borrow uses the array's existing exclusive capability (an owned
             // Array is borrowed like an exclusive receiver; a fixed/dynamic array reference is read) and selects the element
             // through that reference, as exclusive enumeration does; the element keeps the reference's dependency.
             var depth = this.comparisonDepth++;
@@ -210,7 +210,7 @@ public sealed partial class OwnershipAnalysis
             (slice.Left.BoundType?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array || ReferenceTypes.IsDynamicArray(slice.Left.BoundType) || ReferenceTypes.IsArray(slice.Left.BoundType)))
         {
             // A shared Reborrow of a stored exclusive reference or an objref view of a stored handle loads the stored
-            // pointer (SPEC 10.2, 4.6.9); any other shared borrow takes the element slot's address.
+            // pointer (SPEC 10.2, 4.7.1); any other shared borrow takes the element slot's address.
             var reborrow = slice.BoundType is { } stored && SharedReadTypes.ReadsStoredPointer(stored, type);
             var depth = this.comparisonDepth++;
             var handle = this.SequenceReceiver(slice.Left, out var projection, type.Origin);
@@ -225,7 +225,7 @@ public sealed partial class OwnershipAnalysis
             (ElementAccess.AccessType(index.Left) is { Semantics: SemanticsKind.Ref } array && ReferenceTypes.IsArray(array))) &&
             (type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef || (type.Semantics == SemanticsKind.Uniq && index.Left.BoundType?.Kind == BoundTypeKind.FixedArray)))
         {
-            // SPEC 4.6.9: the fixed array is a declared reference or an element Place borrowed as the receiver, in the use's mode for
+            // SPEC 4.7.1: the fixed array is a declared reference or an element Place borrowed as the receiver, in the use's mode for
             // a runtime index into an owned fixed array (PLAN G59). A stored exclusive reference or handle is read as its shared view;
             // any other element is borrowed at its address.
             if (index.BoundType is { } stored && SharedReadTypes.ReadsStoredPointer(stored, type))
@@ -280,12 +280,12 @@ public sealed partial class OwnershipAnalysis
             ReferenceTypes.IsBorrow(storedPart.BoundType) && ReferenceEquals(storedPart.BoundType!.Components[0], type.Components[0]) &&
             ElementAccess.OwnedPathRoot(storedPart) is not null)
         {
-            // SPEC 10.2, 13.5.5.1: the same Reborrow of a pointer stored in an inline part of an owned root.
+            // SPEC 10.2, 13.5.5: the same Reborrow of a pointer stored in an inline part of an owned root.
             return this.BorrowStoredReference(storedPart, storedPart, type, reservation);
         }
 
         // A field holding a reference is borrowed here only as its slot (`p.0@ref` of `p: ref/(ref/i32, i32)`), never through
-        // a copy of the stored reference, whose temporary would not outlive the call (SPEC 3.3.6, 15.6.2).
+        // a copy of the stored reference, whose temporary would not outlive the call (SPEC 3.3.2, 15.6.2).
         if (unwrapped is MemberAccessKoto field && !Binding.IsGetterResult(field) && !this.SpecialField(field) &&
             (!ReferenceTypes.IsStorage(field.BoundType) || ReferenceEquals(type.Components[0], field.BoundType)) &&
             ElementAccess.BorrowedPathRoot(field) is { } root)
@@ -318,14 +318,14 @@ public sealed partial class OwnershipAnalysis
         if (unwrapped is BinaryKoto part && ElementAccess.ElementPathBase(part) is { } elementBase && type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq &&
             ReferenceEquals(type.Components[0], part.BoundType))
         {
-            // SPEC 3.4.1, 4.6.9 (PLAN G59): a stored part below an Array element is borrowed in place. The element is borrowed in the
+            // SPEC 3.4.3, 4.7.1 (PLAN G59): a stored part below an Array element is borrowed in place. The element is borrowed in the
             // use's mode through its own route, keeping the Array's Loan, and the part through that borrow, as `(xs[i]@m).part@m` is.
             var receiver = this.BorrowStruct(elementBase, this.compilation.Binding.ElementPlaceReference(type.Semantics, elementBase));
             return receiver < 0 ? -1 : this.BorrowFieldAddress(part, receiver, type, reservation);
         }
 
         // The Value route: a value expression, including a getter's result or a range selection's Slice, is evaluated once and its
-        // temporary borrowed (SPEC 10.2, 4.6.6). A stored Field, Tuple or element selection that reaches here has no Place route:
+        // temporary borrowed (SPEC 10.2, 4.8.2). A stored Field, Tuple or element selection that reaches here has no Place route:
         // borrowing a temporary read of it would update, expose or lend a copy (SPEC 3.4, 5.4), so it fails closed before any state
         // is emitted and names the route it lacks (PLAN G59). Only a Reborrow through a read stored reference or handle, which
         // addresses its referent rather than the selection's slot, reads its selection.
@@ -348,13 +348,13 @@ public sealed partial class OwnershipAnalysis
 
         if (direct && ReferenceTypes.IsBorrow(this.body.Places[place].Type))
         {
-            // SPEC 8.9: an instance's generic Place storing a reference is Reborrowed through the stored pointer it reads.
+            // SPEC 8.14: an instance's generic Place storing a reference is Reborrowed through the stored pointer it reads.
             this.Emit(OwnershipOperationKind.Read, source, place);
         }
 
         var result = this.Place(source, type, OwnershipPlaceKind.Temporary, false);
         var operation = this.Emit(OwnershipOperationKind.Borrow, source, place, result, loanMode: type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref, reservation: reservation);
-        // A scalar temporary is materialized at the borrow from its one prepared value (SPEC 3.6.2, 10.2), and so is the result
+        // A scalar temporary is materialized at the borrow from its one prepared value (SPEC 3.6, 10.2), and so is the result
         // of a selection, `do` or short-circuit join, such as the slot a pending call prepared from one (SPEC 7.2.3).
         var actual = this.body.Places[place];
         var materialized = ScalarTypes.Supports(actual.Type) && actual.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result;
@@ -369,13 +369,13 @@ public sealed partial class OwnershipAnalysis
             !Binding.IsGetterResult(selection) && this.compilation.Binding.PropertyCall(selection, PropertyAccessorKind.Get) is null &&
             !this.SpecialField(selection) ? selection : null;
 
-    // SPEC 10.2, 13.5.5.1: a borrow whose referent is not the selection's own stored Type Reborrows the reference or handle the
+    // SPEC 10.2, 13.5.5: a borrow whose referent is not the selection's own stored Type Reborrows the reference or handle the
     // selection stores.
     private bool ReborrowsStoredReference(BinaryKoto selection, BoundType type)
         => this.Resolve(selection.BoundType, this.Active) is { } part && type.Components.Count == 1 &&
             !ReferenceTypes.StorageMatches(part, this.Resolve(type.Components[0], this.Active));
 
-    // SPEC 23.3.6.4 (PLAN G59 U1): a rejected selection still reads its root and runtime keys in evaluation order, so their own
+    // SPEC 23.1.2 (PLAN G59 U1): a rejected selection still reads its root and runtime keys in evaluation order, so their own
     // diagnostics remain; no element is located, protected or acquired, and no value is consumed as an acquisition.
     private void ReadSelectionInputs(BinaryKoto level)
     {
@@ -402,7 +402,7 @@ public sealed partial class OwnershipAnalysis
         return this.RegisterTemporary(projected);
     }
 
-    // SPEC 3.4.1: a receiver with a recorded adaptation is evaluated to its one reference; any other receiver is read.
+    // SPEC 3.4.3: a receiver with a recorded adaptation is evaluated to its one reference; any other receiver is read.
     private int Receiver(Koto root, bool exclusive = false, int reservation = -1)
     {
         if (this.Resolve(root.BoundType, this.Active) is { } handle && handle.HandleMode is not null)
@@ -415,7 +415,7 @@ public sealed partial class OwnershipAnalysis
             return this.BorrowStruct(root, ElementAccess.AccessType(root, exclusive)!);
         }
 
-        // SPEC 13.5.5.1, 15.6.2: for a shared access the reference of an explicitly selected referent (`p@follow.x`) lends its
+        // SPEC 13.5.5, 15.6.2: for a shared access the reference of an explicitly selected referent (`p@follow.x`) lends its
         // referent as the adapted receiver of `p.x` does; an exclusive access uses the reference itself, so a write is judged
         // by its own path and disjoint parts stay separate.
         if (!exclusive && ElementAccess.IsFollowedRoot(root) && this.Resolve(root.BoundType, this.Active) is { Components.Count: 1 } reference)
@@ -503,7 +503,7 @@ public sealed partial class OwnershipAnalysis
         return operation == KotoKind.Equals ? this.Temporary(source) : this.UpdateResult(source, previous, input);
     }
 
-    // A generic integer or generic wrapping integer in a definition body (SPEC 8.4.7.3): numeric in every instance. Universal
+    // A generic integer or generic wrapping integer in a definition body (SPEC 8.7.4): numeric in every instance. Universal
     // verification accepts it, and each instance plan sees the concrete Scalar.
     private bool GenericInteger(Koto source)
         => this.instance is null && source.BoundType is { } type &&

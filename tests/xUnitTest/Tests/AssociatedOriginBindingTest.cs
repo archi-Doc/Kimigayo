@@ -88,11 +88,7 @@ public class AssociatedOriginBindingTest
         Assert.NotNull(tree);
         tree.OnDeserialized(restored);
         Assert.True(restored.Bind().IsComplete, MinimalEmissionTest.Describe(restored, null));
-        for (var i = 0; i < 8; i++)
-        {
-            Assert.True(restored.Bind().IsComplete);
-        }
-
+        Assert.True(restored.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => restored.Bind()));
     }
 
@@ -122,7 +118,7 @@ public class AssociatedOriginBindingTest
         ScalarEmissionTest.EmitFixture("AssociatedOriginGeneric", source, "generic family\n");
     }
 
-    // SPEC 8.4.3: a universal family capability holds at every application, so a Copy of T.Item(b) is proven from it.
+    // SPEC 8.5: a universal family capability holds at every application, so a Copy of T.Item(b) is proven from it.
     [Fact]
     public void UniversalFamilyCapabilityHoldsAtEveryApplication()
     {

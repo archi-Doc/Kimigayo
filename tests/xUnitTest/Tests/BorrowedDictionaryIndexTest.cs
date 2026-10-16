@@ -11,7 +11,7 @@ namespace XunitTest;
 
 public class BorrowedDictionaryIndexTest(ITestOutputHelper testOutput)
 {
-    // SPEC 4.6.9, 10.2: K may itself be ref/i32, so the search argument is ref/(ref/i32).
+    // SPEC 4.7.1, 10.2: K may itself be ref/i32, so the search argument is ref/(ref/i32).
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -23,7 +23,7 @@ public class BorrowedDictionaryIndexTest(ITestOutputHelper testOutput)
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.False(c.Binding.Result.IsComplete);
         c.Binding.ReportDiagnostics();
-        c.Ownership.ControlFlow!.ReportDiagnostics();
+        c.ReportAnalysis();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var errors = result.Diagnostics.Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
@@ -158,11 +158,7 @@ public class BorrowedDictionaryIndexTest(ITestOutputHelper testOutput)
             Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
-        for (var i = 0; i < 32; i++)
-        {
-            Compile();
-        }
-
+        Compile();
         Assert.Equal(0, AllocationMeasurement.Measure(Compile));
     }
 }

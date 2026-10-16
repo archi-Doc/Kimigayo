@@ -14,7 +14,7 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
 {
     private const string BrokenCall = "::Kimi.Console.writeLine(\"Hello, world!)";
 
-    // SPEC 23.3.6.2–4: the lexical cause owns the explanation, including recovery of its argument and enclosing delimiters.
+    // SPEC 23.3–4: the lexical cause owns the explanation, including recovery of its argument and enclosing delimiters.
     [Theory]
     [InlineData("")]
     [InlineData("\n")]

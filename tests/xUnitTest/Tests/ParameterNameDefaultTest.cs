@@ -161,11 +161,7 @@ public class ParameterNameDefaultTest
         Assert.Null(function.Parameters[0].DefaultValue);
         Assert.Equal(1, function.NameBoundaryIndex);
         Assert.NotNull(function.Parameters[1].DefaultValue);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
     }
 
@@ -203,11 +199,7 @@ public class ParameterNameDefaultTest
             Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         }
 
-        for (var i = 0; i < 100; i++)
-        {
-            Verify();
-        }
-
+        Verify();
         Assert.Equal(0, AllocationMeasurement.Measure(Verify));
     }
 }

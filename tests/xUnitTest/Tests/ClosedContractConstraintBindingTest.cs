@@ -125,11 +125,7 @@ public class ClosedContractConstraintBindingTest
     public void WarmClosedContractChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("public contract R\n    [2 of i32] is Copy\npublic struct Impl\n    Self is R");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

@@ -9,7 +9,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 8.10, 23.3: generic adaptation errors describe the written operation, including in unused definitions.
+// SPEC 8.15, 23.2: generic adaptation errors describe the written operation, including in unused definitions.
 public class GenericAdaptationDiagnosticTest(ITestOutputHelper output)
 {
     [Theory]

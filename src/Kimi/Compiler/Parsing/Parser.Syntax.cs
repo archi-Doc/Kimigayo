@@ -94,7 +94,7 @@ public static partial class Parser
 
         while (reader.TryConsume(TokenKind.Dot))
         {
-            // SPEC 8.4.3: a Contract-qualified projection such as I.(LendingIterator).LentItem(step) names its Contract in parentheses.
+            // SPEC 8.5: a Contract-qualified projection such as I.(LendingIterator).LentItem(step) names its Contract in parentheses.
             var member = reader.CurrentTokenKind == TokenKind.OpenParenthesis
                 ? ParseBareParenthesizedType(ref reader)
                 : ParseName(ref reader);
@@ -127,7 +127,7 @@ public static partial class Parser
                 var op = reader.CurrentToken;
                 operation = op.Kind.IsIdentifierOrContextualKeyword() ? reader.GetSpan(op) switch
                 {
-                    // SPEC 7.6.2: var changes only the mutability of the environment binding, with every operation.
+                    // SPEC 7.7.2: var changes only the mutability of the environment binding, with every operation.
                     Constants.MoveOperation => Constants.MoveOperation,
                     Constants.RefKeyword => Constants.RefKeyword,
                     Constants.UniqKeyword => Constants.UniqKeyword,
@@ -294,7 +294,7 @@ public static partial class Parser
 
     private static Koto ParseRootName(ref TokenReader reader, bool type, bool disambiguateGenerics = false)
     {
-        // A root-qualified Type is the path after '::'; its Origin and '?' belong to the enclosing Type (SPEC 3.2.3, 3.3.6).
+        // A root-qualified Type is the path after '::'; its Origin and '?' belong to the enclosing Type (SPEC 3.2.3, 3.3.2).
         var start = reader.Read().Span.Start;
         var name = type ? ParseType(ref reader, parseOrigin: false, disambiguateGenerics, optionalSuffix: false) : ParseName(ref reader);
         return new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(start, name.Span.End), KotoKind.RootName, "::", [name]);
@@ -618,7 +618,7 @@ public static partial class Parser
 
     internal static Koto ParseEnumCase(ref TokenReader reader)
     {
-        // A Case takes no attributes (SPEC 6.5).
+        // A Case takes no attributes (SPEC 6.7).
         ReportPendingAttributes(ref reader);
         var name = ParseName(ref reader);
         var fields = default(TemporaryKotoList);

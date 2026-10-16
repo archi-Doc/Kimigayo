@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 7.6.3, 13.5.3, 15.1.6: a closure's receiver requirement follows its resolved operations. Only an explicit transfer of
+// SPEC 7.7.3, 13.5.3, 15.1.6: a closure's receiver requirement follows its resolved operations. Only an explicit transfer of
 // a capture is Consuming; bare Subjects, element reads, shared receivers and borrowed arguments only borrow the capture.
 public class ClosureReceiverClassificationTest
 {
@@ -49,7 +49,7 @@ public class ClosureReceiverClassificationTest
 
     private const string CapturedView = "public func main() -> ()\n    var n = 7\n    let view = n@uniq\n";
 
-    // SPEC 3.5, 7.6.3, 14.9.1: an expression body without a written or expected result Type is a result source acquired by bare
+    // SPEC 3.5, 7.7.3, 14.9.2: an expression body without a written or expected result Type is a result source acquired by bare
     // acquisition, so a bare captured exclusive reference is Reborrowed exclusively and the call is Exclusive. The Note names that
     // Reborrow.
     [Theory]
@@ -59,7 +59,7 @@ public class ClosureReceiverClassificationTest
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.InvalidAssignment_Kd), callee), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
-        Assert.Equal("The call is Exclusive (SPEC 7.6.3): it borrows the callee exclusively, because the callee Reborrows the captured exclusive reference view exclusively", error.Note);
+        Assert.Equal("The call is Exclusive (SPEC 7.7.3): it borrows the callee exclusively, because the callee Reborrows the captured exclusive reference view exclusively", error.Note);
     }
 
     // SPEC 7.3 (check 1), 7.6.3, 13.5.5.1: an object callee supplies only its payload authority. rc, arc and objref grant shared access,
@@ -67,19 +67,19 @@ public class ClosureReceiverClassificationTest
     // callee reached through a reference or an element and an Exclusive call of an unproven Sealed payload are located limits before
     // generation, and an environment-borrowing result keeps the handle lent.
     [Theory]
-    [InlineData("let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nlet h = Kimi.Intrinsics.makeRc(next@move)\nlet a = h()", "SharedPathAccess_Kd", "h", "The call is Exclusive (SPEC 7.6.3)", true)]
-    [InlineData("let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nlet h = Kimi.Intrinsics.makeArc(next@move)\nlet a = h()", "SharedPathAccess_Kd", "h", "The call is Exclusive (SPEC 7.6.3)", true)]
-    [InlineData("let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nlet h = Kimi.Intrinsics.makeRc(next@move)\nlet a = h@follow()", "SharedPathAccess_Kd", "h@follow", "The call is Exclusive (SPEC 7.6.3)", true)]
-    [InlineData("let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nvar o = Kimi.Intrinsics.makeObj(next@move)\nlet v = o@objref\nlet a = v()", "SharedPathAccess_Kd", "v", "The call is Exclusive (SPEC 7.6.3)", false)]
-    [InlineData("let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nvar h = Kimi.Intrinsics.makeObj(next@move)\nlet u = h@objuniq\nlet r = u@ref\nlet a = r@follow()", "SharedPathAccess_Kd", "r@follow", "The call is Exclusive (SPEC 7.6.3)", false)]
-    [InlineData("func call<F>(v: rc/F) -> i32\n    F is Callable<uniq, () -> i32> and ObjectPayload and Sealed\n    return v()\n()", "SharedPathAccess_Kd", "v", "The call is Exclusive (SPEC 7.6.3)", true)]
-    [InlineData("let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nlet o = Kimi.Intrinsics.makeObj(next@move)\nlet a = o()", "InvalidAssignment_Kd", "o", "The call is Exclusive (SPEC 7.6.3)", false)]
-    [InlineData("let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nvar o = Kimi.Intrinsics.makeObj(next@move)\nlet outer = func [var o@move] () -> i32 => o@follow()\nlet a = outer()", "InvalidAssignment_Kd", "outer", "The call is Exclusive (SPEC 7.6.3)", false)]
-    [InlineData("let text = \"abc\"\nlet h = Kimi.Intrinsics.makeArc(func [text@move] () -> string => text@move)\nlet a = h()", "SharedPathAccess_Kd", "h", "The call is Consuming (SPEC 7.6.3)", true)]
-    [InlineData("let n: i32 = 4\nlet h = Kimi.Intrinsics.makeRc(func [n] () -> i32 => n@move)\nlet a = h()", "SharedPathAccess_Kd", "h", "The call is Consuming (SPEC 7.6.3)", true)]
-    [InlineData("let text = \"abc\"\nvar h = Kimi.Intrinsics.makeObj(func [text@move] () -> string => text@move)\nlet a = h()", "InvalidAssignment_Kd", "h", "The call is Consuming (SPEC 7.6.3)", false)]
-    [InlineData("let text = \"abc\"\nvar h = Kimi.Intrinsics.makeObj(func [text@move] () -> string => text@move)\nlet u = h@objuniq\nlet a = u()", "InvalidAssignment_Kd", "u", "The call is Consuming (SPEC 7.6.3)", false)]
-    [InlineData("func call(r: ref/(() -> i32)) -> i32 => 1\nlet n: i32 = 4\nlet f = func [n] () -> i32 => n@move\nlet r = f@ref\nlet a = r()", "InvalidAssignment_Kd", "r", "The call is Consuming (SPEC 7.6.3)", false)]
+    [InlineData("let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nlet h = Kimi.Intrinsics.makeRc(next@move)\nlet a = h()", "SharedPathAccess_Kd", "h", "The call is Exclusive (SPEC 7.7.3)", true)]
+    [InlineData("let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nlet h = Kimi.Intrinsics.makeArc(next@move)\nlet a = h()", "SharedPathAccess_Kd", "h", "The call is Exclusive (SPEC 7.7.3)", true)]
+    [InlineData("let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nlet h = Kimi.Intrinsics.makeRc(next@move)\nlet a = h@follow()", "SharedPathAccess_Kd", "h@follow", "The call is Exclusive (SPEC 7.7.3)", true)]
+    [InlineData("let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nvar o = Kimi.Intrinsics.makeObj(next@move)\nlet v = o@objref\nlet a = v()", "SharedPathAccess_Kd", "v", "The call is Exclusive (SPEC 7.7.3)", false)]
+    [InlineData("let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nvar h = Kimi.Intrinsics.makeObj(next@move)\nlet u = h@objuniq\nlet r = u@ref\nlet a = r@follow()", "SharedPathAccess_Kd", "r@follow", "The call is Exclusive (SPEC 7.7.3)", false)]
+    [InlineData("func call<F>(v: rc/F) -> i32\n    F is Callable<uniq, () -> i32> and ObjectPayload and Sealed\n    return v()\n()", "SharedPathAccess_Kd", "v", "The call is Exclusive (SPEC 7.7.3)", true)]
+    [InlineData("let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nlet o = Kimi.Intrinsics.makeObj(next@move)\nlet a = o()", "InvalidAssignment_Kd", "o", "The call is Exclusive (SPEC 7.7.3)", false)]
+    [InlineData("let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nvar o = Kimi.Intrinsics.makeObj(next@move)\nlet outer = func [var o@move] () -> i32 => o@follow()\nlet a = outer()", "InvalidAssignment_Kd", "outer", "The call is Exclusive (SPEC 7.7.3)", false)]
+    [InlineData("let text = \"abc\"\nlet h = Kimi.Intrinsics.makeArc(func [text@move] () -> string => text@move)\nlet a = h()", "SharedPathAccess_Kd", "h", "The call is Consuming (SPEC 7.7.3)", true)]
+    [InlineData("let n: i32 = 4\nlet h = Kimi.Intrinsics.makeRc(func [n] () -> i32 => n@move)\nlet a = h()", "SharedPathAccess_Kd", "h", "The call is Consuming (SPEC 7.7.3)", true)]
+    [InlineData("let text = \"abc\"\nvar h = Kimi.Intrinsics.makeObj(func [text@move] () -> string => text@move)\nlet a = h()", "InvalidAssignment_Kd", "h", "The call is Consuming (SPEC 7.7.3)", false)]
+    [InlineData("let text = \"abc\"\nvar h = Kimi.Intrinsics.makeObj(func [text@move] () -> string => text@move)\nlet u = h@objuniq\nlet a = u()", "InvalidAssignment_Kd", "u", "The call is Consuming (SPEC 7.7.3)", false)]
+    [InlineData("func call(r: ref/(() -> i32)) -> i32 => 1\nlet n: i32 = 4\nlet f = func [n] () -> i32 => n@move\nlet r = f@ref\nlet a = r()", "InvalidAssignment_Kd", "r", "The call is Consuming (SPEC 7.7.3)", false)]
     [InlineData("let n: i32 = 4\nlet h = Kimi.Intrinsics.makeRc(func [n] () => n@ref)\nlet r = h()\nlet moved = h@move\nrequire r@follow == 4 else => $abort(\"result\")", "Unsupported_Kd", "h()", null, false)]
     [InlineData("let n: i32 = 4\nlet h = Kimi.Intrinsics.makeRc(func [n] () => n@ref)\nlet r = h@follow()\nlet moved = h@move\nrequire r@follow == 4 else => $abort(\"result\")", "Unsupported_Kd", "h@follow()", null, false)]
     [InlineData("func call<F>(v: objuniq/F) -> i32\n    F is Callable<uniq, () -> i32> and ObjectPayload\n    return v()\n()", "Unsupported_Kd", "v", null, false)]

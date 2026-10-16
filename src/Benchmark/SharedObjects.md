@@ -1,5 +1,7 @@
 # Shared object measurements
 
+Program IDs in dated measurements retain the pre-2026-10-15 numbering; see the [current mapping](../../tests/milestones/README.md#implementation-order).
+
 Use the commands and fixed conditions in [ObjectPlans.md](ObjectPlans.md). Compiler plan measurements include the
 same rc/arc factory/clone workload used by the allocation regressions, with 32 warm-up iterations and seven samples
 of 64 iterations for each phase. Native measurements run the fixed finalization and Dictionary workloads at O0/O2,
@@ -13,7 +15,7 @@ fence and controlled failed-comparison executions. The argument and proof bounda
 cross-thread payload safety or a speedup; source concurrency and Weak transitions are outside this implementation.
 
 U5 opens inline arc and original Program 34 execution. Content-sensitive updates with external Origins (U6/G70) were
-verified on 2026-10-06; Program 34 remains IN_PROGRESS pending its remaining milestone completion checks. These measurements do not
+verified on 2026-10-06; Current Program 40 (former 34) remains IN_PROGRESS pending its remaining milestone completion checks. These measurements do not
 remove that boundary.
 
 The 2026-10-04 U5 run retained all 56 compiler samples with zero measured managed bytes in

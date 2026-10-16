@@ -8,7 +8,7 @@ and [STATUS.md](STATUS.md) for compiler support. A specification rule is not a c
 ## 1. Source and programs
 
 [Source §2](spec/02-source-and-lexical-structure.md), [modules §18](spec/18-modules-and-dependencies.md),
-[startup §22.2](spec/22-core-execution-and-foreign-functions.md#222-program-startup-and-static-initialization).
+[startup §22.4](spec/22-core-execution-and-foreign-functions.md#224-program-startup-and-static-storage).
 
 - UTF-8; case-sensitive NFC names. Four spaces per indent; no indentation tabs. Newlines separate items.
 - Bodies use an indented block or `=> expression` on the header's ending line. No body colon or braces.
@@ -54,8 +54,8 @@ public func main()
 
 ## 3. Ownership: choose the operation
 
-[Acquisition §15.1](spec/15-ownership-and-lifetime-analysis.md#151-initialization-and-consume-analysis),
-[implicit adaptation §10.2](spec/10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types).
+[Acquisition §15.1](spec/15-ownership-and-lifetime-analysis.md#151-initialization-and-move-analysis),
+[implicit adaptation §10.2](spec/10-overload-resolution-and-inference.md#102-common-adaptation).
 
 A **Place** is storage, such as a local or an element. `T` (= `owner/T`) owns a value;
 `ref/T` shares read access; `uniq/T` grants exclusive mutable access. Type prefixes add layers.
@@ -172,8 +172,8 @@ func duplicate<T>(value: T) -> (T, T)
   Conditional conformance: `Self is Copy when T is Copy`. Contract refinement: `contract C: A, B`.
 - Supply all explicit generic arguments or omit the list. Use annotations/explicit arguments when inference
   is ambiguous; later uses and callee bodies provide no evidence. Constructors require bound Type arguments.
-- `place ref/T` / `place uniq/T` function results publish existing storage: return the Place directly.
-  Callers may read Copy values or borrow it, and replace through the exclusive form; never Move out.
+- A function lends existing storage through a returned `ref/T` or `uniq/T` (return `x@ref` or `x@uniq`); callers keep
+  the reference or select its referent with `@follow`, never Move out; only `receiver[key]` follows `index`/`indexUniq`.
 
 ## 6. Borrowed results and stored views
 
@@ -204,7 +204,7 @@ struct View<T> {source}
 ## 7. Collections
 
 [Arrays, indexing and slices §4](spec/04-arrays-indexing-and-slices.md),
-[iteration §22.1.2](spec/22-core-execution-and-foreign-functions.md#2212-iteration-and-storage).
+[iteration §22.2](spec/22-core-execution-and-foreign-functions.md#222-iteration).
 
 - `[1, 2]` normally creates `Array<i32>`; `let a: [2 of i32] = [1, 2]` creates inline fixed storage.
   `[N of value]` always creates a fixed array, evaluates value once, and requires Copy elements.
@@ -252,7 +252,7 @@ struct View<T> {source}
 - Prefer generic callbacks: `callback: ref/F` with `F is Callable<(T) -> U>`; use `uniq/F` and
   `Callable<uniq, (T) -> U>` for mutation, `F` and `Callable<owner, (T) -> U>` for consumption.
   Non-Copy consuming closures need `callback@move()`. Erased `(T) -> U` values are Non-Copy, Shared-callable,
-  and require an Owned environment. See [§7.6](spec/07-functions-and-callable-values.md#76-function-expressions).
+  and require an Owned environment. See [§7.7](spec/07-functions-and-callable-values.md#77-function-expressions).
 - Objects: `obj/T` owns exclusively; `rc/T` / `arc/T` share ownership; `objref/T` / `objuniq/T` borrow objects.
   Create with `makeObj`, `makeRc` or `makeArc` in `Kimi.Intrinsics`, moving Non-Copy inputs explicitly;
   duplicate counted handles with `Kimi.Intrinsics.clone(handle@ref)`. Bare `@obj`/`@rc`/`@arc` are invalid.

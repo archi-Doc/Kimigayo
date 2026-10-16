@@ -88,7 +88,7 @@ public class ElementPathEmissionTest
     }
 
     // A Loan that outlives the RHS still conflicts with the exclusive element access, and the located
-    // receiver stays protected while its index operands evaluate (SPEC 4.6.4).
+    // receiver stays protected while its index operands evaluate (SPEC 4.6.3).
     [Theory]
     [InlineData("let r = a@ref\na[0] += r[1]\nlet n = r[0]")]
     [InlineData("let r = a@ref\na[i] += 1\nlet n = r[0]")]
@@ -150,31 +150,18 @@ public class ElementPathEmissionTest
     {
         const string Source = "var a: (string, [2 of i32]) = (\"held\", [0, 14])\nvar i = 0\nloop\n    defer => a.1[0] += a.1[1]\n    i += 1\n    if i < 3 => continue\n    exit\na.1[0] += a.1[1]++";
         var c = MinimalEmissionTest.Analyze(Source);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
-
-        var success = true;
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
-        {
-            success &= c.Bind().IsComplete;
-        }
-
-        var bindingBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
+        var success = true;
+        var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        var bytes = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
             success &= c.WriteIr(TextWriter.Null, out _);
-        }
-
-        var bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        });
         Assert.True(success);
         Assert.Equal(0, bindingBytes);
         Assert.Equal(0, bytes);

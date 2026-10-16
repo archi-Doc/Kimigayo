@@ -173,7 +173,7 @@ public class ConstructorTypeInferenceTest
                 .Select(x => Binding.DiagnosticTypeName(x.CallOf()!.DeclaringType!) + ":" + x.CallOf()!.Target.Declaration.Span.Start).ToArray();
     }
 
-    // SPEC 8.4.8.2: the fixed construction defers on an Unknown premise only as the first selection does, so the plain init, still
+    // SPEC 8.3.3: the fixed construction defers on an Unknown premise only as the first selection does, so the plain init, still
     // strictly best with the conditional one ranked as applicable, is kept, as with the written Type.
     [Theory]
     [InlineData("Box")]

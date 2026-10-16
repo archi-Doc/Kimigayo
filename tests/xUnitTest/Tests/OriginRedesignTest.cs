@@ -172,9 +172,9 @@ public class OriginRedesignTest
         c.Binding.CheckStartup(OutputKind.Application);
         var ownershipBytes = AllocationMeasurement.Measure(() => c.Analyze());
         var emissionBytes = AllocationMeasurement.Measure(() => c.WriteIr(TextWriter.Null, out _));
-        // Eight measured warm passes: Binding retains a bounded 288 bytes per pass.
+        // Binding retains a bounded 288 bytes per measured warm pass.
         Assert.True(
-            bindingBytes <= 8 * 288 && ownershipBytes == 0 && emissionBytes == 0,
+            bindingBytes <= AllocationMeasurement.MeasuredOperations * 288 && ownershipBytes == 0 && emissionBytes == 0,
             $"Binding: {bindingBytes}; ownership: {ownershipBytes}; emission: {emissionBytes}");
     }
 }

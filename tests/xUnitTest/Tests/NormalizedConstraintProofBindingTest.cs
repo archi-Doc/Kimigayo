@@ -91,11 +91,7 @@ public class NormalizedConstraintProofBindingTest
     public void WarmNormalizedProofsAndCallsAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Head + "func take<T>()\n    T is [2 of i32] or string\n    ()\nfunc caller<U>()\n    U is [2 of Source.Origin.Item] or string\n    take<U>()");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

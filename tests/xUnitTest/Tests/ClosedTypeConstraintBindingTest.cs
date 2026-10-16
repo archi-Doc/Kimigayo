@@ -102,7 +102,7 @@ public class ClosedTypeConstraintBindingTest
         var c = MinimalEmissionTest.Analyze("public contract Origin\npublic struct Source\n    Self is Origin\nfunc f<T>()\n    " + clause + "\n    ()");
         Assert.False(c.Binding.Result.IsComplete);
 
-        // The parser reports the prefix whose subject the function does not permit (SPEC 7.4); Binding's own restriction rests on that Error.
+        // The parser reports the prefix whose subject the function does not permit (SPEC 7.5); Binding's own restriction rests on that Error.
         Assert.Contains(c.Binding.DerivedIssues, x => x.FailureOf() == BindingFailure.InvalidConstraint);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.InvalidConstraint);
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.MisplacedSyntax_Kd));
@@ -128,11 +128,7 @@ public class ClosedTypeConstraintBindingTest
     public void WarmClosedObligationChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Source("struct", "Source is Origin\n    i32 is Copy"));
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

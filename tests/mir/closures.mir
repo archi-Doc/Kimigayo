@@ -30,7 +30,7 @@ fn makeAdder @12
   bb1:
       return @12
   bb2:
-      drop _3 -> bb3 @20 s1
+      drop _3 -> bb3 [elide] @20 s1
   bb3:
       StorageDead(_3) @20 s1
       StorageDead(_2) @20 s1
@@ -160,24 +160,24 @@ fn run @25
       return @25
   bb10:
       StorageDead(_14) @82 s1
-      drop _12 -> bb11 @70 s1
+      drop _12 -> bb11 [keep] @70 s1
   bb11:
       StorageDead(_12) @70 s1
       StorageDead(_8) @60 s1
       StorageDead(_7) @55 s1
       StorageDead(_6) @51 s1
-      drop _5 -> bb12 @43 s1
+      drop _5 -> bb12 [keep] @43 s1
   bb12:
       StorageDead(_5) @43 s1
       StorageDead(_3) @36 s1
-      drop _2 -> bb13 @32 s1
+      drop _2 -> bb13 [elide] @32 s1
   bb13:
       StorageDead(_2) @32 s1
       StorageDead(_1) @28 s1
       goto bb9 @25
   bb14:
       StorageDead(_29) @112 s1
-      drop _28 -> bb15 @112 s1
+      drop _28 -> bb15 [keep] @112 s1
   bb15:
       StorageDead(_28) @112 s1
       StorageDead(_27) @111 s1

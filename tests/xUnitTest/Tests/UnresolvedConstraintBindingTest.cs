@@ -108,11 +108,7 @@ public class UnresolvedConstraintBindingTest
     public void WarmMissingConformanceBindingReusesDiagnosticCauseStorage()
     {
         var c = Parse("public struct Reading\n    Self is Copy\n    Self is Missing\n    public let value: i32");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.False(c.Bind().IsComplete);
-        }
-
+        Assert.False(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (c.Bind().IsComplete)
@@ -253,11 +249,7 @@ public class UnresolvedConstraintBindingTest
     public void WarmMissingNamePassesAllocateNothing()
     {
         var c = Parse("public struct Target\n    [2 of Future] is Copy");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
-        }
-
+        Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (c.Binding.Bind(BindingMode.Provisional).InvalidCount != 0)

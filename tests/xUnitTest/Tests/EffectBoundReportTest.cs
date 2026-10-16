@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 8.4.10.6: a bound violation is reported at the first violating effect in the implementation's own body; its Reason
+// SPEC 8.11.1: a bound violation is reported at the first violating effect in the implementation's own body; its Reason
 // names the violation and the bound, its Note tells a definite violation from an unknown effect counted as a conflict, and its
 // related locations give the effect, the conformance and the bound.
 public class EffectBoundReportTest
@@ -49,7 +49,7 @@ public class EffectBoundReportTest
         Assert.Equal("an external operation, which confined excludes", error.Label);
     }
 
-    // SPEC 8.4.10.6: semantic inspection exposes the bounds each Contract declares.
+    // SPEC 8.11.1: semantic inspection exposes the bounds each Contract declares.
     [Fact]
     public void ContractsExposeTheirDeclaredBounds()
     {

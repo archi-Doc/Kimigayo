@@ -8,7 +8,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>Excluded syntax receives the source checks of selected syntax and no semantic checks (SPEC 19.5).</summary>
+/// <summary>Excluded syntax receives the source checks of selected syntax and no semantic checks (SPEC 19.4).</summary>
 public class ExcludedSyntaxTest
 {
     private const string Windows = "x86_64-pc-windows-msvc";

@@ -14,13 +14,13 @@ internal static class ElementAccess
     internal static bool SupportsMoveRoot(OwnershipPlace place)
         => place.Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter && SupportsBorrowRoot(place);
 
-    // SPEC 4.6.6, 4.6.9: an element of a Slice or of a referenced array, including a fixed array reached through a
+    // SPEC 4.8.2, 4.7.1: an element of a Slice or of a referenced array, including a fixed array reached through a
     // borrowed receiver; no owned root holds it.
     internal static bool IsSharedElement(Koto source) => source is IndexKoto { Right: not RangeKoto } element &&
         (element.Left.BoundType?.Kind == BoundTypeKind.Slice || ReferenceTypes.IsArray(AccessType(element.Left)) || ReferenceTypes.IsDynamicArray(element.Left.BoundType) || ReferenceTypes.IsDictionary(element.Left.BoundType) ||
             (element.Left.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray && ReachesThroughBorrow(element.Left)));
 
-    // SPEC 3.4.1: the referent of an exclusive array reference offers element replacement, without requiring a mutable
+    // SPEC 3.4.3: the referent of an exclusive array reference offers element replacement, without requiring a mutable
     // binding for the reference itself. Shared layers on its path are checked separately by Binding.
     // An owned Array or fixed array stored below exclusive references only (`b.items[i]` with `b: uniq/Bank`) offers the same, whose
     // path authority decides it rather than the stored Type (PLAN G59).
@@ -29,49 +29,48 @@ internal static class ElementAccess
             (ReferenceTypes.IsDynamicArray(receiver) || ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDictionary(receiver))) ||
         (element.Left.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray && ReachesThroughBorrow(element.Left) && Binding.PathAuthority(element.Left) == SemanticsKind.Uniq));
 
-    // SPEC 7.1.1: a call of a function that publishes a Place. The call expression designates the referent of the
-    // reference the callee returns, with that reference's capabilities and Origin; its Type is the stored Type.
-    internal static bool IsPlaceCall(Koto source)
-        => PlaceCallReference(source) is not null;
-
-    // The reference a Place call returns physically (ref/T or uniq/T with the published Origin), or null.
-    internal static BoundType? PlaceCallReference(Koto source)
-        => KotoHelper.UnwrapParentheses(source) is InvocationKoto call ? call.BoundValueCall is { Signature.ResultMode: not FunctionResultMode.Value } value
-            ? value.ReturnType : call.BoundCall is { ResultMode: not FunctionResultMode.Value } plan ? plan.ReturnType : null : null;
-
-    // SPEC 4.6.9: a receiver whose selected Place is reached by a dynamic key or through a reference: a Slice, a dynamic
+    // SPEC 4.7.1: a receiver whose selected Place is reached by a dynamic key or through a reference: a Slice, a dynamic
     // Array, a Dictionary or a borrow.
     internal static bool IsBorrowedReceiver(BoundType? receiver)
         => receiver is { Kind: BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary } || ReferenceTypes.IsBorrow(receiver);
 
-    // SPEC 4.6.9: whether a selection reaches its Place through a borrowed receiver on its path rather than through static
+    // SPEC 4.7.1: whether a selection reaches its Place through a borrowed receiver on its path rather than through static
     // selectors of an owner.
     internal static bool IsBorrowedSelection(Koto source) => HasReceiverOnPath(source, owners: true);
 
-    // SPEC 4.6.6, 4.6.9: whether a selection reaches its Place through a Slice or a borrow, so that no owned root holds it.
+    // SPEC 4.8.2, 4.7.1: whether a selection reaches its Place through a Slice or a borrow, so that no owned root holds it.
     internal static bool ReachesThroughBorrow(Koto source) => HasReceiverOnPath(source, owners: false);
 
     internal static bool IsSyntax(Koto source) => source is IndexKoto index ? !IsUserIndex(index) && index.CodeContext.Compilation.Binding.ViewRangeCall(index) is null : source is MemberAccessKoto { Right: NumberLiteralKoto } ||
         (source is MemberAccessKoto { BoundSymbol.Property.IsStored: true, Left.BoundType: { } type } && AdtDef.IsStruct(type));
 
-    // SPEC 4.6.9: receiver[key] resolved through a user Indexable conformance: the Binding synthesized its index call, and
-    // its indexUniq call where the use may update or borrow exclusively. Such an expression is a Place call, not an element projection.
+    // SPEC 4.7.1: receiver[key] resolved through a user Indexable conformance: the Binding synthesized its index call, and
+    // its indexUniq call where the use may update or borrow exclusively. The expression designates the referent of the reference that
+    // call returns, not an element projection.
     internal static InvocationKoto? IndexerCall(Koto source, bool exclusive) => source.CodeContext.Compilation.Binding.IndexerCall(source, exclusive);
 
     internal static bool IsUserIndex(Koto source) => KotoHelper.UnwrapParentheses(source) is IndexKoto index && IndexerCall(index, false) is not null;
 
-    // SPEC 4.6.1, 4.6.4: the evaluated key of a built-in selection. An Index or Range key is resolved against the
+    // SPEC 4.7.1: whether a node is the index or indexUniq call a subscript selected; the call is typed with the reference it returns.
+    internal static bool IsIndexerCall(Koto source)
+        => KotoHelper.UnwrapParentheses(source) is InvocationKoto { Parent: IndexKoto index } call && (ReferenceEquals(IndexerCall(index, false), call) || ReferenceEquals(IndexerCall(index, true), call));
+
+    // The stored Type of the Place an expression designates: a subscript's selected call designates the element its subscript is typed
+    // with (Binding.Indexers publishes it); any other expression its own Type. Only the old paths read it; it goes with them at R6.
+    internal static BoundType? DesignatedType(Koto source) => IsIndexerCall(source) ? KotoHelper.UnwrapParentheses(source).Parent!.BoundType : source.BoundType;
+
+    // SPEC 4.7, 4.6.3: the evaluated key of a built-in selection. An Index or Range key is resolved against the
     // receiver's length by a synthesized call; an isize or ResolvedRange key is applied as written.
     internal static Koto KeySyntax(IndexKoto index) => index.CodeContext.Compilation.Binding.ResolvedKeyCall(index) ?? index.Right;
 
-    // SPEC 4.6.4: a range selection applied through one ResolvedRange value rather than two isize boundaries.
+    // SPEC 4.6.3: a range selection applied through one ResolvedRange value rather than two isize boundaries.
     internal static bool IsResolvedSlice(Koto source) => source is IndexKoto index && index.CodeContext.Compilation.Binding.IsResolvedSlice(index);
 
-    // SPEC 4.6.6: a range selection, written with a range or applied through a ResolvedRange key, produces a Slice value,
+    // SPEC 4.8.2: a range selection, written with a range or applied through a ResolvedRange key, produces a Slice value,
     // not a Place.
     internal static bool IsSlicing(Koto source) => source is IndexKoto { BoundType.Kind: BoundTypeKind.Slice } slice && (slice.Right is RangeKoto || IsResolvedSlice(slice));
 
-    // SPEC 4.6.1: a fixed array, Slice or Array, directly or through a reference: the receivers whose keys are positions.
+    // SPEC 4.7: a fixed array, Slice or Array, directly or through a reference: the receivers whose keys are positions.
     internal static bool IsSequence(BoundType? type)
         => (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? type.Components[0] : type)?.Kind
             is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array;
@@ -127,14 +126,14 @@ internal static class ElementAccess
                     }
 
                     return selected == ConversionBinding.ObjectCreation ? conversion.CreationStorage! : conversion;
-                case InvocationKoto { Parent: IndexKoto index } call when ReferenceEquals(IndexerCall(index, false), call) || ReferenceEquals(IndexerCall(index, true), call):
-                    source = index; // Both acquisition modes denote the same published element Place.
+                case InvocationKoto call when IsIndexerCall(call):
+                    source = call.Parent!; // Both acquisition modes denote the same published element Place.
                     break;
                 case EvaluatedKoto evaluated:
                     source = evaluated.Source; // A desugaring's evaluated operand is the value of its source.
                     break;
                 default:
-                    // A constructed `^x` or range value is produced by its synthesized construction call (SPEC 4.6.2, 4.6.3).
+                    // A constructed `^x` or range value is produced by its synthesized construction call (SPEC 4.6.1, 4.6.2).
                     var binding = source.CodeContext.Compilation.Binding;
                     return binding.ViewRangeCall(source) ?? binding.RangeValueCall(source) ?? binding.PropertyCall(source, PropertyAccessorKind.Get) ?? source;
             }
@@ -220,7 +219,7 @@ internal static class ElementAccess
     }
 
     /// <summary>
-    /// SPEC 3.4.1, 13.4: the Type through which a Place expression read in place, a receiver or a string comparison
+    /// SPEC 3.4.3, 13.4: the Type through which a Place expression read in place, a receiver or a string comparison
     /// operand, is accessed. Through several reference layers, or for a shared element Place, it is the one reference
     /// that Binding recorded as the expression's adaptation.
     /// </summary>
@@ -235,7 +234,7 @@ internal static class ElementAccess
             return node.BoundType;
         }
 
-        // SPEC 3.4.1, 4.6.9: a synthesized shared access does not decide the later projection's capability; the final acquisition
+        // SPEC 3.4.3, 4.7.1: a synthesized shared access does not decide the later projection's capability; the final acquisition
         // does. An exclusive use takes an indexer's bound exclusive entry, or a synthesized access exclusively when the real path
         // grants exclusive access, with the same Origin.
         return exclusive && adaptation.Kind == ExpectedAdaptationKind.SharedBorrow &&
@@ -243,7 +242,7 @@ internal static class ElementAccess
             ? binding.Types.Reference(SemanticsKind.Uniq, adaptation.Type.Components[0], adaptation.Type.Origin) : adaptation.Type;
     }
 
-    // SPEC 3.4.1: a shared borrow that Binding synthesized to read a Place in place, of the Place's own complete stored Type, is a
+    // SPEC 3.4.3: a shared borrow that Binding synthesized to read a Place in place, of the Place's own complete stored Type, is a
     // representation of the selection rather than a reference layer on its path.
     internal static bool IsSynthesizedAccess(Koto node)
         => node.CodeContext.Compilation.Binding.TryGetAdaptation(node, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.SharedBorrow &&
@@ -269,7 +268,7 @@ internal static class ElementAccess
             (IsFollowedRoot(root) && receiver is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && access is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } &&
                 ReferenceEquals(receiver.Components[0], access.Components[0]) && (receiver.Semantics == SemanticsKind.Ref || access.Semantics == SemanticsKind.Uniq));
 
-    // SPEC 3.4.1, 4.6.9 (PLAN G59): the element of an Array, of a fixed array at a runtime index, or of either reached through a
+    // SPEC 3.4.3, 4.7.1 (PLAN G59): the element of an Array, of a fixed array at a runtime index, or of either reached through a
     // reference, below which a stored Field, Tuple or literal fixed-array path selects a Place, such as `xs[i]` in `xs[i].inner.name`.
     // The element is borrowed through its own route and the static path through that borrow. Null for the element itself, a getter
     // boundary or a path with no such element.
@@ -300,11 +299,11 @@ internal static class ElementAccess
         => element.Left.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.Slice || (element.Left.BoundType?.Kind == BoundTypeKind.FixedArray && StaticSelector(element) < 0) ||
             (AccessType(element.Left) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Array or BoundTypeKind.FixedArray or BoundTypeKind.Slice }] });
 
-    // SPEC 4.6.9 (PLAN G59): an owned fixed-array element at a runtime index, or a part below an element (ElementPathBase): a Place
+    // SPEC 4.7.1 (PLAN G59): an owned fixed-array element at a runtime index, or a part below an element (ElementPathBase): a Place
     // that the element's own route borrows, never the owned projection of a static path.
     internal static bool IsRuntimeElementPlace(BinaryKoto selection) => IsRuntimeFixedElement(selection) || ElementPathBase(selection) is not null;
 
-    // SPEC 4.6.9: an owned fixed-array element selected at a runtime index, which has no static Move Path.
+    // SPEC 4.7.1: an owned fixed-array element selected at a runtime index, which has no static Move Path.
     internal static bool IsRuntimeFixedElement(Koto selection)
         => KotoHelper.UnwrapParentheses(selection) is IndexKoto element && IsSyntax(element) && !IsSlicing(element) && !Binding.IsGetterResult(element) &&
             element.Left.BoundType?.Kind == BoundTypeKind.FixedArray && StaticSelector(element) < 0;
@@ -324,7 +323,7 @@ internal static class ElementAccess
                 return field.Left;
             }
 
-            // SPEC 13.5.5.1: an explicitly selected referent (`p@follow.x`) is reached through its reference, as `p.x` is.
+            // SPEC 13.5.5: an explicitly selected referent (`p@follow.x`) is reached through its reference, as `p.x` is.
             if (FollowedReference(field.Left) is { } reference)
             {
                 return reference;

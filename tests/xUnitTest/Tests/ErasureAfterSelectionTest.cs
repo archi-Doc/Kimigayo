@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 10.5, 10.7, 7.6.4, 15.2.3: a call's applicability uses only the signature part of an erasure; the Shared receiver and the Owned
+// SPEC 10.5, 10.7, 7.7.4, 15.2.3: a call's applicability uses only the signature part of an erasure; the Shared receiver and the Owned
 // environment of a Closure value are judged after selection, at the argument, and a failure there never selects another candidate.
 public class ErasureAfterSelectionTest
 {
@@ -46,10 +46,10 @@ public class ErasureAfterSelectionTest
         var source = "func call(action: (i32) -> i32, x: i32) -> i32 => action(x)\nfunc call<F>(action: F, x: i32) -> i32\n    " + clause + "\npublic func main() -> ()\n" + body + "    let r = call(f@move, 1)\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.AmbiguousBinding_Kd), "call(f@move, 1)"), (error.Code, Text(source, error.Span)));
-        Assert.Contains("incomparable (SPEC 10.2.1, 10.7)", error.Note, StringComparison.Ordinal);
+        Assert.Contains("incomparable (SPEC 10.2.2, 10.7)", error.Note, StringComparison.Ordinal);
     }
 
-    // SPEC 23.3.6.4: each failing erasure argument is its own problem, so every one is reported, and a converting one is not.
+    // SPEC 23.1.2: each failing erasure argument is its own problem, so every one is reported, and a converting one is not.
     [Fact]
     public void EveryFailingErasureArgumentIsReported()
     {
@@ -58,7 +58,7 @@ public class ErasureAfterSelectionTest
         Assert.Equal([(nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "f"), (nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "g")], errors.Select(x => (x.Code, Text(source, x.Span))));
     }
 
-    // SPEC 7.6.4: a stored closure with a Shared receiver and an Owned environment converts at both parameters, and the calls run.
+    // SPEC 7.7.4: a stored closure with a Shared receiver and an Owned environment converts at both parameters, and the calls run.
     [Fact]
     public void AnOwnedSharedClosureConverts()
         => ScalarEmissionTest.EmitFixture("ErasureAfterSelectionValid", Call + "let y: i32 = 2\nlet f = func [y] (n: i32) => n + y\nrequire call(f, 1) == 3 and run(f, 2) == 4 else => $abort(\"valid\")", string.Empty);

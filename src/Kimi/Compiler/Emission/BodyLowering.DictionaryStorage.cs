@@ -45,7 +45,7 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    // SPEC 22.1.2.5: borrowStorage over a Dictionary copies the handle's slot buffer, first link and live count into the
+    // SPEC 22.2: borrowStorage over a Dictionary copies the handle's slot buffer, first link and live count into the
     // shared or exclusive remainder with the concrete slot stride. Storage.kimi checks the untaken count and follows the
     // links before it borrows an entry's raw Places.
     private bool LowerDictionaryStorageBorrow(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, CallPlan plan, out string? failure)
@@ -101,7 +101,7 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    // SPEC 22.1.2.5: borrowStorage over a fixed array writes the contiguous remainder {storage, position, count} as the
+    // SPEC 22.2: borrowStorage over a fixed array writes the contiguous remainder {storage, position, count} as the
     // borrowed array's first element address, 0 and its concrete length N.
     private bool LowerFixedStorageBorrow(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
@@ -143,7 +143,7 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    // SPEC 22.1.2.5: ownStorage transfers the acquired Dictionary handle's buffer, first and last links and live count into
+    // SPEC 22.2: ownStorage transfers the acquired Dictionary handle's buffer, first and last links and live count into
     // the owning remainder, which then destroys the unreturned entries and releases the buffer; keyAt and valueAt address
     // one slot's key or value.
     private bool LowerOwnedDictionaryStorage(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, CallPlan plan, out string? failure)

@@ -265,7 +265,7 @@ public static partial class TokenHelper
         => tokenKind >= TokenKind.Bool && tokenKind <= TokenKind.String;
 
     /// <summary>
-    /// Determines whether a token is a reserved word, which is never a Name (SPEC 2.5.1).
+    /// Determines whether a token is a reserved word, which is never a Name (SPEC F.3).
     /// </summary>
     /// <param name="tokenKind">The token kind to inspect.</param>
     /// <returns><see langword="true"/> for a reserved keyword.</returns>
@@ -274,7 +274,7 @@ public static partial class TokenHelper
         => tokenKind is > TokenKind.Invalid and < TokenKind.Alias;
 
     /// <summary>
-    /// Determines whether a token can be used as a Name: an identifier, or a contextual keyword outside its context (SPEC 2.5.1).
+    /// Determines whether a token can be used as a Name: an identifier, or a contextual keyword outside its context (SPEC F.3).
     /// </summary>
     /// <param name="tokenKind">The token kind to inspect.</param>
     /// <returns><see langword="true"/> for an identifier or contextual keyword.</returns>

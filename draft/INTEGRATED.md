@@ -305,6 +305,18 @@ The user adopted `Proposals/2026-10-10 Compiler Size Reduction and Single MIR Pl
 
   Open: the remaining §11 rows, including the D3 Note reduction (R1b-2), IMPL §21 generation-time reporting (R1, R6) and the later stages.
 
+## 2026-10-13 — R4 completion plan and budget draft
+
+`Obsolete/2026-10-13 R4 Completion Plan and Budget.md`: 完了 (closed, 2026-10-16). The owner withdrew the plan with the
+work after A4 (DECISIONS R4-M33): the adopted envelope is reverted to R4-M25's caps, and every remaining item is rejected
+because the implementation stalled; R4's remaining scope is replanned separately. History of the earlier intake: the owner approved option C
+on 2026-10-13. Section 5's C numeric envelope, other-cap preservation and item 1's forecast/overrun policy map to
+COMPILER_ARCHITECTURE's token caps, DECISIONS R4-M31 and CompilerSizeBudgetTest; these adopted clauses are frozen.
+The historical proposal text still describes the request before approval; this register and DECISIONS record its disposition.
+No SPEC or IMPL language rule changes. M39 redesign is authorized, but its technical contracts, vocabulary/configuration
+decisions and per-unit Binding exceptions remain open; no implementation support is claimed. The remaining scope and
+conditional designs/estimates are planning inputs, not adopted representations. The original 2026-10-10 proposal is unchanged.
+
 ## 2026-10-12 — Code Rules Analyzer
 
 - `Changes/2026-10-11 Code Rules Analyzer.md`: 取り込み済み (A0–A8, owner instruction 2026-10-12).
@@ -341,3 +353,83 @@ The user adopted `Proposals/2026-10-10 Compiler Size Reduction and Single MIR Pl
   recorded in PLAN_HISTORY and its evidence. All §6.4 later-stage obligations transfer to COMPILER_ARCHITECTURE's
   Code rules and stage ledger; R4 remains unstarted. The frozen proposal moves unchanged to Changes. Future policy
   corrections belong in the owning architecture/decision documents; closure does not widen language support.
+
+## 2026-10-16 — Zero-sized raw operations
+
+`Proposals/2026-10-16 Zero-Sized Raw Operations.md`: 完了（2026-10-16、取り込み済み範囲なし）。
+2026-10-16の依頼により、日本語の仕様提案として作成。正式仕様・実装への取り込みは未着手。
+対応予定：§2.1 → SPEC §5.2.1・§5.3・§5.5、§2.2 → §3.4・§4.1・§5.2・§5.6、
+§2.3・§3 → §5.2.2–§5.2.3・§5.6・§15.1・§15.6・§16、§5の表 → IMPL §21.1.1・§21.1.3・§21.4.3とLIBRARYのRaw契約。
+未解決範囲は提案全体の採否と取り込み。§4は仕様例、§5–§6は設計理由・反映先・Rust公式資料との比較。
+既存の `2026-10-15 Raw Storage as Storage.md` は未統合の比較対象であり、本文・状態とも変更しない。
+2026-10-16、オーナーの決定により完了。同じ問題は `Changes/2026-10-15 Raw Storage as Storage.md` が取り込み済みとして解決した。
+ファイルはオーナーが `8ffc296b` で削除しており、復元しない（本文は `076a14fe` に残る）。
+
+## 2026-10-16 — Raw storage as Storage
+
+- `Changes/2026-10-15 Raw Storage as Storage.md` (revision of 2026-10-16): 取り込み済み (2026-10-16). Mapping:
+  - §4.1 N1–N3 → SPEC §3.4; N4 → §15.6.2, §15.6.3.
+  - §4.2 N5, N8 → §5.2 (provenance, raw Places, Designation); N6 → §5.2.1 conditions 1–3; N7 → §3.4.1, §5.3, §5.4,
+    §5.5, §15.1.5.
+  - §4.3 N9 → §5.2 (Placement); N10 → §5.2.1 Local variables; N11 → §5.2.3; N12 → §5.6; N13 → §15.1.2, §15.1.5.
+  - §4.4 N14 → §5.2 (Type-punned access); §4.5 N15 → §5.2 (Relocation), N16 and N17 → §5.6.
+  - §4.6 N18 → §5.2.1 condition 4; N19 → §5.2.2; N20 → §5.6; N21 → §22.3.7.
+  - §4.7 N22 → Appendix E; N23 → IMPL §21.1.1; N24 → LIBRARY §5.4; N25 → `RawOperations.kimi`; N26 →
+    `StorageOperations.kimi`, `Storage.kimi` and the Library README.
+  - §4.8 N27 → SETTLED; N28 → PLAN §7 row RZ, to which RZ1–RZ8 (section 7) are transferred.
+  - Not inserted: E1–E6 (section 4) and the explanatory sentence after N8, which lies outside the quoted text.
+  - Section 2.3 reproducers D1–D5 ran at O2 with one drop per value. D1, D2, D3 and D5 are the native regression
+    `RawStorageTest.ZeroSizedValuesOccupyTheirOwnPlaces`; `DisjointArrayPairTest` and `ZeroSizedArrayTest` already cover
+    D4. D6 waits for RZ4–RZ6. STATUS records the verified boundary in its raw-pointer row, although section 4.8 expected
+    no STATUS change.
+- Owner amendments at intake (2026-10-16), which govern where the frozen text differs:
+  - **Closed classification.** N9's "an operation whose contract states construction, such as a foreign function",
+    N13's "construction that a contract states" and N15's "An operation whose contract states that it copies the bytes …,
+    such as a foreign function" become what an **operation contract** states: the `- safety:` conditions of a foreign
+    import (§22.6) or the contract of a Kimi function that the implementation supplies without a body, such as
+    `transferBytes` and `placeEntry`. A function with a body places only through the operations it performs, so
+    documentation never changes what a body does. E5's "Copies `count` bytes" belongs in its `- safety:` conditions, the
+    place RZ2 names. `Raw.initialize` is one such contract, so the Placement rule names construction and relocation that
+    an operation contract states instead of listing three producers.
+  - **Provenance and authority** (not in the proposal, decided after the intake review): §5.2.1 condition 1 takes the
+    provenance of other pointers from §5.5 or the operation contract of the operation that produced the pointer, and
+    condition 3 takes their authority from §5.5's guarantee or that operation contract, replacing "the producing
+    function's contract" and "a foreign function has the authority its contract states".
+  - **Whole-value relocation.** N15 relocates only whole values: a component of a value that does not relocate, for
+    example because the value's Place extends beyond the source range, stays (section 2.3, "a component moves only with
+    its value").
+  - **Collection element storage.** N1 names the element storage of a dynamic collection (§4.9) as raw storage, so the
+    placements of `Array.kimi:179`, `:197` and `Dictionary.kimi:61` create Places; RZ6's last bullet is resolved.
+  - **§22.6 and relocation** (not in the proposal): the restriction to constructing or overwriting values whose Type has
+    no user `drop` does not cover relocation, which moves values; E5 stays valid.
+- Corrections to the frozen text: N1's raw storage reads "such as a `Raw.allocate` result or the element storage of a
+  dynamic collection", since a zero-sized Array's element storage is a fixed substitute address rather than an
+  allocation, and N22's Raw storage row names that storage too. N25's `release` comment states its `storage`
+  obligation under `- safety:` (STYLE §4.5).
+- Not refreshed, by the owner's decision: SPECJ and SPECJ2 keep the replaced rules that section 5 lists. GUIDE states
+  none. The Japanese edition `Proposals/2026-10-15 Raw Storage as StorageJ.md` was deleted at intake (owner decision).
+- Unverified, as section 7 states: the section 3.2 argument, closed-set designation across workers, the Dictionary
+  layout and the missing windows-x64 §5.5 guarantee. No compiler, IR or runtime code changed.
+
+## 2026-10-16 — Place result removal
+
+- `Changes/2026-10-16 Place Result Removal.md` and `Changes/2026-10-15 Place Result Removal.md`: 取り込み済み (2026-10-16).
+  The 2026-10-16 edition governs where they differ (its header). Mapping of the 2026-10-16 edition:
+  - §2.1 rule 1 (results are Types) → SPEC §7.1, §6.4.1, §8.4.2, §8.5.4, §8.5.5, §8.6.3, §8.10, §9.1, §10.2, §10.3,
+    §10.7, §10.8, Appendix F (§F.6 grammar and the contextual keyword list).
+  - §2.2 rule 2 (the caller follows with `@follow`) → §7.1 "Lending existing Storage", §13.5.6, §15.1.5, §15.6.1.
+  - §2.3 rule 3 (the index expression follows the selected call's reference) → §4.7.1, §4.7.2, §22.1, Appendix E.
+  - §2.4 → the §7.1 and §4.7.1 examples; §2.5 → SPECJ, SPECJ2, LIBRARY §2.4, §3.2, §3.2.1 and §3.5, STYLE §4.2, GUIDE.
+  - §3 and §4 → the U2/U3 test, fixture and golden migration, the library (Indexable, Dictionary, UniqSlice) and
+    Milestones 27 and 28 (recorded in `tests/milestones/README.md`).
+  - §5 and §7 → DECISIONS PR-1, three SETTLED entries, PLAN, CODEMAP, STATUS, DIAGNOSTICS and VERIFICATION.
+  - Dispositions: §1.3 timing — the owner chose implementation before R6, with a D5 exception, on 2026-10-16. §5.3
+    hypotheses — `-> place ref/T` gets two records (an unknown Type Name, then unexpected tokens; syntax corpus
+    `place-result-removed`); a value-result `index` is `IncompatibleContractImplementation_Kd`, as stated. §7's
+    out-of-scope items — the `ref/(ref/T)` temporary lifetime defect was fixed before U2 (`b8aa64ef`, `bfb049c4`); the
+    message text built in `VirtualOverrides` stays an open issue (PLAN §7).
+  - The 2026-10-15 edition's §9 English text was the starting point of the SPEC text; its staging S1/S2 and its rejection
+    of deferral are not adopted (DECISIONS PR-1, timing).
+- `Proposals/2026-10-06 Callable and Local Region Implementation Plan.md` stays 一部取り込み. Its design point that Function
+  contracts carry a Value/PlaceRef/PlaceUniq result category is superseded by this removal and needs no further work; its
+  frozen text is unchanged.

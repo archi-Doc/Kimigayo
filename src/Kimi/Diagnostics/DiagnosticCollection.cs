@@ -64,7 +64,7 @@ public sealed class DiagnosticCollection
     public bool Add(SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null, string? note = null)
         => this.AddSyntax(range, code, obj, obj2, sourceDocument, note);
 
-    // SPEC 23.3.6.7: a report that breaks its code's definition is a compiler defect, never a diagnostic of the source.
+    // SPEC 23.1: a report that breaks its code's definition is a compiler defect, never a diagnostic of the source.
     internal static DiagnosticEntry Validate(SourceSpan range, DiagnosticCode code, object? first, object? second, SourceDocument? document, DiagnosticKey[]? derivedFrom)
     {
         if (DiagnosticEntries.Anomalies.Count != 0)
@@ -112,7 +112,7 @@ public sealed class DiagnosticCollection
         return entry;
     }
 
-    /// <summary>Records excluded syntax of this target's document (SPEC 19.5).</summary>
+    /// <summary>Records excluded syntax of this target's document (SPEC 19.4).</summary>
     /// <param name="range">The excluded syntax.</param>
     /// <param name="directive">The innermost excluding directive.</param>
     internal void RecordExcludedRange(SourceSpan range, SourceSpan directive)
@@ -131,7 +131,7 @@ public sealed class DiagnosticCollection
     /// <param name="sourceDocument">The source; the target's document by default.</param>
     /// <param name="note">A Note formed from the facts.</param>
     /// <param name="related">Locations obtained through <see cref="Relate"/>.</param>
-    /// <param name="repairs">The repair candidates the report offers (SPEC 23.3.6.9), with edits located by <see cref="Edit"/>.</param>
+    /// <param name="repairs">The repair candidates the report offers (SPEC 23.1.3), with edits located by <see cref="Edit"/>.</param>
     /// <returns>Whether the report is an Error.</returns>
     internal bool AddSyntax(SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null, string? note = null, DiagnosticRelatedFact[]? related = null, DiagnosticRepairFact[]? repairs = null)
     {
@@ -160,7 +160,7 @@ public sealed class DiagnosticCollection
     /// <param name="found">The text of the token found where the form was expected; <see langword="null"/> for the other codes.</param>
     /// <param name="document">The source; the target's document by default.</param>
     /// <param name="related">Locations obtained through <see cref="Relate"/>, such as the opening delimiter of a missing closer.</param>
-    /// <param name="repairs">The repair candidates the report offers (SPEC 23.3.6.9), such as the missing closer at its insertion point.</param>
+    /// <param name="repairs">The repair candidates the report offers (SPEC 23.1.3), such as the missing closer at its insertion point.</param>
     /// <returns>The key of the check.</returns>
     internal DiagnosticKey ReportSyntax(SourceSpan range, DiagnosticCode code, SyntaxForm form, string? found, SourceDocument? document = null, DiagnosticRelatedFact[]? related = null, DiagnosticRepairFact[]? repairs = null)
     {
@@ -185,7 +185,7 @@ public sealed class DiagnosticCollection
     }
 
     /// <summary>Makes the lexical Error that rejected a token of this target's document the cause of the parser's recovery, without
-    /// reporting the token again (SPEC 23.3.6.4).</summary>
+    /// reporting the token again (SPEC 23.1.2).</summary>
     /// <param name="range">The rejected token's span, or the insertion point of a missing form.</param>
     /// <param name="requirement">The form whose Error is recalled; any syntax Error at the range by default.</param>
     /// <returns><see langword="true"/> when such an Error was recorded; it is then <see cref="LastError"/>.</returns>
@@ -225,7 +225,7 @@ public sealed class DiagnosticCollection
     /// <param name="document">The source the span belongs to; the target's document by default.</param>
     /// <param name="evidence">The code's evidence facts, all of them in catalog order, or <see langword="null"/> for none.</param>
     /// <param name="related">Locations related to the problem, located by <see cref="Relate"/>.</param>
-    /// <param name="repairs">The repair candidates the report offers (SPEC 23.3.6.9), with edits located by <see cref="Edit"/>; <see langword="null"/> or empty for none.</param>
+    /// <param name="repairs">The repair candidates the report offers (SPEC 23.1.3), with edits located by <see cref="Edit"/>; <see langword="null"/> or empty for none.</param>
     /// <returns><see langword="true"/> when the report is an Error.</returns>
     internal bool Report(DiagnosticPartition partition, in DiagnosticKey key, SourceSpan range, DiagnosticCode code, object? first, object? second, string? note, DiagnosticKey[]? derivedFrom, SourceDocument? document, object?[]? evidence = null, DiagnosticRelatedFact[]? related = null, DiagnosticRepairFact[]? repairs = null)
     {
@@ -256,7 +256,7 @@ public sealed class DiagnosticCollection
         return isError;
     }
 
-    /// <summary>Locates one edit of a repair candidate in a recorded input (SPEC 23.3.6.9): a source whose immutable text the check
+    /// <summary>Locates one edit of a repair candidate in a recorded input (SPEC 23.1.3): a source whose immutable text the check
     /// read, never a built-in or generated source.</summary>
     /// <param name="span">The replaced span; an empty span is an insertion point.</param>
     /// <param name="text">The replacement text; empty for a deletion.</param>
@@ -304,7 +304,7 @@ public sealed class DiagnosticCollection
         return new(role, this.SourceOf(document), document is null ? 0 : span.Start, document is null ? -1 : span.Length, label);
     }
 
-    // SPEC 23.3.6.7, 23.3.6.9: a candidate names a catalog kind with that kind's facts, has edits that do not overlap, judges each
+    // SPEC 23.1, 23.1.3: a candidate names a catalog kind with that kind's facts, has edits that do not overlap, judges each
     // relevant condition exactly once, and never belongs to a derived record. Edits are ordered by position with insertions at one
     // point joined, and the candidates by kind then first edit, so repeated reports and outputs compare one form.
     private static DiagnosticRepairFact[] ValidateRepairs(DiagnosticEntry entry, DiagnosticRepairFact[] repairs, bool derived)

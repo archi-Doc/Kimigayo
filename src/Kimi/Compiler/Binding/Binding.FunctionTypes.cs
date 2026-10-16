@@ -6,12 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    internal static FunctionResultMode ResultModeOf(Koto? result)
-        => result is PlaceResultKoto place ? place.IsExclusive ? FunctionResultMode.PlaceUniq : FunctionResultMode.PlaceRef : FunctionResultMode.Value;
-
-    private static BoundType? PlaceExpected(FunctionResultMode mode, BoundType? expected)
-        => mode == FunctionResultMode.Value ? null : expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? expected.Components[0] : expected;
-
     // SPEC 10.6: the last reference slot that only per-call Origins of S would satisfy, as (Type parameter, parameters of S as bits,
     // whether S's own positions bind every slot, so that a wrapper's call infers them), and why the last candidate's slots did not bind
     // from S, with the slot when one is known; BindFunctionReference clears both before it checks a candidate and reads them for a single one.
@@ -37,7 +31,7 @@ public sealed partial class Binding
         return null;
     }
 
-    // The declaration whose own per-call inputs the signature of a Function Item or closure names (SPEC 8.6).
+    // The declaration whose own per-call inputs the signature of a Function Item or closure names (SPEC 8.10).
     internal static Koto? SignatureOwner(BoundType callee)
     {
         var owner = callee is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } borrowed ? borrowed.Components[0] : callee;
@@ -173,7 +167,7 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 8.6, 15.6.4: every Origin-bearing input is a direct borrow over its own per-call input, an Origin that the signature's
+    // SPEC 8.10, 15.6.4: every Origin-bearing input is a direct borrow over its own per-call input, an Origin that the signature's
     // own binder quantifies: a Function Type's own syntax or the declaration `own`. Any other Origin is fixed, even at its own slot.
     // An expected signature (`any`) may take a fixed Origin for a per-call one, which only asks more of the implementation.
     private static bool PerCallInputs(BoundType signature, Koto? own, bool any = false)
@@ -259,7 +253,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (depth > 32 || written.Kind != binding.Kind || written.ResultMode != binding.ResultMode || !ReferenceEquals(written.Symbol, binding.Symbol) || written.Semantics != binding.Semantics ||
+        if (depth > 32 || written.Kind != binding.Kind || !ReferenceEquals(written.Symbol, binding.Symbol) || written.Semantics != binding.Semantics ||
             written.Length != binding.Length || !ReferenceEquals(written.LengthExpression, binding.LengthExpression) || !ReferenceEquals(written.ClosureContext, binding.ClosureContext) || !written.LengthArguments.AsSpan().SequenceEqual(binding.LengthArguments) ||
             written.Components.Count != binding.Components.Count || written.OriginArguments.Count != binding.OriginArguments.Count || !Omitted(written.Origin, binding.Origin))
         {
@@ -526,7 +520,7 @@ public sealed partial class Binding
 
         if (target.GenericArguments.Count != 0)
         {
-            // The selected generic Item keeps its bound arguments; at a common Function Type it is then erased (SPEC 7.6.4).
+            // The selected generic Item keeps its bound arguments; at a common Function Type it is then erased (SPEC 7.7.4).
             var arguments = this.typeScratch.Rent(target.GenericArguments.Count);
             var lengths = this.lengthScratch.Rent(target.GenericArguments.Count);
             try
@@ -568,7 +562,7 @@ public sealed partial class Binding
             }
         }
 
-        // The reference is its Function Item; at a common Function Type that Item is erased (SPEC 7.6.4), whatever syntax names it.
+        // The reference is its Function Item; at a common Function Type that Item is erased (SPEC 7.7.4), whatever syntax names it.
         var concrete = this.CompleteFunctionItem(use, selected, default, this.ReferenceContainer(use, selected));
         if (!erase)
         {
@@ -1003,11 +997,6 @@ public sealed partial class Binding
     // `container` with `arguments` bound, or those of the Function Item `item`.
     private bool ContractFits(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, BoundType? container, BoundType? item, BoundType?[]? arguments, Span<BoundArgumentOperation> operations, BoundOrigin[] origins, BoundOrigin[] inputs, bool explain = false, BoundLength?[]? lengths = null)
     {
-        if (ResultModeOf(function.ReturnType) != required.ResultMode)
-        {
-            return false;
-        }
-
         var parameters = required.Components[0];
         var generic = function.GenericArguments.Count;
         var inputCount = InputOriginCount(function);
@@ -1094,7 +1083,7 @@ public sealed partial class Binding
             }
 
             var result = this.BindType(function.ReturnType, scope, new(TypePosition.Result, function));
-            return result is null ? null : this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result], resultMode: ResultModeOf(function.ReturnType));
+            return result is null ? null : this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result]);
         }
         finally
         {

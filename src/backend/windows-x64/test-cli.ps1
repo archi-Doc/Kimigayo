@@ -200,7 +200,7 @@ $output = Invoke-Kimi @('run', $abortProject, '--no-build') 1
 if (-not $childStdout.EndsWith("before abort`n") -or $childStderr -cne "Abort.kimi:2:1: abort KIMI_E_ABORT: cli abort`n") { throw "Project run lost child output/error: $output" }
 $output = Invoke-Kimi @('run', (Join-Path $abortDirectory 'bin/x86_64-pc-windows-msvc/Abort.O2.exe'), '--no-build') 1
 if ($childStdout -cne "before abort`n" -or $childStderr -cne "Abort.kimi:2:1: abort KIMI_E_ABORT: cli abort`n") { throw "Executable run lost child output/error: $output" }
-# A self-targeted static supply links #LibraryImport calls with mixed scalar arguments (SPEC 20.8.2, 22.3).
+# A self-targeted static supply links #LibraryImport calls with mixed scalar arguments (SPEC 20.4, 22.6).
 $foreignDirectory = Join-Path $work 'foreign supply'
 $foreignNative = Join-Path $foreignDirectory 'native'
 New-Item -ItemType Directory -Path $foreignNative -Force | Out-Null

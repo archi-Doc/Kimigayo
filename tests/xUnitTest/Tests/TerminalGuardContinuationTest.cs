@@ -67,20 +67,13 @@ public class TerminalGuardContinuationTest
         StringEmissionTest.WriteAuditedFixture(Name, Source, ir, string.Empty, "held=0;fallback=0", 1, stderr);
     }
 
+    // A guard that never completes leaves its body and the end of its candidate's borrow to the checks (their MIR: tests/mir/matches.kimi
+    // `loopingGuard`).
     [Fact]
     public void DivergentGuardKeepsCleanupUnreachable()
     {
         const string Source = "match \"held\"\n    let text if (loop => ()) => Console.writeLine(\"selected\")\n    _ => Console.writeLine(\"fallback\")";
         ScalarEmissionTest.EmitFixture("TerminalGuardWindowDivergence", Source, string.Empty, timeoutMilliseconds: 300);
-        var c = MinimalEmissionTest.Analyze(Source);
-        var body = Assert.Single(c.Ownership.Bodies, x => x.Matches.Count != 0);
-        Assert.False(body.IsReachable(body.MatchArms[0].BodyEntry));
-        // Ownership conservatively retains Pattern failure; lowering proves the
-        // catch-all always enters this guard. Its protection end is unreachable.
-        // The writeLine calls end their own argument borrows (SPEC 22.4) and are excluded.
-        Assert.All(
-            body.Operations.Select((op, id) => (op, id)).Where(x => x.op.Kind == OwnershipOperationKind.EndComparisonLoans && x.op.Source is not InvocationKoto),
-            x => Assert.False(body.IsReachable(x.id)));
     }
 
     private static string Source(string declaration, string guard, string body, string tail, string subject = "c")

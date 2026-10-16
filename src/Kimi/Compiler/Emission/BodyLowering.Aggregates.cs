@@ -175,7 +175,7 @@ internal sealed partial class BodyLowering
                 InvocationKoto call => call.Arguments,
                 _ => null,
             };
-            // SPEC 4.3, 4.7.4: an Array literal's payloads keep their own slots; construction moves them into the buffer.
+            // SPEC 4.3, 4.9.5: an Array literal's payloads keep their own slots; construction moves them into the buffer.
             var handle = type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary;
             var fill = body.Places[plan.Place].Source is ArrayLiteralKoto { FillLength: not null };
             if ((!handle && !fill && layout.Count != plan.PayloadCount) || (fill && plan.PayloadCount != 1) || (elements is not null && elements.Count != plan.PayloadCount))
@@ -357,7 +357,7 @@ internal sealed partial class BodyLowering
             case OwnershipOperationKind.Read when place.Type.HandleMode is not null:
                 return !body.IsReachable(id) || (body.GetInputState(id, place.Id) & PlaceState.MustInit) != 0 || Fail("Callable receiver is not initialized.", out failure);
             case OwnershipOperationKind.Read when place.Type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice:
-                // SPEC 4.6.1: metadata and a receiver borrow share the handle in place; the operation loads its fields.
+                // SPEC 4.7: metadata and a receiver borrow share the handle in place; the operation loads its fields.
                 return !body.IsReachable(id) || (body.GetInputState(id, place.Id) & PlaceState.MustInit) != 0 || Fail("Array receiver is not initialized.", out failure);
             case OwnershipOperationKind.Declare:
                 if (place.Kind == OwnershipPlaceKind.Result && this.slotResultDeclarations[id] == 0)
@@ -440,7 +440,7 @@ internal sealed partial class BodyLowering
 
                 if (place.Type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary)
                 {
-                    // SPEC 4.3, 4.7.4: the handle is zeroed (the empty literal allocates nothing); an element literal reserves its count
+                    // SPEC 4.3, 4.9.5: the handle is zeroed (the empty literal allocates nothing); an element literal reserves its count
                     // once and moves each acquired payload into the buffer in source order.
                     if (!this.TryGetLocation(operation.Source, directory, constants, out var initLocation))
                     {
@@ -573,7 +573,7 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    // SPEC 4.7.6: destroying an Array releases its buffer; elements are destroyed first once element storage exists.
+    // SPEC 4.9.7: destroying an Array releases its buffer; elements are destroyed first once element storage exists.
     private bool LowerArrayDestruction(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, ReadOnlySpan<byte> marks, out string? failure)
     {
         failure = null;
@@ -610,7 +610,7 @@ internal sealed partial class BodyLowering
         failure = null;
         var place = body.Operations[id].Place;
 
-        // SPEC 4.7.6: elements with cleanup are destroyed in reverse index order before the buffer is released.
+        // SPEC 4.9.7: elements with cleanup are destroyed in reverse index order before the buffer is released.
         var arrayType = body.Places[place].Type;
         var dictionary = arrayType.Kind == BoundTypeKind.Dictionary;
         ArrayElement element = default;
@@ -664,7 +664,7 @@ internal sealed partial class BodyLowering
 
         if (operation.Source is FunctionKoto { BoundClosure: { } closure })
         {
-            // SPEC 7.2.3, 7.6.2: a default closure's bare entry Copies the argument that its pending call prepared.
+            // SPEC 7.2.3, 7.7.2: a default closure's bare entry Copies the argument that its pending call prepared.
             for (var i = 0; i < closure.Captures.Count; i++)
             {
                 var capture = closure.Captures[i];

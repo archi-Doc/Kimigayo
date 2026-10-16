@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 8.4.7.3: a Type parameter proven PrimitiveInteger uses the built-in integer operators, comparisons,
+/// <summary>SPEC 8.7.4: a Type parameter proven PrimitiveInteger uses the built-in integer operators, comparisons,
 /// conversions, Scalar read, formatting and literals 0 through 127; each instance executes its concrete Type's operations.</summary>
 public class PrimitiveIntegerTest
 {
@@ -58,7 +58,7 @@ public class PrimitiveIntegerTest
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
-    // SPEC 10.2.1: a Type argument constrained to PrimitiveInteger is inferred as the referent, and the argument is read.
+    // SPEC 10.2.2: a Type argument constrained to PrimitiveInteger is inferred as the referent, and the argument is read.
     [Fact]
     public void AReferenceArgumentInfersTheIntegerType()
     {
@@ -69,7 +69,7 @@ public class PrimitiveIntegerTest
     [Fact]
     public void WideDivisionIsDiagnosedForTheInstance()
     {
-        // SPEC 8.4.7.3: the generic body is valid; the initial profile refuses its 128-bit instance before optimization.
+        // SPEC 8.7.4: the generic body is valid; the initial profile refuses its 128-bit instance before optimization.
         var c = MinimalEmissionTest.Analyze("func half<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value / 2\nlet a = half(10)\nlet b = half(10@i128)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));

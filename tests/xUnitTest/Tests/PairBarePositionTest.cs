@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 3.5, 8.9, 8.10, 13.5.5.1: the remaining bare positions of a pair-layer Place. A bare argument at a by-value parameter and a
+// SPEC 3.5, 8.14, 8.15, 13.5.5: the remaining bare positions of a pair-layer Place. A bare argument at a by-value parameter and a
 // bare result or arm are acquired by each Semantics case as the case Type is; a write through a pair element of a writable Tuple
 // has the owner case's Write; a bare element whose case Type is an exclusive reference is a located limit, as the concrete element.
 public sealed class PairBarePositionTest
@@ -32,7 +32,7 @@ public sealed class PairBarePositionTest
         Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), "arr[0]", null), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length), error.Reason));
     }
 
-    // SPEC 13.5.5.2: an exclusive short adaptation borrows the written slot, which must be writable.
+    // SPEC 13.5.6: an exclusive short adaptation borrows the written slot, which must be writable.
     [Fact]
     public void AnExclusiveShorthandNeedsAWritableWrittenSlot()
     {

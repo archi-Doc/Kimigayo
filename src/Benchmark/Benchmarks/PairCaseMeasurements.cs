@@ -7,7 +7,7 @@ using Verification;
 
 namespace Benchmark;
 
-// Fixed workload and warm-up for the Semantics-case runs of generic definitions (SPEC 8.10; PLAN G75); the zero-allocation
+// Fixed workload and warm-up for the Semantics-case runs of generic definitions (SPEC 8.15; PLAN G75); the zero-allocation
 // assertion lives in GenericCaseAllocationTest, the family outcomes in GenericOwnershipCaseTest.
 internal static class PairCaseMeasurements
 {

@@ -96,7 +96,7 @@ public class ElementBorrowEmissionTest
     public void UnconstructedReceiversAreRejected(string source)
         => Reject(Same + source, DiagnosticCode.UninitializedPlace_Kd);
 
-    // SPEC 3.4.1, 4.6.9, 5.4, 10.2: an owned fixed-array element at a runtime index, and a stored part below an element of an Array,
+    // SPEC 3.4.3, 4.7.1, 5.4, 10.2: an owned fixed-array element at a runtime index, and a stored part below an element of an Array,
     // a Slice or such a fixed array, owned or reached through references, is borrowed in place through the element's own borrow:
     // exclusive borrows, receivers and addresses change the element, and shared borrows, arguments and comparisons read it, with each
     // selector evaluated once. The path's references decide its authority.
@@ -129,7 +129,7 @@ public class ElementBorrowEmissionTest
     public void SelectedElementPlacesAreBorrowedInPlace(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("ElementBorrowPlace" + name, source, stdout);
 
-    // SPEC 4.6.1: the element's bounds are checked before it or its part is borrowed.
+    // SPEC 4.7: the element's bounds are checked before it or its part is borrowed.
     [Theory]
     [InlineData("Dynamic", Item + Bump + "var xs: Array<Item> = [Item.init(\"a\", 41)]\nlet i: isize = 3\nbump(xs[i].n@uniq)\nConsole.writeLine(\"unreachable\")", "xs[i]")]
     [InlineData("Fixed", Bump + "var ys: [2 of i32] = [41, 5]\nlet i: isize = 3\nbump(ys[i]@uniq)\nConsole.writeLine(\"unreachable\")", "ys[i]")]
@@ -153,7 +153,7 @@ public class ElementBorrowEmissionTest
         Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
-    // SPEC 3.4.1, 15.1.3: a runtime index proves no initialized element, so a fixed array with a moved element lends none.
+    // SPEC 3.4.3, 15.1.3: a runtime index proves no initialized element, so a fixed array with a moved element lends none.
     [Fact]
     public void ARuntimeSelectionOfAPartiallyMovedFixedArrayIsRejected()
     {
@@ -179,7 +179,7 @@ public class ElementBorrowEmissionTest
         Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
-    // SPEC 3.4.1, 10.2, 15.6.2: element routes compose: nested Field, Tuple and Array projections select one Place, a stored reference
+    // SPEC 3.4.3, 10.2, 15.6.2: element routes compose: nested Field, Tuple and Array projections select one Place, a stored reference
     // is lent as its referent or borrowed as its slot, borrows of different Arrays keep separate Loans, and an ordinary read of a part
     // stays an independent Copy.
     [Theory]
@@ -297,6 +297,8 @@ public class ElementBorrowEmissionTest
         Assert.Equal(Assert.Single(body.Matches).Subject, candidate.Value);
     }
 
+    // The comparison borrows its elements in place: no temporary, no Move, no cleanup of an element (its MIR: tests/mir/comparisons.kimi
+    // `elementComparison`).
     [Fact]
     public void ComparisonDoesNotAcquireOrDestroyItsElement()
     {
@@ -305,9 +307,6 @@ public class ElementBorrowEmissionTest
         StringEmissionTest.WriteAuditedFixture("ElementBorrowResponsibility", Source, ir, "ok\n", "held=1;sibling=1;ok=1", order: [2, 1, 0]);
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var body = c.Ownership.Bodies[0];
-        Assert.DoesNotContain(body.Places, p => p.Kind == OwnershipPlaceKind.Temporary && p.Source is Kimi.Compiler.Parsing.MemberAccessKoto);
-        Assert.Equal(0, body.MovePathCount);
         var comparison = Assert.Single(module.GetFunction(0).Instructions, x => x.Opcode == EmissionOpcode.StringEquals);
         Assert.All(module.GetFunction(0).Operands.Skip(comparison.OperandStart).Take(2), x => Assert.Equal(EmissionOperandKind.ElementAddress, x.Kind));
     }
@@ -327,7 +326,7 @@ public class ElementBorrowEmissionTest
     public void NonterminationCannotReleaseOrDeliverNormally(string name, string source)
         => ScalarEmissionTest.EmitFixture("ElementBorrowDivergent" + name, source, string.Empty, timeoutMilliseconds: 300);
 
-    // SPEC 3.4.1, 4.6.9: emission accepts a part borrow only through its element's own borrow of the element's stored Type, and an
+    // SPEC 3.4.3, 4.7.1: emission accepts a part borrow only through its element's own borrow of the element's stored Type, and an
     // exclusive fixed-array element only in exclusive mode; a corrupted route record fails before output and a fresh analysis recovers.
     [Theory]
     [InlineData("receiver")]
@@ -437,31 +436,19 @@ public class ElementBorrowEmissionTest
     {
         const string Source = Same + "func f(take: bool)\n    var a: (string, [1 of string], i32) = (\"held\", [\"sibling\"], 40)\n    if take\n        let moved = a.1[0]@move\n    defer\n        if same(a.0, a.0) => a.2 += 1\n    a.2 += if a.0 == \"held\" => 1 else => 0\n    a.1[0] = \"new\"\nf(true)\nf(false)";
         var c = MinimalEmissionTest.Analyze(Source);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            c.Binding.CheckStartup(OutputKind.Application);
-            Assert.True(c.Analyze().IsVerified);
-            Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
-        }
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
 
         var success = true;
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
-        {
-            success &= c.Bind().IsComplete;
-        }
-
-        var bindingBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
-        before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
+        var bytes = AllocationMeasurement.Measure(() =>
         {
             success &= c.Analyze().IsVerified;
             success &= c.WriteIr(TextWriter.Null, out _);
-        }
-
-        var bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        });
         Assert.True(success);
         Assert.Equal(0, bindingBytes);
         Assert.Equal(0, bytes);

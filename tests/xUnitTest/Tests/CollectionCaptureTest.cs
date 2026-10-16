@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 7.6.2: an environment holds bindings of any Type with slot storage: enums such as Option and Result, Arrays,
+// SPEC 7.7.2: an environment holds bindings of any Type with slot storage: enums such as Option and Result, Arrays,
 // Dictionaries, Slices and raw pointers, captured by Copy, Move or a slot borrow under the ordinary acquisition rules.
 public class CollectionCaptureTest
 {

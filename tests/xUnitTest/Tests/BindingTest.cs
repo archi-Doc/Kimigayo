@@ -121,7 +121,7 @@ public class BindingTest
     [InlineData("u32", "3")]
     public void UntypedShiftCountsAreTypedIndependently(string type, string count)
     {
-        // SPEC 12.3.1: a shift count is typed independently of the shifted operand, so an untyped count defaults to i32.
+        // SPEC 12.3: a shift count is typed independently of the shifted operand, so an untyped count defaults to i32.
         var compilation = CompilationTestHelper.ParseSuccess($"let x: {type} = 1\nlet y = x << {count}");
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         var shift = Assert.Single(KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<BinaryKoto>(), static x => x.Akind == KotoKind.LessThanLessThan);
@@ -249,33 +249,25 @@ public class BindingTest
     {
         var source = "func identity<T>(x: T) -> T => x\n" + string.Join("\n", Enumerable.Range(0, 256).Select(i => $"let v{i} = identity({i})"));
         var compilation = CompilationTestHelper.ParseSuccess(source);
-        for (var i = 0; i < 4; i++)
-        {
-            Assert.True(compilation.Bind().IsComplete, Describe(compilation));
-        }
-
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Binding.Bind(BindingMode.Final)));
     }
 
-    // Closure receiver classification (12, 14, 37: a reusable visitor, the capture list without a boxed enumerator) and
-    // specialization Origin inheritance (21: scratch binders) once allocated on every warm rebind.
+    // Closure receiver classification (12, 14, 35: a reusable visitor, the capture list without a boxed enumerator) and
+    // specialization Origin inheritance (22: scratch binders) once allocated on every warm rebind.
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(12)]
     [InlineData(14)]
-    [InlineData(21)]
-    [InlineData(37)]
+    [InlineData(22)]
+    [InlineData(35)]
     public void RebindingAMilestoneProgramDoesNotAllocate(int number)
     {
         var compilation = Compilation.CreateForTest();
         Assert.True(compilation.Prepare(WindowsProfile.Target));
         compilation.Kotonoha.AddSource(new SourceDocument($"Milestone{number}.kimi", DiagnosticCorpus.Milestone(number)));
-        for (var i = 0; i < 4; i++)
-        {
-            Assert.True(compilation.Bind().IsComplete, Describe(compilation));
-        }
-
-        Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Binding.Bind(BindingMode.Final), iterations: 8));
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Binding.Bind(BindingMode.Final)));
     }
 
     [Fact]

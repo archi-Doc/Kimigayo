@@ -7,7 +7,7 @@ using System.Text.Json.Serialization.Metadata;
 namespace Kimi.Lsp;
 
 /// <summary>
-/// Reads one JSON-RPC body in a single pass (SPEC 23.4.1). The parameters of a known method are deserialized straight
+/// Reads one JSON-RPC body in a single pass (SPEC 23.4). The parameters of a known method are deserialized straight
 /// from the frame, and a known method name is its <see cref="LspMethods"/> constant, so no JSON is copied or parsed twice.
 /// </summary>
 internal static class LspMessageReader

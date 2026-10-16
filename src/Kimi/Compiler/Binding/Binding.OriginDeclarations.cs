@@ -67,7 +67,7 @@ public sealed partial class Binding
             : inner == OriginVariance.Covariant ? outer
             : outer == OriginVariance.Covariant ? OriginVariance.Contravariant : OriginVariance.Covariant;
 
-    // SPEC 15.3.1, 23.3.6.4: a binding set that reuses a visible name failed as DuplicateBinding_Kd and declares nothing.
+    // SPEC 15.3.1, 23.1.2: a binding set that reuses a visible name failed as DuplicateBinding_Kd and declares nothing.
     private static bool RepeatedSet(TypeSemanticsKoto set) => set.BindingFailure == BindingFailure.Duplicate;
 
     private OriginDeclaration OriginDeclarationFor(Koto owner)
@@ -176,7 +176,7 @@ public sealed partial class Binding
                 nested |= parent is FunctionTypeKoto;
             }
 
-            // SPEC 8.8.2: a specialization's written binder names are preliminary; CompleteSpecializationOrigins maps them to the original's.
+            // SPEC 8.13.2: a specialization's written binder names are preliminary; CompleteSpecializationOrigins maps them to the original's.
             if (nested || (owner is FunctionKoto function && (function.IsAnonymous || !IsSignature(annotation, function))) || owner is not (FunctionKoto or PropertyAccessorKoto))
             {
                 continue;
@@ -384,7 +384,7 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 15.3.1, 23.3.6.4: a name that resolves to a binding set that failed as a repeat names neither that set nor the outer
+    // SPEC 15.3.1, 23.1.2: a name that resolves to a binding set that failed as a repeat names neither that set nor the outer
     // declaration it repeats, so the Origin it would denote, as in a clause attached to the same declaration or `during a` beside
     // it, rests on that DuplicateBinding_Kd and reports nothing of its own; it never resolves to the outer name.
     private void RestOnRepeatedSet(Koto use, TypeSemanticsKoto set)
@@ -712,7 +712,7 @@ public sealed partial class Binding
                 arguments[i] = this.ResolveOrigin(type.OriginArguments[i], declaration);
             }
 
-            return this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, type.Origin is { } origin ? this.ResolveOrigin(origin, declaration) : null, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments, type.ResultMode);
+            return this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, type.Origin is { } origin ? this.ResolveOrigin(origin, declaration) : null, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments);
         }
         finally
         {

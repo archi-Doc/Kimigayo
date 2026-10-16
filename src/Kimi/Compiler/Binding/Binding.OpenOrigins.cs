@@ -317,7 +317,7 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(origins[i], type.OriginArguments[i]);
             }
 
-            return changed ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments, type.ResultMode) : type;
+            return changed ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments) : type;
         }
         finally
         {
@@ -413,7 +413,7 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(origins[i], type.OriginArguments[i]);
             }
 
-            return changed ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments, type.ResultMode) : type;
+            return changed ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments) : type;
         }
         finally
         {
@@ -427,7 +427,7 @@ public sealed partial class Binding
         if (origin.Open && ReferenceEquals(origin.Binder, source))
         {
             // A required input's own per-call Origin is the outer Origin of a direct borrow that the signature's Function Type binds at
-            // that position (SPEC 8.6); any other Origin there is fixed.
+            // that position (SPEC 8.10); any other Origin there is fixed.
             var inputs = signature.Components[0];
             return origin.Slot >= 0 && origin.Slot < inputs.Components.Count && inputs.Components[origin.Slot].Origin is { Open: false } perCall &&
                 !(fixedOnly && perCall is { Kind: OriginKind.Input, Occurrence: null, Binder: FunctionTypeKoto } && perCall.Slot == origin.Slot) ? perCall : origin;
@@ -476,7 +476,7 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(origins[i], type.OriginArguments[i]);
             }
 
-            return changed ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments, type.ResultMode) : type;
+            return changed ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments) : type;
         }
         finally
         {

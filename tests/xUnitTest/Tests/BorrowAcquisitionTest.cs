@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 3.5, 7.6.2, 8.9: a bare acquisition of a Place storing an exclusive reference Reborrows it, as a same-Type
+// SPEC 3.5, 7.7.2, 8.14: a bare acquisition of a Place storing an exclusive reference Reborrows it, as a same-Type
 // annotation would; capture entries initialize environment bindings the same way; generic bodies use finite plans.
 public class BorrowAcquisitionTest
 {
@@ -58,7 +58,7 @@ public class BorrowAcquisitionTest
         Assert.Contains(note, error.Note);
         if (candidates)
         {
-            // SPEC 23.3.6.9: a bare entry offers the transfer and the borrow as candidates at the entry.
+            // SPEC 23.1.3: a bare entry offers the transfer and the borrow as candidates at the entry.
             Assert.Equal(["Repair.Transfer", "Repair.Borrow"], error.Repairs!.Select(static x => x.Kind));
             Assert.Contains("[text@move]", UnnecessaryUnsafeBlockTest.Apply(source, error.Repairs![0].Edits), StringComparison.Ordinal);
             Assert.Contains("[text@ref]", UnnecessaryUnsafeBlockTest.Apply(source, error.Repairs[1].Edits), StringComparison.Ordinal);

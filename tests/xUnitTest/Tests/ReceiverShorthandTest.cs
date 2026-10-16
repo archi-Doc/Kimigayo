@@ -127,11 +127,6 @@ public class ReceiverShorthandTest
     {
         var c = CompilationTestHelper.ParseSuccess("struct S\n    var item: i32\n        get() -> i32 => storage\n        set(value: i32) -> () => storage = value\n    func view(self) -> ref/Self => self");
         AssertComplete(c);
-        for (var i = 0; i < 8; i++)
-        {
-            c.Binding.Bind(BindingMode.Final);
-        }
-
         var allocated = AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final));
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Equal(0, allocated);

@@ -257,7 +257,7 @@ public sealed class ConversionKoto : BinaryKoto
     [Transitional("R6", Reason = "Semantic forwarding into HIR plan rows; R6 removes syntax-owned semantic access.")]
     internal ExplicitAdaptationPlan? Adaptation => this.HasCurrentBinding && this.ConversionBinding == ConversionBinding.CaseAdaptation ? this.AdaptationStorage : null;
 
-    /// <summary>Gets or sets the result of a direct-literal conversion folded at compile time (SPEC 13.5.4.2), as the
+    /// <summary>Gets or sets the result of a direct-literal conversion folded at compile time (SPEC 13.5.4), as the
     /// sign-extended N-bit payload of the target Type, or null when the conversion runs on a value.</summary>
     [Transitional("R6", Reason = "Semantic forwarding into HIR plan rows; R6 removes syntax-owned semantic access.")]
     internal Int128? FoldedConstant
@@ -282,7 +282,7 @@ public sealed class IsKoto : BinaryKoto, IOriginClauseOwner
     {
     }
 
-    /// <summary>Gets the effect clauses attached to this Callable Constraint (SPEC 8.4.10.7).</summary>
+    /// <summary>Gets the effect clauses attached to this Callable Constraint (SPEC 8.11.6).</summary>
     public IReadOnlyList<EffectBoundKoto> EffectBounds => (IReadOnlyList<EffectBoundKoto>?)this.effectBounds ?? [];
 
     /// <summary>Gets a value indicating whether this is an associated-type constraint.</summary>

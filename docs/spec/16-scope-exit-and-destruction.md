@@ -1,16 +1,12 @@
 # 16. Scope exit and destruction
 
-Virtual dispatch on the object being destroyed is forbidden, including calls through helpers or optimized direct entries ([virtual safety](virtual-dispatch.md#5-receiver-safety-and-completeness)). This does not change the existing dynamic destruction of the complete payload.
-
 [Specification index](../SPEC.md)
-
-[Scope Exit](#162-scope-exit-destruction) secures results and performs cleanup, including the code that Deferred Blocks register for it.
 
 ## 16.1. Deferred blocks
 
-A **Deferred Block** registers cleanup when execution reaches `defer`. Registration evaluates none of its body, arguments, conditions or initializers. It uses the common Body forms and has no expression result; the use or discarding of body expressions follows §14.2. A Deferred Block cannot pass its function's task, so it never suspends ([§24.2.2](24-suspension-and-asynchronous-tasks.md#2422-passing)); a function expression inside it has its own Function Boundary (§16.1.1).
+A **Deferred Block** (`defer`) registers cleanup when execution reaches it. Registration evaluates nothing in the body. The body is a common Body ([§14.2](14-control-flow.md#142-bodies-and-evaluation-contexts)) with no result. A Deferred Block never suspends ([§24.2.2](24-suspension-and-asynchronous-tasks.md#2422-passing)).
 
-A registration belongs to its directly containing executable body scope: a function, branch, arm, current iteration, `do`, `unsafe`, `require` failure body or executing `defer` body. Unreached registrations do not run, and each iteration registers and cleans up independently. Registrations cannot be cancelled or invoked manually.
+A registration belongs to its directly containing executable body scope: a function, branch, arm, current iteration, `do`, `unsafe`, `require` failure body or executing `defer` body. It runs at that scope's Scope Exit ([§16.2](#162-scope-exit)). Unreached registrations do not run, each iteration registers independently, and registrations cannot be cancelled or invoked manually.
 
 ```kimi
 func process(flag: bool)
@@ -19,264 +15,213 @@ func process(flag: bool)
         defer => log("branch end")
         work()
     log("after branch")
+// For flag = true: "branch end", "after branch", "function end".
 ```
-
-For a true `flag`, the output is `branch end`, `after branch`, then `function end`. Deferred execution and automatic destruction share the [Scope Exit ordering](#162-scope-exit-destruction).
 
 ### 16.1.1. Deferred control boundary
 
-Each Deferred Block is a lookup barrier that no outward transfer may cross (§14.5.2). It accepts a self-targeted `exit` whose operand is omitted or fits Unit, including one inside nested selections, do expressions, `unsafe` statements and `require` failure bodies.
+No outward transfer may cross a Deferred Block ([§14.5.2](14-control-flow.md#1452-targets-and-barriers)). Inside it:
 
-Transfers to targets inside the body keep their normal meaning: an inner loop receives its own `exit` and `continue`, and inner selections and do expressions keep their results. A `return` to an outer function, a named transfer to an outer construct and a `yield` to an outer selection are errors. A nested function keeps its own Function Boundary and returns (§14.5.3).
+- An `exit` that targets the Deferred Block itself, with no operand or one that fits Unit, ends the body, also from nested selections, `do`, `unsafe` and `require` failure bodies.
+- Transfers to targets inside the body keep their meaning: an inner loop receives its `exit` and `continue`, and inner selections and `do` expressions keep their results.
+- Any other transfer to a target outside the body is an error, also in unreachable code ([§14.5.2](14-control-flow.md#1452-targets-and-barriers)); a nested function keeps its own Function Boundary.
 
-```kimi
-defer
-    defer => log("cleanup body end")
-    if alreadyClosed()
-        exit // Ends this body; its nested defer and remaining outer cleanup still run.
-    close()
-
-defer
-    for value in values
-        if skip(value)
-            continue // Targets the inner for.
-        if done(value)
-            exit     // Targets the inner for, not the Deferred Block.
-    let message = if failed()
-        yield "failed"
-    else
-        yield "done"
-    log(message)
-```
-
-An early `exit` finishes the current body's cleanup and then resumes the pending outer Scope Exit; it neither cancels other registrations nor replaces a pending return value or transfer. A nested Deferred Block cannot transfer across its own boundary to a target in an outer Deferred Block. These restrictions apply even in unreachable code.
+An early `exit` finishes the body's own cleanup and resumes the pending outer Scope Exit, without cancelling registrations or replacing a pending result or transfer.
 
 ```kimi
-defer
-    exit () // Valid: the operand fits the deferred target's Unit result.
+func run() -> i32
+    defer
+        defer => log("inner end")
+        for value in values()
+            if done(value)
+                exit       // Targets the inner for.
+        if alreadyClosed()
+            exit ()        // Ends this Deferred Block; "inner end" still runs.
+        close()
+    return 0
 ```
 
 ### 16.1.2. Deferred evaluation and ownership
 
-Names and Effective Types are resolved at the registration's lexical position; later declarations or refinement do not reinterpret the body. Registration neither Copies nor Moves referenced locals and creates no closure value; execution accesses the bindings as they are at that time.
+Names and Effective Types are resolved at the registration position. Registration neither Copies, Moves nor borrows locals and creates no closure; the body uses the bindings as they are when it runs, and all ownership and Loan rules are checked there on every exit path. A Move during cleanup removes the later automatic destruction of its source.
+
+An inner `defer` registers while its enclosing Deferred Block runs and runs when that body exits, before the remaining outer cleanup. It cannot register for a scope that is already being exited.
+
+A Deferred Block grants no unsafe permission: permission follows the operation's lexical context ([§14.3](14-control-flow.md#143-do-and-unsafe)), and its safety conditions must hold when the body runs. `defer` neither prevents double destruction nor extends raw pointer validity.
 
 ```kimi
 var count: i32 = 1
 let saved = count
-defer => log(saved) // Explicit snapshot: prints 1.
-defer => log(count) // Reads at execution: prints 2 first.
+defer => log(saved)          // Prints 1, second.
+defer => log(count)          // Prints 2, first.
 count = 2
 ```
 
-Initialization, Copy/Move, Loan, Origin and destruction responsibility are checked on every applicable exit path, including deferred uses within borrow lifetimes. Registration alone does not borrow all referenced values, and later operations are allowed if they remain compatible with the eventual cleanup.
-
 ```kimi
-// Resource is non-Copy; inspect borrows, consume takes ownership.
 let resource = makeResource()
-defer => inspect(resource)
-consume(resource@move) // Error: cleanup would access a moved value.
-
-let other = makeResource()
-defer => inspect(other)
-defer => consume(other@move) // Error: executes before inspect and moves its input.
+defer => inspect(resource@ref)
+consume(resource@move)       // Error: the cleanup reads a Moved value.
 ```
 
-A valid Move during cleanup removes the subsequent automatic destruction responsibility. Raw pointer operations keep their programmer-managed obligations: `defer` neither repairs double destruction nor extends raw pointer validity. Secured result borrows must remain valid after all cleanup.
+## 16.2. Scope exit
 
-### 16.1.3. Nested and unsafe cleanup
-
-An inner `defer` registers while its enclosing Deferred Block executes and runs when that body exits, before the original scope's remaining cleanup. It cannot add a registration to an outer scope that is already being exited.
-
-```kimi
-defer
-    defer => log("inner end")
-    log("outer body") // Prints before inner end.
-
-defer => unsafe => releaseRaw(pointer) // Runs at the directly containing scope's exit.
-unsafe
-    defer => releaseRaw(other)      // Runs at this Unsafe Block's exit.
-    useRaw(other)
-```
-
-A Deferred Block grants no unsafe permission itself. Permission follows the operation's lexical context, never its later caller, and does not cross Function Boundaries (§14.3.3). Safety conditions must hold when the delayed operation executes.
-
-A `defer` immediately followed by scope exit is valid; it requires no warning and is not automatically replaced with a call. In `if shouldClose => defer => close(resource)`, cleanup runs at the end of the `if` body. To register for an outer scope, put the `defer` there and test the condition inside it, saving the condition first if its registration-time truth is intended:
-
-~~~kimi
-let closeAtEnd = shouldClose
-defer
-    if closeAtEnd => close(resource)
-use(resource)
-~~~
-
-## 16.2. Scope-exit destruction
-
-**Scope Exit** combines registered Deferred Blocks and automatic destruction. It applies both to ordinary scope completion and to scopes left by `return`, `exit`, `continue` or `yield`.
-
-Ownership, temporary-lifetime and construct-lifetime rules determine each value's owning scope and destruction point. They also govern temporaries, `match` and `for` Subjects, iterators, iteration bindings and owned function parameters. A transfer uses those scopes to determine what it leaves.
+**Scope Exit** runs the registered Deferred Blocks and the automatic destruction of a scope. It happens when the scope completes and when `return`, `exit`, `continue`, `yield` or `try` propagation leaves it. The rules of each construct give the owning scope of the values it creates.
 
 ### 16.2.1. Cleanup order
 
-Departing scopes are cleaned up from inner to outer, each finishing before the next. Within a scope, local declarations and `defer` statements are processed in reverse combined lexical order; later initialization or reassignment does not change a binding's position.
+Departing scopes are cleaned up from inner to outer. Within a scope, declarations and `defer` statements are processed in reverse lexical order; later initialization or reassignment does not move a binding. Only registered blocks run, and only Initialized values whose destruction responsibility remains with the scope are destroyed. A last use does not end responsibility.
 
-Only registered defers run, and only initialized values whose destruction responsibility remains with the scope are destroyed; Moved or destroyed values are skipped. A last use does not remove destruction responsibility.
-
-```kimi
-let first = makeResource("first")
-defer => log("A")
-let second = makeResource("second")
-defer => log("B")
-```
-
-The cleanup order is `B`, destruction of `second`, `A`, destruction of `first`. Deferred Blocks therefore run in reverse registration order.
-
-Bindings introduced at scope entry, such as parameters, `self`, iteration bindings and Pattern bindings, precede the body's statements. Explicit bindings in one parameter list or Pattern are ordered left to right and destroyed in reverse order. An explicit `self` follows its written position, and individual construct specifications place implicit bindings. These positions neither confer ownership nor change the bindings' owning scopes.
+Bindings introduced at scope entry (parameters, `self`, iteration and Pattern bindings) precede the body's statements, in written order; each construct places its implicit bindings.
 
 ```kimi
 func process(first: Resource, second: Resource)
-    defer => log("end")
+    let a = makeResource("a")
+    defer => log("A")
+    let b = makeResource("b")
+    defer => log("B")
+// Cleanup: "B", b, "A", a, second, first.
 ```
 
-If both parameters still own their values, the cleanup is `end`, destruction of `second`, then destruction of `first`. Similarly, a `defer` inspecting an iteration binding runs before that binding's remaining owned value is destroyed.
+**Interrupted expressions.** When a transfer leaves an expression before it completes, each live temporary and each placed component of an unfinished Tuple, array or enum Case construction belongs to the innermost enclosing body scope at the point where it was acquired. It is cleaned up with that scope in reverse acquisition order, so it is destroyed before that scope's earlier declarations and Deferred Blocks. This includes match guard temporaries and match Subjects. Transferring a value's responsibility removes it from this order.
 
-**Abandoned construction.** When an ordinary transfer abandons aggregate construction, cleanup of placed components and of still-live expression temporaries is interleaved in reverse order of completed placement or value acquisition, while preserving the inner-to-outer scope exit above. Transferring responsibility removes the source from that cleanup order.
+```kimi
+func f() -> Result<i32, ParseError>
+    defer => log("defer")
+    consume(makeGuard(), try parse()) // On Err: the Guard temporary is destroyed, then "defer" runs.
+    return .Ok(0)
+```
 
 ### 16.2.2. Results and transfers
 
 For a transfer result, or a single-item expression used as its owner's result:
 
-1. Evaluate the operand.
-2. Secure the result by the normal Copy/Move rules.
-3. Destroy the temporaries whose normal lifetime ends at the completion of that result expression.
-4. Run Deferred Blocks and automatic destruction in the departing scopes, in the common cleanup order.
+1. Evaluate the operand. If it triggers another transfer, that transfer is processed instead.
+2. Secure the result by the Copy and Move rules.
+3. Destroy the temporaries whose lifetime ends with that result expression.
+4. Run Scope Exit for the departing scopes ([§16.2.1](#1621-cleanup-order)).
 5. Deliver the secured result and complete the target's termination or continuation.
 
-Other temporaries follow their normal lifetime scopes and positions; absence from the result does not justify earlier destruction. An omitted operand supplies Unit (§14.5.1). If an operand triggers another transfer, that transfer is processed instead. A target result discarded after delivery follows normal destruction, and directly discarded body expressions keep their ordinary temporary lifetime.
+Other live temporaries are cleaned up under [§16.2.1](#1621-cleanup-order) (Interrupted expressions). An omitted operand supplies Unit ([§14.5.1](14-control-flow.md#1451-syntax-and-operands)). A Moved result is not destroyed at its source; a Copied one leaves the source's responsibility intact. Cleanup cannot replace the secured result. Borrows in the result must stay valid after all cleanup, and destruction lifetime checking ([§15.6.6](15-ownership-and-lifetime-analysis.md#1566-destruction-lifetime-checking)) applies throughout.
 
-A moved result is not destroyed again at its source, while a copied result leaves the source's destruction responsibility intact. Deferred execution cannot replace the secured result, although ordinary effects on shared objects remain possible.
+Only scopes actually left are cleaned up: `continue` cleans the current iteration's scopes, and a named transfer cleans every scope it leaves.
 
 ```kimi
 func answer() -> i32
     var value: i32 = 1
     defer => value = 2
-    return value // Returns the already copied 1.
-
-func take() -> Resource
-    let resource = makeResource()
-    defer => inspect(resource) // inspect borrows; Resource is non-Copy.
-    return resource@move // Error: cleanup would access the transferred source.
+    return value                // Returns the already Copied 1.
 ```
-
-Only scopes actually left are cleaned up. `continue` cleans the current iteration's departing scopes and keeps the outer scopes needed for continuation. Named transfers clean all intervening scopes they leave. Exiting a Deferred Block resumes the pending outer cleanup (§16.1.1).
-
-Normal ownership, borrowing and [destruction lifetime checking](15-ownership-and-lifetime-analysis.md#1566-destruction-lifetime-checking) apply throughout cleanup; securing a result first does not let a borrow of a destroyed local escape. For partial initialization or a Partial Move, [field cleanup](#1632-field-cleanup) applies to the parts with remaining responsibility rather than skipping the whole aggregate. Raw pointer access gives no guarantee that the original owner's destruction responsibility is tracked automatically.
 
 ### 16.2.3. Completion and abnormal termination
 
-A Deferred Block's registration is consumed when its execution starts, and each registration executes once if cleanup reaches it.
+A registration is consumed when its body starts and runs at most once. A pending result or transfer is delivered only after all cleanup completes. Cleanup neither suspends nor observes cancellation ([§24.2.2](24-suspension-and-asynchronous-tasks.md#2422-passing), [§22.3.3](22-core-execution-and-foreign-functions.md#2233-cancellation-and-waits)).
 
-A pending transfer or result is delivered only after all required cleanup completes normally. Nonterminating cleanup prevents the remaining cleanup and delivery; general termination proofs are not required.
+Abort, also inside a `drop`, performs no further cleanup and rolls nothing back ([§17.4](17-failure-handling.md#174-abort-termination)). Forced process termination, undefined behavior and an unbroken reference-count cycle ([§13.6.3](13-operators-and-assignment.md#1363-weak-references)) give no cleanup guarantee.
 
-Forced process termination and undefined behavior provide no cleanup guarantee. Abort skips or abandons cleanup under [Abort Termination](17-failure-handling.md#173-abort-termination). Cleanup neither suspends nor observes cancellation ([§24.2.2](24-suspension-and-asynchronous-tasks.md#2422-passing), [§22.1.3.4](22-core-execution-and-foreign-functions.md#22134-cancellation)); Deferred Blocks, destruction and secured results follow §16.2 unchanged under cancellation, which adds no completion kind.
+## 16.3. Destruction declarations
 
-## 16.3. Aggregate destruction and drop
+A `drop` declaration defines the destruction work of one struct layer.
 
-`drop` defines destruction work; it is not a callable release operation. `init` and `defer` keep their distinct construction and deferred-registration rules. The old spelling `deinit` is not a destruction declaration.
-
-The following table summarizes the existing obligations; the linked rules own their detail. Even `drop => ()` is a user-defined destruction declaration.
-
-| Obligation | Reason | Owning rule |
-| --- | --- | --- |
-| A Type with a user-defined drop cannot be Copy; whole-value Move remains permitted. | Copy must not duplicate destruction responsibility. | [Copy capability](03-types-and-values.md#351-copy-capability-and-explicit-duplication) |
-| Partial Moves require restored completeness on every path to whole-value use or that layer's drop. | The body must not observe missing fields. | [Move paths](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move), [field cleanup](#1632-field-cleanup) |
-| A user drop observes every reachable Origin; Origin and Loan validity is also checked recursively for component destruction. | Client obligations do not depend on unused code in the body. | [Destruction lifetimes](15-ownership-and-lifetime-analysis.md#1566-destruction-lifetime-checking) |
-| Whole-self Copy, Move, replacement, exchange, swap, ordinary exclusive passing and escape are forbidden; field operations and whole-self shared borrowing keep their usual rules. | Destruction retains control of the value and its remaining cleanup. | [Special receiver](#1631-special-receiver) |
-| At most one declaration per selected, merged concrete struct; no parameters, generics, Origin schema, result annotation or modifiers; no explicit or indirect call or function value. | Destruction has one controlled entry per layer. | Declaration rules below and [special receiver](#1631-special-receiver) |
-| Normal completion, including return, is followed by automatic field and base cleanup. An unfinished construction layer instead cleans its initialized components without invoking its own drop. | Responsibility is completed according to each layer's construction state. | [Field cleanup](#1632-field-cleanup) |
-
-`drop` may be declared only directly in a structure body, including a fragment produced by a Mod. It is invalid in a group, enum, contract, extension, constructor, function, accessor or another `drop`. After conditional selection and merging, each concrete structure has at most one such declaration. A common Body (§14.2) is required; `drop => ()` or an indented `()` is an explicit no-op body, which still counts as a user-defined `drop` for the Copy and Partial Move restrictions.
-
-Its single-item expression is discarded, an explicit `return` must fit Unit (§14.2), and unsafe operations need an inner Unsafe Block. Automatic component cleanup applies with or without a `drop`. Each derived layer may define its own body, and each layer is processed separately. Legal owners need no private access to invoke mandatory destruction, and access modifiers cannot suppress it.
-
-### 16.3.1. Special receiver
-
-`drop` is a dedicated destruction declaration with no parameters, generics, Origins, result annotation or modifiers; unavailable modifiers follow §2.5.1. Only the destruction machinery invokes it: explicit calls, indirect calls and obtaining its function value are compile-time errors. User-callable finishing work requires a separate API.
-
-Its `self` has exclusive access equivalent to `uniq/Self` for access and Loan checks, but it is a special destruction receiver, not an ordinary borrow value or a second owner, and cannot be Copied or Moved.
-
-The whole receiver cannot be an assignment, exchange or swap target, or be passed as an ordinary `uniq/Self`, including to methods and setters that take the whole receiver exclusively. Whole-`self` shared borrowing, and direct operations on and borrows of initialized fields, remain subject to ordinary permissions and the Partial Move restrictions; no method or borrow may bypass these rules.
-
-A destruction receiver cannot become an owning or counting handle, be stored for later use, or escape, and helper borrows must end before their storage is destroyed. During the destruction of layer `D`, `Self` is `D`, and already cleaned derived layers are unavailable. Non-escape and compliance with the [object lifetime restrictions](#164-closure-and-object-lifetime-boundaries) are proven from ownership and call effects, and unknown callees that could violate them are rejected. Runtime counts and unchecked assertions cannot replace the proof.
-
-```text
-During drop (conceptual storage operations):
-    Kimi.Intrinsics.exchange(self, replacement)       // Error: whole-self replacement.
-    self.reset()                     // Error if reset requires uniq/Self.
-    observe(sharedBorrow(field))     // Allowed for an initialized field.
-    Kimi.Intrinsics.exchange(field, with: newValue)   // Allowed with authorized field access.
-```
-
-### 16.3.2. Field cleanup
-
-Dropping Slice or UniqSlice ends only the view's responsibility, never that of its backing elements (§4.6). Destruction of a Scalar fixed array reads no elements, including one declared with `noinit` (§4.3.4); it uses the ordinary completed-array cleanup rules.
-
-A complete struct layer is destroyed by running its own `drop`, completing that body's Scope Exit, then destroying its own Fields in reverse **logical** declaration order, and finally destroying the direct base recursively. The Fields and base are complete and Initialized when `drop` starts, and a normal `return` does not skip them. Computed Properties add no components, and cleanup invokes no accessors. Splitting, generated declarations and physical layout cannot change this order except through the defined logical ordering.
+- It appears only directly in a struct body, including a generated fragment; each struct has at most one after conditional selection and merging.
+- It has no parameters, generics, Origins, result annotation or modifiers ([§F.3](appendices/F-syntax-summary.md#f3-keywords)). Its body is a common Body: a single-item expression is discarded, an explicit `return` fits Unit, and unsafe operations need an inner Unsafe Block.
+- Only destruction invokes it. Calling it, directly or indirectly, or taking it as a function value is an error.
+- Any `drop`, including `drop => ()`, makes the struct non-Copy ([§3.5.2](03-types-and-values.md#352-copy-capability)) and requires every path that Partially Moves the value to restore completeness before whole-value use or destruction ([§15.1.3](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move)). A whole-value Move is allowed.
+- Access modifiers never suppress destruction.
 
 ```kimi
-struct ResourcePair
-    var first: Resource
-    var second: Resource
+struct Marker
+    Self is Copy      // Error: a struct with a drop cannot be Copy.
+    drop => ()
+```
+
+### 16.3.1. Destruction receiver
+
+In `drop`, `self` has exclusive access equivalent to `uniq/Self` for access and Loan checks, like the construction receiver ([§6.3.4](06-declarations-and-containers.md#634-the-construction-receiver)). It is a destruction receiver, not an ordinary borrow value or an owner, and cannot be Copied or Moved.
+
+- The whole receiver cannot be an assignment, exchange or swap target, or be passed as `uniq/Self`, including to methods and setters.
+- Initialized fields follow ordinary permissions, and no field can be Moved out: the receiver is not an owned struct Place ([§11.2.2](11-properties.md#1122-field-paths-and-partial-moves)), and a referent reached through exclusive access is never left Moved ([§15.1.3](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move)). To take a field's value, use `Kimi.Intrinsics.exchange` or `swap` ([§15.7](15-ownership-and-lifetime-analysis.md#157-whole-value-updates)) or a Type-specific operation.
+- `self@ref` is an ordinary `ref/Self` whose Origin ends within the `drop` body. It may be passed to helpers but cannot be captured, stored or returned.
+- The destruction receiver cannot become an `obj`, `rc` or `arc` handle or an object view (`objref`, `objuniq`), be stored for later use, or escape.
+
+During the destruction of layer `D`, `Self` is `D`; derived layers already cleaned up are unavailable.
+
+```kimi
+struct Connection
+    var buffer: Buffer
     drop
-        if skipCustomWork()
-            return
-        inspect(self.first)
-// Either normal exit destroys second, then first.
+        // self.reset()                   // Error: reset takes uniq/Self.
+        // let moved = self.buffer@move   // Error: a field of drop's self cannot be Moved out.
+        let whole = self@ref
+        Audit.inspect(whole)              // Allowed: a helper borrow.
+        // let later = func [whole] () => Audit.inspect(whole) // Error: captures the destruction receiver.
+        Audit.observe(self.buffer@ref)    // Shared borrow of an initialized field.
+        let old = Kimi.Intrinsics.exchange(self.buffer@uniq, with: Buffer.init())
+        Audit.release(old@move)
 ```
 
-An incomplete structure layer does not run its own `drop`; its remaining initialized own fields are destroyed in the same reverse order, and then its base subobject if any part of it still carries responsibility. Completion and completeness are checked separately for each component: a complete field or completed base runs its own `drop`, even if the containing derived layer never completed construction. A partly constructed base recursively cleans its initialized components without running that unfinished base layer's body. Uninitialized and Moved parts are skipped. Field assignment order and later Replacement do not reorder this cleanup.
+### 16.3.2. Component destruction
 
-Tuple elements and array elements are destroyed in decreasing element-index order, from the last logical element to index zero. This covers fixed-length arrays, the initialized elements of a partly built array, and owning array storage used by array literals; spare capacity is not an initialized element. A partially initialized element is cleaned recursively before the preceding element. Unit and empty arrays have no components to destroy.
+A complete struct layer is destroyed by running its `drop` and that body's Scope Exit, then destroying its own Fields in reverse logical declaration order ([§6.2.1](06-declarations-and-containers.md#621-logical-declaration-order)), then destroying its direct base the same way. All Fields and the base are Initialized when `drop` starts, and a `return` in `drop` does not skip them. Computed Properties are not components, and cleanup calls no accessors.
 
-Enum values destroy only the active Case's remaining initialized payloads, in reverse declaration order. Inactive Cases, and payloads transferred by [owned decomposition](15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime), have no remaining responsibility. Other library containers must define the destruction order of their owned elements in their own contracts.
-
-| Aggregate state at the destruction point | Own `drop` | Field destruction |
+| Layer state at destruction | Own `drop` | Fields |
 | --- | --- | --- |
-| Complete | Run if declared | All fields afterward |
-| Wholly Moved | Never run | Nothing |
-| Construction not completed | Never run | Initialized fields only |
-| Incomplete after a Partial Move, no own `drop` | None | Remaining fields only |
-| Incomplete after a Partial Move, own `drop` declared | Error: the path must restore completeness before this point (§15.1.3) | Not reached |
+| Complete | Runs if declared | All, afterward |
+| Partial Move, no own `drop` | None | Remaining Initialized Fields, in reverse order |
+| Partial Move, own `drop` | Error: completeness must be restored first ([§15.1.3](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move)) | — |
 
-The table applies per structure layer; any base cleanup follows the own-field cleanup and uses the base's independent state. For example, a complete `Derived : Base` is destroyed as `Derived.drop`, `Derived`'s fields in reverse order, `Base.drop`, `Base`'s fields in reverse order, recursively. If `Derived`'s construction is incomplete but `Base` completed, `Derived.drop` is omitted, while the remaining `Derived`-field cleanup and the complete `Base` cleanup still run. A layer that completed construction and is then partially Moved keeps its restoration obligation; incompleteness never excuses the `drop` of an already completed layer.
+The base follows the own Fields and uses its own state. Field assignment order and later Replacement do not change the order.
 
-```text
-Declaration order: a, b, c
-States: a = Initialized, b = Moved, c = Initialized
-Cleanup: c, then a
+- Tuple and array elements are destroyed in decreasing index order, each completely before the preceding one.
+- An enum destroys only the remaining payloads of its active Case, in reverse declaration order. Payloads transferred by owned decomposition ([§15.1.6](15-ownership-and-lifetime-analysis.md#1516-match-and-for-subjects)) are skipped.
+- Destroying a Slice or UniqSlice never destroys its elements ([§4.8](04-arrays-indexing-and-slices.md#48-slices-and-views)). Destroying a Scalar fixed array reads no elements, even with `noinit` ([§4.3.4](04-arrays-indexing-and-slices.md#434-noinit)).
+- Library containers define the destruction order of their elements in their contracts.
+
+```kimi
+struct Triple
+    var a: Resource
+    var b: Resource
+    var c: Resource
+
+func split(t: Triple)
+    consume(t.b@move)   // Partial Move; Triple has no drop.
+// Scope exit destroys t.c, then t.a.
 ```
 
-[Destruction lifetime checking](15-ownership-and-lifetime-analysis.md#1566-destruction-lifetime-checking) applies at every actual observation, including field cleanup. If cleanup reaches a responsibility, it executes exactly once; a Move transfers it and prevents double destruction at the source. [Abort Termination](17-failure-handling.md#173-abort-termination) is the sole abnormal-termination policy.
+### 16.3.3. Handles and object release
 
-### 16.3.3. Ownership, object release, and reentry
+`owner/T` is destroyed as exactly `T`. Destroying `obj/T` destroys the object and then releases its storage. Destroying `rc/T` or `arc/T` releases one strong reference; the release that reaches zero destroys the object and releases its storage. An object is always destroyed as its actual Type, with the complete derived-to-base cleanup, also through a base view.
 
-`owner/T` is destroyed as exactly `T`. For `obj/T`, the object is destroyed and then its original storage released if required. Destroying `rc/T` or `arc/T` releases one strong reference; exactly the release that reaches zero performs object destruction and storage release, including under atomic `arc` ownership.
+**Handle destruction and Loans.** Destroying a handle destroys only the handle Place, which is compared with live Loans ([§15.6.2](15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts)); storage owned through the object is never its target, because every borrow into it holds a Loan on a handle through which it was reached ([§13.5.5](13-operators-and-assignment.md#1355-follow)). Any `rc` or `arc` release may be final, so it observes what destroying the payload observes ([§15.6.6](15-ownership-and-lifetime-analysis.md#1566-destruction-lifetime-checking)) and contributes that cleanup's effects on other storage, such as static Fields, to the enclosing summary ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls), [§8.11.2](08-generics-constraints-and-contracts.md#8112-confined)). A callee that destroys an owned handle parameter contributes the same effects.
 
-**Handle destruction and Loans.** Destroying an object handle (`obj`, `rc` or `arc`) at scope exit, replacement, temporary expiry, discard or Field cleanup destroys that handle Place, which is compared with active Loans by §15.6.2. Storage owned through the object, its payload and everything the payload owns, including through nested handles, is never a target of that destruction or of an effect summary containing it: every Borrow into such storage keeps a Loan on a handle through which it was reached (§13.5.5.1), either the destroyed handle, where the conflict is reported, or another strong handle, which keeps its object alive. Because any `rc`/`arc` release may be final, it observes what destroying the complete payload observes (§15.6.6) and contributes that cleanup's effects on other storage, such as static Fields, to the enclosing summary (§15.6.4). A callee that destroys an owned handle parameter contributes the same effects.
+**Erased destruction.** Destroying a value whose Dynamic Type or environment Type is not known statically has unknown effects. They are never taken from the View Target's own `drop` alone or from the derived Types the program declares. This covers an `obj`, `rc` or `arc` handle whose View Target is not Sealed (an open base or a runtime Contract View, such as `rc/Base` or `obj/Shape`) and the environment of a common Function Type value, also as components of the destroyed value. Such a destruction conflicts with every live Loan of a mutable static Field, as an unknown call does ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)), and is an unclassifiable effect under `confined` ([§8.11.2](08-generics-constraints-and-contracts.md#8112-confined)). A handle with a Sealed View Target, and an `owner/T`, use that Type's destruction summary. In a generic body, destroying a value of a Type parameter or associated-Type projection is likewise unknown for the body's own Loan checks, unless the Type is Copy; the body's summary publishes it as a parameter-dependent effect that callers compose with the actual Type ([§4.9.6](04-arrays-indexing-and-slices.md#496-loans-dependencies-and-call-effects)).
 
-Destruction uses the actual owned Type's complete derived-to-base cleanup, including automatic fields and bases and user `drop`. Base views keep that dynamic identity and the single destruction responsibility. Original storage is released by its original mechanism, never through an adjusted view pointer with a base size. No delayed garbage-collection finalizer or finalizer thread is implied.
+```kimi
+var action: () -> () = func [resource@move] () => ()
+let view = State.text@ref          // State.text is a mutable static Field.
+action = func [] () => ()          // Error: destroying the old environment has unknown effects.
+inspect(view)
+```
 
-Destruction claims the target's remaining responsibility. Until it completes, only its special receiver and authorized field operations may observe live parts; the target is neither an ordinary owner nor an empty replacement destination. Reentrant destruction, whole-value use and callback replacement are rejected. Normal completion removes the responsibility and leaves surviving storage Uninitialized, after which its owning operation may install a secured replacement. This internal transition provides no source destroy/reset operation and does not reset `let` initialization history.
+**Payload replacement.** Whole payload replacement ([§15.7.3](15-ownership-and-lifetime-analysis.md#1573-storage-update-dependencies)) destroys the old contents in place, keeping the object's storage, counts and lifecycle state; this leaves the storage Uninitialized without resetting `let` initialization history. It then installs the replacement without running constructors, initializers or setters. A payload exchange instead transfers the old contents to its result. Dependencies on old contents end even at the same address.
 
-**Payload replacement.** For whole payload replacement (§15.7.3), content destruction runs in the original storage without a final release of the enclosing object: its allocation, header, mode, counts and lifecycle state are kept, while nested handles are released normally. The preconstructed replacement is installed only after destruction completes, without rerunning constructors, initializers or setters. The special destruction receiver and reentry restrictions still apply. A complete payload exchange instead transfers the old contents and their destruction responsibility to its result. Content lifetime may change while allocation lifetime continues; neither an identical address nor placement restores dependencies on old contents. Final object release later destroys the current payload exactly once.
+Destroying a borrow or raw pointer never destroys its referent, and Scalars have no destruction work.
 
-Destroying a non-owning borrow or raw pointer ends that value's capability or lifetime and never destroys its referent. Scalars and other trivial Copy values have no user destruction work, and copying them creates no resource-release obligation. Automatic cleanup, replacement, abandoned construction, temporary expiration and final object release all use the same recursive rules. If a destructor or component cleanup Aborts or diverges, the remaining components, base layers, pending replacement and allocation release do not run; there is no rollback and no second cleanup attempt.
+## 16.4. Closure environments and objects under destruction
 
-## 16.4. Closure and object lifetime boundaries
+**Closure environments.** Remaining captures are destroyed in reverse initialization order. In a Consuming call the environment binding precedes the parameters, so its captures are destroyed last, before the result is delivered; Shared and Exclusive calls do not destroy it. Capture destruction observes Origins like any component, even for zero-sized captures.
 
-**Closure environments.** Initialized captures with remaining responsibility are destroyed in reverse environment-initialization order, and consumed captures are not destroyed twice. In a Consuming call, the implicit environment binding precedes the explicit parameters, so its remaining captures are cleaned up last, after body locals, `defer` and parameters, and before result delivery. Shared and Exclusive calls do not own the environment's destruction. A failure during capture construction follows the ordinary temporary, partial-initialization, cleanup and Abort rules, without rollback of completed Moves or effects. Dependencies observed by captured destructors are kept, including for zero-sized captures.
+```kimi
+let first = makeResource("first")
+let second = makeResource("second")
+let job = func [first@move, second@move] () => ()
+// Destroying job destroys second, then first.
+```
 
-**Objects under construction.** Construction completes the base layers before the derived fields under the constructor rules. Until the complete object is initialized, its ordinary object views are not formed or published, and no runtime dispatch, Type test or checked cast is performed on it; having metadata is not proof of completion. A failure cleans up only initialized components with remaining responsibility, including completed base layers; `drop` is not called for an incomplete layer, and no cleanup is promised on Abort.
+**Objects under destruction.** Runtime dispatch, Type tests and checked casts need a handle or object view, which the destruction receiver cannot become ([§16.3.1](#1631-destruction-receiver)), so none of them applies to the object being destroyed. `upgrade` of a Weak to that object returns `None` ([§13.6.3](13-operators-and-assignment.md#1363-weak-references)). Destruction holds an exclusive Loan on the destroyed storage until it completes, as a call holds its `uniq` receiver ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)); any other access to that storage, including through a static Field, is a Loan conflict. No further check applies to calls in `drop`: a foreign function or a Function value is checked only by the ordinary Origin, Loan and static-effect rules. Violating these restrictions through a raw pointer is undefined behavior ([§5](05-raw-pointers-and-unsafe-memory.md#5-raw-pointers-and-unsafe-memory)).
 
-**Objects under destruction.** During destruction, new ordinary views, runtime dispatch, Type tests, checked casts and resurrection of that object are prohibited, including through helper calls. An operation remains semantically a runtime dispatch even if optimization resolves it to a direct call. No new owning handle is acquired and no count is incremented to revive the object. The special destruction receiver keeps its authorized direct field operations and shared value borrows, without conversion into ordinary object views. Base cleanup never dispatches back into an already destroyed derived layer. These restrictions concern the object being constructed or destroyed, not independent live objects used by that code.
-
-The shared destruction rules do not promise eventual release on Abort, divergence, forced termination or an unbroken reference-count cycle. Weak references follow §13.5.9 and cyclic construction follows §13.5.8; cycle collection and allocator APIs remain separate designs.
+```kimi
+struct File
+    var handle: isize
+    drop
+        Native.close(self.handle)   // Allowed: a foreign call checked by the ordinary rules.
+```

@@ -5,7 +5,7 @@ using Tinyhand.IO;
 namespace Kimi;
 
 /// <summary>A native supply record. Values are data, never shell command fragments.</summary>
-/// <remarks>A self-targeted record's Kind, ContractId and Sha256 also declare the requirement they expand into (SPEC 20.8.2.1).</remarks>
+/// <remarks>A self-targeted record's Kind, ContractId and Sha256 also declare the requirement they expand into (SPEC 20.4).</remarks>
 [TinyhandObject(ImplicitMemberNameAsKey = true)]
 public partial record class NativeLibraryInput
 {
@@ -33,7 +33,7 @@ public partial record class NativePackageTarget
     public string PackageVersion { get; set; } = string.Empty;
 }
 
-/// <summary>One target's native supplies: self-targeted records keyed by Name, then records targeting dependency modules (SPEC 20.8.2.1).</summary>
+/// <summary>One target's native supplies: self-targeted records keyed by Name, then records targeting dependency modules (SPEC 20.4).</summary>
 /// <remarks>Reads the Name-keyed map shorthand or an array of records. Writes the shorthand when every record is self-targeted, otherwise one array.</remarks>
 public sealed class NativeLibrarySupplies : Dictionary<string, NativeLibraryInput>
 {
@@ -125,7 +125,7 @@ public sealed class NativeLibrarySupplies : Dictionary<string, NativeLibraryInpu
     }
 }
 
-/// <summary>Per-target native supplies; each target reads either the map shorthand or an array of records (SPEC 20.8.2.1).</summary>
+/// <summary>Per-target native supplies; each target reads either the map shorthand or an array of records (SPEC 20.4).</summary>
 [TinyhandObject(External = true)]
 public sealed partial class NativeLibraryMap : Dictionary<string, NativeLibrarySupplies>, ITinyhandSerializable<NativeLibraryMap>, ITinyhandReconstructable<NativeLibraryMap>, ITinyhandCloneable<NativeLibraryMap>
 {

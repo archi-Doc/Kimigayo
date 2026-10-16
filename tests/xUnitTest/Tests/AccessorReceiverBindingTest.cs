@@ -30,7 +30,7 @@ public class AccessorReceiverBindingTest
         Assert.False(c.Validate(out _));
     }
 
-    // SPEC 11.2: a function keeps every receiver form, while a computed getter reads through ref/Self only; the Core of a
+    // SPEC 11.3: a function keeps every receiver form, while a computed getter reads through ref/Self only; the Core of a
     // wrongly shaped receiver is still Self, so the formation check passes and the shape check reports it.
     [Theory]
     [InlineData("Self")]
@@ -115,11 +115,7 @@ public class AccessorReceiverBindingTest
     public void WarmAccessorReceiverChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("public struct Api<T>\n    public computed item: i32\n        get() -> i32 => 1\n        set(self: uniq/Self, value: i32) -> () => ()\n    public func read(self) -> i32 => 1");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

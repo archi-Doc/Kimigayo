@@ -191,14 +191,11 @@ public class StringComparisonEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(conditional ? "var n = 0\nwhile n < 3\n    if n == 1 and \"a\" == \"a\" => Console.writeLine(\"ok\")\n    n += 1" : "func equal(a: string, b: string) -> bool => a == b\nlet text = \"a\"\nif text == (if text == \"a\" => \"a\" else => \"b\") => Console.writeLine(text)");
         var valid = true;
-        var allocated = AllocationMeasurement.Measure(
-            () =>
-            {
-                valid &= c.Analyze().IsVerified;
-                valid &= c.WriteIr(TextWriter.Null, out _);
-            },
-            iterations: 128,
-            warmupIterations: 100);
+        var allocated = AllocationMeasurement.Measure(() =>
+        {
+            valid &= c.Analyze().IsVerified;
+            valid &= c.WriteIr(TextWriter.Null, out _);
+        });
 
         Assert.Equal(0, allocated);
         Assert.True(valid);

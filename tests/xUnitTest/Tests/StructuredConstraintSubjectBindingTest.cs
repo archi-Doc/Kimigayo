@@ -129,11 +129,7 @@ public class StructuredConstraintSubjectBindingTest
     public void WarmStructuredSubjectChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Source("([2 of i32], Box<i32>) is Copy"));
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

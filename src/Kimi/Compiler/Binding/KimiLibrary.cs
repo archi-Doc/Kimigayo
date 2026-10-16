@@ -187,7 +187,7 @@ public sealed partial class KimiLibrary
 
     public BindingSymbol ObjectPayload { get; }
 
-    /// <summary>Gets the compiler-intrinsic requirement of the twelve built-in integer Types (SPEC 8.4.7.3).</summary>
+    /// <summary>Gets the compiler-intrinsic requirement of the twelve built-in integer Types (SPEC 8.7.4).</summary>
     public BindingSymbol PrimitiveInteger { get; }
 
     public BindingSymbol Replace { get; }
@@ -209,46 +209,46 @@ public sealed partial class KimiLibrary
 
     public BindingSymbol UniqIterable { get; }
 
-    /// <summary>Gets the recognized Indexable Contract declaration (SPEC 4.6.9).</summary>
+    /// <summary>Gets the recognized Indexable Contract declaration (SPEC 4.7.1).</summary>
     public BindingSymbol Indexable { get; }
 
-    /// <summary>Gets the recognized UniqIndexable Contract declaration (SPEC 4.6.9).</summary>
+    /// <summary>Gets the recognized UniqIndexable Contract declaration (SPEC 4.7.1).</summary>
     public BindingSymbol UniqIndexable { get; }
 
-    /// <summary>Gets the recognized owning iteration entry, IntoIterable (SPEC 22.1.2.2).</summary>
+    /// <summary>Gets the recognized owning iteration entry, IntoIterable (SPEC 22.2.1).</summary>
     public BindingSymbol IntoIterable { get; }
 
-    /// <summary>Gets the closed position Contract, Position (SPEC 4.6.2, 8.4.7).</summary>
+    /// <summary>Gets the closed position Contract, Position (SPEC 4.6.1, 8.7).</summary>
     public BindingSymbol Position { get; }
 
-    /// <summary>Gets the closed range Contract, PositionRange (SPEC 4.6.4, 8.4.7).</summary>
+    /// <summary>Gets the closed range Contract, PositionRange (SPEC 4.6.3, 8.7).</summary>
     public BindingSymbol PositionRange { get; }
 
     /// <summary>Gets the recognized borrowed Slice Type declaration.</summary>
     public BindingSymbol Slice { get; }
 
-    /// <summary>Gets the recognized owning dynamic Array Type declaration (SPEC 4.5, 4.7).</summary>
+    /// <summary>Gets the recognized owning dynamic Array Type declaration (SPEC 4.5, 4.9).</summary>
     public BindingSymbol DynamicArray { get; }
 
-    /// <summary>Gets the designated from-end position Type that prefix <c>^</c> constructs (SPEC 4.6.2).</summary>
+    /// <summary>Gets the designated from-end position Type that prefix <c>^</c> constructs (SPEC 4.6.1).</summary>
     public BindingSymbol FromEnd { get; }
 
-    /// <summary>Gets the declaration that names the wrapping integer Scalars <c>Wrapping&lt;T&gt;</c> (SPEC 3.1.1.1).</summary>
+    /// <summary>Gets the declaration that names the wrapping integer Scalars <c>Wrapping&lt;T&gt;</c> (SPEC 3.1.1).</summary>
     public BindingSymbol Wrapping { get; }
 
-    /// <summary>Gets the designated start boundary Type of an omitted range start (SPEC 4.6.2).</summary>
+    /// <summary>Gets the designated start boundary Type of an omitted range start (SPEC 4.6.1).</summary>
     public BindingSymbol Start { get; }
 
-    /// <summary>Gets the designated end boundary Type of an omitted range end (SPEC 4.6.2).</summary>
+    /// <summary>Gets the designated end boundary Type of an omitted range end (SPEC 4.6.1).</summary>
     public BindingSymbol End { get; }
 
-    /// <summary>Gets the designated half-open range Type that <c>..</c> constructs (SPEC 4.6.3.2).</summary>
+    /// <summary>Gets the designated half-open range Type that <c>..</c> constructs (SPEC 4.6.2).</summary>
     public BindingSymbol Range { get; }
 
-    /// <summary>Gets the designated closed range Type that <c>..=</c> constructs (SPEC 4.6.3.2).</summary>
+    /// <summary>Gets the designated closed range Type that <c>..=</c> constructs (SPEC 4.6.2).</summary>
     public BindingSymbol ClosedRange { get; }
 
-    /// <summary>Gets the designated ResolvedRange Type (SPEC 4.6.3).</summary>
+    /// <summary>Gets the designated ResolvedRange Type (SPEC 4.6.2).</summary>
     public BindingSymbol ResolvedRange { get; }
 
     /// <summary>Gets the implemented concrete object factory, independently of the incomplete ownership family.</summary>
@@ -260,7 +260,7 @@ public sealed partial class KimiLibrary
     internal DeclarationContainerKoto? FixedArrayMembers { get; }
 
     /// <summary>Gets the internal Kimi group whose receiver function implements the built-in integer conformance to
-    /// Position (SPEC 4.6.2); integers gain no members from it.</summary>
+    /// Position (SPEC 4.6.1); integers gain no members from it.</summary>
     internal DeclarationContainerKoto? IntegerPositionMembers { get; }
 
     /// <summary>Gets a value indicating whether <paramref name="owner"/> is an internal group of receiver functions for a
@@ -270,7 +270,7 @@ public sealed partial class KimiLibrary
     internal bool IsBuiltinMemberGroup(Koto owner) => ReferenceEquals(owner, this.FixedArrayMembers) || ReferenceEquals(owner, this.IntegerPositionMembers);
 
     /// <summary>Gets the internal Kimi group whose functions construct prefix <c>^</c> and range syntax values and resolve
-    /// position and range keys (SPEC 4.6.2-4.6.4).</summary>
+    /// position and range keys (SPEC 4.6.1-4.6.4).</summary>
     internal DeclarationContainerKoto? PositionSyntax { get; }
 
     internal FunctionKoto DictionaryUnlink { get; }

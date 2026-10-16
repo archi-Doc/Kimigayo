@@ -236,4 +236,29 @@ public class FrontEndSyntaxTest
         AssertValid(restored);
         Assert.Equal(literal, Assert.IsType<FieldKoto>(Assert.Single(restored.GeneratedFunction!.Body!.Items)).InitializerKoto!.ToString());
     }
+
+    // SPEC 8.4: a Contract declares Type parameters, and a refining Contract names its base applied to its own; a function result is
+    // a Type, so `place` is an ordinary Name there (SPEC F.6).
+    [Fact]
+    public void ParsesContractTypeParametersAndReferenceRequirements()
+    {
+        var tree = ParseSuccess(
+            """
+            contract Indexable<Key>
+                associate Element
+                func index(self, key: ref/Key) -> ref/Element during self
+            contract UniqIndexable<Key>: Indexable<Key>
+                func indexUniq(self: uniq/Self, key: ref/Key) -> uniq/Element during self
+            func place(place: i32) -> place => place
+            """);
+        var contracts = KotoTree.Walk(tree.RootKoto).OfType<ContractKoto>().ToArray();
+        Assert.Equal(2, contracts.Length);
+        Assert.Equal("Key", Assert.Single(contracts[0].GenericParameterNodes).Identifier);
+        Assert.IsType<TypeSemanticsKoto>(Assert.Single(contracts[0].Members.OfType<FunctionKoto>()).ReturnType);
+        Assert.Equal("Key", Assert.Single(contracts[1].GenericParameterNodes).Identifier);
+        Assert.Single(contracts[1].Bases);
+        Assert.Equal(SemanticsKind.Uniq, Assert.IsType<TypeSemanticsKoto>(Assert.Single(contracts[1].Members.OfType<FunctionKoto>()).ReturnType).SemanticsKind);
+        var place = KotoTree.Walk(tree.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "place");
+        Assert.Equal("place", place.ReturnType!.ToString());
+    }
 }

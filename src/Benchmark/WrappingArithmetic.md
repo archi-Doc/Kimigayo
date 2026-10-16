@@ -1,5 +1,8 @@
-# Wrapping arithmetic timing (P42)
+# Wrapping arithmetic timing (P31, formerly P42)
 
+Program IDs in dated measurements retain the pre-2026-10-15 numbering; see the [current mapping](../../tests/milestones/README.md#implementation-order).
+
+The benchmark script retains its historical filename.
 `src/backend/windows-x64/benchmark-p42.ps1` builds `src/Benchmark/Kimi/HashWrapping.kimi` and
 `HashChecked.kimi` at O0 and O2 through the milestone harness (`milestone-harness.ps1 -Source -WorkRoot -Runs`),
 checks each first run's output and times the repetitions. Timing only, outside normal Verify.
@@ -8,7 +11,7 @@ The wrapping program computes FNV-1a over a 63-byte text for 1,048,576 rounds an
 on `Wrapping<u32>` and `Wrapping<u64>`: every step wraps by Type, with no check and no mask. The checked program
 computes the same values on `u64` and `u128` with masks, so every multiply carries its overflow check and every
 narrowing its range check; this is the form STYLE §3.4 asks to avoid. Both print the same line, which the harness
-compares byte for byte. The literal shift counts carry no check in either program (impl §21.5.3).
+compares byte for byte. The literal shift counts carry no check in either program (impl §21.3.3).
 
 ## 2026-10-01 measurement
 

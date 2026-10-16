@@ -40,8 +40,8 @@ reproducer (a failing test or program variant)
 
 ## 3. Correctness rules
 
-- docs/SPEC.md and its chapters define the required behavior; revise them only as AGENTS.md describes. Items that Appendix D defers are out of scope; ObjectCallCompatible stage 2 (Appendix D.5.1: same-build inference, use-time enforcement and publication) is in scope. Never weaken SPEC, tests or diagnostics to match a missing or incomplete implementation.
-- Report invalid source through the existing diagnostics at the correct stage, with an `Unsupported` code for a form the SPEC permits but the implementation lacks (SPEC §23.3.6.1). Unsupported generation must be diagnosed and must never produce wrong code.
+- docs/SPEC.md and its chapters define the required behavior; revise them only as AGENTS.md describes. Items that Appendix D defers are out of scope; ObjectCallCompatible stage 2 (Appendix D.2: same-build inference, use-time enforcement and publication) is in scope. Never weaken SPEC, tests or diagnostics to match a missing or incomplete implementation.
+- Report invalid source through the existing diagnostics at the correct stage, with an `Unsupported` code for a form the SPEC permits but the implementation lacks (SPEC §23.1.1). Unsupported generation must be diagnosed and must never produce wrong code.
 - Removing an unsupported guard requires every newly reachable analysis and generation path to be implemented and tested.
 - Preserve ownership, Loan, Origin, evaluation order, cleanup and Abort semantics; keep internal invariant checks.
 - Tests: add positive and negative cases for each observable change and a regression test for each fix. A test may be corrected only when SPEC shows it is wrong; say why in the commit.

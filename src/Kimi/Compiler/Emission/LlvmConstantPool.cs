@@ -12,7 +12,7 @@ internal enum LlvmConstantKind : byte
 }
 
 /// <summary>
-/// Private module constants that share identical UTF-8 byte sequences (SPEC 21.5.6).
+/// Private module constants that share identical UTF-8 byte sequences (SPEC 21.4).
 /// Entries, names and encodings are retained across preparations so warm modules reuse them.
 /// </summary>
 internal sealed class LlvmConstantPool
@@ -104,7 +104,7 @@ internal sealed class LlvmConstantPool
             const string Hex = "0123456789ABCDEF";
             foreach (var rune in value.EnumerateRunes())
             {
-                // Escape every byte: raw source text never enters IR (SPEC 21.5.2); NUL is data.
+                // Escape every byte: raw source text never enters IR (SPEC 21.2); NUL is data.
                 var length = rune.EncodeToUtf8(bytes);
                 for (var i = 0; i < length; i++)
                 {

@@ -185,11 +185,7 @@ public class LayoutAttributeBindingTest
     public void WarmLayoutBindingAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze("#Layout(\"C\")\nstruct S\n    var a: i32\n#Layout(\"C\")\nstruct S\n    func method() => ()");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

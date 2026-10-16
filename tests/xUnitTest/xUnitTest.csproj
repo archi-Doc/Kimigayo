@@ -4,7 +4,15 @@
     <TargetFramework>net10.0</TargetFramework>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <IsPackable>false</IsPackable>
+    <!-- Concurrent compilations in one test process: one heap per core, without dynamic heap-count adaptation, and a
+         64 MB gen0 budget per heap instead of the 200 MB default, under which the heap balloons and every test slows. -->
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <GarbageCollectionAdaptationMode>0</GarbageCollectionAdaptationMode>
   </PropertyGroup>
+
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="System.GC.Gen0MaxBudget" Value="67108864" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" PrivateAssets="all" />
@@ -19,7 +27,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Kimi\Kimi.csproj" />
-    <ProjectReference Include="../../src/Kimi.Analyzers/Kimi.Analyzers.csproj" />
     <Compile Include="..\Workloads\AssociatedInferenceWorkloads.cs" Link="Workloads\AssociatedInferenceWorkloads.cs" />
     <Compile Include="..\Workloads\VerificationWorkloads.cs" Link="Workloads\VerificationWorkloads.cs" />
     <Compile Include="..\Workloads\OriginProofWorkloads.cs" Link="Workloads\OriginProofWorkloads.cs" />

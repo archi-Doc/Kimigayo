@@ -7,18 +7,18 @@ namespace Kimi.Compiler.Parsing;
 
 #pragma warning disable SA1402 // The closed bound vocabulary and its syntax.
 
-/// <summary>The closed vocabulary of requirement effect bounds (SPEC 8.4.10).</summary>
+/// <summary>The closed vocabulary of requirement effect bounds (SPEC 8.11).</summary>
 public enum EffectBoundKind : byte
 {
-    /// <summary><c>confined</c>: the transitive effects of an implementation include no environment effect (SPEC 8.4.10.2).</summary>
+    /// <summary><c>confined</c>: the transitive effects of an implementation include no environment effect (SPEC 8.11.2).</summary>
     Confined,
 
-    /// <summary><c>preserves results</c>: a call conflicts with no Loan that an earlier result of the same requirement on the same value keeps (SPEC 8.4.10.3).</summary>
+    /// <summary><c>preserves results</c>: a call conflicts with no Loan that an earlier result of the same requirement on the same value keeps (SPEC 8.11.3).</summary>
     PreservesResults,
 }
 
 /// <summary>
-/// A requirement effect bound (SPEC 8.4.10.1): an effect clause in the Constraint region of a requirement, or an effect
+/// A requirement effect bound (SPEC 8.11.1): an effect clause in the Constraint region of a requirement, or an effect
 /// specification that names a requirement inherited from an ancestor through its Contract selector.
 /// </summary>
 public sealed class EffectBoundKoto : Koto

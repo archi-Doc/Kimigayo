@@ -88,11 +88,7 @@ public class ArrayAnnotationHoleTest
     public void WarmNestedHoleInferenceAllocatesNothing(string source)
     {
         var compilation = MinimalEmissionTest.Analyze(source);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(compilation.Bind().IsComplete);
-        }
-
+        Assert.True(compilation.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!compilation.Bind().IsComplete)

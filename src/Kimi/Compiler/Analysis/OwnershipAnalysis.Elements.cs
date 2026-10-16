@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class OwnershipAnalysis
 {
     // SPEC 13.7: secure the RHS, select one exclusive element address, then destroy/store through the same replacement
-    // used by followed references and Place calls. Fixed and dynamic arrays share the element borrow and replacement.
+    // used by followed references and subscripts' selected calls. Fixed and dynamic arrays share the element borrow and replacement.
     private int WriteBorrowedArrayElement(Koto source, IndexKoto target)
     {
         var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
@@ -307,7 +307,7 @@ public sealed partial class OwnershipAnalysis
         }
         else
         {
-            // SPEC 4.6.6, 4.6.9: a Place reached through a Slice or a borrow is not part of an owned root; a Copy one is read as the root.
+            // SPEC 4.8.2, 4.7.1: a Place reached through a Slice or a borrow is not part of an owned root; a Copy one is read as the root.
             root = receiver is IdentifierNameKoto && receiver.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture
                 ? this.Local(receiver) : this.Expression(receiver, PlaceUseKind.Read);
             if (root >= 0)

@@ -10,7 +10,7 @@ using System.Text.Json.Serialization;
 
 namespace Kimi.Diagnostics;
 
-/// <summary>A condition a repair candidate rests on (SPEC 23.3.6.9): the closed vocabulary, in display order.</summary>
+/// <summary>A condition a repair candidate rests on (SPEC 23.1.3): the closed vocabulary, in display order.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<RepairCondition>))]
 public enum RepairCondition : byte
 {
@@ -30,7 +30,7 @@ public enum RepairCondition : byte
     Selection,
 }
 
-/// <summary>The kind of a repair candidate (SPEC 23.3.6.9), in catalog order; its stable name is <c>Repair.&lt;Kind&gt;</c>.</summary>
+/// <summary>The kind of a repair candidate (SPEC 23.1.3), in catalog order; its stable name is <c>Repair.&lt;Kind&gt;</c>.</summary>
 public enum RepairKind : byte
 {
     /// <summary>Append <c>@move</c> to transfer a Place.</summary>
@@ -64,7 +64,7 @@ public enum RepairKind : byte
     Count,
 }
 
-/// <summary>One edit of a repair candidate (SPEC 23.3.6.9): a span of a recorded input's immutable text and its replacement.</summary>
+/// <summary>One edit of a repair candidate (SPEC 23.1.3): a span of a recorded input's immutable text and its replacement.</summary>
 /// <param name="Source">The source table index of the recorded input.</param>
 /// <param name="Span">The replaced span in UTF-16 code units; an empty span is an insertion point.</param>
 /// <param name="Range">The span as lines and UTF-16 characters, for display.</param>
@@ -77,7 +77,7 @@ public readonly record struct RepairEdit(int Source, SourceSpan Span, SourceRang
 /// <param name="Phrase">The phrase, such as <c>x offers Take and is a Movable Place</c>.</param>
 public readonly record struct RequiredCondition(RepairCondition Condition, string Phrase);
 
-/// <summary>A structured edit that resolves a record's problem, with the conditions its acceptance rests on (SPEC 23.3.6.9).</summary>
+/// <summary>A structured edit that resolves a record's problem, with the conditions its acceptance rests on (SPEC 23.1.3).</summary>
 /// <param name="Kind">The stable name of the kind, such as <c>Repair.Transfer</c>.</param>
 /// <param name="Title">One sentence formed from the kind's template and the facts.</param>
 /// <param name="Facts">The kind's typed facts, as in a Reason; <see langword="null"/> when the kind has none.</param>
@@ -94,7 +94,7 @@ public sealed record RepairCandidate(string Kind, string Title, DiagnosticValue[
         => HashCode.Combine(this.Kind, this.Title, this.Edits.Length);
 }
 
-/// <summary>The catalog of repair kinds (SPEC 23.3.6.9), validated once when it loads: each kind's title template, facts and relevant conditions.</summary>
+/// <summary>The catalog of repair kinds (SPEC 23.1.3), validated once when it loads: each kind's title template, facts and relevant conditions.</summary>
 public static class RepairKinds
 {
     private const string ResourceName = "Diagnostics.RepairKind.tinyhand";
@@ -213,7 +213,7 @@ public static class RepairKinds
     }
 }
 
-/// <summary>The catalog definition of one repair kind (SPEC 23.3.6.9).</summary>
+/// <summary>The catalog definition of one repair kind (SPEC 23.1.3).</summary>
 [TinyhandObject(ImplicitMemberNameAsKey = true)]
 public sealed partial class RepairKindEntry
 {
@@ -318,7 +318,7 @@ internal enum RepairConditionSet : byte
     Selection = 1 << (int)RepairCondition.Selection,
 }
 
-/// <summary>The closed vocabulary of repair conditions (SPEC 23.3.6.9) and the phrase templates of required conditions over a candidate's facts.</summary>
+/// <summary>The closed vocabulary of repair conditions (SPEC 23.1.3) and the phrase templates of required conditions over a candidate's facts.</summary>
 internal static class RepairConditions
 {
     private static readonly RepairCondition[] Ordered = Enum.GetValues<RepairCondition>();

@@ -28,11 +28,11 @@ public sealed class VirtualPlanReuseTest
         var c = MinimalEmissionTest.Analyze(VerificationWorkloads.VirtualPlans(depth, slots, aliases));
         Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
         var before = c.Ownership.Bodies.Sum(static body => body.BorrowStorageBytes);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid);
         Assert.Equal(before, c.Ownership.Bodies.Sum(static body => body.BorrowStorageBytes));
     }

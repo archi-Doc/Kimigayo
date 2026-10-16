@@ -18,7 +18,7 @@ public class BorrowStructEmissionTest
         var source = File.ReadAllText(Path.Combine(Repository.Root, "tests", "milestones", "Milestone5.kimi"));
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
-        Assert.True(c.Analysis.IsVerified, c.Analysis + "\nObligations: " + string.Join('\n', c.Binding.Obligations) + "\n" + string.Join('\n', c.Problems) + "\nFlow: " + string.Join('\n', c.Ownership.ControlFlow!.Issues) + "\nPending: " + string.Join('\n', c.Ownership.ControlFlow.PendingBinding));
+        Assert.True(c.Analysis.IsVerified, "Obligations: " + string.Join('\n', c.Binding.Obligations) + "\n" + MinimalEmissionTest.Describe(c, null));
         ScalarEmissionTest.EmitFixture("BorrowStructMilestone5", source, "Borrowed sum is 55.\nView destroyed; counter is still 55.\nFinal value is 56.\nCounter destroyed.\nDone.\n");
     }
 
@@ -45,7 +45,7 @@ public class BorrowStructEmissionTest
         Assert.False(c.Validate(out _));
     }
 
-    // SPEC 6.2.3.6, 22.1: a construction of a Type without constructors is one Language absence at T.init whose Note names the reason:
+    // SPEC 6.3.6, 22.1: a construction of a Type without constructors is one Language absence at T.init whose Note names the reason:
     // an own Field without an initializer (related), a Kimi Type whose representation the compiler manages, or a Type that is no
     // structure. Generic Wrapping<T> no longer receives a synthesized constructor that generation cannot lower.
     [Theory]

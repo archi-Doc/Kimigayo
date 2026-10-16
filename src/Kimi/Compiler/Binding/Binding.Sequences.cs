@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 4.6.1, 4.6.3, 4.7.4: the metadata member of a sequence a member access names, by its spelling; None for another name.
+    // SPEC 4.7, 4.6.2, 4.9.5: the metadata member of a sequence a member access names, by its spelling; None for another name.
     internal static BuiltinForm SequenceMember(MemberAccessKoto source) => (source.Right as IdentifierNameKoto)?.IdentifierName switch
     {
         "length" => BuiltinForm.Length,
@@ -16,7 +16,7 @@ public sealed partial class Binding
         _ => BuiltinForm.None,
     };
 
-    // A Range<S, E> or ClosedRange<S, E>, whose iteration condition is `S is PrimitiveInteger` and `E is S` (SPEC 4.6.3.4).
+    // A Range<S, E> or ClosedRange<S, E>, whose iteration condition is `S is PrimitiveInteger` and `E is S` (SPEC 4.6.4).
     private static bool IsRangeShape(BoundType subject)
         => subject is { Symbol.LibraryDeclaration: KimiDeclarationId.Range or KimiDeclarationId.ClosedRange, Components.Count: 2 };
 
@@ -30,7 +30,7 @@ public sealed partial class Binding
         }
 
         var receiver = this.BindNode(source.Left, scope);
-        // SPEC 3.4.1, 4.6.1, 12.4.1: metadata shares access through safe value references to the sequence; a raw pointer or
+        // SPEC 3.4.3, 4.7, 12.5.1: metadata shares access through safe value references to the sequence; a raw pointer or
         // an object handle is not followed.
         var layers = 0;
         for (; ReferenceTypes.IsReference(receiver); layers++)
@@ -41,10 +41,10 @@ public sealed partial class Binding
         var utf8 = FormattingTypes.IsUtf8Slice(receiver);
         if (!utf8 && receiver?.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary))
         {
-            return false; // A ResolvedRange exposes its fields and computed Properties through the library struct (SPEC 4.6.3).
+            return false; // A ResolvedRange exposes its fields and computed Properties through the library struct (SPEC 4.6.2).
         }
 
-        // SPEC 4.6.1, 4.7.2 and 4.7.4: fixed arrays and Array expose length and indices, Slice and Array add isEmpty, Array
+        // SPEC 4.7, 4.9.3 and 4.9.5: fixed arrays and Array expose length and indices, Slice and Array add isEmpty, Array
         // adds capacity.
         var valid = member switch
         {
@@ -75,14 +75,14 @@ public sealed partial class Binding
         source.Mode = SubjectModeOf(source.Iterable, iterable);
         if (iterable is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Nominal, Symbol.LibraryDeclaration: KimiDeclarationId.ResolvedRange }] })
         {
-            // SPEC 14.6.2, 3.4.1: the iteration entry is selected through the reference; the Copy interval is the
+            // SPEC 14.6.2, 3.4.3: the iteration entry is selected through the reference; the Copy interval is the
             // entry receiver and is read once for the loop.
             this.adaptations[source.Iterable] = new(ExpectedAdaptationKind.ReferentRead, iterable.Components[0]);
             iterable = iterable.Components[0];
         }
 
         // Dynamic Array, Dictionary, fixed-array and Slice loops use their Kimigayo entries and iterators (SPEC 14.6.2,
-        // 22.1.2.5). SPEC 4.6.3.4: a ResolvedRange loop yields the isize positions of its RangeIterator<isize> entries
+        // 22.1.2.5). SPEC 4.6.4: a ResolvedRange loop yields the isize positions of its RangeIterator<isize> entries
         // directly; a validated interval never Aborts, so no iterator value is formed.
         var view = iterable;
         var element = view is not null && ReferenceTypes.IsResolvedRange(view) ? BoundType.ISize : null;
@@ -134,7 +134,7 @@ public sealed partial class Binding
         this.BindNode(source.Body, scope);
         if (duplicate is not null)
         {
-            // The repeated name reports the duplicate at the later binding (SPEC 23.3.6.4); the loop rests on it.
+            // The repeated name reports the duplicate at the later binding (SPEC 23.1.2); the loop rests on it.
             return this.CompleteDependent(source, duplicate);
         }
 
@@ -177,7 +177,7 @@ public sealed partial class Binding
         return Complete(source, null);
     }
 
-    // SPEC 14.6.2, 3.4.1: the Subject mode selects the entry, which a borrowing mode searches at the referent of every
+    // SPEC 14.6.2, 3.4.3: the Subject mode selects the entry, which a borrowing mode searches at the referent of every
     // reference layer.
     private BindingSymbol IterationEntry(ForKoto source, ref BoundType subject)
     {
@@ -199,9 +199,9 @@ public sealed partial class Binding
         item = null;
         var entry = this.IterationEntry(source, ref subject);
         var method = source.Mode == SubjectMode.ByValue ? "intoIterator" : source.Mode == SubjectMode.Exclusive ? "iterateUniq" : "iterate";
-        // SPEC 8.4.8.2: a conditional conformance whose condition is refuted supplies no entry; the Subject is then diagnosed.
+        // SPEC 8.3.3: a conditional conformance whose condition is refuted supplies no entry; the Subject is then diagnosed.
         // A range's condition is decided at the Subject as well when it is only unproven, so the loop reports it once there
-        // (SPEC 4.6.3.4).
+        // (SPEC 4.6.4).
         var nominal = (subject.Symbol is { Declaration: StructKoto or EnumKoto } owner && this.ConformanceByDeclaration(owner, entry, out _) is not null &&
                 this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope) is var proof &&
                 (proof == ConstraintProof.Proven || (proof != ConstraintProof.Refuted && !IsRangeShape(subject)))) ||

@@ -9,7 +9,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 13.5.5.2, 15.6.3: a child reference retains its actual parent's authority.</summary>
+/// <summary>SPEC 13.5.6, 15.6.3: a child reference retains its actual parent's authority.</summary>
 public class StoredReferenceLoanTest(ITestOutputHelper output)
 {
     [Theory]
@@ -205,11 +205,7 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
     public void NamedInputBorrowAnalysisReusesItsStorage(string mode)
     {
         var c = MinimalEmissionTest.Analyze("func run(value: uniq/i32 during a)\n    let found = value@follow@" + mode + "\n    require found == 42 else => $abort(\"value\")\n    value@follow = 99");
-        for (var i = 0; i < 8; i++)
-        {
-            Assert.True(c.Analyze().IsVerified);
-        }
-
+        Assert.True(c.Analyze().IsVerified);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Analyze()));
     }
 }

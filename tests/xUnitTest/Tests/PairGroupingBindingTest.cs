@@ -97,7 +97,7 @@ public class PairGroupingBindingTest
     [Fact]
     public void PairIdentityIsNotInferredFromEqualTargetConstraints()
     {
-        var c = Parse("func f<s/T, r/U>(value: s/(U))\n    T is i32\n    U is i32\n    ()");
+        var c = Parse("func f<s/T, r/U>(value: s/(U))\n    T is i32\n    U is i32\n    r is owner or ref\n    ()");
         Assert.True(c.Bind().IsComplete);
         var f = Function(c, "f");
         Assert.Equal(BoundTypeKind.SemanticsApplication, f.Parameters[0].Type.TypeOf()!.Kind);
@@ -116,7 +116,7 @@ public class PairGroupingBindingTest
     [Fact]
     public void ReplacingTheGroupedTargetInvalidatesPairReconstruction()
     {
-        var c = Parse("func f<s/T, r/U>(value: s/(T)) => ()");
+        var c = Parse("func f<s/T, r/U>(value: s/(T))\n    r is owner or ref\n    ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var semantics = Assert.IsType<TypeSemanticsKoto>(Function(c, "f").Parameters[0].Type);
         var group = Assert.IsType<ParenthesizedTypeKoto>(semantics.Type);
@@ -140,11 +140,7 @@ public class PairGroupingBindingTest
     public void WarmGroupedPairBindingAllocatesNothing()
     {
         var c = Parse("func identity<s/T>(value: s/((T))) -> s/(T) => value\nfunc use(value: ref/i32) -> ref/i32 => identity(value)");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete, Describe(c));
-        }
-
+        Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

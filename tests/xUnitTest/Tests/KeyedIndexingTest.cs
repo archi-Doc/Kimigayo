@@ -5,7 +5,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 4.6.1, 4.6.4, 4.6.9: built-in element selection accepts a position of any Type satisfying Position and range
+/// <summary>SPEC 4.7, 4.6.3, 4.7.1: built-in element selection accepts a position of any Type satisfying Position and range
 /// selection a range of any Type satisfying PositionRange, including closed and from-end range syntax; keys resolve against
 /// the current length.</summary>
 public class KeyedIndexingTest
@@ -40,7 +40,7 @@ public class KeyedIndexingTest
         "let direct = (1..3).resolve(3)\nlet applied = middle[direct]\nrequire applied.length == 2 and applied[0] == 3 else => $abort(\"direct\")\n" +
         "Console.writeLine(\"ok\")";
 
-    // SPEC 4.6.5, 4.6.6: a view of a fixed-array element reached through a Slice retains the backing storage, not the
+    // SPEC 4.8.1, 4.8.2: a view of a fixed-array element reached through a Slice retains the backing storage, not the
     // handles used to form it.
     private const string NestedViews =
         "let grid: [3 of [4 of i32]] = [[1, 2, 3, 4], [10, 20, 30, 40], [5, 6, 7, 8]]\nlet rows: Slice<[4 of i32]> = grid[1..]\nlet row = rows[0][..]\n" +
@@ -51,7 +51,7 @@ public class KeyedIndexingTest
         "let saved = 1..^1\nlet keyed = rows[0][saved]\nrequire keyed.length == 2 and keyed[0] == 20 else => $abort(\"keyed\")\n" +
         "func head(table: ref/[3 of [4 of i32]]) -> i32 => table[2][..][0]\nrequire head(grid) == 5 else => $abort(\"reference\")\nConsole.writeLine(\"ok\")";
 
-    // SPEC 4.6.4: a key resolves against the length of the receiver the selection evaluated, so a call receiver runs once.
+    // SPEC 4.6.3: a key resolves against the length of the receiver the selection evaluated, so a call receiver runs once.
     private const string CallReceivers =
         "func make(count: uniq/i32) -> [3 of i32]\n    count@follow += 1\n    return [1, 2, 3]\n" +
         "func makeArray(count: uniq/i32) -> Array<i32>\n    count@follow += 1\n    return [4, 5, 6]\n" +
@@ -60,7 +60,7 @@ public class KeyedIndexingTest
         "require makeArray(calls@uniq)[^2] == 5 and calls == 3 else => $abort(\"array\")\n" +
         "let middle = make(calls@uniq)[1..^1].length\nrequire middle == 1 and calls == 4 else => $abort(\"range\")\nConsole.writeLine(\"ok\")";
 
-    // SPEC 4.6.4, 4.6.9: saved positions and ranges apply to a receiver of any form, which is located once, and a key read
+    // SPEC 4.6.3, 4.7.1: saved positions and ranges apply to a receiver of any form, which is located once, and a key read
     // from the receiver itself keeps no borrow of it.
     private const string ReceiverForms =
         "func make() -> [4 of i32] => [1, 2, 3, 4]\nfunc makeArray() -> Array<i32> => [5, 6, 7, 8]\n" +
@@ -75,7 +75,7 @@ public class KeyedIndexingTest
         "var items: Array<i32> = [1, 0, 5]\nlet removed = items.remove(items[0])\nrequire removed == 0 and items.length == 2 and items[1] == 5 else => $abort(\"own position\")\n" +
         "Console.writeLine(\"ok\")";
 
-    // SPEC 4.6.6: the read operations of fixed arrays and Array mean the same operation on their whole-range Slice, for
+    // SPEC 4.8.2: the read operations of fixed arrays and Array mean the same operation on their whole-range Slice, for
     // positions of every form, valid or not.
     private const string ReadApis =
         "func value(o: Option<ref/i32 during a>) -> i32\n    match o\n        .Some(let x) => return x\n        .None => return -1\n" +
@@ -93,13 +93,13 @@ public class KeyedIndexingTest
         "require fixed.splitAt(^1).0.length == fixed[..].splitAt(^1).0.length and array.splitAt(1@u8).1.length == array[..].splitAt(1@u8).1.length else => $abort(\"split\")\n" +
         "require value(fixed.tryGet(^1)) == 40 and size(array.trySlice(1..^1)) == 2 else => $abort(\"values\")\nConsole.writeLine(\"ok\")";
 
-    // SPEC 4.6.1, 15.1.3: after a Partial Move through a literal static path the remaining elements stay accessible by
+    // SPEC 4.7, 15.1.3: after a Partial Move through a literal static path the remaining elements stay accessible by
     // literal paths, and positions select through chained arrays.
     private const string PartialMoveAndChains =
         "var names: [3 of string] = [\"a\", \"b\", \"c\"]\nlet taken = names[2]@move\nConsole.writeLine(taken)\nConsole.writeLine(names[1])\nnames[2] = \"d\"\nConsole.writeLine(names[2])\n" +
         "var matrix: [2 of [3 of i32]] = [[1, 2, 3], [4, 5, 6]]\nmatrix[^1][^1] = 9\nrequire matrix[1][2] == 9 and matrix[^2][..^1].length == 2 and matrix[1][1@u8..][0] == 5 else => $abort(\"chain\")\nConsole.writeLine(\"ok\")";
 
-    // SPEC 4.6.3.1, 4.6.4: a parenthesized `^x` boundary and an isize boundary written with parentheses, an operation or an
+    // SPEC 4.6.2, 4.6.3: a parenthesized `^x` boundary and an isize boundary written with parentheses, an operation or an
     // explicit `@` apply directly, and fields and metadata of range, `^x` and `indices` temporaries and of a borrowed Slice
     // are read in place.
     private const string BoundaryForms =
@@ -114,7 +114,7 @@ public class KeyedIndexingTest
         "var view = values[1..]\nlet borrowed = view@ref\nrequire borrowed.length == 4 and size(view@ref) == 4 and borrowed.indices.end == 4 and not borrowed.isEmpty else => $abort(\"borrowed slice\")\n" +
         "Console.writeLine(\"ok\")";
 
-    // SPEC 4.6.3.1, 14.9.1: a literal-only boundary takes the S or E of a call candidate's range and the Type of the other
+    // SPEC 4.6.2, 14.9.2: a literal-only boundary takes the S or E of a call candidate's range and the Type of the other
     // result sources.
     private const string RangeInference =
         "func take(r: Range<i64, u8>) -> i64 => r.start + r.end@i64\n" +
@@ -154,7 +154,7 @@ public class KeyedIndexingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
     }
 
-    // SPEC 4.6.1, 4.6.6, 15.1.3: a position other than an integer literal is no static Move Path, like a runtime isize;
+    // SPEC 4.7, 4.8.2, 15.1.3: a position other than an integer literal is no static Move Path, like a runtime isize;
     // a dynamic position may select a moved element; and an Array read result keeps the receiver shared-borrowed.
     [Theory]
     [InlineData("var names: [3 of string] = [\"a\", \"b\", \"c\"]\nlet taken = names[^1]@move", DiagnosticCode.StaticMovePathRequired_Kd)]

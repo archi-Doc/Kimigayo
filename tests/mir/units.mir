@@ -27,6 +27,8 @@ fn effects @4
   s2: lexical in s1 @25
   s3: deferred in s1 @13
   s4: deferred in s1 @13
+  must not complete bb7 from bb1 @11
+  flags 1 [set f0]
   bb0:
       StorageLive(_3) @10 s1
     * _3 = copy _1 @10 s1
@@ -37,12 +39,12 @@ fn effects @4
   bb2:
       StorageDead(_3) @10 s1
       StorageLive(_4) @20 s1
-    * _4 = move _2 @21 s1
-      drop _4 -> bb8 @20 s1
+    * _4 = move _2 [clear f0] @21 s1
+      drop _4 -> bb8 [keep] @20 s1
   bb3:
       return @4
   bb4:
-      drop _2 -> bb5 @4
+      drop _2 -> bb5 [flag f0] [clear f0] @4
   bb5:
       goto bb3 @4
   bb6:
@@ -73,7 +75,7 @@ fn effects @4
       goto bb9 @23 s1
   bb12:
       StorageDead(_9) @30 s2
-      drop _8 -> bb13 @30 s2
+      drop _8 -> bb13 [keep] @30 s2
   bb13:
       StorageDead(_8) @30 s2
       StorageDead(_7) @26 s2
@@ -91,7 +93,7 @@ fn effects @4
       goto bb4 @4
   bb16:
       StorageDead(_13) @18 s3
-      drop _12 -> bb17 @18 s3
+      drop _12 -> bb17 [keep] @18 s3
   bb17:
       StorageDead(_12) @18 s3
       StorageDead(_11) @14 s3

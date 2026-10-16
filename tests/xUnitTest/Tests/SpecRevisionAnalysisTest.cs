@@ -128,7 +128,7 @@ public class SpecRevisionAnalysisTest
     public void UnreachedRegistrationDoesNotBlockAnEarlierReturn()
         => Assert.Empty(Analyze("func f() -> i32\n    return 1\n    defer\n        loop\n            continue").Issues);
 
-    // SPEC 11: a stored Property's custom getter returns exactly the Property's Type.
+    // SPEC 11.1: a stored Property's custom getter returns exactly the Property's Type.
     [Theory]
     [InlineData("get(self: ref/Self) -> bool => 1", true)]
     [InlineData("get(self: ref/Self) -> i64 => 1", true)]

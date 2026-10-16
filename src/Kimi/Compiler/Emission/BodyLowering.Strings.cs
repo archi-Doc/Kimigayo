@@ -157,7 +157,7 @@ internal sealed partial class BodyLowering
             }
         }
 
-        // SPEC 4.7.6: an Array handle owns its buffer even when its elements are Copy. SPEC 16.3.3: an obj, rc or arc
+        // SPEC 4.9.7: an Array handle owns its buffer even when its elements are Copy. SPEC 16.3.3: an obj, rc or arc
         // handle owns its allocation or one strong count, so a path-dependent Move needs a live flag as well.
         if (ReferenceEquals(type, BoundType.String) || type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary || type.HandleMode is not null)
         {
@@ -493,7 +493,7 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        // SPEC 4.7.6: replacing a whole Array destroys the old elements and releases its buffer first.
+        // SPEC 4.9.7: replacing a whole Array destroys the old elements and releases its buffer first.
         var array = body.Places[operation.Place].Type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary;
         if (!array && aggregate is { NeedsDestruction: false })
         {

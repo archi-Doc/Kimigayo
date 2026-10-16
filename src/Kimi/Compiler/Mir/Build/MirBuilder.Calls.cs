@@ -8,8 +8,8 @@ namespace Kimi.Compiler.Mir;
 // Calls (SPEC 7.3).
 internal sealed partial class MirBuilder
 {
-    // A node's call (CallPlan.Of; a Property read's getter; a user or view index's selected call, SPEC 4.6.9); a constructor's builds its
-    // object in the destination (SPEC 6.2.3.2). SPEC 13.4.1: a comparison operator's Contract call gives equals' bool, negated for !=, or
+    // A node's call (CallPlan.Of; a Property read's getter; a user or view index's selected call, SPEC 4.7.1); a constructor's builds its
+    // object in the destination (SPEC 6.3.2). SPEC 13.4.1: a comparison operator's Contract call gives equals' bool, negated for !=, or
     // compare's i32 compared with zero.
     private void Call(MirPlace destination, Koto node)
     {
@@ -34,11 +34,11 @@ internal sealed partial class MirBuilder
             node);
     }
 
-    // SPEC 7.3, 7.6.3: a call of the function, requirement, virtual slot or callable value Binding selected: a value call's callee in its
+    // SPEC 7.3, 7.7.3: a call of the function, requirement, virtual slot or callable value Binding selected: a value call's callee in its
     // receiver mode, the receiver, then the arguments in their order (an assignment's secured value first, SPEC 13.7.1), each as its Adjust
     // takes it for its parameter's Type or as the value an expansion evaluated for it (given), then its omitted defaults (Defaults), passed by
     // parameter slot, the receiver first. A compiler function is its intrinsic where the table gives one (IntrinsicDisposition; Fail with its
-    // fixed code), a direct base call the implementation the virtual selection names, and a place result the reference the call returns. A
+    // fixed code), and a direct base call the implementation the virtual selection names. A
     // call of a Never function or a diverging intrinsic has no runtime successor and continues for the checks (SPEC 14.10); a call whose
     // operand does not complete enters no callee (SPEC 15.6.7).
     private void Call(MirPlace destination, CallPlan call, Koto node, Koto? first, Koto? given = null, in MirOperand value = default)
@@ -133,10 +133,8 @@ internal sealed partial class MirBuilder
             _ => new MirCallee(MirCalleeKind.Fn, direct, subst),
         };
 
-        var result = call.ResultMode == FunctionResultMode.Value || ReferenceEquals(this.body.TypeOf(destination), call.ReturnType) ? destination
-            : this.Temp(call.ReturnType, node);
         this.Invoke(
-            result,
+            destination,
             callee,
             start,
             node,
@@ -174,7 +172,7 @@ internal sealed partial class MirBuilder
         this.Invoke(destination, callee, start, node);
     }
 
-    // SPEC 17.3: a block that fails with a fixed SPEC 22.5.4 code (an expansion's check), without a successor.
+    // SPEC 17.4: a block that fails with a fixed SPEC 22.5.2 code (an expansion's check), without a successor.
     private void Fail(int block, string code, Koto node)
     {
         var start = this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.String, BoundType.String, Value: code))));
@@ -182,11 +180,11 @@ internal sealed partial class MirBuilder
     }
 
     // The destination of a diverging call on a path that ends with it (a failed check, $require's abort): a Never temp the call never writes
-    // (MirUses), without storage, whose markers the statement's other paths would end without beginning (SPEC 3.6.2).
+    // (MirUses), without storage, whose markers the statement's other paths would end without beginning (SPEC 3.6).
     private MirPlace Unwritten(Koto node) => new(this.body.AddLocal(new(BoundType.Never, MirLocalKind.Temp, this.Info(node, local: true))));
 
-    // SPEC 13.6.1: a runtime Type test is the intrinsic typeTest of a shared view of the handle's payload and the target Type's token; an
-    // operand that does not complete tests nothing.
+    // SPEC 13.6.4: a runtime Type test is the intrinsic typeTest of a shared view of the handle's payload and the target Type's token, and
+    // `is not` is its negation, the Not of its result (as a `!=` call's); an operand that does not complete tests nothing.
     private void TypeTest(MirPlace destination, IsKoto test)
     {
         var handle = HirTables.AdjustOf(test.Left).Acquire == HirAcquire.Temporary ? this.Value(test.Left) : this.Place(test.Left);
@@ -195,7 +193,12 @@ internal sealed partial class MirBuilder
             var start = this.arguments.Count;
             this.arguments.Add(this.Borrow(SemanticsKind.ObjRef, this.body.Project(handle, MirProjectionKind.Deref, 0), test));
             this.arguments.Add(MirOperand.Const(this.body.Const(new(MirConstKind.TypeToken, TypeOf(test.Right)))));
-            this.Invoke(destination, MirCallee.Intrinsic(IntrinsicId.TypeTest), start, test);
+            var result = test.IsNegated ? this.Temp(BoundType.Boolean, test) : destination;
+            this.Invoke(result, MirCallee.Intrinsic(IntrinsicId.TypeTest), start, test);
+            if (test.IsNegated)
+            {
+                this.Set(destination, MirRvalue.Unary(MirUnaryOp.Not, this.body.AddOperand(MirOperand.Move(result)), proven: true), test);
+            }
         }
     }
 }

@@ -90,14 +90,14 @@ public class ContextualClosureTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze("let text = \"owned\"\nlet f: () -> bool = func [text@move] () => text == \"owned\"\nrequire f() else => $abort(\"call\")");
         Assert.True(c.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid);
     }
 
-    // SPEC 7.6.4, 23.3.6.5: a closure that fails its conversion at a call argument or a default is shown by its signature, with
+    // SPEC 7.7.4, 23.1: a closure that fails its conversion at a call argument or a default is shown by its signature, with
     // the conversion Note, exactly as the same closure at a let annotation (N29a; it was "found closure " without a Note). Owned
     // failures are Constraint records (ErasureOwnedDiagnosticTest).
     [Theory]

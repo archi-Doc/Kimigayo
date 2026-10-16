@@ -31,17 +31,17 @@ internal static class CompilerPlanMeasurements
             : arithmetic ? ArithmeticWorkloads.Names.Select(static name => (name, 0)).ToArray() : adaptations
             ? new[] { ("adaptation-cases", 1), ("adaptation-cases", 8), ("adaptation-cases", 32) }
             : inheritance
-            ? new[] { ("milestone25", 0), ("inheritance-depth", 1), ("inheritance-depth", 8), ("inheritance-depth", 32), ("inheritance-width", 8), ("inheritance-width", 32), ("implicit-depth", 8), ("implicit-depth", 32), ("implicit-width", 32) }
+            ? new[] { ("milestone38", 0), ("inheritance-depth", 1), ("inheritance-depth", 8), ("inheritance-depth", 32), ("inheritance-width", 8), ("inheritance-width", 32), ("implicit-depth", 8), ("implicit-depth", 32), ("implicit-width", 32) }
             : regions
             ? new[] { ("candidates", 4), ("candidates", 8), ("candidates", 16), ("results", 4), ("results", 8), ("results", 16), ("regions", 4), ("regions", 8), ("regions", 16) }
-            : (properties ? new[] { "milestone24" } : views ? new[] { "exclusive-views", "slice-copies" } : callable ? new[] { "fixed-reference", "ranked-reference", "borrowed-reference", "nested-universal" } : new[] { "direct", "stored", "rc-clone", "arc-clone" }).Select(static name => (name, 0)).ToArray();
+            : (properties ? new[] { "milestone36" } : views ? new[] { "exclusive-views", "slice-copies" } : callable ? new[] { "fixed-reference", "ranked-reference", "borrowed-reference", "nested-universal" } : new[] { "direct", "stored", "rc-clone", "arc-clone" }).Select(static name => (name, 0)).ToArray();
         foreach (var (name, size) in workloads)
         {
             var stored = name == "stored";
             var source = elements ? VerificationWorkloads.ElementPlaces(name, size) : defaults ? VerificationWorkloads.GenericDefaults(name, size) : fixedOrigins ? VerificationWorkloads.FixedOriginLoans(name, size) : arithmetic ? ArithmeticWorkloads.Create(name) : name switch
             {
-                "milestone24" => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone24.kimi")),
-                "milestone25" => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone25.kimi")),
+                "milestone36" => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone36.kimi")),
+                "milestone38" => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone38.kimi")),
                 "adaptation-cases" => size == 1 ? AdaptationWorkloads.Single : AdaptationWorkloads.Create(size),
                 "inheritance-depth" => VerificationWorkloads.InheritedPlans(size, 1),
                 "inheritance-width" => VerificationWorkloads.InheritedPlans(4, size),
@@ -63,7 +63,7 @@ internal static class CompilerPlanMeasurements
                 throw new InvalidOperationException("Compiler workload target must be prepared.");
             }
 
-            c.Kotonoha.AddSource(new SourceDocument(elements ? "element-places.kimi" : defaults ? "generic-defaults.kimi" : fixedOrigins ? "fixed-origin-loans.kimi" : arithmetic ? "arithmetic-plans.kimi" : adaptations ? "adaptation-plans.kimi" : inheritance ? "inheritance.kimi" : properties ? "Milestone24.kimi" : regions ? "local-regions.kimi" : views ? "view-plans.kimi" : callable ? "callable-plans.kimi" : "object-plans.kimi", source));
+            c.Kotonoha.AddSource(new SourceDocument(elements ? "element-places.kimi" : defaults ? "generic-defaults.kimi" : fixedOrigins ? "fixed-origin-loans.kimi" : arithmetic ? "arithmetic-plans.kimi" : adaptations ? "adaptation-plans.kimi" : inheritance ? "inheritance.kimi" : properties ? "Milestone36.kimi" : regions ? "local-regions.kimi" : views ? "view-plans.kimi" : callable ? "callable-plans.kimi" : "object-plans.kimi", source));
             if (!c.Bind().IsComplete || !c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Ownership.Analyze().IsVerified)
             {
                 throw new InvalidOperationException("Compiler workload must bind and verify.");

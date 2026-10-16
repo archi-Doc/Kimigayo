@@ -35,7 +35,7 @@ public sealed class SyntaxDiagnosticTest(ITestOutputHelper output)
             Assert.Equal(expected.Code, actual.Code);
             Assert.Equal(expected.At is null && expected.After is null ? null : expected.Location.Resolve(syntaxCase.Source), actual.Span);
 
-            // SPEC 23.3.6.9: the candidates the record offers, as kinds and located edits; a record without an expectation offers none.
+            // SPEC 23.1.3: the candidates the record offers, as kinds and located edits; a record without an expectation offers none.
             var repairs = actual.Repairs ?? [];
             Assert.Equal((expected.Repairs ?? []).Length, repairs.Length);
             for (var j = 0; j < repairs.Length; j++)
@@ -54,7 +54,7 @@ public sealed class SyntaxDiagnosticTest(ITestOutputHelper output)
                 continue;
             }
 
-            // A syntax record states its form and, when a token was found, that token, as exact facts (SPEC 23.3.6.2).
+            // A syntax record states its form and, when a token was found, that token, as exact facts (SPEC 23.3).
             var form = DiagnosticRequirement.SyntaxOf(Enum.Parse<SyntaxForm>(expected.Form));
             Assert.Equal(DiagnosticCategory.Language, actual.Category);
             Assert.Equal(DiagnosticSeverity.Error, actual.Severity);
@@ -90,7 +90,7 @@ public sealed class SyntaxDiagnosticTest(ITestOutputHelper output)
         Assert.Empty(DiagnosticRequirements.Anomalies);
     }
 
-    // SPEC 23.3.6.8 and 23.4.7: the command shows the form's label at the underline, and both language-server placements carry its
+    // SPEC 23.3 and 23.4: the command shows the form's label at the underline, and both language-server placements carry its
     // range, code and message.
     [Theory]
     [InlineData("missing-body")]
@@ -124,7 +124,7 @@ public sealed class SyntaxDiagnosticTest(ITestOutputHelper output)
         }
     }
 
-    // SPEC 23.3.6.8, 23.3.6.9: the command renders a syntax record's candidate with the edit that supplies its separators.
+    // SPEC 23.3, 23.1.3: the command renders a syntax record's candidate with the edit that supplies its separators.
     [Fact]
     public void CliShowsTheReplacementCandidate()
     {

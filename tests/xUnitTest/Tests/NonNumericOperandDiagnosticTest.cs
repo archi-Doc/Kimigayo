@@ -9,13 +9,13 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 13.2, 13.3: arithmetic, bitwise, shift, sign, increment and decrement operators take numeric operands, so bool, Unit,
+// SPEC 13.2, 13.3.1: arithmetic, bitwise, shift, sign, increment and decrement operators take numeric operands, so bool, Unit,
 // char and string have none, and an interpolated literal is the one form that joins strings. Binding owns the check and names
-// the repair (SPEC 23.3.6).
+// the repair (SPEC 23.1).
 public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
 {
     private const string Strings = "let first = \"Hello, \"\nlet second = \"world\"\n";
-    private const string Note = "string has no arithmetic operators; an interpolated literal creates an owning string and borrows the values it embeds (SPEC 12.3.3, 13.3)";
+    private const string Note = "string has no arithmetic operators; an interpolated literal creates an owning string and borrows the values it embeds (SPEC 12.4.2, 13.3.1)";
     private const string Building = "; to build text in steps, write to a Text.HeapBuffer through Text.writer and $tryWrite, then intoString";
 
     [Fact]
@@ -66,7 +66,7 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(type == "string" ? Note : null, error.Note);
     }
 
-    // SPEC 13.3 and arithmetic Contracts §2, §6: a bitwise operand that is no integer names the integer requirement, and an
+    // SPEC 13.3.1 and SPEC 13.3.4, 13.3: a bitwise operand that is no integer names the integer requirement, and an
     // arithmetic operand Type that neither is numeric nor provides the operator, such as an unconstrained or Position Type
     // parameter or a Tuple, selects no conformance; both are Language errors at the operation.
     [Theory]

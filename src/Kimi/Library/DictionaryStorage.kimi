@@ -83,7 +83,7 @@ group DictionaryStorage
                 target = minimum
             if target > maximum
                 target = maximum
-            // The allocator aligns every block to 16 bytes (SPEC 22.5.2), which covers the entry layout.
+            // The allocator aligns every block to 16 bytes (SPEC 21.4.3), which covers the entry layout.
             let memory = Raw.allocate<u8>(target * stride)
             let buffer = (*handle).buffer
             let used = (*handle).used

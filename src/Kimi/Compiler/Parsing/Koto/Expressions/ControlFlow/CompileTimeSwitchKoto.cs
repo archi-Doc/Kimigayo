@@ -6,7 +6,7 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>Marks a compile-time <c>#switch</c> that selected no arm, so later analyses explain no cascade (SPEC 19.3).</summary>
-/// <remarks>Its arms are excluded syntax: they were parsed and source-checked but are not retained (SPEC 19.5).</remarks>
+/// <remarks>Its arms are excluded syntax: they were parsed and source-checked but are not retained (SPEC 19.4).</remarks>
 public sealed class CompileTimeSwitchKoto : ExpressionKoto
 {
     /// <summary>Initializes a new instance of the <see cref="CompileTimeSwitchKoto"/> class.</summary>

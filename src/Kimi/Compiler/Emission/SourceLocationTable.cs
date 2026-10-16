@@ -6,7 +6,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-/// <summary>Displayed logical source locations for runtime diagnostics (SPEC 22.5.1, 22.5.4), cached per operation site.</summary>
+/// <summary>Displayed logical source locations for runtime diagnostics (SPEC 22.5.1, 22.5.2), cached per operation site.</summary>
 internal sealed class SourceLocationTable
 {
     private readonly Dictionary<(SourceDocument Source, int Offset), string> texts = new();

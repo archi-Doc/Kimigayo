@@ -4,7 +4,7 @@ namespace Kimi.Compiler.Lexing;
 
 /// <summary>
 /// Represents the lexical token kinds produced by the lexer.<br/>
-/// The ranges follow the keyword classes of SPEC 2.5.1: every kind below <see cref="Alias"/> is a reserved word, which is never a
+/// The ranges follow the keyword classes of SPEC F.3: every kind below <see cref="Alias"/> is a reserved word, which is never a
 /// Name; the kinds from <see cref="Alias"/> through <see cref="Identifier"/> can be Names (<see cref="TokenHelper.IsIdentifierOrContextualKeyword"/>).<br/>
 /// When adding a new TokenKind, remember to do the following:<br/>
 /// Add the spelling to TokenHelper (the text table and, for keywords, GetKeywordOrIdentifierKind).<br/>

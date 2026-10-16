@@ -7,7 +7,7 @@ using System.Text.RegularExpressions;
 
 namespace Kimi.Compiler;
 
-/// <summary>The project-owned kernel32 import definition and its generated-library identity (SPEC 20.8.2).</summary>
+/// <summary>The project-owned kernel32 import definition and its generated-library identity (SPEC 20.4).</summary>
 internal static partial class Kernel32Imports
 {
     internal const string LibraryName = "kernel32";

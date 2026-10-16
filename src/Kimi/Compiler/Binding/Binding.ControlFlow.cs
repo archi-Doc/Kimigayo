@@ -30,7 +30,7 @@ public sealed partial class Binding
         return terminal.Kind == BoundTypeKind.Primitive && ScalarTypes.Supports(terminal) ? terminal : null;
     }
 
-    /// <summary>Selects the result Type that every supplied Type fits, independently of source order (SPEC 14.9.1).</summary>
+    /// <summary>Selects the result Type that every supplied Type fits, independently of source order (SPEC 14.9.2).</summary>
     /// <param name="types">The non-Never source Types.</param>
     /// <param name="scope">The scope supplying read-Type Constraints.</param>
     /// <param name="conflict">Whether no single supplied Type accepts all sources.</param>
@@ -53,7 +53,7 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 3.5.3, 14.9.1: sources that differ only in safe reference layers over one read Type unify to that Type,
+        // SPEC 3.5.3, 14.9.2: sources that differ only in safe reference layers over one read Type unify to that Type,
         // and each reference source is value-read. Sources with the same layers keep the borrow rule below.
         if (this.ReadTypeUnification(types, scope) is { } scalar)
         {
@@ -79,7 +79,7 @@ public sealed partial class Binding
     }
 
     /// <summary>Gets whether Binding inferred Unit for a result target that no declaration, construct rule or expected Type
-    /// fixed (SPEC 17.4.1).</summary>
+    /// fixed (SPEC 17.5.2).</summary>
     /// <param name="target">A do or a selection.</param>
     /// <returns>Whether the target's final result is that inferred Unit.</returns>
     internal bool InfersUnit(Koto target) => this.resultContexts.TryGetValue(target, out var context) && context.Inferred &&
@@ -123,7 +123,7 @@ public sealed partial class Binding
         return this.WithOrigins(left, this.Meet(a, b), []);
     }
 
-    // SPEC 14.9.1: result sources whose reference layers over one read Type differ in number or kind unify to that Type;
+    // SPEC 14.9.2: result sources whose reference layers over one read Type differ in number or kind unify to that Type;
     // sources with the same layers keep the ordinary common-borrow rule.
     private BoundType? ReadTypeUnification(List<BoundType> types, BindingScope scope)
     {
@@ -233,7 +233,7 @@ public sealed partial class Binding
         context.Expected = this.SelectCommonType(context.Evidence, scope, out var conflict);
         if ((context.PartialEvidence || !context.HasLiteral) && context.Expected is { CarriesOrigin: true })
         {
-            // SPEC 14.9.1, 15.6.5: a borrow result waits for every source; one fixed source's Origin is not the common Type
+            // SPEC 14.9.2, 15.6.5: a borrow result waits for every source; one fixed source's Origin is not the common Type
             // of a later body-local Borrow.
             context.Expected = null;
         }
@@ -247,7 +247,7 @@ public sealed partial class Binding
 
         if (context.HasLiteral && context.Expected is { } common && this.ReadTypeReferent(common, scope) is { } terminal)
         {
-            // SPEC 3.5.3, 14.9.1: an unfitted literal is fitted to the terminal read Type of the reference sources,
+            // SPEC 3.5.3, 14.9.2: an unfitted literal is fitted to the terminal read Type of the reference sources,
             // which then supply that Type by a value read.
             context.Expected = terminal;
         }
@@ -375,7 +375,7 @@ public sealed partial class Binding
 
                 return selected is { Next: null, Declaration: FunctionKoto { GenericArguments.Count: 0 }, Type: { } result } ? this.CallResultEvidence(this.MemberType(result, declaring), scope, readConversions) : null;
             case RangeKoto or FromEndIndexKoto when !IsUnfittedLiteral(source) && SurveyablePosition(source):
-                // SPEC 4.6.3.1, 14.9.1: a written `^x` or range with a typed operand has an independent Type, which a
+                // SPEC 4.6.2, 14.9.2: a written `^x` or range with a typed operand has an independent Type, which a
                 // literal-only source such as `0..3` beside `0..n` then fits.
                 return this.BindNode(source, this.NodeScope(source, scope));
             default:

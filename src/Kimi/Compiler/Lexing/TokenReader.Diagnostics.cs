@@ -63,7 +63,7 @@ public ref partial struct TokenReader
     {
         if (this.currentToken.Kind == TokenKind.Sharp)
         {
-            this.ReportMisplacedAttributes(); // An attribute continuing the line is misplaced (SPEC 6.5); the line may end after it.
+            this.ReportMisplacedAttributes(); // An attribute continuing the line is misplaced (SPEC 6.7); the line may end after it.
         }
 
         if (!this.CanRead || this.currentToken.Kind is TokenKind.Separator or TokenKind.EndBlock)
@@ -143,7 +143,7 @@ public ref partial struct TokenReader
         if (found.Kind is TokenKind.AmpersandAmpersand or TokenKind.BarBar)
         {
             // Recognized but no operator anywhere (SPEC 2.4, 13.8): the token, not the form expected at it, is the problem, and the
-            // repair candidate replaces it with the operator Kimigayo defines (SPEC 23.3.6.9).
+            // repair candidate replaces it with the operator Kimigayo defines (SPEC 23.1.3).
             var conjunction = found.Kind == TokenKind.AmpersandAmpersand;
             return this.Unexpected(conjunction ? SyntaxForm.AmpersandAmpersand : SyntaxForm.BarBar, found.Span, this.ReplaceToken(found.Span, conjunction ? "and" : "or"));
         }
@@ -179,7 +179,7 @@ public ref partial struct TokenReader
             return last.Key;
         }
 
-        // A missing closer offers itself at the insertion point as a repair candidate (SPEC 23.3.6.9).
+        // A missing closer offers itself at the insertion point as a repair candidate (SPEC 23.1.3).
         var key = this.Diagnostic.ReportSyntax(new SourceSpan(at, 0), DiagnosticCode.MissingSyntax_Kd, form, null, this.CodeContext.SourceDocument, repairs: IsCloser(form) ? this.InsertToken(at, CloserText(form)) : null);
         this.lastMissing = (at, key);
         return key;
@@ -188,7 +188,7 @@ public ref partial struct TokenReader
     /// <summary>Reports that a form of syntax is not permitted where it stands. The reader is unchanged.</summary>
     /// <param name="form">The misplaced form.</param>
     /// <param name="span">The misplaced syntax; the current token by default.</param>
-    /// <param name="repairs">The repair candidates the report offers (SPEC 23.3.6.9).</param>
+    /// <param name="repairs">The repair candidates the report offers (SPEC 23.1.3).</param>
     /// <returns>The key of the Error that explains the recovery.</returns>
     internal DiagnosticKey Unexpected(SyntaxForm form, SourceSpan? span = null, DiagnosticRepairFact[]? repairs = null)
     {
@@ -197,7 +197,7 @@ public ref partial struct TokenReader
             : this.Diagnostic.ReportSyntax(at, DiagnosticCode.MisplacedSyntax_Kd, form, null, this.CodeContext.SourceDocument, repairs: repairs);
     }
 
-    /// <summary>Forms the repair candidate that replaces one token with another (SPEC 23.3.6.9). The replacement is a complete token: a
+    /// <summary>Forms the repair candidate that replaces one token with another (SPEC 23.1.3). The replacement is a complete token: a
     /// space separates it from an adjacent non-space character on either side, so <c>a&amp;&amp;b</c> becomes <c>a and b</c>.</summary>
     /// <param name="span">The replaced token.</param>
     /// <param name="replacement">The replacing token.</param>
@@ -254,7 +254,7 @@ public ref partial struct TokenReader
         return index == this.Position ? -1 : index;
     }
 
-    // SPEC 23.3.6.9: the missing token inserted at its insertion point.
+    // SPEC 23.1.3: the missing token inserted at its insertion point.
     private readonly DiagnosticRepairFact[]? InsertToken(int at, string token)
         => this.CodeContext.SourceDocument is { } document ? [new(RepairKind.InsertToken, [token], [this.Diagnostic.Edit(new(at, 0), token, document)], RepairConditionSet.None)] : null;
 

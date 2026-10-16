@@ -10,7 +10,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 8.7, 15.6.1: a Callable Constraint whose proof fails only in the Origin part of its whole-contract comparison is Unknown, never
+// SPEC 8.3, 15.6.1: a Callable Constraint whose proof fails only in the Origin part of its whole-contract comparison is Unknown, never
 // Refuted, and reports the Constraint code UnprovenConstraint_Kd at the value whose Type binds F, naming the clause, the member and the
 // relation with both ends, instead of NoApplicableOverload_Kd.
 public class CallableConstraintRecordTest(ITestOutputHelper output)
@@ -20,9 +20,9 @@ public class CallableConstraintRecordTest(ITestOutputHelper output)
     private const string ApplyInput = "func apply<F>(f: ref/F, x: ref/i32) -> i32\n    F is Callable<(ref/i32) -> ref/i32>\n    let r = f(x)\n    return r@follow\n";
 
     [Theory]
-    [InlineData("EnvironmentResult", Apply + "public func main() -> ()\n    let n = 7\n    let f = func [n] () => n@ref\n    let v = apply(f@ref)\n", "f@ref", "the result", "closure", "call receiver", "static", "hidden environment receiver (SPEC 8.6)")]
+    [InlineData("EnvironmentResult", Apply + "public func main() -> ()\n    let n = 7\n    let f = func [n] () => n@ref\n    let v = apply(f@ref)\n", "f@ref", "the result", "closure", "call receiver", "static", "hidden environment receiver (SPEC 8.10)")]
     [InlineData("CapturedBorrow", Apply + "public func main() -> ()\n    let n = 7\n    let view = n@ref\n    let f = func [view] () => view\n    let v = apply(f@ref)\n", "f@ref", "the result", "borrow", "n", "static", "judged from the premises alone")]
-    [InlineData("EnvironmentOverInput", ApplyInput + "public func main() -> ()\n    let n = 7\n    let f = func [n] (x: ref/i32) => n@ref\n    let m = 1\n    let v = apply(f@ref, m@ref)\n", "f@ref", "the result", "closure", "call receiver", "ref/i32", "hidden environment receiver (SPEC 8.6)")]
+    [InlineData("EnvironmentOverInput", ApplyInput + "public func main() -> ()\n    let n = 7\n    let f = func [n] (x: ref/i32) => n@ref\n    let m = 1\n    let v = apply(f@ref, m@ref)\n", "f@ref", "the result", "closure", "call receiver", "ref/i32", "hidden environment receiver (SPEC 8.10)")]
     [InlineData("FixedInput", "func callIt<F>(f: uniq/F, x: ref/i32) -> i32\n    F is Callable<uniq, (ref/i32) -> ref/i32>\n    let r = f(x)\n    return r@follow\nfunc use(x: ref/i32) -> i32\n    let start: ref/i32 = x\n    var c = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n        let old = start\n        start = n\n        return old\n    return callIt(c@uniq, x)\npublic func main() -> ()\n    let a: i32 = 3\n    Console.writeLine(\"\\(use(a@ref))\")\n", "c@uniq", "the 1st parameter", "omitted", "ref/i32", "x", "judged from the premises alone")]
     [InlineData("FixedParameter", "func apply<F>(f: ref/F, x: ref/i32) -> i32\n    F is Callable<(ref/i32) -> i32>\n    return f(x)\nfunc pick(x: ref/i32 during static) -> i32 => x@follow\npublic func main() -> ()\n    let m = 1\n    let v = apply(pick, m@ref)\n", "pick", "the 1st parameter", "omitted", "ref/i32", "static", "judged from the premises alone")]
     [InlineData("FixedResult", "func callIt<F>(f: ref/F, y: ref/i32) -> i32\n    F is Callable<(ref/i32) -> ref/i32>\n    let r = f(y)\n    return r@follow\nfunc use(x: ref/i32) -> i32\n    let c = func (n: ref/i32) -> ref/i32 during x => x\n    let local: i32 = 4\n    return callIt(c@ref, local@ref)\npublic func main() -> ()\n    let a: i32 = 3\n    Console.writeLine(\"\\(use(a@ref))\")\n", "c@ref", "the result", "expression", "x", "ref/i32", "judged from the premises alone")]
@@ -42,11 +42,11 @@ public class CallableConstraintRecordTest(ITestOutputHelper output)
         Assert.Contains(error.Related!, static x => x.Role == "origin");
         Assert.Contains(note, error.Note, StringComparison.Ordinal);
 
-        // SPEC 8.6: a Callable signature writes no `during`, so no repair candidate is offered.
+        // SPEC 8.10: a Callable signature writes no `during`, so no repair candidate is offered.
         Assert.Null(error.Repairs);
     }
 
-    // SPEC 10.5, 8.7: an Unknown Constraint proves neither applicability nor its negation, so another applicable candidate is not selected;
+    // SPEC 10.5, 8.3: an Unknown Constraint proves neither applicability nor its negation, so another applicable candidate is not selected;
     // the one pending candidate's record explains the call.
     [Fact]
     public void AnUnknownCallableProofNeverSelectsAnotherCandidate()
@@ -56,7 +56,7 @@ public class CallableConstraintRecordTest(ITestOutputHelper output)
         Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), "f@ref"), (error.Code, Text(source, error.Span)));
     }
 
-    // SPEC 10.5, 8.7: a Callable clause on an F that an independent argument binds waits on no argument, so its Unknown proof keeps the
+    // SPEC 10.5, 8.3: a Callable clause on an F that an independent argument binds waits on no argument, so its Unknown proof keeps the
     // candidate pending even beside a waiting anonymous argument: another candidate is never selected (the first row printed 0), and
     // the record is the Constraint record at the argument also when the candidate is the only one or would win (they were a fact-less
     // UnprovenConstraint_Kd at the call). An omitted header Type rests on that record.
@@ -85,7 +85,7 @@ public class CallableConstraintRecordTest(ITestOutputHelper output)
         Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), "apply(p, func (k: i32) -> i32 => k + 1)"), (error.Code, Text(source, error.Span)));
     }
 
-    // SPEC 8.6, 10.7: a structural mismatch is still a Refuted proof, so the candidate does not apply.
+    // SPEC 8.10, 10.7: a structural mismatch is still a Refuted proof, so the candidate does not apply.
     [Fact]
     public void AStructuralMismatchStaysInapplicable()
     {
@@ -94,7 +94,7 @@ public class CallableConstraintRecordTest(ITestOutputHelper output)
         Assert.Equal((nameof(DiagnosticCode.NoApplicableOverload_Kd), "apply(f@ref)"), (error.Code, Text(source, error.Span)));
     }
 
-    // SPEC 23.3.6: the record and its related locations reach the CLI, the language server and JSON.
+    // SPEC 23.1: the record and its related locations reach the CLI, the language server and JSON.
     [Fact]
     public void EveryOutputCarriesTheCallableRecord()
     {
@@ -120,7 +120,7 @@ public class CallableConstraintRecordTest(ITestOutputHelper output)
         Assert.Equal(result, System.Text.Json.JsonSerializer.Deserialize(json, DiagnosticJsonContext.Default.DiagnosticResult));
     }
 
-    // SPEC 8.6, 10.7: the counterparts whose contracts hold run: a Copied result, and a result over the per-call input.
+    // SPEC 8.10, 10.7: the counterparts whose contracts hold run: a Copied result, and a result over the per-call input.
     [Theory]
     [InlineData("Copied", "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n    return f()\nlet n = 7\nlet f = func [n] () => n\nrequire apply(f@ref) == 7 else => $abort(\"copied\")")]
     [InlineData("PerCallInput", ApplyInput + "let m = 5\nlet f = func (x: ref/i32) => x\nrequire apply(f@ref, m@ref) == 5 else => $abort(\"input\")")]

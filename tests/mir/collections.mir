@@ -62,7 +62,7 @@ fn lookup @26
       _0 = copy (*_3) @34
       StorageDead(_4) @36
       StorageDead(_3) @34
-      drop _2 -> bb2 @26
+      drop _2 -> bb2 [keep] @26
   bb2:
       return @34
 fn iterate @37

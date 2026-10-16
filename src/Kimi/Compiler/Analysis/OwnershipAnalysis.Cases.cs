@@ -6,14 +6,11 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-/// <summary>Semantics cases of a definition (SPEC 8.10): a body whose scope has a resolved pair binder is built, solved and
+/// <summary>Semantics cases of a definition (SPEC 8.15): a body whose scope has a resolved pair binder is built, solved and
 /// verified once per admitted case, with every pair layer as the complete Type of that case; the first case is the listed body,
 /// the others pooled side bodies whose problems merge into the listed one.</summary>
 public sealed partial class OwnershipAnalysis
 {
-    // SPEC 8.10, 23.3.6.1: the bound on the cases of one body, the width of an issue's case set.
-    internal const int CaseBound = 64;
-
     private readonly List<PairBinder> caseBinders = new();
     private readonly List<PairBinder> namedBinders = new();
     private readonly List<OwnershipBody> casePool = new();
@@ -21,7 +18,6 @@ public sealed partial class OwnershipAnalysis
     private OwnershipBody? caseBody;
     private OwnershipBody? caseListed;
     private ulong caseBit;
-    private long caseProduct;
 
     private static SemanticsKind? NextAdmitted(SemanticsMask admitted, int start)
     {
@@ -36,7 +32,7 @@ public sealed partial class OwnershipAnalysis
         return null;
     }
 
-    // Whether a code's catalog row carries the `case` Reason fact as its last evidence fact (SPEC 23.3.6.4).
+    // Whether a code's catalog row carries the `case` Reason fact as its last evidence fact (SPEC 23.1.2).
     private static bool HasCaseEvidence(DiagnosticCode code)
     {
         if (!DiagnosticEntries.TryGet(code, out var entry))
@@ -72,7 +68,7 @@ public sealed partial class OwnershipAnalysis
     // The name a pair binder is declared with (`s` of `s/T`).
     private static string BinderName(in PairBinder binder) => binder.Target.Pair?.Name ?? binder.Target.Name;
 
-    // Resolves the cases of a definition: the product of the admitted sets of the resolved binders in scope (SPEC 8.10). False
+    // Resolves the cases of a definition: the product of the admitted sets of the resolved binders in scope (SPEC 8.15). False
     // when there is none, so the body is analyzed once with its declared Types.
     private bool ResolveCases(FunctionKoto function)
     {
@@ -103,7 +99,6 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.caseCount = resolved;
-        this.caseProduct = PairBinder.CaseProduct(this.caseBinders);
         return true;
     }
 
@@ -133,8 +128,8 @@ public sealed partial class OwnershipAnalysis
     }
 
     // Builds every case: the first into the listed body, the others into pooled side bodies; the listed body is verified only when
-    // every case is (SPEC 8.10). Its problems are published after the last case, with the cases each was found under, and a problem
-    // every case found shows no case (SPEC 23.3.6.4). Beyond the bound, the first case is built and the bound reported (SPEC 23.3.6.1).
+    // every case is (SPEC 8.15). Its problems are published after the last case, with the cases each was found under, and a problem
+    // every case found shows no case (SPEC 23.1.2). Binding bounds the cases (PairBinder.CaseBound) before the analysis runs.
     private void BuildCases(FunctionKoto function, int declarationDefault)
     {
         this.caseBodyCount = 0;
@@ -145,37 +140,29 @@ public sealed partial class OwnershipAnalysis
         listed.AppendCleanupCase(listed.Cases.Span);
         this.compilation.Binding.CollectCaseDestructions(listed, listed, this.caseBit);
         var run = 1;
-        if (this.caseProduct > CaseBound)
+        while (this.NextCase())
         {
-            listed.ReportIssue(new(function, OwnershipFailure.CaseLimit));
-            listed.IsVerified = false;
-        }
-        else
-        {
-            while (this.NextCase())
+            if (this.caseBodyCount == this.casePool.Count)
             {
-                if (this.caseBodyCount == this.casePool.Count)
-                {
-                    this.casePool.Add(new());
-                }
-
-                var side = this.casePool[this.caseBodyCount++];
-                this.caseBit <<= 1;
-                this.caseBody = side;
-                this.BuildOnce(function, declarationDefault);
-                this.caseBody = null;
-                listed.AppendCleanupCase(side.Cases.Span);
-                this.compilation.Binding.CollectCaseDestructions(side, listed, this.caseBit);
-                listed.IsVerified &= side.IsVerified;
-                run++;
+                this.casePool.Add(new());
             }
+
+            var side = this.casePool[this.caseBodyCount++];
+            this.caseBit <<= 1;
+            this.caseBody = side;
+            this.BuildOnce(function, declarationDefault);
+            this.caseBody = null;
+            listed.AppendCleanupCase(side.Cases.Span);
+            this.compilation.Binding.CollectCaseDestructions(side, listed, this.caseBit);
+            listed.IsVerified &= side.IsVerified;
+            run++;
         }
 
         this.caseListed = null;
         this.caseCount = 0;
         this.caseBit = 0;
         this.body = listed;
-        listed.DropUniversalCases(run == CaseBound ? ulong.MaxValue : (1UL << run) - 1);
+        listed.DropUniversalCases(run == PairBinder.CaseBound ? ulong.MaxValue : (1UL << run) - 1);
         for (var i = 0; i < listed.IssueStorage.Count; i++)
         {
             this.issues.Add(listed.IssueStorage[i]);
@@ -183,7 +170,7 @@ public sealed partial class OwnershipAnalysis
     }
 
     // Appends the built body's problems to the result. In a case run the listed body publishes after the last case (BuildCases)
-    // and a side body's problems merge into it (SPEC 23.3.6.4).
+    // and a side body's problems merge into it (SPEC 23.1.2).
     private void AppendIssues()
     {
         var storage = this.body.IssueStorage;
@@ -206,7 +193,7 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
-    // SPEC 23.3.6.4: the text of the cases a problem was found under, or null for a problem of every case or of no case run. The
+    // SPEC 23.1.2: the text of the cases a problem was found under, or null for a problem of every case or of no case run. The
     // found set is factored per binder when it is a product ("s = uniq"; "s = ref or uniq, t = uniq"), each binder found under
     // all its admitted cases omitted; otherwise each case is listed ("s = uniq, t = owner; s = owner, t = uniq"). The binders
     // named are left in namedBinders for the related declarations. Formatted only for a published record.
@@ -235,7 +222,7 @@ public sealed partial class OwnershipAnalysis
         Span<SemanticsMask> found = stackalloc SemanticsMask[resolved];
         Span<SemanticsKind> digits = stackalloc SemanticsKind[resolved];
         var count = 0;
-        for (var index = 0; index < CaseBound; index++)
+        for (var index = 0; index < PairBinder.CaseBound; index++)
         {
             if ((issue.Cases & (1UL << index)) == 0)
             {
@@ -287,7 +274,7 @@ public sealed partial class OwnershipAnalysis
                 }
             }
 
-            for (var index = 0; index < CaseBound; index++)
+            for (var index = 0; index < PairBinder.CaseBound; index++)
             {
                 if ((issue.Cases & (1UL << index)) == 0)
                 {
@@ -330,7 +317,7 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
-    // The related declarations of a case fact: the Semantics bindings it names (SPEC 23.3.6.4).
+    // The related declarations of a case fact: the Semantics bindings it names (SPEC 23.1.2).
     private (string Role, Koto At, string? Label)[]? WithCaseDeclarations((string Role, Koto At, string? Label)[]? related, string? found)
     {
         if (found is null || this.namedBinders.Count == 0)
@@ -346,12 +333,5 @@ public sealed partial class OwnershipAnalysis
         }
 
         return locations;
-    }
-
-    // SPEC 23.3.6.1: the number of cases of a definition, the product of its resolved binders' admitted sets.
-    private long CaseProduct(FunctionKoto function)
-    {
-        this.compilation.Binding.PairBinders(function, this.caseBinders);
-        return PairBinder.CaseProduct(this.caseBinders);
     }
 }

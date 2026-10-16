@@ -51,7 +51,7 @@ public class ValueCallBindingTest
         Assert.Equal(call.ArgumentNodes.Count, plan.ArgumentOperations.Length);
     }
 
-    // SPEC 7.3, 13.5.5.1: an object callee records the acquisition of its complete payload; a value reference keeps none.
+    // SPEC 7.3, 13.5.5: an object callee records the acquisition of its complete payload; a value reference keeps none.
     [Theory]
     [InlineData("func apply(f: objref/(() -> i32)) -> i32 => f()", true)]
     [InlineData("func apply(f: rc/(() -> i32)) -> i32 => f()", true)]
@@ -95,7 +95,7 @@ public class ValueCallBindingTest
     [InlineData("let text = \"a\"\nlet once = func [text@move] (value: i32) -> i32 => value\nlet r = once<i32>(1)")]
     public void ExplicitTypeArgumentsOnAClosureCallSelectNothing(string source)
     {
-        // A function value has no Type parameters (SPEC 7.6, 12.4.2); an exclusive or consuming closure receiver is not read
+        // A function value has no Type parameters (SPEC 7.7, 12.5.2); an exclusive or consuming closure receiver is not read
         // before the generic application is rejected.
         var c = MinimalEmissionTest.Analyze(source);
         var issue = Assert.Single(c.Binding.Issues);
@@ -111,13 +111,10 @@ public class ValueCallBindingTest
         Assert.True(c.Binding.Result.IsComplete);
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         var plan = call.ValueCallOf();
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-            Assert.Same(plan, call.ValueCallOf());
-        }
-
+        Assert.True(c.Bind().IsComplete);
+        Assert.Same(plan, call.ValueCallOf());
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
+        Assert.Same(plan, call.ValueCallOf());
         var restored = Compilation.CreateForTest();
         Assert.True(restored.Prepare(WindowsProfile.Target));
         var tree = restored.Kotonoha;

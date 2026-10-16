@@ -332,7 +332,5 @@ public class OptionalTryDiscardTest
 
     private static string Describe(Compilation c)
         => MinimalEmissionTest.Describe(c, null) + "\n" + string.Join("\n", c.Binding.Issues.Select(x => x.Node.GetType().Name + ":" + x.Node.FailureOf() + ":" + x.Node)) +
-            "\n" + string.Join("\n", TestDiagnostics.Of(c, "Hello.kimi").Select(x => x.Message)) +
-            "\n" + string.Join("\n", c.Ownership.ControlFlow?.Issues.Select(x => x.Message) ?? []) +
-            "\nPending: " + string.Join(", ", c.Ownership.ControlFlow?.PendingBinding.Select(x => x.ToString()) ?? []);
+            "\n" + string.Join("\n", TestDiagnostics.Of(c, "Hello.kimi").Select(x => x.Message));
 }

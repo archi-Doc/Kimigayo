@@ -11,7 +11,7 @@ public class DictionaryOperationsTest
     [Fact]
     public void MilestonePrefixPreservesInputAndStoredEntryDestructionOrder()
     {
-        var source = File.ReadAllText(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone31.kimi")));
+        var source = File.ReadAllText(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone32.kimi")));
         var end = source.IndexOf("    entries[Key.init(1, 0)]", StringComparison.Ordinal);
         Assert.True(end > 0);
         const string Output = "Duplicate returned both inputs.\nRejected item destroyed.\nRejected key destroyed.\nReplacement key destroyed.\nReplacement returned item 10.\nItem 10 destroyed.\nItem 40 destroyed.\nKey 4 destroyed.\nItem 20 destroyed.\nKey 2 destroyed.\nItem 11 destroyed.\nKey 1 destroyed.\n";

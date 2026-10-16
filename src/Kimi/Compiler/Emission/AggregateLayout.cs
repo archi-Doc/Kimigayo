@@ -43,7 +43,7 @@ internal sealed record AggregateLayout(int Id, ValueLowering Value, ValueLowerin
 /// <summary>Interns physical shapes independently of bound Type and Origin identities.</summary>
 internal sealed class AggregateLayoutPool
 {
-    // SPEC 21.3.5: the mandatory bound on inline nesting depth; a self-containing Type is rejected by Binding before this.
+    // SPEC 21.3.2: the mandatory bound on inline nesting depth; a self-containing Type is rejected by Binding before this.
     private const int DepthLimit = 64;
 
     private readonly List<AggregateLayout> pool = new();
@@ -97,7 +97,7 @@ internal sealed class AggregateLayoutPool
 
     private static long Align(long size, int alignment) => (size + alignment - 1) & -(long)alignment;
 
-    // IMPL 21.2.2: Sealed identifies the complete payload, but a direct call also needs its concrete cleanup.
+    // IMPL 21.1.3: Sealed identifies the complete payload, but a direct call also needs its concrete cleanup.
     // Recursive handle edges retain dynamic cleanup; they do not expand an inline layout indefinitely.
     private AggregateLayout? SealedObjectHandle(BoundType payload, ObjectHandleMode mode, int depth)
     {
@@ -270,7 +270,7 @@ internal sealed class AggregateLayoutPool
             return this.ExceedLimit(type, depth: true);
         }
 
-        // SPEC 4.6.8, 4.7.4: a Slice is {buffer, length}; an Array handle is {buffer, length, capacity}.
+        // SPEC 4.8.6, 4.9.5: a Slice is {buffer, length}; an Array handle is {buffer, length, capacity}.
         var sequence = type.Kind is BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary;
         if ((!structure && !sequence && type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure or BoundTypeKind.FunctionItem)) ||
             type.Semantics != SemanticsKind.Owner || (!sequence && type.Origin is not null) || (!structure && type.OriginArguments.Count != 0) ||

@@ -94,7 +94,7 @@ public class StringFunctionEmissionTest
     [Fact]
     public void ParameterProduceExplicitlyInitializesItsFlag()
     {
-        // writeLine borrows its argument (SPEC 22.4); a conditional transfer keeps the parameter's live flag.
+        // writeLine borrows its argument (SPEC 22.1); a conditional transfer keeps the parameter's live flag.
         var c = MinimalEmissionTest.Analyze("func f(text: string, c: bool)\n    if c\n        _ = text@move\nf(\"text\", true)");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Function.Parameters.Count == 2);
@@ -223,14 +223,11 @@ public class StringFunctionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(Echo + "var i = 0\nwhile i < 3\n    Console.writeLine(echo(echo(\"text\")))\n    i += 1");
         var success = true;
-        var bytes = AllocationMeasurement.Measure(
-            () =>
-            {
-                success &= c.Analyze().IsVerified;
-                success &= c.WriteIr(TextWriter.Null, out _);
-            },
-            iterations: 128,
-            warmupIterations: 100);
+        var bytes = AllocationMeasurement.Measure(() =>
+        {
+            success &= c.Analyze().IsVerified;
+            success &= c.WriteIr(TextWriter.Null, out _);
+        });
         Assert.True(success);
         Assert.Equal(0, bytes);
     }

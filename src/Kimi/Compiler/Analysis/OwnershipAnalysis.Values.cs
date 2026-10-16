@@ -10,7 +10,7 @@ public sealed partial class OwnershipAnalysis
 
     private bool TryScalarLiteral(Koto source, out Int128 value)
     {
-        // An instance fits a literal of a generic integer Type to its concrete Type (SPEC 8.4.7.3).
+        // An instance fits a literal of a generic integer Type to its concrete Type (SPEC 8.7.4).
         var type = this.Resolve(source.BoundType, this.Active);
         if (type is { IsFloatingPoint: true })
         {
@@ -133,7 +133,7 @@ public sealed partial class OwnershipAnalysis
     {
         if (operation is KotoKind.Slash or KotoKind.Percent && ScalarTypes.Width(this.Resolve(type, this.Active), this.compilation.PointerWidth) == 128)
         {
-            this.Unsupported(source); // SPEC 8.4.7.3, IMPL 21.5.3: a generic integer instance's 128-bit division.
+            this.Unsupported(source); // SPEC 8.7.4, IMPL 21.3.3: a generic integer instance's 128-bit division.
         }
 
         var updated = this.Place(source, type, OwnershipPlaceKind.Temporary, true);
@@ -235,7 +235,7 @@ public sealed partial class OwnershipAnalysis
         var operation = selected ?? conversion.ConversionBinding;
         if (conversion.FoldedConstant is { } folded)
         {
-            // SPEC 13.5.4.2: a direct literal converted at compile time is a constant of the target Type; the literal itself,
+            // SPEC 13.5.4: a direct literal converted at compile time is a constant of the target Type; the literal itself,
             // which may not fit any Type, is never evaluated.
             var constant = this.Temporary(conversion);
             this.SetValue(this.Value(constant), OwnershipValueKind.Constant, [], constant: folded);

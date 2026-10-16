@@ -53,7 +53,7 @@ public class DictionaryLibraryTest
         Assert.False(module.NeedsDictionaryRuntime);
     }
 
-    // SPEC 4.7.5: a Dictionary operation is called with its published summary, not as an unbounded generic call, so a generic body may
+    // SPEC 4.9.6: a Dictionary operation is called with its published summary, not as an unbounded generic call, so a generic body may
     // keep its result across another call; `K` here may be a borrow, whose Loans the ordinary dependencies track.
     [Theory]
     [InlineData("DictionaryPublishedTwice", "func put<K>(k: K) -> isize\n    K is Copy\n    K is Equatable\n    var d: Dictionary<K, i32> = [:]\n    let r = d.tryInsert(k, 1)\n    var e: Dictionary<K, i32> = [:]\n    let s = e.tryInsert(k, 2)\n    match r\n        .Ok(()) => return 1\n        .Err(_) => return 0\nlet n = 7\nConsole.writeLine(\"\\(put(n@ref))\")", "1\n")]
@@ -132,7 +132,7 @@ public class DictionaryLibraryTest
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, function.Declaration));
-        // SPEC 22.1.2.5, 22.5.1: the capacity decisions are DictionaryStorage source over located primitives; the compiler builds
+        // SPEC 22.2, 22.5.1: the capacity decisions are DictionaryStorage source over located primitives; the compiler builds
         // no bridges, platform callbacks or callback tables.
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, name == "Reserve" ? c.Library.DictionaryReserveStorage : c.Library.DictionaryShrink));
         var ir = CompilationTestHelper.WriteIr(c);
@@ -196,7 +196,7 @@ public class DictionaryLibraryTest
         ScalarEmissionTest.EmitFixture("DictionaryLibraryIdentity", Source, string.Empty);
     }
 
-    // SPEC 22.5.1, 22.5.2: an Alloc failure inside the DictionaryStorage capacity bodies reports the standard operation the user
+    // SPEC 22.5.1, 21.4.3: an Alloc failure inside the DictionaryStorage capacity bodies reports the standard operation the user
     // wrote, through tryInsert, insertOrReplace, a literal's key and a generic helper's call, never a library position.
     [Theory]
     [InlineData("Reserve", "var entries: Dictionary<i32, i32> = [:]\nentries.reserve(4)", "Hello.kimi:2:1")]
@@ -211,7 +211,7 @@ public class DictionaryLibraryTest
         ScalarEmissionTest.WriteFixture("DictionaryLibraryAllocation" + name, ir, string.Empty, 1, location + ": abort KIMI_E_ALLOC: Failed to allocate memory\n");
     }
 
-    // SPEC 22.5.1, 22.5.2: the release of the old storage after shrinking reports the user's shrinkToFit call.
+    // SPEC 22.5.1, 21.4.3: the release of the old storage after shrinking reports the user's shrinkToFit call.
     [Fact]
     public void ShrinkReleaseFailureReportsTheCallerLocation()
     {
@@ -223,7 +223,7 @@ public class DictionaryLibraryTest
         ScalarEmissionTest.WriteFixture("DictionaryLibraryReleaseFailure", ir, string.Empty, 1, "Hello.kimi:4:1: abort KIMI_E_FREE: Failed to free memory (win32=5)\n");
     }
 
-    // SPEC 4.7.5, 8.4.10.2: the capacity bodies call located primitives directly rather than callbacks, so a confined
+    // SPEC 4.9.6, 8.11.2: the capacity bodies call located primitives directly rather than callbacks, so a confined
     // implementation may reserve, insert, replace and shrink.
     [Fact]
     public void ConfinedImplementationsUseCapacityOperations()

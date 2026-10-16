@@ -8,7 +8,7 @@ namespace Verification;
 internal static class VerificationWorkloads
 {
     // With implicitConstructors, no layer declares `init() => ()`: the root's constructor is synthesized and every derived layer's
-    // synthesized constructor selects its base's (SPEC 6.2.3.6).
+    // synthesized constructor selects its base's (SPEC 6.3.6).
     internal static string InheritedPlans(int depth, int width, bool implicitConstructors = false)
     {
         var source = new StringBuilder();
@@ -402,7 +402,7 @@ internal static class VerificationWorkloads
         return source.ToString();
     }
 
-    /// <summary>Gets the Semantics-case workload (SPEC 8.10; PLAN G75): a one-binder definition whose uniq case Reborrows a local, stores
+    /// <summary>Gets the Semantics-case workload (SPEC 8.15; PLAN G75): a one-binder definition whose uniq case Reborrows a local, stores
     /// it through an exclusive reference, captures it and passes it bare, and a two-binder definition with four cases; both valid in every
     /// case and called with owner arguments. Shared by <c>GenericCaseAllocationTest</c> and <c>Benchmark --pair-cases</c>.</summary>
     internal static string PairCaseFamilies =>

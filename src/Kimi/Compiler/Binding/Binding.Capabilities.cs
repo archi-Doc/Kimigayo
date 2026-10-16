@@ -18,8 +18,7 @@ public sealed partial class Binding
     /// <param name="type">The complete Type.</param>
     /// <param name="context">The use site providing assumptions.</param>
     /// <returns>The proof result, without choosing any acquisition operation.</returns>
-    public ConstraintProof ProveCopy(BoundType type, Koto context)
-        => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Copy)), this.ConstraintScope(context));
+    public ConstraintProof ProveCopy(BoundType type, Koto context) => this.ProveCopy(type, this.ConstraintScope(context));
 
     /// <summary>Queries the recursive Owned guarantee, independently of heap/global borrow restrictions.</summary>
     /// <param name="type">The complete Type.</param>
@@ -28,14 +27,14 @@ public sealed partial class Binding
     public ConstraintProof ProveOwned(BoundType type, Koto context)
         => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Owned)), this.ConstraintScope(context));
 
-    /// <summary>Queries compiler-intrinsic PrimitiveInteger (SPEC 8.4.7.3) under lexical Constraints.</summary>
+    /// <summary>Queries compiler-intrinsic PrimitiveInteger (SPEC 8.7.4) under lexical Constraints.</summary>
     /// <param name="type">The complete Type.</param>
     /// <param name="context">The use site providing assumptions.</param>
     /// <returns>The proof result; a proven Type is an owner integer scalar in every instance.</returns>
     public ConstraintProof ProvePrimitiveInteger(BoundType type, Koto context)
         => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.PrimitiveInteger)), this.ConstraintScope(context));
 
-    /// <summary>Determines whether a Type is <c>Wrapping&lt;T&gt;</c> over a symbolic Type proven PrimitiveInteger (SPEC 3.1.1.1,
+    /// <summary>Determines whether a Type is <c>Wrapping&lt;T&gt;</c> over a symbolic Type proven PrimitiveInteger (SPEC 3.1.1,
     /// 8.4.7.3), whose every instance is a wrapping integer Scalar.</summary>
     /// <param name="type">The Type.</param>
     /// <param name="context">The use site providing assumptions.</param>
@@ -48,15 +47,20 @@ public sealed partial class Binding
     /// <param name="type">The normalized complete Type.</param>
     /// <param name="context">The use site providing assumptions.</param>
     /// <returns>The four-valued Sealed proof.</returns>
-    public ConstraintProof ProveSealed(BoundType type, Koto context)
-        => this.RequestCapability(type, this.Library.Sealed, this.ConstraintScope(context));
+    public ConstraintProof ProveSealed(BoundType type, Koto context) => this.ProveSealed(type, this.ConstraintScope(context));
+
+    // The Copy and Sealed queries under a scope's premises, such as a definition's effect premises (EffectPremises).
+    internal ConstraintProof ProveCopy(BoundType type, BindingScope scope)
+        => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Copy)), scope);
+
+    internal ConstraintProof ProveSealed(BoundType type, BindingScope scope) => this.RequestCapability(type, this.Library.Sealed, scope);
 
     private static bool TryLeafCapability(BoundType type, IntrinsicKind kind, out ConstraintProof result)
     {
         result = ConstraintProof.Unknown;
         if (kind == IntrinsicKind.PrimitiveInteger)
         {
-            // SPEC 8.4.7.3: exactly the twelve owner integer Cores; a symbolic Type is decided by its premises.
+            // SPEC 8.7.4: exactly the twelve owner integer Cores; a symbolic Type is decided by its premises.
             if (type.IsAbstract)
             {
                 return false;
@@ -74,7 +78,7 @@ public sealed partial class Binding
                 return true;
             }
 
-            // SPEC 8.4.7.2: symbolic targets, a Contract's Self among them, are decided by their premises.
+            // SPEC 8.7.3: symbolic targets, a Contract's Self among them, are decided by their premises.
             if (type.IsAbstract)
             {
                 return false;
@@ -130,7 +134,7 @@ public sealed partial class Binding
 
         if (type.Kind == BoundTypeKind.FunctionItem && (kind == IntrinsicKind.Copy || type.Components.Count == 0))
         {
-            // SPEC 7.6.4: an Item stores nothing, so it is Copy; it is Owned when its bound arguments are, which the
+            // SPEC 7.7.4: an Item stores nothing, so it is Copy; it is Owned when its bound arguments are, which the
             // structural proof over its Components decides.
             result = ConstraintProof.Proven;
             return true;
@@ -343,7 +347,7 @@ public sealed partial class Binding
         if (type.IsAbstract)
         {
             // A Contract's Self, a Type parameter, has no structure of its own; its ObjectPayload evidence is the Contract's clause
-            // (SPEC 8.4.7.2).
+            // (SPEC 8.7.3).
             return this.SymbolicCapability(work);
         }
 
@@ -559,7 +563,7 @@ public sealed partial class Binding
                 }
                 else if (fact.Kind == ConstraintKind.Contract && fact.Contract!.Intrinsic == IntrinsicKind.PrimitiveInteger && work.Intrinsic.Intrinsic is IntrinsicKind.Copy or IntrinsicKind.Owned)
                 {
-                    evidence = ConstraintProof.Proven; // SPEC 8.4.7.3: every admitted integer Type is Copy and Owned.
+                    evidence = ConstraintProof.Proven; // SPEC 8.7.4: every admitted integer Type is Copy and Owned.
                 }
                 else if (fact.Kind == ConstraintKind.Semantics)
                 {

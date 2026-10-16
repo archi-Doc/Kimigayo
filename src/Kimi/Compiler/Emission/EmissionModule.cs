@@ -126,7 +126,7 @@ internal enum ArithmeticCheckKind : byte
     /// <summary>Signed quotient: a zero divisor and the minimum / −1 pair Abort.</summary>
     Division,
 
-    /// <summary>Unsigned quotient, or any remainder: only a zero divisor Aborts; a signed remainder by −1 is 0 (SPEC 13.3).</summary>
+    /// <summary>Unsigned quotient, or any remainder: only a zero divisor Aborts; a signed remainder by −1 is 0 (SPEC 13.3.1).</summary>
     DivisionZero,
 
     /// <summary>Signed quotient of a wrapping integer Type: only a zero divisor Aborts, and the minimum / −1 wraps to the minimum.</summary>
@@ -239,19 +239,19 @@ internal sealed class EmissionModule
 
     internal HashSet<AggregateLayout> Aggregates { get; } = new(ReferenceEqualityComparer.Instance);
 
-    /// <summary>Gets the per-element Array helpers requested by lowered bodies (SPEC 4.7.2).</summary>
+    /// <summary>Gets the per-element Array helpers requested by lowered bodies (SPEC 4.9.3).</summary>
     internal List<ArrayHelper> ArrayHelpers { get; } = new();
 
     internal List<DictionaryHelper> DictionaryHelpers { get; } = new();
 
     internal List<FunctionAbi> FunctionReferences { get; } = new();
 
-    /// <summary>Gets or sets a value indicating whether a lowered body uses the Array capacity routines (SPEC 4.7.4).</summary>
+    /// <summary>Gets or sets a value indicating whether a lowered body uses the Array capacity routines (SPEC 4.9.5).</summary>
     internal bool NeedsArrayRuntime { get; set; }
 
     internal bool NeedsDictionaryRuntime { get; set; }
 
-    /// <summary>Gets or sets a value indicating whether a lowered body uses the private storage byte primitives (SPEC 22.1.2.5).</summary>
+    /// <summary>Gets or sets a value indicating whether a lowered body uses the private storage byte primitives (SPEC 22.2).</summary>
     internal bool NeedsStorageBytes { get; set; }
 
     internal FunctionAbi? DictionaryAppendSlot { get; set; }
@@ -278,7 +278,7 @@ internal sealed class EmissionModule
 
     internal bool NeedsObjectRuntime { get; set; }
 
-    /// <summary>Gets the foreign functions (SPEC 22.3), one per external symbol; each call shares its physical signature.</summary>
+    /// <summary>Gets the foreign functions (SPEC 22.6), one per external symbol; each call shares its physical signature.</summary>
     internal List<ExternalFunction> Externals { get; } = new();
 
     internal List<StaticScalarEntry> Statics { get; } = new();
@@ -375,7 +375,7 @@ internal sealed class EmissionModule
     }
 }
 
-/// <summary>A foreign function declaration; DllImport selects the import-library form (SPEC 20.8.2.1).</summary>
+/// <summary>A foreign function declaration; DllImport selects the import-library form (SPEC 20.4).</summary>
 internal readonly record struct ExternalFunction(FunctionAbi Abi, bool DllImport);
 
 internal enum ArrayHelperKind : byte
@@ -389,7 +389,7 @@ internal enum ArrayHelperKind : byte
     Drop,
     Swap,
 
-    // SPEC 22.1.2.5: the storage boundary over an Array handle and its remainder records.
+    // SPEC 22.2: the storage boundary over an Array handle and its remainder records.
     BorrowStorage,
     OwnStorage,
 
@@ -398,7 +398,7 @@ internal enum ArrayHelperKind : byte
 }
 
 /// <summary>The layout offsets of a storage remainder record's Fields {storage, position, count, capacity}, addressed by name,
-/// and the size of its storage Field (SPEC 22.1.2.5).</summary>
+/// and the size of its storage Field (SPEC 22.2).</summary>
 internal readonly record struct RemainderFields(int Storage, int Position, int Count, int Capacity, int StorageSize);
 
 /// <summary>A generated Array helper for one element representation: its ABI, element lowering, for pop the Option layout, and
@@ -423,7 +423,7 @@ internal enum DictionaryHelperKind : byte
 /// <summary>Physical Dictionary entry helper; source calls resolve to the ordinary instantiated ABI.</summary>
 internal sealed record DictionaryHelper(DictionaryHelperKind Kind, FunctionAbi Abi, ValueLowering Key, AggregateLayout? KeyLayout, bool KeyIsString, ValueLowering Value, AggregateLayout? ValueLayout, bool ValueIsString, long KeyOffset, long ValueOffset, long Stride, int Related);
 
-// SPEC 4.6.4: the shape flags of a directly applied range slice (the SliceRange operand after its boundaries).
+// SPEC 4.6.3: the shape flags of a directly applied range slice (the SliceRange operand after its boundaries).
 internal static class SliceShape
 {
     internal const long EndOmitted = 1;

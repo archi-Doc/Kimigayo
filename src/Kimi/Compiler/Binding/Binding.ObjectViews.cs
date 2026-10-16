@@ -23,7 +23,7 @@ public sealed partial class Binding
     internal BoundType PayloadReadReference(ConversionKoto source, BoundType payload)
         => this.types.Reference(SemanticsKind.Ref, payload, this.PlaceOrigin(source));
 
-    // SPEC 3.4.1: a field access lends the handle's payload in the access mode already checked by Binding.
+    // SPEC 3.4.3: a field access lends the handle's payload in the access mode already checked by Binding.
     internal BoundType ObjectView(Koto source, BoundType handle, bool exclusive = false)
         => this.types.Reference(exclusive ? SemanticsKind.ObjUniq : SemanticsKind.ObjRef, handle.Components[0], this.PlaceOrigin(source));
 
@@ -53,7 +53,7 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 6.2.4: an override's self arrived through the original slot's erased View.
+    // SPEC 6.4: an override's self arrived through the original slot's erased View.
     // Its immutable receiver binding, local aliases and immutable captures preserve that evidence; another
     // parameter of the same Type does not. Original virtual entries have no such premise.
     private bool InheritsObjectErasure(Koto operand, BoundType source, out FunctionKoto? entry)

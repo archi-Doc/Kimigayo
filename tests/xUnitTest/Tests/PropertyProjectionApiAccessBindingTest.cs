@@ -179,11 +179,7 @@ public class PropertyProjectionApiAccessBindingTest
     public void WarmPropertyProjectionChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("public contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic struct Api\n    public computed item: S.C.Element\n        get() -> S.Element => 1\n        set(value: S.C.Element) -> () => ()");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

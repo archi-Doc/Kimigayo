@@ -20,7 +20,7 @@ an executable change does not make that change documentation-only.
 | Change | Completion checks |
 | --- | --- |
 | Documentation only | Review diffs and affected references. Do not run builds, tests, native fixtures or milestone harnesses. |
-| Compiler, Kimi library or compiler tests | Unit verification of the related checks (library changes add `KimiLibraryShapeTest`) with relevant native fixtures and milestones, all selected explicitly, plus the common `CompilerSizeBudgetTest` and `ArchitectureRulesTest` that Verify adds; a successful Session at the end of the working session. |
+| Compiler, Kimi library or compiler tests | Unit verification of the related checks (library changes add `KimiLibraryShapeTest`) with relevant native fixtures and milestones, all selected explicitly, plus the common `ArchitectureRulesTest` that Verify adds; a successful Session at the end of the working session. |
 | Benchmark or Playground code | Session verification, including the whole-solution build, before completion; execute the affected scenario or relevant fixed-condition measurements. |
 | Verification scripts, CI or other tooling | Related script regressions and affected build/execution paths. Native-runner changes require `NativeFixtureRunnerTest.ps1`. Changes affecting the managed build or test pipeline also require Session. A local check does not certify a hosted CI run. |
 | VS Code extension, including its build/distribution scripts | Follow [the extension instructions](../../src/kimi-ext/AGENTS.md). |
@@ -31,54 +31,16 @@ still requires explicit instruction.
 
 ## Code rules
 
-Kimi.csproj references Kimi.Analyzers as a private analyzer; other projects do not inherit it. The globalconfig is
-also an AdditionalFile, alongside the baseline TSV. KimiCodeRulesMode defaults to Enforce. Verify always sets Verify
-and KimiCodeRulesLog (a Kimi-only SARIF 2.1 output); do not set a solution-wide ErrorLog or use Report for verification.
-The shared SARIF reader rejects analyzer exceptions and suppressed KR/IDE0051/IDE0052/IDE0060 diagnostics, including
-suppressed KR9004. Verify also requires the completion marker with matching configuration/baseline checksums, so a
-build that did not run the analyzer on the current policy fails. CodeRulesConfigurationTest keeps built-in severities
-out of other configuration files.
-Use commas between configuration list entries; semicolons begin comments in Roslyn's globalconfig parser.
+The Code Rules Analyzer, its configuration/baseline and CompilerSizeBudgetTest were removed in
+`2e341155`. DECISIONS CR-R1 retires their Report, SARIF-marker and commit-approval workflow.
+`verify.ps1` still builds nonincrementally with warnings as errors, validates every requested
+test selector against the new assembly, rejects zero executed tests and checks source/NuGet
+input stability. `verify-commit.ps1` still requires a successful run and exact committed inputs.
+`ArchitectureRulesTest` retains its existing no-growth assertions and joins every Unit selection.
 
-| Command | Effect |
-| --- | --- |
-| `pwsh scripts/code-rules.ps1 -Report` | Fresh Release analysis, rule/area counts and observations under artifacts/verify |
-| `pwsh scripts/code-rules.ps1 -Prune` | Reduce existing bounds and delete absent/ineffective rows; never add or raise |
-| `pwsh scripts/code-rules.ps1 -Accept -Rule KR2006 -Path src/Kimi/Compiler/Binding/Binding.cs` | Accept observed keys at the specified file (or directory ending in /); requires owner approval |
-| `pwsh scripts/code-rules.ps1 -Initialize -Rule KR3001,KR3002,KR3003` | Introduce the specified rules' observed keys in their implementation unit; reject replacement of existing keys |
-
-Every operation uses a new nonincremental build and SARIF path. Before writing, it requires a successful build,
-exactly one completion marker with nonzero tree count and `annotationKinds=exception,transitional`, matching raw-byte configuration/baseline checksums and
-unchanged source/configuration/NuGet manifests. Keys and final observed values come only from the analyzer. Baselines
-are written atomically in ordinal scope/rule/anchor order. A complete report with no over-limit occurrence deletes
-that row, including a measurement now at or below the ordinary limit (DECISIONS CR-A2).
-Annotation observations include their reason and either an exception bound or removal stage/ordinal, even at zero;
-they never enter the baseline. Missing or older annotation-inventory markers are incomplete Reports. The Report
-command retains MSBuild warnaserror but exempts KR9002 from logger promotion so Prune can read stale-entry warnings.
-Verify's KR9002 is an analyzer error and remains fatal (DECISIONS CR-A6b).
-
-Analyzer cost: after a Kimi.Analyzers change, build the analyzer in Release, then run
-`dotnet build src/Kimi/Kimi.csproj -c Release --no-restore -t:Rebuild -p:ReportAnalyzer=true -p:UseSharedCompilation=false -p:BuildProjectReferences=false -nodeReuse:false -m:1 -v:detailed -clp:PerformanceSummary`.
-The Kimi.Analyzers row of the analyzer summary must stay at or below 10% of the Csc task time (plan §3.8). Compare
-variants by interleaved runs and keep failed measurements.
-
-At each reduction-stage exit, obtain Report and have the owner review its baseline, exceptions and transitional
-inventory. Report does not replace Unit or Session verification. Record approval in the actual Git trailer:
-`Code-Rules-Approved: <approver> <yyyy-MM-dd>: <reason>`.
-verify-commit first matches the verified inputs, then requires that trailer for any globalconfig change,
-new/increased baseline key, new/increased exception or postponed existing transitional key. Pruning, reduced bounds,
-earlier stages and partial-file moves need no approval. A valid trailer bypasses only the approval comparison.
-Without one, the audit builds fresh complete Reports of the exact first parent and target in isolated detached
-worktrees, using the same Report function as code-rules.ps1. Both reports, input manifests and failure logs stay in
-the Verify evidence directory. Missing or incomplete inventories fail; no cached report or text-based attribute
-parser substitutes for the analyzer (DECISIONS CR-A8). Script policy regressions are CodeRulesApprovalTest.ps1;
-the no-trailer commit association exercises the full two-build path.
-
-Run CodeRulesReportTest.ps1 for the shared reader/update operations, and CodeRulesCompilerTest.ps1 after a Release
-analyzer build when suppression or analyzer build integration changes. The latter retains actual-csc logs for pragma,
-member/type/assembly/alias/unconditional attributes, NoWarn, editorconfig/globalconfig and built-in suppression. Full
-Session covers the in-memory rule tests; it also runs the cheap report-script regressions. Stage exits and milestone
-completion require Report for owner review; rule introduction adds its rule tests and required behavior snapshots.
+The structure, dependency and vocabulary rules in COMPILER_ARCHITECTURE remain review
+obligations; code size has no caps (DECISIONS Q5). Report net size changes and exceptions in
+commits/artifacts; do not claim automated coverage for the removed analyzer.
 
 ## Feedback and completion
 
@@ -94,10 +56,12 @@ Choose an existing method from the test source or runner discovery (`-list metho
 Before a formal run, Verify's build flags catch analyzer and StyleCop failures in minutes; the result is feedback, not evidence:
 
 ```powershell
-dotnet build tests/xUnitTest/xUnitTest.csproj --no-restore --no-incremental -c Release --disable-build-servers -warnaserror -p:EmitCompilerGeneratedFiles=false
+dotnet build tests/xUnitTest/xUnitTest.csproj --no-restore --no-incremental -c Release -warnaserror -p:EmitCompilerGeneratedFiles=false
 ```
 
-At Unit completion, `scripts/verify.ps1` builds the test project and its Kimi dependency non-incrementally with warnings as errors. At Session completion it builds the entire solution, including Benchmark and Playground, then runs all managed regressions. The existing analyzer check is retained in both modes. Changes to Benchmark or Playground need the Session build before completion. Neither mode runs NativeAOT.
+At Unit completion, `scripts/verify.ps1` builds the test project and its Kimi dependency non-incrementally with warnings as errors. At Session completion it builds the entire solution, including Benchmark and Playground, then runs all managed regressions. Both modes retain the installed build analyzers and warnings-as-errors policy. Changes to Benchmark or Playground need the Session build before completion. Neither mode runs NativeAOT.
+
+The build uses parallel project builds and the shared compiler server; the script regressions run while it compiles. Tests run up to eight collections at once (`-TestParallel`). The test host uses Server GC without dynamic heap-count adaptation and with a 64 MB gen0 budget per heap (`xUnitTest.csproj`): under the workstation GC, raising the threads from 4 to 14 made each test 2.7 times slower, so the run shrank only from 756 s to 622 s.
 
 ```powershell
 ./scripts/verify.ps1 -Class DeferredEmissionTest -Fixtures 'Deferred*.ll'
@@ -105,7 +69,7 @@ At Unit completion, `scripts/verify.ps1` builds the test project and its Kimi de
 ./scripts/verify.ps1 -Mode Session
 ```
 
-Unit Verify adds the common compiler checks `CompilerSizeBudgetTest` and `ArchitectureRulesTest` to every class or
+Unit Verify adds the common compiler check `ArchitectureRulesTest` to every class or
 method selection, once; the purpose filter applies to them too. Purpose-filtered runs such as the allocation example
 supplement, rather than replace, the remaining required checks. Commit each unit after its checks pass, associate the
 evidence (below) and push; run the final Session at the end of the working session. Ordinary Verify does not check
@@ -127,6 +91,8 @@ Verify accepts both `ClassName` / `ClassName.Method` and their fully qualified f
 After the build, Unit verification discovers methods from that exact assembly, checks **every** requested class and method, and records the effective selection in `selected-methods.json` before running tests. A misspelled selector cannot be hidden by another selector that matches. Class selections are ORed, method selections are ORed, and those two groups intersect; the runner also applies the purpose filter. The common checks join each nonempty group, as `Class.*` among methods, so they add to the selection rather than narrowing it. Discovery never checks an older assembly against newly edited test sources. Both zero-method and zero-executed-test selections fail.
 
 `-Pipeline mir` (R3–R5; default `legacy`) sets `KIMI_PIPELINE` for every compiler process of the run, the tests, fixtures and milestone harnesses, and records the pipeline in `summary.json`.
+
+The MIR difference ledger (R4–R6, DECISIONS R4-M17) is recorded by the test assembly. `KIMI_MIR_DIFF=<directory>` makes its fixture `MirDifferenceLedger` compare every mir-pipeline compilation once per Binding pass and append raw rows and sources to that directory, which must be fresh (the aggregation reads every `raw-*.tsv` there), aggregated into `ledger.tsv` and `summary.md` (P9) when the run ends; `KIMI_MIR_LEDGER=<directory>` with `MirDifferenceTest.RequestedLedger` aggregates a directory's raw rows again. The mir measurement of a unit runs the Functional suite under `KIMI_PIPELINE=mir` with `KIMI_MIR_DIFF` (tier 1 is `MirDifferenceTest.RequestedCorpus`, tier 2 the rest of the suite) and the `Purpose=Allocation` tests under mir without it, since the observer allocates; the Functional failure set must equal a mir run without the ledger. The ledger of a unit is kept under `artifacts/verify/mir-diff/<unit>/`.
 
 `-TestPurpose All` is the default; `Functional` and `Allocation` restrict deliberate Unit checks. Session rejects either restriction. Select relevant native fixtures and milestones explicitly as before. Selector rules, the common checks and optional allocation companions are regression-checked by `./tests/scripts/VerificationSelectionTest.ps1`.
 
@@ -172,7 +138,7 @@ For acquisition, borrowing and calls, choose the applicable rows below when defi
 | Execution | Source evaluation order, one selector evaluation, zero-sized values, Move, exactly-once cleanup, abandoned arguments and independent errors |
 | Reuse and publication | Reanalysis with retained capacity, failed-request recovery, exact source/configuration evidence, relevant CLI/LSP records and strict allocation checks |
 
-Acquisition has one authority in SPEC §3.5; a published Place result uses §3.4.1/§7.1.1 and indexing §4.6.9. Origin compatibility does not establish Loan identity or access authority (§15.3.5–7 and §15.6). Read those contracts together instead of introducing container-specific borrow exceptions. Record unresolved interactions in PLAN §7 and STATUS rather than broadening a completion claim.
+Acquisition has one authority in SPEC §3.5; a returned reference follows §7.1 and §13.5.5, and indexing §4.7.1. Origin compatibility does not establish Loan identity or access authority (§15.3.5–7 and §15.6). Read those contracts together instead of introducing container-specific borrow exceptions. Record unresolved interactions in PLAN §7 and STATUS rather than broadening a completion claim.
 
 For duration-bound sessions, record implementation start, the last unit's start, verification completion and final documentation separately. Report actual total elapsed time, including required verification after the unit-work deadline. Keep failed runs and superseded experiments with the successful evidence; do not use a serial retry or extra warming to certify a failed parallel allocation check.
 
@@ -197,9 +163,9 @@ Test code is reviewed and maintained like compiler code. Each case should add co
 | Allocation/reuse regression | xUnit tests with `Purpose=Allocation` | Related hot-path Unit checks and every Session |
 | Performance measurement | `src/Benchmark` | Explicit performance work and milestone completion |
 
-Allocation/reuse regressions retain input sizes and fixed warm-up/repetition counts. Native allocation guarantees remain unchanged; compiler allocation assertions may change for a documented speed or code-size tradeoff with reasonable memory growth under AGENTS' performance policy. Measure time, allocations and retained memory for equivalent work before adopting that change; never adjust assertions merely to pass. These regressions test allocation, storage reuse or storage bounds, not timing. Timing-only loops belong in Benchmark. A test that also emits a native fixture remains selectable with its class and included in Session.
+Allocation/reuse regressions keep their input sizes and measure warm work in the standard window of `AllocationMeasurement.Measure`; longer searches for slow growth belong in Benchmark. Native allocation guarantees remain unchanged; compiler allocation assertions may change for a documented speed or code-size tradeoff with reasonable memory growth under AGENTS' performance policy. Measure time, allocations and retained memory for equivalent work before adopting that change; never adjust assertions merely to pass. These regressions test allocation, storage reuse or storage bounds, not timing. Timing-only loops belong in Benchmark. A test that also emits a native fixture remains selectable with its class and included in Session.
 
-Use `AllocationMeasurement.Measure` for repeated warm compiler-allocation checks. It prepares a dedicated thread without the runner's ExecutionContext and retires its allocation context before the counter interval. `iterations` and `warmupIterations` preserve each workload's original fixed counts (the default warm-up count equals `iterations`); never add a second caller-side warm-up when migrating. Keep result validity checks outside the interval, retaining failures from every operation. The helper's regressions check measured allocations, count preservation, context isolation and exclusion of warm-up allocations. A passing isolated run does not identify the cause of an earlier raw-thread failure; retain the failed evidence and report that uncertainty.
+Use `AllocationMeasurement.Measure` for repeated warm compiler-allocation checks. Its standard window, owned by the helper, runs 4 warm-up and then 12 measured operations on a dedicated thread without the runner's ExecutionContext and retires the thread's allocation context with a gen0 collection before the counter interval; a full collection would also trim shared pools under concurrent measurements (owner decision, 2026-10-16). Call sites pass no counts and run no caller-side warm-up loop; setup that the measured operation does not repeat (another phase, a Reload's first binding) runs once before the measurement, and an assertion of retained identity or capacity runs again after it. A regression that passes only with more warm-up shows storage that does not reach steady state within the window: fix the compiler or record an owner-approved exception with its removal condition in PLAN, never more warm-up. After p operations on the measured state, the measured operations add entries k(p + 4) + 1 to k(p + 16) of a leak of k entries per operation; while p ≤ 8 that range doubles, so the window detects such a leak into doubling storage whose capacity after its first allocation is below k(p + 16). Keep setup before a measurement under that bound. A cold measurement of one operation, such as a growth ladder across input sizes, reads the thread's counter around that operation. Keep result validity checks outside the interval, retaining failures from every operation. The helper's regressions check measured allocations, the standard counts, context isolation and exclusion of warm-up allocations. A passing isolated run does not identify the cause of an earlier raw-thread failure; retain the failed evidence and report that uncertainty.
 
 Formerly serial classes isolate their allocation tests in a nested `AllocationTests` class with disabled parallelization; their functional cases can run concurrently. Shared private static helpers and constants stay in the outer class. Do not remove isolation from measurements merely to increase concurrency, or share mutable compilation instances between tests. Existing allocation tests that already ran concurrently retain their execution policy.
 

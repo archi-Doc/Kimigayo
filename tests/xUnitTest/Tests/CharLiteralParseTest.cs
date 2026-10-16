@@ -118,7 +118,7 @@ public class CharLiteralParseTest
     [InlineData(0x0085)]
     public void SeparatorScalarsAreInvalidContentNotLineBreaks(int scalar)
     {
-        // Only LF, CRLF, and CR are physical line endings (SPEC 2.2); other excluded scalars are content errors (SPEC 2.8.1).
+        // Only LF, CRLF, and CR are physical line endings (SPEC 2.1); other excluded scalars are content errors (SPEC 2.8).
         var parsed = Parse("let value = '" + (char)scalar + "'\nlet next = '😀'");
         var diagnostics = TestDiagnostics.Of(parsed);
         Assert.Contains(diagnostics, x => x.Code == nameof(DiagnosticCode.InvalidCharLiteral_Kd));

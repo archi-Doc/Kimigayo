@@ -54,11 +54,7 @@ public class DeepRefinementPremiseBindingTest
     public void WarmDeepRefinementBindingAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze(Source(16, true));
-        for (var i = 0; i < 20; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)
@@ -73,11 +69,7 @@ public class DeepRefinementPremiseBindingTest
     public void WarmDeepConformanceVerificationAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze(Source(16, true) + "\npublic struct Target\n    Self is Copy\n    Self is C16");
-        for (var i = 0; i < 20; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

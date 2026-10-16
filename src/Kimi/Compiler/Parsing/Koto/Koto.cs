@@ -305,9 +305,6 @@ public enum KotoKind : byte
     /// <summary>A parenthesized type, distinct from a one-element tuple.</summary>
     ParenthesizedType,
 
-    /// <summary>A Place result <c>place ref/T</c> or <c>place uniq/T</c> in result position.</summary>
-    PlaceResult,
-
     /// <summary>A fixed-array type.</summary>
     FixedArrayType,
 
@@ -626,7 +623,7 @@ public abstract class Koto
     /// <param name="condition">The condition within the requirement that distinguishes independent problems of this node, such as its arguments.</param>
     /// <param name="span">The part of the located syntax that has no node of its own, such as one capture entry; the location's document is kept.</param>
     /// <param name="relatedSpans">Related syntax without a node of its own, such as an Origin header, in the document of the given node.</param>
-    /// <param name="repairs">The repair candidates the report offers (SPEC 23.3.6.9), with edits located by <see cref="Edit"/>.</param>
+    /// <param name="repairs">The repair candidates the report offers (SPEC 23.1.3), with edits located by <see cref="Edit"/>.</param>
     internal void Report(DiagnosticRequirement requirement, DiagnosticCode code, object? first = null, object? second = null, string? note = null, Koto? at = null, object?[]? evidence = null, (string Role, Koto At, string? Label)[]? related = null, ushort condition = 0, SourceSpan? span = null, (string Role, Koto In, SourceSpan Span, string? Label)[]? relatedSpans = null, DiagnosticRepairFact[]? repairs = null)
     {
         if (this.DiagnosticCollection is not { } collection)
@@ -655,14 +652,14 @@ public abstract class Koto
         collection.Report(requirement.Partition, this.KeyOf(requirement, condition), span ?? (at ?? this).Span, code, first, second, note, null, (at ?? this).CodeContext.SourceDocument, evidence, locations, repairs);
     }
 
-    /// <summary>Locates one edit of a repair candidate in this node's document (SPEC 23.3.6.9).</summary>
+    /// <summary>Locates one edit of a repair candidate in this node's document (SPEC 23.1.3).</summary>
     /// <param name="span">The replaced span; an empty span is an insertion point.</param>
     /// <param name="text">The replacement text; empty for a deletion.</param>
     /// <returns>The edit, or the default value when the node records nowhere.</returns>
     internal DiagnosticEditFact Edit(SourceSpan span, string text)
         => this.DiagnosticCollection is { } collection ? collection.Edit(span, text, this.CodeContext.SourceDocument) : default;
 
-    /// <summary>Reports that a requirement of this node cannot be decided because its prerequisites failed (SPEC 23.3.6.4).</summary>
+    /// <summary>Reports that a requirement of this node cannot be decided because its prerequisites failed (SPEC 23.1.2).</summary>
     /// <param name="requirement">The requirement left undecided.</param>
     /// <param name="prerequisites">The check keys of the unmet prerequisites; the unresolved mark when unknown.</param>
     internal void ReportDerived(DiagnosticRequirement requirement, DiagnosticKey[] prerequisites)

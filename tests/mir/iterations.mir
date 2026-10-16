@@ -340,7 +340,7 @@ fn pairs @56
   bb15:
       return @56
   bb16:
-      drop _1 -> bb17 @56
+      drop _1 -> bb17 [keep] @56
   bb17:
       goto bb15 @56
   bb18:

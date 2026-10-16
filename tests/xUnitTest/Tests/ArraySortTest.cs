@@ -43,7 +43,7 @@ public class ArraySortTest
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == code);
     }
 
-    // SPEC 4.7.2: sort uses Comparable.compare, preserves each element and allocates no storage.
+    // SPEC 4.9.3: sort uses Comparable.compare, preserves each element and allocates no storage.
     [Theory]
     [InlineData("Empty", "")]
     [InlineData("Single", "42")]

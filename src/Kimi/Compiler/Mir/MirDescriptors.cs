@@ -2,7 +2,8 @@
 
 // Owns the interpretation of MIR operations, their accesses and successor enumeration.
 // Input: closed MIR kinds and indexed body records. Output: descriptor rows and MirUses walks.
-// Validator and analyses share these rows; operand/effect meaning is decided once.
+// Validator and analyses share these rows; operand/effect meaning is decided once, and a view's uses report each Adapt as its case
+// selects it.
 // Must not add per-consumer copies of access or control-flow classification.
 
 #pragma warning disable SA1402 // The descriptor table, its flags and the use enumeration belong together.
@@ -21,10 +22,10 @@ internal enum MirAccess : ushort
     Defines = 1 << 4, // The Place is initialized afterwards.
     Kills = 1 << 5, // StorageLive and StorageDead end a local's value and Loans; EndBorrow ends the Loans a reference local holds.
     DropUse = 1 << 6, // A Drop destroys the value.
-    CaseDependent = 1 << 7, // A pair binder's Semantics case decides the operation: a PairAcquire, or a Place through a PairLayer.
+    CaseDependent = 1 << 7, // A pair binder's Semantics case decides the operation: a PairAcquire, a Place through a PairLayer, an Adapt's payload.
 }
 
-/// <summary>An effect of a location, the local facts of the effect summary (plan 5.5, SPEC 8.4.10.2).</summary>
+/// <summary>An effect of a location, the local facts of the effect summary (plan 5.5, SPEC 8.11.2).</summary>
 [Flags]
 internal enum MirEffect : ushort
 {
@@ -47,7 +48,7 @@ internal readonly record struct MirDescriptor(bool Defined, MirAccess Access, Mi
 /// <summary>A position in a body: the statement at an index of a block, or its terminator at the index after the last statement.</summary>
 internal readonly record struct MirLocation(int Block, int Index);
 
-/// <summary>What <see cref="MirUses.ForEach"/> reports.</summary>
+/// <summary>What the walks of <see cref="MirUses"/> report.</summary>
 internal interface IMirUses
 {
     /// <summary>An operand the location evaluates, reported before the Place it names.</summary>
@@ -80,8 +81,8 @@ internal static class MirDescriptors
         _ => default,
     };
 
-    // The access to the rvalue's Place: a Ref's, Discriminant's or Len's, or an Opaque site's roots, which the replaced syntax may have
-    // read, written or borrowed. An operator or a checked Cast aborts unless Proven.
+    // The access to the rvalue's Place: a Ref's, Discriminant's or Len's, an Adapt's payload, or an Opaque site's roots, which the replaced
+    // syntax may have read, written or borrowed. An operator or a checked Cast aborts unless Proven; an Adapt may create an object.
     internal static MirDescriptor Of(MirRvalueKind kind) => kind switch
     {
         MirRvalueKind.Use => Row(MirAccess.None, effects: MirEffect.None),
@@ -93,6 +94,7 @@ internal static class MirDescriptors
         MirRvalueKind.Discriminant => Row(MirAccess.Reads, effects: MirEffect.None),
         MirRvalueKind.Len => Row(MirAccess.Reads, effects: MirEffect.None),
         MirRvalueKind.Opaque => Row(MirAccess.Reads | MirAccess.Writes | MirAccess.Borrows, MirEffect.Unknown),
+        MirRvalueKind.Adapt => Row(MirAccess.CaseDependent, MirEffect.Allocation),
         _ => default,
     };
 
@@ -131,7 +133,7 @@ internal static class MirDescriptors
         _ => default,
     };
 
-    // The intrinsic table's rows (plan 5.8): arguments as the library declares them, Fail's being its SPEC 22.5.4 code as a string constant.
+    // The intrinsic table's rows (plan 5.8): arguments as the library declares them, Fail's being its SPEC 22.5.2 code as a string constant.
     internal static MirDescriptor Of(IntrinsicId id) => id switch
     {
         IntrinsicId.RawAllocate => Row(MirAccess.None, MirEffect.Allocation, 1),
@@ -149,7 +151,7 @@ internal static class MirDescriptors
         IntrinsicId.ErasedWriter => Row(MirAccess.None, MirEffect.None, 1),
         IntrinsicId.Clone => Row(MirAccess.None, MirEffect.None, 1),
         IntrinsicId.Capacity => Row(MirAccess.None, MirEffect.None, 1),
-        IntrinsicId.TypeTest => Row(MirAccess.None, MirEffect.None, 2), // The payload's shared view and the target Type's token (SPEC 13.6.1).
+        IntrinsicId.TypeTest => Row(MirAccess.None, MirEffect.None, 2), // The payload's shared view and the target Type's token (SPEC 13.6.4).
         IntrinsicId.DestroyValues => Row(MirAccess.None, effects: MirEffect.None),
         IntrinsicId.FormatFloat => Row(MirAccess.None, effects: MirEffect.None),
         IntrinsicId.ErasedReserve => Row(MirAccess.None, effects: MirEffect.None),
@@ -180,16 +182,58 @@ internal static class MirDescriptors
 }
 
 /// <summary>The one enumeration of what a location reads, writes, moves, borrows, defines, kills and destroys, and of its effects, by the
-/// descriptor rows; the validator and the analyses share it, and a struct visitor makes it allocate nothing.</summary>
+/// descriptor rows, of a body or, under a Semantics case view (<see cref="MirCases"/>), with each Adapt as its case selects it; the
+/// validator and the analyses share it, and a struct visitor makes it allocate nothing.</summary>
 internal static class MirUses
 {
     /// <summary>Reports the operands, Places and effects of a location: a statement's rvalue before its Place, a terminator's operands
-    /// before its destination, which a diverging Call does not write.</summary>
+    /// before its destination, which a diverging Call does not write. An Adapt reports its operands, its acquired Place and its payload as
+    /// case-dependent, and the allocation of an object it may create.</summary>
     /// <typeparam name="TVisitor">The visitor's struct type.</typeparam>
     /// <param name="body">The body.</param>
     /// <param name="location">The location.</param>
     /// <param name="visitor">The visitor.</param>
     internal static void ForEach<TVisitor>(MirBody body, MirLocation location, ref TVisitor visitor)
+        where TVisitor : struct, IMirUses => Walk(body, null, location, ref visitor);
+
+    /// <summary>Reports a location of the selected body as the other overload does, under the selected view: an Adapt as the rvalue its case
+    /// selects (<see cref="MirCases.Adapt"/>), an object creation with its allocation.</summary>
+    /// <typeparam name="TVisitor">The visitor's struct type.</typeparam>
+    /// <param name="view">The Semantics case views, a view of the body selected.</param>
+    /// <param name="location">The location.</param>
+    /// <param name="visitor">The visitor.</param>
+    internal static void ForEach<TVisitor>(MirCases view, MirLocation location, ref TVisitor visitor)
+        where TVisitor : struct, IMirUses => Walk(view.Body, view, location, ref visitor);
+
+    /// <summary>Gets the number of runtime successors of a terminator; <see cref="Successor"/> gives each, and at -1 its CheckTarget, the
+    /// successor only the checks reach.</summary>
+    /// <param name="terminator">The terminator.</param>
+    /// <returns>The number of runtime successors.</returns>
+    internal static int Successors(in MirTerminator terminator) => terminator.Kind switch
+    {
+        MirTerminatorKind.Goto or MirTerminatorKind.Drop => 1,
+        MirTerminatorKind.Call => terminator.Target >= 0 ? 1 : 0,
+        MirTerminatorKind.SwitchInt => terminator.Count + 1,
+        _ => 0,
+    };
+
+    /// <summary>Gets a successor of a terminator: at -1 its CheckTarget (-1: none), else a runtime successor, a SwitchInt's case targets in
+    /// order, then its otherwise target.</summary>
+    /// <param name="body">The body.</param>
+    /// <param name="terminator">The terminator.</param>
+    /// <param name="index">The successor's index from -1, below <see cref="Successors"/>.</param>
+    /// <returns>The successor block.</returns>
+    internal static int Successor(MirBody body, in MirTerminator terminator, int index)
+    {
+        if (index < 0)
+        {
+            return terminator.CheckTarget;
+        }
+
+        return terminator.Kind == MirTerminatorKind.SwitchInt && index < terminator.Count ? body.Cases[terminator.Start + index].Target : terminator.Target;
+    }
+
+    private static void Walk<TVisitor>(MirBody body, MirCases? view, MirLocation location, ref TVisitor visitor)
         where TVisitor : struct, IMirUses
     {
         ref readonly var block = ref body.Blocks[location.Block];
@@ -198,7 +242,7 @@ internal static class MirUses
             ref readonly var statement = ref body.Statements[block.Start + location.Index];
             if (statement.Kind == MirStatementKind.Assign)
             {
-                Rvalue(body, statement.Rvalue, ref visitor);
+                Rvalue(body, view, statement.Rvalue, ref visitor);
             }
 
             Place(body, statement.Place, MirDescriptors.Of(statement.Kind).Access, default, ref visitor);
@@ -209,12 +253,12 @@ internal static class MirUses
         var access = MirDescriptors.Of(terminator.Kind).Access;
         if (terminator.Kind == MirTerminatorKind.SwitchInt || (terminator.Kind == MirTerminatorKind.Call && terminator.Callee.Kind == MirCalleeKind.Value))
         {
-            Operand(body, terminator.Operand, ref visitor);
+            Operand(body, terminator.Operand, MirAccess.None, ref visitor);
         }
 
         if (terminator.Kind == MirTerminatorKind.Call)
         {
-            Operands(body, terminator.Start, terminator.Count, ref visitor);
+            Operands(body, terminator.Start, terminator.Count, MirAccess.None, ref visitor);
             if (terminator.Callee.Kind == MirCalleeKind.Intrinsic)
             {
                 Effect(MirDescriptors.Of((IntrinsicId)terminator.Callee.Arg).Effects, -1, ref visitor);
@@ -231,31 +275,18 @@ internal static class MirUses
         }
     }
 
-    /// <summary>Gets the number of runtime successors of a terminator; <see cref="Successor"/> gives each, and its CheckTarget is the
-    /// successor only the checks reach.</summary>
-    /// <param name="terminator">The terminator.</param>
-    /// <returns>The number of runtime successors.</returns>
-    internal static int Successors(in MirTerminator terminator) => terminator.Kind switch
-    {
-        MirTerminatorKind.Goto or MirTerminatorKind.Drop => 1,
-        MirTerminatorKind.Call => terminator.Target >= 0 ? 1 : 0,
-        MirTerminatorKind.SwitchInt => terminator.Count + 1,
-        _ => 0,
-    };
-
-    /// <summary>Gets a runtime successor of a terminator: a SwitchInt's case targets in order, then its otherwise target.</summary>
-    /// <param name="body">The body.</param>
-    /// <param name="terminator">The terminator.</param>
-    /// <param name="index">The successor's index, below <see cref="Successors"/>.</param>
-    /// <returns>The successor block.</returns>
-    internal static int Successor(MirBody body, in MirTerminator terminator, int index)
-        => terminator.Kind == MirTerminatorKind.SwitchInt && index < terminator.Count ? body.Cases[terminator.Start + index].Target : terminator.Target;
-
-    private static void Rvalue<TVisitor>(MirBody body, in MirRvalue rvalue, ref TVisitor visitor)
+    private static void Rvalue<TVisitor>(MirBody body, MirCases? view, in MirRvalue rvalue, ref TVisitor visitor)
         where TVisitor : struct, IMirUses
     {
+        if (view is not null && rvalue.Kind == MirRvalueKind.Adapt)
+        {
+            Rvalue(body, null, view.Adapt(rvalue, out var operation), ref visitor);
+            Effect(operation == ConversionBinding.ObjectCreation ? MirDescriptors.Of(rvalue.Kind).Effects : MirEffect.None, -1, ref visitor);
+            return;
+        }
+
         var row = MirDescriptors.Of(rvalue.Kind);
-        Operands(body, rvalue.Start, rvalue.Count, ref visitor);
+        Operands(body, rvalue.Start, rvalue.Count, row.Access & MirAccess.CaseDependent, ref visitor);
         switch (rvalue.Kind)
         {
             case MirRvalueKind.Ref or MirRvalueKind.Discriminant or MirRvalueKind.Len:
@@ -284,25 +315,30 @@ internal static class MirUses
                 }
 
                 break;
+            case MirRvalueKind.Adapt: // The operand reported the index locals and the static effect of the payload's root.
+                visitor.Place(rvalue.Place, row.Access, default);
+                Effect(row.Effects, -1, ref visitor);
+                break;
         }
     }
 
-    private static void Operands<TVisitor>(MirBody body, int start, int count, ref TVisitor visitor)
+    // The operands, their Places' accesses with the case dependence of the rvalue that evaluates them (an Adapt's).
+    private static void Operands<TVisitor>(MirBody body, int start, int count, MirAccess dependence, ref TVisitor visitor)
         where TVisitor : struct, IMirUses
     {
         for (var i = start; i < start + count; i++)
         {
-            Operand(body, body.Operands[i], ref visitor);
+            Operand(body, body.Operands[i], dependence, ref visitor);
         }
     }
 
-    private static void Operand<TVisitor>(MirBody body, in MirOperand operand, ref TVisitor visitor)
+    private static void Operand<TVisitor>(MirBody body, in MirOperand operand, MirAccess dependence, ref TVisitor visitor)
         where TVisitor : struct, IMirUses
     {
         visitor.Operand(operand);
         if (operand.Kind != MirOperandKind.Const)
         {
-            Place(body, operand.Place, MirDescriptors.Of(operand.Kind).Access, default, ref visitor);
+            Place(body, operand.Place, MirDescriptors.Of(operand.Kind).Access | dependence, default, ref visitor);
         }
     }
 

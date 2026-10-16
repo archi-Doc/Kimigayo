@@ -8,7 +8,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 3.3.6, 15.3.1: a trailing during after a named Type binds the only slot of a one-slot schema, like a binding
+/// <summary>SPEC 3.3.2, 15.3.1: a trailing during after a named Type binds the only slot of a one-slot schema, like a binding
 /// set with an equality relation. It adds no borrow layer; several slots, no slots and unknown schemas are rejected.</summary>
 public class SingleSlotBindingTest
 {

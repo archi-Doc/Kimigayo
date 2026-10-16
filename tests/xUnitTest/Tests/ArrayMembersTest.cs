@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 4.6.6 and 4.7.2: the Array access and mutation members and the Slice search operations, written in
+/// <summary>SPEC 4.8.2 and 4.9.3: the Array access and mutation members and the Slice search operations, written in
 /// Kimigayo over the compiler-supplied operations.</summary>
 public class ArrayMembersTest
 {
@@ -103,7 +103,7 @@ public class ArrayMembersTest
         "    require bag.count() == 2 else => $abort(\"count\")\n" +
         "    Console.writeLine(\"Bag ready.\")\n";
 
-    // SPEC 4.7.2, 4.7.4: init(! capacity:) reserves once, also for a generic or Non-Copy element; zero allocates nothing.
+    // SPEC 4.9.3, 4.9.5: init(! capacity:) reserves once, also for a generic or Non-Copy element; zero allocates nothing.
     private const string Capacity =
         "struct Tag\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => Console.writeLine(\"Tag dropped.\")\n" +
         "func make<T>(count: isize) -> Array<T>\n    return Array<T>.init(capacity: count)\n" +
@@ -118,7 +118,7 @@ public class ArrayMembersTest
         "    require tags.capacity >= 3 and names[0] == \"a\" else => $abort(\"generic\")\n" +
         "    Console.writeLine(\"Capacity ok.\")\n";
 
-    // SPEC 4.7.2, 7.4: appendCopies exists for Copy elements and leaves the source unchanged.
+    // SPEC 4.9.3, 7.5: appendCopies exists for Copy elements and leaves the source unchanged.
     private const string Copies =
         "public func main()\n    var values: Array<i32> = [1, 2]\n    let more: Array<i32> = [3, 4]\n    values.appendCopies(more[..])\n" +
         "    values.appendCopies(more[1..])\n" +
@@ -141,17 +141,17 @@ public class ArrayMembersTest
     public void Executes(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("ArrayMembers" + name, source, stdout);
 
-    // SPEC 4.7.2: a negative capacity Aborts.
+    // SPEC 4.9.3: a negative capacity Aborts.
     [Fact]
     public void NegativeCapacityAborts()
         => ScalarEmissionTest.EmitFixture("ArrayMembersNegativeCapacity", "let bad = Array<i32>.init(capacity: -1)\n", string.Empty, 1, "Hello.kimi:1:11: abort KIMI_E_ARG_RANGE: Argument out of range\n");
 
-    // SPEC 4.7.2, 7.6.4: named Function Items satisfy the generic Callable parameters of the source library members.
+    // SPEC 4.9.3, 7.7.4: named Function Items satisfy the generic Callable parameters of the source library members.
     [Fact]
     public void CallbackArgumentsExecuteThroughFunctionItems()
         => ScalarEmissionTest.EmitFixture("ArrayMembersCallables", Callables, "Callables ok.\n");
 
-    // SPEC 4.7.2, 7.6.1, 10.5: direct anonymous callbacks take their parameter Types from the Callable signature, also with captures and
+    // SPEC 4.9.3, 7.7.1, 10.5: direct anonymous callbacks take their parameter Types from the Callable signature, also with captures and
     // a Non-Copy element Type.
     [Fact]
     public void DirectAnonymousCallbacksExecute()
@@ -163,7 +163,7 @@ public class ArrayMembersTest
         ScalarEmissionTest.EmitFixture("ArrayMembersAnonymousCallables", Source, "Anonymous ok.\n");
     }
 
-    // SPEC 4.7.4: a negative count Aborts at the construction, before any element is placed.
+    // SPEC 4.9.5: a negative count Aborts at the construction, before any element is placed.
     [Fact]
     public void NegativeRepeatingCountAborts()
         => ScalarEmissionTest.EmitFixture("ArrayMembersNegativeRepeating", "let bad = Array<i32>.init(repeating: 1, count: -1)\n", string.Empty, 1, "Hello.kimi:1:11: abort KIMI_E_ARG_RANGE: Argument out of range\n");
@@ -219,7 +219,7 @@ public class ArrayMembersTest
     [InlineData("raw/[3 of i32]", "length")]
     public void MetadataIsNotSelectedThroughARawPointerOrObjectHandle(string type, string member)
     {
-        // SPEC 3.4.1, 12.4.1: selection continues only through safe value references; a raw pointer is never dereferenced
+        // SPEC 3.4.3, 12.5.1: selection continues only through safe value references; a raw pointer is never dereferenced
         // implicitly, so its sequence metadata is not reachable from safe code.
         var c = MinimalEmissionTest.Analyze($"func f(p: {type}) => p.{member}");
         var issue = Assert.Single(c.Binding.Issues);

@@ -5,7 +5,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 4.6.6: the Slice operations tryGet, trySlice, splitAt and trySplitAt are written in Kimigayo; the try-prefixed
+/// <summary>SPEC 4.8.2: the Slice operations tryGet, trySlice, splitAt and trySplitAt are written in Kimigayo; the try-prefixed
 /// forms convert only their own bounds failure to None, and every result retains the backing source.</summary>
 public class SliceOperationsTest
 {
@@ -30,7 +30,7 @@ public class SliceOperationsTest
         "match tryTail(words[2..])\n    .Some(_) => $abort(\"empty tail\")\n    .None => Console.writeLine(\"None for an empty tail.\")\n" +
         "Console.writeLine(\"ok\")";
 
-    // SPEC 4.6.7, 14.6.2: every mode enumerates the shared elements through the Slice's own entries; a range selection is
+    // SPEC 4.8.3, 14.6.2: every mode enumerates the shared elements through the Slice's own entries; a range selection is
     // an owned temporary Subject, and a borrowed Slice selects its entry at the referent.
     private const string Entries =
         "var values: [4 of string] = [\"a\", \"b\", \"c\", \"d\"]\nvar s = values[1..]\nvar n = 0\n" +

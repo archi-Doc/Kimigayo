@@ -96,11 +96,7 @@ public class DependentRequirementConstraintBindingTest
     public void WarmDependentRequirementProofsAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    i32 is T\npublic func use(value: Target<i32>)\n    return");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

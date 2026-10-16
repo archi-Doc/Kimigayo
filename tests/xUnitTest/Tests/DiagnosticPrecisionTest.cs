@@ -49,7 +49,7 @@ public class DiagnosticPrecisionTest
         Assert.Equal(text, error.Text);
     }
 
-    // SPEC 3.4.1: G35's array cases now execute; keep the original sources as acceptance regressions.
+    // SPEC 3.4.3: G35's array cases now execute; keep the original sources as acceptance regressions.
     [Theory]
     [InlineData("Array<i32>", "a[0] += 5")]
     [InlineData("[3 of i32]", "a[0] = 5")]
@@ -62,7 +62,7 @@ public class DiagnosticPrecisionTest
         Assert.True(c.Validate(out var error), error);
     }
 
-    // SPEC 23.3.6.2: a mismatch names both Types, a write names its target, each at the smallest syntax that shows it.
+    // SPEC 23.3: a mismatch names both Types, a write names its target, each at the smallest syntax that shows it.
     [Theory]
     [InlineData("func f() -> i32\n    return true\npublic func main() => ()", "true", "expected i32, found bool")]
     [InlineData("public func main()\n    let wrong: i32 = true", "true", "expected i32, found bool")]
@@ -84,7 +84,7 @@ public class DiagnosticPrecisionTest
         Assert.Equal(label, error.Label);
     }
 
-    // SPEC 23.3.6.2: a failed selection counts and relates the candidates it considered.
+    // SPEC 23.3: a failed selection counts and relates the candidates it considered.
     [Fact]
     public void AFailedSelectionRelatesItsCandidates()
     {
@@ -121,7 +121,7 @@ public class DiagnosticPrecisionTest
     [InlineData("func pack<T>(x: T, n: i32) -> (T, i32) => (x@move, n)\npublic func main()\n    var a = 1\n    let p = pack(a@uniq, 2)\n    let q = pack(a@uniq, 3)\n    p.0@follow = 5\n    q.0@follow = 6", "CallActivationConflict_Kd")]
     [InlineData("func pack<T>(x: T, n: i32) -> (T, i32) => (x@move, n)\npublic func main()\n    var a = 1\n    var b = 1\n    let p = pack(a@uniq, 2)\n    let q = pack(a@uniq, 3)\n    p.0@follow = 5\n    let r = b@ref\n    b = 2\n    require r == 1 else => $abort(\"r\")\n    q.0@follow = 6", "CallActivationConflict_Kd,ComparisonLoanConflict_Kd")]
     // A result or binding whose expression already reported why it has no value is not reported again as uninitialized, at the
-    // signature or at the binding's later uses. SPEC 3.5, 13.5.5.1: a bare read needs Copy, and P has not opted in;
+    // signature or at the binding's later uses. SPEC 3.5, 13.5.5: a bare read needs Copy, and P has not opted in;
     // a selected payload provides no Take. Its one acquisition error must not become uninitialized-result cascades.
     [InlineData(Payload + "func read(o: objref/P) -> P => o@follow\npublic func main() => ()", "TransferRequired_Kd")]
     [InlineData(Payload + "func read(o: objref/P, c: bool) -> P\n    if c => return o@follow\n    return P.init(1)\npublic func main() => ()", "TransferRequired_Kd")]
@@ -157,7 +157,7 @@ public class DiagnosticPrecisionTest
         Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
-    // SPEC 23.3.6.4: syntax that failed to parse, including a token the lexer rejected, is the prerequisite of every check of
+    // SPEC 23.1.2: syntax that failed to parse, including a token the lexer rejected, is the prerequisite of every check of
     // its recovered form, so its syntax Error alone explains it: no unexplained derived record, no repeated token report and no
     // ownership record for a body that the syntax Error left missing.
     [Theory]
@@ -170,7 +170,7 @@ public class DiagnosticPrecisionTest
     public void RecoveredSyntaxExplainsItsDependents(string source, string codes)
         => Assert.Equal(codes.Split(','), PublishedErrors(MinimalEmissionTest.Analyze(source)).Select(static x => x.Code).Order(StringComparer.Ordinal));
 
-    // SPEC 23.3.6.2, 23.3.6.3: a name missing at the end of a line is an insertion point after the dot, not the next line.
+    // SPEC 23.3, 23.1.2: a name missing at the end of a line is an insertion point after the dot, not the next line.
     [Fact]
     public void AMissingMemberNameIsAnInsertionPointAfterTheDot()
     {
@@ -181,7 +181,7 @@ public class DiagnosticPrecisionTest
         Assert.Equal(0, error.Span.Length);
     }
 
-    // SPEC 23.3.6.6: the synthesized writes of one interpolation share its span; a failed write is a problem at the value it
+    // SPEC 23.1: the synthesized writes of one interpolation share its span; a failed write is a problem at the value it
     // writes, so two failures have a defined order instead of faulting the check.
     [Fact]
     public void FailedInterpolationWritesAreLocatedAtTheirValues()
@@ -192,7 +192,7 @@ public class DiagnosticPrecisionTest
         Assert.Equal(["a", "b", "a"], errors.Select(static x => x.Text));
     }
 
-    // SPEC 4.6.9, 5.3, 23.3.6.4: an index key that fits no conformance, Dictionary key or pointer offset is reported once, with
+    // SPEC 4.7.1, 5.3, 23.1.2: an index key that fits no conformance, Dictionary key or pointer offset is reported once, with
     // both Types at the key or at the index expression, and a receiver without indexing is a Language error.
     [Theory]
     [InlineData("let a = v[^1]", "NoApplicableOverload_Kd", "v[^1]", null)]
@@ -204,7 +204,7 @@ public class DiagnosticPrecisionTest
     public void IndexKeysReportOneExplainedError(string statement, string code, string text, string? label)
     {
         const string View = "struct View\n    Self is Indexable<isize>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n" +
-            "    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value\nlet v = View.init(value: 7)\n";
+            "    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref\nlet v = View.init(value: 7)\n";
         var error = Assert.Single(PublishedErrors(MinimalEmissionTest.Analyze(View + statement)));
         Assert.Equal(code, error.Code);
         Assert.Equal(text, error.Text);
@@ -225,7 +225,7 @@ public class DiagnosticPrecisionTest
         Assert.Equal(label, error.Label);
     }
 
-    // SPEC 23.3.6.4: a repeated loop binding is one problem at the later name; the loop rests on it.
+    // SPEC 23.1.2: a repeated loop binding is one problem at the later name; the loop rests on it.
     [Theory]
     [InlineData("let pairs: [2 of (i32, i32)] = [(1, 2), (3, 4)]\nfor (a, a) in pairs => ()")]
     [InlineData("var entries = [1: 2]\nfor (a, a) in entries => ()")]
@@ -236,7 +236,7 @@ public class DiagnosticPrecisionTest
         Assert.Equal(new Kimi.Diagnostics.SourceSpan(source.IndexOf("a, a)", StringComparison.Ordinal) + 3, 1), error.Span);
     }
 
-    // SPEC 23.3.6.4: a fill literal whose element or length failed rests on that part instead of adding a formation error.
+    // SPEC 23.1.2: a fill literal whose element or length failed rests on that part instead of adding a formation error.
     [Theory]
     [InlineData("let a = [3 of missingValue]", "missingValue")]
     [InlineData("let a = [missingLength of 0]", "missingLength")]
@@ -257,7 +257,7 @@ public class DiagnosticPrecisionTest
         Assert.Equal("expected i32, found closure (i32) -> i32", error.Label);
     }
 
-    // SPEC 23.3.6.2: a startup main that breaks the startup rules is located at its signature, not over its body.
+    // SPEC 23.3: a startup main that breaks the startup rules is located at its signature, not over its body.
     [Fact]
     public void AnInvalidStartupMainIsLocatedAtItsSignature()
     {

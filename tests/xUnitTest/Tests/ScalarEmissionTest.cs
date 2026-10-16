@@ -58,14 +58,11 @@ public class ScalarEmissionTest
         Assert.True(c.Analyze().IsVerified);
         Assert.True(c.WriteIr(TextWriter.Null, out var error), error);
         var success = true;
-        var bytes = AllocationMeasurement.Measure(
-            () =>
-            {
-                success &= c.Analyze().IsVerified;
-                success &= c.WriteIr(TextWriter.Null, out _);
-            },
-            iterations: 128,
-            warmupIterations: 100);
+        var bytes = AllocationMeasurement.Measure(() =>
+        {
+            success &= c.Analyze().IsVerified;
+            success &= c.WriteIr(TextWriter.Null, out _);
+        });
         Assert.True(success);
         Assert.Equal(0, bytes);
     }
@@ -134,7 +131,7 @@ public class ScalarEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         var ir = CompilationTestHelper.WriteIr(c);
-        // Only the failure-block Abort reason and the divisor -1 substitutions of signed division (SPEC 13.3) may use select;
+        // Only the failure-block Abort reason and the divisor -1 substitutions of signed division (SPEC 13.3.1) may use select;
         // source control flow still branches.
         var bodyStart = System.Text.RegularExpressions.Regex.Match(ir, @"define internal (?:void|i1|i8|i16|i32|i64) @__kimi_(?:entry_body|f\d+)\(");
         Assert.True(bodyStart.Success);

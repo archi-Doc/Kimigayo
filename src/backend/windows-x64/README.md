@@ -1,23 +1,23 @@
 # Windows x64 backend
 
-This directory supplies the native helpers for SPEC §21.5.7. The reviewed package is pinned in [profile.json](profile.json); [ADOPTION.md](ADOPTION.md) records its scope and validation. Local builds remain candidates until their actual hash matches the adopted catalog. The helpers are separate from the six runtime operations emitted into Kimigayo LLVM modules. LLVM **22.1.8** is the current profile version.
+This directory supplies the native helpers for SPEC §21.4.7. The reviewed package is pinned in [profile.json](profile.json); [ADOPTION.md](ADOPTION.md) records its scope and validation. Local builds remain candidates until their actual hash matches the adopted catalog. The helpers are separate from the six runtime operations emitted into Kimigayo LLVM modules. LLVM **22.1.8** is the current profile version.
 
 ## Build and test
 
 Use the repository's `scripts/verify.ps1` for implementation-unit and end-of-session evidence:
 
 ```powershell
-./scripts/verify.ps1 -Class XunitTest.StorageBoundaryTest -Fixtures 'StorageBoundary*.ll' -Milestone 28
-./scripts/verify.ps1 -Mode Session -Fixtures 'StorageBoundary*.ll' -Milestone 27,28
+./scripts/verify.ps1 -Class XunitTest.StorageBoundaryTest -Fixtures 'StorageBoundary*.ll' -Milestone 29
+./scripts/verify.ps1 -Mode Session -Fixtures 'StorageBoundary*.ll' -Milestone 27,29
 # Debug is opt-in in either mode:
-./scripts/verify.ps1 -Configuration Debug -Class XunitTest.StorageBoundaryTest -Fixtures 'StorageBoundary*.ll' -Milestone 28
+./scripts/verify.ps1 -Configuration Debug -Class XunitTest.StorageBoundaryTest -Fixtures 'StorageBoundary*.ll' -Milestone 29
 ./scripts/verify.ps1 -Mode Session -Configuration Debug
 ```
 
 Both modes default to one Release compiler build and keep non-incremental builds with warnings as errors.
 Use `-Configuration Debug` explicitly for Debug verification. Unit mode runs the selected tests;
 Session mode runs the full suite once. Builds, tests, fixture selection and milestone harnesses all use
-the selected compiler configuration; native O0/O2 coverage is unchanged. Test collections run up to four at a time,
+the selected compiler configuration; native O0/O2 coverage is unchanged. Test collections run up to eight at a time,
 respecting each test class's disabled-parallelization setting. Milestone harnesses run in separate
 processes, up to eight at a time; both defaults are capped by the logical processor count.
 Use `-TestParallel 1 -Parallel 1` for serial execution, or set either limit independently. Every
@@ -40,7 +40,7 @@ Set up the checkout's `toolchain/` once from an existing matching LLVM directory
 ./src/backend/windows-x64/build.ps1
 ```
 
-Projects require neither LlvmBin nor a kimi_backend entry. Source-built compilers find this checkout's toolchain from their executable location; standalone distributions use toolchain beside Kimi.exe/Kimi.dll. `--ToolchainRoot` (scripts: `-ToolchainRoot`) or `KIMI_TOOLCHAIN_ROOT` selects another root. Legacy `--LlvmBin`/`-LlvmBin` only overrides LLVM tools. No PATH lookup occurs. See [SPEC §20.8.8](../../../docs/impl/20-compilation-configuration.md#2088-toolchain-storage-and-native-library-lifecycle) for storage, resolution, generation, installation and Application build details.
+Projects require neither LlvmBin nor a kimi_backend entry. Source-built compilers find this checkout's toolchain from their executable location; standalone distributions use toolchain beside Kimi.exe/Kimi.dll. `--ToolchainRoot` (scripts: `-ToolchainRoot`) or `KIMI_TOOLCHAIN_ROOT` selects another root. Legacy `--LlvmBin`/`-LlvmBin` only overrides LLVM tools. No PATH lookup occurs. See [SPEC §20.3.2](../../../docs/impl/20-compilation-configuration.md#2032-builds-and-artifacts) for storage, resolution, generation, installation and Application build details.
 
 No Windows SDK import library is required. Setup/update generates and validates kernel32 from the shared definition, then installs it under `toolchain/windows_x64` with its target, generator and content hashes. Normal compiler/manual builds and scalar fixtures reuse it without version probes or tool/backend identity checks. `kimi toolchain verify` rechecks installation identities and shared imports; `verify.ps1 -VerifyToolchain` invokes it once. The backend candidate builder alone retains `-AllowUnpinnedToolchain` for unverified, non-installable experiments. Profile adoption checks remain strict.
 
@@ -78,7 +78,7 @@ The current catalog was frozen after assembly/unwind review and generated Kimiga
 
 Rebuilding is repeatable from these sources and recorded tools; adoption must compare the resulting archive hash rather than assume filename or timestamp equality. The build script installs only a verified reproduction into the local toolchain; it does not publish a runtime package or adopt a new archive.
 
-For the one-line Application and compiler commands, see [the Hello example](../../../docs/examples/Hello/README.md). `kimi build` directly runs LLVM through C# and needs no PowerShell runtime. `kimi build --Manifest <path.link.json>` processes an existing artifact pair through the same pipeline. `manual-build.ps1` wraps that entry point; it uses the Release source-built compiler by default, or `-Configuration Debug` / `-Compiler <Kimi.dll-or-exe>`, and `-Run` executes the result. Backend bootstrap and native test oracles remain independent. `test-emission.ps1` verifies generated modules and test-only runtime fault adapters; `test-cli.ps1` covers both build entry points, declared clock/foreign imports, input assertions, failed-link publication, run, emit and toolchain policy.
+For the one-line Application and compiler commands, see [the Hello example](../../../docs/examples/Hello/README.md). An Application's `kimi build` directly runs LLVM through C# and needs no PowerShell runtime; a Library build checks product sources and writes only a build record, without native tools. `kimi build --Manifest <path.link.json>` processes an existing Application artifact pair through the native pipeline and rejects Library manifests. `manual-build.ps1` wraps that entry point; it uses the Release source-built compiler by default, or `-Configuration Debug` / `-Compiler <Kimi.dll-or-exe>`, and `-Run` executes the result. Backend bootstrap and native test oracles remain independent. `test-emission.ps1` verifies generated modules and test-only runtime fault adapters; `test-cli.ps1` covers both build entry points, declared clock/foreign imports, input assertions, failed-link publication, run, emit and toolchain policy.
 
 `test-scalars.ps1 -LlvmBin C:/App/llvm` runs the fixtures generated by the C# emission tests through LLVM verification and O0/O2 execution. Use `-FixturePattern 'String*.ll'` for owned-string cases. These include original generated modules and runtime-only lifetime audits; the latter count destruction per Static handle and check expected totals at exit, preserving source-generated functions. Audit-control fixtures intentionally exit 120 when destruction counts disagree. They do not create Heap strings or replace the independent runtime allocation/free tests. Divergent fixtures use the shared timeout/process-tree-kill path.
 

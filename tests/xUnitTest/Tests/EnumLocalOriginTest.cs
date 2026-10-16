@@ -58,7 +58,7 @@ public class EnumLocalOriginTest
         var expected = CompilationTestHelper.WriteIr(c);
         ScalarEmissionTest.WriteFixture("EnumLocalOriginScalar", expected, string.Empty);
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(valid);
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));

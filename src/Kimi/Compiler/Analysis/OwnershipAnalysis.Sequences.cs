@@ -16,13 +16,13 @@ public sealed partial class OwnershipAnalysis
         int result;
         if (ElementAccess.IsResolvedSlice(source))
         {
-            // SPEC 4.6.4: a ResolvedRange key, written or resolved from a range key of other boundaries, is one value.
+            // SPEC 4.6.3: a ResolvedRange key, written or resolved from a range key of other boundaries, is one value.
             var key = receiver < 0 ? -1 : this.Value(this.SelectionKey(source, receiver, projection));
             result = receiver < 0 || key < 0 ? -1 : this.SequenceValue(source, source.BoundType!, SequenceOperation.Slice, receiver, projection, key);
         }
         else
         {
-            // SPEC 4.6.4: both written boundaries, or the operands of their `^`, are evaluated before either is converted
+            // SPEC 4.6.3: both written boundaries, or the operands of their `^`, are evaluated before either is converted
             // to an isize position; the slice operation resolves from-end boundaries and checks the interval once.
             var range = (RangeKoto)source.Right;
             var begin = PositionOperand(range.Start);
@@ -125,7 +125,7 @@ public sealed partial class OwnershipAnalysis
         return result;
     }
 
-    // SPEC 4.6.2, 4.6.9: an integer position of another Type is converted to isize where the plan places it. A value that
+    // SPEC 4.6.1, 4.7.1: an integer position of another Type is converted to isize where the plan places it. A value that
     // isize cannot hold becomes -1, which the one bounds check of its use rejects; the universal verification of a generic
     // integer has no value to convert.
     private int PositionPlace(Koto source, int place)
@@ -167,7 +167,7 @@ public sealed partial class OwnershipAnalysis
                 return through;
             }
 
-            // SPEC 13.5.5.1: a pair receiver in a ref or uniq instance is read as the reference it holds; the universal
+            // SPEC 13.5.5: a pair receiver in a ref or uniq instance is read as the reference it holds; the universal
             // verification and an owner instance share the Place itself for the operation.
             var pair = this.Expression(source, PlaceUseKind.Read);
             if (pair >= 0 && !ReferenceTypes.IsBorrow(this.body.Places[pair].Type))
@@ -188,7 +188,7 @@ public sealed partial class OwnershipAnalysis
 
         if (receiver is IndexKoto && this.compilation.Binding.TryGetAdaptation(receiver, out var view) && view.Kind == ExpectedAdaptationKind.SharedBorrow)
         {
-            // SPEC 4.6.6: a view of a fixed-array element reached through a Slice or a borrow selects through the borrowed element.
+            // SPEC 4.8.2: a view of a fixed-array element reached through a Slice or a borrow selects through the borrowed element.
             return this.BorrowStruct(receiver, view.Type);
         }
 
@@ -202,15 +202,15 @@ public sealed partial class OwnershipAnalysis
             (ElementAccess.IsSyntax(stored) || (stored is MemberAccessKoto borrowedField && ElementAccess.BorrowedPathRoot(borrowedField) is not null)) &&
             !Binding.IsGetterResult(stored) && !this.SpecialField(stored))
         {
-            // SPEC 4.6.1: collection fields and elements are inspected through their shared Place, without attempting to
+            // SPEC 4.7: collection fields and elements are inspected through their shared Place, without attempting to
             // Copy or Move the Non-Copy handle. An element borrowed through it keeps the Origin of that borrow.
             return this.BorrowStruct(stored, this.compilation.Types.Reference(SemanticsKind.Ref, source.BoundType, elementOrigin));
         }
 
         if (source.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary)
         {
-            // SPEC 4.6.1: an owned Array shares access for the operation and is never consumed by it. An owner pair layer
-            // followed explicitly locates the Place it selects (SPEC 13.5.5.1).
+            // SPEC 4.7: an owned Array shares access for the operation and is never consumed by it. An owner pair layer
+            // followed explicitly locates the Place it selects (SPEC 13.5.5).
             var root = this.Expression(source, PlaceUseKind.Read);
             if (root >= 0)
             {
@@ -271,7 +271,7 @@ public sealed partial class OwnershipAnalysis
             return;
         }
 
-        // SPEC 4.6.3.4: a ResolvedRange loop enumerates its isize positions directly; every other Subject iterates through
+        // SPEC 4.6.4: a ResolvedRange loop enumerates its isize positions directly; every other Subject iterates through
         // its entry conformance. A borrowed interval is read as its Copy value; Binding recorded that read.
         var iterableType = this.compilation.Binding.TryGetAdaptation(source.Iterable, out var read) && read.Kind == ExpectedAdaptationKind.ReferentRead
             ? read.Type : source.Iterable.BoundType;

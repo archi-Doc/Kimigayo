@@ -109,7 +109,7 @@ public sealed class VirtualHoverTest
         using var text = new TextDocument(Source);
         var position = document.Source.GetSourceRange(new(Source.IndexOf("base.read", StringComparison.Ordinal) + 5, 4)).Start;
         Assert.Contains("Implementation: B.read", state.Find(text, position).Body);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => state.Find(text, position), iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => state.Find(text, position)));
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

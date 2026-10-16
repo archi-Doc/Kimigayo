@@ -51,7 +51,7 @@ public class AssociatedFormationTest
         Assert.False(c.Binding.Result.IsComplete);
     }
 
-    // SPEC 8.4.3: only a requirement may end with a formation Type; a specification fixes its Type, and a formation Type
+    // SPEC 8.5: only a requirement may end with a formation Type; a specification fixes its Type, and a formation Type
     // elsewhere is an invalid Constraint, not an implementation limit.
     [Fact]
     public void FormationTypesOutsideRequirementsAreInvalid()
@@ -85,7 +85,7 @@ public class AssociatedFormationTest
 
     private const string Peek = "public struct Node\n    public let n: i32\ncontract Peek\n    associate Item(a)\n";
 
-    // SPEC 23.3.6.4, 15.3.3, 15.4.4: an identity whose explicit specification does not bind is neither specified nor inferred; the
+    // SPEC 23.1.2, 15.3.3, 15.4.4: an identity whose explicit specification does not bind is neither specified nor inferred; the
     // conformance's completeness and a use's Constraint rest on that specification (F20), while another missing identity still
     // reports.
     [Theory]

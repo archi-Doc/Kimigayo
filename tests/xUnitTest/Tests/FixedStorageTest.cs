@@ -5,7 +5,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 22.1.2.5: borrowStorage over a fixed array yields the contiguous remainder of all N elements; shared steps
+/// <summary>SPEC 22.2: borrowStorage over a fixed array yields the contiguous remainder of all N elements; shared steps
 /// lend each element once in index order and exclusive steps split each element off as a child Loan.</summary>
 public class FixedStorageTest
 {

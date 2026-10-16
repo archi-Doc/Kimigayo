@@ -2,293 +2,223 @@
 
 [Specification index](../SPEC.md)
 
-Expressions produce values or transfer control. This chapter defines their syntax, Type rules and evaluation.
+Expressions produce values or transfer control. Their syntax is in [§F.9](appendices/F-syntax-summary.md#f9-expressions).
 
 ## 12.1. Classification and contexts
 
-The source-language expression forms are:
+A normally completing expression produces a typed result, possibly Unit ([§3.1.3](03-types-and-values.md#313-unit-and-never)). Value and Discard Contexts ([§14.2](14-control-flow.md#142-bodies-and-evaluation-contexts)) decide how a result is used; a discarded result keeps its effects and all Type, ownership and destruction checks.
 
-```text
-Expressions
-├─ Primary Expression
-│  ├─ Name
-│  ├─ Literal
-│  │  ├─ Number / Boolean / Character / String / Null / Unit
-│  │  ├─ Interpolated String
-│  │  └─ Tuple / Array / Dictionary
-│  ├─ Parenthesized Expression
-│  ├─ Function Expression
-│  └─ Enum Case Construction
-├─ Member Access
-├─ Application
-│  ├─ Invocation (including $abort(...))
-│  └─ Generic Application
-├─ Index / Slice Expression
-├─ Explicit @ Operation: Type/Semantics adaptation
-├─ Unary Expression
-│  ├─ Sign / Logical Negation / Dereference / From-end Position
-│  └─ Prefix / Postfix Increment and Decrement
-├─ Binary Expression
-│  ├─ Arithmetic / Shift / Bitwise
-│  ├─ Comparison / Logical
-│  └─ Runtime Type Test
-├─ Range Expression
-├─ Assignment Expression
-│  ├─ Simple Assignment
-│  └─ Compound Assignment
-├─ Selection Expression: if / match
-├─ Iteration / Do Expression: for / while / loop / do / label Label: do
-└─ Control Transfer Expression: return / exit / continue / yield
+An indented body is not an expression; use a selection or `do` expression to get a value from several operations. `unsafe`, `defer`, `require` and `_ = expression` are statements. `let` and `var` declarations are neither expressions nor condition bindings ([§14.2.3](14-control-flow.md#1423-conditions)).
 
-Related Syntax
-├─ Match Pattern
-├─ Statement: unsafe / defer / require
-├─ Compile-time Directive: #if / #switch
-├─ Attribute: #Name
-└─ Composition Root: $
+```kimi
+_ = compute()           // Discard: effects and checks are kept.
+// let x = (let y = 1)  // Error: a declaration is not an expression.
 ```
-
-Value and access categories follow [values, places and storage](03-types-and-values.md#34-values-places-and-storage).
-
-A normally completing expression produces a typed result, which may be [Unit](03-types-and-values.md#315-unit-and-never-types). [Value and Discard Contexts](14-control-flow.md#142-blocks-and-evaluation-contexts) determine how that result is used; discarding it still preserves side effects and all Type, ownership and destruction checks. Assignment requires a writable [Place](03-types-and-values.md#34-values-places-and-storage) or an accessible Property setter; a readable Property need not expose borrowable storage.
-
-An indented body is a syntax container, not a standalone expression; use a selection or do expression to obtain a value from several operations. `unsafe`, `defer`, `require` and explicit discard (`_ = expression`) are statements, not initializers or arguments. `noinit` is a declaration-only initialization directive, never an expression (§4.3.4). `let`/`var` declarations are neither expressions nor condition-binding syntax; nested bodies inside conditions keep their normal declaration rules (§14.2.3).
-
-Source delimiters and continuation follow [lines, indentation and continuation](02-source-and-lexical-structure.md#22-lines-indentation-and-continuation).
 
 ## 12.2. Evaluation order
 
-Operands are evaluated once, from left to right, unless a construct specifies an exception or conditional evaluation. Precedence determines grouping; evaluation order determines the order of effects.
+Operands are evaluated once, left to right, unless a construct states otherwise.
 
-| Expression | Evaluation order |
+| Expression | Order |
 | --- | --- |
-| `a() + b() * c()` | `a`, `b`, `c`, multiplication, addition. |
-| `receiver().method(a(), b())` | Receiver, callee resolution, `a`, `b`, call. |
-| `array()[index()]` | Target, index, element access. |
-| `(a(), b())` / `[a(), b()]` | Elements in source order. |
-| `[key(): value(), ...]` | Per entry: key, duplicate check, value, insertion. |
-| `start()..end()` | Start boundary, end boundary; an omitted boundary evaluates nothing (`start()..`, `..end()`). No boundary is checked. |
-| `"\(a()) / \(b())"` | Each interpolation is evaluated and written in source order; failure stops later expressions. |
+| `a() + b() * c()` | `a`, `b`, `c`, `*`, `+` |
+| `receiver().method(a(), b())` | receiver, callee resolution, `a`, `b`, call |
+| `array()[index()]` | target, index, element access |
+| `(a(), b())`, `[a(), b()]` | elements in source order |
+| `[key(): value()]` | per entry: key, duplicate check, value, insertion ([§12.4.3](#1243-dictionary-literals)) |
+| `start()..end()` | start, end; an omitted boundary evaluates nothing; no boundary is checked |
+| `"\(a()) \(b())"` | each substitution evaluated and written in order; a failure stops the rest |
 
-`and`, `or` and selections evaluate only the required operands or branches. [Simple and compound assignment](13-operators-and-assignment.md#137-assignment) evaluate their right-hand side first. Type arguments, length arguments and adaptation-target Type formation are not evaluated at runtime.
+`and`, `or` and selections evaluate only the operands or branches they need. Assignment evaluates its right-hand side first ([§13.7](13-operators-and-assignment.md#137-assignment)). Type arguments, length arguments and adaptation targets are not evaluated at run time.
 
-An abrupt Completion, divergence or Abort prevents evaluation of later operands and of the enclosing operation. Unevaluated syntax still undergoes name, Type and transfer-target checks; syntax excluded by `#if`/`#switch` follows [conditional compilation](19-compile-time-directives.md#19-compile-time-directives). [Temporary lifetimes](03-types-and-values.md#36-temporary-values-places-and-lifetimes) and scope-exit rules govern retained values.
+An abrupt Completion, divergence or Abort skips the later operands and the enclosing operation. Skipped syntax is still checked for names, Types and transfer targets; syntax excluded by `#if`/`#switch` follows [§19](19-compile-time-directives.md#19-compile-time-directives).
 
-## 12.3. Primary expressions
+```kimi
+let ok = ready() and check()  // check() runs only when ready() is true.
+```
 
-### 12.3.1. Type inference
+## 12.3. Literal typing
 
-Expected Types from declarations, parameters and results propagate into expressions; otherwise Types are inferred from operands. Built-in numeric operations require the same numeric Type: integer widths, signedness, and integer and floating-point Types do not mix implicitly.
+### 12.3.1. Expected Types and defaults
 
-An untyped integer literal adopts an expected integer Type if its value fits. Without one it defaults to `i32`, and a value outside that range requires an explicit Type. A floating-point literal adopts an expected `f32` or `f64` and otherwise defaults to `f64`. A directly negated integer literal is checked as a signed value, so the minimum of a signed Type is allowed.
+Declared Types of bindings, parameters and results are expected Types and propagate into the expression (collection elements, selection branches); otherwise a Type comes from the operands. Built-in numeric operations need operands of one numeric Type: widths, signedness, and integer and floating-point Types never mix implicitly. There are no implicit conversions between `bool`, `char` and numbers, and a condition must be `bool`.
 
-An explicit `@f32`/`@f64` on a direct untyped integer literal follows the [explicit-literal adaptation rule](13-operators-and-assignment.md#135-explicit-operations), without an intermediate default integer Type. This adds no implicit integer-to-float fitting.
+An untyped integer literal adopts an expected integer Type if its value fits; a floating-point literal adopts an expected `f32` or `f64`. Otherwise integer literals default to `i32` (also every range boundary and `^` operand with no other source of its Type, [§4.6.2](04-arrays-indexing-and-slices.md#462-ranges)), floating-point literals to `f64`, and literals in length contexts to `isize` ([§4.2](04-arrays-indexing-and-slices.md#42-length-expressions)); a literal that does not fit the default needs an explicit Type. In a call, defaults apply only after candidate selection ([§10.2.1](10-overload-resolution-and-inference.md#1021-literals)), never during candidate comparison or conformance selection ([§4.7.1](04-arrays-indexing-and-slices.md#471-index-expression-resolution)). Integers never fit floating-point Types implicitly.
 
 ```kimi
 let a: i64 = 10
-let b = a + 20          // 20 adopts i64.
+let b = a + 20       // 20 adopts i64.
 let c: i32 = 3
-let d = a + c@i64       // Convert an already typed operand explicitly.
-let minimum: i8 = -128
+let d = a + c@i64    // A typed operand is converted explicitly.
+let e = a + c        // Error: i64 and i32 do not mix.
 ```
 
-There are no implicit conversions between `bool`, `char` and numbers, and conditions require `bool`, not an integer or pointer. Borrowing and reborrowing are separate adaptations (§10.2, §13.5.5).
+### 12.3.2. Direct literals
 
-**Literal-only expressions.** These are Type-inference classifications, not syntax:
+A **direct literal** is a numeric literal, optionally with one prefix sign `+` or `-` applied directly to it (whitespace may separate them), the whole optionally enclosed in any number of parentheses. A direct literal fits a Type when the signed value it denotes is a value of that Type; whether the Type defines unary `+` or `-` does not matter. A sign applied to anything else, such as `-(1)`, is the unary operator, and a `-` between two operands is binary.
 
-- **Integer numeric:** an untyped integer literal, parentheses, or built-in unary `+`/`-`, arithmetic, bitwise or shift operations built only from integer numeric literal-only operands. These fit integer and wrapping integer Types.
-- **Floating-point numeric:** an untyped floating-point literal, parentheses, unary `+`/`-`, or binary `+`, `-`, `*`, `/` built only from floating-point numeric literal-only operands. These fit `f32` or `f64`.
-- **Position/range:** from-end `^a` with an integer numeric literal-only operand (§4.6.2), or a range `a..b`, `a..=b`, `a..`, `..b`, `..=b` whose written boundaries are integer numeric or from-end literal-only expressions (§4.6.3). These are not numeric literal-only expressions.
+```kimi
+let a: i8 = -128              // Direct literal: fits.
+let b: i8 = ((- 128))         // The same direct literal.
+let c: i8 = -(128)            // Error: 128 does not fit i8.
+let d: u32 = -0               // The value 0 fits.
+let e: u32 = -1               // Error: -1 is not a u32 value.
+let f: Wrapping<u8> = -(1)    // Unary - of Wrapping<u8> applied to 1.
+```
 
-Integer and floating-point forms never mix implicitly: `1 + 1.0` is invalid.
+### 12.3.3. Literal-only expressions
 
-Typed values, explicit `@` operations, calls, and array or Dictionary literals are not literal-only. Each numeric class uses the fitting rules of its literal kind; position/range forms fit their boundaries. The rules apply uniformly to candidate fitting (§10.2), comparison operands (§13.4), the [value read](03-types-and-values.md#353-value-read), control-flow result Types (§14.9.1), Semantics-preserving adaptation (§10.8) and length evaluation (§4.2). The only exception is numeric conversion: only a direct literal fits its target (§13.5.4), and every other operand is typed independently (§13.5.2), so `(200 + 100)@u8` computes in `i32` before converting.
+Literal-only expressions are a typing classification:
 
-A literal-only expression fits a Type as follows:
+- **Integer:** an untyped integer literal, or parentheses, unary `+`/`-`, arithmetic, bitwise or shift operations on integer literal-only operands. It fits integer and wrapping integer Types.
+- **Floating-point:** an untyped floating-point literal, or parentheses, unary `+`/`-` or binary `+`, `-`, `*`, `/` on floating-point literal-only operands. It fits `f32` and `f64`.
+- **Position/range:** `^a` with an integer literal-only operand ([§4.6.1](04-arrays-indexing-and-slices.md#461-positions)), or a range whose written boundaries are integer or from-end literal-only ([§4.6.2](04-arrays-indexing-and-slices.md#462-ranges)).
 
-- **Propagation:** the Type flows to operands under each operator's Type rule: to both operands of arithmetic and bitwise operators, to the operand of a unary operator, to each boundary of a range separately as its `S` or `E` (§4.6.3.1), to the operand of `^` as the `T` of `FromEnd<T>`, and only to the left operand of a shift. A shift count is typed independently (§13.3).
-- **Condition:** every literal fits the Type it receives (a directly attached sign follows §13.5.4), and every operator is defined for that Type. Thus `-(1)` does not fit `u8`, because unary `-` requires a signed integer, but it fits `Wrapping<u8>`, whose unary `-` is defined (§13.3). An integer literal fits a wrapping integer Type exactly when it fits the Type's integer argument.
-- **Class:** fitting a value directly is Literal fitting; when an acquisition such as borrowing a temporary is also needed, that acquisition's class applies (§10.2.1).
-- **Defaults:** applied only after all other evidence and never during candidate comparison: `i32` for an integer, including every range boundary and `^` operand without another source of its Type (§4.6.3.1), `f64` for floating-point numeric expressions, and `isize` in length contexts (§4.2).
+Nothing else is literal-only, and the classes never mix: `1 + 1.0` is invalid.
 
-Fitting checks each leaf and operator, not the computed value or success of the whole expression; neither selects between candidates. The classification changes only typing. An ordinary expression evaluates at run time in its fitted Type, and a visible constant does not turn a runtime Abort into a compile-time error: `127 + 1` fitted to `i8` Aborts when executed, and fitted to `Wrapping<i8>` it is `-128`. Constant folding keeps the meaning of each operation in the fitted Type; computing a literal-only expression exactly and wrapping once at the end is not equivalent when `/`, `%`, `>>` or a comparison is involved. Required constant evaluation keeps its own rules, so `[(4 / 0) of u8]` remains a compile-time error. Floating-point operations likewise round at every step in their fitted Type, rather than rounding one exact final result. `(1.0 + 1.0)@f32` computes in independently inferred `f64` before conversion. The admitted length forms (§4.2), [ConstantIndexExpression](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move) and Literal Patterns (§14.8.1) are not extended.
+A literal-only expression fits a Type when every direct literal fits the Type it receives and every operator is defined for that Type; an integer literal fits a wrapping integer Type when it fits its integer argument. The Type flows to both operands of arithmetic and bitwise operators, to a unary operand, to each range boundary as its `S` or `E` ([§4.6.2](04-arrays-indexing-and-slices.md#462-ranges)), to the operand of `^` as the `T` of `FromEnd<T>`, and only to the left operand of a shift; a shift count is typed on its own ([§13.3.1](13-operators-and-assignment.md#1331-built-in-numeric-operators)). In a numeric conversion only a direct literal fits the target ([§13.5.4](13-operators-and-assignment.md#1354-numeric-wrapping-and-bit-conversions)), so `(200 + 100)@u8` computes in `i32`.
+
+Fitting changes only typing: it checks leaves and operators, never the computed value, and the value never decides between candidates. The expression is evaluated at run time in its fitted Type, operation by operation: `127 + 1` fitted to `i8` Aborts at run time; fitted to `Wrapping<i8>` it is `-128`, and floating-point operations round at every step. Required constant evaluation keeps its own rules, so `[(4 / 0) of u8]` is a compile-time error. Length forms ([§4.2](04-arrays-indexing-and-slices.md#42-length-expressions)), ConstantIndexExpression ([§15.1.3](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move)) and Literal Patterns ([§14.8.1](14-control-flow.md#1481-patterns)) are not extended.
 
 ```kimi
 func choose(value: i32) -> () => ()
 func choose(value: i64) -> () => ()
-choose(10)     // Error: both candidates fit.
-choose(2 * 5)  // Error: a literal-only expression fits both in the same way.
-
-func take(range: Range<i32, i32>) -> () => ()
-func take(range: ref/Range<i64, i64>) -> () => ()
-take(0..3)     // The value candidate; the other also fits the literals but needs a borrow of a temporary.
-
-let x: i64 = 7
-let s: Range<i64, i64> = 0..3
-let p = x == 2 * 5                       // 2 * 5 fits the other operand's i64.
-let q = s == (0..3)                      // (0..3) fits Range<i64, i64>.
-let wide: Range<i64, i64> = 0..(1 << 40) // 1 is i64; the shift count 40 is independently i32.
-let bad: u8 = 1 << 256              // 256 is i32; the shift-count check Aborts at run time.
+choose(2 * 5)                            // Error: both candidates fit in the same way.
+let wide: Range<i64, i64> = 0..(1 << 40) // 1 is i64; the count 40 is i32.
+let f = (1.0 + 1.0)@f32                  // Computed in f64, then converted.
 ```
 
-[Overload resolution](10-overload-resolution-and-inference.md#10-overload-resolution-and-inference) fits unresolved literals to each candidate before defaulting (§10.2). Expected Types, nested calls, function inference and local Types are limited by the [inference boundaries](10-overload-resolution-and-inference.md#105-inference-boundaries-and-specialization), and control-flow results collect all source constraints before defaulting (§14.9.1).
+## 12.4. Primary expressions
 
-### 12.3.2. Names, literals, and grouping
+### 12.4.1. Names, literals and grouping
 
 | Form | Meaning |
 | --- | --- |
-| `name` | Reference to a visible binding, function or other named entity. |
-| `123`, `0xff`, `1.5`, `true`, `'€'`, `"text"` | Numeric, Boolean, Character and String literals; see [lexical structure](02-source-and-lexical-structure.md#2-source-and-lexical-structure). |
-| `"value = \(value)"` | Interpolated string; the embedded Type must support UTF-8 formatting (§12.3.3). |
-| `null` | Contextually typed [raw null pointer](05-raw-pointers-and-unsafe-memory.md#51-null-and-equality). |
+| `name` | A visible binding, function or other named entity. |
+| `Self.member`, `isize.MaxValue` | Static member of the current or a primitive Type ([§9.6](09-names-signatures-and-access.md#96-qualified-and-inherited-lookup)). |
+| `123`, `1.5`, `true`, `'€'`, `"text"` | Literals ([§2](02-source-and-lexical-structure.md#2-source-and-lexical-structure)). |
+| `"value = \(value)"` | Interpolated string ([§12.4.2](#1242-interpolated-strings)). |
+| `null` | Contextually typed raw null pointer ([§5.1](05-raw-pointers-and-unsafe-memory.md#51-null-and-equality)). |
 | `()` | Unit value. |
-| `(value)` | Grouped expression; preserves a Place. |
-| `(value,)`, `(a, b)` | One-element or multi-element Tuple. |
-| `[a, b]`, `[]` | Array literal. |
-| `[key: value]`, `[:]` | Dictionary literal. |
+| `(value)` | Grouping; preserves a Place. |
+| `(value,)`, `(a, b)` | Tuple. |
+| `[a, b]`, `[]` / `[key: value]`, `[:]` | Array / Dictionary literal. |
 
-Tuple positions may have different Types. An array has one element Type, and a Dictionary one key Type and one value Type. Empty collection literals need an expected Type. Array and Dictionary literals use the [required Cores](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations), with the expected fixed-array exception of [Chapter 4](04-arrays-indexing-and-slices.md#4-arrays-indexing-and-slices); ambiguity never falls back to a universal object Type.
+An array has one element Type, a Dictionary one key and one value Type. An empty literal needs an expected Type. Array and Dictionary literals use the required Kimi declarations ([§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)), except for an expected fixed array ([§4](04-arrays-indexing-and-slices.md#4-arrays-indexing-and-slices)); an unresolved element Type never falls back to a universal object Type.
 
 ```kimi
 let pair = (10, "ten")
-let single = (10,)
-let values = [10, 20, 30,]
 let names = [1: "one", 2: "two",]
-let message = "first = \(values[0])"
+let empty: Array<i32> = []
+let unknown = []        // Error: an empty literal needs an expected Type.
 ```
 
-### 12.3.3. Interpolation formatting
+### 12.4.2. Interpolated strings
 
-An interpolated literal produces an owning `string`. Each embedded expression fits the shared input of `Utf8Writer.write` under §10.2 and requires `Utf8Format` for the selected referent Type. Borrow Types do not forward conformance. The [formatting profile](utf8-formatting.md#5-interpolation-and-internal-adapters) defines evaluation, temporary lifetime, failure, representations and capacity planning. No intermediate owning string per value is required, and a bare Place is not Moved.
+An interpolated literal produces an owning `string`. Each substitution fits the shared input of `Utf8Writer.write` ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation)) and needs `Utf8Format` for the selected referent Type; borrow Types do not forward it. A bare Place in a substitution is not Moved. Evaluation and formatting follow [§22.10](22-core-execution-and-foreign-functions.md#2210-formatting-and-interpolation); `$tryWrite(writer, literal)` follows [§22.10.4](22-core-execution-and-foreign-functions.md#22104-trywrite).
 
-`$tryWrite(writer, literal)` writes directly to an existing adapter, stopping at its first failure without evaluating later substitutions. Its immediate exclusive borrow, literal-only second operand and control-flow boundaries are defined in [the profile](utf8-formatting.md#53-short-circuiting-trywrite). `string` has no `+` ([§13.3](13-operators-and-assignment.md#133-arithmetic-bitwise-and-shift-operators)): an interpolated literal is the one form that joins strings.
+```kimi
+let name = "Ada"
+let count = 3
+let line = "name = \(name), count = \(count)"
+```
 
-### 12.3.4. Dictionary construction and duplicate keys
+### 12.4.3. Dictionary literals
 
-Equivalent duplicate keys in a Dictionary literal are errors.
+Equivalent duplicate keys in a Dictionary literal are an error.
 
-**Mandatory static checking** covers Boolean, integer, `char`, plain string and Unit literals, grouped or not; integers may have one direct unary sign, and a wrapping integer key Type fits its keys by the range of its integer argument. Each such key is fitted to the determined built-in key Type, its escapes and separators are decoded, and the values are compared without user equality. All eligible entries are compared, even across ineligible entries, and later duplicates are diagnosed even in unreachable syntax. Names (including Constant-readable `let` bindings), arithmetic, conversions, Tuples, floats, interpolation and user Types are excluded, and optimizer folding cannot extend the set.
+**Static check.** Boolean, integer, `char`, plain string and Unit literal keys, grouped or not (integer keys may be direct literals, [§12.3.2](#1232-direct-literals)), are fitted to the key Type and compared by value at compile time, across all entries and in unreachable syntax too. No other key is, not even a constant `let` binding or an operator expression, and optimization never extends the set.
 
-**Runtime checking.** Otherwise, entries are processed in source order:
+**Runtime check.** Other entries are processed in source order: evaluate the key once; if an equivalent key is already inserted, Abort ([§17.4](17-failure-handling.md#174-abort-termination)) before evaluating this value or any later entry; otherwise evaluate the value once and insert. An entry that does not complete normally is not inserted, no later entry is processed, and no partial Dictionary results; completed effects stay.
 
-1. Evaluate the key once and retain it.
-2. Check for an equivalent key among the entries already inserted.
-3. On a duplicate, initiate implicit Abort Termination before evaluating this entry's value or any later entry.
-4. Otherwise, evaluate the value once.
-5. Insert the retained key and the resulting value.
+**Key equality** is the Equatable mapping, called as `stored.equals(search)`; the key Type needs no Hash conformance. The order and number of equality calls are unspecified, and each call keeps its effects. For `f32` and `f64` keys, all NaN values of one Type are equivalent, and so are both zeros; this does not change `==` ([§13.4.1](13-operators-and-assignment.md#1341-contract-comparison-mapping)). User key equality must be an equivalence relation that does not change for a key while the Dictionary holds, checks or inserts it; a violation may make results unspecified or Abort, but never breaks memory safety.
 
 ```kimi
 let x: i32 = getKey()
-let map = [x: first(), x: second()]
+let map = [x: first(), x: second()] // Aborts at the second key; second() is not called.
+let bad = [1: "a", (1): "b"]        // Error: duplicate literal key.
 ```
 
-When checked at runtime, the first entry is evaluated and inserted before the second key is checked. That check fails, so `second()` is not called.
+## 12.5. Access and invocation
 
-If key evaluation, duplicate checking or value evaluation does not complete normally, that entry is not inserted and no later entries are processed. No partially constructed Dictionary is returned, and completed side effects are not rolled back. The diagnostic location of a duplicate is the later key expression. Termination and cleanup follow [Abort Termination](17-failure-handling.md#173-abort-termination).
+### 12.5.1. Member access
 
-**Key equality.** Equivalence follows the Dictionary's key equality, which is the Equatable mapping; matching hash values alone do not make keys duplicates. An implementation may use linear search and requires no source Hash contract. If it hashes internally, equal keys must have equal hashes, and hashing must not change which keys are equivalent. Later literal entries never overwrite existing values; mutation and indexed replacement have the distinct contracts of §4.7.
+`expression.name` selects a member by qualified lookup ([§9.6](09-names-signatures-and-access.md#96-qualified-and-inherited-lookup)), which never inserts `self`. When a value reference lacks the member, selection continues in its referent ([§3.4.3](03-types-and-values.md#343-reference-path-selection)). After `.` comes a member Name or an in-range decimal integer that selects a Tuple element. There is no dynamic member lookup. Type qualifiers are bound Container paths ([§9.7.1](09-names-signatures-and-access.md#971-bound-container-paths)) and create no value; `.init(...)` is a construction expression ([§6.3](06-declarations-and-containers.md#63-constructors)), never a value-member call.
 
-Each equality call uses the stored key as `self` and the candidate or search key as `other`: `stored.equals(search)`. Candidate visitation order and the number of equality calls are unspecified, independently of the required insertion, iteration and destruction order. Implementations may filter candidates using internal hashes. Every equality call that is made keeps its ordinary effects, Loans, failure and nontermination behavior; the collection API does not make equality pure. Programs must not use equality-call order or counts as an insertion-order observation. The key-stability obligation below applies to every storage and search strategy.
-
-The intrinsic Equatable mapping for `f32`/`f64` treats all NaN values of the same Type as equal and treats both signed zeros as equal; other values follow numeric equality. This makes floating keys usable without changing the built-in IEEE `==`/`!=` operators or adding Comparable; borrow and Tuple mappings compose it under §13.4.1. Internal hashes, when used, must agree for all NaNs and for both zeros. Floating keys undergo runtime duplicate checking even when written as literals.
-
-**Key stability.** User-defined key equality must be an equivalence relation. The key Type must also guarantee that a key's logical equality and hash value do not change while the Dictionary holds it, and, for a candidate key, from the start of duplicate checking through completion of insertion, including evaluation of its value expression.
-
-These equality and stability laws are semantic API obligations, not a compiler proof or an unchecked memory-safety permission. Violating them may make logical lookup and duplicate-detection results unspecified, but must not cause memory unsafety, invent values, or bypass Copy/Move and destruction responsibility. An implementation need not detect such violations, and detected violations may Abort. Invalid operations actually executed inside equality still follow their ordinary rules. Well-formed keys keep the deterministic equality and duplicate behavior above.
-
-## 12.4. Access and application
-
-### 12.4.1. Member access
-
-`expression.name` selects a member. [Qualified lookup](09-names-signatures-and-access.md#95-qualified-and-inherited-lookup) distinguishes Container and value paths, reports ambiguity when both succeed, and never implicitly inserts `self`. When a safe value reference lacks the member, selection continues in its referent under the [reference-path selection](03-types-and-values.md#341-reference-path-selection), which also covers index expressions and method receivers. The right side of an ordinary member-access `.` must be a member Name or an in-range decimal integer literal that selects a Tuple element; `pair.0` selects the first element. Dynamic member lookup with an arbitrary expression is not defined.
-
-Type-side qualifiers and construction paths use [bound Container paths](09-names-signatures-and-access.md#961-bound-container-paths), including arguments at each segment and `(Path{...}).member`; they create no runtime value. The reserved `.init(...)` suffix forms a [construction expression](06-declarations-and-containers.md#623-constructors) with a Type qualifier and never falls back to an ordinary value-member call.
-
-Property selection follows Chapter 11: standard `get` exposes the permitted Place operations, custom, computed and required `get` produce a result that never exposes hidden storage, and assignment uses an accessible `set`. Each operation and receiver is checked. Tuple and fixed-array Places keep the Move Path rules. Raw pointers are not dereferenced automatically: use `(*pointer).name` in an Unsafe Block.
+Property access follows [§11.1](11-properties.md#111-property-kinds). Raw pointers are not followed implicitly: write `(*pointer).name` in an Unsafe Block.
 
 ```kimi
-let count = collection.count
-collection.count = 10   // Requires a setter and write permission.
-let first = pair.0
+let first = (10, "ten").0
+var collection = makeCollection()
+collection.count = 10   // Needs a setter and write permission.
 ```
 
-### 12.4.2. Invocation and generic application
+### 12.5.2. Invocation and generic application
 
-`callee(arg1, arg2)` invokes a function, method or function value. Zero arguments and a trailing comma are allowed. A task call writes the task argument first, as in `callee(task; arg1)` or `callee(task;)` ([§24.3](24-suspension-and-asynchronous-tasks.md#243-task-calls)). `callee<T, U>(args)` applies explicit Type arguments before the call.
+`callee(a, b)` calls a function, method or function value; a trailing comma is allowed. A task call writes the task first: `callee(task; a)` ([§24.3](24-suspension-and-asynchronous-tasks.md#243-task-calls)). Explicit generic arguments follow [§8.1.3](08-generics-constraints-and-contracts.md#813-type-arguments). Whether `<` begins Type arguments is decided by [§F.9.3](appendices/F-syntax-summary.md#f93-type-arguments-or-less-than).
 
-Argument mapping, Type adaptation, expected-result filtering, candidate comparison and final usage checks follow [overload resolution](10-overload-resolution-and-inference.md#10-overload-resolution-and-inference). Named arguments use `name: expression`; name and value omission follow [§7.2](07-functions-and-callable-values.md#72-parameters-and-defaults). Function values keep positional-only calling for the arguments after any task argument, and unsafe calls keep their [additional restrictions](07-functions-and-callable-values.md#75-unsafe-functions). Explicit function Type arguments must provide the entire required list.
+Argument mapping and candidate selection follow [§10](10-overload-resolution-and-inference.md#10-overload-resolution-and-inference); named arguments and omission follow [§7.2](07-functions-and-callable-values.md#72-parameters). Function values take positional arguments only, and unsafe calls keep [§7.6](07-functions-and-callable-values.md#76-unsafe-functions). Generic arguments fill Type slots and length slots ([§4.4](04-arrays-indexing-and-slices.md#44-function-length-parameters)) only, within [§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries). After resolution a matching explicit specialization is selected ([§8.13](08-generics-constraints-and-contracts.md#813-explicit-full-function-specialization)). `T(args)` is not a constructor; write `T.init(args)` ([§6.3](06-declarations-and-containers.md#63-constructors)).
 
-In an expression, a `<` that introduces Type arguments must be adjacent to the target name and have a matching `>`. Thus `f<T>(x)` applies Type arguments while `a < b` compares values. Nested Type arguments may split `>>` into two closing delimiters. Spaces around comparison operators avoid ambiguity.
+```kimi
+let a = largest<i64>(1, 2)
+let c = i<n            // A comparison: no matching >.
+let d = Point(1, 2)    // Error: write Point.init(1, 2).
+```
 
-Generic arguments follow [slot binding](08-generics-constraints-and-contracts.md#81-generic-type-parameters), [function length slots](04-arrays-indexing-and-slices.md#44-function-length-parameters) and the [inference boundaries](10-overload-resolution-and-inference.md#105-inference-boundaries-and-specialization); no other general Const arguments exist. After ordinary call resolution, any matching [explicit specialization](08-generics-constraints-and-contracts.md#88-explicit-full-function-specialization) is selected. Structure construction uses the dedicated [`Type.init` invocation](06-declarations-and-containers.md#623-constructors), with ordinary argument evaluation and its own Type-only qualifier lookup; `T(args)` is not a constructor shorthand.
+## 12.6. Object member calls
 
-### 12.4.3. Object member calls
+The member, overload, access and public contract are selected from the receiver's Effective Type ([§14.10.1](14-control-flow.md#14101-refinable-bindings-and-effective-types)). A nonvirtual call uses that implementation; a virtual call uses the Dynamic Type's implementation of the same slot ([§6.4.3](06-declarations-and-containers.md#643-calls-and-conditional-slots)). The receiver is adjusted to the selected declaration's subobject ([§9.6.1](09-names-signatures-and-access.md#961-base-subobject-receiver-projection)). A projection that hides the complete derived Type needs the Owned erasure proof of a View upcast, checked after selection, except for operations on lexical `self` in an override body ([§6.4.5](06-declarations-and-containers.md#645-receiver-safety)).
 
-Object receiver projections hiding the complete derived Type require the same [Owned erasure proof](virtual-dispatch.md#5-receiver-safety-and-completeness) as explicit View upcasts, after selection. This applies to virtual, nonvirtual and direct-base calls; exact-View calls and inline value-borrow projections keep their own rules.
+A call through an object borrow or base-subobject projection needs ObjectCallCompatible Proven ([§12.7](#127-object-receiver-compatibility)), except on a **complete Sealed payload**: when the View Target is exactly the receiver's complete Sealed Type, a `ref/Self` or `uniq/Self` receiver is acquired by the payload follow ([§13.5.5](13-operators-and-assignment.md#1355-follow)), implicitly ([§7.3](07-functions-and-callable-values.md#73-receivers)) or as `handle@follow.method()`, for an ordinary complete-value call (an exclusive one also needs [§15.1.5](15-ownership-and-lifetime-analysis.md#1515-access-operations-and-acquisition)). An argument always needs an explicit `@follow`. Open Views and base subobjects never undergo whole-value replacement or a Move that leaves them incomplete.
 
-The ordinary member, overload, access and public contract are selected statically from the receiver's [Effective Type](14-control-flow.md#14101-stable-bindings-and-effective-types), and a nonvirtual call uses that implementation even when the Runtime Object Type is more derived. A virtual call instead selects the implementation of that same public slot under [virtual dispatch](virtual-dispatch.md#3-calls-and-conditional-members). The receiver is adjusted to the selected declaration's subobject under §9.5.1; no new lookup or derived-only overload is introduced.
+## 12.7. Object receiver compatibility
 
-Shared object access admits shared members and getters. Exclusive access may share by Reborrow or invoke an exclusive member or setter under the normal Loan rules. Returned interior references keep their receiver Loan, and an exclusive result cannot enable overlapping reentry. Calls through an object borrow require the public guarantee of §12.4.4.
+**ObjectCallCompatible** is the public guarantee that a borrowed-receiver call preserves receiver completeness, access authority and its Type, Origin and Loan contract. Each call operation (a function, a custom or computed `get` or `set`, or a standard Contract witness bridge) has one status, Proven or NotProven, never one per instantiation. Standard `get` and `set` are Place operations, not calls: borrowing `Box<T>.item` with `@ref` does not need `T is Copy`.
 
-### 12.4.4. Object receiver compatibility
+An operation's ObjectCallCompatible status is part of its public contract. It is the least fixed point of the effect rules of [§12.7.1](#1271-effect-rules) over the operation's body and the bodies of its explicit specializations, determined by these rules alone and not by analysis precision or optimization. Changing a body can therefore change the status, and with it the acceptance of calls through object borrows or base-subobject projections; consumers of the declaring Kotonoha rely on the status. It is checked after overload selection and never excludes or reselects a candidate ([§7.3](07-functions-and-callable-values.md#73-receivers)). Caller premises, Type arguments, the Dynamic Type or a selected specialization cannot strengthen it. An invalid body is an error and a body whose verification is unsupported is Unsupported ([§23.1.1](23-compiler-services.md#2311-categories)); neither is NotProven.
 
-**ObjectCallCompatible** is the public guarantee that a borrowed-receiver call preserves receiver completeness, access authority, and its Type/Origin/Loan contract. An ObjectCallCompatible operation may be called through object borrows or base-subobject projections, subject to the ordinary call, access, Type, Origin and Loan checks. The guarantee is keyed by the **call operation identity**, not by a Type substitution or a separate receiver-kind key; receiver kind belongs to the Signature. Functions and custom or computed `get`/`set` each use their declaration identity.
+```kimi
+open struct Base
+    public var count: i32 = 0
+    public init() => ()
+    public virtual func g(self: objref/Self) -> i32 => 0
+    public virtual func f(self: objref/Self) -> i32 => 0
+    public func bump(self: uniq/Self) => self.count += 1            // Proven.
+    public func reset(self: uniq/Self) => self@follow = Base.init() // NotProven.
 
-**Complete Sealed payload exception.** When the source View Target of an object-kind receiver is exactly the same complete Sealed Type, a selected `ref/Self` or `uniq/Self` receiver is acquired through the payload follow of §13.5.5.1: implicitly under [§7.3](07-functions-and-callable-values.md#73-explicit-receivers), or written explicitly as in `handle@follow.method()` or `(handle@follow@uniq).method()`. The selection rule is common to shared and exclusive receivers; an exclusive borrow additionally requires the exclusive acquisition conditions of §15.1.5. Either form is an ordinary complete-value call and needs no ObjectCallCompatible proof; any existing NotProven public status stays unchanged. Ordinary argument positions always require an explicit `@follow`.
+struct Derived<U> : Base
+    var item: U
+    override func f(self: objref/Self) -> i32
+        return self.g()   // Projection of lexical self: covered by the slot's evidence.
 
-Every other object or base-subobject receiver path requires published Proven status, checked after overload selection; the status never excludes a candidate and never causes reselection (§7.3). Open Views and base subobjects cannot undergo whole-value replacement or incomplete MoveOut. Inherited Self remains the defining base Type, and a sealed derived Core never grants whole-base replacement. Owning-handle replacement instead replaces the handle's object and keeps the ordinary borrowing and destruction conditions. `rc`/`arc` provide only shared access, even at count one.
+func use(d: uniq/Derived<i32>)
+    d.bump()
+    d.reset()  // Error: would replace the base inside Derived.
+```
 
-#### 12.4.4.1. Public status and use
+### 12.7.1. Effect rules
 
-Direct standard `get`/`set` remain Place operations, checked by acquisition and Property permissions; they are not implicit getter functions. In particular, borrowing `Box<T>.item` with `@ref` does not require `T is Copy`. Standard Contract witnesses are call operations: their generated identity distinguishes the Requirement Identity, Property identity and bridge kind within the conformance mapping. Each witness's result Type and public premises are preserved; different witnesses are not merged, and no status is published per concrete instantiation.
+Every admitted Type and Origin binding is verified under the declaration's Signature, Constraints and premises ([§8.3](08-generics-constraints-and-contracts.md#83-constraint-proof)–[§8.15](08-generics-constraints-and-contracts.md#815-generic-body-checking)), never under Constraints inferred from the body, and every Type-checked path counts.
 
-| Published status | Call through a base-subobject projection or object borrow |
+**Storage relations.** An effect's target is related to a receiver or input root as Whole (the root), Base (base edges only), Part (through a Field, Tuple or array element), Separate (proven disjoint from the root by the Place-overlap rules of [§15.6.2](15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts)) or MayAlias (any relation that is neither Whole, Base, Part nor Separate). A referent reached through a stored reference is related by following its Loan provenance ([§15.6.2](15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts)). Separation from one root proves nothing about another, and a payload follow does not turn Whole into Part or Separate.
+
+| Effect on the receiver | Result |
 | --- | --- |
-| Proven | Allowed if the ordinary call, access, Type, Origin and Loan checks pass |
-| NotProven | Error on protected object/base paths; ordinary complete-value calls, including a proven Sealed payload follow, keep their normal rules |
+| Replace, reconstruct or take ownership of Whole or Base | Violation, unless the target is proven complete and the operation is legal under [§15.7](15-ownership-and-lifetime-analysis.md#157-whole-value-updates) |
+| A Move out of it that leaves it incomplete | Violation, even if restored later |
+| Part Replacement or Exchange; permitted reads and borrows; effects on a Separate target | No violation |
+| Escape of unrestricted exclusive access to it or a base, through a result, a store, a capture or a callee | Violation, unless a legal complete-target borrow |
+| MayAlias, or unsafe access that may reach it | Unproven effect |
+| Call, accessor, default, cleanup | Callee effects mapped through arguments, captures and mutable-static anchors |
 
-NotProven means the absence of a common proof, not a refutation for every binding. Additional caller premises, favorable Type arguments, the exact Dynamic Type or one selected specialization cannot strengthen the status, and a failed use never causes reselection (§12.4.4). Unknown is internal pending work, never a published status. Invalid bodies, missing mandatory artifact information and unimplemented verification cannot be hidden as NotProven.
+A callee's whole replacement mapped onto a caller's Part keeps that target's base-subobject restrictions, and a permitted effect stays permitted on a target that may alias.
 
-#### 12.4.4.2. Effect verification
+**Reached operations.** Only operations reached through the receiver and what derives from it count: the receiver's Loan is live for the whole call ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)), so an operation on its storage through any other path (another argument, a capture, a mutable-static anchor, a callee with unknown effects) is rejected at that call ([§15.6.2](15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts)), or is undefined behavior for raw access ([§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions)). A `ref/Self` receiver reaches only reads and shared borrows, so an operation with one, including every custom or computed `get` and shared standard witness bridge ([§11.9.2](11-properties.md#1192-standard-access-witnesses)), is Proven exactly when it is valid.
 
-Completeness evidence is kept separately from storage relations. A payload follow does not turn Whole into Part or Separate. A legal complete-target update or borrow return is not itself a preservation failure. A formal `uniq` parameter alone does not prove caller storage completeness: callee effects are composed at each actual storage target, and unknown-call, unsafe and specialization checks are preserved. A `ref` input has only read and shared-borrow effects (§15.6.2).
+**Exclusive input bound.** A callee affects its inputs at most as [§8.11.4](08-generics-constraints-and-contracts.md#8114-checking-and-use) rule 1 permits, and its results keep the dependencies its signature states (by the mutable-static anchor rule of [§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)). A `ref` input has only read and shared-borrow effects ([§15.6.2](15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts)). On an exclusive input this is at most one completeness-preserving Replacement of the actual target, unsafe code included ([§5.2.3](05-raw-pointers-and-unsafe-memory.md#523-taking-from-raw-places)), and unproven effects inside a callee contribute no more. `Kimi.Intrinsics.replace` and `exchange` are such a Replacement and `swap` an Exchange ([§15.7](15-ownership-and-lifetime-analysis.md#157-whole-value-updates)). The bound preserves a receiver Part and violates its Whole or Base unless the operation carries the virtual slot completeness guarantee ([§6.4.5](06-declarations-and-containers.md#645-receiver-safety)); that guarantee excuses only this bound, and the call's other effects and Loans still count.
 
-Verification uses resolved operations and acquisition plans before optimization. Under the declaration's Signature, Constraints and conditional premises, every admitted Type/Origin binding is verified using §8.7–§8.10, without inferring hidden caller Constraints from a body. The abstract rules below determine the public result independently of analysis precision, optimization and processing order; representations and worklist algorithms are implementation choices.
+**Calls.** Effects propagate to the least fixed point over recursion, with the summary domain of [§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls); recursion alone is not unproven. Indirect and generic-requirement calls use requirement effect bounds ([§8.11](08-generics-constraints-and-contracts.md#811-effect-bounds)), and calls through Callable-constrained parameters compose through the actual arguments and their anchors ([§8.11.6](08-generics-constraints-and-contracts.md#8116-callable-effect-bounds)). Without a validated summary or requirement effect bound, a call contributes the exclusive input bound and, for static storage, the unknown effects of [§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls). A receiverless function has input-root effects but no status. The fixed point never proves a circular conformance; Finality applies as usual.
 
-Summaries keep operation kinds and their relation to receiver and input roots, captures, static anchors (§15.6.4) and returned aliases. A **storage relation** is a finite set of: Whole (the root), Base (base edges only), Part (a path including Field, Tuple or array storage), Separate (proven disjoint) and MayAlias (not established). Normal Origin/Loan and target-Place information is kept alongside these relations.
+### 12.7.2. Implementation families
 
-| Operation or dependency | Required summary or check |
-| --- | --- |
-| Replace, reconstruct or acquire ownership of a protected receiver's Whole/Base | Receiver-preservation violation, unless the actual target is independently proven complete and the operation is legal under §15.7 |
-| MoveOut from receiver storage leaving it incomplete | Violation; later restoration does not cancel it |
-| Completeness-preserving Part Replacement/Exchange; permitted reads and borrows | No preservation violation by itself; access, Loan and cleanup checks remain |
-| Escape of unrestricted exclusive access to a protected receiver or base | Violation unless it is a legal complete-target borrow; includes results, stores, callee paths and all dependencies |
-| Borrowed result | Root/alias correspondence is kept; return Origins, Loans and authority are verified |
-| Separate operation | No violation against the root from which separation is proven |
-| MayAlias with receiver storage, or unsafe access in the operation's own body that may reach it | Unproven effect on the receiver |
-| Calls, custom accessors, defaults, cleanup | Published root effects are mapped and composed through actual arguments, captures and static anchors |
-| Branches and loops | Union of all Type-checked paths; only environment-excluded syntax is omitted, not paths removed by runtime reasoning or optimization |
-
-Composing base-only paths yields Base; a storage-element edge yields Part. A Field that stores a reference is not that reference's referent: retained anchors and aliases are followed, using MayAlias when the referent relation is unknown. Separation from one input proves nothing about another input, capture or static root. Already proven harmless effects, such as permitted reads, do not become violations merely because their target may alias.
-
-A callee's whole-value replacement mapped onto a caller's Part is not replacement of the whole caller receiver, but the actual target's restrictions are kept: Part classification cannot erase a base-subobject use check. Defined completeness-preserving Replacement and Exchange are summarized as such, rather than counting their internal lowering transfers as separate illegal MoveOuts. Operation summaries are retained instead of simply propagating a callee's NotProven bit.
-
-**Potentially affected roots.** At every call the receiver's Loan is active for the whole call (§15.6.4), so an operation on the receiver's storage through any other path, such as another argument, a capture, a static anchor or a callee with unknown effects, is rejected at that call (§15.6.2, §15.6.4) or is undefined behavior for raw access (§5.2.1). Receiver preservation therefore considers only operations reached through the receiver: its path, the Places and references derived from it, and the callees given such access. Through a `ref/Self` receiver only reads and shared borrows are reached (§15.6.2), so an operation with a `ref/Self` receiver, including every custom or computed `get` and every shared standard witness bridge (§11.4.2), is Proven exactly when its declaration is valid.
-
-**Exclusive input bound.** A callee affects its inputs at most as §8.4.10.4 rule 1 permits, and its results keep the dependencies its signature states. For receiver preservation, everything it does to an exclusive input is at most one completeness-preserving Replacement of the input's actual target, because borrowed referents offer no Take (§15.1.5) and unsafe code bears the same obligation (§5.2.3). A callee without a computed or validated summary, such as a bodiless compiler-owned declaration or an indirect or generic-requirement call, contributes exactly this bound, and unproven or unsafe effects inside a callee's body contribute at most it. `Kimi.Intrinsics.replace` and `exchange` are such a Replacement and `swap` an Exchange of both targets (§15.7). The bound mapped onto a receiver Part preserves the receiver; mapped onto its Whole or Base it is a violation unless the operation carries the [virtual slot completeness guarantee](virtual-dispatch.md#5-receiver-safety-and-completeness). Compose that guarantee on the receiver without discarding ordinary reads, writes or Loans.
-
-For same-build calls, direct effects are propagated over the finite domain of declaration schemas and roots to the least union fixed point, including recursion and the implementation families of §12.4.4.3. Concrete Types are not enumerated, and specializations are not removed on the basis of a particular call. Recursion alone is not an unproven effect, and an unfinished empty summary is not a proof; a verified empty summary is valid.
-
-Separately compiled, indirect and generic-requirement calls use validated public summaries or requirement effect bounds (§8.4.10). Without such a summary they contribute the exclusive input bound; private bodies are not inspected, and possible implementations are not enumerated. Missing mandatory artifact data is an artifact error, not a missing summary. Receiverless helpers may publish input-root summaries without an ObjectCallCompatible status.
-
-An implementation succeeds only when normal semantic checking completes and no admitted binding has a receiver violation or unproven effect. Pending call and conformance obligations remain explicit until resolved. The effect fixed point does not prove a circular conformance declaration; the normal proof deadlines and errors still apply.
-
-Receiver-preservation effect composition (§12.4.4.2) retains calls through Callable-constrained parameters against those parameters and composes them through actual arguments, including their static and capture anchors (§8.4.10.7, §15.6.4). Available Callable bounds supply the same input and environment rules as requirement bounds.
-
-#### 12.4.4.3. Implementation families
-
-An operation's public status is Proven exactly when the ordinary body and **every implementation in its closed explicit-specialization set** pass §12.4.4.2; a semantically valid family is otherwise NotProven. The set is closed after environment selection, generation and declaration collection, regardless of whether its implementations are currently called.
-
-The ordinary generic body is verified over all admitted bindings independently; bindings covered by specializations are not subtracted. Each specialization is verified under its substituted inherited contract. The ordinary body's inferred Proven imposes no extra declaration obligation on a specialization: an incompatible specialization makes the family NotProven but is not a declaration error for that reason, while declared Signature, Constraint, Safety and Effect obligations still apply. Improving the ordinary body therefore cannot invalidate an unchanged specialization.
-
-A use is checked against the original public contract before an implementation is selected (§8.8.3). A NotProven diagnostic identifies the responsible implementation and reason, including specialization arguments and dependent callee or witness identities where relevant; private bodies need not be exposed. The completed summaries, status and dependencies are published under §18.3 and revalidated on change under §21.3.4.
+An implementation passes [§12.7.1](#1271-effect-rules) when no admitted binding yields a Violation or an Unproven effect. An operation is Proven exactly when its ordinary body and every implementation in its explicit-specialization set pass, whether or not an implementation is called; otherwise it is NotProven. The set is closed after environment selection and declaration collection. The ordinary body is verified over all admitted bindings, without subtracting specialized ones, and each specialization under its substituted contract. An incompatible specialization makes the operation NotProven but is not an error for that reason; its declared Signature, Constraint, Safety and Effect obligations still apply. A use is checked against the original public contract before an implementation is selected ([§8.13.3](08-generics-constraints-and-contracts.md#8133-selection)).

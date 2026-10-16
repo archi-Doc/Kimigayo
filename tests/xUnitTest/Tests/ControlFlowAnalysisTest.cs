@@ -64,6 +64,34 @@ public class ControlFlowAnalysisTest
         Assert.Contains(Analyze(source).Issues, x => x.Message.Contains(diagnostic, StringComparison.Ordinal));
     }
 
+    // SPEC 14.11, 14.10.3 (DECISIONS R4-M7a): the MIR's A3 reports a falling failure body exactly where the old analysis does: the
+    // require rows above, a failure body only the checks reach, a require nested after a return in a failure body that the checks alone
+    // leave to its end, a default's failure body once however many calls copy it, a defer's once however many exits build it, a defer that a
+    // single-item failure body registers, which runs where that body is left (SPEC 16.1), whose own body diverges or completes, and a default
+    // whose failure bodies continue only for the checks.
+    [Theory]
+    [InlineData("func f(ready: bool) -> i32\n    require ready else => return 0\n    return 1", 0)]
+    [InlineData("func f(ready: bool) -> i32\n    require ready\n    else\n        return 0\n    return 1", 0)]
+    [InlineData("let answer = if true\n    require false else => yield 0\n    yield 1\nelse => 2", 0)]
+    [InlineData("defer\n    require true else => exit\n    ()", 0)]
+    [InlineData("func f()\n    require false else => return\n    ()", 0)]
+    [InlineData("func f()\n    require true else => ()\n    ()", 1)]
+    [InlineData("func f(ready: bool)\n    require ready else\n        loop\n            exit\n    ()", 1)]
+    [InlineData("func f(ready: bool) -> i32\n    require ready else => return 0\n    ()", 0)]
+    [InlineData("func f()\n    return\n    require true else => ()", 1)]
+    [InlineData("func f(c: bool)\n    require c else\n        label outer: do\n            return\n            require c else => exit to outer\n    ()", 0)]
+    [InlineData("func value(c: bool, y: i32 = (label choice: do\n    require c else => ()\n    exit to choice 7\n)) -> i32 => y\nlet a = value(true)\nlet b = value(false)", 1)]
+    [InlineData("func f(c: bool)\n    defer\n        require c else => ()\n    if c => return\n    ()", 1)]
+    [InlineData("func f()\n    require true else => defer => loop => ()\n    ()", 0)]
+    [InlineData("func f()\n    require true else => defer => ()\n    ()", 1)]
+    [InlineData(RequireContinuationTest.Default, 0)]
+    public void TheMirFindsEveryRequireFallthrough(string source, int count)
+    {
+        var (old, mir) = RequireFallthroughs(Compile(source));
+        Assert.Equal(count, mir.Length);
+        Assert.Equal(old, mir);
+    }
+
     [Fact]
     public void ResolvesYieldsBeforeClassifyingDiscardedSelections()
     {
@@ -175,12 +203,21 @@ public class ControlFlowAnalysisTest
         Assert.NotEmpty(TestDiagnostics.Of(tree));
     }
 
-    private static ControlFlowAnalysis Analyze(string source)
+    // The subjects of the old analysis's RequireFallthrough records and of the MIR's A3 problems (DECISIONS R4-M7a), each in source order.
+    internal static (Koto[] Old, Koto[] Mir) RequireFallthroughs(Compilation compilation)
+        => (compilation.AnalyzeControlFlow().Issues.Where(static x => x.Code == Kimi.DiagnosticCode.RequireFallthrough_Kd).Select(static x => x.Node)
+                .OrderBy(static x => x.Span.Start).ToArray(),
+            compilation.BuildMir().Problems.All.ToArray().Where(static x => x.Code == Kimi.DiagnosticCode.RequireFallthrough_Kd)
+                .Select(x => compilation.SyntaxOf(x.Subject)).OrderBy(static x => x.Span.Start).ToArray());
+
+    private static ControlFlowAnalysis Analyze(string source) => Compile(source).AnalyzeControlFlow();
+
+    private static Compilation Compile(string source)
     {
         var compilation = Compilation.CreateForTest();
         compilation.Kotonoha.CreateCodeContext().Parse(compilation.Kotonoha.RootKoto, source);
         Assert.Empty(TestDiagnostics.Of(compilation));
         compilation.Bind();
-        return compilation.AnalyzeControlFlow();
+        return compilation;
     }
 }

@@ -97,11 +97,7 @@ public class CallTypeCompletionBindingTest
     public void WarmInstantiatedCallChecksAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Prefix("public") + "group Consumer\n    func take<T>(value: T) -> T => value@move\n    func call(value: raw/E<Source>) => take(value)");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

@@ -2,7 +2,7 @@
 
 namespace Kimi.Diagnostics;
 
-/// <summary>The kind of a diagnostic contract violation (SPEC 23.3.6.7); a Faulted result reports it as its Reason.</summary>
+/// <summary>The kind of a diagnostic contract violation (SPEC 23.1); a Faulted result reports it as its Reason.</summary>
 public enum DiagnosticFault : byte
 {
     /// <summary>The diagnostic catalog is malformed.</summary>
@@ -33,7 +33,7 @@ public enum DiagnosticFault : byte
     UnexplainedRejection,
 }
 
-/// <summary>Signals a violation of the diagnostic contract (SPEC 23.3.6.7). It is a compiler defect, never a property of the checked source.</summary>
+/// <summary>Signals a violation of the diagnostic contract (SPEC 23.1). It is a compiler defect, never a property of the checked source.</summary>
 internal sealed class DiagnosticContractException : Exception
 {
     /// <summary>Initializes a new instance of the <see cref="DiagnosticContractException"/> class.</summary>

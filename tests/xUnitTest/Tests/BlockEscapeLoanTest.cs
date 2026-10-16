@@ -40,13 +40,13 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
 
     private const string Temporary = "func make() -> i32 => 4\n\npublic func main() -> ()\n    let r = make()@ref\n    Console.writeLine(\"\\(r@follow)\")\n";
 
-    // SPEC 8.4.10.4: a loop over `C is Iterable` gives the body requirement results; the exit delivering z@ref still keeps no Loan
+    // SPEC 8.11.4: a loop over `C is Iterable` gives the body requirement results; the exit delivering z@ref still keeps no Loan
     // of n, so the escaping exit has the record (review k06; it was at the z@ref exit only).
     private const string GenericRequirement = "func show<C>(values: ref/C, c: bool) -> ()\n    C is Iterable\n    var count: i32 = 0\n    for a in values\n        count += 1\n" +
         "    let z = 1\n    let r = label block: do\n        let n = 5\n        if c\n            exit to block z@ref\n        exit to block n@ref\n    Console.writeLine(\"\\(r@follow) \\(count)\")\n\n" +
         "public func main() -> ()\n    let xs: Array<i32> = [1]\n    show(xs@ref, true)\n";
 
-    // SPEC 8.9: `let local = value` over `s/T` is a conditional reborrow plan (review k01; it was at the z@ref exit only).
+    // SPEC 8.14: `let local = value` over `s/T` is a conditional reborrow plan (review k01; it was at the z@ref exit only).
     private const string GenericReborrow = "func show<s/T>(value: s/T, c: bool) -> ()\n    s is ref or uniq\n    T is Copy\n    let local = value\n    let z = 1\n" +
         "    let r = label block: do\n        let n = 5\n        if c\n            exit to block z@ref\n        exit to block n@ref\n    Console.writeLine(\"\\(r@follow)\")\n\n" +
         "public func main() -> ()\n    let v = 3\n    show(v@ref, true)\n";
@@ -80,11 +80,17 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     private const string LoopItem = "func show() -> i32\n    let r = label l: loop\n        let arr: Array<i32> = [1, 2]\n        for x in arr\n            exit to l x\n        exit to l arr[0]@ref\n" +
         "    return r@follow\n\npublic func main() -> ()\n    Console.writeLine(\"\\(show())\")\n";
 
-    // SPEC 3.6.2, 13.5.5.2, 16.3.3: a temporary obj/rc/arc handle is a Loan root of the borrows lent through it, destroyed at its
+    // SPEC 3.6, 13.5.6, 16.3.3: a temporary obj/rc/arc handle is a Loan root of the borrows lent through it, destroyed at its
     // full-expression boundary.
     private const string TemporaryHandle = "struct Item\n    public var id: i32 = 7\nfunc make() -> rc/Item => Kimi.Intrinsics.makeRc(Item.init())\n\npublic func main() -> ()\n";
 
     private const string TemporaryInTuple = "func make() -> i32 => 4\n\npublic func main() -> ()\n    let r = (make()@ref, 1)\n    Console.writeLine(\"\\(r.0@follow)\")\n";
+
+    // SPEC 3.6, 3.4.2: `@ref` or `@uniq` on a returned reference borrows the temporary slot holding it (`ref/(ref/T)`), which ends
+    // at the full-expression boundary; a Reborrow of the referent (`@follow@ref`) does not depend on that slot.
+    private const string FirstText = "func first(values: ref/Array<string>) -> ref/string during values => values[0]@ref\n";
+
+    private const string SlotInt = "func slot(values: uniq/Array<i32>) -> uniq/i32 during values => values[0]@uniq\n";
 
     private const string Transfer = "; the transfer cleans up the scopes it leaves before it delivers its result (SPEC 16.2.2)";
 
@@ -137,6 +143,9 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         { "TemporaryHandlePayload", TemporaryHandle + "    let r = make()@follow@ref\n    Console.writeLine(\"\\(r.id)\")\n", "let r = make()@follow@ref", "let r = make()@follow@ref", "make()", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()`" },
         { "TemporaryHandleField", TemporaryHandle + "    let r = make().id@ref\n    Console.writeLine(\"\\(r@follow)\")\n", "let r = make().id@ref", "let r = make().id@ref", "make()", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()`" },
         { "TemporaryHandleSlot", TemporaryHandle + "    let r = make()@ref\n    let c = Kimi.Intrinsics.clone(r)\n", "let r = make()@ref", "make()@ref", "make()@ref", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()@ref`" },
+        { "ReferenceSlot", "public func main() -> ()\n    let words: Array<string> = [\"a\"]\n    let r = label b: do\n        let q = words[0]@ref\n        exit to b q@ref\n    Console.writeLine(r@follow)\n", "exit to b q@ref", "exit to b q@ref", "q@ref", "do", "`q` is destroyed here while a live value keeps the Loan of `q@ref`" + Transfer },
+        { "TemporaryReferenceSlot", FirstText + "\npublic func main() -> ()\n    let words: Array<string> = [\"a\"]\n    let r = first(words@ref)@ref\n    Console.writeLine(r@follow)\n", "let r = first(words@ref)@ref", "first(words@ref)@ref", "first(words@ref)@ref", "let r", "The temporary `first(words@ref)` is destroyed here while a live value keeps the Loan of `first(words@ref)@ref`" },
+        { "TemporaryExclusiveReferenceSlot", SlotInt + "\npublic func main() -> ()\n    var xs: Array<i32> = [1]\n    let r = slot(xs@uniq)@uniq\n    r@follow@follow = 2\n", "let r = slot(xs@uniq)@uniq", "slot(xs@uniq)@uniq", "slot(xs@uniq)@uniq", "let r", "The temporary `slot(xs@uniq)` is destroyed here while a live value keeps the Loan of `slot(xs@uniq)@uniq`" },
     };
 
     [Theory]
@@ -196,11 +205,12 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     [InlineData("GenericBothExits", "func show<C>(values: ref/C, c: bool) -> ()\n    C is Iterable\n    var count: i32 = 0\n    for a in values\n        count += 1\n    let z = 1\n    let r = label block: do\n        let n = 5\n        if c\n            exit to block z@ref\n        exit to block z@ref\n    Console.writeLine(\"\\(r@follow) \\(count)\")\nlet xs: Array<i32> = [1]\nshow(xs@ref, true)", "1 1\n")]
     [InlineData("ReborrowBothExits", "func show<s/T>(value: s/T, c: bool) -> ()\n    s is ref or uniq\n    T is Copy\n    let local = value\n    let z = 1\n    let r = label block: do\n        let n = 5\n        if c\n            exit to block z@ref\n        exit to block z@ref\n    Console.writeLine(\"\\(r@follow)\")\nlet v = 3\nshow(v@ref, true)", "1\n")]
     [InlineData("AbstractBothExits", "func show<C, T>(values: ref/C, other: ref/T, c: bool) -> ()\n    C is Iterable\n    T is Copy\n    var count: i32 = 0\n    for a in values\n        count += 1\n    let r = label block: do\n        let n: T = other@follow\n        if c\n            exit to block other\n        exit to block other\n    let k: T = r@follow\n    Console.writeLine(\"\\(count)\")\nlet xs: Array<i32> = [1]\nlet v = 3\nshow(xs@ref, v@ref, true)", "1\n")]
+    [InlineData("TemporaryReferenceReborrow", FirstText + SlotInt + "let words: Array<string> = [\"a\"]\nlet r = first(words@ref)@follow@ref\nConsole.writeLine(r)\nConsole.writeLine(first(words@ref)@ref@follow)\nvar xs: Array<i32> = [1]\nlet s = slot(xs@uniq)@follow@uniq\ns@follow = 2\nslot(xs@uniq)@follow += 1\nConsole.writeLine(\"\\(xs[0])\")", "a\na\n3\n")]
     [InlineData("LocalCopied", "let r = label b: do\n    let n: Array<i32> = [5, 6]\n    let q = n[1]@ref\n    let t = (q, 1)\n    exit to b t.0@follow + n[0]\nConsole.writeLine(\"\\(r)\")", "11\n")]
     public void BorrowsWithinTheirRootsScopeRun(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("BlockEscapeLoan" + name, source, stdout);
 
-    // SPEC 23.3.6.8: the console shows both related locations and the Note, the language server sends them in both placements,
+    // SPEC 23.3: the console shows both related locations and the Note, the language server sends them in both placements,
     // and the JSON form keeps the borrow role, for a conversion and for a capture entry.
     [Theory]
     [InlineData(Plain)]

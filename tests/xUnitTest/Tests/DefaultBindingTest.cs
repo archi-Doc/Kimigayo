@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
@@ -19,10 +20,6 @@ public class DefaultBindingTest
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         var function = (FunctionKoto)Assert.Single(Calls(c)).CallOf()!.Target.Declaration;
         var value = function.Parameters[0].DefaultValue!;
-        var flow = c.Ownership.ControlFlow!;
-        Assert.True(flow.Nodes.ContainsKey(value));
-        Assert.Empty(flow.Issues);
-        Assert.Empty(flow.PendingBinding);
         Assert.True(KotoHelper.IsValueContext(value));
         Assert.True(c.Validate(out var error), error);
     }
@@ -39,8 +36,8 @@ public class DefaultBindingTest
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
         var jump = Assert.Single(KotoTree.Walk(function.Parameters[0].DefaultValue!).OfType<JumpKoto>());
         Assert.Null(KotoHelper.ResolveTransferTarget(jump));
-        var flow = c.Ownership.ControlFlow!;
-        Assert.Contains(flow.Issues, x => ReferenceEquals(x.Node, jump) && x.Message.Contains("No valid target for " + keyword, StringComparison.Ordinal));
+        c.ReportAnalysis();
+        Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.InvalidJumpTarget_Kd) && x.Span == jump.Span && x.Message.Contains("No valid target for " + keyword, StringComparison.Ordinal));
         Assert.False(c.Validate(out _));
     }
 
@@ -48,20 +45,18 @@ public class DefaultBindingTest
     public void DefaultFlowIsCheckedOnAnUnusedBodylessRequirement()
     {
         var c = MinimalEmissionTest.Analyze("contract C\n    func f(x: i32 = (return 1))");
-        var flow = c.Ownership.ControlFlow!;
-        Assert.Contains(flow.Issues, x => x.Node is ReturnKoto);
+        c.ReportAnalysis();
+        Assert.Contains(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.InvalidJumpTarget_Kd) && x.Text == "return 1");
     }
 
+    // SPEC 7.2.3, 14.1: a default that never completes is valid; HirColumnsTest checks that its completion stays its own.
     [Fact]
     public void NoncompletingDefaultsDoNotChangeTheFunctionBodyCompletion()
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32 = (loop => continue)) => ()\nf(3)");
         Assert.True(c.Binding.Result.IsComplete);
-        var function = (FunctionKoto)Assert.Single(Calls(c)).CallOf()!.Target.Declaration;
-        var flow = c.Ownership.ControlFlow!;
-        Assert.Empty(flow.Issues);
-        Assert.False(flow.Nodes[function.Parameters[0].DefaultValue!].CanCompleteNormally);
-        Assert.True(flow.Nodes[function].CanCompleteNormally);
+        c.ReportAnalysis();
+        Assert.Empty(TestDiagnostics.Of(c));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -70,14 +65,9 @@ public class DefaultBindingTest
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32 = (if true => 1 else => 2)) => ()\nf(3)");
         Assert.True(c.Binding.Result.IsComplete);
-        var flow = c.Ownership.ControlFlow!;
-        for (var i = 0; i < 100; i++)
-        {
-            flow.Reanalyze(c.Kotonoha.RootKoto);
-        }
-
-        Assert.Empty(flow.Issues);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => flow.Reanalyze(c.Kotonoha.RootKoto)));
+        var valid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+        Assert.True(valid);
     }
 
     [Fact]
@@ -222,11 +212,7 @@ public class DefaultBindingTest
     public void WarmOmittedDefaultPlansReuseTheirStorage()
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = x, z: i32 = y) => ()\nf(1)\nf(z: 3, x: 1)");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)
@@ -309,11 +295,7 @@ public class DefaultBindingTest
     public void WarmDefaultBindingAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = x + 1) => ()");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
+        Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             if (!c.Bind().IsComplete)

@@ -8,7 +8,7 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler;
 
 // SPEC 19: compile-time directives. A directive body is parsed by the item loop of its enclosing owner; selected
-// syntax goes into that owner and excluded syntax is parsed with the same grammar but registers nothing (SPEC 19.5).
+// syntax goes into that owner and excluded syntax is parsed with the same grammar but registers nothing (SPEC 19.4).
 public static partial class Parser
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -40,7 +40,7 @@ public static partial class Parser
         return region with { Start = reader.PendingExclusionStart };
     }
 
-    /// <summary>Leaves excluded syntax: its documentation is excluded and its range is recorded for <c>excludedBy</c> (SPEC 19.5, 23.3.6.2).</summary>
+    /// <summary>Leaves excluded syntax: its documentation is excluded and its range is recorded for <c>excludedBy</c> (SPEC 19.4, 23.3).</summary>
     /// <param name="reader">The token reader positioned after the excluded syntax.</param>
     /// <param name="region">The state returned by <see cref="BeginExcludedRegion(ref TokenReader, SourceSpan, int)"/>.</param>
     internal static void EndExcludedRegion(ref TokenReader reader, in ExcludedRegion region)
@@ -59,7 +59,7 @@ public static partial class Parser
     /// <summary>
     /// The arms of one <c>#switch</c> (SPEC 19.3), walked by the item loop of the enclosing owner. <see cref="Begin"/> validates the
     /// Case Group and enters its arm list; <see cref="TryNext"/> leaves the reader at each arm body or invalid item segment,
-    /// and the owner parses it with its own item grammar, retaining nothing from excluded or invalid syntax (SPEC 19.5).
+    /// and the owner parses it with its own item grammar, retaining nothing from excluded or invalid syntax (SPEC 19.4).
     /// </summary>
     internal struct CompileTimeSwitchArms
     {
@@ -80,7 +80,7 @@ public static partial class Parser
         /// <returns>The arm walk.</returns>
         internal static CompileTimeSwitchArms Begin(ref TokenReader reader)
         {
-            // Attributes before the Case Group are reported first: no Condition takes them (SPEC 6.5).
+            // Attributes before the Case Group are reported first: no Condition takes them (SPEC 6.7).
             RejectDirectiveBlockAttributes(ref reader);
             var start = reader.CurrentTokenRange.Start;
             var selection = ScanCompileTimeSwitch(ref reader);
@@ -179,7 +179,7 @@ public static partial class Parser
         reader.ExclusionDepth--;
     }
 
-    /// <summary>Reports Attributes left before a directive Block or <c>#switch</c>: no declaration at their indentation follows (SPEC 6.5).</summary>
+    /// <summary>Reports Attributes left before a directive Block or <c>#switch</c>: no declaration at their indentation follows (SPEC 6.7).</summary>
     /// <param name="reader">The token reader.</param>
     internal static void RejectDirectiveBlockAttributes(ref TokenReader reader)
     {
@@ -487,7 +487,7 @@ public static partial class Parser
     /// <param name="Cause">The Error that keeps the <c>#switch</c> from selecting an arm, if one was reported.</param>
     private readonly record struct CompileTimeSwitchSelection(int Selected, DiagnosticKey? Cause);
 
-    /// <summary>The Constraint-prefix state of one executable body, shared by its directive targets and arms (SPEC 7.4, 19.5).</summary>
+    /// <summary>The Constraint-prefix state of one executable body, shared by its directive targets and arms (SPEC 7.5, 19.4).</summary>
     /// <param name="function">The function whose body this is, if any.</param>
     /// <param name="originOwner">The declaration that owns leading Origin relations, if not the function.</param>
     private struct ExecutableItemState(FunctionKoto? function, Koto? originOwner)

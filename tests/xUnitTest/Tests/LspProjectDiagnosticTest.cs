@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 23.4.2 to 23.4.8 end to end: documents, discovery, units and publication through the real check entry.
+// SPEC 23.4 to 23.4 end to end: documents, discovery, units and publication through the real check entry.
 public sealed class LspProjectDiagnosticTest : IDisposable
 {
     private const string Valid = "public func one() -> i32 => 1\n";

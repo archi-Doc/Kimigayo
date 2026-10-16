@@ -28,7 +28,7 @@ public sealed class DiagnosticSnapshotTest : IDisposable
     [Fact]
     public void SnapshotsAreDeterministic()
     {
-        string[] names = ["milestone/Milestone1", "milestone/Milestone24", "mutation/let-counter", "example/Counter"];
+        string[] names = ["milestone/Milestone1", "milestone/Milestone36", "mutation/let-counter", "example/Counter"];
         var first = this.Take(names);
         var second = this.Take(names);
         Assert.Equal(Serialize(first), Serialize(second));
@@ -172,24 +172,13 @@ public sealed class DiagnosticSnapshotTest : IDisposable
         return differences;
     }
 
-    private static string Serialize(SnapshotCase[] snapshot)
-        => JsonSerializer.Serialize(snapshot, Options);
-
-    private static string Relative(string root, string? path)
-        => path is null ? string.Empty : !Path.IsPathFullyQualified(path) ? path : Path.GetRelativePath(root, path).Replace('\\', '/');
-
-    private static string Format(SourceRange? range)
-        => range is { } value ? $"{value.Start.Line + 1}:{value.Start.Character + 1}-{value.End.Line + 1}:{value.End.Character + 1}" : string.Empty;
-
-    // SPEC 23.3.6.9: each candidate as its kind, its edits (range and replacement) and its judged conditions, so a changed candidate is a difference of kind repair.
-    private static string Format(RepairCandidate[]? repairs)
-        => repairs is null ? string.Empty : string.Join("; ", repairs.Select(static x =>
-            $"{x.Kind}[{string.Join(",", x.Edits.Select(static e => $"{Format(e.Range)}'{e.Text}'"))}] verified={string.Join(",", x.Verified)} required={string.Join(",", x.Required.Select(static c => c.Condition))}"));
-
-    private SnapshotCase[] Take(IEnumerable<string> names)
-        => [.. names.Select(this.Take)];
-
-    private SnapshotCase Take(string name)
+    /// <summary>Checks one case of the corpus through the shared check entry: an example's own project, or a generated Application
+    /// project for the source of any other kind.</summary>
+    /// <param name="name">The case name: its kind (<c>example</c>, <c>milestone</c>, <c>syntax</c>, <c>spec</c> or <c>mutation</c>), a slash
+    /// and its subject.</param>
+    /// <param name="directory">The directory that receives generated projects.</param>
+    /// <returns>The case's published records, outcome and acceptance.</returns>
+    internal static SnapshotCase Take(string name, string directory)
     {
         var kind = name[..name.IndexOf('/')];
         var subject = name[(kind.Length + 1)..];
@@ -204,9 +193,10 @@ public sealed class DiagnosticSnapshotTest : IDisposable
             {
                 "milestone" => File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "milestones", subject + ".kimi")),
                 "syntax" => DiagnosticCorpus.Syntax(subject).Source,
+                "spec" => DiagnosticCorpus.Spec(subject),
                 _ => DiagnosticCorpus.Apply(DiagnosticCorpus.Mutation(subject)),
             };
-            var folder = Path.Combine(this.directory, kind, subject);
+            var folder = Path.Combine(directory, kind, subject);
             Directory.CreateDirectory(folder);
             project = Path.Combine(folder, "Program.kimiproj");
             File.WriteAllText(project, $"OutputKind=\"Application\" Targets={{\"{WindowsProfile.Target}\"}}");
@@ -219,6 +209,23 @@ public sealed class DiagnosticSnapshotTest : IDisposable
         var diagnostics = output.Diagnostics.Select(x => new SnapshotDiagnostic(x.Code, x.Severity.ToString(), x.Message, Relative(root, x.Source < 0 ? null : output.Sources[x.Source].Path), Format(x.Display?.Range), Format(x.Repairs))).ToArray();
         return new(name, output.Outcome.ToString(), output.Accepted, diagnostics);
     }
+
+    private static string Serialize(SnapshotCase[] snapshot)
+        => JsonSerializer.Serialize(snapshot, Options);
+
+    private static string Relative(string root, string? path)
+        => path is null ? string.Empty : !Path.IsPathFullyQualified(path) ? path : Path.GetRelativePath(root, path).Replace('\\', '/');
+
+    private static string Format(SourceRange? range)
+        => range is { } value ? $"{value.Start.Line + 1}:{value.Start.Character + 1}-{value.End.Line + 1}:{value.End.Character + 1}" : string.Empty;
+
+    // SPEC 23.1.3: each candidate as its kind, its edits (range and replacement) and its judged conditions, so a changed candidate is a difference of kind repair.
+    private static string Format(RepairCandidate[]? repairs)
+        => repairs is null ? string.Empty : string.Join("; ", repairs.Select(static x =>
+            $"{x.Kind}[{string.Join(",", x.Edits.Select(static e => $"{Format(e.Range)}'{e.Text}'"))}] verified={string.Join(",", x.Verified)} required={string.Join(",", x.Required.Select(static c => c.Condition))}"));
+
+    private SnapshotCase[] Take(IEnumerable<string> names)
+        => [.. names.Select(x => Take(x, this.directory))];
 
     /// <summary>One case of a snapshot.</summary>
     /// <param name="Name">The case name.</param>

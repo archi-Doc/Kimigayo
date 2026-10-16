@@ -44,9 +44,6 @@ public sealed partial class Binding
             case ParenthesizedTypeKoto grouped:
                 this.InheritOriginContract(grouped.Type, type);
                 break;
-            case PlaceResultKoto place:
-                this.InheritOriginContract(place.Type, type);
-                break;
             case TypeSemanticsKoto { Type: { } target } semantics:
                 if (semantics.IsTransparentWrapper || (semantics.SemanticsParameter is null && semantics.SemanticsKind == SemanticsKind.Owner))
                 {
@@ -135,7 +132,7 @@ public sealed partial class Binding
                 }
             }
 
-            // SPEC 8.8.2 and 6.2.4: implementations inherit named Origin binders without adding or renaming them.
+            // SPEC 8.13.2 and 6.4: implementations inherit named Origin binders without adding or renaming them.
             var written = function.BoundSymbol!.Schema?.Origins ?? [];
             for (var i = 0; i < definitionOrigins.Count; i++)
             {
