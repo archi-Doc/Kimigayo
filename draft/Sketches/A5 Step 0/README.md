@@ -1,13 +1,15 @@
 # A5 step 0 records
 
-Status (2026-10-17): step 0 of [the A5 plan](../../Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md) (plan §6.2)
-is in progress. The design is not final:
+Status (2026-10-17): the step 0 design work of [the A5 plan](../../Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md)
+(plan §6.2) is done.
 
-- design A2 is in review;
-- round 2 returned "revise";
-- the owner's decision on the access-check family is pending (see below).
+- **Current design: [design-A3.md](design-A3.md).** Review round 3 confirmed it.
+- Its owner decisions are listed in its §9: the OD13 loss list, relaxations, the S1 additions, V16, the Origin
+  boundary, MIR contracts, and the DEC and DIAGNOSTICS records. They are pending.
+- The step 0 implementation units (A3 §10: ledger re-baseline, MIR fact contracts, A4 keys, Binding views) follow.
 
-These are working records, not authority. SPEC and DECISIONS decide.
+These are working records, not authority. SPEC and DECISIONS decide. DEC entries come with the commits that first
+implement them.
 
 ## Files
 
@@ -21,26 +23,27 @@ These are working records, not authority. SPEC and DECISIONS decide.
 | [choice.md](choice.md) | Planning-session choice: A as the base, with candidate grafts from B |
 | [review-design.md](review-design.md) | Independent review, round 1: revise (3 blocking) |
 | [design-A2.md](design-A2.md) | Full revision of A after round 1 |
-| [review-design-r2.md](review-design-r2.md) | Independent review, round 2: revise (2 blocking) and the owner decision list |
-| [prototype.md](prototype.md), [A5RulesPrototype.cs](A5RulesPrototype.cs) | Executable rules prototype: 75 hand-encoded programs, rounds 1–5 |
+| [review-design-r2.md](review-design-r2.md) | Round 2: revise. One blocking finding was a second round in one family, so the owner chose |
+| [design-A3.md](design-A3.md) | Full revision after round 2 and the owner's decision, with round 3's four corrections |
+| [review-design-r3.md](review-design-r3.md) | Round 3: confirmed |
+| [prototype.md](prototype.md), [A5RulesPrototype.cs](A5RulesPrototype.cs) | Executable rules prototype: 92 hand-encoded programs, rounds 1–6 |
 
 S1's own prototype is `draft/Sketches/LoanIdentityByBase.mjs` on branch `claude/gracious-brahmagupta-85336b`, from the
 S1/S2 proposal session.
+
+## Decisions taken
+
+- **2026-10-16, owner:** simple first, then fast, then precise. Soundness is never traded. Each precision loss is a
+  SPEC simplification (plan OD12, OD13).
+- **2026-10-17, owner:** for the access-check family, the owner chose the representation: the transit clause in the
+  check set.
+- **Planning session:**
+  - design A is the base;
+  - A3 follows the plan's `within` kill, never across a borrow Deref;
+  - the `replace` exemption follows the plan.
 
 ## Conventions
 
 - `S\` or `S/` in these files means this folder.
 - `plan-snapshot.md` and `P:n` refer to the plan before its first commit (`e32dc0ef`), so line numbers differ.
 - The census helper scripts were not kept. `census.md` gives the regexes.
-
-## Open owner decision
-
-Under AGENTS, two review rounds on one family of findings move the decision to the owner. The family is the one that
-asks what an access at P is checked against. The owner chooses one of:
-
-- **Representation** (recommended): add the transit clause to the check set. A value that P stores into a holder live
-  after P, into `E`, or through a reference is checked too. Prototype round 5 validated this as the fix for case 24c.
-- **Hold.**
-
-A2 must also gain a destroy access for calls whose row destroys their target (review round 2, finding 2). That
-finding is new, not a second round.

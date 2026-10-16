@@ -73,13 +73,13 @@ foreach (var c in Cases.All())
     if (c.Id.StartsWith("20") || !row[0].ErrorNodes().SequenceEqual(row[1].ErrorNodes()) || !row[2].ErrorNodes().SequenceEqual(row[4].ErrorNodes()) || !row[3].ErrorNodes().SequenceEqual(row[4].ErrorNodes()))
         Console.WriteLine($"| {c.Id} | {(c.Err ? "error" : "valid")} | {string.Join(" | ", row.Select(W))} |");
 }
-foreach (var ab in new[] { Abl.KillAcrossDeref, Abl.NoTransit })
+foreach (var ab in new[] { Abl.KillAcrossDeref, Abl.NoTransit, Abl.NoSharedCut })
 {
     var aKill = Cases.All().Select(c => (c, a: new Analysis(c, Mode.A, ab), b: new Analysis(c, Mode.A)))
         .Where(x => !x.a.ErrorNodes().SequenceEqual(x.b.ErrorNodes())).Select(x => $"{x.c.Id}: {V(x.a)}" + (x.c.Err && x.a.Errors.Count == 0 ? " **UNSOUND**" : ""));
     Console.WriteLine($"Design A with {ab}: " + string.Join("; ", aKill.DefaultIfEmpty("no change")));
 }
-foreach (var ab in Enum.GetValues<Abl>().Skip(1).Where(x => x is not (Abl.AIssueNotEnded or Abl.IdExclusion or Abl.AText)))
+foreach (var ab in Enum.GetValues<Abl>().Skip(1).Where(x => x is not (Abl.AIssueNotEnded or Abl.IdExclusion or Abl.AText or Abl.LastDerefBase)))
 {
     string At(Analysis a) => "`" + string.Join("`, `", a.ErrorNodes()) + "`";
     var changed = Cases.All().Select(c => (c, a: new Analysis(c, Mode.S1P, ab), b: new Analysis(c, Mode.S1P)))
@@ -98,7 +98,11 @@ enum Abl { None, KillKeepOnly, NoMaterialize, SyntacticAccess, NoAuthority, NoCl
     NoMoveBaseOp, NoUniqBaseOp, BaseOpMovePathsOnly, ExchangeKills, NoReplaceException, S1ResolvePlaces, AIssueNotEnded,
     IdExclusion, AText, // round 4: the pre-fix by-id rule (S1′ and A), and design A's letter (A mode)
     KillAcrossDeref,    // round 5: `ended` on the first move path entered (round 2), not only with no Deref between B and K
-    NoTransit }         // round 5: the round-4 rule without the in-transit facts
+    NoTransit,          // round 5: the round-4 rule without the in-transit facts
+    LastDerefBase,      // round 6: A mode with the plan's B (last Deref) instead of A2's root-most B
+    NoSharedCut,        // round 6: an observing destruction reaches exclusively past shared Derefs
+    SharedBaseOp,       // round 6: S1′ plus P3 (a shared borrow of the base or an ancestor is a base operation vs an exclusive child)
+    P3RootMost }        // round 6: S1′ plus P3 plus the root-most kill (KillAcrossDeref)
 
 enum K { Read, Write, Move, SBorrow, UBorrow, Destroy }
 enum Mode { PROV, S1, S1P, A }
@@ -252,8 +256,26 @@ class Analysis
     {
         var b = Base(l);
         if (b == null) return false;
-        if (X == Abl.KillAcrossDeref) b = Path.Before(b, "*"); else if (b.Contains('*')) return false;
-        return dip.Any(k => Path.Within(b, k));
+        // Both modes use the plan's kill (round 6 correction): B is a move path, K is B or an ancestor with no Deref
+        // between, and Index steps only for identical constant indexes. KillAcrossDeref is the unsound root-most kill.
+        if (X is Abl.KillAcrossDeref or Abl.P3RootMost) { b = Path.Before(b, "*"); return dip.Any(k => Path.Within(b, k)); }
+        if (b.Contains('*')) return false;
+        var bs = Path.Segs(b);
+        return dip.Select(Path.Segs).Any(ks => bs.Length >= ks.Length && bs.Take(ks.Length).SequenceEqual(ks) && !bs.Skip(ks.Length).Contains("[]"));
+    }
+
+    // Round 6 (review r2, finding 3): an observing destruction of K reaches exclusively only down to the first shared
+    // Deref. The Deref below K on Loan place p is shared when every Loan its holder carries is a shared Loan.
+    bool SharedCut(string k, string p, int i)
+    {
+        if (X == Abl.NoSharedCut) return false;
+        var s = Path.Segs(p); int from = Path.Segs(k).Length;
+        int j = from <= s.Length ? Array.IndexOf(s, "*", from) : -1;
+        if (j < 0) return false;
+        var prefix = string.Join('.', s.Take(j));
+        var holders = M == Mode.A ? [Root(prefix)] : Resolve(prefix, i).Leaves;
+        var f = In[i].Where(t => holders.Any(h => M == Mode.A ? t.H == h : Path.Overlap(t.H, h))).ToList();
+        return f.Count > 0 && f.All(t => !issue[t.L].Uniq && !issue[t.L].Param);
     }
 
     // Provenance resolution of a Place through the references it follows, at P. Names: every name of the Place
@@ -322,7 +344,8 @@ class Analysis
             // Round 5: a value P stores (a flow into a holder live after P, or a write through a reference) is in transit
             // during P, so its source's entry facts count even if the source dies at P (24c).
             var transit = X == Abl.NoTransit ? [] : n.Flows.Where(f => LiveAfter(f.To))
-                .SelectMany(f => f.From.Contains('*') ? Resolve(f.From, i).Leaves : [f.From]).Concat(n.Throughs.Select(t => t.Src)).ToList();
+                .SelectMany(f => f.From.Contains('*') ? Resolve(f.From, i).Leaves : [f.From])
+                .Concat(n.Throughs.Where(t => Resolve(t.Place, i).Leaves.Any(r => LiveAfter(Path.Before(r, "[]")))).Select(t => t.Src)).ToList();
             foreach (var a in accs)
             {
                 var res = X == Abl.SyntacticAccess ? new Res([a.Place], [a.Place], []) : Resolve(a.Place, i);
@@ -340,11 +363,14 @@ class Analysis
                 foreach (var (h, l) in facts)
                 {
                     if ((X == Abl.IdExclusion && l == a.Except) || res.Auth.Contains(l) || issue[l].Param) continue;
+                    bool uniq = issue[l].Uniq && !Reserved(h, l, i);
+                    // SharedBaseOp: P3 for S1′, a shared borrow of the base or an ancestor while an exclusive child is live.
+                    bool op = baseOp || ((X is Abl.SharedBaseOp or Abl.P3RootMost) && M == Mode.S1P && a.Kind == K.SBorrow && !a.InPlace && uniq);
                     // error(L, P) :- live_loan(L, P), base(L, B), base_op(P, K), runs_through(B, K): K is B or a prefix of B
                     // across Deref steps, syntactically; an Index step matches unless both are distinct constants.
-                    if (baseOp && Base(l) is { } bb && res.Names.Any(k => Path.Within(bb, k) && (X != Abl.BaseOpMovePathsOnly || !k.Contains('*'))))
+                    if (op && Base(l) is { } bb && res.Names.Any(k => Path.Within(bb, k) && (X != Abl.BaseOpMovePathsOnly || !k.Contains('*'))
+                            && !(a.Kind == K.Destroy && SharedCut(k, issue[l].Place, i))))
                     { Err(l, i, $"base_op {a.Kind} {a.Place}"); continue; }
-                    bool uniq = issue[l].Uniq && !Reserved(h, l, i);
                     if (!uniq && a.Kind is K.Read or K.SBorrow) continue;
                     var lp = X == Abl.S1ResolvePlaces ? places[l].SelectMany(p => Resolve(p, i).Names).ToHashSet() : places[l];
                     if (res.Names.Any(x => lp.Any(p => Path.Hits(x, p)))) Err(l, i, $"{a.Kind} {a.Place}");
@@ -416,8 +442,9 @@ class Analysis
         for (int i = 0; i < N; i++)
         {
             var n = ns[i]; var accs = n.Accs.ToList();
-            accs.AddRange(n.Issues.Where(s => !s.Param).Select(s => new Acc(s.Uniq && !s.Reserve ? K.UBorrow : K.SBorrow, s.Place, null)));
-            accs.AddRange(n.Activates.Select(id => new Acc(K.UBorrow, issue[id].Place, id)));
+            // A2 keeps the `replace` exemption: a destroying Ref is a shallow read, and its activation is not deep.
+            accs.AddRange(n.Issues.Where(s => !s.Param).Select(s => new Acc(s.InPlace ? K.Read : s.Uniq && !s.Reserve ? K.UBorrow : K.SBorrow, s.Place, null, s.InPlace)));
+            accs.AddRange(n.Activates.Select(id => new Acc(K.UBorrow, issue[id].Place, id, issue[id].InPlace)));
             accs.AddRange(n.Exchanges.Select(h => new Acc(K.Move, h, null)));
             var after = succ[i].SelectMany(q => liveIn[q]).ToHashSet();
             var dest = n.Defs.Concat(n.Exchanges).Where(h => !h.Contains('.')).ToHashSet();
@@ -429,8 +456,17 @@ class Analysis
                 var S = Sigma(In[i], Root(x)); for (int k = Steps(x); k > 1; k--) S = Content(In[i], S);
                 return Refs(S);
             }
+            HashSet<string> Targets(string place) // the holders a write through `place` reaches (P10)
+            {
+                if (Steps(place) == 0) return [Root(place)];
+                var S = Sigma(In[i], Root(place)); for (int k = Steps(place); k > 1; k--) S = Content(In[i], S);
+                return Refs(S);
+            }
+            // Transit clause (owner decision): σ_in of every value ℓ stores into a holder live after ℓ, into E, or through
+            // a reference with a live destination.
             var transit = X == Abl.NoTransit ? [] : n.Flows.Where(f => after.Contains(Root(f.To)) || Esc(Root(f.To)))
-                .SelectMany(f => SrcHolders(f.From)).Concat(n.Throughs.Select(t => Root(t.Src))).ToHashSet();
+                .SelectMany(f => SrcHolders(f.From))
+                .Concat(n.Throughs.Where(t => Targets(t.Place).Any(h => after.Contains(h) || Esc(h))).Select(t => Root(t.Src))).ToHashSet();
             foreach (var a in accs)
             {
                 // LS facts (see Check). IdExclusion: the old by-id rule. AText: design A's letter (σ after ℓ over live_out,
@@ -446,7 +482,7 @@ class Analysis
                     var l0 = work.Dequeue().L; var T = issue[l0].Param ? "E" : Direct(l0) ? Root(issue[l0].Place) : null;
                     if (T != null) foreach (var t in basis.Where(t => t.H == T)) if (F.Add(t)) work.Enqueue(t);
                 }
-                bool deep = a.Kind is K.Move or K.SBorrow or K.UBorrow or K.Destroy; // S1′ + P3; an observing Drop is deep
+                bool deep = (a.Kind is K.Move or K.SBorrow or K.UBorrow or K.Destroy) && !a.InPlace; // S1′ + P3; an observing Drop is deep; not a destroying Ref
                 bool byId = X is Abl.IdExclusion or Abl.AText;
                 foreach (var (h, l) in F)
                 {
@@ -455,7 +491,8 @@ class Analysis
                     bool uniq = issue[l].Uniq && !Reserved(h, l, i);
                     if (!uniq && a.Kind is K.Read or K.SBorrow) continue;
                     var p = issue[l].Place; // syntactic: no resolution, no authority
-                    if (Path.Within(a.Place, p) || (Path.Within(p, a.Place) && (deep || !Path.DerefBelow(p, a.Place)))) Err(l, i, $"{a.Kind} {a.Place}");
+                    bool reach = deep && !(a.Kind == K.Destroy && SharedCut(a.Place, p, i));
+                    if (Path.Within(a.Place, p) || (Path.Within(p, a.Place) && (reach || !Path.DerefBelow(p, a.Place)))) Err(l, i, $"{a.Kind} {a.Place}");
                 }
             }
         }
@@ -497,7 +534,10 @@ static class Cases
         LoopSite("20a", "uniq"), LoopSite("20b", "reserved"), LoopSite("20c", "refkept"), LoopSite("20d", "uniqkept"),
         LoopSite("20e", "child"), LoopSite("20f", "window"),
         TempStep("21a", clear: false), TempStep("21b", clear: true), IndexBan("22a", constant: false), IndexBan("22b", constant: true),
-        OuterThenWrite(), ParamOuter(), DropBase("24a", userDrop: true), DropBase("24b", userDrop: false), DropMerged()];
+        OuterThenWrite(), ParamOuter(), DropBase("24a", userDrop: true), DropBase("24b", userDrop: false), DropMerged(),
+        SelfStore("25a", "live"), SelfStore("25b", "dead"), SelfStore("25c", "enum"), DestroyingCall("26a", clear: false), DestroyingCall("26b", clear: true),
+        SharedField(), Args("28a", "uniqref"), Args("28b", "refref"), Args("28c", "fields"), Args("28d", "stored"),
+        CrossingKill(), EscapedTransit(), PartTransit(), LinkedList("30a", "obj"), LinkedList("30b", "uniq"), LinkedList("30c", "conflict"), LinkedList("30d", "peek")];
 
     static Case Replacement()
     {
@@ -1073,7 +1113,67 @@ static class Cases
         c.N("rr = slot2@uniq").Assign("rr").Borrow("Lo2", "slot2", Uniq, "rr");
         c.N("rr@follow@follow = 7").A(K.Write, "rr.*.*");
         c.N("c@follow = 1").A(K.Write, "c.*");
-        return c.Valid();
+        return c.Valid().S1(true, "rr@follow@follow = 7"); // listed loss of the plan's kill (round 6 correction)
+    }
+
+    // Round 6 correction (plan review): a kill across a Deref ends both children of q. S {var p: uniq/i32}.
+    static Case CrossingKill()
+    {
+        var c = new Case("29a", "(coordinator's 25a) `q = s@uniq; c = q.p@follow@uniq; w = q@follow@ref; q = o@uniq; a = w.p@follow; c@follow = 5; inspect(w.p@follow)`");
+        c.N("var t = 1; var u = 2").Def("t", "u");
+        c.N("var s = S(p: t@uniq); var o = S(p: u@uniq)").Def("s", "o").Borrow("Lt", "t", Uniq, "s.p").Borrow("Lu", "u", Uniq, "o.p");
+        c.N("var q = s@uniq").Def("q").Borrow("Lq", "s", Uniq, "q");
+        c.N("let c = q.p@follow@uniq").Def("c").Borrow("Lc", "q.*.p.*", Uniq, "c");
+        c.N("let w = q@follow@ref").Def("w").Borrow("Lw", "q.*", Ref, "w");
+        c.N("q = o@uniq").Assign("q").Borrow("Lo", "o", Uniq, "q");
+        c.N("let a = w.p@follow").Def("a").A(K.Read, "w.*.p.*");
+        c.N("c@follow = 5").A(K.Write, "c.*");
+        c.N("inspect(w.p@follow)").A(K.Read, "w.*.p.*");
+        return c.Error();
+    }
+
+    // Transit into an escaped destination: p: uniq/S; S's drop writes through self.r; drop and store at one point.
+    static Case EscapedTransit()
+    {
+        var c = new Case("29b", "`p: uniq/S`; `p@follow = S(r: p.r@follow@uniq)`, S's drop writes through self.r (one point)");
+        c.N("func f(p: uniq/S)").Param("Lp", "p");
+        c.N("$t = p.r@follow@uniq").Def("$t").Borrow("L2", "p.*.r.*", Uniq, "$t");
+        c.N("$v = S(r: $t)").Def("$v").Flow("$t", "$v.r");
+        c.N("p@follow = move $v (drops old *p)").Through("p.*", "$v").Drop("p.*").A(K.Write, "p.*.r.*").A(K.Move, "$v");
+        return c.Error("p@follow = move $v (drops old *p)");
+    }
+
+    // Linked-list traversal (Temp shape). struct Node {var value: i32; var next: Option<L>}; `.some` is the payload
+    // a match selects. ll1: L = obj/Node, whose payload is an owned step (part of the handle's storage, A2 §3), so the
+    // place has one borrow Deref and B = node. ll2: L = uniq/Node, so B = node.*.next.some, and `node = …` ends nothing.
+    static Case LinkedList(string id, string kind)
+    {
+        bool obj = kind == "obj"; bool conflict = kind == "conflict";
+        var c = new Case(id, (obj ? "ll1 (obj links)" : conflict ? "ll3 (uniq links, write through the old link)" : kind == "peek" ? "ll2 + read through the new node's link" : "ll2 (uniq links)")
+            + ": loop `_t = node.next.some@follow@uniq; node = move _t`" + (conflict ? " with `node.next@follow.value = 1` while _t is live" : ""));
+        c.N("func last(head: uniq/Node)").Param("Lh", "head");
+        c.N("var node = head").Def("node").Borrow("L0", "head.*", Uniq, "node");
+        c.N("while node.next is .Some").A(K.Read, "node.*.next").Goto("  _t = node.next.some@follow@uniq", "node.value = 1");
+        c.N("  _t = node.next.some@follow@uniq").Def("_t").Borrow("Ln", obj ? "node.*.next.some.payload" : "node.*.next.some.*", Uniq, "_t");
+        if (conflict) c.N("  node.next@follow.value = 1").A(K.Write, "node.*.next.some.*.value");
+        var step = c.N("  node = move _t").Assign("node").A(K.Move, "_t").Flow("_t", "node");
+        if (kind == "peek") c.N("  inspect(node.next@follow.value)").A(K.Read, "node.*.next.some.*.value").Goto("while node.next is .Some");
+        else step.Goto("while node.next is .Some");
+        c.N("node.value = 1").A(K.Write, "node.*.value");
+        if (kind == "peek") c.ALoss = "23a family: the plan's within kill (stale base name through a Deref)";
+        return conflict ? c.Error("  node.next@follow.value = 1") : c.Valid();
+    }
+
+    // Path-exact transit: the store goes to s.inner, while only s is used later.
+    static Case PartTransit()
+    {
+        var c = new Case("29c", "`s.inner = f(s.inner@ref)` (retains); only `s` used later");
+        c.N("var s = S(inner: make(), other: 0)").Def("s");
+        c.N("$a = s.inner@ref").Def("$a").Borrow("Li", "s.inner", Ref, "$a");
+        c.N("$r = f($a)").Def("$r").Flow("$a", "$r");
+        c.N("s.inner = move $r").Assign("s.inner").A(K.Move, "$r").Flow("$r", "s.inner");
+        c.N("inspect(s)").Use("s");
+        return c.Error("s.inner = move $r");
     }
 
     // Soundness probe for a kill across a Deref: the outer holder is a reborrow of a parameter's referent.
@@ -1117,6 +1217,99 @@ static class Cases
         c.N("s = move $v (drops old s)").Assign("s").Drop("s").A(K.Write, "s.r.*").A(K.Move, "$v").Flow("$v", "s");
         c.N("inspect(s)").Use("s");
         return c.Error("s = move $v (drops old s)");
+    }
+
+    // ---- Round 6 (review r2) ----
+    // f1: `x = f(x@ref)`, f retains its input in its result; x's Type needs no drop (no Drop statement in MIR).
+    static Case SelfStore(string id, string kind)
+    {
+        var c = new Case(id, kind switch
+        {
+            "dead" => "f1 dead store: `x = f(x@ref)`, x unused afterwards",
+            "enum" => "f1 enum: `var x: E = .A(n: 42); x = pin(x@ref); match x .B(let r) => inspect(r@follow)`",
+            _ => "f1: `x = f(x@ref)` (retains; no drop); `inspect(x)`",
+        });
+        c.N(kind == "enum" ? "var x: E = .A(n: 42)" : "var x = make()").Def("x");
+        c.N("$a = x@ref").Def("$a").Borrow("Lx", "x", Ref, "$a");
+        c.N(kind == "enum" ? "$r = pin($a)" : "$r = f($a)").Def("$r").Flow("$a", "$r");
+        c.N("x = move $r").Assign("x").A(K.Move, "$r").Flow("$r", "x");
+        if (kind == "enum") { c.N("match x .B(let r)").Def("r").A(K.Read, "x").Flow("x", "r"); c.N("inspect(r@follow)").A(K.Read, "r.*"); }
+        else if (kind != "dead") c.N("inspect(x)").Use("x");
+        return kind == "dead" ? c.Valid() : c.Error("x = move $r");
+    }
+
+    // f2: S {r: uniq/Array<i32>} whose drop clears self.r. 26a: `replace(s@uniq, with: …)`; 26b: `arr.clear()` on Array<S>.
+    // The destroying call is a destroy access of its target, deep and exclusive (the Type observes), before `ended`.
+    static Case DestroyingCall(string id, bool clear)
+    {
+        var c = new Case(id, clear ? "f2: `c = arr[0].r@follow@uniq; arr.clear()` (Array<S>, S's drop writes self.r); `inspect(c@follow)`"
+                                   : "f2: `c = s.r@follow[0]@uniq; replace(s@uniq, with: S(r: y@uniq))` (old s's drop clears self.r); `inspect(c@follow)`");
+        c.N("var x = [1, 2]; var y = [3]").Def("x", "y");
+        if (clear)
+        {
+            c.N("var arr: Array<S> = [S(r: x@uniq)]").Def("arr").Borrow("L1", "x", Uniq, "arr");
+            c.N("let c = arr[0].r@follow@uniq").Def("c").Borrow("L2", "arr.[].r.*", Uniq, "c");
+            c.N("$t = arr (clear receiver, reserved; destroying)").Def("$t").Borrow("Lt", "arr", Uniq, "$t", reserve: true, inPlace: true);
+            c.N("arr.clear()").Activate("Lt").Drop("arr.[]").A(K.Write, "arr.[].r.*");
+            c.N("inspect(c@follow)").A(K.Read, "c.*");
+            return c.Error("arr.clear()");
+        }
+        c.N("var s = S(r: x@uniq)").Def("s").Borrow("L1", "x", Uniq, "s.r");
+        c.N("let c = s.r@follow[0]@uniq").Def("c").Borrow("L2", "s.r.*.[]", Uniq, "c");
+        c.N("$t = s@uniq (reserved, replace target)").Def("$t").Borrow("Lt", "s", Uniq, "$t", reserve: true, inPlace: true);
+        c.N("$v = S(r: y@uniq)").Def("$v").Borrow("Ly", "y", Uniq, "$v.r");
+        c.N("replace($t, with: $v)").Activate("Lt").Def("s").Drop("s").A(K.Write, "s.r.*").Flow("$v", "s");
+        c.N("inspect(c@follow)").A(K.Read, "c.*");
+        return c.Error("replace($t, with: $v)");
+    }
+
+    // f3 (valid): S {r: ref/i32} has a drop; a shared reborrow through the shared field outlives s.
+    static Case SharedField()
+    {
+        var c = new Case("27", "f3: `var v = other@ref; do: let s = S(r: x@ref); v = s.r@follow@ref` (S has a drop); `inspect(v)`");
+        c.N("var x = 1; var other = 2").Def("x", "other");
+        c.N("var v = other@ref").Def("v").Borrow("Lo", "other", Ref, "v");
+        c.N("  let s = S(r: x@ref)").Def("s").Borrow("Lx", "x", Ref, "s.r");
+        c.N("  v = s.r@follow@ref").Assign("v").Borrow("L2", "s.r.*", Ref, "v");
+        c.N("  (end of do: drop s)").Drop("s").Def("s");
+        c.N("inspect(v)").Use("v");
+        return c.Valid();
+    }
+
+    // f9: arguments of one call. An exclusive argument borrow is a reservation (§15.6.7); 28d is a stored borrow.
+    static Case Args(string id, string kind)
+    {
+        var c = new Case(id, kind switch
+        {
+            "uniqref" => "f9: `g(a@uniq, a@ref)`",
+            "refref" => "f9: `g(a@ref, a@ref)`",
+            "fields" => "f9: `g(a.x@uniq, a.y@ref)`",
+            _ => "f9: `let r = a@uniq; g(r, a@ref)` (r stored, not a reservation)",
+        });
+        c.N("var a = A(x: 1, y: 2)").Def("a");
+        switch (kind)
+        {
+            case "uniqref":
+                c.N("$1 = a@uniq (reserved)").Def("$1").Borrow("L1", "a", Uniq, "$1", reserve: true);
+                c.N("$2 = a@ref").Def("$2").Borrow("L2", "a", Ref, "$2");
+                c.N("g($1, $2)").Activate("L1").Use("$1", "$2");
+                return c.Error("g($1, $2)");
+            case "refref":
+                c.N("$1 = a@ref").Def("$1").Borrow("L1", "a", Ref, "$1");
+                c.N("$2 = a@ref").Def("$2").Borrow("L2", "a", Ref, "$2");
+                c.N("g($1, $2)").Use("$1", "$2");
+                return c.Valid();
+            case "fields":
+                c.N("$1 = a.x@uniq (reserved)").Def("$1").Borrow("L1", "a.x", Uniq, "$1", reserve: true);
+                c.N("$2 = a.y@ref").Def("$2").Borrow("L2", "a.y", Ref, "$2");
+                c.N("g($1, $2)").Activate("L1").Use("$1", "$2");
+                return c.Valid();
+            default:
+                c.N("let r = a@uniq").Def("r").Borrow("Lr", "a", Uniq, "r");
+                c.N("$2 = a@ref").Def("$2").Borrow("L2", "a", Ref, "$2");
+                c.N("g(r, $2)").Use("r", "$2");
+                return c.Error("$2 = a@ref");
+        }
     }
 
     // ---- 10: call reservations (§15.6.7) ----

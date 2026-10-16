@@ -30,7 +30,7 @@ dotnet run proto.cs -- -v        # also every error fact (Loan, point, access) p
 dotnet run proto.cs -- -dump 9n  # per-point carries, liveness and Loan places for one case
 ```
 
-- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 1,120 lines after rounds 2–5.
+- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 1,304 lines after rounds 2–6.
 - The first run takes about 30 s, mostly compilation; evaluation is a naive fixpoint.
 - `out.txt` holds the last `-v` run.
 
@@ -537,3 +537,56 @@ incarnation that another holder still carries. Three places did this before the 
 - S1′ fails only 23a (over-strict).
 - A has no unsound acceptance; its one unlisted rejection is 23a.
 - The earlier 66 cases are unchanged.
+
+## Round 6 (review r2, the transit clause, plan b7705831's `within` kill)
+
+**Changes.**
+
+- Both modes:
+  - the transit clause, with live destinations judged by overlap;
+  - destroying calls as deep destroy accesses;
+  - the shared-Deref cut.
+- A mode: the plan's kill (last-Deref B, `within`, identical constant indexes only) and shallow destroying Refs.
+- 23a is a listed loss.
+
+| Case | Program | SPEC | S1′ | A |
+| --- | --- | --- | --- | --- |
+| 25a, 25c | f1 `x = f(x@ref)` (no drop), enum `x = pin(x@ref)` | error | error | error |
+| 25b | 25a, x dead afterwards | valid | valid | valid |
+| 26a, 26b | f2 `replace(s@uniq, …)`, `arr.clear()` | error | error | error |
+| 27 | f3 shared field | valid | valid | valid |
+| 28a–28d | f9 `g(a@uniq, a@ref)`, `g(a@ref, a@ref)`, disjoint Fields, stored `a@uniq` | E, V, V, E | same | same |
+| 29a | the coordinator's 25a (crossing kill) | error | **valid: UNSOUND** | error (P3, at `w`) |
+| 29b | escaped destination: `p@follow = S(r: p.r@follow@uniq)` | error | error | error |
+| 29c | path-exact: `s.inner = f(s.inner@ref)` | error | error | error |
+| 30a | ll1: obj links, `node = node.next…@follow@uniq` | valid | valid | valid |
+| 30b | ll2: `uniq/Node` links | valid | valid | valid |
+| 30c | ll3: ll2 plus a write through the old link | error | **valid: UNSOUND** | error |
+| 30d | ll2 plus a read through the new link | valid | valid | error (23a family) |
+
+**Findings.**
+
+1. **Transit.** Without it, 24c, 25a, 25c, 29b and 29c are accepted. With it, 25b, 19a and 21a stay valid.
+2. **Cut.** Without the shared-Deref cut, 27 is rejected.
+3. **29a.**
+   - A mode rejects it under either kill, through P3 at `w`.
+   - S1′ accepts it under both kills: under `within` too, w's Loan (base `q`) ends at `q = o@uniq`.
+   - S1′ plus P3 (`SharedBaseOp`) rejects it, so **the counterexample needs the absence of P3**.
+4. **Linked lists.**
+   - 30a: the obj payload is an owned step, so B = `node`.
+   - 30b: the stale Loan sits in a dead `node`.
+   - **30d is in 23a's family.**
+   - **30c is UNSOUND in S1′**: `node` carries its own site's earlier Loan, and the id-based authority set excludes it
+     (round 4's open risk).
+5. **P3 plus the root-most kill** (A with `KillAcrossDeref`, S1′ with `P3RootMost`) is sound on all 92 cases and
+   accepts 23a and 30d.
+
+**Rerun: 92 cases.**
+
+- **S1′, the plan's rules:** unsound on 29a and 30c. Every other case matches.
+- **A:**
+  - 70 same and 14 with an earlier error.
+  - 8 listed losses: P1 (5b, 7, 18a); S1′ (9k, 9l, 14); the `within` kill (23a, 30d).
+  - No unsound acceptance and no unlisted rejection.
+- **Recommendation:** keep P3 in S1. With P3 the root-most kill is sound and loses nothing here. Keeping `within`
+  instead costs 23a's family, including borrowed-link traversals that read through the new node.
