@@ -38,7 +38,7 @@ internal sealed partial class MirBuilder
     // receiver mode, the receiver, then the arguments in their order (an assignment's secured value first, SPEC 13.7.1), each as its Adjust
     // takes it for its parameter's Type or as the value an expansion evaluated for it (given), then its omitted defaults (Defaults), passed by
     // parameter slot, the receiver first. A compiler function is its intrinsic where the table gives one (IntrinsicDisposition; Fail with its
-    // fixed code), a direct base call the implementation the virtual selection names, and a place result the reference the call returns. A
+    // fixed code), and a direct base call the implementation the virtual selection names. A
     // call of a Never function or a diverging intrinsic has no runtime successor and continues for the checks (SPEC 14.10); a call whose
     // operand does not complete enters no callee (SPEC 15.6.7).
     private void Call(MirPlace destination, CallPlan call, Koto node, Koto? first, Koto? given = null, in MirOperand value = default)
@@ -133,10 +133,8 @@ internal sealed partial class MirBuilder
             _ => new MirCallee(MirCalleeKind.Fn, direct, subst),
         };
 
-        var result = call.ResultMode == FunctionResultMode.Value || ReferenceEquals(this.body.TypeOf(destination), call.ReturnType) ? destination
-            : this.Temp(call.ReturnType, node);
         this.Invoke(
-            result,
+            destination,
             callee,
             start,
             node,

@@ -128,7 +128,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         // SPEC 4.7.1: a string element reached through a sequence or a reference is borrowed through the common element borrow.
-        var stringElement = ElementAccess.IsBorrowedSelection(BorrowedArgumentSource(source)) || ElementAccess.IsPlaceCall(BorrowedArgumentSource(source)) || ElementAccess.IsUserIndex(BorrowedArgumentSource(source));
+        var stringElement = ElementAccess.IsBorrowedSelection(BorrowedArgumentSource(source)) || ElementAccess.IsIndexerCall(BorrowedArgumentSource(source)) || ElementAccess.IsUserIndex(BorrowedArgumentSource(source));
         if (argument.Kind == ArgumentOperationKind.Borrow && ReferenceTypes.IsString(argument.ParameterType) && !stringElement && !this.SpecialField(BorrowedArgumentSource(source)))
         {
             // Preserve the call-wide inspection plan for implicit string arguments.
@@ -141,7 +141,7 @@ public sealed partial class OwnershipAnalysis
                 (argument.Kind == ArgumentOperationKind.Value && IsDirectExclusiveBorrow(source))))
         {
             // Binding's acquisition keeps the source dependency before parameter lifetime fitting. In particular,
-            // Reborrowing a reference stored in a published Place keeps the referent's Origin, not the slot's Origin.
+            // Reborrowing a reference stored in a subscript's element keeps the referent's Origin, not the slot's Origin.
             // The common borrowing path still records the actual Loan footprint and call reservation.
             var type = argument.AdaptedType ?? this.compilation.Binding.PreparedBorrowType(source, argument.ParameterType!);
             var direct = KotoHelper.UnwrapParentheses(source);

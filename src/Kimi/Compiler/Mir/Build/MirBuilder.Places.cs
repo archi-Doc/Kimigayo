@@ -253,11 +253,13 @@ internal sealed partial class MirBuilder
         return local;
     }
 
-    // SPEC 7.1.1: the referent of the reference a place call, a user index or a getter publishes: its selection's call, else the node's.
+    // SPEC 4.7.1: the referent of the reference that a subscript's selected call returns; the selection's published expansion names that
+    // call, and a missing one is a broken HIR contract.
     private MirPlace Referent(Koto node)
     {
-        var result = this.Temp((ExpansionPlan.Of(node)?.Second ?? CallPlan.Of(node))!.ReturnType, node);
-        this.Into(result, node);
+        var call = ExpansionPlan.Of(node)!.Value.Second!;
+        var result = this.Temp(call.ReturnType, node);
+        this.Call(result, call, node, first: null);
         return this.body.Project(result, MirProjectionKind.Deref, 0);
     }
 

@@ -261,7 +261,7 @@ The original alone owns the public contract; an override inherits it as an expli
 | --- | --- |
 | Inputs, receiver mode | Same count, order and normalized Types; same `objref` or `objuniq` |
 | Task slot | As the original ([§24.2.1](24-suspension-and-asynchronous-tasks.md#2421-form)) |
-| Result | Same kind, Place mode and normalized Type; no covariance |
+| Result | Same kind and normalized Type; no covariance |
 | Parameter names | Same external names; internal names may change |
 | Origins | Inherited; written annotations must state the same contract |
 | Access, `!`, defaults, Constraints, effects | Inherited with the original's access domain (`protected internal` is not reinterpreted relative to the derived Kotonoha); never redeclared |

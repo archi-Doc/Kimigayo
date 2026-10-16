@@ -455,7 +455,7 @@ public sealed partial class Binding
 
     private bool? MatchesRequirement(FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope, MemberSelection selection)
     {
-        if (implementation.IsSpecialization || !SameGenericShape(requirement, implementation) || requirement.Parameters.Count != implementation.Parameters.Count || ResultModeOf(requirement.ReturnType) != ResultModeOf(implementation.ReturnType))
+        if (implementation.IsSpecialization || !SameGenericShape(requirement, implementation) || requirement.Parameters.Count != implementation.Parameters.Count)
         {
             return false;
         }
@@ -520,12 +520,6 @@ public sealed partial class Binding
         if (formation != ConstraintProof.Proven)
         {
             return formation;
-        }
-
-        // SPEC 7.1.1, 8.6: the retained identification preserves the result category and mode.
-        if (ResultModeOf(requirement.ReturnType) != ResultModeOf(implementation.ReturnType))
-        {
-            return ConstraintProof.Error;
         }
 
         var identity = new BoundRequirement(requirement.BoundSymbol!, conformance.Contract);

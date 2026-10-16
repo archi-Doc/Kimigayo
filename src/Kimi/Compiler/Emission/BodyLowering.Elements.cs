@@ -500,7 +500,7 @@ internal sealed partial class BodyLowering
         var receiverType = body.Resolve(source.Left.BoundType, body.ContextAt(id))!;
         if (receiverType.Kind == BoundTypeKind.Dictionary)
         {
-            return Fail("Dictionary selection must use its Indexable Place call.", out failure);
+            return Fail("Dictionary selection must use its Indexable index call.", out failure);
         }
 
         var dynamicArray = receiverType.Kind == BoundTypeKind.Array;

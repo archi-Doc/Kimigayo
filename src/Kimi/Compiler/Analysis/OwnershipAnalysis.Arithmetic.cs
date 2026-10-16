@@ -45,7 +45,7 @@ public sealed partial class OwnershipAnalysis
             if (target is IndexKoto userIndex && this.compilation.Binding.IndexerCall(userIndex, true) is { } indexer)
             {
                 storage = indexer;
-                address = this.PlaceCallReference(indexer);
+                address = this.IndexerCallReference(indexer);
             }
             else if (target is MemberAccessKoto field && ElementAccess.BorrowedPathRoot(field) is { } root)
             {
@@ -69,10 +69,6 @@ public sealed partial class OwnershipAnalysis
                 storage = followed.Left;
                 address = this.ReadsStoredReference(followed) ? this.StoredReference(KotoHelper.UnwrapParentheses(storage), SemanticsKind.Uniq)
                     : this.Expression(storage, PlaceUseKind.Read);
-            }
-            else if (target is InvocationKoto place && ElementAccess.PlaceCallReference(place)?.Semantics == SemanticsKind.Uniq)
-            {
-                address = this.PlaceCallReference(place);
             }
             else
             {

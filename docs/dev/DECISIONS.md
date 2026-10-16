@@ -877,3 +877,40 @@ and migration obligations remain in force; no numeric cap changes are authorized
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
   exit; O5 the unclassified count failing to fall in two sessions in a row (plan §18 P9).
+
+## Language changes (2026-10-16)
+
+- **PR-1 Place results removed; a subscript follows its selected call's reference** (2026-10-16, planning session; owner
+  approved the removal, its timing before R6 and the D5 exception for it; proposal
+  [Place Result Removal](../../draft/Changes/2026-10-16%20Place%20Result%20Removal.md), two independent designs compared in
+  its 2026-10-15 edition).
+  - Adopted: a function result is a Type (SPEC 7.1). `index` returns `ref/Element during self` and `indexUniq`
+    `uniq/Element during self`; `receiver[key]` through a conformance designates the referent of the reference the
+    selected call returns (SPEC 4.7.1), and a written `index`/`indexUniq` call is an ordinary call returning that
+    reference. Every call publishes its plan's result Type; the subscript owner (`Binding.Indexers`, `Binding.Views`)
+    types the element once from the selected call's plan (`LentElement`) and publishes it on the subscript, HIR
+    `HirPlaceKind.CallResult` has that one producer, and MIR `Referent` reads the selected plan.
+  - Deleted: `FunctionResultMode`, `BoundType.ResultMode` and its interning, identity, relation and pass-through sites,
+    `CallPlan.ResultMode`, `ResultModeOf`, `PlaceExpected`, `CheckPlaceResultOperand`; `PlaceResultKoto`,
+    `KotoKind.PlaceResult`, `SyntaxForm.PlaceResultSuffix` and the `place` contextual keyword; `BindingFailure.PlaceRequired`,
+    `PlaceRequired_Kd` and their requirement entries; `ExpectedAdaptationKind.ExclusiveBorrow` (Place publishing only;
+    `HirAdaptation.ExclusiveBorrow` stays); the result-mode filters of identification, overrides, closures and Callable fits
+    and the Place exclusion of associated-Type evidence; Binding's general Place-call branches, the old paths' general
+    Place-call branches (`ReferenceTemporary`, the unacquired Place statement, writes and updates through a Place call)
+    and the MIR result-temp branch.
+  - Rejected: keeping Place results with a shared Follow inside their owners (result modes stay in Callable, matching and
+    inference); Place results only for the index requirements, or as compatibility syntax (+100 tokens; modes stay in
+    function Types, CallPlan and matching); `CallPlan.ResultMode` kept for synthesized index calls (the two Types and the
+    MIR branch stay); Place results as sugar for a reference plus an implicit Follow at every call position; implicit
+    Follow of every reference result (`let r = f()` must keep the reference, SPEC 3.3.3, 3.6); subscripts as ordinary
+    calls followed by the user (breaks SPEC 4.7.2 parity); a synthesized Follow node or Deref publication per subscript
+    (selection happens after binding and capability comes from the receiver path: two forms of one concept). SETTLED
+    records the language-level ones.
+  - Timing: the proposal defaulted to after R6; R4 paused, the owner chose to land it now with a D5 exception limited to
+    deleting Place-only branches and keying the old paths' subscript branches on the selected call. No temporary
+    structure was needed: the old paths recognize the selected call (`ElementAccess.IsIndexerCall`) and read the element the
+    subscript publishes (`ElementAccess.DesignatedType`), which goes with them at R6.
+  - Earlier reason that no longer holds: the 2026-09-25 Shared Place Results proposal compared Place results with a value result
+    whose Move is forbidden, not with a reference result that the index expression follows; the caller's choice it wanted
+    (Copy, borrow or replace, as for Array) is what following the returned reference gives, and its §7 had already fixed
+    the ABI to that of the reference result.

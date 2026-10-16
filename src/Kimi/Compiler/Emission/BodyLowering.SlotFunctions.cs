@@ -111,9 +111,9 @@ internal sealed partial class BodyLowering
         for (var id = 0; id < body.Operations.Count; id++)
         {
             var call = body.Operations[id];
-            // SPEC 7.1.1: a Place call returns its reference, whatever the stored Type its syntax designates.
+            // SPEC 7.1: a call produces its result Type, a returned reference included.
             var evaluator = body.Values[id].Kind == OwnershipValueKind.DefaultCall;
-            if (call.Kind != OwnershipOperationKind.Call || !SlotTypes.IsResult(evaluator ? body.Places[call.Place].Type : body.Resolve(ElementAccess.PlaceCallReference(call.Source) ?? call.Source.BoundType, body.ContextAt(id))))
+            if (call.Kind != OwnershipOperationKind.Call || !SlotTypes.IsResult(evaluator ? body.Places[call.Place].Type : body.Resolve(call.Source.BoundType, body.ContextAt(id))))
             {
                 continue;
             }
@@ -131,7 +131,7 @@ internal sealed partial class BodyLowering
             }
 
             var place = body.Places[call.Place];
-            if (place.Kind != OwnershipPlaceKind.Temporary || !ReferenceEquals(place.Source, call.Source) || (!evaluator && !ReferenceEquals(place.Type, body.Resolve(ElementAccess.PlaceCallReference(call.Source) ?? call.Source.BoundType, body.ContextAt(id)))))
+            if (place.Kind != OwnershipPlaceKind.Temporary || !ReferenceEquals(place.Source, call.Source) || (!evaluator && !ReferenceEquals(place.Type, body.Resolve(call.Source.BoundType, body.ContextAt(id)))))
             {
                 return Fail("Stored call result must have its own temporary storage.", out failure);
             }

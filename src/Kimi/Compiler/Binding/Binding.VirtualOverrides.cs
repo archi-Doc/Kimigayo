@@ -437,10 +437,9 @@ public sealed partial class Binding
         }
 
         if (original.BoundSymbol!.Type is { } required && implementation.BoundSymbol!.Type is { } actual && this.MemberType(required, slot.DeclaringType) is { } bound &&
-            (ResultModeOf(original.ReturnType) != ResultModeOf(implementation.ReturnType) ||
-                !SignatureEquals(this.ContractType(bound, this.scopes[implementation]), this.ContractType(actual, this.scopes[implementation]), original, implementation)))
+            !SignatureEquals(this.ContractType(bound, this.scopes[implementation]), this.ContractType(actual, this.scopes[implementation]), original, implementation))
         {
-            this.FailOverride(implementation, BindingFailure.OverrideContractMismatch, "the result Type and value/Place mode must match the original slot; result covariance is not allowed", original, at: implementation.ReturnType, required: bound, actual: actual);
+            this.FailOverride(implementation, BindingFailure.OverrideContractMismatch, "the result Type must match the original slot; result covariance is not allowed", original, at: implementation.ReturnType, required: bound, actual: actual);
         }
     }
 
@@ -463,7 +462,7 @@ public sealed partial class Binding
         }
         else if (failure.Required is BoundType required && failure.Actual is BoundType actual)
         {
-            reason = $"expected {ResultModeOf(failure.First!.ReturnType)} {DiagnosticTypeName(required)}, found {ResultModeOf(function.ReturnType)} {DiagnosticTypeName(actual)}; {reason}";
+            reason = $"expected {DiagnosticTypeName(required)}, found {DiagnosticTypeName(actual)}; {reason}";
         }
         else if (failure.Required is string requiredName && failure.Actual is string actualName)
         {

@@ -184,6 +184,13 @@ Renumbering preserves each program body except these authoring corrections:
   it is not a getter (SPEC §11.3). Its harness and expected output use the same wording.
 - Programs 24 and 37 (former 32 and 43) now have numbered introductory comments.
 
+Specification respellings:
+
+- Programs 27 and 28 (2026-10-16, Place result removal, SPEC §7.1 and §4.7.1): `index` and `indexUniq` return
+  `ref/T during self` and `uniq/T during self` and borrow explicitly (`self.first@ref`, `self.items[key]@uniq`), and
+  Program 27's `firstPlace` returns `items[0]@ref`. The uses, including `firstPlace(counts) == 42` (a comparison through
+  the reference), and the expected output are unchanged.
+
 Earlier specification respellings and authoring corrections remain in Git and PLAN_HISTORY.
 No target was simplified to fit an implementation limit. In particular, the refinement, Weak,
 static-storage and integrated-object targets retain their specified behavior and pending stages.

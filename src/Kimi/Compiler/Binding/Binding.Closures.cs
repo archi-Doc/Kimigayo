@@ -356,7 +356,7 @@ public sealed partial class Binding
             }
 
             var parameters = count == 0 ? BoundType.Unit : this.types.Tuple(types.AsSpan(0, count));
-            return this.FailMismatch(function, function, this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result], resultMode: ResultModeOf(function.ReturnType)), expected);
+            return this.FailMismatch(function, function, this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result]), expected);
         }
         finally
         {
@@ -366,7 +366,7 @@ public sealed partial class Binding
 
     private bool ClosureSignatureFits(FunctionKoto function, BoundType expected, bool openResult = false)
     {
-        if (expected.Kind != BoundTypeKind.Function || ResultModeOf(function.ReturnType) != expected.ResultMode)
+        if (expected.Kind != BoundTypeKind.Function)
         {
             return false;
         }
@@ -627,11 +627,6 @@ public sealed partial class Binding
         {
             var result = this.RequireType(expression, scope, symbol.Type);
             symbol.Type ??= result;
-            if (function.ReturnType is PlaceResultKoto place && !ReferenceEquals(result, BoundType.Never))
-            {
-                var placeItem = expression is CodeBlockKoto { IsExpressionBody: true, Items.Count: 1 } single ? single.Items[0] : expression;
-                this.CheckPlaceResultOperand(placeItem, place, ReferenceEquals(placeItem, expression) ? function : expression);
-            }
         }
 
         if (symbol.Type is null)
@@ -658,7 +653,7 @@ public sealed partial class Binding
             }
 
             var inputs = function.Parameters.Count == 0 ? BoundType.Unit : this.types.Tuple(((BoundType[])(object)buffer).AsSpan(0, function.Parameters.Count));
-            plan.Signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, symbol.Type], resultMode: ResultModeOf(function.ReturnType));
+            plan.Signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, symbol.Type]);
             for (var i = 0; i < plan.Storage.Count; i++)
             {
                 buffer[i] = plan.Storage[i].Environment.Type!;

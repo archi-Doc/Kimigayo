@@ -327,11 +327,6 @@ public sealed class SemanticSnapshotTest
                 builder.Append('/').Append(type.Semantics);
             }
 
-            if (type.ResultMode != FunctionResultMode.Value)
-            {
-                builder.Append('!').Append(type.ResultMode);
-            }
-
             if (type.Components.Count != 0)
             {
                 builder.Append('<').AppendJoin(',', type.Components.Select(this.Type)).Append('>');
@@ -527,11 +522,6 @@ public sealed class SemanticSnapshotTest
             {
                 text.Append(label).Append('=').Append(call.Kind == CalleeKind.Virtual ? call.VirtualIsDirect ? "virtual-direct" : "virtual" : "direct")
                     .Append(' ').Append(Symbol(call.Target)).Append(" -> ").Append(this.Type(call.ReturnType));
-                if (call.ResultMode != FunctionResultMode.Value)
-                {
-                    text.Append('!').Append(call.ResultMode);
-                }
-
                 if (call.TypeArguments.Length != 0)
                 {
                     text.Append(" types=[").AppendJoin(',', call.TypeArguments.ToArray().Select(this.Type)).Append(']');

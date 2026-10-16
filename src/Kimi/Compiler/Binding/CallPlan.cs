@@ -73,9 +73,6 @@ public sealed class CallPlan
     /// <summary>Gets the complete return type after substitution.</summary>
     public BoundType ReturnType { get; private set; } = null!;
 
-    /// <summary>Gets the result category committed with the selected contract.</summary>
-    public FunctionResultMode ResultMode { get; internal set; }
-
     /// <summary>Gets the explicit receiver when member-call syntax supplies it.</summary>
     public Koto? Receiver => this.Kind == CalleeKind.Value ? null : this.receiver;
 
@@ -236,7 +233,6 @@ public sealed class CallPlan
         this.AdaptationSource = null;
         this.Target = null!;
         this.ReturnType = null!;
-        this.ResultMode = default;
         this.receiver = null;
         this.ConformingType = null;
         this.DeclaringType = null;
@@ -265,7 +261,6 @@ public sealed class CallPlan
         this.AdaptationSource = null;
         this.Target = target;
         this.ReturnType = result;
-        this.ResultMode = target.Declaration is FunctionKoto function ? Binding.ResultModeOf(function.ReturnType) : FunctionResultMode.Value;
         this.receiver = receiver;
         this.ConformingType = conformingType;
         this.TupleOperator = false;
@@ -334,7 +329,6 @@ public sealed class CallPlan
         this.Signature = signature;
         this.DeclaredSignature = declaredSignature;
         this.ReturnType = signature.Components[1];
-        this.ResultMode = signature.ResultMode;
         this.ReceiverKind = receiverKind;
         this.SetOperations(arguments);
     }

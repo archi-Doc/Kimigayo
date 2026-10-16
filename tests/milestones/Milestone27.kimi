@@ -7,7 +7,7 @@ func endBound() -> FromEnd<i32>
     Console.writeLine("End evaluated.")
     return ^1
 
-// A user Type publishes its stored Places through the Indexable Contracts (SPEC 4.7.1, 7.1.1).
+// A user Type lends its stored elements through the Indexable Contracts (SPEC 4.7.1).
 struct Pair<T>
     Self is UniqIndexable<isize>
     associate Element is T
@@ -16,17 +16,17 @@ struct Pair<T>
     public init(first: T, second: T)
         self.first = first@move
         self.second = second@move
-    public func index(self, key: ref/isize) -> place ref/T during self
-        if key == 0 => return self.first
-        return self.second
-    public func indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/T during self
-        if key == 0 => return self.first
-        return self.second
+    public func index(self, key: ref/isize) -> ref/T during self
+        if key == 0 => return self.first@ref
+        return self.second@ref
+    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
+        if key == 0 => return self.first@uniq
+        return self.second@uniq
 
-// A generic Constraint forwards a Place result without acquiring a value.
-func firstPlace<S>(items: ref/S) -> place ref/S.Element during items
+// A generic Constraint borrows the element that indexing selects.
+func firstPlace<S>(items: ref/S) -> ref/S.Element during items
     S is Indexable<isize>
-    return items[0]
+    return items[0]@ref
 
 func show(text: ref/string) => Console.writeLine(text)
 

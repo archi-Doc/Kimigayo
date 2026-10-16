@@ -29,16 +29,6 @@ internal static class ElementAccess
             (ReferenceTypes.IsDynamicArray(receiver) || ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDictionary(receiver))) ||
         (element.Left.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray && ReachesThroughBorrow(element.Left) && Binding.PathAuthority(element.Left) == SemanticsKind.Uniq));
 
-    // SPEC 7.1.1: a call of a function that publishes a Place. The call expression designates the referent of the
-    // reference the callee returns, with that reference's capabilities and Origin; its Type is the stored Type.
-    internal static bool IsPlaceCall(Koto source)
-        => PlaceCallReference(source) is not null;
-
-    // The reference a Place call returns physically (ref/T or uniq/T with the published Origin), or null.
-    internal static BoundType? PlaceCallReference(Koto source)
-        => KotoHelper.UnwrapParentheses(source) is InvocationKoto call ? call.BoundValueCall is { Signature.ResultMode: not FunctionResultMode.Value } value
-            ? value.ReturnType : call.BoundCall is { ResultMode: not FunctionResultMode.Value } plan ? plan.ReturnType : null : null;
-
     // SPEC 4.7.1: a receiver whose selected Place is reached by a dynamic key or through a reference: a Slice, a dynamic
     // Array, a Dictionary or a borrow.
     internal static bool IsBorrowedReceiver(BoundType? receiver)
@@ -55,19 +45,19 @@ internal static class ElementAccess
         (source is MemberAccessKoto { BoundSymbol.Property.IsStored: true, Left.BoundType: { } type } && AdtDef.IsStruct(type));
 
     // SPEC 4.7.1: receiver[key] resolved through a user Indexable conformance: the Binding synthesized its index call, and
-    // its indexUniq call where the use may update or borrow exclusively. Such an expression is a Place call, not an element projection.
+    // its indexUniq call where the use may update or borrow exclusively. The expression designates the referent of the reference that
+    // call returns, not an element projection.
     internal static InvocationKoto? IndexerCall(Koto source, bool exclusive) => source.CodeContext.Compilation.Binding.IndexerCall(source, exclusive);
 
     internal static bool IsUserIndex(Koto source) => KotoHelper.UnwrapParentheses(source) is IndexKoto index && IndexerCall(index, false) is not null;
 
-    // SPEC 4.7.1: the reference that a subscript's selected index or indexUniq call returns, from that call's plan; the index
-    // expression designates its referent. Null for any other node.
-    internal static BoundType? IndexerReference(Koto source)
-        => KotoHelper.UnwrapParentheses(source) is InvocationKoto { BoundCall: { } plan } call && IsIndexerCall(call) ? plan.ReturnType : null;
+    // SPEC 4.7.1: whether a node is the index or indexUniq call a subscript selected; the call is typed with the reference it returns.
+    internal static bool IsIndexerCall(Koto source)
+        => KotoHelper.UnwrapParentheses(source) is InvocationKoto { Parent: IndexKoto index } call && (ReferenceEquals(IndexerCall(index, false), call) || ReferenceEquals(IndexerCall(index, true), call));
 
-    // The stored Type of the Place an expression designates: the referent of the reference a published Place's call returns,
-    // otherwise the expression's own Type.
-    internal static BoundType? DesignatedType(Koto source) => PlaceCallReference(source) is { Components: [var stored] } ? stored : source.BoundType;
+    // The stored Type of the Place an expression designates: a subscript's selected call designates the element its subscript is typed
+    // with (Binding.Indexers publishes it); any other expression its own Type. Only the old paths read it; it goes with them at R6.
+    internal static BoundType? DesignatedType(Koto source) => IsIndexerCall(source) ? KotoHelper.UnwrapParentheses(source).Parent!.BoundType : source.BoundType;
 
     // SPEC 4.7, 4.6.3: the evaluated key of a built-in selection. An Index or Range key is resolved against the
     // receiver's length by a synthesized call; an isize or ResolvedRange key is applied as written.
@@ -474,8 +464,4 @@ internal static class ElementAccess
 
         return false;
     }
-
-    // Whether a call is the index or indexUniq call that a subscript selected (SPEC 4.7.1).
-    private static bool IsIndexerCall(InvocationKoto call)
-        => call.Parent is IndexKoto index && (ReferenceEquals(IndexerCall(index, false), call) || ReferenceEquals(IndexerCall(index, true), call));
 }

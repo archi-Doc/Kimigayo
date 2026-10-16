@@ -204,7 +204,7 @@ public class DiagnosticPrecisionTest
     public void IndexKeysReportOneExplainedError(string statement, string code, string text, string? label)
     {
         const string View = "struct View\n    Self is Indexable<isize>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n" +
-            "    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value\nlet v = View.init(value: 7)\n";
+            "    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref\nlet v = View.init(value: 7)\n";
         var error = Assert.Single(PublishedErrors(MinimalEmissionTest.Analyze(View + statement)));
         Assert.Equal(code, error.Code);
         Assert.Equal(text, error.Text);

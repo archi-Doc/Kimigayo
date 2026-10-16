@@ -23,7 +23,7 @@ public sealed partial class Binding
         }
 
         equal = left.Kind != BoundTypeKind.Primitive && left.Kind == right.Kind && left.Symbol == right.Symbol &&
-            left.Semantics == right.Semantics && left.ResultMode == right.ResultMode && left.Length == right.Length &&
+            left.Semantics == right.Semantics && left.Length == right.Length &&
             ReferenceEquals(left.LengthExpression, right.LengthExpression) && ReferenceEquals(left.ClosureContext, right.ClosureContext) &&
             left.LengthArguments.AsSpan().SequenceEqual(right.LengthArguments) && ReferenceEquals(left.Origin, right.Origin) &&
             ((BoundOrigin[])left.OriginArguments).AsSpan().SequenceEqual((BoundOrigin[])right.OriginArguments) && left.Components.Count == right.Components.Count;

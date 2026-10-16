@@ -242,14 +242,15 @@ short; save independent observations such as `length` before mutation when that 
 
 | Intent | Result |
 | --- | --- |
-| Index an existing element | `place ref/T` or `place uniq/T`, following Indexable |
+| Index an existing element | `ref/T during self` or `uniq/T during self`, following Indexable |
 | Find an element that may be absent | `Option<ref/T>` or `Option<uniq/T>` |
 | Copy a snapshot | `T`; state Copy constraints or explicit copying costs |
 | Remove or otherwise transfer an element | `T` or `Option<T>`, with the transfer documented |
 
 `[Kimi]` Keep a lookup's reference result independent of the element's Copy capability, as in `tryGet`.
-A Place result exposes storage; its caller may borrow it or read a Copy value. It is not a reference value
-([SPEC §4.7.1](spec/04-arrays-indexing-and-slices.md#471-index-expression-resolution)).
+A function lends an existing element through the reference it returns; only `receiver[key]` follows the reference of
+`index` or `indexUniq`, and a caller of any other function follows it with `@follow`
+([SPEC §4.7.1](spec/04-arrays-indexing-and-slices.md#471-index-expression-resolution), [§7.1](spec/07-functions-and-callable-values.md#71-declarations-bodies-and-results)).
 
 `[Kimi]` State result Origins where permitted, including borrows inside aggregates: `during self` for an
 owning collection, `during self.source` for a Slice. Use the actual source; a newly returned value or a

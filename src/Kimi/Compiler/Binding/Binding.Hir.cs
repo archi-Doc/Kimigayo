@@ -342,7 +342,7 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 3.4.3, 3.5, 7.1.1, 13.5.5, 15.1.3: the Place a node designates, as its Op, Res and Binding's element, follow and call facts
+        // SPEC 3.4.3, 3.5, 4.7.1, 13.5.5, 15.1.3: the Place a node designates, as its Op, Res and Binding's element, follow and call facts
         // give it; a parenthesized Place is its operand's.
         private HirPlaceKind KindOf(Koto node, HirOp op, HirRes res) => op switch
         {
@@ -356,7 +356,7 @@ public sealed partial class Binding
             HirOp.Field => HirPlaceKind.Field,
             HirOp.Deref => binding.PairAdmitted(node) == SemanticsMask.None ? HirPlaceKind.Deref : HirPlaceKind.PairLayer,
             HirOp.Index => ElementAccess.IsSlicing(node) ? HirPlaceKind.Value : ElementAccess.StaticSelector((IndexKoto)node) < 0 ? HirPlaceKind.Index : HirPlaceKind.ConstIndex,
-            HirOp.Call => ElementAccess.IsUserIndex(node) || ElementAccess.IsPlaceCall(binding.PropertyCall(node, PropertyAccessorKind.Get) ?? node) ? HirPlaceKind.CallResult : HirPlaceKind.Value,
+            HirOp.Call => ElementAccess.IsUserIndex(node) ? HirPlaceKind.CallResult : HirPlaceKind.Value,
             HirOp.Group when node is ParenthesizedKoto && KotoHelper.UnwrapParentheses(node) is var inner => this.KindOf(inner, this.OpOf(inner, HirPosition.Evaluated), this.ResOf(inner)),
             _ => HirPlaceKind.Value,
         };

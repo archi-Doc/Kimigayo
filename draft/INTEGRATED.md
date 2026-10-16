@@ -362,3 +362,26 @@ conditional designs/estimates are planning inputs, not adopted representations. 
 §2.3・§3 → §5.2.2–§5.2.3・§5.6・§15.1・§15.6・§16、§5の表 → IMPL §21.1.1・§21.1.3・§21.4.3とLIBRARYのRaw契約。
 未解決範囲は提案全体の採否と取り込み。§4は仕様例、§5–§6は設計理由・反映先・Rust公式資料との比較。
 既存の `2026-10-15 Raw Storage as Storage.md` は未統合の比較対象であり、本文・状態とも変更しない。
+
+## 2026-10-16 — Place result removal
+
+- `Changes/2026-10-16 Place Result Removal.md` and `Changes/2026-10-15 Place Result Removal.md`: 取り込み済み (2026-10-16).
+  The 2026-10-16 edition governs where they differ (its header). Mapping of the 2026-10-16 edition:
+  - §2.1 rule 1 (results are Types) → SPEC §7.1, §6.4.1, §8.4.2, §8.5.4, §8.5.5, §8.6.3, §8.10, §9.1, §10.2, §10.3,
+    §10.7, §10.8, Appendix F (§F.6 grammar and the contextual keyword list).
+  - §2.2 rule 2 (the caller follows with `@follow`) → §7.1 "Lending existing Storage", §13.5.6, §15.1.5, §15.6.1.
+  - §2.3 rule 3 (the index expression follows the selected call's reference) → §4.7.1, §4.7.2, §22.1, Appendix E.
+  - §2.4 → the §7.1 and §4.7.1 examples; §2.5 → SPECJ, SPECJ2, LIBRARY §2.4, §3.2, §3.2.1 and §3.5, STYLE §4.2, GUIDE.
+  - §3 and §4 → the U2/U3 test, fixture and golden migration, the library (Indexable, Dictionary, UniqSlice) and
+    Milestones 27 and 28 (recorded in `tests/milestones/README.md`).
+  - §5 and §7 → DECISIONS PR-1, three SETTLED entries, PLAN, CODEMAP, STATUS, DIAGNOSTICS and VERIFICATION.
+  - Dispositions: §1.3 timing — the owner chose implementation before R6, with a D5 exception, on 2026-10-16. §5.3
+    hypotheses — `-> place ref/T` gets two records (an unknown Type Name, then unexpected tokens; syntax corpus
+    `place-result-removed`); a value-result `index` is `IncompatibleContractImplementation_Kd`, as stated. §7's
+    out-of-scope items — the `ref/(ref/T)` temporary lifetime defect was fixed before U2 (`b8aa64ef`, `bfb049c4`); the
+    message text built in `VirtualOverrides` stays an open issue (PLAN §7).
+  - The 2026-10-15 edition's §9 English text was the starting point of the SPEC text; its staging S1/S2 and its rejection
+    of deferral are not adopted (DECISIONS PR-1, timing).
+- `Proposals/2026-10-06 Callable and Local Region Implementation Plan.md` stays 一部取り込み. Its design point that Function
+  contracts carry a Value/PlaceRef/PlaceUniq result category is superseded by this removal and needs no further work; its
+  frozen text is unchanged.

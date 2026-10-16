@@ -162,13 +162,13 @@ Sequence iteration uses index order; Dictionary iteration uses insertion order. 
 ```kimi
 contract Indexable<Key>
     associate Element
-    func index(self: ref/Self, key: ref/Key) -> place ref/Element during self
+    func index(self: ref/Self, key: ref/Key) -> ref/Element during self
 
 contract UniqIndexable<Key>: Indexable<Key>
-    func indexUniq(self: uniq/Self, key: ref/Key) -> place uniq/Element during self
+    func indexUniq(self: uniq/Self, key: ref/Key) -> uniq/Element during self
 ```
 
-These Contracts provide indexed Places for shared access and exclusive access. The key borrow is not a result dependency. Standard out-of-bounds indexing and missing Dictionary keys Abort; optional lookup uses the named `try` operations below.
+These Contracts return a shared or exclusive reference to the element a key selects; `receiver[key]` designates its referent, while a written `index` or `indexUniq` call returns the reference itself. The key borrow is not a result dependency. Standard out-of-bounds indexing and missing Dictionary keys Abort; optional lookup uses the named `try` operations below.
 
 ## 3. Positions, Views and Collections
 
@@ -213,7 +213,7 @@ In the table, `source` means the backing Origin `self.source`, not a borrow of t
 | Member | Guarantee |
 | --- | --- |
 | `length: isize`, `isEmpty: bool`, `indices: ResolvedRange` | Metadata without element access. |
-| `s[i]`, where i is a position | `place ref/T during source`; invalid element bounds Abort. |
+| `s[i]`, where i is a position | The referent of `ref/T during source`; invalid element bounds Abort. |
 | `s[r]`, where r is a range | `Slice<T> during source`; invalid range bounds Abort. |
 | `slice(self: Self) -> Slice<T> during source` | Copies the whole shared view, without element copies. |
 | `slice<R>(self: Self, range: R) -> Slice<T> during source`, `R is PositionRange` | Shared subview, equivalent to range subscripting. O(1), no allocation. |
@@ -244,8 +244,8 @@ operations. Formation and reslicing are O(1), with no element copies or heap all
 | Member | Guarantee |
 | --- | --- |
 | `length: isize`, `isEmpty: bool`, `indices: ResolvedRange` | Read-only metadata, sharing the handle without reading elements. |
-| `index(self: ref/Self, key: ref/isize) -> place ref/T during self` | Shared Indexable element access; invalid bounds Abort. |
-| `indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/T during self` | Exclusive UniqIndexable element access; no hole-producing Move. |
+| `index(self: ref/Self, key: ref/isize) -> ref/T during self` | Shared Indexable element access; invalid bounds Abort. |
+| `indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self` | Exclusive UniqIndexable element access; no hole-producing Move. |
 | `slice(self: ref/Self) -> Slice<T> during self` | Shared child view of the whole region. |
 | `slice<R>(self: ref/Self, range: R) -> Slice<T> during self`, `R is PositionRange` | Shared child subview, also selected by range subscripting. |
 | `sliceUniq(self: uniq/Self) -> UniqSlice<T> during self` | Exclusive child view of the whole region. |
@@ -339,8 +339,8 @@ An owning map constructed with `[:]` or `[k: v, ...]`. It preserves insertion or
 
 | Member | Guarantee |
 | --- | --- |
-| `index(self: ref/Self, key: ref/K) -> place ref/V during self` | The Indexable entry publishes the existing value Place; an absent key Aborts at the access. |
-| `indexUniq(self: uniq/Self, key: ref/K) -> place uniq/V during self` | The UniqIndexable entry publishes the value exclusively; the search key is not a result dependency. |
+| `index(self: ref/Self, key: ref/K) -> ref/V during self` | The Indexable entry lends the existing value; an absent key Aborts at the access. |
+| `indexUniq(self: uniq/Self, key: ref/K) -> uniq/V during self` | The UniqIndexable entry lends the value exclusively; the search key is not a result dependency. |
 | `dict[key]` | A Place for the existing value; an absent key Aborts. Indexed replacement preserves the stored key and position. |
 | `tryInsert(self: uniq/Self, key: K, value: V) -> Result<(), (K, V)>` | Appends a new entry; a duplicate returns both inputs in Err and leaves the collection unchanged. |
 | `insertOrReplace(self: uniq/Self, key: K, value: V) -> Option<V>` | A new entry returns None. Replacement returns the old value, retains the stored key and position, and destroys the unused input key. |

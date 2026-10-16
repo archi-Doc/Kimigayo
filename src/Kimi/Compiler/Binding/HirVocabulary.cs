@@ -141,7 +141,6 @@ internal readonly record struct HirAdjust(HirAcquire Acquire, HirAdaptation Adap
     {
         ExpectedAdaptationKind.ReferentRead => HirAdaptation.ReferentRead,
         ExpectedAdaptationKind.SharedBorrow => HirAdaptation.SharedBorrow,
-        ExpectedAdaptationKind.ExclusiveBorrow => HirAdaptation.ExclusiveBorrow,
         ExpectedAdaptationKind.Reborrow when adaptation.Type.Semantics == type?.Semantics => HirAdaptation.None,
         _ => HirAdaptation.ReferenceRead,
     };
@@ -181,7 +180,7 @@ internal enum HirPlaceKind : byte
     Index, // An element at a runtime position or key.
     ConstIndex, // A fixed-array element at a literal position in range (SPEC 15.1.3).
     Downcast, // The payload of a Case position.
-    CallResult, // The referent a call publishes (SPEC 7.1.1): a place call, a user index or a getter's place result.
+    CallResult, // The referent of the reference that a subscript's selected index or indexUniq call returns (SPEC 4.7.1).
 }
 
 /// <summary>The implicit adaptation of a consumed child (SPEC 10.2); the child keeps its own Type.</summary>

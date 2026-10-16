@@ -44,9 +44,6 @@ public enum ExpectedAdaptationKind : byte
     /// <summary>Several reference layers yield one reference to their final referent: shared under SPEC 10.2, or exclusive when a
     /// receiver is selected through exclusive layers only (SPEC 3.4.3).</summary>
     ReferenceRead,
-
-    /// <summary>A bare Place is exclusively borrowed as the operand of a place uniq/T result (SPEC 7.1.1).</summary>
-    ExclusiveBorrow,
 }
 
 /// <summary>The one recorded adaptation of an expression and the Type it supplies; the node keeps its own Type.</summary>
@@ -197,12 +194,9 @@ public sealed partial class Binding
                     var admitted = pair.CodeContext.Compilation.Binding.PairAdmitted(pair);
                     layer = (admitted & SemanticsMask.Ref) != 0 ? SemanticsKind.Ref : (admitted & SemanticsMask.Owner) == 0 ? SemanticsKind.Uniq : null;
                     break;
-                case InvocationKoto call when ElementAccess.PlaceCallReference(call) is { } published:
-                    // SPEC 7.1.1: a published Place has the capability of the returned reference and never Take.
-                    return published.Semantics == SemanticsKind.Ref ? SemanticsKind.Ref : SemanticsKind.Uniq;
                 case IndexKoto userIndex when ElementAccess.IsUserIndex(userIndex):
                     // SPEC 3.4.3, 4.7.1: the element Place is reached through the receiver's reference layers; indexUniq
-                    // publishes it exclusively, index alone shares it, and a published Place never offers Take.
+                    // publishes it exclusively, index alone shares it, and the element never offers Take.
                     if (!userIndex.CodeContext.Compilation.Binding.HasExclusiveIndexer(userIndex) || HasSharedLayer(userIndex.Left.BoundType))
                     {
                         return SemanticsKind.Ref;
@@ -344,7 +338,6 @@ public sealed partial class Binding
             IndexKoto index => !ElementAccess.IsSlicing(index) && (index.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary ||
                 ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) || ReferenceTypes.IsDictionary(index.Left.BoundType) ||
                 ElementAccess.IsUserIndex(index)), // SPEC 4.7.1, including a Place published by a user index; a range selection is a value
-            InvocationKoto call => ElementAccess.IsPlaceCall(call), // SPEC 7.1.1: a published Place.
             _ => false,
         };
     }
@@ -357,7 +350,7 @@ public sealed partial class Binding
     {
         var unwrapped = KotoHelper.UnwrapParentheses(source);
         if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } ||
-            ElementAccess.IsPlaceCall(unwrapped) || (unwrapped is IndexKoto userIndex && ElementAccess.IsUserIndex(userIndex)))
+            (unwrapped is IndexKoto userIndex && ElementAccess.IsUserIndex(userIndex)))
         {
             return false;
         }
@@ -465,12 +458,6 @@ public sealed partial class Binding
     // shared borrow of that element Place. The element keeps its stored Type; the borrow is the receiver's adaptation.
     private void ReceiverElement(Koto left, BoundType? element)
     {
-        if (ElementAccess.PlaceCallReference(left) is { } published)
-        {
-            this.adaptations[left] = new(ExpectedAdaptationKind.SharedBorrow, published);
-            return;
-        }
-
         if (ElementAccess.IsUserIndex(left) && element is not null)
         {
             this.adaptations[left] = new(ExpectedAdaptationKind.SharedBorrow, this.types.Reference(SemanticsKind.Ref, element, this.PlaceOrigin(left)));
@@ -493,11 +480,11 @@ public sealed partial class Binding
     // receiver on its path that is such a selection is borrowed the same way.
     private void CompareInPlace(Koto operand)
     {
-        if ((ElementAccess.IsPlaceCall(operand) || ElementAccess.IsUserIndex(operand)) && operand.BoundType is { } published && this.ProveCopy(published, operand) == ConstraintProof.Refuted &&
+        if (ElementAccess.IsUserIndex(operand) && operand.BoundType is { } published && this.ProveCopy(published, operand) == ConstraintProof.Refuted &&
             SharedReadTypes.BorrowSemantics(published) is { } placeSemantics)
         {
-            // SPEC 4.7.1, 7.1.1, 13.4: a Non-Copy published Place, of a Place call or of receiver[key] on a user Type, is
-            // compared in place through the reference the call returns.
+            // SPEC 4.7.1, 13.4: a Non-Copy element of receiver[key] on a user Type is compared in place through the reference
+            // its selected call returns.
             this.adaptations[operand] = new(ExpectedAdaptationKind.SharedBorrow, this.types.Intern(BoundTypeKind.Semantics, null, placeSemantics, [published], origin: this.PlaceOrigin(operand)));
             return;
         }
@@ -544,18 +531,6 @@ public sealed partial class Binding
         if (IsTransfer(node) && actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq })
         {
             return null; // SPEC 10.2: a transferred reference is not corrected by a later adaptation.
-        }
-
-        if (expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
-            this.FitsStructurallyAt(actual, expected.Components[0], node) && IsBarePlace(node) &&
-            ResultFunction(node) is { ReturnType: PlaceResultKoto } &&
-            (expected.Semantics == SemanticsKind.Ref || PathAuthority(node) != SemanticsKind.Ref))
-        {
-            // SPEC 7.1.1: publish the complete slot, even when it stores a reference. Acquiring its stored reference
-            // would lose one layer and conflate the Place Origin with the stored value's independent Origins.
-            return new(
-                expected.Semantics == SemanticsKind.Uniq ? ExpectedAdaptationKind.ExclusiveBorrow : ExpectedAdaptationKind.SharedBorrow,
-                this.types.Intern(BoundTypeKind.Semantics, null, expected.Semantics, [actual], origin: this.PlaceOrigin(node)));
         }
 
         if (!this.AdaptInput(node, expected, actual, this.ConstraintScope(node), null, null, out var adapted, out _, out var operation, fixedExpectation: true, recordPair: recordPair) ||
@@ -703,7 +678,7 @@ public sealed partial class Binding
     private BoundOrigin SlotOrigin(Koto source)
         => KotoHelper.UnwrapParentheses(source) is var slot &&
             (slot is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture } ||
-            (slot is InvocationKoto && ElementAccess.PlaceCallReference(slot) is null && ElementAccess.IndexerCall(slot, false) is null))
+            slot is InvocationKoto)
             ? this.OriginAtom(PlaceOriginBinder(slot), OriginKind.Projection, PlaceOriginSlot(slot)) : this.PlaceOrigin(source);
 
     private BoundOrigin PlaceOrigin(Koto source)
@@ -728,12 +703,7 @@ public sealed partial class Binding
             return this.FollowedOrigin(selected.Left) ?? this.PlaceOrigin(selected.Left);
         }
 
-        if (ElementAccess.PlaceCallReference(source) is { Origin: { } published })
-        {
-            return published; // SPEC 7.1.1: a published Place keeps the dependencies of the returned reference.
-        }
-
-        if (ElementAccess.IndexerCall(source, false) is { } indexer && ElementAccess.IndexerReference(indexer) is { Origin: { } publishedElement })
+        if (ElementAccess.IndexerCall(source, false) is { BoundType.Origin: { } publishedElement })
         {
             return publishedElement; // SPEC 4.7.1: the element Place depends on the receiver under its contract.
         }
@@ -824,11 +794,6 @@ public sealed partial class Binding
                 SemanticsKind.Obj => this.BorrowableHandle(payload.Left, scope, exclusive, true),
                 _ => !exclusive && this.BorrowableHandle(payload.Left, scope, false, true),
             };
-        }
-
-        if (source is InvocationKoto placeCall && ElementAccess.PlaceCallReference(placeCall) is { } publishedReference)
-        {
-            return !exclusive || publishedReference.Semantics == SemanticsKind.Uniq; // SPEC 7.1.1
         }
 
         if (source is IndexKoto userIndex && ElementAccess.IsUserIndex(userIndex))

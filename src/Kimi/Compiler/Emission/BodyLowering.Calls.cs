@@ -180,7 +180,7 @@ internal sealed partial class BodyLowering
         }
 
         if (body.Resolve(plan.ReturnType, InterpretationContext.Root) is not { } returnType ||
-            !ReferenceEquals(body.Resolve(ElementAccess.PlaceCallReference(call) ?? call.BoundType, body.ContextAt(id)), returnType))
+            !ReferenceEquals(body.Resolve(call.BoundType, body.ContextAt(id)), returnType))
         {
             return Fail($"Call {library.PresentedTarget(plan.Target).Name} has inconsistent expression and retained result Types: {Binding.DiagnosticTypeName(call.BoundType ?? (object)"unresolved")} / {Binding.DiagnosticTypeName(plan.ReturnType)}.", out failure);
         }

@@ -269,7 +269,7 @@ internal sealed partial class BodyLowering
         var signature = body.Resolve(plan.Signature, context);
         var returnType = body.Resolve(plan.ReturnType, context);
         if ((uint)operation.Input >= (uint)body.Places.Count || !ReferenceEquals(plan.CalleeValue, call.Method) || receiver is null || signature is null || returnType is null ||
-            !(ReferenceEquals(body.Places[operation.Input].Type, receiver) || OwnershipBody.IsBorrowedCallableReceiver(body.Places[operation.Input], receiver, plan)) || !ReferenceEquals(ElementAccess.PlaceCallReference(call) ?? call.BoundType, plan.ReturnType) ||
+            !(ReferenceEquals(body.Places[operation.Input].Type, receiver) || OwnershipBody.IsBorrowedCallableReceiver(body.Places[operation.Input], receiver, plan)) || !ReferenceEquals(call.BoundType, plan.ReturnType) ||
             plan.ArgumentOperations.Length != call.ArgumentNodes.Count ||
             !(ScalarTypes.Supports(returnType) || ReferenceTypes.IsPointer(returnType) || ReferenceTypes.IsBorrow(returnType) || SlotTypes.IsResult(returnType) || ReferenceEquals(returnType, BoundType.Unit) || ReferenceEquals(returnType, BoundType.Never)))
         {

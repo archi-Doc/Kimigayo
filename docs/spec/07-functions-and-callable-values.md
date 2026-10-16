@@ -4,7 +4,7 @@
 
 ## 7.1. Declarations, bodies and results
 
-A function declaration is `func`, one unqualified Name, optional generic parameters, a parenthesized parameter list and an optional `->` result: a Type or a Place result ([§7.1.1](#711-place-results)) (grammar: [§F.6](appendices/F-syntax-summary.md#f6-declarations)). A named function without `->` returns Unit (`()`). Functions have no Origin parameter list; a written borrow annotation may introduce an implicit scalar Origin ([§15.3.4](15-ownership-and-lifetime-analysis.md#1534-names-scope-and-quantification)).
+A function declaration is `func`, one unqualified Name, optional generic parameters, a parenthesized parameter list and an optional `->` result Type (grammar: [§F.6](appendices/F-syntax-summary.md#f6-declarations)). A named function without `->` returns Unit (`()`). Functions have no Origin parameter list; a written borrow annotation may introduce an implicit scalar Origin ([§15.3.4](15-ownership-and-lifetime-analysis.md#1534-names-scope-and-quantification)).
 
 A function belongs to the Container or executable scope in which it is written; a qualified declaration name such as `func View.get(...)` is an error.
 
@@ -21,24 +21,20 @@ func bad(left: i32, right: i32) -> i32
     left + right                // Error: the structural end supplies Unit.
 ```
 
-### 7.1.1. Place results
-
-A Place result publishes an existing, complete Storage whose stored Type is `T` instead of returning a value. `place ref/T` offers a shared borrow and, for a Copy `T`, a Copy; `place uniq/T` also offers an exclusive borrow and replacement of the whole `T`. Neither offers Take; there is no `place owner/T` or `place T`. The spelling after `place` is the Type that `@ref` or `@uniq` on the Place produces: `place ref/(ref/Node)` publishes a slot holding a reference, and `place ref/(T?)` a slot storing `Option<T>`. A following `during` applies to the Place result. A Place result is a result category, not a Type; it may be written wherever a result is, and is never inferred.
-
-**Returning.** The `return` operand, or the single-item body, designates a Place without acquiring a value: a Place expression or a call with a compatible Place result. The slot of a local or by-value parameter cannot be returned; Storage reached through a local reference can. Every normally completing path designates a Place, and `if`, `match` and `do` produce none, so each branch returns its own. The Storage's actual Type `A` agrees with `T` in Semantics, Core and structure, and Origins are checked as fitting `ref/A` to `ref/T` (or `uniq/A` to `uniq/T`). An exclusive Place may be published as a shared result, never the reverse.
-
-**Contracts.** The outer Origin is introduced, quantified and elided like that of a borrow result ([§15.3.4](15-ownership-and-lifetime-analysis.md#1534-names-scope-and-quantification), [§15.4.3](15-ownership-and-lifetime-analysis.md#1543-result-defaults)); `during self` names the receiver's borrow Origin, and `during self.source` never removes the actual receiver Loan. Overloads that differ only in result mode cannot coexist. `T` is fixed from the arguments, explicit Type information and the expected Place contract ([§10.3](10-overload-resolution-and-inference.md#103-expected-results)). Function references, Callable, Contract implementations ([§8.6](08-generics-constraints-and-contracts.md#86-conformance)) and indirect calls keep the result mode, Origins and Loan contract; compatibility needs the same result mode ([§10.7](10-overload-resolution-and-inference.md#107-callable-signature-compatibility)). A Place result cannot bind an ordinary Type argument.
-
-**Using a Place.** A published Place is acquired under [§3.5](03-types-and-values.md#35-copy-and-move), without Take. A Place that is returned as a Place, borrowed explicitly, projected, used as a Subject or assigned to is not acquired. Discarding an unacquired Place performs the call and destroys nothing; `_ = call()` acquires a value, so it fails where bare acquisition fails.
+**Lending existing Storage.** A function lends existing Storage only through the reference it returns: `ref/T` for shared and `uniq/T` for exclusive access, with that reference's Origin ([§15.3.4](15-ownership-and-lifetime-analysis.md#1534-names-scope-and-quantification), [§15.4.3](15-ownership-and-lifetime-analysis.md#1543-result-defaults)); returning, fitting, inference, effects and Origins follow the rules of every result. The caller receives the reference as a value, and nothing follows it implicitly: `let r = f()` keeps it, an expected Type adapts it ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation)), and `f()@follow` selects its referent without Copy or Move, with Read and, through `uniq/T`, Write, but never Take ([§13.5.5](13-operators-and-assignment.md#1355-follow)). A borrow through the referent depends on the referent and the parent Loan, not on the temporary holding the reference ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation), [§13.5.6](13-operators-and-assignment.md#1356-borrow-and-reborrow), [§15.6.3](15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting)). A result `during self` depends on the receiver's borrow; `during self.source` or another Origin makes it independent of that borrow only where the declaration and the body's checks prove it. Only an index expression follows the reference that `index` or `indexUniq` returns ([§4.7.1](04-arrays-indexing-and-slices.md#471-index-expression-resolution)).
 
 ```kimi
-func first<T>(values: ref/Array<T>) -> place ref/T during values
-    return values[0]                 // Publishes the element Place.
+func first<T>(values: ref/Array<T>) -> ref/T during values
+    return values[0]@ref                    // Shared borrow of the element.
+func slot(values: uniq/Array<i32>) -> uniq/i32 during values
+    return values[0]@uniq                   // An exclusive borrow is written.
 
-// resources: Array<Resource>, where Resource is Non-Copy.
-let view = first(resources@ref)@ref  // The element Place is borrowed; the reference is kept.
-inspect(first(resources@ref))        // Shared borrow at a ref/Resource parameter.
-// let value = first(resources@ref)  // Error: a Non-Copy value cannot be read bare.
+// resources: Array<Resource>, Resource Non-Copy; counts: var Array<i32>.
+let view = first(resources@ref)             // ref/Resource: the reference is kept.
+inspect(first(resources@ref))               // The reference fits a ref/Resource parameter.
+slot(counts@uniq)@follow += 1               // Updates counts[0].
+// slot(counts@uniq) += 1                   // Error: an assignment target is never redirected.
+// let value = first(resources@ref)@follow  // Error: a Non-Copy referent cannot be read bare.
 ```
 
 ## 7.2. Parameters

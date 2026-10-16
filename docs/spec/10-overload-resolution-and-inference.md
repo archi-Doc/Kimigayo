@@ -49,7 +49,7 @@ configure(3)           // Error: mode requires its name; matching does not skip 
 
 ## 10.2. Common adaptation
 
-Common adaptation fits a value to a fixed expected Type: at arguments, annotated initializers, assignment sources, by-value results, aggregate elements, enum payloads, defaults and the sources of a fixed Target Result Type ([§14.9.2](14-control-flow.md#1492-target-result-type-and-expression-type)). The expected Type is never derived backward from a borrow or a value read. Positions without one use bare acquisition ([§3.5](03-types-and-values.md#35-copy-and-move)); Place results follow [§7.1.1](07-functions-and-callable-values.md#711-place-results).
+Common adaptation fits a value to a fixed expected Type: at arguments, annotated initializers, assignment sources, by-value results, aggregate elements, enum payloads, defaults and the sources of a fixed Target Result Type ([§14.9.2](14-control-flow.md#1492-target-result-type-and-expression-type)). The expected Type is never derived backward from a borrow or a value read. Positions without one use bare acquisition ([§3.5](03-types-and-values.md#35-copy-and-move)).
 
 `U` is the complete expected Type. The shared-reference and value-read rows may follow several layers, including qualifying pair layers ([§3.4.3](03-types-and-values.md#343-reference-path-selection), [§13.5.5](13-operators-and-assignment.md#1355-follow)).
 
@@ -149,10 +149,9 @@ An expected result may complete inference (step 4 of [§10.1](#101-candidate-app
 | --- | --- |
 | Fixed expected Type | Common adaptation ([§10.2](#102-common-adaptation)) with the position's lifetime check |
 | No expected Type | Bare acquisition ([§3.5](03-types-and-values.md#35-copy-and-move)) |
-| Place required | The Place's Type, capabilities and Origin; a value is never materialized as a Place result |
 | Explicit operation or discard | That operation's rule |
 
-An unknown result `T` is never inferred backward from the adapted Type, and an outer `@ref` never prefers a Place-returning candidate.
+An unknown result `T` is never inferred backward from the adapted Type.
 
 ```kimi
 func fetch(value: i32) -> string => "text"
@@ -295,7 +294,7 @@ inspect(number) // Error: inspect(i32) is selected, then rejected outside an Uns
 
 Common Function Type erasure ([§7.7.4](07-functions-and-callable-values.md#774-function-references-and-erasure)) and `Callable<r, S>` ([§8.10](08-generics-constraints-and-contracts.md#810-callable-constraints)) use this rule. An implementation `(A1, ..., An) -> R` is compatible with a required `(P1, ..., Pn) -> Q` when both or neither have a task slot ([§24.2.4](24-suspension-and-asynchronous-tasks.md#2424-compatibility)), the arities are equal, `Pi <: Ai` ([§3.8](03-types-and-values.md#38-type-relations-and-operations)) at every position, and `R` is result-compatible with `Q`. Labels and defaults cannot bridge a mismatch.
 
-**Result compatibility.** An implementation result `R` is compatible with a required value result `Q` when `R <: Q` or `R` is Never. Contract implementation matching, refinement conflict checks, Callable compatibility and common Function Type erasure all use this one relation. A value of one common Function Type relates to another only by subtyping, and Never fitting ([§3.8](03-types-and-values.md#38-type-relations-and-operations)) is a separate relation from subtyping.
+**Result compatibility.** An implementation result `R` is compatible with a required result `Q` when `R <: Q` or `R` is Never. Contract implementation matching, refinement conflict checks, Callable compatibility and common Function Type erasure all use this one relation. A value of one common Function Type relates to another only by subtyping, and Never fitting ([§3.8](03-types-and-values.md#38-type-relations-and-operations)) is a separate relation from subtyping.
 
 Origins and Loans are compared by canonical Origin contracts ([§15.3.7](15-ownership-and-lifetime-analysis.md#1537-contract-comparison)): required quantifiers are rigid, and only the implementation's call-time Origins are inferred. Compatibility inserts no borrow, conversion or erasure. A direct match and an erasure are incomparable ([§10.2.2](#1022-inference-and-adaptation-classes)).
 
@@ -312,7 +311,7 @@ struct Impossible
 
 Explicit arguments bind first. Type, Semantics, length ([§4.4](04-arrays-indexing-and-slices.md#44-function-length-parameters)) and Origin constraints are then collected together from the receiver and the independently typable arguments ([§10.5.1](#1051-argument-kinds)), and the expected result fills only unbound parts. A call without explicit Type arguments to a group whose validity relies on correlated slots must establish each correlation as [§7.4](07-functions-and-callable-values.md#74-parameter-acquisition-shape) requires.
 
-**Call-signature matching.** Each parameter with a fixed expected call signature `S` ([§10.5.2](#1052-call-signatures)) matches `S` against the known call signature of its argument, or for `F`, `ref/F` or `uniq/F` of the Type the argument binds to `F`. Task-slot presence, result shape, structure and Semantics match by normalized identity and Origins by limited inference ([§15.3.6](15-ownership-and-lifetime-analysis.md#1536-origin-inference)), without adaptation or search. Only parts containing an unbound slot are matched this way; other parts must fit as [§10.7](#107-callable-signature-compatibility) requires (erasure at a common Function Type, the Callable Constraint at `F`), so header Types need only be compatible. A per-call Origin never solves an Origin inside a slot: `(T) -> ()` against `(ref/i32) -> ()` gives `T = ref/i32` with its Origin left to other evidence.
+**Call-signature matching.** Each parameter with a fixed expected call signature `S` ([§10.5.2](#1052-call-signatures)) matches `S` against the known call signature of its argument, or for `F`, `ref/F` or `uniq/F` of the Type the argument binds to `F`. Task-slot presence, structure and Semantics match by normalized identity and Origins by limited inference ([§15.3.6](15-ownership-and-lifetime-analysis.md#1536-origin-inference)), without adaptation or search. Only parts containing an unbound slot are matched this way; other parts must fit as [§10.7](#107-callable-signature-compatibility) requires (erasure at a common Function Type, the Callable Constraint at `F`), so header Types need only be compatible. A per-call Origin never solves an Origin inside a slot: `(T) -> ()` against `(ref/i32) -> ()` gives `T = ref/i32` with its Origin left to other evidence.
 
 **Solving.** A failed match, or conflicting structure or Semantics evidence, makes the candidate inapplicable; Origin evidence never does ([§15.6.1](15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness)). An explicit Type argument is kept. Otherwise the slot's solution is its binding at invariant positions: all such bindings must agree in structure and Semantics (a disagreement makes the candidate inapplicable), and their Origins must be equal. Without an invariant binding, the solution is the meet of the covariant bindings. Each argument's Origin fit to the solution is judged after selection. An unresolved associated projection such as `T.Element` is never inverted: an argument of Type `i32` at `value: T.Element` binds no `T`, and another parameter such as `witness: Tag<T>` must bind it. Traversal order, conversion chains, common-base search and Constraint strength never choose a solution. A waiting argument's completed Closure fills no outer slot.
 

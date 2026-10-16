@@ -29,14 +29,6 @@ public enum BindingMode : byte
     Final,
 }
 
-/// <summary>The result category of a Function contract, independent of its physical return Type.</summary>
-public enum FunctionResultMode : byte
-{
-    Value,
-    PlaceRef,
-    PlaceUniq,
-}
-
 /// <summary>Classifies a declaration independently of its syntax spelling.</summary>
 public enum BindingSymbolKind : byte
 {
@@ -211,7 +203,6 @@ internal enum BindingFailure : byte
     // SPEC 3.4, 15.1.5: the layer of a Place's path that denies the requested capability.
     SharedPathAccess,
     ExclusivePathTake,
-    PlaceRequired,
 
     // SPEC 7.3: one receiver shape per function group fixed by member lookup.
     ReceiverShapeMismatch,
@@ -391,13 +382,12 @@ public sealed record BoundType
     private readonly bool containsPairLayer;
     private readonly bool hasAbstractPart;
 
-    internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null, BoundLength?[]? lengthArguments = null, FunctionResultMode resultMode = FunctionResultMode.Value)
+    internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null, BoundLength?[]? lengthArguments = null)
     {
         this.Name = name;
         this.Kind = kind;
         this.Symbol = symbol;
         this.Semantics = semantics;
-        this.ResultMode = resultMode;
         this.Components = components ?? [];
         this.Length = length;
         this.Origin = origin;
@@ -467,9 +457,6 @@ public sealed record BoundType
     public BindingSymbol? Symbol { get; }
 
     public SemanticsKind Semantics { get; }
-
-    /// <summary>Gets the result category; non-Function Types always use Value.</summary>
-    public FunctionResultMode ResultMode { get; }
 
     public IReadOnlyList<BoundType> Components { get; }
 

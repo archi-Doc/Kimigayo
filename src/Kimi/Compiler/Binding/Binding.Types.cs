@@ -565,10 +565,6 @@ public sealed partial class Binding
                 return payload is null ? null : this.types.Intern(BoundTypeKind.Constructed, this.Library.Option, SemanticsKind.Owner, [payload]);
             case ParenthesizedTypeKoto parentheses:
                 return this.BindType(parentheses.Type, scope, context);
-            case PlaceResultKoto place:
-                // SPEC 7.1.1: syntax admits this only as a result. The Function contract retains its category;
-                // its physical Type is the reference produced by borrowing the published Place.
-                return this.BindType(place.Type, scope, context);
             case TypeSemanticsKoto semantics:
                 if (semantics.Type is not null)
                 {

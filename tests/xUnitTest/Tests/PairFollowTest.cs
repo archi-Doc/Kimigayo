@@ -411,8 +411,8 @@ public class PairFollowTest
         "struct Collection<E>\n    Self is UniqIndexable<isize>\n    associate Element is E\n    var items: Array<E>\n" +
         "    public computed indices: ResolvedRange\n        get() -> ResolvedRange => self.items.indices\n" +
         "    public init(items: Array<E>) => self.items = items@move\n" +
-        "    public func index(self, key: ref/isize) -> place ref/E during self => self.items[key]\n" +
-        "    public func indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/E during self => self.items[key]\n";
+        "    public func index(self, key: ref/isize) -> ref/E during self => self.items[key]@ref\n" +
+        "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/E during self => self.items[key]@uniq\n";
 
     [Theory]
     [InlineData("func n(c: ref/Collection<Node>) -> isize\n    return c.indices.length")]

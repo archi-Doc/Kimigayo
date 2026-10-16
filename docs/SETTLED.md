@@ -266,3 +266,46 @@
 
 - **Proposed fix:** Add constructor delegation or whole-`self` placement, admit them only in the Kimi library, or spell the operation as a factory function such as `Array.repeating(value, count:)`.
 - **Why not applied:** Delegation and whole-`self` placement would add a second construction path for every structure (§6.3.3, §6.3.4). A factory splits infallible construction from `init` (§6.3.5, STYLE §5.2) and loses constructor inference (§10.8). A rule available only to the Kimi library would be a language rule user code cannot use. The compiler instead supplies the constructor's definition with an identical contract (§22.1), which no user Type can obtain.
+
+## `place` as sugar for a reference followed at the call
+
+- **Problem:** A function that lends existing storage returns a reference, and the caller writes `@follow` to reach the
+  storage, where a Place result let `f() += 1` act on it directly.
+- **Example:**
+
+  ```kimi
+  func slot(values: uniq/Array<i32>) -> uniq/i32 during values => values[0]@uniq
+  slot(counts@uniq)@follow += 1  // With sugar: slot(counts@uniq) += 1
+  ```
+
+- **Proposed fix:** Keep `-> place uniq/T` as sugar for `-> uniq/T` plus an implicit `@follow` at every call position.
+- **Why not applied:** Two forms of one concept (Principle 1), and a hidden operation whose mode every function Type,
+  Callable signature and call position must carry (Principles 2 and 3). See DECISIONS PR-1.
+
+## Every reference-returning call designates its referent
+
+- **Problem:** `f()` returning `ref/T` is a reference value, so reading or replacing the referent needs `@follow`.
+- **Example:**
+
+  ```kimi
+  let r = first(values@ref)          // ref/i32: the reference is kept
+  let n = first(values@ref)@follow   // i32
+  ```
+
+- **Proposed fix:** Follow every returned reference implicitly, as the index expression does.
+- **Why not applied:** `let r = f()` must keep the reference, and a borrow of a temporary must not silently outlive it
+  (SPEC §3.3.3, §3.6); only the index operator follows, because its element is a Place like a built-in element.
+
+## `receiver[key]` as an ordinary call that the user follows
+
+- **Problem:** The index expression is the one place where a returned reference is followed implicitly.
+- **Example:**
+
+  ```kimi
+  names[1] = "uno"                  // The index expression follows indexUniq's reference.
+  names.indexUniq(1)@follow = "uno" // A written call does not.
+  ```
+
+- **Proposed fix:** Make `x[k]` an ordinary call of `index` or `indexUniq` and require `x[k]@follow`.
+- **Why not applied:** It breaks parity between user and built-in element Places (SPEC §4.7.2): `values[i] = v`,
+  `values[i]@ref` and nested selections would need a spelling that built-in arrays do not.

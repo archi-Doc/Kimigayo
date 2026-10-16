@@ -172,8 +172,8 @@ func duplicate<T>(value: T) -> (T, T)
   Conditional conformance: `Self is Copy when T is Copy`. Contract refinement: `contract C: A, B`.
 - Supply all explicit generic arguments or omit the list. Use annotations/explicit arguments when inference
   is ambiguous; later uses and callee bodies provide no evidence. Constructors require bound Type arguments.
-- `place ref/T` / `place uniq/T` function results publish existing storage: return the Place directly.
-  Callers may read Copy values or borrow it, and replace through the exclusive form; never Move out.
+- A function lends existing storage through a returned `ref/T` or `uniq/T` (return `x@ref` or `x@uniq`); callers keep
+  the reference or select its referent with `@follow`, never Move out; only `receiver[key]` follows `index`/`indexUniq`.
 
 ## 6. Borrowed results and stored views
 

@@ -750,14 +750,6 @@ public sealed partial class OwnershipAnalysis
         return id;
     }
 
-    // A temporary of a Type other than the syntax's own: the reference a Place call returns.
-    private int ReferenceTemporary(Koto source, BoundType type)
-    {
-        var id = this.Place(source, type, OwnershipPlaceKind.Temporary, true);
-        this.Emit(OwnershipOperationKind.Produce, source, id);
-        return this.RegisterTemporary(id);
-    }
-
     private int RegisterTemporary(int place)
     {
         this.temporaries.Add(new(place, this.body.PlaceStorage[place].Source, this.registrationSequence++));
@@ -929,11 +921,6 @@ public sealed partial class OwnershipAnalysis
         {
             this.Block(unsafeBlock.Body);
         }
-        else if (KotoHelper.UnwrapParentheses(node) is InvocationKoto call && ElementAccess.IsPlaceCall(call))
-        {
-            // SPEC 7.1.1: an unacquired Place statement performs the call but reads and destroys no stored value.
-            this.Call(call);
-        }
         else
         {
             this.Expression(node);
@@ -1017,7 +1004,7 @@ public sealed partial class OwnershipAnalysis
 
         if (this.compilation.Binding.IndexerCall(node, false) is { } indexer)
         {
-            return this.Expression(indexer, use, acquisition); // SPEC 4.7.1: receiver[key] through a user conformance reads the published Place.
+            return this.Expression(indexer, use, acquisition); // SPEC 4.7.1: receiver[key] through a user conformance reads the referent of its selected call's reference.
         }
 
         if (this.compilation.Binding.ViewRangeCall(node) is { } viewRange)
@@ -1134,8 +1121,8 @@ public sealed partial class OwnershipAnalysis
                 return this.ConstructDictionary(dictionary);
             case TupleTypeKoto { ElementNodes.Count: 0 }:
                 return this.Temporary(node);
-            case InvocationKoto call when ElementAccess.IsPlaceCall(call) && !this.referenceCalls.Remove(call):
-                return this.ReadPlaceCall(call, acquisition); // SPEC 7.1.1: a value use of the published Place.
+            case InvocationKoto call when ElementAccess.IsIndexerCall(call) && !this.referenceCalls.Remove(call):
+                return this.ReadIndexerElement(call, acquisition); // SPEC 4.7.1: a value use of the subscript's element.
             case InvocationKoto call:
                 return this.Call(call);
             case IsKoto { IsRuntimeTest: true } test:
@@ -1373,14 +1360,9 @@ public sealed partial class OwnershipAnalysis
                 return this.WriteReferent(binary, followed);
             }
 
-            if (target is InvocationKoto placeCall && ElementAccess.IsPlaceCall(placeCall))
-            {
-                return this.WritePlaceCall(binary, placeCall); // SPEC 7.1.1: a write through a place uniq/T result.
-            }
-
             if (target is IndexKoto userIndex && this.compilation.Binding.IndexerCall(userIndex, true) is { } exclusiveIndexer)
             {
-                return this.WritePlaceCall(binary, exclusiveIndexer); // SPEC 4.7.1: an update selects indexUniq.
+                return this.WriteIndexerElement(binary, exclusiveIndexer); // SPEC 4.7.1: an update selects indexUniq.
             }
 
             if (ElementAccess.IsRawPlace(target))
@@ -1662,8 +1644,8 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        // SPEC 7.1.1: a Place call returns the reference it publishes; the use selects the referent.
-        var result = ElementAccess.IsPlaceCall(call) ? this.ReferenceTemporary(call, plan.ReturnType) : this.Temporary(call);
+        // SPEC 7.1: a call produces its result Type, a returned reference included; only a subscript reads through it (SPEC 4.7.1).
+        var result = this.Temporary(call);
         var scalar = ScalarResult(this.body.Places[result].Type);
         if (scalar || SlotTypes.IsResult(this.body.Places[result].Type))
         {

@@ -288,9 +288,9 @@ public sealed partial class OwnershipAnalysis
         return this.Temporary(assignment);
     }
 
-    // SPEC 7.1.1: a value use of a published Place reads the referent through the reference the call returns, like a
+    // SPEC 4.7.1: a value use of a subscript's element reads the referent through the reference its selected call returns, like a
     // selected referent: a Copy snapshot of a proven-Copy stored Type, never a Move.
-    private int ReadPlaceCall(InvocationKoto call, AcquisitionKind? acquisition)
+    private int ReadIndexerElement(InvocationKoto call, AcquisitionKind? acquisition)
     {
         var element = ElementAccess.DesignatedType(call);
         var stored = this.Resolve(element, this.Active);
@@ -310,7 +310,7 @@ public sealed partial class OwnershipAnalysis
             }
         }
 
-        var reference = this.PlaceCallReference(call);
+        var reference = this.IndexerCallReference(call);
         if (reference < 0)
         {
             return -1;
@@ -322,8 +322,8 @@ public sealed partial class OwnershipAnalysis
         return this.RegisterTemporary(loaded);
     }
 
-    // Evaluates a Place call as the reference it returns.
-    private int PlaceCallReference(InvocationKoto call)
+    // Evaluates a subscript's selected call as the reference it returns (SPEC 4.7.1).
+    private int IndexerCallReference(InvocationKoto call)
     {
         this.referenceCalls.Add(call);
         var reference = this.ExpressionCore(call, PlaceUseKind.Read, null);
@@ -331,14 +331,14 @@ public sealed partial class OwnershipAnalysis
         return reference;
     }
 
-    // SPEC 7.1.1, 13.7: an assignment or compound update through a place uniq/T result secures the right-hand side,
+    // SPEC 4.7.1, 13.7: an assignment or compound update through a subscript's indexUniq call secures the right-hand side,
     // evaluates the call once as its reference, and replaces the referent through it (any stored Type for `=`, numeric for
     // a compound update).
-    private int WritePlaceCall(Koto source, InvocationKoto call)
+    private int WriteIndexerElement(Koto source, InvocationKoto call)
     {
         var type = ElementAccess.DesignatedType(call);
         var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
-        if (ElementAccess.PlaceCallReference(call)?.Semantics != SemanticsKind.Uniq || type is null ||
+        if (call.BoundType?.Semantics != SemanticsKind.Uniq || type is null ||
             (operation != KotoKind.Equals && !this.SupportsUpdate(call, type, operation)))
         {
             this.Unsupported(source);
@@ -351,7 +351,7 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        var address = this.PlaceCallReference(call);
+        var address = this.IndexerCallReference(call);
         var pointer = this.Value(address);
         if (pointer < 0)
         {
@@ -437,8 +437,8 @@ public sealed partial class OwnershipAnalysis
         return operation == KotoKind.Equals ? this.Temporary(source) : this.UpdateResult(source, previous, value);
     }
 
-    // SPEC 5.2, 7.1.1, 13.5.5, 13.7: the one replacement through an address, whether a raw pointer, the reference a Place
-    // call publishes, a followed uniq reference or the exclusive address of a field reached through a reference. The old
+    // SPEC 5.2, 4.7.1, 13.5.5, 13.7: the one replacement through an address, whether a raw pointer, the reference a subscript's
+    // selected call returns, a followed uniq reference or the exclusive address of a field reached through a reference. The old
     // value is destroyed by its Type's destruction plan and the acquired value's responsibility moves into the destination
     // (LowerPointer); no compiler-owned destination or temporary is created for it.
     private void StorePointer(Koto target, int pointer, int value)

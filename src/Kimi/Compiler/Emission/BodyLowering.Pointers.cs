@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
-    // SPEC 13.7: the one replacement at an address, for an element, a field, a referent or a Place call result. The old
+    // SPEC 13.7: the one replacement at an address, for an element, a field or a referent, also of a subscript's selected call. The old
     // value is destroyed by its Type's destruction plan (a string, an aggregate that needs destruction, nothing for a
     // scalar), unless the caller destroyed its remaining parts, and the input's responsibility moves in. Zero-sized values
     // access no bytes. Returns false for a scalar, which the caller stores in its own addressing form.
@@ -96,14 +96,14 @@ internal sealed partial class BodyLowering
         var address = Input(body, id, 0);
         // SPEC 3.3: a Copy borrow's referent is loaded through the reference; the
         // operation's source is then the borrow itself, and its address needs no Unsafe obligation.
-        // SPEC 7.1.1: a write through a Place call stores through the reference the call returns.
+        // SPEC 4.7.1: a write through a subscript's selected call stores through the reference the call returns.
         var pointerType = ValueType(body, address);
         // SPEC 13.7: a field replaced through a reference is stored through the exclusive address of that field.
         var sourceType = store && ((operation.Source is BinaryKoto inline && ElementAccess.IsSyntax(inline) && ElementAccess.WritableRoot(inline) is not null) ||
             (operation.Source is MemberAccessKoto replaced && ElementAccess.BorrowedPathRoot(replaced) is not null) ||
             ElementAccess.IsExclusiveArrayElement(operation.Source)) &&
             ReferenceEquals(body.Resolve(operation.Source.BoundType, body.ContextAt(id)), type) ? pointerType
-            : body.Resolve(ElementAccess.PlaceCallReference(operation.Source) ?? operation.Source.BoundType, body.ContextAt(id));
+            : body.Resolve(operation.Source.BoundType, body.ContextAt(id));
         // SPEC 3.5.3, 13.5.5: a load through a safe reference copies its referent layer by layer, and a
         // referent write stores through a uniq reference; both use the reference value as the address.
         // SPEC 10.2, 3.4.3: a stored ref or uniq reference may be loaded as one reference to the same referent, shared,

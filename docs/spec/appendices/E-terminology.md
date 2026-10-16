@@ -52,7 +52,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Follow | `@follow`: selects the Place a reference or a qualifying pair layer points to, or the payload of an object handle whose View Target is a proven Sealed Type. | [§13.5.5](../13-operators-and-assignment.md#1355-follow) |
 | Function Item / common Function Type | One resolved function declaration, no environment / the erased calling contract shared by callable values. | [§3.2.1](../03-types-and-values.md#321-callable-value-types) |
 | Independently typable argument | A non-literal argument whose complete Type is fixed with no expectation from the call and no literal default; a nested call qualifies only with exactly one applicable candidate without an expected result, and an anonymous function never does. | [§10.5.1](../10-overload-resolution-and-inference.md#1051-argument-kinds) |
-| Indexable / UniqIndexable | Contracts through which `receiver[key]` selects an element Place. | [§4.7.1](../04-arrays-indexing-and-slices.md#471-index-expression-resolution) |
+| Indexable / UniqIndexable | Contracts whose `index` and `indexUniq` return the reference that `receiver[key]` follows to its element. | [§4.7.1](../04-arrays-indexing-and-slices.md#471-index-expression-resolution) |
 | Integer / wrapping integer / numeric Type | One of twelve integer Cores / `Wrapping<T>` / integer, wrapping integer or floating-point. | [§3.1](../03-types-and-values.md#31-primitive-cores) |
 | Item / `LentItem(step)` | The item Type of an Iterator / of a LendingIterator, which may borrow the receiver. | [§22.2.1](../22-core-execution-and-foreign-functions.md#2221-iterator-contracts) |
 | Iterable / UniqIterable / IntoIterable | The entries `for` selects for a Shared, Exclusive or ByValue Subject. | [§22.2.1](../22-core-execution-and-foreign-functions.md#2221-iterator-contracts) |
@@ -82,7 +82,6 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Pair layer | A Type whose outer Semantics is a pair binder. | [§13.5.5](../13-operators-and-assignment.md#1355-follow) |
 | Parameter acquisition shape | One acquisition mode for overlapping parameters of one function group. | [§7.4](../07-functions-and-callable-values.md#74-parameter-acquisition-shape) |
 | Place / Storage | Selected storage with its Type and capabilities / a region that holds values. | [§3.4](../03-types-and-values.md#34-places-and-storage) |
-| Place result | A result `place ref/T` or `place uniq/T` that publishes existing Storage. | [§7.1.1](../07-functions-and-callable-values.md#711-place-results) |
 | Position / Range | A boundary resolving into `[0, L]` / an interval of positions. | [§4.6.1](../04-arrays-indexing-and-slices.md#461-positions), [§4.6.2](../04-arrays-indexing-and-slices.md#462-ranges) |
 | `preserves results` | Effect bound: a call conflicts with no Loan of an earlier result of the same requirement. | [§8.11.3](../08-generics-constraints-and-contracts.md#8113-preserves-results) |
 | PrimitiveInteger | The compiler-intrinsic Contract of exactly the twelve integer Types. | [§8.7.4](../08-generics-constraints-and-contracts.md#874-primitiveinteger) |

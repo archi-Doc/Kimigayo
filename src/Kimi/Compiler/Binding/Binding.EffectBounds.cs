@@ -619,9 +619,6 @@ public sealed partial class Binding
                     case ExpectedAdaptationKind.SharedBorrow:
                         this.PlaceAccess(node, LoanRequirement.Ref, node);
                         break;
-                    case ExpectedAdaptationKind.ExclusiveBorrow:
-                        this.PlaceAccess(node, LoanRequirement.Uniq, node);
-                        break;
                 }
             }
 
@@ -725,7 +722,7 @@ public sealed partial class Binding
         }
 
         // The access of a Place path in a mode: through each reference, pair layer or Slice that reaches it (the outermost
-        // one in the mode, the inner ones read), through the reference a Place call publishes, or to the static storage
+        // one in the mode, the inner ones read), or to the static storage
         // of a group variable. An accessor or user indexer Place is its synthesized call, selected by the mode; an owned
         // local or parameter root needs no Loan, and a raw pointer path is unsafe and outside the checked summary.
         private void PlaceAccess(Koto? node, LoanRequirement mode, Koto use)
@@ -755,9 +752,6 @@ public sealed partial class Binding
                         mode = LoanRequirement.Ref;
                         node = follow.Left;
                         break;
-                    case InvocationKoto when ElementAccess.PlaceCallReference(node) is { } reference:
-                        this.Access(reference, mode, use);
-                        return;
                     case IdentifierNameKoto when binding.StorageProjection(node) is { } projection:
                         node = projection;
                         break;

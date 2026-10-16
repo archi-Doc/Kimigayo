@@ -605,7 +605,7 @@ public static partial class Parser
             return new ErrorKoto(ref reader, arrow) { Cause = reader.Diagnostic.LastError };
         }
 
-        return ParseFunctionResult(ref reader);
+        return ParseDeclarationType(ref reader);
     }
 
     /// <summary>Parses <c>base(arguments)</c> after the colon of a constructor header (SPEC 6.3.1).</summary>
@@ -4730,7 +4730,7 @@ Separator:
         }
 
         reader.Advance();
-        var returnType = ParseFunctionResult(ref reader);
+        var returnType = ParseDeclarationType(ref reader);
         var functionType = new FunctionTypeKoto(
             ref reader,
             SourceSpan.FromBounds(type.Span.Start, Math.Max(arrowRange.End, returnType.Span.End)),
@@ -4747,46 +4747,6 @@ Separator:
     /// </summary>
     private static Koto ParseBareParenthesizedType(ref TokenReader reader)
         => ParseDeclarationType(ref reader, parseOrigin: false, parseFunctionType: false, parseContainerSuffix: false, parseSuffix: false);
-
-    /// <summary>
-    /// Parses a function result: an ordinary Type, or a Place result when an unqualified <c>place</c> is followed by
-    /// <c>ref</c> or <c>uniq</c> and a slash (SPEC §7.1.1). The reference Type after <c>place</c> keeps its own
-    /// <c>during</c>, which is the Place result's Origin.
-    /// </summary>
-    private static Koto ParseFunctionResult(ref TokenReader reader)
-    {
-        if (!reader.IsCurrentIdentifier("place") || !reader.PeekKind(1).IsIdentifierOrContextualKeyword() || reader.PeekKind(2) != TokenKind.Slash)
-        {
-            return ParseDeclarationType(ref reader);
-        }
-
-        var mode = reader.GetSpan(reader.PeekToken(1));
-        if (!mode.SequenceEqual("ref") && !mode.SequenceEqual("uniq"))
-        {
-            return ParseDeclarationType(ref reader);
-        }
-
-        var keyword = reader.Read();
-        var type = ParseType(ref reader, parseOrigin: true, optionalSuffix: false);
-        DiagnosticKey? optional = null;
-        if (reader.CurrentTokenKind == TokenKind.Question)
-        {
-            // A Place is never optional (SPEC 7.1.1): the '?' is reported and the result rests on the Error.
-            optional = reader.Unexpected(SyntaxForm.PlaceResultSuffix);
-            while (reader.TryConsume(TokenKind.Question))
-            {
-            }
-        }
-
-        ParseBorrowOriginSuffix(ref reader, type);
-        var place = new PlaceResultKoto(ref reader, SourceSpan.FromBounds(keyword.Span.Start, type.Span.End), type);
-        if (optional is { } cause)
-        {
-            reader.CodeContext.RecordRecovery(place, cause);
-        }
-
-        return place;
-    }
 
     private static List<TypeKoto>? ParseGenericArguments(ref TokenReader reader, bool allowLength = false, bool specialization = false)
     {

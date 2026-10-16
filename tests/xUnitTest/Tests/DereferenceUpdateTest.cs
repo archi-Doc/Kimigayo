@@ -135,6 +135,19 @@ public class DereferenceUpdateTest
         Assert.DoesNotContain(errors, x => x.Category == DiagnosticCategory.Unsupported);
     }
 
+    // SPEC 10.2, 10.3: a result-only Type argument of a returned reference is never derived backward from a value read; an explicit
+    // argument or an expected reference Type fixes it.
+    [Theory]
+    [InlineData("let a = only<i32>()", true)]
+    [InlineData("let a: ref/i32 = only()", true)]
+    [InlineData("let a: i32 = only()", false)]
+    public void AResultOnlyTypeArgumentNeedsExplicitOrReferenceEvidence(string use, bool valid)
+    {
+        var c = MinimalEmissionTest.Analyze("func only<T>() -> ref/T during static => $abort(\"never\")\n" + use);
+        Assert.Equal(valid, c.Binding.Result.IsComplete);
+        Assert.Equal(valid, !c.Binding.Issues.Any(x => x.Code == DiagnosticCode.NoApplicableOverload_Kd));
+    }
+
     // SPEC 15.6.3: a Reborrow of the referent keeps the input Loan of the call that returned the reference.
     [Theory]
     [InlineData("let f = slot")]

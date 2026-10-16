@@ -275,7 +275,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (a.Kind != b.Kind || a.ResultMode != b.ResultMode || a.Semantics != b.Semantics || a.Length != b.Length || !SameLengthSignature(a.LengthExpression, b.LengthExpression, aBinder, bBinder) || a.Components.Count != b.Components.Count || a.LengthArguments.Length != b.LengthArguments.Length)
+        if (a.Kind != b.Kind || a.Semantics != b.Semantics || a.Length != b.Length || !SameLengthSignature(a.LengthExpression, b.LengthExpression, aBinder, bBinder) || a.Components.Count != b.Components.Count || a.LengthArguments.Length != b.LengthArguments.Length)
         {
             return false;
         }
@@ -1150,7 +1150,6 @@ public sealed partial class Binding
                     BindingFailure.ExclusiveBindingAssignment => DiagnosticCode.ExclusiveBindingAssignment_Kd,
                     BindingFailure.SharedPathAccess => DiagnosticCode.SharedPathAccess_Kd,
                     BindingFailure.ExclusivePathTake => DiagnosticCode.ExclusivePathTake_Kd,
-                    BindingFailure.PlaceRequired => DiagnosticCode.PlaceRequired_Kd,
                     BindingFailure.ReceiverShapeMismatch => DiagnosticCode.ReceiverShapeMismatch_Kd,
                     BindingFailure.AccessorReceiverShape => DiagnosticCode.AccessorReceiverShape_Kd,
                     BindingFailure.BareOwningShorthand => DiagnosticCode.BareOwningShorthand_Kd,

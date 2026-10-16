@@ -8,8 +8,8 @@ public sealed partial class Binding
 {
     // SPEC 4.7.1: receiver[key] on a user Type resolves through its Indexable<Key> conformance to a synthesized call of
     // index, and of indexUniq for updates and exclusive borrows. The synthesized calls are ordinary method calls of the
-    // conforming Type's implementations, so receiver acquisition, key adaptation, Place results and generic instantiation
-    // follow the ordinary rules; the index expression designates the published Place.
+    // conforming Type's implementations, so receiver acquisition, key adaptation, reference results and generic instantiation
+    // follow the ordinary rules; the index expression designates the referent of the reference the selected call returns (LentElement).
     private readonly Dictionary<(IndexKoto Source, bool Exclusive), InvocationKoto> indexerCalls = new();
     private readonly HashSet<IndexKoto> exclusiveIndexers = new(ReferenceEqualityComparer.Instance);
 

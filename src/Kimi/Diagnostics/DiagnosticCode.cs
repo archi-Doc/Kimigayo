@@ -139,7 +139,6 @@ public enum DiagnosticCode
     ExclusiveBindingAssignment_Kd,
     SharedPathAccess_Kd,
     ExclusivePathTake_Kd,
-    PlaceRequired_Kd,
     ReceiverShapeMismatch_Kd,
     AccessorReceiverShape_Kd,
     ParameterShapeMismatch_Kd,

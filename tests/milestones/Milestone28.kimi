@@ -15,8 +15,8 @@ struct Collection<E>
     public computed indices: ResolvedRange
         get() -> ResolvedRange => self.items.indices
     public init(items: Array<E>) => self.items = items@move
-    public func index(self, key: ref/isize) -> place ref/E during self => self.items[key]
-    public func indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/E during self => self.items[key]
+    public func index(self, key: ref/isize) -> ref/E during self => self.items[key]@ref
+    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/E during self => self.items[key]@uniq
 
 // Shared access to T for every admitted s: owner borrows the element itself; ref and uniq reborrow the referent.
 func view<s/T>(c: ref/Collection<s/T>, i: isize) -> ref/T during c

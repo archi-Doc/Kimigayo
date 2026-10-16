@@ -98,12 +98,6 @@ public sealed partial class Binding
         {
             var discards = KotoHelper.DiscardsFunctionBody(function);
             var result = discards ? this.BindNode(expression, scope) : this.BindExpected(expression, scope, symbol?.Type, function.ReturnType);
-            var placeItem = expression is CodeBlockKoto { IsExpressionBody: true, Items.Count: 1 } single ? single.Items[0] : expression;
-            if (function.ReturnType is PlaceResultKoto place && !discards && (result is null || !ReferenceEquals(result, BoundType.Never)))
-            {
-                this.CheckPlaceResultOperand(placeItem, place, ReferenceEquals(placeItem, expression) ? function : expression);
-            }
-
             if (symbol is not null)
             {
                 var structural = this.ResultStructure();

@@ -887,18 +887,11 @@ public sealed partial class Binding
 
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;
             (call.CallStorage ??= new()).Set(executed, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), scratch.AsSpan(0, selected.GenericArguments.Count), self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, defaultCount), lengthArguments.AsSpan(0, selected.GenericArguments.Count));
-            call.CallStorage.ResultMode = ResultModeOf(selected.ReturnType);
             if (selected.IsRequirement)
             {
                 // Retain the bound Contract selected by member lookup or by an operator.
                 call.CallStorage.RequirementContract = requirementGroup is not null && this.activeRequirementContract is { } requirementContract ? requirementContract :
                     callee is RequirementCalleeKoto requirementCallee ? requirementCallee.Contract : null;
-            }
-
-            if (call.CallStorage.ResultMode != FunctionResultMode.Value && result is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } published)
-            {
-                // SPEC 7.1.1: the call designates the published Place; its Type is the stored Type, and the plan keeps the reference.
-                return Complete(call, published.Components[0]);
             }
 
             return Complete(call, result);
@@ -1215,16 +1208,8 @@ public sealed partial class Binding
             }
 
             // Established input types cannot change; expectations only fill unresolved slots.
-            // SPEC 7.1.1, 10.3: a Place result publishes its stored Type; the use position borrows or reads it, so the
-            // expectation is compared with the referent and the Place result's own Origin is never matched against it.
-            var placeExpected = PlaceExpected(ResultModeOf(function.ReturnType), expected);
             var expectedStructure = true; // SPEC 10.8: the slot-free structure of a result that keeps an unsolved slot is still checked.
-            if (placeExpected is not null && function.BoundSymbol?.Type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } placePattern)
-            {
-                var stored = this.MemberType(self is null ? placePattern.Components[0] : this.ContractType(placePattern.Components[0], scope, self), declaringType)!;
-                expectedStructure = this.Infer(stored, placeExpected, CallSlotOwner(function), arguments, true, lengths);
-            }
-            else if (expected is not null && (function.IsConstructor && declaringType is not null ? this.SelfType(declaringType.Symbol!) : function.BoundSymbol?.Type) is { } returnPattern)
+            if (expected is not null && (function.IsConstructor && declaringType is not null ? this.SelfType(declaringType.Symbol!) : function.BoundSymbol?.Type) is { } returnPattern)
             {
                 // Result expectations use the selected receiver's container Origins, just like inputs.
                 // An abstract container binder must not become a rigid call-site lifetime constraint.
@@ -1574,14 +1559,7 @@ public sealed partial class Binding
                 return result is null && CompleteArguments() ? CandidateApplicability.Inapplicable : CandidateApplicability.Pending;
             }
 
-            if (placeExpected is not null && result is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } placeResult)
-            {
-                if (!this.FitsStructurallyAt(placeResult.Components[0], this.ContractType(placeExpected, scope), call))
-                {
-                    return CandidateApplicability.Inapplicable;
-                }
-            }
-            else if (expected is not null && result is not null && !this.FitsStructurallyAt(result, this.ContractType(expected, scope), call) &&
+            if (expected is not null && result is not null && !this.FitsStructurallyAt(result, this.ContractType(expected, scope), call) &&
                 this.ExpectedAdaptation(call, result, this.ContractType(expected, scope), recordPair: false) is null)
             {
                 return CandidateApplicability.Inapplicable;
@@ -2125,7 +2103,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (pattern.Kind != actual.Kind || pattern.ResultMode != actual.ResultMode || pattern.Symbol != actual.Symbol || pattern.Semantics != actual.Semantics ||
+        if (pattern.Kind != actual.Kind || pattern.Symbol != actual.Symbol || pattern.Semantics != actual.Semantics ||
             !(lengths is not null && pattern.Kind == BoundTypeKind.FixedArray ? this.InferLength(pattern, actual, function, lengths) : pattern.Length == actual.Length && ReferenceEquals(pattern.LengthExpression, actual.LengthExpression)) ||
             (!inferOrigins && evidence is null && !ReferenceEquals(pattern.Origin, actual.Origin)) || pattern.OriginArguments.Count != actual.OriginArguments.Count || pattern.Components.Count != actual.Components.Count || pattern.LengthArguments.Length != actual.LengthArguments.Length || (pattern.Components.Count == 0 && pattern.LengthArguments.Length == 0 && pattern.OriginArguments.Count == 0))
         {

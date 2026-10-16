@@ -140,12 +140,11 @@ This table is exhaustive.
 | `self` | As ReceiverShorthand and in AccessorReceiver. `self`, `value` and `storage` are also contextual bindings ([§9.3](../09-names-signatures-and-access.md#93-local-scopes-and-contextual-names), [§11.3](../11-properties.md#113-accessor-functions)). |
 | `get` `set` `has` `value` | In accessor and Property-requirement syntax ([§F.7](#f7-properties)). |
 | `associate` `when` `specialize` | In associated-Type declarations and specifications, in a ConditionalConformance, and immediately before `func`. |
-| `place` | In a result position when followed by `ref` or `uniq` and `/`. |
 | `Callable` | At the start of a RequirementAtom or ConformanceAtom when followed by `<`. |
 | `effect` `confined` `preserves` `results` | `effect` when it starts an item and is followed on the same line by `confined` or `preserves`, or, in a Contract item, by a ContractSelector; `confined`, `preserves` and `results` only after `effect`. Effect items are valid in a requirement's Constraint region, a Contract `EffectSpecification`, a Callable effect list and the leading region of an original virtual function body ([§8.11.1](../08-generics-constraints-and-contracts.md#8111-declarations)). |
 | `during` `outlives` `static` | `during` after the body and `?` suffixes of an AnnotatedType; `outlives` inside an OriginRelation; `static` as an OriginAtom. |
 | `origin` | When it starts an item in a position that admits an OriginRelation: an attached clause list; a struct or enum body (ContainerItem, EnumItem); a requirement Constraint region; or the leading region of a function, constructor or accessor body ([§7.5](../07-functions-and-callable-values.md#75-function-constraints)). There the item is always an OriginRelation, including `origin (...) == ...`. |
-| `owner` `ref` `uniq` `obj` `rc` `arc` `objref` `objuniq` `raw` | In Semantics positions: Types, requirements, Place results, CallableReceiver, Capture operations and adaptation targets. Elsewhere they are Names, such as a Field `raw`. |
+| `owner` `ref` `uniq` `obj` `rc` `arc` `objref` `objuniq` `raw` | In Semantics positions: Types, requirements, CallableReceiver, Capture operations and adaptation targets. Elsewhere they are Names, such as a Field `raw`. |
 | `value` `valueborrow` `object` `objectborrow` `borrow` `owning` `reference` | As a SemanticsCategory in a requirement. |
 | `move` `copy` `follow` `wrap` `bits` | Immediately after `@`; `wrap` and `bits` only when directly followed by `<`, with no whitespace or comment between them. |
 | `abort` `tryWrite` `expect` `require` `message` | After `$`, the next token is a Composition Root operation name, matched by spelling even when it is a reserved word ([§13.8](../13-operators-and-assignment.md#138-reserved-syntax-and-the-composition-root)). `message` is the argument label of `$expect` and `$require`. |
@@ -277,10 +276,8 @@ struct Counter
 ```ebnf
 Type               := FunctionType | AnnotatedType
 AnnotatedType      := SemanticsType "?"* BorrowOrigin?
-FunctionType       := FunctionParameters "->" FunctionResult
+FunctionType       := FunctionParameters "->" Type
 FunctionParameters := "(" TaskSlot? TrailingList<Type>? ")"
-FunctionResult     := Type | PlaceResult
-PlaceResult        := "place" ("ref" | "uniq") "/" SemanticsType BorrowOrigin?
 SemanticsType      := Semantics "/" SemanticsType | TypeAtom
 TypeAtom           := CoreType | "(" Type ")"
 Semantics          := BuiltinSemantics | Name
@@ -392,7 +389,7 @@ ContractItem         := FunctionRequirement | PropertyRequirement | AssociatedTy
                       | AssociatedTypeSpecification | EffectSpecification | ConstraintClause
                       | Directive<ContractItem>
 FunctionRequirement  := "unsafe"? "func" Name GenericParameters?
-                        ParameterList<RequirementParameter> ("->" FunctionResult)?
+                        ParameterList<RequirementParameter> ("->" Type)?
                         RequirementConstraints?
 RequirementParameter := ParameterName ":" Type | ReceiverShorthand
 RequirementConstraints := IndentedList<ConstraintClause | OriginRelation | EffectClause>
@@ -453,7 +450,7 @@ func apply<F>(f: ref/F, x: i32) -> i32
 
 ```ebnf
 FunctionHeader       := Access? FunctionModifier? "func" Name GenericParameters?
-                        ParameterList<Parameter> ("->" FunctionResult)?
+                        ParameterList<Parameter> ("->" Type)?
 FunctionModifier     := "unsafe" | "virtual" | "override"
 FunctionDefinition   := FunctionHeader FunctionBody
 AttributedFunctionDefinition := AttributePrefix? FunctionDefinition
@@ -464,7 +461,7 @@ FunctionItem         := Expression | LocalBinding | AttributedFunctionDefinition
                       | Directive<FunctionItem>
 SpecializationDeclaration := "specialize" "func" Name TypeArguments
                              "(" TaskSlot? TrailingList<SpecializationParameter>? ")"
-                             ("->" FunctionResult)? ExecutableBody
+                             ("->" Type)? ExecutableBody
 SpecializationParameter := Name ("=>" Name)? ":" Type | ReceiverShorthand
 ConstructorDeclaration := Access? "init" ParameterList<Parameter> BaseInitializer? FunctionBody
 BaseInitializer      := ":" "base" "(" TaskSlot? TrailingList<Argument>? ")"
@@ -611,7 +608,7 @@ ArrayExpression  := "[" TrailingList<Expression>? "]" | "[" ArrayLength "of" Exp
 DictionaryExpression := "[" ":" "]" | "[" TrailingList<DictionaryEntry> "]"
 DictionaryEntry  := Expression ":" Expression
 FunctionExpression := "func" CaptureList? "(" TaskSlot? TrailingList<AnonymousParameter>? ")"
-                      ("->" FunctionResult)? ExecutableBody
+                      ("->" Type)? ExecutableBody
 AnonymousParameter := Name (":" Type)?
 CaptureList      := "[" TrailingList<Capture>? "]"
 Capture          := "var"? Name ("@" ("move" | "ref" | "uniq"))?

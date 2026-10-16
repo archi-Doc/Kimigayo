@@ -1,6 +1,6 @@
 # Kimigayo 言語仕様・日本語簡約版
 
-言語版 **0.0.2**。2026年10月15日時点の `SPEC.md` と各章・付録、および参照される実装仕様を一つにまとめた日本語訳。規則、条件、禁止事項、保証を残し、重複説明と例を整理した。キーワード、API名、型名、構文記号は原文のままとし、章番号も引き継ぐ。
+言語版 **0.0.2**。2026年10月16日時点の `SPEC.md` と各章・付録、および参照される実装仕様を一つにまとめた日本語訳。規則、条件、禁止事項、保証を残し、重複説明と例を整理した。キーワード、API名、型名、構文記号は原文のままとし、章番号も引き継ぐ。
 
 言語規則は1〜19・22・24章と付録F、ツールの契約は23章とJSONスキーマ、初期実装の契約は20・21章と付録Aにある。付録D・Eと実装状況は参考情報。仕様への記載は実装済みを意味しない。規則の正式な根拠は英語版であり、この翻訳によって言語規則や実装範囲を変更しない。
 
@@ -362,7 +362,7 @@ PositionはEquatable・Utf8Format・Copy・Ownedを要求し、`tryResolve(self:
 
 ### 4.7 添字
 
-単一添字は`Indexable`/`UniqIndexable`を使い、キーは共有借用する。indexとindexUniqは同じキーに対して同じ要素を選び、indexUniqは格納型を変えず排他権限を与える。具体的な標準シーケンスはPositionを一度isizeへ解決し、一度境界を検査する。一般の`Indexable<isize>`制約だけでは`^n`を使えない。その他のキー型は一意の適合が必要で、順位付け、期待結果、既定型による候補選択はしない。
+単一添字は`Indexable`/`UniqIndexable`を使い、キーは共有借用する。indexとindexUniqは同じキーに対して同じ要素への参照を返し、indexUniqは格納型を変えず排他権限を与える。適合を通した`receiver[key]`は、選んだ呼び出しが返す参照の参照先を表す。格納型はElement、能力と依存はその参照に従い、Takeはない。結果はキーに依存しない。明示的な`names.index(1)`は参照を返す通常の呼び出しで、参照をたどるのは添字演算子だけ。具体的な標準シーケンスはPositionを一度isizeへ解決し、一度境界を検査する。一般の`Indexable<isize>`制約だけでは`^n`を使えない。その他のキー型は一意の適合が必要で、順位付け、期待結果、既定型による候補選択はしない。
 
 利用箇所の必要権限からindexまたはindexUniqを一度選ぶ。失敗しても変更しない。直接の固定長配列は要素投影、Arrayは全体借用となる。範囲添字は別のビュー操作であり、範囲全体への代入はない。
 
@@ -600,7 +600,7 @@ Cレイアウトは一つの断片の記述順を使い、open、派生、空str
 
 名前付き関数は`func name(...) -> R`。結果型省略はUnitであり、本文から公開シグネチャを推論しない。単一本文・字下げ本文の結果規則は§14に従う。
 
-`place ref/T`と`place uniq/T`は、既存の完全な記憶領域を公開する**結果カテゴリ**であり、値型ではない。共有PlaceはRead、排他PlaceはRead/Write・完全値置換を許すが、どちらもTakeを許さない。returnはPlaceを指定し、その値を取得しない。局所や値引数自身のスロットは返せない。if/match/doはPlaceを生成しないため、各枝でreturnする。結果モード、Origin、Loanは間接呼び出しでも保持する。結果を単に捨てる呼び出しは値を読まないが、`_ = call()`は取得する。
+関数の結果は常に型。既存の記憶域は、返す参照`ref/T`（共有）または`uniq/T`（排他）で貸し、返却・期待型への適合・推論・効果・Originは通常の結果の規則に従う。呼び出し側は参照を値として受け取り、暗黙にはたどらない。`let r = f()`は参照を保持し、期待型は参照を適応し、`f()@follow`はCopy・Moveせずに参照先を選ぶ。参照先は`ref/T`ならRead、`uniq/T`ならRead/Writeを持ち、Takeは持たない。参照先の借用は参照先と親Loanに依存し、参照を一時的に保持するスロットには依存しない。`during self`の結果は受信者の借用に依存し、`during self.source`などで独立できるのは宣言と本体の検査が証明する場合だけ。参照をたどるのは`index`・`indexUniq`に対する添字式だけ（§4.7）。
 
 ### 7.2 引数と既定値
 
@@ -695,7 +695,7 @@ Unknownは否定ではない。一般のSAT、型の全列挙、定理証明、�
 
 contractは静的能力を表し、関数要件、関連型、制約を持つ。独自の型パラメーターは持てるが、Origin・長さパラメーターは持たない。実装本文や格納領域はない。
 
-関数要件にはジェネリクス、task、値結果・Place結果を使える。結果省略はUnit。同名の受信者・task形状を統一し、`!`は使えるが既定値やアクセス指定は不可。要件前提は実装互換性の証明に使い、実装へ勝手に追加しない。
+関数要件にはジェネリクス、task、結果型を使える。結果省略はUnit。同名の受信者・task形状を統一し、`!`は使えるが既定値やアクセス指定は不可。要件前提は実装互換性の証明に使い、実装へ勝手に追加しない。
 
 親契約は束縛済み参照として指定し、順不同で循環禁止。子は要件を追加する。同じ祖先・束縛へ複数経路で到達しても一つの要件だが、独立した同名要件は別物。要件同士が共存も共通実装も不可能と証明された場合だけ宣言エラーにし、Unknownだけでは衝突としない。
 
@@ -709,7 +709,7 @@ associateは完全型とOriginを保持する。contract内の宣言と、型側
 
 **推論。** Originパラメーターのない関連型だけを関数結果から推論する。宣言・適合経路の前提を先に固定し、推論した値を自分自身の前提へ戻さない。実装は名前と入力キーで一度識別する。関連型不足でpendingとなったものだけ、型完成後に互換性確認のため再識別できる。欠落・曖昧は最終的な失敗。
 
-証拠は値結果同士だけで、プロパティ、Place、本文、呼び出し箇所からは取らない。同じ名目的型・同じ要素数のタプル・同長固定配列・具体Semanticsの構造を対応付ける。関数型内部、未解決投影、ペア適用内部へは入らない。メソッドのジェネリック・呼び出しごとのOriginなど適合スコープ外の名前は使えない。全証拠の完全型とOriginが一致する必要があり、適応やOrigin短縮で共通型を探さない。
+証拠は関数の結果同士（`index`・`indexUniq`も含む）だけで、プロパティ、本文、呼び出し箇所からは取らない。同じ名目的型・同じ要素数のタプル・同長固定配列・具体Semanticsの構造を対応付ける。関数型内部、未解決投影、ペア適用内部へは入らない。メソッドのジェネリック・呼び出しごとのOriginなど適合スコープ外の名前は使えない。全証拠の完全型とOriginが一致する必要があり、適応やOrigin短縮で共通型を探さない。
 
 ### 8.6 適合
 
@@ -717,7 +717,7 @@ associateは完全型とOriginを保持する。contract内の宣言と、型側
 
 継承した適合は、要件のSelfを派生型へ置換して全て互換な場合だけ有効。実装側Selfは宣言元に固定する。借用受信者の基底投影以外に基底変換は追加しない。適合継承の失敗だけで派生型全体は無効にならない。
 
-実装識別のキーは名前、種類、ジェネリックの個数・種類・順序、task、通常引数の個数・順序・外部名、受信者、正規化入力構造、結果カテゴリとPlaceモード。結果値型、Origin、制約、効果は候補選択に使わない。
+実装識別のキーは名前、種類、ジェネリックの個数・種類・順序、task、通常引数の個数・順序・外部名、受信者、正規化入力構造。結果型、Origin、制約、効果は候補選択に使わない。
 
 識別後、要件が許す全呼び出しで実装制約・入力・結果・Origin保証・アクセス・safe・効果上限を満たすか検査する。失敗しても別候補へ戻らない。ジェネリック本文は要件経由で呼ぶ。型関数は`T.empty()`であり、`C.empty()`ではない。独立した同名要件は複数候補になり、要件名で呼び分ける修飾呼び出し構文はない。
 
@@ -799,7 +799,7 @@ ObjectViewCompatibleな契約は、safeかつ非消費のオブジェクト受�
 
 同名の型宣言で種類が違えば、引数数に関係なく衝突する。同じ種類で引数数が違う型は別宣言。Originスキーマは宣言を区別しない。
 
-関数シグネチャは名前、独自ジェネリック引数数、正規化した順序付き引数型に基づく。結果型・結果モード、引数名、既定値、`!`、アクセス、unsafe、制約、taskの有無で別オーバーロードにはならない。受信者も引数列に含める。正規化は宣言記号、別名、完成した関連型投影、括弧、冗長owner、束縛子の名前替えを考慮し、個別の証明や実体化で追加簡約しない。
+関数シグネチャは名前、独自ジェネリック引数数、正規化した順序付き引数型に基づく。結果型、引数名、既定値、`!`、アクセス、unsafe、制約、taskの有無で別オーバーロードにはならない。受信者も引数列に含める。正規化は宣言記号、別名、完成した関連型投影、括弧、冗長owner、束縛子の名前替えを考慮し、個別の証明や実体化で追加簡約しない。
 
 ジェネリック引数数にはlengthも含み、ペアは一つと数える。スロット種類自体は区別せず、`f<T>(x:T)`と`f<s/U>(x:s/U)`は重複する。initは宣言structと順序付き正規化引数型、フィールド/computed/property要件は名前、enumケースはそのenum内の名前で区別し、ケースのペイロードではオーバーロードしない。
 
@@ -919,7 +919,7 @@ unsafe許可、初期化、Move、Loan、寿命、利用アクセス、書き込
 
 ### 10.7 呼び出し可能シグネチャの互換性
 
-taskの有無と引数数が一致し、各要求入力Piが実装入力Aiの部分型であることが必要。値結果は実装結果Rが要求結果Qの部分型、またはRがNever。Place結果は同じ結果モードを必要とし、公開する型・Origin・Loan契約を保つ。取得操作・変換を挿入しない。要求側の全称Originは固定し、実装側で実体化可能なものだけを解く。
+taskの有無と引数数が一致し、各要求入力Piが実装入力Aiの部分型であることが必要。結果は実装結果Rが要求結果Qの部分型、またはRがNever。取得操作・変換を挿入しない。要求側の全称Originは固定し、実装側で実体化可能なものだけを解く。
 
 共通関数型の値同士は通常の部分型関係だけで変換できる。`(i32)->Never`から`(i32)->i32`への変換を、この結果互換性から許してはならない。
 
@@ -1320,7 +1320,7 @@ letは束縛寿命の各経路で一回だけ初期化でき、Moveで履歴は�
 | Initialize | 専用の初期化権限 |
 | Replace | Write、旧値を破棄可能、依存の維持 |
 
-追跡するTakeは完全な所有ルート・許可されたフィールド/タプル/静的配列要素だけ。raw Takeはunsafeの作者責任で状態を追跡しない。借用参照先、objectペイロード、static、動的要素、公開Place結果、隠れたプロパティstorageにはTakeがない。ジェネリックの所有値全体をMoveするのに追加契約は不要。
+追跡するTakeは完全な所有ルート・許可されたフィールド/タプル/静的配列要素だけ。raw Takeはunsafeの作者責任で状態を追跡しない。借用参照先、objectペイロード、static、動的要素、隠れたプロパティstorageにはTakeがない。ジェネリックの所有値全体をMoveするのに追加契約は不要。
 
 新しい排他借用を貸せるルートはvar局所、可変static、所有一時値、構築受信者の初期化済み独自フィールド、drop受信者など規定されたもの。let所有値、所有引数、所有getter結果とそのインライン部分は不可。ただし中に格納するuniqの再借用は参照先権限に従う。クロージャー束縛は自身のlet/varで決まる。受信者以外の所有Placeには@uniq/@objuniqを明示する。
 
@@ -1882,10 +1882,10 @@ Compilationは、予約された直接参照名`Kimi`にKimi Kotonohaをちょ�
 ```kimi
 contract Indexable<Key>
     associate Element
-    func index(self: ref/Self, key: ref/Key) -> place ref/Element during self
+    func index(self: ref/Self, key: ref/Key) -> ref/Element during self
 
 contract UniqIndexable<Key>: Indexable<Key>
-    func indexUniq(self: uniq/Self, key: ref/Key) -> place uniq/Element during self
+    func indexUniq(self: uniq/Self, key: ref/Key) -> uniq/Element during self
 ```
 
 反復・添字Contractは静的で、関連型は完全型でありOrigin引数を持てる。Array、Dictionary、Slice、UniqSlice、Wrapping、Loan、Weak、Neverのconstructorは、標準宣言に明記されたものだけで、合成されない。Weak・Wrapping・Neverにはconstructorがない。
@@ -2413,7 +2413,6 @@ slotはparameterの位置番号、外部名、取得mode、matching key、引数
 | Closure / Capture | 環境付きCallable body／環境束縛をlet/var初期化同様に作る各項目 | 7 |
 | Call Receiver Requirement | Callable bodyがreceiverに要求する最小アクセス | 7 |
 | Function Item / common Function Type | 環境を持たない解決済み関数／Callable値を共通化する型消去された呼出し契約 | 3 |
-| Place result | 既存Storageを公開する`place ref/T`、`place uniq/T` | 7 |
 | Pair binder / target / layer | `<s/T>`のs／T／外側Semanticsがpair binderである型の層 | 8・13 |
 | Admitted set / Semantics case | 前提が許すpair Semantics集合／各binderから1つずつ選ぶgeneric検査case | 8 |
 | Contract / Constraint | 実装や保存領域のないrequirement Container／型・Semanticsへの条件 | 8 |
@@ -2582,12 +2581,11 @@ Literal         := NumberLiteral | CharLiteral | StringLiteral
 | self | ReceiverShorthand・AccessorReceiver。self/value/storageは§9・11の文脈束縛でもある |
 | get set has value | accessor・Property requirement構文 |
 | associate when specialize | 関連型宣言/指定、条件付き適合、func直前のspecialization |
-| place | result位置でrefまたはuniqと`/`が続く場合 |
 | Callable | RequirementAtom/ConformanceAtom先頭で`<`が続く場合 |
 | effect confined preserves results | 項目先頭のeffectに同一行でconfined/preserves、またはContract内でContractSelectorが続く場合。他の3語はeffect後だけ。配置は§8の効果宣言領域 |
 | during outlives static | AnnotatedType本体と`?`suffix後／OriginRelation内／OriginAtom |
 | origin | OriginRelationを許す項目先頭。付属節一覧、struct/enum、requirement制約領域、関数・constructor・accessor先頭領域。`origin (...) == ...`も常にrelation |
-| owner ref uniq obj rc arc objref objuniq raw | 型・requirement・Place result・CallableReceiver・capture・適応先のSemantics位置 |
+| owner ref uniq obj rc arc objref objuniq raw | 型・requirement・CallableReceiver・capture・適応先のSemantics位置 |
 | value valueborrow object objectborrow borrow owning reference | requirementのSemanticsCategory |
 | move copy follow wrap bits | @直後。wrap/bitsは空白・コメントなしで`<`が直続する場合だけ |
 | abort tryWrite expect require message | $後の操作名は予約語でも綴りで照合。messageは$expect/$requireの引数label |
@@ -2643,10 +2641,8 @@ else/else ifは単一項目bodyの終了行、または次の有効行で接続�
 ```ebnf
 Type               := FunctionType | AnnotatedType
 AnnotatedType      := SemanticsType "?"* BorrowOrigin?
-FunctionType       := FunctionParameters "->" FunctionResult
+FunctionType       := FunctionParameters "->" Type
 FunctionParameters := "(" TaskSlot? TrailingList<Type>? ")"
-FunctionResult     := Type | PlaceResult
-PlaceResult        := "place" ("ref" | "uniq") "/" SemanticsType BorrowOrigin?
 SemanticsType      := Semantics "/" SemanticsType | TypeAtom
 TypeAtom           := CoreType | "(" Type ")"
 Semantics          := BuiltinSemantics | Name
@@ -2730,7 +2726,7 @@ ContractItem         := FunctionRequirement | PropertyRequirement | AssociatedTy
                       | AssociatedTypeSpecification | EffectSpecification | ConstraintClause
                       | Directive<ContractItem>
 FunctionRequirement  := "unsafe"? "func" Name GenericParameters?
-                        ParameterList<RequirementParameter> ("->" FunctionResult)?
+                        ParameterList<RequirementParameter> ("->" Type)?
                         RequirementConstraints?
 RequirementParameter := ParameterName ":" Type | ReceiverShorthand
 RequirementConstraints := IndentedList<ConstraintClause | OriginRelation | EffectClause>
@@ -2777,7 +2773,7 @@ requirementのisはorまで右辺に取り込み、直後notは全体を否定�
 
 ```ebnf
 FunctionHeader       := Access? FunctionModifier? "func" Name GenericParameters?
-                        ParameterList<Parameter> ("->" FunctionResult)?
+                        ParameterList<Parameter> ("->" Type)?
 FunctionModifier     := "unsafe" | "virtual" | "override"
 FunctionDefinition   := FunctionHeader FunctionBody
 AttributedFunctionDefinition := AttributePrefix? FunctionDefinition
@@ -2788,7 +2784,7 @@ FunctionItem         := Expression | LocalBinding | AttributedFunctionDefinition
                       | Directive<FunctionItem>
 SpecializationDeclaration := "specialize" "func" Name TypeArguments
                              "(" TaskSlot? TrailingList<SpecializationParameter>? ")"
-                             ("->" FunctionResult)? ExecutableBody
+                             ("->" Type)? ExecutableBody
 SpecializationParameter := Name ("=>" Name)? ":" Type | ReceiverShorthand
 ConstructorDeclaration := Access? "init" ParameterList<Parameter> BaseInitializer? FunctionBody
 BaseInitializer      := ":" "base" "(" TaskSlot? TrailingList<Argument>? ")"
@@ -2893,7 +2889,7 @@ ArrayExpression  := "[" TrailingList<Expression>? "]" | "[" ArrayLength "of" Exp
 DictionaryExpression := "[" ":" "]" | "[" TrailingList<DictionaryEntry> "]"
 DictionaryEntry  := Expression ":" Expression
 FunctionExpression := "func" CaptureList? "(" TaskSlot? TrailingList<AnonymousParameter>? ")"
-                      ("->" FunctionResult)? ExecutableBody
+                      ("->" Type)? ExecutableBody
 AnonymousParameter := Name (":" Type)?
 CaptureList      := "[" TrailingList<Capture>? "]"
 Capture          := "var"? Name ("@" ("move" | "ref" | "uniq"))?
@@ -3231,7 +3227,7 @@ STATUSは仕様とは別の検証記録である。10月15日に仕様の57規�
 | 分野 | 検証済み範囲と残る制限 |
 | --- | --- |
 | 型・推論・Origin | 有界な関連型推論、固定入力によるconstructor推論、Origin前提の有界な閉包、実際のLoan保持等には個別の受理・拒否・編集・割当て回帰検証がある。一般の関連型逆推論、任意のOrigin・Callable形、artifact間の証明公開までを保証しない |
-| 演算・object・Callable | 算術Contract、共通の期待型適応、Place result、共有virtual dispatch等に検証がある。排他ObjectCallCompatible、継承object receiverのContract射影、置換をまたぐCallable値の同一性等は未完。参照層を通る一部のobjectアクセスには既知の未修正欠陥があり、言語の制限とは区別する |
+| 演算・object・Callable | 算術Contract、共通の期待型適応、共有virtual dispatch等に検証がある。排他ObjectCallCompatible、継承object receiverのContract射影、置換をまたぐCallable値の同一性等は未完。参照層を通る一部のobjectアクセスには既知の未修正欠陥があり、言語の制限とは区別する |
 | static・非同期 | 一般のstatic初期化・保持借用・終了処理は未完。task;構文、Async、coroutine、scheduler、worker、Transferable、thread安全なstatic初期化は未実装。仕様にあることを実行可能性の根拠にしない |
 | module・package | Project依存のsource graph、厳密identity、product/test lock分離、対応するmodule間callは検証済み。packageのload/pack/publish/store、完全なnative供給・内容照合、可搬な意味記録は未完 |
 | 診断・editor | 診断、quick fix、宣言・Copy・効果・文書のHoverの対応範囲がある。completionとCSP adapterは未提供。compilerは単一unitのkimi.check/2を出し、本書のkimi.check/3 command envelopeは未実装 |

@@ -289,8 +289,7 @@ public sealed partial class Binding
                         this.RecordInferenceProblem(path, this.ContractType(waitingResult, path.Scope, self), match.State == RequirementMatchState.Pending ? InferenceProblem.Input : match.State == RequirementMatchState.Ambiguous ? InferenceProblem.Ambiguous : InferenceProblem.Missing, requirement, input);
                     }
 
-                    if (match.State != RequirementMatchState.Unique || requirement.ReturnType is PlaceResultKoto ||
-                        match.Member!.Declaration is not FunctionKoto implementation || implementation.ReturnType is PlaceResultKoto ||
+                    if (match.State != RequirementMatchState.Unique || match.Member!.Declaration is not FunctionKoto implementation ||
                         requirement.BoundSymbol!.Type is not { } required || match.Member.Type is not { } actual)
                     {
                         continue;

@@ -68,11 +68,6 @@ public sealed partial class Binding
             };
         }
 
-        if (node is InvocationKoto placeCall && ElementAccess.PlaceCallReference(placeCall) is { } published)
-        {
-            return published.Semantics == SemanticsKind.Uniq; // SPEC 7.1.1: place uniq/T offers Write; place ref/T does not.
-        }
-
         if (node is IndexKoto userIndex && ElementAccess.IsUserIndex(userIndex))
         {
             return ElementAccess.IndexerCall(userIndex, true) is not null; // SPEC 4.7.1: an update selects indexUniq.
@@ -746,12 +741,6 @@ public sealed partial class Binding
                     this.Fail(jump, BindingFailure.TypeMismatch);
                 }
 
-                if (jump is ReturnKoto && target is FunctionKoto { ReturnType: PlaceResultKoto place } && jump.Expression is { } placeOperand &&
-                    (actual is null || !ReferenceEquals(actual, BoundType.Never)))
-                {
-                    this.CheckPlaceResultOperand(placeOperand, place, jump);
-                }
-
                 if (jump is not ContinueKoto)
                 {
                     if (jump.Parent is not TryKoto)
@@ -838,20 +827,6 @@ public sealed partial class Binding
         reference.BoundSymbol = group;
         reference.BindingState = BindingState.Resolved;
         return null;
-    }
-
-    // SPEC 7.1.1: the operand of a Place result designates a Place, never a value, temporary, if, match or do, and an
-    // exclusive Place result is never reached through a shared layer.
-    private void CheckPlaceResultOperand(Koto operand, PlaceResultKoto place, Koto report)
-    {
-        if (!IsBarePlace(operand))
-        {
-            this.Fail(operand.BindingState == BindingState.Invalid ? report : operand, BindingFailure.PlaceRequired);
-        }
-        else if (place.IsExclusive && PathAuthority(operand) == SemanticsKind.Ref)
-        {
-            this.Fail(operand, BindingFailure.SharedPathAccess);
-        }
     }
 
     private BoundType? BindName(IdentifierNameKoto node, BindingScope scope)

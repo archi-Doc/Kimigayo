@@ -48,7 +48,7 @@ public sealed partial class Binding
             }
 
             var inputs = function.Parameters.Count == 0 ? BoundType.Unit : this.types.Tuple(parameters.AsSpan(0, function.Parameters.Count));
-            return this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, boundResult], resultMode: ResultModeOf(function.ReturnType));
+            return this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, boundResult]);
         }
         finally
         {

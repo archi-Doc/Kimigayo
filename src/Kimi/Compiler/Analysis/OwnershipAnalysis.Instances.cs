@@ -154,7 +154,7 @@ public sealed partial class OwnershipAnalysis
     private bool ReadsStoredReference(ConversionKoto conversion)
     {
         var left = KotoHelper.UnwrapParentheses(conversion.Left);
-        // Published Places acquire their complete stored reference through the ordinary Place call.
+        // A subscript's element acquires its complete stored reference through the reference its selected call returns.
         return left is not IdentifierNameKoto && this.FollowsReference(conversion) &&
             ((conversion.ConversionBinding == ConversionBinding.PairFollow && this.Substituting) ||
                 (conversion.ConversionBinding == ConversionBinding.Follow && (left is not IndexKoto || ElementAccess.IsUserIndex(left))));
@@ -173,7 +173,7 @@ public sealed partial class OwnershipAnalysis
         // SPEC 13.5.5, 15.6.2: a reference stored in an inline Field, Tuple element or static element of an owned root is
         // reached by borrowing that slot in place; let restricts replacing the slot, not the stored reference's capability.
         var ownedSlot = left is BinaryKoto path && !Binding.IsGetterResult(path) && !this.SpecialField(path) && ElementAccess.OwnedPathRoot(path) is not null;
-        if (ElementAccess.IsUserIndex(left) || ElementAccess.IsPlaceCall(left) || ownedSlot)
+        if (ElementAccess.IsUserIndex(left) || ElementAccess.IsIndexerCall(left) || ownedSlot)
         {
             var designated = ElementAccess.DesignatedType(left)!;
             var stored = this.Resolve(designated, this.Active)!;

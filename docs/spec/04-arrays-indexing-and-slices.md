@@ -269,32 +269,34 @@ Element and range indexing are built in for `[N of T]`, `Array<T>`, `Slice<T>` a
 
 ### 4.7.1. Index-expression resolution
 
-Every single-element index expression, also on user Types and Dictionary, resolves through these Kimi Contracts. The key is shared-borrowed, never consumed; a key of reference or handle Type is written `key@ref` ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation)).
+Every single-element index expression, also on user Types and Dictionary, resolves through these Kimi Contracts, whose requirements return a reference to the selected element. The key is shared-borrowed, never consumed; a key of reference or handle Type is written `key@ref` ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation)).
 
 ```kimi
 contract Indexable<Key>
     associate Element
-    func index(self: ref/Self, key: ref/Key) -> place ref/Element during self
+    func index(self: ref/Self, key: ref/Key) -> ref/Element during self
 
 contract UniqIndexable<Key>: Indexable<Key>
-    func indexUniq(self: uniq/Self, key: ref/Key) -> place uniq/Element during self
+    func indexUniq(self: uniq/Self, key: ref/Key) -> uniq/Element during self
 ```
 
-Both requirements select the same element for the same key; `indexUniq` grants exclusive access without changing the stored Type. `receiver[key]` resolves statically:
+Both requirements return a reference to the same element for the same key; `indexUniq` grants exclusive access without changing the stored Type. `receiver[key]` resolves statically:
 
 1. After reference-path selection ([§3.4.3](03-types-and-values.md#343-reference-path-selection)), the receiver's Type gives its `Indexable<Key>` conformances. On a concrete sequence Type (fixed array, Array, Slice, UniqSlice) the key is a position: it is typed by [§4.6.2](#462-ranges) and normalized (Position normalization below). On every other receiver the key is the argument of the parameter `key: ref/Key` of each conformance and fits a conformance when it fits that parameter under common adaptation ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation)); a literal-only key fits under [§12.3](12-expressions.md#123-literal-typing) before any default. Exactly one conformance must fit: none is a Type error and several are an ambiguity error. A literal default never chooses a conformance, and `Key` is never inferred from the expected result.
 2. The use determines the capability: bare acquisition ([§3.5](03-types-and-values.md#35-copy-and-move)), adaptation to a fixed expected Type ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation)), a write, an explicit borrow, a Subject ([§15.1.6](15-ownership-and-lifetime-analysis.md#1516-match-and-for-subjects)) or a Receiver Expression ([§7.3](07-functions-and-callable-values.md#73-receivers)).
 3. Reads and shared borrows select `index`; updates, exclusive borrows and exclusive Reborrows select `indexUniq` of the same conformance.
 
-Selecting `indexUniq` acquires the receiver exclusively without `@uniq`, but only with the capability its path already has; a `let`-owned or shared path cannot supply it ([§15.1.5](15-ownership-and-lifetime-analysis.md#1515-access-operations-and-acquisition)). A failure never reselects a mode or candidate. Receiver and key stay Loaned during the call, and the result depends on the receiver, never on the key.
+Through a conformance, the index expression designates the referent of the reference that the selected call returns, the Place `@follow` would select ([§13.5.5](13-operators-and-assignment.md#1355-follow)): its stored Type is `Element`, and its capability and dependencies are those of that reference; it never offers Take. A written call such as `names.index(1)` is an ordinary call whose value is that reference; only the index operator follows it, never a function Name or result Type.
+
+Selecting `indexUniq` acquires the receiver exclusively without `@uniq`, but only with the capability its path already has; a `let`-owned or shared path cannot supply it ([§15.1.5](15-ownership-and-lifetime-analysis.md#1515-access-operations-and-acquisition)). A failure never reselects a mode or candidate. Receiver and key stay Loaned during the call. The element depends on what the returned reference depends on, never on the key, and not on the temporary holding the reference ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation), [§13.5.6](13-operators-and-assignment.md#1356-borrow-and-reborrow), [§15.6.3](15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting)); the Origins inside `Element` and their actual Loans are kept as usual.
 
 **Position normalization.** On a concrete sequence Type, `x[k]` resolves `k` to an element position `q` and performs `x[q]` through `Indexable<isize>`, with one bounds check. The key is read and resolved first and keeps no borrow, so `indexes[indexes[0]] = x` is valid. A generic `S is Indexable<Key>` and every other Type select a conformance by step 1, so `s[^1]` is unavailable through `S is Indexable<isize>`.
 
-| Target | Element result | Range result | Depends on |
+| Target | Element through a conformance | Range result | Depends on |
 | --- | --- | --- | --- |
-| `Array<E>`, `[N of E]`, `UniqSlice<E>` | `place ref/E` or `place uniq/E` | `Slice<E>` | `a`, the receiver borrow |
-| `Slice<E>` | `place ref/E during s.source` | `Slice<E>` | `s.source` |
-| `Dictionary<K, V>` | `place ref/V` or `place uniq/V`; absence Aborts | None | `a`, never the key |
+| `Array<E>`, `[N of E]`, `UniqSlice<E>` | Referent of `ref/E` or `uniq/E` | `Slice<E>` | `a`, the receiver borrow |
+| `Slice<E>` | Referent of `ref/E during s.source` | `Slice<E>` | `s.source` |
+| `Dictionary<K, V>` | Referent of `ref/V` or `uniq/V`; absence Aborts | None | `a`, never the key |
 
 Array, fixed arrays and UniqSlice conform to `UniqIndexable<isize>`, Dictionary to `UniqIndexable<K>` and Slice to `Indexable<isize>` ([§8.6.1](08-generics-constraints-and-contracts.md#861-conformance-declarations-and-identity)). Range indexing is not part of the Indexable family, and no whole-range assignment exists.
 
@@ -306,13 +308,15 @@ _ = names.tryInsert(1, "one")
 names[1] = "uno"   // 1 fits the only Key, i64.
 let id: i32 = 1
 names[id] = "eins" // Error: an i32 key fits no conformance.
+let lent = names.index(1) // ref/string: a written call returns the reference.
+// names.indexUniq(1) = "x" // Error: the target is the reference, not its referent.
 // For a Type conforming to Indexable<i32> and Indexable<i64>,
 // pair[1] is ambiguous; write pair[1@i64].
 ```
 
 ### 4.7.2. Element Places
 
-An index expression denotes an element Place with the selected capability; forming it copies nothing, so `matrix[1][2] = 10` copies no inner array. `values[i] = v` initializes or replaces; `@ref` and `@uniq` borrow the Place; `@move` transfers only through a static Move Path of an owned fixed array, which only in-range integer literal indices form ([§15.1.3](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move)). A bare read is bare acquisition ([§3.5](03-types-and-values.md#35-copy-and-move)): a Copy of a Copy element, or a Reborrow of a stored `uniq/U` or `objuniq/U` through `indexUniq`; any other Non-Copy element needs a borrow. A bare read never Moves. A fixed expected `ref/T` borrows an owned element implicitly ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation)); an element that stores a reference or handle is adapted instead, for example Reborrowed.
+An index expression denotes an element Place with the selected capability (through a conformance, the referent of the returned reference, [§4.7.1](#471-index-expression-resolution)); forming it copies nothing, so `matrix[1][2] = 10` copies no inner array. `values[i] = v` initializes or replaces; `@ref` and `@uniq` borrow the Place; `@move` transfers only through a static Move Path of an owned fixed array, which only in-range integer literal indices form ([§15.1.3](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move)). A bare read is bare acquisition ([§3.5](03-types-and-values.md#35-copy-and-move)): a Copy of a Copy element, or a Reborrow of a stored `uniq/U` or `objuniq/U` through `indexUniq`; any other Non-Copy element needs a borrow. A bare read never Moves. A fixed expected `ref/T` borrows an owned element implicitly ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation)); an element that stores a reference or handle is adapted instead, for example Reborrowed.
 
 ```kimi
 // resources: a complete owned [2 of Resource]; i: isize; refs: a writable Array<uniq/Node>.

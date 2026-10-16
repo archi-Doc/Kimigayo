@@ -203,8 +203,8 @@ public sealed class HirColumnsTest
         Assert.Equal([HirAcquire.Move, HirAcquire.ByCase], Reachable(c.Kotonoha).OfType<JumpKoto>().Select(static x => HirTables.AdjustOf(x.Expression!).Acquire));
     }
 
-    // SPEC 3.4.3, 4.7.1, 7.1.1, 15.1.3, 15.1.6: a Field through two reference layers follows both, a literal fixed-array position is a
-    // ConstIndex and a runtime one an Index, a user index publishes the element Place, which an update through its Field takes by indexUniq
+    // SPEC 3.4.3, 4.7.1, 15.1.3, 15.1.6: a Field through two reference layers follows both, a literal fixed-array position is a
+    // ConstIndex and a runtime one an Index, a user index designates the referent of its selected call's reference, which an update through its Field takes by indexUniq
     // (its receiver borrowed exclusively) and a read by index, and a borrowed Case payload is its Downcast.
     [Fact]
     public void PlaceShapeStatesThePlaceForms()
@@ -212,8 +212,8 @@ public sealed class HirColumnsTest
         const string Source = "struct Point\n    public var x: i32\n    public init(x: i32) => self.x = x\n" +
             "struct Pair<T>\n    Self is UniqIndexable<isize>\n    associate Element is T\n    var first: T\n    var second: T\n" +
             "    public init(first: T, second: T)\n        self.first = first@move\n        self.second = second@move\n" +
-            "    public func index(self, key: ref/isize) -> place ref/T during self => self.first\n" +
-            "    public func indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/T during self => self.first\n" +
+            "    public func index(self, key: ref/isize) -> ref/T during self => self.first@ref\n" +
+            "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.first@uniq\n" +
             "func through(p: ref/(ref/Point during a)) -> i32 => p.x\nfunc pick(value: Option<Point>) -> i32\n    match value\n        .Some(let inner) => return inner.x\n        .None => return 0\n" +
             "var pts = Pair<Point>.init(Point.init(1), Point.init(2))\npts[0].x = 5\nlet fixed: [3 of i32] = [1, 2, 3]\nlet i: isize = 2\nlet p = Point.init(3)\nlet r = p@ref\n" +
             "require through(r@ref) == 3 and pick(.Some(Point.init(4))) == 4 and pts[1].x == 5 and fixed[1] + (fixed)[i] == 5 else => $abort(\"place\")\n";
@@ -244,8 +244,8 @@ public sealed class HirColumnsTest
     {
         const string Source = "struct Pair<T>\n    Self is UniqIndexable<isize>\n    associate Element is T\n    var first: T\n    var second: T\n" +
             "    public init(first: T, second: T)\n        self.first = first@move\n        self.second = second@move\n" +
-            "    public func index(self, key: ref/isize) -> place ref/T during self => self.first\n" +
-            "    public func indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/T during self => self.first\n" + CopyPropertyEmissionTest.Meter +
+            "    public func index(self, key: ref/isize) -> ref/T during self => self.first@ref\n" +
+            "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.first@uniq\n" + CopyPropertyEmissionTest.Meter +
             "var m = Meter.init()\nm.level += 1\nm.doubled -= 2\nvar pts = Pair<i32>.init(1, 2)\npts[0] += 5\nvar values: [2 of i32] = [1, 2]\nvar view = values.sliceUniq()\n" +
             "view[0] = 7\nlet range = (0..2).resolve(2)\nlet tail = ^1\nvar total: isize = 0\nfor i in values.indices\n    total += i\n" +
             "Console.writeLine(\"n=\\(total)\")\nlet text = \"\\(pts[1])\"\n" +

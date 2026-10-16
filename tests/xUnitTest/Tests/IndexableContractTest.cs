@@ -14,18 +14,18 @@ public class IndexableContractTest
     private const string Pair =
         "struct Pair<T>\n    Self is UniqIndexable<isize>\n    associate Element is T\n    var first: T\n    var second: T\n" +
         "    public init(first: T, second: T)\n        self.first = first@move\n        self.second = second@move\n" +
-        "    public func index(self, key: ref/isize) -> place ref/T during self\n        if key == 0 => return self.first\n        return self.second\n" +
-        "    public func indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/T during self\n        if key == 0 => return self.first\n        return self.second\n";
+        "    public func index(self, key: ref/isize) -> ref/T during self\n        if key == 0 => return self.first@ref\n        return self.second@ref\n" +
+        "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self\n        if key == 0 => return self.first@uniq\n        return self.second@uniq\n";
 
     private const string Shared =
         "struct View\n    Self is Indexable<isize>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n" +
-        "    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value\n";
+        "    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref\n";
 
     // SPEC 8.6.1: a generic Type's conformance names its reference in the Type's own parameters; an instance dispatches
     // through the reference the generic call recorded, instantiated (`Indexable<isize>` for `Keyed<isize>`).
     private const string Keyed =
         "struct Keyed<K>\n    Self is Indexable<K>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n" +
-        "    public func index(self, key: ref/K) -> place ref/i32 during self => self.value\n";
+        "    public func index(self, key: ref/K) -> ref/i32 during self => self.value@ref\n";
 
     // SPEC 8.4.3: a Constraint on a bound Contract reference indexes a Type parameter through the requirement.
     private const string FirstPlace =
@@ -58,12 +58,15 @@ public class IndexableContractTest
     [InlineData(Pair + "var pair = Pair<string>.init(\"a\", \"b\")\nlet taken = pair[0]@move", DiagnosticCode.ExclusivePathTake_Kd)]
     [InlineData(Shared + "var view = View.init(1)\nview[0] = 2", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(Shared + "var view = View.init(1)\nlet exclusive = view[0]@uniq", DiagnosticCode.SharedPathAccess_Kd)]
-    [InlineData("struct Box\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value\nlet box = Box.init(1)\nlet read = box[0]", DiagnosticCode.NotIndexable_Kd)]
-    [InlineData("struct Wrong\n    Self is Indexable<isize>\n    associate Element is string\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value", DiagnosticCode.IncompatibleContractImplementation_Kd)]
-    [InlineData("struct Missing\n    Self is UniqIndexable<isize>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value", DiagnosticCode.MissingContractImplementation_Kd)]
-    [InlineData("struct Value\n    Self is Indexable<isize>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> i32 => self.value", DiagnosticCode.MissingContractImplementation_Kd)]
+    [InlineData("struct Box\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref\nlet box = Box.init(1)\nlet read = box[0]", DiagnosticCode.NotIndexable_Kd)]
+    [InlineData("struct Wrong\n    Self is Indexable<isize>\n    associate Element is string\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref", DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("struct Missing\n    Self is UniqIndexable<isize>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref", DiagnosticCode.MissingContractImplementation_Kd)]
+    [InlineData("struct Value\n    Self is Indexable<isize>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> i32 => self.value", DiagnosticCode.IncompatibleContractImplementation_Kd)]
     [InlineData("func f<S>(items: uniq/S) -> uniq/S.Element during items\n    S is Indexable<isize>\n    return items[0]@uniq", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(Shared + FirstUniq + "var view = View.init(1)\nfirstUniq(view@uniq)@follow = 2", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("struct Bare\n    Self is UniqIndexable<isize>\n    associate Element is i32\n    var value: i32 = 0\n    public init() => ()\n    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref\n    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/i32 during self => self.value", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("struct Two\n    Self is UniqIndexable<isize>\n    var value: i32 = 0\n    public init() => ()\n    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref\n    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/i64 during self => $abort(\"two\")", DiagnosticCode.AssociatedTypeInferenceFailed_Kd)]
+    [InlineData(Pair + "var pair = Pair<i32>.init(1, 2)\nlet n: i32 = 7\npair.indexUniq(0) = n", DiagnosticCode.InvalidAssignment_Kd)]
     public void RejectsAtBinding(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -102,10 +105,10 @@ public class IndexableContractTest
             public init(small: i32, large: i64)
                 self.small = small
                 self.large = large
-            public func index(self, key: ref/isize) -> place ref/i32 during self => self.small
-            public func index(self, key: ref/Name) -> place ref/i64 during self => self.large
-            public func indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/i32 during self => self.small
-            public func indexUniq(self: uniq/Self, key: ref/Name) -> place uniq/i64 during self => self.large
+            public func index(self, key: ref/isize) -> ref/i32 during self => self.small@ref
+            public func index(self, key: ref/Name) -> ref/i64 during self => self.large@ref
+            public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/i32 during self => self.small@uniq
+            public func indexUniq(self: uniq/Self, key: ref/Name) -> uniq/i64 during self => self.large@uniq
 
         """;
 
@@ -197,7 +200,7 @@ public class IndexableContractTest
         // The range literal argument is bound after selection through its own synthesized call; that call once cleared the
         // enclosing requirement reference, so the generic call had no implementation mapping and generation failed.
         const string Source = "struct Keyed<K>\n    Self is Indexable<K>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n" +
-            "    public func index(self, key: ref/K) -> place ref/i32 during self => self.value\n" +
+            "    public func index(self, key: ref/K) -> ref/i32 during self => self.value@ref\n" +
             "func pick<S>(items: ref/S) -> ref/S.Element during items\n    S is Indexable<Range<i32, i32>>\n    return items.index(0..2)\n" +
             "let keyed = Keyed<Range<i32, i32>>.init(7)\nrequire pick(keyed) == 7 else => $abort(\"pick\")\nConsole.writeLine(\"ok\")";
         var c = MinimalEmissionTest.Analyze(Source);
@@ -208,8 +211,8 @@ public class IndexableContractTest
 
     private const string ConditionalUniq =
         "struct Box<T>\n    Self is Indexable<isize>\n    associate Element is T\n    var value: T\n    public init(value: T) => self.value = value@move\n" +
-        "    public func index(self, key: ref/isize) -> place ref/T during self => self.value\n\n" +
-        "    Self is UniqIndexable<isize> when T is Copy\n        public func indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/T during self => self.value\n\n";
+        "    public func index(self, key: ref/isize) -> ref/T during self => self.value@ref\n\n" +
+        "    Self is UniqIndexable<isize> when T is Copy\n        public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.value@uniq\n\n";
 
     [Fact]
     public void AReadDoesNotNeedAConditionalUniqConformance()
@@ -222,13 +225,47 @@ public class IndexableContractTest
 
     [Theory]
     [InlineData(ConditionalUniq, "Box<string> conforms to UniqIndexable only under a condition that does not hold here")]
-    [InlineData("struct Box<T>\n    Self is Indexable<isize>\n    associate Element is T\n    var value: T\n    public init(value: T) => self.value = value@move\n    public func index(self, key: ref/isize) -> place ref/T during self => self.value\n", "Box<string> has no UniqIndexable conformance")]
+    [InlineData("struct Box<T>\n    Self is Indexable<isize>\n    associate Element is T\n    var value: T\n    public init(value: T) => self.value = value@move\n    public func index(self, key: ref/isize) -> ref/T during self => self.value@ref\n", "Box<string> has no UniqIndexable conformance")]
     public void AnUpdateWithoutIndexUniqExplainsTheMissingConformance(string declarations, string note)
     {
         var result = DiagnosticCorpus.Check(declarations + "public func main()\n    var names = Box<string>.init(\"a\")\n    names[0] = \"b\"\n");
         var record = Assert.Single(result.Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.SharedPathAccess_Kd), record.Code);
         Assert.StartsWith(note, record.Note);
+    }
+
+    // SPEC 8.5.5, 4.7.1: the reference results of index and indexUniq are evidence for Element like any function result; a written call
+    // returns the reference itself, and only the index expression follows it.
+    [Fact]
+    public void IndexResultsInferTheElementAndWrittenCallsReturnTheReference()
+    {
+        const string Source = """
+            struct Cells
+                Self is UniqIndexable<isize>
+                var first: i32
+                var second: i32
+                public init(first: i32, second: i32)
+                    self.first = first
+                    self.second = second
+                public func index(self, key: ref/isize) -> ref/i32 during self
+                    if key == 0 => return self.first@ref
+                    return self.second@ref
+                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/i32 during self
+                    if key == 0 => return self.first@uniq
+                    return self.second@uniq
+            func head<S>(items: ref/S) -> S.Element
+                S is Indexable<isize>
+                S.Element is Copy
+                return items[0]
+            var cells = Cells.init(1, 2)
+            cells[1] += 40
+            let lent: ref/i32 = cells.index(1)
+            require lent == 42 else => $abort("lent")
+            cells.indexUniq(0)@follow = 7
+            require head(cells) == 7 else => $abort("head")
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("IndexableInferredElement", Source, "ok\n");
     }
 
     [Fact]

@@ -398,7 +398,7 @@ func viewUniq<s/T>(c: uniq/Collection<s/T>, i: isize) -> uniq/T during c
 
 A **Reborrow** of a value reference is written through the referent: `r@follow@ref` and `r@follow@uniq` lend the referent's capability without moving `r`. An expected `ref/T` or `uniq/T` Reborrows a `uniq/T` value implicitly ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation)), and bare acquisition of a Place storing `uniq/T` Reborrows it ([§3.5.1](03-types-and-values.md#351-reborrow-of-a-stored-exclusive-reference)). While a child Loan is live, conflicting access through the parent is forbidden. A Borrow depends on the borrowed slot; a Reborrow on the referent and the parent Loan. Shared access is never upgraded, `rc` and `arc` give no exclusive borrows, and value and object borrows never convert into each other.
 
-**Getter results.** A custom, computed or required `get` is called once and its result adapted. Borrowing an owned result materializes a temporary under [§11.5](11-properties.md#115-getter-results). A returned reference is a value: an expected Type adapts it, and `@follow` Reborrows its referent. `set` grants no borrow of hidden storage.
+**Getter results.** A custom, computed or required `get` is called once and its result adapted. Borrowing an owned result materializes a temporary under [§11.5](11-properties.md#115-getter-results). A reference returned by a call or getter is a value: an expected Type adapts it, and `@follow` Reborrows its referent ([§7.1](07-functions-and-callable-values.md#71-declarations-bodies-and-results)). `set` grants no borrow of hidden storage.
 
 ```kimi
 var value = makeValue()

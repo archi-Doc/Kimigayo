@@ -110,10 +110,9 @@ public sealed partial class OwnershipAnalysis
         // A common Function value stored in a field or element is called through a shared borrow of that part, as `@ref`
         // would take it, since reading the Non-Copy value out would transfer it.
         var direct = KotoHelper.UnwrapParentheses(plan.CalleeValue);
-        // SPEC 7.7.3, 7.1.1: a user-Indexable element (`m[k]`) and a Place result (`first(xs@ref)`) are such parts too.
+        // SPEC 7.7.3, 4.7.1: a user-Indexable element (`m[k]`) is such a part too.
         var part = plan.ReceiverKind == SemanticsKind.Ref && plan.CalleeType.Kind == BoundTypeKind.Function &&
-            (direct is MemberAccessKoto || (direct is BinaryKoto element && ElementAccess.IsSyntax(element)) || ElementAccess.IsUserIndex(direct) ||
-                (direct is InvocationKoto && ElementAccess.PlaceCallReference(direct) is not null));
+            (direct is MemberAccessKoto || (direct is BinaryKoto element && ElementAccess.IsSyntax(element)) || ElementAccess.IsUserIndex(direct));
         var receiver = explicitReceiver
             ? this.PrepareCallArgument(call, plan.CalleeValue, new(plan.CalleeValue, plan.CalleeType, plan.CalleeType, ArgumentOperationKind.Reborrow, ArgumentAdaptation.SameSemanticsReborrow))
             : payload ? this.PrepareCallArgument(call, plan.ReceiverOperation.Source!, plan.ReceiverOperation, immediate: plan.ReceiverKind != SemanticsKind.Uniq)
@@ -206,7 +205,7 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        var result = plan.Signature.ResultMode == FunctionResultMode.Value ? this.Temporary(call) : this.ReferenceTemporary(call, plan.ReturnType);
+        var result = this.Temporary(call);
         this.body.OperationStorage[invoke] = this.body.Operations[invoke] with { Place = result };
         // An instance's `(T) -> T` returns its substituted T.
         if (this.Resolve(plan.ReturnType, this.Active) is { } returned && ScalarResult(returned))

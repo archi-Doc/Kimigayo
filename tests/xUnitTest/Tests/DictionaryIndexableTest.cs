@@ -41,7 +41,7 @@ public class DictionaryIndexableTest
                 associate Element is i32
                 var value: i32
                 public init(value: i32) => self.value = value
-                public func index(self, key: ref/Range<i32, i32>) -> place ref/i32 during self => self.value
+                public func index(self, key: ref/Range<i32, i32>) -> ref/i32 during self => self.value@ref
             let spans = Spans.init(7)
             let key: Range<i32, i32> = 1..2
             require spans[key] == 7 and spans[1..2] == 7 else => $abort("range key")
@@ -72,8 +72,8 @@ public class DictionaryIndexableTest
         const string Source = """
             var values = [1: "before", 2: "second"]
             Console.writeLine(values.index(1))
-            values.indexUniq(1) = "after"
-            let found = values.index(1)@ref
+            values.indexUniq(1)@follow = "after"
+            let found = values.index(1)
             Console.writeLine(found)
             for (key, value) in values => Console.writeLine(value)
             """;
@@ -82,10 +82,10 @@ public class DictionaryIndexableTest
 
     [Theory]
     [InlineData("Shared", "let result = values.index(9)", 14)]
-    [InlineData("Exclusive", "values.indexUniq(9) = 3", 1)]
+    [InlineData("Exclusive", "values.indexUniq(9)@follow = 3", 1)]
     public void MissingKeysReportTheActualCallAfterEarlierSuccessfulCalls(string name, string access, int column)
     {
-        const string Prefix = "var values = [1: 42]\nrequire values.index(1) == 42 else => $abort(\"existing\")\nvalues.indexUniq(1) = 43\n";
+        const string Prefix = "var values = [1: 42]\nrequire values.index(1) == 42 else => $abort(\"existing\")\nvalues.indexUniq(1)@follow = 43\n";
         ScalarEmissionTest.EmitFixture("DictionaryIndexableMissing" + name, Prefix + access, string.Empty, 1, $"Hello.kimi:4:{column}: abort KIMI_E_MISSING_KEY: Dictionary key was not found\n");
     }
 
@@ -104,14 +104,24 @@ public class DictionaryIndexableTest
     }
 
     [Theory]
-    [InlineData("let view = values.index(1)@ref\nvalues.clear()\nrequire view == 42 else => $abort(\"view\")")]
-    [InlineData("let view = values.indexUniq(1)@uniq\nvalues.indexUniq(1) = 3\nrequire view == 42 else => $abort(\"view\")")]
-    public void PublishedPlacesRetainTheReceiverLoan(string use)
+    [InlineData("let view = values.index(1)\nvalues.clear()\nrequire view == 42 else => $abort(\"view\")")]
+    [InlineData("let view = values.indexUniq(1)\nvalues.indexUniq(1)@follow = 3\nrequire view == 42 else => $abort(\"view\")")]
+    public void ReturnedReferencesRetainTheReceiverLoan(string use)
     {
         var c = MinimalEmissionTest.Analyze("var values = [1: 42]\n" + use);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.False(c.Analysis.IsVerified);
         Assert.Contains(c.Problems, issue => issue.Code.IsLoanConflict());
+    }
+
+    // SPEC 7.7.4, 10.7: a written index requirement is an ordinary function value whose result is the returned reference.
+    [Fact]
+    public void IndexIsAnOrdinaryFunctionValue()
+    {
+        const string Use = "var d: Dictionary<i32, i32> = [1: 5]\nlet k: i32 = 1\n";
+        ScalarEmissionTest.EmitFixture("DictionaryIndexableFunctionValue", Use + "let f: (ref/Dictionary<i32, i32>, ref/i32) -> ref/i32 = Dictionary<i32, i32>.index\nrequire f(d@ref, k@ref) == 5 else => $abort(\"f\")", string.Empty);
+        var c = MinimalEmissionTest.Analyze(Use + "let g: (ref/Dictionary<i32, i32>, ref/i32) -> i32 = Dictionary<i32, i32>.index");
+        Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.TypeMismatch_Kd);
     }
 
     [Fact]

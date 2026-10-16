@@ -63,8 +63,8 @@ public class IteratorOriginEffectsTest
 
     private const string Point = "struct Point\n    public var x: i32 = 0\n";
     private const string Box = "struct Box\n    Self is UniqIndexable<isize>\n    associate Element is i32\n    var value: i32 = 0\n" +
-        "    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value\n" +
-        "    public func indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/i32 during self => self.value\n";
+        "    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref\n" +
+        "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/i32 during self => self.value@uniq\n";
 
     private const string Bump = "group Helpers\n    public func bump(value: uniq/i32) => value@follow += 1\n";
 

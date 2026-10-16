@@ -165,7 +165,7 @@ internal static class MirTypes
             return false;
         }
 
-        if (left.Length != right.Length || !ReferenceEquals(left.LengthExpression, right.LengthExpression) || left.ResultMode != right.ResultMode)
+        if (left.Length != right.Length || !ReferenceEquals(left.LengthExpression, right.LengthExpression))
         {
             return false;
         }

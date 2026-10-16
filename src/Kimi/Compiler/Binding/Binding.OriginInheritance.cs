@@ -44,9 +44,6 @@ public sealed partial class Binding
             case ParenthesizedTypeKoto grouped:
                 this.InheritOriginContract(grouped.Type, type);
                 break;
-            case PlaceResultKoto place:
-                this.InheritOriginContract(place.Type, type);
-                break;
             case TypeSemanticsKoto { Type: { } target } semantics:
                 if (semantics.IsTransparentWrapper || (semantics.SemanticsParameter is null && semantics.SemanticsKind == SemanticsKind.Owner))
                 {
