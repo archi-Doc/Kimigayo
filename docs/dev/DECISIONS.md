@@ -64,6 +64,20 @@ rules that result from them.
     or across phases; any other change gets one review before completion, covering its design.
   - Reason: the caps, forecasts and per-unit allowances added owner gates without improving the code, and every
     non-local change paying two reviews slowed small units (R4-M33).
+- **Q6 Lighter review forms and short commit records** (2026-10-17, owner; AGENTS "Review weight" and "Verification and
+  Delivery").
+  - Adopted for all work: (1) a change whose contract an owner-approved design recorded here already fixes gets one design
+    and one review, and a departure, including a new representation, component or vocabulary entry, takes the full
+    process; (2) the units of one group such a design names may share one review in place of their own, merging into dev or main
+    only after it passes; (3) documentation that only records decided or verified facts (PLAN, STATUS, CODEMAP,
+    PLAN_HISTORY, VERIFICATION evidence and tooling-matched procedures) needs no independent review. Every commit message
+    stays within about 2,000 characters, including Q5's net size change.
+  - Kept: R4's exit adds a final end-to-end review of A5 and A6 (R4-M35).
+  - Supersedes: R4-M35's OD6 scope ("review and records as plan §9.3", A5 only), which the owner broadened, and Q1's
+    deferral of lighter commit records. Q5's review rule stands, with these forms added.
+  - Rejected: an A5-only exception (the owner judged the three forms independent of A5); applying them without
+    conditions, since a shared review must not let unreviewed code reach dev, and SPEC, IMPL, AGENTS, DECISIONS, SETTLED,
+    STYLE and proposals are authority, not records.
 
 ## Code rules (2026-10-12)
 
