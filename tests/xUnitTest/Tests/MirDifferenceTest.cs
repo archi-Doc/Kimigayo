@@ -30,12 +30,13 @@ public sealed class MirDifferenceTest
 
     // R4-M17: per comparison and body, an unmatched old and new row of one code pair into one location difference with the old row's
     // facts, and the rest are missing or new; a comparison with A-owned records on one side only adds an acceptance difference, and
-    // matched rows are no difference.
+    // matched rows are no difference. R4-M47: in a Binding-complete compilation a missing row is unsound unless its body keeps an unpaired
+    // MIR record (a code choice); a matched record does not exempt it, and no other difference is unsound.
     [Fact]
     public void DifferencesPairByBodyAndCode()
     {
-        static string[] Row(string comparison, string side, string code, string body, string form = "IdentifierNameKoto")
-            => [comparison, "complete", side, side == "new" ? "-" : "A1", code, side == "new" ? "-" : "Ownership.UninitializedUse", "Program.kimi:1+1", form, body, "sha"];
+        static string[] Row(string comparison, string side, string code, string body, string form = "IdentifierNameKoto", string section = "complete")
+            => [comparison, section, side, side == "new" ? "-" : "A1", code, side == "new" ? "-" : "Ownership.UninitializedUse", "Program.kimi:1+1", form, body, "sha"];
         var differences = MirDifferenceLedger.Differences(
         [
             Row("1", "both", "MovedPlace_Kd", "f"),
@@ -45,18 +46,74 @@ public sealed class MirDifferenceTest
             Row("1", "new", "UninitializedPlace_Kd", "f"),
             Row("2", "old", "MovedPlace_Kd", "f"),
             Row("3", "new", "MovedPlace_Kd", "f"),
-        ]).Select(static x => x.Signature).ToArray();
-        string[] expected =
+            Row("4", "old", "MovedPlace_Kd", "f", section: "incomplete"),
+            Row("5", "old", "MovedPlace_Kd", "f"),
+            Row("5", "new", "UninitializedPlace_Kd", "f"),
+            Row("6", "both", "MovedPlace_Kd", "f"),
+            Row("6", "old", "UninitializedPlace_Kd", "f"),
+        ]).Select(static x => (x.Signature, x.Unsound)).ToArray();
+        (string, bool)[] expected =
         [
-            "complete\tlocation\tA1\tMovedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto",
-            "complete\tmissing\tA1\tUninitializedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto",
-            "complete\tnew\t-\tUninitializedPlace_Kd\t-\tIdentifierNameKoto",
-            "complete\tacceptance\tA1\tMovedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto",
-            "complete\tmissing\tA1\tMovedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto",
-            "complete\tacceptance\t-\tMovedPlace_Kd\t-\tIdentifierNameKoto",
-            "complete\tnew\t-\tMovedPlace_Kd\t-\tIdentifierNameKoto",
+            ("complete\tlocation\tA1\tMovedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto", false),
+            ("complete\tmissing\tA1\tUninitializedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto", true),
+            ("complete\tnew\t-\tUninitializedPlace_Kd\t-\tIdentifierNameKoto", false),
+            ("complete\tacceptance\tA1\tMovedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto", false),
+            ("complete\tmissing\tA1\tMovedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto", true),
+            ("complete\tacceptance\t-\tMovedPlace_Kd\t-\tIdentifierNameKoto", false),
+            ("complete\tnew\t-\tMovedPlace_Kd\t-\tIdentifierNameKoto", false),
+            ("incomplete\tacceptance\tA1\tMovedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto", false),
+            ("incomplete\tmissing\tA1\tMovedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto", false),
+            ("complete\tmissing\tA1\tMovedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto", false),
+            ("complete\tnew\t-\tUninitializedPlace_Kd\t-\tIdentifierNameKoto", false),
+            ("complete\tmissing\tA1\tUninitializedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto", true),
         ];
         Assert.Equal(expected, differences);
+    }
+
+    // R4-M47 (plan §8): a difference blocks the R4 exit when it is unsound, lies in a library body, or lies in a Binding-complete program
+    // that holds a milestone's whole text; it stays open unless its signature is classified (a), (c) or (d). The library row's new
+    // signature is the tracked (d) row a1-c3.
+    [Fact]
+    public void BlockingRowsAreUnsoundOrInTheLibraryOrAMilestone()
+    {
+        var directory = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "kimi-mir-ledger-" + Guid.NewGuid().ToString("N"))).FullName;
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(directory, "sources"));
+            File.WriteAllText(Path.Combine(directory, "sources", "milestone.kimi"), "// Program.kimi\n" + DiagnosticCorpus.Milestone(1) + "\n");
+            File.WriteAllText(Path.Combine(directory, "sources", "other.kimi"), "// Program.kimi\nlet x = 1\n");
+            static string Row(string comparison, string side, string location, string sha, string form = "UnitLiteralKoto", string section = "complete")
+                => $"{comparison}\t{section}\t{side}\tA1\tUninitializedPlace_Kd\t{(side == "new" ? "-" : "Ownership.UninitializedUse")}\t{location}\t{form}\tProgram.kimi:0\t{sha}";
+            File.WriteAllLines(
+                Path.Combine(directory, "raw-1.tsv"),
+                [
+                    Row("1", "old", "Program.kimi:1+1", "other"),
+                    Row("2", "new", "Program.kimi:1+1", "milestone"),
+                    Row("3", "new", "Kimi/Array.kimi:1+1", "other", "IdentifierNameKoto"),
+                    Row("4", "new", "Program.kimi:1+1", "other"),
+                    Row("5", "new", "Program.kimi:1+1", "milestone", section: "incomplete"),
+                ]);
+            MirDifferenceLedger.Aggregate(directory);
+            var blocking = File.ReadAllLines(Path.Combine(directory, "ledger.tsv")).Skip(1).Select(static x => x.Split('\t'))
+                .ToDictionary(static x => $"{x[0]} {x[1]} {x[4]} {x[5]}", static x => (x[6], x[7]));
+            var expected = new Dictionary<string, (string, string)>
+            {
+                ["complete missing Ownership.UninitializedUse UnitLiteralKoto"] = ("1", "1"),
+                ["complete acceptance Ownership.UninitializedUse UnitLiteralKoto"] = ("1", "0"),
+                ["complete new - UnitLiteralKoto"] = ("2", "1"),
+                ["complete acceptance - UnitLiteralKoto"] = ("2", "1"),
+                ["complete new - IdentifierNameKoto"] = ("1", "1"),
+                ["complete acceptance - IdentifierNameKoto"] = ("1", "1"),
+                ["incomplete new - UnitLiteralKoto"] = ("1", "0"),
+                ["incomplete acceptance - UnitLiteralKoto"] = ("1", "0"),
+            };
+            Assert.Equal(expected, blocking);
+            Assert.Contains("- Open blocking rows: 4 of 5 (an old rejection the MIR lacks 1, else a library body 1, else a milestone 2)\n", File.ReadAllText(Path.Combine(directory, "summary.md")));
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
     }
 
     // R4-M4: the compared set names its owning analysis; pass-through records have none.

@@ -526,6 +526,20 @@ and migration obligations remain in force; no numeric cap changes are authorized
   SPEC clause; a (b) or (e) row, which a repair unit resolves, may write `-` where no SPEC rule decides it (a primary location).
   Rejected: clauses inside `reference` (unchecked, mixed with plan and DEC references); a second table keyed by row id (two tables
   for one row).
+- **R4-M47** (2026-10-17, tooling session; plan §8, R4-M35; replaces PLAN10 §18 P9 in `summary.md`) The ledger's aggregation reports
+  plan §8's metrics from the data the test assembly holds: the families landed on the MIR (`VerifiedSpecExampleTest.Landed`), the
+  SPEC-example variants and those checked on the MIR (R4-M45; they stand in for "rule tests passing", whose pass or fail is the run's),
+  and the open blocking rows, beside the unclassified and open (b) counts; `ledger.tsv` gains a blocking count per signature. A6's
+  completion is listed in `Landed` when it lands, though A6 decides no SPEC example's verdict (it is no `Families` decider). A
+  difference blocks the R4 exit when it is unsound: in a Binding-complete compilation, a missing row whose body keeps no unpaired MIR
+  record (with one, it is a code choice; an acceptance difference only repeats its missing rows); when it lies in a library body
+  (`LegacyRecords.Library`, analyzed in every compilation, R4-M12); or when it lies in a Binding-complete milestone program (a saved
+  source holding a `tests/milestones` program's whole text). It is open unless its signature is classified (a), (c) or (d), with its
+  clause (R4-M46). A Binding-incomplete compilation never blocks except in the library: its old records may rest on Binding's failures
+  (R4-M5, R4-M10) and Binding rejects the program on both paths (unverified for its 259 missing rows at the step-0 base). Rules expressed
+  and precision losses are counted from the step-0 audit tables and plan §10 OD13 (design A3 §9), which are draft records, not tracked
+  test inputs (Verify's manifest excludes `draft/`). Rejected: blocking by kind alone (code and location choices would block); a
+  milestone flag in the raw row (a second R4-M17 row shape); a tracked metrics table.
 - **R4-M19** (owner O1, 2026-10-12; two designs compared, the first taken with two parts of the second). An explicit case
   adaptation (SPEC 8.14, 13.5.3), whose operation each Semantics case selects, is the one case-dependent rvalue
   `MirRvalueKind.Adapt` (KR1003: 9 → 10). Operand 0 is the by-value acquisition (a written Place's Copy, a temporary's Move);
