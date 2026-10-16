@@ -52,7 +52,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         }
 
         var all = ulong.MaxValue >> (64 - (int)MirCases.Count(body));
-        var state = flow.Prepare(Lanes * ((moves.FlowCount + 63) >> 6), Lanes * ((moves.Paths.Length + 63) >> 6));
+        var state = flow.Prepare(0, Lanes * ((moves.FlowCount + 63) >> 6), Lanes * ((moves.Paths.Length + 63) >> 6));
         if (state is null)
         {
             report.Add(new(DiagnosticCode.OwnershipStorageLimit_Kd, body.Source, all)); // R4-M15a: the driver stops the body's views.
@@ -127,6 +127,9 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
                 MirUses.ForEach(cases, this.at, ref this);
             }
         }
+
+        // The union join (R4-M34).
+        public readonly bool Join(Span<ulong> target, ReadOnlySpan<ulong> incoming) => MirDataflow.Union(target, incoming);
 
         public readonly void Operand(in MirOperand operand)
         {

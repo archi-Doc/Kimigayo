@@ -468,15 +468,16 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
             var program = c.BuildMir();
             Assert.Equal([Failed], Problems(c, program));
             var (cases, report) = (new MirCases(c.Types), new MirReport());
-            var effects = new MirEffects(c.Types, cases, new MirReach());
+            var flow = new MirDataflow(new MirReach());
+            var effects = new MirEffects(c.Types, cases, flow);
             var before = GC.GetAllocatedBytesForCurrentThread();
-            Analyze(effects, cases, program, report);
+            Analyze(effects, flow, cases, program, report);
             allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
             evaluations[i] = effects.Evaluations;
             Assert.Equal(0, AllocationMeasurement.Measure(() =>
             {
                 report.Clear();
-                Analyze(effects, cases, program, report);
+                Analyze(effects, flow, cases, program, report);
             }));
         }
 
@@ -485,11 +486,12 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
         Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold A4 allocation {string.Join(", ", allocated)}");
     }
 
-    // The driver's A4 rows over a built program and its A2 table: each body's views' local facts, then the run.
-    private static void Analyze(MirEffects effects, MirCases cases, MirProgram program, MirReport report)
+    // The driver's A4 rows over a built program and its A2 table: each body begun, its views' local facts, then the run.
+    private static void Analyze(MirEffects effects, MirDataflow flow, MirCases cases, MirProgram program, MirReport report)
     {
         foreach (var body in program.Bodies)
         {
+            flow.Begin(body);
             for (var view = 0L; view < MirCases.Count(body); view++)
             {
                 cases.Select(body, view);
