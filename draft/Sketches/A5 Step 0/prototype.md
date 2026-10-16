@@ -30,7 +30,7 @@ dotnet run proto.cs -- -v        # also every error fact (Loan, point, access) p
 dotnet run proto.cs -- -dump 9n  # per-point carries, liveness and Loan places for one case
 ```
 
-- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 1,304 lines after rounds 2–6.
+- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 1,376 lines after rounds 2–7.
 - The first run takes about 30 s, mostly compilation; evaluation is a naive fixpoint.
 - `out.txt` holds the last `-v` run.
 
@@ -590,3 +590,48 @@ incarnation that another holder still carries. Three places did this before the 
   - No unsound acceptance and no unlisted rejection.
 - **Recommendation:** keep P3 in S1. With P3 the root-most kill is sound and loses nothing here. Keeping `within`
   instead costs 23a's family, including borrowed-link traversals that read through the new node.
+
+## Round 7 (design A3, unit 0b)
+
+**Additions.** Both modes now model A3's F6:
+
+- `Φ_c` is a phantom exclusive Loan on the receiver's referent, carried by an abstract call's result.
+- A disturbing point turns it into `Φ_c^dist` in every set.
+- A later `preserves results` call on the same receiver excuses an undisturbed `Φ_c`.
+
+| Case | Program | SPEC | S1′ | A |
+| --- | --- | --- | --- | --- |
+| 31a | `func f(a: uniq/T, b: uniq/T) => swap(a, b)` | valid | valid | valid |
+| 31b | its caller `f(x@uniq, x@uniq)` | error at the call | error | error |
+| 32a | `let h = x@ref; y = h@follow + 1; x = 3; inspect(y)` | valid | valid | valid |
+| 32b | `var h = x@uniq; let c = h@follow@uniq; y = h@follow + 1; c@follow = 2` | error at the read | error | error |
+| 33a | `takeTwo` (§8.11.3): `first = source.take(); second = source.take()` | valid | valid | valid |
+| 33b | `takeAcross`: `source@follow = fresh@move` between the calls | error | error | error |
+| 33c | 33a with the excuse at the Call only (A3's letter) | valid | **error** | **error** |
+
+**Findings.**
+
+1. **31a.** The two parameter reborrows activate against each other's holders. `a.*` and `b.*` have distinct roots, so
+   they are disjoint (row 8, backed by the caller's activation, S15:614). The caller 31b errs at activation.
+2. **32a.** The read through `h` copies `x`'s content, which carries no Loan, and the `+ 1` result carries none. So
+   `x = 3` is valid. In 32b the read through the parent conflicts with the live child.
+3. **Unlisted rejection, 33c, under A3's letter.**
+   - `excused(L, ℓ) :- Call c2 at ℓ, …` applies only at the Call.
+   - MIR forms the second receiver's TwoPhaseUniq Ref earlier, as a shared-borrow access, and it conflicts with
+     first's live exclusive `Φ_c`.
+   - **Fix:** excuse `Φ_c1` at c2's own argument reservations too, from their formation to the Call (33a). The excuse
+     still applies only where c2 is a `preserves results` call on the same receiver, so 33b is unaffected.
+4. **`Φ_c^dist` decided no verdict here.**
+   - In 33b, the replacement `source@follow = fresh@move` already conflicts with first's live `Φ_c`, as the ordinary
+     rule requires.
+   - `^dist` adds the errors at the second call.
+   - A disturbance changes a verdict only when the disturbing access does not itself hit `Φ_c`'s Place. An example is a
+     write through an unrelated reference that the disturbance rule counts but the syntactic check misses. The
+     prototype has no such case.
+
+**Rerun: 99 cases.**
+
+- **A:** 75 same, 15 with an earlier error, 8 listed losses, and one unlisted rejection, 33c (A3's letter). No unsound
+  acceptance.
+- **S1′:** unsound on 29a and 30c (round 6), and rejects 33c.
+- **No new unsound acceptance.** The `Φ_c` code changes no earlier case.
