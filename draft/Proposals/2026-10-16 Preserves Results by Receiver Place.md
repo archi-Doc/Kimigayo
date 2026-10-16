@@ -285,10 +285,10 @@ Searches:
 - **[Contract Requirement Bodies and External Conformance](<2026-10-10 Contract Requirement Bodies and External Conformance.md>) §3.3.** That proposal checks a requirement body's bounds once under `Self is X`. Its `preserves results` check would be §2.2 of this proposal under that premise; the two are compatible.
 - **[Contract Conformance Redesign Options](<2026-10-10 Contract Conformance Redesign Options.md>).** Moves where bounds are declared, not how they are checked; no interaction.
 - **[Single MIR plan](<2026-10-10 Compiler Size Reduction and Single MIR Plan.md>).** A5's last step is "preserves results" (line 292); this proposal defines it over A5's own facts.
-- **[Complete Polonius A5 Plan](<2026-10-16 Complete Polonius A5 Plan.md>)** (merged from `dev`) consumes this rule as its S2. This proposal differs from the plan's S2 row (line 410):
+- **[Complete Polonius A5 Plan](<2026-10-16 Complete Polonius A5 Plan.md>)** (merged from `dev` at `e4457e24`) consumes this rule as its S2. This proposal differs from the plan's S2 row (line 481):
   - **Moves** carry the relation instead of invalidating it (keeping §22.2.3).
   - **Invalidation** is syntactic over access paths: writes, destruction and exclusive Borrows of the receiver, a part or an ancestor. The plan's "writes through a reference that may reach it" needs no aliasing judgment here (§2.1).
-  - **Calls** in a conformance check contribute the effects they contribute in any body, not their declared effects as the plan's row and census say (line 447). The reasons are in §2.3 and §8. The census of the 15 conformances (§4) then holds by reading.
+  - **Calls** in a conformance check contribute the effects they contribute in any body, not their declared effects as the plan's row and census say (lines 525–526). The reasons are in §2.3 and §8. The census of the 15 conformances (§4) then holds by reading.
 
 ## 10. Integration
 

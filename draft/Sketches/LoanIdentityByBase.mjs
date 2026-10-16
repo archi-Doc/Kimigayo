@@ -2,20 +2,22 @@
 //
 // A small evaluator of the proposed Loan rules on a toy language of exclusive (uniq) and shared (ref) reference holders,
 // checked against an exact reference semantics. It tests the hypothesis H1 that ending a child Loan when its base is
-// assigned (`=`) or its storage ends is sound, given that the base and its ancestors can be neither Moved nor exclusively
-// borrowed (`exchange`, `swap` and `replace` targets included) while the child is live: after the kill, nothing outside
-// the child's descendants holds the base's old reference, and every live exclusive value that reaches the child's Place
-// descends from the child or is an ancestor that the parent Loans suspend.
+// destroyed in place (`=`, a `replace` target or its storage end) is sound, given that the base and its ancestors can be
+// neither Moved nor exclusively borrowed (`exchange` and `swap` targets included) while the child is live: after the
+// kill, nothing outside the child's descendants holds the base's old reference, and every live exclusive value that
+// reaches the child's Place descends from the child or is an ancestor that the parent Loans suspend.
 //
 //   node draft/Sketches/LoanIdentityByBase.mjs [--random N] [--seed S] [--bound K] [--cap T]
 //
-// Static rules (`base`, the proposal; a Loan is its Borrow site, so the domain is finite):
+// Static rules (`base`, the proposal; a Loan is its Borrow site, so the domain is finite). Every toy Loan follows one
+// reference, so its base, the Place before its last borrow dereference, is a holder and the kill never has to cross one.
 //   base(L,B)      :- borrow_through(L,B).          // B: the holder whose exclusive reference the Borrow follows
-//   ended(L,P)     :- base(L,B), prefix(G,B), (assigned(G,P) ; storage_dead(G,P)).    // `=` or scope end; a
-//                                           `replace` also destroys in place, but it lends its target, an error while L lives
-//   carries(X,L,Q) :- carries(X,L,P), edge(P,Q), !replaced(X,P), !ended(L,P).
+//   ended(L,P)     :- base(L,B), prefix(G,B), destroyed_in_place(G,P).   // `=`, a `replace` target, a storage end
+//   carries(X,L,Q) :- carries(X,L,P), edge(P,Q), !replaced(X,P), !ended(L,P).   // also for the values flowing at P
 //   error(P)       :- access(P,B,Pl,K), live(L,P), base(L,B), overlaps(Pl,place(L)), conflicts(K,mode(L)).
-//   error(P)       :- (moves(P,G) ; lends_exclusively(P,G)), prefix(G,B), live(L,P), base(L,B).
+//   error(P)       :- (moves(P,G) ; lends_exclusively(P,G)), prefix(G,B), live(L,P), base(L,B).   // not a `replace` target
+// live(L,P) goes by holder, never by Loan id: the Loans carried on entry to P by the holders used after P (other than
+// those P overwrites) and by the values P stores into them, so an earlier execution of P's own site still conflicts.
 // Two comparison rules: `brief` ends a child on every complete replacement of its base, `exchange` and `swap` included,
 // and forbids only Moving the base itself; `site-authority` reconstructs one Loan per site with self-authority (no base,
 // no ending, and an access never conflicts with a Loan its own holder may carry).
@@ -191,9 +193,11 @@ function plan(prog, s) {
       }
       break;
     case 'replace':
+      // The target is destroyed in place, so it is exempt from the exclusive-Borrow ban and ends children like `=`
+      // (owner decision 2026-10-17, A5 design A3 §9 item 4).
       for (const [target, src] of pairs(prog, s.target, s.src)) {
         p.uses.push(target, src); p.defs.push(target, src); p.flows.push([target, src]);
-        p.destroyed.push(target); p.cleared.push(src); p.transferred.push(src); p.lent.push(target);
+        p.destroyed.push(target); p.cleared.push(src); p.transferred.push(src);
       }
       break;
     case 'kill':
@@ -576,12 +580,20 @@ c = s/a
 t = s@move
 t/a = _
 c = _`],
-  ['replace of the base, child live (lost; `=` is valid)', `
+  ['replace of the base, child live (exempt: destroyed in place)', `
 params x:uniq y:uniq
 locals r:uniq c:uniq
 r = x
 c = r
 replace r with y
+c = _`],
+  ['replace of the base, then the parent written (invalid)', `
+params x:uniq y:uniq
+locals r:uniq c:uniq
+r = x
+c = r
+replace r with y
+x = _
 c = _`],
   ['assignment of the base, child live', `
 params x:uniq y:uniq
