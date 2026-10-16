@@ -4,8 +4,7 @@ Status (2026-10-17): the step 0 design work of [the A5 plan](../../Proposals/202
 (plan §6.2) is done.
 
 - **Current design: [design-A3.md](design-A3.md).** Review round 3 confirmed it.
-- Its owner decisions are listed in its §9: the OD13 loss list, relaxations, the S1 additions, V16, the Origin
-  boundary, MIR contracts, and the DEC and DIAGNOSTICS records. They are pending.
+- The owner approved its §9 decisions on 2026-10-17 (see "Decisions taken").
 - The step 0 implementation units (A3 §10: ledger re-baseline, MIR fact contracts, A4 keys, Binding views) follow.
 
 These are working records, not authority. SPEC and DECISIONS decide. DEC entries come with the commits that first
@@ -37,6 +36,11 @@ S1/S2 proposal session.
   SPEC simplification (plan OD12, OD13).
 - **2026-10-17, owner:** for the access-check family, the owner chose the representation: the transit clause in the
   check set.
+- **2026-10-17, owner:** design A3 §9 was approved as recommended:
+  - losses P1, P3, P4, P10 and P11, plus the optional P5, P6 and P9;
+  - relaxations (a) and (b);
+  - the S1 additions, c1/c2, V16, the Origin boundary, the MIR contracts, and the DEC and DIAGNOSTICS records;
+  - not adopted: the root-most kill recovery and relaxation (c).
 - **Planning session:**
   - design A is the base;
   - A3 follows the plan's `within` kill, never across a borrow Deref;

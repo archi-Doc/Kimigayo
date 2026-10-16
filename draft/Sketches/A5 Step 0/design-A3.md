@@ -473,6 +473,18 @@ Binding's meet.
 Item 1 of r2 ("the finding 1 family: the representation or a hold") was **decided on 2026-10-17: the representation**,
 the transit clause in `CS` (§5).
 
+**Items 2–9 were approved by the owner on 2026-10-17 as recommended:**
+
+- the needed losses P1, P3, P4, P10 and P11;
+- the optional losses P5, P6 and P9, all adopted;
+- the root-most kill recovery and relaxation (c) (`clear` as `InPlace`): not adopted;
+- relaxations (a) and (b): confirmed;
+- the S1 additions, clarifications, V16, the Origin boundary, the MIR contracts, and the DEC and DIAGNOSTICS records:
+  approved.
+
+The SPEC simplifications land before the R4 exit (plan §5.3). Until then, a violation of an approved loss is a located
+`Unsupported_Kd`.
+
 | # | Decision | Content | Recommendation |
 | --- | --- | --- | --- |
 | 2 | OD13 loss list | §2's tables, with counts and class:<br>needed: P1, P3 (both forms), P4, P10, P11;<br>optional, each its own decision: P5, P6, P9.<br>S1's own: base operations (9k, 9l, 14), the `within` kill (23a, 30d), the raw-site form.<br>Optional recovery: the root-most kill (sound with P3; prototype, 92 cases).<br>No row for r2 finding 3, since the cut is taken. | Approve; decide the recovery |
