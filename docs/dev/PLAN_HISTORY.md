@@ -10,6 +10,8 @@ Archive line numbers below refer to that immutable snapshot, not this file. Hist
 
 ## Sessions
 
+- **2026-10-16 — No size caps; AGENTS rewrite (owner, DECISIONS Q5):** removed every code size cap, stage ceiling, forecast and per-unit allowance; AGENTS now asks for consistent, short and fast code, gives two designs and a design review only to shared-representation or cross-phase changes, and is 28% shorter (30% outside the Principles). Documentation only; diff and reference review.
+
 - **2026-10-16 — R4 work after A4 discarded (owner, DECISIONS R4-M33):** the MIR plan continues; A1–A4 stay and A5-1 (U7, U7a/U7a2/U7k/U7c), C1a, the MIR probe and the completion plan and budget are reverted onto the current tree, restoring R4-M25's caps (Mir −14,081, Binding −943 tokens). Session `20261016-043036-498-session-r4-discard-after-a4` passes the warning-free solution and 20,315 tests with stable inputs; the MIR difference ledger was not rerun. Next: replan R4's remaining scope in smaller units.
 
 - **2026-10-15 — Build documentation summaries:** aligned README, the existing STATUS CLI rows and the backend README with OutputKind-specific builds and Application-only manifest builds. Documentation-only follow-up to `7d18e204`; independent diff/reference review, no builds or tests. The implementation's successful Session remains associated with that exact commit.

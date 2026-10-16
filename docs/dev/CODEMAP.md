@@ -4,8 +4,7 @@ Navigation for compiler changes, not a specification or support matrix. Required
 
 ## Implementation map
 
-Compiler source-size caps and review obligations are in
-[COMPILER_ARCHITECTURE](COMPILER_ARCHITECTURE.md#baseline). LLVM templates retain a separate line cap.
+Compiler review obligations are in [COMPILER_ARCHITECTURE](COMPILER_ARCHITECTURE.md#code-rules); code size has no caps.
 [ArchitectureRulesTest](../../tests/xUnitTest/Tests/ArchitectureRulesTest.cs) owns the retained structural ratchets.
 The analyzer and CompilerSizeBudgetTest were retired (DECISIONS CR-R1); no live owner provides their former reports.
 [`verify.ps1`](../../scripts/verify.ps1) owns build/test execution and input stability;

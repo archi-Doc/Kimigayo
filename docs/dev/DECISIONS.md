@@ -53,6 +53,17 @@ rules that result from them.
     COMPILER_ARCHITECTURE "Adding a feature"); appending a separate rule list instead of replacing the affected rows.
   - Not reopened: decisions of landed units. Decisions of units not yet on `dev` are re-checked only where the
     coherence comparison would change the choice.
+- **Q5 No size caps; consistent, short and fast code; review weight** (2026-10-16, owner; AGENTS).
+  - Adopted: code size has no caps. Removed: the area token caps, stage ceilings, final target and LLVM-template line cap
+    (plan §10.4 and §12.2, Q1's size budget, CR-A1's conversion, R4-M25), unit forecasts with their 20% overrun rule and
+    R4-M30's 200-token Binding allowance. Each compiler commit still states its net size change per area, and stage exits
+    record area sizes. Structure limits, closed vocabularies and ratchets are unchanged.
+  - Adopted: code is consistent, short and fast, in that order, replacing Q4's "coherence, then net size, then
+    compilation speed" with the same order; "fast" covers generated code as well as compilation.
+  - Adopted: two independent designs, a design review and a final review only for a change to a shared representation
+    or across phases; any other change gets one review before completion, covering its design.
+  - Reason: the caps, forecasts and per-unit allowances added owner gates without improving the code, and every
+    non-local change paying two reviews slowed small units (R4-M33).
 
 ## Code rules (2026-10-12)
 
@@ -82,7 +93,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   rule. Compare diagnostics, semantic/HIR/MIR snapshots and generated IR, not DLL bytes (commit metadata differs).
   Intake changes architecture policy only; A1–A8 introduce implementation and enforcement.
 
-- **CR-A1** (planning session, independently reviewed). CompilerSizeBudgetTest owns one file scan for all area and
+- **CR-A1** (planning session, independently reviewed; its caps superseded by Q5). CompilerSizeBudgetTest owns one file scan for all area and
   total caps. Count parsed C# tokens without trivia, EOF or missing tokens; discard each tree after counting. Header
   comments mark generated files; LLVM templates retain their newline cap. A0 measured 835,421 tokens / 128,885 C# lines,
   excluding 1,687 generated lines and 2,335 template lines. Convert approved caps at fixed area ratios (future totals at
@@ -642,7 +653,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   in R4 would delete old-Emission validation tests that still guard the path deciding acceptance until R6 (R4-M1, D5).
   Rejected: deleting the injection tests now; MIR presence for library reach (vacuous while every library body is built);
   `LegacyRecords` as the general reader of flow records (it moves reads out of the ratchet without migrating them).
-- **R4-M25** (owner, 2026-10-12; area caps rebalanced within the R4 stage ceiling; in force again by R4-M33) Binding's token cap rises from 375,051 to
+- **R4-M25** (owner, 2026-10-12; area caps rebalanced within the R4 stage ceiling; superseded by Q5) Binding's token cap rises from 375,051 to
   377,051 and Core's from 8,167 to 8,187; Mir's cap (93,651) and the R4 total ceiling (894,362) are unchanged. Reason: the
   measured needs of the R4 analyses are published Binding facts (U6 effect obligations and call bounds, U7 Relate/Clauses and the
   callable signature, U9 universal relations) and U11's internal reporter in Core, against 2,997 Binding and 0 Core tokens of
@@ -824,7 +835,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   padding in each producer (an open family; this was its second fix), a key rule accepting an empty span (two forms, and the entry,
   closure-context and default-call identity probes still split one instance), the empty form for calls and keys (two shapes for a
   per-slot fact), per-slot lengths in Item Types (every BoundType keeps LengthArguments empty without a length argument).
-- **R4-M30** (owner, 2026-10-12) The missing-fact allowance counts tokens: a unit may add at most 200 non-trivia Binding tokens
+- **R4-M30** (owner, 2026-10-12; superseded by Q5) The missing-fact allowance counts tokens: a unit may add at most 200 non-trivia Binding tokens
   (A1 count; the former "30 Binding lines" at Binding's measured 6.57 tokens per line, CR-A1) for a fact the MIR side lacks; more
   needs an owner exception stated in tokens. Forecasts and overruns are stated in tokens per area, lines for reference. Reason: the
   budget has counted tokens since CR-A1, and lines overstated growth (R4 U6b: +107 lines, of which 72 were formatting with no tokens —

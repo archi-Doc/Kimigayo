@@ -38,9 +38,9 @@ test selector against the new assembly, rejects zero executed tests and checks s
 input stability. `verify-commit.ps1` still requires a successful run and exact committed inputs.
 `ArchitectureRulesTest` retains its existing no-growth assertions and joins every Unit selection.
 
-The structure, dependency, vocabulary and size rules in COMPILER_ARCHITECTURE remain review
-obligations. Report measured sizes and exceptions in commits/artifacts; do not claim automated
-coverage for the removed analyzer or change a cap without the existing owner decision.
+The structure, dependency and vocabulary rules in COMPILER_ARCHITECTURE remain review
+obligations; code size has no caps (DECISIONS Q5). Report net size changes and exceptions in
+commits/artifacts; do not claim automated coverage for the removed analyzer.
 
 ## Feedback and completion
 
