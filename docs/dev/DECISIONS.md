@@ -432,7 +432,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M15** `OwnershipStorageLimit_Kd` stays the one Resource code, decided by the byte size of A5's Loan × point arena. The
   arena scope is superseded by R4-M15a.
 - **R4-M16** The ledger's classification table is tracked (`tests/xUnitTest/TestData/mir-diff/classification.tsv`); raw
-  rows, reproducers and ledgers are evidence under `artifacts/verify/mir-diff/`.
+  rows, reproducers and ledgers are evidence under `artifacts/verify/mir-diff/`. Its row shape is refined by R4-M46.
 - **R4-M2a** (2026-10-12, planning session; design A of two independent U0b designs; supersedes R4-M2's stub clause, its
   layout stays). U0b creates only `MirAnalysis`, the driver whose contract fixes the pass order (A3 per body; per body and
   view A1, A2, A4's local facts; A4 over the program; A5 per view; A6 inside `MirReport`), and `MirReport`; each analysis
@@ -519,6 +519,13 @@ and migration obligations remain in force; no numeric cap changes are authorized
   mir pipeline publishes as `InternalInvariant_Kd` (the ledger's MIR side now includes them). Rejected: marker comments in the SPEC (an
   explicit SPEC revision); block names by line (SPEC revisions move lines); tier 1 alone (it compares the paths, with no expectation);
   a second record reader beside the ledger's. The number follows the range the planning session assigned to this session.
+- **R4-M46** (2026-10-17, tooling session; plan §9.2, R4-M35; refines R4-M16's row shape) The classification table names the SPEC
+  sections that decide each row: a `clause` column after `category`, space-separated section numbers of the SPEC's numbered headings
+  (`DiagnosticCorpus.SpecSections`), which `ledger.tsv` repeats for its signatures; references keep plan and DEC references only.
+  An (a), (c) or (d) row needs a clause, since a row of plan §8's blocking kinds passes the R4 exit only as (a), (c) or (d) with a
+  SPEC clause; a (b) or (e) row, which a repair unit resolves, may write `-` where no SPEC rule decides it (a primary location).
+  Rejected: clauses inside `reference` (unchecked, mixed with plan and DEC references); a second table keyed by row id (two tables
+  for one row).
 - **R4-M19** (owner O1, 2026-10-12; two designs compared, the first taken with two parts of the second). An explicit case
   adaptation (SPEC 8.14, 13.5.3), whose operation each Semantics case selects, is the one case-dependent rvalue
   `MirRvalueKind.Adapt` (KR1003: 9 → 10). Operand 0 is the by-value acquisition (a written Place's Copy, a temporary's Move);

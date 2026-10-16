@@ -90,8 +90,9 @@ public sealed class MirDifferenceLedger : IDisposable
         Compilation.Analyzed += this.Record;
     }
 
-    /// <summary>Gets the tracked classification table (R4-M16): <c>id section kind analysis code requirement form category reference
-    /// note</c> per row, where <c>*</c> matches anything and the form is a regular expression.</summary>
+    /// <summary>Gets the tracked classification table (R4-M16, R4-M46): per row <c>id section kind analysis code requirement form category
+    /// clause reference note</c>, where <c>*</c> matches anything, the form is a regular expression and the clause names the SPEC sections
+    /// deciding the row (- for none).</summary>
     internal static string[][] Table
         => [.. File.ReadLines(DiagnosticCorpus.RepositoryPath("tests", "xUnitTest", "TestData", "mir-diff", "classification.tsv")).Skip(1)
             .Where(static x => x.Length != 0).Select(static x => x.Split('\t'))];
@@ -191,8 +192,8 @@ public sealed class MirDifferenceLedger : IDisposable
         return differences;
     }
 
-    /// <summary>Writes the ledger of a directory's raw rows: <c>ledger.tsv</c>, one row per signature with its count, the category and
-    /// reference of the first classification row that matches it and an example source, and <c>summary.md</c> with the P9 number (the
+    /// <summary>Writes the ledger of a directory's raw rows: <c>ledger.tsv</c>, one row per signature with its count, the category,
+    /// clause and reference of the first classification row that matches it and an example source, and <c>summary.md</c> with the P9 number (the
     /// unclassified signatures), the open (b) signatures, the unclassified split by analysis and section, and the table rows nothing
     /// matched.</summary>
     /// <param name="directory">The directory of the raw rows.</param>
@@ -205,11 +206,11 @@ public sealed class MirDifferenceLedger : IDisposable
         {
             var row = Array.Find(table, y => Matches(y, x.Key));
             used.Add(row?[0] ?? string.Empty);
-            return (Signature: x.Key, Count: x.Count(), Category: row?[7] ?? "?", Reference: row?[8] ?? "-", Example: x.First().Sha);
+            return (Signature: x.Key, Count: x.Count(), Category: row?[7] ?? "?", Clause: row?[8] ?? "-", Reference: row?[9] ?? "-", Example: x.First().Sha);
         }).OrderByDescending(static x => x.Count).ThenBy(static x => x.Signature, StringComparer.Ordinal).ToList();
         File.WriteAllLines(
             Path.Combine(directory, "ledger.tsv"),
-            ["section\tkind\tanalysis\tcode\trequirement\tform\tcount\tcategory\treference\texample", .. ledger.Select(static x => $"{x.Signature}\t{x.Count}\t{x.Category}\t{x.Reference}\t{x.Example}")],
+            ["section\tkind\tanalysis\tcode\trequirement\tform\tcount\tcategory\tclause\treference\texample", .. ledger.Select(static x => $"{x.Signature}\t{x.Count}\t{x.Category}\t{x.Clause}\t{x.Reference}\t{x.Example}")],
             new UTF8Encoding(false));
         var open = ledger.Where(static x => x.Category is "?" or "b").ToList();
         var summary = new StringBuilder("# MIR difference ledger\n\n")

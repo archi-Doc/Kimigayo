@@ -87,7 +87,8 @@ public sealed class MirDifferenceTest
         Assert.Throws<InvalidOperationException>(static () => MirDifferenceLedger.AnalysisOf(DiagnosticCode.TransferRequired_Kd));
     }
 
-    // R4-M16: every classification row has a unique id, known fields or *, a valid form pattern, a category a–e and a reference.
+    // R4-M16, R4-M46: every classification row has a unique id, known fields or *, a valid form pattern, a category a–e, a clause of SPEC
+    // sections or -, and a reference; an (a), (c) or (d) row, which plan §8 lets the R4 exit pass, names its clause.
     [Fact]
     public void TheClassificationTableIsWellFormed()
     {
@@ -97,7 +98,7 @@ public sealed class MirDifferenceTest
         var requirements = DiagnosticRequirements.All.Select(static x => x.Name).Append("-").ToHashSet(StringComparer.Ordinal);
         foreach (var row in table)
         {
-            Assert.Equal(10, row.Length);
+            Assert.Equal(11, row.Length);
             Assert.Contains(row[1], (string[])["*", "complete", "incomplete"]);
             Assert.Contains(row[2], (string[])["*", "missing", "new", "location", "acceptance"]);
             Assert.Contains(row[3], (string[])["*", "A1", "A3", "A4", "A5", "U", "B", "-"]);
@@ -105,7 +106,8 @@ public sealed class MirDifferenceTest
             Assert.True(row[5] == "*" || requirements.Contains(row[5]), row[0]);
             Assert.True(row[6] == "*" || Record.Exception(() => new Regex($"^(?:{row[6]})$")) is null, row[0]);
             Assert.Contains(row[7], (string[])["a", "b", "c", "d", "e"]);
-            Assert.NotEqual(string.Empty, row[8].Trim());
+            Assert.True(row[8] == "-" ? row[7] is "b" or "e" : row[8].Split(' ').All(DiagnosticCorpus.SpecSections.Contains), row[0]);
+            Assert.NotEqual(string.Empty, row[9].Trim());
         }
     }
 
