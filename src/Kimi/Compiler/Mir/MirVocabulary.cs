@@ -157,13 +157,14 @@ internal enum MirLocalKind : byte
     DropFlag,
 }
 
-/// <summary>Why a local exists, for mapping a finding to its diagnostic code only.</summary>
+/// <summary>Why a local exists, which maps a finding to its diagnostic code; a guard candidate's role also decides A5's guard-local
+/// Origin (design A3 E7).</summary>
 internal enum MirLocalRole : byte
 {
     None,
     PreparedInput, // A parameter a later default reads (SPEC 7.2.3).
     PendingSlot, // A prepared argument slot of an inline default.
-    GuardCandidate,
+    GuardCandidate, // A match guard's candidate binding: its value carries γ, which its EndBorrow ends (SPEC 14.8.3, err(ended)).
     Subject, // A match subject.
 }
 
