@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
+
 namespace Kimi.Compiler;
 
 internal static partial class LlvmModuleWriter

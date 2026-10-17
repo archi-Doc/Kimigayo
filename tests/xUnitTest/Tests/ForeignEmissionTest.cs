@@ -3,6 +3,7 @@
 using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
@@ -93,8 +94,8 @@ public class ForeignEmissionTest
     [InlineData("é\t", "\"\\C3\\A9\\09\"")]
     public void ExternalNamesRoundTrip(string symbol, string name)
     {
-        Assert.Equal(name, LlvmModuleWriter.ExternalName(symbol));
-        Assert.Equal(symbol, LlvmModuleWriter.SymbolFromName(name));
+        Assert.Equal(name, LlvmModuleText.ExternalName(symbol));
+        Assert.Equal(symbol, LlvmModuleText.SymbolFromName(name));
     }
 
     [Fact]

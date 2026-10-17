@@ -687,7 +687,7 @@
 - [Binding.EffectBounds.cs](../../src/Kimi/Compiler/Binding/Binding.EffectBounds.cs)：既存の契約別 effect 検査。一般的な LLVM memory 属性の解析ではない。
 - [WindowsRuntime.ll.in](../../src/Kimi/Compiler/Emission/WindowsRuntime.ll.in)、[Utf8BufferRuntime.ll.in](../../src/Kimi/Compiler/Emission/Utf8BufferRuntime.ll.in)、[Utf8FormatRuntime.ll.in](../../src/Kimi/Compiler/Emission/Utf8FormatRuntime.ll.in)：runtime、memory intrinsic、poison の限定使用。
 - [Utf8FloatRyu.ll.in](../../src/Kimi/Compiler/Emission/Utf8FloatRyu.ll.in) / [generate-ryu.ps1](../../src/backend/windows-x64/generate-ryu.ps1)：Clang 生成の属性・算術 flags。生成ファイルを手編集しない。
-- [LlvmConstantPool.cs](../../src/Kimi/Compiler/Emission/LlvmConstantPool.cs) / [NativeToolchain.cs](../../src/Kimi/Compiler/Emission/NativeToolchain.cs)：定数、O2 pipeline、前後の IR verification。
+- [LlvmConstantPool.cs](../../src/Kimi/Compiler/Backend/LlvmConstantPool.cs) / [NativeToolchain.cs](../../src/Kimi/Compiler/Emission/NativeToolchain.cs)：定数、O2 pipeline、前後の IR verification。
 - [テスト一覧](../../tests/xUnitTest/Tests/)：§5.1 のクラスから関係するケースを選ぶ。
 
 ### 6.2. LLVM の一次資料

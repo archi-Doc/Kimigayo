@@ -2,6 +2,7 @@
 
 using System.Globalization;
 using System.Runtime.InteropServices;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;

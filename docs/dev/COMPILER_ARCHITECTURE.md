@@ -113,6 +113,7 @@ Each entry file begins with the component's contract (AGENTS). Paths are under `
 | Effect summaries | `MirEffects` (A4): per body view the classes and atoms of the effect summary, composed through each call's substitution, one worklist to the least fixed point, and the `confined` obligations Binding publishes judged per view (DECISIONS R4-M22); `Keys`, the mutable static Fields a Call or a Drop may access through what it runs (P5, DECISIONS R4-M38) | `Mir/Analysis/MirEffects.cs`, `Mir/Analysis/MirEffects.Solve.cs`, `Mir/Analysis/MirEffects.Keys.cs` |
 | MIR analysis problems | `MirReport`: one `MirProblem(Code, Subject, Views)` per code and subject with its views merged; the one home of the derived-problem rules (DECISIONS R4-M3a, R4-M10) | `Mir/Analysis/MirReport.cs` |
 | MIR text | `MirDump.Write`, with A2's verdicts and flags on an analyzed program, compared by the dump goldens and the MIR snapshot | `Mir/MirDump.cs`, its operations `Mir/MirDump.Operations.cs` and drop elaboration's output `Mir/MirDump.Drops.cs` |
+| LLVM module text | `LlvmModuleText`, the module frame every generator writes through: header with the pooled constants, runtime template with its ABI splice and test variant, external declarations, overflow and memory declarations, footer, external symbol spelling, number formatting; `LlvmConstantPool`, a module's private UTF-8 constants (DECISIONS R5-M14) | `Backend/LlvmModuleText.cs`, `Backend/LlvmConstantPool.cs` |
 
 ## Structure limits
 
@@ -155,6 +156,7 @@ automated build diagnostics. `ArchitectureRulesTest` separately retains its exis
 | Density | At most 160 UTF-16 units per physical line, excluding whole multiline-string lines; no nested conditional expression. |
 | Deconstruction | Computed tuple literals do not initialize all-new-local deconstructions; existing-variable assignments remain allowed. |
 | Unused code | Remove unused/unread private members and unused parameters while preserving behavior. |
+| LINQ | No System.Linq.Enumerable in the Backend (`Backend/`, since R5's unit P0; DECISIONS R5-M14); Mir analyses follow at R5 (below); tests are exempt (owner, 2026-10-18, DECISIONS R5-M13). |
 
 Existing excess cannot grow. Only statement and nesting limits admit `CodeRuleException`, with an explicit
 bound and reason. `Transitional` records a removal obligation; neither attribute is an analyzer certificate.
@@ -163,9 +165,8 @@ and earlier stages do not. Mechanical evasions fail review. At a stage exit, rec
 exceptions and transitional declarations with the owner; the deleted Report command is not a gate.
 
 At R7, Syntax's restriction extends to the whole Binding layer (moved from R6, DECISIONS R5-M9), and UnwrapParentheses
-is restricted to Parsing/Binding. At R5, add Backend and forbid System.Linq.Enumerable in Mir analyses and Backend,
-rewriting existing uses first; the no-LINQ rule does not extend to tests (owner, 2026-10-18, DECISIONS R5-M13). IntrinsicId
-returns to 30 at R8.
+is restricted to Parsing/Binding. At R5, the no-LINQ rule extends from the Backend to Mir analyses, rewriting existing uses
+first. IntrinsicId returns to 30 at R8.
 
 ## Rules during the migration
 
