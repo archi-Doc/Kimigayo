@@ -14,7 +14,7 @@ Round 2 changes: X1 (no `BaseDepth`), X2 (`TypeOf`), X3 (glue recursive per Type
 rows declare their callees and needs), X5 (no target for virtual calls), X7 (selector in K1), X8 (`TyCtxt.Instances.cs`), X9/X14
 (property-witness shim item), X10 (bridge memo), X11 (A-11), X13 (`View(item)`), X15 (target column on the intrinsic rows), X16
 (`Witness` with the Contract), X17 (`Compilation.Generation.cs`), X18 (`Layout.Of` owns the C-layout rule), X19 (limits on Body
-items), X20 (`Erase` only interns), X21 (no destruction-nesting row), X22 (generic static key to the owner), and the adopted
+items), X20 (`Erase` only interns), X21 (no destruction-nesting row), X33 (generic static keys: owner choice), and the adopted
 non-blocking items naming K.
 
 ---
@@ -497,5 +497,5 @@ Not departures: D-B (P5) gives the records SPEC requires per unit under its prec
 
 | # | Question | Options | Recommendation |
 | --- | --- | --- | --- |
-| P9 | Where does the intrinsic row table with the `Target` column live, given K1 precedes C0b1? | (a) K1 creates `B/IntrinsicRows.cs` (33 rows, `Target`), C0b1 adds the writer column; (b) the column waits for C0b1 and K6–K8 depend on it | (a): no cross-group order; one table |
-| P10 | Owner of DropGlue's direct-part enumeration, needed by K7 before C4a | (a) `B/DropGlue.cs`, created by K7, read by C4a; (b) a collector-private enumeration and C's own | (a): one rule, so targets and glue bodies agree |
+| P9 | Where does the intrinsic row table with the `Target` column live, given K1 precedes C0b1? | (a) K1 creates `B/IntrinsicRows.cs` (33 rows, `Target`), C0b1 adds the writer column; (b) the column waits for C0b1 and K6–K8 depend on it | (a): no cross-group order; one table — **decided: X27** |
+| P10 | Owner of DropGlue's direct-part enumeration, needed by K7 before C4a | (a) `B/DropGlue.cs`, created by K7, read by C4a; (b) a collector-private enumeration and C's own | (a): one rule, so targets and glue bodies agree — **decided: X27** |

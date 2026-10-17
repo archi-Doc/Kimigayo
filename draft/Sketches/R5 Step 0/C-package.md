@@ -599,5 +599,5 @@ Round-0 O1–O9 are decided (`S2-S4-decisions.md`: X12, owner item, X3, X2, X1, 
 
 | # | Question | Options | Recommendation |
 | --- | --- | --- | --- |
-| O1 | X8 keeps a "C-layout instance view" in `TyCtxt.Instances.cs`, while X18 makes `Layout.Of` the one owner of the zero-sized C-layout rule at any depth. Which serves K10b? | (a) `Layout.Of`'s CLayout result only; X8's view is dropped, and Binding's eager check stays until G2b; (b) the view stays, and `Layout.Of` calls Binding's shared predicate | (a). Under (b), two owners compute "zero-sized" differently (type rule versus size) |
-| O2 | F11's review and window | (a) W1 gains `Mir/MirValidator*.cs`; R plus an R4 reviewer (A1–A5 trust the validator); (b) a separate short hold | (a) |
+| O1 | X8 keeps a "C-layout instance view" in `TyCtxt.Instances.cs`, while X18 makes `Layout.Of` the one owner of the zero-sized C-layout rule at any depth. Which serves K10b? | (a) `Layout.Of`'s CLayout result only; X8's view is dropped, and Binding's eager check stays until G2b; (b) the view stays, and `Layout.Of` calls Binding's shared predicate | (a). Under (b), two owners compute "zero-sized" differently (type rule versus size) — **decided: X26** |
+| O2 | F11's review and window | (a) W1 gains `Mir/MirValidator*.cs`; R plus an R4 reviewer (A1–A5 trust the validator); (b) a separate short hold | (a) — **decided: X29, X30** |
