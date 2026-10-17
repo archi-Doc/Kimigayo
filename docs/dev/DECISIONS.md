@@ -1644,3 +1644,21 @@ structure is recorded here by the unit that first implements it.
     exception) and (c) carrying Type arguments before G2 (MIR representation work in W1 for a form no library or milestone uses);
     for the successor code, reusing `ProjectPreparationFailed_Kd`, recategorizing `GenerationFailed_Kd`, or
     `MissingNativeRequirement_Kd` for the missing-supply cause only.
+- **R5-M19 `Layout`** (2026-10-18, planning session; plan P7a, package §3.5 and §7, S2-S4 X18, X31, X34 and O9, under R5-M18;
+  promoted under R5-M14) A permanent Backend component that owns the storage layout of a closed Type for every generator:
+  `Layout.Of(BoundType)` returns its `ValueLowering` (size, alignment, stride, Field offsets, LLVM representation). P7a's rows:
+  IMPL 21.1.3's scalars (the table that was `WindowsLowering`'s), Unit, string, Never (zero-sized, laid out as Unit), borrows,
+  object borrows and raw pointers (one pointer, `RuntimeAbi.StringReference`), object handles (one word), function values
+  (16 bytes), `Loan<T>` (the record of a struct without stored Fields), and the Slice, Array and Dictionary handles (2, 3 and 7
+  pointer-aligned words; these three records are `[Transitional("R8")]`, since R8 declares the handles in the library). Every row is a
+  static record: no call allocates and equal representations share one record. A borrow, pointer, handle or sequence is laid out
+  without reading its referent or element Type (X34); a Type without a row is an internal error. P7b adds struct, Tuple,
+  fixed-array, enum, Closure and Function Item placement with the OK/Limit/CLayout result (X18) and the base-prefix invariant
+  (X1); `Weak<S>` comes with its operations (P41); the nonnull `Option<R>` stays a STATUS limit until PLAN U8 (O9). The old
+  pool calls `Layout.Of` for handles, for sequences (whose field count is the handle's word count) and for scalar Fields, as
+  `FunctionAbiPool.GetValue` does for scalar values; `WindowsLowering.GetValue` stays the old Emission's scalar-value gate (a value
+  Type, Unit or string) over `Layout.Of` for its callers in the old lowering until G8, so no second scalar table remains and
+  Never keeps the old null (X31; STATUS). Rejected: re-pointing the gate's callers to `Layout.Of` (frozen lowering that relies on
+  the gate's null for every other Type); a per-Type memo (no P7a row depends on more than the Type's kind; placement brings it);
+  `Loan<T>` as Unit's record (P7b's placement would then change the old pool's `Loan<T>` record and argument slot); an explicit
+  Never test in the old pool beside the gate (Never is no value Type there).

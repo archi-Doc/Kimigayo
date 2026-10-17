@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -60,7 +61,7 @@ public class WrappingIntegerTest
         Assert.Same(wrapping, variables["h"].NameKoto.TypeOf());
         Assert.Same(wrapping, variables["n"].NameKoto.TypeOf()); // Unary minus exists for unsigned arguments too.
         Assert.Same(wrapping, variables["m"].NameKoto.TypeOf());
-        Assert.Same(WindowsLowering.GetValue(primitive), WindowsLowering.GetValue(wrapping));
+        Assert.Same(Layout.Of(primitive), Layout.Of(wrapping));
     }
 
     [Theory]
