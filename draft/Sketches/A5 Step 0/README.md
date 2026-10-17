@@ -1,6 +1,6 @@
 # A5 step 0 records
 
-Status (2026-10-17): the step 0 design work of [the A5 plan](../../Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md)
+Status (2026-10-17): step 0 is complete (unit 0b closed by prototype round 10); the step 0 design work of [the A5 plan](../../Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md)
 (plan §6.2) is done.
 
 - **Current design: [design-A3.md](design-A3.md).** Review round 3 confirmed it.
@@ -25,7 +25,7 @@ implement them.
 | [review-design-r2.md](review-design-r2.md) | Round 2: revise. One blocking finding was a second round in one family, so the owner chose |
 | [design-A3.md](design-A3.md) | Full revision after round 2 and the owner's decision, with round 3's four corrections |
 | [review-design-r3.md](review-design-r3.md) | Round 3: confirmed |
-| [prototype.md](prototype.md), [A5RulesPrototype.cs](A5RulesPrototype.cs) | Executable rules prototype: 113 hand-encoded programs, rounds 1–9 (round 7 is A3 unit 0b; round 8 the case 23a proposal review; round 9 PLAN G113) |
+| [prototype.md](prototype.md), [A5RulesPrototype.cs](A5RulesPrototype.cs) | Executable rules prototype: 246 hand-encoded programs, rounds 1–10 (round 7 is A3 unit 0b; round 8 the case 23a proposal review; round 9 PLAN G113; round 10 step 1's 1b design diff, which closed 0b) |
 | [RustComparison.rs](RustComparison.rs) | rustc check of rounds 8 and 9: 23a, 34c, 35a, 35b, 36f and the round-9 review forms R5 and R6 compile; with `--cfg neg`, 34a and 23a's old slot are E0506 |
 
 S1's own prototype is `draft/Sketches/LoanIdentityByBase.mjs` on branch `claude/gracious-brahmagupta-85336b`, from the
@@ -44,6 +44,9 @@ S1/S2 proposal session.
   - not adopted: the root-most kill recovery and relaxation (c).
 - **2026-10-17, owner:** design A3 §9 item 10, the needed loss P12 (`desc(c)`, PLAN G113, prototype round 9), was
   approved: 「承認します。」 (relayed by the planning session)
+- **2026-10-17, owner:** design A3 §9 item 11 (DECISIONS R4-M52): the step 1 choices of `../A5 Step 1/choice-1b.md` §4,
+  each as recommended: G92b the fold, G92a assumed completion with α, the case 23a proposal as option (c) (A3 §12 E8),
+  and the SPEC revision in a separate session.
 - **Planning session:**
   - design A is the base;
   - A3 follows the plan's `within` kill, never across a borrow Deref;
