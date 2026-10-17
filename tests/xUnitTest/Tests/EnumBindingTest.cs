@@ -76,14 +76,14 @@ public class EnumBindingTest
     }
 
     [Fact]
-    public void CoreOptionUsesConditionalCopyAndResultUsesOrdinaryRules()
+    public void CoreOptionAndResultUseConditionalCopy()
     {
-        var c = CompilationTestHelper.ParseSuccess("var a: Option<i32>\nvar b: Option<string>\nvar r: Result<i32, i32>");
+        // SPEC 22.1: Option is Copy when T is Copy, Result when T and E are Copy.
+        var c = CompilationTestHelper.ParseSuccess("var a: Option<i32>\nvar b: Option<string>\nvar r: Result<i32, i32>\nvar s: Result<i32, string>\nvar t: Result<string, i32>");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var variables = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().ToArray();
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(variables[0].TypeOf()!, variables[0]));
-        Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveCopy(variables[1].TypeOf()!, variables[1]));
-        Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveCopy(variables[2].TypeOf()!, variables[2]));
+        ConstraintProof[] expected = [ConstraintProof.Proven, ConstraintProof.Refuted, ConstraintProof.Proven, ConstraintProof.Refuted, ConstraintProof.Refuted];
+        Assert.Equal(expected, variables.Select(x => c.Binding.ProveCopy(x.TypeOf()!, x)));
     }
 
     [Theory]

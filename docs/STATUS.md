@@ -39,7 +39,7 @@ Public declarations and guarantees belong in [LIBRARY](LIBRARY.md). The followin
 | Ownership and objects | Whole-value replace/exchange/swap; concrete obj/rc/arc factories, clone/cleanup, supported payload Copy reads, base views, fields, shared calls and temporary-handle borrows. | Weak, checked casts, runtime Contract Views and general flow refinement are not implemented. Object and reference-layer defects are listed in §3; object support does not imply complete ObjectCallCompatible effects. |
 | Text and formatting | Fixed/heap buffers, UTF-8 validation, erased Writers, builtin/user formatters, Text conversion, owning interpolation, `$tryWrite`, reserve-effect checks and bounded Console stack output. | Effect analysis keeps the conservative call/alias limits below. Stack formatting is bounded to 1,024 bytes; unknown bounds use the ordinary buffer path. The revised allocation guarantees still fall under S1015. |
 | Time and numeric wrappers | Windows Duration/Stopwatch and supported Wrapping integer operations, conversions and formatting. | Per-operation numeric and generation boundaries remain; this does not establish every revised library guarantee. |
-| Option and Result | Optional Types, supported enum storage, `try`, explicit discard and ordinary acquisition/cleanup. | Never/static scalar-reference payloads and general aggregate covariance/Origin-polymorphic ABI remain incomplete. Result's missing conditional Copy declaration is tracked in PLAN G87. |
+| Option and Result | Optional Types, supported enum storage, `try`, explicit discard and ordinary acquisition/cleanup. | Never/static scalar-reference payloads and general aggregate covariance/Origin-polymorphic ABI remain incomplete. |
 
 ## 3. Control Flow and Ownership
 
