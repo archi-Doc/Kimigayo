@@ -73,13 +73,26 @@ foreach (var c in Cases.All())
     if (c.Id.StartsWith("20") || !row[0].ErrorNodes().SequenceEqual(row[1].ErrorNodes()) || !row[2].ErrorNodes().SequenceEqual(row[4].ErrorNodes()) || !row[3].ErrorNodes().SequenceEqual(row[4].ErrorNodes()))
         Console.WriteLine($"| {c.Id} | {(c.Err ? "error" : "valid")} | {string.Join(" | ", row.Select(W))} |");
 }
-foreach (var ab in new[] { Abl.KillAcrossDeref, Abl.FirstDerefBase, Abl.NoTransit, Abl.NoSharedCut })
+var phantomVariants = new[] { Abl.PhantomAlone, Abl.PhantomKeepsReceiver, Abl.PhantomParentsAtCall };
+foreach (var ab in new[] { Abl.KillAcrossDeref, Abl.FirstDerefBase, Abl.NoTransit, Abl.NoSharedCut }.Concat(phantomVariants))
 {
     var aKill = Cases.All().Select(c => (c, a: new Analysis(c, Mode.A, ab), b: new Analysis(c, Mode.A)))
         .Where(x => !x.a.ErrorNodes().SequenceEqual(x.b.ErrorNodes())).Select(x => $"{x.c.Id}: {V(x.a)}" + (x.c.Err && x.a.Errors.Count == 0 ? " **UNSOUND**" : ""));
     Console.WriteLine($"Design A with {ab}: " + string.Join("; ", aKill.DefaultIfEmpty("no change")));
 }
-foreach (var ab in Enum.GetValues<Abl>().Skip(1).Where(x => x is not (Abl.AIssueNotEnded or Abl.IdExclusion or Abl.AText or Abl.LastDerefBase or Abl.FirstDerefBase)))
+// Round 9 (G113): the F6 cases under design A, its first-Deref variant and each rejected F6 option; class counts.
+Console.WriteLine("\nRound 9 (F6 cases):\n| Case | SPEC | A | A FirstDerefBase | " + string.Join(" | ", phantomVariants) + " |\n| --- | --- | --- | --- | --- | --- | --- |");
+foreach (var c in Cases.All().Where(c => c.Id.StartsWith("33") || c.Id.StartsWith("36")))
+{
+    string W(Analysis a) => V(a) + (c.Err && a.Errors.Count == 0 ? " **UNSOUND**" : "");
+    var row = new[] { Abl.None, Abl.FirstDerefBase }.Concat(phantomVariants).Select(x => W(new Analysis(c, Mode.A, x)));
+    Console.WriteLine($"| {c.Id} | {(c.Err ? "error" : "valid")} | {string.Join(" | ", row)} |");
+}
+foreach (var ab in new[] { Abl.None, Abl.FirstDerefBase })
+    Console.WriteLine($"Design A{(ab == Abl.None ? "" : " with " + ab)}: " + string.Join(", ", Cases.All()
+        .GroupBy(c => Cls(c, new Analysis(c, Mode.A, ab)) is var s && s.StartsWith("(a)") ? "listed loss" : s).OrderBy(g => g.Key)
+        .Select(g => $"{g.Count()} {g.Key}" + (g.Key.Contains("(b)") || g.Key.Contains("(c)") ? " (" + string.Join(", ", g.Select(c => c.Id)) + ")" : ""))));
+foreach (var ab in Enum.GetValues<Abl>().Skip(1).Where(x => x is not (Abl.AIssueNotEnded or Abl.IdExclusion or Abl.AText or Abl.LastDerefBase or Abl.FirstDerefBase) && !phantomVariants.Contains(x)))
 {
     string At(Analysis a) => "`" + string.Join("`, `", a.ErrorNodes()) + "`";
     var changed = Cases.All().Select(c => (c, a: new Analysis(c, Mode.S1P, ab), b: new Analysis(c, Mode.S1P)))
@@ -103,11 +116,14 @@ enum Abl { None, KillKeepOnly, NoMaterialize, SyntacticAccess, NoAuthority, NoCl
     NoSharedCut,        // round 6: an observing destruction reaches exclusively past shared Derefs
     SharedBaseOp,       // round 6: S1′ plus P3 (a shared borrow of the base or an ancestor is a base operation vs an exclusive child)
     P3RootMost,         // round 6: S1′ plus P3 plus the root-most kill (KillAcrossDeref)
-    FirstDerefBase }    // round 8: A mode with the first-Deref B; K an exact prefix of B, any index after K (case 23a proposal)
+    FirstDerefBase,     // round 8: A mode with the first-Deref B; K an exact prefix of B, any index after K (case 23a proposal)
+    PhantomAlone,       // round 9: A mode with rounds 7-8's F6 encoding: the result keeps Φ_c without the receiver's Loans
+    PhantomKeepsReceiver, // round 9: A mode, the result keeps the receiver's whole value, its own Loan R included
+    PhantomParentsAtCall } // round 9: A mode, Φ_c issued at the call with R2's parents of recv(c), not the receiver's value
 
 enum K { Read, Write, Move, SBorrow, UBorrow, Destroy }
 enum Mode { PROV, S1, S1P, A }
-record Issue(string Id, string Place, bool Uniq, string Into, bool Reserve, bool Param, bool InPlace = false, bool Phantom = false);
+record Issue(string Id, string Place, bool Uniq, string Into, bool Reserve, bool Param, bool InPlace = false, bool Phantom = false, string Recv = null);
 record Acc(K Kind, string Place, string Except, bool InPlace = false); // InPlace: the exclusive borrow is a `replace` target
 record Res(HashSet<string> Names, HashSet<string> Leaves, HashSet<string> Auth);
 
@@ -137,7 +153,9 @@ class Node
     public readonly List<string> Defs = new(), Uses = new(), Activates = new(), Assumed = new(), Exchanges = new(), Disturbs = new(), Excuses = new();
     // F6 (S2, A3 §5): Φ_c, a phantom uniq Loan on the receiver's referent carried by the result; a disturbing point
     // turns Φ_c into Φ_c^dist in every set; a later preserves call on the same receiver excuses an undisturbed Φ_c.
-    public Node Phantom(string id, string place, string into) { Issues.Add(new(id, place, true, into, false, false, false, true)); return this; }
+    // recv: the receiver's reservation Loan R. Round 9 (G113): the result keeps the receiver's value with R replaced
+    // by Φ_c, so Φ_c's values carry its parent Loans, as a child's do.
+    public Node Phantom(string id, string place, string into, string recv) { Issues.Add(new(id, place, true, into, false, false, false, true, recv)); return this; }
     public Node Disturb(string id) { Disturbs.Add(id); return this; }
     public Node Excuse(string id) { Excuses.Add(id); return this; }
     public readonly List<(string Place, string Src)> Throughs = new(); public readonly List<Acc> Accs = new();
@@ -246,6 +264,8 @@ class Analysis
         {
             o.Add((s.Into, s.Id));
             if (!s.Param && !s.Phantom && X != Abl.NoMaterialize) foreach (var l in Resolve(s.Place, i).Auth) if (!Ended(l)) o.Add((s.Into, l));
+            if (s.Phantom) // round 9 (G113): the receiver's value, R replaced by Φ_c
+                foreach (var t in inn) if (t.L != s.Recv && Path.Overlap(t.H, issue[s.Recv].Into)) o.Add((s.Into, t.L));
         }
         return Disturbed(n, o);
     }
@@ -427,7 +447,11 @@ class Analysis
         {
             // Fix found in round 3: a child Loan whose base this point destroys in place is ended here too (19a).
             if (X != Abl.AIssueNotEnded && EndedBy(s.Id, n.Defs)) { } else o.Add((Root(s.Into), s.Id));
-            if (s.Param || s.Phantom) continue;
+            // Round 9 (G113): the result keeps the receiver's value with its own Loan R replaced by Φ_c, so Φ_c's
+            // values carry its parent Loans (the receiver Ref's R2 parents), as a child's do.
+            if (s.Phantom && X is not (Abl.PhantomAlone or Abl.PhantomParentsAtCall))
+                foreach (var l in Sigma(inn, Root(issue[s.Recv].Into))) if (l != s.Recv || X == Abl.PhantomKeepsReceiver) o.Add((Root(s.Into), l));
+            if (s.Param || (s.Phantom && X != Abl.PhantomParentsAtCall)) continue;
             var S = Sigma(inn, Root(s.Place));
             for (int j = 0; j < Steps(s.Place); j++) { foreach (var l in S) o.Add((Root(s.Into), l)); S = Content(inn, S); }
         }
@@ -563,7 +587,8 @@ static class Cases
         IndexKill("34a", deref2: false), IndexKill("34b", deref2: true), IndexKill("34c", deref2: false, whole: true),
         Walk("35a", loop: false), Walk("35b", loop: true),
         PhantomParents("36a", direct: false, retain: false), PhantomParents("36b", direct: false, retain: true),
-        PhantomParents("36c", direct: true, retain: false), PhantomParents("36d", direct: true, retain: true), SplitOuter()];
+        PhantomParents("36c", direct: true, retain: false), PhantomParents("36d", direct: true, retain: true), SplitOuter(),
+        PhantomRoot("36e"), PhantomRoot("36f"), PhantomRoot("36g"), PhantomRoot("36h")];
 
     static Case Replacement()
     {
@@ -1244,11 +1269,11 @@ static class Cases
         });
         c.N("func f(source: uniq/S, fresh: S)").Param("Ls", "source").Def("fresh");
         c.N("$r1 = source (receiver, reserved)").Def("$r1").Borrow("Lr1", "source.*", Uniq, "$r1", reserve: true);
-        c.N("let first = source.take()").Activate("Lr1").Def("first").Phantom("Phi1", "source.*", "first");
+        c.N("let first = source.take()").Activate("Lr1").Def("first").Phantom("Phi1", "source.*", "first", "Lr1");
         if (kind == "across") c.N("source@follow = fresh@move").A(K.Move, "fresh").Through("source.*", "fresh").Disturb("Phi1");
         var r2 = c.N("$r2 = source (receiver, reserved)").Def("$r2").Borrow("Lr2", "source.*", Uniq, "$r2", reserve: true);
         if (kind != "callonly") r2.Excuse("Phi1");
-        c.N("let second = source.take()").Activate("Lr2").Def("second").Phantom("Phi2", "source.*", "second").Excuse("Phi1");
+        c.N("let second = source.take()").Activate("Lr2").Def("second").Phantom("Phi2", "source.*", "second", "Lr2").Excuse("Phi1");
         c.N("return (first@move, second@move)").Flow("first", "$ret").Flow("second", "$ret");
         return kind == "across" ? c.Error() : c.Valid();
     }
@@ -1329,7 +1354,7 @@ static class Cases
 
     // F6 phantom through a replaced holder. H {var inner: uniq/S}; Φ_c on cur.*.inner.* is carried by first. cur moves to
     // b; then 36a/36b clear a's iterator through cur = a again, 36c/36d through a itself. retain: first also keeps the
-    // receiver's Loans (A3 `out` with Value retention); otherwise Φ_c is its only Loan (rounds 7-8 encoding).
+    // receiver Loan Lr1 (A3 `out` with Value retention); otherwise first keeps Φ_c and, from round 9, its parent Loans.
     static Case PhantomParents(string id, bool direct, bool retain)
     {
         var c = new Case(id, "F6: `first = cur.inner.take(); cur = b; " + (direct ? "a.inner.clear()" : "cur = a; cur.inner.clear()")
@@ -1339,7 +1364,7 @@ static class Cases
         c.N("$r1 = cur.inner (receiver, reserved)").Def("$r1").Borrow("Lr1", "cur.*.inner.*", Uniq, "$r1", reserve: true);
         var call = c.N("let first = cur.inner.take()").Activate("Lr1").Def("first");
         if (retain) call.Flow("$r1", "first");
-        call.Phantom("Phi1", "cur.*.inner.*", "first");
+        call.Phantom("Phi1", "cur.*.inner.*", "first", "Lr1");
         c.N("cur = b").Assign("cur").Borrow("Lb2", "b.*", Uniq, "cur").Disturb("Phi1");
         if (!direct) c.N("cur = a").Assign("cur").Borrow("La2", "a.*", Uniq, "cur");
         var recv = direct ? "a.*.inner.*" : "cur.*.inner.*";
@@ -1347,6 +1372,58 @@ static class Cases
         c.N("clear($r2)").Use("$r2");
         c.N("return first").Flow("first", "$ret");
         return c.Error();
+    }
+
+    // Round 9 (G113), from the review. 36e/36h: a `do` argument assigns cur during the receiver's reservation, which
+    // SPEC 15.6.7 rejects and A3's shallow write misses (36h, a gap outside G113); 36e then shows that Φ_c's parents
+    // come from the receiver's value (a's), not from recv(c) at the call (b's). 36f: the cost P12, a write to another
+    // part of the parent referent while the result is live (SPEC and rustc accept). 36g: plain Take; `it = a` ends Φ_c
+    // under the plan base, so only the parent Loans reject the reborrow.
+    static Case PhantomRoot(string id)
+    {
+        var c = new Case(id, "F6: " + id switch
+        {
+            "36e" => "`first = cur.inner.takeWith(do { cur = b; 0 }); a.inner.clear(); return first`",
+            "36f" => "`var h = H(inner: src, other: 0); var r = h@uniq; first = r.inner.take(); h.other = 5; return first`",
+            "36g" => "`var it = a; first = it.take(); it = a; second = it.take()` (Take only)",
+            _ => "`first = cur.inner.takeWith(do { cur = b; 0 }); return first`",
+        });
+        if (id == "36f")
+        {
+            c.N("func f(src: uniq/S)").Param("Ls", "src");
+            c.N("var h = H(inner: src, other: 0)").Def("h").Borrow("Lsrc", "src.*", Uniq, "h.inner");
+            c.N("var r = h@uniq").Def("r").Borrow("Lh", "h", Uniq, "r");
+            c.N("$r1 = r.inner (receiver, reserved)").Def("$r1").Borrow("Lr1", "r.*.inner.*", Uniq, "$r1", reserve: true);
+            c.N("let first = r.inner.take()").Activate("Lr1").Def("first").Phantom("Phi1", "r.*.inner.*", "first", "Lr1");
+            c.N("h.other = 5").Assign("h.other");
+            c.N("return first").Flow("first", "$ret");
+            c.ALoss = "P12 (G113): a descending abstract-call result keeps the receiver's parent Loans";
+            return c.Valid();
+        }
+        if (id == "36g")
+        {
+            c.N("func f(a: uniq/S)").Param("La", "a");
+            c.N("var it = a").Def("it").Borrow("L0", "a.*", Uniq, "it");
+            c.N("$r1 = it (receiver, reserved)").Def("$r1").Borrow("Lr1", "it.*", Uniq, "$r1", reserve: true);
+            c.N("let first = it.take()").Activate("Lr1").Def("first").Phantom("Phi1", "it.*", "first", "Lr1");
+            c.N("it = a").Assign("it").Borrow("L1", "a.*", Uniq, "it").Disturb("Phi1");
+            c.N("$r2 = it (receiver, reserved)").Def("$r2").Borrow("Lr2", "it.*", Uniq, "$r2", reserve: true);
+            c.N("let second = it.take()").Activate("Lr2").Def("second").Phantom("Phi2", "it.*", "second", "Lr2");
+            c.N("return (first, second)").Flow("first", "$ret").Flow("second", "$ret");
+            return c.Error();
+        }
+        c.N("func f(a: uniq/H, b: uniq/H)").Param("La", "a").Param("Lb", "b");
+        c.N("var cur = a").Def("cur").Borrow("L0", "a.*", Uniq, "cur");
+        c.N("$r1 = cur.inner (receiver, reserved)").Def("$r1").Borrow("Lr1", "cur.*.inner.*", Uniq, "$r1", reserve: true);
+        c.N("do { cur = b; 0 } (argument)").Assign("cur").Borrow("Lb2", "b.*", Uniq, "cur");
+        c.N("let first = takeWith($r1, …)").Activate("Lr1").Def("first").Phantom("Phi1", "cur.*.inner.*", "first", "Lr1");
+        if (id == "36e")
+        {
+            c.N("$r2 = a.inner (receiver of clear)").Def("$r2").Borrow("Lr2", "a.*.inner.*", Uniq, "$r2");
+            c.N("clear($r2)").Use("$r2");
+        }
+        c.N("return first").Flow("first", "$ret");
+        return id == "36h" ? c.Error("do { cur = b; 0 } (argument)") : c.Error(); // 36e: SPEC errs first at the write, as in 36h
     }
 
     // Path-exact transit: the store goes to s.inner, while only s is used later.

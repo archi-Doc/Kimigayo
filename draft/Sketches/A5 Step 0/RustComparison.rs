@@ -1,5 +1,5 @@
-// Rust comparison for prototype round 8 (case 23a proposal). Outside the repository:
-//   rustc --edition 2021 --crate-type lib RustComparison.rs              -> compiles: 23a, 34c, 35a and 35b are valid
+// Rust comparison for prototype rounds 8 (case 23a proposal) and 9 (G113). Outside the repository:
+//   rustc --edition 2021 --crate-type lib RustComparison.rs              -> compiles: 23a, 34c, 35a, 35b, 36f, R5, R6 valid
 //   rustc --edition 2021 --crate-type lib --cfg neg RustComparison.rs    -> two E0506 errors: 23a's old slot, 34a
 #![allow(unused_assignments, unused_variables, dead_code)]
 
@@ -45,6 +45,37 @@ fn case35b<'a>(head: &'a mut Node<'a>) {
         node = t;
     }
     if let Some(k) = keep { *k = 1; }
+}
+
+// Round 9 (G113), 36f: the item does not borrow `r`, so writing another Field of `h` is valid; design A's desc(c)
+// rejects it (loss P12).
+trait Take { type Item; fn take(&mut self) -> Option<Self::Item>; }
+struct H<'s, S> { inner: &'s mut S, other: i32 }
+
+fn case36f<S: Take>(src: &mut S) -> Option<S::Item> {
+    let mut h = H { inner: src, other: 0 };
+    let r = &mut h;
+    let first = r.inner.take();
+    h.other = 5;
+    first
+}
+
+// Review R5: a second call on the same value through another name; valid by value identity (S2 rejects it: another
+// receiver Place). R6: a write to the receiver's Field by another name. Both are P12 forms.
+fn review_r5<S: Take>(src: &mut S) -> (Option<S::Item>, Option<S::Item>) {
+    let mut h = H { inner: src, other: 0 };
+    let r = &mut h;
+    let first = r.inner.take();
+    let second = h.inner.take();
+    (first, second)
+}
+
+fn review_r6<'s, S: Take>(src: &'s mut S, src2: &'s mut S) -> Option<S::Item> {
+    let mut h = H { inner: src, other: 0 };
+    let r = &mut h;
+    let first = r.inner.take();
+    h.inner = src2;
+    first
 }
 
 #[cfg(neg)]

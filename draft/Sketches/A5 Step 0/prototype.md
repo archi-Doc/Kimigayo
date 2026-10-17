@@ -689,3 +689,83 @@ incarnation that another holder still carries. Three places did this before the 
   - 84 same, 16 with an earlier error, 6 listed losses (P1 and S1′'s base operations);
   - 33c, and **36a and 36c unsound**.
 - **S1′:** fails 34c (loss) and 36c (unsound) as well as round 7's 29a, 30c and 33c. The exit code is 5.
+
+## Round 9 (PLAN G113: parent Loans of `Φ_c`)
+
+**Cause.** A3's `out` adds `Φ_c` alone. A descending result names only Origins of the receiver's referent Type, so
+the receiver is retained by `Content`, and `ret(i, Content) = content(val(a_i))` omits `val(a_i)`: the receiver
+Loan R and its R2 parents. A `preserves results` call always has this form (§8.11.3 eligibility). `Φ_c`'s Place runs
+through the receiver's borrow Derefs (`cur.*.inner.*`), and distinct roots are disjoint only because a value that
+carries a Loan through a reference also carries that reference's Loans (§15.6.2, §15.6.3; A3 §3). So an access to the
+same referent by another name (`a.*.inner.*`) meets no Loan of `first` (36c).
+
+**Rule** (A3 erratum): `desc(c) = {Φ_c} ∪ (val(a_r) \ {R_c})`. Here `a_r` is the receiver operand and `R_c` the Loan
+of the Ref that produces it, if any. `val(a_r)` is R_c plus the R2 parents of `recv(c)` at the Ref. So the result
+keeps `Φ_c` with the parent Loans a Reborrow of the receiver would have, but not R_c itself. Like every
+`ret(i, κ)`, the rule reads the call's operand.
+
+| Variant (A mode) | Rule instead | Result |
+| --- | --- | --- |
+| `PhantomAlone` | rounds 7–8: `{Φ_c}` | 36c, 36e and 36g **UNSOUND** (36a too with `FirstDerefBase`, round 8) |
+| `PhantomKeepsReceiver` | `{Φ_c} ∪ val(a_r)` | 33a rejected at the second reservation: R_c is not excused. A result that keeps the receiver Loan contradicts §8.11.3 |
+| `PhantomParentsAtCall` | `issued(Φ_c, recv(c), …)` at the call: R2 parents from `recv(c)`'s root at ℓ | Same verdicts, except that it accepts 36e, whose `do` argument writes `cur` as 36h does. SPEC rejects that write, but A3 misses it |
+
+| Case | Program | SPEC | A | `FirstDerefBase` |
+| --- | --- | --- | --- | --- |
+| 33a | `takeTwo` | valid | valid | valid |
+| 33b | `takeAcross` | error | error | error |
+| 33c | 33a under A3's letter (round 7) | valid | error (unchanged) | error (unchanged) |
+| 36a | `first = cur.inner.take(); cur = b; cur = a; cur.inner.clear()` | error | error at `cur = a` and the clear | error at `cur = a` (round 8: **UNSOUND**) |
+| 36b | 36a, first retains the receiver | error | error | error at `cur = a` |
+| 36c | `first = cur.inner.take(); cur = b; a.inner.clear()` | error | error at the clear (round 8: **UNSOUND**) | error (round 8: **UNSOUND**) |
+| 36d | 36c, first retains the receiver | error | error | error |
+| 36e | `first = cur.inner.takeWith(do { cur = b; 0 }); a.inner.clear()` | error at the write (§15.6.7) | error at the clear | error at the clear |
+| 36f | `var r = h@uniq; first = r.inner.take(); h.other = 5; return first` | valid | error at `h.other = 5` (P12) | error (P12) |
+| 36g | `var it = a; first = it.take(); it = a; second = it.take()`, `Take` only | error | error at `it = a` | error at `it = a` |
+| 36h | `first = cur.inner.takeWith(do { cur = b; 0 }); return first` | error at the write (§15.6.7) | **valid: UNSOUND** (outside G113) | **UNSOUND** |
+
+**Findings.**
+
+1. **G113 closes under either base.** 36a–36e and 36g are rejected, and 33a stays valid. 33b errs at the
+   replacement, the second reservation and the second call. 33c records A3's letter before the round-7 erratum and
+   is unchanged.
+2. **`Φ_c` alone is unsound under the plan base too** (36g). `it = a` destroys `Φ_c`'s base `it`, so `ended` removes
+   the phantom, and the second `take` meets nothing. With `desc(c)`, `first` keeps `it`'s Loan on `a.*`, and the
+   reborrow `it = a` conflicts with it.
+3. **New gap outside G113** (36h, found in review). §15.6.7 protects the references a reservation was reached
+   through: "any write … is an error". A3's write is shallow, so it does not reach the reservation's Loan across the
+   Deref (`hits`), and every mode accepts 36h. 36e shows that `desc(c)` does not depend on that rule; R2 at the call
+   does.
+   - `replace(cur@uniq, …)` as the argument is not such a case. It replaces no holder (§15.6), so `σ(cur)` keeps a's
+     Loan, and `PhantomParentsAtCall` also rejects it (review case R1, run in a scratch copy).
+4. **Cost: P12** (36f). SPEC accepts 36f: `first` keeps what a read through the receiver reaches, `σ(h)`, but not
+   `r`'s Loan on `h`, so writing `h.other` meets nothing. rustc 1.97.1 accepts it too (`RustComparison.rs`): `S::Item`
+   does not borrow `r`. `desc(c)` keeps `r`'s Loan on all of `h`, as every child of a Reborrow of `r` would.
+   - P12 needs two things: a receiver reached through a local reference, and an access that conflicts with that
+     reference's Loan while the result is live and the holder is dead.
+   - The access may also go through another name to the receiver itself: `h.inner = src2` (review R6). SPEC and
+     rustc accept that too (`RustComparison.rs`). While the holder is live, SPEC rejects such an access as well.
+     So a disturbance by another name never depends on `^dist` (round 7, finding 4).
+   - `second = h.inner.take()` after `first = r.inner.take()` (review R5, `StableTake`) is valid by the current
+     SPEC's value identity, and rustc accepts it. Under S2, which A3 assumes, it is a call on another receiver Place,
+     so it is not excused and is an error with or without P12. `Φ_c` alone accepts it.
+   - Census (grep proxy): lib 0, ms 0, tests 0. The library's abstract descending calls
+     (`Iteration.kimi:32, 59`) reach their receiver through the parameter `self`, whose only Loan is its entry Loan.
+     The milestones' `cursor.next()` calls are concrete. All abstract receivers in xUnit literals are parameters.
+5. **S1′ with the same rule** rejects 36c, 36e and 36g, and rejects 36f (P12). Without materialization
+   (`NoMaterialize`), it accepts 36c, 36e and 36g again, so the rule depends on R2 at the receiver Ref.
+6. **Open (H), not prototyped: stores.** A3 issues `Φ_c` only into the result, never into storage that
+   `retains(c, i, κ, store j)` writes. A stored value that retains the receiver's content then carries no `Φ_c`, yet
+   §8.11.4 rule 1 lets a later abstract call on the receiver reach its Loans. A fix stores `desc(c)`, not `Φ_c`
+   alone, or G113 returns for stores.
+7. **Not encoded.** `\ {R_c}` removes R_c by id. An earlier incarnation of R_c in its own parents would need a value
+   that left the call carrying R_c. A descending result does not keep R_c, so only a Value-retaining result or store
+   could. That case was argued, not run.
+
+**Rerun: 113 cases.**
+
+- **A:** 78 same, 21 with an earlier or moved error, 12 listed losses (36f added); the unlisted 33c; 36h unsound
+  (outside G113).
+- **A with `FirstDerefBase`:** 84 same, 20 with an earlier or moved error, 7 listed losses; 33c; 36h.
+- `KillAcrossDeref` and `P3RootMost` no longer accept 36a; their 34a and 34b remain unsound.
+- **S1′:** fails 29a and 30c (unsound, round 6), 33c, 34c, 36f and 36h. The exit code is 6.
