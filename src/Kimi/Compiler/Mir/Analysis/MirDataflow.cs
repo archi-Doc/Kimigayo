@@ -1,6 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the bit-set dataflow of one MIR body, forward and backward (plan 5.6.3; DECISIONS R4-M20, R4-M15a, R4-M34).
+// Owns the bit-set dataflow of one MIR body, forward and backward (plan 5.6.3; DECISIONS R4-M20, R4-M15a, R4-M34, R4-M65).
 // Input: a validated body (Begin) and a transfer, a struct IMirFlow that interprets blocks on the scratch state and joins states. Output: the
 // blocks in reverse postorder, each block's phase, the converged state at each flow head, and Replay and ReplayBackward, which give each
 // chain its state once.
@@ -8,12 +8,16 @@
 // into it, so a chain shares one stored state, held only at its head. Begin decides each chain's phase: P1 where the runtime edges from the
 // entry reach it, else P2 (SPEC 14.10.3). Forward: P1 follows runtime edges from the entry; P2 follows runtime and CheckTarget edges and
 // writes only P2 heads, P1's states frozen. Backward: a P1 chain joins its runtime successors' states, a P2 chain every successor's (SPEC
-// 14.9), from the boundary state. The transfer joins (A1: union). States are word-major (the lanes of 64 paths per word group), and only a
-// problem's first words are stored; the scratch holds the rest. One arena stores both problems' words; its byte size is the one Resource
-// limit of the analyses (OwnershipStorageLimit_Kd). Storage is pooled and reset by counts.
+// 14.9), from the boundary state. The transfer joins (A1: union). A solve's worklist holds every head at first and takes the pending head
+// first in its direction's order, reverse postorder forward and postorder backward, so growth along a loop's back edge settles the loop
+// before the code after it is applied again (R4-M65). States are word-major (the lanes of 64 paths per word group), and only a problem's
+// first words are stored; the scratch holds the rest. One arena stores both problems' words; its byte size is the one Resource limit of the
+// analyses (OwnershipStorageLimit_Kd). Storage is pooled and reset by counts.
 // Must not interpret statements, read syntax or HIR, merge a P2 state into a P1 head, or walk all edges in one pass.
 
 #pragma warning disable SA1402 // The transfer's interface belongs to the dataflow.
+
+using System.Numerics;
 
 namespace Kimi.Compiler.Mir;
 
@@ -56,14 +60,14 @@ internal sealed class MirDataflow(MirReach reach)
     private int[] tails = []; // Each head's chain's last block.
     private int[] starts = []; // Each block's first predecessor edge in predecessors, and the end after the last block's.
     private int[] predecessors = []; // The source block of each edge, grouped by its target block.
-    private int[] queue = []; // The ring of heads to process.
     private byte[] phases = []; // Each head's phase: 1 where the runtime edges from the entry reach it, else 2.
     private bool[] reached = []; // Whether the forward solve reached each head in its phase.
-    private bool[] queued = [];
+    private ulong[] pending = []; // The worklist: a bit per pending head at its place in the solve's order (Next).
     private ulong[] arena = []; // The stored states of each head: the backward problem's words, then the forward problem's.
     private ulong[] scratch = [];
     private MirBody body = null!;
     private int headCount;
+    private int low; // The first word of the worklist that may hold a bit.
     private int backward; // The words a head stores for the backward problem.
     private int forward; // The words a head stores for the forward problem.
 
@@ -233,8 +237,7 @@ internal sealed class MirDataflow(MirReach reach)
         Grow(ref this.arena, this.headCount * this.Row);
         Grow(ref this.scratch, width);
         Grow(ref this.reached, this.headCount);
-        Grow(ref this.queued, this.headCount);
-        Grow(ref this.queue, this.headCount);
+        Grow(ref this.pending, (this.headCount + 63) >> 6);
         return this.scratch;
     }
 
@@ -269,8 +272,9 @@ internal sealed class MirDataflow(MirReach reach)
     }
 
     /// <summary>Solves a backward problem to its least fixed point: a chain's state before its head is its blocks applied, last first, to the
-    /// boundary state joined with its successors' states, a P1 chain's runtime successors only (SPEC 14.9, 14.10.3). The ring is seeded with
-    /// every head in postorder, so acyclic code converges in one sweep, and a head whose state grows queues its predecessors' heads.</summary>
+    /// boundary state joined with its successors' states, a P1 chain's runtime successors only (SPEC 14.9, 14.10.3). The worklist takes
+    /// heads in postorder, its index i being head headCount − 1 − i, so acyclic code converges in one sweep, and a head whose state grows
+    /// makes its predecessors' heads pending (R4-M65).</summary>
     /// <typeparam name="TFlow">The transfer's struct type.</typeparam>
     /// <param name="flow">The transfer.</param>
     internal void Backward<TFlow>(ref TFlow flow)
@@ -279,14 +283,12 @@ internal sealed class MirDataflow(MirReach reach)
         for (var h = 0; h < this.headCount; h++)
         {
             this.arena.AsSpan(h * this.Row, this.backward).Clear();
-            (this.queue[h], this.queued[h]) = (this.headCount - 1 - h, true);
         }
 
-        var (first, count) = (0, this.headCount);
-        while (count-- > 0)
+        this.Seed();
+        for (var next = this.Next(); next >= 0; next = this.Next())
         {
-            var h = this.queue[first];
-            (first, this.queued[h]) = (first + 1 == this.headCount ? 0 : first + 1, false);
+            var h = this.headCount - 1 - next;
             this.Unwind(ref flow, h);
             if (!flow.Join(this.arena.AsSpan(h * this.Row, this.backward), this.scratch.AsSpan(0, this.backward)))
             {
@@ -295,12 +297,7 @@ internal sealed class MirDataflow(MirReach reach)
 
             for (var i = this.starts[this.heads[h]]; i < this.starts[this.heads[h] + 1]; i++)
             {
-                var source = this.head[this.predecessors[i]];
-                if (!this.queued[source])
-                {
-                    this.queued[source] = true;
-                    this.queue[(first + count++) % this.headCount] = source;
-                }
+                this.Queue(this.headCount - 1 - this.head[this.predecessors[i]]);
             }
         }
     }
@@ -361,21 +358,14 @@ internal sealed class MirDataflow(MirReach reach)
     }
 
     // The heads reached in a phase until their states stop growing: P1 from the entry over runtime edges; P2 over runtime and CheckTarget
-    // edges into P2 heads, a P1 head passing its frozen state once along its CheckTarget. The ring is seeded with every head in reverse
-    // postorder, so acyclic code converges in one sweep, and a head whose state grows is queued again at the tail.
+    // edges into P2 heads, a P1 head passing its frozen state once along its CheckTarget. The worklist takes heads in reverse postorder, so
+    // acyclic code converges in one sweep, and a head whose state grows is pending again (R4-M65).
     private void Solve<TFlow>(ref TFlow flow, byte phase)
         where TFlow : struct, IMirFlow
     {
-        for (var h = 0; h < this.headCount; h++)
+        this.Seed();
+        for (var h = this.Next(); h >= 0; h = this.Next())
         {
-            (this.queue[h], this.queued[h]) = (h, true);
-        }
-
-        var (first, count) = (0, this.headCount);
-        while (count-- > 0)
-        {
-            var h = this.queue[first];
-            (first, this.queued[h]) = (first + 1 == this.headCount ? 0 : first + 1, false);
             var frozen = this.phases[h] == 1 && phase == 2;
             var terminator = this.body.Blocks[this.tails[h]].Terminator;
             if (frozen ? terminator.CheckTarget < 0 || this.phases[this.head[terminator.CheckTarget]] == 1 : this.phases[h] != phase || !this.reached[h])
@@ -387,13 +377,43 @@ internal sealed class MirDataflow(MirReach reach)
             for (var i = phase == 2 ? -1 : 0; i < (frozen ? 0 : MirUses.Successors(terminator)); i++)
             {
                 var target = MirUses.Successor(this.body, terminator, i) is >= 0 and var successor ? this.head[successor] : -1;
-                if (target >= 0 && this.phases[target] == phase && this.Join(ref flow, target) && !this.queued[target])
+                if (target >= 0 && this.phases[target] == phase && this.Join(ref flow, target))
                 {
-                    this.queued[target] = true;
-                    this.queue[(first + count++) % this.headCount] = target;
+                    this.Queue(target);
                 }
             }
         }
+    }
+
+    // Makes every head pending.
+    private void Seed()
+    {
+        var words = (this.headCount + 63) >> 6;
+        this.pending.AsSpan(0, words).Fill(ulong.MaxValue);
+        this.pending[words - 1] >>= -this.headCount & 63;
+        this.low = 0;
+    }
+
+    // Makes a head pending at its index in the solve's order.
+    private void Queue(int index)
+    {
+        this.pending[index >> 6] |= 1UL << index;
+        this.low = Math.Min(this.low, index >> 6);
+    }
+
+    // Takes the pending head first in the solve's order, or -1 when none is (R4-M65).
+    private int Next()
+    {
+        for (; this.low < (this.headCount + 63) >> 6; this.low++)
+        {
+            if (this.pending[this.low] is var bits and not 0)
+            {
+                this.pending[this.low] = bits & (bits - 1);
+                return (this.low << 6) + BitOperations.TrailingZeroCount(bits);
+            }
+        }
+
+        return -1;
     }
 
     // Loads a head's forward state into the scratch and applies its chain.

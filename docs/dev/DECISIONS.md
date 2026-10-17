@@ -591,7 +591,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   row) and deriving every path through an Opaque site (drops written recovered failure bodies, DIAGNOSTICS §4.3).
   Rejected also: per-row walks (quadratic), U1's dataflow framework, copying rows into copies. No temporary structure.
 - **R4-M20** (2026-10-12, planning session; design A of two independent U1 designs, with design B's three lanes; its union join and
-  backward clause superseded by R4-M34) MIR dataflow.
+  backward clause superseded by R4-M34, its ring worklist by R4-M65) MIR dataflow.
   `MirDataflow` solves forward bit-set problems over flow heads: a block whose only edge is a runtime edge into a block with no
   other predecessor that is not the entry continues into it, so a chain of blocks shares one state, stored only at its head. One
   pooled arena of heads × stored words, word-major (the lanes of 64 paths per word group); only flow paths are stored, and
@@ -929,7 +929,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   apply again; R4-M30 and the other R4 decisions stand. Removed with the units, for the replan: the validator's signature
   check of function-item and Closure calls (U7c) and the Q1-ref and A5-closure findings. Unlanded U8/C1b work is not carried.
 - **R4-M34** (2026-10-17; design A3 §4.1 G1 of the [A5 plan](../../draft/Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md)'s
-  step 0, owner approval of its §9 item 9 on 2026-10-17; supersedes R4-M20's union join and its backward clause) MIR dataflow, forward and
+  step 0, owner approval of its §9 item 9 on 2026-10-17; supersedes R4-M20's union join and its backward clause; its backward ring
+  superseded by R4-M65) MIR dataflow, forward and
   backward. `IMirFlow.Join(target, incoming)` is the transfer's join and says whether the state grew: A1 keeps union (`MirDataflow.Union`),
   A5's Loan sets will join by node union. `MirDataflow.Begin` decides each chain's phase once per body, P1 where `MirReach`'s runtime walk
   from the entry reaches it, else P2, and records each block's predecessor edges; `Forward` keeps R4-M20's phases, and A4 reads
@@ -1499,6 +1500,23 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `MirBorrows.Flow`, is unit 1b-3's). Rejected: a precision refinement narrowing P4 ("a view holder
   stores no elements": prototype 255 cases sound, but a SPEC revision and the full process for one program; kept as
   PLAN G127).
+- **R4-M65** (owner, 2026-10-18, on the core lane's re-review V1, the second V16 round on the lane: a representation chosen
+  over a 64 MiB cap on the Loan-set pool and over restating V16; supersedes R4-M20's ring worklist and R4-M34's backward ring)
+  The MIR dataflow's worklist order. `MirDataflow`'s worklist is a bit per head; a solve starts with every head pending and
+  takes the pending head first in its direction's order: reverse postorder forward (the heads' numbering from `Begin`),
+  postorder backward. A head whose state grows is pending again and lowers the scan's start word, so growth along a loop's
+  back edge settles the loop before the code after it is applied again; acyclic code still converges in one sweep. Cause: the
+  FIFO ring queued a grown head at its tail, so growth from loop j reached loop k only after k − j rounds: N loops that each
+  write x, borrow it into r and read r applied loop k Θ(k) times, each with r's set one Loan larger, Θ(N²) chain visits and
+  Θ(N³) work and node bytes (720 MB at N = 1024; R4-M15a's arena limit does not bound `MirLoanSets`), against V16's
+  (passes − 1) × locations (design A3 §6.3). The least fixed point of a monotone transfer does not depend on the order: A1, A2
+  and A5 give the same results (their tests, the problems of the MIR goldens' and milestones' 16,444 bodies, and the
+  difference ledger, 223 signatures and 2,383 rows before and after), and A4 reads only `Begin`. On that shape at N = 128 …
+  1024, chain visits fall from 26,851 … 1,581,859 to 2,336 … 9,504, A5's work from 3.03M … 1.28G to 206k … 5.74M and its node
+  bytes from 1.47 MB … 720 MB to 36 KB … 2.1 MB (r's k Loans in loop k, the output); A5 takes 0.2 s instead of 4.9 s at 1024.
+  On that corpus chain visits fall by 0.07 % and A1–A4 and A5 time is unchanged within noise. Rejected: the cap (it stops a
+  body whose cost is the order's defect; owner); restating V16 to admit passes × node sizes (owner); a priority queue (a log
+  factor and storage for an index set a bitset scans); a FIFO ring that favors loop heads (two orders). Not temporary.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

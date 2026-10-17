@@ -1160,7 +1160,9 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
     // work linear; a straight line of N borrowed locals, N borrow/write pairs of one root and N borrow/write pairs in loops grow it within
     // the bound's dense terms, quadratically at most: each write, StorageLive and StorageDead ends its Loans in every holder, each borrow's
     // temporary included ((ended points) × holders), and N references used at the end make each borrow scan the live holders (accesses ×
-    // live nodes).
+    // live nodes). N loops that each write a root, borrow it again into one reference and read it (review V1) leave k Loans in the
+    // reference in loop k, an output quadratic in N: the worklist settles each loop before the next (R4-M65), so the passes stay constant
+    // and the work and the Loan-set bytes (ν) are dense, not cubic.
     [Theory]
     [InlineData("    var x = 1\n    let r = x@ref\n", "    var x{0} = {0}\n    let r{0} = x{0}@ref\n    inspect(r{0})\n", "", true)]
     [InlineData("    var x = 1\n    let r = x@ref\n", "    var x{0} = {0}\n    let r{0} = x{0}@ref\n", "    inspect(r{0})\n", true)]
@@ -1177,10 +1179,12 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
         "    while flag\n        let a{0} = t@uniq\n        a{0}@follow = {0}\n        t = {0}\n        inspect(r)\n",
         "",
         true)]
+    [InlineData("    var x = 0\n    var r = x@ref\n", "    while flag\n        x = {0}\n        r = x@ref\n        inspect(r)\n", "", true)]
     public void TheWorkScalesWithTheProgram(string head, string each, string after, bool dense)
     {
-        var (work, _) = this.Scaled(head, each, after);
+        var (work, bytes) = this.Scaled(head, each, after);
         Assert.True(Grows(work, dense ? 5 : 2), $"work {string.Join(", ", work)}");
+        Assert.True(Grows(bytes, dense ? 5 : 2), $"bytes {string.Join(", ", bytes)}");
     }
 
     // A3 12 E8, V16 (review B3): destroying a Move Path ends the Loans of its subtree as one set, made once per path, so N borrow/write pairs
