@@ -106,8 +106,9 @@ public class DictionaryCapacityTest
     {
         var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]\nentries.reserve(1)\n_ = entries.tryInsert(1, 2)");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        Assert.True(module.DictionaryReserveStorage!.CallerLocation && module.DictionaryAppend!.CallerLocation);
-        return (CompilationTestHelper.WriteIr(c), module.DictionaryReserveStorage.Name, module.DictionaryAppend.Name);
+        var helpers = module.RuntimeHelpers;
+        Assert.True(helpers.DictionaryReserveStorage!.CallerLocation && helpers.DictionaryAppend!.CallerLocation);
+        return (CompilationTestHelper.WriteIr(c), helpers.DictionaryReserveStorage.Name, helpers.DictionaryAppend.Name);
     }
 
     private static string Handle(long length, long capacity) => $$"""

@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Backend;
+using static Kimi.Compiler.Backend.LegacyRuntimeHelpers;
 using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler;
@@ -137,8 +138,6 @@ internal static partial class LlvmModuleWriter
 
         """;
 
-    private static string Reason(int reason) => reason.ToString(System.Globalization.CultureInfo.InvariantCulture);
-
     private const string ArrayHelperPrologue = """
         entry:
           %length_ptr = getelementptr i8, ptr %handle, i64 8
@@ -153,9 +152,9 @@ internal static partial class LlvmModuleWriter
         RuntimeAbi.ArrayReserve.GetDefinition(false) + ArrayReserveBody.Replace("REASON_ARGUMENT", Reason(AbortReasons.ArgumentRange), StringComparison.Ordinal).Replace("REASON_OVERFLOW", Reason(AbortReasons.IntegerOverflow), StringComparison.Ordinal) +
         RuntimeAbi.ArrayShrink.GetDefinition(false) + ArrayShrinkBody;
 
-    private static void WriteArrayHelpers(EmissionModule module, TextWriter output)
+    private static void WriteArrayHelpers(LegacyRuntimeHelpers helpers, TextWriter output)
     {
-        foreach (var helper in module.ArrayHelpers)
+        foreach (var helper in helpers.ArrayHelpers)
         {
             output.Write(helper.Abi.GetDefinition(false));
             output.Write(helper.Kind is ArrayHelperKind.OwnStorage or ArrayHelperKind.OwnFixedStorage ? "entry:\n" : ArrayHelperPrologue);
@@ -197,7 +196,7 @@ internal static partial class LlvmModuleWriter
         }
     }
 
-    private static long Stride(ArrayHelper helper) => helper.Element.Layout.Stride;
+    private static long Stride(ArrayHelper helper) => helper.Element.Value.Layout.Stride;
 
     // Grows to hold one more element and places it at buffer + length * stride (SPEC 4.9.3, 4.9.8).
     private static void WriteArrayAppend(TextWriter output, ArrayHelper helper)
@@ -234,11 +233,11 @@ internal static partial class LlvmModuleWriter
     // Moves the last element into the Option payload with the Some tag, or writes the None tag (SPEC 4.9.3).
     private static void WriteArrayPop(TextWriter output, ArrayHelper helper)
     {
-        var option = helper.Option ?? throw new InvalidOperationException("Array pop needs its Option layout.");
+        var payload = helper.OptionPayload ?? throw new InvalidOperationException("Array pop needs its Option payload offset.");
         output.Write("  %empty = icmp eq i64 %length, 0\n  br i1 %empty, label %none, label %some\nsome:\n  %last = sub i64 %length, 1\n  %buffer = load ptr, ptr %handle, align 8\n  %offset = mul i64 %last, ");
         WriteNumber(output, Stride(helper));
         output.Write("\n  %slot = getelementptr i8, ptr %buffer, i64 %offset\n  %payload = getelementptr i8, ptr %result, i64 ");
-        WriteNumber(output, option.PayloadOffset);
+        WriteNumber(output, payload);
         output.Write("\n  call void @llvm.memcpy.p0.p0.i64(ptr %payload, ptr %slot, i64 ");
         WriteNumber(output, Stride(helper));
         output.Write(", i1 false)\n  store i32 0, ptr %result, align 4\n  store i64 %last, ptr %length_ptr, align 8\n  ret void\nnone:\n  store i32 1, ptr %result, align 4\n  ret void\n");
@@ -247,29 +246,30 @@ internal static partial class LlvmModuleWriter
     // Requires 0 <= index < length, moves the element out and shifts the tail down (SPEC 4.9.3).
     private static void WriteArrayRemove(TextWriter output, ArrayHelper helper)
     {
-        var scalar = helper.ElementIsScalar;
+        var scalar = helper.Element.IsScalar;
         output.Write("  %negative = icmp slt i64 %index, 0\n  %beyond = icmp sge i64 %index, %length\n  %invalid = or i1 %negative, %beyond\n  br i1 %invalid, label %bounds_failure, label %remove\nremove:\n  %buffer = load ptr, ptr %handle, align 8\n  %offset = mul i64 %index, ");
         WriteNumber(output, Stride(helper));
         output.Write("\n  %slot = getelementptr i8, ptr %buffer, i64 %offset\n");
         if (scalar)
         {
-            var storage = helper.Element.Layout.StorageType;
-            var narrowed = storage != helper.Element.ComputationType;
+            var element = helper.Element.Value;
+            var storage = element.Layout.StorageType;
+            var narrowed = storage != element.ComputationType;
             output.Write(narrowed ? "  %loaded = load " : "  %value = load ");
             output.Write(storage);
             output.Write(", ptr %slot, align ");
-            WriteNumber(output, helper.Element.Layout.Alignment);
+            WriteNumber(output, element.Layout.Alignment);
             output.Write('\n');
             if (narrowed)
             {
                 output.Write("  %value = trunc ");
                 output.Write(storage);
                 output.Write(" %loaded to ");
-                output.Write(helper.Element.ComputationType);
+                output.Write(element.ComputationType);
                 output.Write('\n');
             }
         }
-        else if (!helper.ElementIsZeroSized)
+        else if (!helper.Element.IsZeroSized)
         {
             output.Write("  call void @llvm.memcpy.p0.p0.i64(ptr %result, ptr %slot, i64 ");
             WriteNumber(output, Stride(helper));
@@ -376,7 +376,7 @@ internal static partial class LlvmModuleWriter
     // Moves an acquired payload slot into the next element of a literal whose capacity was reserved (SPEC 4.3).
     private static void WriteArrayPlace(TextWriter output, ArrayHelper helper)
     {
-        if (!helper.ElementIsZeroSized)
+        if (!helper.Element.IsZeroSized)
         {
             output.Write("  %buffer = load ptr, ptr %handle, align 8\n  %offset = mul i64 %length, ");
             WriteNumber(output, Stride(helper));
@@ -391,12 +391,12 @@ internal static partial class LlvmModuleWriter
     // Destroys the elements in reverse index order and keeps the capacity; Drop then releases the buffer (SPEC 4.9.7).
     private static void WriteArrayClear(TextWriter output, ArrayHelper helper, bool release)
     {
-        if (helper.ElementIsString || helper.ElementLayout?.NeedsDestruction == true)
+        if (helper.Element.NeedsDestruction)
         {
             output.Write("  %buffer = load ptr, ptr %handle, align 8\n  br label %test\ntest:\n  %remaining = phi i64 [ %length, %entry ], [ %index, %body ]\n  %done = icmp eq i64 %remaining, 0\n  br i1 %done, label %end, label %body\nbody:\n  %index = sub i64 %remaining, 1\n  %offset = mul i64 %index, ");
             WriteNumber(output, Stride(helper));
             output.Write("\n  %element = getelementptr i8, ptr %buffer, i64 %offset\n");
-            WriteStoredDestruction(output, helper.ElementLayout, helper.ElementIsString, "%element");
+            WriteStoredDestruction(output, helper.Element, "%element");
 
             output.Write("  br label %test\nend:\n");
         }
@@ -411,12 +411,12 @@ internal static partial class LlvmModuleWriter
     }
 
     private static void WriteArrayElementStore(TextWriter output, ArrayHelper helper)
-        => WriteStoredArgument(output, helper.Element, helper.ElementIsScalar, "%value", "%slot", "%stored");
+        => WriteStoredArgument(output, helper.Element.Value, helper.Element.IsScalar, "%value", "%slot", "%stored");
 
     private static void WriteArrayReturn(TextWriter output, ArrayHelper helper, bool scalar)
     {
         output.Write("  ret ");
-        output.Write(scalar ? helper.Element.ComputationType : "void");
+        output.Write(scalar ? helper.Element.Value.ComputationType : "void");
         output.Write(scalar ? " %value\n" : "\n");
     }
 

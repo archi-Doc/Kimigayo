@@ -205,7 +205,8 @@ internal sealed class CompilerFunctionAdapters
         }
 
         this.module.NeedsObjectRuntime |= kind == CompilerFunctionKind.Clone;
-        this.module.NeedsFormattingRuntime |= symbol.CompilerFunction is >= CompilerFunctionKind.TextFixed and <= CompilerFunctionKind.BuiltinFormat;
+        this.module.RuntimeHelpers.NeedsFormattingRuntime |=
+            symbol.CompilerFunction is >= CompilerFunctionKind.TextFixed and <= CompilerFunctionKind.BuiltinFormat;
         return abi;
     }
 

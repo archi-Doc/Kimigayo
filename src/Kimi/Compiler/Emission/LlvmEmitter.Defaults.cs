@@ -39,7 +39,7 @@ public sealed partial class LlvmEmitter
                 this.defaults.Parent = null;
             }
 
-            module.NeedsStringComparison |= function.NeedsStringComparison;
+            module.RuntimeHelpers.NeedsStringComparison |= function.NeedsStringComparison;
             this.lowering.RegisterAggregates(module);
         }
 

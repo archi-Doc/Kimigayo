@@ -24,6 +24,7 @@ internal sealed partial class BodyLowering
 
     internal void RegisterAggregates(EmissionModule module)
     {
+        var helpers = module.RuntimeHelpers;
         foreach (var layout in this.aggregateLayouts.Used)
         {
             if (layout is not null)
@@ -40,29 +41,29 @@ internal sealed partial class BodyLowering
         // Bodies register separately; a helper used by several bodies is defined once per module.
         foreach (var helper in this.arrayHelpers.Values)
         {
-            module.NeedsArrayRuntime |= helper.Kind != ArrayHelperKind.BorrowStorage;
-            if (!module.ArrayHelpers.Contains(helper))
+            helpers.NeedsArrayRuntime |= helper.Kind != ArrayHelperKind.BorrowStorage;
+            if (!helpers.ArrayHelpers.Contains(helper))
             {
-                module.ArrayHelpers.Add(helper);
+                helpers.ArrayHelpers.Add(helper);
             }
         }
 
-        module.NeedsArrayRuntime |= this.arrayRuntimeUsed || this.dictionaryRuntimeUsed;
+        helpers.NeedsArrayRuntime |= this.arrayRuntimeUsed || this.dictionaryRuntimeUsed;
         this.arrayRuntimeUsed = false;
         foreach (var helper in this.dictionaryHelpers.Values)
         {
-            if (!module.DictionaryHelpers.Contains(helper))
+            if (!helpers.DictionaryHelpers.Contains(helper))
             {
-                module.DictionaryHelpers.Add(helper);
+                helpers.DictionaryHelpers.Add(helper);
             }
         }
 
-        module.NeedsDictionaryRuntime |= this.dictionaryRuntimeUsed;
+        helpers.NeedsDictionaryRuntime |= this.dictionaryRuntimeUsed;
         this.dictionaryRuntimeUsed = false;
-        module.NeedsStorageBytes |= this.storageBytesUsed;
+        helpers.NeedsStorageBytes |= this.storageBytesUsed;
         this.storageBytesUsed = false;
         this.dictionaryHelpers.Clear();
-        module.NeedsFormattingRuntime |= this.formattingRuntimeUsed;
+        helpers.NeedsFormattingRuntime |= this.formattingRuntimeUsed;
         this.formattingRuntimeUsed = false;
         this.arrayHelpers.Clear();
         this.aggregateLayouts.Clear(); // No bound Types survive into the physical module.

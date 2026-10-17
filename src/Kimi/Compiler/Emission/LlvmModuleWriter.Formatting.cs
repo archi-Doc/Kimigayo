@@ -7,9 +7,9 @@ namespace Kimi.Compiler;
 
 internal static partial class LlvmModuleWriter
 {
-    private static void WriteFormattingWrappers(EmissionModule module, TextWriter output)
+    private static void WriteFormattingWrappers(LegacyRuntimeHelpers helpers, TextWriter output)
     {
-        foreach (var (wrapper, implementation) in module.FormattingWrites)
+        foreach (var (wrapper, implementation) in helpers.FormattingWrites)
         {
             output.Write(wrapper.GetDefinition(false));
             output.Write("""
@@ -40,7 +40,7 @@ internal static partial class LlvmModuleWriter
                 """);
         }
 
-        foreach (var (wrapper, write, fixedBuffer) in module.FormattingConversions)
+        foreach (var (wrapper, write, fixedBuffer) in helpers.FormattingConversions)
         {
             output.Write(wrapper.GetDefinition(false));
             output.Write("entry:\n  %buffer = alloca [32 x i8], align 8\n  %writer = alloca [64 x i8], align 8\n  %result = alloca i32, align 4\n");

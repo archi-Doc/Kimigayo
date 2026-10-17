@@ -2,6 +2,7 @@
 
 using System.Runtime.InteropServices;
 using Kimi.Compiler.Backend;
+using static Kimi.Compiler.Backend.LegacyRuntimeHelpers;
 using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler;
@@ -18,13 +19,14 @@ internal static partial class LlvmModuleWriter
     internal static void Write(EmissionModule module, TextWriter output)
     {
         var constants = module.Constants;
+        var helpers = module.RuntimeHelpers;
         LlvmModuleText.WriteHeader(output, constants);
         LlvmModuleText.WriteRuntime(output, module.TestRuntime);
         LlvmModuleText.WriteExternals(output, CollectionsMarshal.AsSpan(module.Externals), module.TestRuntime);
         WriteStatics(module, output);
         output.Write(LlvmModuleText.OverflowDeclarations);
         WriteWideOverflowDeclarations(module, output);
-        if (module.Aggregates.Count != 0 || module.TestRuntime is not null || module.NeedsArrayRuntime || module.NeedsFormattingRuntime)
+        if (module.Aggregates.Count != 0 || module.TestRuntime is not null || helpers.NeedsArrayRuntime || helpers.NeedsFormattingRuntime)
         {
             output.Write(LlvmModuleText.MemoryDeclarations);
             WriteArrayFillHelper(module, output);
@@ -34,34 +36,34 @@ internal static partial class LlvmModuleWriter
             }
         }
 
-        if (module.NeedsArrayRuntime)
+        if (helpers.NeedsArrayRuntime)
         {
             output.Write(ArrayRuntime);
         }
 
-        WriteArrayHelpers(module, output);
+        WriteArrayHelpers(helpers, output);
 
-        if (module.NeedsFormattingRuntime)
+        if (helpers.NeedsFormattingRuntime)
         {
             output.Write(FormattingRuntime);
-            WriteFormattingWrappers(module, output);
+            WriteFormattingWrappers(helpers, output);
         }
 
-        if (module.NeedsStorageBytes)
+        if (helpers.NeedsStorageBytes)
         {
             output.Write(StorageBytePrimitives);
         }
 
-        if (module.NeedsDictionaryRuntime)
+        if (helpers.NeedsDictionaryRuntime)
         {
             output.Write(DictionaryDuplicateAdapter);
-            WriteDictionaryStorage(module, output);
-            WriteDictionaryHelpers(module, output);
+            WriteDictionaryStorage(helpers, output);
+            WriteDictionaryHelpers(helpers, output);
         }
 
-        if (module.NeedsStringComparison)
+        if (helpers.NeedsStringComparison)
         {
-            output.Write(StringComparisons);
+            output.Write(LegacyRuntimeHelpers.StringComparisons);
         }
 
         for (var i = 0; i < module.FunctionCount; i++)
