@@ -1,5 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns the coverage vocabulary of a match: its state and what a non-exhaustive match lacks.
+// Input: Binding.Patterns' coverage proof, written on BoundMatch.Coverage. Output: the state its consumers read and, for a
+// non-exhaustive match, the requirement its diagnostic reports.
+// Only a non-exhaustive match carries a reason; a missing Case or whole-payload reason names the Case's declaration index.
+// Must not prove coverage itself: Binding.Patterns decides it.
+
 namespace Kimi.Compiler;
 
 #pragma warning disable SA1402, CS1591 // Shared match analysis vocabulary.

@@ -1,5 +1,12 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns structural completion: whether a node's evaluation can complete normally and which jumps leave it, from source structure.
+// Input: a node, its creator's Never evidence and optionally which nodes the parser supplied. Output: CanComplete, read by Binding's
+// result Types, the HIR Completion column and the old control-flow analysis; the children's evaluation order and the transfer union
+// that the flow analyses share.
+// A node still being composed (a recursive default) is assumed to complete; results stay cached until Clear.
+// Must not evaluate constants or Scope Exit cleanup, or report diagnostics.
+
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
