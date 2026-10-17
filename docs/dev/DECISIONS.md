@@ -1254,6 +1254,18 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Error keeps evaluated children); a `HirOp` member (40 of 40); a Binding failure written at publish (publishing decides nothing,
   `PublishIsInvisible`); non-nullable fact types now (R7's CallPlan and declaration-table scope). Lasting: `HasFacts` and
   `HirTables.Broken` are the publication contract; at R7 the publisher walk goes and Binding's inline Op writes call `HasFacts`.
+- **R4-M64** (owner, 2026-10-17, O3, choosing the recommended option 「書き換え＋記録」) Milestone 27 line 100,
+  `references.sliceUniq().slice().toArray()` followed by `references = [copied]`, is an error by SPEC 15.6 and 15.6.4 as
+  integrated at `4372b058` (S1, design A3's loss P4): the temporary UniqSlice's holder carries its own exclusive Loan on
+  `references` beside the elements' Loans, a read through the Slice carries both, and the copy keeps that Loan; rustc
+  accepts it. The program is re-spelled as `references.slice().toArray()` (a specification re-spelling recorded in
+  `tests/milestones/README.md`; the output and the section's intent are unchanged), and A3 §2's P4 census is corrected
+  (milestones 1). `4372b058`'s "no verdict changes" claim was wrong for this line. Found by A5 unit 1b-2; analysis in
+  `draft/Sketches/A5 Step 1/m27-analysis.md`, which also found an implementation defect handled separately (a Slice
+  input is a borrowed input for retention, SPEC 4.8.2: Binding's part is A5 1a3, merged at `0e50b868`; the MIR side,
+  `MirBorrows.Flow`, is unit 1b-3's). Rejected: a precision refinement narrowing P4 ("a view holder
+  stores no elements": prototype 255 cases sound, but a SPEC revision and the full process for one program; kept as
+  PLAN G127).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
