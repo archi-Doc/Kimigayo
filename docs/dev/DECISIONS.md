@@ -944,7 +944,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   states (R4-M20's reason); sweeps without predecessor edges (rounds grow with loop nesting); a fixed union join (A5's node union is no
   word OR); one solve with a direction parameter. Not temporary.
 - **R4-M35** (owner: the plan's direction and its step 0 on 2026-10-16, with OD1–OD7 and OD12, as the plan's status line records;
-  OD8–OD11 and OD13's first list on 2026-10-17, as plan §10 records them; supersedes the parts named below) R4's remaining scope
+  OD8–OD11 and OD13's first list on 2026-10-17, as plan §10 records them, and A3 §9 item 10 later that day; supersedes the parts named
+  below) R4's remaining scope
   follows the [Complete Polonius A5 Plan](../../draft/Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): the Binding facts A5 reads
   first, then A5 deciding the SPEC rules of plan Appendix A as facts and a fixed set of rules that a C# evaluator runs, then A6 and
   the R4 exit tasks.
@@ -966,7 +967,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     representation for the access-check family (A3's transit clause) and approved A3 §9 as recommended on 2026-10-17: A3's losses P1,
     P3, P4, P10 and P11, the optional P5, P6 and P9, and S1's `within` kill; relaxations (a) and (b); S1's additions; clarifications
     c1 and c2; V16 as A3 §6.3 restates it; the Origin boundary of A3 §7; the MIR contracts of A3 §4.1; the DEC and DIAGNOSTICS
-    records. Not adopted: the root-most kill and relaxation (c). Where A3 departs from the plan (G3: no drop-row Path), A3 governs.
+    records. Not adopted: the root-most kill and relaxation (c). Later on 2026-10-17 the owner also approved A3 §9 item 10, loss P12
+    (`desc(c)`, PLAN G113): 「承認します。」, relayed by the planning session. Where A3 departs from the plan (G3: no drop-row
+    Path), A3 governs.
     Until the SPEC revisions land, before the R4 exit, a violation of an approved loss is a located `Unsupported_Kd`. Each
     representation, contract or phase move gets its own entry in the commit that first implements it (R4-M34 onward).
   - Superseded: PLAN10 §12.1's "R3–R6 run alone" and its single D5 end (now per stage), §12.2's R4 exit, R5 start condition and R6 row

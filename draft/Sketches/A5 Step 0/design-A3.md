@@ -44,7 +44,7 @@ r2 finding 3's row is not needed, because the shared-layer cut is taken (§5).
 | P4 | §15.6.3 Iterator descent, §15.6.4 step 4 | A result retaining a borrowed input's referent content retains every Loan that content holds; a Closure result retains all captured Loans. | An Iterator or Closure with two independently borrowed sources whose result names one, then a conflict on the other | 0 (no multi-slot struct in lib) / 0 / small (H) | **Needed** (follows from P1) |
 | P10 | §15.6 writes through references | Reads and writes through a reference reach every holder its carried direct Loans name, including holders of the references it was reborrowed through. | A Loan-carrying write through `r@follow@follow@uniq`, then a conflict on the intermediate holder | 0 (no `@follow =` in lib) / 0 (the ms writes store owned or Copy values) / small | **Needed** (layer-blind provenance) |
 | P11 | §13.7.2, §15.6 | A compound assignment, increment or decrement writes through its two-phase reservation, so it ends none of the destination's earlier Loans. | A compound assignment to a Loan-capable destination, then a conflict with a Loan its old value carried | 0 (39 compound lines: integers, plus one raw pointer `slot += layout.1` at `DictionaryStorage.kimi:41`; raw pointers are not Loan-capable) / 0 (20 lines, all numeric) / 0 (H) | **Needed** by the writeback activation |
-| P12 | §15.6.3 descent, §15.6.4 retention per argument | A result that descends from an abstract call's receiver keeps the receiver's parent Loans, as a Reborrow of the receiver does (`desc(c)`, F6; erratum, prototype round 9). | While the result is live and the receiver's holder is dead, an access that conflicts with that holder's Loan: `var r = h@uniq; let first = r.inner.take(); h.other = 5; return first` (36f), or `h.inner = src2` (rustc accepts both). A later `h.inner.take()` is rejected by S2 anyway (another receiver Place) | 0 (abstract descending calls reach their receiver through `self`: `Iteration.kimi:32, 59`) / 0 (`cursor.next()` is concrete) / 0 (grep proxy: abstract receivers in literals are parameters) | **Needed** (follows from P3); owner approval pending (§9 item 10) |
+| P12 | §15.6.3 descent, §15.6.4 retention per argument | A result that descends from an abstract call's receiver keeps the receiver's parent Loans, as a Reborrow of the receiver does (`desc(c)`, F6; erratum, prototype round 9). | While the result is live and the receiver's holder is dead, an access that conflicts with that holder's Loan: `var r = h@uniq; let first = r.inner.take(); h.other = 5; return first` (36f), or `h.inner = src2` (rustc accepts both). A later `h.inner.take()` is rejected by S2 anyway (another receiver Place) | 0 (abstract descending calls reach their receiver through `self`: `Iteration.kimi:32, 59`) / 0 (`cursor.next()` is concrete) / 0 (grep proxy: abstract receivers in literals are parameters) | **Needed** (follows from P3); approved 2026-10-17 (§9 item 10) |
 | P5 | §15.6.2 key bullet, §22.4.4 | All keys of one static Field are one root. | A live Loan on `Cache<i32>.S.x` against an access to `Cache<string>.S.x` | 0 / 0 (Milestone42: whole reads and writes only) / 0 | Optional (no key Substs, no open-key composition in A4) |
 | P6 | §15.6.4 anchors, §15.6.5, §11.8 | A Borrow of mutable static storage is finite, bounded by the body; a value carrying it never leaves the body. | §15.6.4's `current` becomes an error; `leak`, `f = current` and `run` keep their verdicts; §11.8 is unchanged | 0 / 0 / 0 | Optional (no A4 per-result anchors; dissolves c2) |
 | P9 | §7.2.3, §15.6.4 | A call of a default template (recursive default SCCs only) retains every prepared input into its result. | A template default holding references that keeps no input, with a reserved input accessed while the callee's result lives | 0 / 0 / corpus ≤6 (H) | Optional (no inter-body `default_retains`) |
@@ -492,10 +492,14 @@ the transit clause in `CS` (§5).
 - the S1 additions, clarifications, V16, the Origin boundary, the MIR contracts, and the DEC and DIAGNOSTICS records:
   approved.
 
+**Item 10 was approved by the owner on 2026-10-17** (「承認します。」, relayed by the planning session): the needed
+loss P12, `desc(c)` (PLAN G113, prototype round 9).
+
 Until the SPEC simplifications landed (plan §5.3), a violation of an approved loss was a located `Unsupported_Kd`. They
 were integrated at `4372b058` (`draft/INTEGRATED.md`), so A5 reports a
 violation of an approved loss with its Language code, in shadow (plan §5.3; S1: DEC R4-M39); the default pipeline keeps
-the earlier rules until R6-check (DEC R4-M50). Item 10 (prototype round 9, PLAN G113) is pending.
+the earlier rules until R6-check (DEC R4-M50). P12 (item 10) is approved but not yet in SPEC: until its SPEC revision
+lands, A5 reports a violation of it (36f) as a located `Unsupported_Kd` (plan §5.3).
 
 | # | Decision | Content | Recommendation |
 | --- | --- | --- | --- |
@@ -551,7 +555,7 @@ the earlier rules until R6-check (DEC R4-M50). Item 10 (prototype round 9, PLAN 
   abstract call on the receiver reach its Loans. A fix stores `desc(c)`, not `Φ_c` alone. Not prototyped; for unit 2f.
 - **Reservation route (round 9 review, 36h).** §15.6.7 makes any write to a reference a reservation was reached
   through an error. `hits` gives a write no reach across a Deref, so A3 accepts
-  `cur.inner.takeWith(do { cur = b; 0 })`. This is outside F6 and needs its own rule.
+  `cur.inner.takeWith(do { cur = b; 0 })`. This is outside F6 and needs its own rule (PLAN G119).
 
 ## Revision history
 
@@ -571,3 +575,4 @@ the earlier rules until R6-check (DEC R4-M50). Item 10 (prototype round 9, PLAN 
 - **A3 erratum** (prototype round 9, PLAN G113): `out` issues `desc(c)`, `Φ_c` with the receiver's parent Loans, so
   design A rejects 36a–36e and 36g under either base and keeps `takeTwo`. P12 is listed (§9 item 10, pending). The
   review found the reservation-route gap (36h, §11). For unit 2f.
+- **Owner decision** (2026-10-17): §9 item 10, P12, approved.
