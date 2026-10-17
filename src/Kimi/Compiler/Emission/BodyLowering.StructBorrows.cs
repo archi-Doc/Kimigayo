@@ -98,7 +98,7 @@ internal sealed partial class BodyLowering
 
     private bool IsMaterializedScalar(int place) => this.materializedScalars[place];
 
-    private bool LowerStructBorrow(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
+    private bool LowerStructBorrow(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -279,7 +279,7 @@ internal sealed partial class BodyLowering
                     !ReferenceEquals(ValueType(body, subscript), BoundType.ISize) || !MatchesSelectionKeySource(body, subscript, indexed) ||
                     (body.IsReachable(id) && (!this.Dominates(array, id) || !this.Dominates(subscript, id))) ||
                     FunctionAbiPool.GetValue(element, this.aggregateLayouts) is not { } stride ||
-                    !this.TryGetLocation(indexed, directory, constants, out var location))
+                    !this.TryGetLocation(indexed, constants, out var location))
                 {
                     return Fail("Indexed borrow requires its borrowed array, an isize index and a concrete element stride.", out failure);
                 }

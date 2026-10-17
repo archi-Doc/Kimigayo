@@ -58,7 +58,7 @@ internal sealed partial class BodyLowering
         return helper;
     }
 
-    private bool LowerDictionaryLiteral(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
+    private bool LowerDictionaryLiteral(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -69,7 +69,7 @@ internal sealed partial class BodyLowering
             !FitsValue(body.Places[operation.Input].Type, dictionary.Components[0], operation.Source) ||
             (inserting && ((uint)valuePlace >= (uint)body.Places.Count || !FitsValue(body.Places[valuePlace].Type, dictionary.Components[1], operation.Source))) ||
             !this.TryGetArrayElement(dictionary.Components[0], out var key) || !this.TryGetArrayElement(dictionary.Components[1], out var value) ||
-            !this.TryGetLocation(operation.Source, directory, constants, out var location))
+            !this.TryGetLocation(operation.Source, constants, out var location))
         {
             return Fail("Dictionary literal requires an initialized handle and matching acquired key/value storage.", out failure);
         }
@@ -156,7 +156,7 @@ internal sealed partial class BodyLowering
     // SPEC 4.9.6: placeEntry appends one slot, growing the storage first, and transfers the acquired key and value into
     // it through the literal's typed placement helper. The ordinary source bodies prove that no equal key is stored, and
     // growth failure reports the standard operation's forwarded caller location.
-    private bool LowerDictionaryPlacement(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, CallPlan plan, out string? failure)
+    private bool LowerDictionaryPlacement(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
         failure = null;
         const int inputs = 3;
@@ -201,7 +201,7 @@ internal sealed partial class BodyLowering
         }
         else
         {
-            if (!this.TryGetLocation(call, directory, constants, out var location))
+            if (!this.TryGetLocation(call, constants, out var location))
             {
                 return Fail("Dictionary placement has no diagnostic source location.", out failure);
             }

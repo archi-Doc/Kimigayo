@@ -367,7 +367,7 @@ internal sealed partial class BodyLowering
         }
     }
 
-    private bool LowerString(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, ReadOnlySpan<byte> marks, out string? failure)
+    private bool LowerString(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, ReadOnlySpan<byte> marks, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -425,7 +425,7 @@ internal sealed partial class BodyLowering
                     return Fail("Return storage must be uninitialized before securing its result.", out failure);
                 }
 
-                if (operation.Kind == OwnershipOperationKind.Write && place.Kind == OwnershipPlaceKind.Local && !this.LowerStringDestruction(body, function, constants, directory, id, marks, out failure))
+                if (operation.Kind == OwnershipOperationKind.Write && place.Kind == OwnershipPlaceKind.Local && !this.LowerStringDestruction(body, function, constants, id, marks, out failure))
                 {
                     return false;
                 }
@@ -433,7 +433,7 @@ internal sealed partial class BodyLowering
                 function.AddScalar(EmissionOpcode.MoveString, id, [new(EmissionOperandKind.SlotAddress, source)], place: destination);
                 break;
             case OwnershipOperationKind.Cleanup:
-                if (!this.LowerStringDestruction(body, function, constants, directory, id, marks, out failure))
+                if (!this.LowerStringDestruction(body, function, constants, id, marks, out failure))
                 {
                     return false;
                 }
@@ -448,7 +448,7 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    private bool LowerStringDestruction(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, ReadOnlySpan<byte> marks, out string? failure, AggregateLayout? aggregate = null)
+    private bool LowerStringDestruction(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, ReadOnlySpan<byte> marks, out string? failure, AggregateLayout? aggregate = null)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -486,7 +486,7 @@ internal sealed partial class BodyLowering
 
         if (this.DestructionPath(body, operation) >= 0)
         {
-            return this.LowerPartDestruction(body, function, constants, directory, id, out failure);
+            return this.LowerPartDestruction(body, function, constants, id, out failure);
         }
 
         if (expected == CleanupAction.Skip)
@@ -501,7 +501,7 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        if (!this.TryGetLocation(operation.Source, directory, constants, out var location))
+        if (!this.TryGetLocation(operation.Source, constants, out var location))
         {
             return Fail("String destruction has no source location.", out failure);
         }

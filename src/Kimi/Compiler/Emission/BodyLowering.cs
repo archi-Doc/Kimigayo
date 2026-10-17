@@ -28,7 +28,7 @@ internal sealed partial class BodyLowering
     private const byte DeferredContinuationMark = 16;
     private const byte DispatchOmittedMark = 32;
 
-    private readonly SourceLocationTable locations = new();
+    private readonly SourceLocationTable locations;
     private readonly List<int> arguments = new();
     private byte[] marks = [];
     private int[] deferredOwners = [];
@@ -38,8 +38,9 @@ internal sealed partial class BodyLowering
     private CallPlan? instance;
     private GenericStoragePlan.CallEntry? instanceEntry;
 
-    internal BodyLowering()
+    internal BodyLowering(SourceLocationTable locations)
     {
+        this.locations = locations;
         // Stored collection handles keep their element-specific recursive destruction (SPEC 16.3.2).
         this.aggregateLayouts.CollectionDrop = this.CollectionFieldDrop;
     }
@@ -53,7 +54,7 @@ internal sealed partial class BodyLowering
         this.instanceEntry = entry;
     }
 
-    internal bool Lower(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, Dictionary<FunctionKoto, FunctionAbi> functions, ControlFlowAnalysis flow, int pointerWidth, out string? failure)
+    internal bool Lower(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, Dictionary<FunctionKoto, FunctionAbi> functions, ControlFlowAnalysis flow, int pointerWidth, out string? failure)
     {
         this.pointerWidth = pointerWidth;
         this.functions = functions;
@@ -96,7 +97,7 @@ internal sealed partial class BodyLowering
             return Fail("Cleanup lowering requires every cleanup operation in exactly one matching edge plan.", out failure);
         }
 
-        return this.LowerGraph(library, body, function, constants, projectDirectory, marks, out failure);
+        return this.LowerGraph(library, body, function, constants, marks, out failure);
     }
 
     private static bool Fail(string message, out string? failure)
@@ -247,7 +248,7 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    private bool LowerOperation(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, int index, ReadOnlySpan<byte> marks, out string? failure)
+    private bool LowerOperation(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int index, ReadOnlySpan<byte> marks, out string? failure)
     {
         var operation = body.Operations[index];
         if (body.Values[index].Kind == OwnershipValueKind.StaticRead)
@@ -266,7 +267,7 @@ internal sealed partial class BodyLowering
 
         if (body.Values[index].Kind == OwnershipValueKind.Formatting)
         {
-            var valid = this.LowerFormatting(body, function, constants, projectDirectory, index, out failure);
+            var valid = this.LowerFormatting(body, function, constants, index, out failure);
             this.AddStringFlags(function, operation, index);
             return valid;
         }
@@ -318,7 +319,7 @@ internal sealed partial class BodyLowering
 
         if (operation.IsWholeUpdate)
         {
-            return this.LowerBorrowedUpdate(body, function, constants, projectDirectory, index, out failure);
+            return this.LowerBorrowedUpdate(body, function, constants, index, out failure);
         }
 
         if (operation.Kind is OwnershipOperationKind.InitializeReceiverField or OwnershipOperationKind.CheckReceiverField)
@@ -334,17 +335,17 @@ internal sealed partial class BodyLowering
 
         if (body.Values[index].Kind is OwnershipValueKind.PointerLoad or OwnershipValueKind.PointerStore)
         {
-            return this.LowerPointer(body, function, constants, projectDirectory, index, out failure);
+            return this.LowerPointer(body, function, constants, index, out failure);
         }
 
         if (operation.Kind is OwnershipOperationKind.CheckDictionaryKey or OwnershipOperationKind.StoreDictionaryEntry)
         {
-            return this.LowerDictionaryLiteral(body, function, constants, projectDirectory, index, out failure);
+            return this.LowerDictionaryLiteral(body, function, constants, index, out failure);
         }
 
         if (body.Values[index].Kind == OwnershipValueKind.Sequence)
         {
-            return this.LowerSequence(body, function, constants, projectDirectory, index, out failure);
+            return this.LowerSequence(body, function, constants, index, out failure);
         }
 
         if (body.Values[index].Kind == OwnershipValueKind.RuntimeTypeTest)
@@ -362,7 +363,7 @@ internal sealed partial class BodyLowering
                 return false;
             }
 
-            return this.LowerStructBorrow(body, function, constants, projectDirectory, index, out failure);
+            return this.LowerStructBorrow(body, function, constants, index, out failure);
         }
 
         if (operation.Kind is OwnershipOperationKind.EndComparisonLoans or OwnershipOperationKind.ActivateCallBorrows)
@@ -373,7 +374,7 @@ internal sealed partial class BodyLowering
 
         if (operation.Kind is OwnershipOperationKind.ProjectElement or OwnershipOperationKind.WriteElement || body.Values[index].Kind == OwnershipValueKind.Element)
         {
-            return this.LowerElement(body, function, constants, projectDirectory, index, out failure);
+            return this.LowerElement(body, function, constants, index, out failure);
         }
 
         if (operation.Kind == OwnershipOperationKind.LocateReceiver)
@@ -407,7 +408,7 @@ internal sealed partial class BodyLowering
         if (operation.Place >= 0 && operation.Kind is not (OwnershipOperationKind.Call or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver) &&
             (this.aggregatePlaces[operation.Place] is not null || operation.Kind == OwnershipOperationKind.PayloadPlacement))
         {
-            return this.LowerAggregate(body, function, constants, projectDirectory, index, marks, out failure);
+            return this.LowerAggregate(body, function, constants, index, marks, out failure);
         }
 
         if (operation.Kind == OwnershipOperationKind.Borrow || (ReferenceTypes.IsString(ValueType(body, index)) && this.referenceRoots[index] >= 0 &&
@@ -429,7 +430,7 @@ internal sealed partial class BodyLowering
         if (operation.Place >= 0 && ReferenceEquals(body.Places[operation.Place].Type, BoundType.String) &&
             operation.Kind is OwnershipOperationKind.Declare or OwnershipOperationKind.Produce or OwnershipOperationKind.Consume or OwnershipOperationKind.Write or OwnershipOperationKind.Cleanup)
         {
-            return this.LowerString(body, function, constants, projectDirectory, index, marks, out failure);
+            return this.LowerString(body, function, constants, index, marks, out failure);
         }
 
         switch (operation.Kind)
@@ -460,12 +461,12 @@ internal sealed partial class BodyLowering
                     return Fail("A deferred boundary has no execution plan.", out failure);
                 }
 
-                return this.LowerScalar(body, function, constants, projectDirectory, index, out failure);
+                return this.LowerScalar(body, function, constants, index, out failure);
 
             case OwnershipOperationKind.Produce:
                 if (operation.Place >= 0 && IsScalar(body.Places[operation.Place].Type))
                 {
-                    return this.LowerScalar(body, function, constants, projectDirectory, index, out failure);
+                    return this.LowerScalar(body, function, constants, index, out failure);
                 }
 
                 if (operation.Place < 0)
@@ -500,7 +501,7 @@ internal sealed partial class BodyLowering
                 break;
 
             case OwnershipOperationKind.Call:
-                return this.LowerCall(library, body, function, constants, projectDirectory, index, out failure);
+                return this.LowerCall(library, body, function, constants, index, out failure);
 
             case OwnershipOperationKind.Cleanup:
                 var stepIndex = body.OperationSteps[index];
@@ -540,9 +541,9 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    private bool TryGetLocation(Koto source, string projectDirectory, LlvmConstantPool constants, out int constant)
+    private bool TryGetLocation(Koto source, LlvmConstantPool constants, out int constant)
     {
-        if (!this.locations.TryGet(source, projectDirectory, out var text))
+        if (this.locations.Text(SourceRef.Of(source)) is not { } text)
         {
             constant = -1;
             return false;

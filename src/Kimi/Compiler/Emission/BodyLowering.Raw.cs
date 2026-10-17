@@ -13,7 +13,7 @@ internal sealed partial class BodyLowering
     // SPEC 5.6: Kimi.Raw. allocate checks the count and the byte size and allocates through the runtime, returning a nonnull
     // aligned substitute for zero bytes; release frees an allocate result and ignores null and that substitute; initialize
     // moves its value into the storage and destroys nothing; slice forms the Slice record over the storage.
-    private bool LowerRawOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, CallPlan plan, out string? failure)
+    private bool LowerRawOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
         failure = null;
         var kind = plan.Target.CompilerFunction;
@@ -81,7 +81,7 @@ internal sealed partial class BodyLowering
         // report that operation, never the helper's own position.
         var location = -1;
         if (!this.ScalarArrayArgument(body, id, 0, kind == CompilerFunctionKind.RawAllocate ? BoundType.ISize : pointer, out var input) ||
-            (!function.Abi.CallerLocation && !this.TryGetLocation(call, directory, constants, out location)))
+            (!function.Abi.CallerLocation && !this.TryGetLocation(call, constants, out location)))
         {
             return Fail("Raw storage operation argument or location is unavailable at the call.", out failure);
         }
