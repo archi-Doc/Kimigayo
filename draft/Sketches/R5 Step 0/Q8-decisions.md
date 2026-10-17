@@ -71,3 +71,5 @@ public-names row adds `Ownership.DefaultArgumentMove` → `Binding.TransferRequi
 
 Owner summary additions (round 2): Q8-6 and Q8-7 reached two rounds and are presented as the planning session's proposals; Q8-8
 narrows R4's 1c PreparedInput mapping to explicit `a@move`.
+
+Placement (2026-10-18, agreed with the R4 planning session, ask A-14): Q21 lands in R5 window W1; its commit supersedes R4-M61 for these cases and closes PLAN G121, and it runs MirInitTest, MirEffectsTest, MirBorrowsTest and the difference ledger, sending R4 any changed A-row.
