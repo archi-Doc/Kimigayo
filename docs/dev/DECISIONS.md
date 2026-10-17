@@ -1132,7 +1132,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `draft/Sketches/A5 Step 1/choice-1b.md` §4, recorded as design A3 §9 item 11 and §12 E8–E9, from two independent
   designs per part, the case 23a proposal's independent review and a design review; prototype round 10 (246 cases) has
   no unsound acceptance and no unlisted rejection.
-  - **Loan ending** (the [case 23a proposal](../../draft/Proposals/2026-10-17%20Loan%20Termination%20Across%20Borrow%20Dereferences.md),
+  - **Loan ending** (the [case 23a proposal](../../draft/Changes/2026-10-17%20Loan%20Termination%20Across%20Borrow%20Dereferences.md),
     option (c)): destroying in place a Move Path ends every Loan whose access path it exactly prefixes (A3 E8). It replaces
     R4-M39's base before the last dereference and its ending; S1's other requirements stand. Recovers 23a, 30d, 34c, 35a,
     35b; census (grep proxies): library, milestones and xUnit literals 0 verdict changes. Conditions from the review: the
@@ -1144,7 +1144,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the path's Place is the Place it lends, so each input has one reservation at its lending point, as `holder.items.append(x)`
     (SPEC 15.6.7: "the same call"), on a shared input's path too. Supersedes R4-M37 G5's path clause and its Open note on a
     parent reservation's mode. Rejected: an A5 reservation chain (≈ +25 lines and a chain fact for G119; it rejects
-    `let r = holder.count@ref; holder@uniq.items.append(1); inspect(r)`).
+    `let r = holder.count@ref; holder@uniq.items.append(1); inspect(r)`). Corrected by the planning session on
+    2026-10-17: on a reserved input's path only; a written exclusive borrow on a shared input's path stays a live
+    exclusive Borrow (SPEC 7.3.3; the planning session's earlier reading, review N7, contradicted it).
   - **G92a, assumed completion:** on a check-only continuation every node is built and makes its own value and accesses; a
     node of Type Never has no value, its consumer taking an unwritten Never temp that fits any operand position; a
     placement rvalue that has an input and whose every input is that value is not built, and the old value at `=` is then
