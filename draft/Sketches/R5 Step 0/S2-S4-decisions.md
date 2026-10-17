@@ -1,7 +1,7 @@
 # R5 step 0: planning-session decisions on the S2–S4 package
 
 The planning session's decisions on the open points of `K-package.md`, `F-package.md` and `C-package.md` and on their
-mismatches (2026-10-18). With these, the three packages are the design sent to the S2–S4 design review and then once to the
+mismatches (2026-10-18). **Approved by the owner on 2026-10-18 with X33 (a), `ArtifactPublicationFailed_Kd` and X30′ (DECISIONS R5-M18).** With these, the three packages are the design sent to the S2–S4 design review and then once to the
 owner (OQ4, DECISIONS R5-M1). Where a package and this file disagree, this file governs.
 
 ## Cross-chapter reconciliation
