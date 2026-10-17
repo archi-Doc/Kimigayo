@@ -1462,7 +1462,8 @@ structure is recorded here by the unit that first implements it.
   PLAN10-X1 (abstract destruction) and abstract temporaries, are reproduced (Q1) and fixed in the old definition run as D5
   miscompile fixes (Q2, Q3; DEC O3 applies if a library or milestone program is rejected); then Q4 writes the entry
   superseding OD10's "check-only step" clause (R4-M35) with the ARCH R6 row, and G7 deletes `AnalyzeInstance` with its
-  callers. R6-gen therefore also waits for A5 step 1 through Q2. Reason: `check` never runs it (`Project.cs:502-515`), and its
+  callers. R6-gen therefore also waits for A5 step 1 through Q2. Since R5-M18 (ask A-2), C4a and with it the R5 exit also wait
+  for A5 step 1, so the fallback (d) below loses its meaning. Reason: `check` never runs it (`Project.cs:502-515`), and its
   only callers are in the Emission R6-gen deletes. Rejected: (b) a check-only Subst→CallPlan bridge (a transitional structure
   of difficulty 4, +150–200 lines); (d) R6-gen waiting for R4's exit, which stays the fallback if A5 step 1 has not merged by X3.
 - **R5-M6 Native deviations at R5's exit** (owner, 2026-10-18; OQ7; extends PLAN10 §12.2's "match or (e)") A native outcome
@@ -1477,7 +1478,8 @@ structure is recorded here by the unit that first implements it.
   `tests/xUnitTest/MirDifferenceLedger.cs`.
   R5's new Binding views go into new partial files, and its shared MIR edits are batched into windows W1 (the builder's call
   and control files, the `$abort` site, the Q16 sites and the goldens) and W2 (`MirProgram.cs`), each recorded in PLAN §3 as
-  a hold. Reason: both streams edit these files, and the protocol covered only Mir.
+  a hold. Reason: both streams edit these files, and the protocol covered only Mir. Amended by R5-M18: W1 also covers
+  `Mir/MirValidator*.cs` (F11), and C0b1 waits for W1.
 - **R5-M8 R5 metric, stop rules and verification** (owner, 2026-10-18; OQ9, as recommended) Adopted: the plan's metrics
   (§5.1), M1, the sel pending ledger, being R5's progress measure, and its stop rules (§5.2): the owner is consulted after two
   consecutive R5 working sessions that land no unit (a planning- or record-only session lands none); a unit not landed within
@@ -1522,7 +1524,10 @@ structure is recorded here by the unit that first implements it.
     the first feature work right after R6-check's acceptance flip (H5), with Milestone 42 as its completion condition. PD19
     stays; C7's slot state follows SPEC 22.4.3's four states (Not started, Initializing, Initialized, Finished), so P42
     needs no representation change. Reason: the deciding old analysis accepts only immutable nongeneric static scalars
-    (`StaticScalar`), so no accepted program can exercise shutdown before R6-check (`check` probes, 2026-10-18).
+    (`StaticScalar`), so no accepted program can exercise shutdown before R6-check (`check` probes, 2026-10-18). Corrected by
+    R5-M18: it also accepts immutable static scalars in generic containers' groups (deferred under PD27, X33 (a)); "no
+    representation change" holds for the slot state only (P42's generic keys need the container's Type arguments on each access's
+    `staticEnsure` operand, and P42 narrows the static constant fold or restores its state for shutdown); the decision stands.
   - (c) No NativeAOT publish at R6-gen's exit (plan §5.4 item 7 and G11 drop it); instead the NativeAOT build is published and
     run once before the next distribution, for example VS Code extension packaging.
 - **R5-M14 `LlvmModuleText` and `LlvmConstantPool`; promotion (PD2)** (2026-10-18, planning session; plan PD2 and P0, refined
@@ -1591,3 +1596,51 @@ structure is recorded here by the unit that first implements it.
   operands as strings (warm writing would allocate); `ValueLowering` inputs for widths (the type text carries them); a result
   name and success label fixed by the component as `%v<Id>` and `b<n>` (codegen names values and blocks by MIR location,
   package §2.10).
+- **R5-M18 The R5 design package S2–S4** (owner, 2026-10-18; OQ4, R5-M1;
+  「S2〜S4パッケージを承認します。X33は(a)、GenerationFailed_Kdの後継はArtifactPublicationFailed_Kd、F11はX30′のとおりで進めてください。」)
+  The step-0 package in `draft/Sketches/R5 Step 0/`
+  — `K-package.md` (S2), `F-package.md` (S3) and `C-package.md` (S4), with `S2-S4-decisions.md` governing where they differ (X1–X37)
+  — went through three independent design-review rounds (lenses K, F, C and cross-cutting; X33 and F11's rule, each after two
+  rounds on one family, went to the owner as choices) and is the owner-approved design under which
+  R5's units take one design and one review (DEC Q6 form 1) and the groups it names share one review (form 2): G:K-core (K1, K3, K4a,
+  K4b), G:K-edges (K5, K7, K10a, K13b), G:K-capability (K9a, K9b, K13a), G:compare (F6, F7), G:call (F5b, K6, C3a, C3b), G:C-frame
+  (E10, E15, C0a, C0b1, C0b2, K11), G:C-scalar, G:C-aggregate, G:C-drop (C4s, C4a–C4c, C3c), G:closure, G:object (F4, K8, K13c,
+  C6a–C6c), G:library-1, G:library-2, G:format, G:test, G:R6-gen-switch (G2, G2b, G3) and G:R6-gen-del (G4–G10). A unit that departs
+  from the package, including a new representation, component or vocabulary entry it does not name, takes the full process.
+  The package's unit and PD changes override the plan's §2.1 and §4 rows where they differ (among them F11, C3c, C7a/C7b, G2b,
+  K4a/K4b, G9a/G9b, PD15 and PD23). It includes OQ4's two ARCH dependency notes (the Backend reads Core's runtime-location text
+  and the Testing catalog's symbol column) and K §6's R6-gen switch contract, which G0 records.
+  - Owner choices: X33 (a) — generic static storage keys stay P42's (R5-M13(b)); a static in a generic container's group is
+    deferred under PD27 as a D2 (e) row at G2 if no library, milestone or corpus program uses it (K7 confirms by search), recorded
+    in STATUS and PLAN and approved in the PD27 list at R5's exit. The successor of `GenerationFailed_Kd` for output and publication-time native-configuration
+    failures is a new Input code `ArtifactPublicationFailed_Kd` (net 0 with `GenerationFailed_Kd` deleted at G9b; contract
+    failures become `InternalInvariant_Kd`); `DiagnosticPartition.Emission` and the `Emission` requirement name stay through R6.
+    F11's validator rule is X30′: a Temp whose only write is a diverging Call's destination is read only in check-only blocks.
+  - Departures from owner-approved texts, approved with the package: PD3 (no `MirBodyKind.Shim`; shims are Backend mono items);
+    PD11 (temporary codegen coverage rows reporting `Unsupported_Kd` under sel until X2, beside the three reporters ARCH "Closed
+    vocabularies" names); A3b in the Backend collector's body scan before acceptance (D-A); instance-stage `Unsupported_Kd` causes
+    beyond operators as capability rows (D-C); KD1 (the instance key's Subst is nullable, null exactly when the binder does not
+    instantiate, against PD5's `Instantiation(MirDefKey, TyCtxt.Erase(Subst))`); ask A-2 required before C4a (R4 lands it in unit
+    1c), so C4a, the drop chain (C4b–C6c, C3c) and the R5 plan's units X1–X3 wait for A5 step 1 and the plan's §3.2 fallback (d)
+    (R5-M5) loses its meaning; PD23 reversed (`transferBytes`
+    keeps `memcpy`; C8a's `MoveBytes` comment says the ranges do not overlap, against PLAN10 §5.8's overlap-allowed
+    `Storage.moveBytes`, until R8); PD15 refined (F7 reads `CallPlan.TupleOperator` and `TyCtxt.Comparison`; `ComparisonPlan(CallPlan)`
+    goes at H11, not R7); F6's signature, order and group; the legacy comparison composition suspends A5 plan §7's one-producer rule
+    for comparison leaves until A-12 or R7; window W1 also covers `Mir/MirValidator*.cs` (F11) and C0b1 waits for W1.
+  - New representations approved: `MonoKind` (nine members, `LegacyRow` `[Transitional("R8")]`), the capability rows, the
+    intrinsic rows' `Target` column, `Layout.Of`'s OK/Limit/CLayout result and its Never rows, the chapter-F facts (F-package §5),
+    `TyCtxt.Witness`'s `(Kind, Target, Subst, Access)`. Each component, representation and temporary structure is still recorded by
+    the unit that first implements it.
+  - Temporary sel-only behaviors: K10b's double report of a written by-value C-layout instance until G2b (grouping, which SPEC
+    23.1.2 leaves implementation-defined), and a generation-gate refusal that may hide independent coverage gaps until the R5
+    plan's unit X2 (a temporary SPEC 23.1.2 limit).
+  - Acceptance changes, from G2: collector records publish at `check` (R5-M4); K10b's `InvalidCLayout_Kd` (Language) at check for
+    inferred C-layout instances; K10a's layout-depth limit at check; at G2b written borrow-only C-layout instances become valid (an
+    (a) correction). Facts recorded: R5-M13(b)'s premise is corrected (the old analysis also accepts immutable static scalars in
+    generic containers' groups); "no representation change" holds for the slot state only: P42's generic storage keys need the
+    container's Type arguments on each access's `staticEnsure` operand, and since the static constant fold keeps no slot state, P42
+    narrows the fold or restores the state for SPEC 22.4.3's shutdown rule.
+  - Rejected: the alternatives each decision row names (`S2-S4-decisions.md`); for X33, (b) a constant-fold whitelist (a KD1
+    exception) and (c) carrying Type arguments before G2 (MIR representation work in W1 for a form no library or milestone uses);
+    for the successor code, reusing `ProjectPreparationFailed_Kd`, recategorizing `GenerationFailed_Kd`, or
+    `MissingNativeRequirement_Kd` for the missing-supply cause only.

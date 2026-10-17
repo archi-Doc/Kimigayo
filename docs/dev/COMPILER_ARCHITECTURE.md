@@ -27,7 +27,7 @@ checks. Only completed ledger entries describe the current compiler; the rest is
 | Binding | Syntax tree, its own tables | Mir, Backend |
 | MIR builder (`Mir/Build`) | `HirTables`, Plans, declaration tables, pure `TyCtxt` functions, syntax children, `SourceRef` | Binding internals, semantic slots on Koto, parent-walking inference |
 | MIR analyses | MIR, declaration tables, pure `TyCtxt` functions | Syntax, HIR |
-| Backend | MIR, declaration tables, `TyCtxt` | HIR, borrow-checker state, syntax |
+| Backend | MIR, declaration tables, `TyCtxt`, Core's runtime-location text, the Testing catalog's symbol column (DECISIONS R5-M18) | HIR, borrow-checker state, syntax |
 | Hover and LSP | `SemanticQuery` | Private Binding state |
 
 Dependency and member restrictions are review obligations after the analyzer retirement (DECISIONS CR-R1).
@@ -44,7 +44,8 @@ MIR has 5 statement, 10 rvalue, 6 terminator (plus the `CheckTarget` attribute),
 kinds; the HIR vocabularies and `IntrinsicId` have fixed limits too (listed below). Enum
 aliases count separately; implicit fields do not. A
 form not yet implemented has one diagnostic code, the location-only `Unsupported_Kd`, reported by Binding, MIR
-construction or the capability check. A new vocabulary entry or a second Unsupported code is a design change that needs
+construction or the capability check (until the R5 plan's unit X2, under MIR code generation only, also by the codegen
+coverage rows, the sel `build` refusal from K1 to C0b1 included; DECISIONS R5-M18, PD11). A new vocabulary entry or a second Unsupported code is a design change that needs
 a SPEC basis and owner approval.
 
 | Vocabulary | Maximum entries |
@@ -192,7 +193,11 @@ first. IntrinsicId returns to 30 at R8.
   (`IntrinsicId` limit 34, back to 30 in R8; DECISIONS R3-9, R3-10); the `Compilation.Analyzed` event, the difference
   ledger's observation point, and `Binding.IsEffectRecord`, the ledger's old-side effect subset (R6, DECISIONS R4-M17, R4-M23);
   `LegacyRuntimeHelpers`, the Backend's Array, Dictionary, formatting and string-comparison runtime text and its requests
-  (R8, DECISIONS R5-M16). Transitional attributes identify these declarations (CR-A7). The lasting HIR publication/version
+  (R8, DECISIONS R5-M16). R5's planned temporaries, recorded by their first units (DECISIONS R5-M18): the `KIMI_CODEGEN`
+  selector, the pending ledger, the `CodegenDeviations` catalog and `.deviation` targets (G4); the codegen coverage rows (the R5
+  plan's unit X2); `MonoKind.LegacyRow` (R8); the out-string `WriteIr`/`Validate` adapters (C0a to G9b); the sel `build` refusal
+  (K1 to C0b1); Binding's eager C-layout instance check beside `Layout.Of`, with K10b's double report under sel (G2b); the legacy comparison composition (A-12 or R7); the F2c Dictionary-storage view (R8); the
+  `Binding.ClosureCall` bridge (R6-gen). Transitional attributes identify these declarations (CR-A7). The lasting HIR publication/version
   contract is unmarked; only its publisher walk and private state disappear at R7.
 - **Performance and allocation.** Generated native code may not regress in O2 run time or allocation counts (plan §18
   P1, P2); O0 run time and compiler processing time may, when recorded (P1, P3). A timing regression exceeds the
