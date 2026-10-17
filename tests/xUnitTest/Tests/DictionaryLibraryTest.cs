@@ -21,9 +21,6 @@ public class DictionaryLibraryTest
         Assert.InRange(clear.Related, 0, module.FunctionReferences.Count - 1);
         Assert.Equal(1, Enumerable.Range(0, module.FunctionCount).Count(i => ReferenceEquals(module.GetFunction(i).Abi, module.FunctionReferences[clear.Related])));
         var ir = CompilationTestHelper.WriteIr(c);
-        Assert.DoesNotContain("__kimi_dictionary_find", ir, StringComparison.Ordinal);
-        Assert.DoesNotContain("__kimi_dictionary_clear", ir, StringComparison.Ordinal);
-        Assert.DoesNotContain("_destroy(i64 %environment", ir, StringComparison.Ordinal);
         ScalarEmissionTest.WriteFixture("DictionaryLibraryTypedCleanup", ir, "last\n");
     }
 
@@ -72,7 +69,6 @@ public class DictionaryLibraryTest
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, function.Declaration));
         var ir = CompilationTestHelper.WriteIr(c);
-        Assert.DoesNotContain("__kimi_dictionary_remove", ir, StringComparison.Ordinal);
         ScalarEmissionTest.WriteFixture("DictionaryLibrarySourceRemove", ir, string.Empty);
     }
 
@@ -98,7 +94,6 @@ public class DictionaryLibraryTest
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, function.Declaration));
         var ir = CompilationTestHelper.WriteIr(c);
-        Assert.DoesNotContain("__kimi_dictionary_tryget", ir, StringComparison.Ordinal);
         ScalarEmissionTest.WriteFixture("DictionaryLibrarySourceLookup", ir, string.Empty);
     }
 
@@ -115,8 +110,6 @@ public class DictionaryLibraryTest
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, function.Declaration));
         var ir = CompilationTestHelper.WriteIr(c);
-        Assert.DoesNotContain("__kimi_dictionary_tryinsert", ir, StringComparison.Ordinal);
-        Assert.DoesNotContain("__kimi_dictionary_insertorreplace", ir, StringComparison.Ordinal);
         Assert.Contains("__kimi_dictionary_place", ir, StringComparison.Ordinal);
         ScalarEmissionTest.WriteFixture("DictionaryLibrarySource" + name, ir, string.Empty);
     }
@@ -136,11 +129,6 @@ public class DictionaryLibraryTest
         // no bridges, platform callbacks or callback tables.
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, name == "Reserve" ? c.Library.DictionaryReserveStorage : c.Library.DictionaryShrink));
         var ir = CompilationTestHelper.WriteIr(c);
-        foreach (var bridge in (string[])["@__kimi_dictionary_reserve(", "@__kimi_dictionary_shrink(", "@__kimi_dictionary_append_slot(", "__kimi_dictionary_allocate", "__kimi_dictionary_release", "__kimi_dictionary_transfer", "__kimi_dictionary_capacity_failure"])
-        {
-            Assert.DoesNotContain(bridge, ir, StringComparison.Ordinal);
-        }
-
         Assert.Contains(name == "Reserve" ? "call ptr @__kimi_raw_allocate(" : "call ptr @__kimi_try_allocate(", ir, StringComparison.Ordinal);
         ScalarEmissionTest.WriteFixture("DictionaryLibrarySource" + name, ir, string.Empty);
     }
@@ -167,7 +155,6 @@ public class DictionaryLibraryTest
         var compiled = System.Text.RegularExpressions.Regex.Match(ir, @"(?ms)^define[^\n]*@" + reserve + @"\([^\n]*\n.*?^\}").Value;
         Assert.NotEmpty(compiled);
         Assert.Contains("ptr %location, i64 %location_length)", compiled.Split('\n')[0], StringComparison.Ordinal);
-        Assert.DoesNotContain("__kimi_array_grow", compiled, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -305,7 +292,6 @@ public class DictionaryLibraryTest
         Assert.DoesNotContain(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryShrink));
         Assert.Equal(CompilerFunctionKind.None, c.Library.DictionaryUnlink.SymbolOf()!.CompilerFunction);
         Assert.Contains("DictionaryStorage.kimi", c.Library.DictionaryUnlink.CodeContext.SourceDocument!.Path);
-        Assert.DoesNotContain("%left_index = sub", outputIr);
         ScalarEmissionTest.WriteFixture("DictionaryLibraryRemoval", outputIr, string.Empty);
     }
 

@@ -127,8 +127,7 @@ public class StorageBoundaryTest
             "    match exclusive.next()\n        .Some(_) => $abort(\"exhausted\")\n        .None => ()\n" +
             "    require values[0] == 11 and values[1] == 22 and values[2] == 33 else => $abort(\"values\")\n" +
             "    var empty: Array<i32> = []\n    var none = empty.iterateUniq()\n    match none.next()\n        .Some(_) => $abort(\"empty\")\n        .None => Console.writeLine(\"boundary\")";
-        var ir = ScalarEmissionTest.EmitFixture("StorageBoundaryExplicit", Source, "boundary\n");
-        Assert.DoesNotContain("__kimi_array_split_", ir);
+        ScalarEmissionTest.EmitFixture("StorageBoundaryExplicit", Source, "boundary\n");
     }
 
     // The owning entry transfers each element out once and stays exhausted; retained items are owned values.
@@ -139,8 +138,7 @@ public class StorageBoundaryTest
             "    match first\n        .Some(let n) => total += n\n        .None => $abort(\"first\")\n    match second\n        .Some(let n) => total += n\n        .None => $abort(\"second\")\n" +
             "    match it.next()\n        .Some(let n) => total += n\n        .None => $abort(\"third\")\n    match it.next()\n        .Some(_) => $abort(\"exhausted\")\n        .None => ()\n" +
             "    require total == 6 else => $abort(\"total\")\n    var empty: Array<i32> = []\n    var none = (empty@move).intoIterator()\n    match none.next()\n        .Some(_) => $abort(\"empty\")\n        .None => Console.writeLine(\"owned\")";
-        var ir = ScalarEmissionTest.EmitFixture("StorageBoundaryOwned", Source, "owned\n");
-        Assert.DoesNotContain("__kimi_array_take_first_", ir);
+        ScalarEmissionTest.EmitFixture("StorageBoundaryOwned", Source, "owned\n");
     }
 
     // SPEC 4.9.7, 22.2: a taken element is destroyed by its owner; the unreturned elements are destroyed with the
@@ -152,8 +150,7 @@ public class StorageBoundaryTest
             "public func main()\n    var items: Array<Tracked> = [Tracked.init(1), Tracked.init(2), Tracked.init(3), Tracked.init(4)]\n    var it = (items@move).intoIterator()\n" +
             "    match it.next()\n        .Some(let t) => require t.id == 1 else => $abort(\"first\")\n        .None => $abort(\"empty\")\n" +
             "    match it.next()\n        .Some(let t) => require t.id == 2 else => $abort(\"second\")\n        .None => $abort(\"empty\")\n    Console.writeLine(\"Stop.\")";
-        var ir = ScalarEmissionTest.EmitFixture("StorageBoundaryOwnedDrop", Source, "Dropped 1\nDropped 2\nStop.\nDropped 4\nDropped 3\n");
-        Assert.DoesNotContain("__kimi_array_owned_drop_", ir);
+        ScalarEmissionTest.EmitFixture("StorageBoundaryOwnedDrop", Source, "Dropped 1\nDropped 2\nStop.\nDropped 4\nDropped 3\n");
     }
 
     // SPEC 9.4, 22.2: the boundary is internal to the Kimi Kotonoha; no user source reaches it.

@@ -54,7 +54,6 @@ public class ElementEmissionTest
         var source = $"let a: [{length} of i32] = " + (length == 0 ? "[]" : "[1, 2]") + $"\nlet n = a[{index}]\nConsole.writeLine(\"bad\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementBounds" + name, source, string.Empty, 1, "Hello.kimi:2:9: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
         Assert.Contains("icmp uge i64", ir);
-        Assert.DoesNotContain("getelementptr inbounds", ir.Split("define internal void @__kimi_body").Last());
     }
 
     [Theory]

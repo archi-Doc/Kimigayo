@@ -6,8 +6,9 @@ using Xunit.Sdk;
 namespace XunitTest;
 
 /// <summary>The native allocation audit fails closed: every spelling of an allocation and every mentioned transfer routine
-/// is counted, and a reference the interposer cannot redirect, an unknown import, a routine without its anchor or a bound
-/// with nothing to count fails instead of escaping the counters.</summary>
+/// is counted, and a reference the interposer cannot redirect, an unknown declaration, a routine without its anchor or an
+/// anchor without its routine, a bound with nothing to count or a count outside its bound fails instead of escaping the
+/// counters.</summary>
 public class NativeAllocationAuditTest
 {
     // One growth from empty: one 16-byte allocation and no copy.
@@ -28,6 +29,13 @@ public class NativeAllocationAuditTest
     public void EveryAllocationSpellingIsCounted(string name, string spelling)
         => Audit(name, Append, 1, 16, transformIr: ir => ir.Replace("call ptr @HeapAlloc(", spelling, StringComparison.Ordinal));
 
+    // A count below or above its bound fails the run.
+    [Theory]
+    [InlineData("BelowBound", 2L, 3L)]
+    [InlineData("AboveBound", 0L, 0L)]
+    public void CountOutsideItsBoundFails(string name, long minimum, long maximum)
+        => NativeAllocationAudit.WriteFixture("NativeAllocationAudit" + name, Append, new(minimum, maximum), 1, 16, exit: 93, stderr: string.Empty);
+
     [Theory]
     [InlineData("HeapAlloc")]
     [InlineData("HeapFree")]
@@ -43,42 +51,53 @@ public class NativeAllocationAuditTest
         => Assert.Throws<DoesNotContainException>(() => Audit("Exit", Append, 1, 16, transformIr: ir => ir + DirectExit));
 
     [Theory]
-    [InlineData("HeapReAlloc")]
-    [InlineData("VirtualAlloc")]
-    [InlineData("RtlAllocateHeap")]
-    public void UnknownImportFails(string import)
-        => Assert.Throws<ContainsException>(() => Audit("Import", Append, 1, 16, transformIr: ir => ir + "declare dllimport ptr @" + import + "(ptr)\n"));
+    [InlineData("declare dllimport ptr @HeapReAlloc(ptr, i32, ptr, i64)")]
+    [InlineData("declare dllimport ptr @VirtualAlloc(ptr, i64, i32, i32)")]
+    [InlineData("declare dllimport ptr @RtlAllocateHeap(ptr, i32, i64)")]
+    [InlineData("declare extern_weak dllimport ptr @HeapReAlloc(ptr, i32, ptr, i64)")]
+    [InlineData("declare ptr @HeapReAlloc(ptr, i32, ptr, i64)")]
+    public void UnknownDeclarationFails(string declaration)
+        => Assert.Throws<ContainsException>(() => Audit("Declaration", Append, 1, 16, transformIr: ir => ir + declaration + "\n"));
 
     [Fact]
     public void ArrayGrowthUnderABoundIsCounted()
-        => Audit("Growth", Growth, 2, 48, bound: 16);
+        => Audit("Growth", Growth, 2, 48, transferred: 16);
 
     [Fact]
     public void RespelledTransferRoutineIsCounted()
-        => Audit("Transfer", Entries, 2, 288, bound: 96, transformIr: Respell);
+        => Audit("Transfer", Entries, 2, 288, transferred: 96, transformIr: Respell);
 
     [Fact]
     public void TransferRoutineWithoutItsAnchorFails()
-        => Assert.Throws<EqualException>(() => Audit("Unanchored", Entries, 2, 288, bound: 96, transformIr: Unanchor));
+        => Assert.Throws<EqualException>(() => Audit("Unanchored", Entries, 2, 288, transferred: 96, transformIr: Unanchor));
+
+    // A renamed growth routine whose body keeps its anchor would leave its copies uncounted beside the transfer routine.
+    [Fact]
+    public void AnchorWithoutItsRoutineFails()
+        => Assert.Throws<EqualException>(() => Audit("Renamed", Entries, 2, 288, transferred: 96, transformIr: Rename));
 
     [Fact]
     public void BoundWithoutTransferRoutineFails()
     {
-        var failure = Assert.Throws<TrueException>(() => Audit("Uncounted", "let n = 1", 0, 0, bound: 0));
+        var failure = Assert.Throws<TrueException>(() => Audit("Uncounted", "let n = 1", 0, 0, transferred: 0));
         Assert.Contains("transfer bound", failure.Message, StringComparison.Ordinal);
     }
 
-    // Audits source as fixture NativeAllocationAudit<name> with as many releases as allocations and, under a bound, exactly
-    // that many transferred bytes.
-    private static void Audit(string name, string source, int allocations, long bytes, long bound = -1, Func<string, string>? transformIr = null)
+    // Audits source as fixture NativeAllocationAudit<name> with as many releases as allocations.
+    private static void Audit(
+        string name,
+        string source,
+        int allocations,
+        long bytes,
+        NativeAllocationAudit.Bound? transferred = null,
+        Func<string, string>? transformIr = null)
         => NativeAllocationAudit.WriteFixture(
             "NativeAllocationAudit" + name,
             source,
             allocations,
             allocations,
             bytes,
-            maxTransferredBytes: bound,
-            minTransferredBytes: Math.Max(bound, 0),
+            transferred: transferred,
             transformIr: transformIr);
 
     // Another spelling of the transfer routine's definition, as a different generator might write it.
@@ -88,4 +107,8 @@ public class NativeAllocationAuditTest
     // The respelled routine without its anchor: the copy is a memmove, as lowering MoveBytes by its contract would write it.
     private static string Unanchor(string ir)
         => Respell(ir).Replace("@llvm.memcpy.p0.p0.i64(ptr %destination", "@llvm.memmove.p0.p0.i64(ptr %destination", StringComparison.Ordinal);
+
+    // The growth routine under another name with its body unchanged.
+    private static string Rename(string ir)
+        => ir.Replace("__kimi_array_grow", "__kimi_array_enlarge", StringComparison.Ordinal);
 }

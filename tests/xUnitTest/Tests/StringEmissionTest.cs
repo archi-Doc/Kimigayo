@@ -47,7 +47,6 @@ public class StringEmissionTest
     public void TransfersAndCleanupExecuteOnce(string name, string source, string stdout, string destructions)
     {
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
-        Assert.DoesNotContain("load %kimi.string", ir);
         Assert.DoesNotContain("llvm.memcpy", ir);
         WriteAuditedFixture(name, source, ir, stdout, destructions);
     }

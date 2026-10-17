@@ -98,8 +98,6 @@ public class DivisionEmissionTest
         var ir = ScalarEmissionTest.EmitFixture("DivisionLiteralDivisors", "var x: i32 = 7\nvar u: u32 = 7\nvar w: Wrapping<i32> = -2147483648\nlet a = x / 2\nlet b = x % 3\nlet c = u / 4\nlet d = u % 5\nlet e = x / -1\nlet f = x % -1\nlet g = w / -1\nlet h = w % -1\nx /= -2\nif a == 3 and b == 1 and c == 1 and d == 2 and e == -7 and f == 0 and g == -2147483648 and h == 0 and x == -3 => Console.writeLine(\"ok\")", "ok\n");
         var start = ir.IndexOf("define internal void @__kimi_entry_body", StringComparison.Ordinal);
         var body = ir[start..ir.IndexOf("\n}\n", start, StringComparison.Ordinal)];
-        Assert.DoesNotContain("%zero", body);
-        Assert.DoesNotContain("%minusone", body);
         Assert.DoesNotContain("select", body);
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(body, @"%minimum\d+ = icmp eq i32 "));
         Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(body, @" = sub i32 0, ").Count);

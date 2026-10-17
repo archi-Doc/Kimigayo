@@ -32,7 +32,7 @@ public class DictionaryCostTest
             bytes += capacity * 24L;
         }
 
-        NativeAllocationAudit.WriteFixture("DictionaryCostGrowth" + count + reserve, source, allocations, allocations, bytes, maxTransferredBytes: count * 48L, minTransferredBytes: (capacity - 4) * 24L);
+        NativeAllocationAudit.WriteFixture("DictionaryCostGrowth" + count + reserve, source, allocations, allocations, bytes, transferred: new((capacity - 4) * 24L, count * 48L));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -57,7 +57,7 @@ public class DictionaryCostTest
                 for (key, value) in entries => require value == key * 10 else => $abort("pair")
                 count += 1
             """;
-        NativeAllocationAudit.WriteFixture("DictionaryCostQueries", Source, 1, 1, 96, maxTransferredBytes: 0);
+        NativeAllocationAudit.WriteFixture("DictionaryCostQueries", Source, 1, 1, 96, transferred: 0);
     }
 
     [Trait("Purpose", "Allocation")]

@@ -12,6 +12,8 @@ internal static class StringLifetimeAudit
 {
     internal static string Instrument(string ir, (string? Symbol, int Length, int Count)[] handles, bool duplicate = false, int[]? order = null)
     {
+        // The exit hook sees the counts only when every exit passes through __kimi_exit.
+        NativeAllocationAudit.AssertExitsThroughHook(ir);
         var destroy = new Regex(@"(?m)^(define internal void @__kimi_destroy_string\([^\n]+\nentry:\n)");
         var exit = new Regex(@"(?m)^(define internal void @__kimi_exit\([^\n]+\nentry:\n)");
         Assert.Single(destroy.Matches(ir));
