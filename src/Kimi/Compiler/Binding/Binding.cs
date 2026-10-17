@@ -185,12 +185,13 @@ public sealed partial class Binding
         }
 
         // An edit revokes the whole pass, exactly as the next Bind discards it; associated Origin parameters of the edited
-        // trees are recreated.
+        // trees are recreated, as are the item contexts and call retentions kept across unchanged passes.
         this.Result = default;
         this.ResetPass(BindingMode.Provisional);
         this.associatedOrigins.Clear();
         this.localRegions.Clear();
         this.functionItemContexts.Clear();
+        this.types.ResetRetentions();
     }
 
     private static bool InvalidDeclarationContext(Koto declaration)
@@ -361,7 +362,6 @@ public sealed partial class Binding
         this.inheritedOriginTypes.Clear();
         this.ResetCapabilities(mode);
         this.ResetContracts();
-        this.types.ResetRetentions();
         foreach (var scope in this.scopes.Values)
         {
             scope.Reset();
