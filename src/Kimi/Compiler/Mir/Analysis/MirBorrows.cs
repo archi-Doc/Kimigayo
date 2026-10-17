@@ -77,7 +77,8 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
     }
 
     /// <summary>Gets the work of the runs (A3 6.2): the pre-pass's walks, transfers, both problems' slot joins, the holders of each point
-    /// that ends Loans, each check's bit scan, stored values and seeds, set elements scanned, candidates compared and set bytes made.</summary>
+    /// that ends Loans, each check's bit scan, stored values and seeds, the set elements its loops and the set operations scanned
+    /// (MirLoanSets.Scanned), the checks' stamps it clears, candidates compared and set bytes made.</summary>
     internal long Work { get; private set; }
 
     /// <summary>Gets the element bytes of the Loan sets the runs made (MirLoanSets.Bytes, A3 6.2's ν), which Work also counts.</summary>
@@ -123,6 +124,7 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
         var carrying = new Carrying(this, state);
         flow.Forward(ref carrying);
         (carrying.Checks, this.chainHead, this.stamp) = (true, -1, 0);
+        this.Work += this.loanMarks.Length + this.reached.Length + this.scanned.Length + this.markSeen.Length + this.markVia.Length;
         Array.Clear(this.loanMarks);
         Array.Clear(this.reached);
         Array.Clear(this.scanned);
@@ -130,7 +132,7 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
         Array.Clear(this.markVia);
         flow.Replay(ref carrying);
         this.Bytes += this.sets.Bytes;
-        this.Work += this.sets.Bytes;
+        this.Work += this.sets.Bytes + this.sets.Scanned;
     }
 
     // A Deref's class by the Semantics of the Type it applies to: a shared or exclusive borrow, an owning handle's payload, or a raw

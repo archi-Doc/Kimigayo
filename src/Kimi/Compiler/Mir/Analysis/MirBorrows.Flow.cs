@@ -255,6 +255,7 @@ internal sealed partial class MirBorrows
     private int Content(ulong[] state, int set)
     {
         var (content, direct, escaped) = (0, false, false);
+        this.Work += this.sets.Count(set);
         foreach (var element in this.sets.Elements(set))
         {
             escaped |= element == Escaped;
@@ -273,6 +274,7 @@ internal sealed partial class MirBorrows
     {
         var (direct, escaped) = (false, false);
         this.targets.Clear();
+        this.Work += this.sets.Count(set);
         foreach (var element in this.sets.Elements(set))
         {
             escaped |= element == Escaped;

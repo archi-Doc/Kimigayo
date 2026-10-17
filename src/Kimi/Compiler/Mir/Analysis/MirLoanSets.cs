@@ -3,7 +3,7 @@
 // Owns interned immutable Loan sets: Add, Union, Remove, Range; the only Loan-set form in Mir (design A3 §6.1; DECISIONS R4-M53).
 // Input: the elements, the Loan and marker ids A5 numbers. Output: each set as a node id, 0 the empty set; Add, Union and Remove (a \ b) of
 // sets and the set of a Range of consecutive elements as node ids, Contains, Count and a set's elements in ascending order; Bytes, the
-// element bytes of the nodes made (A3 §6.2's ν).
+// element bytes of the nodes made (A3 §6.2's ν), and Scanned, the elements its operations read and wrote, which A5's work counts.
 // Invariants: a node's elements are a strictly ascending run in one pooled array, and nodes are interned by their elements, so two sets are
 // equal exactly when their ids are; a node never changes once made. Each operation is memoized by its operands, so repeating it costs one
 // lookup. Storage is pooled: Clear empties it per body view and keeps its capacity, so a warm run of a sized workload allocates nothing.
@@ -33,6 +33,10 @@ internal sealed class MirLoanSets
     /// <summary>Gets the element bytes of the nodes made since the last <see cref="Clear"/>, A3 §6.2's ν.</summary>
     internal long Bytes { get; private set; }
 
+    /// <summary>Gets the elements the operations since the last <see cref="Clear"/> scanned: both runs of a Union or an Add, a Remove's
+    /// smaller operand and the run it copies, and a Range's run.</summary>
+    internal long Scanned { get; private set; }
+
     /// <summary>Removes every set but the empty one, keeping the storage.</summary>
     internal void Clear()
     {
@@ -42,7 +46,7 @@ internal sealed class MirLoanSets
         this.removes.Clear();
         this.ranges.Clear();
         this.nodes.Add(0, 0);
-        (this.created, this.Bytes) = (1, 0);
+        (this.created, this.Bytes, this.Scanned) = (1, 0, 0);
     }
 
     /// <summary>Gets the elements of a set in ascending order.</summary>
@@ -148,6 +152,7 @@ internal sealed class MirLoanSets
         if (!this.ranges.TryGetValue((first, count), out var range))
         {
             var run = this.Candidate(count);
+            this.Scanned += count;
             for (var i = 0; i < count; i++)
             {
                 run[i] = first + i;
@@ -167,6 +172,7 @@ internal sealed class MirLoanSets
         var without = this.Elements(removed);
         var run = this.Candidate(from.Length);
         var (length, copied) = (0, 0);
+        this.Scanned += Math.Min(from.Length, without.Length);
         if (from.Length <= without.Length)
         {
             foreach (var element in from)
@@ -195,6 +201,7 @@ internal sealed class MirLoanSets
         }
 
         from[copied..].CopyTo(run[length..]);
+        this.Scanned += from.Length;
         return this.Intern(length + from.Length - copied);
     }
 
@@ -203,6 +210,7 @@ internal sealed class MirLoanSets
     {
         var from = this.Elements(set);
         var run = this.Candidate(from.Length + other.Length);
+        this.Scanned += from.Length + other.Length;
         var (i, j, length) = (0, 0, 0);
         while (i < from.Length && j < other.Length)
         {

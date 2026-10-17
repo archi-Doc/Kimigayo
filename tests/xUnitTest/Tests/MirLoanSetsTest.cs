@@ -77,6 +77,22 @@ public sealed class MirLoanSetsTest(ITestOutputHelper output)
         Assert.Equal(7 * sizeof(int), sets.Bytes);
     }
 
+    // V16, A3 §6.2 (re-review): Scanned counts the elements the operations read and write, which A5's work counts: a Union both runs, a
+    // Remove its smaller operand and, when it removes an element, the run it copies, a Range its run; a repeated operation reads its memo.
+    [Fact]
+    public void ScannedCountsTheElementsOperationsRead()
+    {
+        var sets = new MirLoanSets();
+        var (six, three) = (sets.Range(0, 6), sets.Range(4, 3));
+        Assert.Equal(9, sets.Scanned);
+        var union = sets.Union(six, three);
+        Assert.Equal((union, 18L), (sets.Union(three, six), sets.Scanned));
+        Assert.Equal(six, sets.Remove(six, sets.Range(10, 2)));
+        Assert.Equal(22, sets.Scanned);
+        Assert.Equal([0, 1, 2, 3], sets.Elements(sets.Remove(union, three)).ToArray());
+        Assert.Equal(32, sets.Scanned);
+    }
+
     // R4-M53: Clear restarts at the empty set: ids and Bytes begin again, and no result of an operation before it answers for the sets
     // made after it. AWarmRunAllocatesNothing shows that it keeps the storage.
     [Fact]
