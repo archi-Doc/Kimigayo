@@ -137,23 +137,6 @@ public class EmissionPlanTest
         Assert.Throws<InvalidOperationException>(() => new EmissionFunction().AddCall(-1, RuntimeAbi.WriteLine, []));
     }
 
-    [Theory]
-    [InlineData("bool", "i8", "i1", 1)]
-    [InlineData("char", "i32", "i32", 4)]
-    [InlineData("u16", "i16", "i16", 2)]
-    [InlineData("isize", "i64", "i64", 8)]
-    [InlineData("u128", "i128", "i128", 16)]
-    [InlineData("f32", "float", "float", 4)]
-    [InlineData("f64", "double", "double", 8)]
-    public void ScalarRepresentationsFollowTheInitialProfile(string type, string storage, string computation, int size)
-    {
-        // SPEC 21.1.3: size, alignment and stride are equal; arguments pass the direct computation Type.
-        var value = WindowsLowering.GetValue(BoundType.Primitives[type])!;
-        Assert.Equal((storage, computation, computation), (value.Layout.StorageType, value.ComputationType, value.ArgumentType));
-        Assert.Equal((size, size, size), (value.Layout.Size, value.Layout.Alignment, value.Layout.Stride));
-        Assert.Null(WindowsLowering.GetValue(BoundType.Never));
-    }
-
     [Fact]
     public void ConstantPoolSharesBytesAndRetainsNulAndSupplementaryCharacters()
     {

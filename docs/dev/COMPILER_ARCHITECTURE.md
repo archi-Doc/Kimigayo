@@ -117,6 +117,7 @@ Each entry file begins with the component's contract (AGENTS). Paths are under `
 | LLVM module text | `LlvmModuleText`, the module frame every generator writes through: header with the pooled constants, runtime template with its ABI splice and test variant, external declarations, overflow and memory declarations, footer, external symbol spelling, number formatting; `LlvmConstantPool`, a module's private UTF-8 constants (DECISIONS R5-M14) | `Backend/LlvmModuleText.cs`, `Backend/LlvmConstantPool.cs` |
 | Runtime ABI and representation records | `RuntimeAbi`, the runtime ABI: Unit, string and string-handle representations, release kind, zero-sized buffer address, one `FunctionAbi` per runtime routine and the `RuntimeDefinitions` `LlvmModuleText` splices; `AbortReasons`, the closed abort reason table and its template expansion; the records `TypeLayout`, `ValueLowering`, `AbiParameter` and `FunctionAbi`, which take no Type (DECISIONS R5-M15) | `Backend/RuntimeAbi.cs`, `Backend/AbortReasons.cs`, `Backend/AbiRecords.cs` |
 | Scalar arithmetic text | `LlvmScalarText`, the LLVM text of scalar arithmetic, numeric conversions and their checks every generator writes through: instructions, overflow intrinsics, the division, remainder and shift checks with IMPL 21.3.3's literal −1 rules and SPEC 13.3.1's divisor substitution, the plain, range-checked, floating-narrowing and position conversions, and each check's own failure block; its stack-only inputs `ScalarOperation`, `ScalarConversion` with `ScalarBounds`, and `ScalarCheck` (DECISIONS R5-M17) | `Backend/LlvmScalarText.cs` |
+| Storage layout | `Layout.Of`, the size, alignment, stride, Field offsets and LLVM representation of a closed Type for every generator: IMPL 21.1.3's rows (scalars, Unit, string, Never, borrows and raw pointers, object and function handles, `Loan<T>`) and the Slice, Array and Dictionary handles; struct, Tuple, fixed-array, enum, Closure and Function Item placement with the OK/Limit/CLayout result from P7b; the old pool and `WindowsLowering.GetValue`'s scalar-value gate read it (DECISIONS R5-M19) | `Backend/Layout.cs` |
 
 ## Structure limits
 
@@ -193,8 +194,8 @@ first. IntrinsicId returns to 30 at R8.
   (`IntrinsicId` limit 34, back to 30 in R8; DECISIONS R3-9, R3-10); the `Compilation.Analyzed` event, the difference
   ledger's observation point, and `Binding.IsEffectRecord`, the ledger's old-side effect subset (R6, DECISIONS R4-M17, R4-M23);
   `LegacyRuntimeHelpers`, the Backend's Array, Dictionary, formatting and string-comparison runtime text and its requests
-  (R8, DECISIONS R5-M16). R5's planned temporaries, recorded by their first units (DECISIONS R5-M18): the `KIMI_CODEGEN`
-  selector, the pending ledger, the `CodegenDeviations` catalog and `.deviation` targets (G4); the codegen coverage rows (the R5
+  (R8, DECISIONS R5-M16); `Layout`'s Slice, Array and Dictionary handle word counts (R8, DECISIONS R5-M19). R5's planned
+  temporaries, recorded by their first units (DECISIONS R5-M18): the `KIMI_CODEGEN` selector, the pending ledger, the `CodegenDeviations` catalog and `.deviation` targets (G4); the codegen coverage rows (the R5
   plan's unit X2); `MonoKind.LegacyRow` (R8); the out-string `WriteIr`/`Validate` adapters (C0a to G9b); the sel `build` refusal
   (K1 to C0b1); Binding's eager C-layout instance check beside `Layout.Of`, with K10b's double report under sel (G2b); the legacy comparison composition (A-12 or R7); the F2c Dictionary-storage view (R8); the
   `Binding.ClosureCall` bridge (R6-gen). Transitional attributes identify these declarations (CR-A7). The lasting HIR publication/version
