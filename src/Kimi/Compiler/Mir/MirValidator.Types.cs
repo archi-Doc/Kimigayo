@@ -190,7 +190,13 @@ internal sealed partial class MirValidator
             var value = function is null ? Terminal(this.TypeOf(call.Operand)) : null;
             if (function is null && value is not { Kind: BoundTypeKind.Function, Components: [_, _] })
             {
-                return; // A Closure's or a function item's signature is its declaration's.
+                // A Closure's or a function item's signature is its declaration's, whose inputs give its arity (C8; retention numbers them).
+                if (body.Consts[call.Callee.Arg].Type is not { Components: [var inputs, _] } || inputs.Components.Count != call.Count)
+                {
+                    this.Report(MirViolation.Arity);
+                }
+
+                return;
             }
 
             var count = 0;

@@ -392,11 +392,6 @@ internal sealed partial class MirBorrows
             {
                 var input = MirCallee.Position(callee.Symbol, row.Input);
                 var output = row.Output == Retention.Result ? -1 : MirCallee.Position(callee.Symbol, row.Output);
-                if (input >= call.Count || output >= call.Count)
-                {
-                    continue;
-                }
-
                 var (value, own) = this.Retained(state, call.Start + input, input, row.Kind);
                 if (output < 0)
                 {

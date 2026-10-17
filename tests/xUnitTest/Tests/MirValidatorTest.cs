@@ -138,10 +138,10 @@ public sealed class MirValidatorTest
     // pointer's displacement, a comparison's operands below their layers, a Cast, a Ref, an object upcast and a branch's operand that their
     // kind does not admit; an Adapt whose operand is no by-value acquisition, whose source token is not its operand's Type, that a case
     // view selects no operation for (i32 to f64), or whose object borrow there takes a Place other than the payload, and one whose Op is no
-    // shorthand flag, of an unknown kind; a Value callee whose signature is no TypeToken constant (C8). A local an Opaque value
-    // defines has an unknown Type (the replaced syntax may have none), which any use admits; the same use of a local a Unit constant
-    // defines is a finding. So is the Never value's at every operand position (a Use, an operator, an aggregate; SPEC 3.8, DECISIONS
-    // R4-M62), but a ref/Never is no ref/i32.
+    // shorthand flag, of an unknown kind; a Value callee whose signature is no TypeToken constant (C8), and a Closure callee given more
+    // arguments than its declared signature has inputs. A local an Opaque value defines has an unknown Type (the replaced syntax may have
+    // none), which any use admits; the same use of a local a Unit constant defines is a finding. So is the Never value's at every operand
+    // position (a Use, an operator, an aggregate; SPEC 3.8, DECISIONS R4-M62), but a ref/Never is no ref/i32.
     [Theory]
     [InlineData("assign", "Type")]
     [InlineData("component", "Type")]
@@ -151,6 +151,7 @@ public sealed class MirValidatorTest
     [InlineData("template", "Type")]
     [InlineData("value", "Type")]
     [InlineData("signature", "Callee")]
+    [InlineData("arity", "Arity")]
     [InlineData("return", "Type")]
     [InlineData("operands", "Operation")]
     [InlineData("shift", "Operation")]
@@ -339,8 +340,12 @@ public sealed class MirValidatorTest
         var (first, second) = broken == "argument" ? (flag, flag) : (a, flag);
         body.Terminate(blocks[1], MirTerminator.Call(new(MirCalleeKind.Fn, Function("h")), Operands(MirOperand.Copy(first), MirOperand.Copy(second)), 2, broken == "result" ? a : flag, blocks[2], Where(broken == "argument" ? "argument" : "result")));
         var signature = broken == "signature" ? one.Arg : Token(body.TypeOf(callable)!).Arg;
-        var value = MirTerminator.Call(new(MirCalleeKind.Value, Arg: signature), Operands(MirOperand.Copy(broken == "value" ? flag : a)), 1, flag, blocks[3], Where(broken == "signature" ? "signature" : "value"));
-        body.Terminate(blocks[2], value with { Operand = MirOperand.Copy(callable) });
+        var (callee, arguments) = broken == "arity"
+            ? (Local(c.Types.Intern(BoundTypeKind.Closure, types.Function, SemanticsKind.Owner, [])), Operands(MirOperand.Copy(a), MirOperand.Copy(a)))
+            : (callable, Operands(MirOperand.Copy(broken == "value" ? flag : a)));
+        var at = Where(broken is "signature" or "arity" ? broken : "value");
+        var value = MirTerminator.Call(new(MirCalleeKind.Value, Arg: signature), arguments, broken == "arity" ? 2 : 1, flag, blocks[3], at);
+        body.Terminate(blocks[2], value with { Operand = MirOperand.Copy(callee) });
         body.Terminate(blocks[3], MirTerminator.Call(new(MirCalleeKind.Fn, Function("d"), Arg: 2), Operands(broken == "template" ? MirOperand.Copy(a) : MirOperand.Copy(view)), 1, flag, blocks[4], Where("template")));
         var (receiver, by) = (MirOperand.Copy(gauge), MirOperand.Copy(a));
         body.Terminate(blocks[4], MirTerminator.Call(new(MirCalleeKind.Fn, Function("scaled")), broken == "receiver" ? Operands(by, receiver) : Operands(receiver, by), 2, a, blocks[5], Where("receiver")));
