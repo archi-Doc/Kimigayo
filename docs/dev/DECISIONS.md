@@ -1330,7 +1330,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   pipeline (`let t = if c => (a, a) else => (a, (return 1))`). MIR construction builds no Aggregate for an aggregate literal whose
   Binding Type holds a Never element, a Never at a position the literal builds (a Tuple's component or an array's element, through
   those kinds only), and records a located `Unsupported_Kd` with an Opaque value in its place, as for G103-E9a's fill literal; such
-  a literal never completes at run time (an element diverges or reads a Never Place), so only check-only code loses its checks. A
+  a literal never completes at run time (an element diverges or reads a Never Place; an empty `[]` of element Type Never completes,
+  but the old path already reports it `Unsupported_Kd`), so only check-only code loses its checks. A
   Never elsewhere in the Type is a declared Type, and the literal is built: a Function's result (`(a, h)` with `h: () -> Never`), a
   Type argument (`Option<Never>`). Removal condition: PLAN G129's Binding unit (a literal fitted to its position's Type once that
   is decided; `FitsTypeCore` no longer fits a Never component; Never's Copy proof). Rejected: fixing Binding before the merge
