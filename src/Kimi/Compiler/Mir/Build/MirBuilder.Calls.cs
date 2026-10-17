@@ -36,12 +36,14 @@ internal sealed partial class MirBuilder
 
     // SPEC 7.3, 7.7.3: a call of the function, requirement, virtual slot or callable value Binding selected: a value call's callee in its
     // receiver mode, the receiver, then the arguments in their order (an assignment's secured value first, SPEC 13.7.1), each as its Adjust
-    // takes it for its parameter's Type or as the value an expansion evaluated for it (given), then its omitted defaults (Defaults), passed by
-    // parameter slot, the receiver first. A compiler function is its intrinsic where the table gives one (IntrinsicDisposition), with
+    // takes it for its parameter's Type or as the value an expansion evaluated for it (given), each read where it is evaluated (SPEC 12.2:
+    // secured before a later argument that builds code, or in its pending slot), then its omitted defaults (Defaults), passed by parameter
+    // slot, the receiver first. A compiler function is its intrinsic where the table gives one (IntrinsicDisposition), with
     // the operands it takes beyond the written arguments (Extra), and a direct base call the implementation the virtual selection names. A
     // call of a Never function or a diverging intrinsic has no runtime successor and continues for the checks (SPEC 14.10); a call whose
     // operand does not complete enters no callee at run time (SPEC 15.6.7), but for the checks it continues where that operand's code
-    // continues, its later operands, defaults and activation checked there (SPEC 14.10.3).
+    // continues, its later operands, defaults and activation checked there (SPEC 14.10.3), each operand as built: a Never form's
+    // is the Never value (DECISIONS R4-M62).
     private void Call(MirPlace destination, CallPlan call, Koto node, Koto? first, Koto? given = null, in MirOperand value = default)
     {
         var function = call.Kind == CalleeKind.Value ? null : call.Target;
@@ -58,10 +60,21 @@ internal sealed partial class MirBuilder
         var source = call.ReceiverOperation.Source ?? call.CalleeValue;
         var pending = this.arguments.Count;
         var subst = compilation.Types.SubstOf(call);
+        var last = -2; // SPEC 12.2: the last argument that builds code, in evaluation order: the receiver -2, first -1, the others in order.
+        for (var i = 0; i < call.ArgumentOperations.Length; i++)
+        {
+            var argument = call.ArgumentOperations[i].Source!;
+            if (!ReferenceEquals(argument, given) && Builds(argument))
+            {
+                last = ReferenceEquals(argument, first) ? Math.Max(last, -1) : i;
+            }
+        }
+
         if (function is null)
         {
             // The callee value, pending while the arguments are evaluated.
-            this.arguments.Add(this.Reached(this.Operand(source, call.ReceiverOperation.AdaptedType, input: true), source));
+            var operand = this.Operand(source, call.ReceiverOperation.AdaptedType, input: true);
+            this.arguments.Add(last > -2 ? this.Secure(operand, source) : operand);
         }
 
         var start = this.arguments.Count;
@@ -82,13 +95,15 @@ internal sealed partial class MirBuilder
                 ReferenceEquals(direct, function) ? call.ReceiverOperation.AdaptedType ?? parameter : parameter,
                 input: true,
                 slot);
-            this.arguments[start] = slot is { } place ? this.Pending(place, operand, receiver) : this.Reached(operand, receiver);
+            operand = slot is null && last > -2 ? this.Secure(operand, receiver) : operand;
+            this.arguments[start] = slot is { } place ? this.Pending(place, operand, receiver) : operand;
         }
 
         for (var pass = first is null ? 1 : 0; pass < 2; pass++)
         {
-            foreach (ref readonly var argument in call.ArgumentOperations)
+            for (var i = 0; i < call.ArgumentOperations.Length; i++)
             {
+                ref readonly var argument = ref call.ArgumentOperations[i];
                 if (ReferenceEquals(argument.Source, first) == (pass == 0))
                 {
                     var slot = defaults ? this.Slot(argument.ParameterType, argument.Source!) : (MirPlace?)null;
@@ -97,10 +112,12 @@ internal sealed partial class MirBuilder
                         argument.AdaptedType ?? argument.ParameterType,
                         input: true,
                         slot);
+                    var order = pass == 0 ? -1 : i;
+                    operand = slot is null && order < last ? this.Secure(operand, argument.Source!) : operand;
                     this.arguments[start + MirCallee.Position(function, argument.ParameterIndex)] = slot is { } place ? this.Pending(
                         place,
                         operand,
-                        argument.Source!) : this.Reached(operand, argument.Source!);
+                        argument.Source!) : operand;
                 }
             }
         }
@@ -143,12 +160,6 @@ internal sealed partial class MirBuilder
         IntrinsicId.RawSlice => this.UnitOperand(),
         _ => null,
     };
-
-    // An operand as its call takes it without a pending slot (which has its parameter's Type): where its node does not complete no value
-    // reaches the call (SPEC 15.6.7), so it is of Type Never, which agrees with any parameter (MirValidator): its own where it has that
-    // Type, else an unwritten temp.
-    private MirOperand Reached(in MirOperand operand, Koto node)
-        => Completes(node) || ReferenceEquals(this.TypeOf(operand), BoundType.Never) ? operand : MirOperand.Move(this.Unwritten(node));
 
     // A Call terminator of a callee on the operands pushed since start, into the destination; one that diverges continues for the checks
     // only (SPEC 14.10).
@@ -194,11 +205,11 @@ internal sealed partial class MirBuilder
     private MirPlace Unwritten(Koto node) => new(this.body.AddLocal(new(BoundType.Never, MirLocalKind.Temp, this.Info(node, local: true))));
 
     // SPEC 13.6.4: a runtime Type test is the intrinsic typeTest of a shared view of the handle's payload and the target Type's token, and
-    // `is not` is its negation, the Not of its result (as a `!=` call's); an operand that does not complete tests nothing.
+    // `is not` is its negation, the Not of its result (as a `!=` call's); the Never value has no payload to view, so it tests nothing.
     private void TypeTest(MirPlace destination, IsKoto test)
     {
         var handle = HirTables.AdjustOf(test.Left).Acquire == HirAcquire.Temporary ? this.Value(test.Left) : this.Place(test.Left);
-        if (Completes(test.Left))
+        if (!this.IsNever(handle))
         {
             var start = this.arguments.Count;
             this.arguments.Add(this.Borrow(SemanticsKind.ObjRef, this.body.Project(handle, MirProjectionKind.Deref, 0), test));

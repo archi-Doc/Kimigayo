@@ -82,7 +82,7 @@ internal sealed partial class MirBuilder
             {
                 var reference = this.Temp(type, source, MirLocalRole.GuardCandidate, candidate.Name);
                 this.Register(Cleanup.EndBorrow, reference.Root, null, temporaries);
-                this.Make(reference, this.Ref(this.selected[start + i], type, input: false), source);
+                this.Set(reference, this.Ref(this.selected[start + i], type, input: false), source);
                 this.locals[candidate] = reference.Root;
             }
         }

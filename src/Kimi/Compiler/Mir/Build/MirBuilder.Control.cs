@@ -172,7 +172,8 @@ internal sealed partial class MirBuilder
         this.current = next;
     }
 
-    // SPEC 16.2.2: a result secured before its transfer branches: a constant or a temp as it is, else acquired into a temp.
+    // SPEC 16.2.2, 12.2: a value secured where it is evaluated, a transfer's result before it branches and an operand before a later
+    // operand of its operation builds code (Builds): a constant or a temp as it is, else acquired into a temp.
     private MirOperand Secure(in MirOperand value, Koto node)
     {
         if (value.Kind == MirOperandKind.Const || (value.Kind == MirOperandKind.Move && this.IsTemp(value.Place)))
@@ -189,8 +190,9 @@ internal sealed partial class MirBuilder
 
     // SPEC 17.6: a verification's condition secured as a bool and observed at its site (testObserve of the bool and the site's location,
     // which TestCatalog numbers, giving the failure's issue) before its temporaries are cleaned up; on false its message, evaluated and
-    // recorded for the issue (testMessage of a shared view) with its own temporaries cleaned up, then for $require the case's Abort
-    // (testRequireAbort), which has no successor; $expect continues with Unit either way. Its test phases are the backend's (plan 5.6.7).
+    // recorded for the issue (testMessage of a shared view; the Never value has nothing to view) with its own temporaries cleaned up, then
+    // for $require the case's Abort (testRequireAbort), which has no successor; $expect continues with Unit either way. Its test phases
+    // are the backend's (plan 5.6.7).
     private void Verification(MirPlace destination, TestVerificationKoto verification)
     {
         var failed = this.body.AddBlock();
@@ -206,7 +208,7 @@ internal sealed partial class MirBuilder
             var text = this.Temp(message);
             var start = this.arguments.Count;
             this.Assign(text, message);
-            if (Completes(message))
+            if (!this.IsNever(text))
             {
                 this.arguments.Add(MirOperand.Copy(issue));
                 this.arguments.Add(this.Borrow(SemanticsKind.Ref, text, message));
@@ -241,12 +243,9 @@ internal sealed partial class MirBuilder
         var temporaries = this.OpenScope(block: false);
         var mark = this.arguments.Count;
         this.Assign(test, condition);
-        if (Completes(condition))
-        {
-            this.arguments.Add(MirOperand.Copy(test));
-            this.arguments.Add(site);
-            this.Invoke(issue, MirCallee.Intrinsic(IntrinsicId.TestObserve), this.arguments.Count - 2, condition);
-        }
+        this.arguments.Add(MirOperand.Copy(test));
+        this.arguments.Add(site);
+        this.Invoke(issue, MirCallee.Intrinsic(IntrinsicId.TestObserve), this.arguments.Count - 2, condition);
 
         this.arguments.RemoveRange(mark, this.arguments.Count - mark);
         this.CloseScope(temporaries);

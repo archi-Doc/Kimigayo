@@ -179,16 +179,20 @@ fn divergingArgument @79
   _0: i32 return @79
   _1: i32 arg n @79
   _2: i32 temp @84 s1
-  _3: Never temp @87 s1
+  _3: i32 temp @86 s1
+  _4: Never temp @87 s1
   s1: lexical in s0 @82
   bb0:
       StorageLive(_2) @84 s1
-      StorageLive(_3) @87 s1
-    * _3 = stop() -> ! check bb1 @87 s1
+      StorageLive(_3) @86 s1
+    * _3 = copy _1 @86 s1
+      StorageLive(_4) @87 s1
+      _4 = stop() -> ! check bb1 @87 s1
   bb1:
-      _2 = take(copy _1, move _3) -> bb2 @84 s1
+      _2 = take(move _3, move _4) -> bb2 @84 s1
   bb2:
-      StorageDead(_3) @87 s1
+      StorageDead(_4) @87 s1
+      StorageDead(_3) @86 s1
       StorageDead(_2) @84 s1
       unreachable @82
 fn divergingCondition @89

@@ -101,6 +101,20 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         _ => Limit,
     };
 
+    // Whether a direct child row of a verdict row, between it and the row after its subtree, covers its part of an argument.
+    private static bool Covers(ReadOnlySpan<MirDropRow> rows, int row, int next, int part)
+    {
+        for (var i = row + 1; i < next; i++)
+        {
+            if (rows[i].Depth == rows[row].Depth + 1 && rows[i].Step != MirProjectionKind.Base && rows[i].Arg == part)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // A local access to a mutable static Field: its key, numbered by Field once per program version.
     private void AddKey(BindingSymbol field, bool write)
     {
@@ -230,7 +244,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     }
 
     // A verdict row and its subtree: Elide destroys nothing, Keep and Flag the node's Type, Open no own layer (one that declares a drop is
-    // A2's MovedPlace_Kd) but each child row and each part without one, which follows the own bit. Returns the row after the subtree.
+    // A2's MovedPlace_Kd) but each child row and each part without one, which follows the own bit; a part is covered by a direct child row
+    // of its argument (a mask below 64 parts, past them the rows themselves). Returns the row after the subtree.
     private int Destroyed(ReadOnlySpan<MirDropRow> rows, int row, MirBody body, BoundType? type)
     {
         var node = rows[row];
@@ -244,7 +259,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         while (next < rows.Length && rows[next].Depth > node.Depth)
         {
             var child = rows[next];
-            covered |= child.Step == MirProjectionKind.Base ? 0UL : 1UL << Math.Min(child.Arg, 63);
+            covered |= child.Step == MirProjectionKind.Base || child.Arg > 63 ? 0UL : 1UL << child.Arg;
             based |= child.Step == MirProjectionKind.Base;
             next = this.Destroyed(rows, next, body, body.ProjectedType(type, child.Step, child.Arg));
         }
@@ -265,7 +280,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         };
         for (var i = 0; i < count; i++)
         {
-            if (i > 63 || (covered & (1UL << i)) == 0)
+            if (i > 63 ? !Covers(rows, row, next, i) : (covered & (1UL << i)) == 0)
             {
                 this.Item(body.ProjectedType(type, kind, i), Drop);
                 if (kind == MirProjectionKind.ConstIndex)

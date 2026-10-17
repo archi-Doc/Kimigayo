@@ -454,6 +454,42 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
         Assert.Equal(["Unsupported_Kd Self is Sink 1"], Problems(Sink + Loud + Nest + Witness + "        _ = Nest<i32>.init(value: 1)\n        return .Ok(())\n"));
     }
 
+    // SPEC 16.3, 15.3.5 (DECISIONS R4-M58): the destruction walk enters each Type once per query, so a recursive Type that repeats through
+    // an Array ends where it repeats: a confined witness destroying one has no limit (before, the walk reached its bound).
+    [Fact]
+    public void ARepeatingRecursiveDestructionEndsWhereItRepeats()
+    {
+        const string Tree = "struct Tree\n    var children: Array<Tree>\n    public init()\n        self.children = []\n";
+        Assert.Empty(Problems(Sink + Loud + Tree + Witness + "        _ = Tree.init()\n        return .Ok(())\n"));
+    }
+
+    // SPEC 16.3, 8.11.2 (R4-M22): an Open Drop destroys each part its own bit covers, which no child row covers: a struct whose part 64
+    // is partly moved still destroys its part 63, whose destructor writes a mutable static, so a confined witness fails.
+    [Fact]
+    public void AnOpenDropDestroysEveryUncoveredPart()
+    {
+        var wide = new StringBuilder("group Metrics\n    public var n: i32 = 0\nstruct Counted\n    public var k: i32 = 0\n    drop => Metrics.n += 1\nstruct Wide\n");
+        for (var i = 0; i < 63; i++)
+        {
+            wide.Append(System.Globalization.CultureInfo.InvariantCulture, $"    public var x{i}: i32 = 0\n");
+        }
+
+        wide.Append("    public var x63: Counted = Counted.init()\n    public var x64: (string, i32) = (\"a\", 1)\n    public init() => ()\n");
+        Assert.Equal([Failed], Problems(Sink + Loud + wide + Witness + "        var w = Wide.init()\n        let s = w.x64.0@move\n        return .Ok(())\n"));
+    }
+
+    // SPEC 15.3.5, 8.15 (DECISIONS R4-M58): a chain that grows through a destructor's composed atom, D's T as G<(U, U)>, terminates:
+    // Binding's storage instantiation bounds the growing instance (TyCtxt.Apply gives none), so the first composition is a limit, the
+    // located Unsupported_Kd where it owes confined.
+    [Fact]
+    public void AChainGrowingThroughADestructorIsALimit()
+    {
+        const string Chain = "struct D<T>\n    var value: T\n    drop => ()\nstruct G<U>\n    var next: Option<rc/D<G<(U, U)>>>\n    public init()\n" +
+            "        self.next = .None\n";
+        Assert.Empty(Problems(Chain + "func release(g: G<i32>) => ()\n"));
+        Assert.Equal(["Unsupported_Kd Self is Sink 1"], Problems(Sink + Loud + Chain + Witness + "        _ = G<i32>.init()\n        return .Ok(())\n"));
+    }
+
     // V16 (plan "New V-checks"): A4 is linear: an N-deep call chain whose last member prints and an N-member ring of mutual calls (one
     // member prints), each with one problem, grow the evaluations and the cold allocation of a fresh A4 over the program (the library
     // included) linearly; a warm re-analysis of the same program allocates nothing. N is 256/512/1024 so that the program's own bodies,

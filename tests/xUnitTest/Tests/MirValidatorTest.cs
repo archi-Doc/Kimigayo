@@ -140,7 +140,8 @@ public sealed class MirValidatorTest
     // view selects no operation for (i32 to f64), or whose object borrow there takes a Place other than the payload, and one whose Op is no
     // shorthand flag, of an unknown kind; a Value callee whose signature is no TypeToken constant (C8). A local an Opaque value
     // defines has an unknown Type (the replaced syntax may have none), which any use admits; the same use of a local a Unit constant
-    // defines is a finding.
+    // defines is a finding. So is the Never value's at every operand position (a Use, an operator, an aggregate; SPEC 3.8, DECISIONS
+    // R4-M62), but a ref/Never is no ref/i32.
     [Theory]
     [InlineData("assign", "Type")]
     [InlineData("component", "Type")]
@@ -160,6 +161,7 @@ public sealed class MirValidatorTest
     [InlineData("upcast", "Operation")]
     [InlineData("switch", "Operation")]
     [InlineData("opaque", "Type")]
+    [InlineData("never", "Type")]
     [InlineData("acquisition", "Operation")]
     [InlineData("token", "Type")]
     [InlineData("adapt", "Operation")]
@@ -311,6 +313,11 @@ public sealed class MirValidatorTest
         Assign(exclusive, MirRvalue.Ref(MirRefKind.Uniq, a, body.TypeOf(exclusive)!));
         Assign(pointer, MirRvalue.Ref(MirRefKind.Raw, a, body.TypeOf(pointer)!));
         Assign(pair, MirRvalue.Aggregate(MirAggregateKind.Tuple, Operands(one, broken == "component" ? one : yes), 2, tuple), "component");
+        var (never, nowhere) = (Local(BoundType.Never), Local(c.Types.Reference(SemanticsKind.Ref, BoundType.Never)));
+        Assign(a, MirRvalue.Use(Operands(MirOperand.Move(never))));
+        Assign(a, MirRvalue.Binary(MirBinaryOp.Add, Operands(MirOperand.Move(never), one), false));
+        Assign(pair, MirRvalue.Aggregate(MirAggregateKind.Tuple, Operands(MirOperand.Move(never), yes), 2, tuple));
+        Assign(view, MirRvalue.Use(Operands(MirOperand.Copy(broken == "never" ? nowhere : view))), "never");
         Assign(point, MirRvalue.Aggregate(MirAggregateKind.Adt, Operands(MirOperand.Move(parent), one, yes), 3, types.Point));
         Assign(shape, MirRvalue.Aggregate(MirAggregateKind.Adt, Operands(one, one), 2, types.Shape, 1));
         Assign(array, MirRvalue.Aggregate(MirAggregateKind.FixedArray, Operands(one, one, one), 3, types.Array));

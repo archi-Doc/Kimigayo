@@ -996,12 +996,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
   (`TyCtxt.Copy`, `Sealed`). Each walks a Type, or for Observes a payload below its handle, once per query through the caller's set: a
   repeating recursive Type ends exactly, a growing one (SPEC 15.3.5) at the bound of 32, where HoldsLoans answers yes and Observes sets
   deep, the caller's located `Unsupported_Kd` as A4's Limit is. The Destruction walk cuts no cycle through a sequence, so a recursive
-  Type holding itself in an Array is deep (PLAN G91). Rejected: `CarriesOriginOrSlot` as the test (builder-made references carry no
+  Type holding itself in an Array is deep (PLAN G91; superseded by R4-M58). Rejected: `CarriesOriginOrSlot` as the test (builder-made references carry no
   Origin); a depth bound alone, as HoldsRaw has (a repeating recursive Origin-free Type would become a holder and keep the Loans read
   into it live); one fact for both (two readers, two rules). Not temporary.
 - **R4-M37** (2026-10-17; design A3 §4.1 G5, G6, the writeback and the guard row, owner approval of its §9 item 8 on 2026-10-17;
-  G5's path clause and G6's value rule superseded by R4-M52; its `EndBorrow` meaning for guards replaced by A3 §12 E7, recorded
-  with unit 1b-4) The
+  G5's path clause and G6's value rule superseded by R4-M52 (implemented as R4-M54 and R4-M62); its `EndBorrow` meaning for guards
+  replaced by A3 §12 E7, recorded with unit 1b-4) The
   MIR builder contracts A5's reservations and guard-local Origins read. G5: every exclusive borrow on an invocation's preparation path
   is `TwoPhaseUniq` (SPEC 15.6.7): a written `@uniq`, also in parentheses or on the Place path of a receiver or an argument down to a
   value (`h@follow@uniq.c.bump(1)`; a call result or a getter activates at its own call), the Reborrow of a stored exclusive reference
@@ -1256,6 +1256,113 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Error keeps evaluated children); a `HirOp` member (40 of 40); a Binding failure written at publish (publishing decides nothing,
   `PublishIsInvisible`); non-nullable fact types now (R7's CallPlan and declaration-table scope). Lasting: `HasFacts` and
   `HirTables.Broken` are the publication contract; at R7 the publisher walk goes and Binding's inline Op writes call `HasFacts`.
+- **R4-M54** (2026-10-17; PLAN G92, implementing R4-M52's fold (owner) on the planning session's instruction of the same day)
+  On the preparation path of an input that starts a reservation (`MirBuilder.Place` with `input`: `Operand` keeps it only for an
+  input the call takes as an exclusive reference, by its expected Type, or without one, a value call's callee, by the reference it is
+  or its acquisition forms), a written exclusive borrow whose value the path follows (PlaceShape `Value`, `Layers > 0`; also in
+  groups, `Lending`) is not formed: the path goes on from the Place the borrow lends (`Lent`, the Place half of `Ref`: the follow to
+  its referent and its base view), followed by `Layers - 1`. Each such input then has one reservation, at its lending point:
+  `holder@uniq.items.append(x)`, `(holder@uniq).items.append(x)`, `holder.items@uniq.append(x)` and `holder.items.append(x)` build
+  the same MIR (SPEC 15.6.7: the same call). A written borrow that is the input itself (`take(p@uniq)`, `h.c@uniq.bump(1)`) stays
+  its reservation. On the path of an input that starts none (a shared or a copied one: `inspect(holder@uniq.items)`) and off input
+  paths (a `let`, an operator's operand, an update's target, `tasks@uniq.length`) a written `@uniq` is a live `Uniq` borrow (SPEC
+  7.3.3: it lends its operand exclusively, then the path reads it; R4-M52's "on a shared input's path too" was corrected by the
+  planning session). A pair-layer input, exclusive only by case, starts none here. Supersedes R4-M37 G5's "or on the Place path of a
+  receiver or an argument down to a value"
+  and its Open note on a parent reservation's mode: no reservation is formed through another reservation's holder, so A3's mode
+  rule stands. Rejected: an A5 reservation chain (R4-M52); a parent link on the Ref (an O1 vocabulary entry for a fact the Place
+  shows). Not temporary.
+- **R4-M55** (2026-10-17; PLAN G123, the planning session's design A3 E10, implemented on its instruction of the same day) An
+  operand is read where it is evaluated (SPEC 12.2): a Place operand (Copied, Moved or acquired by case) of an operation is
+  secured into a temp where it is evaluated (`Secure`, as a transfer's result is) when a later operand of the same operation builds
+  code. `MirBuilder.Builds` decides that from the HIR: every operand builds code except a literal's constant and a Place read as it
+  is (Copied, Moved or through its referent) whose path from a local is stored Fields, Derefs and constant positions. The rule
+  covers a call's callee value, receiver and arguments in evaluation order (a pending slot already secures its operand), a Tuple,
+  fixed-array or enum construction's operands, a built-in binary operator's left operand, an Array literal's elements, and the
+  receiver of a built-in selection whose value the selection reads, a Slice handle or a raw pointer (`Handle`), before an index or
+  boundary that builds code. So `f(x, do => x = 5)`, `(x, do => x = 5)`, `x + reset(x@uniq)`, `[x, reset(x@uniq)]`,
+  `v[touch(v@uniq)]` and a pair-layer argument before a call read their Place where it is evaluated. Amends R4-M40: a Slice
+  receiver's handle is copied first only where a boundary builds code, else read in place, and its backing is the handle's
+  value (a Copy), never a borrow. A pair-layer argument that later code follows is acquired where it is evaluated, not at its Call
+  (R4-M37's Open); whether its exclusive case is a reservation there is A5's reading of the acquisition (step 1b). A written
+  `@move` already moved into its temp where evaluated. Rejected: every Place operand through a temp (more MIR for no change of
+  what is read); a predicate on the forms that may write (an open family); securing the pending operands at a later operand's
+  first statement (hidden builder state). Not temporary.
+- **R4-M56** (2026-10-17; PLAN G94, the planning session's design A3 E10 with its option 2 on review N8, implemented on its
+  instruction of the same day; amends R4-M40's backing placement and closes its Open) SPEC 4.7.4: a built-in selection locates and
+  checks its receiver once, before the index. A receiver whose value the selection reads, a Slice handle or a raw pointer
+  (`MirTypes.SelectsByValue`, the one fact the builder and A1 share), is G123's (R4-M55). Other receivers are storage, which the
+  selection lends shared where it locates it: an element selection's guard, `Borrow(Ref)` of the receiver into a temp with the
+  selection's SourceInfo, ended by `EndBorrow` once the index, key resolution or `^x` is evaluated and before the element's own
+  access (read, write, borrow, reservation, writeback) is formed; a range selection's `RawSlice` backing, now formed before its
+  boundaries. Contract (builder to A1, no vocabulary entry): every runtime `Index` the builder forms on storage has its guard (or
+  backing) where its receiver is located, always, so the rule is uniform; a default template's copy keeps its guards; the Index's
+  position local is located at the selection too. A1 checks the receiver's initialization and Moves at the guard and again at each
+  access through a runtime `Index` of storage, both under the selection's subject (the access's from its position local), so
+  R4-M3a's one problem per code and subject makes an access into an uninitialized or moved array one problem, at the selection,
+  whatever consumes the element (before, at the consumer), and a receiver Moved while its own index is evaluated is still
+  `MovedPlace_Kd` at the selection (SPEC 23.1), independent of the Move's conflict with the guard (A5, step 1b). The receiver of a
+  built-in index is no reservation; an index update reserves the element after the index. ConstIndex evaluates nothing and has no
+  guard. A transfer inside the index leaves the guard dead on its runtime edge, so no runtime `EndBorrow` is needed. Rejected: a
+  consumer subject passed down `Place` and `Operand` (option 1: partial, over the parameter limits); duplicate problems (option 3);
+  skipping the access's check (first implemented: it lost the Moved read after a Move inside the index); a guard only where the
+  index builds code (a gate; MIR cost measured instead). Not temporary.
+- **R4-M58** (2026-10-17; PLAN G91, the planning session's design A3 E10 in design A's form, with the A1–A4 audit's finding 3,
+  implemented on its instruction of the same day; supersedes R4-M36's "The Destruction walk cuts no cycle through a sequence") The
+  Destruction walk enters each Type once per query, by interned identity: `IMirDestruction.First(type)` at the walk's entry for every
+  Type, the visitor's set (`AnyPart` and `Observer`: the caller's `seen`, A4's `Glue`: the evaluation's `glued`). A Type met again was
+  walked already, so a repeating recursive Type ends where it repeats, through a sequence (`Tree` with `Array<Tree>`) or a handle
+  alike, and a Type several parts share is walked once: the walk is linear in the distinct Types it meets (nested pairs 25 deep,
+  2^25 leaves as a tree, meet 26). A growing Type is new at each level and still ends at the bound of 32 (`Nest` stays deep). The
+  visitors' own cuts go (Observer's payload set, A4's `glued` check in `Destroy`). `MayNeedDrop(type, seen)` takes the caller's
+  scratch (the builder's and A2's). `HoldsRaw(type, seen)` gets the same per-query cut as `HoldsLoans` (its caller
+  `MirBuilder.StaticRoot` passes the builder's scratch), so a repeating recursive Type is not raw-holding for its repeat. A chain
+  growing through a destructor's composed atom (`D<T>` destroying `T` as `G<(U, U)>`) terminates without A4 threading the walk's
+  depth: Binding's storage instantiation bounds the growing instance (`PrepareInstantiatedStorage`, depth 64), so `TyCtxt.Apply`
+  gives the composed atom no Type and A4 records Limit at the first composition. Rejected: an `Enter` on reported parts only
+  (design B: a struct of scalars reports nothing, so the DAG walk stays exponential); a cached fact per interned Type (state outside
+  the query, R7's); a nullable set parameter on `Destruction`. Not temporary.
+- **R4-M59** (2026-10-18; owner decision, option C, on the MIR lane's confirming review B2 — the second round on the family "a
+  Never element's Type in a literal", AGENTS) G92a builds every node on a check-only continuation (R4-M62) and relies on α
+  (R4-M52). A literal typed before its position's Type is decided (an `if` branch under SPEC 14.9.2's common Type; a Case payload
+  bound in `BindEnumConstruction`'s typed pass) keeps a Never component in its Binding Type, which `FitsTypeCore` lets fit another
+  Type against SPEC 3.8; built, it reached a position of another Type and the validator reported `InternalInvariant_Kd` on the mir
+  pipeline (`let t = if c => (a, a) else => (a, (return 1))`). MIR construction builds no Aggregate for an aggregate literal whose
+  Binding Type holds a Never element, a Never at a position the literal builds (a Tuple's component or an array's element, through
+  those kinds only), and records a located `Unsupported_Kd` with an Opaque value in its place, as for G103-E9a's fill literal; such
+  a literal never completes at run time (an element diverges or reads a Never Place; an empty `[]` of element Type Never completes,
+  but the old path already reports it `Unsupported_Kd`), so only check-only code loses its checks. A
+  Never elsewhere in the Type is a declared Type, and the literal is built: a Function's result (`(a, h)` with `h: () -> Never`), a
+  Type argument (`Option<Never>`). Removal condition: PLAN G129's Binding unit (a literal fitted to its position's Type once that
+  is decided; `FitsTypeCore` no longer fits a Never component; Never's Copy proof). Rejected: fixing Binding before the merge
+  (option A: the lane, the core lane and R5's W1 would wait, and it is best designed with G130's SPEC 10.5.1 unit); holding the
+  lane until G130 (B); the validator copying Binding's Never leniency (a second copy of a rule); the builder re-typing the aggregate
+  at its consumer (a consumer deciding a fact Binding publishes); a walk of every component with a test of the HIR completion
+  (the planning session: the published Type alone decides, through the positions a literal builds).
+- **R4-M62** (2026-10-17; PLAN G92, implementing R4-M52's G92a (owner) as `draft/Sketches/A5 Step 1/choice-1b.md` §2 and A3 E9
+  state it, with design review r1's B2 and r2's F3 and F4, on the planning session's instruction of the same day; amends R4-M37
+  G6) Assumed completion in MIR construction (SPEC 14.10.3, 3.8, 3.1.3). On a check-only continuation every node is built and
+  makes its own value and accesses as at run time. A node of Binding Type Never has no value: its temp, the Never value, is never
+  written, carries no Loan and fits any operand position: every acquisition takes it as it is (`Acquire`), so a comparison's
+  borrow of it forms no `ref/Never`. `MirBuilder.Set`, now the one assignment (`Make` merged into it), builds nothing that has no
+  value: an rvalue that has an input (an operand, or the Place a Ref, Len or Discriminant reads) whose every input is the Never
+  value, or a value assigned to the Never value (a `while` whose condition diverges completes with none), but for the Opaque value
+  standing for a rejected or unsupported node of Type Never. An increment's one is of the old value's Type, not of its target
+  node's, which is Never where the index diverges (`++a[(return 0)]`). `Overwrite` neither drops nor places when the value is
+  the Never value, and `Replace` secures a right side of Type Never into a Never temp, so `let x: i32 = stop()`, `x = stop()` and
+  `b = stop(); consume(b@move)` stay as before (x unwritten, b neither dropped nor overwritten). A Call is built with its Never
+  operands (`Reached` goes), except where a part would borrow the Never value, which has nothing to borrow: a runtime Type test's
+  handle, a verification's message and `$tryWrite`'s writer. The non-completion gates go: Set's, a range selection's bounds check
+  and `RawSlice`, a `^x` boundary's check, an Array literal's appends, `testObserve`, a formatted write's result test and
+  `FormatFinish`. Edge structure stays the HIR Completion's: Transfer, Branch, Join, Loop, a body's end, a recursive default's
+  call, an Opaque site and a block's Unit. The validator reads the Never value's Type as unknown at every operand position (Use,
+  operators, Casts, aggregate components, call arguments, a Value callee), replacing R4-M37's call-argument exception; a
+  `ref/Never` operand is still a finding. Binding's alpha (a Never element of a literal takes its expected Type) landed first. So
+  a continued call's result reaches its consumer (`both(keep(p@uniq, (return 1)), p@uniq)`), an update whose right side
+  diverges writes through its reservation, and a construction around a Never form keeps its operands' Moves and Loans; A4 counts
+  the effects of the statements this builds (R4-M6a). Rejected: keeping `Reached` with a located `Unsupported_Kd` (owner); an
+  A5-side rule over operands the MIR does not build; a diverging Call writing its destination on its check edge (SPEC 14.10.3
+  leaves it open). Not temporary.
 - **R4-M64** (owner, 2026-10-17, O3, choosing the recommended option 「書き換え＋記録」) Milestone 27 line 100,
   `references.sliceUniq().slice().toArray()` followed by `references = [copied]`, is an error by SPEC 15.6 and 15.6.4 as
   integrated at `4372b058` (S1, design A3's loss P4): the temporary UniqSlice's holder carries its own exclusive Loan on

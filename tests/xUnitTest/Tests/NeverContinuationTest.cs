@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -24,6 +26,20 @@ public class NeverContinuationTest
         // SPEC 3.1.3, 13.3.1, 13.4: Never fits the other operand's Type; it imposes no expected Never on that operand.
         var c = MinimalEmissionTest.Analyze(Stop + "let wide: i64 = 2\nlet n: " + type + " = " + expression);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+    }
+
+    // SPEC 3.8: a Never element of a Tuple literal fits its expected element Type, which the literal's Type takes, so the literal fits its
+    // expected Type, also as an enum Case's payload.
+    [Theory]
+    [InlineData("func pair(x: (i32, i32)) => ()\nfunc f() -> i32\n    pair((1, (return 1)))\n    return 0\n")]
+    [InlineData("func opt(x: Option<(i32, i32)>) => ()\nfunc f() -> i32\n    opt(.Some((1, (return 1))))\n    return 0\n")]
+    [InlineData("func f() -> i32\n    let t: (i32, i32) = (1, (return 1))\n    return 0\n")]
+    [InlineData("func f() -> i32\n    let o: Option<(i32, i32)> = .Some((1, (return 1)))\n    return 0\n")]
+    public void ANeverElementTakesItsExpectedType(string source)
+    {
+        var c = MirBuildTest.Compile(source);
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal("(i32, i32)", TyCtxt.Name((BoundType)HirTables.Meaning(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<TupleLiteralKoto>().Single())!));
     }
 
     [Fact]

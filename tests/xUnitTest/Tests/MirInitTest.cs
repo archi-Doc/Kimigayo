@@ -140,12 +140,36 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Equal(2, moves.Paths.ToArray().Count(x => x.Local == array));
     }
 
+    // SPEC 4.7.4 (DECISIONS R4-M56): a selection's receiver is checked once, where it is located: at its guard, the selection, so an
+    // access through a runtime index into an uninitialized array is one problem whatever consumes the element.
+    [Theory]
+    [InlineData("values[i] = 9")]
+    [InlineData("use(values[i])")]
+    [InlineData("see(values[i]@ref)")]
+    [InlineData("values[i] += 1")]
+    [InlineData("let x = values[i]")]
+    public void ASelectionChecksItsReceiverOnce(string statement)
+    {
+        var source = $"func use(n: i32) => ()\nfunc see(v: ref/i32) => ()\nfunc f(i: isize)\n    var values: [3 of i32]\n    {statement}\n";
+        Assert.Equal(["UninitializedPlace_Kd values[i] 1"], Problems(source));
+    }
+
+    // SPEC 4.7.4, 15.1, 23.1 (DECISIONS R4-M56): the access through the index checks the receiver again under the selection's subject, so a
+    // receiver Moved while its own index is evaluated is MovedPlace at the selection, independent of the Move's conflict with the guard (A5).
+    [Fact]
+    public void AReceiverMovedInItsIndexIsMovedAtTheSelection()
+    {
+        const string Source = "func take(a: (string, [1 of i32])) => ()\nfunc f() -> i32\n    let a: (string, [1 of i32]) = (\"a\", [1])\n" +
+            "    let n = a.1[(label work: do\n        take(a@move)\n        exit to work 0\n    )]\n    return n\n";
+        Assert.Equal(["MovedPlace_Kd a.1[( 1"], Problems(Source));
+    }
+
     // SPEC 14.10.3: code only the checks reach is checked with the state after the transfer's operand, which is never merged into a runtime
     // path: a value consumed before a return out of a do is usable after the do (plan Appendix B C1), a default that does not complete
     // delivers nothing at its template's Return, an index whose value only the checks reach leaves its compiler temporary unwritten (not a
-    // Place of the program), a value moved before a return is MovedPlace after it, and a value whose initializer diverged is
-    // UninitializedPlace where only the checks read it (plan Appendix B C3); a call whose argument diverged moves its other arguments
-    // for the checks (SPEC 14.10.3).
+    // Place of the program), a value moved before a return is MovedPlace after it, and a value whose initializer or assignment diverged is
+    // UninitializedPlace where only the checks read it (plan Appendix B C3): the Never value is not placed, nor is the old value dropped
+    // (DECISIONS R4-M62); a call whose argument diverged moves its other arguments for the checks (SPEC 14.10.3).
     [Fact]
     public void CheckOnlyCodeKeepsItsOwnState()
     {
@@ -153,12 +177,13 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Empty(Problems(Box + "func consumedThenReturned(flag: bool, box: Box) -> i32\n    do\n        if flag\n            consume(box@move)\n" +
             "            return 1\n        return 2\n    consume(box@move)\n    return 3\nfunc peek(flag: bool, value: i32 = stop()) -> i32 => value\n" +
             "func caller() -> i32 => peek(true)\nfunc index()\n    var a: (string, [1 of i32]) = (\"held\", [0])\n    a.1[label work: do\n" +
-            "        defer => loop => ()\n        exit to work 0\n    ] = 42\n"));
+            "        defer => loop => ()\n        exit to work 0\n    ] = 42\nfunc replaced(box: Box) -> i32\n    var b = box@move\n    b = stop()\n" +
+            "    consume(b@move)\n    return 1\n"));
         Assert.Equal(
-            ["MovedPlace_Kd box 1", "UninitializedPlace_Kd x 1", "MovedPlace_Kd box 1"],
+            ["MovedPlace_Kd box 1", "UninitializedPlace_Kd x 1", "UninitializedPlace_Kd y 1", "MovedPlace_Kd box 1"],
             Problems(Box + "func afterReturn(box: Box) -> i32\n    consume(box@move)\n    return 1\n    consume(box@move)\n    return 2\n" +
-                "func diverged() -> i32\n    let x: i32 = stop()\n    return x\nfunc take(box: Box, n: i32) => ()\n" +
-                "func continued(box: Box) -> i32\n    take(box@move, (return 1))\n    consume(box@move)\n    return 2\n"));
+                "func diverged() -> i32\n    let x: i32 = stop()\n    return x\nfunc assigned() -> i32\n    var y: i32\n    y = stop()\n    return y\n" +
+                "func take(box: Box, n: i32) => ()\nfunc continued(box: Box) -> i32\n    take(box@move, (return 1))\n    consume(box@move)\n    return 2\n"));
     }
 
     // Plan 5.6.1, SPEC 13.5.5: a PairLayer is the Place itself in the owner case and a Deref in a reference case, so writing through an

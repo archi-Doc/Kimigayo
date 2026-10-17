@@ -73,7 +73,7 @@ internal sealed partial class MirBuilder
     {
         this.body.Push(this.current, MirStatement.Of(MirStatementKind.StorageLive, new(local), this.body.Locals[local].Source));
         this.Register(Cleanup.StorageDead, local, null, index);
-        if (MirTypes.MayNeedDrop(this.body.Locals[local].Type))
+        if (MirTypes.MayNeedDrop(this.body.Locals[local].Type, this.walked))
         {
             this.Register(Cleanup.Drop, local, null, index);
         }
@@ -157,13 +157,13 @@ internal sealed partial class MirBuilder
         var type = this.body.Locals[local].Type;
         for (var i = AdtDef.Count(type) - 1; i >= 0; i--)
         {
-            if (MirTypes.MayNeedDrop(AdtDef.FieldType(type, i)))
+            if (MirTypes.MayNeedDrop(AdtDef.FieldType(type, i), this.walked))
             {
                 this.DropAt(this.body.Project(new(local), MirProjectionKind.Field, i), source);
             }
         }
 
-        if (MirTypes.MayNeedDrop(AdtDef.Base(type)))
+        if (MirTypes.MayNeedDrop(AdtDef.Base(type), this.walked))
         {
             this.DropAt(this.body.Project(new(local), MirProjectionKind.Base, 1), source);
         }

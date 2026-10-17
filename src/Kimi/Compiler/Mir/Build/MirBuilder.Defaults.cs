@@ -242,7 +242,7 @@ internal sealed partial class MirBuilder
                 Operand = operand, Start = first, Place = place, Callee = callee,
             };
             // The copy keeps a Drop where its instance's Type may need one (MirTypes.MayNeedDrop, the rule every Drop is built by).
-            var kept = terminator.Kind != MirTerminatorKind.Drop || MirTypes.MayNeedDrop(this.body.TypeOf(place));
+            var kept = terminator.Kind != MirTerminatorKind.Drop || MirTypes.MayNeedDrop(this.body.TypeOf(place), this.walked);
             var continuation = copied;
             if (terminator.Kind == MirTerminatorKind.Return)
             {

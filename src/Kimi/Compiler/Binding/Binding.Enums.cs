@@ -92,6 +92,8 @@ public sealed partial class Binding
     private static bool EnumArityMatches(int payloadCount, InvocationKoto? call)
         => payloadCount == (call?.ArgumentNodes.Count ?? 0) && (call is null) == (payloadCount == 0);
 
+    // SPEC 10.1-10.3, 3.8: a payload input is prepared as a call's argument is (PrepareAggregateArgument): an unfitted literal, an
+    // aggregate literal's shape and expected-Type Case syntax wait for the candidate's payload Type; every other input is bound now.
     private bool PrepareContextualEnumInputs(Koto node, BindingScope scope)
     {
         node = KotoHelper.UnwrapParentheses(node);
@@ -100,8 +102,7 @@ public sealed partial class Binding
         {
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
-                var input = call.ArgumentNodes[i];
-                valid &= NeedsEnumContext(input) ? this.PrepareContextualEnumInputs(input, scope) : IsUnfittedLiteral(input) || this.BindNode(input, scope) is not null;
+                valid &= this.PrepareAggregateArgument(call.ArgumentNodes[i], scope);
             }
         }
 
@@ -159,13 +160,9 @@ public sealed partial class Binding
             }
 
             CandidateApplicability input;
-            if (NeedsEnumContext(source))
+            if (IsAggregateArgument(source) || NeedsEnumContext(source) || IsUnfittedLiteral(source))
             {
-                input = this.ProbeContextualEnum(source, type, scope);
-            }
-            else if (IsUnfittedLiteral(source))
-            {
-                input = this.FitsInputLiteral(source, type, scope) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
+                input = this.ProbeAggregateArgument(source, type, scope); // An input waiting for its payload Type (PrepareContextualEnumInputs).
             }
             else
             {

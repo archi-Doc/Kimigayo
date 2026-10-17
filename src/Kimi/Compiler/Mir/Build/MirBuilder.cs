@@ -3,6 +3,8 @@
 // Owns construction and validation of one MIR body per definition or closure.
 // Input: syntax children, published HIR/plans, declaration views and TyCtxt. Output: a validated MirProgram.
 // Op, Adjust and PlaceShape decide lowering; unsupported forms use the one located Unsupported path; it trusts the facts each Op guarantees.
+// Every runtime-index selection on storage lends its receiver where it locates it (a guard, or a range's backing), the receiver's check
+// at the selection, where its position local is located too, the subject A1 reports an access through the Index under (DECISIONS R4-M56).
 // Must not read Binding internals, infer from parents or let consumers rebuild missing facts.
 
 using System.Runtime.InteropServices;
@@ -26,6 +28,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private readonly Dictionary<BindingSymbol, int> locals = new(); // The local of each parameter and local symbol of the body.
     private readonly List<MirOperand> arguments = []; // The evaluated arguments of the calls being built, innermost last.
     private readonly List<int> roots = [];
+    private readonly HashSet<BoundType> walked = new(ReferenceEqualityComparer.Instance); // A Type walk's scratch (MayNeedDrop, HoldsRaw).
     private Roots? collector;
     private MirBody body = null!;
     private Koto declaration = null!;
@@ -253,7 +256,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private int Argument(BoundType type, string? name, int parameters, MirLocalRole role = MirLocalRole.None)
     {
         var local = this.body.AddLocal(new(type, MirLocalKind.Arg, this.Info(this.declaration, local: true), Name: name, Role: role));
-        if (MirTypes.MayNeedDrop(type))
+        if (MirTypes.MayNeedDrop(type, this.walked))
         {
             this.Register(Cleanup.Drop, local, null, parameters);
         }
@@ -430,7 +433,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private void Site(Koto node, MirPlace destination, bool completes)
     {
         var site = this.body.AddOpaque(SourceRef.Of(node), CollectionsMarshal.AsSpan(this.roots));
-        this.Make(destination, MirRvalue.Opaque(this.body.TypeOf(destination) ?? BoundType.Unit, site), node);
+        this.Set(destination, MirRvalue.Opaque(this.body.TypeOf(destination) ?? BoundType.Unit, site), node);
         if (!completes)
         {
             var next = this.body.AddBlock();

@@ -23,6 +23,8 @@ public class EnumBindingTest
     [InlineData("let x: Result<i32, string> = .Err(\"text\")")]
     [InlineData("let x: ::Kimi.Option<i32> = ::Kimi.Option<i32>.Some(1)")]
     [InlineData("let x: Option<Option<i32>> = .Some(.Some(1))")]
+    [InlineData("enum P<T>\n    Pair(T, (T, T))\nfunc f(a: i64)\n    let x = P.Pair(1, (a, a))")]
+    [InlineData("enum P<T>\n    Pair(T, (T, T))\nfunc f(a: i64)\n    let y: P<i64> = P.Pair(1, (a, a))")]
     public void ConstructsQualifiedAndExpectedCases(string source)
     {
         var c = CompilationTestHelper.ParseSuccess("enum Message\n    Quit\n    Write(string)\n" + source);
@@ -157,6 +159,8 @@ public class EnumBindingTest
         Assert.False(c.Binding.TryGetEnumConstruction(call, out _));
     }
 
+    // SPEC 10.1-10.3: each candidate probes a contextual Case under its parameter Type without committing a loser; an unfitted literal, an
+    // aggregate literal's elements and nested Case syntax wait for the payload Type, so a Tuple of literals fits as its literals do.
     [Theory]
     [InlineData("func f(x: Option<i32>) => ()\nf(.Some(1))", true)]
     [InlineData("func f(x: Option<i32>) => ()\nf(.None)", true)]
@@ -167,6 +171,12 @@ public class EnumBindingTest
     [InlineData("func f(x: Option<i32>) => ()\nfunc f(x: Option<i8>) => ()\nf(.None)", false)]
     [InlineData("func f<T>(x: Option<T>, y: T) => ()\nf(.Some(1), 2)", true)]
     [InlineData("func f<T>(x: T) => ()\nfunc f(x: Option<i32>) => ()\nf(.None)", false)]
+    [InlineData("func f(x: Option<(i64, i64)>) => ()\nf(.Some((1, 2)))", true)]
+    [InlineData("func f(x: Option<(i8, i64)>) => ()\nf(.Some((128, 2)))", false)]
+    [InlineData("func f(x: Option<(i8, i8)>) => ()\nfunc f(x: Option<(i32, i32)>) => ()\nf(.Some((128, 1)))", true)]
+    [InlineData("func f(x: Option<Option<(i64, i64)>>) => ()\nf(.Some(.Some((1, 2))))", true)]
+    [InlineData("func f(x: Option<(i64, Option<i8>)>) => ()\nf(.Some((1, .None)))", true)]
+    [InlineData("func f(x: Option<[2 of i64]>) => ()\nf(.Some([1, 2]))", true)]
     public void CallCandidatesProbeContextualCasesWithoutCommittingLosers(string source, bool valid)
     {
         var c = CompilationTestHelper.ParseSuccess(source);
