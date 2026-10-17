@@ -102,7 +102,9 @@ public class UserArithmeticUpdateTest
         const string View = "struct View {a}\n    Self is Addable<Self>\n    associate Output is Self\n    public let value: ref/i32 during a\n    public init(value: ref/i32 during a) => self.value = value\n    public func added(self: ref/Self, right: ref/Self) -> Self => Self.init(right.value)\n";
         var source = View + "func run(a: uniq/i32 during s, b: uniq/i32 during s) -> i32\n    var values: Array<View during s> = [View.init(a@follow@ref)]\n    values[0] " + (compound ? "+=" : "=") + " View.init(b@follow@ref)\n" +
             (overwrite ? "    b@follow = 9\n" : string.Empty) + "    return values[0].value\nvar a = 1\nvar b = 2\nrequire run(a@uniq, b@uniq) == 2 else => $abort(\"content loan\")";
-        var path = Path.GetFullPath("arithmetic-element-loan.kimi");
+        // Workspace placement needs a fully qualified path; the fixture's location constants record the path, which must
+        // not depend on the checkout.
+        var path = overwrite ? Path.GetFullPath("arithmetic-element-loan.kimi") : "arithmetic-element-loan.kimi";
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         if (overwrite)

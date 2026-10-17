@@ -120,8 +120,10 @@ before it, on the same inputs and configuration:
   report no difference;
 - the semantic snapshot: `SemanticSnapshotTest` with `KIMI_SEMANTIC_SNAPSHOT=check` against the previous baseline
   (`KIMI_SEMANTIC_BASELINE`), with `KIMI_SEMANTIC_HIR=1` and `KIMI_SEMANTIC_MIR=1` when Binding or MIR code changes;
-- the generated IR: the `.ll` files under the run's `fixtures-<Configuration>` evidence equal the previous run's (compare
-  runs from the same worktree path, since the IR records source paths).
+- the generated IR: `./scripts/compare-fixtures.ps1 -Baseline <previous run> -Candidate <run>` reports the `.ll` files
+  under `fixtures-<Configuration>`, their expectation sidecars and the native results identical (regression:
+  `tests/scripts/FixtureComparisonTest.ps1`); fixture IR records no checkout path, so runs from any worktree compare
+  equal byte for byte.
 
 A difference means the commit changes behavior: split it, or treat it as a behavior change with its own tests. Do not
 compare `Kimi.dll` bytes instead: its informational version embeds the commit id (`0.1.1+<commit>`) and its PDB path
