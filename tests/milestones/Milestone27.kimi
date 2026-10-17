@@ -97,7 +97,7 @@ public func main()
 
     // Copying drops the outer storage dependency but retains references stored inside the elements.
     var references: [_ of ref/i32] = [number@ref]
-    let retainedReferences = references.sliceUniq().slice().toArray()
+    let retainedReferences = references.slice().toArray()
     references = [copied]
     require retainedReferences[0]@follow == 42 else => $abort("Copied element Origin was lost")
     var dynamic = snapshot@move

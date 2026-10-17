@@ -12,6 +12,7 @@ authority: SPEC and DECISIONS decide. The design these records correct is [desig
 | [review-23a.md](review-23a.md) | Independent review of the case 23a proposal: adopt with conditions |
 | [review-1b-r1.md](review-1b-r1.md) | Design review of the choice, round 1: B1 (own-value seed) and B2 (Never placement) redone |
 | [review-1b-r2.md](review-1b-r2.md) | Design review round 2: the redone B1/B2 accepted; record fixes F1–F8 (E11, the `err(destroy)` exclusion) |
+| [m27-analysis.md](m27-analysis.md) | Milestone27:100 under A5: P4 (re-spelled, owner, DECISIONS R4-M64) and the Slice-input retention defect |
 | [audit-a1a4.md](audit-a1a4.md) | Independent read-only audit of A1–A4 (PLAN G124–G126; G91's cut widened) |
 | [review-1a-r1.md](review-1a-r1.md) | Review of unit 1a's first commit: redo (enclosing premises) |
 | [review-1a-r2.md](review-1a-r2.md) | Review round 2 of unit 1a's redo: B1, item 2 and the split accepted; B2 (erased callables), decided by the owner (DECISIONS R4-M52) |
