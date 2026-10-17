@@ -1591,3 +1591,17 @@ structure is recorded here by the unit that first implements it.
   operands as strings (warm writing would allocate); `ValueLowering` inputs for widths (the type text carries them); a result
   name and success label fixed by the component as `%v<Id>` and `b<n>` (codegen names values and blocks by MIR location,
   package §2.10).
+- **R5-M20 Runtime location text in Core** (2026-10-18, planning session; plan P5, package F §4.10 and §5, OQ4) A permanent
+  Core component, `SourceLocationTable` (`Core/SourceLocationTable.cs`), one per compilation as `Compilation.Locations`:
+  `Text(SourceRef)` resolves the site through `Compilation.SyntaxOf` and renders SPEC 22.5.1's `path:line:column` with IMPL
+  21.4.2's escaping, or returns null for a site without a source document, a broken contract its reader reports. It replaces
+  the old Emission's two tables (BodyLowering's and the static initializers'), and BodyLowering no longer threads the project
+  directory. Both generators read it, the Backend by `SourceRef` (the ARCH dependency note of OQ4); which site an Abort
+  reports stays its generator's rule, and the test manifest's location (`TestCatalog`, SPEC 20.6) stays separate. The memo
+  stays keyed (document, offset), never by `SourceRef` (ids renumber on edit). It is cleared when the project directory
+  changes and in `Compilation.InvalidateSourceAnalysis` (every edit, parse, reload or mode change), so it holds only the
+  current program's texts; before, the texts of replaced documents stayed until the directory changed. A fully qualified
+  source path is shown relative to the project directory, and a project without a directory is the current directory's
+  (Project's rule for its TestSources), so a location never shows the checkout path (IMPL 20.1: project-relative). Rejected:
+  clearing on the Binding pass version (`HirTables.Publish`), which every warm rebind advances, so a warm Bind and WriteIr
+  would allocate the texts again (asserted 0 B, `NoInitTest`); a `SourceRef` memo key; one table per generator.
