@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Runtime.InteropServices;
+using Kimi.Compiler.Backend;
 
 namespace Kimi.Compiler;
 
@@ -374,9 +375,6 @@ internal sealed class EmissionModule
         LlvmModuleWriter.Write(this, output);
     }
 }
-
-/// <summary>A foreign function declaration; DllImport selects the import-library form (SPEC 20.4).</summary>
-internal readonly record struct ExternalFunction(FunctionAbi Abi, bool DllImport);
 
 internal enum ArrayHelperKind : byte
 {

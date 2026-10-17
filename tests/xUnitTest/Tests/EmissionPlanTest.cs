@@ -2,6 +2,7 @@
 
 using System.Text;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;

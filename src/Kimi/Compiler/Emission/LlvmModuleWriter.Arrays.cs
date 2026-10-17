@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using static Kimi.Compiler.Backend.LlvmModuleText;
+
 namespace Kimi.Compiler;
 
 /// <summary>SPEC 4.9.3, 4.9.7: per-element Array helpers over the {buffer, length, capacity} handle (Windows x64 profile).</summary>

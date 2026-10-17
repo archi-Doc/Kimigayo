@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using static Kimi.Compiler.Backend.LlvmModuleText;
+
 namespace Kimi.Compiler;
 
 // Shared byte transfer, scalar representation and destruction for stored collection values.

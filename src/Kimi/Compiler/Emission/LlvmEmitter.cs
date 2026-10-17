@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -330,7 +331,7 @@ public sealed partial class LlvmEmitter
             }
 
             var cached = ordinal < this.importAbis.Count && this.importAbis[ordinal].Symbol == import.Symbol ? this.importAbis[ordinal].Abi : null;
-            var name = cached?.Name ?? LlvmModuleWriter.ExternalName(import.Symbol);
+            var name = cached?.Name ?? LlvmModuleText.ExternalName(import.Symbol);
             FunctionAbi? abi = null;
             for (var e = 0; e < module.Externals.Count && abi is null; e++)
             {

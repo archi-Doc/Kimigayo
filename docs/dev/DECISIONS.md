@@ -1418,3 +1418,17 @@ structure is recorded here by the unit that first implements it.
     (`StaticScalar`), so no accepted program can exercise shutdown before R6-check (`check` probes, 2026-10-18).
   - (c) No NativeAOT publish at R6-gen's exit (plan §5.4 item 7 and G11 drop it); instead the NativeAOT build is published and
     run once before the next distribution, for example VS Code extension packaging.
+- **R5-M14 `LlvmModuleText` and `LlvmConstantPool`; promotion (PD2)** (2026-10-18, planning session; plan PD2 and P0, refined
+  by the chapter C package §3.1 and §3.4) Backend is `src/Kimi/Compiler/Backend/`, namespace `Kimi.Compiler.Backend` (as Mir,
+  R4-M2); the old Emission imports it until R6-gen deletes it. PD2: the old Emission's syntax-free module-level writers and
+  records are promoted, never copied, into Backend components that the old writer and MIR code generation both call during
+  the shadow. A promoted member takes generator-neutral inputs only (LLVM type text, `TypeLayout`/`ValueLowering`, SSA names,
+  labels, a writer, records such as `FunctionAbi`), has no per-generator branch and ends within ARCH's structure limits, split
+  by responsibility while moved; each move is behavior-preserving (VERIFICATION: fixtures byte-identical, diagnostic snapshot
+  unchanged). P0, the first, creates `LlvmModuleText`, the module frame: header with the pooled constants, the runtime template
+  with its ABI splice and test variant, the external declarations and their record `ExternalFunction`, the overflow and memory
+  declarations, the footer, `ExternalName`/`SymbolFromName` and number formatting; `LlvmConstantPool` moves beside it. The
+  formatting runtime splice and `Reason` stay with their helpers (P1d, P1a). ARCH's no-LINQ rule holds in Backend from P0.
+  Rejected: copying the frame into code generation (a second copy of each rule); the namespace `Kimi.Compiler` (no `using`
+  in the old consumers, which R6-gen deletes, but no phase namespace as Mir has); forwarding members in the old writer
+  (wrappers without semantics; its partials import `LlvmModuleText` statically).

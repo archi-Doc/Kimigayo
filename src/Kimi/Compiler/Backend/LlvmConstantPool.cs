@@ -1,8 +1,17 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns a module's private UTF-8 constants (SPEC 21.4; DECISIONS R5-M14): equal strings share one constant, named by kind
+// (__kimi_text, __kimi_location) in first-use order.
+// Input: nonempty strings and their kind. Output: constant indices, and per constant its name, UTF-8 byte length and definition
+// line, which LlvmModuleText.WriteHeader writes.
+// Invariants: every byte is escaped (raw source text never enters IR; NUL is data); entries, names and definitions are retained
+// across Clear, so a warm module allocates nothing for constants it has seen.
+// Must not intern the empty string (it has no backing constant) or read syntax, HIR, Binding internals or MIR.
+
+using System.Globalization;
 using System.Text;
 
-namespace Kimi.Compiler;
+namespace Kimi.Compiler.Backend;
 
 /// <summary>Selects the readable symbol prefix of a pooled constant; sharing ignores the kind.</summary>
 internal enum LlvmConstantKind : byte
@@ -70,7 +79,7 @@ internal sealed class LlvmConstantPool
         var list = this.names[(int)kind];
         while (list.Count <= ordinal)
         {
-            list.Add(list.Count == 0 ? Prefixes[(int)kind] : Prefixes[(int)kind] + "." + list.Count.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            list.Add(list.Count == 0 ? Prefixes[(int)kind] : Prefixes[(int)kind] + "." + list.Count.ToString(CultureInfo.InvariantCulture));
         }
 
         return list[ordinal];
