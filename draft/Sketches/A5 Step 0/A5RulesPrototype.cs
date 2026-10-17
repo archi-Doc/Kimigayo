@@ -73,13 +73,13 @@ foreach (var c in Cases.All())
     if (c.Id.StartsWith("20") || !row[0].ErrorNodes().SequenceEqual(row[1].ErrorNodes()) || !row[2].ErrorNodes().SequenceEqual(row[4].ErrorNodes()) || !row[3].ErrorNodes().SequenceEqual(row[4].ErrorNodes()))
         Console.WriteLine($"| {c.Id} | {(c.Err ? "error" : "valid")} | {string.Join(" | ", row.Select(W))} |");
 }
-foreach (var ab in new[] { Abl.KillAcrossDeref, Abl.NoTransit, Abl.NoSharedCut })
+foreach (var ab in new[] { Abl.KillAcrossDeref, Abl.FirstDerefBase, Abl.NoTransit, Abl.NoSharedCut })
 {
     var aKill = Cases.All().Select(c => (c, a: new Analysis(c, Mode.A, ab), b: new Analysis(c, Mode.A)))
         .Where(x => !x.a.ErrorNodes().SequenceEqual(x.b.ErrorNodes())).Select(x => $"{x.c.Id}: {V(x.a)}" + (x.c.Err && x.a.Errors.Count == 0 ? " **UNSOUND**" : ""));
     Console.WriteLine($"Design A with {ab}: " + string.Join("; ", aKill.DefaultIfEmpty("no change")));
 }
-foreach (var ab in Enum.GetValues<Abl>().Skip(1).Where(x => x is not (Abl.AIssueNotEnded or Abl.IdExclusion or Abl.AText or Abl.LastDerefBase)))
+foreach (var ab in Enum.GetValues<Abl>().Skip(1).Where(x => x is not (Abl.AIssueNotEnded or Abl.IdExclusion or Abl.AText or Abl.LastDerefBase or Abl.FirstDerefBase)))
 {
     string At(Analysis a) => "`" + string.Join("`, `", a.ErrorNodes()) + "`";
     var changed = Cases.All().Select(c => (c, a: new Analysis(c, Mode.S1P, ab), b: new Analysis(c, Mode.S1P)))
@@ -102,7 +102,8 @@ enum Abl { None, KillKeepOnly, NoMaterialize, SyntacticAccess, NoAuthority, NoCl
     LastDerefBase,      // round 6: A mode with the plan's B (last Deref) instead of A2's root-most B
     NoSharedCut,        // round 6: an observing destruction reaches exclusively past shared Derefs
     SharedBaseOp,       // round 6: S1′ plus P3 (a shared borrow of the base or an ancestor is a base operation vs an exclusive child)
-    P3RootMost }        // round 6: S1′ plus P3 plus the root-most kill (KillAcrossDeref)
+    P3RootMost,         // round 6: S1′ plus P3 plus the root-most kill (KillAcrossDeref)
+    FirstDerefBase }    // round 8: A mode with the first-Deref B; K an exact prefix of B, any index after K (case 23a proposal)
 
 enum K { Read, Write, Move, SBorrow, UBorrow, Destroy }
 enum Mode { PROV, S1, S1P, A }
@@ -264,8 +265,16 @@ class Analysis
         var b = Base(l);
         if (b == null) return false;
         // Both modes use the plan's kill (round 6 correction): B is a move path, K is B or an ancestor with no Deref
-        // between, and Index steps only for identical constant indexes. KillAcrossDeref is the unsound root-most kill.
+        // between, and Index steps only for identical constant indexes. KillAcrossDeref is the root-most kill with the
+        // may-overlap Within, which lets a constant index kill a dynamic one (unsound, 34a/34b). FirstDerefBase takes the
+        // same B with the definite matcher: K is a move path and an exact prefix of B, whose later steps may be any index
+        // (destroying arr destroys arr[i], 34c).
         if (X is Abl.KillAcrossDeref or Abl.P3RootMost) { b = Path.Before(b, "*"); return dip.Any(k => Path.Within(b, k)); }
+        if (X == Abl.FirstDerefBase)
+        {
+            var fs = Path.Segs(Path.Before(b, "*"));
+            return dip.Select(Path.Segs).Any(ks => !ks.Contains("[]") && fs.Length >= ks.Length && fs.Take(ks.Length).SequenceEqual(ks));
+        }
         if (b.Contains('*')) return false;
         var bs = Path.Segs(b);
         return dip.Select(Path.Segs).Any(ks => bs.Length >= ks.Length && bs.Take(ks.Length).SequenceEqual(ks) && !bs.Skip(ks.Length).Contains("[]"));
@@ -550,7 +559,11 @@ static class Cases
         SharedField(), Args("28a", "uniqref"), Args("28b", "refref"), Args("28c", "fields"), Args("28d", "stored"),
         CrossingKill(), EscapedTransit(), PartTransit(), LinkedList("30a", "obj"), LinkedList("30b", "uniq"), LinkedList("30c", "conflict"), LinkedList("30d", "peek"),
         SwapParams("31a", caller: false), SwapParams("31b", caller: true), CopyThrough("32a", childLive: false), CopyThrough("32b", childLive: true),
-        PreservesResults("33a", "two"), PreservesResults("33b", "across"), PreservesResults("33c", "callonly")];
+        PreservesResults("33a", "two"), PreservesResults("33b", "across"), PreservesResults("33c", "callonly"),
+        IndexKill("34a", deref2: false), IndexKill("34b", deref2: true), IndexKill("34c", deref2: false, whole: true),
+        Walk("35a", loop: false), Walk("35b", loop: true),
+        PhantomParents("36a", direct: false, retain: false), PhantomParents("36b", direct: false, retain: true),
+        PhantomParents("36c", direct: true, retain: false), PhantomParents("36d", direct: true, retain: true), SplitOuter()];
 
     static Case Replacement()
     {
@@ -1238,6 +1251,102 @@ static class Cases
         c.N("let second = source.take()").Activate("Lr2").Def("second").Phantom("Phi2", "source.*", "second").Excuse("Phi1");
         c.N("return (first@move, second@move)").Flow("first", "$ret").Flow("second", "$ret");
         return kind == "across" ? c.Error() : c.Valid();
+    }
+
+    // ---- Round 8 (case 23a proposal review) ----
+    // A child through arr[i] (one or two borrow Derefs); arr[0] (34a/34b) or the whole arr (34c) is replaced; a write
+    // through arr[i], the old route unless the whole array was replaced.
+    static Case IndexKill(string id, bool deref2, bool whole = false)
+    {
+        var f = deref2 ? "@follow@follow" : "@follow";
+        var c = new Case(id, $"`c = arr[i]{f}@uniq; {(whole ? "arr = [z@uniq, w@uniq]" : "arr[0] = …")}; arr[i]{f} = 7; c@follow = 1`");
+        c.N("var x = 1; var y = 2; var z = 3; var w = 4; let i: isize = pick()").Def("x", "y", "z", "w", "i");
+        if (deref2)
+        {
+            c.N("var s1 = x@uniq; var s2 = y@uniq; var s3 = z@uniq").Def("s1", "s2", "s3").Borrow("Lx", "x", Uniq, "s1").Borrow("Ly", "y", Uniq, "s2").Borrow("Lz", "z", Uniq, "s3");
+            c.N("var arr: [2 of uniq/uniq/i32] = [s1@uniq, s2@uniq]").Def("arr").Borrow("L0", "s1", Uniq, "arr.0").Borrow("L1", "s2", Uniq, "arr.1");
+            c.N("let c = arr[i]@follow@follow@uniq").Def("c").Borrow("L2", "arr.[].*.*", Uniq, "c");
+            c.N("arr[0] = s3@uniq").Assign("arr.0").Borrow("L3", "s3", Uniq, "arr.0");
+        }
+        else
+        {
+            c.N("var arr: [2 of uniq/i32] = [x@uniq, y@uniq]").Def("arr").Borrow("Lx", "x", Uniq, "arr.0").Borrow("Ly", "y", Uniq, "arr.1");
+            c.N("let c = arr[i]@follow@uniq").Def("c").Borrow("L2", "arr.[].*", Uniq, "c");
+            if (whole) c.N("arr = [z@uniq, w@uniq]").Assign("arr").Borrow("Lz", "z", Uniq, "arr.0").Borrow("Lw", "w", Uniq, "arr.1");
+            else c.N("arr[0] = z@uniq").Assign("arr.0").Borrow("Lz", "z", Uniq, "arr.0");
+        }
+        c.N($"arr[i]{f} = 7").A(K.Write, deref2 ? "arr.[].*.*" : "arr.[].*");
+        c.N("c@follow = 1").A(K.Write, "c.*");
+        if (!whole) return c.Error($"arr[i]{f} = 7");
+        c.ALoss = "the plan's within: no end across a non-path index after K (narrower than S1's text)";
+        return c.Valid();
+    }
+
+    // 23a split through a named intermediate: t's Loan has base rr, so rr = slot2@uniq ends it under every base rule.
+    static Case SplitOuter()
+    {
+        var c = new Case("37", "23a through a named intermediate: `t = rr@follow@uniq; c = t@follow@uniq; rr = slot2@uniq; rr@follow@follow = 7; c@follow = 1`");
+        c.N("var x = 1; var z = 3").Def("x", "z");
+        c.N("var slot = x@uniq; var slot2 = z@uniq").Def("slot", "slot2").Borrow("L1", "x", Uniq, "slot").Borrow("Lz", "z", Uniq, "slot2");
+        c.N("var rr = slot@uniq").Def("rr").Borrow("Lo", "slot", Uniq, "rr");
+        c.N("let t = rr@follow@uniq").Def("t").Borrow("Lt", "rr.*", Uniq, "t");
+        c.N("let c = t@follow@uniq").Def("c").Borrow("L2", "t.*", Uniq, "c");
+        c.N("rr = slot2@uniq").Assign("rr").Borrow("Lo2", "slot2", Uniq, "rr");
+        c.N("rr@follow@follow = 7").A(K.Write, "rr.*.*");
+        c.N("c@follow = 1").A(K.Write, "c.*");
+        return c.Valid();
+    }
+
+    // uniq-linked walk (ll2): a Borrow of the new node's Field outlives the next step. 35a is straight-line; 35b keeps
+    // each iteration's Borrow in one holder used after the loop.
+    static Case Walk(string id, bool loop)
+    {
+        var c = new Case(id, loop ? "ll2 loop: `keep = node.value@uniq; node = node.next…@uniq`, keep used after the loop"
+            : "`node = node.next…@uniq; b = node.value@uniq; node = node.next…@uniq; b@follow = 1`");
+        c.N("func f(head: uniq/Node)").Param("Lh", "head");
+        c.N("var node = head").Def("node").Borrow("L0", "head.*", Uniq, "node");
+        if (loop)
+        {
+            c.N("var keep = none").Def("keep");
+            c.N("while node.next is .Some").A(K.Read, "node.*.next").Goto("  keep = node.value@uniq", "keep@follow = 1");
+            c.N("  keep = node.value@uniq").Assign("keep").Borrow("Lb", "node.*.value", Uniq, "keep");
+            c.N("  _t = node.next.some@follow@uniq").Def("_t").Borrow("Ln", "node.*.next.some.*", Uniq, "_t");
+            c.N("  node = move _t").Assign("node").A(K.Move, "_t").Flow("_t", "node").Goto("while node.next is .Some");
+            c.N("keep@follow = 1").A(K.Write, "keep.*");
+        }
+        else
+        {
+            c.N("_t = node.next.some@follow@uniq").Def("_t").Borrow("Ln1", "node.*.next.some.*", Uniq, "_t");
+            c.N("node = move _t").Assign("node").A(K.Move, "_t").Flow("_t", "node");
+            c.N("let b = node.value@uniq").Def("b").Borrow("Lb", "node.*.value", Uniq, "b");
+            c.N("_t2 = node.next.some@follow@uniq").Def("_t2").Borrow("Ln2", "node.*.next.some.*", Uniq, "_t2");
+            c.N("node = move _t2").Assign("node").A(K.Move, "_t2").Flow("_t2", "node");
+            c.N("b@follow = 1").A(K.Write, "b.*");
+        }
+        c.ALoss = "23a family: the plan's within kill (a Borrow through the new node while a kept value carries the stale Loan)";
+        return c.Valid();
+    }
+
+    // F6 phantom through a replaced holder. H {var inner: uniq/S}; Φ_c on cur.*.inner.* is carried by first. cur moves to
+    // b; then 36a/36b clear a's iterator through cur = a again, 36c/36d through a itself. retain: first also keeps the
+    // receiver's Loans (A3 `out` with Value retention); otherwise Φ_c is its only Loan (rounds 7-8 encoding).
+    static Case PhantomParents(string id, bool direct, bool retain)
+    {
+        var c = new Case(id, "F6: `first = cur.inner.take(); cur = b; " + (direct ? "a.inner.clear()" : "cur = a; cur.inner.clear()")
+            + "; return first`" + (retain ? ", first retains the receiver" : ""));
+        c.N("func f(a: uniq/H, b: uniq/H)").Param("La", "a").Param("Lb", "b");
+        c.N("var cur = a").Def("cur").Borrow("L0", "a.*", Uniq, "cur");
+        c.N("$r1 = cur.inner (receiver, reserved)").Def("$r1").Borrow("Lr1", "cur.*.inner.*", Uniq, "$r1", reserve: true);
+        var call = c.N("let first = cur.inner.take()").Activate("Lr1").Def("first");
+        if (retain) call.Flow("$r1", "first");
+        call.Phantom("Phi1", "cur.*.inner.*", "first");
+        c.N("cur = b").Assign("cur").Borrow("Lb2", "b.*", Uniq, "cur").Disturb("Phi1");
+        if (!direct) c.N("cur = a").Assign("cur").Borrow("La2", "a.*", Uniq, "cur");
+        var recv = direct ? "a.*.inner.*" : "cur.*.inner.*";
+        c.N("$r2 = " + (direct ? "a" : "cur") + ".inner (receiver of clear)").Def("$r2").Borrow("Lr2", recv, Uniq, "$r2");
+        c.N("clear($r2)").Use("$r2");
+        c.N("return first").Flow("first", "$ret");
+        return c.Error();
     }
 
     // Path-exact transit: the store goes to s.inner, while only s is used later.
