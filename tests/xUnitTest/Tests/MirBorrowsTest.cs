@@ -1091,9 +1091,10 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
     }
 
     // V16 (A3 6.3, shapes 1–6): N Copies of one reference, N loops with three live references and N writes through one reference keep the
-    // work linear; a straight line of N borrowed locals and N borrow/write pairs in loops grow it within the bound's dense terms,
-    // quadratically at most: each local's StorageLive, write and StorageDead end its Loans in every holder ((ended points) × holders), and N
-    // references used at the end make each borrow scan the live holders (accesses × live nodes).
+    // work linear; a straight line of N borrowed locals, N borrow/write pairs of one root and N borrow/write pairs in loops grow it within
+    // the bound's dense terms, quadratically at most: each write, StorageLive and StorageDead ends its Loans in every holder, each borrow's
+    // temporary included ((ended points) × holders), and N references used at the end make each borrow scan the live holders (accesses ×
+    // live nodes).
     [Theory]
     [InlineData("    var x = 1\n    let r = x@ref\n", "    var x{0} = {0}\n    let r{0} = x{0}@ref\n    inspect(r{0})\n", "", true)]
     [InlineData("    var x = 1\n    let r = x@ref\n", "    var x{0} = {0}\n    let r{0} = x{0}@ref\n", "    inspect(r{0})\n", true)]
@@ -1104,6 +1105,7 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
         "",
         false)]
     [InlineData("    var z = 3\n    var p = z@uniq\n", "    p@follow = {0}\n", "", false)]
+    [InlineData("    var x = 0\n    var r = x@ref\n", "    x = {0}\n    r = x@ref\n    inspect(r)\n", "", true)]
     [InlineData(
         "    var t = 0\n    var x = 1\n    let r = x@ref\n",
         "    while flag\n        let a{0} = t@uniq\n        a{0}@follow = {0}\n        t = {0}\n        inspect(r)\n",
@@ -1111,27 +1113,17 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
         true)]
     public void TheWorkScalesWithTheProgram(string head, string each, string after, bool dense)
     {
-        var (sizes, work) = (new[] { 32, 64, 128 }, new long[3]);
-        for (var i = 0; i < sizes.Length; i++)
-        {
-            var text = new StringBuilder(Prelude).Append("func shape(flag: bool)\n").Append(head);
-            for (var pass = 0; pass < 2; pass++)
-            {
-                for (var n = 0; n < sizes[i]; n++)
-                {
-                    text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, pass == 0 ? each : after, n);
-                }
-            }
+        var (work, _) = this.Scaled(head, each, after);
+        Assert.True(Grows(work, dense ? 5 : 2), $"work {string.Join(", ", work)}");
+    }
 
-            var c = MirBuildTest.Compile(text.ToString());
-            var stratum = new Stratum(c.Types);
-            stratum.Run(c.BuildMir());
-            Assert.DoesNotContain(c.BuildMir().Problems.All.ToArray(), static x => LoanCodes.Contains(x.Code));
-            work[i] = stratum.Borrows.Work;
-        }
-
-        output.WriteLine($"N {string.Join(", ", sizes)}: work {string.Join(", ", work)}");
-        Assert.True(work[2] - work[1] <= ((dense ? 5 : 2) * (work[1] - work[0])) + 64, $"work {string.Join(", ", work)}");
+    // A3 12 E8, V16 (review B3): destroying a Move Path ends the Loans of its subtree as one set, made once per path, so N borrow/write pairs
+    // of one root make Loan-set bytes (ν) linearly, though their work is dense ((ended points) × holders).
+    [Fact]
+    public void TheEndedSetsOfAMovePathAreMadeOnce()
+    {
+        var (_, bytes) = this.Scaled("    var x = 0\n    var r = x@ref\n", "    x = {0}\n    r = x@ref\n    inspect(r)\n", string.Empty);
+        Assert.True(Grows(bytes, 2), $"bytes {string.Join(", ", bytes)}");
     }
 
     // V16: A5 on a program version it checked before allocates nothing: its sets, tables and the dataflow keep their storage.
@@ -1174,6 +1166,35 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
     }
 
     private static string Line(Compilation c, SourceRef site) => c.SyntaxOf(site).ToString().Split('\n')[0].Trim();
+
+    // Whether a measure grows from N = 64 to 128 at most a factor times as much as from 32 to 64, with a constant's slack.
+    private static bool Grows(long[] measure, int factor) => measure[2] - measure[1] <= (factor * (measure[1] - measure[0])) + 64;
+
+    // A5's work and Loan-set bytes on a shape's body at N = 32, 64 and 128: its head, then N each lines and N after lines, with no Loan problem.
+    private (long[] Work, long[] Bytes) Scaled(string head, string each, string after)
+    {
+        var (sizes, work, bytes) = (new[] { 32, 64, 128 }, new long[3], new long[3]);
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            var text = new StringBuilder(Prelude).Append("func shape(flag: bool)\n").Append(head);
+            for (var pass = 0; pass < 2; pass++)
+            {
+                for (var n = 0; n < sizes[i]; n++)
+                {
+                    text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, pass == 0 ? each : after, n);
+                }
+            }
+
+            var c = MirBuildTest.Compile(text.ToString());
+            var stratum = new Stratum(c.Types);
+            stratum.Run(c.BuildMir());
+            Assert.DoesNotContain(c.BuildMir().Problems.All.ToArray(), static x => LoanCodes.Contains(x.Code));
+            (work[i], bytes[i]) = (stratum.Borrows.Work, stratum.Borrows.Bytes);
+        }
+
+        output.WriteLine($"N {string.Join(", ", sizes)}: work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}");
+        return (work, bytes);
+    }
 
     // A5 over every body view of a built program, as the driver's step 4 will run it (R4-M57).
     private sealed class Stratum

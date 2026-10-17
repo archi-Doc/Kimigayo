@@ -1,8 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns interned immutable Loan sets: Add, Union, Remove; the only Loan-set form in Mir (design A3 §6.1; DECISIONS R4-M53).
+// Owns interned immutable Loan sets: Add, Union, Remove, Range; the only Loan-set form in Mir (design A3 §6.1; DECISIONS R4-M53).
 // Input: the elements, the Loan and marker ids A5 numbers. Output: each set as a node id, 0 the empty set; Add, Union and Remove (a \ b) of
-// sets as node ids, Contains, Count and a set's elements in ascending order; Bytes, the element bytes of the nodes made (A3 §6.2's ν).
+// sets and the set of a Range of consecutive elements as node ids, Contains, Count and a set's elements in ascending order; Bytes, the
+// element bytes of the nodes made (A3 §6.2's ν).
 // Invariants: a node's elements are a strictly ascending run in one pooled array, and nodes are interned by their elements, so two sets are
 // equal exactly when their ids are; a node never changes once made. Each operation is memoized by its operands, so repeating it costs one
 // lookup. Storage is pooled: Clear empties it per body view and keeps its capacity, so a warm run of a sized workload allocates nothing.
@@ -13,13 +14,15 @@ using System.Runtime.InteropServices;
 namespace Kimi.Compiler.Mir;
 
 /// <summary>Interned immutable Loan sets (design A3 §6.1, DECISIONS R4-M53): a set is a node id, 0 the empty set, and equal sets have one
-/// id, so a set is stored and compared as an int; <see cref="Add"/>, <see cref="Union"/> and <see cref="Remove"/> are memoized.</summary>
+/// id, so a set is stored and compared as an int; <see cref="Add"/>, <see cref="Union"/>, <see cref="Remove"/> and <see cref="Range"/> are
+/// memoized.</summary>
 internal sealed class MirLoanSets
 {
     private readonly Dictionary<int, int> nodes; // Each node by its elements: an interned run maps to its own id.
     private readonly Dictionary<(int Set, int Element), int> adds = new();
     private readonly Dictionary<(int A, int B), int> unions = new(); // Keyed with A < B.
     private readonly Dictionary<(int Set, int Removed), int> removes = new();
+    private readonly Dictionary<(int First, int Count), int> ranges = new();
     private int[] elements = []; // The runs of the nodes, in node order.
     private int[] starts = [0, 0]; // Each node's first element, then the end of the last node's run and of a candidate's.
     private int created = 1; // The nodes made; node 0 is the empty set.
@@ -37,6 +40,7 @@ internal sealed class MirLoanSets
         this.adds.Clear();
         this.unions.Clear();
         this.removes.Clear();
+        this.ranges.Clear();
         this.nodes.Add(0, 0);
         (this.created, this.Bytes) = (1, 0);
     }
@@ -103,7 +107,8 @@ internal sealed class MirLoanSets
         return union;
     }
 
-    /// <summary>Gets a set without the elements of another, a \ b: the Loans a point ends, removed from each holder's set.</summary>
+    /// <summary>Gets a set without the elements of another, a \ b: the Loans a point ends, removed from each holder's set. It scans the
+    /// smaller operand and searches the larger, and copies the set's elements only when it removes one.</summary>
     /// <param name="set">The set.</param>
     /// <param name="removed">The elements to remove.</param>
     /// <returns>The elements of the set not in the removed set.</returns>
@@ -121,28 +126,76 @@ internal sealed class MirLoanSets
 
         if (!this.removes.TryGetValue((set, removed), out var rest))
         {
-            var from = this.Elements(set);
-            var without = this.Elements(removed);
-            var run = this.Candidate(from.Length);
-            var (j, length) = (0, 0);
+            rest = this.Without(set, removed);
+            this.removes.Add((set, removed), rest);
+        }
+
+        return rest;
+    }
+
+    /// <summary>Gets the set of a run of consecutive elements, from <paramref name="first"/> on: ids numbered so that the members of a set
+    /// are adjacent, as the Loans a Move Path's destruction ends.</summary>
+    /// <param name="first">The first element.</param>
+    /// <param name="count">The number of elements.</param>
+    /// <returns>The set of the run.</returns>
+    internal int Range(int first, int count)
+    {
+        if (count == 0)
+        {
+            return 0;
+        }
+
+        if (!this.ranges.TryGetValue((first, count), out var range))
+        {
+            var run = this.Candidate(count);
+            for (var i = 0; i < count; i++)
+            {
+                run[i] = first + i;
+            }
+
+            range = this.Intern(count);
+            this.ranges.Add((first, count), range);
+        }
+
+        return range;
+    }
+
+    // set \ removed: each element of the smaller operand searched in the larger.
+    private int Without(int set, int removed)
+    {
+        var from = this.Elements(set);
+        var without = this.Elements(removed);
+        var run = this.Candidate(from.Length);
+        var (length, copied) = (0, 0);
+        if (from.Length <= without.Length)
+        {
             foreach (var element in from)
             {
-                while (j < without.Length && without[j] < element)
-                {
-                    j++;
-                }
-
-                if (j == without.Length || without[j] != element)
+                if (without.BinarySearch(element) < 0)
                 {
                     run[length++] = element;
                 }
             }
 
-            rest = this.Intern(length);
-            this.removes.Add((set, removed), rest);
+            return length == from.Length ? set : this.Intern(length);
         }
 
-        return rest;
+        foreach (var element in without)
+        {
+            if (from.BinarySearch(element) is var at && at >= 0)
+            {
+                from[copied..at].CopyTo(run[length..]);
+                (length, copied) = (length + at - copied, at + 1);
+            }
+        }
+
+        if (copied == 0)
+        {
+            return set;
+        }
+
+        from[copied..].CopyTo(run[length..]);
+        return this.Intern(length + from.Length - copied);
     }
 
     // Interns the union of a set and an ascending run.

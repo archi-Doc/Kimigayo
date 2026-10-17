@@ -16,8 +16,10 @@
 // stores into a live holder (transit), the holders their direct Loans name (the closure) and those its own Loans name (E5); an activation
 // the holders live into it but its reservation holder, whose Loans seed the closure. A two-phase Loan is shared only in its reservation
 // holder, where a write or destruction of a prefix of its Place reaches it (E1). Destroying a Move Path in place ends every Loan whose path
-// it exactly prefixes (E8), after the checks and the transfer. A holder a direct Loan names keeps its state at every head.
-// Must not read syntax or HIR, judge Origins, re-derive retention, intern projections, or copy the body per view.
+// it exactly prefixes (E8), after the checks and the transfer: the Loans are ordered by the Move Path of their Places' longest inline
+// prefixes (MirMoveData's pre-order), so those of a path's subtree are one run of ids. A holder a direct Loan names keeps its state at
+// every head.
+// Must not read syntax or HIR, judge Origins, re-derive retention or Move Paths, intern projections, or copy the body per view.
 
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
@@ -45,8 +47,9 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
     private int[] chain = []; // A Place's projections, last first.
     private int[] loanAt = []; // By location (Location): the Loan its Ref issues, or -1.
     private int[] loanOfOperand = []; // By operand: the Loan its Reborrow issues, or -1.
-    private int[] byRoot = []; // The Loans by root key, each key's from rootStart.
-    private int[] rootStart = [];
+    private int[] loanStart = []; // By group (Loan.Group): its first Loan, the Loans being in group order.
+    private Loan[] ordered = []; // The Loans being put in group order.
+    private int[] renumbered = []; // By Loan in issue order: its id in group order.
     private int[] ended = []; // By location: the set of the Loans its destructions in place end (0: none).
     private MirBody body = null!;
     private MirProgram program = null!;
@@ -75,6 +78,9 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
     /// <summary>Gets the work of the runs (A3 6.2): the pre-pass's walks, transfers, both problems' slot joins, the holders of each point
     /// that ends Loans, each check's bit scan, stored values and seeds, set elements scanned, candidates compared and set bytes made.</summary>
     internal long Work { get; private set; }
+
+    /// <summary>Gets the element bytes of the Loan sets the runs made (MirLoanSets.Bytes, A3 6.2's ν), which Work also counts.</summary>
+    internal long Bytes { get; private set; }
 
     /// <summary>Checks a body under the selected view; view 0 of a body no view decides checks it for every view.</summary>
     /// <param name="program">The program, whose drop table it reads and whose problems it adds to.</param>
@@ -122,6 +128,7 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
         Array.Clear(this.markSeen);
         Array.Clear(this.markVia);
         flow.Replay(ref carrying);
+        this.Bytes += this.sets.Bytes;
         this.Work += this.sets.Bytes;
     }
 
@@ -153,7 +160,7 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
     private bool Reborrowing(in MirOperand acquire) => cases.Reborrows(acquire);
 
     // The Loans of the view (A3 4's issued, E3): a non-raw Ref of a Place that passes no shared borrow Deref, by its location, and a
-    // PairAcquire the view makes a Reborrow, by its operand; each named by its whole Place, then grouped by root key.
+    // PairAcquire the view makes a Reborrow, by its operand; each named by its whole Place, then ordered by group.
     private void Loans()
     {
         var (locals, locations) = (this.body.Locals.Length, this.body.Statements.Length + this.body.Blocks.Length);
@@ -203,27 +210,50 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
             }
         }
 
-        MirDataflow.Grow(ref this.rootStart, keys + 1);
-        MirDataflow.Grow(ref this.byRoot, this.loanCount);
-        Array.Clear(this.rootStart, 0, keys + 1);
+        this.Order(moves.Paths.Length + this.body.Statics.Length);
+        this.Renumber(this.loanAt.AsSpan(0, locations));
+        this.Renumber(this.loanOfOperand.AsSpan(0, this.body.Operands.Length));
+        this.Work += locations;
+    }
+
+    // Orders the Loans by group, stably, so the Loans a Move Path prefixes are one run of ids (Subtree).
+    private void Order(int groups)
+    {
+        MirDataflow.Grow(ref this.loanStart, groups + 1);
+        MirDataflow.Grow(ref this.ordered, this.loanCount);
+        MirDataflow.Grow(ref this.renumbered, this.loanCount);
+        Array.Clear(this.loanStart, 0, groups + 1);
         for (var l = 0; l < this.loanCount; l++)
         {
-            this.rootStart[this.loans[l].Root + 1]++;
+            this.loanStart[this.loans[l].Group + 1]++;
         }
 
-        for (var k = 1; k <= keys; k++)
+        for (var g = 1; g <= groups; g++)
         {
-            this.rootStart[k] += this.rootStart[k - 1]; // Each key's start.
+            this.loanStart[g] += this.loanStart[g - 1]; // Each group's start.
         }
 
         for (var l = 0; l < this.loanCount; l++)
         {
-            this.byRoot[this.rootStart[this.loans[l].Root]++] = l; // Each key's start becomes its end.
+            var id = this.loanStart[this.loans[l].Group]++; // Each group's start becomes its end.
+            (this.renumbered[l], this.ordered[id]) = (id, this.loans[l]);
         }
 
-        this.rootStart.AsSpan(0, keys).CopyTo(this.rootStart.AsSpan(1));
-        this.rootStart[0] = 0;
-        this.Work += locations + keys + this.loanCount;
+        this.loanStart.AsSpan(0, groups).CopyTo(this.loanStart.AsSpan(1));
+        this.loanStart[0] = 0;
+        (this.loans, this.ordered) = (this.ordered, this.loans);
+        this.Work += groups + (2 * this.loanCount);
+    }
+
+    // The sites' Loans in group order.
+    private void Renumber(Span<int> sites)
+    {
+        foreach (ref var loan in sites)
+        {
+            loan = loan >= 0 ? this.renumbered[loan] : -1;
+        }
+
+        this.Work += sites.Length;
     }
 
     // The PairAcquire operands the view makes Reborrows, each a Loan of its Place's referent.
@@ -260,6 +290,7 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
         this.loans[this.loanCount] = new()
         {
             Root = key,
+            Group = place.IsStatic ? moves.Paths.Length + ~place.Root : moves.Find(place, out _),
             Start = this.loanStepCount,
             Count = count,
             Mode = mode,
@@ -327,17 +358,15 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
             {
                 var statement = statements[data.Start + i];
                 this.ended[data.Start + i] = statement.Kind is MirStatementKind.Assign or MirStatementKind.StorageLive or MirStatementKind.StorageDead
-                    ? this.Ending(statement.Place, 0) : 0;
+                    ? this.Ending(statement.Place) : 0;
             }
 
             var terminator = data.Terminator;
-            var set = terminator.Kind == MirTerminatorKind.Call && terminator.Target >= 0 ? this.Ending(terminator.Place, 0) : 0;
-            if (terminator.Kind == MirTerminatorKind.Call && terminator.Callee is { Kind: MirCalleeKind.Fn, Arg: 0, Symbol: { } symbol } &&
-                types.Published(symbol) is { InPlace: true, Destroys: >= 0 } row && MirCallee.Position(symbol, row.Destroys) is var position &&
-                position < terminator.Count && this.body.Operands[terminator.Start + position].Place is { Root: >= 0 } target)
+            var set = terminator.Kind == MirTerminatorKind.Call && terminator.Target >= 0 ? this.Ending(terminator.Place) : 0;
+            if (this.InPlaceTarget(terminator) is var target and >= 0)
             {
-                set = this.Ending(this.lent[target.Root], set);
-                this.Destroying(target.Root);
+                set = this.sets.Union(set, this.Ending(this.lent[target]));
+                this.Destroying(target);
             }
 
             this.ended[statements.Length + block] = set;
@@ -346,48 +375,66 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
         this.Work += statements.Length + this.body.Blocks.Length;
     }
 
+    // The argument local whose target a Call's published row destroys in place (`replace`), or -1.
+    private int InPlaceTarget(in MirTerminator call)
+    {
+        if (call is not { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Fn, Arg: 0, Symbol: { } symbol } } ||
+            types.Published(symbol) is not { InPlace: true, Destroys: >= 0 } row)
+        {
+            return -1;
+        }
+
+        return this.body.Operands[call.Start + MirCallee.Position(symbol, row.Destroys)].Place is { Root: >= 0 } target ? target.Root : -1;
+    }
+
     // The two-phase Loans issued into an argument holder whose call destroys its target in place: the Ref reads its target where it is
     // formed, and its activation writes it (A3 5's access and err(activate)).
     private void Destroying(int local)
     {
-        var key = this.Key(this.lent[local].Root);
-        for (var r = this.rootStart[key]; r < this.rootStart[key + 1]; r++)
+        var (first, end) = this.Subtree(new(this.lent[local].Root));
+        for (var l = first; l < end; l++)
         {
-            ref var loan = ref this.loans[this.byRoot[r]];
+            ref var loan = ref this.loans[l];
             loan.Destroying |= loan.Mode == MirRefKind.TwoPhaseUniq && loan.Holder == this.slots[local];
         }
 
-        this.Work += this.rootStart[key + 1] - this.rootStart[key];
+        this.Work += end - first;
     }
 
-    // The Loans whose Places a destroyed Move Path exactly prefixes, added to a set: the path's steps compare exactly (a constant index only
-    // with the same constant); a Place through a Deref or an index is no Move Path.
-    private int Ending(MirPlace destroyed, int set)
+    // The Loans destroying a Move Path in place ends (E8), those whose Places it exactly prefixes: the Loans whose groups lie in its
+    // subtree. A Place through a Deref or an index under the view, or a static's, is no Move Path.
+    private int Ending(MirPlace destroyed)
     {
+        if (destroyed.IsStatic)
+        {
+            return 0;
+        }
+
         var count = this.Walk(destroyed, reborrow: false, ref this.walk);
         for (var i = 0; i < count; i++)
         {
             if (this.walk[i].Class != StepClass.Inline)
             {
-                return set;
+                return 0;
             }
         }
 
-        var key = this.Key(destroyed.Root);
-        this.Work += this.rootStart[key + 1] - this.rootStart[key];
-        for (var r = this.rootStart[key]; r < this.rootStart[key + 1]; r++)
+        var (first, end) = this.Subtree(destroyed);
+        return this.sets.Range(this.loanBase + first, end - first);
+    }
+
+    // The Loans whose groups lie in a Place's: the subtree [K, End) of a local's Move Path K (MirMoveData's pre-order), whose Places K
+    // exactly prefixes (E8), or a static's group.
+    private (int First, int End) Subtree(MirPlace place)
+    {
+        if (place.IsStatic)
         {
-            ref readonly var loan = ref this.loans[this.byRoot[r]];
-            var exact = loan.Count >= count;
-            for (var i = 0; exact && i < count; i++)
-            {
-                exact = this.loanSteps[loan.Start + i] is var step && step.Kind == this.walk[i].Kind && step.Arg == this.walk[i].Arg;
-            }
-
-            set = exact ? this.sets.Add(set, this.loanBase + this.byRoot[r]) : set;
+            var group = moves.Paths.Length + ~place.Root;
+            return (this.loanStart[group], this.loanStart[group + 1]);
         }
 
-        return set;
+        var path = moves.Find(place, out _);
+        return (this.loanStart[path], this.loanStart[moves.Paths[path].End]);
     }
 
     // The steps of a Place under the view, root first (A3 3): a Base of depth d is d steps, an owner-case pair layer is none (SPEC 13.5.5),
@@ -439,6 +486,10 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
     {
         /// <summary>Gets or sets its Place's root key.</summary>
         internal int Root { get; set; }
+
+        /// <summary>Gets or sets its Place's group: the Move Path of its longest inline prefix (MirMoveData), or for a static's Place the
+        /// number of paths and the static's index.</summary>
+        internal int Group { get; set; }
 
         /// <summary>Gets or sets the first of its Place's steps.</summary>
         internal int Start { get; set; }

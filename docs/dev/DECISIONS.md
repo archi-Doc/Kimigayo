@@ -1240,6 +1240,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `Count` and `Elements` read a node; `Bytes` counts the element bytes of the nodes made, A3 §6.2's ν, which `MirBorrows.Work`
   reports. `Clear` empties the storage per body view and keeps its capacity, so a warm run allocates nothing; the memory limit stays
   the dataflow's (R4-M15a). Its first reader is `MirBorrows` (unit 1b-2); `Map`, for disturbance (F6), comes with unit 2f.
+  Review fix B3 (2026-10-18): `Range(first, count)`, memoized, interns a run of consecutive ids (the Loans a Move Path's destruction
+  ends, R4-M57), and `Remove` scans its smaller operand, returning the set itself when it removes nothing.
   Rejected (A3 §3, §6.1): dense holder × Loan bits (cubic: heads × holders × Loans); a per-Loan traversal (a check walks every
   Loan); persistent tree sets (no int identity, an allocation per insertion); `Remove` by element (one call per ended Loan and
   holder) or by predicate (no memo key, so every holder's set is scanned at every point). Not temporary.
@@ -1259,6 +1261,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Uniq Loan of its Place's referent. E8's ended set of each location is built in the pre-pass and removed from every slot after
     the location's checks and transfer (A3's `step`, σ_out \ ended; corrected by 1b-3: removing it first made `replace` store its
     new value through its already ended target reservation into E).
+    Review fix B3 (2026-10-18, the planning session within V16): the Loans are ordered by group, the Move Path of their Place's longest
+    inline prefix (`MirMoveData.Find`; statics after the paths), not by root key, so a destroyed path K ends the run of K's subtree
+    [K, End), made once by `MirLoanSets.Range`; the comparison with every Loan of the root (a second copy of Move-Path identity, ν =
+    Θ(B²)) is deleted. A destroyed Place is a Move Path only when all its steps are inline under the view (a reference-case
+    PairLayer is a Deref there). A static has no Move Path, so its write ends none of its Loans: over-strict, never unsound, latent
+    until P6's static borrows (unit 2b), which must give them an ending. (ended points) × holders stays a Dense term (A3 6.3).
   - A location's effect is planned as entries on the state (clear, replace, join), then committed, so the checks replay reads the
     plan on `σ_in`; a borrow's stored value only seeds the closure (E5), as the prototype's chosen rule (its parents as candidates,
     `RefParentsInTransit`, is over-strict on 30b). Transit counts a store into a holder live after ℓ, made live by the closure, or E.

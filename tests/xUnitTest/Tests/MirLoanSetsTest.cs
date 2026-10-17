@@ -6,7 +6,8 @@ using Xunit;
 namespace XunitTest;
 
 /// <summary>A5's interned Loan sets (design A3 §6.1, docs/dev/DECISIONS.md R4-M53) through <see cref="MirLoanSets"/> itself: equal sets
-/// have one id, 0 is the empty set, Add, Union and Remove keep the set laws and repeat through their memos, and the storage is pooled.</summary>
+/// have one id, 0 is the empty set, Add, Union, Remove and Range keep the set laws and repeat through their memos, and the storage is
+/// pooled.</summary>
 public sealed class MirLoanSetsTest(ITestOutputHelper output)
 {
     // R4-M53: a set is its id: the same elements added in any order, joined by Union or left by Remove are one node, and the empty set is
@@ -45,6 +46,21 @@ public sealed class MirLoanSetsTest(ITestOutputHelper output)
         Assert.Equal(sets.Remove(a, b), sets.Remove(sets.Union(a, b), b));
         Assert.Equal([a, a, 0], new[] { sets.Remove(a, Of(sets, 3, 5, 100)), sets.Remove(a, 0), sets.Remove(0, a) });
         Assert.Equal((3, true, false), (sets.Count(a), sets.Contains(a, 7), sets.Contains(a, 5)));
+    }
+
+    // R4-M53, A3 §12 E8: Range is the set of a run of consecutive elements, memoized, the empty run node 0. Remove scans its smaller operand:
+    // removing absent elements returns the set itself, and a result equal to an existing set makes no node.
+    [Fact]
+    public void ARangeIsTheSetOfItsRun()
+    {
+        var sets = new MirLoanSets();
+        var (run, absent, pair, four) = (sets.Range(3, 4), Of(sets, 1, 9), Of(sets, 1, 4), Of(sets, 4));
+        Assert.Equal([3, 4, 5, 6], sets.Elements(run).ToArray());
+        Assert.Equal([run, run, 0], new[] { Of(sets, 6, 5, 4, 3), sets.Range(3, 4), sets.Range(9, 0) });
+        var bytes = sets.Bytes;
+        Assert.Equal([run, Of(sets, 1), 0], new[] { sets.Remove(run, absent), sets.Remove(pair, run), sets.Remove(four, run) });
+        Assert.Equal(bytes, sets.Bytes);
+        Assert.Equal([3, 5, 6], sets.Elements(sets.Remove(run, four)).ToArray());
     }
 
     // R4-M53, A3 §6.2: an operation repeated, in either operand order for a Union, returns its first result and makes no node, and a
