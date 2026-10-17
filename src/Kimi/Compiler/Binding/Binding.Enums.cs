@@ -286,14 +286,14 @@ public sealed partial class Binding
                 }
             }
 
-            // Infer from typed inputs before fitting literals, aggregate literals (SPEC 10.5.1: waiting, no evidence) or expected-Type
-            // Case syntax. This is static analysis order; the committed operations remain in source order.
+            // Infer from typed inputs before fitting literals or expected-Type Case syntax.
+            // This is static analysis order; the committed operations remain in source order.
             for (var pass = 0; pass < 3; pass++)
             {
                 for (var i = 0; i < count; i++)
                 {
                     var source = call!.ArgumentNodes[i];
-                    if ((NeedsEnumContext(source) ? 2 : IsUnfittedLiteral(source) || IsAggregateArgument(source) ? 1 : 0) != pass)
+                    if ((NeedsEnumContext(source) ? 2 : IsUnfittedLiteral(source) ? 1 : 0) != pass)
                     {
                         continue;
                     }

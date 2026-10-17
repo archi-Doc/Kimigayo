@@ -23,7 +23,8 @@ public class EnumBindingTest
     [InlineData("let x: Result<i32, string> = .Err(\"text\")")]
     [InlineData("let x: ::Kimi.Option<i32> = ::Kimi.Option<i32>.Some(1)")]
     [InlineData("let x: Option<Option<i32>> = .Some(.Some(1))")]
-    [InlineData("enum Two<T>\n    Both(T, T)\nlet w: (i64, i64) = (1, 2)\nlet x = Two.Both((1, 2), w)")]
+    [InlineData("enum P<T>\n    Pair(T, (T, T))\nfunc f(a: i64)\n    let x = P.Pair(1, (a, a))")]
+    [InlineData("enum P<T>\n    Pair(T, (T, T))\nfunc f(a: i64)\n    let y: P<i64> = P.Pair(1, (a, a))")]
     public void ConstructsQualifiedAndExpectedCases(string source)
     {
         var c = CompilationTestHelper.ParseSuccess("enum Message\n    Quit\n    Write(string)\n" + source);
