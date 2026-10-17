@@ -210,6 +210,11 @@ internal sealed partial class MirValidator
             for (var i = 0; i < count; i++)
             {
                 var actual = this.TypeOf(body.Operands[call.Start + i]);
+                if (ReferenceEquals(actual, BoundType.Never))
+                {
+                    continue; // An operand that does not complete, whose call only the checks reach (SPEC 14.10.3), agrees with any parameter.
+                }
+
                 BoundType? expected;
                 if (function is null)
                 {

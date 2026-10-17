@@ -12,8 +12,9 @@ internal sealed partial class MirBuilder
     private static Koto Child(Koto node) => node switch { LabeledKoto label => label.Target, BinaryKoto binary => binary.Left, _ => ((UnaryKoto)node).Operand };
 
     // The Place a node designates: one an expansion located already (Located), a parenthesized Place its operand's; a value its consumer needs
-    // as a Place is held in a temp.
-    private MirPlace Place(Koto node)
+    // as a Place is held in a temp. A call's input (input) is its preparation path down to a value or a call result, whose exclusive
+    // borrows are reservations (SPEC 15.6.7).
+    private MirPlace Place(Koto node, bool input = false)
     {
         if (this.Located(node) is { } located)
         {
@@ -23,14 +24,14 @@ internal sealed partial class MirBuilder
         var shape = HirTables.PlaceOf(node);
         var place = shape.Kind switch
         {
-            _ when node is ParenthesizedKoto group && shape.Kind != HirPlaceKind.Value => this.Place(group.Operand),
-            HirPlaceKind.Field when node is MemberAccessKoto member => this.Member(member),
+            _ when node is ParenthesizedKoto group && shape.Kind != HirPlaceKind.Value => this.Place(group.Operand, input),
+            HirPlaceKind.Field when node is MemberAccessKoto member => this.Member(member, input),
             HirPlaceKind.Local or HirPlaceKind.Static or HirPlaceKind.Field => this.Named(node),
-            HirPlaceKind.Deref or HirPlaceKind.PairLayer => this.Layer(this.Place(Child(node)), shape.Kind),
-            HirPlaceKind.Index => this.Element((IndexKoto)node),
-            HirPlaceKind.ConstIndex => this.ConstElement((IndexKoto)node),
+            HirPlaceKind.Deref or HirPlaceKind.PairLayer => this.Layer(this.Place(Child(node), input), shape.Kind),
+            HirPlaceKind.Index => this.Element((IndexKoto)node, input),
+            HirPlaceKind.ConstIndex => this.ConstElement((IndexKoto)node, input),
             HirPlaceKind.CallResult => this.Referent(node),
-            HirPlaceKind.Value => this.Value(node),
+            HirPlaceKind.Value => this.Value(node, input: input),
             _ => this.Unsupported(node),
         };
 
@@ -160,9 +161,9 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 6.2.2, 3.2: a stored Field or a Tuple element of the receiver's Place, which the receiver's Layers follow.
-    private MirPlace Member(MemberAccessKoto member)
+    private MirPlace Member(MemberAccessKoto member, bool input)
     {
-        var receiver = this.Place(member.Left);
+        var receiver = this.Place(member.Left, input);
         return member.Right is NumberLiteralKoto number && number.TryGetIntegerMagnitude(out var element)
             ? this.body.Project(receiver, MirProjectionKind.Field, (int)element) : this.Field(receiver, HirTables.Symbol(member), member);
     }
@@ -194,7 +195,7 @@ internal sealed partial class MirBuilder
 
     // SPEC 15.1.3: a fixed-array element at a literal position in range, grouped or not (its PlaceShape): at the value Binding fitted to
     // the literal its groups enclose (Folded); the position evaluates nothing.
-    private MirPlace ConstElement(IndexKoto index)
+    private MirPlace ConstElement(IndexKoto index, bool input)
     {
         var literal = index.Right;
         while (HirTables.Op(literal) == HirOp.Group)
@@ -202,14 +203,14 @@ internal sealed partial class MirBuilder
             literal = Child(literal);
         }
 
-        return this.body.Project(this.Place(index.Left), MirProjectionKind.ConstIndex, (int)HirTables.PlanOf(literal).Folded!.Value);
+        return this.body.Project(this.Place(index.Left, input), MirProjectionKind.ConstIndex, (int)HirTables.PlanOf(literal).Folded!.Value);
     }
 
     // SPEC 4.7, 4.7.1: a built-in element at a runtime position: an integer, at a written ^x the length minus x, or at another key's
     // resolution; SPEC 5.3: a raw pointer's p[n] is *(p + n).
-    private MirPlace Element(IndexKoto index)
+    private MirPlace Element(IndexKoto index, bool input)
     {
-        var sequence = this.Place(index.Left);
+        var sequence = this.Place(index.Left, input);
         var key = ExpansionPlan.Of(index)?.First;
         if (key is not null || HirTables.Op(index.Right) == HirOp.Range)
         {
@@ -254,18 +255,24 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 4.7.1: the referent of the reference that a subscript's selected call returns; the selection's published expansion names that
-    // call, and a missing one is a broken HIR contract.
+    // call, and a missing one is a broken HIR contract (Broken), an Opaque value of the node's Type.
     private MirPlace Referent(Koto node)
     {
-        var call = ExpansionPlan.Of(node)!.Value.Second!;
+        if (ExpansionPlan.Of(node)?.Second is not { } call)
+        {
+            var value = this.Temp(node);
+            this.Broken(node, value);
+            return value;
+        }
+
         var result = this.Temp(call.ReturnType, node);
         this.Call(result, call, node, first: null);
         return this.body.Project(result, MirProjectionKind.Deref, 0);
     }
 
     // A value held in a temp where its consumer needs a Place, or in the place given where that has its Type, unless an expansion holds it
-    // already.
-    private MirPlace Value(Koto node, MirPlace? into = null)
+    // already; a call's input as the call's (input).
+    private MirPlace Value(Koto node, MirPlace? into = null, bool input = false)
     {
         if (this.Located(node) is { } located)
         {
@@ -273,7 +280,7 @@ internal sealed partial class MirBuilder
         }
 
         var temp = this.Temp(TypeOf(node), node, into);
-        this.Into(temp, node);
+        this.Into(temp, node, input);
         return temp;
     }
 }

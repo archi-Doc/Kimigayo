@@ -18,7 +18,7 @@ fn grow @4
   bb0:
       StorageLive(_3) @12 s1
       StorageLive(_4) @14 s1
-    * _4 = &uniq (*_1): uniq/Array<i32> @14 s1
+    * _4 = &uniq two-phase (*_1): uniq/Array<i32> @14 s1
       _3 = append(move _4, copy _2) -> bb1 @12 s1
   bb1:
       StorageDead(_4) @14 s1
@@ -78,19 +78,21 @@ fn iterate @37
   _9: () temp @50 s2
   _10: () temp @51 s3
   _11: i32 temp @53 s3
-  _12: isize temp @80 s1
-  _13: () temp @54 s1
-  _14: RangeIterator<i32> temp @54 s1
-  _15: Kimi.Range<i32, i32> temp @56 s1
-  _16: Option<i32> temp (Subject) @54 s1
-  _17: uniq/RangeIterator<i32> temp @90 s1
-  _18: isize temp @97 s1
-  _19: i32 var i @55 s4
-  _20: () temp @59 s4
-  _21: () temp @60 s5
-  _22: i32 temp @62 s5
-  _23: isize temp @98 s1
-  _24: i32 temp @64 s1
+  _12: uniq/i32 temp @51 s3
+  _13: isize temp @80 s1
+  _14: () temp @54 s1
+  _15: RangeIterator<i32> temp @54 s1
+  _16: Kimi.Range<i32, i32> temp @56 s1
+  _17: Option<i32> temp (Subject) @54 s1
+  _18: uniq/RangeIterator<i32> temp @90 s1
+  _19: isize temp @97 s1
+  _20: i32 var i @55 s4
+  _21: () temp @59 s4
+  _22: () temp @60 s5
+  _23: i32 temp @62 s5
+  _24: uniq/i32 temp @60 s5
+  _25: isize temp @98 s1
+  _26: i32 temp @64 s1
   s1: lexical in s0 @43
   s2: lexical in s1 @47
   s3: lexical in s2 @50
@@ -112,14 +114,14 @@ fn iterate @37
   bb3:
       StorageDead(_4) @47 s1
       StorageDead(_3) @47 s1
-      StorageLive(_13) @54 s1
       StorageLive(_14) @54 s1
-      StorageLive(_15) @56 s1
-    * _15 = between<i32, i32>(const 0_i32, const 3_i32) -> bb12 @56 s1
+      StorageLive(_15) @54 s1
+      StorageLive(_16) @56 s1
+    * _16 = between<i32, i32>(const 0_i32, const 3_i32) -> bb12 @56 s1
   bb4:
-      StorageLive(_12) @80 s1
-      _12 = discriminant(_5) @80 s1
-      switch copy _12 [1: bb10, otherwise: bb5] @80 s1
+      StorageLive(_13) @80 s1
+      _13 = discriminant(_5) @80 s1
+      switch copy _13 [1: bb10, otherwise: bb5] @80 s1
   bb5:
       unreachable @47 s1
   bb6:
@@ -133,8 +135,11 @@ fn iterate @37
       StorageLive(_10) @51 s3
       StorageLive(_11) @53 s3
     * _11 = copy (*_8) @53 s3
-      _2 = Add(copy _2, move _11) @51 s3
+      StorageLive(_12) @51 s3
+      _12 = &uniq two-phase _2: uniq/i32 @51 s3
+      (*_12) = Add(copy (*_12), move _11) @51 s3
       _10 = const () @51 s3
+      StorageDead(_12) @51 s3
       StorageDead(_11) @53 s3
       StorageDead(_10) @51 s3
       _9 = const () @50 s3
@@ -152,67 +157,70 @@ fn iterate @37
       _3 = const () @47 s1
       goto bb11 @47 s1
   bb11:
-      StorageDead(_12) @80 s1
+      StorageDead(_13) @80 s1
       StorageDead(_7) @79 s1
       StorageDead(_6) @72 s1
       StorageDead(_5) @47 s1
       goto bb3 @37
   bb12:
-      _14 = intoIterator(move _15) -> bb13 @54 s1
+      _15 = intoIterator(move _16) -> bb13 @54 s1
   bb13:
       goto bb14 @54 s1
   bb14:
-      StorageLive(_16) @54 s1
-      StorageLive(_17) @90 s1
-      _17 = &uniq two-phase _14: uniq/RangeIterator<i32> @90 s1
-      _16 = next(move _17) -> bb18 @54 s1
+      StorageLive(_17) @54 s1
+      StorageLive(_18) @90 s1
+      _18 = &uniq two-phase _15: uniq/RangeIterator<i32> @90 s1
+      _17 = next(move _18) -> bb18 @54 s1
   bb15:
-      StorageDead(_15) @56 s1
+      StorageDead(_16) @56 s1
+      StorageDead(_15) @54 s1
       StorageDead(_14) @54 s1
-      StorageDead(_13) @54 s1
-      StorageLive(_24) @64 s1
-    * _24 = copy _2 @64 s1
+      StorageLive(_26) @64 s1
+    * _26 = copy _2 @64 s1
       goto bb27 check bb28 @63 s1
   bb16:
-      StorageLive(_23) @98 s1
-      _23 = discriminant(_16) @98 s1
-      switch copy _23 [1: bb22, otherwise: bb17] @98 s1
+      StorageLive(_25) @98 s1
+      _25 = discriminant(_17) @98 s1
+      switch copy _25 [1: bb22, otherwise: bb17] @98 s1
   bb17:
       unreachable @54 s1
   bb18:
-      StorageLive(_18) @97 s1
-      _18 = discriminant(_16) @97 s1
-      switch copy _18 [0: bb19, otherwise: bb16] @97 s1
+      StorageLive(_19) @97 s1
+      _19 = discriminant(_17) @97 s1
+      switch copy _19 [0: bb19, otherwise: bb16] @97 s1
   bb19:
-      StorageLive(_19) @55 s4
-      _19 = copy (_16 as case 0).0 @55 s4
-      StorageLive(_20) @59 s4
-      StorageLive(_21) @60 s5
-      StorageLive(_22) @62 s5
-    * _22 = copy _19 @62 s5
-      _2 = Add(copy _2, move _22) @60 s5
-      _21 = const () @60 s5
-      StorageDead(_22) @62 s5
-      StorageDead(_21) @60 s5
-      _20 = const () @59 s5
-      StorageDead(_20) @59 s4
+      StorageLive(_20) @55 s4
+      _20 = copy (_17 as case 0).0 @55 s4
+      StorageLive(_21) @59 s4
+      StorageLive(_22) @60 s5
+      StorageLive(_23) @62 s5
+    * _23 = copy _20 @62 s5
+      StorageLive(_24) @60 s5
+      _24 = &uniq two-phase _2: uniq/i32 @60 s5
+      (*_24) = Add(copy (*_24), move _23) @60 s5
+      _22 = const () @60 s5
+      StorageDead(_24) @60 s5
+      StorageDead(_23) @62 s5
+      StorageDead(_22) @60 s5
+      _21 = const () @59 s5
+      StorageDead(_21) @59 s4
       goto bb21 @59 s4
   bb20:
-      StorageDead(_18) @97 s1
-      StorageDead(_17) @90 s1
-      StorageDead(_16) @54 s1
+      StorageDead(_19) @97 s1
+      StorageDead(_18) @90 s1
+      StorageDead(_17) @54 s1
       goto bb14 @37
   bb21:
-      StorageDead(_19) @55 s4
+      StorageDead(_20) @55 s4
       goto bb20 @37
   bb22:
-      _13 = const () @54 s1
+      _14 = const () @54 s1
       goto bb23 @54 s1
   bb23:
-      StorageDead(_23) @98 s1
-      StorageDead(_18) @97 s1
-      StorageDead(_17) @90 s1
-      StorageDead(_16) @54 s1
+      StorageDead(_25) @98 s1
+      StorageDead(_19) @97 s1
+      StorageDead(_18) @90 s1
+      StorageDead(_17) @54 s1
       goto bb15 @37
   bb24:
       return @37
@@ -220,12 +228,12 @@ fn iterate @37
       StorageDead(_2) @44 s1
       goto bb24 @37
   bb26:
-      StorageDead(_24) @64 s1
+      StorageDead(_26) @64 s1
       goto bb25 @37
   bb27:
-      _0 = move _24 @63 s1
+      _0 = move _26 @63 s1
       goto bb26 @63 s1
   bb28:
-      StorageDead(_24) @64 s1
+      StorageDead(_26) @64 s1
       StorageDead(_2) @44 s1
       unreachable @43

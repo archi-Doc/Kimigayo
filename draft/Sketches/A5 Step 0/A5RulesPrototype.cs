@@ -106,7 +106,7 @@ enum Abl { None, KillKeepOnly, NoMaterialize, SyntacticAccess, NoAuthority, NoCl
 
 enum K { Read, Write, Move, SBorrow, UBorrow, Destroy }
 enum Mode { PROV, S1, S1P, A }
-record Issue(string Id, string Place, bool Uniq, string Into, bool Reserve, bool Param, bool InPlace = false);
+record Issue(string Id, string Place, bool Uniq, string Into, bool Reserve, bool Param, bool InPlace = false, bool Phantom = false);
 record Acc(K Kind, string Place, string Except, bool InPlace = false); // InPlace: the exclusive borrow is a `replace` target
 record Res(HashSet<string> Names, HashSet<string> Leaves, HashSet<string> Auth);
 
@@ -133,7 +133,12 @@ class Node
 {
     public readonly string Label; public readonly int Ix;
     public readonly List<Issue> Issues = new(); public readonly List<(string From, string To)> Flows = new();
-    public readonly List<string> Defs = new(), Uses = new(), Activates = new(), Assumed = new(), Exchanges = new();
+    public readonly List<string> Defs = new(), Uses = new(), Activates = new(), Assumed = new(), Exchanges = new(), Disturbs = new(), Excuses = new();
+    // F6 (S2, A3 §5): Φ_c, a phantom uniq Loan on the receiver's referent carried by the result; a disturbing point
+    // turns Φ_c into Φ_c^dist in every set; a later preserves call on the same receiver excuses an undisturbed Φ_c.
+    public Node Phantom(string id, string place, string into) { Issues.Add(new(id, place, true, into, false, false, false, true)); return this; }
+    public Node Disturb(string id) { Disturbs.Add(id); return this; }
+    public Node Excuse(string id) { Excuses.Add(id); return this; }
     public readonly List<(string Place, string Src)> Throughs = new(); public readonly List<Acc> Accs = new();
     public List<string> Succ;
     public Node(string label, int ix) { Label = label; Ix = ix; }
@@ -185,6 +190,8 @@ class Analysis
             }
             if (x != Abl.NoReservation) foreach (var a in n.Activates) activeAt[a] = n.Ix;
         }
+        foreach (var d in ns.SelectMany(n => n.Disturbs).Distinct()) // Φ_c^dist: the same phantom, no longer excusable
+        { issue[d + "^dist"] = issue[d] with { Id = d + "^dist" }; issueAt[d + "^dist"] = issueAt[d]; places[d + "^dist"] = new(places[d]); }
         BuildEdges(); Carries();
         if (m == Mode.A) { LivenessA(); CheckA(); } else { Liveness(); Check(); }
     }
@@ -237,9 +244,9 @@ class Analysis
         foreach (var s in n.Issues)                                                                          // issue + child+ materialization
         {
             o.Add((s.Into, s.Id));
-            if (!s.Param && X != Abl.NoMaterialize) foreach (var l in Resolve(s.Place, i).Auth) if (!Ended(l)) o.Add((s.Into, l));
+            if (!s.Param && !s.Phantom && X != Abl.NoMaterialize) foreach (var l in Resolve(s.Place, i).Auth) if (!Ended(l)) o.Add((s.Into, l));
         }
-        return o;
+        return Disturbed(n, o);
     }
 
     // base(L, B) (plan fe1a5b34): the Place storing the reference the borrow follows last, i.e. the prefix before the
@@ -334,7 +341,7 @@ class Analysis
         for (int i = 0; i < N; i++)
         {
             var n = ns[i]; var accs = n.Accs.ToList();
-            accs.AddRange(n.Issues.Where(s => !s.Param).Select(s => new Acc(s.Uniq && !s.Reserve ? K.UBorrow : K.SBorrow, s.Place, null, s.InPlace)));
+            accs.AddRange(n.Issues.Where(s => !s.Param && !s.Phantom).Select(s => new Acc(s.Uniq && !s.Reserve ? K.UBorrow : K.SBorrow, s.Place, null, s.InPlace)));
             accs.AddRange(n.Activates.Select(id => new Acc(K.UBorrow, issue[id].Place, id, issue[id].InPlace)));
             if (M == Mode.S1P) accs.AddRange(n.Exchanges.Select(h => new Acc(K.Move, h, null))); // exchanged/swapped: the old value moves out
             var after = succ[i].SelectMany(q => liveIn[q]).ToHashSet();
@@ -362,7 +369,7 @@ class Analysis
                     : In[i].Where(t => LiveAfter(t.H) && !Dest(t.H) || transit.Any(s => Path.Overlap(t.H, s)));
                 foreach (var (h, l) in facts)
                 {
-                    if ((X == Abl.IdExclusion && l == a.Except) || res.Auth.Contains(l) || issue[l].Param) continue;
+                    if ((X == Abl.IdExclusion && l == a.Except) || res.Auth.Contains(l) || issue[l].Param || n.Excuses.Contains(l)) continue;
                     bool uniq = issue[l].Uniq && !Reserved(h, l, i);
                     // SharedBaseOp: P3 for S1′, a shared borrow of the base or an ancestor while an exclusive child is live.
                     bool op = baseOp || ((X is Abl.SharedBaseOp or Abl.P3RootMost) && M == Mode.S1P && a.Kind == K.SBorrow && !a.InPlace && uniq);
@@ -411,11 +418,11 @@ class Analysis
         {
             // Fix found in round 3: a child Loan whose base this point destroys in place is ended here too (19a).
             if (X != Abl.AIssueNotEnded && EndedBy(s.Id, n.Defs)) { } else o.Add((Root(s.Into), s.Id));
-            if (s.Param) continue;
+            if (s.Param || s.Phantom) continue;
             var S = Sigma(inn, Root(s.Place));
             for (int j = 0; j < Steps(s.Place); j++) { foreach (var l in S) o.Add((Root(s.Into), l)); S = Content(inn, S); }
         }
-        return o;
+        return Disturbed(n, o);
     }
 
     void LivenessA() // backward over root holders; borrowing T uses T; no feedback from the closure
@@ -443,7 +450,7 @@ class Analysis
         {
             var n = ns[i]; var accs = n.Accs.ToList();
             // A2 keeps the `replace` exemption: a destroying Ref is a shallow read, and its activation is not deep.
-            accs.AddRange(n.Issues.Where(s => !s.Param).Select(s => new Acc(s.InPlace ? K.Read : s.Uniq && !s.Reserve ? K.UBorrow : K.SBorrow, s.Place, null, s.InPlace)));
+            accs.AddRange(n.Issues.Where(s => !s.Param && !s.Phantom).Select(s => new Acc(s.InPlace ? K.Read : s.Uniq && !s.Reserve ? K.UBorrow : K.SBorrow, s.Place, null, s.InPlace)));
             accs.AddRange(n.Activates.Select(id => new Acc(K.UBorrow, issue[id].Place, id, issue[id].InPlace)));
             accs.AddRange(n.Exchanges.Select(h => new Acc(K.Move, h, null)));
             var after = succ[i].SelectMany(q => liveIn[q]).ToHashSet();
@@ -486,7 +493,7 @@ class Analysis
                 bool byId = X is Abl.IdExclusion or Abl.AText;
                 foreach (var (h, l) in F)
                 {
-                    if ((byId && l == a.Except) || issue[l].Param) continue;
+                    if ((byId && l == a.Except) || issue[l].Param || n.Excuses.Contains(l)) continue;
                     if (X == Abl.AText && a.Except == null && n.Issues.Any(s => s.Id == l)) continue; // "L not issued at ℓ"
                     bool uniq = issue[l].Uniq && !Reserved(h, l, i);
                     if (!uniq && a.Kind is K.Read or K.SBorrow) continue;
@@ -499,6 +506,10 @@ class Analysis
     }
 
     void Err(string l, int i, string what) { if (!Errors.Contains((l, i, what))) Errors.Add((l, i, what)); }
+
+    // disturbed at ℓ ⇒ Φ_c is replaced by Φ_c^dist in every σ (by holder, like ended).
+    static HashSet<Fact> Disturbed(Node n, HashSet<Fact> o) =>
+        n.Disturbs.Count == 0 ? o : o.Select(t => n.Disturbs.Contains(t.L) ? (t.H, t.L + "^dist") : t).ToHashSet();
 
     // A reserved Loan acts as shared until activation. Round 4: only in its own reservation holder, inside the call's
     // window; any other holder carries an earlier, activated incarnation of the site (loops). By id: by position only.
@@ -537,7 +548,9 @@ static class Cases
         OuterThenWrite(), ParamOuter(), DropBase("24a", userDrop: true), DropBase("24b", userDrop: false), DropMerged(),
         SelfStore("25a", "live"), SelfStore("25b", "dead"), SelfStore("25c", "enum"), DestroyingCall("26a", clear: false), DestroyingCall("26b", clear: true),
         SharedField(), Args("28a", "uniqref"), Args("28b", "refref"), Args("28c", "fields"), Args("28d", "stored"),
-        CrossingKill(), EscapedTransit(), PartTransit(), LinkedList("30a", "obj"), LinkedList("30b", "uniq"), LinkedList("30c", "conflict"), LinkedList("30d", "peek")];
+        CrossingKill(), EscapedTransit(), PartTransit(), LinkedList("30a", "obj"), LinkedList("30b", "uniq"), LinkedList("30c", "conflict"), LinkedList("30d", "peek"),
+        SwapParams("31a", caller: false), SwapParams("31b", caller: true), CopyThrough("32a", childLive: false), CopyThrough("32b", childLive: true),
+        PreservesResults("33a", "two"), PreservesResults("33b", "across"), PreservesResults("33c", "callonly")];
 
     static Case Replacement()
     {
@@ -1162,6 +1175,69 @@ static class Cases
         c.N("node.value = 1").A(K.Write, "node.*.value");
         if (kind == "peek") c.ALoss = "23a family: the plan's within kill (stale base name through a Deref)";
         return conflict ? c.Error("  node.next@follow.value = 1") : c.Valid();
+    }
+
+    // ---- Round 7 (design A3 unit 0b) ----
+    // swap with two reference parameters: the caller's activation keeps them disjoint (S15:614). 31b: the caller.
+    static Case SwapParams(string id, bool caller)
+    {
+        var c = new Case(id, caller ? "caller of `f(a, b) => swap(a, b)`: `f(x@uniq, x@uniq)`" : "`func f(a: uniq/T, b: uniq/T) => Kimi.Intrinsics.swap(a, b)`");
+        if (caller)
+        {
+            c.N("var x = make()").Def("x");
+            c.N("$1 = x@uniq (reserved)").Def("$1").Borrow("L1", "x", Uniq, "$1", reserve: true);
+            c.N("$2 = x@uniq (reserved)").Def("$2").Borrow("L2", "x", Uniq, "$2", reserve: true);
+            c.N("f($1, $2)").Activate("L1").Activate("L2").Use("$1", "$2");
+            return c.Error("f($1, $2)");
+        }
+        c.N("func f(a: uniq/T, b: uniq/T)").Param("La", "a").Param("Lb", "b");
+        c.N("$1 = a (Reborrow at a uniq parameter, reserved)").Def("$1").Borrow("L1", "a.*", Uniq, "$1", reserve: true);
+        c.N("$2 = b (Reborrow at a uniq parameter, reserved)").Def("$2").Borrow("L2", "b.*", Uniq, "$2", reserve: true);
+        c.N("swap($1, $2)").Activate("L1").Activate("L2").Use("$1", "$2");
+        return c.Valid();
+    }
+
+    // A Copy read through a reference stored into a holder (BinaryOp: the value carries no Loan).
+    static Case CopyThrough(string id, bool childLive)
+    {
+        var c = new Case(id, childLive ? "`var h = x@uniq; let c = h@follow@uniq; y = h@follow + 1; c@follow = 2`" : "`let h = x@ref; y = h@follow + 1; x = 3; inspect(y)`");
+        c.N("var x = 1; var y = 0").Def("x", "y");
+        if (childLive)
+        {
+            c.N("var h = x@uniq").Def("h").Borrow("Lh", "x", Uniq, "h");
+            c.N("let c = h@follow@uniq").Def("c").Borrow("Lc", "h.*", Uniq, "c");
+            c.N("$v = h@follow").Def("$v").A(K.Read, "h.*").Flow("h.*", "$v");
+            c.N("y = $v + 1").Assign("y").Use("$v");
+            c.N("c@follow = 2").A(K.Write, "c.*");
+            return c.Error("$v = h@follow");
+        }
+        c.N("let h = x@ref").Def("h").Borrow("Lh", "x", Ref, "h");
+        c.N("$v = h@follow").Def("$v").A(K.Read, "h.*").Flow("h.*", "$v");
+        c.N("y = $v + 1").Assign("y").Use("$v");
+        c.N("x = 3").Assign("x");
+        c.N("inspect(y)").Use("y");
+        return c.Valid();
+    }
+
+    // §8.11.3 takeTwo (valid) and the plan's takeAcross (error). `take` is abstract and its result descends from the
+    // receiver, so it carries Φ_c on `source.*`. 33c: the excuse only at the Call, not at the receiver's reservation.
+    static Case PreservesResults(string id, string kind)
+    {
+        var c = new Case(id, kind switch
+        {
+            "across" => "`takeAcross`: `first = source.take(); source@follow = fresh@move; second = source.take()`",
+            "callonly" => "`takeTwo` with the excuse at the Call only (A3's letter)",
+            _ => "`takeTwo<S: StableTake>`: `first = source.take(); second = source.take()` (§8.11.3)",
+        });
+        c.N("func f(source: uniq/S, fresh: S)").Param("Ls", "source").Def("fresh");
+        c.N("$r1 = source (receiver, reserved)").Def("$r1").Borrow("Lr1", "source.*", Uniq, "$r1", reserve: true);
+        c.N("let first = source.take()").Activate("Lr1").Def("first").Phantom("Phi1", "source.*", "first");
+        if (kind == "across") c.N("source@follow = fresh@move").A(K.Move, "fresh").Through("source.*", "fresh").Disturb("Phi1");
+        var r2 = c.N("$r2 = source (receiver, reserved)").Def("$r2").Borrow("Lr2", "source.*", Uniq, "$r2", reserve: true);
+        if (kind != "callonly") r2.Excuse("Phi1");
+        c.N("let second = source.take()").Activate("Lr2").Def("second").Phantom("Phi2", "source.*", "second").Excuse("Phi1");
+        c.N("return (first@move, second@move)").Flow("first", "$ret").Flow("second", "$ret");
+        return kind == "across" ? c.Error() : c.Valid();
     }
 
     // Path-exact transit: the store goes to s.inner, while only s is used later.

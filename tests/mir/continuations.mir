@@ -186,6 +186,8 @@ fn divergingArgument @79
       StorageLive(_3) @87 s1
     * _3 = stop() -> ! check bb1 @87 s1
   bb1:
+      _2 = take(copy _1, move _3) -> bb2 @84 s1
+  bb2:
       StorageDead(_3) @87 s1
       StorageDead(_2) @84 s1
       unreachable @82
@@ -255,7 +257,7 @@ fn abandoned @101
   bb0:
       StorageLive(_3) @107 s1
       StorageLive(_4) @109 s1
-    * _4 = &uniq (*_1): uniq/Counter @109 s1
+    * _4 = &uniq two-phase (*_1): uniq/Counter @109 s1
       StorageLive(_5) @111 s1
       StorageLive(_6) @112 s1
       _6 = Gt(copy _2, const 0_i32) proven @112 s1
@@ -264,8 +266,7 @@ fn abandoned @101
       _3 = bump(move _4, move _5) -> bb8 @107 s1
   bb2:
       StorageDead(_6) @112 s1
-    * EndBorrow(_4) @116 s2
-      goto bb6 check bb7 @116 s2
+    * goto bb6 check bb7 @116 s2
   bb3:
       StorageDead(_6) @112 s1
     * _5 = copy _2 @119 s3
@@ -278,6 +279,7 @@ fn abandoned @101
       StorageDead(_3) @107 s1
       goto bb4 @101
   bb6:
+      EndBorrow(_4) @116 s2
       _0 = const 1_i32 @116 s2
       goto bb5 @116 s2
   bb7:
