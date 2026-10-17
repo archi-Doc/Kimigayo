@@ -32,15 +32,18 @@ Counts:
 Group 2 producers: 14 Ids through the table, 9 only through the builder. Without a producer: the 7 R8 Ids (PD21), `TestRecordValue` (F8 adds
 one) and `TestPhaseEnter`/`TestPhaseLeave` (codegen writes them, PD22).
 
-UNOWNED (findings for the planning session):
+UNOWNED: none. The first reading's findings were decided by the planning session (2026-10-18, second reading); rows carry the owners:
 
-1. `CompilerFunctionKind.WriteLineUtf8` (`writeLine(text: Text.Utf8Slice)`, `WL.Formatting.cs:60`): C0b2 names only the `writeLine(string)` row,
-   and C9a's "25 fixed-symbol rows" are exactly `TextFixed`..`WriterStatus` without `TextWriter`, which excludes it. Candidate: C9a (26 rows) or C0b2.
-2. (3b, beyond the plan's list) `MirStatementKind.StorageLive`, `StorageDead`, `FakeRead`, `EndBorrow`: no unit names them. They generate
-   nothing (legacy writes no lifetime markers), but under PD11 an unlisted form is `Unsupported_Kd`, so C0b1's coverage rows must list them.
-
-Not classified with certainty: `PrepareTypeStorage` (group 5, a post-Bind preparation counted as D; S3 may list it among the mutations it removes);
-`InstantiateForwardedCall` (P for Fn callees through the existing `TyCtxt.Compose`, N for requirement callees through F5b; counted N).
+1. `CompilerFunctionKind.WriteLineUtf8` (`writeLine(text: Text.Utf8Slice)`, `WL.Formatting.cs:60`): C9a, which grows to 26 rows.
+2. `MirStatementKind.StorageLive`, `StorageDead`, `FakeRead`, `EndBorrow`: C0b1, as no-output coverage rows (PD11). A2's flag-clear points sit
+   at StorageLive/StorageDead locations (`M/Analysis/MirInit.cs:112-116` → `MirDrops`), so C4b writes those points by location.
+3. `FitsVerifiedTypeAt`, `InstantiateDefaultCall` (old-Analysis-only after G7): H11, named in H0, deleted in the same commit as
+   `InstantiateForwardedCall`.
+4. `PrepareTypeStorage` stays D under the invariant "every Type MIR names has prepared storage; an unprepared instance is
+   `InternalInvariant_Kd`". Identity Types are prepared during Bind (`Bd/Binding.TypeIdentity.cs:83`, `Bd/Binding.FunctionItems.cs:82`);
+   `TyCtxt.Apply` prepares non-identity Substs (`Bd/TyCtxt.cs:236`), a post-Bind mutation for S3's list.
+5. `InstantiateForwardedCall` stays N, labelled F5b (its Fn part is `TyCtxt.Compose`).
+6. `HasFormattingCallback`: K6 widens to "requirement callees and compiler-function callees whose row calls a witness" (codegen C9b).
 
 ## 1. `CompilerFunctionKind` (75)
 
@@ -70,11 +73,11 @@ Intrinsic = `IntrinsicId`; Shim = a built-in witness generated per instance (a B
 | ArraySwap :46 | Body | `BL.Arrays.cs:290`; `BL.CompilerEntries.cs:65` | as ArrayReserve | C8d | |
 | TextFixed :47 | Body | `WL.Formatting.cs:21`; `BL.Calls.cs:398-400, 467`; `CompilerFunctionAdapters.cs:228` | legacy row over formatting helpers (P1d) | C9a | runtime splice `LlvmModuleWriter.cs:200` |
 | TextHeap :48 | Body | `WL.Formatting.cs:22` | as TextFixed | C9a | |
-| TextWriter :49 | Intrinsic ErasedWriter | `WL.Formatting.cs:23`; `BL.Calls.cs:358-362, 392`; `BL.Formatting.cs:26`; `GenericStoragePlan.cs:194`; `CompilerFunctionAdapters.cs:238` | ErasedWriter dispatch | C9b | |
+| TextWriter :49 | Intrinsic ErasedWriter | `WL.Formatting.cs:23`; `BL.Calls.cs:358-362, 392`; `BL.Formatting.cs:26`; `GenericStoragePlan.cs:194`; `CompilerFunctionAdapters.cs:238` | ErasedWriter dispatch | C9b | edge K6 (user witness) |
 | TextUtf8 :50 | Body | `WL.Formatting.cs:30` | as TextFixed | C9a | |
 | TextValidateUtf8 :51 | Body | `WL.Formatting.cs:31` | as TextFixed | C9a | |
-| TextToString :52 | Body | `WL.Formatting.cs:27`; `BL.Calls.cs:228`; `GenericStoragePlan.cs:237` | built-in row; user-witness wrapper | C9a, C9b | |
-| TextTryFormat :53 | Body | `WL.Formatting.cs:28`; `BL.Calls.cs:398`; `GenericStoragePlan.cs:237, 560` | built-in row; user-witness wrapper | C9a, C9b | |
+| TextToString :52 | Body | `WL.Formatting.cs:27`; `BL.Calls.cs:228`; `GenericStoragePlan.cs:237` | built-in row; user-witness wrapper | C9a, C9b | edge K6 (user witness) |
+| TextTryFormat :53 | Body | `WL.Formatting.cs:28`; `BL.Calls.cs:398`; `GenericStoragePlan.cs:237, 560` | built-in row; user-witness wrapper | C9a, C9b | edge K6 (user witness) |
 | TextRelease :54 | Body | `WL.Formatting.cs:29` | as TextFixed | C9a | |
 | FixedBufferBytes :55 | Body | `WL.Formatting.cs:32` | as TextFixed | C9a | |
 | FixedBufferText :56 | Body | `WL.Formatting.cs:37` | as TextFixed | C9a | |
@@ -92,12 +95,12 @@ Intrinsic = `IntrinsicId`; Shim = a built-in witness generated per instance (a B
 | WindowAppend :68 | Body | `WL.Formatting.cs:57` | as TextFixed | C9a | |
 | WindowLimit :69 | Body | `WL.Formatting.cs:58` | as TextFixed | C9a | |
 | WindowCommit :70 | Body | `WL.Formatting.cs:59` | as TextFixed | C9a | |
-| WriterWrite :71 | Body | `WL.Formatting.cs:25`; `BL.Calls.cs:222-231`; `BL.Formatting.cs:77`; `BL.Interpolation.cs:16`; `CompilerFunctionAdapters.cs:220` | built-in row; user-witness wrapper; literal fast path | C9a, C9b, C9c | |
+| WriterWrite :71 | Body | `WL.Formatting.cs:25`; `BL.Calls.cs:222-231`; `BL.Formatting.cs:77`; `BL.Interpolation.cs:16`; `CompilerFunctionAdapters.cs:220` | built-in row; user-witness wrapper; literal fast path | C9a, C9b, C9c | edge K6 (user witness) |
 | WriterStatus :72 | Body | `WL.Formatting.cs:24` | as TextFixed | C9a | |
-| WriteLineUtf8 :73 | Body | `WL.Formatting.cs:60` | legacy row (P1d moves the table) | UNOWNED | see the list above |
+| WriteLineUtf8 :73 | Body | `WL.Formatting.cs:60` | legacy row (P1d moves the table) | C9a | 26th row (planning decision) |
 | BuiltinFormat :74 | Shim | `WL.Formatting.cs:26`; `BL.Calls.cs:169, 380` | BuiltinFormat shim | C9b | |
-| BuiltinEquals :75 | Shim | `BL.BuiltinComparisons.cs:9-18` (dispatch `BL.Calls.cs:348`); `GenericStoragePlan.Comparisons.cs:17-26` | composite comparison shim over F6 | C8f | edge K6 |
-| BuiltinCompare :76 | Shim | as BuiltinEquals | as BuiltinEquals | C8f | edge K6 |
+| BuiltinEquals :75 | Shim | `BL.BuiltinComparisons.cs:9-18` (dispatch `BL.Calls.cs:348`); `GenericStoragePlan.Comparisons.cs:17-26` | composite comparison shim over F6 | C8c, C8f | edge K6 |
+| BuiltinCompare :76 | Shim | as BuiltinEquals | as BuiltinEquals | C8c, C8f | edge K6 |
 | BuiltinArithmetic :77 | Shim | `BL.BuiltinArithmetic.cs:15` (dispatch `BL.Calls.cs:353`); `NumericArithmetic.cs`; `CompilerFunctionAdapters.cs:89` | arithmetic shim | C8f | |
 | StorageBorrowShared :78 | Body | `BL.Arrays.cs:390-460` (dispatch `BL.Calls.cs:164`) | legacy row over P1b/P2b kernels | C8d | one of "8 storage-boundary kinds" |
 | StorageBorrowExclusive :79 | Body | `BL.Arrays.cs:390-460` | as StorageBorrowShared | C8d | |
@@ -122,7 +125,7 @@ Intrinsic = `IntrinsicId`; Shim = a built-in witness generated per instance (a B
 | StorageBorrowUniqSlice :98 | Body | `BL.Arrays.cs:406, 412` | as StorageBorrowShared | C8d | |
 | StorageSetArrayLength :99 | Body | `BL.Arrays.cs:330, 464` | as StorageBorrowShared | C8d | |
 | RawAllocate :100 | Intrinsic RawAllocate | `BL.Raw.cs:28, 90` (dispatch `BL.Calls.cs:159`); `WL.cs:69`; `CompilerFunctionAdapters.cs:79, 130` | raw memory row over the runtime ABI table | C8a | |
-| RawRelease :101 | Intrinsic RawRelease | `BL.Raw.cs:15` | as RawAllocate | C8a | |
+| RawRelease :101 | Intrinsic RawRelease | `BL.Raw.cs:15, 94-96` | as RawAllocate | C8a | |
 | RawInitialize :102 | Intrinsic RawInitialize | `BL.Raw.cs:61, 103` | as RawAllocate | C8a | |
 | RawSlice :103 | Intrinsic RawSlice | `BL.Raw.cs:40, 66` | as RawAllocate | C8a | |
 
@@ -134,16 +137,16 @@ Builder = produced directly by the MIR builder; None = no producer. Id line numb
 | Id | Class | Producer | Old sites | New owner | Unit | Note |
 | --- | --- | --- | --- | --- | --- | --- |
 | RawAllocate :111 | Table | `:209` | `BL.Raw.cs:28, 90`; `WL.cs:69` | raw memory row | C8a | |
-| RawRelease :112 | Table | `:210` | `BL.Raw.cs:15` | raw memory row | C8a | |
+| RawRelease :112 | Table | `:210` | `BL.Raw.cs:94-96` | raw memory row | C8a | |
 | RawInitialize :113 | Table | `:211` | `BL.Raw.cs:61, 103` | raw memory row | C8a | |
-| RawSlice :114 | Table, Builder | `:212`; `M/Build/MirBuilder.Calls.cs:143` (Unit backing) | `BL.Raw.cs:40, 66` | raw memory row | C8a | |
+| RawSlice :114 | Table | `:212` | `BL.Raw.cs:40, 66` | raw memory row | C8a | `M/Build/MirBuilder.Calls.cs:143` adds its Unit backing operand |
 | TryAllocateBytes :115 | Table | `:207` | `BL.Dictionaries.cs:107` | raw memory row | C8a | |
 | MoveBytes :116 | Table | `:208` | `BL.Dictionaries.cs:110` | `llvm.memmove` | C8a | PD23 |
 | Stride :117 | None | — | — | none | — | R8 (PD21) |
 | DestroyValues :118 | None | — | — | none | — | R8 (PD21) |
 | ReinterpretLoan :119 | None | — | — | none | — | R8 (PD21) |
 | Abort :120 | Table | `:200` | `BL.Calls.cs:193, 430`; `WL.cs:81` | Abort row; location text P5 | C8a | C3b, F9 |
-| Fail :121 | Table, Builder | `:213-217`; `M/Build/MirBuilder.Calls.cs:142, 186` | `BL.Arrays.cs:355-372`; `WL.Abort.cs:32-51` | 7 MIR codes → reasons (P0b) | C8a | measured 7 codes, as C8a says |
+| Fail :121 | Table, Builder | `:213-217`; `M/Build/MirBuilder.Calls.cs:186` (`:142` adds the code operand) | `BL.Arrays.cs:355-372`; `WL.Abort.cs:32-51` | 7 MIR codes → reasons (P0b) | C8a | measured 7 codes, as C8a says |
 | WriteStdout :122 | None | — | `WL.cs:59` (runtime `__kimi_write_line`) | none | — | R8 (PD21) |
 | FormatFloat :123 | None | — | `Utf8FloatRuntime.ll.in:25` | none; legacy runtime text through C9a/C9b rows | — | R8 (PD21) |
 | ErasedWriter :124 | Table | `:206` | `BL.Formatting.cs:26`; `BL.Calls.cs:358-362` | ErasedWriter dispatch | C9b | |
@@ -205,8 +208,8 @@ Producers are in `M/Build/` (`MirBuilder.` omitted). Collector edges per PD6 are
 | Form | New owner | Unit | Note |
 | --- | --- | --- | --- |
 | Statement Assign | per rvalue | C0b1… | |
-| Statement StorageLive, StorageDead | no output (one alloca per local) | UNOWNED | C0b1 by implication; must be a listed row |
-| Statement FakeRead, EndBorrow | no output (`M/MirVocabulary.cs:20-21`) | UNOWNED | as above |
+| Statement StorageLive, StorageDead | no output; A2's flag-clear points at their locations (`M/Analysis/MirInit.cs:112-116` → `MirDrops`) | C0b1, C4b | no-output coverage rows; C4b writes the points by location |
+| Statement FakeRead, EndBorrow | no output (`M/MirVocabulary.cs:20-21`) | C0b1 | no-output coverage rows |
 | Rvalue Use | scalar or memory copy | C0b1, C2b | |
 | Rvalue Ref (Shared, Uniq, TwoPhaseUniq, Raw) | address | C2b | |
 | Rvalue BinaryOp (16), UnaryOp (2) | `FunctionCodegen.Arithmetic` over `LlvmScalarText` (P4a) | C1a | strings C8c; tuple operators expanded by the builder (F7) |
@@ -248,7 +251,7 @@ Producers are in `M/Build/` (`MirBuilder.` omitted). Collector edges per PD6 are
 | Object descriptors and runtime type tokens | Records | `ObjectGenerationPlan.cs:71-241, 246-345` | `ObjectDescriptor(Ty)` items; token = ordinal of the erased payload Type (PD17) | K8, C6a | `WriteKey` deleted |
 | Virtual tables, slot entries, erasure addresses | Records | `VirtualGenerationPlan.cs:32-88, 147-293, 301-355` | `VTableDef`/`TyCtxt.Applies`; `VTable(Ty)` items | F4, K8, C6c | |
 | Inapplicable virtual bodies are not generated | Roots | `GenericStoragePlan.cs:127`; `ObjectGenerationPlan.cs:78`; `LlvmEmitter.cs:512` | checked-only roots (R4-M28) by `TyCtxt.Applies` | K8 (F4) | member deleted G9 |
-| Default evaluator instances | Edges | `DefaultGenerationPlan.cs:33-133`; `LlvmEmitter.Defaults.cs:7-48`; `GenericStoragePlan.cs:166-179`; `ObjectGenerationPlan.cs:36-52` | MIR inlines a default (`M/Build/MirBuilder.Defaults.cs:139`); a recursive one is a DefaultTemplate edge (`:135`) | K1 | |
+| Default evaluator instances | Edges | `DefaultGenerationPlan.cs:33-133`; `LlvmEmitter.Defaults.cs:7-48`; `GenericStoragePlan.cs:166-179`; `ObjectGenerationPlan.cs:36-52` | MIR inlines a default (`M/Build/MirBuilder.Defaults.cs:139`); a recursive one is a DefaultTemplate edge (`:135`); a generic outer composes (`TyCtxt.Compose`) | K1, K4 | |
 | Static initializer slots | Roots | `LlvmEmitter.cs:147-180`; `BL.cs:252-263` | `staticEnsure` → StaticInit edge (F10); slot state machine | K7, C7 | |
 | Per-instance ownership plans (`AnalyzeInstance`, `FailedInstance`, `InstanceStorageLimit`) | Plans | `A/OwnershipAnalysis.Instances.cs:21-94`; `LlvmEmitter.cs:71-79, 429`; `LlvmEmitter.Defaults.cs:15` | deleted; its two holes fixed in the old definition run first (OQ6) | Q1–Q4, G7 | |
 
@@ -261,7 +264,7 @@ symbol column. Every site's file is deleted or re-pointed at G7; the Unit column
 | Member | Class | Sites (count) | New owner | Unit | Note |
 | --- | --- | --- | --- | --- | --- |
 | DiagnosticTypeName | D | `BL.Calls.cs:185` ×2, `:190` ×2; `LlvmEmitter.cs:479` (5) | deleted with the failure strings | G7 | member stays |
-| FitsVerifiedTypeAt | D | `BL.Calls.cs:288`; `BL.Closures.cs:336`; `BL.StructBorrows.cs:469`; `BL.Updates.cs:118, 119, 120` ×2; `BL.Values.cs:251, 326` (9) | deleted (`MirValidator` owns MIR type agreement) | G7 | then old-Analysis-only, not named in H11 |
+| FitsVerifiedTypeAt | D | `BL.Calls.cs:288`; `BL.Closures.cs:336`; `BL.StructBorrows.cs:469`; `BL.Updates.cs:118, 119, 120` ×2; `BL.Values.cs:251, 326` (9) | deleted (`MirValidator` owns MIR type agreement) | G7 | member then old-Analysis-only: H11 (named in H0) |
 | FitsType | D | `BL.Values.cs:250` (1) | deleted | G7 | member stays |
 | CallableSignatureFits | D | `BL.Closures.cs:147` (1) | deleted | G7 | member stays |
 | ClosureSignature | D | `BL.Closures.cs:146` (1) | deleted (input of the re-check above) | G7 | member stays |
@@ -274,15 +277,15 @@ symbol column. Every site's file is deleted or re-pointed at G7; the Unit column
 | SameModuloOpenOrigins (collectors) | N | `DefaultGenerationPlan.cs:76` ×2, `:77`; `GenericStoragePlan.cs:436, 437` ×2 (6) | `TyCtxt.Erase` instance key (PD5) | K3, K4 | member deleted G9 |
 | IsVerifiedSpecialization | D | `LlvmEmitter.cs:588` (1) | `CheckInputs` gate → PD12 gate and PD11 rows | C0a, G7 | member deleted G9 |
 | Result | D | `LlvmEmitter.cs:523` (1) | `Compilation.Generates` gate (PD12) | C0a, G7 | member stays |
-| PrepareTypeStorage | D | `BL.Structs.cs:31` (1) | deleted: codegen Types come through `TyCtxt.Apply`, which prepares storage (`Bd/Binding.Structs.cs:35`) | G7 | member deleted G9 |
+| PrepareTypeStorage | D | `BL.Structs.cs:31` (1) | deleted under the invariant: every Type MIR names has prepared storage, else `InternalInvariant_Kd` (header item 4) | G7 | member deleted G9 |
 | InstantiateStorageType (lowering) | P | `BL.cs:116`; `BL.Calls.cs:314` (2) | `TyCtxt.Apply` with the instance Subst (`Bd/TyCtxt.cs:235`) | C0b1, C3a | |
 | InstantiateStorageType (collectors) | P | `GenericStoragePlan.cs:274, 311, 421`; `DefaultGenerationPlan.cs:52, 62` (5) | `TyCtxt.Apply`/`Compose` on the representative Subst | K4, K5 | |
 | FunctionItemContext | P | `BL.Closures.cs:73`; `CompilerFunctionAdapters.cs:65`; `GenericStoragePlan.cs:275` (3) | `TyCtxt.SubstOfItem` (`Bd/TyCtxt.cs:224`) | K5, C5a | |
 | FunctionItemSignature (adapter) | P | `CompilerFunctionAdapters.cs:58` (1) | `TyCtxt.Signature` under the item Subst; `Abi.Of` (P8) | C5b | |
-| InstantiateDefaultCall | P | `DefaultGenerationPlan.cs:37` (1) | inline default; DefaultTemplate edge under `TyCtxt.Compose` | K1 | then old-Analysis-only, not named in H11 |
+| InstantiateDefaultCall | P | `DefaultGenerationPlan.cs:37` (1) | inline default; DefaultTemplate edge; the generic-outer case is a `TyCtxt.Compose` edge | K1, K4 | member then old-Analysis-only: H11 (named in H0) |
 | SelectSpecialization | P | `GenericStoragePlan.cs:455` (1) | `TyCtxt.Implementation(f, s, 0)` | K4 | CallPlan overload deleted H11 |
-| InstantiateForwardedCall | N | `GenericStoragePlan.cs:519` (1) | Fn: `TyCtxt.Compose` (exists); requirement: `TyCtxt.Witness` | K4, K6 (F5b) | member deleted H11 (PD16) |
-| HasFormattingCallback | P | `GenericStoragePlan.cs:254` (1) | MIR Requirement callee | K6 | |
+| InstantiateForwardedCall | N | `GenericStoragePlan.cs:519` (1) | F5b: requirement callees through `TyCtxt.Witness`; Fn part `TyCtxt.Compose` (exists) | K4, K6 (F5b) | member deleted H11 (PD16), with the two above |
+| HasFormattingCallback | P | `GenericStoragePlan.cs:254` (1) | collector edge from a compiler-function callee whose row calls a user witness (TextWriter, WriterWrite, TextToString, TextTryFormat → `Utf8Format`/`BufferWriter`) | K6, C9b | K6 widened (header item 6) |
 | TryResolveFormattingCallback | N | `GenericStoragePlan.cs:189` (1) | `TyCtxt.Witness` | K6, C9b (F5b) | member deleted H11 |
 | ComparisonPlan | N | `GenericStoragePlan.Comparisons.cs:26` (1) | `TyCtxt.Comparison` | C8f (F6) | CallPlan overload stays to R7 |
 | DestructionCall | P | `GenericStoragePlan.Destructors.cs:30` (1) | `AdtDef.DestructorSymbol` + `TyCtxt.Synthesized` | K7 | member deleted H11 |
