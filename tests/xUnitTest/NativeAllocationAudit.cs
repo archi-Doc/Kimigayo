@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text.RegularExpressions;
 using Kimi.Compiler;
 using Xunit;
 
@@ -9,9 +10,14 @@ namespace XunitTest;
 // escaping the counters.
 internal static class NativeAllocationAudit
 {
-    // Array growth and the Dictionary source's private byte transfer each copy high-water storage once.
+    // Array growth (__kimi_array_grow) and the Dictionary source's private byte transfer (__kimi_transfer_bytes) each copy
+    // high-water storage once, at their anchor.
     private const string CopyAnchor = "  %used = mul i64 %length, %stride\n";
     private const string TransferAnchor = "  call void @llvm.memcpy.p0.p0.i64(ptr %destination, ptr %source, i64 %size, i1 false)\n";
+
+    // The runtime's imports (IMPL 21.4.7), as every audited module declares them; any other import, such as a second
+    // allocator, would escape the counters.
+    private static readonly string[] Imports = ["GetProcessHeap", "HeapAlloc", "HeapFree", "GetStdHandle", "WriteFile", "GetLastError", "ExitProcess"];
 
     internal static void WriteFixture(string name, string source, int allocations, int frees, long bytes, string stdout = "", int failAllocation = 0, long maxTransferredBytes = -1, long minTransferredBytes = 0, Func<string, string>? transformIr = null, int exit = 0, string? stderr = null)
     {
@@ -20,11 +26,28 @@ internal static class NativeAllocationAudit
         Assert.True(c.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
         var ir = writer.ToString();
         ir = transformIr is null ? ir : transformIr(ir);
+        foreach (Match import in Regex.Matches(ir, @"(?m)^declare dllimport [^@\n]*@([^(\n]*)\("))
+        {
+            Assert.Contains(import.Groups[1].Value, Imports);
+        }
+
+        AssertExitsThroughHook(ir);
         ir = Interpose(Interpose(Interpose(ir, "HeapAlloc", "audit_alloc"), "HeapFree", "audit_free"), "__kimi_exit", "__kimi_audit_exit");
         if (maxTransferredBytes >= 0)
         {
-            ir = Instrument(ir, CopyAnchor, CopyAnchor + Transferred("%used"));
-            ir = Instrument(ir, TransferAnchor, Transferred("%size") + TransferAnchor);
+            // A routine mentioned in any spelling must have its anchor; a bound with neither routine would count nothing.
+            var grows = ir.Contains("__kimi_array_grow", StringComparison.Ordinal);
+            var transfers = ir.Contains("__kimi_transfer_bytes", StringComparison.Ordinal);
+            Assert.True(grows || transfers, "A transfer bound needs a routine to count.");
+            if (grows)
+            {
+                ir = Instrument(ir, CopyAnchor, CopyAnchor + Transferred("%used"));
+            }
+
+            if (transfers)
+            {
+                ir = Instrument(ir, TransferAnchor, Transferred("%size") + TransferAnchor);
+            }
         }
 
         // Keep the real startup and cleanup path, including explicitly declared main.
@@ -115,6 +138,16 @@ internal static class NativeAllocationAudit
 
         Assert.Equal(1, declarations);
         return string.Join('\n', lines);
+    }
+
+    // The process exits only through __kimi_exit (IMPL 21.4.2), where the audit hooks: ExitProcess may appear only on its
+    // one declaration and inside that definition.
+    private static void AssertExitsThroughHook(string ir)
+    {
+        var exit = Assert.Single(Regex.Matches(ir, @"(?ms)^define [^\n]*@__kimi_exit\(.*?^\}"));
+        var rest = ir.Remove(exit.Index, exit.Length);
+        var declaration = Assert.Single(Regex.Matches(rest, @"(?m)^declare [^\n]*@ExitProcess\([^\n]*$"));
+        Assert.DoesNotContain("ExitProcess", rest.Remove(declaration.Index, declaration.Length), StringComparison.Ordinal);
     }
 
     // Replaces the one occurrence of anchor.
