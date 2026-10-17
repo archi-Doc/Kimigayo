@@ -101,6 +101,22 @@ public sealed class RetentionTest
     public void ExclusiveReceiversAreStores(string method, string expected)
         => Assert.Equal(expected, Declared(Bind(Slot), method));
 
+    // SPEC 4.8.1, 4.8.2, 15.6.4 step 4: a Slice or UniqSlice input is a borrow of its elements, its outer Origin Value and the elements'
+    // Origins Content, which a UniqSlice lets the call write: `toArray` keeps the dependencies inside `T` but not the outer borrow, and
+    // `appendCopies` stores the elements' only.
+    [Fact]
+    public void ViewsAreBorrowedInputs()
+    {
+        var c = Bind("var n = 1\nvar refs: [_ of ref/i32] = [n@ref]\nlet copied = refs.slice().toArray()\nvar all: Array<ref/i32> = []\nall.appendCopies(refs.slice())\n" +
+            "func keep(view: Slice<ref/i32 during q>, v: ref/i32 during q) -> Option<ref/i32 during q> => .None\n" +
+            "func put(view: UniqSlice<ref/i32 during q>, v: ref/i32 during q) => ()\nfunc first(view: UniqSlice<ref/i32 during q>) -> Option<ref/i32 during q> => .None\n");
+        Assert.Equal(["0 Content result"], Calls(c, "toArray"));
+        Assert.Equal(["0 Content store 0, 1 Content store 0"], Calls(c, "appendCopies"));
+        Assert.Equal("0 Content result, 1 Value result", Declared(c, "keep"));
+        Assert.Equal("0 Content store 0, 1 Value store 0", Declared(c, "put"));
+        Assert.Equal("0 Content result, 0 Content store 0", Declared(c, "first"));
+    }
+
     // SPEC 15.6.4 step 1, 15.3.5 (DECISIONS R4-M36): an abstract carrier may hold borrows its Origins do not show, so an input naming a
     // Type parameter the result names is retained, as is one whose carrier lies below a layer whose Origin the result's outlives; a call
     // instantiating the parameter retains by the instance, nothing for an Origin-free one.
