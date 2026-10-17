@@ -2,7 +2,6 @@
 
 using System.Runtime.InteropServices;
 using Kimi.Compiler.Backend;
-using static Kimi.Compiler.Backend.LegacyRuntimeHelpers;
 using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler;
@@ -36,12 +35,7 @@ internal static partial class LlvmModuleWriter
             }
         }
 
-        if (helpers.NeedsArrayRuntime)
-        {
-            output.Write(ArrayRuntime);
-        }
-
-        WriteArrayHelpers(helpers, output);
+        helpers.WriteArrays(output);
 
         if (helpers.NeedsFormattingRuntime)
         {
@@ -99,9 +93,9 @@ internal static partial class LlvmModuleWriter
             }
         }
 
-        return text.Replace("{{reason_argument_range}}", Reason(AbortReasons.ArgumentRange), StringComparison.Ordinal)
-            .Replace("{{reason_format}}", Reason(AbortReasons.Format), StringComparison.Ordinal)
-            .Replace("{{reason_size}}", Reason(AbortReasons.AllocationSize), StringComparison.Ordinal);
+        return text.Replace("{{reason_argument_range}}", Number(AbortReasons.ArgumentRange), StringComparison.Ordinal)
+            .Replace("{{reason_format}}", Number(AbortReasons.Format), StringComparison.Ordinal)
+            .Replace("{{reason_size}}", Number(AbortReasons.AllocationSize), StringComparison.Ordinal);
     }
 
     private static void WriteFunction(TextWriter output, LlvmConstantPool constants, EmissionFunction function)

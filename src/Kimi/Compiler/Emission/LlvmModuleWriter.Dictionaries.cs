@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Backend;
-using static Kimi.Compiler.Backend.LegacyRuntimeHelpers;
+using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler;
 
@@ -20,7 +20,7 @@ internal static partial class LlvmModuleWriter
           unreachable
         }
 
-        """.Replace("REASON_DUPLICATE", Reason(AbortReasons.DuplicateKey), StringComparison.Ordinal);
+        """.Replace("REASON_DUPLICATE", Number(AbortReasons.DuplicateKey), StringComparison.Ordinal);
 
     // SPEC 22.2, 21.4.3: the nullable form of Alloc returns null wherever Alloc would Abort, and the byte copy moves no
     // responsibility; neither has a location to report.
