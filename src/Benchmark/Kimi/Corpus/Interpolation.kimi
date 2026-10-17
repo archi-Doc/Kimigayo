@@ -1,0 +1,30 @@
+// O2 timing corpus (O2Corpus.md): string interpolation into owning strings and $tryWrite into a reused fixed buffer.
+struct Reading
+    Self is Utf8Format
+    public let number: i64
+    public init(number: i64) => self.number = number
+    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        return $tryWrite(writer, "Reading(\(self.number))")
+
+// One FNV-1a step over a round's sum, then an xorshift so the high bits reach the low ones: each part is invertible, so a wrong
+// value in any round changes the checksum.
+func fold(checksum: i64, value: i64) -> i64
+    let mixed = ((checksum ^ (value & 0xFFFF_FFFF)) * 16777619) & 0xFFFF_FFFF
+    return mixed ^ (mixed >> 16)
+
+public func main()
+    var checksum: i64 = 0
+    var bytes = [256 of 0@u8]
+    var buffer = Text.fixed(bytes@uniq)
+    for i in 0..1048576
+        let reading = Reading.init(i@i64)
+        let text = "item \(i) of \(reading) is \(i % 7 == 0)"
+        var sum = Text.utf8(text).length@i64
+        buffer.clear()
+        var writer = Text.writer(buffer@uniq)
+        match $tryWrite(writer@uniq, "\(i):\(reading);")
+            .Ok(_) => ()
+            .Err(_) => $abort("buffer full")
+        sum += buffer.length@i64
+        checksum = fold(checksum, sum)
+    Console.writeLine("checksum \(checksum)")

@@ -49,8 +49,8 @@ internal static class CompilerPipelineMeasurements
             }).ToArray();
             results.Add(new
             {
-                benchmark.Functions,
-                benchmark.Branches,
+                benchmark.Size,
+                shape = benchmark.Shape.ToString(),
                 sourceUtf8Bytes = Encoding.UTF8.GetByteCount(benchmark.Source),
                 sourceSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(benchmark.Source))),
                 operations,
@@ -66,7 +66,7 @@ internal static class CompilerPipelineMeasurements
 
         var report = new
         {
-            schemaVersion = 2,
+            schemaVersion = 3,
             measuredAtUtc = DateTimeOffset.UtcNow,
             compiler = Compilation.CompilerVersion,
             benchmarkModule = typeof(CompilerPipelineMeasurements).Module.ModuleVersionId,
@@ -115,7 +115,7 @@ internal static class CompilerPipelineMeasurements
             var sample = Measure(benchmark, 2);
             Require(sample.StageTicks.Sum() == sample.TotalTicks, "Stage times do not cover the complete interval.");
             Require(sample.StageAllocatedBytes.Sum() == sample.TotalAllocatedBytes, "Stage allocations do not cover the complete interval.");
-            Console.WriteLine($"PASS six-stage compiler pipeline: functions={benchmark.Functions}, branches={benchmark.Branches}, MIR bodies={benchmark.MirBodies}; IR equivalence and accounting");
+            Console.WriteLine($"PASS six-stage compiler pipeline: size={benchmark.Size}, shape={benchmark.Shape}, MIR bodies={benchmark.MirBodies}; IR equivalence and accounting");
         }
     }
 
@@ -164,11 +164,11 @@ internal static class CompilerPipelineMeasurements
 
     private static IEnumerable<CompilerPipelineBenchmark> Inputs()
     {
-        foreach (var functions in new[] { 1, 32, 128 })
+        foreach (var shape in Enum.GetValues<PipelineShape>())
         {
-            foreach (var branches in new[] { false, true })
+            foreach (var size in new[] { 1, 32, 64, 128 })
             {
-                yield return new() { Functions = functions, Branches = branches };
+                yield return new() { Size = size, Shape = shape };
             }
         }
     }

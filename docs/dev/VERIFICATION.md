@@ -188,6 +188,7 @@ Measurement commands and fixed conditions belong to their dedicated documents be
 | `Benchmark --inheritance-plans`, `--inheritance-lifecycle` | [Inheritance.md](../../src/Benchmark/Inheritance.md); lifecycle adds fresh/edited snapshots and retained ownership storage. |
 | `Benchmark --arithmetic-plans`, `benchmark-arithmetic.ps1` | [Arithmetic.md](../../src/Benchmark/Arithmetic.md) |
 | `Benchmark --hover` | [HOVER.md](HOVER.md#responsiveness-measurements) |
+| `benchmark-o2-corpus.ps1` | [O2Corpus.md](../../src/Benchmark/O2Corpus.md) |
 
 ## Native fixtures
 
