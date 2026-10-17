@@ -1108,6 +1108,18 @@ and migration obligations remain in force; no numeric cap changes are authorized
   revised rule, dropping the trait, when MIR decides acceptance. Rejected: changing the expectations now (the default
   pipeline decides acceptance until R6-check); splitting mixed theories (churn for a marker); per-row markers (xUnit traits
   are per method). Temporary: removed at R6-check.
+- **R4-M60** (2026-10-17, tooling session; PLAN G111; refines R4-M50 for corpus rows) A corpus row that expects a rule an
+  adopted SPEC revision replaced states the SPEC's verdict and, in an `Old` entry, what the default pipeline decides until
+  R6-check, as `spec-cases.json` states a path's differences beside the SPEC's records (R4-M45). In
+  `tests/diagnostics/pair-cases.json`, `Old` names the revision item as R4-M50's trait does (`Rule`) and holds the old
+  verdicts of the Semantics cases that differ (`Expected`) and the old native run (`Run`; a row the SPEC rejects has none).
+  `GenericOwnershipCaseTest` judges and runs such a row by its `Old` values; `Old` is the row's marker. First row:
+  `B12-parent-move` (S1, SPEC 15.6.3: its `uniq` case Moves the base `value` while the child `r` is live). The SPEC verdicts
+  that `Old` overrides stay unchecked until the corpus is checked on the MIR (A5) or the old path is deleted. Rejected: the
+  trait on the whole theories (it marks every other row); a per-row trait (`TheoryDataRow.WithTrait`: xUnit v3 does not
+  pre-enumerate theories by default, so a row's trait reaches neither discovery, `-trait` selection nor the result file);
+  the old verdict in `Expected` with a `Mir` entry (the corpora state the SPEC in `Expected`); `Run` on the row (the SPEC
+  rejects its program). Temporary: removed at R6-check with R4-M50's traits.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
