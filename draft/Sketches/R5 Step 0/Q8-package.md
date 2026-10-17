@@ -1,9 +1,10 @@
 # Q8 package: the R6-check prerequisite design
 
-Date: 2026-10-18, round 2. Status: working record of R5 step 0 (full process). It compares design 1
+Date: 2026-10-18, round 3. Status: working record of R5 step 0 (full process). It compares design 1
 (`deep-dives/q5-r6check-prereqs.md`, "d1") and design 2 (`Q8-design-2.md`, "d2") and states the design the planning session
-decided (`Q8-decisions.md`: open points 1–8 and design review round 1, which govern), for the round-2 design review and then
-the owner once (OQ10, DECISIONS R5-M1). Not authority.
+decided (`Q8-decisions.md`: open points 1–8, design review rounds 1 and 2, Q8-1a–Q8-8, which govern; "open point n" below is
+that file's point n), for the owner once (OQ10, DECISIONS R5-M1). Q8-6 and Q8-7 reached two review rounds and go to the owner
+as the planning session's proposals. Not authority.
 
 Base: code at `origin/dev` = `a1c87dcd` (Q6, Q6b and R4's MIR lane landed); R4's core record at `origin/claude/a5-1b-core` =
 `8961f577`. Paths are under `src/Kimi/Compiler/` unless they start with `src/`, `tests/`, `docs/` or `draft/`. "(H)" marks an
@@ -26,8 +27,8 @@ rule (Q8-3); PD29, PD31, PD32; the dispositions of `Binding.ClosureInstances` an
 | D5 | FunctionFallthrough is result validation (PD32): `EndArrival` beside `AddBodyResult`, called once per function and accessor by the walk; one guess rule; MIR records nothing at that end (probe), so no MIR dependent exists | 3.4 |
 | D6 | Q16: two views, a reassignability helper (a `Binding` static in a new partial, replacing two copies) and the Tuple-element position as `PlanRow.Folded`; no constructor view (`AdtDef.IsConstructor` exists) | 3.5 |
 | D7 | **Q17 departs from the plan row**: each MIR recording rule names its requirement (`MirProblem.Requirement`); `MirReport.Add` checks that merged problems agree; no code → requirement table (revised ask A-5). This restores PLAN10 §7 | 3.6 |
-| D8 | H1 judges TransferRequired on the **published columns** by a linear scan inside the Final pass, after an eager publication (behavior-preserving unit H1a, refining R2b-D2); order producers → publish → H1 → counting → lint walk; a failed node triggers one republication, which creates no new subject (asserted). Sources: consumed children (S1) and unconsumed Places (S2), both excluding Places rooted in a `HirRes.PreparedParam` name, and inferred captures (S3, reported by `ReportCaptureEntry`'s omitted-list form). The record carries the failing Semantics cases from `BareAcquisition`'s mask | 3.7 |
-| D9 | **Q21 (new; G121 applied before H1)**: a node failure does not hide the children Binding resolved independently: a closure whose creation failed keeps its body published and built, and a failed compound Place keeps its operands published (in place). Changes R4-M61's node-failure contract | 3.8 |
+| D8 | H1 judges TransferRequired on the **published columns** by a linear scan inside the Final pass, after an eager publication (behavior-preserving unit H1a, refining R2b-D2); order producers → publish → H1 → counting → lint walk; a failed node triggers one republication, which creates no new subject (asserted). Sources: consumed children (S1), unconsumed Places (S2) and inferred captures (S3, reported by `ReportCaptureEntry`'s omitted-list form). S1 and S2 keep Places rooted in a `HirRes.PreparedParam` name and record them as `DefaultArgumentMove_Kd` (Q8-4, Q8-8), so Binding is the one judge of bare reads of prepared inputs. The record carries the failing Semantics cases from `BareAcquisition`'s mask, rendered by one Semantics-case renderer in Binding (Q8-6, proposal) | 3.7 |
+| D9 | **Q21 (new; G121 applied before H1)**: a node failure does not hide the children Binding resolved independently: a closure whose creation failed keeps its own `Consume` as a Closure (defaults, expression-body result) and its body is built, only its creation being Opaque (Q8-7, proposal); a failed compound Place keeps its operands published, written in place. Changes R4-M61's node-failure contract | 3.8 |
 | D10 | **Validator rule (Q8-3)**: `MirValidator` checks that a `Copy` operand's Type is Copy, by Binding's published proof under the body definition's premises; `PairAcquire` and per-view `Adapt` operands are exempt; shadow in Q14, lands in G:R6-check-flip | 3.9 |
 | D11 | `Binding.ClosureInstances` and `Binding.RequirementInstances` are re-disposed from "delete R6" to R7 | 3.10 |
 
@@ -42,7 +43,7 @@ rule (Q8-3); PD29, PD31, PD32; the dispositions of `Binding.ClosureInstances` an
 | 14.5.2, 14.4 | `InvalidJumpTarget`, `UnlabeledYieldTarget`, `OverlappingLabel` | CFA :1279-1301, :1511-1526 | HIR lints; target fact by the jump binding |
 | 14.9.1–14.9.3 | `FunctionFallthrough` | CFA :1230-1252 | Binding result validation (PD32) |
 | 3.5, 15.1.5, 14.2.2, 14.2.4, 7.7.2 | `TransferRequired`: a bare Place never Moves; no list ⇒ each capture Copy | Binding (7 sites) + old analysis (10 sites) | Binding (H1) |
-| 7.2.3 | `DefaultArgumentMove`: a default never moves a preceding argument | old analysis | old analysis until H5, then A1 for PreparedInput roots (R4's 1c) |
+| 7.2.3 | `DefaultArgumentMove`: a default never moves a preceding argument | old analysis | Binding (H1) for a bare read; A1's PreparedInput mapping (R4's 1c) only for an explicit `a@move` |
 | 23.1.2; DIAGNOSTICS rule 1, §4.1 ("Check: requirement and condition number (independent of the code)", `DIAGNOSTICS.md:64`), §4.3 (`:106`, `:107`, `:152`, `:166`) | independent errors; one requirement, one phase; the documented records | all | all |
 
 Chain (AGENTS "Design before code"):
@@ -79,12 +80,14 @@ Chain (AGENTS "Design before code"):
 | 11 | Q17 | derivation in `MirReport` (R4-M3a) | recording rule names it | d2 (open point 1) | PLAN10 §7 |
 | 12 | Q13 | extract an enumeration | closed | closed | `Consume` already is it; 2,620 children written twice (findings) |
 | 13 | H1's subject source | the extracted enumeration | scan after eager publication | scan (open point 3) | §3.7 |
-| 14 | H1's subject set | consumed children | S1 + S2 + S3 | S1–S3, S2 on the columns (open point 4), S1/S2 without PreparedParam roots (Q8-1a) | §3.7 |
+| 14 | H1's subject set | consumed children | S1 + S2 + S3 | S1–S3, S2 on the columns (open point 4); PreparedParam-rooted Places recorded as `DefaultArgumentMove_Kd` (Q8-4, Q8-8) | §3.7 |
 | 15 | H1 timing | owner question | with H5 (PD29) | PD29; H1a any time after G2 (open point 8) | a node failure without the flip makes the old analysis skip the program |
 | 16 | Dispositions | R5 views + R7 | R7 | R7 | definition-time callers |
 
-Design review round 1 (Q8-decisions): Q8-1a PreparedParam exclusion; Q8-1b case fact; Q8-1c S3's record; Q8-1d Q14's
-comparison; Q8-2 Q21; Q8-3 the validator rule; and the adopted non-blocking items, each placed in §3, §6 and §7 below.
+Design review (Q8-decisions): round 1, Q8-1b case fact, Q8-1c S3's record, Q8-1d Q14's comparison, Q8-2 Q21, Q8-3 the
+validator rule; on the redo, Q8-4 (PreparedParam roots kept and recorded as `DefaultArgumentMove_Kd`, superseding Q8-1a's
+exclusion) and Q8-5 (validator hold only while R4 runs); round 2, Q8-6 one Semantics-case renderer (proposal), Q8-7 a failed
+closure keeps its own `Consume` (proposal), Q8-8 S1 like S2 for PreparedParam roots; each placed in §3, §6 and §7 below.
 
 ## 3. Components and contracts
 
@@ -221,7 +224,7 @@ needs A4's obligation kind and A5's stratum as new `MirFact` kinds (absent: `Anc
 | --- | --- | --- | --- |
 | S1 consumed children | `Move` from an Adjust `(Move, _)` written by `Take`'s bare rule or the group erasure (`Binding.Hir.Adjust.cs:39, 169-199`); probe p4: `_2 = move _1`, no problem | 9 of the 10 sites | Op a value Op (not `Syntax`, `Error`); the node a Place (`IsPlace`: bare, raw or static; not a formatting plan's storage); Adjust `Move`; parent not `ConversionKoto { Transfer }` (the explicit Move writer, `:42`) |
 | S2 unconsumed Places | An `Unset` Adjust on an evaluated Place (a statement item, a non-value tail: `Consume`'s `Result`, `:162`) is read "by case" (`Mir/Build/MirBuilder.Values.cs:148-151`), a `Copy` for a non-exclusive Type (`:229`) into a temp the statement drops (`MirBuilder.Drops.cs:72-80`); probe p1, p8: double drop, no problem | `OwnershipAnalysis.cs:833-836` via the statement path (`:926`) | Op a value Op with `PlaceOf` not `Unset`/`Value`; Adjust `Unset`; `BareAcquire(type) == Move` with a proof other than Error |
-| S1, S2 exclusion (Q8-1a) | a default's bare read of a preceding parameter (`bad(x: string, y: string = x)`; review probe s01, s03) | `DefaultArgumentMove_Kd`, no repair | a subject whose Place is rooted (through parentheses and projections) in a `HirRes.PreparedParam` name is not H1's: `DefaultArgumentMove_Kd` stays with its producer, the old path until H5 and from H5 A1 for PreparedInput roots (R4's 1c). See open point 1 for S2 |
+| S1, S2 on a PreparedParam root (Q8-4, Q8-8) | a default's bare read of a preceding parameter, consumed (`bad(x: string, y: string = x)`; review probe s01, s03; probe u3: `_0 = move (*_1)`, only `StaticMovePathRequired_Kd`) or discarded (probe u2: `_2 = copy (*_1)`, `drop _2`, no problem) | `ReportDefaultMove` (`OwnershipAnalysis.cs:295`): `DefaultArgumentMove_Kd`, no repair | kept: a subject whose Place is rooted (through parentheses and projections) in a `HirRes.PreparedParam` name fails with `BindingFailure.TransferRequired`, and its per-node code switch (`Binding.cs:1141`) records `DefaultArgumentMove_Kd`: requirement `Binding.TransferRequired`, at the Place, condition 0, no repair, the old record's Note. Binding is the one judge of bare reads of prepared inputs; A1's PreparedInput mapping (R4's 1c) serves only an explicit `a@move` |
 | S3 inferred captures | `CaptureAcquisition` never set for an omitted list (`Binding.Closures.cs:424-500`; default `Copy`, `BindingModel.cs:77-80`; pooled symbols reused without reset), so the builder Copies (`MirBuilder.Values.cs:386-398`); probe p2, p3, p7: `Closure(copy _)` of a `string`, a `uniq/i32`, a `T` | `OwnershipAnalysis.Closures.cs:44-61`, reported by its `ReportCapture` (`OwnershipAnalysis.cs:304-311`) | at the end of closure binding: a capture whose Type is not proven Copy fails the closure's creation with `TransferRequired` (SPEC 7.7.2 "no list: each must be Copy"); a proven one sets `Copy` explicitly. Defaults are included (DIAGNOSTICS:107) |
 | Others | Pattern bindings (match plan, Binding-judged), `@move` (written), defaults' copies | — | Q14 confirms none decides an unwritten Move or a non-Copy Copy |
 
@@ -233,8 +236,14 @@ Binding's seven existing failures stay; they fail the consumer or source, so S1 
   repair by `TakeJudgment`. For a pair-layer Place, the failing Semantics cases come from `BareAcquisition`'s mask
   (`Binding.PairCases.cs:266`), as the explicit-entry form does (`FailingCaseNote`, `:62`), and the record carries them as the
   documented fact of DIAGNOSTICS `:166` (`TransferRequired_Kd` as `target:Text,case:Text`, the Note `Found under the Semantics
-  case …`, one related binder declaration per named binding), rendered by the existing Semantics-case renderer (Q8-1b; review
-  probe t01–t03). `ReportAcquisition` is Binding's one acquisition reporter, so its argument sites gain the same fact.
+  case …`, one related binder declaration per named binding; Q8-1b; review probe t01–t03). `ReportAcquisition` is Binding's one
+  acquisition reporter, so its argument sites gain the same fact. A PreparedParam-rooted Place records `DefaultArgumentMove_Kd`
+  as the row above states.
+- **One Semantics-case renderer (Q8-6, proposal after two rounds).** The only renderer of `:166`'s record lives in the old
+  Analysis (`OwnershipAnalysis.cs:359` `CaseNote`, `OwnershipAnalysis.Cases.cs:321` `WithCaseDeclarations`), which Binding may
+  not read and H11 deletes, and `FailingCaseNote` renders a different text without the fact. The Semantics-case formatting
+  moves into Binding beside `FailingCaseNote` and serves both forms; the old Analysis calls it until H11; `:166`'s record text
+  stays. It lands as a behavior-preserving commit before H1 (old records equal).
 - S3 is reported by `ReportCaptureEntry` (`Binding.Diagnostics.cs:1276`), whose fact (`captureFailures`, an entry, Type and
   source) gains the omitted-list form (no entry). Its record: requirement `Binding.TransferRequired`, at the closure, evidence
   `[name]`, the Note `The omitted capture list captures {name} only by Copy; it never infers a Move, a borrow or a Reborrow`,
@@ -260,9 +269,10 @@ repeats producers, publication, H1 and counting.
 **H1, the Final order.** producers → publish → `CheckTransfers()` (one linear, 0 B scan of each published module's `Ops`,
 `Adjusts`, `Places` and nodes for S1 and S2; S3 ran at closure binding) → if a node failed, one republication → counting →
 lint walk (rows 1–5 and 8 derive from `FailureCauses`, which then includes H1's failures). Republication creates no new
-subject: failed nodes become `Error`, and the children Q21 keeps under them are written in place (Adjust `None`), which
-neither S1 nor S2 selects; H1 asserts it by re-checking the republished columns (`InternalInvariant_Kd` on a new subject;
-cost only in rejected programs). An accepted program pays the scan only.
+subject: a node it fails is an S1/S2 Place, published `Error` with its operands written in place (Adjust `None`, Q21), which
+neither S1 nor S2 selects; a closure failed by S3 failed before the first publication, so its own `Consume` rows were already
+scanned. H1 asserts it by re-checking the republished columns (`InternalInvariant_Kd` on a new subject; cost only in rejected
+programs). An accepted program pays the scan only.
 
 **Soundness.** (1) Completeness: every Move or Copy of a written Place in MIR comes from the Adjust column (S1), an `Unset`
 row (S2), a capture (S3), a Pattern acquisition from Binding's plan, `@move`, or a default's copy; the validator rule (§3.9)
@@ -276,25 +286,26 @@ derived. A column row saying Move where SPEC says borrow is a column defect, fix
 diagnostic corpus, the library and the 40 harnessed milestones. At each subject it compares every old record with H1's: code,
 Note, case fact and repair, normalizing parentheses (old at `s`, H1 at `(s)`; review probe s03); each difference classified
 (a) old miss, (b) column defect (fixed first), (d) intended. It also runs the validator rule (§3.9) in shadow over the same
-MIR: every finding must be at an S1–S3 subject or a PreparedParam root (open point 1). The library and milestones give zero
-records. Probe p1–p4, p7, p8 and review probes t01–t03, s01, s03 become H1's regression tests.
+MIR: every finding must be at an S1–S3 subject (PreparedParam-rooted Places included). The library and milestones give zero
+records. Probe p1–p4, p7, p8, u2, u3 and review probes t01–t03, s01, s03 become H1's regression tests.
 
 **Deletions.** H1 deletes the 10 old report sites (`OwnershipAnalysis.cs:836, 1217`, `.Borrows.cs:447`, `.Closures.cs:60`,
 `.Elements.cs:253`, `.Objects.cs:27`, `.Pointers.cs:87, 302`, `.Sequences.cs:65, 109`) and `OwnershipRequirement.TransferRequired`
 (later Kind values shift; only names are published). Every TransferRequired record is then `Binding.TransferRequired`; the old
 cascade after it (probe p1: `MovedPlace_Kd` at the later use) disappears. DIAGNOSTICS (H1): `:107` (the closure's
-TransferRequired is Binding's; `DefaultArgumentMove_Kd`'s producer), `:152` (Binding rejects the omitted-list capture; the
-closure's creation fails, its body is still built, the binding stays initialized), `:166` (TransferRequired's case fact from
-`BareAcquisition`'s mask, not a case run).
+TransferRequired and a bare read's `DefaultArgumentMove_Kd` are Binding's, requirement `Binding.TransferRequired`; an explicit
+`a@move` stays A1's), `:152` (Binding rejects the omitted-list capture; the closure's creation fails, its body is still built,
+the binding stays initialized), `:166` (TransferRequired's case fact from `BareAcquisition`'s mask, rendered by Binding's one
+renderer, not a case run).
 
 ### 3.8 Q21: a node failure keeps independently resolved children (G121, before H1)
 
 | Item | Content |
 | --- | --- |
 | Required meaning | SPEC 23.1.2: a failure reported at a node does not hide independent errors in the children Binding resolved (PLAN G121; review probes p7, t03: a failed capture would replace the closure's body; a failed compound S1/S2 Place would hide MIR problems in its receiver or index operands) |
-| Contract change (R4-M61) | Today "without its facts the node is `HirOp.Error`, which the builder replaces whole". After Q21: an `Error` node's value is derived (Opaque), but the children Binding resolved stay published as evaluated. An anonymous function whose creation failed keeps its body published, and the builder builds that body as its own MIR body; a failed compound Place (Field, Index, Deref, Group) keeps its operands published, written in place (Adjust `None`), and the builder evaluates them, as Places or as values into temporaries, before the Opaque value, never acquiring them |
+| Contract change (R4-M61) | Today "without its facts the node is `HirOp.Error`, which the builder replaces whole". After Q21: an `Error` node's value is derived (Opaque), but the children Binding resolved stay published as evaluated, in two forms. (1) A closure whose creation failed (Q8-7, proposal after two rounds) keeps its own `Consume` as a Closure: its defaults and its expression body's result (`Binding.Hir.Adjust.cs:23-30`), which only that `Consume` takes; its body is published and built as its own MIR body; only its creation (the environment aggregate) is Opaque. In-place writes would lose an expression body's tail (Error nodes skip `Consume`, `Binding.Hir.cs:118`) and leave a by-case Copy of a non-Copy capture (probe p7). (2) A failed compound Place (Field, Index, Deref, Group) keeps its operands published, written in place (Adjust `None`), and the builder evaluates them, as Places or as values into temporaries, before the Opaque value, never acquiring them; in-place writes apply to these operands only |
 | Files | HIR publisher (`Binding/Binding.Hir.cs`: `PositionOf`'s `Replaced`, the `Consume` gate at `:118-122`); MIR builder (`Mir/Build/MirBuilder.cs`: `Opaque` at `:424`, the closure body at `:204`) |
-| Invariants | No acquisition is built for an `Error` node or from its kept children, so no `Copy` or `Move` of them reaches the validator rule or A1; a child Binding did not resolve stays replaced |
+| Invariants | No acquisition is built for an `Error` node's own value or for a failed Place's operands, so no `Copy` or `Move` of them reaches the validator rule or A1; a failed closure's own rows are those of its `Consume`, which H1 scans like any other; a child Binding did not resolve stays replaced |
 | Unit | Q21, before H1 (and before Q14's final run). Placement: window W1 or an R4 unit, agreed with R4 (ask A-14); review D+R under this package, with an R4 reviewer (A1–A5 trust the builder) |
 | Verification | `HirColumnsTest` (kept children, in-place rows), `MirBuildTest` (a failed closure's body built; a failed `a[f(x)]` builds `f(x)`), mir goldens; snapshot under `mir` classified (more independent records in rejected programs, SPEC 23.1.2) |
 
@@ -305,7 +316,7 @@ closure's creation fails, its body is still built, the binding stays initialized
 | Rule | In `Mir/MirValidator*.cs`: a `Copy` operand's Type is Copy, read from Binding's published proof under the body definition's premises, `TyCtxt.Copy(definition, type)` (`Binding/TyCtxt.Effects.cs:59`); no new proof. Exempt: `PairAcquire` operands (by case, SPEC 8.14) and the operands of per-view `Adapt` (`MirValidator.Types.cs:119`) |
 | Owner and meaning | A producer invariant of validated MIR (the validator is the builder's, AGENTS): Binding stays the judge of TransferRequired; a finding means the builder or Binding broke its contract (`InternalInvariant_Kd`, refusing generation) |
 | Lands | Inside G:R6-check-flip, in H1 or the unit right after it, before the group merges; Q14 runs it in shadow first |
-| Hold | `MirValidator.cs` is in W1's file list (S2-S4 X29); the rule follows F11's (G131) validator rule and shares its hold window |
+| Hold | `MirValidator.cs` is in W1's file list (S2-S4 X29); the rule follows F11's (G131) validator rule. A hold is needed only while R4 runs in parallel; G:R6-check-flip lands after R4's exit, when none applies (Q8-5) |
 | Cost | One Copy lookup per `Copy` operand of each built body (measured in its unit) |
 
 ### 3.10 Dispositions
@@ -340,11 +351,11 @@ lookup per `Copy` operand. Every new structure is pooled per pass.
 
 | Other design | Q8 provides | Q8 needs | Mismatch / open |
 | --- | --- | --- | --- |
-| Chapter F (S3), W1 | Q16 is W1's last unit (F0 → F7 → F8 → F9 → Q16); Q21 may join W1 | W1 open; F11 (G131) first in W1, whose `MirValidator.cs` window the Q8-3 rule shares | none |
+| Chapter F (S3), W1 | Q16 is W1's last unit (F0 → F7 → F8 → F9 → Q16); Q21 may join W1 | W1 open; F11 (G131) first in W1, whose validator rule the Q8-3 rule follows | none |
 | Chapter K (S2) | `Binding.ClosureInstances` stays until R7 except K2's list deletion | K2 | none |
 | F5a / PD16 | `InstantiateRequirementCall` stays (bind-time materializer) until R7 | F5a | none |
 | Chapter C (S4) | — | — | sel uses the old acceptance, which rejects S1–S3 and the PreparedParam shapes, so R5 codegen never generates them |
-| R4's 1c | requirements named per rule (A-5) | DefaultArgument* for PreparedInput roots (needed from H5, since H1 excludes PreparedParam roots) | the S2 shape of that root builds a Copy, not a Move (open point 1) |
+| R4's 1c | requirements named per rule (A-5); Binding records every bare read of a prepared input (`DefaultArgumentMove_Kd`, Q8-4, Q8-8) | its PreparedInput mapping (DefaultArgument* for PreparedInput roots) only for an explicit `a@move` (A-5 scope note) | none |
 | H0 | each `MirProblem`'s requirement; lint records under `Binding` (conditions 1–12); H1, Q21 and the validator rule for G:R6-check-flip; `Binding.TransferRequired` and the A4/A5 renames for H5's classification | the publication condition for codes sharing a requirement at one subject; the partition of MIR problems | plan rows H0 and H3 ("requirement derived from code and facts with … Q17's table") change to "the problem's own requirement" |
 | G0 / R4 G103-E9b | Q11's HIR contract on null rows | A-8 | none |
 
@@ -363,8 +374,8 @@ lookup per `Copy` operand. Every new structure is pooled per pass.
 | Q17 | §3.6 ledger part | Q7, A-5 (revised) | `MirDifferenceTest` requirement column; ledger re-baseline | +60 t | D+R (Q8), R4's A6 lane | adv |
 | **Q21** (new) | §3.8; DEC entry superseding R4-M61's "replaced whole" for kept children | OQ10, A-14 | §3.8 | +60/−10 | D+R (Q8) + R4 reviewer | W1 or R4's |
 | **H1a** (new) | `Check` moved and split; eager Final publication; `PublishIsInvisible` re-pointed; DEC entry refining R2b-D2 | G2, OQ10 | bp (HIR snapshot equal); cold and warm Bind time and allocation | ±70 | D+R (Q8) | no |
-| H1 | §3.7: `CheckTransfers` (S1, S2), S3 form, case fact, republication and its assertion, 10 sites and the enum member deleted, ledger rows reclassified; DIAGNOSTICS `:107`, `:152`, `:166` | H1a, Q21, Q14, Q7, R4's exit, G11, H0, OQ11 | as plan; the regression tests of §3.7; `MirInitTest` | +110/−75 | final review of Q8; G:R6-check-flip | no |
-| H1 or the next unit | §3.9 validator rule | H1 | `MirValidatorTest` cases (a non-Copy `Copy`; `PairAcquire`, per-view `Adapt` exempt); Session with milestones | +25 | G:R6-check-flip | W1's validator window (F11) |
+| H1 | first commit (bp, may land earlier): the one Semantics-case renderer moved into Binding, the old Analysis calling it (Q8-6); then §3.7: `CheckTransfers` (S1, S2 with PreparedParam roots as `DefaultArgumentMove_Kd`), S3 form, case fact, republication and its assertion, 10 sites and the enum member deleted, ledger rows reclassified; DIAGNOSTICS `:107`, `:152`, `:166` | H1a, Q21, Q14, Q7, R4's exit, G11, H0, OQ11 | as plan; old records equal after the renderer move; the regression tests of §3.7; `MirInitTest` | +130/−95 | final review of Q8; G:R6-check-flip | no |
+| H1 or the next unit | §3.9 validator rule | H1 | `MirValidatorTest` cases (a non-Copy `Copy`; `PairAcquire`, per-view `Adapt` exempt); Session with milestones | +25 | G:R6-check-flip | none after R4's exit (Q8-5) |
 
 G:L = Q9–Q12 (DEC Q6 form 2; Q11's jump part feeds A-8 and so G0). Order: Q7 and Q9 first after OQ10; Q10–Q12 after Q9;
 Q16 in W1; Q21 when R4 agrees (A-14), before Q14's final run; H1a after G2; H1 and the validator rule with H5.
@@ -382,11 +393,13 @@ Q16 in W1; Q21 when R4 agrees (A-14), before Q14's final run; H1a after G2; H1 a
 | Plan rows Q13, Q14, H1; new units H1a, Q21 | Q13 closed; Q14 depends on Q8 and compares full records; H1 depends on H1a and Q21 | findings; review |
 | DEC R4-M4 (TransferRequired passes through) | Ends at H1 | TransferRequired becomes Binding's on both paths |
 | R0 disposition rows | `ClosureInstances`, `RequirementInstances` → R7 | definition-time callers |
-| Public requirement names in `kimi check` output | 12 lint codes `ControlFlow` → `Binding` (Q9–Q12); `Ownership.TransferRequired` → `Binding.TransferRequired` (H1/H5); at H5, A4/A5 decisions the old path reports under `Binding.VirtualEffectBound`, `Binding.IncompatibleImplementation` and `Binding.OriginRelation` become `Ownership.*` | PD31; DIAGNOSTICS rule 1 |
+| Public requirement names in `kimi check` output | 12 lint codes `ControlFlow` → `Binding` (Q9–Q12); `Ownership.TransferRequired` → `Binding.TransferRequired` and, for a bare read of a prepared input, `Ownership.DefaultArgumentMove` → `Binding.TransferRequired` with the code unchanged (H1/H5); at H5, A4/A5 decisions the old path reports under `Binding.VirtualEffectBound`, `Binding.IncompatibleImplementation` and `Binding.OriginRelation` become `Ownership.*` | PD31; DIAGNOSTICS rule 1; Q8-4 |
 
-Owner summary additions (review): Q8-1a keeps `DefaultArgumentMove_Kd` (no default code change); Q8-1b and Q8-1c keep the
-documented records (case fact; the omitted-list Note, no repair, the default Note); Q8-2 changes R4-M61's node-failure
-contract (Q21); Q8-3 adds the validator rule.
+Owner summary additions (review): the code of a default's bare read stays `DefaultArgumentMove_Kd` (no default code change;
+Q8-4, Q8-8), only its requirement name changes; Q8-1b and Q8-1c keep the documented records (case fact; the omitted-list Note,
+no repair, the default Note); Q8-2 changes R4-M61's node-failure contract (Q21); Q8-3 adds the validator rule; Q8-8 narrows
+R4's 1c PreparedInput mapping to an explicit `a@move`; Q8-6 and Q8-7 reached two review rounds and are the planning session's
+proposals (§8).
 
 ## 8. Items needing owner approval (inside OQ10)
 
@@ -397,6 +410,10 @@ contract (Q21); Q8-3 adds the validator rule.
   validator rule.
 - R2b-D2's refinement and the new units H1a and Q21; Q13's closure.
 - D7 and its fallback; the public requirement-name changes of §7.
+- **Proposals after two review rounds (AGENTS: the owner approves them with the package or chooses otherwise):** Q8-6, one
+  Semantics-case renderer in Binding beside `FailingCaseNote`, the old Analysis calling it until H11 (§3.7); Q8-7, a closure
+  whose creation failed keeps its own `Consume` as a Closure, only its creation Opaque, in-place writes for failed compound
+  Places' operands only (§3.8).
 
 ## 9. Asks to the R4 stream
 
@@ -405,7 +422,8 @@ contract (Q21); Q8-3 adds the validator rule.
   (3) `MirProblem` gains `DiagnosticRequirement Requirement`, set by each recording rule as §3.6 lists (A4's obligation row
   carries its requirement beside its code; A6's PreparedInput mapping sets `DefaultArgument*` with its code); `MirReport.Add`
   checks that merged problems agree; no code → requirement table. Needed by Q17, H3. If 1c must land before Q8's approval:
-  A-5a = (1)+(2) in 1c, A-5b = (3) right after Q7.
+  A-5a = (1)+(2) in 1c, A-5b = (3) right after Q7. Scope note (Q8-8): from H1, Binding records every bare read of a prepared
+  input (`DefaultArgumentMove_Kd`), so 1c's PreparedInput mapping serves only an explicit `a@move`.
 - **A-8 (refined).** G103-E9b's jump part: in `MirBuilder.Transfer` (`Mir/Build/MirBuilder.Control.cs:105-117`), a Jump or
   Continue whose published target row is null is derived: its operand is still built (its independent errors stay) and no
   record is made; a non-null target not built yet (for, match, defer) keeps its located `Unsupported_Kd`. Probe p11: today an
@@ -414,8 +432,6 @@ contract (Q21); Q8-3 adds the validator rule.
   non-Copy Place used as a statement (copied, then dropped twice) and inferred captures of non-Copy values; H1 closes them with
   the flip (PD29); the ledger cannot show them (R4-M4).
 - **A-14 (new).** Agree where Q21 lands (W1 or an R4 unit) and review its change of R4-M61's contract (§3.8); it precedes H1.
-- **Dependency, no new ask.** 1c's "DefaultArgument* for PreparedInput roots" is needed from H5, because H1 leaves PreparedParam
-  roots to it (Q8-1a).
 
 ## 10. Risks
 
@@ -433,22 +449,10 @@ contract (Q21); Q8-3 adds the validator rule.
 
 ## 11. Open points for the planning session
 
-The decisions of `Q8-decisions.md` settle the round-1 points. New:
-
-1. **S2 on a PreparedParam root (round-2 finding).** Q8-1a's exclusion is right for S1: the builder moves the prepared input
-   (`_0 = move (*_1)`) and A1, through 1c's PreparedInput mapping, reports `DefaultArgumentMove_Kd` from H5. For S2 it leaves
-   no producer: in a default whose block discards a non-Copy preceding parameter, the builder Copies through the prepared
-   reference and drops the copy (probe u2: `_2 = copy (*_1)`, `drop _2`, no MIR problem; old path `DefaultArgumentMove_Kd`).
-   A1 sees no Move, and the validator rule (§3.9) would raise `InternalInvariant_Kd` on a user error. Options: (a) S2 keeps
-   PreparedParam roots, reported as `TransferRequired_Kd` with the default Note and no repair, the record Binding already gives a
-   bare capture entry of a preceding parameter in a default (`ReportCaptureEntry`, DIAGNOSTICS `:107`); a code change for this
-   shape only (d); (b) the column records the bare acquisition of unconsumed Places (the container takes its items), so S2 folds
-   into S1 and the Move reaches A1's mapping; it needs a published "container value" fact for the builder's `Result` and a
-   builder change in R4's files; (c) A1 reports `DefaultArgumentMove_Kd` at a `Copy` of a PreparedInput root without a Copy
-   proof, with the validator exempting it (a second Copy judgment). Recommend (a): smallest, keeps one judge and the documented
-   default record; (b) is the cause-level fix for R7's inline writes.
-2. **Validator hold timing.** G:R6-check-flip lands after R4's exit, when plan §3.5 needs no hold; the shared window with F11
-   matters only if R4 still edits `MirValidator*.cs` then. Recommend: no separate hold unless R4 is active.
+None. `Q8-decisions.md` settles open points 1–8 and every review finding (Q8-1a–Q8-8: the earlier S2 PreparedParam point by
+Q8-4 and Q8-8, the validator hold by Q8-5). The owner's choice remains on the two proposals of §8 (Q8-6, Q8-7). A cause-level
+alternative to S2 as a scan source, recording the bare acquisition of unconsumed Places in the column (the container takes its
+items), stays an R7 item for the inline writes.
 
 ## 12. Evidence
 
@@ -478,8 +482,10 @@ The decisions of `Q8-decisions.md` settle the round-1 points. New:
   binding writing the target row, with the HIR contract on null rows; FunctionFallthrough in result validation (PD32,
   departing from PLAN10 §5.5/§9); Q16's two views; MIR problems naming their requirement (restoring PLAN10 §7; superseding
   R4-M3a's derivation and naming clauses); TransferRequired judged by a scan of the published columns with three sources after
-  an eager Final publication (refining R2b-D2), PreparedParam roots left to `DefaultArgumentMove_Kd`'s producer, the case fact
-  and the omitted-list record kept; kept children of failed nodes (G121; superseding R4-M61's "replaced whole" for them); the
+  an eager Final publication (refining R2b-D2), PreparedParam-rooted Places recorded by Binding as `DefaultArgumentMove_Kd`
+  (requirement `Binding.TransferRequired`; A1's PreparedInput mapping only for an explicit `a@move`), the case fact through one
+  Semantics-case renderer in Binding and the omitted-list record kept; kept children of failed nodes (G121; a failed closure
+  keeps its own `Consume`, a failed compound Place its operands in place; superseding R4-M61's "replaced whole" for them); the
   validator's Copy rule; `Binding.ClosureInstances` and `Binding.RequirementInstances` at R7; Q13 closed. Each component,
   contract change and superseded entry is recorded again by the unit that first implements it. Rejected: restructuring
   `Consume`; a judgment at the publisher's visit; node failures for lints; a new `BindingFailure`; a code → requirement table
