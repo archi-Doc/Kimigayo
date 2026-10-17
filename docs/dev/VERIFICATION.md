@@ -183,16 +183,22 @@ Measurement commands and fixed conditions belong to their dedicated documents be
 | `Benchmark --pair-cases` | [PairCases.md](../../src/Benchmark/PairCases.md) |
 | `Benchmark --borrow-storage` | [BorrowStorage.md](../../src/Benchmark/BorrowStorage.md) |
 | `Benchmark --object-plans` | [ObjectPlans.md](../../src/Benchmark/ObjectPlans.md) |
+| `benchmark-object-finalization.ps1 [-Runs 7] [-Mode Rc,Arc] [-Name <n>]` | [ObjectPlans.md](../../src/Benchmark/ObjectPlans.md); uninstrumented native finalization timings; protocol coverage in [SharedObjects.md](../../src/Benchmark/SharedObjects.md). |
+| `Benchmark --callable-plans`, `--local-regions`, `--fixed-origin-loans` | [CallablePlans.md](../../src/Benchmark/CallablePlans.md); `--fixed-origin-loans` also prints the `--generic-defaults` report after its own. |
+| `Benchmark --property-plans` | [Properties.md](../../src/Benchmark/Properties.md) |
 | `Benchmark --adaptation-plans` | [Adaptations.md](../../src/Benchmark/Adaptations.md) |
 | `Benchmark --generic-defaults` | [GenericDefaults.md](../../src/Benchmark/GenericDefaults.md) |
 | `Benchmark --element-places` | [ElementPlaces.md](../../src/Benchmark/ElementPlaces.md) |
 | `Benchmark --origin-proof` | [OriginProof.md](../../src/Benchmark/OriginProof.md); each case in its own process with a time limit, censored cases recorded. |
-| `Benchmark --view-plans` | [Views.md](../../src/Benchmark/Views.md) |
+| `Benchmark --view-plans`; ExclusiveViews and SliceCopies native runs | [Views.md](../../src/Benchmark/Views.md); the native runs are its `milestone-harness.ps1 -Milestone 0 ... -Runs 7` commands. |
 | `Benchmark --associated-inference` | [AssociatedInference.md](../../src/Benchmark/AssociatedInference.md); shared explicit/inferred declaration workloads, cold/warm costs and retained capacities. |
 | `Benchmark --constructor-inference` | [ConstructorInference.md](../../src/Benchmark/ConstructorInference.md) |
 | `Benchmark --inheritance-plans`, `--inheritance-lifecycle` | [Inheritance.md](../../src/Benchmark/Inheritance.md); lifecycle adds fresh/edited snapshots and retained ownership storage. |
 | `Benchmark --arithmetic-plans`, `benchmark-arithmetic.ps1` | [Arithmetic.md](../../src/Benchmark/Arithmetic.md) |
 | `Benchmark --hover` | [HOVER.md](HOVER.md#responsiveness-measurements) |
+| `Benchmark --compiler-pipeline`, `--compiler-pipeline-check` | [CompilerPipeline.md](../../src/Benchmark/CompilerPipeline.md); the check has no timing thresholds; save its output under `artifacts/verify/`. |
+| `Benchmark --named-arguments` | [NamedArguments.md](../../src/Benchmark/NamedArguments.md#reproduce) |
+| `Benchmark --diagnostics` | No document; `DiagnosticMeasurements` writes its input projects under `temp/diagnostic-measurements/` and prints one JSON report to stdout: compiler and runtime versions, and per input the median and minimum microseconds and median bytes per operation. |
 | `benchmark-o2-corpus.ps1` | [O2Corpus.md](../../src/Benchmark/O2Corpus.md) |
 
 ## Native fixtures
