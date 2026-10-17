@@ -14,7 +14,11 @@ public class LocalRegionCompletionTest
     private const string Empty = "match a\n    .Some(_) => $abort(\"a\")\n    .None => ()\nmatch b\n    .Some(_) => $abort(\"b\")\n    .None => ()";
     private const string Joined = "let choose = func [] (flag: bool, a: ref/i32, b: ref/i32)\n    var first = a\n    var second = b\n    return if flag => first else => second\n";
 
+    // IndirectReplacement and IndirectLoop expect the old path's strong update: `slot@follow = .None` ended b's Loan on n.
+    // A write through a reference ends none (SPEC 15.6, S4), so `n = 3` conflicts; the default pipeline keeps the old rule
+    // until R6-check.
     [Theory]
+    [Trait("OldRule", "S4")]
     [InlineData("LocalFunctionTuple", "let f: ((ref/i32, i32)) -> i32 = func (pair) => pair.0@follow + pair.1\nlet a = 3\nlet b = 4\nrequire f((a@ref, 2)) + f((b@ref, 1)) == 10 else => $abort(\"tuple\")")]
     [InlineData("LocalFunctionNested", "let f: (ref/(ref/i32)) -> i32 = func (value) => value@follow@follow\nlet n = 7\nlet view = n@ref\nrequire f(view@ref) == 7 else => $abort(\"nested\")")]
     [InlineData("LocalFunctionItem", "func read(pair: (ref/i32 during source, i32)) -> i32 => pair.0@follow + pair.1\nlet f: ((ref/i32, i32)) -> i32 = read\nlet n = 3\nrequire f((n@ref, 2)) == 5 else => $abort(\"item\")")]
@@ -49,10 +53,12 @@ public class LocalRegionCompletionTest
         Assert.DoesNotContain(errors, x => x.Category == DiagnosticCategory.Unsupported);
     }
 
+    // The first row expects the old path's strong update through `slot`, as above (S4).
     [Theory]
     [InlineData(Slots + "slot@follow = .Some(n@ref)\nslot@follow = .None\nn = 3\n" + Empty)]
     [InlineData("func read(pair: (ref/i32 during source, i32)) -> i32 => pair.0@follow + pair.1\nlet f: ((ref/i32, i32)) -> i32 = read\nlet n = 3\n_=f((n@ref, 2))")]
     [Trait("Purpose", "Allocation")]
+    [Trait("OldRule", "S4")]
     public void RepeatedCompletionReusesItsStorage(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

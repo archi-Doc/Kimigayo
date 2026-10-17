@@ -239,7 +239,7 @@ else
 
 A group or rootgroup stored Property needs an initializer and an Owned complete storage Type ([§15.2.3](15-ownership-and-lifetime-analysis.md#1523-static-and-owned)). Each slot initializes on first actual access ([§22.4](22-core-execution-and-foreign-functions.md#224-program-startup-and-static-storage)); an accessor call initializes only the slots its execution touches.
 
-A shared borrow of initialized immutable static storage may be `during static`. A borrow of mutable static storage, including an inline subplace, has a finite Origin and leaves the body only as the Static anchors rule of [§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls) allows. Copying a reference stored in mutable static storage is not a borrow of that storage; the Copy keeps the stored referent and Origin.
+A shared borrow of initialized immutable static storage may be `during static`. A borrow of mutable static storage, including an inline subplace, has a finite Origin bounded by the body ([§15.6.5](15-ownership-and-lifetime-analysis.md#1565-judging-origin-relations)). Copying a reference stored in mutable static storage is not a borrow of that storage; the Copy keeps the stored referent and Origin.
 
 ```kimi
 group Config

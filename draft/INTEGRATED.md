@@ -459,3 +459,81 @@ conditional designs/estimates are planning inputs, not adopted representations. 
 - Its SPEC change items go separately: S1, S2 and S5 as proposals, S3 and S4 as clarifications (plan §5.2, OD7), and each approved
   list of precision losses as one SPEC revision before the R4 exit (OD13); each is recorded here when it lands. Adoption implies no
   implementation support.
+
+## 2026-10-17 — A5 SPEC simplifications and Loan identity by base
+
+The owner's request is OD12 of the Complete Polonius A5 Plan (DECISIONS R4-M35): simple, then fast, then precise, never
+trading soundness, with each precision loss written as a decidable SPEC rule clause before the R4 exit (plan §5.3). The
+owner approved design A3's losses, relaxations and clarification c1 on 2026-10-17 (`Sketches/A5 Step 0/design-A3.md` §9),
+adopted S1 the same day (「S1採用します」, DECISIONS R4-M39) and confirmed S4 (OD11).
+
+- `Changes/2026-10-16 Loan Identity by Base.md`: 取り込み済み (text of `61b1abf2`). Mapping of its §2.3:
+  - §15.6 line 450 → the §15.6 Loans paragraph. Its last clause ("through static anchors") now reads "they are checked
+    where the body is called, against what the call may reach and its effects on static storage", since P6 below leaves
+    no result anchors to name.
+  - §15.6 line 453 → the §15.6 liveness bullet: the check by value, never by Loan id (A3's own-site check); a stored
+    value counts when stored "into a holder used after P" (P1's holders) rather than "into a Place".
+  - §15.6.2 line 495 → the §15.6.2 lead paragraph (access paths, own steps, dereferences) and its distinct-roots row;
+    line 500 → the reach bullet (A3's P3, both forms, with the `replace` exemption) and the comparison bullet.
+  - §15.6.3 line 513 → the first two §15.6.3 paragraphs, split before the base ("It is contained" now names the child);
+    the end never crosses a dereference (the plan's `within`).
+  - §15.6.6 line 596 → the second §15.6.6 paragraph; §13.5.5 line 353 and §3.5.1 line 359 → as written; Appendix E →
+    the Loan row and the new Base row.
+  - §3 and §4.1 → examples: `deepest` in §15.6.3 with `deepestCleared`'s `clear()` as its commented error (the plan §5.2
+    form); one §15.6.3 block for the base operations (the `replace` program, with the `exchange` program's line and §4.1's
+    Move as commented errors on the same `r`); §15.6.6's observing destruction, with `x` and `y` declared. §3's `touch`
+    join program and the list-walk prose are not added.
+  - §2.2, §4 to §9: rationale, losses, evidence and rejected options, unchanged. §10's test list → the `OldRule` tags
+    below; its new rule tests belong to A5's units.
+  - Every item is integrated; none is rejected or transferred. The file moved to `Changes` with only its status sentence
+    replaced at closure (adopted, DECISIONS R4-M39, and integrated); its links to files that stay in `Proposals` (S2, the
+    A5 plan, PLAN10) are not rewritten. `Sketches/LoanIdentityByBase.mjs` names the new path.
+- [Complete Polonius A5 Plan](Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): 一部取り込み. Integrated and
+  frozen: §5.2's S4 and its Optional row "Mutable-static borrows never leave the body" (P6). The other clauses are
+  §5.3's first list as design A3 §2 and §9 word them. The rest of the plan stays a working plan.
+  - S4 → the second §15.6 example (`slot`, `r@follow = b@ref`).
+  - P1 → the §15.6 Holders bullet. P10 → the §15.6 write-through bullet (holders named by the reference's Loans with no
+    dereference, its parents' included). P11 → that bullet's last sentence and §13.7.2's Writeback protection.
+  - P3 → S1's reach bullet above. P4 → §15.6.4's retention sentence (per argument, never per Origin; a Closure's call
+    receiver included) and §15.6.3's descent sentence.
+  - P5 → the §15.6 introduction, the §15.6.2 key bullet, §15.6.4's effect summaries (static Fields; no open key) and
+    §22.4.4.
+  - P6 → §15.6.4's Mutable-static Loans (replacing Mutable-static anchors), §15.6.5's finite Origins and §11.8. Its rules
+    for results that carry an anchor are deleted as vacuous: §6.4.6 (virtual slots), §7.7.4 (erasure), §8.6's result row,
+    §8.11.6 (Callable binding), §12.7.1 and §15.6.7. In the §15.6.4 example `current` becomes an error, `leak` stores
+    `State.text@ref` directly and stays an error, and `let f = current` is removed. A3 §2 said `leak` and `f` keep their
+    verdicts, but under P6 no call result carries a mutable-static Loan, so `current(anchor)`'s result depends on
+    `anchor` alone and both old lines would be valid.
+  - P9 → §7.2.3's recursive defaults.
+  - Relaxation (a) → §15.6.2's distinct-roots row, replacing the distinct-anchors row and "Distinct reference variables
+    … prove nothing"; (b) → the Case-payload row.
+  - c1 → §15.6.5's inferred regions.
+  - Consequential: §12.7.1 relates a referent through the Places its reference's Loans name, since "Follow Loan
+    provenance" left §15.6.2; §15.6.7 protects "the references it was reached through" instead of its provenance; §13.5.5's
+    pair-layer table names `P` as the base of a `uniq` layer's child (S1); §3.4 says §15.6.2 states when Loan checking
+    treats Places as disjoint, since distinct Case payloads may share bytes (relaxation (b)); Appendix E's Access path row
+    points to §15.6.2, and a Holder row is added.
+  - Clarified at intake, after the independent review: a call writes the storage its contract lets it write as a write
+    through a reference, so `replace`, `exchange` and `swap` completely replace no holder (A3 §5 adds to a store target;
+    S4). S1 §2.1's `replaced(X,P)` sketch also listed their targets; the SPEC follows A3 and S4, and `replace` ends only
+    the children of §15.6.3. "Storage the body does not own" is decided as A3's `Φ_E` is: a reference from a parameter
+    or capture, static or raw storage, or a call result its contract ties to no argument. Paths include base subobject
+    steps, and examples write a dereference as `.*`.
+  - Not integrated: S2, S3, S5, the root-most kill and relaxation (c) (not adopted).
+- Principles. One Concept, One Canonical Form: one Loan identity (the Borrow site), one Place name (the access path), one
+  carrying unit (the holder) and one retention unit (the argument). Local Reasoning: a verdict depends on one body's
+  paths, published contracts and finite facts; no clause needs value identity or unbounded Places. Explicit Semantics:
+  every operation that keeps an old reference alive is a visible conflict at its site, and the event that ends a child
+  is written at its base. Compiler Server Protocol: a conflict names the operation, the Borrow site and the base.
+  Soundness: each loss only adds conflicts or keeps Loans longer (A3 §2); the relaxations rest on P3 and the caller's
+  activation rule (A3 §3, §9).
+- Usage: none of the clauses changes a library or milestone verdict (A3 §2, S1 §7, rechecked at intake). The default
+  pipeline keeps the earlier rules until R6-check (plan §9.2, OD5; STATUS). Tests that expect an earlier rule carry
+  `[Trait("OldRule", "<id>")]` with a comment naming their rows: S1 in `StoredReferenceLoanTest`, `OwnedStoredReferenceTest`
+  (locations), `ContentUpdateTest` (`replace` now valid) and `DictionaryStoredReferenceTest`; P1 in
+  `LocalRegionCompositionTest` and `FixedOriginRetentionTest`; P4 (a by-value argument, with P1's holders) in
+  `FixedOriginRetentionTest`; S4 in `LocalRegionCompletionTest` (the old path's strong update through a reference).
+  S1 §7 counted no accepted test for its §4.2 form; the `DictionaryStoredReferenceTest` rows are such forms (an exclusive
+  Borrow of the Dictionary while a Borrow through a stored reference, which carries the `index` or `tryGet` result's
+  Loan, is live; Rust rejects them too). `tests/diagnostics/pair-cases.json` row `B12-parent-move` becomes an error in
+  its `uniq` case (a Move of the base) and is not tagged here. Not refreshed: SPECJ and GUIDE.

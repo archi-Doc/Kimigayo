@@ -77,7 +77,10 @@ public class ContentUpdateTest
         NativeAllocationAudit.WriteFixture("ContentUpdatePayload", source, 1, 1, 24);
     }
 
+    // The first row expects the rule before Loan identity by base (A5 S1): `replace` of the base `slot` now ends the child
+    // (SPEC 15.6.3), so the row is valid; the default pipeline keeps the old rule until R6-check.
     [Theory]
+    [Trait("OldRule", "S1")]
     [InlineData("    let child = slot\n    Kimi.Intrinsics.replace(slot@uniq, with: b)\n    _ = child@follow")]
     [InlineData("    let view = slot@ref\n    Kimi.Intrinsics.replace(slot@uniq, with: b)\n    _ = view@follow@follow")]
     public void OldContentAndSlotViewsCannotSurviveReplacement(string operations)
@@ -107,7 +110,10 @@ public class ContentUpdateTest
         Assert.DoesNotContain(c.Problems, static issue => issue.Code is DiagnosticCode.Unsupported_Kd or DiagnosticCode.InternalInvariant_Kd);
     }
 
+    // The `replace` row expects the rule before Loan identity by base (A5 S1): `replace` of the base now ends the child
+    // (SPEC 15.6.3), so the row is valid; the default pipeline keeps the old rule until R6-check.
     [Theory]
+    [Trait("OldRule", "S1")]
     [InlineData("Kimi.Intrinsics.replace(slot@uniq, with: b)")]
     [InlineData("_ = Kimi.Intrinsics.exchange(slot@uniq, with: b)")]
     [InlineData("var other = b\n    Kimi.Intrinsics.swap(slot@uniq, other@uniq)")]
@@ -181,7 +187,10 @@ public class ContentUpdateTest
         ScalarEmissionTest.EmitFixture("ContentUpdateDestruction", source, "3\nupdated\n2\n1\n");
     }
 
+    // Expects the rule before Loan identity by base (A5 S1): `replace` of the base `slot` now ends the child (SPEC 15.6.3),
+    // so the program is valid; the default pipeline keeps the old rule until R6-check.
     [Fact]
+    [Trait("OldRule", "S1")]
     public void OldContentConflictExplainsTheCauseInEveryAdapter()
     {
         const string source = "func run(a: uniq/i32 during s, b: uniq/i32 during s)\n    var slot = a\n    let child = slot\n    Kimi.Intrinsics.replace(slot@uniq, with: b)\n    child@follow = 3";

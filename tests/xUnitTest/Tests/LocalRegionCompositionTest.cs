@@ -34,7 +34,10 @@ public class LocalRegionCompositionTest
 
     private const string MutableValues = "var a = 1\nvar b = 2\n";
 
+    // From FieldEnded on, the rows expect the rule before SPEC 15.6's holders (A5 P1): writing a part ended that part's
+    // Loans. Now it ends none, so `a = 3` conflicts; the default pipeline keeps the old rule until R6-check.
     [Theory]
+    [Trait("OldRule", "P1")]
     [InlineData("TupleEnded", MutableValues + "var value = (a@ref, 7)\nvalue = (b@ref, 9)\na = 3\nrequire value.0@follow == 2 else => $abort(\"tuple\")")]
     [InlineData("FixedEnded", MutableValues + "var value: [1 of ref/i32] = [a@ref]\nvalue = [b@ref]\na = 3\nrequire value[0]@follow == 2 else => $abort(\"fixed\")")]
     [InlineData("StructEnded", Cell + MutableValues + "var value = Cell.init(a@ref)\nvalue = Cell.init(b@ref)\na = 3\nrequire value.item@follow == 2 else => $abort(\"struct\")")]
@@ -74,8 +77,10 @@ public class LocalRegionCompositionTest
         Assert.DoesNotContain(errors, x => x.Category == DiagnosticCategory.Unsupported);
     }
 
+    // The first and third rows write a part and then `a`, valid only under the rule before SPEC 15.6's holders (A5 P1).
     [Theory]
     [Trait("Purpose", "Allocation")]
+    [Trait("OldRule", "P1")]
     [InlineData(MutableValues + "var value = (a@ref, a@ref)\nvalue.0 = b@ref\nvalue.1 = b@ref\na = 3\nrequire value.0@follow == 2 else => $abort(\"parts\")")]
     [InlineData(Values + "var value: Option<ref/i32> = .None\nvalue = .Some(b@ref)\nmatch value\n    .Some(let item) => require item@follow == 2 else => $abort(\"some\")\n    .None => ()")]
     [InlineData(Box + MutableValues + "var value = Box<ref/i32>.init(a@ref)\nvalue.item = b@ref\na = 3\nrequire value.item@follow == 2 else => $abort(\"alias\")")]
