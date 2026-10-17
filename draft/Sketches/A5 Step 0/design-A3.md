@@ -485,8 +485,10 @@ the transit clause in `CS` (§5).
 - the S1 additions, clarifications, V16, the Origin boundary, the MIR contracts, and the DEC and DIAGNOSTICS records:
   approved.
 
-The SPEC simplifications land before the R4 exit (plan §5.3). Until then, a violation of an approved loss is a located
-`Unsupported_Kd`.
+Until the SPEC simplifications landed (plan §5.3), a violation of an approved loss was a located `Unsupported_Kd`. They
+were integrated at `4372b058` (`draft/INTEGRATED.md`), so A5 reports a
+violation of an approved loss with its Language code, in shadow (plan §5.3; S1: DEC R4-M39); the default pipeline keeps
+the earlier rules until R6-check (DEC R4-M50).
 
 | # | Decision | Content | Recommendation |
 | --- | --- | --- | --- |
@@ -504,7 +506,7 @@ The SPEC simplifications land before the R4 exit (plan §5.3). Until then, a vio
 | Unit | Content | Completion condition | Checks |
 | --- | --- | --- | --- |
 | 0a | Ledger re-baseline at the step-0 base (census §3 command) | `ledger.tsv`, `summary.md` recorded | V13 failure-set equality |
-| 0b | Prototype into `draft/Sketches`.<br>Recorded: the 92 cases, including 25a–25c (transit, dead store), 26a/26b (destroying calls), 27 (cut), 28a–28d (plain arguments: E, V, V, E), 29a–29c (crossing, escaped, path-exact) and 30a–30d (linked lists).<br>Added: `swap(a, b)` with parameters, `y = h@follow + 1`, `Φ_c^dist`. | All match the A column (70 same, 14 earlier, 8 listed losses) | `proto.cs` run |
+| 0b | Prototype into `draft/Sketches`.<br>Recorded: the 92 cases, including 25a–25c (transit, dead store), 26a/26b (destroying calls), 27 (cut), 28a–28d (plain arguments: E, V, V, E), 29a–29c (crossing, escaped, path-exact) and 30a–30d (linked lists).<br>Added (round 7): `swap(a, b)` with parameters, `y = h@follow + 1`, `Φ_c^dist`. | All match the A column: no unsound acceptance and no unlisted rejection (round 6: 70 same, 14 earlier, 8 listed losses) | `proto.cs` run |
 | 0c | G1 `MirDataflow` | A1 behavior-preserving; a backward test problem | `MirDataflow`/A1 tests, `BodiesScaleLinearly`, ledger unchanged |
 | 0d | G2 | Classified over library Types | Unit tests (`Logger` S15:598-604, abstract and Sealed parts) |
 | 0e | Builder contracts G5, G6, writeback, Slice, Guard, C8 | Dump goldens updated; validator clean | `MirBuildTest`, goldens |
@@ -525,13 +527,16 @@ The SPEC simplifications land before the R4 exit (plan §5.3). Until then, a vio
 ## 11. Risks and open questions
 
 - **P3 form (b)** may be a SPEC soundness gap rather than a loss: z gives shared access to x while x is written through
-  r. The old path rejects it. Ask the owner.
+  r. The old path rejects it. Decided on 2026-10-17: a needed loss, "P3 (both forms)" (§9 item 2).
 - **`Φ_E` in the library.** Raw-derived or static-derived writes move Loans into `σ(E)` forever. Watch `Storage.kimi` and
   `DictionaryStorage.kimi` in 1b's shadow run (r2 finding 7).
-- **Round 6** (92 cases) shows no unsound acceptance and no unlisted rejection. Pending in 0b: `Φ_c^dist`,
-  `swap(a, b)` with parameters, `y = h@follow + 1`.
-- **Other open items**: S1 without P3 (§9 item 4); relaxation (c) and V16 (§9); F6 (waits for S2); Binding views
-  (snapshots); R5 (serialized, plan §9.1); A4's depth limit (S5).
+- **Unit 0b.** Round 6 (92 cases) showed no unsound acceptance and no unlisted rejection. Round 7 added `swap(a, b)`
+  with parameters (31a, 31b), `y = h@follow + 1` (32a, 32b) and `Φ_c^dist`, and found the unlisted rejection 33c (the
+  erratum below; 99 cases). Round 8 (109 cases) found design A unsound on 36c: F6 does not state that `Φ_c`'s values
+  carry the receiver's Loans, and the prototype encodes them without (PLAN G113). 0b stays open until a rerun meets its
+  §10 condition; round 8 still has the unlisted 33c and the unsound 36c.
+- **Other open items**: F6 (waits for S2); Binding views (snapshots); R5 (serialized, plan §9.1); A4's depth limit
+  (S5). S1 with P3 (§9 item 4), relaxation (c) and V16 were decided on 2026-10-17 (§9).
 
 ## Revision history
 
@@ -546,3 +551,5 @@ The SPEC simplifications land before the R4 exit (plan §5.3). Until then, a vio
   reports only the observing part beyond its shallow activation.
 - **A3 erratum** (prototype round 7, unit 0b): `excused` also covers the argument reservations of the excused Call (33c),
   so SPEC's `takeTwo` stays valid. For unit 2f (F6).
+- **Records** (2026-10-17, no design change): §9 notes the SPEC integration at `4372b058`; §10 states 0b's condition in
+  words, keeping round 6's counts as history; §11 marks the items §9 decided and states 0b after prototype rounds 7 and 8.
