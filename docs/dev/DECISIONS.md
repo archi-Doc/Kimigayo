@@ -1297,8 +1297,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Binding's matching `Retains` fix (unit 1a3).
   Found, for the planning session: a reservation formed while an exclusive Loan of its Place lives gets the formation's
   `ComparisonLoanConflict_Kd` and the activation's `CallActivationConflict_Kd` on one Loan (`arr.clear()` with a live element borrow;
-  the old path reports the activation only), A6's merge or a rule; `TyCtxt.Retains` throws for a Subst holding a growing recursive
-  Type (`Nest<ref/i32>.init`). Rejected: transit in CS_call (a call's retained result would bring its own reservation into its
+  the old path reports the activation only), A6's merge or a rule; `TyCtxt.Retains` threw for a Subst holding a growing recursive
+  Type (`Nest<ref/i32>.init`), now its `CallRetention.Limit` (1b-4). Rejected: transit in CS_call (a call's retained result would bring its own reservation into its
   check); activations by a table of issue sites (σ_in(t) already says which reservations reach the call); the destroying mode on the
   access instead of the Loan (formation and activation are separate locations). Not temporary.
   Unit 1b-4 (A3 §12 E7 and E12; it replaces R4-M37's `EndBorrow` meaning for guards, as `MirStatementKind.EndBorrow`'s doc now says):
@@ -1310,6 +1310,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     escapes the guard: `ComparisonLoanConflict_Kd` at the cleanup, anchored at the candidate, with the holder's next use, as
     DIAGNOSTICS' escaped borrows (no guard-local code exists; A6's merge, unit 1c, finalizes it, also where γ reaches `_0`). Another
     `EndBorrow` (an abandoned comparison or reservation) checks nothing. E12: the stratum keeps no `partition` clause (1b-2).
+  - A call whose retention is `CallRetention.Limit` (R4-M51: a contract Binding's storage instantiation does not complete) is a
+    located `Unsupported_Kd` at the call in a body view with a Loan, as A4's Limit; it retains nothing, with no fallback rule.
   Found: a value returned from a guard (A3's 108) is Binding's `UnsatisfiedOriginRelation_Kd`, so its MIR is Opaque and the
   stratum sees no escape (the Origin stratum's, unit 2a). Rejected: the Loan-based err(ended) (prototype round 10's `EndedByLoan`,
   unsound on 43a, 92g, 102 and 108: past the Subject's shared Deref the candidate forms no Loan, E3); a γ id table per candidate

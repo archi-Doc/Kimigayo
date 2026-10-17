@@ -87,6 +87,11 @@ internal sealed partial class MirBorrows
             this.Ended(state, at, ended);
         }
 
+        if (index == this.body.Blocks[block].Count && this.Retaining(this.body.Blocks[block].Terminator) is { IsLimit: true })
+        {
+            this.program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, this.Subject(at), this.views)); // A contract Binding does not instantiate.
+        }
+
         this.Activations(state, at);
     }
 

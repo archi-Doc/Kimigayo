@@ -7,7 +7,8 @@
 // CallActivationConflict_Kd or PlacementActivationConflict_Kd for an activation at a Call or at the writeback write, else
 // ComparisonLoanConflict_Kd, also for a value that keeps a guard candidate's guard-local Origin past its EndBorrow), with the Loan's
 // anchor, its witness's next use or the store that carries it and an activation's reservation as facts, and Unsupported_Kd at a destruction
-// it does not classify, through MirReport; and Work, the steps it took (A3 6.2).
+// or a call it does not classify (a destruction walk past its bound, CallRetention.Limit), through MirReport; and Work, the steps it took
+// (A3 6.2).
 // Invariants: a holder is a root local whose case Type may hold a Loan (MirTypes.HoldsLoans), or E, the storage the body does not own; its
 // state is a MirLoanSets node of Loans and markers, which never conflict and no ending removes (Φ_E, τ_s, and a guard candidate's γ, E7). A
 // Loan exists per non-raw Ref site and view whose Place passes no shared borrow Deref (E3), named by its whole Place; access is syntactic,

@@ -832,17 +832,19 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
                     setM(s.m@uniq)
                 """));
 
-    // R4-M36, A3 5: a Drop whose Type's destruction walk passes its depth bound is not classified: Unsupported_Kd at the Drop, and no Loan
-    // problem there.
+    // R4-M36, R4-M51, A3 5: a Drop whose Type's destruction walk passes its depth bound and a call whose contract Binding does not
+    // instantiate (CallRetention.Limit: storage nested past its depth bound, as a growing recursive Type's) are not classified:
+    // Unsupported_Kd there, and no Loan problem; a body without a Loan, which no conflict can depend on, reports neither.
     [Fact]
-    public void AnUnclassifiedDestructionIsUnsupported()
+    public void AnUnclassifiedDestructionOrCallIsUnsupported()
     {
         var c = MirBuildTest.Compile(Prelude + "func deep(n: Nest<ref/i32 during a>)\n    let r = n@ref\n" +
-            "func unborrowed(n: Nest<ref/i32 during a>)\n    let r = 1\n");
+            "func unborrowed(n: Nest<ref/i32 during a>)\n    let r = 1\nfunc made()\n    var y = 1\n    let n = Nest<ref/i32>.init(value: y@ref)\n" +
+            "func unlent(x: ref/i32)\n    let n = Nest<ref/i32>.init(value: x)\n");
         var program = Analyze(c);
         Assert.Equal(
-            ["Unsupported_Kd deep(n: Nest<ref/i32 during a>)"],
-            program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0).Select(x => $"{x.Code} {Line(c, x.Subject)["func ".Length..]}"));
+            ["Unsupported_Kd func deep(n: Nest<ref/i32 during a>)", "Unsupported_Kd Nest<ref/i32>.init(value: y@ref)"],
+            program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0).Select(x => $"{x.Code} {Line(c, x.Subject)}"));
     }
 
     // SPEC 4.8.2 (A3 E6, ret): a Slice handle is a borrow, so a call retaining it by its own Origin also carries what a read through it

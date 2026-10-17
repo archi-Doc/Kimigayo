@@ -342,11 +342,11 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // A Call (A3 5, Calls): its arguments' Moves, then each retention (TyCtxt.Retains over the callee and Subst, or a Value callee's declared
-    // signature) into the result or through an argument's referents, then the result into the destination; Φ_E for an untied result. An
-    // intrinsic's operands all reach its result; a default template's call is an unknown callee: every argument reaches the result and every
-    // exclusive argument's referents, and the result is untied. A Value callee's environment, its value or what a reference to it refers
-    // to, reaches the result too (its captures; temporary until F7 reads TyCtxt.Closure, unit 2c).
+    // A Call (A3 5, Calls): its arguments' Moves, then each row of its retention (Retaining) into the result or through an argument's
+    // referents, then the result into the destination; Φ_E for an untied result. An intrinsic's operands all reach its result; a default
+    // template's call is an unknown callee: every argument reaches the result and every exclusive argument's referents, and the result is
+    // untied. A Value callee's environment, its value or what a reference to it refers to, reaches the result too (its captures; temporary
+    // until F7 reads TyCtxt.Closure, unit 2c).
     private void Call(ulong[] state, in MirTerminator call)
     {
         MirDataflow.Grow(ref this.argValues, call.Count);
@@ -386,11 +386,8 @@ internal sealed partial class MirBorrows
                 }
             }
         }
-        else
+        else if (this.Retaining(call) is { IsLimit: false } retention)
         {
-            var retention = callee.Kind == MirCalleeKind.Value
-                ? types.Retains(this.TypeOf(call.Operand)!, this.body.Consts[callee.Arg].Type, this.body.Key.Decl)
-                : types.Retains(callee.Symbol!, callee.Subst, this.body.Key.Decl);
             foreach (var row in retention.Rows)
             {
                 var input = MirCallee.Position(callee.Symbol, row.Input);
@@ -421,6 +418,22 @@ internal sealed partial class MirBorrows
         {
             this.Store(state, call.Place, result, resultOwn, issue: false);
         }
+    }
+
+    // The retention a Call's contract gives (TyCtxt.Retains over the callee and Subst, or a Value callee's declared signature); none for
+    // another terminator, an intrinsic or a default template's call. Its Limit, a contract Binding does not instantiate, retains nothing the
+    // stratum follows: the checks record a located Unsupported_Kd at the call (R4-M51).
+    private CallRetention? Retaining(in MirTerminator call)
+    {
+        var callee = call.Callee;
+        if (call.Kind != MirTerminatorKind.Call || callee.Kind == MirCalleeKind.Intrinsic || (callee.Kind == MirCalleeKind.Fn && callee.Arg > 0))
+        {
+            return null;
+        }
+
+        return callee.Kind == MirCalleeKind.Value
+            ? types.Retains(this.TypeOf(call.Operand)!, this.body.Consts[callee.Arg].Type, this.body.Key.Decl)
+            : types.Retains(callee.Symbol!, callee.Subst, this.body.Key.Decl);
     }
 
     // ret(i, κ) (A3 5): Value, the argument's value and, for a borrow (a reference or a view handle, Borrows), a read through it; Content,
