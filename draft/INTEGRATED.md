@@ -537,3 +537,12 @@ adopted S1 the same day (「S1採用します」, DECISIONS R4-M39) and confirme
   Borrow of the Dictionary while a Borrow through a stored reference, which carries the `index` or `tryGet` result's
   Loan, is live; Rust rejects them too). `tests/diagnostics/pair-cases.json` row `B12-parent-move` becomes an error in
   its `uniq` case (a Move of the base) and is not tagged here. Not refreshed: SPECJ and GUIDE.
+
+### 2026-10-17: `do` のラベルなし `exit` の受付
+
+- [Unlabeled Exit from Do](<Proposals/2026-10-17 Unlabeled Exit from Do.md>): 一部取り込み（受付のみ、正式取り込み範囲なし）。
+  所有者がすべての `do` をラベルなし `exit` の対象とする規則を採用。計画書の変更事項はSPECと参照先に優先し、
+  その他は既存仕様を適用する。実装はR9完了後。正式仕様・実装は未変更で、凍結範囲はない。
+- 予定対応: §2.1・§2.3 → SPEC §14.2.2、§14.3、§14.5.2; §2.2 → §14.1、§14.9、§16.2と第15章の既存規則を維持;
+  §2.4 → §16.1.1（§14.4のラベル対象は維持）; §2・§3 → 付録F.10.2の文法を維持し、関連例・テスト・milestoneを移行。
+  §4はR9後の実装・検証計画。正式取り込みと実装完了は別途記録する。
