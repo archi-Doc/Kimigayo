@@ -46,9 +46,33 @@ public sealed partial class Binding
             return true;
         }
 
+        var environment = this.RentPremises(use) ??
+            throw new InvalidOperationException($"The premise environment of `{longer} outlives {shorter}` is not ready: its construction depends on itself (PLAN G74).");
+        var start = this.OriginProofMetrics is null ? 0 : Stopwatch.GetTimestamp();
+        try
+        {
+            var closure = environment.Closure;
+            this.CollectOriginResolvers(environment);
+            var target = closure.Node(shorter, out _);
+            var candidate = closure.Node(longer, out _);
+            this.ExtractOriginPremises(environment, use);
+            var entailed = closure.Entails(candidate, target, condition);
+            this.OriginProofMetrics?.Closure(closure, this.originPremiseDepth > 1, Stopwatch.GetTimestamp() - start);
+            return entailed;
+        }
+        finally
+        {
+            this.ReturnPremises(environment);
+        }
+    }
+
+    // The environment of the next nesting level for a request at `use`, returned with ReturnPremises; null beyond MaxOriginPremiseDepth,
+    // where the request's construction depends on itself and the requester fails.
+    private OriginPremiseEnvironment? RentPremises(Koto use)
+    {
         if (this.originPremiseDepth == MaxOriginPremiseDepth)
         {
-            throw new InvalidOperationException($"The premise environment of `{longer} outlives {shorter}` is not ready: its construction depends on itself (PLAN G74).");
+            return null;
         }
 
         if (this.originPremiseDepth == this.originPremiseEnvironments.Count)
@@ -57,24 +81,14 @@ public sealed partial class Binding
         }
 
         var environment = this.originPremiseEnvironments[this.originPremiseDepth++];
-        var start = this.OriginProofMetrics is null ? 0 : Stopwatch.GetTimestamp();
-        try
-        {
-            var closure = environment.Closure;
-            environment.Use = use;
-            this.CollectOriginResolvers(environment);
-            var target = closure.Node(shorter, out _);
-            var candidate = closure.Node(longer, out _);
-            this.ExtractOriginPremises(environment);
-            var entailed = closure.Entails(candidate, target, condition);
-            this.OriginProofMetrics?.Closure(closure, this.originPremiseDepth > 1, Stopwatch.GetTimestamp() - start);
-            return entailed;
-        }
-        finally
-        {
-            environment.Clear();
-            this.originPremiseDepth--;
-        }
+        environment.Use = use;
+        return environment;
+    }
+
+    private void ReturnPremises(OriginPremiseEnvironment environment)
+    {
+        environment.Clear();
+        this.originPremiseDepth--;
     }
 
     // The declarations whose published substitutions resolve an Origin at the use, in the order OriginAtUse applies them.
@@ -125,13 +139,13 @@ public sealed partial class Binding
         }
     }
 
-    // The catalog's context-dependent premises at the use, from the use outward: associated formation and requirements (R4),
-    // the inputs (R2) and result (R3) of each enclosing signature, and the clauses of each established enclosing declaration (R1).
+    // The catalog's context-dependent premises from `from` outward (for a request, its use): associated formation and requirements
+    // (R4), the inputs (R2) and result (R3) of each enclosing signature, and the clauses of each established enclosing declaration (R1).
     // Then every borrowed complete local Place among the graph's expressions adds its stored Origins (R5), including Places
     // that those Origins introduce, so the closure applies R5 at every expression it reaches.
-    private void ExtractOriginPremises(OriginPremiseEnvironment environment)
+    private void ExtractOriginPremises(OriginPremiseEnvironment environment, Koto? from)
     {
-        for (var node = environment.Use; node is not null; node = node.Parent)
+        for (var node = from; node is not null; node = node.Parent)
         {
             var requirement = IsAssociatedRequirement(node);
             if (requirement && AssociatedFormationType(node) is { } formation)

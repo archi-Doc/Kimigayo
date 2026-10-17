@@ -361,6 +361,7 @@ public sealed partial class Binding
         this.inheritedOriginTypes.Clear();
         this.ResetCapabilities(mode);
         this.ResetContracts();
+        this.types.ResetRetentions();
         foreach (var scope in this.scopes.Values)
         {
             scope.Reset();

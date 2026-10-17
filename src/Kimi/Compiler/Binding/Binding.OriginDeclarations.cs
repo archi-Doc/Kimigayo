@@ -70,6 +70,17 @@ public sealed partial class Binding
     // SPEC 15.3.1, 23.1.2: a binding set that reuses a visible name failed as DuplicateBinding_Kd and declares nothing.
     private static bool RepeatedSet(TypeSemanticsKoto set) => set.BindingFailure == BindingFailure.Duplicate;
 
+    // SPEC 15.3.5: the variance of a Type's component within it, which ComposeVariance composes: a layer's target invariant where the
+    // layer is (IsInvariantLayer), else covariant; a Function Type's inputs contravariant and its result covariant; a declared Type
+    // argument by its slot's inferred variance; any other component covariant.
+    private OriginVariance ComponentVariance(BoundType type, int component) => type.Kind switch
+    {
+        BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication when IsInvariantLayer(type, this) => OriginVariance.Invariant,
+        BoundTypeKind.Function when type.Components.Count == 2 && component == 0 => OriginVariance.Contravariant,
+        BoundTypeKind.Constructed when type.Symbol?.Schema is { } schema && component < schema.GenericSlots.Count => schema.GenericSlots[component].OriginVariance,
+        _ => OriginVariance.Covariant,
+    };
+
     private OriginDeclaration OriginDeclarationFor(Koto owner)
     {
         if (!this.originDeclarations.TryGetValue(owner, out var declaration))
@@ -803,11 +814,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < Math.Min(pattern.Components.Count, value.Components.Count); i++)
             {
-                var component = pattern.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication ? (IsInvariantLayer(pattern, this) ? OriginVariance.Invariant : OriginVariance.Covariant)
-                    : pattern.Kind == BoundTypeKind.Function && pattern.Components.Count == 2 ? (i == 0 ? OriginVariance.Contravariant : OriginVariance.Covariant)
-                    : pattern.Kind == BoundTypeKind.Constructed && pattern.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count ? schema.GenericSlots[i].OriginVariance
-                    : OriginVariance.Covariant;
-                Match(pattern.Components[i], value.Components[i], ComposeVariance(polarity, component));
+                Match(pattern.Components[i], value.Components[i], ComposeVariance(polarity, this.ComponentVariance(pattern, i)));
             }
         }
 

@@ -112,9 +112,13 @@ public sealed partial class Binding
     // an override's inherited implementation premises where present.
     internal BindingScope EffectPremises(BindingSymbol? definition)
     {
-        var scope = this.ConstraintScope(definition?.Declaration ?? this.Library.Kotonoha.RootKoto);
+        var scope = this.ConstraintScope(this.DefinitionUse(definition));
         return scope.ImplementationPremises ?? scope;
     }
+
+    // The node a definition's premises are read at: its declaration, or for a module's top-level statements (null) the library root,
+    // which holds none.
+    internal Koto DefinitionUse(BindingSymbol? definition) => definition?.Declaration ?? this.Library.Kotonoha.RootKoto;
 
     // SPEC 8.11.6: the obligation of a confined bound at a selected use, under the premises of the use's definition: an abstract subject
     // by its Callable premises over the selected signature (a holding premise adds no row); any other A4 judges as a call through it.
