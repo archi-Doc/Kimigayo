@@ -1,8 +1,13 @@
 # Compiler pipeline measurements
 
 `--compiler-pipeline` measures six contiguous stages of each fresh compilation.
-Inputs contain 1, 32 or 128 scalar helper functions, with or without conditional
-returns. Every helper is called from `main`. Source construction is outside timing.
+Each input has a shape and a size of 1, 32, 64 or 128. The `Scalar` and `Branching`
+shapes contain that many scalar helper functions, the second with a conditional
+return, each called from `main`. The generic-heavy `Generic` shape contains that many
+item Types, each instantiating Array, Dictionary, Option, a two-parameter generic
+struct and two generic functions under a Contract bound. Stages 5 and 6 are the
+pre-R5 collect-plus-codegen baseline ([O2Corpus.md](O2Corpus.md)). Source construction
+is outside timing.
 
 | Stage | Report name | Included work |
 | --- | --- | --- |
@@ -47,10 +52,10 @@ Warmups warm the process/runtime; fresh compilation does not mean cold-process s
 IR is serialized to `TextWriter.Null` during timing. Output buffering, file I/O,
 CLI startup, project/dependency discovery, diagnostic presentation, external LLVM
 optimization, linking and native execution are excluded. The inputs are synthetic
-scalar programs, not representative coverage of every language feature.
+programs, not representative coverage of every language feature.
 
 `CompilerPipelineBenchmark.FreshCompileToIr` remains a BenchmarkDotNet entry for
-the same whole pipeline without timestamp/allocation boundary reads. Its six cases
+the same whole pipeline without timestamp/allocation boundary reads. Its twelve cases
 use the existing MediumRun and MemoryDiagnoser configuration. The old mixed
 fresh/reused-state stage entries are removed: their timings cannot describe the
 fraction of a fresh compilation. Other feature-specific benchmarks are unchanged.
@@ -89,7 +94,7 @@ Inspect the six stages and their fractions, for example:
 
 ```powershell
 $report = Get-Content (Join-Path $run 'phases.json') -Raw | ConvertFrom-Json
-$report.results | Where-Object { $_.functions -eq 128 -and $_.branches } |
+$report.results | Where-Object { $_.size -eq 128 -and $_.shape -eq 'Branching' } |
     ForEach-Object { $_.stages } | Format-Table name, meanMilliseconds, percentOfTotal, meanAllocatedBytes
 ```
 

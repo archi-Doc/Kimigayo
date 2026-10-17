@@ -1,0 +1,31 @@
+// O2 timing corpus (O2Corpus.md): calls through erased Function values made from function items and closures, one closure
+// environment of 8 bytes and one larger.
+func triple(value: i64) -> i64 => value * 3
+func mix(value: i64) -> i64 => value ^ 0x55
+
+func apply<F>(function: ref/F, value: i64) -> i64
+    F is Callable<ref, (i64) -> i64>
+    return function(value)
+
+// One FNV-1a step over a round's sum, then an xorshift so the high bits reach the low ones: each part is invertible, so a wrong
+// value in any round changes the checksum.
+func fold(checksum: i64, value: i64) -> i64
+    let mixed = ((checksum ^ (value & 0xFFFF_FFFF)) * 16777619) & 0xFFFF_FFFF
+    return mixed ^ (mixed >> 16)
+
+public func main()
+    var checksum: i64 = 0
+    let bias: i64 = 11
+    let scale: i64 = 5
+    let offset: i64 = 7
+    var functions: Array<(i64) -> i64> = []
+    functions.append(triple)
+    functions.append(mix)
+    functions.append(func [bias] (value: i64) -> i64 => value + bias)
+    functions.append(func [bias, scale, offset] (value: i64) -> i64 => (value & 0xFFFF) * scale + offset - bias)
+    for round in 0..131072
+        var sum: i64 = 0
+        for k in 0..1024
+            sum += apply(functions[k & 3]@ref, (round * 1024 + k)@i64)
+        checksum = fold(checksum, sum)
+    Console.writeLine("checksum \(checksum)")

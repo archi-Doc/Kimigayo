@@ -1,0 +1,40 @@
+// O2 timing corpus (O2Corpus.md): Dictionary<K, V> insertion, lookup, removal and shared iteration on small tables, with a
+// built-in key and a key whose equality is a user Equatable conformance.
+struct Key
+    Self is Equatable
+    public let code: i64
+    public init(code: i64) => self.code = code
+    public func equals(self: ref/Self, other: ref/Self) -> bool => self.code == other.code
+
+// One FNV-1a step over a round's sum, then an xorshift so the high bits reach the low ones: each part is invertible, so a wrong
+// value in any round changes the checksum.
+func fold(checksum: i64, value: i64) -> i64
+    let mixed = ((checksum ^ (value & 0xFFFF_FFFF)) * 16777619) & 0xFFFF_FFFF
+    return mixed ^ (mixed >> 16)
+
+public func main()
+    var checksum: i64 = 0
+    for round in 0..16384
+        var sum: i64 = 0
+        var table: Dictionary<i64, i64> = [:]
+        for i in 0..64
+            _ = table.tryInsert((i * 7)@i64, (round + i)@i64)
+        for i in 0..64
+            match table.tryGet((i * 3)@i64)
+                .Some(let value) => sum += value
+                .None => sum -= 1
+        for i in 0..16
+            match table.remove((i * 14)@i64)
+                .Some(let pair) => sum += pair.0
+                .None => $abort("missing")
+        for (key, value) in table
+            sum ^= key + value
+        var keyed: Dictionary<Key, i64> = [:]
+        for i in 0..32
+            _ = keyed.tryInsert(Key.init((i * 5)@i64), (round ^ i)@i64)
+        for i in 0..32
+            match keyed.tryGet(Key.init((i * 10)@i64))
+                .Some(let value) => sum += value
+                .None => sum -= 1
+        checksum = fold(checksum, sum)
+    Console.writeLine("checksum \(checksum)")

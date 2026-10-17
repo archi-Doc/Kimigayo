@@ -1,0 +1,44 @@
+// O2 timing corpus (O2Corpus.md): virtual calls through base views, overrides with base calls and an inherited slot.
+open struct Shape
+    public let size: i64
+    public init(size: i64) => self.size = size
+    public virtual func area(self: objref/Self) -> i64 => self.size
+    public virtual func scaled(self: objref/Self, factor: i64) -> i64 => self.area() * factor
+
+open struct Square : Shape
+    public init(size: i64) : base(size) => ()
+    override func area(self: objref/Self) -> i64 => self.size * self.size
+
+struct Cube : Square
+    public init(size: i64) : base(size) => ()
+    override func area(self: objref/Self) -> i64 => base.area() * self.size
+    override func scaled(self: objref/Self, factor: i64) -> i64 => base.scaled(factor) + 1
+
+struct Circle : Shape
+    public init(size: i64) : base(size) => ()
+    override func area(self: objref/Self) -> i64 => self.size * self.size * 3
+
+// One FNV-1a step over a round's sum, then an xorshift so the high bits reach the low ones: each part is invertible, so a wrong
+// value in any round changes the checksum.
+func fold(checksum: i64, value: i64) -> i64
+    let mixed = ((checksum ^ (value & 0xFFFF_FFFF)) * 16777619) & 0xFFFF_FFFF
+    return mixed ^ (mixed >> 16)
+
+public func main()
+    var checksum: i64 = 0
+    let shape = Shape.init(5)@obj
+    let square = Square.init(3)@obj
+    let cube = Cube.init(2)@obj
+    let circle = Circle.init(4)@obj
+    var views: Array<objref/Shape> = []
+    views.append(shape@objref/Shape)
+    views.append(square@objref/Shape)
+    views.append(cube@objref/Shape)
+    views.append(circle@objref/Shape)
+    for round in 0..65536
+        var sum: i64 = 0
+        for k in 0..1024
+            let view = views[(round + k) & 3]
+            sum += view.scaled(((round ^ k) & 15)@i64)
+        checksum = fold(checksum, sum)
+    Console.writeLine("checksum \(checksum)")
