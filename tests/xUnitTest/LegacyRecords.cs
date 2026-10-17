@@ -12,6 +12,9 @@ namespace XunitTest;
 /// and the location text both write. R6 deletes it with the old path.</summary>
 internal static class LegacyRecords
 {
+    /// <summary>The prefix of a library document's location.</summary>
+    internal const string Library = "Kimi/";
+
     /// <summary>Lists the old path's records of the latest analysis: Binding's, control flow's, then ownership's, each in its own order.</summary>
     /// <param name="compilation">The analyzed compilation.</param>
     /// <returns>The records with their requirement (a Binding or ownership failure, or control flow), code and node.</returns>
@@ -42,6 +45,6 @@ internal static class LegacyRecords
     private static string Document(Koto? node)
     {
         var path = node?.CodeContext?.SourceDocument?.Path;
-        return path is null ? "?" : path.StartsWith("compiler://", StringComparison.Ordinal) ? "Kimi/" + path[(path.LastIndexOf('/') + 1)..] : path;
+        return path is null ? "?" : path.StartsWith("compiler://", StringComparison.Ordinal) ? Library + path[(path.LastIndexOf('/') + 1)..] : path;
     }
 }
