@@ -218,6 +218,7 @@ internal sealed partial class MirBuilder
     private MirPlace Element(IndexKoto index, bool input)
     {
         var sequence = this.Place(index.Left, input);
+        sequence = Builds(index.Right) ? this.Handle(sequence, index.Left) : sequence;
         var key = ExpansionPlan.Of(index)?.First;
         if (key is not null || HirTables.Op(index.Right) == HirOp.Range)
         {
@@ -238,6 +239,11 @@ internal sealed partial class MirBuilder
 
         return this.body.Project(sequence, MirProjectionKind.Index, this.Position(position, index.Right).Root);
     }
+
+    // SPEC 4.7.4, 12.2: a selection's receiver whose value it reads, a Slice handle or a raw pointer, secured where it is located (before an
+    // index or a boundary that builds code), so that the selection reads the value it located; another receiver is its storage.
+    private MirPlace Handle(MirPlace sequence, Koto node) => this.body.TypeOf(sequence) is { Kind: BoundTypeKind.Slice } or { Semantics: SemanticsKind.Raw }
+        ? this.Secure(MirOperand.Copy(sequence), node).Place : sequence;
 
     // SPEC 4.6.1: a position as the isize a selection reads, its value compared mathematically: a Type no wider than isize wraps (a same-width
     // unsigned value isize cannot hold reads as negative, which the bounds check rejects), a wider one converts checked.

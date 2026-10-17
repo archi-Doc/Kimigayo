@@ -8,6 +8,29 @@ namespace Kimi.Compiler.Mir;
 // and PlaceShape.
 internal sealed partial class MirBuilder
 {
+    // SPEC 12.2: whether a node's operand builds code where it is evaluated, before which a Place operand evaluated earlier in its
+    // operation is secured, so that it is read where it is evaluated (Secure): all but a literal's constant and a Place read as it is
+    // (Copied, Moved or through its referent) whose path from a local is stored Fields, Derefs and constant positions (Operand, Acquire,
+    // Place).
+    private static bool Builds(Koto node)
+    {
+        var adjust = HirTables.AdjustOf(node);
+        if (adjust is { Acquire: HirAcquire.Temporary or HirAcquire.None, Adaptation: HirAdaptation.None })
+        {
+            return HirTables.Op(node) != HirOp.Literal;
+        }
+
+        var read = adjust.Adaptation == HirAdaptation.ReferentRead ? adjust.Acquire is not (HirAcquire.Unset or HirAcquire.Temporary)
+            : adjust is { Adaptation: HirAdaptation.None, Acquire: HirAcquire.Copy or HirAcquire.Move };
+        while (read && HirTables.Op(node) != HirOp.Name && HirTables.PlaceOf(node).Kind is HirPlaceKind.Field or HirPlaceKind.Deref or
+            HirPlaceKind.PairLayer or HirPlaceKind.ConstIndex)
+        {
+            node = Child(node);
+        }
+
+        return !read || HirTables.PlaceOf(node).Kind != HirPlaceKind.Local;
+    }
+
     // The value a node's own form produces, into the destination; as a call's input (input), a written exclusive borrow, also inside
     // parentheses, is two-phase (SPEC 15.6.7).
     [CodeRuleException("KR2006", Limit = 67, Reason = "Flat dispatch over the closed HirOp vocabulary; each row invokes its owning lowering operation.")]
@@ -265,10 +288,22 @@ internal sealed partial class MirBuilder
         }
 
         var start = this.arguments.Count;
-        for (var i = 0; i < elements?.Count; i++)
+        var written = elements?.Count ?? 0;
+        var payloads = construction is null ? default : construction.PayloadOperations;
+        var last = -1; // SPEC 12.2: the last operand that builds code (Builds); one before it is secured where it is evaluated.
+        for (var i = 0; i < written + payloads.Length; i++)
+        {
+            if (Builds(i < written ? elements![i] : payloads[i - written].Source!))
+            {
+                last = i;
+            }
+        }
+
+        for (var i = 0; i < written; i++)
         {
             var element = type.Kind == BoundTypeKind.Tuple ? i : 0; // The element's Type, which a Type Binding rejected may not have.
-            this.arguments.Add(this.Operand(elements![i], element < type.Components.Count ? type.Components[element] : null));
+            var operand = this.Operand(elements![i], element < type.Components.Count ? type.Components[element] : null);
+            this.arguments.Add(i < last ? this.Secure(operand, elements[i]) : operand);
         }
 
         // SPEC 4.3.3: a fill construction acquires its value once, even for length 0, and copies it into each element.
@@ -289,9 +324,10 @@ internal sealed partial class MirBuilder
             }
         }
 
-        foreach (ref readonly var payload in construction is null ? default : construction.PayloadOperations)
+        for (var i = 0; i < payloads.Length; i++)
         {
-            this.arguments.Add(this.Operand(payload.Source!, payload.AdaptedType ?? payload.ParameterType));
+            var operand = this.Operand(payloads[i].Source!, payloads[i].AdaptedType ?? payloads[i].ParameterType);
+            this.arguments.Add(written + i < last ? this.Secure(operand, payloads[i].Source!) : operand);
         }
 
         MirAggregateKind kind;

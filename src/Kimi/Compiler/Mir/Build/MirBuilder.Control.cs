@@ -172,7 +172,8 @@ internal sealed partial class MirBuilder
         this.current = next;
     }
 
-    // SPEC 16.2.2: a result secured before its transfer branches: a constant or a temp as it is, else acquired into a temp.
+    // SPEC 16.2.2, 12.2: a value secured where it is evaluated, a transfer's result before it branches and an operand before a later
+    // operand of its operation builds code (Builds): a constant or a temp as it is, else acquired into a temp.
     private MirOperand Secure(in MirOperand value, Koto node)
     {
         if (value.Kind == MirOperandKind.Const || (value.Kind == MirOperandKind.Move && this.IsTemp(value.Place)))

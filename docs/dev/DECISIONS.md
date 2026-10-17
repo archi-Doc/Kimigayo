@@ -1161,6 +1161,22 @@ and migration obligations remain in force; no numeric cap changes are authorized
   and its Open note on a parent reservation's mode: no reservation is formed through another reservation's holder, so A3's mode
   rule stands. Rejected: an A5 reservation chain (R4-M52); a parent link on the Ref (an O1 vocabulary entry for a fact the Place
   shows). Not temporary.
+- **R4-M55** (2026-10-17; PLAN G123, the planning session's design A3 E10, implemented on its instruction of the same day) An
+  operand is read where it is evaluated (SPEC 12.2): a Place operand (Copied, Moved or acquired by case) of an operation is
+  secured into a temp where it is evaluated (`Secure`, as a transfer's result is) when a later operand of the same operation builds
+  code. `MirBuilder.Builds` decides that from the HIR: every operand builds code except a literal's constant and a Place read as it
+  is (Copied, Moved or through its referent) whose path from a local is stored Fields, Derefs and constant positions. The rule
+  covers a call's callee value, receiver and arguments in evaluation order (a pending slot already secures its operand), a Tuple,
+  fixed-array or enum construction's operands, a built-in binary operator's left operand, an Array literal's elements, and the
+  receiver of a built-in selection whose value the selection reads, a Slice handle or a raw pointer (`Handle`), before an index or
+  boundary that builds code. So `f(x, do => x = 5)`, `(x, do => x = 5)`, `x + reset(x@uniq)`, `[x, reset(x@uniq)]`,
+  `v[touch(v@uniq)]` and a pair-layer argument before a call read their Place where it is evaluated. Amends R4-M40: a Slice
+  receiver's handle is copied first only where a boundary builds code, else read in place, and its backing is the handle's
+  value (a Copy), never a borrow. A pair-layer argument that later code follows is acquired where it is evaluated, not at its Call
+  (R4-M37's Open); whether its exclusive case is a reservation there is A5's reading of the acquisition (step 1b). A written
+  `@move` already moved into its temp where evaluated. Rejected: every Place operand through a temp (more MIR for no change of
+  what is read); a predicate on the forms that may write (an open family); securing the pending operands at a later operand's
+  first statement (hidden builder state). Not temporary.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

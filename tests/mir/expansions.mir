@@ -235,9 +235,10 @@ fn pick @85
   _3: i32 temp @97 s1
   _4: isize temp @98 s1
   _5: isize temp @98 s1
-  _6: isize temp @101 s1
-  _7: isize temp @104 s1
-  _8: isize temp @103 s1
+  _6: i32 temp @98 s1
+  _7: isize temp @101 s1
+  _8: isize temp @104 s1
+  _9: isize temp @103 s1
   s1: lexical in s0 @91
   bb0:
       StorageLive(_2) @92 s1
@@ -249,13 +250,15 @@ fn pick @85
       StorageLive(_5) @98 s1
       _5 = resolved<Kimi.FromEnd<i32>>(copy _2, copy _4) -> bb2 @98 s1
   bb2:
-      StorageLive(_6) @101 s1
-      _6 = len(_1) @101 s1
-      StorageLive(_7) @104 s1
-      _7 = const 1_i32 as isize (Wrap) proven @104 s1
-      StorageLive(_8) @103 s1
-      _8 = Sub(copy _6, copy _7) proven @103 s1
-      _3 = Add(copy _1[_5], copy _1[_8]) @97 s1
+      StorageLive(_6) @98 s1
+      _6 = copy _1[_5] @98 s1
+      StorageLive(_7) @101 s1
+      _7 = len(_1) @101 s1
+      StorageLive(_8) @104 s1
+      _8 = const 1_i32 as isize (Wrap) proven @104 s1
+      StorageLive(_9) @103 s1
+      _9 = Sub(copy _7, copy _8) proven @103 s1
+      _3 = Add(move _6, copy _1[_9]) @97 s1
       goto bb8 check bb9 @96 s1
   bb3:
       return @85
@@ -267,9 +270,10 @@ fn pick @85
       StorageDead(_2) @92 s1
       goto bb4 @85
   bb7:
-      StorageDead(_8) @103 s1
-      StorageDead(_7) @104 s1
-      StorageDead(_6) @101 s1
+      StorageDead(_9) @103 s1
+      StorageDead(_8) @104 s1
+      StorageDead(_7) @101 s1
+      StorageDead(_6) @98 s1
       StorageDead(_5) @98 s1
       StorageDead(_4) @98 s1
       StorageDead(_3) @97 s1
@@ -278,9 +282,10 @@ fn pick @85
       _0 = move _3 @96 s1
       goto bb7 @96 s1
   bb9:
-      StorageDead(_8) @103 s1
-      StorageDead(_7) @104 s1
-      StorageDead(_6) @101 s1
+      StorageDead(_9) @103 s1
+      StorageDead(_8) @104 s1
+      StorageDead(_7) @101 s1
+      StorageDead(_6) @98 s1
       StorageDead(_5) @98 s1
       StorageDead(_4) @98 s1
       StorageDead(_3) @97 s1
@@ -402,50 +407,46 @@ fn head @121
 fn reslice @135
   _0: Slice<i32> return @135
   _1: Slice<i32> arg view @135
-  _2: Slice<i32> temp @147
-  _3: isize temp @147
-  _4: isize temp @150
-  _5: bool temp @147
-  _6: isize temp @147
-  _7: Never temp @147
-  _8: raw/i32 temp @147
+  _2: isize temp @147
+  _3: isize temp @150
+  _4: bool temp @147
+  _5: isize temp @147
+  _6: Never temp @147
+  _7: raw/i32 temp @147
   bb0:
       StorageLive(_2) @147
-    * _2 = copy _1 @147
-      StorageLive(_3) @147
-      _3 = len(_2) @147
-      StorageLive(_4) @150
-      _4 = const 1_i32 as isize (Wrap) proven @150
+    * _2 = len(_1) @147
+      StorageLive(_3) @150
+      _3 = const 1_i32 as isize (Wrap) proven @150
+      StorageLive(_4) @147
       StorageLive(_5) @147
-      StorageLive(_6) @147
-      _5 = Le(const 0_isize, copy _4) proven @147
-      switch copy _5 [1: bb2, otherwise: bb1] @147
+      _4 = Le(const 0_isize, copy _3) proven @147
+      switch copy _4 [1: bb2, otherwise: bb1] @147
   bb1:
-      _7 = intrinsic Fail(const "KIMI_E_INDEX_BOUNDS") -> ! @147
+      _6 = intrinsic Fail(const "KIMI_E_INDEX_BOUNDS") -> ! @147
   bb2:
-      _5 = Le(copy _4, copy _3) proven @147
-      switch copy _5 [1: bb3, otherwise: bb1] @147
+      _4 = Le(copy _3, copy _2) proven @147
+      switch copy _4 [1: bb3, otherwise: bb1] @147
   bb3:
-      _5 = Le(copy _3, copy _3) proven @147
-      switch copy _5 [1: bb4, otherwise: bb1] @147
+      _4 = Le(copy _2, copy _2) proven @147
+      switch copy _4 [1: bb4, otherwise: bb1] @147
   bb4:
-      _6 = Sub(copy _3, copy _4) proven @147
-      StorageLive(_8) @147
-      switch copy _6 [0: bb6, otherwise: bb5] @147
+      _5 = Sub(copy _2, copy _3) proven @147
+      StorageLive(_7) @147
+      switch copy _5 [0: bb6, otherwise: bb5] @147
   bb5:
-      _8 = &raw _2[_4]: raw/i32 @147
+      _7 = &raw _1[_3]: raw/i32 @147
       goto bb7 @147
   bb6:
-      _8 = const 0_raw/i32 @147
+      _7 = const 0_raw/i32 @147
       goto bb7 @147
   bb7:
-      _0 = intrinsic RawSlice<i32>(move _8, copy _6, move _2) -> bb8 @147
+      _0 = intrinsic RawSlice<i32>(move _7, copy _5, copy _1) -> bb8 @147
   bb8:
-      StorageDead(_8) @147
-      StorageDead(_6) @147
+      StorageDead(_7) @147
       StorageDead(_5) @147
-      StorageDead(_4) @150
-      StorageDead(_3) @147
+      StorageDead(_4) @147
+      StorageDead(_3) @150
       StorageDead(_2) @147
       return @147
 fn make @151
@@ -588,12 +589,13 @@ fn back @180
   _5: bool temp @190
   _6: Never temp @190
   _7: isize temp @190
-  _8: isize temp @192
-  _9: i32 temp @195
-  _10: isize temp @195
-  _11: bool temp @194
-  _12: Never temp @194
-  _13: isize temp @194
+  _8: i32 temp @188
+  _9: isize temp @192
+  _10: i32 temp @195
+  _11: isize temp @195
+  _12: bool temp @194
+  _13: Never temp @194
+  _14: isize temp @194
   bb0:
       StorageLive(_3) @188
     * _3 = len((*_1)) @188
@@ -607,26 +609,29 @@ fn back @180
   bb2:
       StorageLive(_7) @190
       _7 = Sub(copy _3, copy _4) proven @190
-      StorageLive(_8) @192
-      _8 = len((*_1)) @192
-      StorageLive(_9) @195
-      _9 = const -1_i32 @196
+      StorageLive(_8) @188
+      _8 = copy (*_1)[_7] @188
+      StorageLive(_9) @192
+      _9 = len((*_1)) @192
       StorageLive(_10) @195
-      _10 = move _9 as isize (Wrap) proven @195
-      StorageLive(_11) @194
-      _11 = Le(const 0_isize, copy _10) proven @194
-      switch copy _11 [1: bb4, otherwise: bb3] @194
+      _10 = const -1_i32 @196
+      StorageLive(_11) @195
+      _11 = move _10 as isize (Wrap) proven @195
+      StorageLive(_12) @194
+      _12 = Le(const 0_isize, copy _11) proven @194
+      switch copy _12 [1: bb4, otherwise: bb3] @194
   bb3:
-      _12 = intrinsic Fail(const "KIMI_E_INDEX_BOUNDS") -> ! @194
+      _13 = intrinsic Fail(const "KIMI_E_INDEX_BOUNDS") -> ! @194
   bb4:
-      StorageLive(_13) @194
-      _13 = Sub(copy _8, copy _10) proven @194
-      _0 = Add(copy (*_1)[_7], copy (*_1)[_13]) @187
-      StorageDead(_13) @194
-      StorageDead(_11) @194
+      StorageLive(_14) @194
+      _14 = Sub(copy _9, copy _11) proven @194
+      _0 = Add(move _8, copy (*_1)[_14]) @187
+      StorageDead(_14) @194
+      StorageDead(_12) @194
+      StorageDead(_11) @195
       StorageDead(_10) @195
-      StorageDead(_9) @195
-      StorageDead(_8) @192
+      StorageDead(_9) @192
+      StorageDead(_8) @188
       StorageDead(_7) @190
       StorageDead(_5) @190
       StorageDead(_4) @191

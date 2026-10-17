@@ -14,6 +14,11 @@ namespace XunitTest;
 /// deterministic and a warm rebuild allocates nothing. The census measures what the builder covers (V9).</summary>
 public sealed class MirBuildTest(ITestOutputHelper output)
 {
+    // The callees of the operand order tests and the start of their function f, which binds x (SPEC 12.2).
+    private const string Operations = "func take(a: i32, b: ()) -> i32 => a\nfunc pair(t: (i32, ())) => ()\nfunc reset(p: uniq/i32) -> i32 => 0\n" +
+        "func consume(a: string, b: ()) => ()\nfunc touch(p: uniq/Slice<i32>) -> isize => 0\nfunc jump(p: uniq/raw/i32) -> isize => 0\n" +
+        "func f(view: Slice<i32>, raw: raw/i32)\n    var x: i32 = 1\n";
+
     // V9: builds every body of the corpus and counts the bodies, those with an Opaque value, the records per HirOp and the bodies per number
     // of Semantics case views; with KIMI_MIR_CENSUS naming a file, writes the census there as TSV. Every built body is valid and within the
     // case bound (plan 5.6.1), and every static a body reaches through staticEnsure, every Closure it creates and every default template it
@@ -617,6 +622,66 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         }
     }
 
+    // SPEC 12.2 (DECISIONS R4-M55): operands are evaluated once, left to right, so a Place operand is read where it is evaluated: where a
+    // later operand of its operation builds code, it is secured into a temp first, and on the runtime path no read of the variable follows
+    // that operand's write or borrow of it: a call's argument, a tuple's element, an operator's left operand, an Array literal's element,
+    // a moved argument and the receiver of a Slice or raw element selection.
+    [Theory]
+    [InlineData("x", "    _ = take(x, do => x = 5)")]
+    [InlineData("x", "    pair((x, do => x = 5))")]
+    [InlineData("x", "    _ = x + reset(x@uniq)")]
+    [InlineData("x", "    _ = [x, reset(x@uniq)]")]
+    [InlineData("s", "    var s = \"a\"\n    consume(s@move, do => s = \"b\")")]
+    [InlineData("v", "    var v = view\n    _ = v[touch(v@uniq)]")]
+    [InlineData("p", "    var p = raw\n    unsafe => _ = p[jump(p@uniq)]")]
+    public void AnOperandIsReadWhereItIsEvaluated(string variable, string statements)
+    {
+        var body = Body(Operations + statements + "\n", "f");
+        var local = Enumerable.Range(0, body.Locals.Length).Single(x => body.Locals[x].Name == variable);
+        var (writes, late) = (0, false);
+        var uses = new Uses(local);
+        foreach (var at in RuntimePath(body))
+        {
+            (uses.Reads, uses.Writes) = (false, false);
+            MirUses.ForEach(body, at, ref uses);
+            late |= uses.Reads && writes > 1;
+            writes += uses.Writes ? 1 : 0;
+        }
+
+        Assert.True(writes > 1);
+        Assert.False(late, statements);
+    }
+
+    // SPEC 12.2: a Place operand that no later operand of its operation builds code after is read by its operation, unsecured.
+    [Fact]
+    public void AnOperandBeforeNoCodeIsReadByItsOperation()
+    {
+        var body = Body(Operations + "    let y: i32 = 2\n    _ = take(x, ())\n    pair((x, ()))\n    _ = x + y\n    _ = [x, y]\n    _ = view[y]\n", "f");
+        var read = Enumerable.Range(0, body.Locals.Length).Where(x => body.Locals[x].Name is "x" or "view").ToArray();
+        Assert.Equal(2, read.Length);
+        Assert.DoesNotContain(
+            body.Statements.ToArray(),
+            x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use } && body.Locals[x.Place.Root].Kind == MirLocalKind.Temp &&
+                body.Operands[x.Rvalue.Start] is { Kind: MirOperandKind.Copy, Place.Projection: 0 } copy && read.Contains(copy.Place.Root));
+    }
+
+    // SPEC 12.2 (R4-M37's Open): a pair-layer argument is acquired by case where it is evaluated, before a later argument's code, not at its
+    // Call.
+    [Fact]
+    public void APairLayerArgumentIsAcquiredWhereItIsEvaluated()
+    {
+        const string Source = "func pass<s/T>(a: s/T, b: i32)\n    s is owner or ref\n    T is Copy\n    _ = b\nfunc one() -> i32 => 1\n" +
+            "func pending<s/T>(x: s/T)\n    s is owner or ref\n    T is Copy\n    pass(x, one())\n";
+        var body = Body(Source, "pending");
+        var path = RuntimePath(body).ToArray();
+        var one = Array.FindIndex(path, at => at.Index == body.Blocks[at.Block].Count && body.Blocks[at.Block].Terminator.Callee.Symbol?.Name == "one");
+        Assert.InRange(Array.FindIndex(path, Acquires), 0, one - 1);
+
+        bool Acquires(MirLocation at) => at.Index < body.Blocks[at.Block].Count &&
+            body.Statements[body.Blocks[at.Block].Start + at.Index] is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use } statement &&
+            body.Operands[statement.Rvalue.Start].Kind == MirOperandKind.PairAcquire;
+    }
+
     // SPEC 15.6.7, 14.10.3: a call whose argument does not complete is still built where that argument's code continues for the checks,
     // so its activation is checked there, and the reservation the transfer abandons ends on the transfer's runtime edge only. The argument
     // has no value, so it is of Type Never, also where its own Type is a Tuple with a Never element.
@@ -647,14 +712,15 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.DoesNotContain(transfers, b => ends.Contains(b)); // The branching block, which the checks' edge leaves too, ends nothing.
     }
 
-    // SPEC 4.6.3, 4.8.1, 5.6 (DECISIONS R4-M40): a range selection's RawSlice takes what the Slice retains as its backing, the third
-    // operand: a shared borrow of an array's whole Place, or a Slice receiver's handle, copied first and never borrowed (SPEC 4.7.4);
-    // nothing backs a written Raw.slice, so its backing is Unit.
+    // SPEC 4.6.3, 4.8.1, 5.6 (DECISIONS R4-M40, R4-M55): a range selection's RawSlice takes what the Slice retains as its backing, the
+    // third operand: a shared borrow of an array's whole Place, or a Slice receiver's handle, its value and never borrowed, read where it
+    // is located (SPEC 4.7.4: copied first where a boundary builds code); nothing backs a written Raw.slice, so its backing is Unit.
     [Fact]
     public void RangeSelectionsPassTheirBacking()
     {
         const string Source = "func middle(values: ref/[5 of i32]) -> Slice<i32> during values => values[1..^1]\n" +
-            "func reslice(view: Slice<i32>) -> Slice<i32> during view.source => view[1..]\n" +
+            "func reslice(view: Slice<i32>) -> Slice<i32> during view.source => view[1..]\nfunc size(view: Slice<i32>) -> isize => 1\n" +
+            "func skip(view: Slice<i32>) -> Slice<i32> during view.source => view[size(view)..]\n" +
             "func empty() -> Slice<i32>\n    unsafe => return Raw.slice(null@raw/i32, 0)\n";
         var middle = Body(Source, "middle");
         var backing = middle.Operands[Slice(middle)];
@@ -663,13 +729,17 @@ public sealed class MirBuildTest(ITestOutputHelper output)
             x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref } && x.Place == backing.Place);
         Assert.Equal((MirRefKind.Shared, 1), ((MirRefKind)borrow.Rvalue.Op, borrow.Rvalue.Place.Root));
         var reslice = Body(Source, "reslice");
-        var handle = reslice.Operands[Slice(reslice)];
-        var copy = Assert.Single(reslice.Statements.ToArray(), x => x.Kind == MirStatementKind.Assign && x.Place == handle.Place);
-        Assert.Equal((MirOperandKind.Move, MirRvalueKind.Use), (handle.Kind, copy.Rvalue.Kind));
-        Assert.Equal((MirOperandKind.Copy, 1), (reslice.Operands[copy.Rvalue.Start].Kind, reslice.Operands[copy.Rvalue.Start].Place.Root));
-        Assert.DoesNotContain(
-            reslice.Statements.ToArray(),
-            static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref, Rvalue.Place.Root: 1 });
+        Assert.Equal((MirOperandKind.Copy, "_1"), (reslice.Operands[Slice(reslice)].Kind, Steps(reslice, reslice.Operands[Slice(reslice)].Place)));
+        var skip = Body(Source, "skip");
+        var handle = skip.Operands[Slice(skip)];
+        var copy = Assert.Single(skip.Statements.ToArray(), x => x.Kind == MirStatementKind.Assign && x.Place == handle.Place);
+        Assert.Equal((MirOperandKind.Copy, MirRvalueKind.Use), (handle.Kind, copy.Rvalue.Kind));
+        Assert.Equal((MirOperandKind.Copy, 1), (skip.Operands[copy.Rvalue.Start].Kind, skip.Operands[copy.Rvalue.Start].Place.Root));
+        Assert.All(
+            new[] { reslice, skip },
+            static body => Assert.DoesNotContain(
+                body.Statements.ToArray(),
+                static x => x is { Kind: MirStatementKind.Assign, Rvalue: { Kind: MirRvalueKind.Ref, Place.Root: 1 } } && x.Rvalue.Op != (byte)MirRefKind.Raw));
         var empty = Body(Source, "empty");
         Assert.Equal(MirConstKind.Unit, empty.Consts[empty.Operands[Slice(empty)].Arg].Kind);
 
@@ -860,6 +930,19 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         return program.Bodies.ToArray().Single(x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == name);
     }
 
+    // The locations of a body's runtime path from its entry, as far as each block has one runtime successor: its statements, then its
+    // terminator.
+    private static IEnumerable<MirLocation> RuntimePath(MirBody body)
+    {
+        for (var block = 0; block >= 0; block = MirUses.Successors(body.Blocks[block].Terminator) == 1 ? body.Blocks[block].Terminator.Target : -1)
+        {
+            for (var i = 0; i <= body.Blocks[block].Count; i++)
+            {
+                yield return new(block, i);
+            }
+        }
+    }
+
     // A Place as its root and its projections in order: a Deref as *, a Field as its position, so (*_1).0 is _1*.0.
     private static string Steps(MirBody body, MirPlace place) => place.Projection == 0 ? $"_{place.Root}"
         : Steps(body, place with { Projection = body.Projections[place.Projection].Prefix }) + body.Projections[place.Projection] switch
@@ -924,6 +1007,31 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         }
 
         public void Effect(MirEffect effects, int site)
+        {
+        }
+    }
+
+    // Whether a location reads (Copies or Moves) or writes (assigns or borrows) a Place rooted at a local.
+    private struct Uses(int local) : IMirUses
+    {
+        public bool Reads { get; set; }
+
+        public bool Writes { get; set; }
+
+        public readonly void Operand(in MirOperand operand)
+        {
+        }
+
+        public void Place(MirPlace place, MirAccess access, MirRefKind kind)
+        {
+            if (place.Root == local)
+            {
+                this.Reads |= (access & (MirAccess.Reads | MirAccess.Moves)) != 0;
+                this.Writes |= (access & (MirAccess.Writes | MirAccess.Borrows)) != 0;
+            }
+        }
+
+        public readonly void Effect(MirEffect effects, int site)
         {
         }
     }

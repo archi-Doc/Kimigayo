@@ -52,15 +52,19 @@ fn lookup @26
   _1: ref/Dictionary<string, i32> arg table @26
   _2: string arg key @26
   _3: ref/i32 temp @34
-  _4: ref/string temp @36
+  _4: ref/Dictionary<string, i32> temp @35
+  _5: ref/string temp @36
   bb0:
       StorageLive(_3) @34
-      StorageLive(_4) @36
-    * _4 = &_2: ref/string @36
-      _3 = index(copy _1, move _4) -> bb1 @34
+      StorageLive(_4) @35
+    * _4 = copy _1 @35
+      StorageLive(_5) @36
+      _5 = &_2: ref/string @36
+      _3 = index(move _4, move _5) -> bb1 @34
   bb1:
       _0 = copy (*_3) @34
-      StorageDead(_4) @36
+      StorageDead(_5) @36
+      StorageDead(_4) @35
       StorageDead(_3) @34
       drop _2 -> bb2 [keep] @26
   bb2:

@@ -249,19 +249,14 @@ internal sealed partial class MirBuilder
     // directly at each boundary (omitted: 0 or the length; ^x: the length minus x; a closed end q: q + 1), else the ResolvedRange its key
     // is or its key's resolution (First) gives; checked once (0 <= start <= end <= length, else KIMI_E_INDEX_BOUNDS), then the Slice RawSlice
     // serves (R3 decision 5) of the elements from the address of element start, any address for none (SPEC 5.6), backed by what the
-    // Slice retains (DECISIONS R4-M40): a shared borrow of an array's whole Place, or a Slice receiver's copied handle.
+    // Slice retains (DECISIONS R4-M40): a shared borrow of an array's whole Place, or a Slice receiver's handle, its value and no handle
+    // variable, read where it is located (Handle).
     private void Slice(MirPlace destination, IndexKoto index)
     {
-        var sequence = this.Place(index.Left);
-        var handle = this.body.TypeOf(sequence) is { Kind: BoundTypeKind.Slice } view ? this.Temp(view, index) : (MirPlace?)null;
-        if (handle is { } copy)
-        {
-            // SPEC 4.7.4, 4.8.1: a Slice receiver's handle is copied first; its reslice retains the copy's source, no handle variable.
-            this.Make(copy, MirRvalue.Use(this.body.AddOperand(MirOperand.Copy(sequence))), index);
-            sequence = copy;
-        }
-
         var range = HirTables.Op(index.Right) == HirOp.Range ? index.Right as RangeKoto : null;
+        var sequence = this.Place(index.Left);
+        var later = range is null ? Builds(index.Right) : (range.Start is { } from && Builds(from)) || (range.End is { } to && Builds(to));
+        sequence = later ? this.Handle(sequence, index.Left) : sequence;
         var length = this.Length(sequence, index);
         var zero = MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize)));
         MirPlace start, last;
@@ -327,7 +322,8 @@ internal sealed partial class MirBuilder
         this.current = join;
         this.arguments.Add(MirOperand.Move(pointer));
         this.arguments.Add(MirOperand.Copy(count));
-        this.arguments.Add(handle is { } source ? MirOperand.Move(source) : this.Borrow(SemanticsKind.Ref, sequence, index));
+        var slice = this.body.TypeOf(sequence)!.Kind == BoundTypeKind.Slice;
+        this.arguments.Add(slice ? MirOperand.Copy(sequence) : this.Borrow(SemanticsKind.Ref, sequence, index));
         this.Serve(destination, CompilerFunctionKind.RawSlice, null, [element], at, index);
     }
 
@@ -390,14 +386,17 @@ internal sealed partial class MirBuilder
         this.Pass(MirOperand.Copy(test), 1, fail, node);
     }
 
-    // SPEC 4.9.5, 12.4.1: a dynamic Array literal: its elements evaluated in order, then the empty Array, an aggregate of no operand,
-    // reserved for their count and each appended (ArrayReserve, ArrayAppend: R3 decision 5).
+    // SPEC 4.9.5, 12.4.1: a dynamic Array literal: its elements evaluated in order, each before the last that builds code secured where it
+    // is evaluated (SPEC 12.2), then the empty Array, an aggregate of no operand, reserved for their count and each appended (ArrayReserve,
+    // ArrayAppend: R3 decision 5).
     private void Collection(MirPlace destination, ArrayLiteralKoto array, BoundType type)
     {
         var start = this.arguments.Count;
-        foreach (var element in array.Elements)
+        var last = array.Elements.FindLastIndex(Builds);
+        for (var i = 0; i < array.Elements.Count; i++)
         {
-            this.arguments.Add(this.Operand(element, type.Components[0]));
+            var operand = this.Operand(array.Elements[i], type.Components[0]);
+            this.arguments.Add(i < last ? this.Secure(operand, array.Elements[i]) : operand);
         }
 
         var count = this.arguments.Count - start;

@@ -36,8 +36,9 @@ internal sealed partial class MirBuilder
 
     // SPEC 7.3, 7.7.3: a call of the function, requirement, virtual slot or callable value Binding selected: a value call's callee in its
     // receiver mode, the receiver, then the arguments in their order (an assignment's secured value first, SPEC 13.7.1), each as its Adjust
-    // takes it for its parameter's Type or as the value an expansion evaluated for it (given), then its omitted defaults (Defaults), passed by
-    // parameter slot, the receiver first. A compiler function is its intrinsic where the table gives one (IntrinsicDisposition), with
+    // takes it for its parameter's Type or as the value an expansion evaluated for it (given), each read where it is evaluated (SPEC 12.2:
+    // secured before a later argument that builds code, or in its pending slot), then its omitted defaults (Defaults), passed by parameter
+    // slot, the receiver first. A compiler function is its intrinsic where the table gives one (IntrinsicDisposition), with
     // the operands it takes beyond the written arguments (Extra), and a direct base call the implementation the virtual selection names. A
     // call of a Never function or a diverging intrinsic has no runtime successor and continues for the checks (SPEC 14.10); a call whose
     // operand does not complete enters no callee at run time (SPEC 15.6.7), but for the checks it continues where that operand's code
@@ -58,10 +59,21 @@ internal sealed partial class MirBuilder
         var source = call.ReceiverOperation.Source ?? call.CalleeValue;
         var pending = this.arguments.Count;
         var subst = compilation.Types.SubstOf(call);
+        var last = -2; // SPEC 12.2: the last argument that builds code, in evaluation order: the receiver -2, first -1, the others in order.
+        for (var i = 0; i < call.ArgumentOperations.Length; i++)
+        {
+            var argument = call.ArgumentOperations[i].Source!;
+            if (!ReferenceEquals(argument, given) && Builds(argument))
+            {
+                last = ReferenceEquals(argument, first) ? Math.Max(last, -1) : i;
+            }
+        }
+
         if (function is null)
         {
             // The callee value, pending while the arguments are evaluated.
-            this.arguments.Add(this.Reached(this.Operand(source, call.ReceiverOperation.AdaptedType, input: true), source));
+            var operand = this.Operand(source, call.ReceiverOperation.AdaptedType, input: true);
+            this.arguments.Add(this.Reached(last > -2 ? this.Secure(operand, source) : operand, source));
         }
 
         var start = this.arguments.Count;
@@ -82,13 +94,15 @@ internal sealed partial class MirBuilder
                 ReferenceEquals(direct, function) ? call.ReceiverOperation.AdaptedType ?? parameter : parameter,
                 input: true,
                 slot);
+            operand = slot is null && last > -2 ? this.Secure(operand, receiver) : operand;
             this.arguments[start] = slot is { } place ? this.Pending(place, operand, receiver) : this.Reached(operand, receiver);
         }
 
         for (var pass = first is null ? 1 : 0; pass < 2; pass++)
         {
-            foreach (ref readonly var argument in call.ArgumentOperations)
+            for (var i = 0; i < call.ArgumentOperations.Length; i++)
             {
+                ref readonly var argument = ref call.ArgumentOperations[i];
                 if (ReferenceEquals(argument.Source, first) == (pass == 0))
                 {
                     var slot = defaults ? this.Slot(argument.ParameterType, argument.Source!) : (MirPlace?)null;
@@ -97,6 +111,8 @@ internal sealed partial class MirBuilder
                         argument.AdaptedType ?? argument.ParameterType,
                         input: true,
                         slot);
+                    var order = pass == 0 ? -1 : i;
+                    operand = slot is null && order < last ? this.Secure(operand, argument.Source!) : operand;
                     this.arguments[start + MirCallee.Position(function, argument.ParameterIndex)] = slot is { } place ? this.Pending(
                         place,
                         operand,
