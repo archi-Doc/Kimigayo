@@ -537,3 +537,127 @@ adopted S1 the same day (「S1採用します」, DECISIONS R4-M39) and confirme
   Borrow of the Dictionary while a Borrow through a stored reference, which carries the `index` or `tryGet` result's
   Loan, is live; Rust rejects them too). `tests/diagnostics/pair-cases.json` row `B12-parent-move` becomes an error in
   its `uniq` case (a Move of the base) and is not tagged here. Not refreshed: SPECJ and GUIDE.
+
+## 2026-10-17 — Loan ending by exact Move-Path prefix, P12 and two clarifications
+
+The owner decided on 2026-10-17 (DECISIONS R4-M52, design A3 §9 item 11): the case 23a proposal as option (c), 「(c)
+base なしで採用」, and its SPEC revision, with P12's and the reported gaps, 「別セッションで実施」. P12 (A3 §2, §9 item
+10, `desc(c)`) was approved the same day (「承認します。」, DECISIONS R4-M35) as plan §5.3's next loss. This revision is
+that session's work. Item ids for `OldRule` traits and corpus `Old` entries (DECISIONS R4-M50, R4-M60): **E8** (the
+ending) and **P12**.
+
+- `Changes/2026-10-17 Loan Termination Across Borrow Dereferences.md`: 取り込み済み. Mapping:
+  - §1, §3.1 → §15.6.3's ending sentences, as option (c): destroying in place a Move Path ends every Loan whose access
+    path it exactly prefixes, compared step by step (a constant index only with the same constant, never a runtime
+    index), the path continuing with any steps, dereferences included (A3 §12 E8). This replaces S1's base before the
+    last dereference, its "contains it with no dereference between them" and the sentence for a base behind a
+    dereference. The proposal's first-dereference base (option (b)) is not adopted: the owner chose the same verdicts
+    without the term (R4-M52; review-23a N1). Rule 2 (no ending base for a Loan without a dereference) has no
+    counterpart: ending a direct Loan is unobservable, since a live one is reached by the destruction and reported
+    first. Rule 4 is the existing list of destroying operations and §15.6's transfer rules, unchanged.
+  - §3.2 → existing rules, unchanged: P3 (§15.6.2's reach bullet), parent Loans (§15.6.3), checks before the end
+    (§15.6.3, §15.6.6), the check by value (§15.6) and owning handles (§13.5.5, §16.3.3).
+  - §3.3 → a new §15.6.3 example: 23a, with the competing alias as `let w = rr@follow@ref` (a Borrow of `rr.*`, a prefix
+    of `c`'s path, in place of the proposal's `q`/`s`/`o` program) and the old-route write `slot@follow = 2` as
+    commented errors.
+  - §2 → the rationale's evidence below (prototype rounds 8–10, review-23a, rustc), not SPEC. §4 → the safety argument
+    below, amended as review-23a C3 requires. §5 → the rejected options below (R4-M52).
+  - §6 → transferred to A5's implementation (A3 §12 E8 and §10's units; PLAN), not SPEC.
+  - §7 → §15.6.3 (the ending, its examples and the base-operation sentence, now "Moving or exchanging a prefix of a live
+    child's access path, or borrowing it other than shared while the child is shared"), Appendix E (the Base row
+    deleted; the Loan row names the ending), §13.5.5's borrow-handle sentence ("when it is a Move Path, ends the child
+    Loans whose access paths it exactly prefixes", so `views[i] = w` ends nothing) and its pair-layer `uniq` cell ("the
+    child Loan's access path runs through `P`", review-23a C4: `P` may lie behind a dereference). Consequential: §15.6's
+    write-through bullet and §15.6.6 say Loan for child Loan, and the examples of §15.6.3 and §15.6.6 drop "base". The
+    DECISIONS entry is R4-M52, which supersedes R4-M39's ending rule.
+  - Every item is incorporated, rejected with a reason or transferred. The file moved to `Changes` with only its status
+    sentence replaced; its link to the A5 plan, which stays in `Proposals`, is not rewritten.
+- `Proposals/2026-10-16 Complete Polonius A5 Plan.md` stays 一部取り込み: P12 is the next row of its §5.3 list, as A3 §2
+  and §9 item 10 word it.
+  - P12 → §15.6.3's descent sentence ("descends from a call's receiver, such as an Iterator or remainder"), §15.6.4's
+    retention sentence and a new §15.6.3 example (`takeFirst`, 36f with the holder reached through a parameter, whose
+    storage end ends the parent Loan): a value that descends from the receiver of a requirement call without a known
+    concrete callee or of a call through a Callable-constrained value (A3's `abstract(c)`) also carries every Loan of
+    the receiver argument except the call's receiver Loan. A dynamic virtual call, whose effects also follow §8.11.4's
+    rules (§6.4.6), is not such a call.
+- Clarifications reported by A5 step 1 (`Sketches/A5 Step 1/choice-1b.md` §5), stating the reading the implementation
+  follows; neither changes a verdict.
+  - SPEC 14.10.3 → a Never form's assumed completion initializes nothing it is placed into (`let y: i32 = fail()` leaves
+    `y` uninitialized), with two lines added to its example. `MirInitTest.CheckOnlyCodeKeepsItsOwnState` expects this;
+    the default pipeline reports `Unsupported_Kd` there, which is no verdict.
+  - SPEC 15.6.7 → overlap between arguments is judged through the Loans their values carry, as §15.6 checks every
+    activation: `g(s@uniq, s.r@follow@ref)` with `r: ref/i32` is valid, by §15.6.3's "forms no Loan of its own". The
+    default pipeline accepts it. Rust rejects `g(&mut s, &*s.r)` (E0502) and accepts the method form `s.h(&*s.r)`.
+  - Dropped, with no SPEC change: the third gap, the fold on a shared input's path (`inspect(holder@uniq.items)` read as
+    `inspect(holder.items)`). It would change verdicts: §7.3.3 states that `tasks@uniq.length` "lends `tasks`
+    exclusively, then reads it", so `let r = tasks[0]@ref; let n = tasks@uniq.length; inspect(r)` is an error under the
+    current text, and the default pipeline rejects it and `let r = holder.count@ref; inspect(holder@uniq.items);
+    inspect(r)`, while the fold accepts both. The revision stopped on it, and the planning session decided, following
+    SPEC (the owner's (b2) answer concerned reservations, which only exclusive inputs have), that the fold applies only
+    on a reserved input's path (DECISIONS R4-M52 corrected; PLAN G92).
+- Rationale.
+  - E8 recovers outer-holder replacement: 23a, 30d (a `uniq`-linked traversal reading through the new link), and 35a and
+    35b (keeping a Borrow of each node while advancing), which S1's last-dereference base rejected; rustc accepts 23a,
+    35a and 35b. 34c (`refs = other` ending a child through `refs[i]`), which S1's text already ended, stays valid under
+    the exact prefix, where A3's matcher had refused a runtime index after the Move Path. It also makes the one-step
+    form agree with the two-step `t = rr@follow@uniq; c = t@follow@uniq`, which S1 already accepted (case 37). It only
+    removes errors: on review-23a's 158 cases the rule reports no error that S1's does not, and on prototype round 10
+    (246 cases) there is no unsound acceptance and no unlisted rejection. Census (grep proxies): library, milestones,
+    xUnit literals and SPEC examples 0 verdict changes.
+  - Rejected (R4-M52, the proposal §5): keeping the last-dereference base (23a, 30d, 35a, 35b and 11 review cases stay
+    errors); the term "base" (option (b), one more concept for the same verdicts); a separate outer ending relation (two
+    representations of one decision); tracking referents or value versions (new state); ending on writes through
+    references (needs a definite-update rule); a 23a exemption or an exemption by Loan identity (repeated-site
+    unsoundness).
+  - P12 is needed for soundness. The Loans that a requirement call's result may keep on what its receiver reaches
+    (§8.11.3, §8.11.4 rule 1) run through the receiver's dereferences, and distinct roots are disjoint only because a
+    value that carries a Loan through a reference also carries that reference's Loans (§15.6.2). A descending result
+    that kept only what a read through the receiver carries was accepted unsoundly in prototype round 9: after `first =
+    cur.inner.take(); cur = b`, `a.inner.clear()` met nothing (36c; also 36e, 36g). Keeping the receiver Loan itself
+    would reject §8.11.1's `takeTwo`. The cost is 36f, `var r = h@uniq; let first = r.inner.take(); h.other = 5; return
+    first`, and a write to the receiver's Field by another name (`h.inner = src2`): rustc accepts both. Census: library
+    0 (its abstract descending calls reach the receiver through `self`, `Iteration.kimi:32, 59`), milestones 0
+    (`cursor.next()` is concrete), xUnit 0. Concrete calls keep §15.6.4's per-argument rule.
+  - P12's cost also covers the end of that local holder's storage while the result is live, a return included: under
+    §15.6.5 (a use beyond a local Place's lifetime) and §16.2.2 (borrows in the result stay valid after cleanup), 36f
+    without its write is an error at `return first` (found by this revision's review; rustc accepts it). So the SPEC
+    example reaches its holder through a parameter. The census class is the same (a receiver reached through a local
+    reference), so its counts stay 0. Design A3 §5's partition row, whose lemma calls over-approximated Loans harmless
+    to exclude, would exclude that conflict at the return and accept 36f without its write; the same may hold for other
+    Loans a result carries only by a simplification, such as P1's holders (H). Reported to the planning session (PLAN
+    G113).
+- Safety of E8 (the proposal's §4, amended by review-23a C3). When the in-place destruction of a Move Path `K` ends a
+  Loan `L` on a path `K…`, assuming, as §15.6.3 and P12 make true, that every value carrying `L` also carries its parent
+  Loans:
+  - Through `K`: the old value was destroyed in place, not transferred. While `L` was checked, P3 rejected every Move or
+    Borrow of a prefix of its path in either order, `exchange` and `swap` targets and implicit receivers, arguments and
+    captures included, and no transferring operation ends a Loan. After the destruction the path names the new value's
+    referents, which `L` never protected.
+  - The new value of `K` cannot reach `L`'s old storage except through values that carry `L`'s parent Loans. Every other
+    route needs a Borrow of a holder on the old route (`slot`, `x` in 23a) or a reborrow through `K`, and each conflicts
+    with the parent Loans that `L`'s values keep (review cases 87, 94) or with `L` before the end (51, 53, 62–64). A
+    value derived from `L`, even one stored into `K` itself (89), carries the parents.
+  - The holders after `K`: each lies in the referent of the preceding holder's reference, whose Loans are `L`'s parent
+    Loans, so every other route to that storage conflicts while `L`'s values are used. A parent Loan that ends at the
+    same point ends for its own holder's destruction, and the argument applies to it in turn. Siblings under `K` end
+    together; they were checked against each other while both were live.
+  - `rc` and `arc` own steps between `K` and a dereference: a surviving clone keeps the payload, so its storage is not
+    destroyed. Soundness rests instead on shared-only access past `rc` and `arc` (§15.6.2: the child is `ref`, and the
+    clone cannot write) and on the check of a release that may be final, which observes the payload and is checked
+    before the end (§15.6.6, §16.3.3; review cases 78–80).
+  - Reservations: a reservation reached through `K` relies on §15.6.7's protection of the references it was reached
+    through, checked at the write or destruction before any end (A3 E1, PLAN G119; review cases 84, 85).
+  - Guards: a value derived from a guard candidate depends on the guard-local Origin `g` (§14.8.3), which ends at guard
+    cleanup whatever Loans end earlier (A3 E7; review cases 92, 93).
+  - Checks precede the end on the incoming state, values in transit included (§15.6, §15.6.6; review case 91). The
+    argument is reviewable, not a completed proof; mutation runs (review-23a N4) show each safeguard is needed.
+- Principles. One Concept, One Canonical Form: one ending rule for every Loan, with no second term for its prefix, and
+  one carrying rule for descending results. Local Reasoning: an ending is decided by the destroyed Move Path and the
+  Loan's access path, and P12 by the receiver argument's carried Loans, both visible in one body. Explicit Semantics:
+  the ending event is a written destruction (`=`, a storage end, a `replace` target), and the clarifications state
+  readings the text left implicit. Compiler Server Protocol: conflicts stay located at the operation and the Borrow
+  site; no new code or diagnostic.
+- Usage: no test expects a rule this revision replaces (the census above), so no `OldRule` trait is added. The default
+  pipeline keeps the earlier rules until R6-check (STATUS): `tests/diagnostics/spec-cases.json` rows
+  `15.6.3-outer-replacement` and `15.6.3-abstract-descent` state the SPEC verdicts with class (d) `Old` entries naming
+  E8 and P12, and `14.10.3-unreachable` adds `use(y)`. Not refreshed: SPECJ and GUIDE.
