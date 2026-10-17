@@ -1,21 +1,28 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the LLVM text of scalar arithmetic and its checks (SPEC 13.3.1, 22.5.2; IMPL 21.3.3; DECISIONS R5-M17): an operation's
-// instruction, the overflow intrinsic of a checked one, the zero, minimum / -1 and count checks of division, remainder and
-// shifts with the divisor substitutions they need, and each check's own failure block, which calls the runtime Abort with the
-// check's reason and location. Both generators write scalar arithmetic through it (PD2: promoted, never copied).
-// Input: a writer; a ScalarOperation (operator and Type text, operand spellings, result name), where an operand is its LLVM
-// spelling, so a literal -1 is the text -1 and a dynamic operand a local name; for a check, a ScalarCheck (the number naming its
-// temporaries and failure label, its success label, its location); for a check another writer computes (a conversion or bounds
-// check), its condition and abort reason.
+// Owns the LLVM text of scalar arithmetic, numeric conversions and their checks (SPEC 4.7.1, 13.3.1, 13.5.4, 22.5.2; IMPL 21.3.3;
+// DECISIONS R5-M17): an operation's instruction, the overflow intrinsic of a checked one, the zero, minimum / -1 and count checks
+// of division, remainder and shifts with the divisor substitutions they need, a conversion's cast with its range checks or its
+// position saturation, and each check's own failure block, which calls the runtime Abort with the check's reason and location
+// operands. Both generators write scalar arithmetic and conversions through it (PD2: promoted, never copied).
+// Input: a writer; a ScalarOperation (operator and Type text, operand spellings, result name) or a ScalarConversion (cast, source
+// and target Type text, input spelling, result name, ScalarBounds); for a check, a ScalarCheck (the number naming its
+// temporaries and failure label, its success label, its location operands); for a check another writer computes (a bounds or
+// argument check), its condition and abort reason.
+// Preconditions: an operand is its LLVM spelling, a local name (%...) or a constant; an integer constant is the decimal of its
+// signed value, as LlvmModuleText.WriteNumber writes it, so a literal -1 is -1 at every width (LLVM's unsigned spelling, i8 255,
+// would skip SPEC 13.3.1's -1 substitution); a floating constant is LLVM's hexadecimal double spelling; an integer Type is iN of
+// any width. A checked conversion has a bound; a position conversion has a cast and a bound; a floating narrowing has both bounds
+// over a double source.
 // Output: LLVM text written to the writer.
-// Invariants: a check names its temporaries role + Id and its failure label abort + Id; `select i1` appears only on a failure
+// Invariants: a check names its temporaries role + Id and its failure label abort + Id, except the signed quotient's reason,
+// which the caller names; a position conversion names its temporaries role + its own Id; `select i1` appears only on a failure
 // block's zero test (its reason) and on a signed divisor's -1 test (its substitution by 1, the wrapping quotient's negation), the
 // forms PD8 admits; no nsw or nuw; the legacy writer's .ll stays byte-identical while it shares this text; writing allocates
 // nothing.
 // Must not take an opcode or check kind of either IR, syntax, HIR, Binding internals, EmissionModule or MIR types, or use LINQ.
 
-#pragma warning disable SA1402 // The operation and check records are this writer's inputs.
+#pragma warning disable SA1402 // The operation, conversion and check records are this writer's inputs.
 
 using System.Globalization;
 using static Kimi.Compiler.Backend.LlvmModuleText;
@@ -24,8 +31,9 @@ namespace Kimi.Compiler.Backend;
 
 /// <summary>
 /// One scalar instruction: its LLVM operator (an instruction such as add, sdiv or fneg, a comparison predicate, or an overflow
-/// intrinsic's stem such as sadd) and operand Type, its operands' spellings (the right one empty for fneg) and its result's name.
-/// A comparison's predicate belongs to icmp, or to fcmp on a floating Type.
+/// intrinsic's stem such as sadd) and operand Type, its operands' spellings (the right one empty for fneg; an integer constant
+/// the decimal of its signed value) and its result's name. A comparison's predicate belongs to icmp, or to fcmp on a floating
+/// Type.
 /// </summary>
 internal readonly ref struct ScalarOperation(
     string op, string type, ReadOnlySpan<char> left, ReadOnlySpan<char> right, ReadOnlySpan<char> result, bool comparison)
@@ -44,20 +52,60 @@ internal readonly ref struct ScalarOperation(
 }
 
 /// <summary>
-/// One check's failure block: the number that makes its temporaries and failure label unique in the function, the local name of
-/// the label where execution continues when the check passes (%b3), and the pooled location constant its Abort reports, or null
-/// for the function's forwarded caller location (SPEC 22.5.1).
+/// One numeric conversion: its LLVM cast (such as trunc, sext, fptosi or bitcast; null when the source representation is kept),
+/// its source and target Types, its input's spelling, its result's name and the bounds whose tests find an input the target
+/// cannot hold.
 /// </summary>
-internal readonly ref struct ScalarCheck(int id, ReadOnlySpan<char> success, LlvmConstantPool.Entry? location)
+internal readonly ref struct ScalarConversion(
+    string? cast, string source, string target, ReadOnlySpan<char> input, ReadOnlySpan<char> result, ScalarBounds bounds)
+{
+    internal string? Cast { get; } = cast;
+
+    internal string Source { get; } = source;
+
+    internal string Target { get; } = target;
+
+    internal ReadOnlySpan<char> Input { get; } = input;
+
+    internal ReadOnlySpan<char> Result { get; } = result;
+
+    internal ScalarBounds Bounds { get; } = bounds;
+}
+
+/// <summary>
+/// A conversion's range tests: per side, the comparison predicate (icmp, or fcmp on a floating source) that holds when the input
+/// lies beyond the target on that side, and the bound's spelling in the source Type; a null predicate when the target holds
+/// every source value on that side.
+/// </summary>
+internal readonly ref struct ScalarBounds(string? lowerPredicate, ReadOnlySpan<char> lower, string? upperPredicate, ReadOnlySpan<char> upper)
+{
+    internal string? LowerPredicate { get; } = lowerPredicate;
+
+    internal ReadOnlySpan<char> Lower { get; } = lower;
+
+    internal string? UpperPredicate { get; } = upperPredicate;
+
+    internal ReadOnlySpan<char> Upper { get; } = upper;
+}
+
+/// <summary>
+/// One check's failure block: the number that makes its temporaries and failure label unique in the function, the local name of
+/// the label where execution continues when the check passes (%b3), and its Abort's location operands (SPEC 22.5.1): the
+/// address and UTF-8 byte length of the location text, a pooled constant's @name and length or the parameters that forward the
+/// caller's location.
+/// </summary>
+internal readonly ref struct ScalarCheck(int id, ReadOnlySpan<char> success, ReadOnlySpan<char> location, ReadOnlySpan<char> locationLength)
 {
     internal int Id { get; } = id;
 
     internal ReadOnlySpan<char> Success { get; } = success;
 
-    internal LlvmConstantPool.Entry? Location { get; } = location;
+    internal ReadOnlySpan<char> Location { get; } = location;
+
+    internal ReadOnlySpan<char> LocationLength { get; } = locationLength;
 }
 
-/// <summary>Writes scalar arithmetic and its checks as LLVM text.</summary>
+/// <summary>Writes scalar arithmetic, numeric conversions and their checks as LLVM text.</summary>
 internal static class LlvmScalarText
 {
     // The condition of a check that the compiler proved: the failure block stays unreachable.
@@ -66,8 +114,12 @@ internal static class LlvmScalarText
     // A check failure carries no operating-system error (the runtime reports one only when it is nonnegative).
     private const string NoOsError = "-2";
 
+    // The double infinities, which a floating narrowing converts unchanged.
+    private const string PositiveInfinity = "0x7FF0000000000000";
+    private const string NegativeInfinity = "0xFFF0000000000000";
+
     // A role followed by an int.
-    private const int NameLength = 24;
+    private const int NameLength = 32;
 
     // An operation without a check. SPEC 13.3.1, IMPL 21.3.3: a signed quotient by a literal -1 is the negation and a signed
     // remainder by it divides by 1, so sdiv and srem never see the minimum / -1 pair.
@@ -104,11 +156,11 @@ internal static class LlvmScalarText
     }
 
     // The signed quotient of an integer Type (SPEC 13.3.1): a zero divisor and the minimum / -1 pair Abort, the reason selected
-    // by the zero test into the name reason; a literal -1 keeps only the minimum check and is the negation (IMPL 21.3.3).
+    // by the zero test into the caller's name reason; a literal -1 keeps only the minimum check and is the negation (IMPL 21.3.3).
     internal static void WriteSignedQuotient(TextWriter output, in ScalarOperation operation, in ScalarCheck check, ReadOnlySpan<char> reason)
     {
         var id = check.Id;
-        var minimum = long.MinValue >> (64 - Width(operation.Type));
+        var minimum = Int128.MinValue >> (128 - Width(operation.Type));
         if (operation.Right is "-1")
         {
             WriteEquality(output, "%minimum", id, operation.Type, operation.Left, minimum);
@@ -225,6 +277,65 @@ internal static class LlvmScalarText
         WriteInstruction(output, operation, count);
     }
 
+    // A conversion without a check or bound (SPEC 13.5.4: widening, integer to floating, wrapping, bit and pointer conversions):
+    // its cast, or nothing when the source representation is kept.
+    internal static void WriteConversion(TextWriter output, in ScalarConversion conversion)
+        => WriteCast(output, conversion, conversion.Result);
+
+    // A checked integer or floating-to-integer conversion (SPEC 13.5.4, 22.5.2): an input beyond a bound Aborts with
+    // KIMI_E_INT_CONVERSION; the unordered predicates of a floating source also reject NaN.
+    internal static void WriteCheckedConversion(TextWriter output, in ScalarConversion conversion, in ScalarCheck check)
+    {
+        WriteBounds(output, conversion, check.Id);
+        WriteFailure(output, WriteOutside(output, conversion.Bounds, check.Id), AbortReasons.IntegerConversion, check);
+        WriteCast(output, conversion, conversion.Result);
+    }
+
+    // A narrowing floating conversion (SPEC 13.5.4, 22.5.2): a finite input that rounds beyond the target's finite range Aborts
+    // with KIMI_E_FLOAT_CONVERSION, while infinities and NaN convert.
+    internal static void WriteFloatingNarrowing(TextWriter output, in ScalarConversion conversion, in ScalarCheck check)
+    {
+        var id = check.Id;
+        WriteBounds(output, conversion, id);
+        var outside = WriteOutside(output, conversion.Bounds, id);
+        WriteBound(output, "%notPositiveInfinity", id, "one", conversion, PositiveInfinity);
+        WriteBound(output, "%notNegativeInfinity", id, "one", conversion, NegativeInfinity);
+        WriteName(output, "  %finite", id);
+        WriteName(output, " = and i1 %notPositiveInfinity", id);
+        WriteName(output, ", %notNegativeInfinity", id);
+        WriteName(output, "\n  %overflow", id);
+        WriteName(output, " = and i1 %finite", id);
+        output.Write(", ");
+        WriteName(output, outside, id);
+        output.Write('\n');
+        WriteFailure(output, "%overflow", AbortReasons.FloatingConversion, check);
+        WriteCast(output, conversion, conversion.Result);
+    }
+
+    // A position conversion (SPEC 4.7.1) has no check: an input isize cannot hold becomes -1, the sign-extended outside test
+    // ORed into the cast without a branch. id names its temporaries.
+    internal static void WritePositionConversion(TextWriter output, in ScalarConversion conversion, int id)
+    {
+        WriteBounds(output, conversion, id);
+        Span<char> name = stackalloc char[NameLength];
+        var cast = Format("%conv", id, name);
+        WriteCast(output, conversion, cast);
+        var outside = WriteOutside(output, conversion.Bounds, id);
+        WriteName(output, "  %mask", id);
+        output.Write(" = sext i1 ");
+        WriteName(output, outside, id);
+        output.Write(" to ");
+        output.Write(conversion.Target);
+        output.Write("\n  ");
+        output.Write(conversion.Result);
+        output.Write(" = or ");
+        output.Write(conversion.Target);
+        output.Write(' ');
+        output.Write(cast);
+        WriteName(output, ", %mask", id);
+        output.Write('\n');
+    }
+
     // The failure block of a check whose condition, the temporary condition + Id, another writer computed, or ProvenValid.
     internal static void WriteFailure(TextWriter output, string condition, int reason, in ScalarCheck check)
     {
@@ -235,7 +346,7 @@ internal static class LlvmScalarText
     }
 
     // `name + id = icmp eq type operand, constant`.
-    internal static void WriteEquality(TextWriter output, string name, int id, string type, ReadOnlySpan<char> operand, long constant)
+    internal static void WriteEquality(TextWriter output, string name, int id, string type, ReadOnlySpan<char> operand, Int128 constant)
     {
         output.Write("  ");
         WriteName(output, name, id);
@@ -285,6 +396,64 @@ internal static class LlvmScalarText
         output.Write('\n');
     }
 
+    // `result = cast source input to target`, or nothing when the source representation is kept.
+    private static void WriteCast(TextWriter output, in ScalarConversion conversion, ReadOnlySpan<char> result)
+    {
+        if (conversion.Cast is not { } cast)
+        {
+            return;
+        }
+
+        output.Write("  ");
+        output.Write(result);
+        output.Write(" = ");
+        output.Write(cast);
+        output.Write(' ');
+        output.Write(conversion.Source);
+        output.Write(' ');
+        output.Write(conversion.Input);
+        output.Write(" to ");
+        output.Write(conversion.Target);
+        output.Write('\n');
+    }
+
+    // The tests of the present bounds, lower + Id and upper + Id.
+    private static void WriteBounds(TextWriter output, in ScalarConversion conversion, int id)
+    {
+        var bounds = conversion.Bounds;
+        if (bounds.LowerPredicate is { } lower)
+        {
+            WriteBound(output, "%lower", id, lower, conversion, bounds.Lower);
+        }
+
+        if (bounds.UpperPredicate is { } upper)
+        {
+            WriteBound(output, "%upper", id, upper, conversion, bounds.Upper);
+        }
+    }
+
+    // `role + id = icmp or fcmp predicate source input, bound`: the comparison of the input in its source Type.
+    private static void WriteBound(TextWriter output, string role, int id, string predicate, in ScalarConversion conversion, ReadOnlySpan<char> bound)
+    {
+        Span<char> name = stackalloc char[NameLength];
+        WriteOperation(output, new ScalarOperation(predicate, conversion.Source, conversion.Input, bound, Format(role, id, name), comparison: true));
+    }
+
+    // The test that the input lies beyond the target: one bound's, or both joined as invalid + Id. Returns its role.
+    private static string WriteOutside(TextWriter output, in ScalarBounds bounds, int id)
+    {
+        if (bounds.LowerPredicate is null || bounds.UpperPredicate is null)
+        {
+            return bounds.LowerPredicate is null ? "%upper" : "%lower";
+        }
+
+        WriteName(output, "  %invalid", id);
+        WriteName(output, " = or i1 %lower", id);
+        WriteName(output, ", %upper", id);
+        output.Write('\n');
+        return "%invalid";
+    }
+
     // SPEC 13.3.1: a dynamic signed divisor of -1 becomes 1, so sdiv and srem never see the minimum / -1 pair. Returns the
     // substituted divisor's name, formatted into name.
     private static ReadOnlySpan<char> WriteDivisorSubstitution(TextWriter output, in ScalarOperation operation, int id, Span<char> name)
@@ -324,7 +493,7 @@ internal static class LlvmScalarText
         output.Write(":\n");
     }
 
-    // The runtime Abort with the reason and the check's location (SPEC 22.5.1-22.5.2), then the success label.
+    // The runtime Abort with the reason and the check's location operands (SPEC 22.5.1-22.5.2), then the success label.
     private static void WriteAbort(TextWriter output, ReadOnlySpan<char> reason, in ScalarCheck check)
     {
         var abort = RuntimeAbi.Abort;
@@ -333,19 +502,8 @@ internal static class LlvmScalarText
         output.Write(" @");
         output.Write(abort.Name);
         WriteArgument(output, "(", abort.Parameters[0], reason);
-        if (check.Location is { } location)
-        {
-            WriteArgument(output, ", ", abort.Parameters[1], "@");
-            output.Write(location.Name);
-            WriteArgument(output, ", ", abort.Parameters[2], default);
-            WriteNumber(output, location.ByteLength);
-        }
-        else
-        {
-            WriteArgument(output, ", ", abort.Parameters[1], "%location");
-            WriteArgument(output, ", ", abort.Parameters[2], "%location_length");
-        }
-
+        WriteArgument(output, ", ", abort.Parameters[1], check.Location);
+        WriteArgument(output, ", ", abort.Parameters[2], check.LocationLength);
         WriteArgument(output, ", ", abort.Parameters[3], NoOsError);
         output.Write(")\n  unreachable\n");
         output.Write(check.Success[1..]);

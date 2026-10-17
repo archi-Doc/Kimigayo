@@ -11,6 +11,9 @@ internal static partial class LlvmModuleWriter
     // The longest operand spelling: %element and an Int128.
     private const int OperandLength = 48;
 
+    // A check's names: its success label and its two location operands.
+    private const int CheckLength = 3 * OperandLength;
+
     private static void Name(TextWriter output, string prefix, int id)
     {
         output.Write(prefix);
@@ -217,8 +220,8 @@ internal static partial class LlvmModuleWriter
             return;
         }
 
-        Span<char> success = stackalloc char[OperandLength];
-        var check = CheckOf(constants, instruction, function.Abi.CallerLocation, success);
+        Span<char> names = stackalloc char[CheckLength];
+        var check = CheckOf(constants, instruction, function.Abi.CallerLocation, names);
         switch (instruction.Check)
         {
             case ArithmeticCheckKind.Overflow:
@@ -250,23 +253,39 @@ internal static partial class LlvmModuleWriter
         output.Write('\n');
     }
 
-    // Decodes the failure block of a conversion or bounds check for LlvmScalarText.
+    // Decodes the failure block of a bounds or argument check for LlvmScalarText.
     private static void WriteArithmeticFailure(TextWriter output, LlvmConstantPool constants, EmissionInstruction instruction, string condition, bool callerLocation = false)
     {
         var reason = instruction.Check switch
         {
-            ArithmeticCheckKind.Conversion => AbortReasons.IntegerConversion,
-            ArithmeticCheckKind.FloatingConversion => AbortReasons.FloatingConversion,
             ArithmeticCheckKind.Bounds => AbortReasons.IndexBounds,
             ArithmeticCheckKind.Argument => AbortReasons.ArgumentRange,
             _ => throw new InvalidOperationException("Unknown arithmetic failure reason."),
         };
-        Span<char> success = stackalloc char[OperandLength];
-        LlvmScalarText.WriteFailure(output, condition, reason, CheckOf(constants, instruction, callerLocation, success));
+        Span<char> names = stackalloc char[CheckLength];
+        LlvmScalarText.WriteFailure(output, condition, reason, CheckOf(constants, instruction, callerLocation, names));
     }
 
-    // A check's names: its operation ID and the success label at the instruction's Place; its location constant, or the caller's.
-    private static ScalarCheck CheckOf(LlvmConstantPool constants, in EmissionInstruction instruction, bool callerLocation, Span<char> success)
-        => new(
-            instruction.Operation, Spell(new(EmissionOperandKind.Block, instruction.Place), success), callerLocation ? null : constants[instruction.Constant]);
+    // A check's names, formatted into names (CheckLength characters): its operation ID, the success label at the instruction's
+    // Place and its location operands, the pooled location constant's address and byte length or the forwarded caller's.
+    private static ScalarCheck CheckOf(LlvmConstantPool constants, in EmissionInstruction instruction, bool callerLocation, Span<char> names)
+    {
+        var success = Spell(new(EmissionOperandKind.Block, instruction.Place), names[..OperandLength]);
+        var location = names.Slice(OperandLength, OperandLength);
+        var length = names[(2 * OperandLength)..];
+        if (callerLocation)
+        {
+            return new(
+                instruction.Operation,
+                success,
+                Spell(new(EmissionOperandKind.CallerLocation, 0), location),
+                Spell(new(EmissionOperandKind.CallerLocationLength, 0), length));
+        }
+
+        var constant = constants[instruction.Constant];
+        location[0] = '@';
+        constant.Name.CopyTo(location[1..]);
+        constant.ByteLength.TryFormat(length, out var digits, default, CultureInfo.InvariantCulture);
+        return new(instruction.Operation, success, location[..(constant.Name.Length + 1)], length[..digits]);
+    }
 }

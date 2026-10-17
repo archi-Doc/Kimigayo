@@ -1578,24 +1578,35 @@ structure is recorded here by the unit that first implements it.
   one row that declares its library callees and type-driven needs, which the collector reads (X4). Rejected: requests left in
   `EmissionModule` with the Backend reading it (a non-neutral input); `AggregateLayout` in the records (the old pool as a
   Backend input); a scalar flag beside `ValueLowering` (a second statement of SPEC 21.3.1's argument form).
-- **R5-M17 `LlvmScalarText`** (2026-10-18, planning session; plan P4a, package §3.4, promoted under R5-M14) A permanent Backend
-  component owning the LLVM text of scalar arithmetic and its checks: the instruction (`WriteOperation`), the overflow intrinsic
-  (`WriteOverflowChecked`), the signed quotient with its zero and minimum / −1 checks (`WriteSignedQuotient`), the zero-checked
-  unsigned quotient or remainder (`WriteZeroChecked`), the wrapping quotient (`WriteWrappingQuotient`), the count-checked shift
-  (`WriteShift`), IMPL 21.3.3's literal −1 rules and SPEC 13.3.1's divisor substitution, and each check's own failure block
-  (`WriteFailure`: the branch, `abort<Id>:`, the Abort call with the check's reason and location, `unreachable`, the success
-  label). One method per check: the checks are SPEC's closed set, and the old `ArithmeticCheckKind` stays the old IR's decoding.
-  Inputs are generator-neutral: `ScalarOperation` (operator and Type text, operand spellings, result name) and `ScalarCheck`
-  (the number naming the check's temporaries and failure label, the success label's local name, the pooled location constant
-  or null for the caller's), stack-only `ref struct`s, so writing stays allocation-free. An operand is its LLVM spelling: a
-  literal −1 divisor is the text `-1`, a dynamic divisor a local name (`%…`), and widths come from the `iN` type text. The old
-  `WriteScalar` spells its operands through `Spell`, which `WriteOperand` now writes through (one spelling), and selects the
-  method by its check kind; conversion and bounds checks reach `WriteFailure` through the old `WriteArithmeticFailure`, which
-  maps their check kind to the reason. P4b adds the bounds-checked conversions. Rejected: a Backend check-kind enum (a second
-  copy of the old vocabulary); `EmissionOperand` as input (old IR) or a Backend operand record (a copy of its kinds);
-  operands as strings (warm writing would allocate); `ValueLowering` inputs for widths (the type text carries them); a result
-  name and success label fixed by the component as `%v<Id>` and `b<n>` (codegen names values and blocks by MIR location,
-  package §2.10).
+- **R5-M17 `LlvmScalarText`** (2026-10-18, planning session; plan P4a, P4b, package §3.4, S2-S4 X36, promoted under R5-M14) A
+  permanent Backend component owning the LLVM text of scalar arithmetic, numeric conversions and their checks: the instruction
+  (`WriteOperation`), the overflow intrinsic (`WriteOverflowChecked`), the signed quotient with its zero and minimum / −1 checks
+  (`WriteSignedQuotient`), the zero-checked unsigned quotient or remainder (`WriteZeroChecked`), the wrapping quotient
+  (`WriteWrappingQuotient`), the count-checked shift (`WriteShift`), IMPL 21.3.3's literal −1 rules and SPEC 13.3.1's divisor
+  substitution, the conversions (P4b): the cast alone (`WriteConversion`), the range-checked integer or floating-to-integer
+  conversion (`WriteCheckedConversion`, KIMI_E_INT_CONVERSION), the floating narrowing that keeps infinities and NaN
+  (`WriteFloatingNarrowing`, KIMI_E_FLOAT_CONVERSION) and SPEC 4.7.1's position conversion, −1 without a branch
+  (`WritePositionConversion`), and each check's own failure block (`WriteFailure`: the branch, `abort<Id>:`, the Abort call
+  with the check's reason and location operands, `unreachable`, the success label). One method per check: the checks are
+  SPEC's closed set, and the old `ArithmeticCheckKind` stays the old IR's decoding. Inputs are generator-neutral:
+  `ScalarOperation` (operator and Type text, operand spellings, result name), `ScalarConversion` (cast or null, source and
+  target Type text, input spelling, result name, `ScalarBounds`: per side the outside predicate or null and the bound's
+  spelling) and `ScalarCheck` (the number naming the check's temporaries and failure label, the success label's local name,
+  the Abort's location operands: address and byte-length spellings of a pooled constant or of the forwarded caller location,
+  so no parameter name is fixed), stack-only `ref struct`s, so writing stays allocation-free. Stated preconditions (X36): an
+  operand is its LLVM spelling, a local name (`%…`) or a constant; an integer constant is the decimal of its signed value as
+  `WriteNumber` writes it (LLVM's unsigned `i8 255` would skip the literal −1 rules); a floating constant is LLVM's
+  hexadecimal double; a checked conversion has a bound, a position conversion a cast and a bound, a floating narrowing both
+  bounds over a double source. Widths come from the `iN` type text; the signed minimum is computed at that width in `Int128`,
+  so no width precondition remains (128-bit division stays `Unsupported_Kd` upstream). The old `WriteScalar` and
+  `WriteConversion` spell their operands through `Spell`, which `WriteOperand` writes through (one spelling), and select the
+  method by their check kind; bounds and argument checks reach `WriteFailure` through the old `WriteArithmeticFailure`, which
+  maps their check kind to the reason. Rejected: a Backend check-kind enum (a second copy of the old vocabulary);
+  `EmissionOperand` as input (old IR) or a Backend operand record (a copy of its kinds); operands as strings (warm writing
+  would allocate); `ValueLowering` inputs for widths (the type text carries them); a result name and success label fixed by
+  the component as `%v<Id>` and `b<n>` (codegen names values and blocks by MIR location, package §2.10); typed bound values
+  (a second operand form beside spellings, and the hexadecimal float spelling copied into the Backend); a ≤ 64-bit width
+  precondition or failure (the `Int128` minimum is correct at every width without a branch).
 - **R5-M18 The R5 design package S2–S4** (owner, 2026-10-18; OQ4, R5-M1;
   「S2〜S4パッケージを承認します。X33は(a)、GenerationFailed_Kdの後継はArtifactPublicationFailed_Kd、F11はX30′のとおりで進めてください。」)
   The step-0 package in `draft/Sketches/R5 Step 0/`

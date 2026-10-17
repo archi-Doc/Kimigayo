@@ -6,107 +6,46 @@ namespace Kimi.Compiler;
 
 internal static partial class LlvmModuleWriter
 {
-    private static void WriteConversion(TextWriter output, LlvmConstantPool constants, EmissionInstruction instruction, ReadOnlySpan<EmissionOperand> operands)
+    // Decodes a Convert instruction for LlvmScalarText: its conversion, and the form its check and bounds select. A conversion
+    // check reports its own location even in a body that forwards its caller's (SPEC 22.5.1 asks for the caller's; no
+    // forwarding library body contains one).
+    private static void WriteConversion(
+        TextWriter output, LlvmConstantPool constants, in EmissionInstruction instruction, ReadOnlySpan<EmissionOperand> operands)
     {
-        var id = instruction.Operation;
-        var sourceType = instruction.Representation!.ComputationType;
-        if (instruction.LowerPredicate is { } lower)
+        Span<char> input = stackalloc char[OperandLength];
+        Span<char> result = stackalloc char[OperandLength];
+        Span<char> lower = stackalloc char[OperandLength];
+        Span<char> upper = stackalloc char[OperandLength];
+        var bounded = instruction.LowerPredicate is not null || instruction.UpperPredicate is not null;
+        var conversion = new ScalarConversion(
+            instruction.ScalarOperator,
+            instruction.Representation!.ComputationType,
+            instruction.ScalarType!,
+            Spell(operands[0], input),
+            Spell(new(EmissionOperandKind.Value, instruction.Operation), result),
+            new(
+                instruction.LowerPredicate,
+                bounded ? Spell(operands[1], lower) : default,
+                instruction.UpperPredicate,
+                bounded ? Spell(operands[2], upper) : default));
+        Span<char> names = stackalloc char[CheckLength];
+        switch (instruction.Check)
         {
-            WriteConversionBound(output, "%lower", id, lower, sourceType, operands[0], operands[1]);
+            case ArithmeticCheckKind.None when bounded:
+                // SPEC 4.7.1: an unchecked conversion with bounds is a position.
+                LlvmScalarText.WritePositionConversion(output, conversion, instruction.Operation);
+                return;
+            case ArithmeticCheckKind.None:
+                LlvmScalarText.WriteConversion(output, conversion);
+                return;
+            case ArithmeticCheckKind.Conversion:
+                LlvmScalarText.WriteCheckedConversion(output, conversion, CheckOf(constants, instruction, callerLocation: false, names));
+                return;
+            case ArithmeticCheckKind.FloatingConversion:
+                LlvmScalarText.WriteFloatingNarrowing(output, conversion, CheckOf(constants, instruction, callerLocation: false, names));
+                return;
+            default:
+                throw new InvalidOperationException("Unknown conversion check.");
         }
-
-        if (instruction.UpperPredicate is { } upper)
-        {
-            WriteConversionBound(output, "%upper", id, upper, sourceType, operands[0], operands[2]);
-        }
-
-        if (instruction.Check is ArithmeticCheckKind.Conversion or ArithmeticCheckKind.FloatingConversion)
-        {
-            var condition = instruction.LowerPredicate is null ? "%upper" : "%lower";
-            if (instruction.LowerPredicate is not null && instruction.UpperPredicate is not null)
-            {
-                Name(output, "  %invalid", id);
-                Name(output, " = or i1 %lower", id);
-                Name(output, ", %upper", id);
-                output.Write('\n');
-                condition = "%invalid";
-            }
-
-            if (instruction.Check == ArithmeticCheckKind.FloatingConversion)
-            {
-                // Preserve source infinities and NaNs. Only finite source values
-                // that round outside the finite destination range must Abort.
-                WriteConversionBound(output, "%notPositiveInfinity", id, "one", sourceType, operands[0], new(EmissionOperandKind.Float64, BitConverter.DoubleToInt64Bits(double.PositiveInfinity)));
-                WriteConversionBound(output, "%notNegativeInfinity", id, "one", sourceType, operands[0], new(EmissionOperandKind.Float64, BitConverter.DoubleToInt64Bits(double.NegativeInfinity)));
-                Name(output, "  %finite", id);
-                Name(output, " = and i1 %notPositiveInfinity", id);
-                Name(output, ", %notNegativeInfinity", id);
-                output.Write('\n');
-                Name(output, "  %overflow", id);
-                Name(output, " = and i1 %finite", id);
-                Name(output, ", %invalid", id);
-                output.Write('\n');
-                condition = "%overflow";
-            }
-
-            WriteArithmeticFailure(output, constants, instruction, condition);
-        }
-
-        // SPEC 4.7.1: an unchecked conversion with bounds is a position; a value isize cannot hold becomes -1.
-        var saturate = instruction.Check == ArithmeticCheckKind.None && (instruction.LowerPredicate is not null || instruction.UpperPredicate is not null);
-        if (instruction.ScalarOperator is { } op)
-        {
-            Name(output, saturate ? "  %conv" : "  %v", id);
-            output.Write(" = ");
-            output.Write(op);
-            output.Write(' ');
-            output.Write(sourceType);
-            output.Write(' ');
-            WriteOperand(output, operands[0]);
-            output.Write(" to ");
-            output.Write(instruction.ScalarType);
-            output.Write('\n');
-        }
-
-        if (saturate)
-        {
-            var condition = instruction.LowerPredicate is null ? "%upper" : "%lower";
-            if (instruction.LowerPredicate is not null && instruction.UpperPredicate is not null)
-            {
-                Name(output, "  %invalid", id);
-                Name(output, " = or i1 %lower", id);
-                Name(output, ", %upper", id);
-                output.Write('\n');
-                condition = "%invalid";
-            }
-
-            // All ones for an invalid value, without a branch or select.
-            Name(output, "  %mask", id);
-            output.Write(" = sext i1 ");
-            Name(output, condition, id);
-            output.Write(" to ");
-            output.Write(instruction.ScalarType);
-            Name(output, "\n  %v", id);
-            output.Write(" = or ");
-            output.Write(instruction.ScalarType);
-            Name(output, " %conv", id);
-            Name(output, ", %mask", id);
-            output.Write('\n');
-        }
-    }
-
-    private static void WriteConversionBound(TextWriter output, string name, int id, string predicate, string type, EmissionOperand input, EmissionOperand bound)
-    {
-        output.Write("  ");
-        Name(output, name, id);
-        output.Write(bound.Kind is EmissionOperandKind.Float32 or EmissionOperandKind.Float64 ? " = fcmp " : " = icmp ");
-        output.Write(predicate);
-        output.Write(' ');
-        output.Write(type);
-        output.Write(' ');
-        WriteOperand(output, input);
-        output.Write(", ");
-        WriteOperand(output, bound);
-        output.Write('\n');
     }
 }
