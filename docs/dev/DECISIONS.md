@@ -1572,9 +1572,14 @@ structure is recorded here by the unit that first implements it.
   exactly when its argument form is its computation form (SPEC 21.3.1), so the descriptor has no scalar flag;
   `StoredValue.TravelsAsScalar` decides it once, for the helpers and the old lowering's requests (P1b). The old Array,
   Dictionary and formatting writers join at P1b-P1d, the storage kernels at P2a/P2b; each Body-disposition kind then becomes one
-  row that declares its library callees and type-driven needs, which the collector reads (X4). Rejected: requests left in
-  `EmissionModule` with the Backend reading it (a non-neutral input); `AggregateLayout` in the records (the old pool as a
-  Backend input); a scalar flag beside `ValueLowering` (a second statement of SPEC 21.3.1's argument form).
+  row that declares its library callees and type-driven needs, which the collector reads (X4, package K §4.5). The Array rows
+  (P1b) are `ArrayHelperRow`, one static row per `ArrayHelperKind` holding the name prefix, the ABI shape, the prologue, the
+  writer and the `[Flags]` `HelperNeeds` (`ArrayRuntime` for every kind but BorrowStorage, `ElementGlue` for Clear and Drop; no
+  Array row declares a library callee, since none calls one), read by kind through `LegacyRuntimeHelpers.ArrayRow(kind)`, which
+  fails closed; `ArrayHelper.Create` names and shapes a helper from its row. Rejected: requests left in `EmissionModule` with
+  the Backend reading it (a non-neutral input); `AggregateLayout` in the records (the old pool as a Backend input); a scalar
+  flag beside `ValueLowering` (a second statement of SPEC 21.3.1's argument form); a needs flag on the built helper (the
+  collector reads rows by kind before any `ValueLowering` exists); two bool needs (ARCH's one-bool parameter limit).
 - **R5-M17 `LlvmScalarText`** (2026-10-18, planning session; plan P4a, package §3.4, promoted under R5-M14) A permanent Backend
   component owning the LLVM text of scalar arithmetic and its checks: the instruction (`WriteOperation`), the overflow intrinsic
   (`WriteOverflowChecked`), the signed quotient with its zero and minimum / −1 checks (`WriteSignedQuotient`), the zero-checked
