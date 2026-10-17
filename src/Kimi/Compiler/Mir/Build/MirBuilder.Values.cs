@@ -31,6 +31,20 @@ internal sealed partial class MirBuilder
         return !read || HirTables.PlaceOf(node).Kind != HirPlaceKind.Local;
     }
 
+    // Whether a Type has a Never component at any depth (Aggregate; DECISIONS R4-M59). Components nest finitely.
+    private static bool HasNever(BoundType type)
+    {
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (ReferenceEquals(type.Components[i], BoundType.Never) || HasNever(type.Components[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // The value a node's own form produces, into the destination; as a call's input (input), a written exclusive borrow, also inside
     // parentheses, is two-phase (SPEC 15.6.7).
     [CodeRuleException("KR2006", Limit = 67, Reason = "Flat dispatch over the closed HirOp vocabulary; each row invokes its owning lowering operation.")]
@@ -273,16 +287,24 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 3.2, 4.3.2, 6.6: a Tuple, a fixed array or an enum Case value from its operands in order, an enum's payloads as its construction
-    // acquires them; a dynamic Array literal the calls of its built-in form (Collection). A fill of a length its instance decides is not built.
+    // acquires them; a dynamic Array literal the calls of its built-in form (Collection). Not built: a fill of a length its instance decides,
+    // and a literal (no Case construction) that does not complete and whose Type has a Never component, which Binding may have typed
+    // before its position's Type was decided (SPEC 3.8, 14.9.2; DECISIONS R4-M59, temporary until PLAN G129).
     private void Aggregate(MirPlace destination, Koto node, BoundType type)
     {
+        var construction = BoundEnumConstruction.Of(node);
+        if (construction is null && !Completes(node) && HasNever(type))
+        {
+            this.Unsupported(node, destination);
+            return;
+        }
+
         if (node is ArrayLiteralKoto { FillLength: null } literal && type.Kind == BoundTypeKind.Array)
         {
             this.Collection(destination, literal, type);
             return;
         }
 
-        var construction = BoundEnumConstruction.Of(node);
         var elements = node switch
         {
             TupleLiteralKoto tuple => tuple.Elements,

@@ -143,6 +143,29 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.Equal(["let x = missing", "x"], bodies["k"].OpaqueSites.ToArray().Select(x => c.SyntaxOf(x.Source).ToString()));
     }
 
+    // SPEC 3.8, 14.9.2, DECISIONS R4-M59: a literal that does not complete and whose Type keeps a Never component, at any depth, since
+    // Binding typed it before its position's Type was decided (an if branch, a Case payload), is an Opaque value at its one record, and no
+    // validator finding follows. A literal fitted to its expected Type, and a completing one whose Type has a Never part, are built.
+    [Theory]
+    [InlineData("let t = if c => (a, a) else => (a, (return 1))", "(a, (return 1))")]
+    [InlineData("let t = if c => (a, (return 1)) else => (a, a)", "(a, (return 1))")]
+    [InlineData("let t = if c => ((a, a), a) else => ((a, (return 1)), a)", "((a, (return 1)), a)")]
+    [InlineData("let x = P.Pair(1, (a, (return 1)))", "(a, (return 1))")]
+    [InlineData("let x = P.Pair(1, ((return 1), a))", "((return 1), a)")]
+    [InlineData("let x = P2.Pair((a, (return 1)), a)", "(a, (return 1))")]
+    [InlineData("let t: (i64, i64) = if c => (a, a) else => (a, (return 1))", null)]
+    [InlineData("let x: P<i64> = P.Pair(1, (a, (return 1)))", null)]
+    [InlineData("let t = (a, h@move)", null)]
+    public void NeverComponentLiteralsAreOpaque(string statement, string? literal)
+    {
+        var c = Compile("enum P<T>\n    Pair(T, (T, T))\nenum P2<T>\n    Pair((T, T), T)\nfunc f(a: i64, c: bool, h: () -> Never) -> i32\n    " +
+            statement + "\n    return 0\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        string[] records = literal is null ? [] : [literal];
+        Assert.Equal(records, program.Records.Where(static x => x.Subject.Module == 0).Select(x => c.SyntaxOf(x.Subject).ToString()));
+    }
+
     // V11: publishing, building and validating an unchanged compilation again, and selecting every Semantics case view of its bodies with
     // their locals' case Types, allocates nothing, owning interpolations (Milestone30) and pair-generic bodies (Milestone28) included.
     [Trait("Purpose", "Allocation")]

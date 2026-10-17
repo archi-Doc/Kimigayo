@@ -1320,6 +1320,20 @@ and migration obligations remain in force; no numeric cap changes are authorized
   gives the composed atom no Type and A4 records Limit at the first composition. Rejected: an `Enter` on reported parts only
   (design B: a struct of scalars reports nothing, so the DAG walk stays exponential); a cached fact per interned Type (state outside
   the query, R7's); a nullable set parameter on `Destruction`. Not temporary.
+- **R4-M59** (2026-10-18; owner decision, option C, on the MIR lane's confirming review B2 — the second round on the family "a
+  Never element's Type in a literal", AGENTS) G92a builds every node on a check-only continuation (R4-M62) and relies on α
+  (R4-M52). A literal typed before its position's Type is decided (an `if` branch under SPEC 14.9.2's common Type; a Case payload
+  bound in `BindEnumConstruction`'s typed pass) keeps a Never component in its Binding Type, which `FitsTypeCore` lets fit another
+  Type against SPEC 3.8; built, it reached a position of another Type and the validator reported `InternalInvariant_Kd` on the mir
+  pipeline (`let t = if c => (a, a) else => (a, (return 1))`). MIR construction builds no Aggregate for an aggregate literal that
+  does not complete and whose Binding Type has a Never component, and records a located `Unsupported_Kd` with an Opaque value in
+  its place, as for G103-E9a's fill literal; such a literal never completes at run time, so only check-only code loses its checks
+  (the completion test keeps a completing literal whose Type has a Never part built: `(a, h)` with `h: () -> Never`). Removal
+  condition: PLAN G129's Binding unit (a literal fitted to its position's Type once that is decided; `FitsTypeCore` no longer fits
+  a Never component; Never's Copy proof). Rejected: fixing Binding before the merge (option A: the lane, the core lane and R5's W1
+  would wait, and it is best designed with G130's SPEC 10.5.1 unit); holding the lane until G130 (B); the validator copying
+  Binding's Never leniency (a second copy of a rule); the builder re-typing the aggregate at its consumer (a consumer deciding a
+  fact Binding publishes).
 - **R4-M62** (2026-10-17; PLAN G92, implementing R4-M52's G92a (owner) as `draft/Sketches/A5 Step 1/choice-1b.md` §2 and A3 E9
   state it, with design review r1's B2 and r2's F3 and F4, on the planning session's instruction of the same day; amends R4-M37
   G6) Assumed completion in MIR construction (SPEC 14.10.3, 3.8, 3.1.3). On a check-only continuation every node is built and
