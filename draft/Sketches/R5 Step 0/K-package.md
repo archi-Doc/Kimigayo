@@ -274,7 +274,9 @@ After two review rounds this is the owner's choice, not a decided design:
   depending on the container's Type arguments (one slot is then exact: the initializer accesses nothing, so no cycle or Abort, its
   moment is unobservable, and shutdown needs no drop); it needs a KD1 exception (the folded StaticInit keyed
   `(def, Erase(Identity))`) and K7 creating the fold predicate before C7b.
-- (c) A representation: `MirStatic` carries the container's Type arguments before G2 (P42 needs it anyway; a MIR change in window
+- (c) A representation: the container's Type arguments are carried on each access's `staticEnsure` operand before G2, while Places
+  keep one root per Field for the analyses (SPEC 22.4.4; `MirStatic` is deduplicated by symbol per body, `MirBody.cs:442-451`, so
+  it cannot carry two keys) (P42 needs it anyway; a MIR change in window
   W1).
 
 In each case R5-M13(b)'s premise is corrected: the old analysis accepts immutable static scalars in generic containers' groups too
@@ -293,7 +295,11 @@ instances stays until G2b, a declared temporary second copy of the rule; under s
 may report at the written syntax and at the use (H; K10b's reproducer decides), declared in K10b's DEC entry with removal at G2b.
 Tests: K0's `make(())`, `P.init(1, ())` and the unused-function case with their valid twins; the nested probes
 `let x: Option<P<()>> = .None` and inferred `f<T>` with `Option<P<T>>`; `let a: Option<Never> = .None` (SPEC 3.1.3, X31) with no
-record. K10b may need the held `DiagnosticRequirement.cs` (adv).
+record. K10b may need the held `DiagnosticRequirement.cs` (adv). Collections (X34): `Layout.Of` lays out an Array or Dictionary
+as its handle words (`AggregateLayout.cs:274, 297, 317`), so CLayout does not propagate through a collection's own layout; the
+collection's glue item takes `Layout.Of(element)` into its verdict even when the element does not `MayNeedDrop` (as legacy's
+`CollectionDrop` does, `BodyLowering.Arrays.cs:43-53`), and a CLayout result there is reported at the glue item's requesting site
+by the location rule, so an empty `Array<P<()>>` local is reported at its declaration (a test).
 Both moves reject at `check` what the old build already refused (K0 Q1, Q4).
 
 ### 4.9 Records and the location rule

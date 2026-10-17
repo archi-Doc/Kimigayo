@@ -35,8 +35,8 @@ Paths as in the plan: `B/` = `src/Kimi/Compiler/Backend/` (new), `E/` = `src/Kim
   (X23). Open drop rows go through the same per-level function.
 - **New units.**
   - C3c writes the property-witness Storage shim (X14).
-  - F11 adds G131's validator rule, first in window W1 and before C0b1: the destination of a diverging Call is read only in
-    check-only blocks; any other Never-typed place is valid (X30).
+  - F11 adds G131's validator rule, first in window W1 and before C0b1: a Temp whose only write is a diverging Call's destination is read only in check-only blocks; any other
+    Never-typed place, and any destination written on another path, is valid (X30′).
   - C7 splits into C7a (the reason row, which changes every legacy `.ll`) and C7b. G9 splits into G9a and G9b.
 - **Files.** The selector lands in K1 (X7). C0a creates `Core/Compilation.Generation.cs`, which holds the generation entry and the
   gate (X17).
@@ -103,7 +103,7 @@ The Chosen column names the governing decision where one exists.
 | 30 | Requirement receiver | — | — | **None: `TyCtxt.Witness` returns `(Kind, Target, Subst, Access)`; codegen projects nothing (X1)** | `Layout.Of`'s base-prefix invariant makes an inherited member's address the receiver's |
 | 31 | Legacy rows' callees and needs | Collector roots them | — | **The row declares them; the collector reads them (X4)** | One owner per row |
 | 32 | Property witnesses | — | — | **Backend Storage shim, unit C3c (X9, X14)** | §3.12 |
-| 33 | Never temps | — | — | **F11 (X30): the destination of a diverging Call (the builder's unwritten temp) is read only in check-only blocks; any other Never-typed place is valid; before C0b1** | The validator accepts a read of that destination on every path; a runtime read would be lowered as uninitialized storage. A Never parameter, Field or payload is read on runtime paths in valid programs (SPEC 3.1.3, 14.9.3) |
+| 33 | Never temps | — | — | **F11 (X30′): a Temp whose only write is a diverging Call's destination is read only in check-only blocks; any other Never-typed place, and a destination also written on another path, is valid; before C0b1** | The validator accepts a read of that destination on every path; a runtime read would be lowered as uninitialized storage. A Never parameter, Field or payload is read on runtime paths in valid programs (SPEC 3.1.3, 14.9.3) |
 
 ---
 
@@ -500,9 +500,9 @@ G131's validator rule is an R5 unit, F11 (§7). It needs no R4 ask, but it does 
 
 | Unit | Change | Prerequisites | Review | Hold |
 | --- | --- | --- | --- | --- |
-| **F11 (new)** | Diverging-call destination rule (G131, X30): the destination of a diverging Call (the builder's unwritten temp, `M/Build/MirBuilder.Calls.cs:205` at `origin/dev` `44cff99c`) is read only in check-only blocks (blocks no runtime edge reaches, `MirReach` without CheckTarget edges); any other Never-typed place is valid. Adds one `MirViolation` row, a regression that fails before, and the valid regressions `func absurd(x: Never) -> i32 => x` and `.Err(let e) => e` on `Result<i32, Never>`. Zero new findings over the library and the 40 milestones under mir. +20, t+30 (H) | W1 | R + an R4 reviewer (O2) | **W1**, first in W1, whose file list gains `Mir/MirValidator*.cs`; W1 opens after R4's E13/E14 MirBuilder units land and R4 says so |
+| **F11 (new)** | Diverging-call destination rule (G131, X30′): a Temp whose only write is a diverging Call's destination is read only in check-only blocks (blocks no runtime edge reaches, `MirReach` without CheckTarget edges), e.g. `_4 = stop() -> ! check bb1` in `tests/mir/continuations.mir`; any other Never-typed place, and a destination also written on another path (an `if` arm's shared destination, a declared local), is valid. Adds one `MirViolation` row, a regression that fails before, and the valid regressions `func absurd(x: Never) -> i32 => x`, `.Err(let e) => e` and `.Err(let e) => consume(e)` on `Result<i32, Never>`, and `let x: i32 = if c => stop() else => 1` followed by `return x`. Zero new findings over the library and the 40 milestones under mir. +20, t+30 (H) | W1 | R + an R4 reviewer (O2) | **W1**, first in W1, whose file list gains `Mir/MirValidator*.cs`; W1 opens after R4's E13/E14 MirBuilder units land and R4 says so |
 | P4a | Wording: the per-check failure writer | as plan | R | no |
-| P7a | Also records the in-memory nonnull `Option` limit in STATUS (round-0 O9) | as plan | D+R (S4) | no |
+| P7a | Also records the in-memory nonnull `Option` limit in STATUS (round-0 O9); states IMPL 21.1.3's Never and `Loan<T>` rows in `Layout.Of` (X31), while `AggregateLayoutPool.GetCore` keeps an explicit Never guard (its null) so legacy `.ll` stays byte-identical | as plan | D+R (S4) | no |
 | P7b | `Layout.Of`'s three results (X18) and the base-prefix test (X1) | as plan, F1 | D+R (S4) | no |
 | P8 | `PreparedSlot` not ported; no gate | as plan | D+R (S4) | adv |
 | E12 | One `CodegenDeviations` catalog; lands with the first of C5a, **C7b** and K13a | E4, C0a | with its first consumer | no |
@@ -580,7 +580,7 @@ G131's validator rule is an R5 unit, F11 (§7). It needs no R4 ask, but it does 
 | --- | --- | --- |
 | R1 | A-2 lands in R4's 1c, so C4a, the drop chain and X1–X3 wait for A5 step 1 | Accepted (X12). C0–C3 and the library and formatting chains proceed meanwhile |
 | R2 | The three packages are redone in parallel and diverge on X2, X3, X13–X16 | Round 2 reviews them together |
-| R3 | F11's rule finds a builder fault (a runtime read of a diverging Call's destination) | Fixed in W1 as a builder fault before C0b1; never suppressed |
+| R3 | F11's rule finds a builder fault (a runtime read of a Temp whose only write is a diverging Call's destination) | Fixed in W1 as a builder fault before C0b1; never suppressed |
 | R4 | Recursive glue costs calls at O0 | Legacy shape; O2 inlines (H); O0 recorded |
 | R5 | C7a touches every legacy `.ll` | Throwaway hunk check in C7a's evidence |
 | R6 | The fold misses a form legacy folds, so a static read regresses at O2 | C7b's test over `StaticScalar.TryGet`'s set |

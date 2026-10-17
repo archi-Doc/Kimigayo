@@ -169,5 +169,17 @@ Binding's eager C-layout instance check as a second copy of the rule (until G2b)
 | X34 | `Layout.Of` lays a collection out as its handle words, so CLayout does not propagate through an Array or Dictionary element (`AggregateLayout.cs:274, 297, 317`), while the old pool reached the element through `CollectionField` | SPEC 8.15.3's obligation arises where a layout is needed: any item that lays out the element (the element's glue, element kernels, a by-value element use) receives CLayout from `Layout.Of(element)`, and the collector reports `InvalidCLayout_Kd` at that item's requesting site by the location rule. Every collection value is dropped, so its glue lays out the element and an empty `Array<P<()>>` local is reported at its declaration; K10a/K10b state this and test it |
 | X35 | X33 (b) could leave two fold rules | If the owner chooses (b), K7 creates the one fold predicate and C7b's `Statics.ConstantOf` reads it; there is one fold rule |
 
+## Design review round 3 — decisions
+
+Round 3: lenses K and cross-cutting PASS; lens C BLOCK on F11's wording, the second round on that family.
+
+| # | Finding | Decision |
+| --- | --- | --- |
+| X30′ | X30's rule named two different things: "the destination of a diverging Call" rejects `let x: i32 = if c => stop() else => 1` followed by `return x` (the arms share a destination), and "the builder's unwritten temp" (`Calls.cs:205`) misses an ordinary call-result temp (`_4 = stop() -> ! check bb1`) (C, two rounds) | The planning session proposes this whitelist rule, and the owner approves it with the package or chooses a hold or a representation instead (AGENTS): a Temp whose only write is a diverging Call's destination is read only in check-only blocks; any other Never-typed place, and a destination also written on another path, is valid. Valid regressions: `func absurd(x: Never) -> i32 => x`, `.Err(let e) => e` and `.Err(let e) => consume(e)` on `Result<i32, Never>`, and the `if` program above. X29 and X30 are replaced |
+
+Applied without design change: X31's rows are P7a's (the old pool keeps an explicit Never guard); X34's clause in K §4.8 (a collection's glue item takes `Layout.Of(element)` into its verdict even when the element does not `MayNeedDrop`); X33 (c) places the Type arguments on each access's `staticEnsure` operand, Places keeping one root per Field (SPEC 22.4.4).
+
+Owner summary additions (round 3): F11's rule reached two rounds and is presented as the proposed whitelist (X30′); under sel, a gate refusal may hide independent coverage gaps until X2 (a temporary SPEC 23.1.2 limit, sel only).
+
 R4 information: under `mir`, a slot-typed static (`let zero: T = 0` in a generic group) also produces a MIR `InternalInvariant_Kd`
 beside Binding's `Unsupported_Kd` (seen at `147c4616`; it should be a derived value); check on dev.
