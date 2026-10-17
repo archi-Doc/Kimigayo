@@ -460,7 +460,8 @@ public sealed class HirColumnsTest
             // An index names its key resolution, which reads the evaluated receiver, and a user or view selection its selected call; an update
             // of a Property with an accessor its setter, which takes the computed value.
             var expansion = ExpansionPlan.Of(node);
-            var updated = (node as BinaryKoto)?.Left ?? (node as UnaryKoto)?.Operand;
+            var written = (node as BinaryKoto)?.Left ?? (node as UnaryKoto)?.Operand;
+            var updated = written is null ? null : KotoHelper.UnwrapParentheses(written); // The Property Binding designates.
             if ((expansion is null) == (op is HirOp.For or HirOp.Try or HirOp.Interpolation or HirOp.DictionaryLiteral or HirOp.Range or HirOp.CompoundAssign or HirOp.Index || (op == HirOp.Call && node is IndexKoto)) ||
                 (op is HirOp.Interpolation or HirOp.DictionaryLiteral && CallPlan.Of(node) is null) || (op == HirOp.Range && CallPlan.Of(node) is not null) ||
                 (node is IndexKoto && ((op == HirOp.Call) == (expansion?.Second is null) || (expansion?.First is not null) != (op == HirOp.Index && CallPlan.Of(node) is not null) || (expansion?.First is not null && expansion?.Evaluated < 0))) ||

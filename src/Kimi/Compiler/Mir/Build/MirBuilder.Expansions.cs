@@ -146,9 +146,12 @@ internal sealed partial class MirBuilder
         var value = right is null
             ? MirOperand.Const(this.body.Const(new(MirConstKind.Integer, TypeOf(target), 1)))
             : this.Secure(this.Operand(right, expected: null), right);
-        var accessor = plan.First ?? plan.Second; // A Property's accessors take its receiver, located once; a static Property's have none.
+        // A Property's accessors take its receiver, located once; a static Property's have none. Binding designates the Property through
+        // the target's parentheses (a parenthesized Place is its operand's, SPEC 3.4).
+        var accessor = plan.First ?? plan.Second;
+        var property = KotoHelper.UnwrapParentheses(target);
         var storage = accessor is null ? this.Place(target) : default;
-        var receiver = accessor is null || HirTables.ResOf(target) == HirRes.Static ? null : (target as MemberAccessKoto)?.Left;
+        var receiver = accessor is null || HirTables.ResOf(property) == HirRes.Static ? null : (property as MemberAccessKoto)?.Left;
         if (receiver is not null)
         {
             this.located.Add((receiver, this.Place(receiver)));
@@ -156,7 +159,7 @@ internal sealed partial class MirBuilder
 
         if (accessor is not null && (plan.First is null || plan.Second is null))
         {
-            storage = this.Storage(HirTables.Symbol(target)!, receiver is null ? null : this.located[mark].Place, target);
+            storage = this.Storage(HirTables.Symbol(property)!, receiver is null ? null : this.located[mark].Place, property);
         }
 
         if (plan.Second is null)

@@ -689,6 +689,28 @@ public sealed class MirBuildTest(ITestOutputHelper output)
             program.Records.Where(static x => x.Code == DiagnosticCode.InternalInvariant_Kd).Select(static x => x.Subject));
     }
 
+    // SPEC 3.4, 13.7: Binding designates a Property target through its parentheses, so an update or assignment of a parenthesized
+    // Property builds as the unparenthesized one does (its syntax ids aside), whichever of its accessors is custom.
+    [Theory]
+    [InlineData("        set(self: uniq/Self, value: i32) -> () => storage = value", "s.item += 1")]
+    [InlineData("        get(self: ref/Self) -> i32 => storage\n        set(self: uniq/Self, value: i32) -> () => storage = value", "s.item += 1")]
+    [InlineData("        set(self: uniq/Self, value: i32) -> () => storage = value", "s.item = 2")]
+    [InlineData("        get(self: ref/Self) -> i32 => storage + 1", "s.item++")]
+    public void AParenthesizedPropertyTargetIsItsProperty(string accessors, string statement)
+    {
+        Assert.Equal(Built(statement), Built(statement.Replace("s.item", "(s.item)")));
+
+        string Built(string written)
+        {
+            var program = Compile($"struct S\n    public var item: i32 = 0\n{accessors}\n\nfunc f(s: uniq/S)\n    {written}\n").BuildMir();
+            Assert.Empty(program.Findings);
+            Assert.Empty(program.Records);
+            var text = new StringBuilder();
+            MirDump.Write(program, 0, text);
+            return string.Join('\n', text.ToString().Split('\n').Select(static x => x.Split(" @")[0]));
+        }
+    }
+
     // SPEC 13.7.2: an in-place compound update reserves its located destination (TwoPhaseUniq) and reads and writes it through that
     // reservation, so the write activates it.
     [Fact]
