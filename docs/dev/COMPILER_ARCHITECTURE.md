@@ -114,6 +114,7 @@ Each entry file begins with the component's contract (AGENTS). Paths are under `
 | MIR analysis problems | `MirReport`: one `MirProblem(Code, Subject, Views)` per code and subject with its views merged; the one home of the derived-problem rules (DECISIONS R4-M3a, R4-M10) | `Mir/Analysis/MirReport.cs` |
 | MIR text | `MirDump.Write`, with A2's verdicts and flags on an analyzed program, compared by the dump goldens and the MIR snapshot | `Mir/MirDump.cs`, its operations `Mir/MirDump.Operations.cs` and drop elaboration's output `Mir/MirDump.Drops.cs` |
 | LLVM module text | `LlvmModuleText`, the module frame every generator writes through: header with the pooled constants, runtime template with its ABI splice and test variant, external declarations, overflow and memory declarations, footer, external symbol spelling, number formatting; `LlvmConstantPool`, a module's private UTF-8 constants (DECISIONS R5-M14) | `Backend/LlvmModuleText.cs`, `Backend/LlvmConstantPool.cs` |
+| Runtime ABI and representation records | `RuntimeAbi`, the runtime ABI: Unit, string and string-handle representations, release kind, zero-sized buffer address, one `FunctionAbi` per runtime routine and the `RuntimeDefinitions` `LlvmModuleText` splices; `AbortReasons`, the closed abort reason table and its template expansion; the records `TypeLayout`, `ValueLowering`, `AbiParameter` and `FunctionAbi`, which take no Type (DECISIONS R5-M15) | `Backend/RuntimeAbi.cs`, `Backend/AbortReasons.cs`, `Backend/AbiRecords.cs` |
 
 ## Structure limits
 

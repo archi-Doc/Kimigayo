@@ -97,9 +97,9 @@ internal static partial class LlvmModuleWriter
             }
         }
 
-        return text.Replace("{{reason_argument_range}}", Reason(WindowsLowering.ArgumentRangeReason), StringComparison.Ordinal)
-            .Replace("{{reason_format}}", Reason(WindowsLowering.FormatReason), StringComparison.Ordinal)
-            .Replace("{{reason_size}}", Reason(WindowsLowering.AllocationSizeReason), StringComparison.Ordinal);
+        return text.Replace("{{reason_argument_range}}", Reason(AbortReasons.ArgumentRange), StringComparison.Ordinal)
+            .Replace("{{reason_format}}", Reason(AbortReasons.Format), StringComparison.Ordinal)
+            .Replace("{{reason_size}}", Reason(AbortReasons.AllocationSize), StringComparison.Ordinal);
     }
 
     private static void WriteFunction(TextWriter output, LlvmConstantPool constants, EmissionFunction function)
@@ -322,11 +322,11 @@ internal static partial class LlvmModuleWriter
                     }
 
                     output.Write(", i8 ");
-                    WriteNumber(output, WindowsLowering.StaticReleaseKind);
+                    WriteNumber(output, RuntimeAbi.StaticReleaseKind);
                     output.Write(" }, ptr ");
                     WriteSlot(output, function, instruction.Place);
                     output.Write(", align ");
-                    WriteNumber(output, WindowsLowering.String.Layout.Alignment);
+                    WriteNumber(output, RuntimeAbi.String.Layout.Alignment);
                     output.Write('\n');
                     break;
 
@@ -453,7 +453,7 @@ internal static partial class LlvmModuleWriter
 
     private static void WriteCall(TextWriter output, LlvmConstantPool constants, FunctionAbi callee, ReadOnlySpan<EmissionOperand> operands, int result = -1, EmissionFunction? function = null, bool indirect = false)
     {
-        if (callee.Result != WindowsLowering.Unit.ComputationType)
+        if (callee.Result != RuntimeAbi.Unit.ComputationType)
         {
             if (result < 0)
             {
@@ -464,7 +464,7 @@ internal static partial class LlvmModuleWriter
             output.Write(" = ");
         }
 
-        output.Write(callee.Result == WindowsLowering.Unit.ComputationType ? "  call " : "call ");
+        output.Write(callee.Result == RuntimeAbi.Unit.ComputationType ? "  call " : "call ");
         output.Write(callee.Result);
         if (indirect)
         {

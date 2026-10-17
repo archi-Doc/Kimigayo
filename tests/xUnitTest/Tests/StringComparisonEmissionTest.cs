@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
@@ -95,7 +96,7 @@ public class StringComparisonEmissionTest
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var function = module.GetFunction(0);
         var comparison = function.Instructions.FindIndex(x => x.Opcode == EmissionOpcode.StringEquals);
-        var destroy = function.Instructions.FindIndex(comparison + 1, x => x.Callee == WindowsLowering.DestroyString);
+        var destroy = function.Instructions.FindIndex(comparison + 1, x => x.Callee == RuntimeAbi.DestroyString);
         var branch = function.Instructions.FindIndex(comparison + 1, x => x.Opcode == EmissionOpcode.ConditionalBranch);
         Assert.True(comparison >= 0 && comparison < destroy && destroy < branch);
         var ir = ScalarEmissionTest.EmitFixture("StringComparisonConditionOrder", Source, "after\n");

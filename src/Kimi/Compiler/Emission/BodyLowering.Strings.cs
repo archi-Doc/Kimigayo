@@ -266,7 +266,7 @@ internal sealed partial class BodyLowering
         }
         else
         {
-            function.AddCall(id, WindowsLowering.DestroyString, [address, new(location < 0 ? EmissionOperandKind.CallerLocation : EmissionOperandKind.ConstantAddress, location), new(location < 0 ? EmissionOperandKind.CallerLocationLength : EmissionOperandKind.ConstantLength, location)]);
+            function.AddCall(id, RuntimeAbi.DestroyString, [address, new(location < 0 ? EmissionOperandKind.CallerLocation : EmissionOperandKind.ConstantAddress, location), new(location < 0 ? EmissionOperandKind.CallerLocationLength : EmissionOperandKind.ConstantLength, location)]);
         }
     }
 

@@ -1,110 +1,39 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Text;
+using Kimi.Compiler.Backend;
 
 namespace Kimi.Compiler;
 
-#pragma warning disable SA1402 // The concrete layout/value/ABI vocabulary used by Windows lowering.
-
-/// <summary>Storage layout of one concrete Type (SPEC 21.1): LLVM storage Type, size, alignment, stride and Field offsets.</summary>
-internal sealed record TypeLayout(string StorageType, int Size, int Alignment, int Stride, ReadOnlyMemory<int> FieldOffsets);
-
-/// <summary>Computation representation and internal-ABI argument form (SPEC 21.3.1); a null ArgumentType omits the slot.</summary>
-internal sealed record ValueLowering(TypeLayout Layout, string ComputationType, string? ArgumentType);
-
-internal enum AbiParameterKind : byte
-{
-    Value,
-    OwnedSlot,
-    SharedReference,
-    PreparedSlot,
-    ResultSlot,
-    Location,
-    LocationLength,
-    Environment,
-    Context,
-}
-
-internal readonly record struct AbiParameter(string Type, string Name, AbiParameterKind Kind = AbiParameterKind.Value, int LogicalIndex = -1)
-{
-    internal string Attributes => this.Kind == AbiParameterKind.SharedReference ? " noundef nonnull align 8 dereferenceable(24)" : string.Empty;
-}
-
-/// <summary>The implemented windows-x64-v1 representations. Types without an entry have no fallback representation.</summary>
+/// <summary>The old Emission's windows-x64-v1 representations of complete Types and implementations of compiler-provided functions.
+/// Types without an entry have no fallback representation. The records and runtime ABI it returns are Backend's (DECISIONS R5-M15).</summary>
 internal static partial class WindowsLowering
 {
-    /// <summary>The Static string releaseKind: compiler constant backing that is never freed (SPEC 22.7).</summary>
-    internal const int StaticReleaseKind = 0;
-
-    /// <summary>The buffer address of an Array with zero-sized elements (SPEC 4.5): nonnull and page-aligned, so aligned for every
-    /// element, and below the 64 KiB that Windows never maps, so it is never allocated or released (__kimi_free skips it).</summary>
-    internal const int ZeroSizedBuffer = 4096;
-
-    internal static readonly ValueLowering Unit = new(new("void", 0, 1, 0, ReadOnlyMemory<int>.Empty), "void", null);
-
-    // { data, byteLength, releaseKind }: size/stride 24, alignment 8, offsets 0/8/16 (SPEC 22.7).
-    internal static readonly ValueLowering String = new(new("%kimi.string", 24, 8, 24, new[] { 0, 8, 16 }), "%kimi.string", "ptr");
-
-    internal static readonly ValueLowering StringReference = new(new("ptr", 8, 8, 8, ReadOnlyMemory<int>.Empty), "ptr", "ptr");
-
-    internal static readonly FunctionAbi Entry = new("__kimi_entry_body", Unit.ComputationType, []);
-    internal static readonly FunctionAbi Start = new(WindowsProfile.EntrySymbol, Unit.ComputationType, [], noReturn: true);
-    internal static readonly FunctionAbi Exit = new("__kimi_exit", Unit.ComputationType, [new("i32", "code")], noReturn: true);
-    internal static readonly FunctionAbi Abort = new("__kimi_abort", Unit.ComputationType, [new("i32", "reason"), new("ptr", "location"), new("i64", "location_length"), new("i64", "os_error")], noReturn: true);
-
-    // Hidden diagnostic context follows the ordinary parameters (SPEC 21.3.1, 22.5.1).
-    internal static readonly AbiParameter[] OwnedStringParameters = [new(String.ArgumentType!, "text", AbiParameterKind.OwnedSlot, 0), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)];
-
-    // SPEC 22.1-22.5.5: writeLine borrows its string handle and releases nothing.
-    internal static readonly FunctionAbi WriteLine = new("__kimi_write_line", Unit.ComputationType, [new(StringReference.ArgumentType!, "text", AbiParameterKind.SharedReference, 0), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
-    internal static readonly FunctionAbi DestroyString = new("__kimi_destroy_string", Unit.ComputationType, OwnedStringParameters);
-    internal static readonly FunctionAbi CloneRc = new("__kimi_clone_rc", "void", [new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "value", AbiParameterKind.Value, 0), new("ptr", "location", AbiParameterKind.Location), new("i64", "length", AbiParameterKind.LocationLength)], resultSlot: true);
-    internal static readonly FunctionAbi CloneArc = new("__kimi_clone_arc", "void", CloneRc.Parameters, resultSlot: true);
-
-    // SPEC 4.9.5: an Array handle is {buffer, length, capacity}; construction zeroes it and destruction releases its buffer.
-    internal static readonly AbiParameter[] ArrayHandleParameters = [new("ptr", "handle", AbiParameterKind.OwnedSlot, 0), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)];
-    internal static readonly FunctionAbi ArrayInit = new("__kimi_array_init", Unit.ComputationType, ArrayHandleParameters);
-    internal static readonly FunctionAbi DictionaryInit = new("__kimi_dictionary_init", Unit.ComputationType, ArrayHandleParameters);
-    internal static readonly FunctionAbi ArrayFree = new("__kimi_array_free", Unit.ComputationType, ArrayHandleParameters);
-    internal static readonly FunctionAbi RawAllocate = new("__kimi_raw_allocate", "ptr", [new("i64", "count"), new("i64", "stride"), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
-    internal static readonly FunctionAbi StorageRelease = new("__kimi_free", Unit.ComputationType, [new("ptr", "storage"), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
-
-    // SPEC 4.9.5, 4.9.8: capacity routines move element bytes by stride and run no user code; the writer emits them only for modules that use Arrays.
-    internal static readonly FunctionAbi ArrayGrow = new("__kimi_array_grow", Unit.ComputationType, [new("ptr", "handle"), new("i64", "stride"), new("i64", "minimum"), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
-    internal static readonly FunctionAbi ArrayReserve = new("__kimi_array_reserve", Unit.ComputationType, [new("ptr", "handle"), new("i64", "stride"), new("i64", "additional"), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
-    internal static readonly FunctionAbi ArrayShrink = new("__kimi_array_shrink", Unit.ComputationType, [new("ptr", "handle"), new("i64", "stride"), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
-
-    // SPEC 22.2: the private nullable Alloc and byte copy behind Kimi.Storage; the writer emits them only for modules whose
-    // bodies call them.
-    internal static readonly FunctionAbi TryAllocateBytes = new("__kimi_try_allocate", "ptr", [new("i64", "bytes")]);
-    internal static readonly FunctionAbi TransferBytes = new("__kimi_transfer_bytes", Unit.ComputationType, [new("ptr", "destination"), new("ptr", "source"), new("i64", "size")]);
-    internal static readonly FunctionAbi AbortMessage = new("__kimi_abort_message", Unit.ComputationType, OwnedStringParameters, noReturn: true);
-    internal static readonly FunctionAbi TestTempDirectory = new("__kimi_test_temp", "void", [new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true);
-
-    /// <summary>Gets the compiler-facing runtime definitions expanded into WindowsRuntime.ll.in.</summary>
-    internal static readonly FunctionAbi[] RuntimeDefinitions = [Exit, DestroyString, WriteLine, Abort, AbortMessage, ArrayInit, ArrayFree];
-
     private static readonly Dictionary<BoundType, ValueLowering> Values = CreateValues();
 
     /// <summary>Gets a concrete representation, or null when the Type has no implemented representation.</summary>
     /// <param name="type">The complete Type.</param>
     /// <returns>The value lowering.</returns>
-    internal static ValueLowering? GetValue(BoundType type)
-        => ReferenceTypes.IsString(type) || ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type) ? StringReference : Values.GetValueOrDefault(type);
+    internal static ValueLowering? GetValue(BoundType type) => ReferenceTypes.IsString(type) || ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type)
+        ? RuntimeAbi.StringReference : Values.GetValueOrDefault(type);
 
     /// <summary>Gets the physical implementation of a compiler-provided Kimi function.</summary>
     /// <param name="kind">The compiler function identity.</param>
     /// <returns>The implementation ABI, or null when no body is generated.</returns>
-    internal static FunctionAbi? GetCompilerFunction(CompilerFunctionKind kind)
-        => kind switch { CompilerFunctionKind.WriteLine => WriteLine, CompilerFunctionKind.Abort => AbortMessage, CompilerFunctionKind.TestTempDirectory => TestTempDirectory, _ => GetFormattingFunction(kind) };
+    internal static FunctionAbi? GetCompilerFunction(CompilerFunctionKind kind) => kind switch
+    {
+        CompilerFunctionKind.WriteLine => RuntimeAbi.WriteLine,
+        CompilerFunctionKind.Abort => RuntimeAbi.AbortMessage,
+        CompilerFunctionKind.TestTempDirectory => RuntimeAbi.TestTempDirectory,
+        _ => GetFormattingFunction(kind),
+    };
 
     private static Dictionary<BoundType, ValueLowering> CreateValues()
     {
         // SPEC 21.1.3 scalar representations. Borrows, object handles and aggregates need their own records.
         var values = new Dictionary<BoundType, ValueLowering>
         {
-            [BoundType.Unit] = Unit,
-            [BoundType.String] = String,
+            [BoundType.Unit] = RuntimeAbi.Unit,
+            [BoundType.String] = RuntimeAbi.String,
             [BoundType.Boolean] = new(Scalar("i8", 1), "i1", "i1"),
         };
 

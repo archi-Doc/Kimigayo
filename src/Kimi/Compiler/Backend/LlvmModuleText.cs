@@ -5,7 +5,7 @@
 // the overflow and memory intrinsic declarations, the footer's profile attributes, the spelling of external symbols and numbers
 // formatted on the stack. Both generators write the frame through it (PD2: promoted, never copied).
 // Input: a writer, the module's LlvmConstantPool, the test runtime text of a test build, ExternalFunction records, numbers and
-// symbols; the runtime ABI records and abort reasons (WindowsLowering) and the target profile (WindowsProfile).
+// symbols; the runtime ABI records (RuntimeAbi), the abort reasons (AbortReasons) and the target profile (WindowsProfile).
 // Output: LLVM text written to the writer; a symbol's spelling after @ and the symbol recovered from that spelling.
 // Invariants: the legacy writer's .ll stays byte-identical while it shares this text; warm writes allocate nothing; each runtime ABI
 // definition marker is spliced exactly once; the text holds no checkout path.
@@ -76,12 +76,12 @@ internal static class LlvmModuleText
     private static readonly string Header =
         "; Kimigayo checked pre-optimization IR (" + WindowsProfile.Name + ")\ntarget triple = \"" + WindowsProfile.Target + "\"\n" +
         "target datalayout = \"" + WindowsProfile.DataLayout + "\"\n" +
-        WindowsLowering.String.Layout.StorageType + " = type { ptr, i64, i8 }\n@" + WindowsProfile.FloatMarker + " = global i32 0, align 4\n";
+        RuntimeAbi.String.Layout.StorageType + " = type { ptr, i64, i8 }\n@" + WindowsProfile.FloatMarker + " = global i32 0, align 4\n";
 
     private static readonly string Runtime = ReadRuntime();
 
     // A test build's runtime: each Abort definition first reports the aborted test to the test runtime.
-    private static readonly string TestRuntimeBase = ReportTestAbort(ReportTestAbort(Runtime, WindowsLowering.Abort), WindowsLowering.AbortMessage);
+    private static readonly string TestRuntimeBase = ReportTestAbort(ReportTestAbort(Runtime, RuntimeAbi.Abort), RuntimeAbi.AbortMessage);
 
     // The module header, then the definitions of the module's pooled constants.
     internal static void WriteHeader(TextWriter output, LlvmConstantPool constants)
@@ -232,8 +232,8 @@ internal static class LlvmModuleText
     {
         using var stream = typeof(LlvmModuleText).Assembly.GetManifestResourceStream("Kimi.Compiler.Emission.WindowsRuntime.ll.in")!;
         using var reader = new StreamReader(stream);
-        var runtime = WindowsLowering.ExpandAbortReasons(reader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal));
-        foreach (var abi in WindowsLowering.RuntimeDefinitions)
+        var runtime = AbortReasons.Expand(reader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal));
+        foreach (var abi in RuntimeAbi.RuntimeDefinitions)
         {
             // Compiler-facing runtime signatures come from the same FunctionAbi records as calls; each is defined once.
             var marker = "{{" + abi.Name + "}}\n";

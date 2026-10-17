@@ -278,7 +278,7 @@ internal sealed partial class BodyLowering
                     !ReferenceEquals(ValueType(body, array), type) || !ReferenceEquals(KotoHelper.UnwrapParentheses(body.Operations[array].Source), KotoHelper.UnwrapParentheses(indexed.Left)) ||
                     !ReferenceEquals(ValueType(body, subscript), BoundType.ISize) || !MatchesSelectionKeySource(body, subscript, indexed) ||
                     (body.IsReachable(id) && (!this.Dominates(array, id) || !this.Dominates(subscript, id))) ||
-                    FunctionAbi.GetValue(element, this.aggregateLayouts) is not { } stride ||
+                    FunctionAbiPool.GetValue(element, this.aggregateLayouts) is not { } stride ||
                     !this.TryGetLocation(indexed, directory, constants, out var location))
                 {
                     return Fail("Indexed borrow requires its borrowed array, an isize index and a concrete element stride.", out failure);
@@ -309,8 +309,8 @@ internal sealed partial class BodyLowering
 
                     slot = function.SlotAddresses.Count;
                     function.SlotAddresses.Add(new(EmissionOperandKind.SlotAddress, slot));
-                    function.Slots.Add(new(slot, WindowsLowering.StringReference));
-                    function.AddScalar(EmissionOpcode.StoreScalar, id, [this.PhysicalOperand(body, input)], "ptr", place: slot, representation: WindowsLowering.StringReference);
+                    function.Slots.Add(new(slot, RuntimeAbi.StringReference));
+                    function.AddScalar(EmissionOpcode.StoreScalar, id, [this.PhysicalOperand(body, input)], "ptr", place: slot, representation: RuntimeAbi.StringReference);
                 }
 
                 function.AddScalar(EmissionOpcode.BorrowAddress, id, [new(EmissionOperandKind.SlotAddress, slot)]);

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
 using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler;
@@ -147,10 +148,10 @@ internal static partial class LlvmModuleWriter
 
     // SPEC 4.9.5, 4.9.8: the capacity routines, emitted only for modules that use Arrays so string-only modules keep no memcpy.
     private static readonly string ArrayRuntime =
-        WindowsLowering.ArrayGrow.GetDefinition(false) + ArrayGrowBody.Replace("REASON_SIZE", Reason(WindowsLowering.AllocationSizeReason), StringComparison.Ordinal)
-            .Replace("ZERO_SIZED_BUFFER", Reason(WindowsLowering.ZeroSizedBuffer), StringComparison.Ordinal) +
-        WindowsLowering.ArrayReserve.GetDefinition(false) + ArrayReserveBody.Replace("REASON_ARGUMENT", Reason(WindowsLowering.ArgumentRangeReason), StringComparison.Ordinal).Replace("REASON_OVERFLOW", Reason(WindowsLowering.IntegerOverflowReason), StringComparison.Ordinal) +
-        WindowsLowering.ArrayShrink.GetDefinition(false) + ArrayShrinkBody;
+        RuntimeAbi.ArrayGrow.GetDefinition(false) + ArrayGrowBody.Replace("REASON_SIZE", Reason(AbortReasons.AllocationSize), StringComparison.Ordinal)
+            .Replace("ZERO_SIZED_BUFFER", Reason(RuntimeAbi.ZeroSizedBuffer), StringComparison.Ordinal) +
+        RuntimeAbi.ArrayReserve.GetDefinition(false) + ArrayReserveBody.Replace("REASON_ARGUMENT", Reason(AbortReasons.ArgumentRange), StringComparison.Ordinal).Replace("REASON_OVERFLOW", Reason(AbortReasons.IntegerOverflow), StringComparison.Ordinal) +
+        RuntimeAbi.ArrayShrink.GetDefinition(false) + ArrayShrinkBody;
 
     private static void WriteArrayHelpers(EmissionModule module, TextWriter output)
     {
@@ -422,14 +423,14 @@ internal static partial class LlvmModuleWriter
     private static void WriteArrayIncrease(TextWriter output)
     {
         output.Write("  %count_pair = call { i64, i1 } @llvm.sadd.with.overflow.i64(i64 %length, i64 1)\n  %needed = extractvalue { i64, i1 } %count_pair, 0\n  %count_overflow = extractvalue { i64, i1 } %count_pair, 1\n  br i1 %count_overflow, label %count_failure, label %grow\ncount_failure:\n  call void @__kimi_abort(i32 ");
-        WriteNumber(output, WindowsLowering.IntegerOverflowReason);
+        WriteNumber(output, AbortReasons.IntegerOverflow);
         output.Write(", ptr %location, i64 %location_length, i64 -2)\n  unreachable\ngrow:\n");
     }
 
     private static void WriteArrayBoundsFailure(TextWriter output)
     {
         output.Write("bounds_failure:\n  call void @__kimi_abort(i32 ");
-        WriteNumber(output, WindowsLowering.IndexBoundsReason);
+        WriteNumber(output, AbortReasons.IndexBounds);
         output.Write(", ptr %location, i64 %location_length, i64 -2)\n  unreachable\n");
     }
 }

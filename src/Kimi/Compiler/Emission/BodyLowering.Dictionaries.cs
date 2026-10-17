@@ -147,7 +147,7 @@ internal sealed partial class BodyLowering
             this.callOperands.Add(operand);
         }
 
-        function.AddCall(id, transfer ? WindowsLowering.TransferBytes : WindowsLowering.TryAllocateBytes, CollectionsMarshal.AsSpan(this.callOperands));
+        function.AddCall(id, transfer ? RuntimeAbi.TransferBytes : RuntimeAbi.TryAllocateBytes, CollectionsMarshal.AsSpan(this.callOperands));
         this.storageBytesUsed = true;
         return true;
 

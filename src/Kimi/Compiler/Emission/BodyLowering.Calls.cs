@@ -199,7 +199,7 @@ internal sealed partial class BodyLowering
         }
 
         // A selected explicit specialization (SPEC 21.3) is called directly; its ABI is the entry's ABI.
-        var callee = clone ? returnType.HandleMode?.Counting switch { ObjectCountingStep.NonAtomic => WindowsLowering.CloneRc, ObjectCountingStep.Atomic => WindowsLowering.CloneArc, _ => null }
+        var callee = clone ? returnType.HandleMode?.Counting switch { ObjectCountingStep.NonAtomic => RuntimeAbi.CloneRc, ObjectCountingStep.Atomic => RuntimeAbi.CloneArc, _ => null }
             : runtime ? WindowsLowering.GetCompilerFunction(plan.Target.CompilerFunction) : creation?.Physical.Abi ?? generic?.Selected ?? generic?.Abi ?? this.functions!.GetValueOrDefault(target);
         var virtualSlot = -1;
         var virtualReceiver = -1;
@@ -411,7 +411,7 @@ internal sealed partial class BodyLowering
 
             if (physical.Kind == AbiParameterKind.ResultSlot)
             {
-                if (!target.IsConstructor && !FunctionAbi.HasResultSlot(returnType, this.aggregateLayouts))
+                if (!target.IsConstructor && !FunctionAbiPool.HasResultSlot(returnType, this.aggregateLayouts))
                 {
                     return Fail("Physical result slot has no stored result representation.", out failure);
                 }
@@ -452,9 +452,9 @@ internal sealed partial class BodyLowering
             this.callOperands.Add(operand);
         }
 
-        var expectedResult = FunctionAbi.ResultType(returnType, this.aggregateLayouts);
+        var expectedResult = FunctionAbiPool.ResultType(returnType, this.aggregateLayouts);
         if (expectedResult != callee.Result || callee.NoReturn != ReferenceEquals(returnType, BoundType.Never) ||
-            callee.ResultSlot != (target.IsConstructor || FunctionAbi.HasResultSlot(returnType, this.aggregateLayouts)) ||
+            callee.ResultSlot != (target.IsConstructor || FunctionAbiPool.HasResultSlot(returnType, this.aggregateLayouts)) ||
             this.callOperands.Count != callee.Parameters.Length ||
             (IsScalar(returnType) && (body.Values[id].Kind != OwnershipValueKind.Call || !ReferenceEquals(ValueType(body, id), returnType))))
         {

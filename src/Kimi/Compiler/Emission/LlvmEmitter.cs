@@ -136,7 +136,7 @@ public sealed partial class LlvmEmitter
                 }
 
                 var source = body.Function;
-                var abi = source.IsGenerated ? WindowsLowering.Entry : this.signatures.Get(ordinal++, source, this.lowering.AggregateLayouts);
+                var abi = source.IsGenerated ? RuntimeAbi.Entry : this.signatures.Get(ordinal++, source, this.lowering.AggregateLayouts);
                 this.functions.Add(source, abi);
             }
 
@@ -269,9 +269,9 @@ public sealed partial class LlvmEmitter
                 return false;
             }
 
-            var start = module.AddFunction(WindowsLowering.Start, exported: true);
+            var start = module.AddFunction(RuntimeAbi.Start, exported: true);
             start.AddCall(-1, entry, []);
-            start.AddCall(-1, WindowsLowering.Exit, [new(EmissionOperandKind.Integer, 0)]);
+            start.AddCall(-1, RuntimeAbi.Exit, [new(EmissionOperandKind.Integer, 0)]);
             start.Add(EmissionOpcode.Unreachable, -1);
             return module.Complete(out failure);
         }
@@ -390,7 +390,7 @@ public sealed partial class LlvmEmitter
         {
             var function = import.Function;
             var result = function.BoundSymbol!.Type!;
-            var resultType = ReferenceEquals(result, BoundType.Unit) ? WindowsLowering.Unit.ComputationType : ImportType(result);
+            var resultType = ReferenceEquals(result, BoundType.Unit) ? RuntimeAbi.Unit.ComputationType : ImportType(result);
             var parameters = new AbiParameter[function.Parameters.Count];
             for (var i = 0; i < parameters.Length; i++)
             {
@@ -586,7 +586,8 @@ public sealed partial class LlvmEmitter
 
             var result = function.BoundSymbol?.Type ?? (function.IsGenerated ? BoundType.Unit : null);
             if (!body.IsConcrete || !body.IsVerified || (!function.IsGenerated && function.BoundSymbol is null) ||
-                (!FunctionAbi.Supports(result, this.lowering.AggregateLayouts) && !ReferenceEquals(result, BoundType.Never)) || (function.AttributeChain is not null && !(c.IsTestBuild && TestDefinition.IsValidSyntax(function))) ||
+                (!FunctionAbiPool.Supports(result, this.lowering.AggregateLayouts) && !ReferenceEquals(result, BoundType.Never)) ||
+                (function.AttributeChain is not null && !(c.IsTestBuild && TestDefinition.IsValidSyntax(function))) ||
                 (function.IsAnonymous && function.BoundClosure is null) || (function.IsSpecialization && !c.Binding.IsVerifiedSpecialization(function)) || function.IsRequirement || (function.Captures is { Length: > 0 } && function.BoundClosure is null) ||
                 (!function.IsSpecialization && function.GenericArguments.Count != 0) || function.TypeConstraints.Count != 0)
             {
@@ -596,7 +597,7 @@ public sealed partial class LlvmEmitter
             for (var i = 0; i < function.Parameters.Count; i++)
             {
                 var parameter = function.Parameters[i];
-                if (!FunctionAbi.Supports(parameter.Type.BoundType, this.lowering.AggregateLayouts) ||
+                if (!FunctionAbiPool.Supports(parameter.Type.BoundType, this.lowering.AggregateLayouts) ||
                     (ReferenceTypes.IsString(parameter.Type.BoundType) && parameter.Type.BoundType!.Origin is null))
                 {
                     return "Parameters require verified value, owned-slot or shared-string representations.";

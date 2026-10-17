@@ -510,7 +510,7 @@ internal sealed partial class BodyLowering
         var storage = layout.StorageLayer(ref field);
         // The Array layout describes its handle; the indexed storage has T's own layout.
         var stored = dynamicArray ? receiverType.Components[0] : null;
-        var representation = dynamicArray ? FunctionAbi.GetValue(stored!, this.aggregateLayouts) : storage.Fields[field];
+        var representation = dynamicArray ? FunctionAbiPool.GetValue(stored!, this.aggregateLayouts) : storage.Fields[field];
         var elementLayout = dynamicArray ? this.aggregateLayouts.GetStored(stored!) : storage.Children[field];
         if (representation is null)
         {
@@ -543,7 +543,7 @@ internal sealed partial class BodyLowering
             }
 
             var child = elementLayout;
-            var isString = ReferenceEquals(representation, WindowsLowering.String);
+            var isString = ReferenceEquals(representation, RuntimeAbi.String);
             var destination = new EmissionOperand(EmissionOperandKind.ElementAddress, plan.Operation);
             var location = -1;
             var parts = this.DestructionPath(body, operation) >= 0;
@@ -621,7 +621,7 @@ internal sealed partial class BodyLowering
                 function.Operands.Add(new(EmissionOperandKind.ElementAddress, plan.Operation));
                 function.Instructions.Add(new(EmissionOpcode.TransferAggregate, id, Place: operation.Place, OperandStart: start, OperandCount: 1, Aggregate: aggregate));
             }
-            else if (ReferenceEquals(representation, WindowsLowering.String))
+            else if (ReferenceEquals(representation, RuntimeAbi.String))
             {
                 function.AddScalar(EmissionOpcode.MoveString, id, [new(EmissionOperandKind.ElementAddress, plan.Operation)], place: operation.Place);
                 this.AddStringFlags(function, operation, id);

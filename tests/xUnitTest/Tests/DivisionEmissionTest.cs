@@ -2,6 +2,7 @@
 
 using System.Text.RegularExpressions;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -131,7 +132,7 @@ public class DivisionEmissionTest
             var division = ir.IndexOf($"\n  %v{instruction.Operation} = {instruction.ScalarOperator} i32 ", block, StringComparison.Ordinal);
             var next = ir.IndexOf("\nb", block + 1, StringComparison.Ordinal);
             Assert.True(block >= 0 && division > block && (next < 0 || next > division));
-            Assert.Contains(quotient ? $"call void @__kimi_abort(i32 %v{instruction.Place}," : $"call void @__kimi_abort(i32 {WindowsLowering.IntegerDivisionZeroReason},", ir);
+            Assert.Contains(quotient ? $"call void @__kimi_abort(i32 %v{instruction.Place}," : $"call void @__kimi_abort(i32 {AbortReasons.IntegerDivisionZero},", ir);
         }
 
         var phi = Assert.Single(function.Instructions, x => x.Opcode == EmissionOpcode.Phi);
@@ -188,30 +189,30 @@ public class DivisionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("1 / 1");
         var ir = CompilationTestHelper.WriteIr(c);
-        Assert.Equal(17, WindowsLowering.AbortReasons.Length);
-        var count = WindowsLowering.AbortReasons.Length;
+        Assert.Equal(17, AbortReasons.All.Length);
+        var count = AbortReasons.All.Length;
         Assert.Equal(2, Regex.Matches(ir, $@"\[{count} x \{{ ptr, i64 \}}\]").Count);
         var codes = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var reason in WindowsLowering.AbortReasons)
+        foreach (var reason in AbortReasons.All)
         {
             Assert.True(codes.Add(reason.Text.Split(':', 2)[0]), "Abort codes must have one canonical catalog entry.");
             Assert.Contains($"{{ ptr, i64 }} {{ ptr @__kimi_{reason.Name}_reason, i64 {reason.Text.Length} }}", ir);
             Assert.Contains($"@__kimi_{reason.Name}_reason = private constant [{reason.Text.Length} x i8] c\"{reason.Text}\"", ir);
         }
 
-        Assert.Equal(OverflowReason, WindowsLowering.AbortReasons[WindowsLowering.IntegerOverflowReason].Text);
-        Assert.Equal(ZeroReason, WindowsLowering.AbortReasons[WindowsLowering.IntegerDivisionZeroReason].Text);
-        Assert.Equal("KIMI_E_INT_SHIFT_COUNT: Shift count out of range", WindowsLowering.AbortReasons[WindowsLowering.IntegerShiftCountReason].Text);
-        Assert.Equal("KIMI_E_INT_CONVERSION: Integer conversion out of range", WindowsLowering.AbortReasons[WindowsLowering.IntegerConversionReason].Text);
-        Assert.Equal("KIMI_E_FLOAT_CONVERSION: Floating conversion out of range", WindowsLowering.AbortReasons[WindowsLowering.FloatingConversionReason].Text);
-        Assert.Equal("KIMI_E_ARG_RANGE: Argument out of range", WindowsLowering.AbortReasons[WindowsLowering.ArgumentRangeReason].Text);
-        Assert.Equal("KIMI_E_FORMAT: Formatting failed", WindowsLowering.AbortReasons[WindowsLowering.FormatReason].Text);
-        Assert.Equal(14, WindowsLowering.MissingKeyReason);
-        Assert.Equal("KIMI_E_MISSING_KEY: Dictionary key was not found", WindowsLowering.AbortReasons[WindowsLowering.MissingKeyReason].Text);
-        Assert.Equal(15, WindowsLowering.DuplicateKeyReason);
-        Assert.Equal("KIMI_E_DUPLICATE_KEY: Dictionary literal contains an equivalent key", WindowsLowering.AbortReasons[WindowsLowering.DuplicateKeyReason].Text);
-        Assert.Equal(16, WindowsLowering.ReferenceCountReason);
-        Assert.Equal("KIMI_E_REF_COUNT: Reference count limit exceeded", WindowsLowering.AbortReasons[WindowsLowering.ReferenceCountReason].Text);
+        Assert.Equal(OverflowReason, AbortReasons.All[AbortReasons.IntegerOverflow].Text);
+        Assert.Equal(ZeroReason, AbortReasons.All[AbortReasons.IntegerDivisionZero].Text);
+        Assert.Equal("KIMI_E_INT_SHIFT_COUNT: Shift count out of range", AbortReasons.All[AbortReasons.IntegerShiftCount].Text);
+        Assert.Equal("KIMI_E_INT_CONVERSION: Integer conversion out of range", AbortReasons.All[AbortReasons.IntegerConversion].Text);
+        Assert.Equal("KIMI_E_FLOAT_CONVERSION: Floating conversion out of range", AbortReasons.All[AbortReasons.FloatingConversion].Text);
+        Assert.Equal("KIMI_E_ARG_RANGE: Argument out of range", AbortReasons.All[AbortReasons.ArgumentRange].Text);
+        Assert.Equal("KIMI_E_FORMAT: Formatting failed", AbortReasons.All[AbortReasons.Format].Text);
+        Assert.Equal(14, AbortReasons.MissingKey);
+        Assert.Equal("KIMI_E_MISSING_KEY: Dictionary key was not found", AbortReasons.All[AbortReasons.MissingKey].Text);
+        Assert.Equal(15, AbortReasons.DuplicateKey);
+        Assert.Equal("KIMI_E_DUPLICATE_KEY: Dictionary literal contains an equivalent key", AbortReasons.All[AbortReasons.DuplicateKey].Text);
+        Assert.Equal(16, AbortReasons.ReferenceCount);
+        Assert.Equal("KIMI_E_REF_COUNT: Reference count limit exceeded", AbortReasons.All[AbortReasons.ReferenceCount].Text);
         Assert.Contains($"%known = icmp ult i32 %reason, {count}", ir);
         Assert.DoesNotContain("{{", ir);
     }

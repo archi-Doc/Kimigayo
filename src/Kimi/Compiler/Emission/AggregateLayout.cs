@@ -3,6 +3,7 @@
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -332,7 +333,7 @@ internal sealed class AggregateLayoutPool
                     child = this.Get(component, depth + 1);
                 }
 
-                var value = type.Kind is BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary && i == 0 ? WindowsLowering.StringReference : child?.Value ?? (ReferenceTypes.IsValue(component) || ReferenceEquals(component, BoundType.Unit) || ReferenceEquals(component, BoundType.String) ? WindowsLowering.GetValue(component) : null);
+                var value = type.Kind is BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary && i == 0 ? RuntimeAbi.StringReference : child?.Value ?? (ReferenceTypes.IsValue(component) || ReferenceEquals(component, BoundType.Unit) || ReferenceEquals(component, BoundType.String) ? WindowsLowering.GetValue(component) : null);
                 if (value is null || (cLayout && (value.Layout.Size == 0 || value.Layout.Alignment > 16)))
                 {
                     this.resolved[type] = null;
@@ -347,7 +348,7 @@ internal sealed class AggregateLayoutPool
             var destroy = destructor >= 0 || genericDestructor is not null || baseLayout?.NeedsDestruction == true;
             for (var i = 0; i < fieldCount; i++)
             {
-                destroy |= ReferenceEquals(this.fields[start + i], WindowsLowering.String) || this.children[start + i]?.NeedsDestruction == true;
+                destroy |= ReferenceEquals(this.fields[start + i], RuntimeAbi.String) || this.children[start + i]?.NeedsDestruction == true;
             }
 
             destroy &= (!array || count != 0) && !(structure && type.Symbol?.LibraryDeclaration == KimiDeclarationId.InlineStorage);

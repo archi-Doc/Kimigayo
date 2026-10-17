@@ -91,7 +91,7 @@ internal sealed partial class BodyLowering
     private FunctionAbi ValueCallAbi(BoundType signature, BoundType result)
     {
         ReadOnlySpan<BoundType> inputs = (BoundType[])signature.Components[0].Components;
-        var resultSlot = FunctionAbi.HasResultSlot(result, this.aggregateLayouts);
+        var resultSlot = FunctionAbiPool.HasResultSlot(result, this.aggregateLayouts);
         foreach (var candidate in this.valueCallAbis)
         {
             if (FunctionAbiPool.Matches(candidate, result, inputs, resultSlot, this.aggregateLayouts, callerLocation: true))
@@ -359,13 +359,13 @@ internal sealed partial class BodyLowering
 
         for (var i = 0; i < inputs.Components.Count; i++)
         {
-            if (!FunctionAbi.Supports(inputs.Components[i], this.aggregateLayouts))
+            if (!FunctionAbiPool.Supports(inputs.Components[i], this.aggregateLayouts))
             {
                 return Fail("Unsupported common-function parameter representation.", out failure);
             }
         }
 
-        if (FunctionAbi.ResultType(returnType, this.aggregateLayouts) is null)
+        if (FunctionAbiPool.ResultType(returnType, this.aggregateLayouts) is null)
         {
             return Fail("Unsupported common-function result representation.", out failure);
         }
