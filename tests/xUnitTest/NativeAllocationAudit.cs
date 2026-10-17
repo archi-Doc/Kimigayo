@@ -5,30 +5,26 @@ using Xunit;
 
 namespace XunitTest;
 
+// Fails closed: an allocation, release, process exit or bounded transfer the rewrite cannot reach fails the test instead of
+// escaping the counters.
 internal static class NativeAllocationAudit
 {
+    // Array growth and the Dictionary source's private byte transfer each copy high-water storage once.
+    private const string CopyAnchor = "  %used = mul i64 %length, %stride\n";
+    private const string TransferAnchor = "  call void @llvm.memcpy.p0.p0.i64(ptr %destination, ptr %source, i64 %size, i1 false)\n";
+
     internal static void WriteFixture(string name, string source, int allocations, int frees, long bytes, string stdout = "", int failAllocation = 0, long maxTransferredBytes = -1, long minTransferredBytes = 0, Func<string, string>? transformIr = null, int exit = 0, string? stderr = null)
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var writer = new StringWriter();
         Assert.True(c.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
         var ir = writer.ToString();
-        ir = (transformIr is null ? ir : transformIr(ir))
-            .Replace("call ptr @HeapAlloc(", "call ptr @audit_alloc(", StringComparison.Ordinal)
-            .Replace("call i32 @HeapFree(", "call i32 @audit_free(", StringComparison.Ordinal)
-            .Replace("call void @__kimi_exit(", "call void @__kimi_audit_exit(", StringComparison.Ordinal);
+        ir = transformIr is null ? ir : transformIr(ir);
+        ir = Interpose(Interpose(Interpose(ir, "HeapAlloc", "audit_alloc"), "HeapFree", "audit_free"), "__kimi_exit", "__kimi_audit_exit");
         if (maxTransferredBytes >= 0)
         {
-            // Array growth and the Dictionary source's private byte transfer each copy high-water storage once.
-            const string CopyAnchor = "  %used = mul i64 %length, %stride\n";
-            Assert.Equal(2, ir.Split(CopyAnchor, StringSplitOptions.None).Length);
-            ir = ir.Replace(CopyAnchor, CopyAnchor + "  %before_copy = load i64, ptr @audit_transferred\n  %after_copy = add i64 %before_copy, %used\n  store i64 %after_copy, ptr @audit_transferred\n", StringComparison.Ordinal);
-            const string TransferAnchor = "  call void @llvm.memcpy.p0.p0.i64(ptr %destination, ptr %source, i64 %size, i1 false)\n";
-            if (ir.Contains("define internal void @__kimi_transfer_bytes(", StringComparison.Ordinal))
-            {
-                Assert.Equal(2, ir.Split(TransferAnchor, StringSplitOptions.None).Length);
-                ir = ir.Replace(TransferAnchor, "  %before_copy = load i64, ptr @audit_transferred\n  %after_copy = add i64 %before_copy, %size\n  store i64 %after_copy, ptr @audit_transferred\n" + TransferAnchor, StringComparison.Ordinal);
-            }
+            ir = Instrument(ir, CopyAnchor, CopyAnchor + Transferred("%used"));
+            ir = Instrument(ir, TransferAnchor, Transferred("%size") + TransferAnchor);
         }
 
         // Keep the real startup and cleanup path, including explicitly declared main.
@@ -93,4 +89,43 @@ internal static class NativeAllocationAudit
             """;
         ScalarEmissionTest.WriteFixture(name, ir, stdout, exit, stderr);
     }
+
+    // Redirects every call of symbol to audit except on its one declaring line; any other mention, such as a non-call use
+    // or another spelling, fails.
+    private static string Interpose(string ir, string symbol, string audit)
+    {
+        var lines = ir.Split('\n');
+        var declarations = 0;
+        for (var i = 0; i < lines.Length; i++)
+        {
+            if (!lines[i].Contains(symbol, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (lines[i].StartsWith("declare ", StringComparison.Ordinal) || lines[i].StartsWith("define ", StringComparison.Ordinal))
+            {
+                declarations++;
+                continue;
+            }
+
+            lines[i] = lines[i].Replace("@" + symbol + "(", "@" + audit + "(", StringComparison.Ordinal);
+            Assert.DoesNotContain(symbol, lines[i], StringComparison.Ordinal);
+        }
+
+        Assert.Equal(1, declarations);
+        return string.Join('\n', lines);
+    }
+
+    // Replaces the one occurrence of anchor.
+    private static string Instrument(string ir, string anchor, string instrumented)
+    {
+        Assert.Equal(2, ir.Split(anchor, StringSplitOptions.None).Length);
+        return ir.Replace(anchor, instrumented, StringComparison.Ordinal);
+    }
+
+    // Adds bytes to the transferred total.
+    private static string Transferred(string bytes)
+        => $"  %before_copy = load i64, ptr @audit_transferred\n  %after_copy = add i64 %before_copy, {bytes}\n" +
+            "  store i64 %after_copy, ptr @audit_transferred\n";
 }
