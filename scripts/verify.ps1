@@ -56,6 +56,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 if ($Mode -eq 'Session' -and $TestPurpose -ne 'All') { throw 'Session verification must include functional and allocation regressions (-TestPurpose All).' }
+if ($Mode -eq 'Session' -and $Class.Count + $Method.Count -gt 0) { throw 'Session verification runs every test; -Class and -Method select Unit runs.' }
 . (Join-Path $PSScriptRoot 'verification-selection.ps1')
 . (Join-Path $PSScriptRoot 'verification-inputs.ps1')
 $requestedClass = @($Class | ForEach-Object { ConvertTo-KimiTestPattern $_ })
@@ -171,7 +172,7 @@ function Invoke-Tests([string] $configuration, [string[]] $filters, [string] $ta
         # Zero executed tests is never evidence, and each requested selector executes a test of its own, so one that matches
         # only Explicit tests is not hidden by the common checks or another selector.
         $executed = @(Get-KimiExecutedTests $xml)
-        if ($executed.Count -eq 0) { throw 'No test was executed.' }
+        if ($executed.Count -eq 0) { throw 'The results record no executed test.' }
         Assert-KimiTestSelections $requestedClass $requestedMethod $executed 'among the executed tests'
     }
     catch { $ok = $false; $detail = "$($_.Exception.Message) $detail" }
@@ -223,7 +224,6 @@ foreach ($c in $Class) {
 foreach ($m in $Method) {
     foreach ($pattern in (Get-KimiTestAlternatives $m -Method)) { $filters += @('-method', $pattern) }
 }
-if ($Mode -eq 'Session') { $filters = @() }
 $hasTestSelection = $filters.Count -gt 0
 if ($TestPurpose -eq 'Functional') { $filters += @('-trait-', 'Purpose=Allocation') }
 elseif ($TestPurpose -eq 'Allocation') { $filters += @('-trait', 'Purpose=Allocation') }
