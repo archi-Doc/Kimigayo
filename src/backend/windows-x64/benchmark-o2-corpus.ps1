@@ -8,7 +8,8 @@
 param(
     [string] $Baseline = '',
     [string] $Candidate = '',
-    [ValidatePattern('^[^=]+=')] [string[]] $CandidateEnvironment = @(),
+    # pwsh -File binds A=x,B=y as one string; a second pair inside a value is rejected rather than silently dropped.
+    [ValidatePattern('^[A-Za-z_]\w*=(?!.*,[A-Za-z_]\w*=)')] [string[]] $CandidateEnvironment = @(),
     [ValidateRange(1, 99)] [int] $Samples = 15,
     [ValidateRange(1, 9)] [int] $PipelineRuns = 3,
     [string] $ToolchainRoot = '',

@@ -32,6 +32,8 @@ script's own checkout, and Benchmark's copy of Kimi.dll must be that checkout's 
 `-CandidateEnvironment` sets its variables only for B's kernel builds and B's `--compiler-pipeline` runs, for example
 `KIMI_PIPELINE=mir`, `KIMI_CODEGEN=mir`; both variants' executables run in the script's environment. A runs the default
 pipeline and code generator: the script fails before any work if it would inherit `KIMI_PIPELINE` or `KIMI_CODEGEN`.
+Pass the list with `pwsh -Command` or as separate array elements: `pwsh -File` binds `A=x,B=y` as one string, which the
+script rejects.
 
 - Both compilers build every kernel at O2 before any timing, recording build time, IR and optimized IR bytes, `.text` size
   and the SHA-256 of the instructions without addresses and immediates (`sameCode`); each executable's first run is checked
