@@ -101,6 +101,39 @@ public sealed class RetentionTest
     public void ExclusiveReceiversAreStores(string method, string expected)
         => Assert.Equal(expected, Declared(Bind(Slot), method));
 
+    // SPEC 15.3.5: a call whose contract instantiates a growing recursive Type (a Nest<T> stores a Nest<(T, T)>) passes the bound of
+    // Binding's storage instantiation, so its retention is the Limit, with no rows (A5 records Unsupported_Kd), as A4's effects are; a
+    // repeating recursive Type (a List<T> stores a List<T>) still gives rows.
+    [Fact]
+    public void GrowingRecursiveContractsAreTheLimit()
+    {
+        var c = Bind("struct Nest<T>\n    public var value: T\n    public var next: Option<rc/Nest<(T, T)>> = .None\n    public init(value: T) => self.value = value\n" +
+            "struct List<T>\n    public var value: T\n    public var next: Option<rc/List<T>> = .None\n    public init(value: T) => self.value = value\n" +
+            "func inspect<T>(value: ref/T) => ()\nvar n = 1\nlet nest = Nest<ref/i32>.init(value: n@ref)\ninspect(nest@ref)\n" +
+            "let list = List<ref/i32>.init(value: n@ref)\ninspect(list@ref)\n");
+        Assert.Equal(["limit", "0 Value result"], Calls(c, "init"));
+        Assert.Equal(["limit", string.Empty], Calls(c, "inspect"));
+        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf()!).First(static x => x.Target.Name == "inspect");
+        Assert.Same(c.Types.Retains(call.Target, c.Types.SubstOf(call), null), c.Types.Retains(call.Target, c.Types.SubstOf(call), null));
+        Assert.Throws<InvalidOperationException>(() => c.Types.Retains(call.Target, c.Types.SubstOf(call), null).Rows.Length);
+    }
+
+    // SPEC 4.8.1, 4.8.2, 15.6.4 step 4: a Slice or UniqSlice input is a borrow of its elements, its outer Origin Value and the elements'
+    // Origins Content, which a UniqSlice lets the call write: `toArray` keeps the dependencies inside `T` but not the outer borrow, and
+    // `appendCopies` stores the elements' only.
+    [Fact]
+    public void ViewsAreBorrowedInputs()
+    {
+        var c = Bind("var n = 1\nvar refs: [_ of ref/i32] = [n@ref]\nlet copied = refs.slice().toArray()\nvar all: Array<ref/i32> = []\nall.appendCopies(refs.slice())\n" +
+            "func keep(view: Slice<ref/i32 during q>, v: ref/i32 during q) -> Option<ref/i32 during q> => .None\n" +
+            "func put(view: UniqSlice<ref/i32 during q>, v: ref/i32 during q) => ()\nfunc first(view: UniqSlice<ref/i32 during q>) -> Option<ref/i32 during q> => .None\n");
+        Assert.Equal(["0 Content result"], Calls(c, "toArray"));
+        Assert.Equal(["0 Content store 0, 1 Content store 0"], Calls(c, "appendCopies"));
+        Assert.Equal("0 Content result, 1 Value result", Declared(c, "keep"));
+        Assert.Equal("0 Content store 0, 1 Value store 0", Declared(c, "put"));
+        Assert.Equal("0 Content result, 0 Content store 0", Declared(c, "first"));
+    }
+
     // SPEC 15.6.4 step 1, 15.3.5 (DECISIONS R4-M36): an abstract carrier may hold borrows its Origins do not show, so an input naming a
     // Type parameter the result names is retained, as is one whose carrier lies below a layer whose Origin the result's outlives; a call
     // instantiating the parameter retains by the instance, nothing for an Origin-free one.
@@ -385,6 +418,6 @@ public sealed class RetentionTest
             .Select(x => Show(c.Types.Retains(x.Call!.CalleeType, x.Call.DeclaredSignature, Definition(x.Node)))).ToArray();
 
     private static string Show(CallRetention retention)
-        => string.Join(", ", retention.Rows.ToArray().Select(static x => $"{x.Input} {x.Kind} {(x.Output == Retention.Result ? "result" : $"store {x.Output}")}")
+        => retention.IsLimit ? "limit" : string.Join(", ", retention.Rows.ToArray().Select(static x => $"{x.Input} {x.Kind} {(x.Output == Retention.Result ? "result" : $"store {x.Output}")}")
             .Append(retention.Untied ? "untied" : null).OfType<string>());
 }

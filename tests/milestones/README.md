@@ -193,6 +193,11 @@ Specification respellings:
   `ref/T during self` and `uniq/T during self` and borrow explicitly (`self.first@ref`, `self.items[key]@uniq`), and
   Program 27's `firstPlace` returns `items[0]@ref`. The uses, including `firstPlace(counts) == 42` (a comparison through
   the reference), and the expected output are unchanged.
+- Program 27 (2026-10-17, S1 and design A3's loss P4, SPEC §15.6 and §15.6.4; owner decision O3, DECISIONS R4-M64):
+  `references.sliceUniq().slice().toArray()` became `references.slice().toArray()`. Under SPEC 15.6 the temporary
+  UniqSlice's holder carries its own exclusive Loan on `references` beside the elements' Loans, and a read through the
+  Slice carries both, so the copy kept that Loan and `references = [copied]` conflicted. The copy through a shared
+  view keeps the section's intent (the outer dependency dropped, the element Origins kept); the output is unchanged.
 
 Earlier specification respellings and authoring corrections remain in Git and PLAN_HISTORY.
 No target was simplified to fit an implementation limit. In particular, the refinement, Weak,
