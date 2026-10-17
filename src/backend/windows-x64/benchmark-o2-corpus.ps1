@@ -2,17 +2,23 @@
 # The baseline (A) and candidate (B) checkouts, each defaulting to this script's checkout, need Release builds of Kimi and
 # Benchmark. Every kernel is built at O2 by both compilers and checked; the executables then run A, B, A, ..., A, and every
 # run's output is checked. Benchmark --compiler-pipeline of each checkout then runs A, B, A, ..., A. With B equal to A, the
-# series records the variation of matched runs (P4).
+# series records the variation of matched runs (P4). -CandidateEnvironment NAME=value pairs are set only for B's builds and
+# B's --compiler-pipeline runs; A runs the default pipeline and code generator.
 [CmdletBinding()]
 param(
     [string] $Baseline = '',
     [string] $Candidate = '',
+    # pwsh -File binds A=x,B=y as one string; a second pair inside a value is rejected rather than silently dropped.
+    [ValidatePattern('^[A-Za-z_]\w*=(?!.*,[A-Za-z_]\w*=)')] [string[]] $CandidateEnvironment = @(),
     [ValidateRange(1, 99)] [int] $Samples = 15,
     [ValidateRange(1, 9)] [int] $PipelineRuns = 3,
     [string] $ToolchainRoot = '',
     [string] $Name = ''
 )
 $ErrorActionPreference = 'Stop'
+# A's processes get only the inherited environment, so an inherited selector would leave A off the default.
+$selectors = @(Get-ChildItem env: | Where-Object Name -In 'KIMI_PIPELINE', 'KIMI_CODEGEN' | ForEach-Object Name)
+if ($selectors) { throw "The baseline (A) would inherit $($selectors -join ', '); unset it and pass B's selectors with -CandidateEnvironment." }
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
 $ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
@@ -40,12 +46,13 @@ function Get-Busy {
 }
 
 # Wall seconds and the child's CPU seconds: wall time well above CPU time shows that the run waited or was preempted.
-function Invoke-Timed([string] $File, [string[]] $Arguments = @()) {
+function Invoke-Timed([string] $File, [string[]] $Arguments = @(), [string[]] $Environment = @()) {
     $start = [Diagnostics.ProcessStartInfo]::new($File)
     $start.UseShellExecute = $false
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
+    foreach ($pair in $Environment) { $variable, $value = $pair -split '=', 2; $start.Environment[$variable] = $value }
     $watch = [Diagnostics.Stopwatch]::StartNew()
     $process = [Diagnostics.Process]::Start($start)
     try {
@@ -73,7 +80,8 @@ function Get-Ratios([double[]] $A, [double[]] $B) {
     return Get-Statistics ([double[]] (0..($B.Count - 1) | ForEach-Object { $B[$_] / (($A[$_] + $A[$_ + 1]) / 2) }))
 }
 
-function Get-Checkout([string] $Path) {
+# A checkout and the variables set for its builds and pipeline runs.
+function Get-Checkout([string] $Path, [string[]] $Environment) {
     $compiler = Join-Path $Path 'src/Kimi/bin/Release/net10.0/Kimi.dll'
     $benchmark = Join-Path $Path 'src/Benchmark/bin/Release/net10.0/Benchmark.dll'
     $hash = (Get-FileHash -LiteralPath $compiler -Algorithm SHA256).Hash
@@ -81,6 +89,7 @@ function Get-Checkout([string] $Path) {
     return [ordered]@{
         root = $Path; commit = (git -C $Path rev-parse HEAD); status = @(git -C $Path status --porcelain=v1)
         compiler = $compiler; compilerSha256 = $hash; benchmark = $benchmark; benchmarkSha256 = (Get-FileHash -LiteralPath $benchmark -Algorithm SHA256).Hash
+        environment = @($Environment)
     }
 }
 
@@ -91,7 +100,7 @@ function Build-Kernel($Source, [string] $Variant, $Checkout) {
     $sourceHash = (Get-FileHash -LiteralPath (Join-Path $directory $Source.Name) -Algorithm SHA256).Hash # The source this build compiles.
     $project = Join-Path $directory "$($Source.BaseName).kimiproj"
     [IO.File]::WriteAllText($project, "Targets=`n  `"x86_64-pc-windows-msvc`"`nOutputKind=`"Application`"`nOptimization=`"O2`"`n", $utf8)
-    $build = Invoke-Timed $dotnet @($Checkout.compiler, 'build', $project, '--ToolchainRoot', $ToolchainRoot)
+    $build = Invoke-Timed $dotnet @($Checkout.compiler, 'build', $project, '--ToolchainRoot', $ToolchainRoot) $Checkout.environment
     if ($build.exitCode -ne 0) { throw "Build failed: $Variant $($Source.Name)`n$($build.stdout)$($build.stderr)" }
     $bin = Join-Path $directory 'bin/x86_64-pc-windows-msvc'
     $exe = Join-Path $bin "$($Source.BaseName).O2.exe"
@@ -138,7 +147,7 @@ $stages = [Collections.Generic.List[object]]::new()
 $status = 'incomplete'
 $failure = $null
 try {
-    $conditions.checkouts = [ordered]@{ A = Get-Checkout $roots.A; B = Get-Checkout $roots.B }
+    $conditions.checkouts = [ordered]@{ A = Get-Checkout $roots.A @(); B = Get-Checkout $roots.B $CandidateEnvironment }
     # Every executable is built and checked before any timing, so no build runs during the series.
     $builds = [ordered]@{}
     foreach ($kernel in $kernels) {
@@ -177,7 +186,7 @@ try {
     $pipeline = @{ A = [Collections.Generic.List[object]]::new(); B = [Collections.Generic.List[object]]::new() }
     for ($i = 0; $i -le $PipelineRuns; $i++) {
         foreach ($variant in $(if ($i -lt $PipelineRuns) { 'A', 'B' } else { 'A' })) {
-            $run = Invoke-Timed $dotnet @($conditions.checkouts[$variant].benchmark, '--compiler-pipeline')
+            $run = Invoke-Timed $dotnet @($conditions.checkouts[$variant].benchmark, '--compiler-pipeline') $conditions.checkouts[$variant].environment
             $path = Join-Path $root "pipeline-$variant-$($pipeline[$variant].Count + 1)"
             [IO.File]::WriteAllText("$path.json", $run.stdout, $utf8)
             [IO.File]::WriteAllText("$path.stderr.log", $run.stderr, $utf8)
