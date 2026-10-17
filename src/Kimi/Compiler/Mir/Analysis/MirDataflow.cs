@@ -152,6 +152,11 @@ internal sealed class MirDataflow(MirReach reach)
     /// <returns>Whether it is in P1.</returns>
     internal bool Runtime(int block) => this.phases[this.head[block]] == 1;
 
+    /// <summary>Gets a head's stored backward state, the state before its chain, which <see cref="Backward"/> solved.</summary>
+    /// <param name="head">The head.</param>
+    /// <returns>Its words.</returns>
+    internal ReadOnlySpan<ulong> Before(int head) => this.arena.AsSpan(head * this.Row, this.backward);
+
     /// <summary>Gets the flow head of a block's chain, numbered in reverse postorder.</summary>
     /// <param name="block">A block of the body.</param>
     /// <returns>The head.</returns>

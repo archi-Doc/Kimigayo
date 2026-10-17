@@ -1231,6 +1231,35 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Rejected (A3 §3, §6.1): dense holder × Loan bits (cubic: heads × holders × Loans); a per-Loan traversal (a check walks every
   Loan); persistent tree sets (no int identity, an allocation per insertion); `Remove` by element (one call per ended Loan and
   holder) or by predicate (no memo key, so every holder's set is scanned at every point). Not temporary.
+- **R4-M57** (2026-10-17; design A3 §3, §5, §6 and §8 with its §12 errata E3, E5, E6, E8 and E12; A5 step 1, unit 1b-2, on the
+  planning session's instruction of the same day) A5's Loan stratum, its joint core. `MirBorrows` (`MirBorrows.cs`, the pre-pass;
+  `.Liveness`, `.Flow`, `.Checks`) checks a body per Semantics case view, once for a body no view decides (as A1), and reports each
+  conflict as `ComparisonLoanConflict_Kd` at its access with the Loan's anchor and its witness as facts: the witness holder's next use
+  in its chain, or the store whose value carries the Loan. `MirReport` gains pooled fact rows per problem (`MirFact`, kinds `Anchor`,
+  `Use`, `Store`; a merge keeps the first problem's, R4-M3a); A6's code mapping is unit 1c's. The choices within A3:
+  - Holder slots: E is slot 0, then the flow holders, then the chain-local ones. A holder is a flow holder when MirMoveData makes its
+    root a flow root or a direct Loan names it, since content, refs and the closure read a named holder's state at any location;
+    A3 §3's rule by MirMoveData alone would read a chain-local state outside its chain.
+  - Elements: Φ_E is 0, τ_s is 1 + s, Loan i follows the sites; a state slot is one word holding a MirLoanSets node, and a head
+    stores E and the flow holders; `Prepare(⌈(Hf + 1)/64⌉, Hf + 1, …)` sizes both problems under R4-M15a's one limit.
+  - Loans: one table per view, their Places' steps in one pool (a Base of depth d as d steps, an owner-case pair layer as none, a
+    Slice index a shared borrow Deref), grouped by root key (locals, then statics); a PairAcquire the view makes a Reborrow is a
+    Uniq Loan of its Place's referent. E8's ended set of each location is built in the pre-pass and removed from every slot first.
+  - A location's effect is planned as entries on the state (clear, replace, join), then committed, so the checks replay reads the
+    plan on `σ_in`; a borrow's stored value only seeds the closure (E5), as the prototype's chosen rule (its parents as candidates,
+    `RefParentsInTransit`, is over-strict on 30b). Transit counts a store into a holder live after ℓ, made live by the closure, or E.
+  - Liveness: each location's touches (use, kill) are built once per view; the backward replay records each touch's live-after bit,
+    and the checks replay rebuilds the live holders from a head's stored state (`MirDataflow.Before`, added) and those bits.
+  - Calls read `TyCtxt.Retains` (slots to argument positions by `MirCallee.Position`); an intrinsic's operands all reach its result.
+    Temporary: a default template's call is an unknown callee until F9 (unit 2e), and a Value callee's environment (its value, or
+    what a reference to it refers to) reaches the result until F7 reads `TyCtxt.Closure` (unit 2c).
+  - The driver's step 4 is not wired: `TyCtxt.Retains` discards its memo with every Binding pass (R4-M51), so A5 in `MirAnalysis`
+    allocates on each warm rebuild (Milestone34: 35,584 B per pass, 0 B without the retention calls), against V11's warm-rebuild
+    tests; it lands once retention survives an unchanged pass (planning session).
+  Not in this unit: reservations and activation, E1, destroying calls and `obs` (1b-3), whose tests also cover the `InPlace` ending
+  implemented here; `γ` (1b-4); effects (2b); F6 (2f). Rejected: per-location live rows (N × H/64 words, outside the one arena
+  limit); a per-Loan holder index for `ended` (a second carrying representation); pruning dead holders at heads (the same verdicts;
+  until measured). Not temporary, but the two call rules above.
 - **R4-M61** (2026-10-17; PLAN G96, two independent designs compared and the chosen one reviewed independently, implemented on the
   planning session's instruction of the same day; supersedes R4-M42's `MirBuilder.Broken`) A published Op guarantees the Binding
   facts the MIR builder reads for it, which `Binding.HasFacts` (`Binding/Binding.Hir.Facts.cs`, whose header is the contract) lists:
