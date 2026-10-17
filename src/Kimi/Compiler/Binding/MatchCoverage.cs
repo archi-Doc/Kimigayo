@@ -1,10 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the coverage vocabulary of a match: its state and what a non-exhaustive match lacks.
-// Input: Binding.Patterns' coverage proof, written on BoundMatch.Coverage. Output: the state its consumers read and, for a
-// non-exhaustive match, the requirement its diagnostic reports.
+// Input: the coverage written on BoundMatch.Coverage: Binding.Patterns' proof, or Exhaustive for an iteration's synthetic Some/None
+// match, exhaustive by construction (Binding.Sequences). Output: the state its consumers read and, for a non-exhaustive match, the
+// requirement its diagnostic reports.
 // Only a non-exhaustive match carries a reason; a missing Case or whole-payload reason names the Case's declaration index.
 // Must not prove coverage itself: Binding.Patterns decides it.
+// Open issue: Describe builds the diagnostic's Note text inside Binding (Binding.cs reports it), against AGENTS Diagnostics, which
+// takes message text only from the diagnostics adapter.
 
 namespace Kimi.Compiler;
 
