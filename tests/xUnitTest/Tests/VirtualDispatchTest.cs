@@ -8,7 +8,7 @@ namespace XunitTest;
 
 public class VirtualDispatchTest
 {
-    private const string Hierarchy = "open struct A\n    public let n: i32\n    public init(n: i32) => self.n = n\n    public virtual func value(self: objref/Self, bias: i32 = 1) -> i32 => self.n + bias\n    public virtual func nested(self: objref/Self) -> i32 => self.value(3) + 100\nopen struct B : A\n    public init(n: i32) : base(n) => ()\n    override func value(self: objref/Self, bias: i32) -> i32 => base.value(bias) + 10\n    public virtual func extra(self: objref/Self) -> i32 => 7\nstruct C : B\n    public init(n: i32) : base(n) => ()\n    override func value(self: objref/Self, bias: i32) -> i32 => base.value(bias) + 20\n    public func direct(self: objref/Self) -> i32 => base.value()\n";
+    internal const string Hierarchy = "open struct A\n    public let n: i32\n    public init(n: i32) => self.n = n\n    public virtual func value(self: objref/Self, bias: i32 = 1) -> i32 => self.n + bias\n    public virtual func nested(self: objref/Self) -> i32 => self.value(3) + 100\nopen struct B : A\n    public init(n: i32) : base(n) => ()\n    override func value(self: objref/Self, bias: i32) -> i32 => base.value(bias) + 10\n    public virtual func extra(self: objref/Self) -> i32 => 7\nstruct C : B\n    public init(n: i32) : base(n) => ()\n    override func value(self: objref/Self, bias: i32) -> i32 => base.value(bias) + 20\n    public func direct(self: objref/Self) -> i32 => base.value()\n";
 
     [Theory]
     [InlineData("obj")]

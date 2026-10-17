@@ -27,55 +27,47 @@ public sealed class TyCtxtTest
         "let fixed: [3 of i32] = [1, 2, 3]\nlet two: [2 of i32] = [4, 5]\nlet box = Box<i32>.init(6)\nlet p = pick(two@ref)\n" +
         "require f(7) == 7 and f(true) and size(fixed@ref) == 3 and p@follow == 4 and same(8) and same(true) and box.orElse() == 6 else => $abort(\"compose\")\n";
 
-    // SPEC 8.2, 8.10: the callee's declared parameter and result Types under a call's substitution are the call's instantiation (SPEC 8.4.3:
-    // a requirement's under its conforming Self and the bound Contract reference it dispatches through, which SubstOf records as its
-    // declaring Type), a closure in such a Type has its instance's signature, and a function item's substitution applies as its context does.
+    // C → B → A with a default and a nonvirtual member: C's base calls run B's override, B's runs the original.
+    private const string BaseCallHierarchy = VirtualDispatchTest.Hierarchy +
+        "let c = C.init(3)@obj\nrequire c.value() == 34 and c.direct() == 14 else => $abort(\"base\")\n";
+
+    // P → Q → R whose slot takes and returns a borrow: R's base call runs Q's override, Q's runs the original.
+    private const string BorrowingHierarchy = "open struct P\n    public init() => ()\n" +
+        "    public virtual func pick(self: objref/Self, values: ref/[2 of i32] during s) -> ref/i32 during s => values[0]@ref\n" +
+        "open struct Q : P\n    public init() => ()\n" +
+        "    override func pick(self: objref/Self, values: ref/[2 of i32] during s) -> ref/i32 during s => base.pick(values)\n" +
+        "struct R : Q\n    public init() => ()\n" +
+        "    override func pick(self: objref/Self, values: ref/[2 of i32] during s) -> ref/i32 during s => base.pick(values)\n" +
+        "let r = R.init()@obj\nlet two: [2 of i32] = [4, 5]\nrequire r.pick(two@ref)@follow == 4 else => $abort(\"pick\")\n";
+
+    // SPEC 8.2, 8.10: the declared parameter and result Types of the function a call's substitution instantiates are the call's
+    // instantiation (SPEC 8.4.3: a requirement's under its conforming Self and the bound Contract reference it dispatches through, which
+    // SubstOf records as its declaring Type; SPEC 6.4.4: a direct base call's function is the implementation it runs, in the Type
+    // implementing it), a closure in such a Type has its instance's signature, and a function item's substitution applies as its context
+    // does.
     [Theory]
     [MemberData(nameof(HirColumnsTest.Corpus), MemberType = typeof(HirColumnsTest))]
     public void ApplyIsTheInstantiation(string name)
     {
         var (c, module) = SemanticSnapshotTest.Bind(name);
-        var problems = new List<string>();
-        void Check(Koto node, BoundType? declared, Subst subst, CallPlan context)
-        {
-            var applied = declared is null ? null : c.Types.Apply(declared, subst);
-            var instance = declared is null ? null : context.Kind != CalleeKind.Requirement ? c.Binding.InstantiateStorageType(declared, context)
-                : c.Binding.InstantiateStorageType(declared, context.Target, subst.Declaring, context.TypeArguments, context.LengthArguments, context.Origins, context.InputOrigins, context.ConformingType);
-            if (!ReferenceEquals(applied, instance) ||
-                (applied is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto function } && function.ClosureOf() is { } closure &&
-                    !ReferenceEquals(c.Binding.ClosureSignature(applied), c.Types.Apply(closure.Signature, c.Types.SubstOfClosure(applied)!))))
-            {
-                problems.Add($"{node.CodeContext.SourceDocument?.Path}:{node.Span.Start} {node.Akind} {declared}: {applied}");
-            }
-        }
+        CheckInstantiations(c, module.RootKoto);
+    }
 
-        var calls = 0;
-        foreach (var node in KotoTree.Walk(module.RootKoto))
-        {
-            for (var i = 0; CallPlan.Of(node, i) is { } call; i++)
-            {
-                if (c.Types.SubstOf(call) is { } subst && call.Target.Declaration is FunctionKoto callee)
-                {
-                    calls++;
-                    foreach (var parameter in callee.Parameters)
-                    {
-                        Check(node, parameter.Type.TypeOf(), subst, call);
-                    }
-
-                    Check(node, call.Target.Type, subst, call);
-                }
-            }
-
-            if (node.TypeOf() is { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto function } item && c.Binding.FunctionItemContext(item, false) is { } context)
-            {
-                foreach (var parameter in function.Parameters)
-                {
-                    Check(node, parameter.Type.TypeOf(), c.Types.SubstOfItem(item)!, context);
-                }
-            }
-        }
-
-        Assert.True(calls > 0 && problems.Count == 0, $"{calls} calls; {problems.Count} differ:\n{string.Join('\n', problems.Take(40))}");
+    // SPEC 6.4.4: in A → B → C, C's base calls (from its override and, with a default, from a nonvirtual member) run B's override and
+    // B's base call runs the original; each call is its implementation's instantiation and keeps the slot's contract, borrowed inputs
+    // and results with their Origins included.
+    [Theory]
+    [InlineData(BaseCallHierarchy, 3, 2)]
+    [InlineData(BorrowingHierarchy, 2, 1)]
+    public void ADirectBaseCallIsItsImplementationsInstantiation(string source, int direct, int intoOverrides)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf())
+            .Where(static x => x is { Kind: CalleeKind.Virtual, VirtualIsDirect: true }).ToArray();
+        Assert.Equal(direct, calls.Length);
+        Assert.Equal(intoOverrides, calls.Count(static x => !ReferenceEquals(x!.VirtualImplementation, x.Target.Declaration)));
+        CheckInstantiations(c, c.Kotonoha.RootKoto);
     }
 
     // SPEC 8.2: a closure an instance closed is in that instance's substitution and has its signature; a closure no instance closed is
@@ -271,4 +263,102 @@ public sealed class TyCtxtTest
 
         return count;
     }
+
+    private static void CheckInstantiations(Compilation c, Koto root)
+    {
+        var problems = new List<string>();
+
+        // SPEC 6.4.4: a direct base call uses the slot's public contract, so the inputs other than the receiver and the result of the
+        // implementation it runs, under its substitution, are the slot's under the call's instantiation.
+        void Contract(Koto node, FunctionKoto implementation, FunctionKoto slot, Subst subst, CallPlan call)
+        {
+            var count = slot.Parameters.Count;
+            if (implementation.Parameters.Count != count)
+            {
+                problems.Add($"{node.CodeContext.SourceDocument?.Path}:{node.Span.Start} contract arity");
+                return;
+            }
+
+            for (var i = 0; i <= count; i++)
+            {
+                var own = i < count ? implementation.Parameters[i].Type.TypeOf() : subst.Target.Type;
+                var contract = i < count ? slot.Parameters[i].Type.TypeOf() : call.Target.Type;
+                if (i != call.Target.ReceiverIndex && (own is null || contract is null ||
+                    c.Types.Apply(own, subst) is not { } applied || !ReferenceEquals(applied, c.Binding.InstantiateStorageType(contract, call))))
+                {
+                    problems.Add($"{node.CodeContext.SourceDocument?.Path}:{node.Span.Start} contract {(i < count ? $"slot {i}" : "result")}");
+                }
+            }
+        }
+
+        void Check(Koto node, BoundType? declared, Subst subst, CallPlan context)
+        {
+            var applied = declared is null ? null : c.Types.Apply(declared, subst);
+            var instance = declared is null ? null : Instance(c, declared, subst, context);
+            if (!ReferenceEquals(applied, instance) ||
+                (applied is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto function } && function.ClosureOf() is { } closure &&
+                    !ReferenceEquals(c.Binding.ClosureSignature(applied), c.Types.Apply(closure.Signature, c.Types.SubstOfClosure(applied)!))))
+            {
+                problems.Add($"{node.CodeContext.SourceDocument?.Path}:{node.Span.Start} {node.Akind} {declared}: {applied}");
+            }
+        }
+
+        var calls = 0;
+        foreach (var node in KotoTree.Walk(root))
+        {
+            for (var i = 0; CallPlan.Of(node, i) is { } call; i++)
+            {
+                if (c.Types.SubstOf(call) is { } subst && subst.Target.Declaration is FunctionKoto callee)
+                {
+                    calls++;
+                    foreach (var parameter in callee.Parameters)
+                    {
+                        Check(node, parameter.Type.TypeOf(), subst, call);
+                    }
+
+                    Check(node, subst.Target.Type, subst, call);
+                    if (call.Target.Declaration is FunctionKoto slot && !ReferenceEquals(callee, slot))
+                    {
+                        Contract(node, callee, slot, subst, call);
+                    }
+                }
+            }
+
+            if (node.TypeOf() is { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto function } item && c.Binding.FunctionItemContext(item, false) is { } context)
+            {
+                foreach (var parameter in function.Parameters)
+                {
+                    Check(node, parameter.Type.TypeOf(), c.Types.SubstOfItem(item)!, context);
+                }
+            }
+        }
+
+        Assert.True(calls > 0 && problems.Count == 0, $"{calls} calls; {problems.Count} differ:\n{string.Join('\n', problems.Take(40))}");
+    }
+
+    // Binding's instantiation for a call's context: a requirement's under its conforming Self and bound Contract reference; a direct base
+    // call's into an implementation other than the slot's original, of that implementation in the implementing Type with the call's
+    // arguments, as Binding.EffectBounds forms that call; any other call's of its target.
+    private static BoundType? Instance(Compilation c, BoundType declared, Subst subst, CallPlan context) => context switch
+    {
+        { Kind: CalleeKind.Requirement } => c.Binding.InstantiateStorageType(
+            declared,
+            context.Target,
+            subst.Declaring,
+            context.TypeArguments,
+            context.LengthArguments,
+            context.Origins,
+            context.InputOrigins,
+            context.ConformingType),
+        { Kind: CalleeKind.Virtual, VirtualIsDirect: true, VirtualImplementation: { } body }
+            when !ReferenceEquals(body, context.Target.Declaration) && body.SymbolOf() is { } implementation => c.Binding.InstantiateStorageType(
+            declared,
+            implementation,
+            context.VirtualImplementingType,
+            context.TypeArguments,
+            context.LengthArguments,
+            context.Origins,
+            context.InputOrigins),
+        _ => c.Binding.InstantiateStorageType(declared, context),
+    };
 }
