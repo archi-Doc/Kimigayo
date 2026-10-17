@@ -291,7 +291,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   disappear from the audit used by approval checks. Transitional annotations still apply to the legacy areas.
   KR9000 publishes annotationKinds=exception,transitional; the complete-Report reader requires this marker so
   approval comparisons cannot mistake an older producer's missing annotations for an empty inventory.
-  Mark all direct and indirect Koto semantic forwarding properties and the pipeline switch declarations for R6;
+  Mark all direct and indirect Koto semantic forwarding properties (R7 since R5-M9) and the pipeline switch declarations for R6;
   HirPublisher, hirPublisher and HirPosition for R7; Capacity, FormatBuffer, FormatHint and FormatFinish for R8.
   Published version/cache entry points remain lasting contracts. LegacyRuntimeHelpers does not yet exist; its
   future producer must mark it at introduction. Conditional attributes leave no usage metadata in the product.
@@ -981,6 +981,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     two consecutive working sessions on the plan that land no unit.
   - Elsewhere in DEC and ARCH, an "R6" item that only Emission concerns means R6-gen and any other means R6-check (for example R4-M1,
     R4-M3a, R4-M13a and R4-M17's unit a).
+  - Superseded later in part (2026-10-18): plan §9.1's "both measured" by R5-M3 and its forwarding properties at R6-check by
+    R5-M9.
 - **R4-M36** (2026-10-17; design A3 §4.1 G2, owner approval of its §9 item 8 on 2026-10-17) The Type facts A5's holders and destruction
   checks read. `MirTypes.HoldsLoans(type, seen)` (A3 §3's holder rule): a part of the value is a borrow or pair layer, a Slice, a
   Function or Closure value or an abstract Type; its parts are its own storage (Fields and base, payloads) and its components (elements,
@@ -1413,3 +1415,112 @@ and migration obligations remain in force; no numeric cap changes are authorized
     whose Move is forbidden, not with a reference result that the index expression follows; the caller's choice it wanted
     (Copy, borrow or replace, as for Array) is what following the returned reference gives, and its §7 had already fixed
     the ABI to that of the reference result.
+
+## R5 and R6 (adopted 2026-10-18)
+
+The owner's answers to the plan's questions OQ1–OQ17, given on 2026-10-18 and relayed by the R4 planning session. "Plan"
+is the [R5 and R6 Implementation Plan](../../draft/Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md); its
+unit and decision names (S1, E2, PD12) are used as there. Each planning-session decision PD1–PD32, component and temporary
+structure is recorded here by the unit that first implements it.
+
+- **R5-M1 Adoption** (owner, 2026-10-18; OQ1, OQ4, OQ10, OQ11 and the start) The plan is the formal plan for R5 (MIR code
+  generation, shadow), R6-gen and R6-check: its units (§4), order (§3), metrics and stop rules (§5.1–§5.2, R5-M8) and three
+  exit gates (§5.3–§5.5), which replace PLAN10 §12.2's R5 exit and give R6-gen and R6-check the gates R4-M35 left out. R5
+  runs now, in parallel with R4 (OD4 stands), in its own planning session. The design
+  packages S2–S4 (OQ4), Q8 (OQ10) and H0 (OQ11) each go to the owner once, after their design review, and are approved
+  then, not in advance; each approval makes the package the owner-approved design of DEC Q6 forms 1 and 2 for the units and
+  groups it names. The S2–S4 summary highlights PD3 (no `MirBodyKind.Shim`; shims are Backend mono items) and PD11
+  (temporary codegen coverage rows reporting `Unsupported_Kd` under sel, outside the three reporters ARCH "Closed
+  vocabularies" names, until X2), which depart from owner-approved texts. Rejected: approving the packages before their review.
+- **R5-M2 R5 start conditions** (owner, 2026-10-18; OQ2, as recommended; supersedes the owner gate of
+  [Pre-R5 Work Items](../../draft/Proposals/2026-10-12%20Pre-R5%20Work%20Items.md) §2, which assumed that R5 starts at R4's
+  exit) The A5 plan §9.1 timing baselines (ARCH R0 row: the O2 corpus and the compiler pipeline series at `49cb2b5d`) with
+  E6 and E7 replace B1 and B3; B4 is met once the native audits fail closed (E2), their test-coded counts becoming the
+  PLAN10-P2 baseline; B5's command rows are added to VERIFICATION; RawPointers is not restored. The A=B variance is retaken
+  on a fresh `49cb2b5d` checkout kept at a named location with a backup (E6): the evidence directory PLAN §3 cited
+  (`artifacts/benchmarks/o2-corpus/20261017-111950-pre-r5-baseline`) exists in no checkout (checked 2026-10-18). R5 code
+  units may start.
+- **R5-M3 One measured codegen design** (owner, 2026-10-18; OQ3; supersedes A5 plan §9.1's "both measured") The measured
+  design-A spike is waived: design B (PD1, a direct `FunctionCodegen` from validated MIR) and an independent review of
+  design A on paper are the two designs, and B's first slice is measured against the legacy generator instead (E13's
+  per-function O2 metrics and E6's baseline at C1a's group review). S6 does not run. Reason: the writer stage is
+  0.016–0.066 ms of a 21–43 ms compilation, so a spike cannot discriminate (PD1).
+- **R5-M4 Publication from G2** (owner, 2026-10-18; OQ5, every sub-item as recommended) From G2, `check` on the default
+  pipeline publishes the MIR construction records, validator findings and collector records (G2 writes the entries
+  superseding R3-1, R4-M1 and OD10's split for them) and reports instance-stage `Unsupported_Kd` and Resource records for
+  the checked set (SPEC 23.2.2 leaves it implementation-defined; IMPL 21.3.3 requires a report for every instantiation of
+  the checked set), so a Library with an unbuildable generic instance fails `check`. Between G2 and H5 a PD12 refusal of a
+  program the old analysis accepted (an A1 or A2 problem, or A1's arena record) is reported at generation as a typed
+  Emission-partition record: no duplicate of the old path's own `OwnershipStorageLimit_Kd`, so no suppression rule. Every
+  default Analyze runs the shadow MIR driver (A3, A1, A2, A4 and A5 once landed, unpublished) from G2 until R6-check, its
+  time, allocation and retained-memory cost measured in G2. Collector records go in the ControlFlow partition with R3-1's
+  MIR records (PD7), so PLAN10 §7's "P11–P12 → Emission" yields for them (K4's OD4 entry). Under sel, collector records
+  publish from K4 (MIR construction and validator records already do under `mir`, R3-1). Rejected: publishing PD12 refusals
+  at `check` before H5.
+- **R5-M5 `AnalyzeInstance`** (owner, 2026-10-18; OQ6, option (e)) The two definition-level holes `AnalyzeInstance` covers,
+  PLAN10-X1 (abstract destruction) and abstract temporaries, are reproduced (Q1) and fixed in the old definition run as D5
+  miscompile fixes (Q2, Q3; DEC O3 applies if a library or milestone program is rejected); then Q4 writes the entry
+  superseding OD10's "check-only step" clause (R4-M35) with the ARCH R6 row, and G7 deletes `AnalyzeInstance` with its
+  callers. R6-gen therefore also waits for A5 step 1 through Q2. Reason: `check` never runs it (`Project.cs:502-515`), and its
+  only callers are in the Emission R6-gen deletes. Rejected: (b) a check-only Subst→CallPlan bridge (a transitional structure
+  of difficulty 4, +150–200 lines); (d) R6-gen waiting for R4's exit, which stays the fallback if A5 step 1 has not merged by X3.
+- **R5-M6 Native deviations at R5's exit** (owner, 2026-10-18; OQ7; extends PLAN10 §12.2's "match or (e)") A native outcome
+  of MIR code generation may differ from the legacy run's only as (e) a form not ported under D2, (a) a legacy-wrong outcome
+  or (d) an intended change, each with its item, reason and SPEC clause (the plan's examples: the static cycle code at the
+  accessing Place, SPEC 22.4.3 and 22.5.2; inline closure environments, IMPL 21.1.3; Abort caller locations, SPEC 22.5).
+  Rejected: reproducing wrong legacy output on MIR, or D5 fixes of the frozen legacy path to make the two agree.
+- **R5-M7 Hold lines beyond Mir** (owner, 2026-10-18; OQ8; PD20) ARCH's hold protocol for files both streams change also
+  covers (paths under `src/Kimi/Compiler` unless given in full) `Core/Compilation.Pipeline.cs`, `Binding/TyCtxt.cs`,
+  `TyCtxt.Effects.cs`, `TyCtxt.Retention.cs`, `BindingModel.cs`, `Binding.ClosureInstances.cs`, `Binding.RequirementInstances.cs`,
+  `KimiLibraryCatalog.cs`, `src/Kimi/Checking/Hover/HoverBuilder.cs`, `src/Kimi/Diagnostics/DiagnosticRequirement.cs` and
+  `tests/xUnitTest/MirDifferenceLedger.cs`.
+  R5's new Binding views go into new partial files, and its shared MIR edits are batched into windows W1 (the builder's call
+  and control files, the `$abort` site, the Q16 sites and the goldens) and W2 (`MirProgram.cs`), each recorded in PLAN §3 as
+  a hold. Reason: both streams edit these files, and the protocol covered only Mir.
+- **R5-M8 R5 metric, stop rules and verification** (owner, 2026-10-18; OQ9, as recommended) Adopted: the plan's metrics
+  (§5.1), M1, the sel pending ledger, being R5's progress measure, and its stop rules (§5.2): the owner is consulted after two
+  consecutive R5 working sessions that land no unit (a planning- or record-only session lands none); a unit not landed within
+  two working sessions is re-split or becomes an owner question; from C0b2, if M1 does not fall across three consecutive C
+  units, the session states why, and a missing input becomes a fact or builder unit; an O2 kernel regression beyond the A=B
+  variance blocks its family's merge, fixed in codegen, never by a tolerance. VERIFICATION gains R5's rows, a sel Session
+  beside the default one at the end of every R5 working session and the pending-ledger gate, both removed at G4. Ask A-10
+  goes to R4: from C0b2, R4's MIR-builder merges run the sel pending check and record any rise; from G3, they select the
+  affected native families and O2 kernels. Rejected: a CI sel lane (full sweeps run at family group reviews, X1 and G3).
+- **R5-M9 Binding syntax reads and synthetic Koto at R7** (owner, 2026-10-18; OQ12, OQ13; a later removal stage) Binding's
+  reads of the 36 Koto forwarding properties, the properties themselves and ARCH's extension of Syntax's restriction to the
+  whole Binding layer move from R6 to R7 (superseding CR-A7's R6 marking of the properties, whose attributes change at
+  H14, and A5 plan §9.1's R6-check clause, R4-M35); Parsing and root-helper reads go at R6-check (H14). The synthetic Kotos
+  (`EvaluatedKoto`, `SyntheticKoto`, `FormattingKoto`, `RequirementCalleeKoto`, `TryKoto` arms) go at R7, after the CallPlan
+  pipeline gives syntax-free selection. Reason: no speed gain, since the properties already forward to `HirTables` (so PLAN
+  §3's expected recovery of the R2a Bind cost is not expected from them, H), and R7's inline writes and CallPlan pipeline
+  redo these sites. Rejected: R6-check (for the synthetic Kotos, pulling that CallPlan entry in, about +400/−300 at
+  difficulty 4).
+- **R5-M10 Syntax data in the MIR builder** (owner, 2026-10-18; OQ14, as recommended) ARCH's two rules on syntax-class
+  decisions in Mir/Build ("reach 0 by the end of R6"; "no Koto type test or KotoKind dispatch in Mir/Build after R6") are
+  amended: an operator token or form read under its published `HirOp`, and a cast to read a child, are syntax data; after R6
+  Mir/Build has no Koto type test or `KotoKind` dispatch that chooses an operation no published `HirOp` decided. The 17 sites
+  that do are fixed with existing facts (Q16, in W1); this amendment covers the 63 others (34 child casts, 29 operator or
+  form identities), which H13 only confirms. Rejected: keeping the rule and replacing every site with facts or a HIR primitive-operation
+  vocabulary (a full-process design and a vocabulary request for sites that choose nothing).
+- **R5-M11 SETTLED "Instance-evaluated generic defaults" at H15** (owner, 2026-10-18; OQ15) The entry's mechanism text is
+  rewritten at H15 as an explicit, formal revision. The R4 planning session's note, relayed with the decision: write it
+  against the mechanism H15 has (the inline fold, `MirBuilder.Defaults`), not PLAN10 §11's 2026-10-10 wording; it gets its
+  own independent review (AGENTS requires one for SETTLED). This resolves PLAN10 §11 (a rewrite at R6) against R4-M35's
+  non-adoption of OD9 (the fold and the entry stay): the fold and the entry stay, and the entry's mechanism text is
+  rewritten at H15.
+- **R5-M12 IR-assertion classes** (owner, 2026-10-18; OQ16; PD25) An IR-text assertion in a test is R (required by SPEC or
+  IMPL), P (a behavior proxy), I (incidental) or S (old-Emission structure). The rules are approved once: each codegen family
+  unit deletes the I assertions and the P assertions its native checks cover in the tests it makes pass, and lists them in
+  its commit; E1 classifies up front only what can still pass vacuously after E2. Rejected: an upfront table of about 450
+  rows on the critical path.
+- **R5-M13 No-LINQ in tests, static shutdown, NativeAOT** (owner, 2026-10-18; OQ17, (b) and (c) changed from the plan's
+  recommendation)
+  - (a) ARCH's no-LINQ rule for Mir analyses and the Backend does not extend to tests (the owner first agreed, then withdrew).
+  - (b) Static shutdown is not pulled into R5. P42's remainder (static `var`, aggregate and drop-needing statics, generic
+    storage keys, first-write initialization, replacement destruction, shutdown and its order, `KIMI_E_STATIC_SHUTDOWN`) is
+    the first feature work right after R6-check's acceptance flip (H5), with Milestone 42 as its completion condition. PD19
+    stays; C7's slot state follows SPEC 22.4.3's four states (Not started, Initializing, Initialized, Finished), so P42
+    needs no representation change. Reason: the deciding old analysis accepts only immutable nongeneric static scalars
+    (`StaticScalar`), so no accepted program can exercise shutdown before R6-check (`check` probes, 2026-10-18).
+  - (c) No NativeAOT publish at R6-gen's exit (plan §5.4 item 7 and G11 drop it); instead the NativeAOT build is published and
+    run once before the next distribution, for example VS Code extension packaging.

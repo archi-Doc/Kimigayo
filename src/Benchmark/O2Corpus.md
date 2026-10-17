@@ -25,9 +25,15 @@ The erased and virtual calls stay indirect calls in the optimized IR, so the ker
 
 ## Protocol
 
-`src/backend/windows-x64/benchmark-o2-corpus.ps1 [-Baseline <checkout>] [-Candidate <checkout>] [-Samples 15] [-PipelineRuns 3]`
+`src/backend/windows-x64/benchmark-o2-corpus.ps1 [-Baseline <checkout>] [-Candidate <checkout>] [-CandidateEnvironment NAME=value,...] [-Samples 15] [-PipelineRuns 3]`
 takes two checkouts with Release builds of Kimi and Benchmark (`dotnet build Kimigayo.slnx -c Release`); each defaults to the
 script's own checkout, and Benchmark's copy of Kimi.dll must be that checkout's compiler.
+
+`-CandidateEnvironment` sets its variables only for B's kernel builds and B's `--compiler-pipeline` runs, for example
+`KIMI_PIPELINE=mir`, `KIMI_CODEGEN=mir`; both variants' executables run in the script's environment. A runs the default
+pipeline and code generator: the script fails before any work if it would inherit `KIMI_PIPELINE` or `KIMI_CODEGEN`.
+Pass the list with `pwsh -Command` or as separate array elements: `pwsh -File` binds `A=x,B=y` as one string, which the
+script rejects.
 
 - Both compilers build every kernel at O2 before any timing, recording build time, IR and optimized IR bytes, `.text` size
   and the SHA-256 of the instructions without addresses and immediates (`sameCode`); each executable's first run is checked
@@ -44,8 +50,9 @@ script's own checkout, and Benchmark's copy of Kimi.dll must be that checkout's 
 
 `artifacts/benchmarks/o2-corpus/<stamp>[-<name>]/` keeps `summary.json` (status, conditions, every sample and the statistics),
 written also when a run fails, and each pipeline report with its stderr; built executables stay under `temp/o2-corpus/`. The
-conditions record the checkouts' commits, `git status` lines and compiler hashes, the machine, power scheme, .NET version and
-`KIMI_*`/`DOTNET_*` variables, and the build, test and LLVM processes with their CPU seconds at start and end.
+conditions record the checkouts' commits, `git status` lines, compiler hashes and the variables set for each (A none), the
+machine, power scheme, .NET version and inherited `KIMI_*`/`DOTNET_*` variables, and the build, test and LLVM processes with
+their CPU seconds at start and end.
 
 Run only on a quiet machine: no build, test or other measurement, here or in another worktree, which the process lists and
 the runs' CPU seconds should confirm (Windows counts CPU time in steps of about 16 ms, enough to show preemption, not

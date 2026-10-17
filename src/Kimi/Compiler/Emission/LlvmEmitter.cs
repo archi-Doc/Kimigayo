@@ -252,7 +252,8 @@ public sealed partial class LlvmEmitter
 
             if (c.IsTestBuild)
             {
-                module.TestRuntime = Testing.TestRuntime.Create(c.Tests, this.functions);
+                var names = c.Tests.Cases.ConvertAll(x => this.functions[(FunctionKoto)x.Symbol.Declaration].Name);
+                module.TestRuntime = Testing.TestRuntime.Create(c.Tests, names);
                 return module.Complete(out failure);
             }
 

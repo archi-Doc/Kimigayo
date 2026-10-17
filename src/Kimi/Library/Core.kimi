@@ -56,6 +56,7 @@ public enum Option<T>
     None
 
 public enum Result<T, E>
+    Self is Copy when T is Copy, E is Copy
     Ok(T)
     Err(E)
 

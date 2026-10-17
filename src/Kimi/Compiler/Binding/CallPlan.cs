@@ -114,6 +114,11 @@ public sealed class CallPlan
     /// <summary>Gets a value call's receiver acquisition.</summary>
     public SemanticsKind ReceiverKind { get; internal set; } = SemanticsKind.Ref;
 
+    // The position in ArgumentOperations of the argument that stands for an operand its expansion already evaluated (ExpansionPlan's
+    // Evaluated): a key resolution's length of the receiver the selection evaluated, an update setter's computed value; -1 for any other
+    // call. Binding fixes it where it creates the call, with the argument list.
+    internal int Evaluated { get; init; } = -1;
+
     // Selected from source syntax, never inferred again after generic substitution.
     internal bool TupleOperator { get; set; }
 

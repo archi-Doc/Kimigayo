@@ -11,7 +11,8 @@ namespace Kimi.Testing;
 
 #pragma warning disable SA1402, CS1591 // Internal immutable execution metadata.
 
-internal sealed record TestCase(string TestId, string CaseId, string Name, string File, int Line, int Column, FunctionKoto Function);
+// Symbol: the test function's declaration, which names its entry body for code generation (MirDefKey).
+internal sealed record TestCase(string TestId, string CaseId, string Name, string File, int Line, int Column, BindingSymbol Symbol);
 
 internal sealed record TestSite(int Id, string File, int Line, int Column, string Expression, TestVerificationKoto Node);
 
@@ -236,7 +237,8 @@ internal sealed class TestCatalog
                     return;
                 }
 
-                if (!TestDefinition.IsValidSyntax(function) || function.BoundSymbol is not { Type: var type, ReceiverIndex: < 0 } || !ReferenceEquals(type, BoundType.Unit))
+                if (!TestDefinition.IsValidSyntax(function) || function.BoundSymbol is not { Type: var type, ReceiverIndex: < 0 } symbol ||
+                    !ReferenceEquals(type, BoundType.Unit))
                 {
                     throw new InvalidDataException("Invalid test signature: " + function.Name);
                 }
@@ -256,7 +258,7 @@ internal sealed class TestCatalog
                 var file = LogicalPath(project, source!.Path);
                 var position = source.GetPosition(function.Span.Start);
                 var testId = Hash("t1-", "kimi-test-v1", catalog.ProjectId, containerName, function.Name + "()->()", file);
-                catalog.Cases.Add(new(testId, Hash("c1-", "kimi-case-v1", testId, "default"), name, file, position.Line + 1, position.Character + 1, function));
+                catalog.Cases.Add(new(testId, Hash("c1-", "kimi-case-v1", testId, "default"), name, file, position.Line + 1, position.Character + 1, symbol));
             }
 
             if (node is TestVerificationKoto verification && source is not null)

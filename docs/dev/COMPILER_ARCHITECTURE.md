@@ -132,7 +132,9 @@ Members and files outside the old Analysis/Emission paths stay within these limi
 
 A member or file already over a limit may not get worse; split it by responsibility before it grows. An exception to
 the statement or nesting limit states its reason and bound in the code. Mir and the Backend take no baseline: their
-violations are fixed, except syntax-class decisions in the MIR builder, which reach 0 by the end of R6. Review checks these limits against the existing source and recorded exceptions;
+violations are fixed, except syntax-class decisions in the MIR builder, which reach 0 by the end of R6: a Koto type test
+or `KotoKind` dispatch that chooses an operation no published `HirOp` decided (an operator token or form read under its
+published `HirOp`, and a cast to read a child, are syntax data; DECISIONS R5-M10). Review checks these limits against the existing source and recorded exceptions;
 the analyzer and its baseline have been retired (DECISIONS CR-R1).
 
 ## Code rules
@@ -146,7 +148,7 @@ automated build diagnostics. `ArchitectureRulesTest` separately retains its exis
 | Dependencies and vocabulary | Follow the published layers, member restrictions and closed vocabulary limits above. |
 | Syntax identity | No Koto-keyed dictionary, set or weak table outside Syntax; migrate existing Binding uses by R7 exit. |
 | Capability gates | No boolean `Supports*` method or property. |
-| MIR dispatch | No Koto type test or KotoKind dispatch in Mir/Build after R6; remove existing uses by that stage. |
+| MIR dispatch | No Koto type test or KotoKind dispatch in Mir/Build after R6 that chooses an operation no published `HirOp` decided; remove existing uses by that stage. Reading an operator token or form under its published `HirOp`, and a cast to read a child, are syntax data (DECISIONS R5-M10). |
 | Transitional declarations | Keep a removal stage and reason; the stage ledger governs when removal is due. |
 | Catch boundaries | No unfiltered catch-all outside CLI, LSP and test-runner boundaries. |
 | Member and file structure | Follow the parameter, statement, nesting, logical-chain and token limits above. |
@@ -160,9 +162,10 @@ New/increased exceptions and later removal stages need owner approval recorded i
 and earlier stages do not. Mechanical evasions fail review. At a stage exit, record measurements and review
 exceptions and transitional declarations with the owner; the deleted Report command is not a gate.
 
-At R6, Syntax's restriction extends to the whole Binding layer. At R7, UnwrapParentheses is restricted to
-Parsing/Binding. At R5, add Backend and forbid System.Linq.Enumerable in Mir analyses and Backend, rewriting
-existing uses first; the owner decides whether to extend these rules to tests. IntrinsicId returns to 30 at R8.
+At R7, Syntax's restriction extends to the whole Binding layer (moved from R6, DECISIONS R5-M9), and UnwrapParentheses
+is restricted to Parsing/Binding. At R5, add Backend and forbid System.Linq.Enumerable in Mir analyses and Backend,
+rewriting existing uses first; the no-LINQ rule does not extend to tests (owner, 2026-10-18, DECISIONS R5-M13). IntrinsicId
+returns to 30 at R8.
 
 ## Rules during the migration
 
@@ -180,8 +183,8 @@ existing uses first; the owner decides whether to extend these rules to tests. I
   the old path rejects and MIR accepts, other than a MIR-only relaxation, and a rejection of a library or milestone program
   block the R4 exit; location and code-choice differences do not. The owner is consulted after two consecutive working
   sessions on the A5 plan that land no unit.
-- **Temporary structures**, with the stage that removes them: the Koto semantic forwarding properties and the
-  `KIMI_PIPELINE` switch (R6); the HIR publisher walk, replaced by inline writes (R7, DECISIONS R2b-D2); the temporary
+- **Temporary structures**, with the stage that removes them: the `KIMI_PIPELINE` switch (R6); the Koto semantic
+  forwarding properties (R7, their Parsing and root-helper reads at R6-check; DECISIONS R5-M9); the HIR publisher walk, replaced by inline writes (R7, DECISIONS R2b-D2); the temporary
   intrinsics `Capacity`, `FormatBuffer`, `FormatHint` and `FormatFinish` that the owner admitted on 2026-10-11
   (`IntrinsicId` limit 34, back to 30 in R8; DECISIONS R3-9, R3-10); the `Compilation.Analyzed` event, the difference
   ledger's observation point, and `Binding.IsEffectRecord`, the ledger's old-side effect subset (R6, DECISIONS R4-M17, R4-M23).
@@ -199,7 +202,17 @@ existing uses first; the owner decides whether to extend these rules to tests. I
   included, and the `tests/mir` goldens are shared; a test file follows the file it tests. One stream at a time changes a
   shared file: before the unit starts, its planning session records the hold (stream, branch, files) in PLAN §3 on dev
   and removes it in the merge that brings the unit into dev; the other stream merges dev before its next change to that
-  file.
+  file. The same protocol covers these files outside Mir (DECISIONS R5-M7): `Core/Compilation.Pipeline.cs`,
+  `Binding/TyCtxt.cs`, `TyCtxt.Effects.cs`, `TyCtxt.Retention.cs`, `BindingModel.cs`, `Binding.ClosureInstances.cs`,
+  `Binding.RequirementInstances.cs`, `KimiLibraryCatalog.cs`, `src/Kimi/Checking/Hover/HoverBuilder.cs`,
+  `src/Kimi/Diagnostics/DiagnosticRequirement.cs` and `tests/xUnitTest/MirDifferenceLedger.cs`. R5 puts new Binding views
+  in new partial files and batches its shared MIR edits into windows (W1, W2 of the R5 plan §3.5), each held the same way.
+- **R5 progress (DECISIONS R5-M8; R5 and R6 plan §5.1–§5.2).** M1, the failing tests and fixtures of the pending ledger
+  under MIR code generation, only falls and reaches 0 at R5's exit. The owner is consulted after two consecutive R5
+  working sessions that land no unit; a unit not landed within two working sessions is re-split or goes to the owner; from
+  C0b2, three consecutive C units that do not lower M1 need a stated reason, and a missing input becomes a fact or builder
+  unit. An O2 kernel regression beyond the A=B variance blocks its family's merge and is fixed in code generation, never by
+  a tolerance.
 
 ## Stage ledger
 
@@ -211,8 +224,8 @@ existing uses first; the owner decides whether to extend these rules to tests. I
 | R2b | Done 2026-10-11 (closed at 127,815 lines, within its 129,000 ceiling; the unused 1,185 lines pass to R3) | `TyCtxt` and `Subst`; the published HIR columns (`Op`, `Res`, `Completion`, `Adjust`, PlaceShape) and their publisher; `CallPlan.Of`, `ExpansionPlan`, the Pattern plans and closure definitions as views; `DefaultDecl` and `PreparedParam`; the pair-binder view; the intrinsic table. The five read-only declaration-table views (`ImplTable`, `VTableDef`, `UniversalRelations`, `EffectBoundTable`, `AvailableBounds`) are deferred to their first readers in R4/R5 |
 | R3 | Done 2026-10-11 (closed at 133,004 lines, within its 135,500 ceiling: Mir 4,765, Binding 56,569, Core 1,805, the other areas at their R2b-exit sizes; +5,189 against a forecast of +5,750) | MIR model, descriptor table, validator with its Type tier, dump and builder (shadow): every body of the library and the 43 milestones builds without validator findings, with Opaque values only at Binding-rejected nodes of Milestones 33, 35 and 38; 30 dump goldens. The work paused after R3 by owner instruction |
 | R4 | Active; A1–A4 landed; the rest follows the [Complete Polonius A5 Plan](../../draft/Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md) (DECISIONS R4-M33, R4-M35); step 0 (design A3) complete, unit 0b closed by prototype round 10; step 1 active: its 1b design diff decided (A3 §12, DECISIONS R4-M52), unit 1a (`TyCtxt.Retains`) landed; the MIR units and 1b-1–1b-4 complete on their branches, awaiting group reviews; next 1b-5 and 1c | MIR analyses A1–A6 and the difference ledger (shadow): the Binding facts A5 reads published first, then A5 as facts and fixed rules. R4 exits when every family and exit task of the A5 plan is complete, no ledger row blocks and the final end-to-end review passes (A5 plan §6.2, §8). Every analysis unit extends `Mir/Analysis/MirAnalysis.cs`; it and `Mir/MirDump.cs` were restructured by responsibility before the R5 split (DECISIONS R4-M2a, R4-M35) |
-| R5 | Pending; starts in parallel with R4 under the A5 plan's §9.1 conditions (DECISIONS R4-M35) | Monomorphization, shims, layout/ABI, code generation, capability table (shadow); MIR holds the bodies of overrides no instance applies, which generation reads applicability to skip (DECISIONS R4-M28) |
-| R6 | Pending; two stages (DECISIONS R4-M35): R6-gen after R5, R6-check after R4 and R6-gen | R6-gen switches code generation to MIR and deletes the old Emission; R6-check switches acceptance to MIR and deletes the old Analysis, keeping `AnalyzeInstance` as a check-only step until then. An R6 item that only Emission concerns belongs to R6-gen, any other to R6-check. Unit a publishes the MIR problems and folds the MIR construction records, which keep their own merge in `MirProgram` until then, into `MirReport` (DECISIONS R4-M3a). TransferRequired moves to Binding/HIR (R4-M4), which makes A1's StaticMovePathRequired at the bare acquisitions it rejects derived. Deleting the old effect checks ends `Binding.EffectObligations`' reading of their violation tables (`effectViolations`, `virtualEffectViolations`): an obligation then follows the conformance's and the function's own validity (DECISIONS R4-M23); the old twins of A4's rules go with them: `EffectSummary.Function`'s foreign-function branch (beside `TyCtxt.Bodyless`), its formatting-callback and composite-comparison branches and the Dictionary selection and literal comparison of the old walk (beside the published rows and `TyCtxt.Witnesses`), with the `Formatting` effect class only they read, and `CallableEffectFailure`'s decision of a Closure's owner acquisition (beside `AddCallableObligation`'s `Owner`); the Array `append`/`insert`/`pop`/`remove` rows join the catalog (DECISIONS R4-M28) |
+| R5 | Active since 2026-10-18, in parallel with R4 under its own planning session, following the [R5 and R6 Implementation Plan](../../draft/Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md) (DECISIONS R4-M35, R5-M1, R5-M2); exit gate: that plan's §5.3 | Monomorphization, shims, layout/ABI, code generation, capability table (shadow); MIR holds the bodies of overrides no instance applies, which generation reads applicability to skip (DECISIONS R4-M28) |
+| R6 | Pending; two stages (DECISIONS R4-M35): R6-gen after R5, R6-check after R4 and R6-gen; units and exit gates in the R5 and R6 plan §4.9–§4.10 and §5.4–§5.5 (DECISIONS R5-M1) | R6-gen switches code generation to MIR and deletes the old Emission; R6-check switches acceptance to MIR and deletes the old Analysis, keeping `AnalyzeInstance` as a check-only step until then. An R6 item that only Emission concerns belongs to R6-gen, any other to R6-check. Unit a publishes the MIR problems and folds the MIR construction records, which keep their own merge in `MirProgram` until then, into `MirReport` (DECISIONS R4-M3a). TransferRequired moves to Binding/HIR (R4-M4), which makes A1's StaticMovePathRequired at the bare acquisitions it rejects derived. Deleting the old effect checks ends `Binding.EffectObligations`' reading of their violation tables (`effectViolations`, `virtualEffectViolations`): an obligation then follows the conformance's and the function's own validity (DECISIONS R4-M23); the old twins of A4's rules go with them: `EffectSummary.Function`'s foreign-function branch (beside `TyCtxt.Bodyless`), its formatting-callback and composite-comparison branches and the Dictionary selection and literal comparison of the old walk (beside the published rows and `TyCtxt.Witnesses`), with the `Formatting` effect class only they read, and `CallableEffectFailure`'s decision of a Closure's owner acquisition (beside `AddCallableObligation`'s `Owner`); the Array `append`/`insert`/`pop`/`remove` rows join the catalog (DECISIONS R4-M28) |
 | R7 | Pending | Binding consolidation: resolver, inference context, Contract solver, CallPlan pipeline, Problem records. The Binding facts A5 and R5 read are published before them, in R7's target shape, and leave R7's scope (A5 plan §7, DECISIONS R4-M35) |
 | R8 | Pending | Library algorithms in Kimigayo, about 28 intrinsics |
 | R9 | Pending | Remaining front-end cleanup, Documentation and toolchain moved out, final documentation |

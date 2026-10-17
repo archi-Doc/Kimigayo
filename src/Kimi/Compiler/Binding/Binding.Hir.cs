@@ -62,7 +62,7 @@ public sealed partial class Binding
         private HirPosition position;
         private bool exclusive;
 
-        // Binding's structural completion with its Never evidence, one per body (StructuralCompletion moves into Binding in R6).
+        // Binding's structural completion with its Never evidence, one per body.
         private StructuralCompletion? completion;
         private SyntaxTable? table;
 
