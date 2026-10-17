@@ -291,7 +291,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   disappear from the audit used by approval checks. Transitional annotations still apply to the legacy areas.
   KR9000 publishes annotationKinds=exception,transitional; the complete-Report reader requires this marker so
   approval comparisons cannot mistake an older producer's missing annotations for an empty inventory.
-  Mark all direct and indirect Koto semantic forwarding properties and the pipeline switch declarations for R6;
+  Mark all direct and indirect Koto semantic forwarding properties (R7 since R5-M9) and the pipeline switch declarations for R6;
   HirPublisher, hirPublisher and HirPosition for R7; Capacity, FormatBuffer, FormatHint and FormatFinish for R8.
   Published version/cache entry points remain lasting contracts. LegacyRuntimeHelpers does not yet exist; its
   future producer must mark it at introduction. Conditional attributes leave no usage metadata in the product.
@@ -981,6 +981,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     two consecutive working sessions on the plan that land no unit.
   - Elsewhere in DEC and ARCH, an "R6" item that only Emission concerns means R6-gen and any other means R6-check (for example R4-M1,
     R4-M3a, R4-M13a and R4-M17's unit a).
+  - Superseded later in part (2026-10-18): plan §9.1's "both measured" by R5-M3 and its forwarding properties at R6-check by
+    R5-M9.
 - **R4-M36** (2026-10-17; design A3 §4.1 G2, owner approval of its §9 item 8 on 2026-10-17) The Type facts A5's holders and destruction
   checks read. `MirTypes.HoldsLoans(type, seen)` (A3 §3's holder rule): a part of the value is a borrow or pair layer, a Slice, a
   Function or Closure value or an abstract Type; its parts are its own storage (Fields and base, payloads) and its components (elements,
@@ -994,12 +996,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
   (`TyCtxt.Copy`, `Sealed`). Each walks a Type, or for Observes a payload below its handle, once per query through the caller's set: a
   repeating recursive Type ends exactly, a growing one (SPEC 15.3.5) at the bound of 32, where HoldsLoans answers yes and Observes sets
   deep, the caller's located `Unsupported_Kd` as A4's Limit is. The Destruction walk cuts no cycle through a sequence, so a recursive
-  Type holding itself in an Array is deep (PLAN G91). Rejected: `CarriesOriginOrSlot` as the test (builder-made references carry no
+  Type holding itself in an Array is deep (PLAN G91; superseded by R4-M58). Rejected: `CarriesOriginOrSlot` as the test (builder-made references carry no
   Origin); a depth bound alone, as HoldsRaw has (a repeating recursive Origin-free Type would become a holder and keep the Loans read
   into it live); one fact for both (two readers, two rules). Not temporary.
 - **R4-M37** (2026-10-17; design A3 §4.1 G5, G6, the writeback and the guard row, owner approval of its §9 item 8 on 2026-10-17;
-  G5's path clause and G6's value rule superseded by R4-M52; its `EndBorrow` meaning for guards replaced by A3 §12 E7, recorded
-  with unit 1b-4) The
+  G5's path clause and G6's value rule superseded by R4-M52 (implemented as R4-M54 and R4-M62); its `EndBorrow` meaning for guards
+  replaced by A3 §12 E7, recorded with unit 1b-4) The
   MIR builder contracts A5's reservations and guard-local Origins read. G5: every exclusive borrow on an invocation's preparation path
   is `TwoPhaseUniq` (SPEC 15.6.7): a written `@uniq`, also in parentheses or on the Place path of a receiver or an argument down to a
   value (`h@follow@uniq.c.bump(1)`; a call result or a getter activates at its own call), the Reborrow of a stored exclusive reference
@@ -1343,6 +1345,125 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Error keeps evaluated children); a `HirOp` member (40 of 40); a Binding failure written at publish (publishing decides nothing,
   `PublishIsInvisible`); non-nullable fact types now (R7's CallPlan and declaration-table scope). Lasting: `HasFacts` and
   `HirTables.Broken` are the publication contract; at R7 the publisher walk goes and Binding's inline Op writes call `HasFacts`.
+- **R4-M54** (2026-10-17; PLAN G92, implementing R4-M52's fold (owner) on the planning session's instruction of the same day)
+  On the preparation path of an input that starts a reservation (`MirBuilder.Place` with `input`: `Operand` keeps it only for an
+  input the call takes as an exclusive reference, by its expected Type, or without one, a value call's callee, by the reference it is
+  or its acquisition forms), a written exclusive borrow whose value the path follows (PlaceShape `Value`, `Layers > 0`; also in
+  groups, `Lending`) is not formed: the path goes on from the Place the borrow lends (`Lent`, the Place half of `Ref`: the follow to
+  its referent and its base view), followed by `Layers - 1`. Each such input then has one reservation, at its lending point:
+  `holder@uniq.items.append(x)`, `(holder@uniq).items.append(x)`, `holder.items@uniq.append(x)` and `holder.items.append(x)` build
+  the same MIR (SPEC 15.6.7: the same call). A written borrow that is the input itself (`take(p@uniq)`, `h.c@uniq.bump(1)`) stays
+  its reservation. On the path of an input that starts none (a shared or a copied one: `inspect(holder@uniq.items)`) and off input
+  paths (a `let`, an operator's operand, an update's target, `tasks@uniq.length`) a written `@uniq` is a live `Uniq` borrow (SPEC
+  7.3.3: it lends its operand exclusively, then the path reads it; R4-M52's "on a shared input's path too" was corrected by the
+  planning session). A pair-layer input, exclusive only by case, starts none here. Supersedes R4-M37 G5's "or on the Place path of a
+  receiver or an argument down to a value"
+  and its Open note on a parent reservation's mode: no reservation is formed through another reservation's holder, so A3's mode
+  rule stands. Rejected: an A5 reservation chain (R4-M52); a parent link on the Ref (an O1 vocabulary entry for a fact the Place
+  shows). Not temporary.
+- **R4-M55** (2026-10-17; PLAN G123, the planning session's design A3 E10, implemented on its instruction of the same day) An
+  operand is read where it is evaluated (SPEC 12.2): a Place operand (Copied, Moved or acquired by case) of an operation is
+  secured into a temp where it is evaluated (`Secure`, as a transfer's result is) when a later operand of the same operation builds
+  code. `MirBuilder.Builds` decides that from the HIR: every operand builds code except a literal's constant and a Place read as it
+  is (Copied, Moved or through its referent) whose path from a local is stored Fields, Derefs and constant positions. The rule
+  covers a call's callee value, receiver and arguments in evaluation order (a pending slot already secures its operand), a Tuple,
+  fixed-array or enum construction's operands, a built-in binary operator's left operand, an Array literal's elements, and the
+  receiver of a built-in selection whose value the selection reads, a Slice handle or a raw pointer (`Handle`), before an index or
+  boundary that builds code. So `f(x, do => x = 5)`, `(x, do => x = 5)`, `x + reset(x@uniq)`, `[x, reset(x@uniq)]`,
+  `v[touch(v@uniq)]` and a pair-layer argument before a call read their Place where it is evaluated. Amends R4-M40: a Slice
+  receiver's handle is copied first only where a boundary builds code, else read in place, and its backing is the handle's
+  value (a Copy), never a borrow. A pair-layer argument that later code follows is acquired where it is evaluated, not at its Call
+  (R4-M37's Open); whether its exclusive case is a reservation there is A5's reading of the acquisition (step 1b). A written
+  `@move` already moved into its temp where evaluated. Rejected: every Place operand through a temp (more MIR for no change of
+  what is read); a predicate on the forms that may write (an open family); securing the pending operands at a later operand's
+  first statement (hidden builder state). Not temporary.
+- **R4-M56** (2026-10-17; PLAN G94, the planning session's design A3 E10 with its option 2 on review N8, implemented on its
+  instruction of the same day; amends R4-M40's backing placement and closes its Open) SPEC 4.7.4: a built-in selection locates and
+  checks its receiver once, before the index. A receiver whose value the selection reads, a Slice handle or a raw pointer
+  (`MirTypes.SelectsByValue`, the one fact the builder and A1 share), is G123's (R4-M55). Other receivers are storage, which the
+  selection lends shared where it locates it: an element selection's guard, `Borrow(Ref)` of the receiver into a temp with the
+  selection's SourceInfo, ended by `EndBorrow` once the index, key resolution or `^x` is evaluated and before the element's own
+  access (read, write, borrow, reservation, writeback) is formed; a range selection's `RawSlice` backing, now formed before its
+  boundaries. Contract (builder to A1, no vocabulary entry): every runtime `Index` the builder forms on storage has its guard (or
+  backing) where its receiver is located, always, so the rule is uniform; a default template's copy keeps its guards; the Index's
+  position local is located at the selection too. A1 checks the receiver's initialization and Moves at the guard and again at each
+  access through a runtime `Index` of storage, both under the selection's subject (the access's from its position local), so
+  R4-M3a's one problem per code and subject makes an access into an uninitialized or moved array one problem, at the selection,
+  whatever consumes the element (before, at the consumer), and a receiver Moved while its own index is evaluated is still
+  `MovedPlace_Kd` at the selection (SPEC 23.1), independent of the Move's conflict with the guard (A5, step 1b). The receiver of a
+  built-in index is no reservation; an index update reserves the element after the index. ConstIndex evaluates nothing and has no
+  guard. A transfer inside the index leaves the guard dead on its runtime edge, so no runtime `EndBorrow` is needed. Rejected: a
+  consumer subject passed down `Place` and `Operand` (option 1: partial, over the parameter limits); duplicate problems (option 3);
+  skipping the access's check (first implemented: it lost the Moved read after a Move inside the index); a guard only where the
+  index builds code (a gate; MIR cost measured instead). Not temporary.
+- **R4-M58** (2026-10-17; PLAN G91, the planning session's design A3 E10 in design A's form, with the A1–A4 audit's finding 3,
+  implemented on its instruction of the same day; supersedes R4-M36's "The Destruction walk cuts no cycle through a sequence") The
+  Destruction walk enters each Type once per query, by interned identity: `IMirDestruction.First(type)` at the walk's entry for every
+  Type, the visitor's set (`AnyPart` and `Observer`: the caller's `seen`, A4's `Glue`: the evaluation's `glued`). A Type met again was
+  walked already, so a repeating recursive Type ends where it repeats, through a sequence (`Tree` with `Array<Tree>`) or a handle
+  alike, and a Type several parts share is walked once: the walk is linear in the distinct Types it meets (nested pairs 25 deep,
+  2^25 leaves as a tree, meet 26). A growing Type is new at each level and still ends at the bound of 32 (`Nest` stays deep). The
+  visitors' own cuts go (Observer's payload set, A4's `glued` check in `Destroy`). `MayNeedDrop(type, seen)` takes the caller's
+  scratch (the builder's and A2's). `HoldsRaw(type, seen)` gets the same per-query cut as `HoldsLoans` (its caller
+  `MirBuilder.StaticRoot` passes the builder's scratch), so a repeating recursive Type is not raw-holding for its repeat. A chain
+  growing through a destructor's composed atom (`D<T>` destroying `T` as `G<(U, U)>`) terminates without A4 threading the walk's
+  depth: Binding's storage instantiation bounds the growing instance (`PrepareInstantiatedStorage`, depth 64), so `TyCtxt.Apply`
+  gives the composed atom no Type and A4 records Limit at the first composition. Rejected: an `Enter` on reported parts only
+  (design B: a struct of scalars reports nothing, so the DAG walk stays exponential); a cached fact per interned Type (state outside
+  the query, R7's); a nullable set parameter on `Destruction`. Not temporary.
+- **R4-M59** (2026-10-18; owner decision, option C, on the MIR lane's confirming review B2 — the second round on the family "a
+  Never element's Type in a literal", AGENTS) G92a builds every node on a check-only continuation (R4-M62) and relies on α
+  (R4-M52). A literal typed before its position's Type is decided (an `if` branch under SPEC 14.9.2's common Type; a Case payload
+  bound in `BindEnumConstruction`'s typed pass) keeps a Never component in its Binding Type, which `FitsTypeCore` lets fit another
+  Type against SPEC 3.8; built, it reached a position of another Type and the validator reported `InternalInvariant_Kd` on the mir
+  pipeline (`let t = if c => (a, a) else => (a, (return 1))`). MIR construction builds no Aggregate for an aggregate literal whose
+  Binding Type holds a Never element, a Never at a position the literal builds (a Tuple's component or an array's element, through
+  those kinds only), and records a located `Unsupported_Kd` with an Opaque value in its place, as for G103-E9a's fill literal; such
+  a literal never completes at run time (an element diverges or reads a Never Place; an empty `[]` of element Type Never completes,
+  but the old path already reports it `Unsupported_Kd`), so only check-only code loses its checks. A
+  Never elsewhere in the Type is a declared Type, and the literal is built: a Function's result (`(a, h)` with `h: () -> Never`), a
+  Type argument (`Option<Never>`). Removal condition: PLAN G129's Binding unit (a literal fitted to its position's Type once that
+  is decided; `FitsTypeCore` no longer fits a Never component; Never's Copy proof). Rejected: fixing Binding before the merge
+  (option A: the lane, the core lane and R5's W1 would wait, and it is best designed with G130's SPEC 10.5.1 unit); holding the
+  lane until G130 (B); the validator copying Binding's Never leniency (a second copy of a rule); the builder re-typing the aggregate
+  at its consumer (a consumer deciding a fact Binding publishes); a walk of every component with a test of the HIR completion
+  (the planning session: the published Type alone decides, through the positions a literal builds).
+- **R4-M62** (2026-10-17; PLAN G92, implementing R4-M52's G92a (owner) as `draft/Sketches/A5 Step 1/choice-1b.md` §2 and A3 E9
+  state it, with design review r1's B2 and r2's F3 and F4, on the planning session's instruction of the same day; amends R4-M37
+  G6) Assumed completion in MIR construction (SPEC 14.10.3, 3.8, 3.1.3). On a check-only continuation every node is built and
+  makes its own value and accesses as at run time. A node of Binding Type Never has no value: its temp, the Never value, is never
+  written, carries no Loan and fits any operand position: every acquisition takes it as it is (`Acquire`), so a comparison's
+  borrow of it forms no `ref/Never`. `MirBuilder.Set`, now the one assignment (`Make` merged into it), builds nothing that has no
+  value: an rvalue that has an input (an operand, or the Place a Ref, Len or Discriminant reads) whose every input is the Never
+  value, or a value assigned to the Never value (a `while` whose condition diverges completes with none), but for the Opaque value
+  standing for a rejected or unsupported node of Type Never. An increment's one is of the old value's Type, not of its target
+  node's, which is Never where the index diverges (`++a[(return 0)]`). `Overwrite` neither drops nor places when the value is
+  the Never value, and `Replace` secures a right side of Type Never into a Never temp, so `let x: i32 = stop()`, `x = stop()` and
+  `b = stop(); consume(b@move)` stay as before (x unwritten, b neither dropped nor overwritten). A Call is built with its Never
+  operands (`Reached` goes), except where a part would borrow the Never value, which has nothing to borrow: a runtime Type test's
+  handle, a verification's message and `$tryWrite`'s writer. The non-completion gates go: Set's, a range selection's bounds check
+  and `RawSlice`, a `^x` boundary's check, an Array literal's appends, `testObserve`, a formatted write's result test and
+  `FormatFinish`. Edge structure stays the HIR Completion's: Transfer, Branch, Join, Loop, a body's end, a recursive default's
+  call, an Opaque site and a block's Unit. The validator reads the Never value's Type as unknown at every operand position (Use,
+  operators, Casts, aggregate components, call arguments, a Value callee), replacing R4-M37's call-argument exception; a
+  `ref/Never` operand is still a finding. Binding's alpha (a Never element of a literal takes its expected Type) landed first. So
+  a continued call's result reaches its consumer (`both(keep(p@uniq, (return 1)), p@uniq)`), an update whose right side
+  diverges writes through its reservation, and a construction around a Never form keeps its operands' Moves and Loans; A4 counts
+  the effects of the statements this builds (R4-M6a). Rejected: keeping `Reached` with a located `Unsupported_Kd` (owner); an
+  A5-side rule over operands the MIR does not build; a diverging Call writing its destination on its check edge (SPEC 14.10.3
+  leaves it open). Not temporary.
+- **R4-M64** (owner, 2026-10-17, O3, choosing the recommended option 「書き換え＋記録」) Milestone 27 line 100,
+  `references.sliceUniq().slice().toArray()` followed by `references = [copied]`, is an error by SPEC 15.6 and 15.6.4 as
+  integrated at `4372b058` (S1, design A3's loss P4): the temporary UniqSlice's holder carries its own exclusive Loan on
+  `references` beside the elements' Loans, a read through the Slice carries both, and the copy keeps that Loan; rustc
+  accepts it. The program is re-spelled as `references.slice().toArray()` (a specification re-spelling recorded in
+  `tests/milestones/README.md`; the output and the section's intent are unchanged), and A3 §2's P4 census is corrected
+  (milestones 1). `4372b058`'s "no verdict changes" claim was wrong for this line. Found by A5 unit 1b-2; analysis in
+  `draft/Sketches/A5 Step 1/m27-analysis.md`, which also found an implementation defect handled separately (a Slice
+  input is a borrowed input for retention, SPEC 4.8.2: Binding's part is A5 1a3, merged at `0e50b868`; the MIR side,
+  `MirBorrows.Flow`, is unit 1b-3's). Rejected: a precision refinement narrowing P4 ("a view holder
+  stores no elements": prototype 255 cases sound, but a SPEC revision and the full process for one program; kept as
+  PLAN G127).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -1384,3 +1505,112 @@ and migration obligations remain in force; no numeric cap changes are authorized
     whose Move is forbidden, not with a reference result that the index expression follows; the caller's choice it wanted
     (Copy, borrow or replace, as for Array) is what following the returned reference gives, and its §7 had already fixed
     the ABI to that of the reference result.
+
+## R5 and R6 (adopted 2026-10-18)
+
+The owner's answers to the plan's questions OQ1–OQ17, given on 2026-10-18 and relayed by the R4 planning session. "Plan"
+is the [R5 and R6 Implementation Plan](../../draft/Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md); its
+unit and decision names (S1, E2, PD12) are used as there. Each planning-session decision PD1–PD32, component and temporary
+structure is recorded here by the unit that first implements it.
+
+- **R5-M1 Adoption** (owner, 2026-10-18; OQ1, OQ4, OQ10, OQ11 and the start) The plan is the formal plan for R5 (MIR code
+  generation, shadow), R6-gen and R6-check: its units (§4), order (§3), metrics and stop rules (§5.1–§5.2, R5-M8) and three
+  exit gates (§5.3–§5.5), which replace PLAN10 §12.2's R5 exit and give R6-gen and R6-check the gates R4-M35 left out. R5
+  runs now, in parallel with R4 (OD4 stands), in its own planning session. The design
+  packages S2–S4 (OQ4), Q8 (OQ10) and H0 (OQ11) each go to the owner once, after their design review, and are approved
+  then, not in advance; each approval makes the package the owner-approved design of DEC Q6 forms 1 and 2 for the units and
+  groups it names. The S2–S4 summary highlights PD3 (no `MirBodyKind.Shim`; shims are Backend mono items) and PD11
+  (temporary codegen coverage rows reporting `Unsupported_Kd` under sel, outside the three reporters ARCH "Closed
+  vocabularies" names, until X2), which depart from owner-approved texts. Rejected: approving the packages before their review.
+- **R5-M2 R5 start conditions** (owner, 2026-10-18; OQ2, as recommended; supersedes the owner gate of
+  [Pre-R5 Work Items](../../draft/Proposals/2026-10-12%20Pre-R5%20Work%20Items.md) §2, which assumed that R5 starts at R4's
+  exit) The A5 plan §9.1 timing baselines (ARCH R0 row: the O2 corpus and the compiler pipeline series at `49cb2b5d`) with
+  E6 and E7 replace B1 and B3; B4 is met once the native audits fail closed (E2), their test-coded counts becoming the
+  PLAN10-P2 baseline; B5's command rows are added to VERIFICATION; RawPointers is not restored. The A=B variance is retaken
+  on a fresh `49cb2b5d` checkout kept at a named location with a backup (E6): the evidence directory PLAN §3 cited
+  (`artifacts/benchmarks/o2-corpus/20261017-111950-pre-r5-baseline`) exists in no checkout (checked 2026-10-18). R5 code
+  units may start.
+- **R5-M3 One measured codegen design** (owner, 2026-10-18; OQ3; supersedes A5 plan §9.1's "both measured") The measured
+  design-A spike is waived: design B (PD1, a direct `FunctionCodegen` from validated MIR) and an independent review of
+  design A on paper are the two designs, and B's first slice is measured against the legacy generator instead (E13's
+  per-function O2 metrics and E6's baseline at C1a's group review). S6 does not run. Reason: the writer stage is
+  0.016–0.066 ms of a 21–43 ms compilation, so a spike cannot discriminate (PD1).
+- **R5-M4 Publication from G2** (owner, 2026-10-18; OQ5, every sub-item as recommended) From G2, `check` on the default
+  pipeline publishes the MIR construction records, validator findings and collector records (G2 writes the entries
+  superseding R3-1, R4-M1 and OD10's split for them) and reports instance-stage `Unsupported_Kd` and Resource records for
+  the checked set (SPEC 23.2.2 leaves it implementation-defined; IMPL 21.3.3 requires a report for every instantiation of
+  the checked set), so a Library with an unbuildable generic instance fails `check`. Between G2 and H5 a PD12 refusal of a
+  program the old analysis accepted (an A1 or A2 problem, or A1's arena record) is reported at generation as a typed
+  Emission-partition record: no duplicate of the old path's own `OwnershipStorageLimit_Kd`, so no suppression rule. Every
+  default Analyze runs the shadow MIR driver (A3, A1, A2, A4 and A5 once landed, unpublished) from G2 until R6-check, its
+  time, allocation and retained-memory cost measured in G2. Collector records go in the ControlFlow partition with R3-1's
+  MIR records (PD7), so PLAN10 §7's "P11–P12 → Emission" yields for them (K4's OD4 entry). Under sel, collector records
+  publish from K4 (MIR construction and validator records already do under `mir`, R3-1). Rejected: publishing PD12 refusals
+  at `check` before H5.
+- **R5-M5 `AnalyzeInstance`** (owner, 2026-10-18; OQ6, option (e)) The two definition-level holes `AnalyzeInstance` covers,
+  PLAN10-X1 (abstract destruction) and abstract temporaries, are reproduced (Q1) and fixed in the old definition run as D5
+  miscompile fixes (Q2, Q3; DEC O3 applies if a library or milestone program is rejected); then Q4 writes the entry
+  superseding OD10's "check-only step" clause (R4-M35) with the ARCH R6 row, and G7 deletes `AnalyzeInstance` with its
+  callers. R6-gen therefore also waits for A5 step 1 through Q2. Reason: `check` never runs it (`Project.cs:502-515`), and its
+  only callers are in the Emission R6-gen deletes. Rejected: (b) a check-only Subst→CallPlan bridge (a transitional structure
+  of difficulty 4, +150–200 lines); (d) R6-gen waiting for R4's exit, which stays the fallback if A5 step 1 has not merged by X3.
+- **R5-M6 Native deviations at R5's exit** (owner, 2026-10-18; OQ7; extends PLAN10 §12.2's "match or (e)") A native outcome
+  of MIR code generation may differ from the legacy run's only as (e) a form not ported under D2, (a) a legacy-wrong outcome
+  or (d) an intended change, each with its item, reason and SPEC clause (the plan's examples: the static cycle code at the
+  accessing Place, SPEC 22.4.3 and 22.5.2; inline closure environments, IMPL 21.1.3; Abort caller locations, SPEC 22.5).
+  Rejected: reproducing wrong legacy output on MIR, or D5 fixes of the frozen legacy path to make the two agree.
+- **R5-M7 Hold lines beyond Mir** (owner, 2026-10-18; OQ8; PD20) ARCH's hold protocol for files both streams change also
+  covers (paths under `src/Kimi/Compiler` unless given in full) `Core/Compilation.Pipeline.cs`, `Binding/TyCtxt.cs`,
+  `TyCtxt.Effects.cs`, `TyCtxt.Retention.cs`, `BindingModel.cs`, `Binding.ClosureInstances.cs`, `Binding.RequirementInstances.cs`,
+  `KimiLibraryCatalog.cs`, `src/Kimi/Checking/Hover/HoverBuilder.cs`, `src/Kimi/Diagnostics/DiagnosticRequirement.cs` and
+  `tests/xUnitTest/MirDifferenceLedger.cs`.
+  R5's new Binding views go into new partial files, and its shared MIR edits are batched into windows W1 (the builder's call
+  and control files, the `$abort` site, the Q16 sites and the goldens) and W2 (`MirProgram.cs`), each recorded in PLAN §3 as
+  a hold. Reason: both streams edit these files, and the protocol covered only Mir.
+- **R5-M8 R5 metric, stop rules and verification** (owner, 2026-10-18; OQ9, as recommended) Adopted: the plan's metrics
+  (§5.1), M1, the sel pending ledger, being R5's progress measure, and its stop rules (§5.2): the owner is consulted after two
+  consecutive R5 working sessions that land no unit (a planning- or record-only session lands none); a unit not landed within
+  two working sessions is re-split or becomes an owner question; from C0b2, if M1 does not fall across three consecutive C
+  units, the session states why, and a missing input becomes a fact or builder unit; an O2 kernel regression beyond the A=B
+  variance blocks its family's merge, fixed in codegen, never by a tolerance. VERIFICATION gains R5's rows, a sel Session
+  beside the default one at the end of every R5 working session and the pending-ledger gate, both removed at G4. Ask A-10
+  goes to R4: from C0b2, R4's MIR-builder merges run the sel pending check and record any rise; from G3, they select the
+  affected native families and O2 kernels. Rejected: a CI sel lane (full sweeps run at family group reviews, X1 and G3).
+- **R5-M9 Binding syntax reads and synthetic Koto at R7** (owner, 2026-10-18; OQ12, OQ13; a later removal stage) Binding's
+  reads of the 36 Koto forwarding properties, the properties themselves and ARCH's extension of Syntax's restriction to the
+  whole Binding layer move from R6 to R7 (superseding CR-A7's R6 marking of the properties, whose attributes change at
+  H14, and A5 plan §9.1's R6-check clause, R4-M35); Parsing and root-helper reads go at R6-check (H14). The synthetic Kotos
+  (`EvaluatedKoto`, `SyntheticKoto`, `FormattingKoto`, `RequirementCalleeKoto`, `TryKoto` arms) go at R7, after the CallPlan
+  pipeline gives syntax-free selection. Reason: no speed gain, since the properties already forward to `HirTables` (so PLAN
+  §3's expected recovery of the R2a Bind cost is not expected from them, H), and R7's inline writes and CallPlan pipeline
+  redo these sites. Rejected: R6-check (for the synthetic Kotos, pulling that CallPlan entry in, about +400/−300 at
+  difficulty 4).
+- **R5-M10 Syntax data in the MIR builder** (owner, 2026-10-18; OQ14, as recommended) ARCH's two rules on syntax-class
+  decisions in Mir/Build ("reach 0 by the end of R6"; "no Koto type test or KotoKind dispatch in Mir/Build after R6") are
+  amended: an operator token or form read under its published `HirOp`, and a cast to read a child, are syntax data; after R6
+  Mir/Build has no Koto type test or `KotoKind` dispatch that chooses an operation no published `HirOp` decided. The 17 sites
+  that do are fixed with existing facts (Q16, in W1); this amendment covers the 63 others (34 child casts, 29 operator or
+  form identities), which H13 only confirms. Rejected: keeping the rule and replacing every site with facts or a HIR primitive-operation
+  vocabulary (a full-process design and a vocabulary request for sites that choose nothing).
+- **R5-M11 SETTLED "Instance-evaluated generic defaults" at H15** (owner, 2026-10-18; OQ15) The entry's mechanism text is
+  rewritten at H15 as an explicit, formal revision. The R4 planning session's note, relayed with the decision: write it
+  against the mechanism H15 has (the inline fold, `MirBuilder.Defaults`), not PLAN10 §11's 2026-10-10 wording; it gets its
+  own independent review (AGENTS requires one for SETTLED). This resolves PLAN10 §11 (a rewrite at R6) against R4-M35's
+  non-adoption of OD9 (the fold and the entry stay): the fold and the entry stay, and the entry's mechanism text is
+  rewritten at H15.
+- **R5-M12 IR-assertion classes** (owner, 2026-10-18; OQ16; PD25) An IR-text assertion in a test is R (required by SPEC or
+  IMPL), P (a behavior proxy), I (incidental) or S (old-Emission structure). The rules are approved once: each codegen family
+  unit deletes the I assertions and the P assertions its native checks cover in the tests it makes pass, and lists them in
+  its commit; E1 classifies up front only what can still pass vacuously after E2. Rejected: an upfront table of about 450
+  rows on the critical path.
+- **R5-M13 No-LINQ in tests, static shutdown, NativeAOT** (owner, 2026-10-18; OQ17, (b) and (c) changed from the plan's
+  recommendation)
+  - (a) ARCH's no-LINQ rule for Mir analyses and the Backend does not extend to tests (the owner first agreed, then withdrew).
+  - (b) Static shutdown is not pulled into R5. P42's remainder (static `var`, aggregate and drop-needing statics, generic
+    storage keys, first-write initialization, replacement destruction, shutdown and its order, `KIMI_E_STATIC_SHUTDOWN`) is
+    the first feature work right after R6-check's acceptance flip (H5), with Milestone 42 as its completion condition. PD19
+    stays; C7's slot state follows SPEC 22.4.3's four states (Not started, Initializing, Initialized, Finished), so P42
+    needs no representation change. Reason: the deciding old analysis accepts only immutable nongeneric static scalars
+    (`StaticScalar`), so no accepted program can exercise shutdown before R6-check (`check` probes, 2026-10-18).
+  - (c) No NativeAOT publish at R6-gen's exit (plan §5.4 item 7 and G11 drop it); instead the NativeAOT build is published and
+    run once before the next distribution, for example VS Code extension packaging.

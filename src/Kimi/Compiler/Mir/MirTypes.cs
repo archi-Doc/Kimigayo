@@ -2,11 +2,11 @@
 
 // Owns the Type facts needed by MIR construction and analyses.
 // Input: published Types, their stored shapes and Binding's Copy and Sealed proofs. Output: the destruction walk and the drop, observation,
-// Loan-holding, raw, exclusivity, agreement, borrow-kind and pointer-cast facts.
+// Loan-holding, raw, exclusivity, selection, agreement, borrow-kind and pointer-cast facts.
 // Inline storage is traversed under each fact's documented bounds and Type rules; what destroying a value does is the one Destruction walk.
 // Must not inspect source syntax or substitute new Binding decisions.
 // Its concerns: the destruction walk and the facts over it (MirTypes.Destruction.cs), what a value may hold (MirTypes.Holding.cs), and
-// here the reference, view, borrow-kind, pointer-cast and agreement facts.
+// here the reference, view, selection, borrow-kind, pointer-cast and agreement facts.
 
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
@@ -39,6 +39,13 @@ internal static partial class MirTypes
     /// <param name="type">The Type.</param>
     /// <returns>Whether it is an exclusive reference.</returns>
     internal static bool IsExclusive(BoundType? type) => type?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
+
+    /// <summary>Gets whether a built-in selection reads its receiver's value, a Slice handle or a raw pointer, whose element is its
+    /// referent (SPEC 4.7.4, 4.8.1, 5.3); else the receiver is storage, which the selection lends where it locates it (its guard, which
+    /// is the receiver's check, DECISIONS R4-M56).</summary>
+    /// <param name="type">The receiver's Type.</param>
+    /// <returns>Whether the selection reads the receiver's value.</returns>
+    internal static bool SelectsByValue(BoundType? type) => type is { Kind: BoundTypeKind.Slice } or { Semantics: SemanticsKind.Raw };
 
     /// <summary>Gets the kind of the borrow that forms a reference Type (SPEC 13.5.6, 5.4), the mode of every Ref: an address for a raw
     /// pointer, a shared borrow for a shared reference, else an exclusive one, two-phase for a reservation: reserved at the borrow and

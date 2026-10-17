@@ -10,14 +10,15 @@ The analyzer and CompilerSizeBudgetTest were retired (DECISIONS CR-R1); no live 
 [`verify.ps1`](../../scripts/verify.ps1) owns build/test execution and input stability;
 [`verification-selection.ps1`](../../scripts/verification-selection.ps1) owns selector normalization, discovery checks and the executed-test count;
 [`verification-inputs.ps1`](../../scripts/verification-inputs.ps1) owns source/NuGet manifests and Git-normalized matching;
-[`verify-commit.ps1`](../../scripts/verify-commit.ps1) associates successful evidence with exact committed inputs.
-The matching script regressions are VerificationSelectionTest.ps1 and VerificationInputsTest.ps1.
+[`verify-commit.ps1`](../../scripts/verify-commit.ps1) associates successful evidence with exact committed inputs;
+[`compare-fixtures.ps1`](../../scripts/compare-fixtures.ps1) compares two runs' fixture evidence (behavior-preserving commits).
+The matching script regressions are VerificationSelectionTest.ps1, VerificationInputsTest.ps1 and FixtureComparisonTest.ps1.
 MirBuilder.Formatting owns formatting expansion with Test, Guard and Observe condition operations.
 
 The main path is source input → Koto syntax → Binding → control-flow/ownership analysis → physical emission model → LLVM IR → native tools. Checking stops after the front end; generation and native execution have separate entry points.
 
 `HirTables.HasCurrentBinding` owns whether a resolved node's Binding facts are current; SemanticQuery and Binding read
-it directly. Koto's R6 forwarding property preserves syntax-side readers and the original lazy-initialization order.
+it directly. Koto's forwarding property (removed at R7, DECISIONS R5-M9) preserves syntax-side readers and the original lazy-initialization order.
 
 Phase and dependency rules, the canonical component of each concern, structure limits and the compiler reduction stage ledger are in [COMPILER_ARCHITECTURE.md](COMPILER_ARCHITECTURE.md); the design decisions behind them are in [DECISIONS.md](DECISIONS.md).
 Whole-value updates share `OwnershipAnalysis.Updates.WholeValueUpdate`; the distinct `OwnershipOperationKind`

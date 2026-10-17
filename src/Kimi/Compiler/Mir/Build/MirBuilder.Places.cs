@@ -11,9 +11,18 @@ internal sealed partial class MirBuilder
     // The one operand of a group, a borrow, a conversion or a Deref.
     private static Koto Child(Koto node) => node switch { LabeledKoto label => label.Target, BinaryKoto binary => binary.Left, _ => ((UnaryKoto)node).Operand };
 
+    // The written exclusive borrow a node's value is, also in parentheses; null for another node.
+    private static Koto? Lending(Koto node) => HirTables.Op(node) switch
+    {
+        HirOp.Group => Lending(Child(node)),
+        HirOp.Borrow when MirTypes.IsExclusive(TypeOf(node)) => node,
+        _ => null,
+    };
+
     // The Place a node designates: one an expansion located already (Located), a parenthesized Place its operand's; a value its consumer needs
-    // as a Place is held in a temp. A call's input (input) is its preparation path down to a value or a call result, whose exclusive
-    // borrows are reservations (SPEC 15.6.7).
+    // as a Place is held in a temp. A reserved input's path (input) is its preparation path down to a value or a call result (SPEC
+    // 15.6.7): a written exclusive borrow it continues through is not formed, the path going on from the Place it lends, so the input has
+    // one reservation, at its lending point, as the path without it has (DECISIONS R4-M54).
     private MirPlace Place(Koto node, bool input = false)
     {
         if (this.Located(node) is { } located)
@@ -22,6 +31,11 @@ internal sealed partial class MirBuilder
         }
 
         var shape = HirTables.PlaceOf(node);
+        if (input && shape is { Kind: HirPlaceKind.Value, Layers: > 0 } && Lending(node) is { } borrow)
+        {
+            return this.Follow(this.Lent(this.Place(Child(borrow), input), TypeOf(borrow)), shape.Layers - 1);
+        }
+
         var place = shape.Kind switch
         {
             _ when node is ParenthesizedKoto group && shape.Kind != HirPlaceKind.Value => this.Place(group.Operand, input),
@@ -158,7 +172,7 @@ internal sealed partial class MirBuilder
     private MirPlace StaticRoot(BindingSymbol symbol)
     {
         var type = symbol.Type ?? BoundType.Unit;
-        return this.body.Static(new(symbol, type, symbol.Declaration is PropertyKoto { VariableKind: VariableKind.Var }, MirTypes.HoldsRaw(type)));
+        return this.body.Static(new(symbol, type, symbol.Declaration is PropertyKoto { VariableKind: VariableKind.Var }, MirTypes.HoldsRaw(type, this.walked)));
     }
 
     // SPEC 6.2.2, 3.2: a stored Field or a Tuple element of the receiver's Place, which the receiver's Layers follow.
@@ -200,37 +214,56 @@ internal sealed partial class MirBuilder
         => this.body.Project(this.Place(index.Left, input), MirProjectionKind.ConstIndex, (int)HirTables.PlanOf(index).Folded!.Value);
 
     // SPEC 4.7, 4.7.1: a built-in element at a runtime position: an integer, at a written ^x the length minus x, or at another key's
-    // resolution; SPEC 5.3: a raw pointer's p[n] is *(p + n).
+    // resolution; SPEC 5.3: a raw pointer's p[n] is *(p + n). SPEC 4.7.4: the receiver is located once, before the index: a handle the
+    // selection reads by value is secured there where the index builds code (Handle), and storage is lent there by a guard, a shared
+    // borrow ended once the index is evaluated, before the element's own access is formed. The guard is the receiver's check at the
+    // selection (DECISIONS R4-M56), and the position local is located there, so A1 reports an access through the Index under the same
+    // subject: one problem unless the receiver changed in between.
     private MirPlace Element(IndexKoto index, bool input)
     {
         var sequence = this.Place(index.Left, input);
+        sequence = Builds(index.Right) ? this.Handle(sequence, index.Left) : sequence;
+        var guard = MirTypes.SelectsByValue(this.body.TypeOf(sequence)) ? (MirPlace?)null : this.Borrow(SemanticsKind.Ref, sequence, index).Place;
         var key = ExpansionPlan.Of(index)?.First;
+        MirPlace position;
         if (key is not null || HirTables.Op(index.Right) == HirOp.Range)
         {
-            var body = this.body;
-            var resolved = key is null ? this.Boundary(index.Right, this.Length(sequence, index)) : this.Resolve(key, index, sequence);
-            return body.Project(sequence, MirProjectionKind.Index, resolved.Root);
+            position = key is null ? this.Boundary(index.Right, this.Length(sequence, index), index) : this.Resolve(key, index, sequence);
         }
-
-        var position = this.Operand(index.Right, expected: null);
-        if (this.body.TypeOf(sequence) is { Semantics: SemanticsKind.Raw } pointer)
+        else if (this.body.TypeOf(sequence) is { Semantics: SemanticsKind.Raw } pointer)
         {
+            var count = this.Operand(index.Right, expected: null);
             var offset = this.Temp(pointer, index);
             var start = this.body.AddOperand(MirOperand.Copy(sequence));
-            this.body.AddOperand(position);
+            this.body.AddOperand(count);
             this.Set(offset, MirRvalue.Binary(MirBinaryOp.Add, start, proven: true), index);
             return this.body.Project(offset, MirProjectionKind.Deref, 0);
         }
+        else
+        {
+            position = this.Position(this.Operand(index.Right, expected: null), index.Right, index);
+        }
 
-        return this.body.Project(sequence, MirProjectionKind.Index, this.Position(position, index.Right).Root);
+        if (guard is { } lent)
+        {
+            this.body.Push(this.current, MirStatement.Of(MirStatementKind.EndBorrow, lent, this.Info(index)));
+        }
+
+        return this.body.Project(sequence, MirProjectionKind.Index, position.Root);
     }
 
+    // SPEC 4.7.4, 12.2: a selection's receiver whose value it reads, a Slice handle or a raw pointer, secured where it is located (before an
+    // index or a boundary that builds code), so that the selection reads the value it located; another receiver is its storage.
+    private MirPlace Handle(MirPlace sequence, Koto node) => MirTypes.SelectsByValue(this.body.TypeOf(sequence))
+        ? this.Secure(MirOperand.Copy(sequence), node).Place : sequence;
+
     // SPEC 4.6.1: a position as the isize a selection reads, its value compared mathematically: a Type no wider than isize wraps (a same-width
-    // unsigned value isize cannot hold reads as negative, which the bounds check rejects), a wider one converts checked.
-    private MirPlace Position(in MirOperand position, Koto node)
+    // unsigned value isize cannot hold reads as negative, which the bounds check rejects), a wider one converts checked; in a local located
+    // at its selection, whose subject A1 reports an access through its Index under (DECISIONS R4-M56).
+    private MirPlace Position(in MirOperand position, Koto node, Koto selection)
     {
         var type = this.TypeOf(position) ?? BoundType.ISize;
-        var local = this.Temp(BoundType.ISize, node);
+        var local = this.Temp(BoundType.ISize, selection);
         var operand = this.body.AddOperand(position);
         var wraps = this.Width(type, out _) is var width and > 0 && width <= compilation.PointerWidth;
         MirRvalue value;

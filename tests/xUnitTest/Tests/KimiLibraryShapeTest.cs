@@ -404,10 +404,11 @@ public class KimiLibraryShapeTest
     public void ManagedRepresentationsStoreNothing(string path)
         => Assert.DoesNotContain(Record(path).Members, member => member is VariableKoto and not PropertyKoto { DeclarationKind: PropertyDeclarationKind.Computed or PropertyDeclarationKind.Requirement });
 
-    // SPEC 22.1: Case order is the tag (Some/Ok = 0, None/Err = 1) that lowering and the runtime construct and test.
+    // SPEC 22.1: Case order is the tag (Some/Ok = 0, None/Err = 1) that lowering and the runtime construct and test; the
+    // conditional Copy clause is each Type's Copy set.
     [Theory]
     [InlineData(KimiDeclarationId.Option, "public enum Option<T>\nSelf is Copy when T is Copy\nSome(T)\nNone")]
-    [InlineData(KimiDeclarationId.Result, "public enum Result<T, E>\nOk(T)\nErr(E)")]
+    [InlineData(KimiDeclarationId.Result, "public enum Result<T, E>\nSelf is Copy when T is Copy, E is Copy\nOk(T)\nErr(E)")]
     public void OptionAndResultCasesAreFixed(KimiDeclarationId id, string shape)
     {
         var symbol = Library.Value.Library.GetSymbol(id)!;

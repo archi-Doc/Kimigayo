@@ -28,7 +28,7 @@ public sealed partial class Binding
         switch (op)
         {
             case HirOp.Call or HirOp.Index when node is IndexKoto index:
-                var keyed = Planned(this.ResolvedKeyCall(index), out var key) && (key is null || ExpansionPlan.EvaluatedArgument(key) >= 0);
+                var keyed = Planned(this.ResolvedKeyCall(index), out var key) && (key is null || key.Evaluated >= 0);
                 var selected = op == HirOp.Index || (Planned(this.SelectedIndexCall(index, exclusive: false), out var shared) && shared is not null);
                 return keyed && selected && Planned(this.IndexerCall(index, exclusive: true), out _); // indexUniq, bound only beside index.
             case HirOp.Call:
@@ -44,7 +44,7 @@ public sealed partial class Binding
                 // An update builds its arithmetic call, and its setter takes the computed value; with one standard accessor it reads or
                 // writes the Property's storage.
                 return op == HirOp.Assign || ((CallPlan.Of(node) is not { } arithmetic || Complete(arithmetic)) &&
-                    (setter is null || ExpansionPlan.EvaluatedArgument(setter) >= 0) &&
+                    (setter is null || setter.Evaluated >= 0) &&
                     ((getter is null) == (setter is null) || HirTables.Symbol(target) is not null));
             case HirOp.Interpolation:
                 return HirTables.Meaning(node) is not null && node.Formatting is { Writes.Count: > 0 } format && Formats(node, format);

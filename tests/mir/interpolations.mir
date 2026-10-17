@@ -1028,10 +1028,13 @@ fn early @97
   bb15:
       unreachable check bb8 @104 s1
   bb16:
+      _14 = discriminant(_13) @101 s1
+      switch copy _14 [0: bb17, otherwise: bb1] @101 s1
+  bb17:
       StorageLive(_17) @101 s1
       _17 = &uniq two-phase _3: uniq/Utf8Writer @101 s1
-      _4 = intrinsic FormatHint(move _17, const 0_isize, const type ()) -> bb17 @101 s1
-  bb17:
+      _4 = intrinsic FormatHint(move _17, const 0_isize, const type ()) -> bb18 @101 s1
+  bb18:
       StorageLive(_18) @101 s1
       StorageLive(_19) @101 s1
       StorageLive(_20) @101 s1
@@ -1040,14 +1043,16 @@ fn early @97
       _21 = const "suffix" @107 s1
       StorageLive(_22) @107 s1
       _22 = &_21: ref/string @107 s1
-      _18 = write<string>(move _20, move _22) -> bb18 @101 s1
-  bb18:
-      _19 = discriminant(_18) @101 s1
-      switch copy _19 [0: bb19, otherwise: bb1] @101 s1
+      _18 = write<string>(move _20, move _22) -> bb19 @101 s1
   bb19:
-      StorageDead(_22) @107 s1
-      drop _21 -> bb20 @107 s1
+      _19 = discriminant(_18) @101 s1
+      switch copy _19 [0: bb20, otherwise: bb1] @101 s1
   bb20:
+      _1 = intrinsic FormatFinish(move _3, const 12_isize, const type (()), const false) -> bb21 @101 s1
+  bb21:
+      StorageDead(_22) @107 s1
+      drop _21 -> bb22 @107 s1
+  bb22:
       StorageDead(_21) @107 s1
       StorageDead(_20) @101 s1
       StorageDead(_19) @101 s1
@@ -1059,8 +1064,8 @@ fn early @97
       StorageDead(_13) @101 s1
       StorageDead(_12) @101 s1
       StorageDead(_11) @102 s1
-      drop _10 -> bb21 @102 s1
-  bb21:
+      drop _10 -> bb23 @102 s1
+  bb23:
       StorageDead(_10) @102 s1
       StorageDead(_9) @101 s1
       StorageDead(_8) @101 s1
@@ -1069,17 +1074,17 @@ fn early @97
       StorageDead(_5) @101 s1
       StorageDead(_4) @101 s1
       StorageDead(_3) @101 s1
-      drop _2 -> bb22 @101 s1
-  bb22:
-      StorageDead(_2) @101 s1
-      drop _1 -> bb23 @101 s1
-  bb23:
-      StorageDead(_1) @101 s1
-    * goto bb24 check bb25 @108 s1
+      drop _2 -> bb24 @101 s1
   bb24:
+      StorageDead(_2) @101 s1
+      drop _1 -> bb25 @101 s1
+  bb25:
+      StorageDead(_1) @101 s1
+    * goto bb26 check bb27 @108 s1
+  bb26:
       _0 = const "late" @108 s1
       goto bb9 @108 s1
-  bb25:
+  bb27:
       unreachable @99
 fn pair @110
   _0: string return @110

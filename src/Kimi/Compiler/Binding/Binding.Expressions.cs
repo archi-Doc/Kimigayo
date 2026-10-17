@@ -1411,8 +1411,9 @@ public sealed partial class Binding
             var complete = true;
             for (var i = 0; i < tuple.Elements.Count; i++)
             {
-                var type = this.BindNode(tuple.Elements[i], scope, expected is { Kind: BoundTypeKind.Tuple } && expected.Components.Count == tuple.Elements.Count ? expected.Components[i] : null);
-                buffer[i] = type!;
+                var element = expected is { Kind: BoundTypeKind.Tuple } && expected.Components.Count == tuple.Elements.Count ? expected.Components[i] : null;
+                var type = this.BindNode(tuple.Elements[i], scope, element);
+                buffer[i] = ReferenceEquals(type, BoundType.Never) && element is not null ? element : type!; // SPEC 3.8: Never fits its expected element.
                 complete &= type is not null;
             }
 

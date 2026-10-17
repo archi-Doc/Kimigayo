@@ -93,6 +93,8 @@ After the build, Unit verification discovers methods from that exact assembly, c
 
 `-Pipeline mir` (R3–R5; default `legacy`) sets `KIMI_PIPELINE` for every compiler process of the run, the tests, fixtures and milestone harnesses, and records the pipeline in `summary.json`.
 
+During R5 (DECISIONS R5-M8; removed at R6-gen's unit G4), MIR code generation ("sel": `KIMI_PIPELINE=mir` with `KIMI_CODEGEN=mir`) gets its own checks once its tooling exists. From the pending-ledger gate (R5 plan unit E11), every R5 working session ends with a sel Session beside the default one; its test and native steps pass when their failing set equals the tracked pending ledger, which only shrinks. E11 documents the commands when it lands. No CI lane runs sel: full cross-pipeline sweeps run at R5 family group reviews, at X1 and at G3.
+
 The MIR difference ledger (R4–R6, DECISIONS R4-M17) is recorded by the test assembly. `KIMI_MIR_DIFF=<directory>` makes its fixture `MirDifferenceLedger` compare every mir-pipeline compilation once per Binding pass and append raw rows and sources to that directory, which must be fresh (the aggregation reads every `raw-*.tsv` there), aggregated into `ledger.tsv` and `summary.md` (plan §8's metrics: the families landed on the MIR, the SPEC examples of `tests/diagnostics/spec-cases.json` checked there, and the open blocking rows, DECISIONS R4-M47) when the run ends; `KIMI_MIR_LEDGER=<directory>` with `MirDifferenceTest.RequestedLedger` aggregates a directory's raw rows again. The mir measurement of a unit runs the Functional suite under `KIMI_PIPELINE=mir` with `KIMI_MIR_DIFF` (tier 1 is `MirDifferenceTest.RequestedCorpus`, tier 2 the rest of the suite) and the `Purpose=Allocation` tests under mir without it, since the observer allocates; the Functional failure set must equal a mir run without the ledger. The ledger of a unit is kept under `artifacts/verify/mir-diff/<unit>/`.
 
 `-TestPurpose All` is the default; `Functional` and `Allocation` restrict deliberate Unit checks. Session rejects either restriction, and class or method selections. Select relevant native fixtures and milestones explicitly as before. Selector rules, the common checks and optional allocation companions are regression-checked by `./tests/scripts/VerificationSelectionTest.ps1`.
@@ -118,8 +120,10 @@ before it, on the same inputs and configuration:
   report no difference;
 - the semantic snapshot: `SemanticSnapshotTest` with `KIMI_SEMANTIC_SNAPSHOT=check` against the previous baseline
   (`KIMI_SEMANTIC_BASELINE`), with `KIMI_SEMANTIC_HIR=1` and `KIMI_SEMANTIC_MIR=1` when Binding or MIR code changes;
-- the generated IR: the `.ll` files under the run's `fixtures-<Configuration>` evidence equal the previous run's (compare
-  runs from the same worktree path, since the IR records source paths).
+- the generated IR: `./scripts/compare-fixtures.ps1 -Baseline <previous run> -Candidate <run>` reports the `.ll` files
+  under `fixtures-<Configuration>`, their expectation sidecars and the native results identical (regression:
+  `tests/scripts/FixtureComparisonTest.ps1`); fixture IR records no checkout path, so runs from any worktree compare
+  equal byte for byte.
 
 A difference means the commit changes behavior: split it, or treat it as a behavior change with its own tests. Do not
 compare `Kimi.dll` bytes instead: its informational version embeds the commit id (`0.1.1+<commit>`) and its PDB path
@@ -179,16 +183,22 @@ Measurement commands and fixed conditions belong to their dedicated documents be
 | `Benchmark --pair-cases` | [PairCases.md](../../src/Benchmark/PairCases.md) |
 | `Benchmark --borrow-storage` | [BorrowStorage.md](../../src/Benchmark/BorrowStorage.md) |
 | `Benchmark --object-plans` | [ObjectPlans.md](../../src/Benchmark/ObjectPlans.md) |
+| `benchmark-object-finalization.ps1 [-Runs 7] [-Mode Rc,Arc] [-Name <n>]` | [ObjectPlans.md](../../src/Benchmark/ObjectPlans.md); uninstrumented native finalization timings; protocol coverage in [SharedObjects.md](../../src/Benchmark/SharedObjects.md). |
+| `Benchmark --callable-plans`, `--local-regions`, `--fixed-origin-loans` | [CallablePlans.md](../../src/Benchmark/CallablePlans.md); `--fixed-origin-loans` also prints the `--generic-defaults` report after its own. |
+| `Benchmark --property-plans` | [Properties.md](../../src/Benchmark/Properties.md) |
 | `Benchmark --adaptation-plans` | [Adaptations.md](../../src/Benchmark/Adaptations.md) |
 | `Benchmark --generic-defaults` | [GenericDefaults.md](../../src/Benchmark/GenericDefaults.md) |
 | `Benchmark --element-places` | [ElementPlaces.md](../../src/Benchmark/ElementPlaces.md) |
 | `Benchmark --origin-proof` | [OriginProof.md](../../src/Benchmark/OriginProof.md); each case in its own process with a time limit, censored cases recorded. |
-| `Benchmark --view-plans` | [Views.md](../../src/Benchmark/Views.md) |
+| `Benchmark --view-plans`; ExclusiveViews and SliceCopies native runs | [Views.md](../../src/Benchmark/Views.md); the native runs are its `milestone-harness.ps1 -Milestone 0 ... -Runs 7` commands. |
 | `Benchmark --associated-inference` | [AssociatedInference.md](../../src/Benchmark/AssociatedInference.md); shared explicit/inferred declaration workloads, cold/warm costs and retained capacities. |
 | `Benchmark --constructor-inference` | [ConstructorInference.md](../../src/Benchmark/ConstructorInference.md) |
 | `Benchmark --inheritance-plans`, `--inheritance-lifecycle` | [Inheritance.md](../../src/Benchmark/Inheritance.md); lifecycle adds fresh/edited snapshots and retained ownership storage. |
 | `Benchmark --arithmetic-plans`, `benchmark-arithmetic.ps1` | [Arithmetic.md](../../src/Benchmark/Arithmetic.md) |
 | `Benchmark --hover` | [HOVER.md](HOVER.md#responsiveness-measurements) |
+| `Benchmark --compiler-pipeline`, `--compiler-pipeline-check` | [CompilerPipeline.md](../../src/Benchmark/CompilerPipeline.md); the check has no timing thresholds; save its output under `artifacts/verify/`. |
+| `Benchmark --named-arguments` | [NamedArguments.md](../../src/Benchmark/NamedArguments.md#reproduce) |
+| `Benchmark --diagnostics` | No document; `DiagnosticMeasurements` writes its input projects under `temp/diagnostic-measurements/` and prints one JSON report to stdout: compiler and runtime versions, and per input the median and minimum microseconds and median bytes per operation. |
 | `benchmark-o2-corpus.ps1` | [O2Corpus.md](../../src/Benchmark/O2Corpus.md) |
 
 ## Native fixtures

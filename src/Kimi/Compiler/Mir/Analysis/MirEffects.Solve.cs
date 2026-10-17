@@ -11,7 +11,7 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirEffects
 {
     private readonly List<EffectObligation> rows = [];
-    private readonly HashSet<BoundType> glued = new(ReferenceEqualityComparer.Instance); // The parts one evaluation destroyed.
+    private readonly HashSet<BoundType> glued = new(ReferenceEqualityComparer.Instance); // The Types one evaluation's destruction walks met.
     private readonly List<(BindingSymbol Target, BoundType? Declaring)> targets = []; // What requirements on Types that are not abstract run, a stack.
     private byte[] classes = []; // Each node's summary: its classes,
     private int[] atomStarts = []; // and its atoms, a segment of atoms (a node that grows appends a new segment).
@@ -404,11 +404,6 @@ internal sealed partial class MirEffects
     // runs; a string's, an Array's or a Dictionary's storage is released (its elements are parts of their own).
     private void Destroy(BoundType type, int depth)
     {
-        if (!this.glued.Add(type))
-        {
-            return;
-        }
-
         if (type.IsAbstract)
         {
             this.AddAtom(type, Drop);
@@ -520,6 +515,8 @@ internal sealed partial class MirEffects
     // The destruction walk's visitor: each part reached, and past the walk's depth bound a part this implementation does not follow.
     private readonly struct Glue(MirEffects owner) : IMirDestruction
     {
+        public bool First(BoundType type) => owner.glued.Add(type);
+
         public bool Visit(BoundType type, int depth)
         {
             owner.Destroy(type, depth);

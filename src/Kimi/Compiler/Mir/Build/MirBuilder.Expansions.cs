@@ -130,9 +130,7 @@ internal sealed partial class MirBuilder
         var plan = ExpansionPlan.Of(node)!.Value;
         var arithmetic = CallPlan.Of(node);
         var mark = this.located.Count;
-        var value = right is null
-            ? MirOperand.Const(this.body.Const(new(MirConstKind.Integer, TypeOf(target), 1)))
-            : this.Secure(this.Operand(right, expected: null), right);
+        var value = right is null ? default : this.Secure(this.Operand(right, expected: null), right);
         // A Property's accessors take its receiver, located once; a static Property's have none. Binding designates the Property through
         // the target's parentheses (a parenthesized Place is its operand's, SPEC 3.4).
         var accessor = plan.First ?? plan.Second;
@@ -155,6 +153,11 @@ internal sealed partial class MirBuilder
         }
 
         var read = plan.First is null ? storage : this.Temp(plan.First.ReturnType, target);
+        if (right is null)
+        {
+            value = MirOperand.Const(this.body.Const(new(MirConstKind.Integer, this.body.TypeOf(read)!, 1))); // One of the old value's Type.
+        }
+
         if (plan.First is { } getter)
         {
             // A receiver both accessors take keeps the setter's acquisition as its Adjust; the getter takes it as its own operation does
@@ -224,7 +227,7 @@ internal sealed partial class MirBuilder
         }
         else if (arithmetic is not null)
         {
-            this.Overwrite(storage, MirOperand.Move(result), node);
+            this.Overwrite(storage, result, node);
         }
 
         if (right is not null && plan.Second is null)
@@ -241,7 +244,7 @@ internal sealed partial class MirBuilder
     {
         var reference = compilation.Types.Reference(SemanticsKind.Uniq, this.body.TypeOf(destination) ?? BoundType.Unit);
         var reservation = this.Temp(reference, node);
-        this.Make(reservation, this.Ref(destination, reference, input: true), node);
+        this.Set(reservation, this.Ref(destination, reference, input: true), node);
         return this.body.Project(reservation, MirProjectionKind.Deref, 0);
     }
 
@@ -249,37 +252,28 @@ internal sealed partial class MirBuilder
     // directly at each boundary (omitted: 0 or the length; ^x: the length minus x; a closed end q: q + 1), else the ResolvedRange its key
     // is or its key's resolution (First) gives; checked once (0 <= start <= end <= length, else KIMI_E_INDEX_BOUNDS), then the Slice RawSlice
     // serves (R3 decision 5) of the elements from the address of element start, any address for none (SPEC 5.6), backed by what the
-    // Slice retains (DECISIONS R4-M40): a shared borrow of an array's whole Place, or a Slice receiver's copied handle.
+    // Slice retains (DECISIONS R4-M40): a Slice receiver's handle, its value and no handle variable, read where it is located (Handle), or
+    // a shared borrow of an array's whole Place made where it is located, before the boundaries, which is the receiver's check (R4-M56).
     private void Slice(MirPlace destination, IndexKoto index)
     {
-        var sequence = this.Place(index.Left);
-        var handle = this.body.TypeOf(sequence) is { Kind: BoundTypeKind.Slice } view ? this.Temp(view, index) : (MirPlace?)null;
-        if (handle is { } copy)
-        {
-            // SPEC 4.7.4, 4.8.1: a Slice receiver's handle is copied first; its reslice retains the copy's source, no handle variable.
-            this.Make(copy, MirRvalue.Use(this.body.AddOperand(MirOperand.Copy(sequence))), index);
-            sequence = copy;
-        }
-
         var range = HirTables.Op(index.Right) == HirOp.Range ? index.Right as RangeKoto : null;
+        var sequence = this.Place(index.Left);
+        var later = range is null ? Builds(index.Right) : (range.Start is { } from && Builds(from)) || (range.End is { } to && Builds(to));
+        sequence = later ? this.Handle(sequence, index.Left) : sequence;
+        var backing = MirTypes.SelectsByValue(this.body.TypeOf(sequence)) ? MirOperand.Copy(sequence) : this.Borrow(SemanticsKind.Ref, sequence, index);
         var length = this.Length(sequence, index);
         var zero = MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize)));
         MirPlace start, last;
         if (range is not null)
         {
-            start = range.Start is null ? this.Position(zero, index) : this.Boundary(range.Start, length);
-            last = range.End is null ? length : this.Boundary(range.End, length);
+            start = range.Start is null ? this.Position(zero, index, index) : this.Boundary(range.Start, length, index);
+            last = range.End is null ? length : this.Boundary(range.End, length, index);
         }
         else
         {
             var resolved = this.Follow(ExpansionPlan.Of(index)?.First is { } key ? this.Resolve(key, index, sequence) : this.Place(index.Right), 16);
-            (start, last) = (this.Position(MirOperand.Copy(this.Bound(resolved, "start")), index),
-                this.Position(MirOperand.Copy(this.Bound(resolved, "end")), index));
-        }
-
-        if (!Completes(index))
-        {
-            return;
+            (start, last) = (this.Position(MirOperand.Copy(this.Bound(resolved, "start")), index, index),
+                this.Position(MirOperand.Copy(this.Bound(resolved, "end")), index, index));
         }
 
         var test = this.Temp(BoundType.Boolean, index);
@@ -327,25 +321,25 @@ internal sealed partial class MirBuilder
         this.current = join;
         this.arguments.Add(MirOperand.Move(pointer));
         this.arguments.Add(MirOperand.Copy(count));
-        this.arguments.Add(handle is { } source ? MirOperand.Move(source) : this.Borrow(SemanticsKind.Ref, sequence, index));
+        this.arguments.Add(backing);
         this.Serve(destination, CompilerFunctionKind.RawSlice, null, [element], at, index);
     }
 
     // A selection's position (SPEC 4.6.1, 4.7.1): an integer as the isize it reads; a written ^x, which resolves only for 0 <= x <= L, the
     // length minus x. An offset below 0 fails as an out-of-bounds position (KIMI_E_INDEX_BOUNDS, SPEC 22.5.2), a literal one in range proving
     // it, so the subtraction cannot overflow; an offset past the length gives a negative position, which the selection's bounds check rejects.
-    private MirPlace Boundary(Koto node, MirPlace length)
+    // The position is a local located at its selection (Position).
+    private MirPlace Boundary(Koto node, MirPlace length, Koto selection)
     {
         if (node is not FromEndIndexKoto { Operand: var offset } || HirTables.Op(node) != HirOp.Range)
         {
-            return this.Position(this.Operand(node, expected: null), node);
+            return this.Position(this.Operand(node, expected: null), node, selection);
         }
 
         var operand = this.Operand(offset, expected: null);
-        var x = this.Position(operand, offset);
+        var x = this.Position(operand, offset, offset);
         var zero = MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize)));
-        if (Completes(node) && (operand.Kind != MirOperandKind.Const || this.body.Consts[operand.Arg].Bits < 0 ||
-            this.body.Consts[operand.Arg].Bits > int.MaxValue))
+        if (operand.Kind != MirOperandKind.Const || this.body.Consts[operand.Arg].Bits < 0 || this.body.Consts[operand.Arg].Bits > int.MaxValue)
         {
             var test = this.Temp(BoundType.Boolean, node);
             var fail = this.body.AddBlock();
@@ -353,7 +347,7 @@ internal sealed partial class MirBuilder
             this.Fail(fail, "KIMI_E_INDEX_BOUNDS", node);
         }
 
-        var position = this.Temp(BoundType.ISize, node);
+        var position = this.Temp(BoundType.ISize, selection);
         var operands = this.body.AddOperand(MirOperand.Copy(length));
         this.body.AddOperand(MirOperand.Copy(x));
         this.Set(position, MirRvalue.Binary(MirBinaryOp.Sub, operands, proven: true), node);
@@ -370,11 +364,11 @@ internal sealed partial class MirBuilder
         return result;
     }
 
-    // A located sequence's length, a part of its selection made before the boundaries or key that may not complete (Make).
+    // A located sequence's length, a part of its selection made before its boundaries or key.
     private MirPlace Length(MirPlace sequence, Koto node)
     {
         var length = this.Temp(BoundType.ISize, node);
-        this.Make(length, MirRvalue.Len(sequence), node);
+        this.Set(length, MirRvalue.Len(sequence), node);
         return length;
     }
 
@@ -390,19 +384,22 @@ internal sealed partial class MirBuilder
         this.Pass(MirOperand.Copy(test), 1, fail, node);
     }
 
-    // SPEC 4.9.5, 12.4.1: a dynamic Array literal: its elements evaluated in order, then the empty Array, an aggregate of no operand,
-    // reserved for their count and each appended (ArrayReserve, ArrayAppend: R3 decision 5).
+    // SPEC 4.9.5, 12.4.1: a dynamic Array literal: its elements evaluated in order, each before the last that builds code secured where it
+    // is evaluated (SPEC 12.2), then the empty Array, an aggregate of no operand, reserved for their count and each appended (ArrayReserve,
+    // ArrayAppend: R3 decision 5).
     private void Collection(MirPlace destination, ArrayLiteralKoto array, BoundType type)
     {
         var start = this.arguments.Count;
-        foreach (var element in array.Elements)
+        var last = array.Elements.FindLastIndex(Builds);
+        for (var i = 0; i < array.Elements.Count; i++)
         {
-            this.arguments.Add(this.Operand(element, type.Components[0]));
+            var operand = this.Operand(array.Elements[i], type.Components[0]);
+            this.arguments.Add(i < last ? this.Secure(operand, array.Elements[i]) : operand);
         }
 
         var count = this.arguments.Count - start;
         this.Set(destination, MirRvalue.Aggregate(MirAggregateKind.FixedArray, this.body.Operands.Length, 0, type), array);
-        if (count > 0 && Completes(array))
+        if (count > 0)
         {
             var unit = this.Temp(BoundType.Unit, array);
             for (var i = -1; i < count; i++)
@@ -420,14 +417,14 @@ internal sealed partial class MirBuilder
     // SPEC 12.4.3: a dictionary literal: the empty Dictionary, then each entry in source order: its key evaluated once and retained, looked
     // up among the entries inserted (its plan's findEntry call), a duplicate failing with KIMI_E_DUPLICATE_KEY before the value is evaluated,
     // then the value evaluated and the pair placed (the placeEntry body, over the handle dictionaryStorage gives). The empty Dictionary is a
-    // part made before the entries, which may not complete (Make).
+    // part made before the entries.
     private void Dictionary(MirPlace destination, DictionaryLiteralKoto dictionary)
     {
         var find = CallPlan.Of(dictionary)!;
         var type = TypeOf(dictionary);
         var layout = compilation.Library.Function(CompilerFunctionKind.StorageDictionaryLayout)!.Type!;
         ReadOnlySpan<BoundType?> slots = [type.Components[0], type.Components[1]];
-        this.Make(destination, MirRvalue.Aggregate(MirAggregateKind.FixedArray, this.body.Operands.Length, 0, type), dictionary);
+        this.Set(destination, MirRvalue.Aggregate(MirAggregateKind.FixedArray, this.body.Operands.Length, 0, type), dictionary);
         foreach (var entry in dictionary.Entries)
         {
             var key = this.Temp(type.Components[0], entry.Key);

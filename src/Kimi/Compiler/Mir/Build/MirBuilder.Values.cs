@@ -8,6 +8,49 @@ namespace Kimi.Compiler.Mir;
 // and PlaceShape.
 internal sealed partial class MirBuilder
 {
+    // SPEC 12.2: whether a node's operand builds code where it is evaluated, before which a Place operand evaluated earlier in its
+    // operation is secured, so that it is read where it is evaluated (Secure): all but a literal's constant and a Place read as it is
+    // (Copied, Moved or through its referent) whose path from a local is stored Fields, Derefs and constant positions (Operand, Acquire,
+    // Place).
+    private static bool Builds(Koto node)
+    {
+        var adjust = HirTables.AdjustOf(node);
+        if (adjust is { Acquire: HirAcquire.Temporary or HirAcquire.None, Adaptation: HirAdaptation.None })
+        {
+            return HirTables.Op(node) != HirOp.Literal;
+        }
+
+        var read = adjust.Adaptation == HirAdaptation.ReferentRead ? adjust.Acquire is not (HirAcquire.Unset or HirAcquire.Temporary)
+            : adjust is { Adaptation: HirAdaptation.None, Acquire: HirAcquire.Copy or HirAcquire.Move };
+        while (read && HirTables.Op(node) != HirOp.Name && HirTables.PlaceOf(node).Kind is HirPlaceKind.Field or HirPlaceKind.Deref or
+            HirPlaceKind.PairLayer or HirPlaceKind.ConstIndex)
+        {
+            node = Child(node);
+        }
+
+        return !read || HirTables.PlaceOf(node).Kind != HirPlaceKind.Local;
+    }
+
+    // Whether a Type holds a Never element where a literal builds one: a Tuple's component or an array's element, through those kinds
+    // only (Aggregate; DECISIONS R4-M59). A Never elsewhere, a Function's result or a Type argument, is a declared Type.
+    private static bool HoldsNeverElement(BoundType type)
+    {
+        if (type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (ReferenceEquals(type.Components[i], BoundType.Never) || HoldsNeverElement(type.Components[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // The value a node's own form produces, into the destination; as a call's input (input), a written exclusive borrow, also inside
     // parentheses, is two-phase (SPEC 15.6.7).
     [CodeRuleException("KR2006", Limit = 67, Reason = "Flat dispatch over the closed HirOp vocabulary; each row invokes its owning lowering operation.")]
@@ -136,10 +179,14 @@ internal sealed partial class MirBuilder
 
     // A node's value as its consumer takes it (plan: Adjust to operand): a literal as its constant, another value through a temp, a Place,
     // or a value held in a temp, as Acquire takes it for the expected Type, a call's input as the call's (input), a value the acquisition
-    // forms in the place given (into) where it has that Type.
+    // forms in the place given (into) where it has that Type. SPEC 15.6.7: only an input the call takes as an exclusive reference (its
+    // expected Type, or without one, a value call's callee, the reference it is or its acquisition forms) starts a reservation, so only its
+    // path is a preparation path (Place); on another input's path a written exclusive borrow is live, as SPEC 7.3.3's is.
     private MirOperand Operand(Koto node, BoundType? expected, bool input = false, MirPlace? into = null)
     {
         var adjust = HirTables.AdjustOf(node);
+        input &= MirTypes.IsExclusive(expected) ||
+            (expected is null && (adjust.Adaptation == HirAdaptation.ExclusiveBorrow || MirTypes.IsExclusive(TypeOf(node))));
         if (adjust is { Acquire: HirAcquire.Temporary or HirAcquire.None, Adaptation: HirAdaptation.None })
         {
             return HirTables.Op(node) == HirOp.Literal && this.Literal(node) is var constant and >= 0 ? MirOperand.Const(constant)
@@ -165,6 +212,11 @@ internal sealed partial class MirBuilder
     // expected Type names. An implicit exclusive borrow of a call's input is two-phase: reserved here, activated at the Call (SPEC 15.6.7).
     private MirOperand Acquire(HirAdjust adjust, MirPlace place, BoundType? expected, bool input, Koto node, MirPlace? into = null)
     {
+        if (this.IsNever(place))
+        {
+            return MirOperand.Move(place); // SPEC 3.8: any acquisition takes the Never value as it is, which fits any operand position.
+        }
+
         var adaptation = adjust.Adaptation;
         var type = this.body.TypeOf(place) ?? BoundType.Unit;
         var target = expected?.Components is [var referent] ? referent : null;
@@ -202,10 +254,14 @@ internal sealed partial class MirBuilder
         return this.Temporary(reference, this.Ref(place, reference, input), node, into);
     }
 
-    // SPEC 13.5.6, 5.4, 6.2.2: a reference of a Type to a Place, the one rule of every borrow: of the Place's layer whose Type is the
-    // reference's referent (an object borrow's payload, a reborrow's referent) or its base that is (a base view), in its Type's mode
+    // SPEC 13.5.6, 5.4: a reference of a Type to a Place, the one rule of every borrow: of the Place it lends (Lent), in its Type's mode
     // (MirTypes.RefKind; an exclusive reservation, a call's input or an update's destination, is two-phase).
     private MirRvalue Ref(MirPlace place, BoundType reference, bool input)
+        => MirRvalue.Ref(MirTypes.RefKind(reference, input), this.Lent(place, reference), reference);
+
+    // SPEC 13.5.6, 6.2.2: the Place a reference of a Type to a Place lends: the Place's layer whose Type is the reference's referent (an
+    // object borrow's payload, a reborrow's referent) or its base that is (a base view).
+    private MirPlace Lent(MirPlace place, BoundType reference)
     {
         var referent = reference.Components is [var target] ? target : null;
         var depth = 0;
@@ -215,7 +271,7 @@ internal sealed partial class MirBuilder
             depth = AdtDef.Base(layer) is null ? 0 : depth + 1;
         }
 
-        return MirRvalue.Ref(MirTypes.RefKind(reference, input), depth == 0 ? place : this.body.Project(place, MirProjectionKind.Base, depth), reference);
+        return depth == 0 ? place : this.body.Project(place, MirProjectionKind.Base, depth);
     }
 
     // An rvalue in a new temp of its Type, or in the place given where that has its Type, moved.
@@ -227,26 +283,34 @@ internal sealed partial class MirBuilder
     }
 
     // A borrow of a Place in a new temp of the reference a Semantics kind forms to it (uniq: exclusive; ref, objref: shared), moved: a
-    // synthesized call's input, so an exclusive one is two-phase (SPEC 15.6.7); a part made where it is built (Make).
+    // synthesized call's input, so an exclusive one is two-phase (SPEC 15.6.7).
     private MirOperand Borrow(SemanticsKind semantics, MirPlace place, Koto node)
     {
         var view = compilation.Types.Reference(semantics, this.body.TypeOf(place) ?? BoundType.Unit);
         var temp = this.Temp(view, node);
-        this.Make(temp, this.Ref(place, view, input: true), node);
+        this.Set(temp, this.Ref(place, view, input: true), node);
         return MirOperand.Move(temp);
     }
 
     // SPEC 3.2, 4.3.2, 6.6: a Tuple, a fixed array or an enum Case value from its operands in order, an enum's payloads as its construction
-    // acquires them; a dynamic Array literal the calls of its built-in form (Collection). A fill of a length its instance decides is not built.
+    // acquires them; a dynamic Array literal the calls of its built-in form (Collection). Not built: a fill of a length its instance decides,
+    // and a literal (no Case construction) whose Type holds a Never element, which Binding may have typed before its position's Type was
+    // decided (SPEC 3.8, 14.9.2; DECISIONS R4-M59, temporary until PLAN G129).
     private void Aggregate(MirPlace destination, Koto node, BoundType type)
     {
+        var construction = BoundEnumConstruction.Of(node);
+        if (construction is null && HoldsNeverElement(type))
+        {
+            this.Unsupported(node, destination);
+            return;
+        }
+
         if (node is ArrayLiteralKoto { FillLength: null } literal && type.Kind == BoundTypeKind.Array)
         {
             this.Collection(destination, literal, type);
             return;
         }
 
-        var construction = BoundEnumConstruction.Of(node);
         var elements = node switch
         {
             TupleLiteralKoto tuple => tuple.Elements,
@@ -261,10 +325,22 @@ internal sealed partial class MirBuilder
         }
 
         var start = this.arguments.Count;
-        for (var i = 0; i < elements?.Count; i++)
+        var written = elements?.Count ?? 0;
+        var payloads = construction is null ? default : construction.PayloadOperations;
+        var last = -1; // SPEC 12.2: the last operand that builds code (Builds); one before it is secured where it is evaluated.
+        for (var i = 0; i < written + payloads.Length; i++)
+        {
+            if (Builds(i < written ? elements![i] : payloads[i - written].Source!))
+            {
+                last = i;
+            }
+        }
+
+        for (var i = 0; i < written; i++)
         {
             var element = type.Kind == BoundTypeKind.Tuple ? i : 0; // The element's Type, which a Type Binding rejected may not have.
-            this.arguments.Add(this.Operand(elements![i], element < type.Components.Count ? type.Components[element] : null));
+            var operand = this.Operand(elements![i], element < type.Components.Count ? type.Components[element] : null);
+            this.arguments.Add(i < last ? this.Secure(operand, elements[i]) : operand);
         }
 
         // SPEC 4.3.3: a fill construction acquires its value once, even for length 0, and copies it into each element.
@@ -285,9 +361,10 @@ internal sealed partial class MirBuilder
             }
         }
 
-        foreach (ref readonly var payload in construction is null ? default : construction.PayloadOperations)
+        for (var i = 0; i < payloads.Length; i++)
         {
-            this.arguments.Add(this.Operand(payload.Source!, payload.AdaptedType ?? payload.ParameterType));
+            var operand = this.Operand(payloads[i].Source!, payloads[i].AdaptedType ?? payloads[i].ParameterType);
+            this.arguments.Add(written + i < last ? this.Secure(operand, payloads[i].Source!) : operand);
         }
 
         MirAggregateKind kind;
@@ -344,21 +421,23 @@ internal sealed partial class MirBuilder
             return;
         }
 
-        var value = this.Temp(Completes(assignment.Left) ? assignment.Left : assignment.Right); // Of the Type it is placed at, if it is placed.
+        // Of the Type it is placed at, or the Never value of a right side of Type Never, which is not placed (Overwrite).
+        var value = this.Temp(ReferenceEquals(TypeOf(assignment.Right), BoundType.Never) ? assignment.Right : assignment.Left);
         this.Assign(value, assignment.Right);
-        this.Overwrite(this.Place(assignment.Left), MirOperand.Move(value), assignment);
+        this.Overwrite(this.Place(assignment.Left), value, assignment);
         this.Unit(destination, assignment);
     }
 
-    // SPEC 13.7.1: a target's old value dropped where its Type may need it (A2 elaborates a moved one away), then the value placed.
-    private void Overwrite(MirPlace target, in MirOperand value, Koto node)
+    // SPEC 13.7.1: a target's old value dropped where its Type may need it (A2 elaborates a moved one away), then the value placed; the
+    // Never value is neither, so the target keeps its old value (DECISIONS R4-M62).
+    private void Overwrite(MirPlace target, MirPlace value, Koto node)
     {
-        if (Completes(node) && MirTypes.MayNeedDrop(this.body.TypeOf(target)))
+        if (!this.IsNever(value) && MirTypes.MayNeedDrop(this.body.TypeOf(target), this.walked))
         {
             this.DropAt(target, this.Info(node));
         }
 
-        this.Use(target, value, node);
+        this.Use(target, MirOperand.Move(value), node);
     }
 
     // SPEC 3.1: a literal's constant, a number's being the value Binding fitted (its plan row's Folded); -1 without one.
@@ -395,21 +474,27 @@ internal sealed partial class MirBuilder
     private BoundType? TypeOf(in MirOperand operand) => operand.Kind == MirOperandKind.Const ? this.body.Consts[operand.Arg].Type
         : this.body.TypeOf(operand.Place);
 
-    // The node's own value, made at its end from the operands the node evaluated, assigned only where the node completes: a node that does
-    // not complete has no value to assign (SPEC 15.6.7: its operand diverged).
+    // The one assignment: a node's own value or a part of it, made where it is built from the operands evaluated before it, also where
+    // only the checks continue (assumed completion, SPEC 14.10.3; DECISIONS R4-M62). Nothing is built that has no value: an rvalue that
+    // has an input (an operand, or the Place a Ref, Len or Discriminant reads) whose every input is the Never value, or a value assigned
+    // to the Never value, since a node of Type Never makes none (but its Opaque value, which stands for its syntax, of its Type).
     private void Set(MirPlace destination, in MirRvalue rvalue, Koto node)
     {
-        if (Completes(node))
+        var never = rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Len or MirRvalueKind.Discriminant ? this.IsNever(rvalue.Place) : rvalue.Count > 0;
+        for (var i = 0; never && i < rvalue.Count; i++)
         {
-            this.Make(destination, rvalue, node);
+            never = this.body.Operands[rvalue.Start + i] is { Kind: not MirOperandKind.Const } operand && this.IsNever(operand.Place);
+        }
+
+        if (!never && (rvalue.Kind == MirRvalueKind.Opaque || !this.IsNever(destination)))
+        {
+            this.body.Push(this.current, MirStatement.Assign(destination, rvalue, this.Info(node)));
         }
     }
 
-    // A part of a node made where it is built, before later parts that may not complete, so it exists on every path that reaches it: it
-    // reads only Places already located or values made before it (a Ref, a Len, an empty collection the parts fill, an Opaque value
-    // standing for its node, a result's discriminant; SPEC 12.4.3, 4.8.1). The one unguarded assignment beside Set.
-    private void Make(MirPlace destination, in MirRvalue rvalue, Koto node)
-        => this.body.Push(this.current, MirStatement.Assign(destination, rvalue, this.Info(node)));
+    // SPEC 3.1.3, 3.8: whether a Place is the Never value, the temp of a node of Type Never, which is never written, carries no Loan and
+    // fits any operand position.
+    private bool IsNever(MirPlace place) => ReferenceEquals(this.body.TypeOf(place), BoundType.Never);
 
     // The destination takes an operand, unless the operand is the destination's own value moved (an acquisition formed it there).
     private void Use(MirPlace destination, in MirOperand operand, Koto node)

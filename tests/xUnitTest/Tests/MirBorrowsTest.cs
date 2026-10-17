@@ -457,12 +457,13 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
                 """));
 
     // SPEC 15.6.3 (A3 E8; 23a, 34a, 34c, 29a): destroying a Move Path in place ends every Loan whose path it exactly prefixes, across
-    // borrow Derefs: replacing a holder ends the children through it, but a constant index ends nothing borrowed at a runtime one, and
-    // a deep borrow of a holder still meets its children.
+    // borrow Derefs: replacing a holder ends the children through it, but a constant index ends nothing borrowed at a runtime one (so
+    // k34a's later selection guard, which lends arr shared where it locates arr[i] (G94), meets c as its write does), and a deep borrow of
+    // a holder still meets its children.
     [Fact]
     public void DestroyingAMovePathEndsTheLoansItPrefixes()
         => Assert.Equal(
-            ["k29a: q@follow@ref", "k34a: arr[i]@follow = 7"],
+            ["k29a: q@follow@ref", "k34a: arr[i]", "k34a: arr[i]@follow = 7"],
             Problems("""
                 func k23a()
                     var x = 1
