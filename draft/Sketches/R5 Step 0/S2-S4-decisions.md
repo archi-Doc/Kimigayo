@@ -128,4 +128,39 @@ loses its meaning.
 | X27 | The intrinsic row table and the direct-part enumeration are needed before their C units exist (K P9, P10) | First consumer creates (R4-M2a): K1 creates the intrinsic row table with its `Target` column (C0b1 extends it with codegen rows); K7 creates the direct-part enumeration in `Backend/DropGlue.cs` and C4a writes glue from it |
 | X28 | `TyCtxt.Witness`'s result needs the witness kind for X14's key (F) | `(Kind, Target, Subst, Access)`, `Access` the existing `PropertyWitnessKind`; K keys the property-witness item on (Field, erased Self, `Access`) |
 | X29 | G131: `MirValidator` accepts a Never-typed operand on every path (R4) | New unit F11 in window W1 (W1's files gain `Mir/MirValidator*.cs`): a Never temp is read only in check-only blocks; prerequisite of C0b1; an R4 reviewer signs it off (A1–A5 trust the validator) |
-| X22′ | X22's options (C) | Revised recommendation to the owner: (b) the K7 row exempts a static whose StaticInit folds to a constant (`Statics.ConstantOf`; the value is the same for every storage key, so one slot is exact), which covers the observed accepted form `Cache<i64>.Statistics.count`; any other generic-container static is deferred under PD27 as a D2 (e) row if no library, milestone or corpus program uses it. Alternatives: (a) PD27 deferral of every generic-container static; (c) `MirStatic` carries the container's Type arguments before G2 |
+| X22′ | X22's options (C) | Superseded by X33 |
+
+## Design review round 2 — decisions
+
+Round 2: lens F PASS; lenses K, C and cross-cutting BLOCK on new findings (all round-1 findings resolved). Generic static keys
+(X22, X22′) reached a second round on one family, so they go to the owner as a choice (AGENTS). The other findings are new and are
+fixed once more; round 3 checks only them.
+
+| # | Finding (lens) | Decision |
+| --- | --- | --- |
+| X30 | F11's rule rejects valid programs: a Never parameter, Field or payload is read on runtime paths (`func absurd(x: Never) -> i32 => x`, `.Err(let e) => e` on `Result<i32, Never>`), SPEC 3.1.3, 14.9.3 (C) | F11's rule names the actual hazard: the destination of a diverging Call (the builder's unwritten temp, `MirBuilder.Calls.cs:194`) is read only in check-only blocks; any other Never-typed place is valid. The two programs above become regressions. X29's wording is replaced by this |
+| X31 | `Layout.Of` has no layout for Never (C) | `Layout.Of` states IMPL 21.1.3's rows: Never has size 0, alignment 1, stride 0, and a Type that stores Never inline is laid out as if Never were zero-sized; likewise `Loan<T>`'s row. The old pool keeps its null for bp (a STATUS limit already lists Never payloads); `let a: Option<Never> = .None` (SPEC 3.1.3) becomes a test |
+| X32 | X14 put C3c in G:call with C4a as a prerequisite, so G:call and G:C-drop depend on each other (x) | C3c moves to G:C-drop (after C4a); G:call (F5b, K6, C3a, C3b) merges without waiting for R4's unit 1c |
+| X33 | Generic static storage keys: the old path accepts and builds an immutable literal static in a generic container's group (`Cache<i64>.Statistics.count`); from G2 the collector would reject it (K, two rounds) | **Owner choice**, after two rounds. (a) **Recommended**: keep OQ17(b) (generic storage keys belong to P42) and defer the form under PD27 as a D2 (e) row at G2, if no library, milestone or corpus program uses it (K7 confirms by search), recorded in STATUS and PLAN and approved in the PD27 list at R5's exit. (b) A whitelist: exempt a static that is an immutable `let` of a closed constant Type whose StaticInit folds to a constant not depending on the container's Type arguments (one slot is then exact: the initializer accesses nothing, so no cycle or Abort, its moment is unobservable, and shutdown needs no drop); it needs a KD1 exception (the folded StaticInit keyed `(def, Erase(Identity))`) and K7 creating the fold predicate before C7b. (c) A representation: `MirStatic` carries the container's Type arguments before G2 (P42 needs it anyway; a MIR change in window W1). In each case R5-M13(b)'s premise is corrected: the old analysis accepts immutable static scalars in generic containers' groups too (bool and signed-literal `let`s, `StaticScalar.cs:38-58`) |
+
+Alignment (no design change; each package fixes its text): the intrinsic row table is created by K1 at `Backend/IntrinsicRows.cs`
+(C0b1 extends it); `DropGlue.Parts` is K7's function in `Backend/DropGlue.cs`, which C4a extends with glue writing; the sel `build`
+refusal between K1 and C0b1 is one typed `Unsupported_Kd` per output root at that root body's subject; G1's scope shrinks (the
+generation entry moved at C0a, X17); K6's prerequisites include F6 (the Builtin item's leaves and the Self-bearing factory come from
+F6, so G:compare merges before G:call); W1's order starts with F11, W1 opens after R4's E13/E14 MirBuilder units land and R4 says
+so, and C0b1 waits for W1 (timing risk recorded); F §4.4's core domain reads "any non-abstract Self; the materializer forwards
+abstract-part Selfs before calling the core"; C3c's ABI comes from the key (Binding accepts a storage witness only with a `ref/Self`
+getter or `uniq/Self` setter, a result `F` or `ref/F`, and a Set input `F`, `Binding.PropertyMatching.cs:102-117`), and K6 asserts
+the agreement; stale "row 2w" references point at K's rows 2 and 6; C row 30 shows `Access`; the closure bridge memo is keyed
+(closure symbol, Subst); `Layout.Of` states whether CLayout propagates through collection element layouts; the depth limit on glue
+chains binds only past 64 levels (noted); a gate refusal under sel may hide independent coverage gaps until X2 (a recorded sel-only
+limit); P0's `WriteExternals` takes generator-neutral inputs (resolved by P0's review). Stale rows of this file: P4's Deep count,
+P7, P8 and X11's A-11 as a K7 prerequisite are superseded by X20 and X21.
+
+Owner summary additions (round 2): X33's options; X29's addition of `Mir/MirValidator*.cs` to W1, a change of R5-M7's W1 file list,
+and C0b1 waiting for W1, which puts the frame on R4's schedule; the temporary structures "sel `build` refusal" (K1 to C0b1) and
+Binding's eager C-layout instance check as a second copy of the rule (until G2b); the new representations: the intrinsic rows'
+`Target` column, `Layout.Of`'s OK/Limit/CLayout result and its Never rows (X31).
+
+R4 information: under `mir`, a slot-typed static (`let zero: T = 0` in a generic group) also produces a MIR `InternalInvariant_Kd`
+beside Binding's `Unsupported_Kd` (seen at `147c4616`; it should be a derived value); check on dev.
