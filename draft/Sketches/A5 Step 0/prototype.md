@@ -676,7 +676,7 @@ incarnation that another holder still carries. Three places did this before the 
    on the iterator, and its path names it through `cur`. After `cur = b`, nothing keeps `a`, so `a.inner.clear()` is
    accepted. `FirstDerefBase` also ends Φ_c at `cur = b`, so it also accepts 36a. When `first` retains the receiver's
    Loans, its parent Loans, both rules are sound (36b, 36d). Rounds 7–8 encode Φ_c without them (33a–33c, 36a,
-   36c). A3 F6 must state whether Φ_c's values carry the receiver's Loans (PLAN G110, part 2). This blocks unit 2f
+   36c). A3 F6 must state whether Φ_c's values carry the receiver's Loans (PLAN G113). This blocks unit 2f
    and the adoption of the case 23a proposal.
 5. **37:** 23a through a named intermediate is valid under every rule. `FirstDerefBase` makes the one-step form agree.
 

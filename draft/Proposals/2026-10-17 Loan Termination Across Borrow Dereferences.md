@@ -70,13 +70,13 @@ Round 8 establishes four points:
   `first` also carries the receiver's Loans, both rules reject both forms (36b, 36d). §4 therefore requires that
   every value carrying a child Loan or `Phi_c` also carries its parent Loans. A3 F6 (unit 2f) must establish this,
   for example by issuing `Phi_c` with the receiver's Loans; exempting `Phi_c` from base ending would not fix 36c.
-  Until then this proposal is not adoptable (PLAN G110, part 2).
+  Until then this proposal is not adoptable (PLAN G113).
 
-Another evidence gap remains before implementation is accepted (PLAN G110, part 1): the prototype and S1 differ on Loans
+Another evidence gap remains before implementation is accepted (PLAN G110): the prototype and S1 differ on Loans
 formed past shared references. Map prototype facts to S1's actual shared-layer rule before treating the comparison
 as evidence for the whole language.
 
-Once G110 part 2 is resolved, `Phi_c` and its disturbed form may keep S1's child-ending contract or a separate call
+Once G113 is resolved, `Phi_c` and its disturbed form may keep S1's child-ending contract or a separate call
 contract: with their parent Loans, both are sound (36b, 36d), so the choice concerns implementation only. The
 producer publishes it; no feature-specific bypass is added.
 
@@ -257,7 +257,7 @@ implemented; follow the architecture's target files rather than adding another o
 
 | Unit | Work and completion condition |
 | --- | --- |
-| 1. Design and executable comparison | Round 8 implemented the exact rule (`FirstDerefBase`), ran 109 cases and found the F6 precondition (§2). Remaining: A3 F6 gives `Phi_c`'s values the receiver's Loans (PLAN G110, part 2); independently review §4's argument and the alternatives; reconcile shared-layer contracts with S1; encode the missing cases below and run them against the baseline. Record exact sources and expected verdicts. Prototype variants remain experimental, not production modes. |
+| 1. Design and executable comparison | Round 8 implemented the exact rule (`FirstDerefBase`), ran 109 cases and found the F6 precondition (§2). Remaining: A3 F6 gives `Phi_c`'s values the receiver's Loans (PLAN G113); independently review §4's argument and the alternatives; reconcile shared-layer contracts with S1; encode the missing cases below and run them against the baseline. Record exact sources and expected verdicts. Prototype variants remain experimental, not production modes. |
 | 2. Adoption and specification | After the argument and exact-rule evidence pass independent review, obtain the owner's adoption. Then supersede only R4-M39's last-base/within restriction and align the sources in §7. Preserve the other S1 requirements. A failed safety obligation keeps the current rule in force. |
 | 3. A5 implementation | Publish the base once per site/case and consume it through the canonical ending/step path. No consumer recomputes it from syntax. If restructuring is necessary, first commit behavior-preserving restructuring under VERIFICATION. |
 | 4. Focused verification and measurements | Assert verdicts and check locations at the lowest public A5/MIR layer; reuse the owning tests. Run the required Unit/Session checks and selected generated-code fixtures, then compare matched compiler workloads. |
@@ -300,7 +300,7 @@ This proposal reopens the first-base recovery because the owner now asks for 23a
 because S1's examples understate its loss (35a, 35b; §2). It does not claim the former no-crossing decision was a
 soundness proof against the recovery. If the owner keeps the last-dereference base, A3's loss rows add 35a and 35b
 (S1's frozen text stays; `draft/INTEGRATED.md` records the correction), and A3's matcher follows SPEC §15.6.3 on
-34c. G110 part 2 holds under either base.
+34c. G113 holds under either base.
 
 On adoption, update together:
 
