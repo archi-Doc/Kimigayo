@@ -179,18 +179,24 @@ public sealed partial class Binding
     internal void Invalidate()
     {
         // A Bind in progress rebuilds everything it published; clearing its state midway would lose its own issues.
-        if (this.Result == default || this.running)
+        if (this.running)
         {
             return;
         }
 
-        // An edit revokes the whole pass, exactly as the next Bind discards it; associated Origin parameters of the edited
-        // trees are recreated.
-        this.Result = default;
-        this.ResetPass(BindingMode.Provisional);
+        // An edit revokes the whole pass, exactly as the next Bind discards it, unless no pass has finished since the last revocation.
+        if (this.Result != default)
+        {
+            this.Result = default;
+            this.ResetPass(BindingMode.Provisional);
+        }
+
+        // The facts kept across unchanged passes are revoked by every edit, also after a pass that did not finish (a Bind that throws
+        // leaves no result): associated Origin parameters of the edited trees, local regions, item contexts and call retentions.
         this.associatedOrigins.Clear();
         this.localRegions.Clear();
         this.functionItemContexts.Clear();
+        this.types.ResetRetentions();
     }
 
     private static bool InvalidDeclarationContext(Koto declaration)
@@ -361,7 +367,6 @@ public sealed partial class Binding
         this.inheritedOriginTypes.Clear();
         this.ResetCapabilities(mode);
         this.ResetContracts();
-        this.types.ResetRetentions();
         foreach (var scope in this.scopes.Values)
         {
             scope.Reset();
