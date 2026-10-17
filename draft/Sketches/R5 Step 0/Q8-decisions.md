@@ -44,3 +44,10 @@ checks "merged problems agree on the requirement" as an invariant.
 
 Owner summary additions: Q8-1a's code stays `DefaultArgumentMove_Kd` (no default code change); Q8-1b/1c keep the documented
 records; Q8-2's change of R4-M61's node-failure contract (G121 applied); Q8-3's validator rule.
+
+## After the round-1 redo — decisions on the synthesizer's notes
+
+| # | Note | Decision |
+| --- | --- | --- |
+| Q8-4 | Q8-1a's exclusion is right for S1 (the builder moves the prepared input, and A1 reports `DefaultArgumentMove_Kd` from H5), but for S2 it leaves no producer: a default whose block discards a non-Copy preceding parameter is copied through the prepared reference and the copy dropped, with no MIR problem (probe u2), and Q8-3's validator rule would then fault on a user error | S2 keeps `HirRes.PreparedParam`-rooted subjects and records them with the old path's code `DefaultArgumentMove_Kd`, its Note and no repair, provided Binding can record that code without a new `BindingFailure` member (PD21; the round-2 review checks this in the code). Only if it cannot, S2 records `TransferRequired_Kd` with the default Note and no repair — the record Binding already gives a bare capture entry of a preceding parameter in a default — listed as a user-visible code change for the owner |
+| Q8-5 | The validator rule's hold window shared with F11 | Needed only while R4 runs in parallel: G:R6-check-flip lands after R4's exit, when no hold applies; the rule keeps its shadow run in Q14 |
