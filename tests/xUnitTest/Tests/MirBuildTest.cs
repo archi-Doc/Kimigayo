@@ -665,28 +665,79 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.Same(body.TypeOf(new MirPlace(1)), signature.Type);
     }
 
-    // DECISIONS R4-M42: a call, a subscript or a view selection whose published call is missing is a broken HIR contract,
-    // InternalInvariant_Kd at its node with an Opaque value in its place, which the validator accepts, never a fault nor another call.
+    // DECISIONS R4-M61: the publisher gives a node an Op only with the facts its building rule reads, so a node Binding resolved without
+    // them (a call's, an indexer's or a view selection's plan, a local's symbol, a closure's definition, a case adaptation's plan, a loop's
+    // iterator symbol, a write of an interpolation) is published Error and recorded as InternalInvariant_Kd at it, with an Opaque value
+    // in its place, which the validator accepts, never a fault. A node Binding rejected that lacks the same fact is an Error derived from
+    // its error, without a record.
     [Fact]
-    public void AMissingPublishedCallIsABrokenContract()
+    public void AResolvedNodeWithoutItsFactsIsABrokenContract()
     {
         var c = Compile(
-            "func one() -> i32 => 1\nfunc called() -> i32 => one()\nstruct Pair\n    Self is UniqIndexable<isize>\n    associate Element is i32\n" +
-            "    var first: i32 = 1\n    public init() => ()\n    public func index(self, key: ref/isize) -> ref/i32 during self => self.first@ref\n" +
+            "func one() -> i32 => 1\nfunc called() -> i32 => one()\nfunc rejected() -> i32 => one()\nstruct Pair\n    Self is UniqIndexable<isize>\n" +
+            "    associate Element is i32\n    var first: i32 = 1\n    public init() => ()\n" +
+            "    public func index(self, key: ref/isize) -> ref/i32 during self => self.first@ref\n" +
             "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/i32 during self => self.first@uniq\n" +
-            "func read(pair: ref/Pair) -> i32 => pair[0]\nfunc view(items: ref/UniqSlice<i32>) -> Slice<i32> during items => items[1..^1]\n");
-        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        var indexes = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IndexKoto>().ToArray();
-        Assert.Equal(2, indexes.Length);
-        HirTables.Publish(c); // Its columns from the bound plans; then the plans go missing.
-        HirTables.PlanFor(call, false).Plan = null;
-        HirTables.PlanFor(c.Binding.IndexerCall(indexes[0], false)!, false).Plan = null;
-        HirTables.PlanFor(c.Binding.ViewRangeCall(indexes[1])!, false).Plan = null;
+            "func read(pair: ref/Pair) -> i32 => pair[0]\nfunc view(items: ref/UniqSlice<i32>) -> Slice<i32> during items => items[1..^1]\n" +
+            "func local() -> i32\n    let x = 1\n    return x\n" +
+            "func makeAdder(offset: i32) -> (i32) -> i32\n    return func [offset] (value) => value + offset\n" +
+            "func discard<s/T>(value: i32) -> ()\n    s is owner or ref or object\n    _ = value@s\n" +
+            "func sum(values: ref/Array<i32>) -> i32\n    var total = 0\n    for value in values\n        total += value\n    return total\n" +
+            "func text(x: i32) -> string => \"a\\(x)\"\n");
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var calls = nodes.OfType<InvocationKoto>().Where(static x => x.ToString() == "one()").ToArray();
+        var call = calls[0];
+        var indexes = nodes.OfType<IndexKoto>().ToArray();
+        var local = nodes.OfType<VariableKoto>().Single(static x => x.ToString().StartsWith("let x", StringComparison.Ordinal));
+        var closure = nodes.OfType<FunctionKoto>().Single(static x => x.IsAnonymous);
+        var adaptation = nodes.OfType<ConversionKoto>().Single(static x => x.ToString() == "value@s"); // A case adaptation (SPEC 8.14).
+        var loop = nodes.OfType<ForKoto>().Single();
+        var text = nodes.OfType<InterpolatedStringKoto>().Single();
+        Assert.Equal((2, 2), (calls.Length, indexes.Length));
+        HirTables.PlanFor(call, written: false).Plan = null; // After Binding and before the first publish, the facts go missing.
+        HirTables.PlanFor(calls[1], written: false).Plan = null;
+        HirTables.Of(calls[1]).Failures[calls[1].SyntaxId] = BindingFailure.TypeMismatch; // Rejected by Binding as well.
+        HirTables.PlanFor(c.Binding.IndexerCall(indexes[0], exclusive: false)!, written: false).Plan = null;
+        HirTables.PlanFor(c.Binding.ViewRangeCall(indexes[1])!, written: false).Plan = null;
+        HirTables.Of(local).Symbols[local.SyntaxId] = null;
+        HirTables.PlanFor(closure, written: false).Plan = null;
+        HirTables.PlanFor(adaptation, written: false).Plan = null;
+        HirTables.Of(loop.Iteration!.Receiver).Symbols[loop.Iteration.Receiver.SyntaxId] = null;
+        HirTables.PlanFor(text.Formatting!.Writes[1], written: false).Plan = null;
         var program = c.BuildMir();
+        Koto[] broken = [call, indexes[0], indexes[1], local, closure, adaptation, loop, text];
         Assert.Empty(program.Findings);
+        Assert.All(broken.Append(calls[1]), static x => Assert.Equal(HirOp.Error, HirTables.Op(x)));
         Assert.Equal(
-            [SourceRef.Of(call), SourceRef.Of(indexes[0]), SourceRef.Of(indexes[1])],
+            broken.Select(SourceRef.Of),
             program.Records.Where(static x => x.Code == DiagnosticCode.InternalInvariant_Kd).Select(static x => x.Subject));
+        Assert.DoesNotContain(SourceRef.Of(calls[1]), program.Records.Select(static x => x.Subject));
+    }
+
+    // SPEC 15.1.3: a fixed-array element at a literal position is projected at the position its index keeps on its own plan row, so the
+    // literal's own row, here an Error, is never read.
+    [Fact]
+    public void AConstIndexReadsItsOwnPosition()
+    {
+        Assert.Equal(Built(rejected: false), Built(rejected: true));
+
+        static string Built(bool rejected)
+        {
+            var c = Compile("func second(values: [3 of i32]) -> i32 => values[(1)]\n");
+            var literal = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<NumberLiteralKoto>().Single(static x => x.ToString() == "1");
+            if (rejected)
+            {
+                HirTables.Of(literal).Failures[literal.SyntaxId] = BindingFailure.TypeMismatch;
+            }
+
+            var program = c.BuildMir();
+            Assert.Empty(program.Findings);
+            Assert.Empty(program.Records);
+            Assert.Equal(HirPlaceKind.ConstIndex, HirTables.PlaceOf(literal.Parent!.Parent!).Kind);
+            var dump = new StringBuilder();
+            MirDump.Write(program, 0, dump);
+            return dump.ToString();
+        }
     }
 
     // SPEC 3.4, 13.7: Binding designates a Property target through its parentheses, so an update or assignment of a parenthesized

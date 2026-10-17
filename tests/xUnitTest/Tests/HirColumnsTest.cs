@@ -347,12 +347,13 @@ public sealed class HirColumnsTest
         return found;
     }
 
-    // Every parsed node in the tree has an Op, a call Op its call, a selected symbol its Res (the prepared slot exactly where the
-    // parameter is read in a later default of its function), a jump the target it transfers to, and an evaluated node its completion;
-    // every child an Op consumes has its Adjust: a call's argument and receiver the adaptation of the operation of a call that takes them,
-    // unless Binding recorded one at the node itself, and a Pattern binding its acquisition; a match, a try and a user loop have their
-    // Pattern plan, a closure its environment, signature and substitution, an expansion Op its plan with the calls it names, a
-    // requirement call its Contract unless its target is a built-in witness (a Shim), and an Abort or Fail call diverges.
+    // The publish found no node without the facts of its Op (HirTables.Broken: a call Op its call, a match, a try and a user loop their
+    // Pattern plan, an expansion the calls it names), and every parsed node in the tree has an Op, a selected symbol its Res (the prepared
+    // slot exactly where the parameter is read in a later default of its function), a jump the target it transfers to, and an evaluated
+    // node its completion; every child an Op consumes has its Adjust: a call's argument and receiver the adaptation of the operation of a
+    // call that takes them, unless Binding recorded one at the node itself, and a Pattern binding its acquisition; a closure has its
+    // environment, signature and substitution, an expansion Op its plan, a requirement call its Contract unless its target is a built-in
+    // witness (a Shim), and an Abort or Fail call diverges.
     private static List<string> Problems(Kotonoha module)
     {
         var table = module.Syntax;
@@ -368,6 +369,11 @@ public sealed class HirColumnsTest
         }
 
         bool Parsed(Koto? node) => node is not null && ReferenceEquals(node.SyntaxOwner, table) && node.SyntaxId <= table.ParsedCount;
+        foreach (var node in table.Hir.Broken ?? [])
+        {
+            problems.Add($"{node.CodeContext.SourceDocument?.Path}:{node.Span.Start} {node.Akind} without the facts of its Op (a broken contract)");
+        }
+
         foreach (var node in Reachable(module))
         {
             // A synthesized node in the tree belongs to the expansion that made it.
@@ -378,7 +384,7 @@ public sealed class HirColumnsTest
 
             var op = HirTables.Op(node);
             var where = $"{node.CodeContext.SourceDocument?.Path}:{node.Span.Start} {node.Akind} {node.StateOf()} {op}";
-            if (op == HirOp.Unset || (op == HirOp.Call && CallPlan.Of(node) is null))
+            if (op == HirOp.Unset)
             {
                 problems.Add(where);
             }
@@ -451,10 +457,9 @@ public sealed class HirColumnsTest
                 problems.Add($"{where} views {IntrinsicDisposition.FormOf(node)} {BoundEnumConstruction.Of(node)?.Type}");
             }
 
-            if ((op is HirOp.Match or HirOp.Try && BoundMatch.Of(node) is not { IsCurrent: true }) || (op == HirOp.For && (BoundMatch.Of(node) is null) != (CallPlan.Of(node, 1) is null)) ||
-                (op == HirOp.Closure && (BoundClosure.Of((FunctionKoto)node) is not { EnvironmentType: { } environment, Signature: not null } || module.Compilation.Types.SubstOfClosure(environment) is null)))
+            if (op == HirOp.Closure && (BoundClosure.Of((FunctionKoto)node) is not { EnvironmentType: { } environment, Signature: not null } || module.Compilation.Types.SubstOfClosure(environment) is null))
             {
-                problems.Add($"{where} without its Pattern plan or closure definition");
+                problems.Add($"{where} without its closure definition");
             }
 
             // An index names its key resolution, which reads the evaluated receiver, and a user or view selection its selected call; an update
@@ -463,9 +468,9 @@ public sealed class HirColumnsTest
             var written = (node as BinaryKoto)?.Left ?? (node as UnaryKoto)?.Operand;
             var updated = written is null ? null : KotoHelper.UnwrapParentheses(written); // The Property Binding designates.
             if ((expansion is null) == (op is HirOp.For or HirOp.Try or HirOp.Interpolation or HirOp.DictionaryLiteral or HirOp.Range or HirOp.CompoundAssign or HirOp.Index || (op == HirOp.Call && node is IndexKoto)) ||
-                (op is HirOp.Interpolation or HirOp.DictionaryLiteral && CallPlan.Of(node) is null) || (op == HirOp.Range && CallPlan.Of(node) is not null) ||
-                (node is IndexKoto && ((op == HirOp.Call) == (expansion?.Second is null) || (expansion?.First is not null) != (op == HirOp.Index && CallPlan.Of(node) is not null) || (expansion?.First is not null && expansion?.Evaluated < 0))) ||
-                (op == HirOp.CompoundAssign && HirTables.Op(updated!) == HirOp.Call && updated is not IndexKoto && (expansion?.Second is null || expansion?.Evaluated < 0)))
+                (op == HirOp.Range && CallPlan.Of(node) is not null) ||
+                (node is IndexKoto && ((op == HirOp.Call) == (expansion?.Second is null) || (expansion?.First is not null) != (op == HirOp.Index && CallPlan.Of(node) is not null))) ||
+                (op == HirOp.CompoundAssign && HirTables.Op(updated!) == HirOp.Call && updated is not IndexKoto && expansion?.Second is null))
             {
                 problems.Add($"{where} expansion {expansion}");
             }
