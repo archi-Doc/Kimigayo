@@ -1,7 +1,7 @@
 # Loan Termination Across Borrow Dereferences
 
-Date: 2026-10-17, revised the same day after an independent review and prototype round 8 (§2). Status: proposal for
-the owner's decision; not adopted, integrated or implemented.
+Date: 2026-10-17, revised the same day after an independent review and prototype round 8 (§2), and for round 9
+(PLAN G113). Status: proposal for the owner's decision; not adopted, integrated or implemented.
 Requested outcome: accept case 23a with a small, predictable extension of S1, preserving soundness rather than
 maximizing acceptance. This document proposes a change to the adopted rule; it does not authorize its implementation
 or supersede DECISIONS R4-M39 by itself.
@@ -39,13 +39,14 @@ current SPEC.
 | [Prototype](<../Sketches/A5 Step 0/prototype.md>) round 6, `e32c5850` | On 92 hand-encoded programs, P3 plus the root-most ending accepts 23a/30d and rejects the crossing counterexample 29a. This is bounded evidence, not a proof. |
 | Prototype round 7, `193ff65c` | 99 programs; the report does not establish a fresh root-most comparison for the exact rule proposed here. |
 | Prototype round 8 (this revision) | 109 programs. `FirstDerefBase`, the rule of §3.1, accepts 23a, 30d, 34c, 35a and 35b and rejects 34a and 34b, which the round-6 variant accepts (unsound). It and design A are unsound when an F6 phantom lacks the receiver's Loans (36a, 36c; below). |
+| Prototype round 9, `f1ab1f2f` (PLAN G113) | 113 programs. With A3's F6 erratum `desc(c)`, `FirstDerefBase` and design A both reject 36a–36e and 36g and keep `takeTwo`. Both accept 36h, an A3 gap outside this proposal (PLAN G119; below). |
 | [RustComparison.rs](<../Sketches/A5 Step 0/RustComparison.rs>) | rustc 1.97.1 accepts 23a, 34c, 35a and 35b, and rejects 34a and the write through 23a's old `slot`. |
 
 The earlier `5d61561d` proposal used a first-dereference base, but its other rules differ from adopted S1. Do not
 restore that revision wholesale. Retain the later shared-layer dependencies, `replace` contract, observing
 destruction, by-value checks and object-step classification.
 
-Round 8 establishes four points:
+Rounds 8 and 9 establish five points:
 
 - **The matcher is part of the rule.** The root-most branch of `EndedBy` (`KillAcrossDeref`) uses `Path.Within`,
   whose `SegEq` matches a dynamic index with a constant one. So `arr[0] = …` ends a child based at `arr[i]`, and a
@@ -59,26 +60,39 @@ Round 8 establishes four points:
   `b = node.value@uniq`, carries the previous step's Loan, whose path now names the new node's link, and the next
   step's Borrow conflicts with it. This is the `to_refs` shape, keeping a Borrow of each node while advancing; it is
   valid under the current SPEC and in Rust. It weighs on the precision judgment behind R4-M39.
-- **The rule changes only these verdicts.** Against design A (A3's encoding of S1) on the 109 cases,
-  `FirstDerefBase` makes 23a, 30d, 34c, 35a and 35b valid, moves 30c's error to the write through the old link and
-  36b's to `cur = a`, and makes 36a unsound (next point). Nothing else changes.
-- **An F6 phantom must carry its parent Loans (blocking).** A3 F6 issues `Phi_c` on the receiver's referent into an
-  abstract call's result. Rounds 7 and 8 encode it as the result's only Loan there, and A3 does not state otherwise
-  when the result retains only the receiver's content (H). Design A is then already unsound: after
-  `first = cur.inner.take(); cur = b`, nothing keeps `a`, and `a.inner.clear()` is accepted (36c). The
-  first-dereference base also ends `Phi_c` at `cur = b`, so `cur = a; cur.inner.clear()` is accepted too (36a). When
-  `first` also carries the receiver's Loans, both rules reject both forms (36b, 36d). §4 therefore requires that
-  every value carrying a child Loan or `Phi_c` also carries its parent Loans. A3 F6 (unit 2f) must establish this,
-  for example by issuing `Phi_c` with the receiver's Loans; exempting `Phi_c` from base ending would not fix 36c.
-  Until then this proposal is not adoptable (PLAN G113).
+- **The rule changes only these verdicts.** Against design A (A3's encoding of S1) on the 109 cases (113 in round 9),
+  `FirstDerefBase` makes 23a, 30d, 34c, 35a and 35b valid and moves 30c's error to the write through the old link.
+  In round 8 it also moved 36b's error to `cur = a` and made 36a unsound (next point). In round 9 it reports 36a and 36b
+  only at `cur = a`, where design A also reports the clear. Nothing else changes.
+- **An F6 phantom must carry its parent Loans (met).** A3 F6 issues `Phi_c` on the receiver's referent into an
+  abstract call's result. Rounds 7 and 8 encoded it as the result's only Loan there. Design A was then already
+  unsound: after `first = cur.inner.take(); cur = b`, nothing keeps `a`, and `a.inner.clear()` is accepted (36c).
+  The first-dereference base also ends `Phi_c` at `cur = b`, so `cur = a; cur.inner.clear()` was accepted too (36a).
+  §4 therefore requires that every value carrying a child Loan or `Phi_c` also carries its parent Loans.
+  - A3's F6 erratum `desc(c)` (prototype round 9, PLAN G113) meets this. The result keeps the receiver's value with
+    the receiver's own Loan replaced by `Phi_c`, so `Phi_c` travels with its parent Loans. Exempting `Phi_c` from
+    base ending would not have fixed 36c.
+  - The owner approved its cost, loss P12, on 2026-10-17 (A3 §9 item 10).
+  - In round 9, `FirstDerefBase` rejects 36a and 36b at `cur = a`, and 36c and 36d at the clear. Design A rejects
+    them too.
+  - The open F6 stores item (PLAN G113, H) must keep the precondition too: its fix issues `desc(c)` into stores.
+- **36h does not affect the proposal.** A3's write check misses SPEC §15.6.7's protection of the references a call
+  reservation was reached through, so `first = cur.inner.takeWith(do { cur = b; 0 })` is accepted (PLAN G119).
+  - The gap is in the check, not in the base: both rules give 36e–36h the same verdicts, and SPEC rejects 36h at the
+    write under either base.
+  - This proposal changes no reservation rule. Under the first-dereference base that write would also end the
+    reservation's own Loan. Accesses are checked on the state before their point (A3 §5, `σ_in`), so the ending does
+    not hide the write.
+  - So G119's check belongs at the write. Deferred to the activation, it would come after a first-dereference ending.
 
 Another evidence gap remains before implementation is accepted (PLAN G110): the prototype and S1 differ on Loans
 formed past shared references. Map prototype facts to S1's actual shared-layer rule before treating the comparison
 as evidence for the whole language.
 
-Once G113 is resolved, `Phi_c` and its disturbed form may keep S1's child-ending contract or a separate call
-contract: with their parent Loans, both are sound (36b, 36d), so the choice concerns implementation only. The
-producer publishes it; no feature-specific bypass is added.
+With their parent Loans (`desc(c)`), `Phi_c` and its disturbed form may keep S1's child-ending contract or a separate
+call contract. Under child ending, round 9 rejects 36a–36d and 36g under either base. A separate contract keeps
+`Phi_c` at least as long, so it should reject them too and may reject more; it was not run. The producer publishes the
+choice; no feature-specific bypass is added.
 
 ## 3. The rule
 
@@ -182,8 +196,8 @@ So are 35a and 35b: a Borrow of the new node's Field, such as `b = node.value@un
 again. Under the last-dereference base, `b` carries the previous step's Loan through `node`, and the next step's
 Borrow conflicts with it; here that Loan ends when `node` is replaced. 30c, writing through the old route before
 replacing the traversal holder while its child is live, remains an error, and so do 34a, 34b and the F6 cases 36a
-and 36c once their precondition holds (§2). No rule recognizes a list, a particular expression spelling or a case
-number.
+and 36c, now that their precondition holds (§2, round 9). No rule recognizes a list, a particular expression
+spelling or a case number.
 
 ## 4. Safety argument and its limits
 
@@ -192,8 +206,8 @@ followed last (S1 §2.2), does not apply. The argument goes instead by the holde
 `B *1 Q1 *2 ... *n Qn`, where each `*k` is a borrow dereference and no `Qk` contains one. Y1 = B holds the reference
 followed at `*1`; for k > 1, Yk = `B *1 Q1 ... *(k-1) Q(k-1)` holds the one followed at `*k` and lies in the referent
 of Y(k-1)'s reference. The argument assumes that every value carrying L also carries L's parent Loans, the Loans of
-the references at Y1 ... Yn; an F6 phantom must satisfy it too (§2, 36a–36d). When L ends at the destruction of G,
-the routes to L's Place are:
+the references at Y1 ... Yn. An F6 phantom satisfies it through A3's `desc(c)` erratum, whose loss P12 the owner
+approved on 2026-10-17 (§2; round 9, 36a–36d). When L ends at the destruction of G, the routes to L's Place are:
 
 - **Through B.** B's old reference was destroyed in place, not transferred. While L is checked, P3 rejects every Move
   or Borrow of a prefix of Pi in either order, including `exchange` and `swap` targets and implicit receivers,
@@ -257,7 +271,7 @@ implemented; follow the architecture's target files rather than adding another o
 
 | Unit | Work and completion condition |
 | --- | --- |
-| 1. Design and executable comparison | Round 8 implemented the exact rule (`FirstDerefBase`), ran 109 cases and found the F6 precondition (§2). Remaining: A3 F6 gives `Phi_c`'s values the receiver's Loans (PLAN G113); independently review §4's argument and the alternatives; reconcile shared-layer contracts with S1; encode the missing cases below and run them against the baseline. Record exact sources and expected verdicts. Prototype variants remain experimental, not production modes. |
+| 1. Design and executable comparison | Round 8 implemented the exact rule (`FirstDerefBase`), ran 109 cases and found the F6 precondition (§2). Round 9 (113 cases) met it with A3's `desc(c)` erratum (PLAN G113; P12 approved 2026-10-17). Remaining: independently review §4's argument and the alternatives; reconcile shared-layer contracts with S1; encode the missing cases below and run them against the baseline. Record exact sources and expected verdicts. Prototype variants remain experimental, not production modes. |
 | 2. Adoption and specification | After the argument and exact-rule evidence pass independent review, obtain the owner's adoption. Then supersede only R4-M39's last-base/within restriction and align the sources in §7. Preserve the other S1 requirements. A failed safety obligation keeps the current rule in force. |
 | 3. A5 implementation | Publish the base once per site/case and consume it through the canonical ending/step path. No consumer recomputes it from syntax. If restructuring is necessary, first commit behavior-preserving restructuring under VERIFICATION. |
 | 4. Focused verification and measurements | Assert verdicts and check locations at the lowest public A5/MIR layer; reuse the owning tests. Run the required Unit/Session checks and selected generated-code fixtures, then compare matched compiler workloads. |
@@ -276,7 +290,7 @@ Required comparisons, reusing existing cases rather than cloning them:
 | Move, `exchange`, `swap`, `replace` | Transfer forms stay rejected with a live conflicting child, including calls. Only the established destroying-target contract is exempt. |
 | Constant/dynamic indexes and sibling Fields | Exact same constant can end; different or unknown indexes cannot accidentally kill. Test the matcher directly and a program with later old-route access (34a, 34b), and the whole replacement `refs = other` with a base `refs[i]`, which ends it (34c). |
 | Shared layers, Semantics pairs, owning and borrowed handles | Compare against S1's actual materialization and containment. Include a surviving `rc`/`arc` clone and protection of its payload; do not infer physical destruction from handle replacement. |
-| Calls and F6 phantom Loans | Recheck round-7 33a–33c after its recorded reservation correction, and 36a–36d: a value carrying `Phi_c` also carries the receiver's Loans, so both are rejected through `cur` and through `a`. Verify parent materialization, disturbance and ending against the producer's contract. |
+| Calls and F6 phantom Loans | Recheck round-7 33a–33c after its recorded reservation correction, and 36a–36d: a value carrying `Phi_c` also carries the receiver's parent Loans (A3 `desc(c)`), so both are rejected through `cur` and through `a`. Rerun 36h under both bases once PLAN G119's check exists. Verify parent materialization, disturbance and ending against the producer's contract. |
 | Unchanged boundaries | Single-dereference programs keep S1's verdicts; only the plan's narrower matcher differs, on 34c. No-dereference Loans keep theirs. Indirect-slot replacement stays conservative. |
 
 Use bounded mutation comparisons to remove P3, parent retention, transit or by-value checking independently; the
@@ -292,7 +306,7 @@ If a material cost regression appears, report its measured cause before acceptin
 
 Follow [VERIFICATION](../../docs/dev/VERIFICATION.md) for implementation checks, exact-input evidence and
 `verify-commit.ps1`. Select native fixtures explicitly; NativeAOT needs a separate request. This revision ran the
-prototype outside the repository (round 8); no compiler build is claimed.
+prototype outside the repository (round 8; round 9 for G113); no compiler build is claimed.
 
 ## 7. Adoption mapping and boundaries
 
@@ -300,7 +314,8 @@ This proposal reopens the first-base recovery because the owner now asks for 23a
 because S1's examples understate its loss (35a, 35b; §2). It does not claim the former no-crossing decision was a
 soundness proof against the recovery. If the owner keeps the last-dereference base, A3's loss rows add 35a and 35b
 (S1's frozen text stays; `draft/INTEGRATED.md` records the correction), and A3's matcher follows SPEC §15.6.3 on
-34c. G113 holds under either base.
+34c. The F6 precondition (§2) applies under either base. A3's `desc(c)` meets it for results, and the open stores item
+(PLAN G113) must keep it.
 
 On adoption, update together:
 

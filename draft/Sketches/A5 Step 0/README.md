@@ -37,11 +37,13 @@ S1/S2 proposal session.
   SPEC simplification (plan OD12, OD13).
 - **2026-10-17, owner:** for the access-check family, the owner chose the representation: the transit clause in the
   check set.
-- **2026-10-17, owner:** design A3 §9 was approved as recommended:
+- **2026-10-17, owner:** design A3 §9 items 2–9 were approved as recommended:
   - losses P1, P3, P4, P10 and P11, plus the optional P5, P6 and P9;
   - relaxations (a) and (b);
   - the S1 additions, c1/c2, V16, the Origin boundary, the MIR contracts, and the DEC and DIAGNOSTICS records;
   - not adopted: the root-most kill recovery and relaxation (c).
+- **2026-10-17, owner:** design A3 §9 item 10, the needed loss P12 (`desc(c)`, PLAN G113, prototype round 9), was
+  approved: 「承認します。」 (relayed by the planning session)
 - **Planning session:**
   - design A is the base;
   - A3 follows the plan's `within` kill, never across a borrow Deref;
