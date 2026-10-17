@@ -1250,7 +1250,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     stores E and the flow holders; `Prepare(⌈(Hf + 1)/64⌉, Hf + 1, …)` sizes both problems under R4-M15a's one limit.
   - Loans: one table per view, their Places' steps in one pool (a Base of depth d as d steps, an owner-case pair layer as none, a
     Slice index a shared borrow Deref), grouped by root key (locals, then statics); a PairAcquire the view makes a Reborrow is a
-    Uniq Loan of its Place's referent. E8's ended set of each location is built in the pre-pass and removed from every slot first.
+    Uniq Loan of its Place's referent. E8's ended set of each location is built in the pre-pass and removed from every slot after
+    the location's checks and transfer (A3's `step`, σ_out \ ended; corrected by 1b-3: removing it first made `replace` store its
+    new value through its already ended target reservation into E).
   - A location's effect is planned as entries on the state (clear, replace, join), then committed, so the checks replay reads the
     plan on `σ_in`; a borrow's stored value only seeds the closure (E5), as the prototype's chosen rule (its parents as candidates,
     `RefParentsInTransit`, is over-strict on 30b). Transit counts a store into a holder live after ℓ, made live by the closure, or E.
@@ -1259,13 +1261,42 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Calls read `TyCtxt.Retains` (slots to argument positions by `MirCallee.Position`); an intrinsic's operands all reach its result.
     Temporary: a default template's call is an unknown callee until F9 (unit 2e), and a Value callee's environment (its value, or
     what a reference to it refers to) reaches the result until F7 reads `TyCtxt.Closure` (unit 2c).
-  - The driver's step 4 is not wired: `TyCtxt.Retains` discards its memo with every Binding pass (R4-M51), so A5 in `MirAnalysis`
-    allocates on each warm rebuild (Milestone34: 35,584 B per pass, 0 B without the retention calls), against V11's warm-rebuild
-    tests; it lands once retention survives an unchanged pass (planning session).
-  Not in this unit: reservations and activation, E1, destroying calls and `obs` (1b-3), whose tests also cover the `InPlace` ending
-  implemented here; `γ` (1b-4); effects (2b); F6 (2f). Rejected: per-location live rows (N × H/64 words, outside the one arena
+  - The driver's step 4 is not wired: `TyCtxt.Retains` discarded its memo with every Binding pass (R4-M51), so A5 in `MirAnalysis`
+    allocated on each warm rebuild (Milestone34: 35,584 B per pass, 0 B without the retention calls), against V11's warm-rebuild
+    tests; the memo now lives until an edit (R4-M51 as amended), and the wiring is unit 1b-5's.
+  Not in this unit: `γ` (1b-4); effects (2b); F6 (2f). Rejected: per-location live rows (N × H/64 words, outside the one arena
   limit); a per-Loan holder index for `ended` (a second carrying representation); pruning dead holders at heads (the same verdicts;
   until measured). Not temporary, but the two call rules above.
+  Unit 1b-3 (A3 §5's err(activate), err(destroy), `obs` and the A6 table's Loan rows, with E1, E5 and E11; `.Activations` added):
+  - A reservation is a two-phase Loan in its reservation holder t, the slot it was issued into, the one holder where its mode is
+    shared. It activates where a Call takes t as an argument or a statement writes through t's Deref (the writeback, R4-M37): the
+    reservations σ_in(t) carries in t, each checked on CS_call(ℓ, t), the holders live into ℓ (the replay's live-after bits with ℓ's
+    touches applied) but t, and E, closed, seeded by those σ_in(t)'s direct Loans name (E5), with no transit; as an exclusive borrow
+    of its Place, so the arguments of one call meet each other there.
+  - E1: a write or destruction (StorageDead, a shallow Drop, a destroying activation) reaches a Loan found in its reservation holder
+    through any prefix of its Place, across borrow Derefs but not a raw one.
+  - destroying(site) is a Loan column (`Destroying`), set in the pre-pass for the two-phase Loans issued into the target argument
+    holder of a call whose published row destroys its target in place (`replace`): its Ref reads the target, its activation writes
+    it, and err(destroy) checks the same CS_call for the Loans an exclusive deep use of the target hits and the write does not, where
+    its case Type observes. A destroying row that is not in place (the `clear`s) adds nothing: its activation is already exclusive
+    and deep (E3 leaves `obs` no shared cut).
+  - A Drop's access is the one rule `Dropping`, which liveness reads too: `Observe` (exclusive and deep) where its case Type observes
+    (`MirTypes.Observes`) and its A2 group's verdict is not Elide (no group: the case Type alone), `Unclassified` past the destruction
+    walk's bound, a located `Unsupported_Kd` at a Drop of a borrowed root or a destroying call, as A4's Limit; else a shallow destroy.
+  - Codes: a Loan found in its reservation holder gives `CallReservationConflict_Kd`, whatever the access; else an activation at a
+    Call `CallActivationConflict_Kd`, at the writeback `PlacementActivationConflict_Kd`, any other conflict and err(destroy)
+    `ComparisonLoanConflict_Kd`, so SPEC 15.6.7's `tasks.append(tasks.remove(0))` is a reservation conflict and 4.9.6's `values.sort()`
+    with a live view an activation conflict, as the SPEC-example table records. `MirFactKind.Reservation` is an activation's or a
+    destruction's reservation anchor (A3 §6.4's other anchor); a CS_call witness is its holder's first use from the call on.
+  - ret(i, Value) reads through a borrow argument, a reference or a view handle (`MirTypes.View`: a Slice shared, a UniqSlice
+    exclusive), the rule by which a Slice's Index is a borrow Deref (E6); found by the planning session's Milestone27 analysis, with
+    Binding's matching `Retains` fix (unit 1a3).
+  Found, for the planning session: a reservation formed while an exclusive Loan of its Place lives gets the formation's
+  `ComparisonLoanConflict_Kd` and the activation's `CallActivationConflict_Kd` on one Loan (`arr.clear()` with a live element borrow;
+  the old path reports the activation only), A6's merge or a rule; `TyCtxt.Retains` throws for a Subst holding a growing recursive
+  Type (`Nest<ref/i32>.init`). Rejected: transit in CS_call (a call's retained result would bring its own reservation into its
+  check); activations by a table of issue sites (σ_in(t) already says which reservations reach the call); the destroying mode on the
+  access instead of the Loan (formation and activation are separate locations). Not temporary.
 - **R4-M61** (2026-10-17; PLAN G96, two independent designs compared and the chosen one reviewed independently, implemented on the
   planning session's instruction of the same day; supersedes R4-M42's `MirBuilder.Broken`) A published Op guarantees the Binding
   facts the MIR builder reads for it, which `Binding.HasFacts` (`Binding/Binding.Hir.Facts.cs`, whose header is the contract) lists:

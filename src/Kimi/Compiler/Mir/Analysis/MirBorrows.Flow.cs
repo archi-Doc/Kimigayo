@@ -3,8 +3,8 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's carrying (A3 5, Carrying and Calls, with E3 and E8): each holder's set forward over the dataflow's chains, joined by node union. A
-// location's effect is planned on the state as entries, then committed, so that the checks replay reads the same plan on the state before
-// it; at a destruction in place the Loans it ends are removed first, on every rule (`step`).
+// location's effect is planned on the state before it as entries, which the checks replay reads, then committed; at a destruction in place
+// the Loans it ends are then removed from every holder (`step`: σ_out \ ended, so a call's transfer still reads its destroyed target).
 internal sealed partial class MirBorrows
 {
     private const byte Cleared = 0;
@@ -45,13 +45,14 @@ internal sealed partial class MirBorrows
         {
             var location = this.Location(block, i);
             this.Work++;
+            this.Plan(state, block, i);
             if (checks)
             {
                 this.Advance(location);
-                this.Plan(state, block, i);
                 this.Check(state, block, i, location);
             }
 
+            this.Commit(state);
             if (this.ended[location] != 0)
             {
                 for (var s = 0; s < this.holderCount; s++)
@@ -61,13 +62,6 @@ internal sealed partial class MirBorrows
 
                 this.Work += this.holderCount;
             }
-
-            if (!checks || this.ended[location] != 0)
-            {
-                this.Plan(state, block, i);
-            }
-
-            this.Commit(state);
         }
     }
 
@@ -113,7 +107,8 @@ internal sealed partial class MirBorrows
             var (value, own) = this.Value(state, rvalue, data.Start + index);
             this.Moves(rvalue.Start, rvalue.Count);
             var issue = rvalue.Kind == MirRvalueKind.Ref ||
-                (rvalue.Kind == MirRvalueKind.Use && this.body.Operands[rvalue.Start] is { Kind: MirOperandKind.PairAcquire } acquire && cases.Reborrows(acquire));
+                (rvalue.Kind == MirRvalueKind.Use && this.body.Operands[rvalue.Start] is { Kind: MirOperandKind.PairAcquire } acquire &&
+                    cases.Reborrows(acquire));
             this.Store(state, statement.Place, value, own, issue);
         }
     }
@@ -192,12 +187,21 @@ internal sealed partial class MirBorrows
             return (0, 0);
         }
 
-        return operand.Kind == MirOperandKind.PairAcquire && cases.Reborrows(operand) ? this.Issued(state, operand.Place, reborrow: true, this.loanOfOperand[index])
+        return operand.Kind == MirOperandKind.PairAcquire && cases.Reborrows(operand)
+            ? this.Issued(state, operand.Place, reborrow: true, this.loanOfOperand[index])
             : (this.Read(state, operand.Place), 0);
     }
 
     // A root's state: a holder's, a static's {Φ_E}, none for another local.
-    private int Root(ulong[] state, int root) => root < 0 ? this.escapedSet : this.slots[root] >= 0 ? (int)state[this.slots[root]] : 0;
+    private int Root(ulong[] state, int root)
+    {
+        if (root < 0)
+        {
+            return this.escapedSet;
+        }
+
+        return this.slots[root] >= 0 ? (int)state[this.slots[root]] : 0;
+    }
 
     // val(X) = content^k(σ(root(X))) over its k borrow Derefs; a raw pointer's referent is {Φ_E}.
     private int Read(ulong[] state, MirPlace place)
@@ -414,7 +418,8 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // ret(i, κ) (A3 5): Value, the argument's value and, for a reference, a read through it; Content, a read through it only.
+    // ret(i, κ) (A3 5): Value, the argument's value and, for a borrow (a reference or a view handle, Borrows), a read through it; Content,
+    // a read through it only.
     private (int Value, int Own) Retained(ulong[] state, int operand, int position, RetentionKind kind)
     {
         var (value, own) = (this.argValues[position], this.argOwns[position]);
@@ -424,7 +429,7 @@ internal sealed partial class MirBorrows
             return (through, 0);
         }
 
-        return MirTypes.IsReference(this.TypeOf(operand)) ? (this.sets.Union(value, through), own) : (value, own);
+        return Borrows(this.TypeOf(operand)) ? (this.sets.Union(value, through), own) : (value, own);
     }
 
     // An operand's case Type: a Reborrow's is its Place's reference.

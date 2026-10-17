@@ -2,15 +2,19 @@
 
 // Owns A5's Loan stratum (SPEC 15.6–15.8; design A3 3, 5 and 6 with its 12 errata; DECISIONS R4-M57) per body and Semantics case view.
 // Input: a validated body, its dataflow (MirDataflow, begun) and move paths (MirMoveData, built), the selected view (MirCases), A2's verdicts
-// (MirProgram.Drops), and Binding's call retention (TyCtxt.Retains) and published rows (TyCtxt.Published). Output: each Loan conflict as
-// ComparisonLoanConflict_Kd at its access, with the Loan's anchor and its witness's next use or the store that carries it as facts, through
-// MirReport; and Work, the steps it took (A3 6.2).
+// (MirProgram.Drops), and Binding's call retention (TyCtxt.Retains) and published rows (TyCtxt.Published). Output: each Loan conflict at its
+// access or activation, coded by A3 5's A6 table (CallReservationConflict_Kd for a Loan in its reservation holder, CallActivationConflict_Kd
+// or PlacementActivationConflict_Kd for an activation at a Call or at the writeback write, else ComparisonLoanConflict_Kd), with the Loan's
+// anchor, its witness's next use or the store that carries it and an activation's reservation as facts, and Unsupported_Kd at a destruction
+// it does not classify, through MirReport; and Work, the steps it took (A3 6.2).
 // Invariants: a holder is a root local whose case Type may hold a Loan (MirTypes.HoldsLoans), or E, the storage the body does not own; its
 // state is a MirLoanSets node of Loans and markers (Φ_E, τ_s). A Loan exists per non-raw Ref site and view whose Place passes no shared
 // borrow Deref (E3), named by its whole Place; access is syntactic, by Place prefix. A check reads holders, never Loan ids: the holders live
 // after the access but those it overwrites, E, the values it stores into a live holder (transit), the holders their direct Loans name (the
-// closure) and those its own Loans name (E5). Destroying a Move Path in place ends every Loan whose path it exactly prefixes (E8), after the
-// checks. A holder a direct Loan names keeps its state at every head.
+// closure) and those its own Loans name (E5); an activation the holders live into it but its reservation holder, whose Loans seed the
+// closure. A two-phase Loan is shared only in its reservation holder, where a write or destruction of a prefix of its Place reaches it (E1).
+// Destroying a Move Path in place ends every Loan whose path it exactly prefixes (E8), after the checks and the transfer. A holder a direct
+// Loan names keeps its state at every head.
 // Must not read syntax or HIR, judge Origins, re-derive retention, intern projections, or copy the body per view.
 
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
@@ -114,14 +118,19 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
         this.Work += this.sets.Bytes;
     }
 
-    // A Deref's class by the Type it applies to: a shared or exclusive borrow, an owning handle's payload, or a raw pointer's referent.
-    private static StepClass Deref(BoundType type) => type.Semantics switch
+    // A Deref's class by the Semantics of the Type it applies to: a shared or exclusive borrow, an owning handle's payload, or a raw
+    // pointer's referent.
+    private static StepClass Deref(SemanticsKind semantics) => semantics switch
     {
         SemanticsKind.Ref or SemanticsKind.ObjRef => StepClass.Shared,
         SemanticsKind.Uniq or SemanticsKind.ObjUniq => StepClass.Uniq,
         SemanticsKind.Raw => StepClass.Raw,
         _ => StepClass.Own,
     };
+
+    // Whether a value of a case Type is a borrow, through which a read reaches what it refers to (A3 5's ret): a reference or a pair layer,
+    // or a view handle, whose Index is a borrow Deref (E6).
+    private static bool Borrows(BoundType? type) => MirTypes.IsReference(type) || MirTypes.View(type) is not null;
 
     // A location's index: a statement's in the body, a terminator's after every statement.
     private int Location(int block, int index)
@@ -240,7 +249,17 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
         MirDataflow.Grow(ref this.loanSteps, this.loanStepCount + count);
         this.walk.AsSpan(0, count).CopyTo(this.loanSteps.AsSpan(this.loanStepCount));
         var (key, root) = (this.Key(place.Root), direct ? place.Root : -1);
-        this.loans[this.loanCount] = new(key, this.loanStepCount, count, mode, into, root, direct, this.body.Subject(source));
+        this.loans[this.loanCount] = new()
+        {
+            Root = key,
+            Start = this.loanStepCount,
+            Count = count,
+            Mode = mode,
+            Holder = into,
+            Named = root,
+            Direct = direct,
+            Site = this.body.Subject(source),
+        };
         this.loanStepCount += count;
         this.borrowed[key] = true;
         if (root >= 0)
@@ -286,7 +305,7 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
 
     // The Loans each location's destructions in place end (E8): a whole write of a Move Path (an Assign's Place, a returning Call's
     // destination), StorageLive and StorageDead of a root, and a call target its published row destroys in place (`replace`), the Place
-    // its Ref lent.
+    // its Ref lent, whose reservation is destroying (A3 4's destroying(site)).
     private void Endings()
     {
         var statements = this.body.Statements;
@@ -308,9 +327,22 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
                 position < terminator.Count && this.body.Operands[terminator.Start + position].Place is { Root: >= 0 } target)
             {
                 set = this.Ending(this.lent[target.Root], set);
+                this.Destroying(target.Root);
             }
 
             this.ended[statements.Length + block] = set;
+        }
+    }
+
+    // The two-phase Loans issued into an argument holder whose call destroys its target in place: the Ref reads its target where it is
+    // formed, and its activation writes it (A3 5's access and err(activate)).
+    private void Destroying(int local)
+    {
+        var key = this.Key(this.lent[local].Root);
+        for (var r = this.rootStart[key]; r < this.rootStart[key + 1]; r++)
+        {
+            ref var loan = ref this.loans[this.byRoot[r]];
+            loan.Destroying |= loan.Mode == MirRefKind.TwoPhaseUniq && loan.Holder == this.slots[local];
         }
     }
 
@@ -362,9 +394,9 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
             var prefix = place with { Projection = row.Prefix };
             var @class = row.Kind switch
             {
-                MirProjectionKind.Deref => Deref(cases.Type(this.body.TypeOf(prefix)!)),
-                MirProjectionKind.PairLayer => cases.Layer(place with { Projection = id }) is { } layer ? Deref(layer) : (StepClass?)null,
-                MirProjectionKind.Index => cases.Type(this.body.TypeOf(prefix)!).Kind == BoundTypeKind.Slice ? StepClass.Shared : StepClass.Index,
+                MirProjectionKind.Deref => Deref(cases.Type(this.body.TypeOf(prefix)!).Semantics),
+                MirProjectionKind.PairLayer => cases.Layer(place with { Projection = id }) is { } layer ? Deref(layer.Semantics) : (StepClass?)null,
+                MirProjectionKind.Index => MirTypes.View(cases.Type(this.body.TypeOf(prefix)!)) is { } view ? Deref(view) : StepClass.Index,
                 _ => StepClass.Inline,
             };
 
@@ -387,7 +419,34 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
     /// <summary>A step of a Place: its projection kind and argument (a Base of depth 1) and its class.</summary>
     private readonly record struct Step(MirProjectionKind Kind, int Arg, StepClass Class);
 
-    /// <summary>A Loan (A3 3): its root key, its Place's steps, its mode, its reservation holder (the slot it was issued into), the holder a
-    /// direct Loan names, whether it is direct (no borrow or raw Deref), and its anchor.</summary>
-    private record struct Loan(int Root, int Start, int Count, MirRefKind Mode, int Holder, int Named, bool Direct, SourceRef Site);
+    /// <summary>A Loan (A3 3).</summary>
+    private struct Loan
+    {
+        /// <summary>Gets or sets its Place's root key.</summary>
+        internal int Root { get; set; }
+
+        /// <summary>Gets or sets the first of its Place's steps.</summary>
+        internal int Start { get; set; }
+
+        /// <summary>Gets or sets the number of its Place's steps.</summary>
+        internal int Count { get; set; }
+
+        /// <summary>Gets or sets its mode.</summary>
+        internal MirRefKind Mode { get; set; }
+
+        /// <summary>Gets or sets the slot it was issued into, a two-phase Loan's reservation holder (-1: none).</summary>
+        internal int Holder { get; set; }
+
+        /// <summary>Gets or sets the slot a direct Loan names (-1: none).</summary>
+        internal int Named { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether it is direct: its Place passes no borrow or raw Deref.</summary>
+        internal bool Direct { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether it is a destroying reservation: its call destroys its target in place.</summary>
+        internal bool Destroying { get; set; }
+
+        /// <summary>Gets or sets its anchor.</summary>
+        internal SourceRef Site { get; set; }
+    }
 }

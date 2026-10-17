@@ -1,0 +1,115 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+namespace Kimi.Compiler.Mir;
+
+// A5's call reservations (A3 5's err(activate) and err(destroy), with E1, E5 and E11; SPEC 15.6.7): a two-phase Loan in its reservation
+// holder t activates where a Call takes t as an argument or the writeback writes through it (R4-M37), checked on CS_call(ℓ, t): the states
+// before ℓ of the holders live into it but t and of E, closed through the holders their direct Loans name and seeded by those σ_in(t)'s
+// direct Loans name, so the arguments of one call are checked against each other. A call that destroys its target in place (`replace`)
+// writes the target and, where its old value's destruction may observe, uses the Places past it exclusively and deeply. A destroying call
+// whose target is not destroyed in place (the `clear`s) needs no such row: its activation is already an exclusive deep use (E3: no shared
+// cut).
+internal sealed partial class MirBorrows
+{
+    private readonly List<int> reserving = []; // The reservations a holder carries into their activation.
+
+    // The activations at a location: a Call's at each argument holder, the writeback's at a write through a reservation.
+    private void Activations(ulong[] state, MirLocation at)
+    {
+        ref readonly var data = ref this.body.Blocks[at.Block];
+        if (at.Index < data.Count)
+        {
+            ref readonly var statement = ref this.body.Statements[data.Start + at.Index];
+            if (statement.Kind == MirStatementKind.Assign && this.ThroughRoot(statement.Place))
+            {
+                this.Activate(state, statement.Place.Root, at, DiagnosticCode.PlacementActivationConflict_Kd);
+            }
+
+            return;
+        }
+
+        var call = data.Terminator;
+        for (var o = call.Start; call.Kind == MirTerminatorKind.Call && o < call.Start + call.Count; o++)
+        {
+            if (this.body.Operands[o] is { Kind: not MirOperandKind.Const, Place: { Projection: 0, Root: >= 0 } argument })
+            {
+                this.Activate(state, argument.Root, at, DiagnosticCode.CallActivationConflict_Kd);
+            }
+        }
+    }
+
+    // The reservations a holder carries in itself, each activated on CS_call(ℓ, t) (A3 5's err(activate)): as an exclusive borrow of its
+    // Place, the destroying one as a write of its target (shallow, and by E1 a destruction of the reservations it prefixes), whose call then
+    // destroys the old value there (Destroyed).
+    private void Activate(ulong[] state, int local, MirLocation at, DiagnosticCode code)
+    {
+        var slot = this.slots[local];
+        var held = slot >= 0 ? (int)state[slot] : 0;
+        this.reserving.Clear();
+        this.Work += this.sets.Count(held);
+        foreach (var element in this.sets.Elements(held))
+        {
+            if (element >= this.loanBase && this.loans[element - this.loanBase] is { Mode: MirRefKind.TwoPhaseUniq } loan && loan.Holder == slot)
+            {
+                this.reserving.Add(element - this.loanBase);
+            }
+        }
+
+        if (this.reserving.Count == 0)
+        {
+            return;
+        }
+
+        this.LiveInto(this.Location(at.Block, at.Index));
+        this.Gather(state, this.liveIn, slot, stores: 0);
+        foreach (var reservation in this.reserving)
+        {
+            var loan = this.loans[reservation];
+            var steps = this.loanSteps.AsSpan(loan.Start, loan.Count);
+            this.Conflict(loan.Root, steps, loan.Destroying ? AccessKind.Write : AccessKind.UniqueBorrow, code, at, reservation);
+            if (loan.Destroying)
+            {
+                this.Destroyed(reservation, cases.Type(this.body.TypeOf(this.lent[local])!), at);
+            }
+        }
+
+        this.Work += this.reserving.Count;
+    }
+
+    // err(destroy) (A3 5, E11): the old value a call destroys in place at its target, where its Type may observe what it holds, uses the
+    // Places past those the destroying activation writes exclusively and deeply, on the activation's check set, before the ending; past the
+    // destruction walk's bound it is unclassified.
+    private void Destroyed(int reservation, BoundType target, MirLocation at)
+    {
+        var kind = this.Destruction(target);
+        if (kind == AccessKind.Unclassified)
+        {
+            this.program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, this.Subject(at), this.views));
+            return;
+        }
+
+        var loan = this.loans[reservation];
+        var steps = this.loanSteps.AsSpan(loan.Start, loan.Count);
+        for (var c = 0; kind == AccessKind.Observe && c < this.candidateCount; c++)
+        {
+            var candidate = this.candidates[c];
+            if (this.Hits(loan.Root, steps, AccessKind.Observe, candidate) && !this.Hits(loan.Root, steps, AccessKind.Write, candidate))
+            {
+                this.Report(DiagnosticCode.ComparisonLoanConflict_Kd, candidate, at, reservation);
+                return;
+            }
+        }
+    }
+
+    // Whether a Place's first step is a Deref of its root: a write through the reference the root holds.
+    private bool ThroughRoot(MirPlace place)
+    {
+        var id = place.Projection;
+        while (id > 0 && this.body.Projections[id].Prefix > 0)
+        {
+            id = this.body.Projections[id].Prefix;
+        }
+
+        return id > 0 && this.body.Projections[id].Kind == MirProjectionKind.Deref;
+    }
+}

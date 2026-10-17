@@ -21,13 +21,14 @@ namespace Kimi.Compiler.Mir;
 /// <param name="Views">The views that have the problem, bit i for view i (every bit: a problem no view decides).</param>
 internal readonly record struct MirProblem(DiagnosticCode Code, SourceRef Subject, ulong Views);
 
-/// <summary>What a related site of a problem is (R4-M3a): a Loan's anchor, its witness holder's next use, or the store whose value
-/// carries it (design A3 6.4).</summary>
+/// <summary>What a related site of a problem is (R4-M3a): a Loan's anchor, its witness holder's next use, the store whose value
+/// carries it, or the anchor of the reservation the problem's activation or destruction is of (design A3 6.4).</summary>
 internal enum MirFactKind : byte
 {
     Anchor,
     Use,
     Store,
+    Reservation,
 }
 
 /// <summary>A related site of a problem (R4-M3a).</summary>

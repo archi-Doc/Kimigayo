@@ -3,7 +3,8 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's holder liveness (A3 5, Liveness): the holders each location uses and kills, solved backward over the dataflow's chains, and in its
-// replay each location's live-after bit of the holders it touches, from which the checks replay rebuilds every location's live holders.
+// replay each location's live-after bit of the holders it touches, from which the checks replay rebuilds every location's live holders, and
+// an activation those live into its location.
 internal sealed partial class MirBorrows
 {
     private const byte Uses = 1;
@@ -13,6 +14,7 @@ internal sealed partial class MirBorrows
     private Touch[] touches = [];
     private bool[] liveAfter = []; // By touch: whether its holder is live after its location.
     private ulong[] live = []; // The checks replay's live holders.
+    private ulong[] liveIn = []; // The holders live into an activation's location.
     private int touchCount;
 
     // Each location's touches of holders (A3 5): a use of a holder its Places read, Move, borrow, write through a reference or destroy
@@ -38,6 +40,7 @@ internal sealed partial class MirBorrows
 
         MirDataflow.Grow(ref this.liveAfter, this.touchCount);
         MirDataflow.Grow(ref this.live, (this.holderCount + 63) >> 6);
+        MirDataflow.Grow(ref this.liveIn, (this.holderCount + 63) >> 6);
     }
 
     private void Mark(int local, byte flags)
@@ -47,19 +50,6 @@ internal sealed partial class MirBorrows
             MirDataflow.Grow(ref this.touches, this.touchCount + 1);
             this.touches[this.touchCount++] = new(this.slots[local], flags);
         }
-    }
-
-    // Whether a Drop under the view may observe what its Place holds: its Type observes and A2 keeps some of it (no row: only the checks
-    // reach it).
-    private bool Observing(int block, MirPlace place)
-    {
-        var group = this.program.Drops.Group(this.body.Ordinal, block, this.view);
-        if (group >= 0 && this.program.Drops.RowsOf(this.body.Ordinal)[group].Verdict == MirDropVerdict.Elide)
-        {
-            return false;
-        }
-
-        return MirTypes.Observes(cases.Type(this.body.TypeOf(place)!), types, this.body.Key.Decl, this.seen, out var deep) || deep;
     }
 
     // The checks replay: the live holders before a chain's head, then after each location.
@@ -77,6 +67,24 @@ internal sealed partial class MirBorrows
         {
             var slot = this.touches[t].Slot;
             this.live[slot >> 6] = this.liveAfter[t] ? this.live[slot >> 6] | (1UL << slot) : this.live[slot >> 6] & ~(1UL << slot);
+        }
+    }
+
+    // The holders live into a location, from those live after it: live_in = (live_out \ kill) ∪ use.
+    private void LiveInto(int location)
+    {
+        var (start, count) = this.touched[location];
+        this.live.AsSpan(0, (this.holderCount + 63) >> 6).CopyTo(this.liveIn);
+        for (var t = start; t < start + count; t++)
+        {
+            var slot = this.touches[t].Slot;
+            this.liveIn[slot >> 6] &= (this.touches[t].Flags & Kills) != 0 ? ~(1UL << slot) : ulong.MaxValue;
+        }
+
+        for (var t = start; t < start + count; t++)
+        {
+            var slot = this.touches[t].Slot;
+            this.liveIn[slot >> 6] |= (this.touches[t].Flags & Uses) != 0 ? 1UL << slot : 0;
         }
     }
 
@@ -147,11 +155,12 @@ internal sealed partial class MirBorrows
             }
             else if ((access & MirAccess.Writes) != 0 && (access & MirAccess.Reads) == 0)
             {
-                owner.Mark(place.Root, whole ? Kills : owner.Through(place) ? Uses : (byte)0);
+                var through = owner.Through(place) ? Uses : (byte)0;
+                owner.Mark(place.Root, whole ? Kills : through);
             }
             else if ((access & MirAccess.DropUse) != 0)
             {
-                owner.Mark(place.Root, owner.Observing(this.block, place) ? Uses : (byte)0);
+                owner.Mark(place.Root, owner.Dropping(this.block, place) != AccessKind.Destroy ? Uses : (byte)0);
             }
             else if ((access & (MirAccess.Reads | MirAccess.Moves | MirAccess.Borrows)) != 0)
             {

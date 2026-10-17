@@ -20,6 +20,12 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
         func keep(value: ref/i32) -> ref/i32 during value => value
         func put(slot: uniq/(ref/i32 during a), value: ref/i32 during a) => slot@follow = value
         func size(value: ref/i32) -> i32 => value@follow
+        func two(a: uniq/Pair, b: ref/Pair) => ()
+        func both(a: ref/Pair, b: ref/Pair) => ()
+        func split(a: uniq/i32, b: ref/i32) => ()
+        func setN(s: uniq/S, n: i32) => s.n = n
+        func setM(m: uniq/i32) => m@follow = 1
+        func keepT<T>(value: uniq/T) -> uniq/T during value => value
         struct Pair
             public var a: i32 = 1
             public var b: i32 = 2
@@ -27,6 +33,7 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
         struct S {a}
             public var r: ref/i32 during a
             public var n: i32 = 0
+            public var m: i32 = 0
             public init(r: ref/i32 during a) => self.r = r
         struct S3 {a}
             public var rs: ref/(uniq/i32 during a) during a
@@ -37,8 +44,56 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
         struct T39 {o}
             public var p: uniq/Array<i32> during o
             public init(p: uniq/Array<i32> during o) => self.p = p
+        struct Task
+            public var value: i32
+            public init(value: i32) => self.value = value
+        struct Inner
+            public var v: i32 = 0
+            public init() => ()
+            public func takeWith(self: uniq/Self, f: i32) -> i32 => f
+        struct H {a}
+            public var inner: uniq/Inner during a
+            public init(inner: uniq/Inner during a) => self.inner = inner
+        struct D {a}
+            public var r: uniq/i32 during a
+            public init(r: uniq/i32 during a) => self.r = r
+            drop
+                self.r@follow = 0
+        struct C {a}
+            public var r: uniq/Array<i32> during a
+            public init(r: uniq/Array<i32> during a) => self.r = r
+            drop
+                self.r@follow.clear()
+        struct Q {a}
+            public var r: uniq/i32 during a
+            public var q: ref/i32 during a
+            public init(r: uniq/i32 during a, q: ref/i32 during a)
+                self.r = r
+                self.q = q
+            drop
+                self.r@follow = 0
+        struct R {a}
+            public var r: ref/i32 during a
+            public init(r: ref/i32 during a) => self.r = r
+            drop => ()
+        struct Tree
+            public var value: i32 = 0
+            public var children: Array<Tree> = []
+            public init() => ()
+        struct Nest<T>
+            public var value: T
+            public var next: Option<rc/Nest<(T, T)>> = .None
+            public init(value: T) => self.value = value
 
         """;
+
+    /// <summary>Gets the variants of the SPEC examples these rules decide: family F3's, SPEC 15.6.6's and 15.6.7's.</summary>
+    public static TheoryData<string> SpecVariants => [.. DiagnosticCorpus.SpecCases.Where(static x => x.Family == "F3" || x.Section is "15.6.6" or "15.6.7")
+        .SelectMany(static x => x.Variants.Select((_, i) => $"{x.Name}/{i}"))];
+
+    // The codes of A5's Loan stratum (A3 5's A6 table, the rows its rules decide).
+    private static DiagnosticCode[] LoanCodes => [DiagnosticCode.ComparisonLoanConflict_Kd, DiagnosticCode.CallReservationConflict_Kd,
+        DiagnosticCode.CallActivationConflict_Kd, DiagnosticCode.PlacementActivationConflict_Kd];
 
     // SPEC 15.6, 15.6.2: an access conflicts with a Loan live after it that it hits: a write, a Move or an exclusive borrow with any Loan
     // of an overlapping Place, a read or a shared borrow with an exclusive one; Loans end with their last use, and distinct Fields are
@@ -433,7 +488,404 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
                     c@follow = 1
                 """));
 
-    // A3 6.4, R4-M3a: a problem's facts are its Loan's anchor and its witness: the holder's next use, or the store that carries the Loan.
+    // SPEC 15.6.7, 15.7.1, 4.9.6 (A3 err(activate); 10a–10d, 28a–28d, 31a, 31b): a reservation is shared until its call activates it, as
+    // an exclusive borrow checked against the holders live into the call but its own, so a read during it is valid, and so are disjoint or
+    // shared arguments and two parameters; an overlapping reservation or shared argument, or a live view, conflicts at the activation, a
+    // stored exclusive borrow where the shared argument is formed.
+    [Fact]
+    public void AReservationIsSharedUntilItsActivation()
+        => Assert.Equal(
+            [
+                "r10b: tasks.remove(0) CallReservationConflict_Kd", "r10d: Kimi.Intrinsics.swap(p@uniq, p@uniq) CallReservationConflict_Kd",
+                "r28a: two(a@uniq, a@ref) CallActivationConflict_Kd", "r28d: a@ref", "r31b: r31a(x@uniq, x@uniq) CallReservationConflict_Kd",
+                "sorted: values.sort() CallActivationConflict_Kd",
+            ],
+            Problems("""
+                func r10a()
+                    var p: i32 = 1
+                    Kimi.Intrinsics.replace(p@uniq, with: p + 1)
+                func r10b()
+                    var tasks: Array<Task> = []
+                    tasks.append(tasks.remove(0))
+                func r10c()
+                    var tasks: Array<Task> = []
+                    tasks.insert(tasks.length, Task.init(value: 9))
+                func r10d()
+                    var p: i32 = 0
+                    Kimi.Intrinsics.swap(p@uniq, p@uniq)
+                func r28a()
+                    var a = Pair.init()
+                    two(a@uniq, a@ref)
+                func r28b()
+                    var a = Pair.init()
+                    both(a@ref, a@ref)
+                func r28c()
+                    var a = Pair.init()
+                    split(a.a@uniq, a.b@ref)
+                func r28d()
+                    var a = Pair.init()
+                    let r = a@uniq
+                    two(r, a@ref)
+                func r31a(a: uniq/i32, b: uniq/i32) => Kimi.Intrinsics.swap(a, b)
+                func r31b()
+                    var x = 1
+                    r31a(x@uniq, x@uniq)
+                func sorted()
+                    var values: Array<i32> = [3, 1, 2]
+                    let view = values[..]
+                    values.sort()
+                    let first = view[0]
+                """));
+
+    // SPEC 13.7.2, 15.6 (A3's writeback row; 109, 121): a compound assignment reserves its destination and activates it at the write, which
+    // conflicts with a live shared Loan of it, also one the holder's own state carries (E5).
+    [Fact]
+    public void TheWritebackActivatesItsReservation()
+        => Assert.Equal(
+            ["shared: x += 1 PlacementActivationConflict_Kd", "w109: s.n += 1 PlacementActivationConflict_Kd", "w121: r.n += 1 PlacementActivationConflict_Kd"],
+            Problems("""
+                func counter()
+                    var x = 1
+                    x += 1
+                func shared()
+                    var x = 1
+                    let v = x@ref
+                    x += 1
+                    inspect(v)
+                func field()
+                    var z = 0
+                    var s = S.init(r: z@ref)
+                    s.n += 1
+                func w109()
+                    var z = 0
+                    var s = S.init(r: z@ref)
+                    s.r = s.n@ref
+                    s.n += 1
+                func w121()
+                    var z = 0
+                    var s = S.init(r: z@ref)
+                    let r = s@uniq
+                    r.r = r.n@ref
+                    r.n += 1
+                """));
+
+    // SPEC 15.6.7 (A3 E1, PLAN G119; 36h, 38a–38c, 38e–38i, 107): while a reservation waits for its call, a write or destruction of its
+    // Place's prefix reaches it across references, a destroying activation included, but neither a write of what is not on its route nor of
+    // a distinct constant index; replacing a cursor ends the Loan of its old route (38f, SPEC 15.6.3's deepest).
+    [Fact]
+    public void AWriteOfAReservationsRouteReachesIt()
+        => Assert.Equal(
+            [
+                "e36h: cur = b CallReservationConflict_Kd", "e38a: r = y@uniq CallReservationConflict_Kd", "e38b: cur.inner = i2@uniq CallReservationConflict_Kd",
+                "e38c: cur@follow = H.init(inner: i2@uniq) CallReservationConflict_Kd", "e38g: Kimi.Intrinsics.replace(cur@uniq, with: b) CallReservationConflict_Kd",
+                "e38i: arr[j] = z@uniq CallReservationConflict_Kd", "e107: p@follow = h2@uniq CallReservationConflict_Kd",
+            ],
+            Problems("""
+                func e36h(a: uniq/H, b: uniq/H) -> i32
+                    var cur = a
+                    let first = cur.inner.takeWith(label w: do
+                        cur = b
+                        exit to w 0
+                    )
+                    return first
+                func e38a()
+                    var x = 1
+                    var y = 2
+                    var r = x@uniq
+                    Kimi.Intrinsics.replace(r@follow@uniq, with: label w: do
+                        r = y@uniq
+                        exit to w 5
+                    )
+                    inspect(r)
+                func e38b()
+                    var i1 = Inner.init()
+                    var i2 = Inner.init()
+                    var h = H.init(inner: i1@uniq)
+                    let cur = h@uniq
+                    let first = cur.inner.takeWith(label w: do
+                        cur.inner = i2@uniq
+                        exit to w 0
+                    )
+                    inspect(first)
+                func e38c()
+                    var i1 = Inner.init()
+                    var i2 = Inner.init()
+                    var h = H.init(inner: i1@uniq)
+                    let cur = h@uniq
+                    let first = cur.inner.takeWith(label w: do
+                        cur@follow = H.init(inner: i2@uniq)
+                        exit to w 0
+                    )
+                    inspect(first)
+                func e38e()
+                    var i1 = Inner.init()
+                    var i2 = Inner.init()
+                    var h1 = H.init(inner: i1@uniq)
+                    var h2 = H.init(inner: i2@uniq)
+                    var a = h1@uniq
+                    var b = h2@uniq
+                    var cur = a
+                    let first = cur.inner.takeWith(label w: do
+                        a = b
+                        exit to w 0
+                    )
+                    inspect(first)
+                func e38f(root: uniq/Tree) -> uniq/Tree during root
+                    var cursor = root
+                    while cursor.children.length > 0
+                        let next = cursor.children[0]@uniq
+                        cursor = next
+                    return cursor
+                func e38g(a: uniq/H, b: uniq/H) -> i32
+                    var cur = a
+                    let first = cur.inner.takeWith(label w: do
+                        Kimi.Intrinsics.replace(cur@uniq, with: b)
+                        exit to w 0
+                    )
+                    return first
+                func e38h()
+                    var x = 1
+                    var y = 2
+                    var z = 3
+                    var arr: [2 of uniq/i32] = [x@uniq, y@uniq]
+                    Kimi.Intrinsics.replace(arr[0]@follow@uniq, with: label w: do
+                        arr[1] = z@uniq
+                        exit to w 5
+                    )
+                    inspect(arr)
+                func e38i(i: isize, j: isize)
+                    var x = 1
+                    var y = 2
+                    var z = 3
+                    var arr: [2 of uniq/i32] = [x@uniq, y@uniq]
+                    Kimi.Intrinsics.replace(arr[i]@follow@uniq, with: label w: do
+                        arr[j] = z@uniq
+                        exit to w 5
+                    )
+                    inspect(arr)
+                func e107()
+                    var i1 = Inner.init()
+                    var i2 = Inner.init()
+                    var h1 = H.init(inner: i1@uniq)
+                    var h2 = H.init(inner: i2@uniq)
+                    var slot = h1@uniq
+                    let p = slot@uniq
+                    let first = p@follow.inner.takeWith(label w: do
+                        p@follow = h2@uniq
+                        exit to w 0
+                    )
+                    inspect(first)
+                """));
+
+    // SPEC 15.6.6, 15.6.3, 15.7.1 (A3 err(destroy), E8, E11; 26a, 26b, 123, 123c, 15a, 15b): a call that destroys its target in place
+    // reads the target where it is reserved and writes it at activation, and its old value's observing destruction uses the Places past it,
+    // before the call ends the Loans it prefixes (SPEC 15.6.3's replace keeps c's parent Loan, 15b); a `clear` activates as an exclusive
+    // borrow, after its receiver's reservation met the same Loan (a formation and an activation, A6's merge: unit 1c).
+    [Fact]
+    public void ADestroyingCallChecksWhatItDestroys()
+        => Assert.Equal(
+            [
+                "d26a: Kimi.Intrinsics.replace(s@uniq, with: C.init(r: y@uniq))", "d26b: arr", "d26b: arr.clear() CallActivationConflict_Kd",
+                "d123: Kimi.Intrinsics.replace(s@uniq, with: Q.init(r: y@uniq, q: z@ref))", "d123c: Kimi.Intrinsics.replace(s@uniq, with: Q.init(r: y@uniq, q: z@ref))",
+                "d15b: x = 3",
+            ],
+            Problems("""
+                func d26a()
+                    var x: Array<i32> = [1, 2]
+                    var y: Array<i32> = [3]
+                    var s = C.init(r: x@uniq)
+                    let c = s.r@follow[0]@uniq
+                    Kimi.Intrinsics.replace(s@uniq, with: C.init(r: y@uniq))
+                    inspect(c@follow)
+                func d26b()
+                    var x = 1
+                    var arr: Array<D> = [D.init(r: x@uniq)]
+                    let c = arr[0].r@follow@uniq
+                    arr.clear()
+                    inspect(c@follow)
+                func d123()
+                    var x = 1
+                    var y = 2
+                    var z = 0
+                    var s = Q.init(r: x@uniq, q: z@ref)
+                    s.q = s.r@follow@ref
+                    Kimi.Intrinsics.replace(s@uniq, with: Q.init(r: y@uniq, q: z@ref))
+                func d123c()
+                    var x = 1
+                    var y = 2
+                    var z = 0
+                    var s = Q.init(r: x@uniq, q: z@ref)
+                    s.q = s.r@follow@ref
+                    Kimi.Intrinsics.replace(s@uniq, with: Q.init(r: y@uniq, q: z@ref))
+                    inspect(s)
+                func d123v()
+                    var x = 1
+                    var y = 2
+                    var z = 0
+                    var s = Q.init(r: x@uniq, q: z@ref)
+                    Kimi.Intrinsics.replace(s@uniq, with: Q.init(r: y@uniq, q: z@ref))
+                    inspect(s)
+                func d15a()
+                    var x = 1
+                    var y = 2
+                    var r = x@uniq
+                    let c = r@follow@uniq
+                    Kimi.Intrinsics.replace(r@uniq, with: y@uniq)
+                    c@follow = 3
+                func d15b()
+                    var x = 1
+                    var y = 2
+                    var r = x@uniq
+                    let c = r@follow@uniq
+                    Kimi.Intrinsics.replace(r@uniq, with: y@uniq)
+                    x = 3
+                    c@follow = 1
+                """));
+
+    // SPEC 15.6.6 (A3 obs; 24a, 24b, 27, 29b's store through a reference): a destruction that may observe a Loan, the old value's at `=`
+    // or a holder's at its scope end, is an exclusive use of its Place and of what it reaches through exclusive references, checked before
+    // the ending; one whose Type observes nothing, or that a shared reference leads past, is shallow.
+    [Fact]
+    public void AnObservingDestructionIsAnExclusiveDeepUse()
+        => Assert.Equal(
+            ["o1566: s = D.init(r: y@uniq)", "o24a: s = D.init(r: s.r@follow@uniq)", "o29b: p@follow = D.init(r: p.r@follow@uniq)"],
+            Problems("""
+                func o1566()
+                    var x = 1
+                    var y = 2
+                    var s = D.init(r: x@uniq)
+                    let c = s.r@follow@uniq
+                    s = D.init(r: y@uniq)
+                    c@follow = 1
+                func o24a()
+                    var x = 1
+                    var s = D.init(r: x@uniq)
+                    s = D.init(r: s.r@follow@uniq)
+                    inspect(s)
+                func o24b()
+                    var x = 1
+                    var s = U.init(p: x@uniq)
+                    s = U.init(p: s.p@follow@uniq)
+                    inspect(s)
+                func o27()
+                    var x = 1
+                    var other = 2
+                    var v = other@ref
+                    label b: do
+                        let s = R.init(r: x@ref)
+                        v = s.r@follow@ref
+                    inspect(v)
+                func o29b()
+                    var x = 1
+                    var s = D.init(r: x@uniq)
+                    let p = s@uniq
+                    p@follow = D.init(r: p.r@follow@uniq)
+                """));
+
+    // A3 E5, CS_call (100d, 101, 110, 111): an activation is checked with the states of the holders its reservation's own Loans name, so
+    // reserving a holder that refers to itself conflicts at the call though the holder is not used afterwards; a sibling Field does not.
+    [Fact]
+    public void AnActivationIsCheckedWithItsReservationsHolders()
+        => Assert.Equal(
+            ["e100d: keepT(r@follow@uniq) CallActivationConflict_Kd", "e101: setN(s@uniq, 5) CallActivationConflict_Kd"],
+            Problems("""
+                func e100d()
+                    var z = 0
+                    var s = S.init(r: z@ref)
+                    let r = s@uniq
+                    r.r = r.n@ref
+                    let q = keepT(r@follow@uniq)
+                    q.n = 5
+                    inspect(q.r@follow)
+                func e101()
+                    var z = 0
+                    var s = S.init(r: z@ref)
+                    s.r = s.n@ref
+                    setN(s@uniq, 5)
+                func e110()
+                    var y = 0
+                    var x = y@ref
+                    inspect(x@uniq)
+                func e111()
+                    var z = 0
+                    var s = S.init(r: z@ref)
+                    s.r = s.n@ref
+                    setM(s.m@uniq)
+                """));
+
+    // R4-M36, A3 5: a Drop whose Type's destruction walk passes its depth bound is not classified: Unsupported_Kd at the Drop, and no Loan
+    // problem there.
+    [Fact]
+    public void AnUnclassifiedDestructionIsUnsupported()
+    {
+        var c = MirBuildTest.Compile(Prelude + "func deep(n: Nest<ref/i32 during a>)\n    let r = n@ref\n" +
+            "func unborrowed(n: Nest<ref/i32 during a>)\n    let r = 1\n");
+        var program = Analyze(c);
+        Assert.Equal(
+            ["Unsupported_Kd deep(n: Nest<ref/i32 during a>)"],
+            program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0).Select(x => $"{x.Code} {Line(c, x.Subject)["func ".Length..]}"));
+    }
+
+    // SPEC 4.8.2 (A3 E6, ret): a Slice handle is a borrow, so a call retaining it by its own Origin also carries what a read through it
+    // reaches, and one retaining only its elements' Origins (toArray) keeps their Loans but not the handle's (SliceToArrayTest's References);
+    // a view of a view keeps the outer view's own Loan beside its elements' (P4, Milestone27:100–101).
+    [Fact]
+    public void ASliceHandleIsABorrowForRetention()
+        => Assert.Equal(
+            ["elementsKept: number = 5", "m27: references = [copied@ref]"],
+            Problems("""
+                func copiedThenWritten()
+                    var first = 4
+                    var second = 7
+                    var values: [2 of ref/i32] = [first@ref, second@ref]
+                    let copied = values.slice().toArray()
+                    values[0] = second@ref
+                    inspect(copied)
+                func copiedThenReplaced()
+                    var number = 42
+                    var copied = 1
+                    var references: [_ of ref/i32] = [number@ref]
+                    let retained = references.slice().toArray()
+                    references = [copied@ref]
+                    inspect(retained)
+                func elementsKept()
+                    var number = 42
+                    var references: [_ of ref/i32] = [number@ref]
+                    let retained = references.slice().toArray()
+                    number = 5
+                    inspect(retained)
+                func m27()
+                    var number = 42
+                    var copied = 1
+                    var references: [_ of ref/i32] = [number@ref]
+                    let retained = references.sliceUniq().slice().toArray()
+                    references = [copied@ref]
+                    inspect(retained)
+                """));
+
+    // The SPEC examples of the reservation and destruction sections (tests/diagnostics/spec-cases.json: family F3, SPEC 15.6.6 and 15.6.7)
+    // get exactly the Loan problems their records give, on the MIR (F3 is not Landed until the driver runs A5, unit 1b-5).
+    [Theory]
+    [MemberData(nameof(SpecVariants))]
+    public void TheSpecExamplesGetTheirLoanCodes(string name)
+    {
+        var example = DiagnosticCorpus.SpecCases.Single(x => x.Name == name[..name.LastIndexOf('/')]);
+        var variant = example.Variants[int.Parse(name[(name.LastIndexOf('/') + 1)..], System.Globalization.CultureInfo.InvariantCulture)];
+        var source = DiagnosticCorpus.Source(example, variant);
+        var c = CompilationTestHelper.ParseSuccess(source, "Hello.kimi");
+        c.Bind();
+        c.Binding.CheckStartup(OutputKind.Application);
+        var program = c.BuildMir();
+        new Stratum(c.Types).Run(program);
+        Assert.Equal(
+            variant.Expected.Where(static x => LoanCodes.Contains(Enum.Parse<DiagnosticCode>(x.Code)))
+                .Select(x => $"{x.Code} {source.AsSpan(0, new SyntaxLocation(x.Line).Resolve(source).Start).Count('\n') + 1}").Order(StringComparer.Ordinal),
+            program.Problems.All.ToArray().Where(static x => LoanCodes.Contains(x.Code) && x.Subject.Module == 0)
+                .Select(x => $"{x.Code} {source.AsSpan(0, c.SyntaxOf(x.Subject).Span.Start).Count('\n') + 1}").Order(StringComparer.Ordinal));
+    }
+
+    // A3 6.4, R4-M3a: a problem's facts are its Loan's anchor and its witness: the holder's next use (for an activation from its call on),
+    // or the store that carries the Loan; and an activation's reservation.
     [Fact]
     public void AProblemNamesItsLoanAndWitness()
     {
@@ -447,28 +899,46 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
                 var x = y
                 x = pin(x@ref)
                 inspect(x)
+            func activated()
+                var a = Pair.init()
+                two(a@uniq, a@ref)
             """);
         var program = Analyze(c);
         var problems = program.Problems.All.ToArray();
         Assert.Equal(
-            ["x = 2: Anchor x@ref, Use inspect(r)", "x = pin(x@ref): Anchor x@ref, Store x = pin(x@ref)"],
-            problems.Select((x, i) => (x, i)).Where(static x => x.x.Code == DiagnosticCode.ComparisonLoanConflict_Kd).Select(x =>
+            [
+                "x = 2: Anchor x@ref, Use inspect(r)", "x = pin(x@ref): Anchor x@ref, Store x = pin(x@ref)",
+                "two(a@uniq, a@ref): Anchor a@ref, Use two(a@uniq, a@ref), Reservation a@uniq",
+            ],
+            problems.Select((x, i) => (x, i)).Where(static x => LoanCodes.Contains(x.x.Code)).Select(x =>
                 $"{Line(c, x.x.Subject)}: {string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)}"))}"));
     }
 
-    // V16 (A3 6.3, shapes 1–3): N Copies of one reference keep the work linear; a straight line of N borrowed locals grows it within the
-    // bound's dense terms, quadratically at most: each local's StorageLive, write and StorageDead end its Loans in every holder ((ended
-    // points) × holders), and N references used at the end make each borrow scan the live holders (accesses × live nodes).
+    // V16 (A3 6.3, shapes 1–6): N Copies of one reference, N loops with three live references and N writes through one reference keep the
+    // work linear; a straight line of N borrowed locals and N borrow/write pairs in loops grow it within the bound's dense terms,
+    // quadratically at most: each local's StorageLive, write and StorageDead end its Loans in every holder ((ended points) × holders), and N
+    // references used at the end make each borrow scan the live holders (accesses × live nodes).
     [Theory]
-    [InlineData("    var x{0} = {0}\n    let r{0} = x{0}@ref\n    inspect(r{0})\n", "", true)]
-    [InlineData("    var x{0} = {0}\n    let r{0} = x{0}@ref\n", "    inspect(r{0})\n", true)]
-    [InlineData("    let c{0} = r\n", "    inspect(c{0})\n", false)]
-    public void TheWorkScalesWithTheProgram(string each, string after, bool dense)
+    [InlineData("    var x = 1\n    let r = x@ref\n", "    var x{0} = {0}\n    let r{0} = x{0}@ref\n    inspect(r{0})\n", "", true)]
+    [InlineData("    var x = 1\n    let r = x@ref\n", "    var x{0} = {0}\n    let r{0} = x{0}@ref\n", "    inspect(r{0})\n", true)]
+    [InlineData("    var x = 1\n    let r = x@ref\n", "    let c{0} = r\n", "    inspect(c{0})\n", false)]
+    [InlineData(
+        "    var x = 1\n    let r = x@ref\n    var y = 2\n    let u = y@ref\n    var z = 3\n    var p = z@uniq\n",
+        "    while flag\n        inspect(r)\n        inspect(u)\n        p@follow = {0}\n",
+        "",
+        false)]
+    [InlineData("    var z = 3\n    var p = z@uniq\n", "    p@follow = {0}\n", "", false)]
+    [InlineData(
+        "    var t = 0\n    var x = 1\n    let r = x@ref\n",
+        "    while flag\n        let a{0} = t@uniq\n        a{0}@follow = {0}\n        t = {0}\n        inspect(r)\n",
+        "",
+        true)]
+    public void TheWorkScalesWithTheProgram(string head, string each, string after, bool dense)
     {
         var (sizes, work) = (new[] { 32, 64, 128 }, new long[3]);
         for (var i = 0; i < sizes.Length; i++)
         {
-            var text = new StringBuilder(Prelude).Append("func shape()\n    var x = 1\n    let r = x@ref\n");
+            var text = new StringBuilder(Prelude).Append("func shape(flag: bool)\n").Append(head);
             for (var pass = 0; pass < 2; pass++)
             {
                 for (var n = 0; n < sizes[i]; n++)
@@ -480,7 +950,7 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
             var c = MirBuildTest.Compile(text.ToString());
             var stratum = new Stratum(c.Types);
             stratum.Run(c.BuildMir());
-            Assert.DoesNotContain(c.BuildMir().Problems.All.ToArray(), static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+            Assert.DoesNotContain(c.BuildMir().Problems.All.ToArray(), static x => LoanCodes.Contains(x.Code));
             work[i] = stratum.Borrows.Work;
         }
 
@@ -495,22 +965,25 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
     {
         var c = MirBuildTest.Compile(Prelude + "func loopCarry(flag: bool)\n    var x = 1\n    var y = 2\n    var r = y@ref\n    while flag\n" +
             "        x = 3\n        inspect(r)\n        r = x@ref\nfunc stored()\n    var x = 1\n    var y = 2\n    var slot = y@ref\n" +
-            "    put(slot@uniq, x@ref)\n    x = 3\n    inspect(slot)\n");
+            "    put(slot@uniq, x@ref)\n    x = 3\n    inspect(slot)\nfunc reserved()\n    var tasks: Array<Task> = []\n    tasks.append(tasks.remove(0))\n" +
+            "func written()\n    var x = 1\n    let v = x@ref\n    x += 1\n    inspect(v)\nfunc destroyed()\n    var x = 1\n    var y = 2\n" +
+            "    var s = D.init(r: x@uniq)\n    let c = s.r@follow@uniq\n    s = D.init(r: y@uniq)\n    c@follow = 1\n");
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);
         Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
-        Assert.Equal(2, program.Problems.All.ToArray().Count(static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd));
+        Assert.Equal(5, program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code)));
     }
 
-    // The Loan conflicts of a program's own bodies: function and the subject's first line.
+    // The Loan problems of a program's own bodies: function and the subject's first line, with the code unless it is a comparison's.
     private static string[] Problems(string source)
     {
         var c = MirBuildTest.Compile(Prelude + source);
         var program = Analyze(c);
-        return [.. program.Problems.All.ToArray().Where(static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd && x.Subject.Module == 0)
-            .Select(x => $"{Function(c.SyntaxOf(x.Subject))}: {Line(c, x.Subject)}")];
+        return [.. program.Problems.All.ToArray().Where(static x => LoanCodes.Contains(x.Code) && x.Subject.Module == 0)
+            .Select(x => $"{Function(c.SyntaxOf(x.Subject))}: {Line(c, x.Subject)}{Code(x.Code)}")];
 
         static string? Function(Koto node) => node is FunctionKoto function ? function.Name : node.Parent is { } parent ? Function(parent) : null;
+        static string Code(DiagnosticCode code) => code == DiagnosticCode.ComparisonLoanConflict_Kd ? string.Empty : " " + code;
     }
 
     private static MirProgram Analyze(Compilation c)
