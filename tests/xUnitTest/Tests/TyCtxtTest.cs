@@ -27,6 +27,22 @@ public sealed class TyCtxtTest
         "let fixed: [3 of i32] = [1, 2, 3]\nlet two: [2 of i32] = [4, 5]\nlet box = Box<i32>.init(6)\nlet p = pick(two@ref)\n" +
         "require f(7) == 7 and f(true) and size(fixed@ref) == 3 and p@follow == 4 and same(8) and same(true) and box.orElse() == 6 else => $abort(\"compose\")\n";
 
+    // An Origin-generic function; a generic function with a closure and its specialization with one; a length-generic function with a
+    // default; named functions nested one and two levels in a generic function and one in a block of it; one nested in a nongeneric function;
+    // a generic struct whose method nests a function, with an accessor; a nongeneric struct with an accessor; a group's static.
+    private const string InstanceSource = "func plain(value: ref/i32 during a) -> ref/i32 during a => value\n" +
+        "func pass<T>(value: T) -> T\n    T is Copy\n    let keep = func [] (inner: T) -> T => inner\n    return keep(value)\n" +
+        "specialize func pass<i32>(value: i32) -> i32\n    let keep = func [] (inner: i32) -> i32 => inner\n    return keep(value)\n" +
+        "func size<length N>(values: ref/[N of i32], k: isize = values.length) -> isize => k\n" +
+        "func outer<T>(x: T) -> T\n    T is Copy\n    func middle(y: T) -> T\n        func inner(z: T) -> T => z\n        return inner(y)\n" +
+        "    if true\n        func scoped() -> i32 => 1\n        _ = scoped()\n    return middle(x)\n" +
+        "func host() -> i32\n    func helper() -> i32 => 1\n    return helper()\n" +
+        "struct Box<T>\n    T is Copy\n    public var value: T\n    public computed current: T\n        get() -> T => self.value\n" +
+        "    public init(value: T) => self.value = value\n    public func get(self: ref/Self) -> T\n        func local() -> i32 => 1\n" +
+        "        _ = local()\n        return self.value\n" +
+        "struct Fixed\n    public var value: i32\n    public computed current: i32\n        get() -> i32 => self.value\n    public init(value: i32) => self.value = value\n" +
+        "group Limits\n    public let limit: i32 = seed()\n    public func seed() -> i32 => 3\n";
+
     // C → B → A with a default and a nonvirtual member: C's base calls run B's override, B's runs the original.
     private const string BaseCallHierarchy = VirtualDispatchTest.Hierarchy +
         "let c = C.init(3)@obj\nrequire c.value() == 34 and c.direct() == 14 else => $abort(\"base\")\n";
@@ -136,6 +152,37 @@ public sealed class TyCtxtTest
         Assert.Equal(["uniq/i32", "s/T", "s/i32"], [TyCtxt.Name(types.Reference(SemanticsKind.Uniq, BoundType.I32)), TyCtxt.Name(pair), TyCtxt.Name(application)]);
     }
 
+    // SPEC 6.1.3, 8.13, 8.15.1: the body of every MIR key symbol is instantiated exactly when the symbol or a declaration enclosing it has a
+    // Type, Semantics or length slot, even an unused one, with no specialization between them; an Origin slot does not count. A named
+    // function nested two levels or in a block of a generic function, or in a generic struct's method, is instantiated as one level is.
+    [Fact]
+    public void InstantiatesFollowsTheEnclosingSlots()
+    {
+        var c = MinimalEmissionTest.Analyze(InstanceSource);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        string[] expected =
+        [
+            "Fn plain False", "Fn pass True", "Closure pass True", "Fn specialize pass False", "Closure specialize pass False", "Fn size True",
+            "DefaultTemplate size True", "Fn outer True", "Fn middle True", "Fn inner True", "Fn scoped True", "Fn host False", "Fn helper False",
+            "Fn init True", "Getter current.Get True", "Fn get True", "Fn local True", "Fn init False", "Getter current.Get False",
+            "StaticInit limit False", "Fn seed False",
+        ];
+        var actual = c.BuildMir().Bodies.ToArray().Where(static x => x.Key.Decl is not null && x.Source.Module == 0)
+            .Select(x => $"{x.Key.Kind} {Label(x.Key.Decl!.Declaration)} {c.Types.Instantiates(x.Key.Decl!)}");
+        Assert.Equal(expected.Order(StringComparer.Ordinal), actual.Order(StringComparer.Ordinal));
+
+        // A closure is labeled by the function enclosing it.
+        static string Label(Koto declaration) => declaration switch
+        {
+            FunctionKoto { IsAnonymous: true } => Label(Enclosing(declaration.Parent!)),
+            FunctionKoto { IsSpecialization: true } function => "specialize " + function.Name,
+            FunctionKoto function => function.Name,
+            _ => ((VariableKoto)declaration).NameKoto.IdentifierName,
+        };
+
+        static FunctionKoto Enclosing(Koto node) => node as FunctionKoto ?? Enclosing(node.Parent!);
+    }
+
     // Plan 5.6.2: a call in an omitted default composed with the substitution of the call omitting it is the call Binding forwards into that
     // instance (InstantiateForwardedCall), over the corpus and over generic, length, Origin, member and requirement calls in defaults.
     [Fact]
@@ -207,6 +254,28 @@ public sealed class TyCtxtTest
         }));
         Assert.Equal(0, changed);
         Assert.Contains(composed, static x => x is { IsIdentity: false, Types.Length: > 0 });
+    }
+
+    // A warm rebind keeps whether each MIR key symbol is instantiated, and asking again allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmInstantiatesIsTheSameAndAllocatesNothing()
+    {
+        var c = MinimalEmissionTest.Analyze(InstanceSource);
+        var definitions = c.BuildMir().Bodies.ToArray().Where(static x => x.Key.Decl is not null).Select(static x => x.Key.Decl!).ToArray();
+        var instantiates = definitions.Select(c.Types.Instantiates).ToArray();
+        var changed = 0;
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Binding.Bind(BindingMode.Final);
+            for (var i = 0; i < definitions.Length; i++)
+            {
+                changed += c.Types.Instantiates(definitions[i]) == instantiates[i] ? 0 : 1;
+            }
+        }));
+        Assert.Equal(0, changed);
+        Assert.Contains(true, instantiates);
+        Assert.Contains(false, instantiates);
     }
 
     // Each call in a default a call omits, with that call.

@@ -192,11 +192,13 @@ public sealed partial class Binding
         }
 
         // The facts kept across unchanged passes are revoked by every edit, also after a pass that did not finish (a Bind that throws
-        // leaves no result): associated Origin parameters of the edited trees, local regions, item contexts and call retentions.
+        // leaves no result): associated Origin parameters of the edited trees, local regions, item contexts, call retentions and which
+        // definitions are instantiated.
         this.associatedOrigins.Clear();
         this.localRegions.Clear();
         this.functionItemContexts.Clear();
         this.types.ResetRetentions();
+        this.types.ResetInstances();
     }
 
     private static bool InvalidDeclarationContext(Koto declaration)

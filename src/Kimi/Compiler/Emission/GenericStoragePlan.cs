@@ -66,7 +66,7 @@ internal sealed partial class GenericStoragePlan
     internal bool ResourceLimitExceeded { get; private set; }
 
     internal static bool IsGeneric(FunctionKoto function)
-        => function.RequiresInstantiation;
+        => function.BoundSymbol is { } symbol && function.CodeContext.Compilation.Types.Instantiates(symbol);
 
     internal void Clear()
     {
