@@ -3,17 +3,18 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's call reservations (A3 5's err(activate) and err(destroy), with E1, E5 and E11; SPEC 15.6.7): a two-phase Loan in its reservation
-// holder t activates where a Call takes t as an argument or the writeback writes through it (R4-M37), checked on CS_call(ℓ, t): the states
-// before ℓ of the holders live into it but t and of E, closed through the holders their direct Loans name and seeded by those σ_in(t)'s
-// direct Loans name, so the arguments of one call are checked against each other. A call that destroys its target in place (`replace`)
-// writes the target and, where its old value's destruction may observe, uses the Places past it exclusively and deeply. A destroying call
-// whose target is not destroyed in place (the `clear`s) needs no such row: its activation is already an exclusive deep use (E3: no shared
-// cut).
+// holder t activates where a Call takes t as an input (an argument, or a Value callee's operand) or the writeback writes through it
+// (R4-M37), checked on CS_call(ℓ, t): the states before ℓ of the holders live into it but t and of E, closed through the holders their
+// direct Loans name and seeded by those σ_in(t)'s direct Loans name, so the inputs of one call are checked against each other. A call
+// that destroys its target in place (`replace`) writes the target and, where its old value's destruction may observe, uses the Places past
+// it exclusively and deeply. A destroying call whose target is not destroyed in place (the `clear`s) needs no such row: its activation is
+// already an exclusive deep use (E3: no shared cut).
 internal sealed partial class MirBorrows
 {
     private readonly List<int> reserving = []; // The reservations a holder carries into their activation.
 
-    // The activations at a location: a Call's at each argument holder, the writeback's at a write through a reservation.
+    // The activations at a location: a Call's at each input holder, its argument operands' and a Value callee's operand's (the receiver an
+    // Exclusive call takes, SPEC 7.7.3), the writeback's at a write through a reservation.
     private void Activations(ulong[] state, MirLocation at)
     {
         ref readonly var data = ref this.body.Blocks[at.Block];
@@ -29,11 +30,11 @@ internal sealed partial class MirBorrows
         }
 
         var call = data.Terminator;
-        for (var o = call.Start; call.Kind == MirTerminatorKind.Call && o < call.Start + call.Count; o++)
+        for (var i = call.Callee.Kind == MirCalleeKind.Value ? -1 : 0; call.Kind == MirTerminatorKind.Call && i < call.Count; i++)
         {
-            if (this.body.Operands[o] is { Kind: not MirOperandKind.Const, Place: { Projection: 0, Root: >= 0 } argument })
+            if ((i < 0 ? call.Operand : this.body.Operands[call.Start + i]) is { Kind: not MirOperandKind.Const, Place: { Projection: 0, Root: >= 0 } input })
             {
-                this.Activate(state, argument.Root, at, DiagnosticCode.CallActivationConflict_Kd);
+                this.Activate(state, input.Root, at, DiagnosticCode.CallActivationConflict_Kd);
             }
         }
     }

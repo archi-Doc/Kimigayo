@@ -557,6 +557,54 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
                     let first = view[0]
                 """));
 
+    // SPEC 7.7.3, 15.6.7 (A3 5's use of the callee operand): an Exclusive call takes its Closure as uniq/Self, so a Value callee's receiver
+    // reservation activates at its Call as an argument's does, also through a reference and beside arguments; a Shared call borrows its
+    // Closure shared, and a read of the Closure while the arguments are evaluated precedes the activation.
+    [Fact]
+    public void AValueCalleesReceiverActivatesAtItsCall()
+        => Assert.Equal(
+            ["called: bump() CallActivationConflict_Kd", "throughUniq: u() CallActivationConflict_Kd", "withArgument: bump(2) CallActivationConflict_Kd"],
+            Problems("""
+                func called()
+                    var value: i32 = 1
+                    let r = value@uniq
+                    var bump = func [r] () => r@follow += 1
+                    let v = bump@ref
+                    bump()
+                    inspect(v)
+                func throughUniq()
+                    var value: i32 = 1
+                    let r = value@uniq
+                    var bump = func [r] () => r@follow += 1
+                    let u = bump@uniq
+                    let v = u@ref
+                    u()
+                    inspect(v)
+                func withArgument()
+                    var value: i32 = 1
+                    let r = value@uniq
+                    var bump = func [r] (n: i32) => r@follow += n
+                    let v = bump@ref
+                    bump(2)
+                    inspect(v)
+                func sharedCall()
+                    var value: i32 = 1
+                    let r = value@ref
+                    var show = func [r] () => inspect(r)
+                    let v = show@ref
+                    show()
+                    inspect(v)
+                func readInArgument()
+                    var value: i32 = 1
+                    let r = value@uniq
+                    var bump = func [r] (n: i32) => r@follow += n
+                    bump(label w: do
+                        let v = bump@ref
+                        inspect(v)
+                        exit to w 1
+                    )
+                """));
+
     // SPEC 13.7.2, 15.6 (A3's writeback row; 109, 121): a compound assignment reserves its destination and activates it at the write, which
     // conflicts with a live shared Loan of it, also one the holder's own state carries (E5).
     [Fact]
