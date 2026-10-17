@@ -64,6 +64,7 @@ Known defects are not safe rejection boundaries:
 | Generic temporaries | A temporary of bare generic `T` is not yet a definition-time Loan root; its later borrow use is judged only at instantiation. Concrete object-handle temporary checks do not close this gap. |
 | Conditional temporaries | A Unit/struct temporary on the right of `and`/`or` can pass checking and fail generation during conditional destruction. |
 | Static initialization | Cycle detection uses `KIMI_E_ABORT` at the Field declaration, rather than `KIMI_E_STATIC_CYCLE` at the accessing Place expression. |
+| Nested specializations | A call that selects a specialization of a named function nested two or more levels inside a generic declaration runs the original body (the old generator forwards one level). MIR code generation keys such instances by SPEC 6.1.3 (R5 K1; DECISIONS R5-M21). |
 
 ## 4. LLVM Generation Coverage
 
