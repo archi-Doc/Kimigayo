@@ -95,8 +95,9 @@ internal static class RuntimeAbi
     /// <summary>Gets the compiler-facing runtime definitions expanded into WindowsRuntime.ll.in.</summary>
     internal static readonly FunctionAbi[] RuntimeDefinitions = [Exit, DestroyString, WriteLine, Abort, AbortMessage, ArrayInit, ArrayFree];
 
-    // The hidden diagnostic location (SPEC 22.5.1); properties, so the field initializers above may read them.
-    private static AbiParameter Location => new("ptr", "location", AbiParameterKind.Location);
+    /// <summary>Gets the hidden diagnostic location parameter (SPEC 22.5.1); a property, so the field initializers above may read it.</summary>
+    internal static AbiParameter Location => new("ptr", "location", AbiParameterKind.Location);
 
-    private static AbiParameter LocationLength => new("i64", "location_length", AbiParameterKind.LocationLength);
+    /// <summary>Gets the byte length parameter of the hidden diagnostic location.</summary>
+    internal static AbiParameter LocationLength => new("i64", "location_length", AbiParameterKind.LocationLength);
 }

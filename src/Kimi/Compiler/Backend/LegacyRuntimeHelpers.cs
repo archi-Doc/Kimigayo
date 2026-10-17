@@ -9,13 +9,16 @@
 // writers join it in P1c-P1d.
 // Input: helper records built from FunctionAbi, ValueLowering, StoredValue (drop routine name, text flag), the Option payload
 // offset and remainder Field offsets; the library ABIs the Dictionary helpers call; a writer, LLVM SSA names and sizes.
-// Output: the module's request state, in request order, and LLVM text written to the writer. Each row's library callees and
-// type-driven needs, which the instance collector reads (X4), land in P1b-P2b: the Array rows (P1b) call no library function and
-// declare their need of the capacity routines and memory declarations (ArrayHelper.NeedsArrayRuntime) and their element's
-// destruction routine (StoredValue); the Dictionary and formatting rows follow in P1c and P1d, the storage kernels in P2a-P2b.
-// Invariants: each requested helper is written once, in request order; the legacy writer's .ll stays byte-identical while it
-// shares this text; warm writes allocate nothing; a Dictionary helper's Related index and library callees resolve before writing;
-// whether a value travels as a scalar is decided once, by StoredValue.TravelsAsScalar.
+// Output: the module's request state, in request order, and LLVM text written to the writer; per helper kind one row, readable
+// by kind before any representation exists, which declares the kind's library callees and type-driven needs for the instance
+// collector (X4). The rows land in P1b-P2b: each Array kind's row (ArrayRow; P1b) holds its name prefix, ABI shape, prologue,
+// writer and HelperNeeds (the Array runtime for every kind but BorrowStorage, the element's drop glue for Clear and Drop), and no
+// Array row declares a library callee, since none calls one; the Dictionary and formatting rows follow in P1c and P1d, the storage
+// kernels in P2a-P2b.
+// Invariants: a new helper kind adds a row; a kind without a row fails; each requested helper is written once, in request order;
+// the legacy writer's .ll stays byte-identical while it shares this text; warm writes allocate nothing; a Dictionary helper's
+// Related index and library callees resolve before writing; whether a value travels as a scalar is decided once, by
+// StoredValue.TravelsAsScalar.
 // Must not take AggregateLayout, EmissionModule, BoundType, syntax or MIR types, branch on the generator, or use LINQ.
 
 #pragma warning disable SA1402 // The helper records and the element descriptor are this component's request vocabulary.

@@ -31,14 +31,56 @@ internal enum ArrayHelperKind : byte
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal readonly record struct RemainderFields(int Storage, int Position, int Count, int Capacity, int StorageSize);
 
+/// <summary>The needs a legacy helper row declares (X4): runtime text its module must hold and items its helpers call.</summary>
+[Flags]
+[Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
+internal enum HelperNeeds : byte
+{
+    None = 0,
+
+    /// <summary>The Array capacity routines and the memory declarations (SPEC 4.9.5).</summary>
+    ArrayRuntime = 1,
+
+    /// <summary>The element's drop glue: the helper destroys elements (SPEC 4.9.7, 16.3.2).</summary>
+    ElementGlue = 2,
+}
+
+/// <summary>The row of one Array helper kind, readable by kind before any representation exists (X4): the prefix of its helpers'
+/// names, its ABI shape over a helper's name, element descriptor and remainder Fields, its body's prologue and writer, and its
+/// declared needs. No Array helper calls a library function (F2c), so no row declares a library callee.</summary>
+[Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
+internal sealed record ArrayHelperRow(
+    ArrayHelperKind Kind,
+    string Prefix,
+    Func<string, StoredValue, RemainderFields, FunctionAbi> Shape,
+    string Prologue,
+    Action<TextWriter, ArrayHelper> Write,
+    HelperNeeds Needs);
+
 /// <summary>A generated Array helper for one element: its ABI, element descriptor, for pop the Option payload offset (the tag is
 /// at offset 0), and for the storage boundary its remainder record's Fields.</summary>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, StoredValue Element, int? OptionPayload = null, RemainderFields Fields = default)
 {
-    /// <summary>Gets a value indicating whether the helper's module needs the Array capacity routines and memory declarations,
-    /// which every kind but the borrowing storage boundary does (the row's declared need, X4).</summary>
-    internal bool NeedsArrayRuntime => this.Kind != ArrayHelperKind.BorrowStorage;
+    /// <summary>Gets a value indicating whether the helper's module needs the Array capacity routines and memory declarations, as
+    /// its kind's row declares.</summary>
+    internal bool NeedsArrayRuntime => (LegacyRuntimeHelpers.ArrayRow(this.Kind).Needs & HelperNeeds.ArrayRuntime) != 0;
+
+    /// <summary>Creates the helper of a kind for an element, named by the kind's row prefix and shaped by its row.</summary>
+    /// <param name="kind">The helper kind.</param>
+    /// <param name="element">The element descriptor.</param>
+    /// <param name="elementName">The generator's name of the element, which follows the prefix.</param>
+    /// <param name="recordsName">The generator's name of the helper's result and remainder records, or empty.</param>
+    /// <param name="optionPayload">For pop, the Option payload offset.</param>
+    /// <param name="fields">For the storage boundary, the remainder record's Fields.</param>
+    /// <returns>The helper.</returns>
+    internal static ArrayHelper Create(
+        ArrayHelperKind kind, StoredValue element, string elementName, string recordsName, int? optionPayload, RemainderFields fields)
+    {
+        var row = LegacyRuntimeHelpers.ArrayRow(kind);
+        var abi = row.Shape(string.Concat(row.Prefix, elementName, recordsName), element, fields);
+        return new(kind, abi, element, optionPayload, fields);
+    }
 }
 
 /// <summary>SPEC 4.9.3, 4.9.5, 4.9.7, 4.9.8, 22.2: the Array capacity routines and the per-element Array helpers over the
@@ -203,6 +245,102 @@ internal sealed partial class LegacyRuntimeHelpers
             .Replace("REASON_OVERFLOW", Number(AbortReasons.IntegerOverflow), StringComparison.Ordinal) +
         RuntimeAbi.ArrayShrink.GetDefinition(exported: false) + ArrayShrinkBody;
 
+    private static readonly AbiParameter Handle = new("ptr", "handle");
+
+    private static readonly AbiParameter Index = new("i64", "index");
+
+    private static readonly AbiParameter Result = new("ptr", "result", AbiParameterKind.ResultSlot);
+
+    // One row per kind, in ArrayHelperKind order (SPEC 4.9.3, 4.9.7, 22.2); a new kind adds a row.
+    private static readonly ArrayHelperRow[] ArrayRows =
+    [
+        new(
+            ArrayHelperKind.Append,
+            "__kimi_array_append_",
+            static (name, element, _) => AppendShape(name, element),
+            ArrayHelperPrologue,
+            WriteArrayAppend,
+            HelperNeeds.ArrayRuntime),
+        new(
+            ArrayHelperKind.Insert,
+            "__kimi_array_insert_",
+            static (name, element, _) => InsertShape(name, element),
+            ArrayHelperPrologue,
+            WriteArrayInsert,
+            HelperNeeds.ArrayRuntime),
+        new(
+            ArrayHelperKind.Pop,
+            "__kimi_array_pop_",
+            static (name, _, _) => Slotted(name, [Handle, Result]),
+            ArrayHelperPrologue,
+            WriteArrayPop,
+            HelperNeeds.ArrayRuntime),
+        new(
+            ArrayHelperKind.Remove,
+            "__kimi_array_remove_",
+            static (name, element, _) => RemoveShape(name, element),
+            ArrayHelperPrologue,
+            WriteArrayRemove,
+            HelperNeeds.ArrayRuntime),
+        new(
+            ArrayHelperKind.Place,
+            "__kimi_array_place_",
+            static (name, element, _) => PlaceShape(name, element),
+            ArrayHelperPrologue,
+            WriteArrayPlace,
+            HelperNeeds.ArrayRuntime),
+        new(
+            ArrayHelperKind.Clear,
+            "__kimi_array_clear_",
+            static (name, _, _) => Located(name, []),
+            ArrayHelperPrologue,
+            WriteArrayClear,
+            HelperNeeds.ArrayRuntime | HelperNeeds.ElementGlue),
+        new(
+            ArrayHelperKind.Drop,
+            "__kimi_array_drop_",
+            static (name, _, _) => Located(name, []),
+            ArrayHelperPrologue,
+            WriteArrayClear,
+            HelperNeeds.ArrayRuntime | HelperNeeds.ElementGlue),
+        new(
+            ArrayHelperKind.Swap,
+            "__kimi_array_swap_",
+            static (name, _, _) => Located(name, [new("i64", "first"), new("i64", "second")]),
+            ArrayHelperPrologue,
+            WriteArraySwap,
+            HelperNeeds.ArrayRuntime),
+        new(
+            ArrayHelperKind.BorrowStorage,
+            "__kimi_array_borrow_",
+            static (name, _, _) => Slotted(name, [Handle, Result]),
+            ArrayHelperPrologue,
+            WriteArrayBorrow,
+            HelperNeeds.None),
+        new(
+            ArrayHelperKind.OwnStorage,
+            "__kimi_array_own_",
+            static (name, _, _) => Slotted(name, [new("ptr", "value"), Result]),
+            "entry:\n",
+            WriteArrayOwn,
+            HelperNeeds.ArrayRuntime),
+        new(
+            ArrayHelperKind.OwnFixedStorage,
+            "__kimi_fixed_own_",
+            static (name, _, fields) => OwnFixedShape(name, fields),
+            "entry:\n",
+            WriteFixedOwn,
+            HelperNeeds.ArrayRuntime),
+    ];
+
+    /// <summary>Gets the row of an Array helper kind; a kind without a row is a broken contract.</summary>
+    /// <param name="kind">The helper kind.</param>
+    /// <returns>The kind's row.</returns>
+    internal static ArrayHelperRow ArrayRow(ArrayHelperKind kind)
+        => (uint)kind < (uint)ArrayRows.Length && ArrayRows[(int)kind].Kind == kind
+            ? ArrayRows[(int)kind]
+            : throw new InvalidOperationException("An Array helper kind has no row.");
+
     /// <summary>Registers an Array helper a lowered body uses: each helper is written once per module, in first-request order,
     /// and the row's need of the capacity routines joins the module's.</summary>
     /// <param name="helper">The requested helper.</param>
@@ -226,52 +364,52 @@ internal sealed partial class LegacyRuntimeHelpers
 
         foreach (var helper in this.arrayHelpers)
         {
+            var row = ArrayRow(helper.Kind);
             output.Write(helper.Abi.GetDefinition(exported: false));
-            output.Write(helper.Kind is ArrayHelperKind.OwnStorage or ArrayHelperKind.OwnFixedStorage ? "entry:\n" : ArrayHelperPrologue);
-            WriteArrayBody(output, helper);
+            output.Write(row.Prologue);
+            row.Write(output, helper);
             output.Write("}\n");
         }
     }
 
-    private static void WriteArrayBody(TextWriter output, ArrayHelper helper)
+    // A signature without a result: the handle, the leading parameters and the caller's location (SPEC 22.5.1).
+    private static FunctionAbi Located(string name, ReadOnlySpan<AbiParameter> leading)
+        => new(name, RuntimeAbi.Unit.ComputationType, [Handle, .. leading, RuntimeAbi.Location, RuntimeAbi.LocationLength]);
+
+    // A signature that writes the caller's result slot.
+    private static FunctionAbi Slotted(string name, AbiParameter[] parameters)
+        => new(name, RuntimeAbi.Unit.ComputationType, parameters) { ResultSlot = true };
+
+    // The element argument of a helper that moves it in: a scalar by value, another value by address (SPEC 21.3.1).
+    private static AbiParameter Value(in StoredValue element) => new(element.IsScalar ? element.Value.ComputationType : "ptr", "value");
+
+    // A zero-sized element has no slot, so its helpers take no value, source or result pointer (SPEC 4.5).
+    private static FunctionAbi AppendShape(string name, StoredValue element)
+        => element.IsZeroSized ? Located(name, []) : Located(name, [Value(element)]);
+
+    private static FunctionAbi InsertShape(string name, StoredValue element)
+        => element.IsZeroSized ? Located(name, [Index]) : Located(name, [Index, Value(element)]);
+
+    private static FunctionAbi PlaceShape(string name, StoredValue element)
+        => element.IsZeroSized ? Located(name, []) : Located(name, [new("ptr", "source")]);
+
+    // A removed scalar is returned; another element moves into the caller's result slot.
+    private static FunctionAbi RemoveShape(string name, StoredValue element)
     {
-        switch (helper.Kind)
+        if (element.IsScalar)
         {
-            case ArrayHelperKind.Append:
-                WriteArrayAppend(output, helper);
-                break;
-            case ArrayHelperKind.Insert:
-                WriteArrayInsert(output, helper);
-                break;
-            case ArrayHelperKind.Pop:
-                WriteArrayPop(output, helper);
-                break;
-            case ArrayHelperKind.Remove:
-                WriteArrayRemove(output, helper);
-                break;
-            case ArrayHelperKind.Place:
-                WriteArrayPlace(output, helper);
-                break;
-            case ArrayHelperKind.Swap:
-                WriteArraySwap(output, helper);
-                break;
-            case ArrayHelperKind.BorrowStorage:
-                WriteArrayBorrow(output, helper);
-                break;
-            case ArrayHelperKind.OwnStorage:
-                WriteArrayOwn(output, helper);
-                break;
-            case ArrayHelperKind.OwnFixedStorage:
-                WriteFixedOwn(output, helper);
-                break;
-            case ArrayHelperKind.Clear:
-            case ArrayHelperKind.Drop:
-                WriteArrayClear(output, helper);
-                break;
-            default:
-                throw new InvalidOperationException("Unknown Array helper kind.");
+            return new(name, element.Value.ComputationType, [Handle, Index, RuntimeAbi.Location, RuntimeAbi.LocationLength]);
         }
+
+        return element.IsZeroSized
+            ? Located(name, [Index])
+            : Slotted(name, [Handle, Index, Result, RuntimeAbi.Location, RuntimeAbi.LocationLength]);
     }
+
+    // The consumed fixed array moves in by address unless its storage has no bytes (SPEC 22.2).
+    private static FunctionAbi OwnFixedShape(string name, RemainderFields fields) => fields.StorageSize == 0
+        ? Slotted(name, [new("i64", "count"), Result])
+        : Slotted(name, [new("ptr", "value"), new("i64", "count"), Result]);
 
     private static long Stride(ArrayHelper helper) => helper.Element.Value.Layout.Stride;
 

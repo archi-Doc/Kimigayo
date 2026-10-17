@@ -119,53 +119,10 @@ internal sealed partial class BodyLowering
             return cached.Helper;
         }
 
+        // The name follows the kind row's prefix with this pool's element and record ids; the row shapes the ABI.
         var suffix = element.Layout is { } layout ? "a" + layout.Id.ToString(CultureInfo.InvariantCulture) : element.IsString ? "string" : element.Value.ComputationType;
-        var prefix = kind switch
-        {
-            ArrayHelperKind.Append => "__kimi_array_append_",
-            ArrayHelperKind.Insert => "__kimi_array_insert_",
-            ArrayHelperKind.Pop => "__kimi_array_pop_",
-            ArrayHelperKind.Remove => "__kimi_array_remove_",
-            ArrayHelperKind.Place => "__kimi_array_place_",
-            ArrayHelperKind.Clear => "__kimi_array_clear_",
-            ArrayHelperKind.Swap => "__kimi_array_swap_",
-            ArrayHelperKind.BorrowStorage => "__kimi_array_borrow_",
-            ArrayHelperKind.OwnStorage => "__kimi_array_own_",
-            ArrayHelperKind.OwnFixedStorage => "__kimi_fixed_own_",
-            _ => "__kimi_array_drop_",
-        };
         var records = remainder is null ? string.Empty : "_r" + remainder.Id.ToString(CultureInfo.InvariantCulture) + (option is null ? string.Empty : "_o" + option.Id.ToString(CultureInfo.InvariantCulture));
-        var name = prefix + suffix + records;
-        var valueType = element.IsScalar ? element.Value.ComputationType : "ptr";
-        var handle = new AbiParameter("ptr", "handle");
-        var location = new AbiParameter("ptr", "location", AbiParameterKind.Location);
-        var length = new AbiParameter("i64", "location_length", AbiParameterKind.LocationLength);
-        var unit = RuntimeAbi.Unit.ComputationType;
-        var indexParameter = new AbiParameter("i64", "index");
-        FunctionAbi abi = kind switch
-        {
-            ArrayHelperKind.Append when element.IsZeroSized => new(name, unit, [handle, location, length]),
-            ArrayHelperKind.Append => new(name, unit, [handle, new(valueType, "value"), location, length]),
-            ArrayHelperKind.Insert when element.IsZeroSized => new(name, unit, [handle, indexParameter, location, length]),
-            ArrayHelperKind.Insert => new(name, unit, [handle, indexParameter, new(valueType, "value"), location, length]),
-            ArrayHelperKind.Pop => new(name, unit, [handle, new("ptr", "result", AbiParameterKind.ResultSlot)]) { ResultSlot = true },
-            ArrayHelperKind.Place when element.IsZeroSized => new(name, unit, [handle, location, length]),
-            ArrayHelperKind.Place => new(name, unit, [handle, new("ptr", "source"), location, length]),
-            ArrayHelperKind.Remove => element.IsScalar
-                ? new(name, element.Value.ComputationType, [handle, indexParameter, location, length])
-                : element.IsZeroSized
-                ? new(name, unit, [handle, indexParameter, location, length])
-                : new(name, unit, [handle, indexParameter, new("ptr", "result", AbiParameterKind.ResultSlot), location, length]) { ResultSlot = true },
-            ArrayHelperKind.Swap => new(name, unit, [handle, new("i64", "first"), new("i64", "second"), location, length]),
-            ArrayHelperKind.BorrowStorage => new(name, unit, [handle, new("ptr", "result", AbiParameterKind.ResultSlot)]) { ResultSlot = true },
-            ArrayHelperKind.OwnStorage => new(name, unit, [new("ptr", "value"), new("ptr", "result", AbiParameterKind.ResultSlot)]) { ResultSlot = true },
-            ArrayHelperKind.OwnFixedStorage when fields.StorageSize == 0
-                => new(name, unit, [new("i64", "count"), new("ptr", "result", AbiParameterKind.ResultSlot)]) { ResultSlot = true },
-            ArrayHelperKind.OwnFixedStorage
-                => new(name, unit, [new("ptr", "value"), new("i64", "count"), new("ptr", "result", AbiParameterKind.ResultSlot)]) { ResultSlot = true },
-            _ => new(name, unit, [handle, location, length]),
-        };
-        var helper = new ArrayHelper(kind, abi, element.ToStored(), option?.PayloadOffset, fields);
+        var helper = ArrayHelper.Create(kind, element.ToStored(), suffix, records, option?.PayloadOffset, fields);
         this.arrayHelperCache[key] = new(helper, option, remainder);
         this.arrayHelpers.Add(key, helper);
         return helper;
