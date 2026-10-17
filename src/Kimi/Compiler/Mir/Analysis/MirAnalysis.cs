@@ -3,10 +3,11 @@
 // Owns the MIR analyses (P7–P9) of one program version (DECISIONS R4-M1, R4-M2a).
 // Input: a built and validated MirProgram. Output: its Problems for that version, which the analyses add through MirReport.
 // Runs them once per version, after build and validation, in a fixed order: per body, 1. A3, then 2. per view A1, then A2, a body whose
-// A1 arena exceeds the analyses' limit stopping those views (R4-M15a), then per view A4's local facts; 3. A4's summaries and obligations over the
-// program; 4. A5 per view; 5. A6 inside MirReport. Owns one instance of each analysis and their shared scratch (MirCases, the one MirReach,
-// the dataflow arena) for the compilation's lifetime, arrays reset by counts; each analysis unit adds its field and its pass row at its
-// position. A2's table (MirProgram.Drops) is per version, like the problems.
+// A1 arena exceeds the analyses' limit stopping those views (R4-M15a), then per view A4's local facts; 3. A4's summaries and obligations
+// over the program; 4. A5 per view; 5. A6 inside MirReport. Owns one instance of each analysis and their shared scratch (MirCases, the one
+// MirReach, the dataflow arena) for the compilation's lifetime, arrays reset by counts; each analysis unit adds its field and its pass row
+// at its step: steps 1 and 2 in Body, steps 3 and 4 in Run (A5 with its own loop over the bodies after A4's). A2's table
+// (MirProgram.Drops) is per version, like the problems.
 // Must not read syntax, HIR or plans, publish, decide acceptance, or analyze a program with validator findings.
 
 namespace Kimi.Compiler.Mir;
@@ -43,44 +44,51 @@ internal sealed class MirAnalysis
     /// <returns>The program.</returns>
     internal MirProgram Run(MirProgram program)
     {
-        if (program.Version != this.version)
+        if (program.Version == this.version)
         {
-            this.version = program.Version;
-            program.Problems.Clear();
-            program.Drops.Clear();
-            if (program.Findings.Count > 0)
-            {
-                return program;
-            }
-
-            foreach (var body in program.Bodies)
-            {
-                this.lints.Run(body, program.Problems); // 1. A3 per body.
-                this.flow.Begin(body); // 2. Per body its block order and move paths, then per view A1, then A2, then A4's local facts.
-                this.moves.Build(body, this.flow);
-                this.drops.Begin(body, program);
-                for (var view = 0L; view < MirCases.Count(body); view++)
-                {
-                    this.cases.Select(body, view);
-                    if (!this.init.Run(body, view, program.Problems))
-                    {
-                        break;
-                    }
-
-                    this.drops.Judge(view);
-                }
-
-                this.drops.End();
-                for (var view = 0L; view < MirCases.Count(body); view++)
-                {
-                    this.cases.Select(body, view);
-                    this.effects.Local(program, body, view); // Every view, over the body's closed A2 table.
-                }
-            }
-
-            this.effects.Run(program, program.Problems); // 3. A4's summaries and obligations over the program.
+            return program;
         }
 
+        this.version = program.Version;
+        program.Problems.Clear();
+        program.Drops.Clear();
+        if (program.Findings.Count > 0)
+        {
+            return program;
+        }
+
+        foreach (var body in program.Bodies)
+        {
+            this.Body(program, body); // 1. and 2. per body.
+        }
+
+        this.effects.Run(program, program.Problems); // 3. A4's summaries and obligations over the program.
         return program;
+    }
+
+    // The passes of one body: 1. A3, then 2. its block order and move paths, then per view A1, then A2, then A4's local facts.
+    private void Body(MirProgram program, MirBody body)
+    {
+        this.lints.Run(body, program.Problems); // 1. A3 per body.
+        this.flow.Begin(body); // 2.
+        this.moves.Build(body, this.flow);
+        this.drops.Begin(body, program);
+        for (var view = 0L; view < MirCases.Count(body); view++)
+        {
+            this.cases.Select(body, view);
+            if (!this.init.Run(body, view, program.Problems))
+            {
+                break;
+            }
+
+            this.drops.Judge(view);
+        }
+
+        this.drops.End();
+        for (var view = 0L; view < MirCases.Count(body); view++)
+        {
+            this.cases.Select(body, view);
+            this.effects.Local(program, body, view); // Every view, over the body's closed A2 table.
+        }
     }
 }
