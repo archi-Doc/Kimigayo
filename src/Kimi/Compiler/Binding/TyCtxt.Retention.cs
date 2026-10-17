@@ -5,7 +5,8 @@
 // Callable signature it declares (CallPlan.DeclaredSignature, DECISIONS R4-M41); the calling definition (null: top-level statements).
 // Output: an immutable CallRetention, rows Retention(Input, Kind, Output) and Untied, one per callee or signature, Type instantiation and
 // the premise scope or declaration it reads, for the latest Binding pass and reused by later passes until an edit; CallRetention.Limit
-// where Binding's storage instantiation does not complete the contract (a growing recursive Type, SPEC 15.3.5), never an exception.
+// where Binding's storage instantiation does not complete the contract (storage nested past its depth bound, which a growing recursive
+// Type of SPEC 15.3.5 always reaches), never an exception.
 // Invariants: an output retains an input exactly when the callee's body may move a value of the input there under the premises its
 // body is checked under: the instantiated contract (the Subst's Types, Self and declaring Type substituted, the callee's own Origins
 // left as the call's fresh regions, so retention is per argument) and the premises of its enclosing declarations; or when both name
@@ -48,9 +49,9 @@ internal readonly record struct Retention(int Input, RetentionKind Kind, int Out
 /// <see cref="Limit"/>, which has neither.</summary>
 internal sealed class CallRetention(Retention[]? rows, bool untied)
 {
-    /// <summary>The retention of a call whose contract Binding's storage instantiation does not complete under its Subst (its depth bound:
-    /// a growing recursive Type, SPEC 15.3.5), as A4's effects take it: no rows are computed, and A5 records a located Unsupported_Kd at
-    /// the call. Reading its rows or Untied is a broken contract.</summary>
+    /// <summary>The retention of a call whose contract Binding's storage instantiation does not complete under its Subst (storage nested
+    /// past its depth bound, which a growing recursive Type of SPEC 15.3.5 always reaches), as A4's effects take it: no rows are computed,
+    /// and A5 records a located Unsupported_Kd at the call. Reading its rows or Untied is a broken contract.</summary>
     internal static readonly CallRetention Limit = new(null, untied: false);
 
     private readonly Retention[]? rows = rows;
@@ -183,5 +184,8 @@ internal sealed partial class TyCtxt
     // A declared Type as the Types instantiate it, under `scope`'s premises when given (TyCtxt.Premised's rule); null where Binding's storage
     // instantiation does not complete it.
     private BoundType? Instance(BoundType declared, Subst? types, BindingScope? scope)
-        => (types is null ? declared : this.Apply(declared, types)) is not { } type ? null : scope is null ? type : binding.CallableContractType(type, scope);
+    {
+        var type = types is null ? declared : this.Apply(declared, types);
+        return type is null || scope is null ? type : binding.CallableContractType(type, scope);
+    }
 }
