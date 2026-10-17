@@ -59,13 +59,13 @@ internal sealed partial class BodyLowering
         element = default;
         if (ReferenceEquals(type, BoundType.Unit))
         {
-            element = new(type, WindowsLowering.Unit, null, false);
+            element = new(type, RuntimeAbi.Unit, null, false);
             return true;
         }
 
         if (ReferenceEquals(type, BoundType.String))
         {
-            element = new(type, WindowsLowering.String, null, true);
+            element = new(type, RuntimeAbi.String, null, true);
             return true;
         }
 
@@ -128,7 +128,7 @@ internal sealed partial class BodyLowering
         var handle = new AbiParameter("ptr", "handle");
         var location = new AbiParameter("ptr", "location", AbiParameterKind.Location);
         var length = new AbiParameter("i64", "location_length", AbiParameterKind.LocationLength);
-        var unit = WindowsLowering.Unit.ComputationType;
+        var unit = RuntimeAbi.Unit.ComputationType;
         var indexParameter = new AbiParameter("i64", "index");
         FunctionAbi abi = kind switch
         {
@@ -136,19 +136,21 @@ internal sealed partial class BodyLowering
             ArrayHelperKind.Append => new(name, unit, [handle, new(valueType, "value"), location, length]),
             ArrayHelperKind.Insert when element.IsZeroSized => new(name, unit, [handle, indexParameter, location, length]),
             ArrayHelperKind.Insert => new(name, unit, [handle, indexParameter, new(valueType, "value"), location, length]),
-            ArrayHelperKind.Pop => new(name, unit, [handle, new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
+            ArrayHelperKind.Pop => new(name, unit, [handle, new("ptr", "result", AbiParameterKind.ResultSlot)]) { ResultSlot = true },
             ArrayHelperKind.Place when element.IsZeroSized => new(name, unit, [handle, location, length]),
             ArrayHelperKind.Place => new(name, unit, [handle, new("ptr", "source"), location, length]),
             ArrayHelperKind.Remove => element.IsScalar
                 ? new(name, element.Value.ComputationType, [handle, indexParameter, location, length])
                 : element.IsZeroSized
                 ? new(name, unit, [handle, indexParameter, location, length])
-                : new(name, unit, [handle, indexParameter, new("ptr", "result", AbiParameterKind.ResultSlot), location, length], resultSlot: true),
+                : new(name, unit, [handle, indexParameter, new("ptr", "result", AbiParameterKind.ResultSlot), location, length]) { ResultSlot = true },
             ArrayHelperKind.Swap => new(name, unit, [handle, new("i64", "first"), new("i64", "second"), location, length]),
-            ArrayHelperKind.BorrowStorage => new(name, unit, [handle, new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
-            ArrayHelperKind.OwnStorage => new(name, unit, [new("ptr", "value"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
-            ArrayHelperKind.OwnFixedStorage when fields.StorageSize == 0 => new(name, unit, [new("i64", "count"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
-            ArrayHelperKind.OwnFixedStorage => new(name, unit, [new("ptr", "value"), new("i64", "count"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
+            ArrayHelperKind.BorrowStorage => new(name, unit, [handle, new("ptr", "result", AbiParameterKind.ResultSlot)]) { ResultSlot = true },
+            ArrayHelperKind.OwnStorage => new(name, unit, [new("ptr", "value"), new("ptr", "result", AbiParameterKind.ResultSlot)]) { ResultSlot = true },
+            ArrayHelperKind.OwnFixedStorage when fields.StorageSize == 0
+                => new(name, unit, [new("i64", "count"), new("ptr", "result", AbiParameterKind.ResultSlot)]) { ResultSlot = true },
+            ArrayHelperKind.OwnFixedStorage
+                => new(name, unit, [new("ptr", "value"), new("i64", "count"), new("ptr", "result", AbiParameterKind.ResultSlot)]) { ResultSlot = true },
             _ => new(name, unit, [handle, location, length]),
         };
         var helper = new ArrayHelper(kind, abi, element.Value, element.Layout, element.IsString, option, remainder, fields);
@@ -207,7 +209,7 @@ internal sealed partial class BodyLowering
         {
             case CompilerFunctionKind.ArrayReserve:
             case CompilerFunctionKind.ArrayShrinkToFit:
-                callee = kind == CompilerFunctionKind.ArrayReserve ? WindowsLowering.ArrayReserve : WindowsLowering.ArrayShrink;
+                callee = kind == CompilerFunctionKind.ArrayReserve ? RuntimeAbi.ArrayReserve : RuntimeAbi.ArrayShrink;
                 this.callOperands.Add(new(EmissionOperandKind.Integer, element.Stride));
                 if (kind == CompilerFunctionKind.ArrayReserve)
                 {
@@ -362,13 +364,13 @@ internal sealed partial class BodyLowering
 
             var reason = kind switch
             {
-                CompilerFunctionKind.StorageIndexBounds => WindowsLowering.IndexBoundsReason,
-                CompilerFunctionKind.StorageMissingDictionaryKey => WindowsLowering.MissingKeyReason,
-                CompilerFunctionKind.StorageCountOverflow => WindowsLowering.IntegerOverflowReason,
-                CompilerFunctionKind.StorageAllocationSizeExceeded => WindowsLowering.AllocationSizeReason,
-                _ => WindowsLowering.ArgumentRangeReason,
+                CompilerFunctionKind.StorageIndexBounds => AbortReasons.IndexBounds,
+                CompilerFunctionKind.StorageMissingDictionaryKey => AbortReasons.MissingKey,
+                CompilerFunctionKind.StorageCountOverflow => AbortReasons.IntegerOverflow,
+                CompilerFunctionKind.StorageAllocationSizeExceeded => AbortReasons.AllocationSize,
+                _ => AbortReasons.ArgumentRange,
             };
-            function.AddCall(id, WindowsLowering.Abort, [new(EmissionOperandKind.Integer, reason), new(EmissionOperandKind.CallerLocation, 0), new(EmissionOperandKind.CallerLocationLength, 0), new(EmissionOperandKind.Integer, -2)]);
+            function.AddCall(id, RuntimeAbi.Abort, [new(EmissionOperandKind.Integer, reason), new(EmissionOperandKind.CallerLocation, 0), new(EmissionOperandKind.CallerLocationLength, 0), new(EmissionOperandKind.Integer, -2)]);
             function.Add(EmissionOpcode.Unreachable, id);
             return true;
         }

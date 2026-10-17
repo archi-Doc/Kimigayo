@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
 using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler;
@@ -65,7 +66,7 @@ internal static partial class LlvmModuleWriter
             else
             {
                 output.Write("  call void @__kimi_abort(i32 ");
-                WriteNumber(output, WindowsLowering.FormatReason);
+                WriteNumber(output, AbortReasons.Format);
                 output.Write(", ptr %location, i64 %location_length, i64 -2)\n  unreachable\n}\n");
             }
         }

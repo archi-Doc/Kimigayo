@@ -249,7 +249,7 @@ internal static partial class LlvmModuleWriter
         {
             for (var i = aggregate.Count - 1; i >= 0; i--)
             {
-                if (!ReferenceEquals(aggregate.Fields[i], WindowsLowering.String) && aggregate.Children[i]?.NeedsDestruction != true)
+                if (!ReferenceEquals(aggregate.Fields[i], RuntimeAbi.String) && aggregate.Children[i]?.NeedsDestruction != true)
                 {
                     continue;
                 }

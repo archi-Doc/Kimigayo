@@ -14,7 +14,9 @@ internal sealed partial class BodyLowering
     private static readonly FunctionAbi StatusFormatting = new("__kimi_format_healthy", "i1", [new("ptr", "writer")]);
     private static readonly FunctionAbi FinishFormatting = new("__kimi_format_finish", "void", [new("ptr", "ret"), new("ptr", "buffer"), new("ptr", "writer"), new("ptr", "location"), new("i64", "location_length")]);
     private static readonly FunctionAbi FinishStackFormatting = new("__kimi_format_stack_finish", "void", FinishFormatting.Parameters);
-    private static readonly FunctionAbi LiteralFormatting = new("__kimi_format_literal", "void", WindowsLowering.GetCompilerFunction(CompilerFunctionKind.WriterWrite)!.Parameters, resultSlot: true);
+    private static readonly FunctionAbi LiteralFormatting =
+        new("__kimi_format_literal", "void", WindowsLowering.GetCompilerFunction(CompilerFunctionKind.WriterWrite)!.Parameters) { ResultSlot = true };
+
     private readonly Dictionary<BoundFormatting, FormattingEstimate> formattingEstimates = new(ReferenceEqualityComparer.Instance);
     private readonly List<FormattingEstimate> formattingEstimateStorage = new();
 

@@ -576,7 +576,7 @@ public class ForeignEmissionTest
         // SPEC 13.7.2: simple and compound assignments run their right-hand side before locating the target.
         var ir = ScalarEmissionTest.EmitFixture("ForeignPointerIndex", source, "amount\ntarget\nindex\namount\ntarget\nindex\namount\nindex ok\n");
         Assert.DoesNotContain("getelementptr inbounds i8", ir);
-        Assert.DoesNotContain("call void @__kimi_abort(i32 " + WindowsLowering.IndexBoundsReason, ir);
+        Assert.DoesNotContain("call void @__kimi_abort(i32 " + AbortReasons.IndexBounds, ir);
     }
 
     [Theory]

@@ -461,13 +461,13 @@ internal static partial class LlvmModuleWriter
         output.Write(":\n");
         var reasonId = instruction.Check switch
         {
-            ArithmeticCheckKind.Overflow or ArithmeticCheckKind.Division => WindowsLowering.IntegerOverflowReason,
-            ArithmeticCheckKind.DivisionZero or ArithmeticCheckKind.WrappingDivision => WindowsLowering.IntegerDivisionZeroReason,
-            ArithmeticCheckKind.Shift => WindowsLowering.IntegerShiftCountReason,
-            ArithmeticCheckKind.Conversion => WindowsLowering.IntegerConversionReason,
-            ArithmeticCheckKind.FloatingConversion => WindowsLowering.FloatingConversionReason,
-            ArithmeticCheckKind.Bounds => WindowsLowering.IndexBoundsReason,
-            ArithmeticCheckKind.Argument => WindowsLowering.ArgumentRangeReason,
+            ArithmeticCheckKind.Overflow or ArithmeticCheckKind.Division => AbortReasons.IntegerOverflow,
+            ArithmeticCheckKind.DivisionZero or ArithmeticCheckKind.WrappingDivision => AbortReasons.IntegerDivisionZero,
+            ArithmeticCheckKind.Shift => AbortReasons.IntegerShiftCount,
+            ArithmeticCheckKind.Conversion => AbortReasons.IntegerConversion,
+            ArithmeticCheckKind.FloatingConversion => AbortReasons.FloatingConversion,
+            ArithmeticCheckKind.Bounds => AbortReasons.IndexBounds,
+            ArithmeticCheckKind.Argument => AbortReasons.ArgumentRange,
             _ => throw new InvalidOperationException("Unknown arithmetic failure reason."),
         };
         var reason = new EmissionOperand(EmissionOperandKind.Integer, reasonId);
@@ -479,14 +479,14 @@ internal static partial class LlvmModuleWriter
             Name(output, "  %v", instruction.Place);
             Name(output, " = select i1 %zero", id);
             output.Write(", i32 ");
-            WriteNumber(output, WindowsLowering.IntegerDivisionZeroReason);
+            WriteNumber(output, AbortReasons.IntegerDivisionZero);
             output.Write(", i32 ");
-            WriteNumber(output, WindowsLowering.IntegerOverflowReason);
+            WriteNumber(output, AbortReasons.IntegerOverflow);
             output.Write('\n');
             reason = new(EmissionOperandKind.Value, instruction.Place);
         }
 
-        WriteCall(output, constants, WindowsLowering.Abort, [reason, new(callerLocation ? EmissionOperandKind.CallerLocation : EmissionOperandKind.ConstantAddress, instruction.Constant), new(callerLocation ? EmissionOperandKind.CallerLocationLength : EmissionOperandKind.ConstantLength, instruction.Constant), new(EmissionOperandKind.Integer, -2)]);
+        WriteCall(output, constants, RuntimeAbi.Abort, [reason, new(callerLocation ? EmissionOperandKind.CallerLocation : EmissionOperandKind.ConstantAddress, instruction.Constant), new(callerLocation ? EmissionOperandKind.CallerLocationLength : EmissionOperandKind.ConstantLength, instruction.Constant), new(EmissionOperandKind.Integer, -2)]);
         output.Write("  unreachable\n");
         Name(output, "b", instruction.Place);
         output.Write(":\n");

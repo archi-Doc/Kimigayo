@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
@@ -102,7 +103,7 @@ public class ElementReplacementEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         var function = module.GetFunction(0);
-        Assert.DoesNotContain(function.Instructions, x => x.Callee == WindowsLowering.DestroyString || x.Opcode == EmissionOpcode.DestroyAggregate);
+        Assert.DoesNotContain(function.Instructions, x => x.Callee == RuntimeAbi.DestroyString || x.Opcode == EmissionOpcode.DestroyAggregate);
         ScalarEmissionTest.EmitFixture("ElementReplacementDivergent" + name, source, string.Empty, timeoutMilliseconds: 300);
     }
 
@@ -151,7 +152,7 @@ public class ElementReplacementEmissionTest
         Assert.True((body.GetInputState(plan.Write + 1, plan.Root) & PlaceState.MustInit) != 0);
         Assert.True((body.GetInputState(plan.Write + 1, input) & PlaceState.MayInit) == 0);
         var instructions = module.GetFunction(0).Instructions.Where(x => x.Operation == plan.Write).ToArray();
-        Assert.Equal(WindowsLowering.DestroyString, instructions[0].Callee);
+        Assert.Equal(RuntimeAbi.DestroyString, instructions[0].Callee);
         Assert.Equal(EmissionOpcode.MoveString, instructions[1].Opcode);
         Assert.Empty(module.GetFunction(0).LiveFlags);
     }

@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -76,7 +77,7 @@ public class StringResultEmissionTest
         Assert.Equal(0, result.Count);
         Assert.False(body.IsReachable(result.Join));
         Assert.Single(body.ResultWrites);
-        Assert.DoesNotContain(module.GetFunction(0).Instructions, x => x.Callee == WindowsLowering.DestroyString);
+        Assert.DoesNotContain(module.GetFunction(0).Instructions, x => x.Callee == RuntimeAbi.DestroyString);
         ScalarEmissionTest.EmitFixture("StringResultDivergent", Source, string.Empty, timeoutMilliseconds: 300);
     }
 
@@ -157,7 +158,7 @@ public class StringResultEmissionTest
         Assert.Empty(body.Issues);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var function = module.GetFunction(0);
-        Assert.Contains(function.Instructions, x => x.Callee == WindowsLowering.DestroyString && function.GetOperands(x)[0].Value == result.Place);
+        Assert.Contains(function.Instructions, x => x.Callee == RuntimeAbi.DestroyString && function.GetOperands(x)[0].Value == result.Place);
         Assert.Contains(body.CleanupSteps, x => x.Place == result.Place && x.Action == CleanupAction.Destroy);
     }
 

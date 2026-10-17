@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
@@ -135,7 +136,7 @@ public class ScalarEmissionTest
         // source control flow still branches.
         var bodyStart = System.Text.RegularExpressions.Regex.Match(ir, @"define internal (?:void|i1|i8|i16|i32|i64) @__kimi_(?:entry_body|f\d+)\(");
         Assert.True(bodyStart.Success);
-        Assert.DoesNotMatch($@"select i1 (?!%zero\d+, i32 {WindowsLowering.IntegerDivisionZeroReason}, i32 {WindowsLowering.IntegerOverflowReason}\n|%minusone\d+, i\d+ )", ir[bodyStart.Index..]);
+        Assert.DoesNotMatch($@"select i1 (?!%zero\d+, i32 {AbortReasons.IntegerDivisionZero}, i32 {AbortReasons.IntegerOverflow}\n|%minusone\d+, i\d+ )", ir[bodyStart.Index..]);
         Assert.DoesNotMatch(@"store i1\b", ir);
         WriteFixture(name, ir, stdout, exit, stderr, timeoutMilliseconds);
         return ir;

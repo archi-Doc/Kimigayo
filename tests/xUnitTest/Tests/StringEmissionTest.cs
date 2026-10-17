@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
@@ -135,7 +136,7 @@ public class StringEmissionTest
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var function = module.GetFunction(0);
         Assert.Equal(3, function.Instructions.Count(x => x.Opcode == EmissionOpcode.MoveString)); // writeLine borrows; it no longer moves.
-        Assert.Equal(1, function.Instructions.Count(x => x.Callee == WindowsLowering.DestroyString)); // Only the scope-end cleanup; the old value is never destroyed.
+        Assert.Equal(1, function.Instructions.Count(x => x.Callee == RuntimeAbi.DestroyString)); // Only the scope-end cleanup; the old value is never destroyed.
         Assert.Empty(function.LiveFlags);
     }
 
@@ -184,7 +185,7 @@ public class StringEmissionTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var function = module.GetFunction(0);
-        Assert.DoesNotContain(function.Instructions, x => x.Callee == WindowsLowering.DestroyString || x.Opcode is EmissionOpcode.ReturnVoid or EmissionOpcode.ReturnScalar);
+        Assert.DoesNotContain(function.Instructions, x => x.Callee == RuntimeAbi.DestroyString || x.Opcode is EmissionOpcode.ReturnVoid or EmissionOpcode.ReturnScalar);
         var ir = ScalarEmissionTest.EmitFixture("StringDivergentDefer", Source, string.Empty, timeoutMilliseconds: 300);
         Assert.DoesNotContain("mustprogress", ir);
         Assert.DoesNotContain("willreturn", ir);

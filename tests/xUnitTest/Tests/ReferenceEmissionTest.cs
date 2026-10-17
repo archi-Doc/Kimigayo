@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -144,7 +145,7 @@ public class ReferenceEmissionTest
         Assert.DoesNotContain(function.Slots, x => ReferenceTypes.IsString(body.Places[x.Place].Type));
         var borrowed = module.GetFunction(1);
         Assert.Empty(borrowed.Slots);
-        Assert.DoesNotContain(borrowed.Instructions, x => x.Callee == WindowsLowering.DestroyString || x.Opcode == EmissionOpcode.MoveString);
+        Assert.DoesNotContain(borrowed.Instructions, x => x.Callee == RuntimeAbi.DestroyString || x.Opcode == EmissionOpcode.MoveString);
         using var writer = new StringWriter();
         Assert.True(c.WriteIr(writer, out error), error);
         var ir = writer.ToString();

@@ -299,7 +299,7 @@ internal sealed partial class BodyLowering
 
         if (body.DefaultParameter >= 0 && body.Values[index].Kind == OwnershipValueKind.Parameter && ReferenceTypes.IsString(ValueType(body, index)))
         {
-            function.AddScalar(EmissionOpcode.LoadPointer, index, [new(EmissionOperandKind.Argument, body.Values[index].Constant)], "ptr", representation: WindowsLowering.StringReference);
+            function.AddScalar(EmissionOpcode.LoadPointer, index, [new(EmissionOperandKind.Argument, body.Values[index].Constant)], "ptr", representation: RuntimeAbi.StringReference);
             failure = null;
             return true;
         }

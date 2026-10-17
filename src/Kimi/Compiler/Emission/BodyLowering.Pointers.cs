@@ -63,7 +63,7 @@ internal sealed partial class BodyLowering
         }
 
         var location = -1;
-        var stride = index < 0 ? 0 : FunctionAbi.GetValue(part!, this.aggregateLayouts)?.Layout.Stride ?? -1;
+        var stride = index < 0 ? 0 : FunctionAbiPool.GetValue(part!, this.aggregateLayouts)?.Layout.Stride ?? -1;
         if (index >= 0 && (stride < 0 || !this.TryGetLocation(element, directory, constants, out location)))
         {
             return Fail("Pointer element bounds check requires an element stride and a source location.", out failure);

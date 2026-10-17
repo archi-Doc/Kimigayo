@@ -90,11 +90,11 @@ internal sealed partial class BodyLowering
         var length = function.Abi.CallerLocation ? new EmissionOperand(EmissionOperandKind.CallerLocationLength, 0) : new EmissionOperand(EmissionOperandKind.ConstantLength, location);
         if (kind == CompilerFunctionKind.RawAllocate)
         {
-            function.AddCall(id, WindowsLowering.RawAllocate, [input, new(EmissionOperandKind.Integer, element.Stride), place, length]);
+            function.AddCall(id, RuntimeAbi.RawAllocate, [input, new(EmissionOperandKind.Integer, element.Stride), place, length]);
         }
         else
         {
-            function.AddCall(id, WindowsLowering.StorageRelease, [input, place, length]);
+            function.AddCall(id, RuntimeAbi.StorageRelease, [input, place, length]);
         }
 
         return true;

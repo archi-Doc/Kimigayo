@@ -44,7 +44,7 @@ internal static partial class LlvmModuleWriter
             Name(output, "destroy", id);
             output.Write(":\n");
             // A string, or an Array handle released by its drop helper (the same slot/location ABI).
-            WriteCall(output, constants, instruction.Callee ?? WindowsLowering.DestroyString, [new(EmissionOperandKind.SlotAddress, instruction.Place), new(EmissionOperandKind.ConstantAddress, instruction.Constant), new(EmissionOperandKind.ConstantLength, instruction.Constant)], function: function);
+            WriteCall(output, constants, instruction.Callee ?? RuntimeAbi.DestroyString, [new(EmissionOperandKind.SlotAddress, instruction.Place), new(EmissionOperandKind.ConstantAddress, instruction.Constant), new(EmissionOperandKind.ConstantLength, instruction.Constant)], function: function);
             output.Write("  br label ");
             WriteOperand(output, operands[0]);
             output.Write('\n');
@@ -73,7 +73,7 @@ internal static partial class LlvmModuleWriter
             output.Write(" = load ");
             output.Write(StringFieldTypes[field]);
             StringFieldName(output, ", ptr %strSource", id, field);
-            WriteAlignment(output, field == 2 ? 1 : WindowsLowering.String.Layout.Alignment);
+            WriteAlignment(output, field == 2 ? 1 : RuntimeAbi.String.Layout.Alignment);
         }
 
         for (var field = 0; field < StringFieldTypes.Length; field++)
@@ -87,7 +87,7 @@ internal static partial class LlvmModuleWriter
             output.Write(StringFieldTypes[field]);
             StringFieldName(output, " %strValue", id, field);
             StringFieldName(output, ", ptr %strDestination", id, field);
-            WriteAlignment(output, field == 2 ? 1 : WindowsLowering.String.Layout.Alignment);
+            WriteAlignment(output, field == 2 ? 1 : RuntimeAbi.String.Layout.Alignment);
         }
     }
 }

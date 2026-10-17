@@ -66,7 +66,7 @@ internal static partial class LlvmModuleWriter
         var addressOperand = operands[0];
         var id = instruction.Operation;
         var fixedLength = (long)operands[1].Value;
-        var range = instruction.Representation == WindowsLowering.Unit;
+        var range = instruction.Representation == RuntimeAbi.Unit;
         if (instruction.ScalarOperator is "Read" or "ArrayRead" or "ArrayStorageRead" or "SliceStorageRead" or "SliceAddress" or "ArrayAddress")
         {
             // A fixed array's bounds are static; a Slice loads its handle's length.

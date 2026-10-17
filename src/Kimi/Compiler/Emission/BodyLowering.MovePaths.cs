@@ -215,7 +215,7 @@ internal sealed partial class BodyLowering
 
     private void AddPartDestruction(OwnershipBody body, int path, int offset, int count, ValueLowering value, AggregateLayout? aggregate)
     {
-        if (!ReferenceEquals(value, WindowsLowering.String) && aggregate?.NeedsDestruction != true)
+        if (!ReferenceEquals(value, RuntimeAbi.String) && aggregate?.NeedsDestruction != true)
         {
             return;
         }

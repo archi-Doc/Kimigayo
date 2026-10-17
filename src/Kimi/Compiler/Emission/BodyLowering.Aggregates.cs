@@ -450,7 +450,7 @@ internal sealed partial class BodyLowering
 
                     var dictionary = place.Type.Kind == BoundTypeKind.Dictionary;
                     this.dictionaryRuntimeUsed |= dictionary;
-                    function.AddCall(id, dictionary ? WindowsLowering.DictionaryInit : WindowsLowering.ArrayInit, [new(EmissionOperandKind.SlotAddress, place.Id), new(EmissionOperandKind.ConstantAddress, initLocation), new(EmissionOperandKind.ConstantLength, initLocation)]);
+                    function.AddCall(id, dictionary ? RuntimeAbi.DictionaryInit : RuntimeAbi.ArrayInit, [new(EmissionOperandKind.SlotAddress, place.Id), new(EmissionOperandKind.ConstantAddress, initLocation), new(EmissionOperandKind.ConstantLength, initLocation)]);
                     if (plan.PayloadCount != 0)
                     {
                         if (!this.TryGetArrayElement(place.Type.Components[0], out var element))
@@ -459,7 +459,7 @@ internal sealed partial class BodyLowering
                         }
 
                         this.arrayRuntimeUsed = true;
-                        function.AddCall(id, WindowsLowering.ArrayGrow, [new(EmissionOperandKind.SlotAddress, place.Id), new(EmissionOperandKind.Integer, element.Stride), new(EmissionOperandKind.Integer, plan.PayloadCount), new(EmissionOperandKind.ConstantAddress, initLocation), new(EmissionOperandKind.ConstantLength, initLocation)]);
+                        function.AddCall(id, RuntimeAbi.ArrayGrow, [new(EmissionOperandKind.SlotAddress, place.Id), new(EmissionOperandKind.Integer, element.Stride), new(EmissionOperandKind.Integer, plan.PayloadCount), new(EmissionOperandKind.ConstantAddress, initLocation), new(EmissionOperandKind.ConstantLength, initLocation)]);
                         var placeElement = this.GetArrayHelper(ArrayHelperKind.Place, element).Abi;
                         for (var i = 0; i < plan.PayloadCount; i++)
                         {
@@ -633,7 +633,7 @@ internal sealed partial class BodyLowering
         }
         else
         {
-            callee = element.NeedsDestruction ? this.GetArrayHelper(ArrayHelperKind.Drop, element).Abi : WindowsLowering.ArrayFree;
+            callee = element.NeedsDestruction ? this.GetArrayHelper(ArrayHelperKind.Drop, element).Abi : RuntimeAbi.ArrayFree;
         }
 
         if (conditional)
