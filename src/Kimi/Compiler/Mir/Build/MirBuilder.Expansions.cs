@@ -249,14 +249,15 @@ internal sealed partial class MirBuilder
     // directly at each boundary (omitted: 0 or the length; ^x: the length minus x; a closed end q: q + 1), else the ResolvedRange its key
     // is or its key's resolution (First) gives; checked once (0 <= start <= end <= length, else KIMI_E_INDEX_BOUNDS), then the Slice RawSlice
     // serves (R3 decision 5) of the elements from the address of element start, any address for none (SPEC 5.6), backed by what the
-    // Slice retains (DECISIONS R4-M40): a shared borrow of an array's whole Place, or a Slice receiver's handle, its value and no handle
-    // variable, read where it is located (Handle).
+    // Slice retains (DECISIONS R4-M40): a Slice receiver's handle, its value and no handle variable, read where it is located (Handle), or
+    // a shared borrow of an array's whole Place made where it is located, before the boundaries, which is the receiver's check (R4-M56).
     private void Slice(MirPlace destination, IndexKoto index)
     {
         var range = HirTables.Op(index.Right) == HirOp.Range ? index.Right as RangeKoto : null;
         var sequence = this.Place(index.Left);
         var later = range is null ? Builds(index.Right) : (range.Start is { } from && Builds(from)) || (range.End is { } to && Builds(to));
         sequence = later ? this.Handle(sequence, index.Left) : sequence;
+        var backing = MirTypes.SelectsByValue(this.body.TypeOf(sequence)) ? MirOperand.Copy(sequence) : this.Borrow(SemanticsKind.Ref, sequence, index);
         var length = this.Length(sequence, index);
         var zero = MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize)));
         MirPlace start, last;
@@ -322,8 +323,7 @@ internal sealed partial class MirBuilder
         this.current = join;
         this.arguments.Add(MirOperand.Move(pointer));
         this.arguments.Add(MirOperand.Copy(count));
-        var slice = this.body.TypeOf(sequence)!.Kind == BoundTypeKind.Slice;
-        this.arguments.Add(slice ? MirOperand.Copy(sequence) : this.Borrow(SemanticsKind.Ref, sequence, index));
+        this.arguments.Add(backing);
         this.Serve(destination, CompilerFunctionKind.RawSlice, null, [element], at, index);
     }
 

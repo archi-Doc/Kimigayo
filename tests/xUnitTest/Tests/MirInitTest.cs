@@ -140,6 +140,20 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Equal(2, moves.Paths.ToArray().Count(x => x.Local == array));
     }
 
+    // SPEC 4.7.4 (DECISIONS R4-M56): a selection's receiver is checked once, where it is located: at its guard, the selection, so an
+    // access through a runtime index into an uninitialized array is one problem whatever consumes the element.
+    [Theory]
+    [InlineData("values[i] = 9")]
+    [InlineData("use(values[i])")]
+    [InlineData("see(values[i]@ref)")]
+    [InlineData("values[i] += 1")]
+    [InlineData("let x = values[i]")]
+    public void ASelectionChecksItsReceiverOnce(string statement)
+    {
+        var source = $"func use(n: i32) => ()\nfunc see(v: ref/i32) => ()\nfunc f(i: isize)\n    var values: [3 of i32]\n    {statement}\n";
+        Assert.Equal(["UninitializedPlace_Kd values[i] 1"], Problems(source));
+    }
+
     // SPEC 14.10.3: code only the checks reach is checked with the state after the transfer's operand, which is never merged into a runtime
     // path: a value consumed before a return out of a do is usable after the do (plan Appendix B C1), a default that does not complete
     // delivers nothing at its template's Return, an index whose value only the checks reach leaves its compiler temporary unwritten (not a

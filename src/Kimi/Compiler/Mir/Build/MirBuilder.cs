@@ -3,6 +3,8 @@
 // Owns construction and validation of one MIR body per definition or closure.
 // Input: syntax children, published HIR/plans, declaration views and TyCtxt. Output: a validated MirProgram.
 // Op, Adjust and PlaceShape decide lowering; unsupported forms use the one located Unsupported path; it trusts the facts each Op guarantees.
+// Every runtime-index selection on storage lends its receiver where it locates it (a guard, or a range's backing), the receiver's one
+// check, which A1 reads as the check of every access through the Index (DECISIONS R4-M56).
 // Must not read Binding internals, infer from parents or let consumers rebuild missing facts.
 
 using System.Runtime.InteropServices;

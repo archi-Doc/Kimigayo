@@ -8,7 +8,9 @@
 // Five lanes per path, joined by union: MaybeUninit, MaybeMoved, EverInit, and for A2 MaybeInit and MaybePartial (a non-root path a Move or
 // a Drop took out of its parent, cleared with the subtree by any event of an ancestor-or-self). A definition initializes a path's subtree, a
 // Move or a Drop uninitializes it, StorageLive and StorageDead start a fresh binding lifetime; a use needs its whole subtree initialized on
-// every incoming path, its own bit being the construction fact. Every root is tracked (A2 reads temporaries' states), but the state rules
+// every incoming path, its own bit being the construction fact; a use through a runtime Index of storage does not check its receiver,
+// which the selection's guard, a use where the receiver is located, checks (the builder's contract, DECISIONS R4-M56: an element is
+// initialized only with its whole array, R4-M21). Every root is tracked (A2 reads temporaries' states), but the state rules
 // report only the Places of Var, Arg and Return roots: a compiler temporary is never a Place of the program. A whole use of the return local
 // is a delivery, checked only where the runtime edges reach it; a Return checks nothing. A Move without a Move Path is reported whatever its
 // root. A body no view decides is analyzed once, for every view.
@@ -161,7 +163,11 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
 
             if (how != MirMoveData.Direct)
             {
-                this.Check(path);
+                if (!this.Guarded(place))
+                {
+                    this.Check(path);
+                }
+
                 if (this.Checks && how == MirMoveData.NoPath && (access & MirAccess.Moves) != 0)
                 {
                     this.Add(DiagnosticCode.StaticMovePathRequired_Kd);
@@ -184,6 +190,22 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             {
                 this.Check(path);
             }
+        }
+
+        // Whether a Place is through a runtime Index of storage, whose receiver its selection's guard checks (R4-M56).
+        private readonly bool Guarded(MirPlace place)
+        {
+            var projections = body.Projections;
+            for (var id = place.Projection; id > 0; id = projections[id].Prefix)
+            {
+                var receiver = place with { Projection = projections[id].Prefix };
+                if (projections[id].Kind == MirProjectionKind.Index && !MirTypes.SelectsByValue(body.TypeOf(receiver)))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         // The Place up to its outermost PairLayer step the view makes a reference, or the Place itself.

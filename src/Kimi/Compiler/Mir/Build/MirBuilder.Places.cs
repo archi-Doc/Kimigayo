@@ -214,35 +214,46 @@ internal sealed partial class MirBuilder
         => this.body.Project(this.Place(index.Left, input), MirProjectionKind.ConstIndex, (int)HirTables.PlanOf(index).Folded!.Value);
 
     // SPEC 4.7, 4.7.1: a built-in element at a runtime position: an integer, at a written ^x the length minus x, or at another key's
-    // resolution; SPEC 5.3: a raw pointer's p[n] is *(p + n).
+    // resolution; SPEC 5.3: a raw pointer's p[n] is *(p + n). SPEC 4.7.4: the receiver is located once, before the index: a handle the
+    // selection reads by value is secured there where the index builds code (Handle), and storage is lent there by a guard, a shared
+    // borrow ended once the index is evaluated, before the element's own access is formed. The guard is the receiver's check (DECISIONS
+    // R4-M56): A1 checks the receiver there, at the selection, and an access through the Index does not check it again.
     private MirPlace Element(IndexKoto index, bool input)
     {
         var sequence = this.Place(index.Left, input);
         sequence = Builds(index.Right) ? this.Handle(sequence, index.Left) : sequence;
+        var guard = MirTypes.SelectsByValue(this.body.TypeOf(sequence)) ? (MirPlace?)null : this.Borrow(SemanticsKind.Ref, sequence, index).Place;
         var key = ExpansionPlan.Of(index)?.First;
+        MirPlace position;
         if (key is not null || HirTables.Op(index.Right) == HirOp.Range)
         {
-            var body = this.body;
-            var resolved = key is null ? this.Boundary(index.Right, this.Length(sequence, index)) : this.Resolve(key, index, sequence);
-            return body.Project(sequence, MirProjectionKind.Index, resolved.Root);
+            position = key is null ? this.Boundary(index.Right, this.Length(sequence, index)) : this.Resolve(key, index, sequence);
         }
-
-        var position = this.Operand(index.Right, expected: null);
-        if (this.body.TypeOf(sequence) is { Semantics: SemanticsKind.Raw } pointer)
+        else if (this.body.TypeOf(sequence) is { Semantics: SemanticsKind.Raw } pointer)
         {
+            var count = this.Operand(index.Right, expected: null);
             var offset = this.Temp(pointer, index);
             var start = this.body.AddOperand(MirOperand.Copy(sequence));
-            this.body.AddOperand(position);
+            this.body.AddOperand(count);
             this.Set(offset, MirRvalue.Binary(MirBinaryOp.Add, start, proven: true), index);
             return this.body.Project(offset, MirProjectionKind.Deref, 0);
         }
+        else
+        {
+            position = this.Position(this.Operand(index.Right, expected: null), index.Right);
+        }
 
-        return this.body.Project(sequence, MirProjectionKind.Index, this.Position(position, index.Right).Root);
+        if (guard is { } lent)
+        {
+            this.body.Push(this.current, MirStatement.Of(MirStatementKind.EndBorrow, lent, this.Info(index)));
+        }
+
+        return this.body.Project(sequence, MirProjectionKind.Index, position.Root);
     }
 
     // SPEC 4.7.4, 12.2: a selection's receiver whose value it reads, a Slice handle or a raw pointer, secured where it is located (before an
     // index or a boundary that builds code), so that the selection reads the value it located; another receiver is its storage.
-    private MirPlace Handle(MirPlace sequence, Koto node) => this.body.TypeOf(sequence) is { Kind: BoundTypeKind.Slice } or { Semantics: SemanticsKind.Raw }
+    private MirPlace Handle(MirPlace sequence, Koto node) => MirTypes.SelectsByValue(this.body.TypeOf(sequence))
         ? this.Secure(MirOperand.Copy(sequence), node).Place : sequence;
 
     // SPEC 4.6.1: a position as the isize a selection reads, its value compared mathematically: a Type no wider than isize wraps (a same-width

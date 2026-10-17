@@ -755,6 +755,36 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         }
     }
 
+    // SPEC 4.7.4, 4.8.1 (DECISIONS R4-M56): a built-in selection lends its receiver's storage shared where it locates it, before the index:
+    // an element's guard, ended once the index is evaluated and before the element's own access (a read, or an index update's write), and
+    // a range's RawSlice backing, formed before its boundaries.
+    [Theory]
+    [InlineData("element", "    let x = values[reset(values@uniq)]\n")]
+    [InlineData("update", "    values[reset(values@uniq)] = 9\n")]
+    [InlineData("range", "    let s = values[reset(values@uniq)..]\n")]
+    public void SelectionsLendTheirReceiverWhereLocated(string name, string statement)
+    {
+        var body = Body($"func reset(v: uniq/[3 of i32]) -> isize => 0\nfunc {name}()\n    var values: [3 of i32] = [1, 2, 3]\n{statement}", name);
+        var values = Enumerable.Range(0, body.Locals.Length).Single(x => body.Locals[x].Name == "values");
+        var path = RuntimePath(body).ToArray();
+        var lent = Array.FindIndex(path, at => Statement(at) is { Kind: MirStatementKind.Assign, Rvalue: { Kind: MirRvalueKind.Ref, Place.Projection: 0 } } x &&
+            x.Rvalue.Place.Root == values && x.Rvalue.Op == (byte)MirRefKind.Shared);
+        var reset = Array.FindIndex(path, at => at.Index == body.Blocks[at.Block].Count && body.Blocks[at.Block].Terminator.Callee.Symbol?.Name == "reset");
+        Assert.InRange(lent, 0, reset - 1);
+        if (name != "range")
+        {
+            var guard = Statement(path[lent])!.Value.Place;
+            var end = Array.FindIndex(path, at => Statement(at) is { Kind: MirStatementKind.EndBorrow } x && x.Place == guard);
+            var access = Array.FindIndex(path, at => Statement(at) is { Kind: MirStatementKind.Assign } x && (Indexes(x.Place) ||
+                (x.Rvalue.Kind == MirRvalueKind.Use && Indexes(body.Operands[x.Rvalue.Start].Place))));
+            Assert.InRange(end, reset + 1, access - 1);
+        }
+
+        MirStatement? Statement(MirLocation at) => at.Index < body.Blocks[at.Block].Count ? body.Statements[body.Blocks[at.Block].Start + at.Index] : null;
+
+        bool Indexes(MirPlace place) => place.Root == values && body.Projections[place.Projection].Kind == MirProjectionKind.Index;
+    }
+
     // SPEC 7.7.3, 15.6.4 (DECISIONS R4-M41): a Value callee names the Callable signature its callee declares, a TypeToken constant: the
     // Function Type with its own Origins, not the call's, whose result is bound to the argument.
     [Fact]

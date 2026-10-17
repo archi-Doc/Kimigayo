@@ -1270,6 +1270,23 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `@move` already moved into its temp where evaluated. Rejected: every Place operand through a temp (more MIR for no change of
   what is read); a predicate on the forms that may write (an open family); securing the pending operands at a later operand's
   first statement (hidden builder state). Not temporary.
+- **R4-M56** (2026-10-17; PLAN G94, the planning session's design A3 E10 with its option 2 on review N8, implemented on its
+  instruction of the same day; amends R4-M40's backing placement and closes its Open) SPEC 4.7.4: a built-in selection locates and
+  checks its receiver once, before the index. A receiver whose value the selection reads, a Slice handle or a raw pointer
+  (`MirTypes.SelectsByValue`, the one fact the builder and A1 share), is G123's (R4-M55). Other receivers are storage, which the
+  selection lends shared where it locates it: an element selection's guard, `Borrow(Ref)` of the receiver into a temp with the
+  selection's SourceInfo, ended by `EndBorrow` once the index, key resolution or `^x` is evaluated and before the element's own
+  access (read, write, borrow, reservation, writeback) is formed; a range selection's `RawSlice` backing, now formed before its
+  boundaries. Contract (builder to A1, no vocabulary entry): every runtime `Index` the builder forms on storage has its guard (or
+  backing) where its receiver is located, always, so the rule is uniform; a default template's copy keeps its guards. A1 checks the
+  receiver's initialization and Moves there, at the selection, and an access through a runtime `Index` of storage does not check
+  its base again (an element is initialized only with its whole array, R4-M21). So an access into an uninitialized or moved array is
+  one problem, at the selection, whatever consumes the element; before, at the consumer. A Move or write of the receiver while the
+  index is evaluated is A5's conflict with the guard (step 1b); A1 no longer reports the element read after it. The receiver of a
+  built-in index is no reservation; an index update reserves the element after the index. ConstIndex evaluates nothing and has no
+  guard. A transfer inside the index leaves the guard dead on its runtime edge, so no runtime `EndBorrow` is needed. Rejected: a
+  consumer subject passed down `Place` and `Operand` (option 1: partial, over the parameter limits); duplicate problems (option 3);
+  a guard only where the index builds code (a gate; MIR cost measured instead). Not temporary.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
