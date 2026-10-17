@@ -39,7 +39,7 @@ MatchCoverage in Binding). Hold rule: DECISIONS R5-M7.
    - `LibraryImport.Decl` replaces `LibraryImport.Function`.
    - The Dictionary-storage callees get a `[Transitional("R8")]` symbol view.
 7. **`VTableDef`** is stored on `AdtDef`, needs no sort and follows member order. **`TyCtxt.Applies`** is memoized.
-8. **`TyCtxt.Instantiates`** (F3) lives in `Binding/TyCtxt.Instances.cs`, the file K3 and K10b extend (X8). It replaces
+8. **`TyCtxt.Instantiates`** (F3) lives in `Binding/TyCtxt.Instances.cs`, the file K3 extends with `Erase` (X8). It replaces
    `FunctionKoto.RequiresInstantiation`, a Syntax property that reads Binding (F 8).
 
 ---
@@ -274,6 +274,15 @@ a loss of precision, never wrong code.
 - `HasCLayout` (`:33-44`) stays for header binding, which runs before the fact exists. The commit records that two answers exist,
   in two phases.
 - First consumer P7b, which deletes the attribute walk and the `Open` re-check (`AggregateLayout.cs:257-265, 300`).
+- **The zero-sized C-layout rule** (X18). `Layout.Of` is its only owner at any depth: it returns OK, Limit or
+  CLayout(instance) and reads `IsCLayout`. K10a/K10b map CLayout to `InvalidCLayout_Kd` at the by-value use. Chapter F publishes
+  no C-layout obligation view, and `TyCtxt.Instances.cs` holds none.
+- **Binding's checks.**
+  - Binding keeps rejecting written declarations: a C-layout struct's own zero-sized Field (`ValidateCLayoutFields`,
+    `Binding.Attributes.cs:359-372`) and the fragment and shape rules of `ValidateLayoutFragments`.
+  - Its eager report on written instantiations, `CheckCLayoutInstance` (`:384-403`, called at `:378` and
+    `Binding.Types.cs:803`), goes at G2b, chapter K's unit. From then on `Layout.Of` reports by-value uses of written and inferred
+    instances alike.
 
 ### 4.10 Symbol columns (F2a, F2b, F2c; P6 landed) and runtime location text (P5)
 
@@ -364,7 +373,7 @@ As the plan says: `TestRecordValue` operands (F8, PD22), `$abort`'s SourceInfo (
 | `Witness` (F5b) | K6 rows 3 and 2w (X16) | called with `MirCallee.Contract` (formatting rows pass their Contract); Body → Body item; Builtin → shim item; Storage → `MonoKind` property-witness item keyed (Field, erased Self, `Access`), written by C3c (X14); Refused → OCC-X row; Limit → storage-nesting row |
 | `Comparison` (F6) | K's Builtin item targets; C8f; F7 | `(contract, self, operators)`; leaves Witness `(Target, Subst)` and Requirement `(requirement, Self-bearing Subst)` |
 | Self-bearing `Synthesized` (F6) | K6 row 2w | the one factory for a requirement's Subst on a Self |
-| `AdtDef.IsCLayout` (F1) | P7b | §4.9 |
+| `AdtDef.IsCLayout` (F1) | P7b's `Layout.Of`, the one owner of the zero-sized C-layout rule (X18), read by K10a/K10b | §4.9 |
 | `StartupResult.Symbol` (F2a), `TestCase.Symbol` (P6) | C0b2 Entry, K11 roots, C10a | implicit startup = `MirDefKey(null, Fn, 0)` |
 | `LibraryImport.Decl` (F2b) | P8 C-convention `Abi.Of` | §4.10 |
 | Dictionary-storage symbols (F2c) | the legacy Dictionary rows' declared callees (X4), C8e | §4.10 |
