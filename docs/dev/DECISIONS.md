@@ -1144,7 +1144,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   (`OriginPremiseClosure.Node()`, nodes no Origin expression names), the Origins its instances hide, which outlive the
   layer above each occurrence (R2); occurrences share it, which replaces the identity scan (`MarkCarrier`) and its
   closure branch, and `AddErasedRelations` relates it like any fixed Origin.
-  Kind: Value through anything but a borrowed input's referent, Content through that referent only (step 4). Stores:
+  Kind: Value through anything but a borrowed input's referent, Content through that referent only (step 4); a borrowed
+  input is a ref, uniq, objref or objuniq layer, a Slice or a UniqSlice (`BorrowReferent`, also the layer above a carrier;
+  SPEC 4.8.1, 4.8.2: `toArray` keeps the dependencies inside `T` but not the outer borrow; A5 1a3). Stores:
   invariant positions (`ComponentVariance`) reached through storage the call may write: not past a shared layer unless a
   raw pointer is followed again (SPEC 5.2.1), nor past a non-exclusive pair layer, nor in a callable Type. Untied: a
   non-static result atom or carrier no input reaches. Caller relations among the caller's own Origins add no row. The memo
@@ -1161,8 +1163,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   calls (review r2 option 2). Open: the Callable bounds are all of the callee's premise scope, not only those of carriers
   its contract names (a sound superset); a C8 Closure's or item's bounds are read as declared, not instantiated by an item
   instance's Type arguments as C1's are (latent: Binding rejects such an item value, `UnprovenConstraint_Kd`, review r3); a
-  pair-layer input gives Value through its target even in borrow cases (step 4
-  would give Content); A5 reads the view once per pass, its warm cost unmeasured. Not temporary.
+  pair-layer input gives Value through its target even in borrow cases (step 4 would give Content), as do the other
+  Loan-holding views (the internal Storage remainders; WriteWindow, Utf8Writer and FixedBuffer, whose `u8` holds no
+  Origin), a sound over-approximation; A5 reads the view once per pass, its warm cost unmeasured. Not temporary.
 - **R4-M60** (2026-10-17, tooling session; PLAN G111; refines R4-M50 for corpus rows) A corpus row that expects a rule an
   adopted SPEC revision replaced states the SPEC's verdict and, in an `Old` entry, what the default pipeline decides until
   R6-check, as `spec-cases.json` states a path's differences beside the SPEC's records (R4-M45); it is that table's class
