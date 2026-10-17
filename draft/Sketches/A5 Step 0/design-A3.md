@@ -44,6 +44,7 @@ r2 finding 3's row is not needed, because the shared-layer cut is taken (§5).
 | P4 | §15.6.3 Iterator descent, §15.6.4 step 4 | A result retaining a borrowed input's referent content retains every Loan that content holds; a Closure result retains all captured Loans. | An Iterator or Closure with two independently borrowed sources whose result names one, then a conflict on the other | 0 (no multi-slot struct in lib) / 0 / small (H) | **Needed** (follows from P1) |
 | P10 | §15.6 writes through references | Reads and writes through a reference reach every holder its carried direct Loans name, including holders of the references it was reborrowed through. | A Loan-carrying write through `r@follow@follow@uniq`, then a conflict on the intermediate holder | 0 (no `@follow =` in lib) / 0 (the ms writes store owned or Copy values) / small | **Needed** (layer-blind provenance) |
 | P11 | §13.7.2, §15.6 | A compound assignment, increment or decrement writes through its two-phase reservation, so it ends none of the destination's earlier Loans. | A compound assignment to a Loan-capable destination, then a conflict with a Loan its old value carried | 0 (39 compound lines: integers, plus one raw pointer `slot += layout.1` at `DictionaryStorage.kimi:41`; raw pointers are not Loan-capable) / 0 (20 lines, all numeric) / 0 (H) | **Needed** by the writeback activation |
+| P12 | §15.6.3 descent, §15.6.4 retention per argument | A result that descends from an abstract call's receiver keeps the receiver's parent Loans, as a Reborrow of the receiver does (`desc(c)`, F6; erratum, prototype round 9). | While the result is live and the receiver's holder is dead, an access that conflicts with that holder's Loan: `var r = h@uniq; let first = r.inner.take(); h.other = 5; return first` (36f), or `h.inner = src2` (rustc accepts both). A later `h.inner.take()` is rejected by S2 anyway (another receiver Place) | 0 (abstract descending calls reach their receiver through `self`: `Iteration.kimi:32, 59`) / 0 (`cursor.next()` is concrete) / 0 (grep proxy: abstract receivers in literals are parameters) | **Needed** (follows from P3); owner approval pending (§9 item 10) |
 | P5 | §15.6.2 key bullet, §22.4.4 | All keys of one static Field are one root. | A live Loan on `Cache<i32>.S.x` against an access to `Cache<string>.S.x` | 0 / 0 (Milestone42: whole reads and writes only) / 0 | Optional (no key Substs, no open-key composition in A4) |
 | P6 | §15.6.4 anchors, §15.6.5, §11.8 | A Borrow of mutable static storage is finite, bounded by the body; a value carrying it never leaves the body. | §15.6.4's `current` becomes an error; `leak`, `f = current` and `run` keep their verdicts; §11.8 is unchanged | 0 / 0 / 0 | Optional (no A4 per-result anchors; dissolves c2) |
 | P9 | §7.2.3, §15.6.4 | A call of a default template (recursive default SCCs only) retains every prepared input into its result. | A template default holding references that keeps no input, with a reserved input accessed while the callee's result lives | 0 / 0 / corpus ≤6 (H) | Optional (no inter-body `default_retains`) |
@@ -64,10 +65,10 @@ holder before the first borrow Deref is destroyed in place. P3 rejects the cross
 case (H). A3 keeps the plan's `within` kill, for consistency with the plan and S1. Adopting the root-most kill removes
 the 23a row, provided the plan and S1 change with it.
 
-**Soundness.** P1, P4, P9, P10 and P11 enlarge carried sets or keep Loans the SPEC ends. `content` and `refs` are monotone
-in the carried set (`Φ_E`, r1 finding 4), so these losses only add errors. P3 adds conflicts and is what makes syntactic
-comparison sound (§3). P5 enlarges overlap. Under P6, the Origin stratum Refutes every chain from such a borrow to a fixed
-Origin, so no call result carries an anchor.
+**Soundness.** P1, P4, P9, P10, P11 and P12 enlarge carried sets or keep Loans the SPEC ends. `content` and `refs` are
+monotone in the carried set (`Φ_E`, r1 finding 4), so these losses only add errors. P3 adds conflicts and is what makes
+syntactic comparison sound (§3). P5 enlarges overlap. Under P6, the Origin stratum Refutes every chain from such a borrow
+to a fixed Origin, so no call result carries an anchor.
 
 ## 3. Holders and references
 
@@ -255,9 +256,14 @@ join               :  per-slot union; P1/P2 as MirDataflow; prune(head): σ(H) =
 
 // ---- Calls (F3): c at ℓ, arguments a_i, destination D
 ret(i, Value)      =  val(a_i) ∪ (content(val(a_i)) if a_i is a reference);   ret(i, Content) = content(val(a_i))
-out                =  ⋃{ret(i,κ) | retains(c,i,κ,result)} ∪ ({Φ_E} if untied(c)) ∪ ({Φ_c} if abstract(c), descent)
+out                =  ⋃{ret(i,κ) | retains(c,i,κ,result)} ∪ ({Φ_E} if untied(c)) ∪ (desc(c) if abstract(c), descent)
                    ⇒  assign D := out;   ∀ retains(c,i,κ,store j), ∀T∈refs(val(a_j)): σ_out(T) ∪= ret(i,κ)
                    // a retained TwoPhaseUniq Loan has left its reservation holder, so it counts as activated
+desc(c)            =  {Φ_c} ∪ (val(a_r) \ {R_c})   // a_r: the receiver operand; R_c: the Loan of the Ref producing it, if any
+                   // erratum (prototype round 9, PLAN G113): val(a_r) is R_c plus its R2 parents, so Φ_c's values carry
+                   // its parent Loans, as a child's do (S15.6.3), and keep no R_c (S8.11.3). Without the parents, 36c,
+                   // 36e and 36g are accepted. It reads the call's operand, as every ret(i,κ) does; R2 of recv(c) at ℓ
+                   // agrees only while writes to the reservation's route are rejected (§15.6.7; 36e, 36h)
 unknown callee     :  every argument → result and → store j for every exclusive a_j; untied.
 writeback          :  the write through $w activates the Loan reserved in $w (nothing retains $w).
 
@@ -305,9 +311,10 @@ excused(L,ℓ)       :- Call c2 at ℓ, preserves(c2), L = Φ_c1 (not ^dist), ca
 excused(L,ℓ)       :- ℓ forms an argument reservation of a Call c2 with excused(L, c2's location).
                       // erratum (prototype round 7, 33c): MIR forms c2's receiver reservation before the Call, so
                       // without this row SPEC's takeTwo (§8.11.3) is rejected at that formation; takeAcross still errs
-// Φ_c: place = recv(c)'s referent with its content, mode uniq, issued into the result of an abstract requirement or
-// Callable call whose result descends (§8.11.4). Conformance (H, S2 text): an escaped Φ_prev on (*self) with a fresh
-// anchor at entry; a self-Field-path call of a preserves requirement undisturbed since entry is excused against it.
+// Φ_c: place = recv(c)'s referent with its content, mode uniq, issued with desc(c)'s parent Loans into the result of an
+// abstract requirement or Callable call whose result descends (§8.11.4). Conformance (H, S2 text): an escaped Φ_prev on
+// (*self) with a fresh anchor at entry; a self-Field-path call of a preserves requirement undisturbed since entry is
+// excused against it.
 
 // ---- F7: an Aggregate(Closure) flow; [x@ref] issues on the outer slot; calls use TyCtxt.Closure; a Consuming call
 // Moves the Closure. F9: inline copies are ordinary code; template calls use P9. F10: forward on P1 + P2 edges, liveness
@@ -486,7 +493,7 @@ the transit clause in `CS` (§5).
   approved.
 
 The SPEC simplifications land before the R4 exit (plan §5.3). Until then, a violation of an approved loss is a located
-`Unsupported_Kd`.
+`Unsupported_Kd`. Item 10 (prototype round 9, PLAN G113) is pending.
 
 | # | Decision | Content | Recommendation |
 | --- | --- | --- | --- |
@@ -498,6 +505,7 @@ The SPEC simplifications land before the R4 exit (plan §5.3). Until then, a vio
 | 7 | Origin boundary | §7: A5 takes the old Analysis's role at R6-check; Binding's fixed–fixed body judgments move at R7; the ledger split; T1 | Adopt |
 | 8 | MIR contracts | The TwoPhaseUniq writeback activation; the `RawSlice` backing operand; `MirCallee.Arg`; the `EndBorrow` meaning; the catalog `InPlace` column. No closed-vocabulary entry; no `MirLocalRole` member | Approve |
 | 9 | DEC and DIAGNOSTICS | **DEC**: the A5 representation (§3, §5); the `MirDataflow` join hook and backward pass (superseding R4-M20's word-OR detail); A4 keys; the boundary; G3, G4, G7; Relate and Clauses only inside `Retains`; `PublishedBindingTypes` additions.<br>**DIAGNOSTICS**: the partition rule; the guard `ended` code; E5's minimum-key cause | Record |
+| 10 | P12 (G113 erratum) | `desc(c)` (§5): a descending result keeps `Φ_c` with the receiver's parent Loans. Needed for soundness (36c, 36e, 36g); costs 36f, 0 / 0 / 0 found. Rejected: `Φ_c` alone (unsound), keeping R_c (rejects `takeTwo`), R2 of `recv(c)` at the call (sound only while A3 rejects writes to a reservation's route, which it does not yet: 36e, 36h) | Approve |
 
 ## 10. Implementation units (plan §6.2)
 
@@ -518,7 +526,7 @@ The SPEC simplifications land before the R4 exit (plan §5.3). Until then, a vio
 | 2c | C2 view, then F7 | S15:715-723, S7:341-344 | Rule tests |
 | 2d | F8: updates, match, guards, writeback, collections, destroying calls | S14:332-351, S15:650-689, S13:600-602, S4:570-575 | Rule tests |
 | 2e | F9 defaults | S7:84-88; audit-calls row 26 | Rule tests |
-| 2f | C5 view, then F6 (S2) | `takeTwo`, `takeAcross`, Drain, Merge; 12 library conformances accepted | Rule tests, library corpus |
+| 2f | C5 view, then F6 (S2) | `takeTwo`, `takeAcross`, Drain, Merge; 12 library conformances accepted; prototype 36a–36g (`desc(c)`) | Rule tests, library corpus |
 | 2g | E4/E5 keys, A6 completion | Derived rules per DIAGNOSTICS | Corpus |
 | Exit | R6-check deletion list (§7, §8), test migration | Every family complete, no `Unsupported_Kd` family | Session verify, final review |
 
@@ -532,6 +540,12 @@ The SPEC simplifications land before the R4 exit (plan §5.3). Until then, a vio
   `swap(a, b)` with parameters, `y = h@follow + 1`.
 - **Other open items**: S1 without P3 (§9 item 4); relaxation (c) and V16 (§9); F6 (waits for S2); Binding views
   (snapshots); R5 (serialized, plan §9.1); A4's depth limit (S5).
+- **F6 stores (H, round 9).** `Φ_c` goes only into the result, never into storage that `retains(c, i, κ, store j)`
+  writes. A stored value retaining the receiver's content then carries no `Φ_c`, while §8.11.4 rule 1 lets a later
+  abstract call on the receiver reach its Loans. A fix stores `desc(c)`, not `Φ_c` alone. Not prototyped; for unit 2f.
+- **Reservation route (round 9 review, 36h).** §15.6.7 makes any write to a reference a reservation was reached
+  through an error. `hits` gives a write no reach across a Deref, so A3 accepts
+  `cur.inner.takeWith(do { cur = b; 0 })`. This is outside F6 and needs its own rule.
 
 ## Revision history
 
@@ -546,3 +560,6 @@ The SPEC simplifications land before the R4 exit (plan §5.3). Until then, a vio
   reports only the observing part beyond its shallow activation.
 - **A3 erratum** (prototype round 7, unit 0b): `excused` also covers the argument reservations of the excused Call (33c),
   so SPEC's `takeTwo` stays valid. For unit 2f (F6).
+- **A3 erratum** (prototype round 9, PLAN G113): `out` issues `desc(c)`, `Φ_c` with the receiver's parent Loans, so
+  design A rejects 36a–36e and 36g under either base and keeps `takeTwo`. P12 is listed (§9 item 10, pending). The
+  review found the reservation-route gap (36h, §11). For unit 2f.
