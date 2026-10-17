@@ -240,7 +240,7 @@ fn pick @85
   _8: ref/Array<i32> temp @101 s1
   _9: isize temp @101 s1
   _10: isize temp @104 s1
-  _11: isize temp @103 s1
+  _11: isize temp @101 s1
   s1: lexical in s0 @91
   bb0:
       StorageLive(_2) @92 s1
@@ -263,7 +263,7 @@ fn pick @85
       _9 = len(_1) @101 s1
       StorageLive(_10) @104 s1
       _10 = const 1_i32 as isize (Wrap) proven @104 s1
-      StorageLive(_11) @103 s1
+      StorageLive(_11) @101 s1
       _11 = Sub(copy _9, copy _10) proven @103 s1
       EndBorrow(_8) @101 s1
       _3 = Add(move _7, copy _1[_11]) @97 s1
@@ -278,7 +278,7 @@ fn pick @85
       StorageDead(_2) @92 s1
       goto bb4 @85
   bb7:
-      StorageDead(_11) @103 s1
+      StorageDead(_11) @101 s1
       StorageDead(_10) @104 s1
       StorageDead(_9) @101 s1
       StorageDead(_8) @101 s1
@@ -292,7 +292,7 @@ fn pick @85
       _0 = move _3 @96 s1
       goto bb7 @96 s1
   bb9:
-      StorageDead(_11) @103 s1
+      StorageDead(_11) @101 s1
       StorageDead(_10) @104 s1
       StorageDead(_9) @101 s1
       StorageDead(_8) @101 s1
@@ -310,9 +310,9 @@ fn middle @105
   _1: ref/[5 of i32] arg values @105
   _2: ref/[5 of i32] temp @115
   _3: isize temp @115
-  _4: isize temp @118
+  _4: isize temp @115
   _5: isize temp @120
-  _6: isize temp @119
+  _6: isize temp @115
   _7: bool temp @115
   _8: isize temp @115
   _9: Never temp @115
@@ -322,11 +322,11 @@ fn middle @105
     * _2 = &(*_1): ref/[5 of i32] @115
       StorageLive(_3) @115
       _3 = len((*_1)) @115
-      StorageLive(_4) @118
+      StorageLive(_4) @115
       _4 = const 1_i32 as isize (Wrap) proven @118
       StorageLive(_5) @120
       _5 = const 1_i32 as isize (Wrap) proven @120
-      StorageLive(_6) @119
+      StorageLive(_6) @115
       _6 = Sub(copy _3, copy _5) proven @119
       StorageLive(_7) @115
       StorageLive(_8) @115
@@ -356,9 +356,9 @@ fn middle @105
       StorageDead(_10) @115
       StorageDead(_8) @115
       StorageDead(_7) @115
-      StorageDead(_6) @119
+      StorageDead(_6) @115
       StorageDead(_5) @120
-      StorageDead(_4) @118
+      StorageDead(_4) @115
       StorageDead(_3) @115
       StorageDead(_2) @115
       return @115
@@ -368,7 +368,7 @@ fn head @121
   _2: ref/Array<i32> temp @131
   _3: isize temp @131
   _4: isize temp @131
-  _5: isize temp @134
+  _5: isize temp @131
   _6: bool temp @131
   _7: isize temp @131
   _8: Never temp @131
@@ -380,7 +380,7 @@ fn head @121
       _3 = len((*_1)) @131
       StorageLive(_4) @131
       _4 = const 0_isize @131
-      StorageLive(_5) @134
+      StorageLive(_5) @131
       _5 = const 2_i32 as isize (Wrap) proven @134
       StorageLive(_6) @131
       StorageLive(_7) @131
@@ -411,7 +411,7 @@ fn head @121
       StorageDead(_9) @131
       StorageDead(_7) @131
       StorageDead(_6) @131
-      StorageDead(_5) @134
+      StorageDead(_5) @131
       StorageDead(_4) @131
       StorageDead(_3) @131
       StorageDead(_2) @131
@@ -420,7 +420,7 @@ fn reslice @135
   _0: Slice<i32> return @135
   _1: Slice<i32> arg view @135
   _2: isize temp @147
-  _3: isize temp @150
+  _3: isize temp @147
   _4: bool temp @147
   _5: isize temp @147
   _6: Never temp @147
@@ -428,7 +428,7 @@ fn reslice @135
   bb0:
       StorageLive(_2) @147
     * _2 = len(_1) @147
-      StorageLive(_3) @150
+      StorageLive(_3) @147
       _3 = const 1_i32 as isize (Wrap) proven @150
       StorageLive(_4) @147
       StorageLive(_5) @147
@@ -458,7 +458,7 @@ fn reslice @135
       StorageDead(_7) @147
       StorageDead(_5) @147
       StorageDead(_4) @147
-      StorageDead(_3) @150
+      StorageDead(_3) @147
       StorageDead(_2) @147
       return @147
 fn make @151
@@ -601,7 +601,7 @@ fn back @180
   _5: isize temp @191
   _6: bool temp @190
   _7: Never temp @190
-  _8: isize temp @190
+  _8: isize temp @188
   _9: i32 temp @188
   _10: ref/Array<i32> temp @192
   _11: isize temp @192
@@ -609,7 +609,7 @@ fn back @180
   _13: isize temp @195
   _14: bool temp @194
   _15: Never temp @194
-  _16: isize temp @194
+  _16: isize temp @192
   bb0:
       StorageLive(_3) @188
     * _3 = &(*_1): ref/Array<i32> @188
@@ -623,7 +623,7 @@ fn back @180
   bb1:
       _7 = intrinsic Fail(const "KIMI_E_INDEX_BOUNDS") -> ! @190
   bb2:
-      StorageLive(_8) @190
+      StorageLive(_8) @188
       _8 = Sub(copy _4, copy _5) proven @190
       EndBorrow(_3) @188
       StorageLive(_9) @188
@@ -642,18 +642,18 @@ fn back @180
   bb3:
       _15 = intrinsic Fail(const "KIMI_E_INDEX_BOUNDS") -> ! @194
   bb4:
-      StorageLive(_16) @194
+      StorageLive(_16) @192
       _16 = Sub(copy _11, copy _13) proven @194
       EndBorrow(_10) @192
       _0 = Add(move _9, copy (*_1)[_16]) @187
-      StorageDead(_16) @194
+      StorageDead(_16) @192
       StorageDead(_14) @194
       StorageDead(_13) @195
       StorageDead(_12) @195
       StorageDead(_11) @192
       StorageDead(_10) @192
       StorageDead(_9) @188
-      StorageDead(_8) @190
+      StorageDead(_8) @188
       StorageDead(_6) @190
       StorageDead(_5) @191
       StorageDead(_4) @188

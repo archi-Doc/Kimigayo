@@ -34,12 +34,12 @@ fn counters @11
   _12: () temp @37 s1
   _13: i32 temp @41 s1
   _14: ref/[3 of i32] temp @38 s1
-  _15: isize temp @40 s1
+  _15: isize temp @38 s1
   _16: uniq/i32 temp @37 s1
   _17: () temp @42 s1
   _18: i32 temp @43 s1
   _19: ref/[3 of i32] temp @43 s1
-  _20: isize temp @45 s1
+  _20: isize temp @43 s1
   _21: i32 temp @48 s1
   _22: uniq/i32 temp @48 s1
   s1: lexical in s0 @20
@@ -73,7 +73,7 @@ fn counters @11
     * _13 = copy _7 @41 s1
       StorageLive(_14) @38 s1
       _14 = &(*_2): ref/[3 of i32] @38 s1
-      StorageLive(_15) @40 s1
+      StorageLive(_15) @38 s1
       _15 = copy _3 @40 s1
       EndBorrow(_14) @38 s1
       StorageLive(_16) @37 s1
@@ -81,7 +81,7 @@ fn counters @11
       (*_16) = Sub(copy (*_16), move _13) @37 s1
       _12 = const () @37 s1
       StorageDead(_16) @37 s1
-      StorageDead(_15) @40 s1
+      StorageDead(_15) @38 s1
       StorageDead(_14) @38 s1
       StorageDead(_13) @41 s1
       StorageDead(_12) @37 s1
@@ -90,12 +90,12 @@ fn counters @11
     * _18 = copy _4 @46 s1
       StorageLive(_19) @43 s1
       _19 = &(*_2): ref/[3 of i32] @43 s1
-      StorageLive(_20) @45 s1
+      StorageLive(_20) @43 s1
       _20 = const 1_i32 as isize (Wrap) proven @45 s1
       EndBorrow(_19) @43 s1
       (*_2)[_20] = move _18 @42 s1
       _17 = const () @42 s1
-      StorageDead(_20) @45 s1
+      StorageDead(_20) @43 s1
       StorageDead(_19) @43 s1
       StorageDead(_18) @43 s1
       StorageDead(_17) @42 s1
@@ -223,7 +223,7 @@ fn divergentReplacementIndex @75
   _11: Never temp @93 s5
   _12: () temp @94 s5
   _13: () temp @95 s6
-  _14: isize temp @87 s1
+  _14: isize temp @85 s1
   s1: lexical in s0 @76
   s2: lexical in s1 @90
   s3: deferred in s2 @92
@@ -241,7 +241,7 @@ fn divergentReplacementIndex @75
       StorageLive(_5) @87 s1
     * goto bb7 check bb8 @96 s2
   bb1:
-      StorageLive(_14) @87 s1
+      StorageLive(_14) @85 s1
       _14 = move _5 as isize (Wrap) proven @87 s1
       EndBorrow(_4) @85 s1
       drop _1[_14] -> bb13 @84 s1
@@ -291,7 +291,7 @@ fn divergentReplacementIndex @75
   bb13:
       _1[_14] = move _3 @84 s1
       _2 = const () @84 s1
-      StorageDead(_14) @87 s1
+      StorageDead(_14) @85 s1
       StorageDead(_5) @87 s1
       StorageDead(_4) @85 s1
       drop _3 -> bb14 @85 s1

@@ -216,8 +216,9 @@ internal sealed partial class MirBuilder
     // SPEC 4.7, 4.7.1: a built-in element at a runtime position: an integer, at a written ^x the length minus x, or at another key's
     // resolution; SPEC 5.3: a raw pointer's p[n] is *(p + n). SPEC 4.7.4: the receiver is located once, before the index: a handle the
     // selection reads by value is secured there where the index builds code (Handle), and storage is lent there by a guard, a shared
-    // borrow ended once the index is evaluated, before the element's own access is formed. The guard is the receiver's check (DECISIONS
-    // R4-M56): A1 checks the receiver there, at the selection, and an access through the Index does not check it again.
+    // borrow ended once the index is evaluated, before the element's own access is formed. The guard is the receiver's check at the
+    // selection (DECISIONS R4-M56), and the position local is located there, so A1 reports an access through the Index under the same
+    // subject: one problem unless the receiver changed in between.
     private MirPlace Element(IndexKoto index, bool input)
     {
         var sequence = this.Place(index.Left, input);
@@ -227,7 +228,7 @@ internal sealed partial class MirBuilder
         MirPlace position;
         if (key is not null || HirTables.Op(index.Right) == HirOp.Range)
         {
-            position = key is null ? this.Boundary(index.Right, this.Length(sequence, index)) : this.Resolve(key, index, sequence);
+            position = key is null ? this.Boundary(index.Right, this.Length(sequence, index), index) : this.Resolve(key, index, sequence);
         }
         else if (this.body.TypeOf(sequence) is { Semantics: SemanticsKind.Raw } pointer)
         {
@@ -240,7 +241,7 @@ internal sealed partial class MirBuilder
         }
         else
         {
-            position = this.Position(this.Operand(index.Right, expected: null), index.Right);
+            position = this.Position(this.Operand(index.Right, expected: null), index.Right, index);
         }
 
         if (guard is { } lent)
@@ -257,11 +258,12 @@ internal sealed partial class MirBuilder
         ? this.Secure(MirOperand.Copy(sequence), node).Place : sequence;
 
     // SPEC 4.6.1: a position as the isize a selection reads, its value compared mathematically: a Type no wider than isize wraps (a same-width
-    // unsigned value isize cannot hold reads as negative, which the bounds check rejects), a wider one converts checked.
-    private MirPlace Position(in MirOperand position, Koto node)
+    // unsigned value isize cannot hold reads as negative, which the bounds check rejects), a wider one converts checked; in a local located
+    // at its selection, whose subject A1 reports an access through its Index under (DECISIONS R4-M56).
+    private MirPlace Position(in MirOperand position, Koto node, Koto selection)
     {
         var type = this.TypeOf(position) ?? BoundType.ISize;
-        var local = this.Temp(BoundType.ISize, node);
+        var local = this.Temp(BoundType.ISize, selection);
         var operand = this.body.AddOperand(position);
         var wraps = this.Width(type, out _) is var width and > 0 && width <= compilation.PointerWidth;
         MirRvalue value;

@@ -1282,15 +1282,17 @@ and migration obligations remain in force; no numeric cap changes are authorized
   selection's SourceInfo, ended by `EndBorrow` once the index, key resolution or `^x` is evaluated and before the element's own
   access (read, write, borrow, reservation, writeback) is formed; a range selection's `RawSlice` backing, now formed before its
   boundaries. Contract (builder to A1, no vocabulary entry): every runtime `Index` the builder forms on storage has its guard (or
-  backing) where its receiver is located, always, so the rule is uniform; a default template's copy keeps its guards. A1 checks the
-  receiver's initialization and Moves there, at the selection, and an access through a runtime `Index` of storage does not check
-  its base again (an element is initialized only with its whole array, R4-M21). So an access into an uninitialized or moved array is
-  one problem, at the selection, whatever consumes the element; before, at the consumer. A Move or write of the receiver while the
-  index is evaluated is A5's conflict with the guard (step 1b); A1 no longer reports the element read after it. The receiver of a
+  backing) where its receiver is located, always, so the rule is uniform; a default template's copy keeps its guards; the Index's
+  position local is located at the selection too. A1 checks the receiver's initialization and Moves at the guard and again at each
+  access through a runtime `Index` of storage, both under the selection's subject (the access's from its position local), so
+  R4-M3a's one problem per code and subject makes an access into an uninitialized or moved array one problem, at the selection,
+  whatever consumes the element (before, at the consumer), and a receiver Moved while its own index is evaluated is still
+  `MovedPlace_Kd` at the selection (SPEC 23.1), independent of the Move's conflict with the guard (A5, step 1b). The receiver of a
   built-in index is no reservation; an index update reserves the element after the index. ConstIndex evaluates nothing and has no
   guard. A transfer inside the index leaves the guard dead on its runtime edge, so no runtime `EndBorrow` is needed. Rejected: a
   consumer subject passed down `Place` and `Operand` (option 1: partial, over the parameter limits); duplicate problems (option 3);
-  a guard only where the index builds code (a gate; MIR cost measured instead). Not temporary.
+  skipping the access's check (first implemented: it lost the Moved read after a Move inside the index); a guard only where the
+  index builds code (a gate; MIR cost measured instead). Not temporary.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

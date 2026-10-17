@@ -13,7 +13,7 @@ fn grow @4
   _5: () temp @17 s1
   _6: i32 temp @18 s1
   _7: ref/Array<i32> temp @18 s1
-  _8: isize temp @20 s1
+  _8: isize temp @18 s1
   _9: isize temp @23 s1
   s1: lexical in s0 @11
   bb0:
@@ -29,12 +29,12 @@ fn grow @4
     * _6 = copy _2 @21 s1
       StorageLive(_7) @18 s1
       _7 = &(*_1): ref/Array<i32> @18 s1
-      StorageLive(_8) @20 s1
+      StorageLive(_8) @18 s1
       _8 = const 0_i32 as isize (Wrap) proven @20 s1
       EndBorrow(_7) @18 s1
       (*_1)[_8] = move _6 @17 s1
       _5 = const () @17 s1
-      StorageDead(_8) @20 s1
+      StorageDead(_8) @18 s1
       StorageDead(_7) @18 s1
       StorageDead(_6) @18 s1
       StorageDead(_5) @17 s1

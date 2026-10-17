@@ -263,14 +263,14 @@ internal sealed partial class MirBuilder
         MirPlace start, last;
         if (range is not null)
         {
-            start = range.Start is null ? this.Position(zero, index) : this.Boundary(range.Start, length);
-            last = range.End is null ? length : this.Boundary(range.End, length);
+            start = range.Start is null ? this.Position(zero, index, index) : this.Boundary(range.Start, length, index);
+            last = range.End is null ? length : this.Boundary(range.End, length, index);
         }
         else
         {
             var resolved = this.Follow(ExpansionPlan.Of(index)?.First is { } key ? this.Resolve(key, index, sequence) : this.Place(index.Right), 16);
-            (start, last) = (this.Position(MirOperand.Copy(this.Bound(resolved, "start")), index),
-                this.Position(MirOperand.Copy(this.Bound(resolved, "end")), index));
+            (start, last) = (this.Position(MirOperand.Copy(this.Bound(resolved, "start")), index, index),
+                this.Position(MirOperand.Copy(this.Bound(resolved, "end")), index, index));
         }
 
         if (!Completes(index))
@@ -330,15 +330,16 @@ internal sealed partial class MirBuilder
     // A selection's position (SPEC 4.6.1, 4.7.1): an integer as the isize it reads; a written ^x, which resolves only for 0 <= x <= L, the
     // length minus x. An offset below 0 fails as an out-of-bounds position (KIMI_E_INDEX_BOUNDS, SPEC 22.5.2), a literal one in range proving
     // it, so the subtraction cannot overflow; an offset past the length gives a negative position, which the selection's bounds check rejects.
-    private MirPlace Boundary(Koto node, MirPlace length)
+    // The position is a local located at its selection (Position).
+    private MirPlace Boundary(Koto node, MirPlace length, Koto selection)
     {
         if (node is not FromEndIndexKoto { Operand: var offset } || HirTables.Op(node) != HirOp.Range)
         {
-            return this.Position(this.Operand(node, expected: null), node);
+            return this.Position(this.Operand(node, expected: null), node, selection);
         }
 
         var operand = this.Operand(offset, expected: null);
-        var x = this.Position(operand, offset);
+        var x = this.Position(operand, offset, offset);
         var zero = MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize)));
         if (Completes(node) && (operand.Kind != MirOperandKind.Const || this.body.Consts[operand.Arg].Bits < 0 ||
             this.body.Consts[operand.Arg].Bits > int.MaxValue))
@@ -349,7 +350,7 @@ internal sealed partial class MirBuilder
             this.Fail(fail, "KIMI_E_INDEX_BOUNDS", node);
         }
 
-        var position = this.Temp(BoundType.ISize, node);
+        var position = this.Temp(BoundType.ISize, selection);
         var operands = this.body.AddOperand(MirOperand.Copy(length));
         this.body.AddOperand(MirOperand.Copy(x));
         this.Set(position, MirRvalue.Binary(MirBinaryOp.Sub, operands, proven: true), node);

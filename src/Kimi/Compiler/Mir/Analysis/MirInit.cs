@@ -8,9 +8,10 @@
 // Five lanes per path, joined by union: MaybeUninit, MaybeMoved, EverInit, and for A2 MaybeInit and MaybePartial (a non-root path a Move or
 // a Drop took out of its parent, cleared with the subtree by any event of an ancestor-or-self). A definition initializes a path's subtree, a
 // Move or a Drop uninitializes it, StorageLive and StorageDead start a fresh binding lifetime; a use needs its whole subtree initialized on
-// every incoming path, its own bit being the construction fact; a use through a runtime Index of storage does not check its receiver,
-// which the selection's guard, a use where the receiver is located, checks (the builder's contract, DECISIONS R4-M56: an element is
-// initialized only with its whole array, R4-M21). Every root is tracked (A2 reads temporaries' states), but the state rules
+// every incoming path, its own bit being the construction fact; a use through a runtime Index of storage reports on its receiver under
+// the selection's subject, its position local's, as the selection's guard, a use where the receiver is located, does (the builder's
+// contract, DECISIONS R4-M56), so the two are one problem unless the receiver changed in between. Every root is tracked (A2 reads
+// temporaries' states), but the state rules
 // report only the Places of Var, Arg and Return roots: a compiler temporary is never a Place of the program. A whole use of the return local
 // is a delivery, checked only where the runtime edges reach it; a Return checks nothing. A Move without a Move Path is reported whatever its
 // root. A body no view decides is analyzed once, for every view.
@@ -163,11 +164,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
 
             if (how != MirMoveData.Direct)
             {
-                if (!this.Guarded(place))
-                {
-                    this.Check(path);
-                }
-
+                this.Check(path, this.Selection(place));
                 if (this.Checks && how == MirMoveData.NoPath && (access & MirAccess.Moves) != 0)
                 {
                     this.Add(DiagnosticCode.StaticMovePathRequired_Kd);
@@ -179,7 +176,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             }
             else if ((access & MirAccess.Moves) != 0)
             {
-                this.Check(path);
+                this.Check(path, this.subject);
                 this.Take(path, (1 << Uninit) | (1 << Moved));
             }
             else if ((access & MirAccess.DropUse) != 0)
@@ -188,24 +185,26 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             }
             else
             {
-                this.Check(path);
+                this.Check(path, this.subject);
             }
         }
 
-        // Whether a Place is through a runtime Index of storage, whose receiver its selection's guard checks (R4-M56).
-        private readonly bool Guarded(MirPlace place)
+        // The subject a use below its path reports under: through a runtime Index of storage, the innermost one's selection, which its
+        // position local carries and its guard reports under (R4-M56); else the location's.
+        private readonly SourceRef Selection(MirPlace place)
         {
             var projections = body.Projections;
+            var subject = this.subject;
             for (var id = place.Projection; id > 0; id = projections[id].Prefix)
             {
                 var receiver = place with { Projection = projections[id].Prefix };
                 if (projections[id].Kind == MirProjectionKind.Index && !MirTypes.SelectsByValue(body.TypeOf(receiver)))
                 {
-                    return true;
+                    subject = body.Subject(body.Locals[projections[id].Arg].Source);
                 }
             }
 
-            return false;
+            return subject;
         }
 
         // The Place up to its outermost PairLayer step the view makes a reference, or the Place itself.
@@ -271,12 +270,13 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         }
 
         // A use needs the whole subtree initialized, the construction fact included (SPEC 15.1.2): Moved where it may have been moved.
-        private readonly void Check(int path)
+        private readonly void Check(int path, SourceRef subject)
         {
             var end = moves.Paths[path].End;
             if (this.Checks && this.Reported(path) && MirDataflow.Any(state, Lanes, Uninit, path, end))
             {
-                this.Add(MirDataflow.Any(state, Lanes, Moved, path, end) ? DiagnosticCode.MovedPlace_Kd : DiagnosticCode.UninitializedPlace_Kd);
+                var code = MirDataflow.Any(state, Lanes, Moved, path, end) ? DiagnosticCode.MovedPlace_Kd : DiagnosticCode.UninitializedPlace_Kd;
+                this.Report.Add(new(code, subject, this.Views));
             }
         }
 

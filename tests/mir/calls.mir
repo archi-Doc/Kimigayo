@@ -238,15 +238,15 @@ fn first @158
   _0: ref/i32 return @158
   _1: ref/[3 of i32] arg values @158
   _2: ref/[3 of i32] temp @167
-  _3: isize temp @169
+  _3: isize temp @167
   bb0:
       StorageLive(_2) @167
     * _2 = &(*_1): ref/[3 of i32] @167
-      StorageLive(_3) @169
+      StorageLive(_3) @167
       _3 = const 0_i32 as isize (Wrap) proven @169
       EndBorrow(_2) @167
       _0 = &(*_1)[_3]: ref/i32 @166
-      StorageDead(_3) @169
+      StorageDead(_3) @167
       StorageDead(_2) @167
       return @166
 fn read @171

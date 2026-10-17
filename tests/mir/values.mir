@@ -419,9 +419,9 @@ fn cut @215
   _2: ref/Array<i32> temp @225
   _3: isize temp @225
   _4: isize temp @229
-  _5: isize temp @228
+  _5: isize temp @225
   _6: Never temp @230
-  _7: isize temp @230
+  _7: isize temp @225
   bb0:
       StorageLive(_2) @225
     * _2 = &(*_1): ref/Array<i32> @225
@@ -429,15 +429,15 @@ fn cut @215
       _3 = len((*_1)) @225
       StorageLive(_4) @229
       _4 = const 1_i32 as isize (Wrap) proven @229
-      StorageLive(_5) @228
+      StorageLive(_5) @225
       _5 = Sub(copy _3, copy _4) proven @228
       StorageLive(_6) @230
       _6 = intrinsic Abort(const "stop") -> ! check bb1 @231
   bb1:
-      StorageLive(_7) @230
-      StorageDead(_7) @230
+      StorageLive(_7) @225
+      StorageDead(_7) @225
       StorageDead(_6) @230
-      StorageDead(_5) @228
+      StorageDead(_5) @225
       StorageDead(_4) @229
       StorageDead(_3) @225
       StorageDead(_2) @225
