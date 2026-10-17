@@ -644,9 +644,10 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
     public void AWriteOfAReservationsRouteReachesIt()
         => Assert.Equal(
             [
-                "e36h: cur = b CallReservationConflict_Kd", "e38a: r = y@uniq CallReservationConflict_Kd", "e38b: cur.inner = i2@uniq CallReservationConflict_Kd",
-                "e38c: cur@follow = H.init(inner: i2@uniq) CallReservationConflict_Kd", "e38g: Kimi.Intrinsics.replace(cur@uniq, with: b) CallReservationConflict_Kd",
-                "e38i: arr[j] = z@uniq CallReservationConflict_Kd", "e107: p@follow = h2@uniq CallReservationConflict_Kd",
+                "e36h: cur = b CallReservationConflict_Kd", "e38a: r = y@uniq CallReservationConflict_Kd",
+                "e38b: cur.inner = i2@uniq CallReservationConflict_Kd", "e38c: cur@follow = H.init(inner: i2@uniq) CallReservationConflict_Kd",
+                "e38g: Kimi.Intrinsics.replace(cur@uniq, with: b) CallReservationConflict_Kd", "e38i: arr[j] = z@uniq CallReservationConflict_Kd",
+                "e107: p@follow = h2@uniq CallReservationConflict_Kd",
             ],
             Problems("""
                 func e36h(a: uniq/H, b: uniq/H) -> i32
@@ -754,8 +755,8 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
         => Assert.Equal(
             [
                 "d26a: Kimi.Intrinsics.replace(s@uniq, with: C.init(r: y@uniq))", "d26b: arr", "d26b: arr.clear() CallActivationConflict_Kd",
-                "d123: Kimi.Intrinsics.replace(s@uniq, with: Q.init(r: y@uniq, q: z@ref))", "d123c: Kimi.Intrinsics.replace(s@uniq, with: Q.init(r: y@uniq, q: z@ref))",
-                "d15b: x = 3",
+                "d123: Kimi.Intrinsics.replace(s@uniq, with: Q.init(r: y@uniq, q: z@ref))",
+                "d123c: Kimi.Intrinsics.replace(s@uniq, with: Q.init(r: y@uniq, q: z@ref))", "d15b: x = 3",
             ],
             Problems("""
                 func d26a()
