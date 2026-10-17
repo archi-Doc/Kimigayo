@@ -31,12 +31,18 @@ internal sealed partial class MirBuilder
         return !read || HirTables.PlaceOf(node).Kind != HirPlaceKind.Local;
     }
 
-    // Whether a Type has a Never component at any depth (Aggregate; DECISIONS R4-M59). Components nest finitely.
-    private static bool HasNever(BoundType type)
+    // Whether a Type holds a Never element where a literal builds one: a Tuple's component or an array's element, through those kinds
+    // only (Aggregate; DECISIONS R4-M59). A Never elsewhere, a Function's result or a Type argument, is a declared Type.
+    private static bool HoldsNeverElement(BoundType type)
     {
+        if (type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array))
+        {
+            return false;
+        }
+
         for (var i = 0; i < type.Components.Count; i++)
         {
-            if (ReferenceEquals(type.Components[i], BoundType.Never) || HasNever(type.Components[i]))
+            if (ReferenceEquals(type.Components[i], BoundType.Never) || HoldsNeverElement(type.Components[i]))
             {
                 return true;
             }
@@ -288,12 +294,12 @@ internal sealed partial class MirBuilder
 
     // SPEC 3.2, 4.3.2, 6.6: a Tuple, a fixed array or an enum Case value from its operands in order, an enum's payloads as its construction
     // acquires them; a dynamic Array literal the calls of its built-in form (Collection). Not built: a fill of a length its instance decides,
-    // and a literal (no Case construction) that does not complete and whose Type has a Never component, which Binding may have typed
-    // before its position's Type was decided (SPEC 3.8, 14.9.2; DECISIONS R4-M59, temporary until PLAN G129).
+    // and a literal (no Case construction) whose Type holds a Never element, which Binding may have typed before its position's Type was
+    // decided (SPEC 3.8, 14.9.2; DECISIONS R4-M59, temporary until PLAN G129).
     private void Aggregate(MirPlace destination, Koto node, BoundType type)
     {
         var construction = BoundEnumConstruction.Of(node);
-        if (construction is null && !Completes(node) && HasNever(type))
+        if (construction is null && HoldsNeverElement(type))
         {
             this.Unsupported(node, destination);
             return;
