@@ -1,20 +1,21 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns A5's Loan stratum (SPEC 15.6–15.8; design A3 3, 5 and 6 with its 12 errata; DECISIONS R4-M57) per body and Semantics case view.
-// Input: a validated body, its dataflow (MirDataflow, begun) and move paths (MirMoveData, built), the selected view (MirCases), A2's verdicts
-// (MirProgram.Drops), and Binding's call retention (TyCtxt.Retains) and published rows (TyCtxt.Published). Output: each Loan conflict at its
-// access or activation, coded by A3 5's A6 table (CallReservationConflict_Kd for a Loan in its reservation holder, CallActivationConflict_Kd
-// or PlacementActivationConflict_Kd for an activation at a Call or at the writeback write, else ComparisonLoanConflict_Kd), with the Loan's
+// Input: a validated body, its dataflow (MirDataflow, begun) and move paths (MirMoveData, built), the selected view (MirCases), A2's
+// verdicts (MirProgram.Drops), and Binding's call retention (TyCtxt.Retains) and published rows (TyCtxt.Published). Output: each Loan
+// conflict at its access or activation, coded by A3 5's A6 table (CallReservationConflict_Kd for a Loan in its reservation holder,
+// CallActivationConflict_Kd or PlacementActivationConflict_Kd for an activation at a Call or at the writeback write, else
+// ComparisonLoanConflict_Kd, also for a value that keeps a guard candidate's guard-local Origin past its EndBorrow), with the Loan's
 // anchor, its witness's next use or the store that carries it and an activation's reservation as facts, and Unsupported_Kd at a destruction
 // it does not classify, through MirReport; and Work, the steps it took (A3 6.2).
 // Invariants: a holder is a root local whose case Type may hold a Loan (MirTypes.HoldsLoans), or E, the storage the body does not own; its
-// state is a MirLoanSets node of Loans and markers (Φ_E, τ_s). A Loan exists per non-raw Ref site and view whose Place passes no shared
-// borrow Deref (E3), named by its whole Place; access is syntactic, by Place prefix. A check reads holders, never Loan ids: the holders live
-// after the access but those it overwrites, E, the values it stores into a live holder (transit), the holders their direct Loans name (the
-// closure) and those its own Loans name (E5); an activation the holders live into it but its reservation holder, whose Loans seed the
-// closure. A two-phase Loan is shared only in its reservation holder, where a write or destruction of a prefix of its Place reaches it (E1).
-// Destroying a Move Path in place ends every Loan whose path it exactly prefixes (E8), after the checks and the transfer. A holder a direct
-// Loan names keeps its state at every head.
+// state is a MirLoanSets node of Loans and markers, which never conflict and no ending removes (Φ_E, τ_s, and a guard candidate's γ, E7). A
+// Loan exists per non-raw Ref site and view whose Place passes no shared borrow Deref (E3), named by its whole Place; access is syntactic,
+// by Place prefix. A check reads holders, never Loan ids: the holders live after the access but those it overwrites, E, the values it
+// stores into a live holder (transit), the holders their direct Loans name (the closure) and those its own Loans name (E5); an activation
+// the holders live into it but its reservation holder, whose Loans seed the closure. A two-phase Loan is shared only in its reservation
+// holder, where a write or destruction of a prefix of its Place reaches it (E1). Destroying a Move Path in place ends every Loan whose path
+// it exactly prefixes (E8), after the checks and the transfer. A holder a direct Loan names keeps its state at every head.
 // Must not read syntax or HIR, judge Origins, re-derive retention, intern projections, or copy the body per view.
 
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
@@ -54,7 +55,8 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
     private int flowCount; // The slots a head stores: E and the flow holders.
     private int loanCount;
     private int loanStepCount;
-    private int loanBase; // The element of Loan 0: after Φ_E and each Opaque site's τ_s.
+    private int guardBase; // The element of local 0's γ: after Φ_E and each Opaque site's τ_s; a guard candidate H's γ_H is guardBase + H.
+    private int loanBase; // The element of Loan 0: after the markers, Φ_E, τ_s and γ.
     private int escapedSet; // The set {Φ_E}.
 
     /// <summary>The class of a Place's step (A3 3): an inline step, a runtime index into inline storage, an owning handle's payload, a
@@ -86,7 +88,8 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
         var all = ulong.MaxValue >> (64 - (int)MirCases.Count(body));
         (this.program, this.body, this.view, this.views) = (program, body, view, moves.ViewDependent ? 1UL << (int)view : all);
         this.sets.Clear();
-        (this.loanBase, this.escapedSet) = (1 + body.OpaqueSites.Length, this.sets.Add(0, Escaped));
+        this.guardBase = 1 + body.OpaqueSites.Length;
+        (this.loanBase, this.escapedSet) = (this.guardBase + body.Locals.Length, this.sets.Add(0, Escaped));
         this.Loans();
         if (this.loanCount == 0)
         {

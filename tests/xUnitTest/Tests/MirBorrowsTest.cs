@@ -26,6 +26,9 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
         func setN(s: uniq/S, n: i32) => s.n = n
         func setM(m: uniq/i32) => m@follow = 1
         func keepT<T>(value: uniq/T) -> uniq/T during value => value
+        func give(a: uniq/i32, b: i32) => ()
+        func stop() -> bool => false
+        func save(slot: uniq/(ref/Data during s), value: ref/Data during s) -> bool => true
         struct Pair
             public var a: i32 = 1
             public var b: i32 = 2
@@ -80,6 +83,21 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
             public var value: i32 = 0
             public var children: Array<Tree> = []
             public init() => ()
+            public func child(self: uniq/Self, i: i32) -> uniq/Tree during self => self.children[i]@uniq
+        struct Data
+            public var value: i32 = 0
+            public var count: i32 = 0
+            public init() => ()
+        enum Packet {a}
+            Data(Data)
+            Link(ref/Data during a)
+            Empty
+        struct Holder {a}
+            public var saved: ref/Data during a
+            public init(saved: ref/Data during a) => self.saved = saved
+        enum Choice
+            Data(i32)
+            Empty
         struct Nest<T>
             public var value: T
             public var next: Option<rc/Nest<(T, T)>> = .None
@@ -87,8 +105,9 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
 
         """;
 
-    /// <summary>Gets the variants of the SPEC examples these rules decide: family F3's, SPEC 15.6.6's and 15.6.7's.</summary>
-    public static TheoryData<string> SpecVariants => [.. DiagnosticCorpus.SpecCases.Where(static x => x.Family == "F3" || x.Section is "15.6.6" or "15.6.7")
+    /// <summary>Gets the variants of the SPEC examples these rules decide: family F3's, SPEC 14.8.3's, 15.6.6's and 15.6.7's.</summary>
+    public static TheoryData<string> SpecVariants => [.. DiagnosticCorpus.SpecCases
+        .Where(static x => x.Family == "F3" || x.Section is "14.8.3" or "15.6.6" or "15.6.7")
         .SelectMany(static x => x.Variants.Select((_, i) => $"{x.Name}/{i}"))];
 
     // The codes of A5's Loan stratum (A3 5's A6 table, the rows its rules decide).
@@ -863,8 +882,105 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
                     inspect(retained)
                 """));
 
-    // The SPEC examples of the reservation and destruction sections (tests/diagnostics/spec-cases.json: family F3, SPEC 15.6.6 and 15.6.7)
-    // get exactly the Loan problems their records give, on the MIR (F3 is not Landed until the driver runs A5, unit 1b-5).
+    // SPEC 14.8.3 (A3 E7; 43a, 92, 102, 103, 104, 44a–44c): a guard candidate's guard-local Origin ends at the guard's cleanup, so a value
+    // that keeps it, stored into a holder used afterwards or through a live reference, escapes the guard at the candidate; a value read or
+    // copied out of the candidate does not, nor one overwritten before its next use; another EndBorrow, which a transfer abandoning a
+    // reservation or a comparison operand ends on its edge, checks nothing. The builder names every candidate through the Subject's
+    // temporary, past its shared Deref (so 92g, 93 and 93g are 92 in MIR).
+    [Fact]
+    public void AGuardCandidatesOriginEndsAtItsCleanup()
+        => Assert.Equal(
+            ["g43a: let d", "g92: let d", "g102: let d"],
+            Problems("""
+                func g43a()
+                    let fallback = Data.init()
+                    let packet: Packet = .Data(Data.init())
+                    var saved = fallback@ref
+                    match packet
+                        .Data(let d) if save(saved@uniq, d) => ()
+                        .Link(let r) if save(saved@uniq, r@follow@copy) => ()
+                        _ => ()
+                    inspect(saved)
+                func g92()
+                    var x: Choice = .Data(1)
+                    var z: Choice = .Empty
+                    var other = 0
+                    var slot = x@uniq
+                    var slot2 = z@uniq
+                    var rr = slot@uniq
+                    var saved = other@ref
+                    match rr@follow@follow
+                        .Data(let d) if (label w: do
+                            saved = d@follow@ref
+                            rr = slot2@uniq
+                            exit to w true
+                        ) => ()
+                        _ => ()
+                    inspect(saved)
+                func g102()
+                    let fallback = Data.init()
+                    let packet: Packet = .Data(Data.init())
+                    var holder = Holder.init(saved: fallback@ref)
+                    let w = holder@uniq
+                    match packet
+                        .Data(let d) if (label g: do
+                            w.saved = d
+                            exit to g true
+                        ) => ()
+                        _ => ()
+                    inspect(w)
+                func g103()
+                    let packet: Packet = .Data(Data.init())
+                    var n = 0
+                    match packet
+                        .Data(let d) if (label g: do
+                            n = d@follow.count
+                            exit to g true
+                        ) => ()
+                        _ => ()
+                    inspect(n)
+                func g104(c: bool)
+                    let other = Data.init()
+                    let packet: Packet = .Data(Data.init())
+                    var tmp = other@ref
+                    while c
+                        match packet
+                            .Data(let d) if (label g: do
+                                tmp = d
+                                exit to g true
+                            ) => ()
+                            _ => ()
+                        tmp = other@ref
+                    inspect(tmp)
+                func g44a(p: bool) -> i32
+                    var x = 1
+                    give(x@uniq, label w: do
+                        if p => return 0
+                        exit to w 1
+                    )
+                    inspect(x)
+                    return 1
+                func g44b(p: bool) -> i32
+                    var x = 1
+                    var y = 2
+                    let same = x == label w: do
+                        if p => return 0
+                        exit to w y
+                    x = 3
+                    inspect(same)
+                    return 1
+                func g44c(root: uniq/Tree)
+                    var cursor = root
+                    while cursor.children.length > 0
+                        cursor = cursor.child(label w: do
+                            if stop() => exit
+                            exit to w 0
+                        )
+                    cursor.value = 1
+                """));
+
+    // The SPEC examples of the guard, reservation and destruction sections (tests/diagnostics/spec-cases.json: family F3, SPEC 14.8.3,
+    // 15.6.6 and 15.6.7) get exactly the Loan problems their records give, on the MIR (not Landed until the driver runs A5, unit 1b-5).
     [Theory]
     [MemberData(nameof(SpecVariants))]
     public void TheSpecExamplesGetTheirLoanCodes(string name)
@@ -884,8 +1000,8 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
                 .Select(x => $"{x.Code} {source.AsSpan(0, c.SyntaxOf(x.Subject).Span.Start).Count('\n') + 1}").Order(StringComparer.Ordinal));
     }
 
-    // A3 6.4, R4-M3a: a problem's facts are its Loan's anchor and its witness: the holder's next use (for an activation from its call on),
-    // or the store that carries the Loan; and an activation's reservation.
+    // A3 6.4, R4-M3a: a problem's facts are its Loan's or guard candidate's anchor and its witness: the holder's next use in its chain (for
+    // an activation from its call on; none in a later chain), or the store that carries the Loan; and an activation's reservation.
     [Fact]
     public void AProblemNamesItsLoanAndWitness()
     {
@@ -902,13 +1018,21 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
             func activated()
                 var a = Pair.init()
                 two(a@uniq, a@ref)
+            func escaped()
+                let fallback = Data.init()
+                let packet: Packet = .Data(Data.init())
+                var saved = fallback@ref
+                match packet
+                    .Data(let d) if save(saved@uniq, d) => ()
+                    _ => ()
+                inspect(saved)
             """);
         var program = Analyze(c);
         var problems = program.Problems.All.ToArray();
         Assert.Equal(
             [
                 "x = 2: Anchor x@ref, Use inspect(r)", "x = pin(x@ref): Anchor x@ref, Store x = pin(x@ref)",
-                "two(a@uniq, a@ref): Anchor a@ref, Use two(a@uniq, a@ref), Reservation a@uniq",
+                "two(a@uniq, a@ref): Anchor a@ref, Use two(a@uniq, a@ref), Reservation a@uniq", "let d: Anchor let d",
             ],
             problems.Select((x, i) => (x, i)).Where(static x => LoanCodes.Contains(x.x.Code)).Select(x =>
                 $"{Line(c, x.x.Subject)}: {string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)}"))}"));
@@ -967,11 +1091,13 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
             "        x = 3\n        inspect(r)\n        r = x@ref\nfunc stored()\n    var x = 1\n    var y = 2\n    var slot = y@ref\n" +
             "    put(slot@uniq, x@ref)\n    x = 3\n    inspect(slot)\nfunc reserved()\n    var tasks: Array<Task> = []\n    tasks.append(tasks.remove(0))\n" +
             "func written()\n    var x = 1\n    let v = x@ref\n    x += 1\n    inspect(v)\nfunc destroyed()\n    var x = 1\n    var y = 2\n" +
-            "    var s = D.init(r: x@uniq)\n    let c = s.r@follow@uniq\n    s = D.init(r: y@uniq)\n    c@follow = 1\n");
+            "    var s = D.init(r: x@uniq)\n    let c = s.r@follow@uniq\n    s = D.init(r: y@uniq)\n    c@follow = 1\nfunc escaped()\n" +
+            "    let fallback = Data.init()\n    let packet: Packet = .Data(Data.init())\n    var saved = fallback@ref\n    match packet\n" +
+            "        .Data(let d) if save(saved@uniq, d) => ()\n        _ => ()\n    inspect(saved)\n");
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);
         Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
-        Assert.Equal(5, program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code)));
+        Assert.Equal(6, program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code)));
     }
 
     // The Loan problems of a program's own bodies: function and the subject's first line, with the code unless it is a comparison's.

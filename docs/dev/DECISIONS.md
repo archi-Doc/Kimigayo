@@ -1297,6 +1297,19 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Type (`Nest<ref/i32>.init`). Rejected: transit in CS_call (a call's retained result would bring its own reservation into its
   check); activations by a table of issue sites (σ_in(t) already says which reservations reach the call); the destroying mode on the
   access instead of the Loan (formation and activation are separate locations). Not temporary.
+  Unit 1b-4 (A3 §12 E7 and E12; it replaces R4-M37's `EndBorrow` meaning for guards, as `MirStatementKind.EndBorrow`'s doc now says):
+  - γ: a guard candidate H's (`MirLocalRole.GuardCandidate`) guard-local Origin is a marker beside Φ_E and τ_s, element
+    1 + (Opaque sites) + H, so the Loans follow every local's γ slot. A value assigned to H's whole Place carries it, issued with H
+    (born there, in no state before), and every carrying rule carries it as it carries Loans; no ending removes it, and it never
+    conflicts: a check notes the holder each marker is first seen in.
+  - err(ended): at H's `EndBorrow`, γ_H in CS(ℓ) (the values live after ℓ but H, transit included, with E5's seed) is a borrow that
+    escapes the guard: `ComparisonLoanConflict_Kd` at the cleanup, anchored at the candidate, with the holder's next use, as
+    DIAGNOSTICS' escaped borrows (no guard-local code exists; A6's merge, unit 1c, finalizes it, also where γ reaches `_0`). Another
+    `EndBorrow` (an abandoned comparison or reservation) checks nothing. E12: the stratum keeps no `partition` clause (1b-2).
+  Found: a value returned from a guard (A3's 108) is Binding's `UnsatisfiedOriginRelation_Kd`, so its MIR is Opaque and the
+  stratum sees no escape (the Origin stratum's, unit 2a). Rejected: the Loan-based err(ended) (prototype round 10's `EndedByLoan`,
+  unsound on 43a, 92g, 102 and 108: past the Subject's shared Deref the candidate forms no Loan, E3); a γ id table per candidate
+  (the local index is the key).
 - **R4-M61** (2026-10-17; PLAN G96, two independent designs compared and the chosen one reviewed independently, implemented on the
   planning session's instruction of the same day; supersedes R4-M42's `MirBuilder.Broken`) A published Op guarantees the Binding
   facts the MIR builder reads for it, which `Binding.HasFacts` (`Binding/Binding.Hir.Facts.cs`, whose header is the contract) lists:

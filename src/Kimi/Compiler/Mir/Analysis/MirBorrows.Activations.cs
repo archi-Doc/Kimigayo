@@ -95,7 +95,7 @@ internal sealed partial class MirBorrows
             var candidate = this.candidates[c];
             if (this.Hits(loan.Root, steps, AccessKind.Observe, candidate) && !this.Hits(loan.Root, steps, AccessKind.Write, candidate))
             {
-                this.Report(DiagnosticCode.ComparisonLoanConflict_Kd, candidate, at, reservation);
+                this.Report(this.Code(candidate, DiagnosticCode.ComparisonLoanConflict_Kd), loan.Site, candidate.Via, at, reservation);
                 return;
             }
         }

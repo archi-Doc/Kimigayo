@@ -5,7 +5,8 @@ using System.Numerics;
 namespace Kimi.Compiler.Mir;
 
 // A5's conflict check (A3 5, Check sets and err(conflict), with E1, E3 and E5): at an access of a borrowed root, the Loans of the check set
-// by holder, compared with the access syntactically; then the location's activations (MirBorrows.Activations).
+// by holder, compared with the access syntactically; a guard candidate's EndBorrow against the values that keep its guard-local Origin
+// (E7); then the location's activations (MirBorrows.Activations).
 internal sealed partial class MirBorrows
 {
     private readonly List<int> pending = []; // Slots live at the check whose stores are still to read.
@@ -17,6 +18,8 @@ internal sealed partial class MirBorrows
     private int[] reached = []; // By slot: the check that made it live.
     private int[] scanned = []; // By slot: the check that read its state.
     private int[] loanMarks = []; // By Loan: the check << 2 that saw it, with bit 0 for a shared mode and bit 1 for a unique one.
+    private int[] markSeen = []; // By marker (τ_s, γ_H): the check that saw it.
+    private int[] markVia = []; // By marker: the holder that check first saw it in (-1: a transit value).
     private int accessCount;
     private int candidateCount;
     private int stamp;
@@ -52,7 +55,8 @@ internal sealed partial class MirBorrows
     // A check of the accesses at a location of a borrowed root against CS(ℓ) (A3 5): the states before ℓ of the holders live after it but
     // those it overwrites, E's, and the values its plan stores into a holder live after it or made live by the closure, or into E (transit,
     // a borrow's stored value only seeding the closure), closed through the holders their direct Loans name (E5: with the holders its own
-    // Loans name); the first conflicting Loan of each access is its problem. Then its activations, on their own check sets.
+    // Loans name); the first conflicting Loan of each access is its problem, and a guard candidate's EndBorrow checks its γ. Then its
+    // activations, on their own check sets.
     private void Check(ulong[] state, int block, int index, int location)
     {
         this.accessCount = 0;
@@ -77,6 +81,12 @@ internal sealed partial class MirBorrows
             this.Conflict(this.Key(access.Place.Root), this.accessSteps.AsSpan(0, count), access.Kind, DiagnosticCode.ComparisonLoanConflict_Kd, at, -1);
         }
 
+        if (index < this.body.Blocks[block].Count && this.body.Statements[location] is { Kind: MirStatementKind.EndBorrow, Place.Root: var ended } &&
+            this.body.Locals[ended].Role == MirLocalRole.GuardCandidate)
+        {
+            this.Ended(state, at, ended);
+        }
+
         this.Activations(state, at);
     }
 
@@ -90,6 +100,8 @@ internal sealed partial class MirBorrows
         MirDataflow.Grow(ref this.reached, this.holderCount);
         MirDataflow.Grow(ref this.scanned, this.holderCount);
         MirDataflow.Grow(ref this.loanMarks, this.loanCount);
+        MirDataflow.Grow(ref this.markSeen, this.loanBase);
+        MirDataflow.Grow(ref this.markVia, this.loanBase);
         this.candidateCount = 0;
         if (own >= 0)
         {
@@ -203,7 +215,13 @@ internal sealed partial class MirBorrows
 
         if (element < this.loanBase)
         {
-            return; // A τ_s marker never conflicts.
+            // A marker never conflicts; the holder it is first seen in witnesses err(ended) for a guard-local γ_H.
+            if (this.markSeen[element] != this.stamp)
+            {
+                (this.markSeen[element], this.markVia[element]) = (this.stamp, via);
+            }
+
+            return;
         }
 
         var index = element - this.loanBase;
@@ -237,7 +255,7 @@ internal sealed partial class MirBorrows
             var candidate = this.candidates[c];
             if ((candidate.Unique || kind is not (AccessKind.Read or AccessKind.SharedBorrow)) && this.Hits(root, steps, kind, candidate))
             {
-                this.Report(code, candidate, at, reservation);
+                this.Report(this.Code(candidate, code), this.loans[candidate.Loan].Site, candidate.Via, at, reservation);
                 return;
             }
         }
@@ -281,18 +299,35 @@ internal sealed partial class MirBorrows
     // Whether a Loan of the check set sits in its reservation holder, where its two-phase mode is shared.
     private bool Reserved(in Candidate candidate) => this.loans[candidate.Loan].Mode == MirRefKind.TwoPhaseUniq && !candidate.Unique;
 
-    // A problem at a location with its facts (A3 6.4): the Loan's anchor; its witness, a holder's next use (none when that lies in a later
-    // chain), from the location itself for a reservation's check set (CS_call), or a transit value's or E's store; and the reservation's
-    // anchor. A Loan found in its reservation holder is a reservation conflict, else the check's code (A3 5's A6 table).
-    private void Report(DiagnosticCode code, in Candidate candidate, MirLocation at, int reservation)
+    // A conflict's code (A3 5's A6 table): a Loan found in its reservation holder is a reservation conflict, else the check's code.
+    private DiagnosticCode Code(in Candidate candidate, DiagnosticCode code) => this.Reserved(candidate) ? DiagnosticCode.CallReservationConflict_Kd : code;
+
+    // err(ended) (A3 E7, SPEC 14.8.3): at a guard candidate's EndBorrow its guard-local Origin ends, so a value live after it that carries its
+    // γ (CS(ℓ), transit included) is a borrow that escapes the guard: ComparisonLoanConflict_Kd at the cleanup (DIAGNOSTICS, escaped
+    // borrows), anchored at the candidate.
+    private void Ended(ulong[] state, MirLocation at, int candidate)
+    {
+        this.Gather(state, this.live, -1, this.entryCount);
+        var mark = this.guardBase + candidate;
+        if (this.markSeen[mark] == this.stamp)
+        {
+            var anchor = this.body.Subject(this.body.Locals[candidate].Source);
+            this.Report(DiagnosticCode.ComparisonLoanConflict_Kd, anchor, this.markVia[mark], at, -1);
+        }
+    }
+
+    // A problem at a location with its facts (A3 6.4): the anchor of the Loan or guard candidate; its witness, a holder's next use (none
+    // when that lies in a later chain), from the location itself for a reservation's check set (CS_call), or a transit value's or E's store;
+    // and the reservation's anchor.
+    private void Report(DiagnosticCode code, SourceRef anchor, int via, MirLocation at, int reservation)
     {
         var (subject, from) = (this.Subject(at), reservation >= 0 ? at : at with { Index = at.Index + 1 });
-        var witness = candidate.Via > Escaped ? this.NextUse(candidate.Via, from) : subject;
+        var witness = via > Escaped ? this.NextUse(via, from) : subject;
         var count = 0;
-        this.facts[count++] = new(MirFactKind.Anchor, this.loans[candidate.Loan].Site);
+        this.facts[count++] = new(MirFactKind.Anchor, anchor);
         if (witness is { } site)
         {
-            this.facts[count++] = new(candidate.Via > Escaped ? MirFactKind.Use : MirFactKind.Store, site);
+            this.facts[count++] = new(via > Escaped ? MirFactKind.Use : MirFactKind.Store, site);
         }
 
         if (reservation >= 0)
@@ -300,7 +335,6 @@ internal sealed partial class MirBorrows
             this.facts[count++] = new(MirFactKind.Reservation, this.loans[reservation].Site);
         }
 
-        code = this.Reserved(candidate) ? DiagnosticCode.CallReservationConflict_Kd : code;
         this.program.Problems.Add(new(code, subject, this.views), this.facts.AsSpan(0, count));
     }
 

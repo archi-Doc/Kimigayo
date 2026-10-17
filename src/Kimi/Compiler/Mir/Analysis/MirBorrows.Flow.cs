@@ -105,6 +105,11 @@ internal sealed partial class MirBorrows
         {
             var rvalue = statement.Rvalue.Kind == MirRvalueKind.Adapt ? cases.Adapt(statement.Rvalue, out _) : statement.Rvalue;
             var (value, own) = this.Value(state, rvalue, data.Start + index);
+            if (statement.Place is { Projection: 0, Root: >= 0 } into && this.body.Locals[into.Root].Role == MirLocalRole.GuardCandidate)
+            {
+                own = this.sets.Add(own, this.guardBase + into.Root); // E7: a value issued into a guard candidate H carries γ_H.
+            }
+
             this.Moves(rvalue.Start, rvalue.Count);
             var issue = rvalue.Kind == MirRvalueKind.Ref ||
                 (rvalue.Kind == MirRvalueKind.Use && this.body.Operands[rvalue.Start] is { Kind: MirOperandKind.PairAcquire } acquire &&
