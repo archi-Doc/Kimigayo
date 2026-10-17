@@ -51,3 +51,23 @@ records; Q8-2's change of R4-M61's node-failure contract (G121 applied); Q8-3's 
 | --- | --- | --- |
 | Q8-4 | Q8-1a's exclusion is right for S1 (the builder moves the prepared input, and A1 reports `DefaultArgumentMove_Kd` from H5), but for S2 it leaves no producer: a default whose block discards a non-Copy preceding parameter is copied through the prepared reference and the copy dropped, with no MIR problem (probe u2), and Q8-3's validator rule would then fault on a user error | S2 keeps `HirRes.PreparedParam`-rooted subjects and records them with the old path's code `DefaultArgumentMove_Kd`, its Note and no repair, provided Binding can record that code without a new `BindingFailure` member (PD21; the round-2 review checks this in the code). Only if it cannot, S2 records `TransferRequired_Kd` with the default Note and no repair — the record Binding already gives a bare capture entry of a preceding parameter in a default — listed as a user-visible code change for the owner |
 | Q8-5 | The validator rule's hold window shared with F11 | Needed only while R4 runs in parallel: G:R6-check-flip lands after R4's exit, when no hold applies; the rule keeps its shadow run in Q14 |
+
+## Design review round 2 (lens q8: BLOCK) — decisions
+
+Resolved in round 2: B1(a) by Q8-4 (the review confirmed PD21 feasibility: `BindingFailure.TransferRequired` maps to
+`DefaultArgumentMove_Kd` for a PreparedParam-rooted Place through the existing per-node code switch, with no repair; only the
+requirement name changes, `Ownership.DefaultArgumentMove` → `Binding.TransferRequired`), B1(c), Q14, Q21 for compound Places, the
+validator placement and every non-blocking item. Two findings are a second round on their families (B1(b), B2); the planning session
+proposes the fixes below, and the owner approves them with the package or chooses otherwise (AGENTS).
+
+| # | Finding | Decision |
+| --- | --- | --- |
+| Q8-6 | B1(b), second round: the only renderer of DIAGNOSTICS :166's Semantics-case record (case fact, "Found under … (SPEC 8.15)", related binder declarations) lives in the old Analysis (`OwnershipAnalysis.cs:360`, `.Cases.cs:321`), which Binding may not read and H11 deletes; Binding's `FailingCaseNote` renders a different text without the fact | Proposed: one renderer — the Semantics-case formatting moves into Binding beside `FailingCaseNote` and serves both forms; the old Analysis calls it until H11. :166's record text stays |
+| Q8-7 | B2, second round: Q21's in-place writes (Adjust None) for a failed closure lose an expression body's tail, which only the closure's own `Consume` consumes (`Binding.Hir.Adjust.cs:29`; Error nodes skip `Consume`, `Binding.Hir.cs:118`), so probe p7's record is lost and the builder makes a by-case Copy of a non-Copy capture that the validator rule would fault | Proposed: a closure whose creation failed keeps its own `Consume` as a Closure (its defaults and its expression body's result); only its creation is Opaque. In-place writes apply to the operands of failed compound Places only |
+| Q8-8 | S1's PreparedParam roots (non-blocking) | S1 gives them the same record as S2 (Q8-4: `DefaultArgumentMove_Kd`, no repair), so Binding is the one judge of bare reads of prepared inputs and A1's mapping (R4's 1c) serves only an explicit `a@move`; the R4 planning session is told (A-5 scope) |
+
+Package text to correct (stale against Q8-4): D8, the §3.7 exclusion row, §5, §11.1 and Q14's "or a PreparedParam root"; §7's
+public-names row adds `Ownership.DefaultArgumentMove` → `Binding.TransferRequired`.
+
+Owner summary additions (round 2): Q8-6 and Q8-7 reached two rounds and are presented as the planning session's proposals; Q8-8
+narrows R4's 1c PreparedInput mapping to explicit `a@move`.
