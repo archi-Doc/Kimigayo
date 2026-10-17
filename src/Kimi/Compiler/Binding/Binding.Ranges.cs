@@ -266,7 +266,10 @@ public sealed partial class Binding
             var length = new MemberAccessKoto(source, receiver, new IdentifierNameKoto(source, "length"));
             receiver.Parent = length;
             var callee = new SyntheticKoto(source) { Parent = source };
-            call = new InvocationKoto(source, new GenericsKoto(source, callee, [new SyntheticKoto(source) { Parent = source }]), [source.Right, length]);
+            call = new InvocationKoto(source, new GenericsKoto(source, callee, [new SyntheticKoto(source) { Parent = source }]), [source.Right, length])
+            {
+                CallStorage = new() { Evaluated = 1 }, // The length argument.
+            };
             this.resolvedKeys[source] = call;
         }
 
