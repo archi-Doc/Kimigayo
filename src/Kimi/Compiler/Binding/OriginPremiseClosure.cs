@@ -212,7 +212,15 @@ internal sealed class OriginPremiseClosure
     /// <param name="shorter">The target node.</param>
     /// <param name="condition">The pair binders that are borrows in every case the relation is required in, as bits.</param>
     /// <returns>Whether the relation is entailed.</returns>
-    internal bool Entails(int longer, int shorter, ulong condition = 0)
+    internal bool Entails(int longer, int shorter, ulong condition = 0) => this.Close(shorter, longer, condition) || this.reachedStamp[longer] == this.stamp;
+
+    /// <summary>The closure from <paramref name="shorter"/>, stopped once it reaches <paramref name="longer"/> (-1: never): each node
+    /// it reaches is entailed to outlive the target.</summary>
+    /// <param name="shorter">The target node.</param>
+    /// <param name="longer">The node that stops the closure, or -1.</param>
+    /// <param name="condition">The pair binders that are borrows in every case the relation is required in, as bits.</param>
+    /// <returns>Whether <paramref name="longer"/> was reached.</returns>
+    internal bool Close(int shorter, int longer, ulong condition)
     {
         if (++this.stamp == int.MaxValue)
         {
@@ -275,7 +283,7 @@ internal sealed class OriginPremiseClosure
         }
 
         this.LastWork = (tail, activations, decrements);
-        return entailed || this.reachedStamp[longer] == this.stamp;
+        return entailed;
     }
 
     /// <summary>The node whose processing first reached a node in the last closure, or -1 for a seed; following it from an
