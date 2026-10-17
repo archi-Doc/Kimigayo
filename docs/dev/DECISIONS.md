@@ -1149,9 +1149,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   raw pointer is followed again (SPEC 5.2.1), nor past a non-exclusive pair layer, nor in a callable Type. Untied: a
   non-static result atom or carrier no input reaches. Caller relations among the caller's own Origins add no row. The memo
   lives until an edit: passes with no edit reuse its rows, so a warm rebuild allocates nothing, and `Binding.Invalidate`
-  discards it with the source analysis, as it does the item contexts (A5 1a2; rejected: per-declaration invalidation, a
-  dependency table only this view would use, and pooled recomputation per pass). The catalog's `PublishedRow` gains
-  `InPlace`: `Replace` (`Destroys: 0, InPlace`) for `replace`,
+  discards it at every edit, whether or not a pass finished, as it does the item contexts (A5 1a2; rejected:
+  per-declaration invalidation, a dependency table only this view would use, and pooled recomputation per pass). The
+  catalog's `PublishedRow` gains `InPlace`: `Replace` (`Destroys: 0, InPlace`) for `replace`,
   `Target` for the `clear`s (relaxation (c) not adopted); `TyCtxt.Published` adds it and A4 reads `Destroys` unchanged.
   Rejected: a graph of its own and premises only from the named declarations (unsound: a nested function's body uses its
   enclosing function's well-formedness, review B1); `Relate` (no two Types are fitted); `TyCtxt.Callable` (R4-M41 publishes

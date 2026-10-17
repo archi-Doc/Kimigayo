@@ -263,20 +263,26 @@ public sealed class RetentionTest
         Assert.Same(retentions[0], c.Types.Retains(calls[0].Target, c.Types.SubstOf(calls[0]), null));
     }
 
-    // An edit revokes the retentions with the whole source analysis (Binding.Invalidate): replacing a callee's clause between passes
-    // changes its call's row, here from both inputs to `y` alone.
-    [Fact]
-    public void AnEditRecomputesRetentions()
+    // An edit revokes the retentions with the whole source analysis (Binding.Invalidate), also after a pass that did not finish (review
+    // 1a2 B1: a Bind that throws leaves no result): replacing a callee's clause between passes changes its call's row.
+    [Theory]
+    [InlineData("origin a outlives b", "origin b outlives a", "0 Value result, 1 Value result", "1 Value result", false)]
+    [InlineData("origin b outlives a", "origin a outlives b", "1 Value result", "0 Value result, 1 Value result", true)]
+    public void AnEditRecomputesRetentions(string clause, string edited, string before, string after, bool unfinished)
     {
-        const string Source = "func f(x: ref/i32 during a, y: ref/i32 during b) -> ref/i32 during b\n    origin a outlives b\n    return y\n" +
-            "var m = 1\nvar n = 2\nlet r = f(m@ref, n@ref)\n";
-        var c = Bind(Source);
-        Assert.Equal(["0 Value result, 1 Value result"], Calls(c, "f"));
+        var source = $"func f(x: ref/i32 during a, y: ref/i32 during b) -> ref/i32 during b\n    {clause}\n    return y\nvar m = 1\nvar n = 2\nlet r = f(m@ref, n@ref)\n";
+        var c = Bind(source);
+        Assert.Equal([before], Calls(c, "f"));
+        if (unfinished)
+        {
+            typeof(Binding).GetProperty(nameof(Binding.Result))!.SetValue(c.Binding, default(BindingResult)); // As a throwing Bind leaves it.
+        }
+
         var relation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<OriginRelationKoto>().Single();
-        var donor = Bind(Source.Replace("origin a outlives b", "origin b outlives a", StringComparison.Ordinal));
+        var donor = Bind(source.Replace(clause, edited, StringComparison.Ordinal));
         Assert.True(KotoHelper.Replace(relation.Parent!, relation, KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<OriginRelationKoto>().Single()));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(["1 Value result"], Calls(c, "f"));
+        Assert.Equal([after], Calls(c, "f"));
     }
 
     // A warm rebind that reads every call's retention again, C1 (also under a calling definition's premises) and C8, allocates nothing:
