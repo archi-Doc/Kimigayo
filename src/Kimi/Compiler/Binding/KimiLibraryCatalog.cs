@@ -29,7 +29,7 @@ internal static class KimiLibraryCatalog
 {
     // The published rows (SPEC 4.9.6) several operations share: no user code beyond the input accesses; `K` equality; the destruction
     // of the target; a formatting of the value (first parameter, or second after a writer).
-    private static readonly PublishedRow None = default;
+    private static readonly PublishedRow None = new(Runs: null); // Not `default`, which skips the parameter defaults (On 0, Destroys 0).
     private static readonly PublishedRow Equality = new(KimiDeclarationId.Equatable, On: 1);
     private static readonly PublishedRow Target = new(Destroys: 0);
     private static readonly PublishedRow Formats = new(KimiDeclarationId.Utf8Format, On: 0);

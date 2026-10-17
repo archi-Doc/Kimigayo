@@ -288,6 +288,25 @@ public class KimiLibraryShapeTest
         Assert.Null(library.Function(CompilerFunctionKind.None));
     }
 
+    // SPEC 4.9.6, 12.4.3: each published row, as TyCtxt.Published gives it to the MIR: the requirement it runs and the parameter below
+    // which, and the parameter below which it destroys (-1: none, so a row without user code destroys nothing).
+    [Fact]
+    public void PublishedRowsAreFixed()
+    {
+        var c = Library.Value;
+        var rows = KimiLibraryCatalog.Entries.ToArray().Where(static x => x.Row is not null)
+            .Select(x => (x.Id, Row: c.Types.Published(c.Library.GetSymbol(x.Id)!)!.Value)).Select(static x => $"{x.Id} {x.Row.Runs?.Name} {x.Row.On} {x.Row.Destroys}");
+        Assert.Equal(
+            [
+                "Replace  -1 0", "ArrayClear  -1 0", "ArrayCapacityImplementation  -1 -1", "ArrayRepeatingImplementation  -1 -1",
+                "TextToString format 0 -1", "TextTryFormat format 0 -1", "WriterWrite format 1 -1", "DictionaryReserve  -1 -1",
+                "DictionaryTryInsert equals 1 -1", "DictionaryInsertOrReplace equals 1 1", "DictionaryRemove equals 1 -1",
+                "DictionaryTryGet equals 1 -1", "DictionaryClear  -1 0", "DictionaryShrinkToFit  -1 -1",
+                "DictionaryIndexUniq equals 1 -1", "DictionaryStorageFindEntry equals 1 -1",
+            ],
+            rows);
+    }
+
     [Theory]
     [MemberData(nameof(CompilerFunctions))]
     public void CompilerFunctionShapesAreFixed(KimiDeclarationId id, string shape)
