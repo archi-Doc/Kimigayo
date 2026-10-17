@@ -298,7 +298,8 @@ internal sealed class AggregateLayoutPool
         // A sequence handle's words are Layout's (IMPL 21.1.3); this pool adds their destruction facts.
         var representation = sequence ? Layout.Of(type) : null;
         // A Function Item's Components are its bound generic arguments, not stored fields.
-        var fieldCount = representation?.Layout.FieldOffsets.Length ?? (structure ? AdtDef.Count(type) : type.Kind == BoundTypeKind.FunctionItem ? 0 : type.Components.Count);
+        var fieldCount = representation?.Layout.FieldOffsets.Length ??
+            (structure ? AdtDef.Count(type) : type.Kind == BoundTypeKind.FunctionItem ? 0 : type.Components.Count);
         var count = array ? (int)type.Length : fieldCount;
         if (cLayout && (fieldCount == 0 || AdtDef.Declaration(type) is not { Bases.Count: 0 } declaration || (declaration.Modifier & ModifierKind.Open) != 0))
         {
@@ -375,98 +376,10 @@ internal sealed class AggregateLayoutPool
                 }
             }
 
+            representation ??= this.Place(type, start, cLayout, baseLayout);
             if (representation is null)
             {
-                var alignment = baseLayout?.Value.Layout.Alignment ?? 1;
-                for (var i = 0; i < fieldCount; i++)
-                {
-                    alignment = Math.Max(alignment, this.fields[start + i].Layout.Alignment);
-                }
-
-                // The existing physical plan uses signed 32-bit byte offsets. Reject its
-                // limit explicitly before any LLVM parser can truncate a size or offset.
-                // The complete base occupies a prefix, including its tail padding. Own fields
-                // can still use the ordinary alignment grouping after that prefix.
-                long size = baseLayout?.Value.Layout.Size ?? 0;
-                var offsets = array ? Array.Empty<int>() : new int[fieldCount];
-                if (array)
-                {
-                    size = (long)count * this.fields[start].Layout.Stride;
-                }
-                else if (cLayout)
-                {
-                    // Windows x64 /Zp16: natural alignment (at most 16), written field order.
-                    for (var i = 0; i < fieldCount; i++)
-                    {
-                        var layout = this.fields[start + i].Layout;
-                        size = Align(size, layout.Alignment);
-                        if (size > int.MaxValue)
-                        {
-                            return this.ExceedLimit(type);
-                        }
-
-                        offsets[i] = (int)size;
-                        size += layout.Size;
-                    }
-
-                    size = Align(size, alignment);
-                }
-                else
-                {
-                    for (var a = alignment; a != 0; a >>= 1)
-                    {
-                        for (var i = 0; i < fieldCount; i++)
-                        {
-                            var layout = this.fields[start + i].Layout;
-                            if (layout.Alignment != a)
-                            {
-                                continue;
-                            }
-
-                            size = Align(size, a);
-                            if (size > int.MaxValue)
-                            {
-                                return this.ExceedLimit(type);
-                            }
-
-                            offsets[i] = (int)size;
-                            size += layout.Size;
-                        }
-                    }
-
-                    size = Align(size, alignment);
-                }
-
-                if (size > int.MaxValue)
-                {
-                    return this.ExceedLimit(type);
-                }
-
-                // A zero-length integer carrier preserves natural alignment without
-                // making padding into a typed source-language value.
-                string storage;
-                if (cLayout)
-                {
-                    // Ordinary LLVM structs derive the same ABI padding; never use packed structs.
-                    var builder = new StringBuilder("{ ");
-                    for (var i = 0; i < fieldCount; i++)
-                    {
-                        if (i != 0)
-                        {
-                            builder.Append(", ");
-                        }
-
-                        builder.Append(this.fields[start + i].Layout.StorageType);
-                    }
-
-                    storage = builder.Append(" }").ToString();
-                }
-                else
-                {
-                    storage = "{ [0 x i" + (alignment * 8).ToString(CultureInfo.InvariantCulture) + "], [" + size.ToString(CultureInfo.InvariantCulture) + " x i8] }";
-                }
-
-                representation = new ValueLowering(new(storage, (int)size, alignment, (int)size, offsets), storage, "ptr");
+                return this.ExceedLimit(type);
             }
 
             var result = new AggregateLayout(this.pool.Count, representation, CollectionsMarshal.AsSpan(this.fields).Slice(start, fieldCount).ToArray(), CollectionsMarshal.AsSpan(this.children).Slice(start, fieldCount).ToArray(), count, array, destroy, destructor, CLayout: cLayout, Base: baseLayout, GenericDestructor: genericDestructor);
@@ -479,6 +392,105 @@ internal sealed class AggregateLayoutPool
             this.fields.RemoveRange(start, this.fields.Count - start);
             this.children.RemoveRange(start, this.children.Count - start);
         }
+    }
+
+    // Places the Fields collected from start in a struct, Tuple, fixed array, Closure or Function Item; null when a size or offset
+    // exceeds the generation limit.
+    private ValueLowering? Place(BoundType type, int start, bool cLayout, AggregateLayout? baseLayout)
+    {
+        var fieldCount = this.fields.Count - start;
+        var array = type.Kind == BoundTypeKind.FixedArray;
+        var count = array ? (int)type.Length : fieldCount;
+        var alignment = baseLayout?.Value.Layout.Alignment ?? 1;
+        for (var i = 0; i < fieldCount; i++)
+        {
+            alignment = Math.Max(alignment, this.fields[start + i].Layout.Alignment);
+        }
+
+        // The existing physical plan uses signed 32-bit byte offsets. Reject its
+        // limit explicitly before any LLVM parser can truncate a size or offset.
+        // The complete base occupies a prefix, including its tail padding. Own fields
+        // can still use the ordinary alignment grouping after that prefix.
+        long size = baseLayout?.Value.Layout.Size ?? 0;
+        var offsets = array ? Array.Empty<int>() : new int[fieldCount];
+        if (array)
+        {
+            size = (long)count * this.fields[start].Layout.Stride;
+        }
+        else if (cLayout)
+        {
+            // Windows x64 /Zp16: natural alignment (at most 16), written field order.
+            for (var i = 0; i < fieldCount; i++)
+            {
+                var layout = this.fields[start + i].Layout;
+                size = Align(size, layout.Alignment);
+                if (size > int.MaxValue)
+                {
+                    return null;
+                }
+
+                offsets[i] = (int)size;
+                size += layout.Size;
+            }
+
+            size = Align(size, alignment);
+        }
+        else
+        {
+            for (var a = alignment; a != 0; a >>= 1)
+            {
+                for (var i = 0; i < fieldCount; i++)
+                {
+                    var layout = this.fields[start + i].Layout;
+                    if (layout.Alignment != a)
+                    {
+                        continue;
+                    }
+
+                    size = Align(size, a);
+                    if (size > int.MaxValue)
+                    {
+                        return null;
+                    }
+
+                    offsets[i] = (int)size;
+                    size += layout.Size;
+                }
+            }
+
+            size = Align(size, alignment);
+        }
+
+        if (size > int.MaxValue)
+        {
+            return null;
+        }
+
+        // A zero-length integer carrier preserves natural alignment without
+        // making padding into a typed source-language value.
+        string storage;
+        if (cLayout)
+        {
+            // Ordinary LLVM structs derive the same ABI padding; never use packed structs.
+            var builder = new StringBuilder("{ ");
+            for (var i = 0; i < fieldCount; i++)
+            {
+                if (i != 0)
+                {
+                    builder.Append(", ");
+                }
+
+                builder.Append(this.fields[start + i].Layout.StorageType);
+            }
+
+            storage = builder.Append(" }").ToString();
+        }
+        else
+        {
+            storage = "{ [0 x i" + (alignment * 8).ToString(CultureInfo.InvariantCulture) + "], [" + size.ToString(CultureInfo.InvariantCulture) + " x i8] }";
+        }
+
+        return new ValueLowering(new(storage, (int)size, alignment, (int)size, offsets), storage, "ptr");
     }
 
     private AggregateLayout? GetEnum(BoundType type, int depth)
