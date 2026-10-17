@@ -155,13 +155,14 @@ public sealed class MirInitTest(ITestOutputHelper output)
     }
 
     // SPEC 4.7.4, 15.1, 23.1 (DECISIONS R4-M56): the access through the index checks the receiver again under the selection's subject, so a
-    // receiver Moved while its own index is evaluated is MovedPlace at the selection, independent of the Move's conflict with the guard (A5).
+    // receiver Moved while its own index is evaluated is MovedPlace at the selection, independent of the Move's conflict with the guard,
+    // A5's problem at the Move.
     [Fact]
     public void AReceiverMovedInItsIndexIsMovedAtTheSelection()
     {
         const string Source = "func take(a: (string, [1 of i32])) => ()\nfunc f() -> i32\n    let a: (string, [1 of i32]) = (\"a\", [1])\n" +
             "    let n = a.1[(label work: do\n        take(a@move)\n        exit to work 0\n    )]\n    return n\n";
-        Assert.Equal(["MovedPlace_Kd a.1[( 1"], Problems(Source));
+        Assert.Equal(["MovedPlace_Kd a.1[( 1", "ComparisonLoanConflict_Kd a 1"], Problems(Source));
     }
 
     // SPEC 14.10.3: code only the checks reach is checked with the state after the transfer's operand, which is never merged into a runtime
