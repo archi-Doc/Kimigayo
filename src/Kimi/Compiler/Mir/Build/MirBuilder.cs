@@ -433,7 +433,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private void Site(Koto node, MirPlace destination, bool completes)
     {
         var site = this.body.AddOpaque(SourceRef.Of(node), CollectionsMarshal.AsSpan(this.roots));
-        this.Make(destination, MirRvalue.Opaque(this.body.TypeOf(destination) ?? BoundType.Unit, site), node);
+        this.Set(destination, MirRvalue.Opaque(this.body.TypeOf(destination) ?? BoundType.Unit, site), node);
         if (!completes)
         {
             var next = this.body.AddBlock();

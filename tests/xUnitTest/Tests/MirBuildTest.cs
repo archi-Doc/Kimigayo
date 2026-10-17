@@ -699,17 +699,25 @@ public sealed class MirBuildTest(ITestOutputHelper output)
     }
 
     // SPEC 15.6.7, 14.10.3: a call whose argument does not complete is still built where that argument's code continues for the checks,
-    // so its activation is checked there, and the reservation the transfer abandons ends on the transfer's runtime edge only. The argument
-    // has no value, so it is of Type Never, also where its own Type is a Tuple with a Never element.
+    // so its activation is checked there, and the reservation the transfer abandons ends on the transfer's runtime edge only. Each argument
+    // is built as at run time (DECISIONS R4-M62): a Tuple with a Never element is formed, of its expected Type (SPEC 3.8), and a continued
+    // inner call's result reaches the outer call.
     [Fact]
     public void ADivergingArgumentContinuesItsCallForTheChecks()
     {
         var source = "func three(a: uniq/i32, b: i32, c: uniq/i32) => ()\nfunc f() -> i32\n    var p: i32 = 1\n    three(p@uniq, (return 1), p@uniq)\n" +
-            "    return 2\nfunc pair(x: (i32, i32)) => ()\nfunc g() -> i32\n    pair((1, (return 1)))\n    return 2\n";
+            "    return 2\nfunc pair(x: (i32, i32)) => ()\nfunc g() -> i32\n    pair((1, (return 1)))\n    return 2\n" +
+            "func keep(a: uniq/i32, b: i32) -> uniq/i32 during a => a\nfunc both(x: uniq/i32, y: uniq/i32) => ()\nfunc h() -> i32\n" +
+            "    var p: i32 = 1\n    both(keep(p@uniq, (return 1)), p@uniq)\n    return 0\n";
+        static MirTerminator Called(MirBody body, string name) => Assert.Single(
+            body.Blocks.ToArray(),
+            x => x.Terminator is { Kind: MirTerminatorKind.Call } call && call.Callee.Symbol?.Name == name).Terminator;
         var paired = Body(source, "g");
-        var operand = Assert.Single(paired.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "pair" })
-            .Terminator.Start;
-        Assert.Same(BoundType.Never, paired.TypeOf(paired.Operands[operand].Place));
+        var tuple = paired.Operands[Called(paired, "pair").Start].Place;
+        Assert.Equal("(i32, i32)", TyCtxt.Name(paired.TypeOf(tuple)!));
+        Assert.Contains(paired.Statements.ToArray(), x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Aggregate } && x.Place == tuple);
+        var kept = Body(source, "h");
+        Assert.Equal(Called(kept, "keep").Place, kept.Operands[Called(kept, "both").Start].Place);
         var body = Body(source, "f");
         var reach = new MirReach();
         reach.Clear(body.Blocks.Length);
@@ -727,6 +735,15 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.NotEmpty(transfers);
         Assert.DoesNotContain(transfers, b => ends.Contains(b)); // The branching block, which the checks' edge leaves too, ends nothing.
     }
+
+    // SPEC 3.8, 14.10.3 (DECISIONS R4-M62): where only the checks continue, any acquisition takes the Never value as it is (a comparison's
+    // borrow), an increment's one is of the old value's Type, not of its Never-typed target's, and a rejected node of Type Never keeps its
+    // Opaque value: each body validates.
+    [Theory]
+    [InlineData("func f() -> bool\n    let s = \"a\"\n    return s == (return false)\n")]
+    [InlineData("func f() -> i32\n    var a: [1 of i32] = [0]\n    ++a[(return 42)]\n    return 0\n")]
+    [InlineData("func f() -> i32\n    return true\n")]
+    public void TheNeverValueValidatesWhereOnlyTheChecksContinue(string source) => _ = Body(source, "f");
 
     // SPEC 4.6.3, 4.8.1, 5.6 (DECISIONS R4-M40, R4-M55): a range selection's RawSlice takes what the Slice retains as its backing, the
     // third operand: a shared borrow of an array's whole Place, or a Slice receiver's handle, its value and never borrowed, read where it
@@ -911,15 +928,16 @@ public sealed class MirBuildTest(ITestOutputHelper output)
     }
 
     // SPEC 13.7.2: an in-place compound update reserves its located destination (TwoPhaseUniq) and reads and writes it through that
-    // reservation, so the write activates it.
+    // reservation, so the write activates it, also where its right side does not complete, in the code only the checks reach (SPEC
+    // 14.10.3; DECISIONS R4-M62).
     [Fact]
     public void CompoundUpdatesWriteThroughTheirReservation()
     {
-        var body = Body("func f()\n    var x: i32 = 1\n    x += 2\n    var t: (i32, i32) = (1, 2)\n    t.0 *= 3\n", "f");
+        var body = Body("func f() -> i32\n    var x: i32 = 1\n    x += 2\n    var t: (i32, i32) = (1, 2)\n    t.0 *= 3\n    x += (return 1)\n", "f");
         var statements = body.Statements.ToArray();
         var reservations = statements.Where(static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref })
             .Select(static x => ((MirRefKind)x.Rvalue.Op, x.Place.Root)).ToArray();
-        Assert.Equal(2, reservations.Length);
+        Assert.Equal(3, reservations.Length);
         foreach (var (kind, root) in reservations)
         {
             Assert.Equal(MirRefKind.TwoPhaseUniq, kind);

@@ -309,7 +309,7 @@ fn noncompletingWrite @99
   _2: () temp @102 s1
   _3: string var mut text @103 s2
   _4: () temp @106 s2
-  _5: string temp @107 s2
+  _5: Never temp @108 s2
   s1: lexical in s0 @100
   s2: lexical in s1 @102
   bb0:
@@ -322,8 +322,8 @@ fn noncompletingWrite @99
       StorageLive(_3) @103 s2
     * _3 = const "old" @105 s2
       StorageLive(_4) @106 s2
-      StorageLive(_5) @107 s2
-    * goto bb9 check bb10 @109 s2
+      StorageLive(_5) @108 s2
+    * goto bb8 check bb9 @109 s2
   bb3:
       StorageDead(_1) @101 s1
       _0 = const () @100 s1
@@ -337,21 +337,18 @@ fn noncompletingWrite @99
       StorageDead(_3) @103 s2
       goto bb4 @99
   bb7:
-      drop _5 -> bb8 [elide] @107 s2
-  bb8:
-      StorageDead(_5) @107 s2
+      StorageDead(_5) @108 s2
       StorageDead(_4) @106 s2
       goto bb5 @99
-  bb9:
+  bb8:
       _1 = const () @109 s2
       goto bb7 @109 s2
-  bb10:
-      drop _5 -> bb11 @107 s2
-  bb11:
-      StorageDead(_5) @107 s2
+  bb9:
+      _4 = const () @106 s2
+      StorageDead(_5) @108 s2
       StorageDead(_4) @106 s2
-      drop _3 -> bb12 @103 s2
-  bb12:
+      drop _3 -> bb10 @103 s2
+  bb10:
       StorageDead(_3) @103 s2
       StorageDead(_2) @102 s1
       unreachable check bb1 @102 s1

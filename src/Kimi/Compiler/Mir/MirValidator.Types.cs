@@ -70,6 +70,8 @@ internal sealed partial class MirValidator
             return TyCtxt.Signature(decl, null, key.Kind == MirBodyKind.DefaultTemplate ? key.Index : -1, out _);
         }
 
+        // An operand's Type, unknown (null) for a Place out of range or a local an Opaque value defines, and for the Never value, which
+        // fits any operand position (SPEC 3.8; DECISIONS R4-M62).
         private readonly BoundType? TypeOf(in MirOperand operand)
         {
             if (operand.Kind == MirOperandKind.Const)
@@ -77,7 +79,8 @@ internal sealed partial class MirValidator
                 return (uint)operand.Arg < (uint)body.Consts.Length ? body.Consts[operand.Arg].Type : null;
             }
 
-            return this.IsValid(operand.Place) && !(operand.Place.Root >= 0 && unknown[operand.Place.Root]) ? body.TypeOf(operand.Place) : null;
+            var type = this.IsValid(operand.Place) && !(operand.Place.Root >= 0 && unknown[operand.Place.Root]) ? body.TypeOf(operand.Place) : null;
+            return ReferenceEquals(type, BoundType.Never) ? null : type;
         }
 
         // SPEC 8.2: Types agree (MirTypes.Agree) as they are, or as the body's premises make them (TyCtxt.Premised): E and S under `E is S`.
@@ -210,11 +213,6 @@ internal sealed partial class MirValidator
             for (var i = 0; i < count; i++)
             {
                 var actual = this.TypeOf(body.Operands[call.Start + i]);
-                if (ReferenceEquals(actual, BoundType.Never))
-                {
-                    continue; // An operand that does not complete, whose call only the checks reach (SPEC 14.10.3), agrees with any parameter.
-                }
-
                 BoundType? expected;
                 if (function is null)
                 {

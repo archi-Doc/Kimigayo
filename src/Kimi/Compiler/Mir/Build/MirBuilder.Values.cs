@@ -192,6 +192,11 @@ internal sealed partial class MirBuilder
     // expected Type names. An implicit exclusive borrow of a call's input is two-phase: reserved here, activated at the Call (SPEC 15.6.7).
     private MirOperand Acquire(HirAdjust adjust, MirPlace place, BoundType? expected, bool input, Koto node, MirPlace? into = null)
     {
+        if (this.IsNever(place))
+        {
+            return MirOperand.Move(place); // SPEC 3.8: any acquisition takes the Never value as it is, which fits any operand position.
+        }
+
         var adaptation = adjust.Adaptation;
         var type = this.body.TypeOf(place) ?? BoundType.Unit;
         var target = expected?.Components is [var referent] ? referent : null;
@@ -258,12 +263,12 @@ internal sealed partial class MirBuilder
     }
 
     // A borrow of a Place in a new temp of the reference a Semantics kind forms to it (uniq: exclusive; ref, objref: shared), moved: a
-    // synthesized call's input, so an exclusive one is two-phase (SPEC 15.6.7); a part made where it is built (Make).
+    // synthesized call's input, so an exclusive one is two-phase (SPEC 15.6.7).
     private MirOperand Borrow(SemanticsKind semantics, MirPlace place, Koto node)
     {
         var view = compilation.Types.Reference(semantics, this.body.TypeOf(place) ?? BoundType.Unit);
         var temp = this.Temp(view, node);
-        this.Make(temp, this.Ref(place, view, input: true), node);
+        this.Set(temp, this.Ref(place, view, input: true), node);
         return MirOperand.Move(temp);
     }
 
@@ -388,21 +393,23 @@ internal sealed partial class MirBuilder
             return;
         }
 
-        var value = this.Temp(Completes(assignment.Left) ? assignment.Left : assignment.Right); // Of the Type it is placed at, if it is placed.
+        // Of the Type it is placed at, or the Never value of a right side of Type Never, which is not placed (Overwrite).
+        var value = this.Temp(ReferenceEquals(TypeOf(assignment.Right), BoundType.Never) ? assignment.Right : assignment.Left);
         this.Assign(value, assignment.Right);
-        this.Overwrite(this.Place(assignment.Left), MirOperand.Move(value), assignment);
+        this.Overwrite(this.Place(assignment.Left), value, assignment);
         this.Unit(destination, assignment);
     }
 
-    // SPEC 13.7.1: a target's old value dropped where its Type may need it (A2 elaborates a moved one away), then the value placed.
-    private void Overwrite(MirPlace target, in MirOperand value, Koto node)
+    // SPEC 13.7.1: a target's old value dropped where its Type may need it (A2 elaborates a moved one away), then the value placed; the
+    // Never value is neither, so the target keeps its old value (DECISIONS R4-M62).
+    private void Overwrite(MirPlace target, MirPlace value, Koto node)
     {
-        if (Completes(node) && MirTypes.MayNeedDrop(this.body.TypeOf(target), this.walked))
+        if (!this.IsNever(value) && MirTypes.MayNeedDrop(this.body.TypeOf(target), this.walked))
         {
             this.DropAt(target, this.Info(node));
         }
 
-        this.Use(target, value, node);
+        this.Use(target, MirOperand.Move(value), node);
     }
 
     // SPEC 3.1: a literal's constant, a number's being the value Binding fitted (its plan row's Folded); -1 without one.
@@ -439,21 +446,27 @@ internal sealed partial class MirBuilder
     private BoundType? TypeOf(in MirOperand operand) => operand.Kind == MirOperandKind.Const ? this.body.Consts[operand.Arg].Type
         : this.body.TypeOf(operand.Place);
 
-    // The node's own value, made at its end from the operands the node evaluated, assigned only where the node completes: a node that does
-    // not complete has no value to assign (SPEC 15.6.7: its operand diverged).
+    // The one assignment: a node's own value or a part of it, made where it is built from the operands evaluated before it, also where
+    // only the checks continue (assumed completion, SPEC 14.10.3; DECISIONS R4-M62). Nothing is built that has no value: an rvalue that
+    // has an input (an operand, or the Place a Ref, Len or Discriminant reads) whose every input is the Never value, or a value assigned
+    // to the Never value, since a node of Type Never makes none (but its Opaque value, which stands for its syntax, of its Type).
     private void Set(MirPlace destination, in MirRvalue rvalue, Koto node)
     {
-        if (Completes(node))
+        var never = rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Len or MirRvalueKind.Discriminant ? this.IsNever(rvalue.Place) : rvalue.Count > 0;
+        for (var i = 0; never && i < rvalue.Count; i++)
         {
-            this.Make(destination, rvalue, node);
+            never = this.body.Operands[rvalue.Start + i] is { Kind: not MirOperandKind.Const } operand && this.IsNever(operand.Place);
+        }
+
+        if (!never && (rvalue.Kind == MirRvalueKind.Opaque || !this.IsNever(destination)))
+        {
+            this.body.Push(this.current, MirStatement.Assign(destination, rvalue, this.Info(node)));
         }
     }
 
-    // A part of a node made where it is built, before later parts that may not complete, so it exists on every path that reaches it: it
-    // reads only Places already located or values made before it (a Ref, a Len, an empty collection the parts fill, an Opaque value
-    // standing for its node, a result's discriminant; SPEC 12.4.3, 4.8.1). The one unguarded assignment beside Set.
-    private void Make(MirPlace destination, in MirRvalue rvalue, Koto node)
-        => this.body.Push(this.current, MirStatement.Assign(destination, rvalue, this.Info(node)));
+    // SPEC 3.1.3, 3.8: whether a Place is the Never value, the temp of a node of Type Never, which is never written, carries no Loan and
+    // fits any operand position.
+    private bool IsNever(MirPlace place) => ReferenceEquals(this.body.TypeOf(place), BoundType.Never);
 
     // The destination takes an operand, unless the operand is the destination's own value moved (an acquisition formed it there).
     private void Use(MirPlace destination, in MirOperand operand, Koto node)

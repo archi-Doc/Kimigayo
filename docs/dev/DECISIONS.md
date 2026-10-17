@@ -998,8 +998,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Origin); a depth bound alone, as HoldsRaw has (a repeating recursive Origin-free Type would become a holder and keep the Loans read
   into it live); one fact for both (two readers, two rules). Not temporary.
 - **R4-M37** (2026-10-17; design A3 §4.1 G5, G6, the writeback and the guard row, owner approval of its §9 item 8 on 2026-10-17;
-  G5's path clause and G6's value rule superseded by R4-M52; its `EndBorrow` meaning for guards replaced by A3 §12 E7, recorded
-  with unit 1b-4) The
+  G5's path clause and G6's value rule superseded by R4-M52 (implemented as R4-M54 and R4-M62); its `EndBorrow` meaning for guards
+  replaced by A3 §12 E7, recorded with unit 1b-4) The
   MIR builder contracts A5's reservations and guard-local Origins read. G5: every exclusive borrow on an invocation's preparation path
   is `TwoPhaseUniq` (SPEC 15.6.7): a written `@uniq`, also in parentheses or on the Place path of a receiver or an argument down to a
   value (`h@follow@uniq.c.bump(1)`; a call result or a getter activates at its own call), the Reborrow of a stored exclusive reference
@@ -1313,6 +1313,30 @@ and migration obligations remain in force; no numeric cap changes are authorized
   gives the composed atom no Type and A4 records Limit at the first composition. Rejected: an `Enter` on reported parts only
   (design B: a struct of scalars reports nothing, so the DAG walk stays exponential); a cached fact per interned Type (state outside
   the query, R7's); a nullable set parameter on `Destruction`. Not temporary.
+- **R4-M62** (2026-10-17; PLAN G92, implementing R4-M52's G92a (owner) as `draft/Sketches/A5 Step 1/choice-1b.md` §2 and A3 E9
+  state it, with design review r1's B2 and r2's F3 and F4, on the planning session's instruction of the same day; amends R4-M37
+  G6) Assumed completion in MIR construction (SPEC 14.10.3, 3.8, 3.1.3). On a check-only continuation every node is built and
+  makes its own value and accesses as at run time. A node of Binding Type Never has no value: its temp, the Never value, is never
+  written, carries no Loan and fits any operand position: every acquisition takes it as it is (`Acquire`), so a comparison's
+  borrow of it forms no `ref/Never`. `MirBuilder.Set`, now the one assignment (`Make` merged into it), builds nothing that has no
+  value: an rvalue that has an input (an operand, or the Place a Ref, Len or Discriminant reads) whose every input is the Never
+  value, or a value assigned to the Never value (a `while` whose condition diverges completes with none), but for the Opaque value
+  standing for a rejected or unsupported node of Type Never. An increment's one is of the old value's Type, not of its target
+  node's, which is Never where the index diverges (`++a[(return 0)]`). `Overwrite` neither drops nor places when the value is
+  the Never value, and `Replace` secures a right side of Type Never into a Never temp, so `let x: i32 = stop()`, `x = stop()` and
+  `b = stop(); consume(b@move)` stay as before (x unwritten, b neither dropped nor overwritten). A Call is built with its Never
+  operands (`Reached` goes), except where a part would borrow the Never value, which has nothing to borrow: a runtime Type test's
+  handle, a verification's message and `$tryWrite`'s writer. The non-completion gates go: Set's, a range selection's bounds check
+  and `RawSlice`, a `^x` boundary's check, an Array literal's appends, `testObserve`, a formatted write's result test and
+  `FormatFinish`. Edge structure stays the HIR Completion's: Transfer, Branch, Join, Loop, a body's end, a recursive default's
+  call, an Opaque site and a block's Unit. The validator reads the Never value's Type as unknown at every operand position (Use,
+  operators, Casts, aggregate components, call arguments, a Value callee), replacing R4-M37's call-argument exception; a
+  `ref/Never` operand is still a finding. Binding's alpha (a Never element of a literal takes its expected Type) landed first. So
+  a continued call's result reaches its consumer (`both(keep(p@uniq, (return 1)), p@uniq)`), an update whose right side
+  diverges writes through its reservation, and a construction around a Never form keeps its operands' Moves and Loans; A4 counts
+  the effects of the statements this builds (R4-M6a). Rejected: keeping `Reached` with a located `Unsupported_Kd` (owner); an
+  A5-side rule over operands the MIR does not build; a diverging Call writing its destination on its check edge (SPEC 14.10.3
+  leaves it open). Not temporary.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

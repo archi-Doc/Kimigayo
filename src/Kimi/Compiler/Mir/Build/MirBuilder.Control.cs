@@ -190,8 +190,9 @@ internal sealed partial class MirBuilder
 
     // SPEC 17.6: a verification's condition secured as a bool and observed at its site (testObserve of the bool and the site's location,
     // which TestCatalog numbers, giving the failure's issue) before its temporaries are cleaned up; on false its message, evaluated and
-    // recorded for the issue (testMessage of a shared view) with its own temporaries cleaned up, then for $require the case's Abort
-    // (testRequireAbort), which has no successor; $expect continues with Unit either way. Its test phases are the backend's (plan 5.6.7).
+    // recorded for the issue (testMessage of a shared view; the Never value has nothing to view) with its own temporaries cleaned up, then
+    // for $require the case's Abort (testRequireAbort), which has no successor; $expect continues with Unit either way. Its test phases
+    // are the backend's (plan 5.6.7).
     private void Verification(MirPlace destination, TestVerificationKoto verification)
     {
         var failed = this.body.AddBlock();
@@ -207,7 +208,7 @@ internal sealed partial class MirBuilder
             var text = this.Temp(message);
             var start = this.arguments.Count;
             this.Assign(text, message);
-            if (Completes(message))
+            if (!this.IsNever(text))
             {
                 this.arguments.Add(MirOperand.Copy(issue));
                 this.arguments.Add(this.Borrow(SemanticsKind.Ref, text, message));
@@ -242,12 +243,9 @@ internal sealed partial class MirBuilder
         var temporaries = this.OpenScope(block: false);
         var mark = this.arguments.Count;
         this.Assign(test, condition);
-        if (Completes(condition))
-        {
-            this.arguments.Add(MirOperand.Copy(test));
-            this.arguments.Add(site);
-            this.Invoke(issue, MirCallee.Intrinsic(IntrinsicId.TestObserve), this.arguments.Count - 2, condition);
-        }
+        this.arguments.Add(MirOperand.Copy(test));
+        this.arguments.Add(site);
+        this.Invoke(issue, MirCallee.Intrinsic(IntrinsicId.TestObserve), this.arguments.Count - 2, condition);
 
         this.arguments.RemoveRange(mark, this.arguments.Count - mark);
         this.CloseScope(temporaries);
