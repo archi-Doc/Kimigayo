@@ -56,10 +56,13 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 if ($Mode -eq 'Session' -and $TestPurpose -ne 'All') { throw 'Session verification must include functional and allocation regressions (-TestPurpose All).' }
+if ($Mode -eq 'Session' -and $Class.Count + $Method.Count -gt 0) { throw 'Session verification runs every test; -Class and -Method select Unit runs.' }
 . (Join-Path $PSScriptRoot 'verification-selection.ps1')
 . (Join-Path $PSScriptRoot 'verification-inputs.ps1')
-$Class = @(Join-KimiCommonTestSelections @($Class | ForEach-Object { ConvertTo-KimiTestPattern $_ }))
-$Method = @(Join-KimiCommonTestSelections @($Method | ForEach-Object { ConvertTo-KimiTestPattern $_ -Method }) -Method)
+$requestedClass = @($Class | ForEach-Object { ConvertTo-KimiTestPattern $_ })
+$requestedMethod = @($Method | ForEach-Object { ConvertTo-KimiTestPattern $_ -Method })
+$Class = @(Join-KimiCommonTestSelections $requestedClass)
+$Method = @(Join-KimiCommonTestSelections $requestedMethod -Method)
 $Pipeline = $Pipeline.ToLowerInvariant()
 $previousPipeline = $env:KIMI_PIPELINE
 $env:KIMI_PIPELINE = $Pipeline # Tests, fixtures and milestone harnesses inherit it.
@@ -163,8 +166,17 @@ function Invoke-Tests([string] $configuration, [string[]] $filters, [string] $ta
     finally { $env:KIMI_FIXTURE_DIRECTORY = $previousDirectory }
     $summary = Select-String -LiteralPath $log -Pattern 'Total: \d+' | Select-Object -Last 1
     $line = if ($summary) { $summary.Line.Trim() } else { 'no summary' }
-    # Zero executed tests is never evidence (for example, a mistyped filter or a selection of only Explicit tests).
-    Add-Step "tests $configuration $tag" ($code -eq 0 -and (Get-KimiExecutedTestCount $line) -gt 0) "$line; $log" $timer.Elapsed.TotalSeconds
+    $ok = $code -eq 0
+    $detail = "$line; $log"
+    try {
+        # Zero executed tests is never evidence, and each requested selector executes a test of its own, so one that matches
+        # only Explicit tests is not hidden by the common checks or another selector.
+        $executed = @(Get-KimiExecutedTests $xml)
+        if ($executed.Count -eq 0) { throw 'The results record no executed test.' }
+        Assert-KimiTestSelections $requestedClass $requestedMethod $executed 'among the executed tests'
+    }
+    catch { $ok = $false; $detail = "$($_.Exception.Message) $detail" }
+    Add-Step "tests $configuration $tag" $ok $detail $timer.Elapsed.TotalSeconds
 }
 
 function Test-Selection([string] $configuration, [string[]] $filters) {
@@ -176,7 +188,7 @@ function Test-Selection([string] $configuration, [string[]] $filters) {
         & dotnet $dll -noLogo -list methods/json > $catalog
         if ($LASTEXITCODE -ne 0) { throw "Test discovery failed; see $catalog" }
         $methods = @(Get-Content -LiteralPath $catalog -Raw | ConvertFrom-Json)
-        Assert-KimiTestSelections $Class $Method $methods
+        Assert-KimiTestSelections $Class $Method $methods 'in the freshly built assembly'
         # The runner applies the actual class/method intersection and trait rules.
         & dotnet $dll -noLogo -list methods/json @filters > $selected
         if ($LASTEXITCODE -ne 0) { throw "Selected test discovery failed; see $selected" }
@@ -212,7 +224,6 @@ foreach ($c in $Class) {
 foreach ($m in $Method) {
     foreach ($pattern in (Get-KimiTestAlternatives $m -Method)) { $filters += @('-method', $pattern) }
 }
-if ($Mode -eq 'Session') { $filters = @() }
 $hasTestSelection = $filters.Count -gt 0
 if ($TestPurpose -eq 'Functional') { $filters += @('-trait-', 'Purpose=Allocation') }
 elseif ($TestPurpose -eq 'Allocation') { $filters += @('-trait', 'Purpose=Allocation') }

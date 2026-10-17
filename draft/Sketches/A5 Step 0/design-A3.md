@@ -12,18 +12,18 @@ Base: worktree `bin/worktrees/a5-step0` (`b2edea8b`); plan `fe1a5b34` §4.2–§
 ## 1. Summary
 
 - **Holders**: root locals plus an escaped pseudo-holder `E` (P1), each with an interned Loan-set node (`MirLoanSets`).
-- **Loans**: one per borrow site and view, named by base (S1). A two-phase Loan is `ref` only in its reservation holder.
+- **Loans**: one per borrow site and view, named by base (S1; none past a shared Deref, E3; no base, E8). A two-phase Loan is `ref` only in its reservation holder.
 - **Syntactic access**: borrows and Moves of a Place reach Loans formed through references stored in it (P3; S1's ban
   over Places). There are no resolved access Places and no authority sets.
 - **Check sets go by holder, never by Loan id.**
   - Accesses: the entry sets of holders live after P, minus those P overwrites, **plus the transit clause**: the entry
     sets of every value P stores into a holder live after P (directly or through the closure), or into `E`; a store
     through a reference stores into the holders its direct Loans name (owner decision; the plan's `stored`).
-  - Activations: holders live into P, minus the reservation holder. This also checks the arguments of one call against
+  - Activations: holders live into P, minus the reservation holder (E5: its holders still seed the closure). This also checks the arguments of one call against
     each other.
 - **Kills and destructions**:
   - `step` carries the kill on every rule, through MIR's Temps. The kill never crosses a Deref (plan base: the Place
-    before the last Deref).
+    before the last Deref; E8 ends by exact Move-Path prefix instead).
   - A call whose published row destroys its target makes a `destroy` access of it, checked before `ended`.
   - An observing destruction is an exclusive deep use up to the first shared Deref (`base_op`).
 - **Provenance only for content**: direct Loans, materialized parents, `E` through `Φ_E`.
@@ -54,11 +54,11 @@ r2 finding 3's row is not needed, because the shared-layer cut is taken (§5).
 | Form | Rejects | lib / ms / tests |
 | --- | --- | --- |
 | Base operations | The Move, `exchange`/`swap` target, or exclusive borrow other than as a `replace` target, of a base or ancestor while a child is live (prototype 9k, 9l, 14) | counted by the census (plan §6.2) |
-| No kill across a Deref (`within`; 23a, 30d) | Replacing the outer holder does not end a child based past a borrow Deref, so later access through the new value conflicts:<br>23a: `c = rr@follow@follow@uniq; rr = slot2@uniq; rr@follow@follow = 7`;<br>30d: a `uniq/Node`-linked traversal that reads through the new node's link.<br>obj links (30a: an own step, so B = `node`) and plain `uniq` links (30b) stay valid. | 23a: 0 / 0 (Milestone33's two-layer follows are compound writes) / ≤8 reborrows in 3 files.<br>30d: 0 (lib links are `isize` indexes, `DictionaryStorage.kimi:21`, `Storage.kimi:50-68`) / 0 / 3 files with reference links, 0 traversal lines. |
-| Optional recovery: root-most kill | Sound with P3 (prototype, 92 cases); see below | removes the row above |
+| No kill across a Deref (`within`; 23a, 30d; recovered by E8, owner 2026-10-17) | Replacing the outer holder does not end a child based past a borrow Deref, so later access through the new value conflicts:<br>23a: `c = rr@follow@follow@uniq; rr = slot2@uniq; rr@follow@follow = 7`;<br>30d: a `uniq/Node`-linked traversal that reads through the new node's link.<br>obj links (30a: an own step, so B = `node`) and plain `uniq` links (30b) stay valid. | 23a: 0 / 0 (Milestone33's two-layer follows are compound writes) / ≤8 reborrows in 3 files.<br>30d: 0 (lib links are `isize` indexes, `DictionaryStorage.kimi:21`, `Storage.kimi:50-68`) / 0 / 3 files with reference links, 0 traversal lines. |
+| Optional recovery: root-most kill | Sound with P3 (prototype, 92 cases); see below; superseded by E8 | removes the row above |
 | Raw-site form | audit-core row 24 | (H) 0 / 0 / small |
 
-**Optional precision recovery for 23a (owner decision).** In prototype round 6 (92 cases), the root-most kill was sound
+**Optional precision recovery for 23a (owner decision; superseded by E8, the case 23a proposal's option (c)).** In prototype round 6 (92 cases), the root-most kill was sound
 in both modes once P3 was present (variants `P3RootMost`, and A with `KillAcrossDeref`). That kill applies when the
 holder before the first borrow Deref is destroyed in place. P3 rejects the crossing counterexample (29a) at
 `let w = q@follow@ref`, and the root-most kill accepts 23a and 30d. Rules 2 and 3 of plan §4.3's crossing list changed no
@@ -85,7 +85,7 @@ A1.
   - **own**: an `obj`/`rc`/`arc` payload, part of the handle's storage. This gives SPEC 13.5.5's handle Loan and
     S16:194.
   - **raw**: a fresh anchor, compared only with Places derived from it (S15:496).
-- **Inline steps**: Field, Base, ConstIndex, Downcast, Index.
+- **Inline steps**: Field, Base, ConstIndex, Downcast, Index (E6: a Slice handle's Index is a shared borrow Deref).
 - **Overlap** is prefix comparison:
   - distinct Fields, Tuple elements and constant indices are disjoint;
   - an Index meets every index of its base;
@@ -95,9 +95,9 @@ A1.
 
 **Loans.**
 
-- A Loan exists per non-raw `Ref` site and view, with its Place, its `base(L, B)`, mode, issue location and destination
+- A Loan exists per non-raw `Ref` site and view (none past a shared Deref: E3), with its Place, its `base(L, B)` (E8: none), mode, issue location and destination
   root.
-- B is the plan's base: the Place before the *last* borrow Deref, with own (`obj`/`rc`/`arc` payload) Derefs counted as
+- (E8) B is the plan's base: the Place before the *last* borrow Deref, with own (`obj`/`rc`/`arc` payload) Derefs counted as
   storage, as design B does. B matters only for the kill; the ban and provenance use the Loan's whole Place and direct
   Loans, so per-root holders need no other base.
 - **Direct** Loans have no borrow Deref and name `root(place)`.
@@ -108,13 +108,13 @@ A1.
 - **Ban more.** A deep access of Place K reaches every Loan whose Place has K as a prefix, compared syntactically across
   Deref steps; an Index matches any index that §15.6.2 does not prove distinct. This contains `runs_through(B, K)` for
   any B ⊑ place(L), so `exchange(arr[j]@uniq, …)` meets a child based at `arr[i]` (22a).
-- **Kill less.** The plan's `within`: `ended` needs a whole in-place destruction of B or of a move-path ancestor of B,
+- **Kill less** (E8 replaces it). The plan's `within`: `ended` needs a whole in-place destruction of B or of a move-path ancestor of B,
   with no borrow Deref step between them and Index steps only for identical constant indexes. Own (`obj`/`rc`/`arc`
   payload) Derefs are storage, so the kill passes them; this is sound, because the handle's storage is destroyed with
   its owner (r3 N2), and the plan's `within` should say "borrow Deref" too. A B containing a borrow Deref is never
   ended. A write through a non-path index ends nothing.
 - **P1 changes neither rule.** Both are on Places; P1 only decides which holder carries what.
-- **No kill across a Deref** (planning decision, overriding r2 finding 4). The plan's (H) "does `q = …` end a Loan based
+- **No kill across a Deref** (planning decision, overriding r2 finding 4; superseded by E8). The plan's (H) "does `q = …` end a Loan based
   at `(*q).p`?" is answered **no**, for consistency with the plan and S1.
   - Without P3, crossing is unsound (29a, rejected by SPEC and Rust E0502).
   - P3 rejects 29a at `let w = q@follow@ref` under either kill, so the root-most kill stays an optional recovery (§2).
@@ -127,6 +127,7 @@ A1.
   Args at entry, Opaque values, static and raw-pointer reads, unknown callees' results, and results with an untied
   Origin (`Retains.Untied`).
 - `τ_s` marks Opaque site s, for A6.
+- `γ_H` marks a guard candidate's guard-local Origin (E7).
 
 A *phantom* `Φ_c` does conflict (F6).
 
@@ -164,14 +165,14 @@ Inputs come from producers; derived facts come from §5. One Semantics case view
 | --- | --- | --- | --- |
 | `edge(ℓ, ℓ′)`, P1/P2 | location | `MirDataflow` chains, `MirReach` | input |
 | `issued(L, X, mode, ℓ, H)` | site | `Ref` rvalues under the view (`MirUses.ForEach(MirCases, …)`) | input |
-| `base(L, B)`, `direct(L)`, `named(L, T)` | Loan | Place projections, step classes | derived (pre-pass) |
+| `base(L, B)` (E8: none), `direct(L)`, `named(L, T)` | Loan | Place projections, step classes | derived (pre-pass) |
 | `holder(H)`, `flowHolder(H)` | local | `MirTypes.HoldsLoans(cases.Type(…))`, `MirMoveData.FlowCount` | input |
 | `access(ℓ, X, k)`, `use(H, ℓ)`, `kill(H, ℓ)` | location | `MirUses` rows plus statement kind (as `MirInit.cs:112-121`) | input |
 | `stores(ℓ, v, dest)` | location | an Assign or Call destination, a write through a reference, a store retention into referents | input |
 | `destroys(ℓ, K, elements)` | Call | callee's published row `Destroys = i` (`TyCtxt.Published`): K = the Place of the Ref producing argument i; `elements` for the `clear`s | input |
 | `destroyed_in_place(K, ℓ)` | Place | a whole assignment of direct K; StorageLive/StorageDead of root K; a `destroys` row that also has `InPlace` (`replace` only; `clear` only under relaxation (c)) | input |
 | `destroying(site)` | Ref site | the TwoPhaseUniq Ref producing an `InPlace` argument | derived (pre-pass) |
-| `ended(L, ℓ)`, `step(L, ℓ, ℓ′)` | Loan | `base(L, B), destroyed_in_place(K, ℓ), within(B, K)` (move paths: no Deref, Index only for identical constant indexes); `step :- edge, !ended` | derived |
+| `ended(L, ℓ)`, `step(L, ℓ, ℓ′)` (E8) | Loan | `base(L, B), destroyed_in_place(K, ℓ), within(B, K)` (move paths: no Deref, Index only for identical constant indexes); `step :- edge, !ended` | derived |
 | `base_op(ℓ, K)` | Place | a Move, a borrow (P3), an `exchange`/`swap` target, the destruction of an old value whose drop may reach a base below K (`obs`: MIR's separate Drop at `=`, a destroying call such as `replace`), except a `destroying` Ref | derived (deep accesses) |
 | `reserved(L, H, ℓ1, ℓ2)` | site | TwoPhaseUniq issue into H at ℓ1; its Call, or the writeback write through H, at ℓ2; reserved only in H | derived |
 | `observes(T)` | Type | `MirTypes.Observes(case Type)`; for a Drop also its group verdict ≠ Elide (`M/Analysis/MirDrops.cs:88`) | input |
@@ -198,7 +199,7 @@ Inputs come from producers; derived facts come from §5. One Semantics case view
 | In place | `PublishedRow` gains `InPlace`; row `Target` splits into `Replace` (`Destroys: 0, InPlace`) and `Target` for the `clear`s (`B/KimiLibraryCatalog.cs:34, 78, 96, 157`); A4 keeps `Destroys`. | Binding catalog |
 | E-keys | `MirOpaque` carries its Binding failure-cause keys (A6's representative cause is the minimum key). | Binding, builder |
 
-`EndBorrow` (`M/MirVocabulary.cs:21`) is restated: "a use of the local, after which every Loan issued into it must be
+`EndBorrow` (`M/MirVocabulary.cs:21`) is restated (E7 replaces the guard part): "a use of the local, after which every Loan issued into it must be
 dead; its carrying ends". This is trivial for abandoned comparisons and reservations, and is the guard-local Origin end
 for guards.
 
@@ -235,6 +236,7 @@ through(X, A)      :- within(X, A), a borrow Deref of X lies below A.
 throughShared(X,A) :- within(X, A), a shared borrow Deref of X lies below A.
 deep(k)            :- k ∈ {move, sborrow, uborrow};   obs is a deep exclusive use that stops at shared Derefs.
 hits(A, X, k)      :- within(A, X) ; within(X, A), ( !through(X, A) ; deep(k) ; k = obs ∧ !throughShared(X, A) ).
+                      // E1: also a write or destruction while L sits in its reservation holder; E3: throughShared vacuous
 conflicts(k, m)    :- m = uniq ; k ∈ {write, move, uborrow, destroy, obs}.
 mode(L, H)         :  Shared → ref; Uniq → uniq; Φ_c → uniq; TwoPhaseUniq → ref iff H is L's reservation holder.
 content(S)         =  ⋃{σ(T) | L∈S, named(L,T)} ∪ (σ(E) if Φ_E∈S)            // monotone in S
@@ -244,9 +246,9 @@ val(Opaque s)      =  ⋃ σ(roots of s) ∪ {τ_s, Φ_E};  val(static or raw-de
 
 // ---- Carrying (forward)
 σ(H, entry)        =  {Φ_E} for a Loan-capable Arg, else ∅;  σ(E, entry) = ∅
-ended(L, ℓ)        :- base(L, B), destroyed_in_place(K, ℓ), within(B, K).   // move paths; never across a Deref
+ended(L, ℓ)        :- base(L, B), destroyed_in_place(K, ℓ), within(B, K).   // move paths; never across a Deref (E8: K exactly prefixes place(L))
 step(L, ℓ, ℓ′)     :- edge(ℓ, ℓ′), !ended(L, ℓ).   // every carrying rule takes the step: σ_out(K) \= ended(ℓ), ∀K and E
-issued(L,X,_,ℓ,H)  ⇒  σ_out(H) = {L} ∪ ⋃_{j<k} content^j(σ_in(root(X)))           // R2: parents of every followed layer
+issued(L,X,_,ℓ,H)  ⇒  σ_out(H) = {L} ∪ ⋃_{j<k} content^j(σ_in(root(X)))           // R2: parents of every followed layer (E3 past a shared Deref)
 assign H := rv  (whole root)         ⇒ σ_out(H) = val(rv)                          // complete replacement
 assign D := rv  (direct, D ⊐ H)      ⇒ σ_out(H) = σ_in(H) ∪ val(rv)                // P1
 assign D := rv  (k ≥ 1 borrow Deref) ⇒ ∀T ∈ refs^k(σ_in(root(D))): σ_out(T) ∪= val(rv)   // S15:454, S4: ends nothing
@@ -281,8 +283,8 @@ transit(ℓ)         =  ⋃ val_in(v) over stores(ℓ, v, dest) with dest a hold
                       the holders its direct Loans name, or into E (Φ_E). A dead target stays unchecked (r3 N1)
                       // val_in: the stored value's set computed from σ_in; a Loan born at ℓ is in no entry set.
                       // = the plan's stored(L,P,T) with live(H,P) ∧ overlap(T,H) (per-root: T's holder) or escaped(T)
-CS(ℓ)              =  closure( ⋃{σ_in(H) | H ∈ live_out(ℓ), ℓ does not overwrite H} ∪ σ_in(E) ∪ transit(ℓ) )
-CS_call(ℓ, t)      =  closure( ⋃{σ_in(H) | H ∈ live_in(ℓ), H ≠ t} ∪ σ_in(E) )      // t: the reservation holder
+CS(ℓ)              =  closure( ⋃{σ_in(H) | H ∈ live_out(ℓ), ℓ does not overwrite H} ∪ σ_in(E) ∪ transit(ℓ) )   // E5: own-value seed
+CS_call(ℓ, t)      =  closure( ⋃{σ_in(H) | H ∈ live_in(ℓ), H ≠ t} ∪ σ_in(E) )      // t: the reservation holder; E5: seeded by σ_in(t)
 access(ℓ,X,k)      :- Copy|FakeRead|Discriminant|Len → read; Move → move; Ref Shared|TwoPhaseUniq|Raw → sborrow,
                       a destroying Ref → read (shallow); Ref Uniq → uborrow; destination → write;
                       StorageDead → destroy;  Drop → destroy, plus obs if observes(Type(X)).
@@ -292,7 +294,7 @@ err(conflict,L,ℓ)  :- access(ℓ,X,k), L ∈ CS(ℓ) via H, real(L), hits(X, p
 err(activate,R,L,ℓ):- reserved(R,t,_,ℓ), L ∈ CS_call(ℓ,t) via H, real(L), hits(place(R), place(L), uborrow),
                       conflicts(uborrow, mode(L,H)), !excused(L,ℓ).     // a destroying R: hits as write (shallow)
 err(destroy,L,ℓ)   :- destroys(ℓ, K, e), X = (K's elements if e else K), L ∈ CS_call(ℓ,t_K) via H, real(L),
-                      observes(Type(X)), hits(X, place(L), obs), ¬hits(X, place(L), uborrow),
+                      observes(Type(X)), hits(X, place(L), obs), ¬hits(X, place(L), uborrow),   // E11: ¬hits(…, write)
                       conflicts(destroy, mode(L,H)).   // at the call, on σ_in, so before ended
                       // only the obs part beyond the shallow activation: the target's own Places are already
                       // checked by the call's activation, so one Loan never gets two codes (r3 N4)
@@ -301,14 +303,14 @@ err(destroy,L,ℓ)   :- destroys(ℓ, K, e), X = (K's elements if e else K), L �
 // stored borrow, live when formed, so an overlapping later argument conflicts at its own formation.
 err(effect,L,ℓ)    :- key(ℓ,f,k), L∈CS_call(ℓ,−) via H, root(place(L)) a static of Field f (P5), conflicts(k, mode(L,H)).
 err(effect,L,ℓ)    :- unknown(ℓ), L∈CS_call(ℓ,−), root(place(L)) a mutable static.  // calls, erased Drops (S16:196)
-err(ended,L,ℓ)     :- EndBorrow H at ℓ, issued(L,_,_,_,H), L ∈ CS(ℓ).               // guard-local Origin end
+err(ended,L,ℓ)     :- EndBorrow H at ℓ, issued(L,_,_,_,H), L ∈ CS(ℓ).               // guard-local Origin end (E7: by γ_H, guards only)
 partition(L,ℓ,k,X) :- k = destroy, root(X) a body root, L ∈ σ_in(_0) and L in no other part of CS(ℓ).   // DIAGNOSTICS
 
 // ---- F6 preserves results (S2)
 disturbed at ℓ     :- ℓ writes, Moves or destroys a direct D ⊑ recv(c), or writes through a Place hitting recv(c)
                    ⇒  Φ_c is replaced by Φ_c^dist in every σ (by holder, like ended)
 excused(L,ℓ)       :- Call c2 at ℓ, preserves(c2), L = Φ_c1 (not ^dist), callee(c1) = callee(c2), recv(c1) ≡ recv(c2).
-excused(L,ℓ)       :- ℓ forms an argument reservation of a Call c2 with excused(L, c2's location).
+excused(L,ℓ)       :- ℓ forms an argument reservation of a Call c2 with excused(L, c2's location).   // E2: derived from reserved
                       // erratum (prototype round 7, 33c): MIR forms c2's receiver reservation before the Call, so
                       // without this row SPEC's takeTwo (§8.11.3) is rejected at that formation; takeAcross still errs
 // Φ_c: place = recv(c)'s referent with its content, mode uniq, issued with desc(c)'s parent Loans into the result of an
@@ -364,7 +366,7 @@ body-rooted one is the Refuted relation (S15:575). Over-approximated Loans are h
 
 Per body view, in `MirAnalysis` step 4 (after A4's `Run`; `flow.Begin` and `moves.Build` are redone per body):
 
-1. **Pre-pass**, one `MirUses` walk: holders, Loans (CSR by place root and base root), `destroys`/`destroying` sites
+1. **Pre-pass**, one `MirUses` walk: holders, Loans (CSR by place root and base root; E8: no base root), `destroys`/`destroying` sites
    and per-root conflict flags. A view with no real Loan, or with no access that can conflict by root flags, skips the
    stratum (census: 161 + 266 + 16 Loan-free views).
 2. **Liveness solve**: `flow.Backward` over `⌈Hf/64⌉` words.
@@ -428,7 +430,7 @@ under the same term. `MirBorrows.Work` counts each term: transfer steps, slot jo
 - **Bound**: Θ(N_o + E_o·⌈F/64⌉·ρ + Ft·Pm). The stratum reads no liveness, CFG or σ, and Loan flow reads only `Retains`.
   The strata are independent, and A6 merges their problems.
 
-**Containment** (row 9c): a Ref through borrow Derefs adds `contain(o_k, o_new)` per layer, up to and including the
+**Containment** (row 9c; E4 corrects the cut): a Ref through borrow Derefs adds `contain(o_k, o_new)` per layer, up to and including the
 first shared layer, the same cut as `obs` (`MirCases.Layer` for pair layers). Edges between fixed atoms are entailed by
 Binding's meet.
 
@@ -501,6 +503,11 @@ violation of an approved loss with its Language code, in shadow (plan §5.3; S1:
 the earlier rules until R6-check (DEC R4-M50). P12 (item 10) is approved but not yet in SPEC: until its SPEC revision
 lands, A5 reports a violation of it (36f) as a located `Unsupported_Kd` (plan §5.3).
 
+**Item 11 was decided by the owner on 2026-10-17** (DECISIONS R4-M52), choosing each recommended option of
+`../A5 Step 1/choice-1b.md` §4: G92b the fold (b2), G92a assumed completion with α, the case 23a proposal as option (c),
+Loan ending by exact Move-Path prefix (§12 E8), and the SPEC revision (P12, E8, the reported gaps) in a separate session; and, asked for unit 1a, that a callable whose
+implementation a call cannot see relates its fixed input-position Origins to its fixed result and writable-storage Origins.
+
 | # | Decision | Content | Recommendation |
 | --- | --- | --- | --- |
 | 2 | OD13 loss list | §2's tables, with counts and class:<br>needed: P1, P3 (both forms), P4, P10, P11;<br>optional, each its own decision: P5, P6, P9.<br>S1's own: base operations (9k, 9l, 14), the `within` kill (23a, 30d), the raw-site form.<br>Optional recovery: the root-most kill (sound with P3; prototype, 92 cases).<br>No row for r2 finding 3, since the cut is taken. | Approve; decide the recovery |
@@ -512,19 +519,20 @@ lands, A5 reports a violation of it (36f) as a located `Unsupported_Kd` (plan §
 | 8 | MIR contracts | The TwoPhaseUniq writeback activation; the `RawSlice` backing operand; `MirCallee.Arg`; the `EndBorrow` meaning; the catalog `InPlace` column. No closed-vocabulary entry; no `MirLocalRole` member | Approve |
 | 9 | DEC and DIAGNOSTICS | **DEC**: the A5 representation (§3, §5); the `MirDataflow` join hook and backward pass (superseding R4-M20's word-OR detail); A4 keys; the boundary; G3, G4, G7; Relate and Clauses only inside `Retains`; `PublishedBindingTypes` additions.<br>**DIAGNOSTICS**: the partition rule; the guard `ended` code; E5's minimum-key cause | Record |
 | 10 | P12 (G113 erratum) | `desc(c)` (§5): a descending result keeps `Φ_c` with the receiver's parent Loans. Needed for soundness (36c, 36e, 36g); costs 36f, 0 / 0 / 0 found. Rejected: `Φ_c` alone (unsound), keeping R_c (rejects `takeTwo`), R2 of `recv(c)` at the call (sound only while A3 rejects writes to a reservation's route, which it does not yet: 36e, 36h) | Approve |
+| 11 | Step 1 (choice-1b §4) | G92b fold; G92a assumed completion with α; case 23a option (c), §12 E8; the SPEC revision in a separate session; retention through a callable whose implementation the call cannot see (a Function Type value, a Callable-bound value, a callable Type inside a contract; unit 1a): its fixed input-position Origins reach its fixed result and writable-storage Origins | Each as recommended; decided 2026-10-17 (DECISIONS R4-M52) |
 
 ## 10. Implementation units (plan §6.2)
 
 | Unit | Content | Completion condition | Checks |
 | --- | --- | --- | --- |
 | 0a | Ledger re-baseline at the step-0 base (census §3 command) | `ledger.tsv`, `summary.md` recorded | V13 failure-set equality |
-| 0b | Prototype into `draft/Sketches`.<br>Recorded: the 92 cases, including 25a–25c (transit, dead store), 26a/26b (destroying calls), 27 (cut), 28a–28d (plain arguments: E, V, V, E), 29a–29c (crossing, escaped, path-exact) and 30a–30d (linked lists).<br>Added (round 7): `swap(a, b)` with parameters, `y = h@follow + 1`, `Φ_c^dist`. | All match the A column: no unsound acceptance and no unlisted rejection (round 6: 70 same, 14 earlier, 8 listed losses) | `proto.cs` run |
+| 0b | **Closed by round 10** (2026-10-17: 246 cases, no unsound acceptance and no unlisted rejection under design A and E8's kill).<br>Prototype into `draft/Sketches`.<br>Recorded: the 92 cases, including 25a–25c (transit, dead store), 26a/26b (destroying calls), 27 (cut), 28a–28d (plain arguments: E, V, V, E), 29a–29c (crossing, escaped, path-exact) and 30a–30d (linked lists).<br>Added (round 7): `swap(a, b)` with parameters, `y = h@follow + 1`, `Φ_c^dist`. | All match the A column: no unsound acceptance and no unlisted rejection (round 6: 70 same, 14 earlier, 8 listed losses) | `proto.cs` run |
 | 0c | G1 `MirDataflow` | A1 behavior-preserving; a backward test problem | `MirDataflow`/A1 tests, `BodiesScaleLinearly`, ledger unchanged |
 | 0d | G2 | Classified over library Types | Unit tests (`Logger` S15:598-604, abstract and Sealed parts) |
 | 0e | Builder contracts G5, G6, writeback, Slice, Guard, C8 | Dump goldens updated; validator clean | `MirBuildTest`, goldens |
 | 0f | A4 `Keys` | Keys per Call/Drop, linear | `MirEffects` tests, scaling |
 | 1a | Binding C1+C8 `Retains(callee, Subst)`; catalog `InPlace` | Immutable after Bind; allow list | View tests, `KimiLibraryShapeTest` |
-| 1b | `MirLoanSets`, `MirBorrows` F1, F2, F3, F10 (joint core) | Library and milestones produce no A5 problem (R4-M12 from here). Shadow watch: raw writes in `Storage.kimi` and `DictionaryStorage.kimi` moving Loans into `σ(E)` | SPEC-example table (`tests/diagnostics/spec-cases.json`: about 40 error and 34 accepting variants); 0b's cases as MIR-layer tests; scaling shapes 1–8 |
+| 1b | `MirLoanSets`, `MirBorrows` F1, F2, F3, F10 (joint core), with §12's errata. Units (`../A5 Step 1/choice-1b.md` §3): 1b-1 `MirLoanSets`; 1b-2 pre-pass, liveness, carrying with retention and stores, check sets and the conflict check; 1b-3 reservations, activation, E1, destroying calls and `obs`; 1b-4 guards (E7) and the partition rule; 1b-5 the driver step in shadow. Before 1b-5: the MIR units G92b, G123, G94 (one MirBuilder lane) and G91; G92a may follow | Library and milestones produce no A5 problem (R4-M12 from here). Shadow watch: raw writes in `Storage.kimi` and `DictionaryStorage.kimi` moving Loans into `σ(E)` | SPEC-example table (`tests/diagnostics/spec-cases.json`: about 40 error and 34 accepting variants); 0b's cases as MIR-layer tests; scaling shapes 1–8 |
 | 1c | A6 mapping and derived taint for 1b's codes | Codes per §5 | Corpus snapshots, ledger |
 | 2a0 | Binding boundary: OriginObligations, atoms, universal relations, T1 rows, unowned items, `ValidateOriginRelations` split, ledger split | Rows immutable; no double owner | View tests, ledger |
 | 2a | F4 `MirOrigins` | audit-origins §3 tests; the old reporter's rows matched | Shape 9, ledger |
@@ -542,7 +550,7 @@ lands, A5 reports a violation of it (36f) as a located `Unsupported_Kd` (plan §
   r. The old path rejects it. Decided on 2026-10-17: a needed loss, "P3 (both forms)" (§9 item 2).
 - **`Φ_E` in the library.** Raw-derived or static-derived writes move Loans into `σ(E)` forever. Watch `Storage.kimi` and
   `DictionaryStorage.kimi` in 1b's shadow run (r2 finding 7).
-- **Unit 0b.** Round 6 (92 cases) showed no unsound acceptance and no unlisted rejection. Round 7 added `swap(a, b)`
+- **Unit 0b** (closed by round 10, §12). Round 6 (92 cases) showed no unsound acceptance and no unlisted rejection. Round 7 added `swap(a, b)`
   with parameters (31a, 31b), `y = h@follow + 1` (32a, 32b) and `Φ_c^dist`, and found the unlisted rejection 33c (the
   erratum below; 99 cases). Round 8 (109 cases) found design A unsound on 36c: F6 does not state that `Φ_c`'s values
   carry the receiver's Loans, and the prototype encodes them without (PLAN G113). Round 9 (113 cases) gives them the
@@ -553,9 +561,65 @@ lands, A5 reports a violation of it (36f) as a located `Unsupported_Kd` (plan §
 - **F6 stores (H, round 9).** `Φ_c` goes only into the result, never into storage that `retains(c, i, κ, store j)`
   writes. A stored value retaining the receiver's content then carries no `Φ_c`, while §8.11.4 rule 1 lets a later
   abstract call on the receiver reach its Loans. A fix stores `desc(c)`, not `Φ_c` alone. Not prototyped; for unit 2f.
-- **Reservation route (round 9 review, 36h).** §15.6.7 makes any write to a reference a reservation was reached
+- **Reservation route (round 9 review, 36h; resolved by E1).** §15.6.7 makes any write to a reference a reservation was reached
   through an error. `hits` gives a write no reach across a Deref, so A3 accepts
   `cur.inner.takeWith(do { cur = b; 0 })`. This is outside F6 and needs its own rule (PLAN G119).
+
+## 12. Step 1 errata (2026-10-17)
+
+The 1b design diff (`../A5 Step 1/choice-1b.md`: two independent designs per part, the case 23a review, a design review;
+prototype round 10, 246 cases, no unsound acceptance and no unlisted rejection) corrects A3 as follows. Where a section
+above disagrees, these errata govern; the lines they replace are marked "(E…)".
+
+- **E1, reservation route (PLAN G119; SPEC 15.6.7).** `hits` gains: while L sits in its reservation holder H (the holder
+  that gives `mode(L, H) = ref`), a write or destruction of a prefix of `place(L)`, across borrow Derefs, reaches L. A
+  destroying activation (`replace(cur@uniq, …)`) is such a destruction. Checked at the access on `σ_in`. Under E9's fold no
+  reservation is formed through another reservation's holder, so no chain fact is needed.
+- **E2, the excuse at c2's reservations (33c).** The round-7 erratum's row is derived:
+  `excused(L, ℓ1) :- reserved(R, _, ℓ1, ℓ2), excused(L, ℓ2)`. Unit 2f.
+- **E3, Borrows past a shared Deref (PLAN G110; SPEC 15.6.3, S1).** A Ref whose Place has a shared borrow Deref forms no
+  Loan (no `issued` row); its holder gets `⋃_{m ≤ j < k} content^j(σ_in(root(X)))`, m the index of the last shared Deref.
+  With no Loan past a shared Deref, `throughShared` and `obs`'s shared cut are vacuous and 1b omits them; unit 2f re-adds a
+  cut only if F6 places `Φ_c` past a shared Deref.
+- **E4, containment (§7).** The containment cut is E3's derivation cut, counted outward from the Borrow, not "the same cut
+  as `obs`". Unit 2a.
+- **E5, own-value seed (SPEC 15.6, "a value is also used wherever…").** `CS(ℓ)`'s closure is also seeded with `σ_in(T)` for
+  each T named by a direct Loan of the value ℓ stores into a holder live after ℓ (live as `transit` reads it: in
+  `live_out(ℓ)` or made live by the closure) or into `E`: the Ref's own Loan and
+  its R2 parents from the layers it carries; `CS_call(ℓ, t)`'s closure with those of `σ_in(t)`. Conflict candidates are
+  unchanged. Without it a self-referential holder is unsound (39o, 100, 100d, 101).
+- **E6, Slice index.** The Index of a Slice handle is a shared borrow Deref in the step classes (SPEC 4.8.1: the element
+  is the handle's referent), not an inline step. UniqSlice has no built-in Index (`index`/`indexUniq` calls).
+- **E7, guard-local Origin (SPEC 14.8.3).** A marker `γ_H` (with `Φ_E` and `τ_s`): each value issued into a guard
+  candidate H (`MirLocalRole.GuardCandidate`) carries `γ_H`, which never conflicts and is carried like a Loan but is no
+  Place Loan (`ended` does not remove it). `err(ended,ℓ) :- EndBorrow H at ℓ, H a guard candidate, γ_H ∈ CS(ℓ)`; the
+  Loan-based `err(ended)` row is deleted, and other `EndBorrow`s get no ended check. The partition row also covers
+  `err(ended)` when `γ_H` reaches `_0` (one failure, one code; unit 1c). It makes the case 23a review's C2 lowering
+  contract unnecessary.
+- **E8, Loan ending (owner, 2026-10-17: the case 23a proposal, option (c); DECISIONS R4-M52).** Destroying in place a Move
+  Path K (by `=`, StorageLive/StorageDead or an `InPlace` target) ends every Loan whose access path K exactly prefixes:
+  K's steps compare exactly (a constant index only with the same constant, never a runtime index), and the path may
+  continue with any steps, borrow Derefs included. This replaces `base(L, B)`, the `within` kill and "no kill across a
+  Deref" (§3), and recovers 23a, 30d, 34c, 35a and 35b. Checks still precede the end. Its SPEC revision (§15.6.3, Appendix E,
+  §13.5.5) comes with P12's; until it lands A5 runs in shadow, so nothing is published.
+- **E9, MIR contracts decided by the owner (2026-10-17, DECISIONS R4-M52; supersede parts of R4-M37).** G92a, assumed
+  completion: on a check-only continuation every node is built and makes its own value and accesses; a node of Type
+  Never has no value, its consumer taking an unwritten Never temp that fits any operand position; a placement rvalue
+  (`Set`) that has an input and whose every input is that value is not built, and then the old value at `=` is not
+  dropped either (`Replace` takes a Never-typed temp when its right side has Type Never), so `x = stop()` leaves x
+  unwritten, as today; a Call is still built with its Never operands. Binding gives a Never element of a literal its
+  expected Type (α). G92b, the fold: a written exclusive borrow that a preparation path continues through is not
+  formed, so each input has one reservation at its lending point.
+- **E10, MIR contracts decided by the planning session (2026-10-17; recorded in DECISIONS with their units).** G123: an
+  operand is read where it is evaluated (a Place operand is secured into a temp when a later operand of the same
+  operation builds code). G94: a built-in selection lends its receiver's storage shared where it locates it (a range's
+  backing, an element's guard ended once the index is evaluated), amending R4-M40. G91: the Destruction walk enters each
+  reported part once per query.
+- **E11, a destroying call's observing part (§5 `err(destroy)`; review r3 N4's intent).** The row's exclusion is
+  `¬hits(X, place(L), write)` for an `InPlace` target (`uborrow` for the `clear`s), the activation's own kind; as written
+  (`¬hits(…, uborrow)`, a deep kind) it never fires, and A3 accepts a `replace` that destroys an observing target while a child lives (26a, SPEC 15.6.6's "in a call that
+  destroys a target") and 123.
+  Checked at the call on `CS_call(ℓ, t_K)`, with E5's seed.
 
 ## Revision history
 
@@ -576,3 +640,7 @@ lands, A5 reports a violation of it (36f) as a located `Unsupported_Kd` (plan §
   design A rejects 36a–36e and 36g under either base and keeps `takeTwo`. P12 is listed (§9 item 10, pending). The
   review found the reservation-route gap (36h, §11). For unit 2f.
 - **Owner decision** (2026-10-17): §9 item 10, P12, approved.
+- **Step 1 errata** (2026-10-17, §12; prototype round 10, unit 0b closed): E1 reservation route, E2 derived excuse, E3
+  Borrows past a shared Deref, E4 containment wording, E5 own-value seed, E6 Slice index, E7 guard-local marker; owner
+  decisions §9 item 11: E8 Loan ending by exact Move-Path prefix (case 23a, option (c)) and E9 MIR contracts; E10 the
+  planning session's MIR contracts; E11 the `err(destroy)` exclusion (records review round 2).

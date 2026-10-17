@@ -2,7 +2,7 @@
 
 // Owns construction and validation of one MIR body per definition or closure.
 // Input: syntax children, published HIR/plans, declaration views and TyCtxt. Output: a validated MirProgram.
-// Op, Adjust and PlaceShape decide lowering; unsupported forms use the one located Unsupported path, a missing published fact Broken.
+// Op, Adjust and PlaceShape decide lowering; unsupported forms use the one located Unsupported path; it trusts the facts each Op guarantees.
 // Must not read Binding internals, infer from parents or let consumers rebuild missing facts.
 
 using System.Runtime.InteropServices;
@@ -13,8 +13,9 @@ namespace Kimi.Compiler.Mir;
 /// <summary>The MIR builder (plan P6, R3 shadow): once per Binding pass it publishes the HIR, builds one body for each definition the
 /// HIR names (<see cref="HirOp.Body"/>: a function, an accessor, a static's initializer; a <see cref="HirOp.Closure"/>) and validates it.
 /// It reads syntax children, the HIR columns and plans and <see cref="TyCtxt"/> only. A form no rule builds goes through
-/// <see cref="Unsupported(Koto, MirPlace)"/>, and building continues; a published fact found missing goes through
-/// <see cref="Broken(Koto, MirPlace)"/>; an Error node of Binding becomes a derived Opaque.
+/// <see cref="Unsupported(Koto, MirPlace)"/>, and building continues; it trusts the facts each published Op guarantees
+/// (<see cref="Binding.HasFacts"/>), and records a node the publisher found without them (<see cref="HirTables.Broken"/>) as
+/// InternalInvariant_Kd; an Error node becomes a derived Opaque.
 /// The program, its bodies and the builder's scratch are reused, so a warm
 /// rebuild allocates nothing.</summary>
 /// <param name="compilation">The compilation.</param>
@@ -79,12 +80,17 @@ internal sealed partial class MirBuilder(Compilation compilation)
     }
 
     // The definitions of a module in id order, a #Test function's a Test body and a Closure's keyed by its own symbol; a struct instance
-    // Field's initializer is built into each constructor of its struct. Or the templates of the defaults the HIR published for the module's
-    // named functions (an anonymous function has none, SPEC 7.2.2).
+    // Field's initializer is built into each constructor of its struct. Or the module's broken HIR contracts as records, then the templates
+    // of the defaults the HIR published for its named functions (an anonymous function has none, SPEC 7.2.2).
     private void Module(SyntaxTable table, bool templates)
     {
         if (templates)
         {
+            foreach (var node in table.Hir.Broken!)
+            {
+                this.program.Report(SourceRef.Of(node), DiagnosticCode.InternalInvariant_Kd); // A broken HIR contract (DECISIONS R4-M61).
+            }
+
             foreach (var decl in table.Hir.Defaults!)
             {
                 if (!decl.Function.IsAnonymous && !this.visited.ContainsKey(decl))
@@ -405,18 +411,6 @@ internal sealed partial class MirBuilder(Compilation compilation)
         if (!Rejected(node))
         {
             this.program.Report(SourceRef.Of(node));
-        }
-
-        this.Opaque(node, destination);
-    }
-
-    // A fact Binding publishes for the node and did not (a call's plan): a broken HIR contract, InternalInvariant_Kd at the node (AGENTS),
-    // with an Opaque value in its place, unless Binding rejected the node, whose error the value is derived from (DECISIONS R4-M42).
-    private void Broken(Koto node, MirPlace destination)
-    {
-        if (!Rejected(node))
-        {
-            this.program.Report(SourceRef.Of(node), DiagnosticCode.InternalInvariant_Kd);
         }
 
         this.Opaque(node, destination);

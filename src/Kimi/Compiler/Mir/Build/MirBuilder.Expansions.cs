@@ -19,21 +19,14 @@ internal sealed partial class MirBuilder
     // its isize positions from start to end instead, checked, without an iterator value.
     private void For(MirPlace destination, ForKoto loop)
     {
-        var plan = BoundMatch.Of(loop);
-        var entry = CallPlan.Of(loop);
-        var step = CallPlan.Of(loop, 1);
-        if (HirTables.Meaning(loop) is null || (plan is null) != (entry is null) || (plan is not null && step is null))
-        {
-            this.Opaque(loop, destination); // Binding rejected its Subject or its bindings.
-            return;
-        }
-
-        if (plan is null || entry is null || step is null)
+        if (BoundMatch.Of(loop) is not { } plan)
         {
             this.Count(destination, loop);
             return;
         }
 
+        var entry = CallPlan.Of(loop)!;
+        var step = CallPlan.Of(loop, 1)!;
         var iterator = this.Temp(entry.ReturnType, loop);
         this.Call(iterator, entry, loop, first: null);
         this.locals[HirTables.Symbol(step.Receiver!)!] = iterator.Root;
@@ -137,18 +130,15 @@ internal sealed partial class MirBuilder
         var plan = ExpansionPlan.Of(node)!.Value;
         var arithmetic = CallPlan.Of(node);
         var mark = this.located.Count;
-        if (plan.Second is not null && plan.Evaluated < 0)
-        {
-            this.Unsupported(node, destination); // A setter without the argument the update computes.
-            return;
-        }
-
         var value = right is null
             ? MirOperand.Const(this.body.Const(new(MirConstKind.Integer, TypeOf(target), 1)))
             : this.Secure(this.Operand(right, expected: null), right);
-        var accessor = plan.First ?? plan.Second; // A Property's accessors take its receiver, located once; a static Property's have none.
+        // A Property's accessors take its receiver, located once; a static Property's have none. Binding designates the Property through
+        // the target's parentheses (a parenthesized Place is its operand's, SPEC 3.4).
+        var accessor = plan.First ?? plan.Second;
+        var property = KotoHelper.UnwrapParentheses(target);
         var storage = accessor is null ? this.Place(target) : default;
-        var receiver = accessor is null || HirTables.ResOf(target) == HirRes.Static ? null : (target as MemberAccessKoto)?.Left;
+        var receiver = accessor is null || HirTables.ResOf(property) == HirRes.Static ? null : (property as MemberAccessKoto)?.Left;
         if (receiver is not null)
         {
             this.located.Add((receiver, this.Place(receiver)));
@@ -156,7 +146,7 @@ internal sealed partial class MirBuilder
 
         if (accessor is not null && (plan.First is null || plan.Second is null))
         {
-            storage = this.Storage(HirTables.Symbol(target)!, receiver is null ? null : this.located[mark].Place, target);
+            storage = this.Storage(HirTables.Symbol(property)!, receiver is null ? null : this.located[mark].Place, property);
         }
 
         if (plan.Second is null)
@@ -376,8 +366,7 @@ internal sealed partial class MirBuilder
     {
         var length = this.Length(sequence, index);
         var result = this.Temp(key.ReturnType, index);
-        var evaluated = ExpansionPlan.Of(index)!.Value.Evaluated;
-        this.Call(result, key, index, null, evaluated < 0 ? null : key.ArgumentOperations[evaluated].Source, MirOperand.Copy(length));
+        this.Call(result, key, index, null, key.ArgumentOperations[ExpansionPlan.Of(index)!.Value.Evaluated].Source, MirOperand.Copy(length));
         return result;
     }
 
@@ -434,12 +423,7 @@ internal sealed partial class MirBuilder
     // part made before the entries, which may not complete (Make).
     private void Dictionary(MirPlace destination, DictionaryLiteralKoto dictionary)
     {
-        if (CallPlan.Of(dictionary) is not { } find)
-        {
-            this.Opaque(dictionary, destination); // Binding rejected it.
-            return;
-        }
-
+        var find = CallPlan.Of(dictionary)!;
         var type = TypeOf(dictionary);
         var layout = compilation.Library.Function(CompilerFunctionKind.StorageDictionaryLayout)!.Type!;
         ReadOnlySpan<BoundType?> slots = [type.Components[0], type.Components[1]];

@@ -13,12 +13,7 @@ internal sealed partial class MirBuilder
     // compare's i32 compared with zero.
     private void Call(MirPlace destination, Koto node)
     {
-        if ((ExpansionPlan.Of(node) is { } plan ? plan.Second : CallPlan.Of(node)) is not { } call)
-        {
-            this.Broken(node, destination);
-            return;
-        }
-
+        var call = (ExpansionPlan.Of(node) is { } plan ? plan.Second : CallPlan.Of(node))!;
         if (node is not BinaryKoto binary || BinaryOp(binary.Akind) is not (> MirBinaryOp.Eq and MirBinaryOp relation))
         {
             this.Call(destination, call, node, first: null);
@@ -52,15 +47,9 @@ internal sealed partial class MirBuilder
         var function = call.Kind == CalleeKind.Value ? null : call.Target;
         var receiver = function is null ? null : call.Receiver;
         var count = function is null ? call.Signature.Components[0].Components.Count : ((FunctionKoto)function.Declaration).Parameters.Count;
-        var direct = function;
-        if (call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true })
-        {
-            direct = call.VirtualImplementation is { } implementation ? HirTables.Symbol(implementation) : null;
-        }
-
+        var direct = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true } ? HirTables.Symbol(call.VirtualImplementation!) : function;
         if (call.ArgumentOperations.Length + call.DefaultArguments.Length + (receiver is null ? 0 : 1) != count ||
-            (receiver is not null && function!.ReceiverIndex < 0) ||
-            (direct is null && function is not null))
+            (receiver is not null && function!.ReceiverIndex < 0))
         {
             this.Unsupported(node, destination); // A plan whose operations do not cover the parameters (an expansion supplies them).
             return;

@@ -23,12 +23,6 @@ internal sealed partial class MirBuilder
     // empty for its cleanup. The three intrinsics are temporary (owner, 2026-10-11) until R8 writes the internal adapter in Kimigayo.
     private void Format(MirPlace destination, Koto node)
     {
-        if (HirTables.Meaning(node) is null)
-        {
-            this.Opaque(node, destination); // Binding rejected a write.
-            return;
-        }
-
         var mark = this.located.Count;
         var start = this.formatTypes.Count;
         var done = this.body.AddBlock();
