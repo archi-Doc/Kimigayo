@@ -105,13 +105,16 @@ public class AbortEmissionTest
         Assert.DoesNotContain("ret void", runtime);
     }
 
-    // IMPL 20.1, 21.4.2: a location names its source by its project-relative path; a project without a directory is the current
-    // directory's, so a fully qualified source path is displayed relative to it, never as the checkout's path.
-    [Fact]
-    public void LocationsNameTheProjectRelativeSource()
+    // IMPL 20.1, 21.4.2: a location names its source by the logical name, the project-relative path with `/` separators; a project
+    // without a directory is the current directory's, so a fully qualified source path is displayed relative to it, never as the
+    // checkout's path.
+    [Theory]
+    [InlineData("", "Hello.kimi:1:1")]
+    [InlineData("sub", "sub/Hello.kimi:1:1")]
+    public void LocationsNameTheLogicalSource(string directory, string location)
     {
-        var c = MinimalEmissionTest.Analyze("$abort(\"x\")", Path.GetFullPath("Hello.kimi"));
-        Assert.Equal("Hello.kimi:1:1", c.Locations.Text(SourceRef.Of(Abort(c))));
+        var c = MinimalEmissionTest.Analyze("$abort(\"x\")", Path.GetFullPath(Path.Combine(directory, "Hello.kimi")));
+        Assert.Equal(location, c.Locations.Text(SourceRef.Of(Abort(c))));
     }
 
     // The location memo holds the current program only: an edit releases the texts of the documents it replaced.

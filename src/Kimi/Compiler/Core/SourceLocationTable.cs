@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the runtime location text of a syntax site, the `path:line:column` an Abort reports (SPEC 22.5.1, IMPL 21.4.2).
-// Input: a SourceRef of this compilation. Output: its source's project-relative path (IMPL 20.1), escaped, with its line and column.
+// Input: a SourceRef of this compilation. Output: the logical name of its source (IMPL 20.1), escaped, with its line and column.
 // Texts are memoized per (document, offset) of the current program: the memo is cleared when the source analysis is revoked
 // (an edit, a parse or a reload; Compilation.InvalidateSourceAnalysis) and when the project directory changes.
 // Must not key the memo by SourceRef (ids renumber on edit), decide which site an Abort reports (its generator's rule) or
@@ -20,9 +20,9 @@ internal sealed class SourceLocationTable(Compilation compilation)
     private readonly StringBuilder buffer = new();
     private string? directory;
 
-    /// <summary>Gets <c>path:line:column</c>: the site's source path, project-relative when fully qualified (IMPL 20.1; a project
-    /// without a directory is the current directory's), with non-ASCII and control characters escaped as <c>\u{HEX}</c> and
-    /// backslash as <c>\\</c> (IMPL 21.4.2), then the site's line and column.</summary>
+    /// <summary>Gets <c>path:line:column</c>: the logical name of the site's source, its project-relative path with <c>/</c>
+    /// separators (IMPL 20.1; a project without a directory is the current directory's), with non-ASCII and control characters
+    /// escaped as <c>\u{HEX}</c> and backslash as <c>\\</c> (IMPL 21.4.2), then the site's line and column.</summary>
     /// <param name="site">The site.</param>
     /// <returns>The text, or <see langword="null"/> when the site has no source document, a broken contract its reader reports.</returns>
     internal string? Text(SourceRef site)
@@ -52,7 +52,11 @@ internal sealed class SourceLocationTable(Compilation compilation)
         Span<char> hex = stackalloc char[8];
         foreach (var rune in path.EnumerateRunes())
         {
-            if (rune.Value == '\\')
+            if (rune.Value == Path.DirectorySeparatorChar)
+            {
+                builder.Append('/');
+            }
+            else if (rune.Value == '\\')
             {
                 builder.Append("\\\\");
             }
