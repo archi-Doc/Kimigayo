@@ -20,7 +20,8 @@ Paths as in the plan: `B/` = `src/Kimi/Compiler/Backend/` (new), `E/` = `src/Kim
   judged on paper in §5 with checkable evidence (R5-M3).
 - **Promote, don't copy** (PD2): a promoted member takes generator-neutral inputs only. Layout and Abi are shared with legacy, so bp
   holds.
-  - `Layout.Of` returns OK, Limit or CLayout(instance) (X18) and states the base-prefix invariant (X1).
+  - `Layout.Of` returns OK, Limit or CLayout(instance) (X18), states the base-prefix invariant (X1) and IMPL 21.1.3's Never and
+    `Loan<T>` rows (X31).
   - IMPL 21.1.3's one-word `Option<ref/T>` stays a STATUS limit until after G8 (PLAN U8; P7a records it).
 - **The collector resolves; codegen reads.**
   - The view comes from `View(item)`, selected with `MirCases.Select` (X13).
@@ -34,7 +35,8 @@ Paths as in the plan: `B/` = `src/Kimi/Compiler/Backend/` (new), `E/` = `src/Kim
   (X23). Open drop rows go through the same per-level function.
 - **New units.**
   - C3c writes the property-witness Storage shim (X14).
-  - F11 adds G131's Never-temp validator rule in window W1, before C0b1.
+  - F11 adds G131's validator rule, first in window W1 and before C0b1: the destination of a diverging Call is read only in
+    check-only blocks; any other Never-typed place is valid (X30).
   - C7 splits into C7a (the reason row, which changes every legacy `.ll`) and C7b. G9 splits into G9a and G9b.
 - **Files.** The selector lands in K1 (X7). C0a creates `Core/Compilation.Generation.cs`, which holds the generation entry and the
   gate (X17).
@@ -98,10 +100,10 @@ The Chosen column names the governing decision where one exists.
 | 27 | G9 | — | G9a, G9b | D2 | Two concerns |
 | 28 | `WriteLineUtf8` (S1 UNOWNED 1) | — | — | C9a (26 rows) | ABI `E/WindowsLowering.Formatting.cs:60`, runtime `E/Utf8BufferRuntime.ll.in:25`, both moved by P1d |
 | 29 | `EmitFixture` names | Keep | Keep | Keep (PD8) | `__kimi_f<N>`, `__kimi_entry_body`, `%zero<N>`/`%minusone<N>` from P4a's kernel |
-| 30 | Requirement receiver | — | — | **None: `TyCtxt.Witness` returns `(Kind, Target, Subst)`; codegen projects nothing (X1)** | `Layout.Of`'s base-prefix invariant makes an inherited member's address the receiver's |
+| 30 | Requirement receiver | — | — | **None: `TyCtxt.Witness` returns `(Kind, Target, Subst, Access)`; codegen projects nothing (X1)** | `Layout.Of`'s base-prefix invariant makes an inherited member's address the receiver's |
 | 31 | Legacy rows' callees and needs | Collector roots them | — | **The row declares them; the collector reads them (X4)** | One owner per row |
 | 32 | Property witnesses | — | — | **Backend Storage shim, unit C3c (X9, X14)** | §3.12 |
-| 33 | Never temps | — | — | **F11: G131's structural validator rule before C0b1** | The validator accepts a Never-typed operand on every path; a runtime read would be lowered as uninitialized storage |
+| 33 | Never temps | — | — | **F11 (X30): the destination of a diverging Call (the builder's unwritten temp) is read only in check-only blocks; any other Never-typed place is valid; before C0b1** | The validator accepts a read of that destination on every path; a runtime read would be lowered as uninitialized storage. A Never parameter, Field or payload is read on runtime paths in valid programs (SPEC 3.1.3, 14.9.3) |
 
 ---
 
@@ -117,8 +119,10 @@ The Chosen column names the governing decision where one exists.
 | `ObjectRuntime` | `B/ObjectRuntime*.cs` | P3b | permanent (PLAN10 §5.8) | §3.4 |
 | `LlvmScalarText` | `B/LlvmScalarText.cs` | P4a, P4b | permanent | §3.4 |
 | `Layout`, `Abi` | `B/Layout.cs`, `B/Abi.cs` | P7a–P7c, P8 | permanent | §3.5 |
-| `ModuleCodegen`, `FunctionCodegen`, intrinsic row table | `B/Codegen/ModuleCodegen.cs`, `FunctionCodegen.cs` (contract entry), `FunctionCodegen.<Concern>.cs`, `IntrinsicRows.cs` | C0b1+ | permanent | §3.2, §3.3 |
-| `DropGlue`, `ObjectDescriptors` (with VTables), `Statics`, `Shims` (closure and item adapters, comparison, format, arithmetic, property-witness Storage) | `B/Codegen/*.cs` | C4a, C6a, C7b, C5b/C8f/C9b/C3c | permanent | §3.6, §3.7, §3.12; D2 §2.9 |
+| `ModuleCodegen`, `FunctionCodegen` | `B/Codegen/ModuleCodegen.cs`, `FunctionCodegen.cs` (contract entry), `FunctionCodegen.<Concern>.cs` | C0b1+ | permanent | §3.2, §3.3 |
+| Intrinsic row table | `B/IntrinsicRows.cs` | K1 creates it with the `Target` column (X27); C0b1 extends it with the writer column | permanent | §3.2 |
+| `DropGlue` | `B/DropGlue.cs` | K7 creates `DropGlue.Parts` (X27); C4a extends the file with glue writing | permanent | §3.6 |
+| `ObjectDescriptors` (with VTables), `Statics`, `Shims` (closure and item adapters, comparison, format, arithmetic, property-witness Storage) | `B/Codegen/*.cs` | C6a, C7b, C5b/C8f/C9b/C3c | permanent | §3.7, §3.12; D2 §2.9 |
 | Generation entry and gate | `Core/Compilation.Generation.cs` (contract entry; X17) | C0a; C4a and K11 change it | the refusal path until H5 | §3.8 |
 | Deviation catalog, pending ledger | `tests/xUnitTest/Codegen*.cs`, `scripts/codegen-pending.ps1` | E10–E12 | G4 | D2 §2.13 |
 
@@ -163,10 +167,11 @@ D2 §2.2 is adopted, with these edits.
   callee or calls `TyCtxt.Witness`.
 - **Dispatch.**
   - One switch per closed MIR vocabulary.
-  - One intrinsic row table (`B/Codegen/IntrinsicRows.cs`, one row per `IntrinsicId`: writer kind and the whitelist column)
-    plus the Body-disposition `CompilerFunctionKind` rows (`Bd/KimiLibraryKinds.cs:183-219`).
+  - One intrinsic row table (`B/IntrinsicRows.cs`, one row per `IntrinsicId`: the whitelist column and the writer kind) plus the
+    Body-disposition `CompilerFunctionKind` rows (`Bd/KimiLibraryKinds.cs:183-219`).
   - The whitelist (X15): `ErasedWriter`, `StaticEnsure`, `MakeObj`, `MakeRc`, `MakeArc`, `Clone`, `TypeTest`, `DestroyValues`. K6–K8
-    read the column; the first of C0b1, K6, K7, K8 to land creates the table (R4-M2a).
+    read the column. K1, its first consumer, creates the table with the column (X27, R4-M2a); C0b1 extends it with the writer
+    column.
   - The default arm is `Uncovered`.
 
 ### 3.3 `ModuleCodegen`
@@ -207,6 +212,16 @@ D2 §2.3 is adopted:
   `InternalInvariant_Kd`. The old pool maps both results to its existing failures (bp).
 - **Rules.** Ported verbatim: scalars and handles; Array 3, Slice 2 and Dictionary 7 words (`:297`); C written order and Kimigayo
   alignment groups; `i32` enum tag; depth 64 (`:47`); 2^31−1 (`:171-176`).
+- **Never and `Loan<T>`** (X31). `Layout.Of` states IMPL 21.1.3's rows (`docs/impl/21-layout-runtime-and-code-generation.md:60,
+  63`): Never has size 0, alignment 1 and stride 0, and a Type that stores Never inline is laid out as if Never were zero-sized (so
+  a C-layout instance storing it is CLayout); `Loan<T>` has the same row. The old pool keeps its null for Never for bp (a STATUS
+  limit already lists Never payloads, `docs/STATUS.md:42`). `let a: Option<Never> = .None` (SPEC 3.1.3,
+  `docs/spec/03-types-and-values.md:79`) becomes a test.
+- **Collections.** CLayout does not propagate through a collection's element layout in `Layout.Of`: an Array or Dictionary is its
+  handle words only (`E/AggregateLayout.cs:274, 297, 317`). The old pool reaches the element only through its destruction
+  callback: `CollectionField` (`:149-169`) asks `CollectionDrop`, which lays out the element (`E/BodyLowering.Arrays.cs:43-53, 83`
+  at `origin/dev` `44cff99c`), and a failed element nulls the stored collection's layout (`E/AggregateLayout.cs:96, 151-153`) and
+  any containing layout (`:322-326`). `Layout.Of` has no destruction callback (below).
 - **Invariants.**
   - Determinism and memoization by interned Type, 0 B warm.
   - **The complete base occupies a prefix of the derived layout, tail padding included**, in both modes (`:382-383`; X1). P7b tests
@@ -239,7 +254,8 @@ returns no name (ModuleCodegen names). It has no `Supports` gate, and `PreparedS
     `InternalInvariant_Kd`.
 - **Targets (K7, X3).** In SPEC 16.3.2 order: the glue of each direct part whose Type may need drop, or the destructor instance, or
   the Sealed payload's glue.
-- **Per-level function.** The order of a level's parts is one function, `DropGlue.Parts`. C4c's Open rows use it: each direct part
+- **Per-level function.** The order of a level's parts is one function, `DropGlue.Parts`, which K7 creates in `B/DropGlue.cs` for
+  the collector's glue targets (X27); C4a extends that file with the glue writer, which iterates it. C4c's Open rows use it: each direct part
   in SPEC order takes its child row's verdict if it has one, else the own bit with the part's glue from `Find`.
 - **Invariant.** Exactly-once destruction, which C4s's matrix checks through E2's fail-closed audits.
 - **Prohibition.** Never reuses `__kimi_drop_aggregate`, which also destroys the Fields after the destructor (`:192-203`).
@@ -265,21 +281,24 @@ returns no name (ModuleCodegen names). It has no `Supports` gate, and `PreparedS
     the row changes every legacy `.ll` and no native behavior: the declared change of plan §5.3 item 7.
   - Evidence: E4's report plus a throwaway hunk check (round-0 O7).
 - **D2 rows (C7b).** Mutable, aggregate and drop-needing statics only (X6). They are coverage rows until X2, then capability rows. The
-  generic storage key is K7's capability row (X6; X22 is the owner's).
+  generic storage key is K7's capability row (X6); its disposition is the owner's choice X33 (K §4.7): (a), recommended, defers
+  the form under PD27 as a D2 (e) row at G2; (b) exempts an immutable `let` whose StaticInit folds to a constant not depending on
+  the container's Type arguments, and if (b) were chosen, K7 would create the fold predicate before C7b; (c) has `MirStatic` carry
+  the container's Type arguments before G2.
 - **Owner facts.**
   - `MirStatic(Symbol, Type, Mutable, RawHolding)` (`M/MirBody.cs:201`) is deduplicated by symbol (`:442-451`), and its Type is the
     declared `symbol.Type` (`M/Build/MirBuilder.Places.cs:158-161`). So SPEC 22.4.4's key is not representable, and P42 needs a MIR
     change. R5-M13(b)'s "no representation change" holds for the slot state only.
   - The fold keeps no slot state, so it cannot answer SPEC 22.4.3's shutdown access rule. P42 must narrow the fold or restore the
     state.
-  - X22: the old path also accepts immutable scalars in a generic container's group, and it folds the literal ones:
-    `StaticScalar.TryGet` has no generic-container test, unlike `IsDynamic` (`StaticScalar.cs:20-26`). That corrects R5-M13(b)'s
-    premise.
+  - X33 (in each option): the old path also accepts immutable scalars in a generic container's group, and it folds the literal
+    ones: `StaticScalar.TryGet` has no generic-container test, unlike `IsDynamic` (`StaticScalar.cs:20-26`). That corrects
+    R5-M13(b)'s premise.
 
 ### 3.8 Generation entry and gate (C0a, C4a; X7, X17)
 
 - **Selector (K1).** `KIMI_CODEGEN` lands in K1. From K1 until C0b1, generation under sel writes no module and records one
-  `Unsupported_Kd` at each output root's subject: the not-yet-written frame row.
+  typed `Unsupported_Kd` per output root at that root body's subject: the not-yet-written frame row.
   - K1 adds this with the selector.
   - C0a moves it into the entry.
   - C0b1 deletes it, and FunctionCodegen's rows take over.
@@ -356,9 +375,11 @@ This replaces the Debug Adapter plan's §6.1 placement in `EmissionModule`.
   - `StorageSet` destroys the old value through the item's `DropGlue(field Type)` target, then stores the new one.
   - The Field's offset is `Layout.Of`'s. An inherited Field is found with `AdtDef.FindField`, and the base-prefix invariant makes its
     address the receiver's plus that offset.
-- **ABI.** `Abi.Of` of the requirement's signature instance.
+- **ABI.** From the key: Binding accepts a storage witness only with a `ref/Self` getter or `uniq/Self` setter, a result `F` or
+  `ref/F`, and a Set input `F` (`Bd/Binding.PropertyMatching.cs:102-117`), so the Field's Type and `Access` fix the signature
+  `Abi.Of` writes. K6 asserts that it agrees with the requirement's instance signature (`InternalInvariant_Kd` otherwise).
 - **Prohibitions.** No MIR body (PD3); writes only through FunctionCodegen's primitives.
-- **Unit.** C3c in G:call. Prerequisites: K6, P7b, C4a (Set needs DropGlue). Fixture families `Counted*` and `Own*`. Size (H)
+- **Unit.** C3c in G:C-drop, after C4a (X32). Prerequisites: K6, P7b, C4a (Set needs DropGlue). Fixture families `Counted*` and `Own*`. Size (H)
   +100, t+40.
 
 ### 3.13 Memory and time
@@ -441,13 +462,13 @@ second rewrite. B's first slice is measured against legacy (E13 at C1a).
 | C provides | `Layout.Of` results OK/Limit/CLayout(instance) for K10a and K10b | X18 |
 | C provides | DropGlue item: recursive per erased Type, targets in SPEC 16.3.2 order (§3.6); K's glue rows follow | X3 |
 | C provides | Legacy rows declare their library callees and needs; the collector reads them | X4 |
-| C provides | The intrinsic row table's whitelist column | X15 |
+| C provides | The intrinsic row table's writer column (C0b1); the table `B/IntrinsicRows.cs` and its whitelist column are K1's | X15, X27 |
 | C provides | Entry and TestEntry around the Generated roots; decided D2 rows into `Capability` at X2 | K-D6 |
 | C needs | Items in Generated order (kind, body ordinal, representative), `View(item)`, `TypeOf(item, t)`, `Find(MonoKey)`, Generated mark; outside → `InternalInvariant_Kd` | X2, X13 |
 | C needs | Per-site targets in `MirLocation` order: Fn, Requirement (K6: `Witness(requirement, contract, subst)`, kinds Body, Builtin, Storage, Refused, Limit; X16), Value, Drop, `Aggregate(Closure)`, `Const(FnItem)`, `Cast(Erasure)`, whitelisted intrinsics. None for Virtual or `#LibraryImport` calls | X5, X15, X16 |
 | C needs | The property-witness `MonoKind` member and its `DropGlue(field Type)` target for Set | X14 |
 | C needs | The selector from K1, with the sel refusal until C0b1 | X7 |
-| C needs | The generic storage key as K7's capability row | X6 |
+| C needs | The generic storage key as K7's capability row; its disposition is the owner's choice | X6, X33 |
 
 ### 6.2 Chapter F (S3)
 
@@ -479,7 +500,7 @@ G131's validator rule is an R5 unit, F11 (§7). It needs no R4 ask, but it does 
 
 | Unit | Change | Prerequisites | Review | Hold |
 | --- | --- | --- | --- | --- |
-| **F11 (new)** | Never-temp validator rule (G131). Validates that a local of Type Never is read only in blocks no runtime edge reaches (`MirReach` without CheckTarget edges). Adds one `MirViolation` row and a regression that fails before. Zero new findings over the library and the 40 milestones under mir. +20, t+30 (H) | W1 | R + an R4 reviewer (O2) | **W1**, whose file list gains `Mir/MirValidator*.cs` |
+| **F11 (new)** | Diverging-call destination rule (G131, X30): the destination of a diverging Call (the builder's unwritten temp, `M/Build/MirBuilder.Calls.cs:205` at `origin/dev` `44cff99c`) is read only in check-only blocks (blocks no runtime edge reaches, `MirReach` without CheckTarget edges); any other Never-typed place is valid. Adds one `MirViolation` row, a regression that fails before, and the valid regressions `func absurd(x: Never) -> i32 => x` and `.Err(let e) => e` on `Result<i32, Never>`. Zero new findings over the library and the 40 milestones under mir. +20, t+30 (H) | W1 | R + an R4 reviewer (O2) | **W1**, first in W1, whose file list gains `Mir/MirValidator*.cs`; W1 opens after R4's E13/E14 MirBuilder units land and R4 says so |
 | P4a | Wording: the per-check failure writer | as plan | R | no |
 | P7a | Also records the in-memory nonnull `Option` limit in STATUS (round-0 O9) | as plan | D+R (S4) | no |
 | P7b | `Layout.Of`'s three results (X18) and the base-prefix test (X1) | as plan, F1 | D+R (S4) | no |
@@ -487,12 +508,12 @@ G131's validator rule is an R5 unit, F11 (§7). It needs no R4 ask, but it does 
 | E12 | One `CodegenDeviations` catalog; lands with the first of C5a, **C7b** and K13a | E4, C0a | with its first consumer | no |
 | E15 | Carries the class-R absent-attribute requirements | C0b1 | G:C-frame | no |
 | C0a | Loses the selector to K1 (X7). Creates `Core/Compilation.Generation.cs`: entry, gate step 1, typed records, out-string adapters, `kimi test` path, `-Codegen`, `summary.json` (X17) | S5, K1 | G:C-frame | adv (moving three members out of `Compilation.Pipeline.cs`) |
-| C0b1 | Four no-op rows; zero-sized address symbol; the intrinsic row table if first; deletes the K1/C0a sel refusal | C0a, P0, P7a, P8, **F11** | G:C-frame | no |
+| C0b1 | Four no-op rows; zero-sized address symbol; extends K1's intrinsic row table (`B/IntrinsicRows.cs`) with the writer column; deletes the K1/C0a sel refusal | C0a, P0, P7a, P8, **F11** (so C0b1 waits for W1) | G:C-frame | no |
 | C0b2 | Entry mono item from `StartupResult.Symbol`; `writeLine(string)` only | C0b1, F2a, E10 | G:C-frame | no |
 | C3a | Reads K's targets by cursor; "prepared slots" dropped | C2b, K4a | G:call | no |
 | C3b | Requirement callees through K6's target | C3a, K6, P5, F9 | G:call | no |
-| **C3c (new)** | Property-witness Storage shim (§3.12) | K6, P7b, C4a | G:call | no |
-| C4a | DropGlue recursive per Type (X3); gate step 2 in `Compilation.Generation.cs` | C4s, K7, A-2 (R4 1c) | G:C-drop | no |
+| **C3c (new)** | Property-witness Storage shim (§3.12) | K6, P7b, C4a | G:C-drop (X32) | no |
+| C4a | DropGlue recursive per Type (X3): glue writing added to K7's `B/DropGlue.cs`, iterating `DropGlue.Parts`; gate step 2 in `Compilation.Generation.cs` | C4s, K7, A-2 (R4 1c) | G:C-drop | no |
 | C4c | Open rows in SPEC 16.3.2 order through `DropGlue.Parts` and `Find` | C4b | G:C-drop | no |
 | C5a | Closure-environment glue (X23); ABI attributes on value calls | as plan | G:closure | no |
 | **C7a (new)** | `KIMI_E_STATIC_CYCLE` row; declared legacy-text change; E4 report plus a throwaway hunk check. ≈ +3 | P0b | R | no |
@@ -503,7 +524,8 @@ G131's validator rule is an R5 unit, F11 (§7). It needs no R4 ask, but it does 
 | C10b | as plan | C10a, C4c, **C7b** | G:test | no |
 | G9 → **G9a**, **G9b** | G9a: Emission-only Binding members. G9b: §3.10's successor, the repeated validation and the adapters deleted, DIAGNOSTICS §4.2 row, ratchet 446 → 0 | G8 | G:R6-gen-del | no |
 
-- **Groups.** G:call is F5b, K6, C3a, C3b and **C3c**. The others are as the plan and K's package state.
+- **Groups.** G:call is F5b, K6, C3a and C3b; it merges without waiting for R4's unit 1c. **C3c** joins G:C-drop after C4a
+  (X32). The others are as the plan and K's package state.
 - **Order.** C4a, the drop chain (C4b–C6c, C3c) and X1–X3 wait for R4's unit 1c (A-2).
 
 ---
@@ -517,7 +539,7 @@ G131's validator rule is an R5 unit, F11 (§7). It needs no R4 ask, but it does 
 | Plan §3.4 A-2 "(Optional)"; PD12's mechanism; plan §3.2's fallback (d) | A-2 required, in R4's 1c. C4a, the drop chain and X1–X3 wait for A5 step 1, so fallback (d) loses its meaning | §3.8; X12 |
 | Plan PD23 (`memmove`) | `memcpy` | The library declaration rules out overlap; O2 |
 | PLAN10 §5.8 (`Storage.moveBytes`, overlap allowed) | C8a's comment states "no overlap" for `MoveBytes` until R8 changes the declaration and the lowering together | X25 |
-| R5-M13(b) | "No representation change" holds for the slot state only: generic keys need `MirStatic` Type arguments. The fold keeps no slot state (P42 narrows it or restores it). Its premise misses generic-container scalars (X22) | §3.7 |
+| R5-M13(b) | "No representation change" holds for the slot state only: generic keys need `MirStatic` Type arguments. The fold keeps no slot state (P42 narrows it or restores it). Its premise misses generic-container scalars (X33) | §3.7 |
 | PLAN10 §5.7 (`GenerationFailed_Kd` deleted) | Deleted; publication failures take the owner's code (§3.10) | A cause PLAN10 did not cover |
 | Kimi Debug Adapter Plan §6.1 | DI from FunctionCodegen | PD24 |
 | Plan wording | E12's `Codegen.Expect(target, legacy, item, class)` → `Expect(target, legacy, Deviation)` + the `CodegenDeviations` catalog. C0a's selector → K1 (X7). PD8's "shared failure block" → the shared per-check writer. C0b2's "`Shim(Entry)`" → Entry mono item. C3a's "prepared slots" dropped | Facts and decisions above |
@@ -558,7 +580,7 @@ G131's validator rule is an R5 unit, F11 (§7). It needs no R4 ask, but it does 
 | --- | --- | --- |
 | R1 | A-2 lands in R4's 1c, so C4a, the drop chain and X1–X3 wait for A5 step 1 | Accepted (X12). C0–C3 and the library and formatting chains proceed meanwhile |
 | R2 | The three packages are redone in parallel and diverge on X2, X3, X13–X16 | Round 2 reviews them together |
-| R3 | F11's rule finds a builder fault (a runtime read of a Never temp) | Fixed in W1 as a builder fault before C0b1; never suppressed |
+| R3 | F11's rule finds a builder fault (a runtime read of a diverging Call's destination) | Fixed in W1 as a builder fault before C0b1; never suppressed |
 | R4 | Recursive glue costs calls at O0 | Legacy shape; O2 inlines (H); O0 recorded |
 | R5 | C7a touches every legacy `.ll` | Throwaway hunk check in C7a's evidence |
 | R6 | The fold misses a form legacy folds, so a static read regresses at O2 | C7b's test over `StaticScalar.TryGet`'s set |
@@ -566,6 +588,8 @@ G131's validator rule is an R5 unit, F11 (§7). It needs no R4 ask, but it does 
 | R8 | Static D2 rows are untested until H5 | Accepted; X2 puts them in `Capability` |
 | R9 | The tagged `Option<ref/T>` persists to U8 | STATUS row (P7a) |
 | R10 | Thread-safe static initialization is not designed (H: no offload yet) | Open issue; the `i8` state admits `cmpxchg` |
+| R11 | Timing: W1 opens only after R4's E13/E14 MirBuilder units land and R4 says so, and C0b1 waits for W1 (F11), which puts the frame on R4's schedule | Recorded, and listed in the owner's summary; F11 is first in W1 |
+| R12 | A gate refusal under sel may hide independent coverage gaps until X2 | A recorded sel-only limit |
 
 ---
 

@@ -26,13 +26,13 @@ non-blocking items naming K.
 | KD1 | Key `Instantiation(MirDefKey Def, Subst? Erased)` with `Erased = Instantiates(Def.Decl) ? Erase(s) : null`: roots and edges agree by construction (departs from PD5's wording, §10) | 4.1 |
 | KD2 | `Erase` maps every Origin (a reference's or Slice's null Origin included) to `BoundOrigin.Static` and keeps arities; it only interns (X20); an erased Subst or closure context is null exactly when its binder does not instantiate | 4.1 |
 | KD3 | Erase late: one representative unerased Subst per item (`Identity(Decl)` for a null-key item); every proof runs on it; erased values are keys and Layout inputs only; codegen's Types come from `TypeOf` (X2) | 4.1 |
-| KD4 | Closure contexts as `Subst` (A5P-C1); the legacy bridge is memoized per closure Type (X10) | 4.2 |
+| KD4 | Closure contexts as `Subst` (A5P-C1); the legacy bridge memo is keyed (closure symbol, Subst) (X10) | 4.2 |
 | KD5 | One Backend component `InstanceCollector` publishing `CheckedSet`: mono items of nine `MonoKind`s, the one `View(item)` (X13), one target per site, `TypeOf`, `Find`, records and the Generated column | 4.3 |
 | KD6 | Roots: closed bodies of the root modules; the bundled library is rooted once by a test (P5) under stated preconditions | 4.4 |
 | KD7 | Edges per MIR form; target-bearing intrinsics named by one column of the intrinsic row table (X15); legacy rows declare their callees and needs (X4); no target for virtual calls (X5) | 4.5 |
 | KD8 | `DropGlue` recursive per erased Type: its targets are its direct parts' glues in SPEC 16.3.2 order (X3) | 4.5 |
 | KD9 | One `Admit`: `Apply` null → capability row (PD30); depth 128 on every item; growing key 16 and set 1,024 on Body items only (X19) | 4.6 |
-| KD10 | One capability table (R4-M8), created by K4a; rows: i128 `/` `%`, i128↔float, and the instance-stage gaps storage nesting (G128), OCC-X, generic static storage key (X21 drops destruction nesting) | 4.7 |
+| KD10 | One capability table (R4-M8), created by K4a; rows: i128 `/` `%`, i128↔float, and the instance-stage gaps storage nesting (G128), OCC-X, generic static storage key (its disposition the owner's choice, X33; X21 drops destruction nesting) | 4.7 |
 | KD11 | Layout obligations through `Layout.Of` → OK, Limit or CLayout(instance), the one owner of the zero-sized rule at any depth (X18) | 4.8 |
 | KD12 | Location rule (lands in K4a): the cause's root-module site, else the outermost omitting call of nested Inlined scopes, else up the admission chain (P6) | 4.9 |
 | KD13 | Records in ControlFlow with R3-1's MIR records (R5-M4): under sel from K4b, everywhere from G2, into `MirReport` at H3 | 5 |
@@ -75,7 +75,7 @@ allows: an accepted program fails `build` on an instance (K0: G128 twins, inferr
 | `Erase` and storage | — | — | X20: only interns | A null stored Type at a reader is `InternalInvariant_Kd`; `PrepareTypeStorage` goes at G9 as planned |
 | Representative | first admitting Subst | same | first admitting Subst; `Identity(Decl)` for a null-key item; none for top-level statements | A specialization's Subst targets its generic, so it cannot represent the specialization's body |
 | Proofs on erased values | prohibited | prohibited | agree | OJ3: proofs read Origins (`Binding.Structs.cs:23-35`) |
-| Closure contexts, bridge | C1; memo per closure Type | C1; memo per Subst | C1; X10 | Two closures of one instance share one Subst; old Emission looks bodies up by the CallPlan (`BodyLowering.Closures.cs:84`) |
+| Closure contexts, bridge | C1; memo per closure Type | C1; memo per Subst | C1; X10, memo keyed (closure symbol, Subst) | Two closures of one instance share one Subst; old Emission looks bodies up by the CallPlan (`BodyLowering.Closures.cs:84`) |
 | Collector placement | Backend after `MirAnalysis.Run` | same | agree; selector in K1 (X7) | Driver may not decide acceptance (`MirAnalysis.cs:11`) |
 | Items | prose | `MonoKind` table | D2 + `PropertyWitness` (X14) + `View` (X13) + one target per site | §4.3 |
 | Roots | library by edges only | library rooted by a test | P5 with preconditions | §4.4 |
@@ -84,7 +84,7 @@ allows: an accepted program fails `build` on an instance (K0: G128 twins, inferr
 | DropGlue | walk-based targets | walk-based targets | X3: direct parts in SPEC 16.3.2 order | One glue per Type and level, legacy shape; no deep walk, so no Deep (X21) |
 | Limits | 16/128/1,024 | same, ordered, `Apply` null → Unsupported | D2 under PD30 and X19 | K0 margins: milestones chain 4, 7 entries per template; Generic 128: 256 old entries per template, 128 erased |
 | Capability | one function, two passes | one table incl. instance gaps | D2 minus destruction nesting (X21) | ARCH "Closed vocabularies" admits Unsupported only from Binding, MIR construction or the capability check |
-| Generic static key | — | capability row (K7) | X6 row; X22 to the owner | §4.7 |
+| Generic static key | — | capability row (K7) | X6 row; owner choice X33 (a) recommended, (b), (c) | §4.7 |
 | Layout obligations | Backend pass sharing Binding's rule | `Layout.Of` limits + TyCtxt C-layout view | X18: `Layout.Of` → OK/Limit/CLayout | One owner of the zero-sized rule at any depth; nested uses (`Option<P<()>>`) are covered |
 | Written C-layout instance | — | Binding's report deleted at G2b; sel overlap | D2 | Deleting Binding's check before G2 regresses the default pipeline; G2 and G2b merge together |
 | Location | requesting call | source-module rule | P6, nested Inlined → outermost call | A library site is not where the user can act; SPEC 22.5.1's pattern |
@@ -131,12 +131,12 @@ own Types are never `Apply`'d (the identity returns them, `TyCtxt.cs:235-236`), 
 
 As D1 §1.3–1.4 and D2 §2.1: `BoundType.ClosureContext : Subst?`, interned by `CloseClosureTypes` (the list and scan deleted),
 `SubstOfClosure` reads the field, `ClosureSignature` goes through `Apply`, Hover's `SubstIdentity` in a new `HoverBuilder`
-partial. The bridge `[Transitional("R6-gen")] Binding.ClosureCall(BoundType closure)` is memoized per closure Type for the pass
-(X10) for the two legacy readers (`GenericStoragePlan.cs:312`, `BodyLowering.Closures.cs:84`); G7 deletes it. Reconciled with
+partial. The bridge `[Transitional("R6-gen")] Binding.ClosureCall(BoundType closure)` is memoized for the pass, keyed (closure
+symbol, Subst) (X10), for the two legacy readers (`GenericStoragePlan.cs:312`, `BodyLowering.Closures.cs:84`); G7 deletes it. Reconciled with
 the old dedup, which keyed by (closure function, enclosing Target, ReturnType, Declaring, Types, lengths, Origins, inputs)
 (`Binding.ClosureInstances.cs:54-71`): the closure Type's symbol is the closure function and its context is that Subst, and its
-other fields and the ReturnType are functions of the two (H), so "per closure Type" and "per (closure function, Subst)" select the
-same CallPlans; the memo is keyed by the closure Type, as X10 says. K2 adds the two-closure regression (two closures of equal result
+other fields and the ReturnType are functions of the two (H), so the key (closure symbol, Subst) selects the same CallPlans as the
+old dedup, and two closures of one instance keep two entries (X10). K2 adds the two-closure regression (two closures of equal result
 Type in one generic instance) and bp on the closure families.
 
 ### 4.3 `InstanceCollector` and `CheckedSet` (K1, K4a; entry file `B/Instances/InstanceCollector.cs`)
@@ -228,7 +228,8 @@ Borrow or Set for Storage. The table is chapter F's (`F-package.md` §4.5), copi
 
 Target column (X15): one column `Target` on the Backend's intrinsic row table (one row per `IntrinsicId`, the table chapter C's
 codegen dispatches by), with values `None`, `Witness`, `StaticInit`, `Descriptor`, `Glue` as rows 6–9; every other intrinsic is
-`None`. K1 creates the table with this column (its template builder is the first reader); C0b1 adds the writer column; C9b reads
+`None`. K1 creates the table, `B/IntrinsicRows.cs`, with this column (its template builder is the first reader, X27); C0b1
+extends it with the writer column; C9b reads
 row 6's target and never calls `Witness`. A target at a `None` site or a missing one at another is `InternalInvariant_Kd`.
 
 DropGlue (X3, SPEC 16.3.2, 16.4): `DropGlue(T)`'s targets are the glues of T's direct parts whose Types `MayNeedDrop`, in
@@ -237,8 +238,9 @@ destruction order: a struct that declares `drop` → its destructor `Body` only 
 decreasing index; enum → each Case's payload elements; closure environment → the remaining captures in reverse initialization order
 (X23); Array and Dictionary → the element glue their legacy row declares (X4); `obj`/`rc`/`arc` → `DropGlue(payload)` when
 `TyCtxt.Sealed` holds on the representative, else none (the descriptor's finalizer runs the actual Type's glue); string, scalars,
-references, raw pointers, Slices, InlineStorage → none. The direct-part enumeration is one function owned by the DropGlue component
-(`B/DropGlue.cs`), created by K7 and read by C4a's writer, so collector targets and glue bodies cannot disagree. A type-driven item
+references, raw pointers, Slices, InlineStorage → none. The direct-part enumeration is one function, `DropGlue.Parts`, owned by the
+DropGlue component (`B/DropGlue.cs`): K7 creates it, and C4a extends the file with glue writing from it (X27), so collector targets
+and glue bodies cannot disagree. A type-driven item
 is admitted only for a Type whose layout verdict is OK (§4.8): a layout failure is that Type's one record.
 
 ### 4.6 `Admit` (K4a)
@@ -254,31 +256,44 @@ constants without the legacy thread-static override (`GenericStoragePlan.cs:21-2
 | Item | Contract |
 | --- | --- |
 | Responsibility | The one table of operations and instances the backend does not generate on windows-x64 (IMPL 21.3.3, SPEC 23.1.1), read by A3b and the instance stage; the "capability check" of ARCH "Closed vocabularies" |
-| Rows (R5) | Operation rows (K9a): i128/u128 `Div`, `Rem` (compound forms build as the same op), `Cast(Numeric)` i128/u128↔f32/f64 except direct literal conversions. Instance rows: storage nesting past Binding's bound (K4a; G128, R7), OCC-X refusal (K6), generic static storage key (K7; P42 or X22's alternative). At X2 the decided D2 coverage rows (PD11, PD27) |
+| Rows (R5) | Operation rows (K9a): i128/u128 `Div`, `Rem` (compound forms build as the same op), `Cast(Numeric)` i128/u128↔f32/f64 except direct literal conversions. Instance rows: storage nesting past Binding's bound (K4a; G128, R7), OCC-X refusal (K6), generic static storage key (K7; its disposition is the owner's choice X33, below). At X2 the decided D2 coverage rows (PD11, PD27) |
 | A3b | In the body scan of root-module bodies (unused and check-only blocks included), operations whose Types are closed; Opaque skipped, so Binding's gates (`Binding.Expressions.cs:1385`, `Binding.Conversions.cs:796`), which fail the node (`Binding.cs:565-584`) so MIR builds an Opaque without a record (`MirBuilder.cs:409`), never duplicate |
 | Instance stage | Template sites whose Types depend on slots, per item through `TypeOf` |
 | Prohibitions | No `Supports*`; `Capability.Of(...)` returns the row or none; no row copied elsewhere (Emission's at G7, the old analysis's at H10, Binding's two gates at H7) |
 | Records | `Unsupported_Kd`, once per subject (§4.9) |
 
-Generic static storage key (X6, X22): `MirStatic` carries no container Type arguments, so the collector cannot key the StaticInit
-body of a static in a generic container's group and reports the row. The old path accepts and builds an immutable scalar there
-(`Cache<i64>.Statistics.count`), so from G2 the row rejects at `check` a program that builds today. K7 searches the library, the
-milestones and the O2 corpus for the form; if none uses it, the recommendation to the owner is to keep OQ17(b) (generic storage
-keys belong to P42) and defer the form under PD27 as a D2 (e) row at G2, recorded in STATUS and PLAN and approved in the PD27 list
-at R5's exit; the alternative is `MirStatic` carrying the container's Type arguments before G2. This corrects R5-M13(b)'s premise:
-the old analysis also accepts immutable static scalars in generic containers' groups.
+Generic static storage key (X6; **owner choice**, X33): `MirStatic` carries no container Type arguments, so the collector cannot
+key the StaticInit body of a static in a generic container's group and reports the row. The old path accepts and builds an
+immutable literal static in a generic container's group (`Cache<i64>.Statistics.count`); from G2 the collector would reject it.
+After two review rounds this is the owner's choice, not a decided design:
+
+- (a) **Recommended**: keep OQ17(b) (generic storage keys belong to P42) and defer the form under PD27 as a D2 (e) row at G2, if
+  no library, milestone or corpus program uses it (K7 confirms by search), recorded in STATUS and PLAN and approved in the PD27
+  list at R5's exit.
+- (b) A whitelist: exempt a static that is an immutable `let` of a closed constant Type whose StaticInit folds to a constant not
+  depending on the container's Type arguments (one slot is then exact: the initializer accesses nothing, so no cycle or Abort, its
+  moment is unobservable, and shutdown needs no drop); it needs a KD1 exception (the folded StaticInit keyed
+  `(def, Erase(Identity))`) and K7 creating the fold predicate before C7b.
+- (c) A representation: `MirStatic` carries the container's Type arguments before G2 (P42 needs it anyway; a MIR change in window
+  W1).
+
+In each case R5-M13(b)'s premise is corrected: the old analysis accepts immutable static scalars in generic containers' groups too
+(bool and signed-literal `let`s, `StaticScalar.cs:38-58`).
 
 ### 4.8 Layout obligations (K10a, K10b; X18)
 
 By-value uses per template (locals except DropFlag, `Aggregate` Types, `RawAllocate`/`Stride`/`DestroyValues` Type arguments),
 per item `TypeOf`, one verdict per erased Type per version from `Layout.Of` (chapter C, P7c): OK; Limit (size, count or depth) →
 `GenerationResourceLimit_Kd` (K10a); CLayout(instance), a C-layout instance (`AdtDef.IsCLayout`, F1) with a zero-sized Field at any
-depth → `InvalidCLayout_Kd`, Language, at the use (K10b); any other failure is `InternalInvariant_Kd`. `Layout` is the one owner of
+depth → `InvalidCLayout_Kd`, Language, at the use (K10b); any other failure is `InternalInvariant_Kd`. `Layout.Of` states IMPL
+21.1.3's rows for Never and `Loan<T>` (size 0, alignment 1, stride 0; a Type that stores Never inline is laid out as if Never were
+zero-sized, so a C-layout instance storing it is CLayout; X31), so a Never-bearing use is no failure. `Layout` is the one owner of
 the zero-sized rule; no TyCtxt C-layout view is needed (X18 supersedes X8's third member). Binding's eager report of written
 instances stays until G2b, a declared temporary second copy of the rule; under sel between K10b and G2b a written by-value instance
 may report at the written syntax and at the use (H; K10b's reproducer decides), declared in K10b's DEC entry with removal at G2b.
 Tests: K0's `make(())`, `P.init(1, ())` and the unused-function case with their valid twins; the nested probes
-`let x: Option<P<()>> = .None` and inferred `f<T>` with `Option<P<T>>`. K10b may need the held `DiagnosticRequirement.cs` (adv).
+`let x: Option<P<()>> = .None` and inferred `f<T>` with `Option<P<T>>`; `let a: Option<Never> = .None` (SPEC 3.1.3, X31) with no
+record. K10b may need the held `DiagnosticRequirement.cs` (adv).
 Both moves reject at `check` what the old build already refused (K0 Q1, Q4).
 
 ### 4.9 Records and the location rule
@@ -316,8 +331,8 @@ library-reach `Bodies` reads.
 | PD12 refusals | generation, Emission (C4a) | — | generation, Emission (default from G3) | generation | removed |
 | Coverage rows (PD11) | generation, Emission, until X2 | — | — | — | — |
 
-Between K1 and C0b1, `build` and `WriteIr` under sel refuse with one typed `Unsupported_Kd` at the startup body's subject (the
-first root body's for a Library or test build), within PD11's sel-only exception and never a fallback to legacy codegen; C0b1's
+Between K1 and C0b1, `build` and `WriteIr` under sel refuse with one typed `Unsupported_Kd` per output root at that root body's
+subject, within PD11's sel-only exception and never a fallback to legacy codegen; C0b1's
 coverage rows replace it. DIAGNOSTICS
 at K4b: the generation-time instance paragraph gets its sel note; the "Bounded excerpts" sentence "Resource and output limits do
 not change acceptance" is reworded to rendering and output limits (a Resource Error rejects at check, as `OwnershipStorageLimit_Kd`
@@ -331,10 +346,10 @@ generation-time paragraph for every pipeline.
 | # | Clause |
 | --- | --- |
 | S1 | From G2 every `Analyze` on every pipeline runs `BuildMir` (build, validate, the whole `MirAnalysis.Run`, unpublished) and the collector; the sel branch in `BuildMir` goes |
-| S2 | G2 publishes construction records, validator findings and collector records at check, with entries superseding R3-1, R4-M1 (for these records) and OD10's split; a Library with an unbuildable generic instance fails `check`; the 20 instance-failure methods assert check-time records; `stage-baselines.json` and `MilestoneSourcesTest` re-baselined with reasons; STATUS gets PD30's G128 (e) row worded as K0 found (`check` accepted the deep finite Subst, the old build already rejected it unlocated with `GenerationResourceLimit_Kd` or `GenerationFailed_Kd`), and PLAN G128's "the old path accepts" is corrected the same way; X22's row if the owner defers the generic static key |
+| S2 | G2 publishes construction records, validator findings and collector records at check, with entries superseding R3-1, R4-M1 (for these records) and OD10's split; a Library with an unbuildable generic instance fails `check`; the 20 instance-failure methods assert check-time records; `stage-baselines.json` and `MilestoneSourcesTest` re-baselined with reasons; STATUS gets PD30's G128 (e) row worded as K0 found (`check` accepted the deep finite Subst, the old build already rejected it unlocated with `GenerationResourceLimit_Kd` or `GenerationFailed_Kd`), and PLAN G128's "the old path accepts" is corrected the same way; the generic static key's (e) row if the owner chooses X33 (a) |
 | S3 | PD12's gate wherever MIR codegen runs (`Compilation.Generation.cs`), a typed Emission-partition refusal until H5; `InternalInvariant_Kd` only for a runtime `Group == -1` in a completed body |
 | S4 | G2 measures default `check` and warm LSP Analyze time, allocations and retained memory (Generic shape 1/32/64/128) with the warm-Analyze measurement K4b adds (none exists, K0 Q3); mir Allocation tests run on the default pipeline at 0 B |
-| S5 | G1 splits `Compilation.Pipeline.cs` (behavior-preserving); G2, G2b and G3 are verified and pushed separately and merge into dev together after G:R6-gen-switch passes |
+| S5 | G1 splits `Compilation.Pipeline.cs` (behavior-preserving), a smaller scope since C0a moved the generation entry out (X17); G2, G2b and G3 are verified and pushed separately and merge into dev together after G:R6-gen-switch passes |
 | S6 | Rollback: a regression in a switch unit is reverted on its branch; `KIMI_CODEGEN=legacy` selectable until G4; G4 only after G3's full sweep on dev |
 | S7 | Deletions follow the call graph: G4 → G5, G6 → G7 (lowering, plans, the five collectors, `AnalyzeInstance` and callers, `FailedInstance`, `InstanceStorageLimit`, `ClearInstances`, `Binding.ClosureCall`, Benchmark readers) → G8 → G9 (Emission-only Binding members incl. `SameModuloOpenOrigins` and `PrepareTypeStorage`, each after its grep) → G10 |
 | S8 | Prerequisites: X3, R5-M4, R5-M5 with Q4, A-6, A-8, the R4 MIR lane merged; else OQ6's fallback (d) |
@@ -352,9 +367,9 @@ generation-time paragraph for every pipeline.
 | No target for Virtual, `None`-column intrinsic and `#LibraryImport` calls | slot from `VTableDef` (X5), intrinsics from MIR | decided |
 | `TypeOf(item, t)` | every instance Type (X2) | decided |
 | `Find(MonoKey)`, Generated bits, `Mark` in `Compilation.Generation.cs` | glue of a child (Open rows), generation set (X13, X17) | decided |
-| Intrinsic row table with the `Target` column (K1) | C0b1 adds the writer column; C9b reads row 6's target (X15) | **check in C's round 2**: the table is created by K1, before C0b1 |
-| `DropGlue` direct-part enumeration (K7, `B/DropGlue.cs`) | C4a's glue writer iterates it (X3) | **check in C's round 2** |
-| `PropertyWitness` items (K6) | C3c writes the shim (X14; prerequisites K6, P7b, C4a) | decided |
+| Intrinsic row table `B/IntrinsicRows.cs` with the `Target` column (K1) | C0b1 extends it with the writer column; C9b reads row 6's target (X15) | decided (X27) |
+| `DropGlue.Parts`, the direct-part enumeration (K7, `B/DropGlue.cs`) | C4a extends the file with the glue writer, which iterates it (X3) | decided (X27) |
+| `PropertyWitness` items (K6), K6 asserting the key's signature agrees with the requirement's instance signature | C3c writes the shim, its ABI from the key (X14; prerequisites K6, P7b, C4a; G:C-drop, X32) | decided |
 | Collector records through `MirRecords` | gate step 1 counts them from K4b | decided |
 | K needs `Layout.Of` → OK/Limit/CLayout (P7c, X18) and the legacy rows' declarations (P1a–P2b, X4) | — | decided |
 
@@ -366,7 +381,7 @@ generation-time paragraph for every pipeline.
 | `Witness(requirement, contract, subst)` → Body/Builtin/Storage/Refused/Limit, no `BaseDepth`; a Self-bearing `Synthesized` for formatting rows | F5b (X1, X16) | decided |
 | `Applies`/`VTableDef` on representatives; `Comparison(contract, self, operators)` leaves | F4, F6 | decided |
 | No C-layout view in TyCtxt | X8 named one; X18 moves the rule to `Layout` | **F's round 2 drops it** |
-| K2 schema with the bridge memoized per closure Type | X10 | decided |
+| K2 schema with the bridge memo keyed (closure symbol, Subst) | X10 | decided |
 | F2a startup symbol, P6 test symbols (K11); F2c storage symbols (legacy row callees); F10 `StaticInit` (K7) | as planned | decided |
 
 ---
@@ -389,14 +404,14 @@ callee. Measured at K4b and G2.
 | --- | --- | --- | --- | --- |
 | K0 | Done (counts; timing on a quiet machine, README Q3) | — | — | no |
 | F3 | Creates `TyCtxt.Instances.cs` (X8) | S5 | D+R (S3) | adv (one line) |
-| K1 | Skeleton; `KIMI_CODEGEN` selector (read once, valid only with `KIMI_PIPELINE=mir`, identity mark, `PipelineSwitchTest` throwing combinations) as the run condition; sel `build` refusal (§5); the intrinsic row table with its `Target` column; DEC component entry and ARCH row "Instance collection" | S5, F3 | G:K-core | adv (`Compilation.Pipeline.cs`) |
-| K2 | Bridge per closure Type; two-closure regression | S5 | D+R (S2) | adv |
+| K1 | Skeleton; `KIMI_CODEGEN` selector (read once, valid only with `KIMI_PIPELINE=mir`, identity mark, `PipelineSwitchTest` throwing combinations) as the run condition; sel `build` refusal (§5); the intrinsic row table `B/IntrinsicRows.cs` with its `Target` column; DEC component entry and ARCH row "Instance collection" | S5, F3 | G:K-core | adv (`Compilation.Pipeline.cs`) |
+| K2 | Bridge memo keyed (closure symbol, Subst); two-closure regression | S5 | D+R (S2) | adv |
 | K3 | `Erase` in `TyCtxt.Instances.cs`: Static form, null by `Instantiates`, interning only, the commutation and stored-Type properties | K2, F3 | G:K-core | no |
 | K4a | **New** (split): composition, representatives, `View`, `Admit` with X19, the location-rule function, records in `CheckedSet` unpublished; creates `Capability` with the storage-nesting row (DEC capability entry, ARCH row); Origin-only variants → one item; finite recursion reuse; G128 twins on both sides of the bound (`pick<Array^64<i32>>` / `Array^65`, which the inline-layout limit does not also hit; `Option^31`/`Option^32<ref/i32>`); 2×/4× counters; warm 0 B | K1, K3 | G:K-core | no |
 | K4b | **New** (split): `MirRecords` adds collector records under sel; DEC OD4 entry (D-B with P5's preconditions, the location rule, "from K4b" for R5-M4); ARCH pipeline correction (D-A); DIAGNOSTICS (§5); `CompilerPipeline.md` stage 3; check cost against K0's baseline (stages 2+3+4) and a new warm-Analyze measurement in `src/Benchmark`; zero records over the library test and the 40 milestones under sel | K4a, K0 | G:K-core | adv (`Compilation.Pipeline.cs`) |
 | K5 | `SubstOfItem` made pure for ordinary items | K4a | G:K-edges | adv (`TyCtxt.cs`) |
-| K6 | Rows 3, 6 and the witness needs of P1d's legacy rows; `Witness` with `MirCallee.Contract`; `PropertyWitness` items from the Storage kind; OCC-X row | K4a, F5b, P1d | G:call | no |
-| K7 | Rows 7, 9, 10; DropGlue items with the direct-part enumeration (X3); generic-static-key row and the X22 search | K4a, F10, A-9 | G:K-edges | no |
+| K6 | Rows 3, 6 and the witness needs of P1d's legacy rows; `Witness` with `MirCallee.Contract`; `PropertyWitness` items from the Storage kind, asserting that the key's signature (C3c's ABI, `Binding.PropertyMatching.cs:102-117`) agrees with the requirement's instance signature; OCC-X row | K4a, F5b, F6, P1d | G:call | no |
+| K7 | Rows 7, 9, 10; DropGlue items with `DropGlue.Parts` in `B/DropGlue.cs` (X3, X27); generic-static-key row and X33's search (under X33 (b), also the fold predicate) | K4a, F10, A-9 | G:K-edges | no |
 | K8 | Row 8; `ObjectDescriptor`, `VTable` items | K4a, F4 | G:object | no |
 | K9a | Operation rows and A3b (table exists since K4a); literal-conversion test | K4a | G:K-capability (new) | no |
 | K9b | Instance-stage capability pass | K9a | G:K-capability | no |
@@ -406,14 +421,14 @@ callee. Measured at K4b and G2.
 | K12, K13a–c | as planned (K13a in G:K-capability) | — | R; G:K-capability, G:K-edges, G:object | no |
 | C0a | Loses the selector to K1; generation entry and gate in `Compilation.Generation.cs` (X17) | S5, K1 | G:C-frame | as chapter C's package states (X17) |
 | C3a, C9b, F5b | prerequisite "K4" reads K4a; C9b also needs K6 (X15) | — | — | — |
-| C3c | **New** (chapter C): the property-witness shim | K6, P7b, C4a | G:call | no |
+| C3c | **New** (chapter C): the property-witness shim | K6, P7b, C4a | G:C-drop (X32) | no |
 | G0 | Records §6 | as plan | D+R (S2) | no |
 | G2b | **New:** Binding's eager C-layout instance report and its replay queue deleted (`Binding.Attributes.cs:375-403`, `Binding.Types.cs:801-804`, `Binding.cs:455-456`); written borrow-only uses become valid ((a), SPEC 8.15.3) | G2 | G:R6-gen-switch | no |
 | H7 | Also deletes the conversion gate (`Binding.Conversions.cs:785-797`) | H5, K9a | G:check-del | no |
 
 Plan text changes: §5.3 item 1 names "G2, G2b and G3"; every "K4" prerequisite names K4a or K4b as above. Groups: **G:K-core** K1,
 K3, K4a, K4b; **G:K-edges** K5, K7, K10a, K13b; **G:K-capability** K9a, K9b, K13a (after G:K-core, independent of G:K-edges);
-G:call F5b, K6, C3a, C3b, C3c; G:object F4, K8, K13c, C6a–C6c; G:C-frame E10, E15, C0a, C0b1, C0b2, K11; **G:R6-gen-switch** G2,
+G:call F5b, K6, C3a, C3b (after G:compare, since K6 needs F6); C3c in G:C-drop after C4a (X32); G:object F4, K8, K13c, C6a–C6c; G:C-frame E10, E15, C0a, C0b1, C0b2, K11; **G:R6-gen-switch** G2,
 G2b, G3; G:R6-gen-del G4–G10. Outside groups: K2, K10b, G0 (D+R S2); K12, F10, G1 (R); K0 (—).
 
 ---
@@ -426,7 +441,7 @@ G2b, G3; G:R6-gen-del G4–G10. Outside groups: K2, K10b, G0 (D+R S2); K12, F10,
 | D-C | Instance-stage `Unsupported_Kd` causes beyond operators (storage nesting, OCC-X, generic static key) are capability rows | PLAN10 §5.7 | ARCH admits Unsupported only from Binding, MIR construction or the capability check; one code per cause (PD30, R4-M51) |
 | KD1 | The key's Subst is nullable and gated by `Instantiates` | PD5's wording `Instantiation(MirDefKey, TyCtxt.Erase(Subst))` | Roots and edges agree by construction |
 | — | R5-M4's "collector records publish from K4" is met by K4b | R5-M4 | K4's split; same stage |
-| X22 | R5-M13(b)'s premise is corrected: the old analysis also accepts immutable static scalars in generic containers' groups | R5-M13(b) | K0-era finding; owner chooses the deferral (recommended) or `MirStatic` Type arguments before G2 |
+| X33 | R5-M13(b)'s premise is corrected: the old analysis also accepts immutable static scalars in generic containers' groups | R5-M13(b) | K0-era finding; owner choice X33 (§4.7): (a) the deferral (recommended), (b) the whitelist, (c) `MirStatic` Type arguments before G2 |
 
 Not departures: D-B (P5) gives the records SPEC requires per unit under its preconditions; the erased form fills a form PLAN10
 §5.7 left open; pulling `ClosureContext` as `Subst` forward follows A5P §9.1.
@@ -442,8 +457,18 @@ Not departures: D-B (P5) gives the records SPEC requires per unit under its prec
 - Acceptance changes: from G2, K10b's `InvalidCLayout_Kd` is a Language error at check and K10a moves the layout-depth limit to
   check (both programs never built, K0); a Library with an unbuildable generic instance fails `check` (R5-M4); at G2b written
   borrow-only C-layout instances become valid ((a)).
-- X22: keep OQ17(b) and defer the generic static storage key under PD27 if K7's search finds no user (recommended), or have
-  `MirStatic` carry the container's Type arguments before G2.
+- **Owner choice X33** (generic static storage keys, after two review rounds; §4.7):
+  - (a) **Recommended**: keep OQ17(b) (generic storage keys belong to P42) and defer the form under PD27 as a D2 (e) row at G2, if
+    no library, milestone or corpus program uses it (K7 confirms by search), recorded in STATUS and PLAN and approved in the PD27
+    list at R5's exit.
+  - (b) A whitelist: exempt a static that is an immutable `let` of a closed constant Type whose StaticInit folds to a constant not
+    depending on the container's Type arguments (one slot is then exact: the initializer accesses nothing, so no cycle or Abort,
+    its moment is unobservable, and shutdown needs no drop); it needs a KD1 exception (the folded StaticInit keyed
+    `(def, Erase(Identity))`) and K7 creating the fold predicate before C7b.
+  - (c) A representation: `MirStatic` carries the container's Type arguments before G2 (P42 needs it anyway; a MIR change in
+    window W1).
+  - In each case R5-M13(b)'s premise is corrected: the old analysis accepts immutable static scalars in generic containers' groups
+    too (bool and signed-literal `let`s, `StaticScalar.cs:38-58`).
 - K10b may need the held `DiagnosticRequirement.cs`. No new diagnostic code; `GenerationResourceLimit_Kd` becomes located.
 
 ## 12. Asks to the R4 stream
@@ -461,12 +486,12 @@ Not departures: D-B (P5) gives the records SPEC requires per unit under its prec
 | --- | --- |
 | Collection on every Analyze from G2 (LSP included); no timing yet, no warm-Analyze benchmark | K0's quiet-machine commands; K4b adds the measurement; G2 records it; warm 0 B asserted; owner accepted (R5-M4) |
 | An Origin-reading proof distinguishes Origin variants of one key, or an erased instance's stored Types differ from the erased representative's (`Layout.Of` would disagree with `TypeOf`) | K3's property tests over library and milestones; a finding is a SPEC gap report, never a collector rule |
-| Glue growth through a non-regular recursive Type behind heap storage passes no Body (if such Types are valid, H) | the depth limit applies to every item (X19), so collection terminates with a Resource record |
+| Glue growth through a non-regular recursive Type behind heap storage passes no Body (if such Types are valid, H) | the depth limit applies to every item (X19), so collection terminates with a Resource record; noted: on glue chains the depth limit binds only past 64 levels |
 | Limits reached by a valid program | K0 margins large; legacy values kept |
-| Legacy wrong code from the closure bridge | per-closure-Type memo; two-closure regression; bp |
+| Legacy wrong code from the closure bridge | memo keyed (closure symbol, Subst); two-closure regression; bp |
 | Written C-layout instance reported twice under sel (K10b → G2b) | declared, sel-only; G2 and G2b merge together |
 | The P5 preconditions change (a library Condition, a second target) | stated in DEC OD4; reopening P5 is the response |
-| The generic static key row rejects at check a program that builds today | X22's owner decision before G2; K7's search |
+| The generic static key row rejects at check a program that builds today | X33's owner choice before G2; K7's search |
 
 ## 14. Open points for the planning session
 

@@ -152,8 +152,8 @@ MatchCoverage in Binding). Hold rule: DECISIONS R5-M7.
 
 ### 4.4 Witness core (F5a) — `C/Binding/Binding.RequirementWitness.cs`
 
-- **Responsibility.** The one rule from a requirement, a Self without an abstract part, a Contract reference and a premise scope to
-  what the requirement runs (SPEC 8.6.1, 8.11.4, 11.9.2; IMPL 21.3.1).
+- **Responsibility.** The one rule from a requirement, a Self (any non-abstract Self; the materializer forwards abstract-part Selfs
+  before calling the core), a Contract reference and a premise scope to what the requirement runs (SPEC 8.6.1, 8.11.4, 11.9.2; IMPL 21.3.1).
 - **Signature.** `ResolveRequirementWitness(BindingSymbol requirement, BoundType self, BindingSymbol contract, BindingScope scope)`.
   `contract` comes from the extracted matching half of `InstanceReference` (`Binding.RequirementInstances.cs:170-197`).
 - **Result kinds.** These are today's cases (`Binding.RequirementInstances.cs:68-123`, `Binding.PropertyWitnesses.cs:109-150`,
@@ -182,7 +182,7 @@ MatchCoverage in Binding). Hold rule: DECISIONS R5-M7.
 - **Input** (X16).
   - At a MIR Requirement callee: `MirCallee.Symbol`, `MirCallee.Contract` (`MirBuilder.Calls.cs:121`) and the composed Subst, which
     is closed. Its `Self` is the representative conforming Type; its `Declaring` holds a bound reference (fact 5).
-  - At a compiler-function row that calls a user witness (K6 row 2w): the row's requirement and its Contract, with a Subst from F6's
+  - At a compiler-function row that calls a user witness (K's rows 2 and 6): the row's requirement and its Contract, with a Subst from F6's
     Self-bearing `Synthesized` factory (§4.6).
 - **Output.** `RequirementTarget(Kind, Target, Subst, Access)`. `Access` is Binding's existing `PropertyWitnessKind`: `AccessorCall`
   for every kind except Storage, and Copy, Borrow or Set for Storage. Readers act as follows (K6):
@@ -199,8 +199,9 @@ MatchCoverage in Binding). Hold rule: DECISIONS R5-M7.
   - A closed, accepted Self never gets None.
   - The receiver's base projection is a no-op under `Layout.Of`'s base-prefix invariant (X1), so no depth is returned and
     codegen projects nothing.
-  - For Storage, the requirement's instance signature (`TyCtxt.Signature(requirement, subst)`) is what Binding's witness
-    verification matched to the Field (H). C3c asserts the agreement and records `InternalInvariant_Kd` otherwise.
+  - For Storage, C3c's ABI comes from the key: Binding accepts a storage witness only with a `ref/Self` getter or `uniq/Self`
+    setter, a result `F` or `ref/F`, and a Set input `F` (`Binding.PropertyMatching.cs:102-117`). K6 asserts that the requirement's
+    instance signature (`TyCtxt.Signature(requirement, subst)`) agrees and records `InternalInvariant_Kd` otherwise.
   - Memo `(requirement, contract, subst)` until an edit.
 - **Twin test.** Over every requirement call K4a's collector instantiates in the library and milestone bodies:
   - the view's target equals `InstantiateForwardedCall`'s;
@@ -220,8 +221,8 @@ MatchCoverage in Binding). Hold rule: DECISIONS R5-M7.
   | Witness | a closed leaf: the core's Conformance result in the library-root scope (H: no closed conditional conformance needs premises) | `Target`, declaring instance as `Subst` |
   | Requirement | a leaf with an abstract part: its Contract mapping in every instance (SPEC 13.4) | `Target` = the Contract's requirement, `Subst` binding Self |
 
-- **Factory.** F6 creates the Self-bearing `Synthesized` factory in `TyCtxt.cs` (adv hold). Requirement leaves and K6's row-2w
-  calls share it; factories are not split by hold.
+- **Factory.** F6 creates the Self-bearing `Synthesized` factory in `TyCtxt.cs` (adv hold). Requirement leaves and the calls of K's
+  rows 2 and 6 share it; factories are not split by hold.
 - **Memo.** `(contract, self, operators)` until an edit; one node per key.
 - **Readers.**
   - F7, with `operators: true`.
@@ -370,9 +371,9 @@ As the plan says: `TestRecordValue` operands (F8, PD22), `$abort`'s SourceInfo (
 | --- | --- | --- |
 | `Instantiates` (F3) | K1 roots, K3's `Erase` null rule (X8) | §4.11's rule ("has a slot", SPEC 6.1); created in `TyCtxt.Instances.cs` before K3 (K3 needs F3) |
 | `VTableDef`, `Applies` (F4) | K8 items; C6c slot loads (X5) | §4.2–4.3; `Applies` takes the representative |
-| `Witness` (F5b) | K6 rows 3 and 2w (X16) | called with `MirCallee.Contract` (formatting rows pass their Contract); Body → Body item; Builtin → shim item; Storage → `MonoKind` property-witness item keyed (Field, erased Self, `Access`), written by C3c (X14); Refused → OCC-X row; Limit → storage-nesting row |
+| `Witness` (F5b) | K6 at K's rows 2, 3 and 6 (X16) | called with `MirCallee.Contract` (formatting rows pass their Contract); Body → Body item; Builtin → shim item; Storage → `MonoKind` property-witness item keyed (Field, erased Self, `Access`), written by C3c (X14); Refused → OCC-X row; Limit → storage-nesting row |
 | `Comparison` (F6) | K's Builtin item targets; C8f; F7 | `(contract, self, operators)`; leaves Witness `(Target, Subst)` and Requirement `(requirement, Self-bearing Subst)` |
-| Self-bearing `Synthesized` (F6) | K6 row 2w | the one factory for a requirement's Subst on a Self |
+| Self-bearing `Synthesized` (F6) | K6 at K's rows 2 and 6 | the one factory for a requirement's Subst on a Self |
 | `AdtDef.IsCLayout` (F1) | P7b's `Layout.Of`, the one owner of the zero-sized C-layout rule (X18), read by K10a/K10b | §4.9 |
 | `StartupResult.Symbol` (F2a), `TestCase.Symbol` (P6) | C0b2 Entry, K11 roots, C10a | implicit startup = `MirDefKey(null, Fn, 0)` |
 | `LibraryImport.Decl` (F2b) | P8 C-convention `Abi.Of` | §4.10 |
@@ -386,8 +387,8 @@ As the plan says: `TestRecordValue` operands (F8, PD22), `$abort`'s SourceInfo (
   not adopted. K6 is F5b's first consumer, in G:call.
 - **From C.** P7b states and tests `Layout.Of`'s base-prefix invariant (X1). C3c writes the Storage shim through FunctionCodegen's
   primitives, finding an inherited Field with `AdtDef.FindField`. C9b reads K6's target and never calls `Witness` (X15).
-- **Chapter K's, noted here.** The closure bridge `Binding.ClosureCall` is memoized per closure Type and reconciled with the old
-  dedup key (closure function, Subst) (X10, K2); chapter F has no closure-bridge text. The pure `SubstOfItem` that removes
+- **Chapter K's, noted here.** The closure bridge `Binding.ClosureCall` is memoized keyed (closure symbol, Subst), reconciled with
+  the old dedup (X10, K2); chapter F has no closure-bridge text. The pure `SubstOfItem` that removes
   `FunctionItemContext`'s cache mutation is K5's.
 
 ---
@@ -411,10 +412,11 @@ As the plan says: `TestRecordValue` operands (F8, PD22), `$abort`'s SourceInfo (
 | P5 | one table; stale-memo fix | S5 | D+R (S3) | no |
 | C8f | F6 from G:compare (G:library-2 loses F6) | C8c, F6, F7 | G:library-2 | no |
 | H11 | also deletes `ComparisonPlan(CallPlan)` and `DictionaryComparison`; `CallPlan.TupleOperator` and `InstantiateRequirementCall` stay until R7 | H10 | G:check-del | no |
-| K6, C3c (chapters K, C) | K6 builds the property-witness item from Storage; C3c writes it (prereqs K6, P7b, C4a; fixtures `Counted`/`Own`) (X14) | — | G:call | — |
+| K6, C3c (chapters K, C) | K6 builds the property-witness item from Storage and asserts the key's signature agrees with the requirement's instance signature; C3c writes it, its ABI from the key (fixtures `Counted`/`Own`) (X14) | K6: K4a, F5b, F6, P1d; C3c: K6, P7b, C4a | K6: G:call; C3c: G:C-drop (X32) | — |
 
-**Order.** After S5, F1, F2a–c, F3, F4, F5a and P5 run in parallel. F5a feeds F6. In W1 the order is F0 → F7 (on F6's branch) → F8 →
-F9. F5b follows K4a and precedes K6, then C3c. F3 stays on the critical path (S5 → F3 → K1), and K3 needs F3.
+**Order.** After S5, F1, F2a–c, F3, F4, F5a and P5 run in parallel. F5a feeds F6. W1 opens after R4's E13/E14 MirBuilder units land
+and R4 says so; in W1 the order is F11 (chapter C's validator unit, X30) → F0 → F7 (on F6's branch) → F8 → F9. F5b follows K4a;
+F5b and F6 precede K6, so G:compare merges before G:call; C3c follows K6 and C4a in G:C-drop (X32). F3 stays on the critical path (S5 → F3 → K1), and K3 needs F3.
 
 ---
 
@@ -463,7 +465,7 @@ F9. F5b follows K4a and precedes K6, then C3c. F3 stays on the critical path (S5
 | The library-root scope for closed leaves disagrees with `Witnesses`' scope (H) | Twin test and twin assertion, with an Origin-premised conditional conformance in the set |
 | A-12 declined: two comparison resolvers until R7 | §4.7's recorded twin; F6's leaf-equality assertion bounds the difference |
 | Legacy generation refuses an inherited-witness tuple leaf that MIR accepts (H) | An OQ7 (a) row if a fixture shows it |
-| The Storage shim's signature differs from the requirement's instance signature (H) | C3c asserts the agreement (`InternalInvariant_Kd`); fixtures `Counted`/`Own` |
+| The Storage shim's signature, which comes from the key, differs from the requirement's instance signature | K6 asserts the agreement (`InternalInvariant_Kd`); fixtures `Counted`/`Own` |
 | Nested named functions change classification | F3's reproducer; D5 miscompile classification or bp |
 | UTF-16 versus UTF-8 source order (fact 6) | An existing open issue for Field order as much as for slots; F4 records it in PLAN |
 | Hold contention on `Binding.RequirementInstances.cs` (F5a) and `TyCtxt.cs` (F6) | One adv hold line each; both units are small |
