@@ -246,9 +246,9 @@ public sealed class RetentionTest
     }
 
     // One value per callee and Type instantiation: calls whose Types are equal and differ in their Origins only share it; another
-    // instantiation, the declared contract and a later Binding pass have their own.
+    // instantiation and the declared contract have their own; a later pass with no edit reuses it (AnEditRecomputesRetentions).
     [Fact]
-    public void RetentionsAreMemoizedPerInstantiationAndPass()
+    public void RetentionsAreMemoizedPerInstantiationUntilAnEdit()
     {
         var c = Bind("func first<T>(x: ref/T, y: ref/T) -> ref/T during x => x\nvar a = 1\nvar b = 2\nvar t = true\n" +
             "let p = first(a@ref, b@ref)\nlet q = first(b@ref, a@ref)\nlet r = first(t@ref, t@ref)\n");
@@ -260,9 +260,51 @@ public sealed class RetentionTest
         Assert.NotSame(retentions[0], c.Types.Retains(calls[0].Target, null, null));
         Assert.Same(c.Types.Retains(calls[0].Target, null, null), c.Types.Retains(calls[0].Target, null, null));
         c.Binding.Bind(BindingMode.Final);
-        var again = c.Types.Retains(calls[0].Target, c.Types.SubstOf(calls[0]), null);
-        Assert.NotSame(retentions[0], again);
-        Assert.Equal(Show(retentions[0]), Show(again));
+        Assert.Same(retentions[0], c.Types.Retains(calls[0].Target, c.Types.SubstOf(calls[0]), null));
+    }
+
+    // An edit revokes the retentions with the whole source analysis (Binding.Invalidate), also after a pass that did not finish (review
+    // 1a2 B1: a Bind that throws leaves no result): replacing a callee's clause between passes changes its call's row.
+    [Theory]
+    [InlineData("origin a outlives b", "origin b outlives a", "0 Value result, 1 Value result", "1 Value result", false)]
+    [InlineData("origin b outlives a", "origin a outlives b", "1 Value result", "0 Value result, 1 Value result", true)]
+    public void AnEditRecomputesRetentions(string clause, string edited, string before, string after, bool unfinished)
+    {
+        var source = $"func f(x: ref/i32 during a, y: ref/i32 during b) -> ref/i32 during b\n    {clause}\n    return y\nvar m = 1\nvar n = 2\nlet r = f(m@ref, n@ref)\n";
+        var c = Bind(source);
+        Assert.Equal([before], Calls(c, "f"));
+        if (unfinished)
+        {
+            typeof(Binding).GetProperty(nameof(Binding.Result))!.SetValue(c.Binding, default(BindingResult)); // As a throwing Bind leaves it.
+        }
+
+        var relation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<OriginRelationKoto>().Single();
+        var donor = Bind(source.Replace(clause, edited, StringComparison.Ordinal));
+        Assert.True(KotoHelper.Replace(relation.Parent!, relation, KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<OriginRelationKoto>().Single()));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal([after], Calls(c, "f"));
+    }
+
+    // A warm rebind that reads every call's retention again, C1 (also under a calling definition's premises) and C8, allocates nothing:
+    // an unchanged pass reuses the rows.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmRebindReusesRetentions()
+    {
+        var c = Bind(Erased + "func use(h: ref/H{s}, q: uniq/i32 during s.a) -> i32\n    let x = q@follow@ref\n    let r = apply(h.k@ref, x)\n    return h.k(r)@follow\n" +
+            "func first<T>(x: ref/T, y: ref/T) -> ref/T during x => x\nfunc both<T>(v: ref/T) -> ref/T => first(v, v)\nvar a = 1\nlet p = first(a@ref, a@ref)\n");
+        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => (Node: x, Definition: Definition(x))).ToArray();
+        Assert.True(calls.Length >= 4);
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Binding.Bind(BindingMode.Final);
+            foreach (var (node, definition) in calls)
+            {
+                var call = CallPlan.Of(node, 0)!;
+                _ = call.Kind == CalleeKind.Value ? c.Types.Retains(call.CalleeType, call.DeclaredSignature, definition)
+                    : c.Types.Retains(call.Target, c.Types.SubstOf(call), definition);
+            }
+        }));
     }
 
     // A retention is immutable: its rows are read-only and nothing assigns its fields after construction.

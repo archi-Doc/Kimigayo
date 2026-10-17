@@ -4,7 +4,7 @@
 // Input: a callee with its call Subst, or a Value callee operand's Type (CallPlan.CalleeType, which MIR's operand reproduces) with the
 // Callable signature it declares (CallPlan.DeclaredSignature, DECISIONS R4-M41); the calling definition (null: top-level statements).
 // Output: an immutable CallRetention, rows Retention(Input, Kind, Output) and Untied, one per callee or signature, Type instantiation and
-// the premise scope or declaration it reads, for the latest Binding pass.
+// the premise scope or declaration it reads, for the latest Binding pass and reused by later passes until an edit.
 // Invariants: an output retains an input exactly when the callee's body may move a value of the input there under the premises its
 // body is checked under: the instantiated contract (the Subst's Types, Self and declaring Type substituted, the callee's own Origins
 // left as the call's fresh regions, so retention is per argument) and the premises of its enclosing declarations; or when both name
@@ -56,8 +56,8 @@ internal sealed class CallRetention(Retention[] rows, bool untied)
 
 internal sealed partial class TyCtxt
 {
-    // Per callee or signature, Type instantiation and the premise scope or binder the computation reads; discarded with each Binding pass,
-    // since a callee's contract may change (ResetPass).
+    // Per callee or signature, Type instantiation and the premise scope or binder the computation reads; kept across passes with no edit,
+    // whose contracts are the same, and discarded with the source analysis at an edit (Binding.Invalidate).
     private readonly Dictionary<(object Callee, Subst? Types, object? Scope), CallRetention> retentions = new();
 
     // The Callable bounds of the computation's premises, instantiated as its inputs; reused.
