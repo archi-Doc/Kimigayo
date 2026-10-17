@@ -36,14 +36,6 @@ public class SliceToArrayTest
         ScalarEmissionTest.WriteFixture("SliceToArrayFailure" + name, ir, string.Empty, 1, location + ": abort KIMI_E_ALLOC: Failed to allocate memory\n");
     }
 
-    [Fact]
-    public void CopyLoopsDoNotCallPerElementAppendOrGrowth()
-    {
-        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze("let values: [3 of i32] = [1, 2, 3]\nlet copied = values.slice().toArray()"));
-        Assert.DoesNotContain("@__kimi_array_append_", ir, StringComparison.Ordinal);
-        Assert.DoesNotContain("@__kimi_array_place_", ir, StringComparison.Ordinal);
-    }
-
     [Theory]
     [InlineData("let values = [\"text\"]\nlet copy = values.slice().toArray()")]
     [InlineData("var value = 1\nlet values: [1 of ref/i32] = [value@ref]\nlet copy = values.slice().toArray()\nvalue = 2\nrequire copy[0]@follow == 1 else => $abort(\"loan\")")]

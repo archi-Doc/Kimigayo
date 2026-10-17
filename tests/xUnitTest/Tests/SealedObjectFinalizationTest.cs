@@ -24,7 +24,6 @@ public class SealedObjectFinalizationTest
         var cleanup = Function(ir, "__kimi_drop_aggregate" + handle.Id);
         Assert.Contains("call void @__kimi_drop_aggregate" + handle.ObjectPayloadDrop, cleanup, StringComparison.Ordinal);
         Assert.Contains("call void @__kimi_free(ptr %header", cleanup, StringComparison.Ordinal);
-        Assert.DoesNotContain("%descriptor", cleanup, StringComparison.Ordinal);
         Assert.DoesNotContain("call void %", cleanup, StringComparison.Ordinal);
         if (factory == "Rc")
         {

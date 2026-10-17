@@ -53,44 +53,8 @@ public class WorkloadCostTest
     private static string Program()
         => Repository.ReadText("tests", "milestones", "Milestone35.kimi");
 
+    // Audits at most bound allocations, each released by exit; exact capacities are implementation-defined (SPEC 4.9.5), so the
+    // bytes are not claimed.
     private static void WriteWorkload(string name, string source, string stdout, int bound)
-    {
-        var c = MinimalEmissionTest.Analyze(source);
-        var ir = CompilationTestHelper.WriteIr(c);
-        Assert.Contains("call ptr @HeapAlloc(", ir);
-        ir = ir.Replace("call ptr @HeapAlloc(", "call ptr @probe_allocate(", StringComparison.Ordinal);
-
-        // The workload's own exit is replaced by the observation: exit 93 when the allocations exceed the bound.
-        const string Exit = "  call void @__kimi_exit(i32 0)\n  unreachable\n}";
-        var start = ir.IndexOf("define void @__kimi_start() noreturn #0 {", StringComparison.Ordinal);
-        var exit = start < 0 ? -1 : ir.IndexOf(Exit, start, StringComparison.Ordinal);
-        Assert.True(exit > start);
-        var check = $$"""
-          %allocations = load i64, ptr @probe_allocations, align 8
-          %bounded = icmp ule i64 %allocations, {{bound}}
-          br i1 %bounded, label %passed, label %failed
-        passed:
-          call void @__kimi_exit(i32 0)
-          unreachable
-        failed:
-          call void @__kimi_exit(i32 93)
-          unreachable
-        }
-        """;
-        ir = string.Concat(ir.AsSpan(0, exit), check, ir.AsSpan(exit + Exit.Length));
-        ir += """
-
-            @probe_allocations = private global i64 0
-            define internal ptr @probe_allocate(ptr %heap, i32 %flags, i64 %size) {
-            entry:
-              %previous = load i64, ptr @probe_allocations, align 8
-              %count = add i64 %previous, 1
-              store i64 %count, ptr @probe_allocations, align 8
-              %memory = call ptr @HeapAlloc(ptr %heap, i32 %flags, i64 %size)
-              ret ptr %memory
-            }
-
-            """;
-        ScalarEmissionTest.WriteFixture(name, ir, stdout);
-    }
+        => NativeAllocationAudit.WriteFixture(name, source, new(1, bound), new(1, bound), NativeAllocationAudit.Bound.Any, stdout);
 }

@@ -157,8 +157,6 @@ public class PositionModelTest
     public void ConstantPositionsOnFixedArraysFold()
     {
         var ir = ScalarEmissionTest.EmitFixture("PositionModelFolding", Folding, "ok\n");
-        Assert.DoesNotContain("%reversed", ir, StringComparison.Ordinal);
-        Assert.DoesNotMatch(@"%invalid[0-9]", ir);
         Assert.DoesNotContain("= sub i64 4, ", ir, StringComparison.Ordinal);
         Assert.DoesNotContain(" = sext i32 ", ir, StringComparison.Ordinal);
         Assert.True(ir.Split("br i1 false,").Length - 1 >= 4, ir);

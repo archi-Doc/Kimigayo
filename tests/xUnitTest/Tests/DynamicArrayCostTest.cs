@@ -37,8 +37,8 @@ public class DynamicArrayCostTest
         ScalarEmissionTest.WriteFixture("DynamicArrayCostRepeatingFailure", ir, string.Empty, 1, "Hello.kimi:1:14: abort KIMI_E_ALLOC: Failed to allocate memory\n");
     }
 
-    // The Copies are placed in the reserved buffer by the implementation's own loop: no per-element append or place helper, and the
-    // implementation is prepared only for a program that constructs one.
+    // The implementation is prepared only for a program that constructs one; its own loop places the Copies within the one
+    // reservation (DynamicArrayCostRepeating* counts it).
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -48,9 +48,6 @@ public class DynamicArrayCostTest
         Assert.True(c.Validate(out var failure), MinimalEmissionTest.Describe(c, failure));
         var implementation = c.Library.GetSymbol(KimiDeclarationId.ArrayRepeatingImplementation)!.Declaration;
         Assert.Equal(used, c.Ownership.Bodies.Any(body => ReferenceEquals(body.Function, implementation)));
-        var ir = CompilationTestHelper.WriteIr(c);
-        Assert.DoesNotContain("@__kimi_array_append_", ir, StringComparison.Ordinal);
-        Assert.DoesNotContain("@__kimi_array_place_", ir, StringComparison.Ordinal);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -71,7 +68,7 @@ public class DynamicArrayCostTest
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void ExclusiveViewsAndChildrenAllocateNoElementStorage()
-        => WriteCostFixture("UniqViews", "var values: [4 of i32] = [1, 2, 3, 4]\nvar i = 0\nwhile i < 128\n    var view = values.sliceUniq()\n    var child = view.sliceUniq(1..3)\n    child[0] = i\n    require child.slice()[0] == i else => $abort(\"view\")\n    i += 1", 0, 0, growth: false);
+        => WriteCostFixture("UniqViews", "var values: [4 of i32] = [1, 2, 3, 4]\nvar i = 0\nwhile i < 128\n    var view = values.sliceUniq()\n    var child = view.sliceUniq(1..3)\n    child[0] = i\n    require child.slice()[0] == i else => $abort(\"view\")\n    i += 1", 0, null);
 
     [Trait("Purpose", "Allocation")]
     [Fact]
@@ -81,14 +78,14 @@ public class DynamicArrayCostTest
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void BorrowedFixedArrayUpdatesAllocateNoStorage()
-        => WriteCostFixture("BorrowedFixedWrite", "func edit(values: uniq/[2 of isize])\n    var i: isize = 0\n    while i < 1024\n        values[0] = i\n        values[1] += 1\n        i += 1\nvar values: [2 of isize] = [0, 0]\nedit(values@uniq)\nrequire values[0] == 1023 and values[1] == 1024 else => $abort(\"write\")", 0, 0, growth: false);
+        => WriteCostFixture("BorrowedFixedWrite", "func edit(values: uniq/[2 of isize])\n    var i: isize = 0\n    while i < 1024\n        values[0] = i\n        values[1] += 1\n        i += 1\nvar values: [2 of isize] = [0, 0]\nedit(values@uniq)\nrequire values[0] == 1023 and values[1] == 1024 else => $abort(\"write\")", 0, null);
 
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Array<i32>", "Array", 1)]
     [InlineData("[2 of i32]", "Fixed", 0)]
     public void DisjointPairsAllocateNoAdditionalStorage(string type, string name, int allocations)
-        => WriteCostFixture("DisjointPair" + name, DisjointArrayPairTest.RepeatedUpdates(type), allocations, 0, growth: allocations != 0);
+        => WriteCostFixture("DisjointPair" + name, DisjointArrayPairTest.RepeatedUpdates(type), allocations, allocations == 0 ? null : 0);
 
     [Trait("Purpose", "Allocation")]
     [Fact]
@@ -138,7 +135,7 @@ public class DynamicArrayCostTest
         var source = "var values: Array<isize> = []\nvar i: isize = 0\nwhile i < " + count + "\n" +
             (reserve ? "    values@uniq.reserve(1)\n" : string.Empty) +
             "    values@uniq.append(i)\n    i += 1\nrequire values.length == " + count + " else => $abort(\"length\")\nvar total: isize = 0\nfor value in values@move => total += value\nrequire total == " + ((long)count * (count - 1) / 2) + " else => $abort(\"values\")";
-        WriteCostFixture("Growth" + count + (reserve ? "Reserve" : "Append"), source, 1 + (int)Math.Ceiling(Math.Log2(count)), 16L * count, exactAllocations: false);
+        WriteCostFixture("Growth" + count + (reserve ? "Reserve" : "Append"), source, new(1, 1 + (int)Math.Ceiling(Math.Log2(count))), new(0, 16L * count));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -149,7 +146,15 @@ public class DynamicArrayCostTest
     {
         var source = "var values: Array<isize> = []\nvalues@uniq.reserve(8)\nvalues@uniq.append(20)\nvalues@uniq.append(22)\nlet previous = values.capacity\nvalues@uniq.shrinkToFit()\nrequire values.length == 2 and values[0] == 20 and values[1] == 22 else => $abort(\"values\")\nrequire values.capacity >= 2 and values.capacity <= previous else => $abort(\"capacity\")\n" +
             (fail ? "require values.capacity == previous else => $abort(\"failed shrink changed capacity\")\n" : string.Empty);
-        WriteCostFixture(fail ? "ShrinkFailure" : "ShrinkSuccess", source, 2, 0, failAllocation: fail ? 2 : 0);
+        // A failed shrink keeps, and releases only, the first storage.
+        NativeAllocationAudit.WriteFixture(
+            "DynamicArrayCost" + (fail ? "ShrinkFailure" : "ShrinkSuccess"),
+            source,
+            2,
+            fail ? 1 : 2,
+            NativeAllocationAudit.Bound.Any,
+            failAllocation: fail ? 2 : 0,
+            transferred: 0);
     }
 
     // The storage boundary helpers of the Kimigayo iterators are keyed by layout ids, so warm emission reuses them without
@@ -239,55 +244,14 @@ public class DynamicArrayCostTest
         ScalarEmissionTest.WriteFixture("DynamicArrayCostReload", ir, string.Empty);
     }
 
-    private static void WriteCostFixture(string name, string source, int allocations, long transferredBytes, int failAllocation = 0, bool exactAllocations = true, bool growth = true)
-    {
-        var c = MinimalEmissionTest.Analyze(source);
-        var ir = CompilationTestHelper.WriteIr(c);
-        Assert.Contains("call ptr @HeapAlloc(", ir);
-        ir = ir.Replace("call ptr @HeapAlloc(", "call ptr @probe_allocate(", StringComparison.Ordinal);
-        // Count only Array growth transfers; user payload construction and stable insert/remove are separate costs.
-        const string CopyAnchor = "  %used = mul i64 %length, %stride\n";
-        // Fixed storage must contain no Array growth helper at all; existing dynamic workloads require exactly one.
-        Assert.Equal(growth ? 2 : 1, ir.Split(CopyAnchor, StringSplitOptions.None).Length);
-        ir = ir.Replace(CopyAnchor, CopyAnchor + "  %previous_bytes = load i64, ptr @probe_transferred, align 8\n  %total_bytes = add i64 %previous_bytes, %used\n  store i64 %total_bytes, ptr @probe_transferred, align 8\n", StringComparison.Ordinal);
-        var start = $$"""
-            define void @__kimi_start() noreturn #0 {
-            entry:
-              call void @__kimi_entry_body()
-              %allocations = load i64, ptr @probe_allocations, align 8
-              %allocation_ok = icmp {{(exactAllocations ? "eq" : "ule")}} i64 %allocations, {{allocations}}
-              %transferred = load i64, ptr @probe_transferred, align 8
-              %transfer_ok = icmp ule i64 %transferred, {{transferredBytes}}
-              %valid = and i1 %allocation_ok, %transfer_ok
-              br i1 %valid, label %passed, label %failed
-            passed:
-              call void @__kimi_exit(i32 0)
-              unreachable
-            failed:
-              call void @__kimi_exit(i32 93)
-              unreachable
-            }
-            """;
-        ir = DynamicArrayCapacityLimitTest.ReplaceDefinition(ir, "__kimi_start", start);
-        ir += $$"""
-
-            @probe_allocations = private global i64 0
-            @probe_transferred = private global i64 0
-            define internal ptr @probe_allocate(ptr %heap, i32 %flags, i64 %size) {
-            entry:
-              %previous = load i64, ptr @probe_allocations, align 8
-              %count = add i64 %previous, 1
-              store i64 %count, ptr @probe_allocations, align 8
-              %fail = icmp eq i64 %count, {{failAllocation}}
-              br i1 %fail, label %failed, label %allocate
-            failed:
-              ret ptr null
-            allocate:
-              %memory = call ptr @HeapAlloc(ptr %heap, i32 %flags, i64 %size)
-              ret ptr %memory
-            }
-
-            """;
-        ScalarEmissionTest.WriteFixture("DynamicArrayCost" + name, ir, string.Empty);
-    }
+    // Audits the allocations within their bound, each released by exit, and under transferred the bytes Array growth copies;
+    // fixed storage has no growth routine to count. Exact capacities are implementation-defined (SPEC 4.9.5): no byte claim.
+    private static void WriteCostFixture(string name, string source, NativeAllocationAudit.Bound allocations, NativeAllocationAudit.Bound? transferred)
+        => NativeAllocationAudit.WriteFixture(
+            "DynamicArrayCost" + name,
+            source,
+            allocations,
+            allocations,
+            NativeAllocationAudit.Bound.Any,
+            transferred: transferred);
 }

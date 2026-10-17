@@ -98,7 +98,7 @@ public class DictionaryCapacityTest
                 position += 1
             require position == 5 else => $abort("length")
             """;
-        NativeAllocationAudit.WriteFixture("DictionaryCapacityHoles", source, 2, 2, 288, maxTransferredBytes: 96, minTransferredBytes: 96);
+        NativeAllocationAudit.WriteFixture("DictionaryCapacityHoles", source, 2, 2, 288, transferred: 96);
     }
 
     // The compiled DictionaryStorage reserve and append, called with their private caller-location pair (SPEC 22.5.1).

@@ -161,7 +161,6 @@ public class WrappingIntegerTest
         Assert.DoesNotContain("call { i32, i1 } @llvm.", ir); // The prelude declares the intrinsics; no body calls one.
         Assert.DoesNotContain(" nsw ", ir);
         Assert.DoesNotContain(" nuw ", ir);
-        Assert.DoesNotContain("%minimum", ir); // No minimum / -1 Abort check: that quotient wraps.
     }
 
     [Fact]

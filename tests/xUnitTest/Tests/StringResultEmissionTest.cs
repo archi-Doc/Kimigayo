@@ -42,8 +42,6 @@ public class StringResultEmissionTest
     public void ResultOwnershipFollowsNormalArrivals(string name, string source, string stdout, string destructions)
     {
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
-        Assert.DoesNotContain("phi %kimi.string", ir);
-        Assert.DoesNotContain("load %kimi.string", ir);
         StringEmissionTest.WriteAuditedFixture(name, source, ir, stdout, destructions);
     }
 

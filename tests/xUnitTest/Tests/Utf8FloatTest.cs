@@ -92,6 +92,7 @@ public class Utf8FloatTest
 
         ir.Append("""
             declare i32 @memcmp(ptr, ptr, i64)
+            @float_passed = private constant [14 x i8] c"oracle passed\0A"
 
             define internal void @float_audit() #0 {
             entry:
@@ -143,12 +144,14 @@ public class Utf8FloatTest
               call void @__kimi_exit(i32 91)
               unreachable
             return:
+              call void @__kimi_stdout(ptr @float_passed, i64 14, ptr null, i64 0)
               ret void
             }
 
             """);
+        // The oracle reports its completion, so a run that skips it, or runs it twice, fails by its output.
         var complete = ir.ToString().Replace("call void @__kimi_entry_body()", "call void @__kimi_entry_body()\n  call void @float_audit()", StringComparison.Ordinal);
-        ScalarEmissionTest.WriteFixture("Utf8FloatOracle", complete, string.Empty);
+        ScalarEmissionTest.WriteFixture("Utf8FloatOracle", complete, "oracle passed\n");
 
         void Add32(uint bits)
             => cases.Add((bits, 11, ExactDecimal(bits, 23, 8, 127)));
