@@ -1573,3 +1573,21 @@ structure is recorded here by the unit that first implements it.
   one row that declares its library callees and type-driven needs, which the collector reads (X4). Rejected: requests left in
   `EmissionModule` with the Backend reading it (a non-neutral input); `AggregateLayout` in the records (the old pool as a
   Backend input); a scalar flag beside `ValueLowering` (a second statement of SPEC 21.3.1's argument form).
+- **R5-M17 `LlvmScalarText`** (2026-10-18, planning session; plan P4a, package §3.4, promoted under R5-M14) A permanent Backend
+  component owning the LLVM text of scalar arithmetic and its checks: the instruction (`WriteOperation`), the overflow intrinsic
+  (`WriteOverflowChecked`), the signed quotient with its zero and minimum / −1 checks (`WriteSignedQuotient`), the zero-checked
+  unsigned quotient or remainder (`WriteZeroChecked`), the wrapping quotient (`WriteWrappingQuotient`), the count-checked shift
+  (`WriteShift`), IMPL 21.3.3's literal −1 rules and SPEC 13.3.1's divisor substitution, and each check's own failure block
+  (`WriteFailure`: the branch, `abort<Id>:`, the Abort call with the check's reason and location, `unreachable`, the success
+  label). One method per check: the checks are SPEC's closed set, and the old `ArithmeticCheckKind` stays the old IR's decoding.
+  Inputs are generator-neutral: `ScalarOperation` (operator and Type text, operand spellings, result name) and `ScalarCheck`
+  (the number naming the check's temporaries and failure label, the success label's local name, the pooled location constant
+  or null for the caller's), stack-only `ref struct`s, so writing stays allocation-free. An operand is its LLVM spelling: a
+  literal −1 divisor is the text `-1`, a dynamic divisor a local name (`%…`), and widths come from the `iN` type text. The old
+  `WriteScalar` spells its operands through `Spell`, which `WriteOperand` now writes through (one spelling), and selects the
+  method by its check kind; conversion and bounds checks reach `WriteFailure` through the old `WriteArithmeticFailure`, which
+  maps their check kind to the reason. P4b adds the bounds-checked conversions. Rejected: a Backend check-kind enum (a second
+  copy of the old vocabulary); `EmissionOperand` as input (old IR) or a Backend operand record (a copy of its kinds);
+  operands as strings (warm writing would allocate); `ValueLowering` inputs for widths (the type text carries them); a result
+  name and success label fixed by the component as `%v<Id>` and `b<n>` (codegen names values and blocks by MIR location,
+  package §2.10).
