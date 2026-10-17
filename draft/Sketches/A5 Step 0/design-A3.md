@@ -616,7 +616,7 @@ above disagrees, these errata govern; the lines they replace are marked "(E…)"
   operand is read where it is evaluated (a Place operand is secured into a temp when a later operand of the same
   operation builds code). G94: a built-in selection lends its receiver's storage shared where it locates it (a range's
   backing, an element's guard ended once the index is evaluated), amending R4-M40. G91: the Destruction walk enters each
-  reported part once per query.
+  Type once per query (every walked Type, not only reported parts: the A1–A4 audit's DAG case).
 - **E11, a destroying call's observing part (§5 `err(destroy)`; review r3 N4's intent).** The row's exclusion is
   `¬hits(X, place(L), write)` for an `InPlace` target (`uborrow` for the `clear`s), the activation's own kind; as written
   (`¬hits(…, uborrow)`, a deep kind) it never fires, and A3 accepts a `replace` that destroys an observing target while a child lives (26a, SPEC 15.6.6's "in a call that
