@@ -635,3 +635,57 @@ incarnation that another holder still carries. Three places did this before the 
   acceptance.
 - **S1′:** unsound on 29a and 30c (round 6), and rejects 33c.
 - **No new unsound acceptance.** The `Φ_c` code changes no earlier case.
+
+## Round 8 (case 23a proposal review)
+
+**Additions.**
+
+- `FirstDerefBase`: A mode with B before the first borrow Deref and a definite matcher. The destroyed K is a move path
+  and an exact prefix of B; B's later steps may be any index. `KillAcrossDeref` keeps round 2's `Within`, which
+  matches a non-path index with any index.
+- Cases:
+  - 34a–34c: indexes;
+  - 35a/35b: a Borrow kept during a `uniq`-linked walk;
+  - 36a–36d: an F6 phantom through a replaced holder;
+  - 37: 23a through a named intermediate.
+
+| Case | Program | SPEC | A | `KillAcrossDeref` | `FirstDerefBase` |
+| --- | --- | --- | --- | --- | --- |
+| 34a | `var arr: [2 of uniq/i32] = [x@uniq, y@uniq]; c = arr[i]@follow@uniq; arr[0] = z@uniq; arr[i]@follow = 7; c@follow = 1` | error | error | **valid: UNSOUND** | error |
+| 34b | 34a through two Derefs (`[2 of uniq/uniq/i32]`, `arr[i]@follow@follow`) | error | error | **valid: UNSOUND** | error |
+| 34c | 34a with `arr = [z@uniq, w@uniq]` | valid | error | valid | valid |
+| 35a | ll2: `node = next; b = node.value@uniq; node = next; b@follow = 1` | valid | error at the second step | valid | valid |
+| 35b | ll2 loop: `keep = node.value@uniq; node = next`, `keep` used after the loop | valid | error at `_t` | valid | valid |
+| 36a | `first = cur.inner.take()` (Φ_c only); `cur = b; cur = a; cur.inner.clear(); return first` | error | error | **valid: UNSOUND** | **valid: UNSOUND** |
+| 36b | 36a, `first` also retaining the receiver | error | error | error at `cur = a` | error at `cur = a` |
+| 36c | 36a with `a.inner.clear()` instead of `cur = a; cur.inner.clear()` | error | **valid: UNSOUND** | **valid: UNSOUND** | **valid: UNSOUND** |
+| 36d | 36c, `first` also retaining the receiver | error | error | error | error |
+| 37 | `t = rr@follow@uniq; c = t@follow@uniq; rr = slot2@uniq; rr@follow@follow = 7; c@follow = 1` | valid | valid | valid | valid |
+
+**Findings.**
+
+1. **The may-overlap matcher is unsound.** Round 2's `Within` lets `arr[0] = …` end a child based at `arr[i]` (34a,
+   34b). 34a has one Deref, so the variant changes single-Deref verdicts too. Round 6's "sound on 92 cases" for the
+   root-most kill held because no case combined a non-path index with a constant-index assignment.
+2. **The plan's matcher is narrower than S1's text.** It ends nothing across a non-path index after K, so it rejects
+   34c. S1 §2.1 compares only the steps of K, and `FirstDerefBase` follows it.
+3. **The `within` loss reaches the next step of a walk.** In 35a and 35b, a value Borrowed through the walk's holder
+   carries the previous step's Loan, whose path names the new node's link. The next step's Borrow then conflicts.
+   This is the `to_refs` shape: keep a Borrow of a node while advancing.
+4. **Φ_c without the receiver's Loans is unsound in design A too (36c).** The phantom is the only Loan `first` keeps
+   on the iterator, and its path names it through `cur`. After `cur = b`, nothing keeps `a`, so `a.inner.clear()` is
+   accepted. `FirstDerefBase` also ends Φ_c at `cur = b`, so it also accepts 36a. When `first` retains the receiver's
+   Loans, its parent Loans, both rules are sound (36b, 36d). Rounds 7–8 encode Φ_c without them (33a–33c, 36a,
+   36c). A3 F6 must state whether Φ_c's values carry the receiver's Loans (PLAN G110, part 2). This blocks unit 2f
+   and the adoption of the case 23a proposal.
+5. **37:** 23a through a named intermediate is valid under every rule. `FirstDerefBase` makes the one-step form agree.
+
+**Rerun: 109 cases.**
+
+- **A:**
+  - 78 same, 18 with an earlier error, 11 listed losses (35a, 35b and 34c added);
+  - the unlisted 33c and **the unsound 36c**.
+- **A with `FirstDerefBase`:**
+  - 84 same, 16 with an earlier error, 6 listed losses (P1 and S1′'s base operations);
+  - 33c, and **36a and 36c unsound**.
+- **S1′:** fails 34c (loss) and 36c (unsound) as well as round 7's 29a, 30c and 33c. The exit code is 5.

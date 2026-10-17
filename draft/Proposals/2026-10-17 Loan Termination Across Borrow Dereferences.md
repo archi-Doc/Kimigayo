@@ -1,6 +1,7 @@
 # Loan Termination Across Borrow Dereferences
 
-Date: 2026-10-17. Status: proposal for the owner's decision; not adopted, integrated or implemented.
+Date: 2026-10-17, revised the same day after an independent review and prototype round 8 (§2). Status: proposal for
+the owner's decision; not adopted, integrated or implemented.
 Requested outcome: accept case 23a with a small, predictable extension of S1, preserving soundness rather than
 maximizing acceptance. This document proposes a change to the adopted rule; it does not authorize its implementation
 or supersede DECISIONS R4-M39 by itself.
@@ -9,14 +10,16 @@ or supersede DECISIONS R4-M39 by itself.
 
 Keep S1's static Loan identities, complete access paths and existing checks. Change its one **base** from the Place
 before the **last** borrow dereference to the Place before the **first** borrow dereference. Keep the definite,
-in-place destruction rule for ending a Loan. This recovers outer-holder replacement, including 23a, without a
-points-to graph, value versions, another base column or an exception for a particular program.
+in-place destruction rule for ending a Loan. This recovers outer-holder replacement, including 23a and the
+`uniq`-linked walks 30d, 35a and 35b, without a points-to graph, value versions, another base column or an exception
+for a particular program. It also makes the one-step form agree with the two-step form: in `t = rr@follow@uniq;
+c = t@follow@uniq`, `t`'s Loan has base `rr` under either rule, so S1 already accepts 23a written that way (37).
 
 Required meaning -> missing fact -> owner -> removal:
 after an outer reference is replaced, access through its new value must not be blocked solely by a child of its old
 value -> the current last-dereference base prevents that termination even when P3 already blocks competing aliases
 -> A5's Loan fact producer computes the first-dereference base once per Borrow site and Semantics case, and the
-existing ending rule consumes it -> the last-dereference selection and the listed 23a/30d losses become unnecessary.
+existing ending rule consumes it -> the last-dereference selection and the 23a/30d/35a/35b losses become unnecessary.
 Conflict paths, content provenance and Origin containment do not change.
 
 This is an extension of S1, not a plan to import Rust's whole borrow checker. Writes through references and dynamic
@@ -25,32 +28,57 @@ indexes remain conservative. Soundness is a condition of adoption; imperfect pre
 ## 2. Baseline and evidence
 
 The baseline is S1 revision `61b1abf2`, merged into `origin/dev` at `b04b979e`, and its adoption recorded by
-`172237f9` (DECISIONS R4-M39, on `claude/a5-step0-contracts`). S1 integration is proceeding separately; if it moves
-from Proposals to Changes, use its frozen revision as the source and revise the authoritative rules on adoption.
+`172237f9` (DECISIONS R4-M39, merged into `dev` at `48ca66d1`). S1 was integrated into SPEC §15.6 at `4372b058`
+(`draft/INTEGRATED.md`) and moved to `draft/Changes`, where its text is frozen. §7 states the change against the
+current SPEC.
 
 | Record | What it establishes |
 | --- | --- |
-| [S1](<2026-10-16 Loan Identity by Base.md>) §§2.1, 2.2, 4.5, 8 | Last-dereference base; no end across a borrow dereference; 23a and 30d are listed losses. P3, by-value checks and transit are required. |
+| [S1](<../Changes/2026-10-16 Loan Identity by Base.md>) §§2.1, 2.2, 4.5, 8 | Last-dereference base; no end across a borrow dereference; 23a and 30d are listed losses. P3, by-value checks and transit are required. |
 | [A5 plan](<2026-10-16 Complete Polonius A5 Plan.md>) §4.3; [A3](<../Sketches/A5 Step 0/design-A3.md>) §§2, 9 | The root-most recovery was not adopted. The reason recorded is the owner's selection of `within`, not a demonstrated performance disadvantage of the recovery. |
 | [Prototype](<../Sketches/A5 Step 0/prototype.md>) round 6, `e32c5850` | On 92 hand-encoded programs, P3 plus the root-most ending accepts 23a/30d and rejects the crossing counterexample 29a. This is bounded evidence, not a proof. |
-| Prototype round 7, `193ff65c` on `claude/a5-step0` | 99 programs; the report does not establish a fresh root-most comparison for the exact rule proposed here. |
+| Prototype round 7, `193ff65c` | 99 programs; the report does not establish a fresh root-most comparison for the exact rule proposed here. |
+| Prototype round 8 (this revision) | 109 programs. `FirstDerefBase`, the rule of §3.1, accepts 23a, 30d, 34c, 35a and 35b and rejects 34a and 34b, which the round-6 variant accepts (unsound). It and design A are unsound when an F6 phantom lacks the receiver's Loans (36a, 36c; below). |
+| [RustComparison.rs](<../Sketches/A5 Step 0/RustComparison.rs>) | rustc 1.97.1 accepts 23a, 34c, 35a and 35b, and rejects 34a and the write through 23a's old `slot`. |
 
 The earlier `5d61561d` proposal used a first-dereference base, but its other rules differ from adopted S1. Do not
 restore that revision wholesale. Retain the later shared-layer dependencies, `replace` contract, observing
 destruction, by-value checks and object-step classification.
 
-Two evidence gaps must be closed before implementation is accepted:
+Round 8 establishes four points:
 
-- In `193ff65c:A5RulesPrototype.cs`, the root-most branch of `EndedBy` uses `Path.Within`; its `SegEq` treats a
-  dynamic index as matching a constant index. That is may-overlap, not definite destruction. Reuse the production
-  definite matcher and add negative index cases; the old variant is not the specification.
-- The prototype and S1 differ on Loans formed past shared references. Map prototype facts to S1's actual
-  shared-layer rule before treating the comparison as evidence for the whole language.
+- **The matcher is part of the rule.** The root-most branch of `EndedBy` (`KillAcrossDeref`) uses `Path.Within`,
+  whose `SegEq` matches a dynamic index with a constant one. So `arr[0] = …` ends a child based at `arr[i]`, and a
+  later write through `arr[i]` is accepted (34a, one dereference; 34b, two). Round 6's 92 cases had no such program.
+  The plan's matcher errs the other way: it refuses a runtime index after the destroyed Move Path, so it keeps a
+  child based at `arr[i]` after `arr = …` (34c), which S1's text ends. §3.1 follows S1's text.
+- **S1's examples understate its loss.** S1 §4.5 states the loss in general (once the holder holds a new reference,
+  access through it to an overlapping Place conflicts while the child lives), and its scans counted none in the
+  repository. But its examples show only the write 23a and the read 30d, and its §3 says the next step of a walk
+  stays valid (30b). In 35a and 35b, the next step itself is an error: a value Borrowed through the walk's holder,
+  `b = node.value@uniq`, carries the previous step's Loan, whose path now names the new node's link, and the next
+  step's Borrow conflicts with it. This is the `to_refs` shape, keeping a Borrow of each node while advancing; it is
+  valid under the current SPEC and in Rust. It weighs on the precision judgment behind R4-M39.
+- **The rule changes only these verdicts.** Against design A (A3's encoding of S1) on the 109 cases,
+  `FirstDerefBase` makes 23a, 30d, 34c, 35a and 35b valid, moves 30c's error to the write through the old link and
+  36b's to `cur = a`, and makes 36a unsound (next point). Nothing else changes.
+- **An F6 phantom must carry its parent Loans (blocking).** A3 F6 issues `Phi_c` on the receiver's referent into an
+  abstract call's result. Rounds 7 and 8 encode it as the result's only Loan there, and A3 does not state otherwise
+  when the result retains only the receiver's content (H). Design A is then already unsound: after
+  `first = cur.inner.take(); cur = b`, nothing keeps `a`, and `a.inner.clear()` is accepted (36c). The
+  first-dereference base also ends `Phi_c` at `cur = b`, so `cur = a; cur.inner.clear()` is accepted too (36a). When
+  `first` also carries the receiver's Loans, both rules reject both forms (36b, 36d). §4 therefore requires that
+  every value carrying a child Loan or `Phi_c` also carries its parent Loans. A3 F6 (unit 2f) must establish this,
+  for example by issuing `Phi_c` with the receiver's Loans; exempting `Phi_c` from base ending would not fix 36c.
+  Until then this proposal is not adoptable (PLAN G110, part 2).
 
-The producer audit also includes A3 F6's `preserves results` phantom Loans (`Phi_c` and its disturbed form).
-Determine whether each uses S1's child-ending contract or a separate call contract, and preserve that contract;
-do not route an unclassified Loan through the new rule or add a feature-specific bypass. The shared representation
-must publish the distinction it already requires. An unresolved contract blocks the implementation unit.
+Another evidence gap remains before implementation is accepted (PLAN G110, part 1): the prototype and S1 differ on Loans
+formed past shared references. Map prototype facts to S1's actual shared-layer rule before treating the comparison
+as evidence for the whole language.
+
+Once G110 part 2 is resolved, `Phi_c` and its disturbed form may keep S1's child-ending contract or a separate call
+contract: with their parent Loans, both are sound (36b, 36d), so the choice concerns implementation only. The
+producer publishes it; no feature-specific bypass is added.
 
 ## 3. The rule
 
@@ -62,9 +90,11 @@ For a child Loan L with complete path Pi:
    `obj`, `rc` or `arc` is storage, not a borrow dereference. Classification is per Semantics case.
 2. A Loan with no borrow dereference has no such ending base. Its ordinary lifetime and conflicts still apply.
    A Borrow past a shared reference follows S1's existing rule; this proposal creates no additional Loan for it.
-3. End L only when an operation definitely destroys B, or a Move Path containing B, in place. Use S1's existing
-   inline/own storage containment and exact constant-index rules. A required dynamic/non-path index prevents an
-   ending proof. Do not truncate such a base to a convenient tracked ancestor.
+3. End L only when an operation destroys in place a Move Path G that is B or a prefix of B. G's steps are compared
+   exactly, so a constant index matches only the same constant and never a runtime index, which forms no Move Path
+   ([§15.1.3](../../docs/spec/15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move)). B's steps
+   after G are inline steps, runtime indexes included, or own steps. This is S1's rule (§2.1: `prefix(G,B)` "compares
+   exactly") with the new B; the plan's `within` matcher also refuses a runtime index after G, which loses 34c.
 4. The destroying operations remain `=`, storage end and the published `replace` target contract. A write through
    a borrow dereference or a non-path index ends nothing. Move, `exchange`, `swap` and ordinary method calls do not
    end a Loan by transferring its old reference elsewhere.
@@ -78,8 +108,8 @@ ended(L, P)    := base(L, B) and destroyed_in_place(G, P)
 step(L, P, Q)  := edge(P, Q) and not ended(L, P)
 ```
 
-`definite_storage_contains` requires a Move Path target and the established inline/own containment, no borrow
-dereference, and identical constant indexes. It is not the conflict overlap relation. In particular:
+`definite_storage_contains` requires G to be a Move Path and an exact prefix of B followed only by inline or own
+steps. It is not the conflict overlap relation. In particular:
 
 | Loan path | Proposed base | Operation | Ends this Loan? |
 | --- | --- | --- | --- |
@@ -87,15 +117,15 @@ dereference, and identical constant indexes. It is not the conflict overlap rela
 | `h.*.next.*.value` | `h` | `h = other` | Yes. |
 | `s.r.*.value` | `s.r` | Whole replacement of `s` | Yes, subject to its destruction check. |
 | `rr.*.*` | `rr` | `rr@follow = other` | No: a write through a reference. |
-| `refs[i].*.value` | `refs[i]` | `refs[0] = other` | No: index identity is not proven. |
+| `refs[i].*.value` | `refs[i]` | `refs[0] = other` | No: `refs[0]` is not a prefix of `refs[i]` (34a). |
+| `refs[i].*.value` | `refs[i]` | `refs = other` | Yes: destroying `refs` destroys every element (34c). |
 | `refs[0].*.value` | `refs[0]` | `refs[1] = other` | No: different constant indexes. |
 | `rr.*.items[i].*` | `rr` | `rr = other` | Yes: the replaced reference is definitely `rr`; the later index is not part of its base. |
 | `s.field` | None | Whole replacement of `s` | No child-ending exemption; ordinary conflict checking applies. |
 
-The dynamic-index restriction is inherited conservatism. This unit does not add a broader whole-container rule
-for a base containing an unknown index. A generic call is not treated as `replace` merely because it destroys
-something: the producer's existing target contract must guarantee in-place destruction without retaining or
-returning the old target value. No new intrinsic exception is introduced.
+Only the destroyed Move Path is compared, so no index identity is assumed. A generic call is not treated as `replace`
+merely because it destroys something: the producer's existing target contract must guarantee in-place destruction
+without retaining or returning the old target value. No new intrinsic exception is introduced.
 
 ### 3.2 Conditions kept together
 
@@ -148,33 +178,44 @@ route is checked the same way. After the valid 23a replacement, a direct write t
 or a conflicting reborrow of `slot` while `c` is used later must still fail.
 
 30d, traversal through stored `uniq` links followed by a read through the new link, is the same recovery family.
-30c, writing through the old route before replacing the traversal holder while its child is live, remains an error.
-No rule recognizes a list, a particular expression spelling or either case number.
+So are 35a and 35b: a Borrow of the new node's Field, such as `b = node.value@uniq`, kept while the walk advances
+again. Under the last-dereference base, `b` carries the previous step's Loan through `node`, and the next step's
+Borrow conflicts with it; here that Loan ends when `node` is replaced. 30c, writing through the old route before
+replacing the traversal holder while its child is live, remains an error, and so do 34a, 34b and the F6 cases 36a
+and 36c once their precondition holds (§2). No rule recognizes a list, a particular expression spelling or a case
+number.
 
 ## 4. Safety argument and its limits
 
-The old inner reference can survive an outer-holder replacement. Therefore the old last-base argument, "ending
-destroys the inner reference," cannot justify this rule. The required invariant is instead:
+The inner references survive an outer-holder replacement, so S1's argument, that the end destroys the reference
+followed last (S1 §2.2), does not apply. The argument goes instead by the holders on the path. Write Pi as
+`B *1 Q1 *2 ... *n Qn`, where each `*k` is a borrow dereference and no `Qk` contains one. Y1 = B holds the reference
+followed at `*1`; for k > 1, Yk = `B *1 Q1 ... *(k-1) Q(k-1)` holds the one followed at `*k` and lies in the referent
+of Y(k-1)'s reference. The argument assumes that every value carrying L also carries L's parent Loans, the Loans of
+the references at Y1 ... Yn; an F6 phantom must satisfy it too (§2, 36a–36d). When L ends at the destruction of G,
+the routes to L's Place are:
 
-> After ending, each surviving route that could conflict with a still-used child's referent is either governed by
-> the surviving descendant's own restrictions or constrained by retained parent Loans and lifetime/capability
-> contracts. An independent competing route cannot become usable merely because the outer holder was replaced.
+- **Through B.** B's old reference was destroyed in place, not transferred. While L is checked, P3 rejects every Move
+  or Borrow of a prefix of Pi in either order, including `exchange` and `swap` targets and implicit receivers,
+  arguments and captures, and no transferring operation ends L (§3.1 rule 4). After the destruction, the name Pi
+  denotes the new value's referent, which L never protected.
+- **To Y2 ... Yn and the final Place from elsewhere.** Each lies in the referent of the preceding holder's reference.
+  The child's values keep the Loans those references carry, its parent Loans (§3.2), so every other route to that
+  storage conflicts while the child is used: the direct `x` and old `slot` cases of §3.3. A parent Loan that ends at
+  the same point ends for the same reason, its own holder's destruction, and the argument applies to it in turn. The
+  chain stops at Loans without a borrow dereference, which no base ends, or at storage the body reaches only through
+  a destroyed holder, such as a parameter's referent.
+- **Siblings.** Children with the same B end together. They were checked against each other while both were live,
+  and each keeps its own parent Loans. A child formed through `c` has its own path and base; it does not inherit B.
+- **Calls and other layers.** Calls retain only what their published contracts allow; reservations and activation
+  still check conflicting arguments. A Borrow past a shared reference forms no Loan to end (§3.1 rule 2), and owning
+  handles keep their existing rules.
 
-The candidate argument separates the routes:
+Rust's assignment kill has the same structure: an assignment to a local ends the loans of every path through it
+(S1 §4.5), and its reborrow constraints keep the loans of the references followed, as the parent Loans do here.
+rustc accepts and rejects the corresponding programs as this rule does (§2, RustComparison.rs).
 
-- The replaced outer slot holds its new reference. It no longer supplies the old route, so its old path restriction
-  can end. The child's reference value and its required dependencies survive.
-- Original storage and older ancestor routes are protected by retained parent Loans. The direct `x` and `slot`
-  negative cases check this obligation.
-- A conflicting live alias formed by borrowing or moving a prefix is blocked by P3, whether the alias or child is formed first.
-  This includes implicit receiver/argument/capture Borrows and targets of transferring calls.
-- Sibling Loans with the same base can end together. Their coexistence must have passed conflict checks before
-  ending, and their values and required dependencies survive. A new child formed through `c` has its own base and
-  Loan; it does not acquire the old outer holder as its base merely because its parent once used it.
-- Calls retain only the dependencies their published contracts allow; reservations and activation still check
-  conflicting arguments. Shared layers and owning handles retain their existing rules.
-
-This is a reviewable proof obligation, not a completed proof. Repeated sites, joins, transfers, escaping storage,
+This argument is reviewable, not a completed proof. Repeated sites, joins, transfers, escaping storage,
 observing destruction and shared/own steps must satisfy it under the exact fact representation. An unexplained
 unsound acceptance blocks adoption; do not repair it with an expression-specific exception or an authority bypass.
 If the common rule requires substantial new state, return the design to the owner rather than silently growing it.
@@ -183,7 +224,7 @@ If the common rule requires substantial new state, return the design to the owne
 
 | Option | Benefit | Cost / decision |
 | --- | --- | --- |
-| Keep last-dereference base | No rule change | Continues to reject 23a/30d; baseline. |
+| Keep last-dereference base | No rule change | Continues to reject 23a/30d/35a/35b; baseline. |
 | **First-dereference base** | Recovers the family using existing path and ending facts | Recommended. One canonical base selection and exact matcher; retains conservative indirect/index writes. |
 | Keep last base plus a separate outer ending relation | Similar recovery | Rejected: two representations of the same termination decision and another propagation condition. |
 | Track actual referents or version each replaced value | More precision | Rejected for this unit: new state, joins and alias/update obligations. |
@@ -191,7 +232,8 @@ If the common rule requires substantial new state, return the design to the owne
 | Special-case 23a or exempt the current Loan ID | Small apparent patch | Rejected: duplicates a rule or reintroduces the repeated-site unsoundness. |
 
 The main design and an independently derived alternative both selected the first-dereference base. The independent
-analysis additionally identified the prototype's may-overlap index matcher; the rule above explicitly excludes it.
+analysis additionally identified the prototype's may-overlap index matcher, which round 8 shows unsound (34a/34b);
+the rule above excludes it.
 
 Implementation expectation, not a measurement:
 
@@ -215,7 +257,7 @@ implemented; follow the architecture's target files rather than adding another o
 
 | Unit | Work and completion condition |
 | --- | --- |
-| 1. Design and executable comparison | Independently review the surviving-route argument and alternatives. In the existing prototype, implement the exact rule and correct the ending matcher. Reconcile shared-layer and phantom-Loan contracts with S1. Run the complete current corpus and the missing cases below against the baseline. Record exact sources and expected verdicts. Prototype variants remain experimental, not production modes. |
+| 1. Design and executable comparison | Round 8 implemented the exact rule (`FirstDerefBase`), ran 109 cases and found the F6 precondition (§2). Remaining: A3 F6 gives `Phi_c`'s values the receiver's Loans (PLAN G110, part 2); independently review §4's argument and the alternatives; reconcile shared-layer contracts with S1; encode the missing cases below and run them against the baseline. Record exact sources and expected verdicts. Prototype variants remain experimental, not production modes. |
 | 2. Adoption and specification | After the argument and exact-rule evidence pass independent review, obtain the owner's adoption. Then supersede only R4-M39's last-base/within restriction and align the sources in §7. Preserve the other S1 requirements. A failed safety obligation keeps the current rule in force. |
 | 3. A5 implementation | Publish the base once per site/case and consume it through the canonical ending/step path. No consumer recomputes it from syntax. If restructuring is necessary, first commit behavior-preserving restructuring under VERIFICATION. |
 | 4. Focused verification and measurements | Assert verdicts and check locations at the lowest public A5/MIR layer; reuse the owning tests. Run the required Unit/Session checks and selected generated-code fixtures, then compare matched compiler workloads. |
@@ -224,7 +266,7 @@ Required comparisons, reusing existing cases rather than cloning them:
 
 | Family | Required outcome / check |
 | --- | --- |
-| 23a, 30d | Accepted; assert new and old referents remain distinct in one selected generated-code fixture. |
+| 23a, 30d, 35a, 35b | Accepted; assert new and old referents remain distinct in one selected generated-code fixture. |
 | 29a, reverse order, receiver/call alias | Rejected when the conflicting Borrow forms. |
 | 20a–20f, 30c | Preserve the established verdicts; no self-authority from a repeated Loan ID. |
 | 23b; direct `x`, old `slot` and an additional child of `c` | Preserve ancestor and descendant protection after the outer end. |
@@ -232,10 +274,10 @@ Required comparisons, reusing existing cases rather than cloning them:
 | Conditional replacement and loops | Both-branch replacement permits the recovered access; one branch that retains the old route still conflicts. Include a back edge and a live value from an earlier iteration. |
 | 21a/21b; 24a–24c; 25a–25c; 26a/26b | Preserve established verdicts through temporaries, observing Drop, dead/live/escaped stores and destroying calls. No kill before the check. |
 | Move, `exchange`, `swap`, `replace` | Transfer forms stay rejected with a live conflicting child, including calls. Only the established destroying-target contract is exempt. |
-| Constant/dynamic indexes and sibling Fields | Exact same constant can end; different or unknown indexes cannot accidentally kill. Test the matcher directly and a program with later old-route access. |
+| Constant/dynamic indexes and sibling Fields | Exact same constant can end; different or unknown indexes cannot accidentally kill. Test the matcher directly and a program with later old-route access (34a, 34b), and the whole replacement `refs = other` with a base `refs[i]`, which ends it (34c). |
 | Shared layers, Semantics pairs, owning and borrowed handles | Compare against S1's actual materialization and containment. Include a surviving `rc`/`arc` clone and protection of its payload; do not infer physical destruction from handle replacement. |
-| Calls and F6 phantom Loans | Recheck round-7 33a–33c after its recorded reservation correction, plus receiver-holder replacement with a retained result. Verify parent materialization, disturbance and ending against the producer's contract. |
-| Unchanged boundaries | Single-dereference programs and no-dereference Loans keep their verdicts. Indirect-slot replacement stays conservative. |
+| Calls and F6 phantom Loans | Recheck round-7 33a–33c after its recorded reservation correction, and 36a–36d: a value carrying `Phi_c` also carries the receiver's Loans, so both are rejected through `cur` and through `a`. Verify parent materialization, disturbance and ending against the producer's contract. |
+| Unchanged boundaries | Single-dereference programs keep S1's verdicts; only the plan's narrower matcher differs, on 34c. No-dereference Loans keep theirs. Indirect-slot replacement stays conservative. |
 
 Use bounded mutation comparisons to remove P3, parent retention, transit or by-value checking independently; the
 corresponding negative cases must expose the missing safeguard. This validates the tests' relevance, not general
@@ -249,31 +291,57 @@ existing allocation-test owners (`Purpose=Allocation`); preserve failed evidence
 If a material cost regression appears, report its measured cause before accepting a more complicated design.
 
 Follow [VERIFICATION](../../docs/dev/VERIFICATION.md) for implementation checks, exact-input evidence and
-`verify-commit.ps1`. Select native fixtures explicitly; NativeAOT needs a separate request. Writing this proposal
-requires only diff/reference review and independent design review; no compiler build or prototype rerun is claimed.
+`verify-commit.ps1`. Select native fixtures explicitly; NativeAOT needs a separate request. This revision ran the
+prototype outside the repository (round 8); no compiler build is claimed.
 
 ## 7. Adoption mapping and boundaries
 
-This proposal reopens the first-base recovery because the owner now asks for 23a acceptance with bounded cost.
-It does not claim the former no-crossing decision was a soundness proof against the recovery.
+This proposal reopens the first-base recovery because the owner now asks for 23a acceptance with bounded cost, and
+because S1's examples understate its loss (35a, 35b; §2). It does not claim the former no-crossing decision was a
+soundness proof against the recovery. If the owner keeps the last-dereference base, A3's loss rows add 35a and 35b
+(S1's frozen text stays; `draft/INTEGRATED.md` records the correction), and A3's matcher follows SPEC §15.6.3 on
+34c. G110 part 2 holds under either base.
 
 On adoption, update together:
 
 - **SPEC:** §15.6.3's base and ending rule; the Base glossary entry in Appendix E; affected examples and §15.6
   wording that depends on the base. Retain §15.6.2/P3 and §15.6.6 destruction checks. Review §13.5.5's handle
   guarantees for consistency without weakening them. The specification must stand alone, not depend on this draft.
+  The text below replaces the current sentences; the rest of S1's integrated text is unchanged.
 - **DECISIONS:** a superseding entry naming R4-M39 and the newly selected precision/cost tradeoff. Do not erase its
   historical adoption. No new vocabulary or structure-limit exception is requested.
-- **A5 plan/A3:** replace last-base selection and the no-crossing decision; remove 23a/30d from the loss rows only
-  after the agreed checks establish the new boundary. Align the precise by-value check rather than copying the
-  ambiguous "all Loans carried by the accessed holder are excused" wording.
-- **Proposal lifecycle:** if S1 is still open, revise only its unfrozen affected text under the adoption's scope;
-  if integrated, leave its frozen text unchanged and record this new proposal's mapping in `draft/INTEGRATED.md`.
-  Record the intake and its exact integrated sections in either case. Update STATUS/PLAN when their verified
-  boundaries or next actions change. SPECJ, GUIDE and historical records require separate scope.
+- **A5 plan/A3:** replace last-base selection, the no-crossing decision and the `within` matcher's refusal of a
+  runtime index after G; remove 23a/30d from the loss rows, and leave 35a/35b out, only after the agreed checks
+  establish the new boundary. Align the precise by-value check rather than copying the ambiguous "all Loans carried
+  by the accessed holder are excused" wording.
+- **Proposal lifecycle:** S1 is integrated and frozen. Record this proposal's intake and its exact integrated
+  sections in `draft/INTEGRATED.md`. Update STATUS/PLAN when their verified boundaries or next actions change.
+  SPECJ, GUIDE and historical records require separate scope.
 
-Remaining limits are intentional: no general points-to analysis, no ending on indirect or dynamic-index writes,
-no relaxation of P3 to preserve whole-prefix aliases, no change to call effects or Origin inference. The settled
+SPEC text, against the current SPEC (S1 as integrated at `4372b058`):
+
+- **§15.6.3,** the sentences on the base. Now: "The child's **base** is the Place before the last dereference of its
+  path. Destroying in place a Move Path that is the base or contains it with no dereference between them ends the
+  child, once … A child whose base lies behind a dereference does not end this way; it ends when no value that
+  carries it may be used." New: "The child's **base** is the Place before the first dereference of its path.
+  Destroying in place a Move Path whose access path is a prefix of the base's ends the child, once …" The elided
+  text is unchanged; the last quoted sentence is deleted.
+- **Appendix E,** the Base row. Now: "The Place before the last dereference (§15.6.2) in a child Loan's access path;
+  destroying in place a Move Path that is it or contains it with no dereference between them ends the child." New:
+  "The Place before the first dereference (§15.6.2) in a child Loan's access path; destroying in place a Move Path
+  whose access path is a prefix of the base's ends the child." The links stay.
+- **§13.5.5,** the sentence for borrow handles: "assigning it ends a child Loan whose base it is" becomes "assigning
+  it ends a child Loan whose base it is when it is a Move Path". `views[i] = w` ends nothing, under the current text
+  too.
+- **Examples:** 23a as a §15.6.3 example, with the competing-alias error of §3.3.
+
+The base never contains a dereference, so "with no dereference between them" and the sentence for a base behind a
+dereference have no case left. "A prefix of the base's" access path states S1's exact comparison (S1 §2.1), which
+"contains" left open for a runtime index; a prefix includes the base itself and passes own steps.
+
+Remaining limits are intentional: no general points-to analysis, no ending on writes through a reference or at a
+runtime index, no relaxation of P3 to preserve whole-prefix aliases, no change to call effects or Origin inference.
+The settled
 [borrow-only uniq pair rule](../../docs/SETTLED.md#a-borrow-only-uniq-pair-follow-bounded-by-its-slot-alone) continues
 to require every relevant reaching lifetime; an earlier Loan end does not authorize a detached return.
 
