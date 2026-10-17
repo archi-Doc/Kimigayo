@@ -51,10 +51,22 @@ Assert-KimiTestSelections @() (Join-KimiCommonTestSelections @('XunitTest.TwoTes
 $cases++
 Reject { Assert-KimiTestSelections (Join-KimiCommonTestSelections @('XunitTest.TypoTest')) @() $methods } 'TypoTest'
 Reject { Assert-KimiTestSelections @() (Join-KimiCommonTestSelections @('XunitTest.OneTest.Typo') -Method) $methods } 'OneTest.Typo'
-# Tests reported as Not Run (Explicit tests not requested) were not executed; a run without a summary executed none.
-Equal (Get-KimiExecutedTestCount 'xUnitTest  Total: 271, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 19.640s') 271
-Equal (Get-KimiExecutedTestCount 'xUnitTest  Total: 6, Errors: 0, Failed: 0, Skipped: 0, Not Run: 1, Time: 1.250s') 5
-Equal (Get-KimiExecutedTestCount 'xUnitTest  Total: 1, Errors: 0, Failed: 0, Skipped: 0, Not Run: 1, Time: 0.306s') 0
-Equal (Get-KimiExecutedTestCount 'xUnitTest  Total: 0') 0
-Equal (Get-KimiExecutedTestCount 'no summary') 0
+# Tests reported as Not Run (Explicit tests not requested) were not executed; a run without a result file executed none.
+$result = [IO.Path]::GetTempFileName()
+try {
+    Set-Content -LiteralPath $result -Value ('<assemblies><assembly><collection>' +
+        '<test type="XunitTest.OneTest" method="Run" result="Pass" />' +
+        '<test type="XunitTest.OneTest+AllocationTests" method="Storage" result="Fail" />' +
+        '<test type="XunitTest.TwoTest" method="Explicit" result="NotRun" /></collection></assembly></assemblies>')
+    $executed = @(Get-KimiExecutedTests $result)
+}
+finally { Remove-Item -LiteralPath $result }
+Equal $executed @('XunitTest.OneTest.Run', 'XunitTest.OneTest+AllocationTests.Storage')
+Equal @(Get-KimiExecutedTests $result) @()
+# Each requested selector executes a test of its own: one that matches only a test left Not Run fails, also beside a
+# selector that executes.
+Assert-KimiTestSelections @('XunitTest.OneTest') @('XunitTest.OneTest.Storage') $executed 'among the executed tests'
+$cases++
+Reject { Assert-KimiTestSelections @() @('XunitTest.OneTest.Run', 'XunitTest.TwoTest.Explicit') $executed 'among the executed tests' } "'XunitTest.TwoTest.Explicit' among the executed tests"
+Reject { Assert-KimiTestSelections @('XunitTest.TwoTest') @() $executed 'among the executed tests' } "'XunitTest.TwoTest' among the executed tests"
 Write-Output "Passed $cases verification selector checks."

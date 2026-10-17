@@ -37,27 +37,29 @@ function Join-KimiCommonTestSelections([string[]] $Selection, [switch] $Method) 
     }
 }
 
-# xUnit's summary line counts in Total the tests it reports as Not Run (Explicit tests not requested); a missing or
-# unrecognized summary counts none.
-function Get-KimiExecutedTestCount([string] $Summary) {
-    if ($Summary -match 'Total: (\d+), Errors: \d+, Failed: \d+, Skipped: \d+, Not Run: (\d+)') { return [int]$Matches[1] - [int]$Matches[2] }
-    0
+# The tests a run executed, as Class.Method, from its per-test results (-result-xml). xUnit reports Explicit tests not
+# requested as Not Run; a run without a result file executed none.
+function Get-KimiExecutedTests([string] $ResultXml) {
+    if (-not (Test-Path -LiteralPath $ResultXml)) { return }
+    Select-Xml -LiteralPath $ResultXml -XPath '//test[@result!="NotRun"]' | ForEach-Object { "$($_.Node.type).$($_.Node.method)" }
 }
 
-function Assert-KimiTestSelections([string[]] $Class, [string[]] $Method, [string[]] $DiscoveredMethods) {
-    $classes = @($DiscoveredMethods | ForEach-Object { $_.Substring(0, $_.LastIndexOf('.')) } | Sort-Object -Unique)
+# Every class and method selection matches one of the tests, Class.Method: the methods discovered in the freshly built
+# assembly before the run, or the tests it executed after it.
+function Assert-KimiTestSelections([string[]] $Class, [string[]] $Method, [string[]] $Tests, [string] $Where) {
+    $classes = @($Tests | ForEach-Object { $_.Substring(0, $_.LastIndexOf('.')) } | Sort-Object -Unique)
     foreach ($selection in $Class) {
         $matched = $false
         foreach ($pattern in (Get-KimiTestAlternatives $selection)) {
             if ($classes -like $pattern) { $matched = $true; break }
         }
-        if (-not $matched) { throw "No test class matches '$selection' in the freshly built assembly." }
+        if (-not $matched) { throw "No test class matches '$selection' $Where." }
     }
     foreach ($selection in $Method) {
         $matched = $false
         foreach ($pattern in (Get-KimiTestAlternatives $selection -Method)) {
-            if ($DiscoveredMethods -like $pattern) { $matched = $true; break }
+            if ($Tests -like $pattern) { $matched = $true; break }
         }
-        if (-not $matched) { throw "No test method matches '$selection' in the freshly built assembly." }
+        if (-not $matched) { throw "No test method matches '$selection' $Where." }
     }
 }
