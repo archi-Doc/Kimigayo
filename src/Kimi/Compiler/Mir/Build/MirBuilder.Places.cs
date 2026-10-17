@@ -96,7 +96,8 @@ internal sealed partial class MirBuilder
                 return place;
             case HirRes.Static when symbol is not null:
                 return this.Static(symbol, node);
-            case HirRes.Field when (symbol?.Kind == BindingSymbolKind.Storage ? HirTables.Symbol(symbol.Declaration!) : symbol) is { } property:
+            case HirRes.Field: // A Property, or an accessor's storage of its Property.
+                var property = symbol!.Kind == BindingSymbolKind.Storage ? HirTables.Symbol(symbol.Declaration!)! : symbol;
                 return this.Storage(property, this.receiver < 0 ? null : new MirPlace(this.receiver), node);
             default:
                 return this.Unsupported(node);
@@ -193,18 +194,10 @@ internal sealed partial class MirBuilder
         static int Inherited(BoundType type) => AdtDef.Base(type) is { } parent ? AdtDef.StorageCount(parent) : 0;
     }
 
-    // SPEC 15.1.3: a fixed-array element at a literal position in range, grouped or not (its PlaceShape): at the value Binding fitted to
-    // the literal its groups enclose (Folded); the position evaluates nothing.
+    // SPEC 15.1.3: a fixed-array element at a literal position in range (its PlaceShape): at the position the index's own plan row keeps
+    // (Folded); the position evaluates nothing.
     private MirPlace ConstElement(IndexKoto index, bool input)
-    {
-        var literal = index.Right;
-        while (HirTables.Op(literal) == HirOp.Group)
-        {
-            literal = Child(literal);
-        }
-
-        return this.body.Project(this.Place(index.Left, input), MirProjectionKind.ConstIndex, (int)HirTables.PlanOf(literal).Folded!.Value);
-    }
+        => this.body.Project(this.Place(index.Left, input), MirProjectionKind.ConstIndex, (int)HirTables.PlanOf(index).Folded!.Value);
 
     // SPEC 4.7, 4.7.1: a built-in element at a runtime position: an integer, at a written ^x the length minus x, or at another key's
     // resolution; SPEC 5.3: a raw pointer's p[n] is *(p + n).
@@ -254,17 +247,10 @@ internal sealed partial class MirBuilder
         return local;
     }
 
-    // SPEC 4.7.1: the referent of the reference that a subscript's selected call returns; the selection's published expansion names that
-    // call, and a missing one is a broken HIR contract (Broken), an Opaque value of the node's Type.
+    // SPEC 4.7.1: the referent of the reference that a subscript's selected call returns, which the selection's published expansion names.
     private MirPlace Referent(Koto node)
     {
-        if (ExpansionPlan.Of(node)?.Second is not { } call)
-        {
-            var value = this.Temp(node);
-            this.Broken(node, value);
-            return value;
-        }
-
+        var call = ExpansionPlan.Of(node)!.Value.Second!;
         var result = this.Temp(call.ReturnType, node);
         this.Call(result, call, node, first: null);
         return this.body.Project(result, MirProjectionKind.Deref, 0);
