@@ -145,8 +145,10 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         var (c, _) = SemanticSnapshotTest.Bind(name);
         var (bodies, version) = (c.BuildMir().Bodies.Length, c.BuildMir().Version);
         var cases = new MirCases(c.Types);
+        var rebuilds = 0UL;
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
+            rebuilds++;
             c.Binding.Bind(BindingMode.Final);
             foreach (var body in c.BuildMir().Bodies)
             {
@@ -160,7 +162,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
                 }
             }
         }));
-        Assert.Equal((bodies, version + AllocationMeasurement.WarmupOperations + AllocationMeasurement.MeasuredOperations), (c.BuildMir().Bodies.Length, c.BuildMir().Version)); // Warm-up and measured rebuilds.
+        Assert.Equal((bodies, version + rebuilds), (c.BuildMir().Bodies.Length, c.BuildMir().Version)); // Warm-up and measured rebuilds.
     }
 
     // V11, plan 5.6.4: N defers, then N returns that each leave all of them, build each defer once per target (one drop tree shared by

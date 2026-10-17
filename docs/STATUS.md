@@ -98,7 +98,7 @@ Native execution targets Windows x64. Binding success does not imply native supp
 | Editor | Repository VS Code extension: lexical TextMate highlighting, managed LSP connection, diagnostics and supported Hover/code actions. | Lexical coloring is not semantic-token support. The KimiCode client is outside this repository. |
 | Mods and composition | Source append/rebind and provisional/final infrastructure. | Binding does not execute Mods; the host interface is deferred. Composition Root Entry/Provider selection is withdrawn/unsettled. |
 | Async | Callable effect bounds have an independently implemented subset. | Tasks/workers are deferred: task syntax, Kimi.Async, coroutine lowering, scheduler/I/O, Transferable and thread-safe static initialization are not implemented. |
-| Performance | Selected warm compiler workloads reuse storage with zero-allocation regressions; selected native workloads have O0/O2 and allocation evidence. | No whole-compiler, module-loading, startup or editor-wide allocation/speed guarantee. Dependent-body borrow tables retain quadratic worst-case storage; worker allocation-counter investigation remains G41. |
+| Performance | Selected warm compiler workloads reuse storage with zero-allocation regressions; selected native workloads have O0/O2 and allocation evidence. | No whole-compiler, module-loading, startup or editor-wide allocation/speed guarantee. Dependent-body borrow tables retain quadratic worst-case storage. |
 
 ## 7. Language Test Execution
 
