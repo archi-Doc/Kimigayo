@@ -1196,6 +1196,27 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
         Assert.True(Grows(bytes, 2), $"bytes {string.Join(", ", bytes)}");
     }
 
+    // V16 (re-review): a view's work is its own: after a body of 512 Loans, a small body takes the steps it takes alone, since a view clears
+    // only the checks' stamps it uses.
+    [Fact]
+    public void AViewsWorkIsItsOwn()
+    {
+        var text = new StringBuilder(Prelude).Append("func big()\n    var x = 0\n");
+        for (var n = 0; n < 512; n++)
+        {
+            text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, "    let r{0} = x@ref\n", n);
+        }
+
+        var c = MirBuildTest.Compile(text.Append("    inspect(r0)\nfunc small(a: i32)\n    var y = a\n    let q = y@ref\n    inspect(q)\n").ToString());
+        var program = c.BuildMir();
+        var (alone, after) = (new Stratum(c.Types), new Stratum(c.Types));
+        alone.Run(program, Body(program, "small"));
+        after.Run(program, Body(program, "big"));
+        var work = after.Borrows.Work;
+        after.Run(program, Body(program, "small"));
+        Assert.Equal(alone.Borrows.Work, after.Borrows.Work - work);
+    }
+
     // V16: A5 on a program version it checked before allocates nothing: its sets, tables, call rows (an intrinsic's too) and the dataflow
     // keep their storage.
     [Trait("Purpose", "Allocation")]
@@ -1236,6 +1257,8 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
         new Stratum(c.Types).Run(program);
         return program;
     }
+
+    private static MirBody Body(MirProgram program, string name) => program.Bodies.ToArray().Single(x => x.Key.Decl?.Name == name);
 
     private static string Line(Compilation c, SourceRef site) => c.SyntaxOf(site).ToString().Split('\n')[0].Trim();
 
@@ -1287,13 +1310,18 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
         {
             foreach (var body in program.Bodies)
             {
-                this.flow.Begin(body);
-                this.moves.Build(body, this.flow);
-                for (var view = 0L; view < MirCases.Count(body); view++)
-                {
-                    this.cases.Select(body, view);
-                    this.Borrows.Run(program, body, view);
-                }
+                this.Run(program, body);
+            }
+        }
+
+        internal void Run(MirProgram program, MirBody body)
+        {
+            this.flow.Begin(body);
+            this.moves.Build(body, this.flow);
+            for (var view = 0L; view < MirCases.Count(body); view++)
+            {
+                this.cases.Select(body, view);
+                this.Borrows.Run(program, body, view);
             }
         }
     }

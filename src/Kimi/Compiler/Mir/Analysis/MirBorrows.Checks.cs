@@ -95,6 +95,23 @@ internal sealed partial class MirBorrows
         this.Activations(state, at);
     }
 
+    // Restarts the checks' stamps for the view: those of its slots, Loans and markers are cleared, so a view's cost is its own (markVia is
+    // read only where markSeen holds the check's stamp).
+    private void Restamp()
+    {
+        this.stamp = 0;
+        MirDataflow.Grow(ref this.reached, this.holderCount);
+        MirDataflow.Grow(ref this.scanned, this.holderCount);
+        MirDataflow.Grow(ref this.loanMarks, this.loanCount);
+        MirDataflow.Grow(ref this.markSeen, this.loanBase);
+        MirDataflow.Grow(ref this.markVia, this.loanBase);
+        this.reached.AsSpan(0, this.holderCount).Clear();
+        this.scanned.AsSpan(0, this.holderCount).Clear();
+        this.loanMarks.AsSpan(0, this.loanCount).Clear();
+        this.markSeen.AsSpan(0, this.loanBase).Clear();
+        this.Work += (2 * this.holderCount) + this.loanCount + this.loanBase;
+    }
+
     // A check set's Loans, each with its mode by the holder it was found in (a transit value is no reservation holder): the states before ℓ
     // of the given live holders, E's, and of the values the location's first stores put into a holder made live (transit, whose stored
     // borrows and own Loans seed the closure, E5), closed through the holders their direct Loans name. An activation's reservation holder
@@ -102,11 +119,6 @@ internal sealed partial class MirBorrows
     private void Gather(ulong[] state, ulong[] holders, int own, int stores)
     {
         this.stamp++;
-        MirDataflow.Grow(ref this.reached, this.holderCount);
-        MirDataflow.Grow(ref this.scanned, this.holderCount);
-        MirDataflow.Grow(ref this.loanMarks, this.loanCount);
-        MirDataflow.Grow(ref this.markSeen, this.loanBase);
-        MirDataflow.Grow(ref this.markVia, this.loanBase);
         this.candidateCount = 0;
         if (own >= 0)
         {

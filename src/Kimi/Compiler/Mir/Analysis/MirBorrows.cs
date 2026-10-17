@@ -123,13 +123,8 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
         flow.ReplayBackward(ref liveness);
         var carrying = new Carrying(this, state);
         flow.Forward(ref carrying);
-        (carrying.Checks, this.chainHead, this.stamp) = (true, -1, 0);
-        this.Work += this.loanMarks.Length + this.reached.Length + this.scanned.Length + this.markSeen.Length + this.markVia.Length;
-        Array.Clear(this.loanMarks);
-        Array.Clear(this.reached);
-        Array.Clear(this.scanned);
-        Array.Clear(this.markSeen);
-        Array.Clear(this.markVia);
+        (carrying.Checks, this.chainHead) = (true, -1);
+        this.Restamp();
         flow.Replay(ref carrying);
         this.Bytes += this.sets.Bytes;
         this.Work += this.sets.Bytes + this.sets.Scanned;
