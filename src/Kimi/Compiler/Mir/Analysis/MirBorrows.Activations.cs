@@ -94,6 +94,7 @@ internal sealed partial class MirBorrows
         for (var c = 0; kind == AccessKind.Observe && c < this.candidateCount; c++)
         {
             var candidate = this.candidates[c];
+            this.Work++;
             if (this.Hits(loan.Root, steps, AccessKind.Observe, candidate) && !this.Hits(loan.Root, steps, AccessKind.Write, candidate))
             {
                 this.Report(this.Code(candidate, DiagnosticCode.ComparisonLoanConflict_Kd), loan.Site, candidate.Via, at, reservation);

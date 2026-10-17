@@ -41,6 +41,7 @@ internal sealed partial class MirBorrows
         MirDataflow.Grow(ref this.liveAfter, this.touchCount);
         MirDataflow.Grow(ref this.live, (this.holderCount + 63) >> 6);
         MirDataflow.Grow(ref this.liveIn, (this.holderCount + 63) >> 6);
+        this.Work += statements.Length + this.body.Blocks.Length + this.touchCount;
     }
 
     private void Mark(int local, byte flags)
@@ -86,6 +87,8 @@ internal sealed partial class MirBorrows
             var slot = this.touches[t].Slot;
             this.liveIn[slot >> 6] |= (this.touches[t].Flags & Uses) != 0 ? 1UL << slot : 0;
         }
+
+        this.Work += ((this.holderCount + 63) >> 6) + count;
     }
 
     /// <summary>A touch of a holder at a location: its slot and whether it uses and kills it.</summary>
@@ -128,7 +131,11 @@ internal sealed partial class MirBorrows
             }
         }
 
-        public readonly bool Join(Span<ulong> target, ReadOnlySpan<ulong> incoming) => MirDataflow.Union(target, incoming);
+        public readonly bool Join(Span<ulong> target, ReadOnlySpan<ulong> incoming)
+        {
+            owner.Work += target.Length;
+            return MirDataflow.Union(target, incoming);
+        }
     }
 
     // The touches of one location, from its uses under the view.

@@ -115,6 +115,7 @@ internal sealed partial class MirBorrows
         }
 
         this.Reach(Escaped, scan: true);
+        this.Work += (this.holderCount + 63) >> 6;
         for (var word = 0; word < (this.holderCount + 63) >> 6; word++)
         {
             for (var bits = holders[word]; bits != 0; bits &= bits - 1)
@@ -130,6 +131,7 @@ internal sealed partial class MirBorrows
             {
                 var slot = this.pending[^1];
                 this.pending.RemoveAt(this.pending.Count - 1);
+                this.Work += stores;
                 for (var e = 0; e < stores; e++)
                 {
                     if (this.entries[e] is { Op: not Cleared } entry && entry.Slot == slot)
@@ -170,6 +172,7 @@ internal sealed partial class MirBorrows
 
     private bool Overwritten(int slot, int stores)
     {
+        this.Work += stores;
         for (var e = 0; e < stores; e++)
         {
             if (this.entries[e] is { Op: Replaced } entry && entry.Slot == slot)
@@ -187,6 +190,7 @@ internal sealed partial class MirBorrows
     {
         if (!entry.Issue)
         {
+            this.Work += this.sets.Count(entry.Value);
             foreach (var element in this.sets.Elements(entry.Value))
             {
                 this.Consider(element, -1);
@@ -199,6 +203,7 @@ internal sealed partial class MirBorrows
     // E5's seed: the holders a set's direct Loans name, and E where it carries Φ_E, are made live.
     private void Seed(int set)
     {
+        this.Work += this.sets.Count(set);
         foreach (var element in this.sets.Elements(set))
         {
             if (element == Escaped || (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true, Named: >= 0 }))
@@ -258,6 +263,7 @@ internal sealed partial class MirBorrows
         for (var c = 0; c < this.candidateCount; c++)
         {
             var candidate = this.candidates[c];
+            this.Work++;
             if ((candidate.Unique || kind is not (AccessKind.Read or AccessKind.SharedBorrow)) && this.Hits(root, steps, kind, candidate))
             {
                 this.Report(this.Code(candidate, code), this.loans[candidate.Loan].Site, candidate.Via, at, reservation);

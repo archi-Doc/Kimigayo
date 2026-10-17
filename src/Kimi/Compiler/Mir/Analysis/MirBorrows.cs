@@ -72,7 +72,8 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
         Raw,
     }
 
-    /// <summary>Gets the work of the runs: transfers, slot joins, set elements scanned and set bytes made (A3 6.2).</summary>
+    /// <summary>Gets the work of the runs (A3 6.2): the pre-pass's walks, transfers, both problems' slot joins, the holders of each point
+    /// that ends Loans, each check's bit scan, stored values and seeds, set elements scanned, candidates compared and set bytes made.</summary>
     internal long Work { get; private set; }
 
     /// <summary>Checks a body under the selected view; view 0 of a body no view decides checks it for every view.</summary>
@@ -222,6 +223,7 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
 
         this.rootStart.AsSpan(0, keys).CopyTo(this.rootStart.AsSpan(1));
         this.rootStart[0] = 0;
+        this.Work += locations + keys + this.loanCount;
     }
 
     // The PairAcquire operands the view makes Reborrows, each a Loan of its Place's referent.
@@ -307,6 +309,8 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
             ref var loan = ref this.loans[l];
             (loan.Holder, loan.Named) = (loan.Holder >= 0 ? this.slots[loan.Holder] : -1, loan.Named >= 0 ? this.slots[loan.Named] : -1);
         }
+
+        this.Work += (2 * locals.Length) + this.loanCount;
     }
 
     // The Loans each location's destructions in place end (E8): a whole write of a Move Path (an Assign's Place, a returning Call's
@@ -338,6 +342,8 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
 
             this.ended[statements.Length + block] = set;
         }
+
+        this.Work += statements.Length + this.body.Blocks.Length;
     }
 
     // The two-phase Loans issued into an argument holder whose call destroys its target in place: the Ref reads its target where it is
@@ -350,6 +356,8 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
             ref var loan = ref this.loans[this.byRoot[r]];
             loan.Destroying |= loan.Mode == MirRefKind.TwoPhaseUniq && loan.Holder == this.slots[local];
         }
+
+        this.Work += this.rootStart[key + 1] - this.rootStart[key];
     }
 
     // The Loans whose Places a destroyed Move Path exactly prefixes, added to a set: the path's steps compare exactly (a constant index only
@@ -366,6 +374,7 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
         }
 
         var key = this.Key(destroyed.Root);
+        this.Work += this.rootStart[key + 1] - this.rootStart[key];
         for (var r = this.rootStart[key]; r < this.rootStart[key + 1]; r++)
         {
             ref readonly var loan = ref this.loans[this.byRoot[r]];
