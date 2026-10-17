@@ -336,8 +336,8 @@ internal sealed class AggregateLayoutPool
                     child = this.Get(component, depth + 1);
                 }
 
-                // Never is no value Type here, so a Never Field keeps this pool's null (STATUS) though Layout lays Never out.
-                var value = type.Kind is BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary && i == 0 ? RuntimeAbi.StringReference : child?.Value ?? (ReferenceTypes.IsValue(component) || ReferenceEquals(component, BoundType.Unit) || ReferenceEquals(component, BoundType.String) ? Layout.Of(component) : null);
+                // The scalar-value gate gives Never no record, so a Never Field keeps this pool's null (STATUS) though Layout lays it out.
+                var value = sequence && i == 0 ? RuntimeAbi.StringReference : child?.Value ?? WindowsLowering.GetValue(component);
                 if (value is null || (cLayout && (value.Layout.Size == 0 || value.Layout.Alignment > 16)))
                 {
                     this.resolved[type] = null;

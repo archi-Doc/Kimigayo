@@ -6,7 +6,8 @@
 // sequence handles (Slice, Array, Dictionary words). Struct, Tuple, fixed-array, enum, Closure and Function Item placement, with
 // the Limit and CLayout results, come with P7b and P7c; Weak<S> comes with its operations (P41).
 // Input: a closed Type. A borrow, raw pointer, handle or sequence is laid out without reading its referent or element Type.
-// Output: the Type's ValueLowering, one shared record per representation; a Type without a row is an internal error.
+// Output: the Type's ValueLowering, one shared record per representation (P7b makes it the OK/Limit/CLayout result); a Type
+// without a row is an internal error.
 // Invariants: deterministic; no call allocates (every row is a static record); Never is zero-sized, laid out as Unit (IMPL
 // 21.1.3), while the old Emission keeps Never without a representation (WindowsLowering.GetValue's gate), so legacy .ll is
 // unchanged.
