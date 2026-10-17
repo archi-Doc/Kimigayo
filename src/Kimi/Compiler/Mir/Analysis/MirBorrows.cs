@@ -118,6 +118,8 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
         Array.Clear(this.loanMarks);
         Array.Clear(this.reached);
         Array.Clear(this.scanned);
+        Array.Clear(this.markSeen);
+        Array.Clear(this.markVia);
         flow.Replay(ref carrying);
         this.Work += this.sets.Bytes;
     }
