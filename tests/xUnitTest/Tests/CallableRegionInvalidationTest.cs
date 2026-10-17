@@ -8,8 +8,11 @@ namespace XunitTest;
 
 public class CallableRegionInvalidationTest
 {
-    [Fact]
-    public void EditingAnItemSignatureRevokesItsEntryContext()
+    // An edit revokes the entry context, also after a pass that did not finish (a Bind that throws leaves no result).
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void EditingAnItemSignatureRevokesItsEntryContext(bool unfinished)
     {
         const string Source = "func make<T>(value: T) -> i32 => 1\nlet f = make<i32>\n_ = f(42)";
         var c = MinimalEmissionTest.Analyze(Source);
@@ -17,6 +20,11 @@ public class CallableRegionInvalidationTest
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "make");
         var item = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<GenericsKoto>().Single().TypeOf()!;
         var before = c.Binding.FunctionItemContext(item)!;
+        if (unfinished)
+        {
+            typeof(Binding).GetProperty(nameof(Binding.Result))!.SetValue(c.Binding, default(BindingResult)); // As a throwing Bind leaves it.
+        }
+
         var donor = MinimalEmissionTest.Analyze(Source.Replace("-> i32", "-> i64", StringComparison.Ordinal));
         var replacement = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "make").ReturnType!;
         Assert.True(KotoHelper.Replace(function, function.ReturnType!, replacement));
