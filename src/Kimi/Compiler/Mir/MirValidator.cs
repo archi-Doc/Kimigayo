@@ -46,8 +46,8 @@ internal readonly record struct MirFinding(MirViolation Rule, SourceRef Subject)
 /// <summary>The one structural verifier of MIR (plan 14-5): a body's structure, locals, projections against their base Types, operands,
 /// rvalues and arities, the Types values flow between (<see cref="MirTypes.Agree"/>, modulo Origins) and each Adapt under every
 /// Semantics case view (<see cref="MirCases"/>), before any analysis reads it. It keeps its scratch, so a warm run allocates nothing.</summary>
-/// <remarks>An intrinsic's operands are checked by its row's arity only, and a Value callee's against its Type's signature only where that
-/// Type is a Function Type.</remarks>
+/// <remarks>An intrinsic's operands are checked by its row's arity only, and a Value callee's against its Type's signature where that Type
+/// is a Function Type, else by its declared signature's arity only.</remarks>
 /// <param name="types">The Type context of the bodies, which interns their case Types.</param>
 internal sealed partial class MirValidator(TyCtxt types)
 {
