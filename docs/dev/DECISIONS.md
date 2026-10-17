@@ -1644,3 +1644,26 @@ structure is recorded here by the unit that first implements it.
     exception) and (c) carrying Type arguments before G2 (MIR representation work in W1 for a form no library or milestone uses);
     for the successor code, reusing `ProjectPreparationFailed_Kd`, recategorizing `GenerationFailed_Kd`, or
     `MissingNativeRequirement_Kd` for the missing-supply cause only.
+- **R5-M21 `TyCtxt.Instances` and `Instantiates`** (2026-10-18, planning session; plan F3, package F §4.11, K §4.1, X8, X26, F 8;
+  under R5-M18) The partial `Binding/TyCtxt.Instances.cs` owns instance identity; K3 adds `Erase` there. `TyCtxt.Instantiates`,
+  given a definition's `BindingSymbol`, is true when the definition or a declaration enclosing it on its scope chain has a Type,
+  Semantics or length slot, even an unused one (SPEC 6.1.3), and no specialization lies between them; Origin slots never count (SPEC 8.13.3); a
+  scope owner counts only as the declaration it is, never as a symbol it names. It is the instance key's null rule (KD1) for every
+  `MirBodyKind` key symbol. Its per-definition memo lives until an edit: `Binding.Invalidate` calls `ResetInstances` beside
+  `ResetRetentions` (R4-M51), so a warm rebind allocates 0 B. Both readers are re-pointed (`Binding.ClosureInstances` and the legacy
+  `GenericStoragePlan.IsGeneric`, D5's named follow-up), and `FunctionKoto.RequiresInstantiation`, a Syntax property reading
+  Binding, is deleted. Reproducer (F fact 7): the old property classified a named function nested two levels in a generic
+  function, in a block of one, in a generic struct's method or in a closure as closed. No definition in the test corpus or the
+  milestones changes class (a temporary trace), so fixtures and the diagnostic and semantic snapshots are identical. Outside the
+  corpus such programs stay refused, with a different `GenerationFailed_Kd` Note visible on build or run only; accepted ones whose
+  nested function ignores the slots get per-instance entries with the same behavior; a two-level nested call that selects a
+  specialization stays wrong in legacy, which forwards one level. F3 is therefore not a D5 miscompile fix.
+  - Departure (temporary): a specialization stops the walk, so it and everything nested in it count as closed, although SPEC
+    8.13.1 closes only its arguments and SPEC 6.1.3 makes a specialization in a generic container generic in the container's
+    slots. Reason: it is the only behavior-preserving rule for the re-pointed legacy readers. Both SPEC-literal variants (the walk
+    passing an enclosing specialization; no specialization rule) make legacy refuse a closure in a specialization of a generic
+    struct's Type function (`GenerationFailed_Kd`), a program it runs correctly today. Removal: at K1 `Instantiates` follows SPEC
+    6.1.3, and the legacy readers keep the old specialization behavior as a temporary until G7.
+  - Rejected: keeping the property (Syntax reading Binding); a legacy copy of the old rule beside the view now (two rules for one
+    fact); walking the Koto parent chain (the design names the scope chain, which carries conformance-path and accessor scopes); a
+    SPEC-literal specialization rule in F3 (it changes legacy output for a program legacy runs correctly).
