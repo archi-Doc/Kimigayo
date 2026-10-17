@@ -14,7 +14,7 @@ public sealed partial class LlvmEmitter
 {
     private readonly Compilation compilation;
     private readonly EmissionModule module = new();
-    private readonly BodyLowering lowering = new();
+    private readonly BodyLowering lowering;
     private readonly FunctionAbiPool signatures = new();
     private readonly GenericStoragePlan generics = new();
     private readonly ObjectGenerationPlan objects = new();
@@ -24,7 +24,6 @@ public sealed partial class LlvmEmitter
     private readonly Dictionary<FunctionKoto, FunctionAbi> functions = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundProperty, FunctionAbi> staticGetters = new(ReferenceEqualityComparer.Instance);
     private readonly List<StaticScalarEntry> staticEntries = new();
-    private readonly SourceLocationTable staticLocations = new();
     private readonly List<(string Symbol, FunctionAbi Abi)> importAbis = new();
     private bool resourceLimit;
     private string? instanceFailureContext;
@@ -33,6 +32,7 @@ public sealed partial class LlvmEmitter
     internal LlvmEmitter(Compilation compilation)
     {
         this.compilation = compilation;
+        this.lowering = new(compilation.Locations);
         this.lowering.RequireDictionaryOperation = (find, key, value) => this.generics.RequireSourceCall(this.compilation.Binding.DictionaryStorageCall(find, key, value));
         this.lowering.AggregateLayouts.InstantiateDestructor = type => this.generics.RequireDestructor(this.compilation.Binding, type);
         this.lowering.AggregateLayouts.IsSealedObjectTarget = type => this.compilation.Binding.ProveSealed(type, this.compilation.Kotonoha.RootKoto) == ConstraintProof.Proven;
@@ -166,7 +166,7 @@ public sealed partial class LlvmEmitter
 
                 var slot = this.staticEntries[slotOrdinal];
 
-                if (!StaticScalar.IsDynamic(property) || !this.staticLocations.TryGet(property.Declaration, c.Project.Directory, out var location))
+                if (!StaticScalar.IsDynamic(property) || c.Locations.Text(SourceRef.Of(property.Declaration)) is not { } location)
                 {
                     failure = "Static initializer requires a verified closed scalar declaration and source location.";
                     return false;
@@ -229,7 +229,7 @@ public sealed partial class LlvmEmitter
                 }
 
                 var function = module.AddFunction(this.functions[body.Function], exported: false);
-                if (!this.lowering.Lower(c.Library, body, function, module.Constants, c.Project.Directory, this.functions, c.Ownership.ControlFlow!, c.PointerWidth, out failure))
+                if (!this.lowering.Lower(c.Library, body, function, module.Constants, this.functions, c.Ownership.ControlFlow!, c.PointerWidth, out failure))
                 {
                     return false;
                 }
@@ -436,7 +436,7 @@ public sealed partial class LlvmEmitter
                 this.lowering.SetInstance(c.Binding, call, entry);
                 try
                 {
-                    lowered = this.lowering.Lower(c.Library, body, function, module.Constants, c.Project.Directory, this.functions, c.Ownership.ControlFlow!, c.PointerWidth, out failure);
+                    lowered = this.lowering.Lower(c.Library, body, function, module.Constants, this.functions, c.Ownership.ControlFlow!, c.PointerWidth, out failure);
                 }
                 finally
                 {

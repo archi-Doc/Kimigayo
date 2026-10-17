@@ -231,7 +231,7 @@ internal sealed partial class BodyLowering
         this.partDestructions.Add(new(path, offset, count, value.Layout.Stride, aggregate, conditional));
     }
 
-    private bool LowerPartDestruction(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
+    private bool LowerPartDestruction(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, out string? failure)
     {
         failure = null;
         var start = this.partStarts[id];
@@ -241,7 +241,7 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        if (!this.TryGetLocation(body.Operations[id].Source, directory, constants, out var location))
+        if (!this.TryGetLocation(body.Operations[id].Source, constants, out var location))
         {
             return Fail("Partial destruction requires a source location.", out failure);
         }

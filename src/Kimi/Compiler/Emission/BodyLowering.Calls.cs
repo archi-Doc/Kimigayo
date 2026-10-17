@@ -133,7 +133,7 @@ internal sealed partial class BodyLowering
         return index < 0 ? null : entry.Direct[index];
     }
 
-    private bool LowerCall(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
+    private bool LowerCall(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -145,12 +145,12 @@ internal sealed partial class BodyLowering
         var original = body.CallAt(id);
         if (operation.Source is InvocationKoto { BoundValueCall: { } valueCall } invocation)
         {
-            return this.LowerValueCall(body, function, constants, directory, id, invocation, valueCall, out failure);
+            return this.LowerValueCall(body, function, constants, id, invocation, valueCall, out failure);
         }
 
         if (operation.Source is InvocationKoto arrayCall && original is { } arrayPlan && KimiLibraryCatalog.IsArrayOperation(arrayPlan.Target.CompilerFunction))
         {
-            return this.LowerArrayOperation(body, function, constants, directory, id, arrayCall, arrayPlan, out failure);
+            return this.LowerArrayOperation(body, function, constants, id, arrayCall, arrayPlan, out failure);
         }
 
         var generic = original is { } bound ? this.GenericCalls?.GetValueOrDefault(bound) ?? this.ForwardedEntry(bound) : null;
@@ -159,12 +159,12 @@ internal sealed partial class BodyLowering
         ObjectCall? creation = resolved is not null && this.ObjectCalls is { } objects && objects.TryGetValue(resolved, out var objectCreation) ? objectCreation : null;
         if (operation.Source is InvocationKoto rawCall && resolved is { } rawPlan && KimiLibraryCatalog.IsRawOperation(rawPlan.Target.CompilerFunction))
         {
-            return this.LowerRawOperation(body, function, constants, directory, id, rawCall, rawPlan, out failure);
+            return this.LowerRawOperation(body, function, constants, id, rawCall, rawPlan, out failure);
         }
 
         if (operation.Source is InvocationKoto storageCall && resolved is { } storagePlan && KimiLibraryCatalog.IsStorageOperation(storagePlan.Target.CompilerFunction))
         {
-            return this.LowerStorageOperation(body, function, constants, directory, id, storageCall, storagePlan, out failure);
+            return this.LowerStorageOperation(body, function, constants, id, storageCall, storagePlan, out failure);
         }
 
         var formatting = resolved?.Target.CompilerFunction is >= CompilerFunctionKind.TextFixed and <= CompilerFunctionKind.BuiltinFormat;
@@ -351,7 +351,7 @@ internal sealed partial class BodyLowering
 
         if (arithmetic)
         {
-            return this.LowerBuiltinArithmetic(body, function, constants, directory, plan, id, out failure);
+            return this.LowerBuiltinArithmetic(body, function, constants, plan, id, out failure);
         }
 
         this.callOperands.Clear();
@@ -428,7 +428,7 @@ internal sealed partial class BodyLowering
                     continue;
                 }
 
-                if ((!runtime && creation is null && !callee.CallerLocation) || (location < 0 && !this.TryGetLocation(ReferenceEquals(plan.Target, library.Abort) ? call.Parent! : call, directory, constants, out location)))
+                if ((!runtime && creation is null && !callee.CallerLocation) || (location < 0 && !this.TryGetLocation(ReferenceEquals(plan.Target, library.Abort) ? call.Parent! : call, constants, out location)))
                 {
                     return Fail("A runtime call has no diagnostic source location.", out failure);
                 }

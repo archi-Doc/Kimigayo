@@ -333,11 +333,11 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    private bool LowerAggregate(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, ReadOnlySpan<byte> marks, out string? failure)
+    private bool LowerAggregate(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, ReadOnlySpan<byte> marks, out string? failure)
     {
         if (body.Values[id].Kind == OwnershipValueKind.ClosureErasure)
         {
-            return this.LowerClosureErasure(body, function, constants, directory, id, out failure);
+            return this.LowerClosureErasure(body, function, constants, id, out failure);
         }
 
         failure = null;
@@ -440,7 +440,7 @@ internal sealed partial class BodyLowering
                 {
                     // SPEC 4.3, 4.9.5: the handle is zeroed (the empty literal allocates nothing); an element literal reserves its count
                     // once and moves each acquired payload into the buffer in source order.
-                    if (!this.TryGetLocation(operation.Source, directory, constants, out var initLocation))
+                    if (!this.TryGetLocation(operation.Source, constants, out var initLocation))
                     {
                         return Fail("Array construction has no diagnostic source location.", out failure);
                     }
@@ -520,7 +520,7 @@ internal sealed partial class BodyLowering
                     return Fail("Return storage must be uninitialized before securing its result.", out failure);
                 }
 
-                if (operation.Kind == OwnershipOperationKind.Write && place.Kind == OwnershipPlaceKind.Local && !this.LowerStringDestruction(body, function, constants, directory, id, marks, out failure, layout))
+                if (operation.Kind == OwnershipOperationKind.Write && place.Kind == OwnershipPlaceKind.Local && !this.LowerStringDestruction(body, function, constants, id, marks, out failure, layout))
                 {
                     return false;
                 }
@@ -556,8 +556,8 @@ internal sealed partial class BodyLowering
                 break;
             case OwnershipOperationKind.Cleanup:
                 if (place.Type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary
-                    ? !this.LowerArrayDestruction(body, function, constants, directory, id, marks, out failure)
-                    : !this.LowerStringDestruction(body, function, constants, directory, id, marks, out failure, layout))
+                    ? !this.LowerArrayDestruction(body, function, constants, id, marks, out failure)
+                    : !this.LowerStringDestruction(body, function, constants, id, marks, out failure, layout))
                 {
                     return false;
                 }
@@ -572,7 +572,7 @@ internal sealed partial class BodyLowering
     }
 
     // SPEC 4.9.7: destroying an Array releases its buffer; elements are destroyed first once element storage exists.
-    private bool LowerArrayDestruction(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, ReadOnlySpan<byte> marks, out string? failure)
+    private bool LowerArrayDestruction(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, ReadOnlySpan<byte> marks, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -593,7 +593,7 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        if (step.Action is not (CleanupAction.Destroy or CleanupAction.Conditional) || !this.TryGetLocation(operation.Source, directory, constants, out var location))
+        if (step.Action is not (CleanupAction.Destroy or CleanupAction.Conditional) || !this.TryGetLocation(operation.Source, constants, out var location))
         {
             return Fail("Array cleanup has an unknown action.", out failure);
         }

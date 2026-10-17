@@ -105,7 +105,7 @@ internal sealed partial class BodyLowering
         return abi;
     }
 
-    private bool LowerClosureErasure(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
+    private bool LowerClosureErasure(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -154,7 +154,7 @@ internal sealed partial class BodyLowering
         }
 
         var location = -1;
-        if ((layout.NeedsDestruction || layout.Value.Layout.Size > 8) && !this.TryGetLocation(operation.Source, directory, constants, out location))
+        if ((layout.NeedsDestruction || layout.Value.Layout.Size > 8) && !this.TryGetLocation(operation.Source, constants, out location))
         {
             return Fail("Heap closure erasure requires its source location.", out failure);
         }
@@ -259,7 +259,7 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    private bool LowerValueCall(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, CallPlan plan, out string? failure)
+    private bool LowerValueCall(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -436,7 +436,7 @@ internal sealed partial class BodyLowering
 
             if (physical.Kind is AbiParameterKind.Location or AbiParameterKind.LocationLength)
             {
-                if (!function.Abi.CallerLocation && invocationLocation < 0 && !this.TryGetLocation(call, directory, constants, out invocationLocation))
+                if (!function.Abi.CallerLocation && invocationLocation < 0 && !this.TryGetLocation(call, constants, out invocationLocation))
                 {
                     return Fail("A value call requires its invocation location.", out failure);
                 }
@@ -497,7 +497,7 @@ internal sealed partial class BodyLowering
             // The owning Callable contract transfers the whole receiver. A Shared/Exclusive concrete entry (or
             // common Function entry) only borrows its environment, so this adapter retains the final destruction
             // responsibility. A Consuming concrete entry already destroys its own remaining captures.
-            if (!this.TryGetLocation(call, directory, constants, out var location))
+            if (!this.TryGetLocation(call, constants, out var location))
             {
                 return Fail("Consuming callable cleanup has no source location.", out failure);
             }

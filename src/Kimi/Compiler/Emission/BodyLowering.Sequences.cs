@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
-    private bool LowerSequence(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
+    private bool LowerSequence(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -141,7 +141,7 @@ internal sealed partial class BodyLowering
                 (uint)plan.Index >= (uint)id || !ReferenceEquals(ValueType(body, plan.Index), BoundType.ISize) ||
                 (body.IsReachable(id) && !this.Dominates(plan.Index, id)) ||
                 FunctionAbiPool.GetValue(receiver.Components[0], this.aggregateLayouts) is not { } element ||
-                !this.TryGetLocation(operation.Source, directory, constants, out var borrowLocation))
+                !this.TryGetLocation(operation.Source, constants, out var borrowLocation))
             {
                 return Fail("Sequence element borrow requires a checked index and matching backing Origin.", out failure);
             }
@@ -194,7 +194,7 @@ internal sealed partial class BodyLowering
                 (!ReferenceTypes.IsValue(ValueType(body, id)) && aggregate is null && !ReferenceEquals(ValueType(body, id), BoundType.Unit)) ||
                 body.Places[operation.Place].Acquisition != AcquisitionKind.Copy ||
                 (uint)plan.Index >= (uint)id || !ReferenceEquals(ValueType(body, plan.Index), BoundType.ISize) ||
-                (body.IsReachable(id) && !this.Dominates(plan.Index, id)) || !this.TryGetLocation(operation.Source, directory, constants, out var location))
+                (body.IsReachable(id) && !this.Dominates(plan.Index, id)) || !this.TryGetLocation(operation.Source, constants, out var location))
             {
                 return Fail("Slice read requires a protected handle and an isize index.", out failure);
             }
@@ -252,7 +252,7 @@ internal sealed partial class BodyLowering
                     ValueType(body, plan.Index) is not { } key || !ReferenceTypes.IsResolvedRange(key) || this.aggregateLayouts.Get(key) is not { } keyLayout ||
                     (body.IsReachable(id) && !this.Dominates(plan.Index, id)) ||
                     FunctionAbiPool.GetValue(receiver.Components[0], this.aggregateLayouts) is not { } resolvedElement ||
-                    !this.TryGetLocation(operation.Source, directory, constants, out var resolvedLocation))
+                    !this.TryGetLocation(operation.Source, constants, out var resolvedLocation))
                 {
                     return Fail("Slice application requires its evaluated ResolvedRange key.", out failure);
                 }
@@ -267,7 +267,7 @@ internal sealed partial class BodyLowering
 
             if (!Endpoint(startSyntax, plan.Index) || !Endpoint(endSyntax, plan.End) ||
                 FunctionAbiPool.GetValue(receiver.Components[0], this.aggregateLayouts) is not { } sliceElement ||
-                !this.TryGetLocation(operation.Source, directory, constants, out var sliceLocation))
+                !this.TryGetLocation(operation.Source, constants, out var sliceLocation))
             {
                 return Fail("Slice bounds must have matching evaluated isize endpoints.", out failure);
             }

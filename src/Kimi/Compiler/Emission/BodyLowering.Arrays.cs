@@ -128,7 +128,7 @@ internal sealed partial class BodyLowering
         return helper;
     }
 
-    private bool LowerArrayOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, CallPlan plan, out string? failure)
+    private bool LowerArrayOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -159,7 +159,7 @@ internal sealed partial class BodyLowering
         }
 
         var location = -1;
-        if (kind != CompilerFunctionKind.ArrayPop && !function.Abi.CallerLocation && !this.TryGetLocation(call, directory, constants, out location))
+        if (kind != CompilerFunctionKind.ArrayPop && !function.Abi.CallerLocation && !this.TryGetLocation(call, constants, out location))
         {
             return Fail("An Array operation has no diagnostic source location.", out failure);
         }
@@ -293,7 +293,7 @@ internal sealed partial class BodyLowering
 
     // SPEC 22.2: borrowStorage and ownStorage transfer the Array handle to a remainder; lend and split
     // publish one pointer-backed capability. The source functions advance the untaken range.
-    private bool LowerStorageOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, CallPlan plan, out string? failure)
+    private bool LowerStorageOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -316,7 +316,7 @@ internal sealed partial class BodyLowering
 
         if (kind == CompilerFunctionKind.StoragePlaceDictionaryEntry)
         {
-            return this.LowerDictionaryPlacement(body, function, constants, directory, id, call, plan, out failure);
+            return this.LowerDictionaryPlacement(body, function, constants, id, call, plan, out failure);
         }
 
         if (kind is CompilerFunctionKind.StorageTryAllocateBytes or CompilerFunctionKind.StorageTransferBytes)

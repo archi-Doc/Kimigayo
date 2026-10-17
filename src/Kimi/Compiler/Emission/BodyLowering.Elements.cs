@@ -474,7 +474,7 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    private bool LowerElement(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
+    private bool LowerElement(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -552,12 +552,12 @@ internal sealed partial class BodyLowering
                 if (parts)
                 {
                     // An owned element whose parts were moved out destroys only its remaining parts.
-                    if (!this.LowerPartDestruction(body, function, constants, directory, id, out failure))
+                    if (!this.LowerPartDestruction(body, function, constants, id, out failure))
                     {
                         return false;
                     }
                 }
-                else if (!this.TryGetLocation(operation.Source, directory, constants, out location))
+                else if (!this.TryGetLocation(operation.Source, constants, out location))
                 {
                     return Fail("Element destruction requires a source location.", out failure);
                 }
@@ -575,7 +575,7 @@ internal sealed partial class BodyLowering
         if (address)
         {
             var location = -1;
-            if ((layout.IsArray || dynamicArray) && !this.TryGetLocation(source, directory, constants, out location))
+            if ((layout.IsArray || dynamicArray) && !this.TryGetLocation(source, constants, out location))
             {
                 return Fail("Element bounds check requires a source location.", out failure);
             }
