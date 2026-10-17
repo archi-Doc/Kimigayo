@@ -79,7 +79,7 @@ internal static partial class LlvmModuleWriter
         output.Write(", align ");
         WriteNumber(output, helper.Key.Value.Layout.Alignment);
         output.Write('\n');
-        WriteStoredArgument(output, helper.Key.Value, true, "%key", "%key_slot", "%key_input");
+        WriteStoredArgument(output, helper.Key, "%key", "%key_slot", "%key_input");
     }
 
     private static void WriteDictionaryKeyCheck(TextWriter output, DictionaryHelper helper, FunctionAbi find, FunctionAbi requireAbsent)
@@ -113,7 +113,7 @@ internal static partial class LlvmModuleWriter
         output.Write(", ptr %location, i64 %location_length)\n");
         DictionaryAddress(output, "%new_key", "%new_slot", helper.Entry.KeyOffset);
         DictionaryAddress(output, "%new_value", "%new_slot", helper.Entry.ValueOffset);
-        WriteStoredArgument(output, helper.Key.Value, helper.Key.IsScalar, "%key", "%new_key", "%key_inserted");
-        WriteStoredArgument(output, helper.Value.Value, helper.Value.IsScalar, "%value", "%new_value", "%value_inserted");
+        WriteStoredArgument(output, helper.Key, "%key", "%new_key", "%key_inserted");
+        WriteStoredArgument(output, helper.Value, "%value", "%new_value", "%value_inserted");
     }
 }

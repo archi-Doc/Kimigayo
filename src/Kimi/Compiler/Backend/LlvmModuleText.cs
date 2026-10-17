@@ -3,7 +3,8 @@
 // Owns the module frame of the generated LLVM text (SPEC 21.3, 21.4, 22.6; DECISIONS R5-M14): the header with the pooled
 // constants, the Windows runtime template with its ABI definitions spliced in and its test variant, the external declarations,
 // the overflow and memory intrinsic declarations, the footer's profile attributes, the spelling of external symbols and numbers
-// formatted on the stack. Both generators write the frame through it (PD2: promoted, never copied).
+// formatted on the stack (or once, as text, for a template filled at startup). Both generators write the frame through it (PD2:
+// promoted, never copied).
 // Input: a writer, the module's LlvmConstantPool, the test runtime text of a test build, ExternalFunction records, numbers and
 // symbols; the runtime ABI records (RuntimeAbi), the abort reasons (AbortReasons) and the target profile (WindowsProfile).
 // Output: LLVM text written to the writer; a symbol's spelling after @ and the symbol recovered from that spelling.
@@ -190,6 +191,9 @@ internal static class LlvmModuleText
 
         return Encoding.UTF8.GetString(bytes, 0, count);
     }
+
+    // A number's text for a runtime template filled once at startup; writing formats through WriteNumber instead.
+    internal static string Number(long value) => value.ToString(CultureInfo.InvariantCulture);
 
     // TextWriter.Write(long) formats through a temporary string; format on the stack instead.
     internal static void WriteNumber(TextWriter output, long value)

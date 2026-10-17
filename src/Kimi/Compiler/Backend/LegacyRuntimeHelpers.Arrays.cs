@@ -1,13 +1,49 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Compiler.Backend;
-using static Kimi.Compiler.Backend.LegacyRuntimeHelpers;
+#pragma warning disable SA1402 // The Array helper records are this concern's request vocabulary.
+
 using static Kimi.Compiler.Backend.LlvmModuleText;
 
-namespace Kimi.Compiler;
+namespace Kimi.Compiler.Backend;
 
-/// <summary>SPEC 4.9.3, 4.9.7: per-element Array helpers over the {buffer, length, capacity} handle (Windows x64 profile).</summary>
-internal static partial class LlvmModuleWriter
+[Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
+internal enum ArrayHelperKind : byte
+{
+    Append,
+    Insert,
+    Pop,
+    Remove,
+    Place,
+    Clear,
+    Drop,
+    Swap,
+
+    // SPEC 22.2: the storage boundary over an Array handle and its remainder records.
+    BorrowStorage,
+    OwnStorage,
+
+    // PLAN G33: a consumed fixed array moves into the inline storage of its owning remainder.
+    OwnFixedStorage,
+}
+
+/// <summary>The layout offsets of a storage remainder record's Fields {storage, position, count, capacity}, addressed by name,
+/// and the size of its storage Field (SPEC 22.2).</summary>
+[Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
+internal readonly record struct RemainderFields(int Storage, int Position, int Count, int Capacity, int StorageSize);
+
+/// <summary>A generated Array helper for one element: its ABI, element descriptor, for pop the Option payload offset (the tag is
+/// at offset 0), and for the storage boundary its remainder record's Fields.</summary>
+[Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
+internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, StoredValue Element, int? OptionPayload = null, RemainderFields Fields = default)
+{
+    /// <summary>Gets a value indicating whether the helper's module needs the Array capacity routines and memory declarations,
+    /// which every kind but the borrowing storage boundary does (the row's declared need, X4).</summary>
+    internal bool NeedsArrayRuntime => this.Kind != ArrayHelperKind.BorrowStorage;
+}
+
+/// <summary>SPEC 4.9.3, 4.9.5, 4.9.7, 4.9.8, 22.2: the Array capacity routines and the per-element Array helpers over the
+/// {buffer, length, capacity} handle (Windows x64 profile).</summary>
+internal sealed partial class LegacyRuntimeHelpers
 {
     private const string ArrayGrowBody = """
         entry:
@@ -145,54 +181,95 @@ internal static partial class LlvmModuleWriter
 
         """;
 
-    // SPEC 4.9.5, 4.9.8: the capacity routines, emitted only for modules that use Arrays so string-only modules keep no memcpy.
+    // Swap checks both indices before it touches a slot (SPEC 4.9.3).
+    private const string SwapIndexChecks = """
+          %first_negative = icmp slt i64 %first, 0
+          %first_beyond = icmp sge i64 %first, %length
+          %second_negative = icmp slt i64 %second, 0
+          %second_beyond = icmp sge i64 %second, %length
+          %first_invalid = or i1 %first_negative, %first_beyond
+          %second_invalid = or i1 %second_negative, %second_beyond
+          %invalid = or i1 %first_invalid, %second_invalid
+
+        """;
+
+    // SPEC 4.9.5, 4.9.8: the capacity routines, written only for modules that use Arrays so string-only modules keep no memcpy.
     private static readonly string ArrayRuntime =
-        RuntimeAbi.ArrayGrow.GetDefinition(false) + ArrayGrowBody.Replace("REASON_SIZE", Reason(AbortReasons.AllocationSize), StringComparison.Ordinal)
-            .Replace("ZERO_SIZED_BUFFER", Reason(RuntimeAbi.ZeroSizedBuffer), StringComparison.Ordinal) +
-        RuntimeAbi.ArrayReserve.GetDefinition(false) + ArrayReserveBody.Replace("REASON_ARGUMENT", Reason(AbortReasons.ArgumentRange), StringComparison.Ordinal).Replace("REASON_OVERFLOW", Reason(AbortReasons.IntegerOverflow), StringComparison.Ordinal) +
-        RuntimeAbi.ArrayShrink.GetDefinition(false) + ArrayShrinkBody;
+        RuntimeAbi.ArrayGrow.GetDefinition(exported: false) +
+        ArrayGrowBody.Replace("REASON_SIZE", Number(AbortReasons.AllocationSize), StringComparison.Ordinal)
+            .Replace("ZERO_SIZED_BUFFER", Number(RuntimeAbi.ZeroSizedBuffer), StringComparison.Ordinal) +
+        RuntimeAbi.ArrayReserve.GetDefinition(exported: false) +
+        ArrayReserveBody.Replace("REASON_ARGUMENT", Number(AbortReasons.ArgumentRange), StringComparison.Ordinal)
+            .Replace("REASON_OVERFLOW", Number(AbortReasons.IntegerOverflow), StringComparison.Ordinal) +
+        RuntimeAbi.ArrayShrink.GetDefinition(exported: false) + ArrayShrinkBody;
 
-    private static void WriteArrayHelpers(LegacyRuntimeHelpers helpers, TextWriter output)
+    /// <summary>Registers an Array helper a lowered body uses: each helper is written once per module, in first-request order,
+    /// and the row's need of the capacity routines joins the module's.</summary>
+    /// <param name="helper">The requested helper.</param>
+    internal void Request(ArrayHelper helper)
     {
-        foreach (var helper in helpers.ArrayHelpers)
+        this.NeedsArrayRuntime |= helper.NeedsArrayRuntime;
+        if (!this.arrayHelpers.Contains(helper))
         {
-            output.Write(helper.Abi.GetDefinition(false));
-            output.Write(helper.Kind is ArrayHelperKind.OwnStorage or ArrayHelperKind.OwnFixedStorage ? "entry:\n" : ArrayHelperPrologue);
-            switch (helper.Kind)
-            {
-                case ArrayHelperKind.Append:
-                    WriteArrayAppend(output, helper);
-                    break;
-                case ArrayHelperKind.Insert:
-                    WriteArrayInsert(output, helper);
-                    break;
-                case ArrayHelperKind.Pop:
-                    WriteArrayPop(output, helper);
-                    break;
-                case ArrayHelperKind.Remove:
-                    WriteArrayRemove(output, helper);
-                    break;
-                case ArrayHelperKind.Place:
-                    WriteArrayPlace(output, helper);
-                    break;
-                case ArrayHelperKind.Swap:
-                    WriteArraySwap(output, helper);
-                    break;
-                case ArrayHelperKind.BorrowStorage:
-                    WriteArrayBorrow(output, helper);
-                    break;
-                case ArrayHelperKind.OwnStorage:
-                    WriteArrayOwn(output, helper);
-                    break;
-                case ArrayHelperKind.OwnFixedStorage:
-                    WriteFixedOwn(output, helper);
-                    break;
-                default:
-                    WriteArrayClear(output, helper, helper.Kind == ArrayHelperKind.Drop);
-                    break;
-            }
+            this.arrayHelpers.Add(helper);
+        }
+    }
 
+    /// <summary>Writes the capacity routines when the module uses Arrays, then each requested Array helper.</summary>
+    /// <param name="output">The module text.</param>
+    internal void WriteArrays(TextWriter output)
+    {
+        if (this.NeedsArrayRuntime)
+        {
+            output.Write(ArrayRuntime);
+        }
+
+        foreach (var helper in this.arrayHelpers)
+        {
+            output.Write(helper.Abi.GetDefinition(exported: false));
+            output.Write(helper.Kind is ArrayHelperKind.OwnStorage or ArrayHelperKind.OwnFixedStorage ? "entry:\n" : ArrayHelperPrologue);
+            WriteArrayBody(output, helper);
             output.Write("}\n");
+        }
+    }
+
+    private static void WriteArrayBody(TextWriter output, ArrayHelper helper)
+    {
+        switch (helper.Kind)
+        {
+            case ArrayHelperKind.Append:
+                WriteArrayAppend(output, helper);
+                break;
+            case ArrayHelperKind.Insert:
+                WriteArrayInsert(output, helper);
+                break;
+            case ArrayHelperKind.Pop:
+                WriteArrayPop(output, helper);
+                break;
+            case ArrayHelperKind.Remove:
+                WriteArrayRemove(output, helper);
+                break;
+            case ArrayHelperKind.Place:
+                WriteArrayPlace(output, helper);
+                break;
+            case ArrayHelperKind.Swap:
+                WriteArraySwap(output, helper);
+                break;
+            case ArrayHelperKind.BorrowStorage:
+                WriteArrayBorrow(output, helper);
+                break;
+            case ArrayHelperKind.OwnStorage:
+                WriteArrayOwn(output, helper);
+                break;
+            case ArrayHelperKind.OwnFixedStorage:
+                WriteFixedOwn(output, helper);
+                break;
+            case ArrayHelperKind.Clear:
+            case ArrayHelperKind.Drop:
+                WriteArrayClear(output, helper);
+                break;
+            default:
+                throw new InvalidOperationException("Unknown Array helper kind.");
         }
     }
 
@@ -207,14 +284,21 @@ internal static partial class LlvmModuleWriter
         output.Write(", i64 %needed, ptr %location, i64 %location_length)\n  %buffer = load ptr, ptr %handle, align 8\n  %offset = mul i64 %length, ");
         WriteNumber(output, Stride(helper));
         output.Write("\n  %slot = getelementptr i8, ptr %buffer, i64 %offset\n");
-        WriteArrayElementStore(output, helper);
+        WriteStoredArgument(output, helper.Element, "%value", "%slot", "%stored");
         output.Write("  store i64 %needed, ptr %length_ptr, align 8\n  ret void\n");
     }
 
     // Requires 0 <= index <= length, then shifts the tail up by one element before placing the value.
     private static void WriteArrayInsert(TextWriter output, ArrayHelper helper)
     {
-        output.Write("  %negative = icmp slt i64 %index, 0\n  %beyond = icmp sgt i64 %index, %length\n  %invalid = or i1 %negative, %beyond\n  br i1 %invalid, label %bounds_failure, label %increase\nincrease:\n");
+        output.Write("""
+              %negative = icmp slt i64 %index, 0
+              %beyond = icmp sgt i64 %index, %length
+              %invalid = or i1 %negative, %beyond
+              br i1 %invalid, label %bounds_failure, label %increase
+            increase:
+
+            """);
         WriteArrayIncrease(output);
         output.Write("  call void @__kimi_array_grow(ptr %handle, i64 ");
         WriteNumber(output, Stride(helper));
@@ -225,7 +309,7 @@ internal static partial class LlvmModuleWriter
         output.Write("\n  %tail_count = sub i64 %length, %index\n  %tail_bytes = mul i64 %tail_count, ");
         WriteNumber(output, Stride(helper));
         output.Write("\n  call void @llvm.memmove.p0.p0.i64(ptr %next, ptr %slot, i64 %tail_bytes, i1 false)\n");
-        WriteArrayElementStore(output, helper);
+        WriteStoredArgument(output, helper.Element, "%value", "%slot", "%stored");
         output.Write("  store i64 %needed, ptr %length_ptr, align 8\n  ret void\n");
         WriteArrayBoundsFailure(output);
     }
@@ -234,46 +318,54 @@ internal static partial class LlvmModuleWriter
     private static void WriteArrayPop(TextWriter output, ArrayHelper helper)
     {
         var payload = helper.OptionPayload ?? throw new InvalidOperationException("Array pop needs its Option payload offset.");
-        output.Write("  %empty = icmp eq i64 %length, 0\n  br i1 %empty, label %none, label %some\nsome:\n  %last = sub i64 %length, 1\n  %buffer = load ptr, ptr %handle, align 8\n  %offset = mul i64 %last, ");
+        output.Write("""
+              %empty = icmp eq i64 %length, 0
+              br i1 %empty, label %none, label %some
+            some:
+              %last = sub i64 %length, 1
+              %buffer = load ptr, ptr %handle, align 8
+
+            """);
+        output.Write("  %offset = mul i64 %last, ");
         WriteNumber(output, Stride(helper));
         output.Write("\n  %slot = getelementptr i8, ptr %buffer, i64 %offset\n  %payload = getelementptr i8, ptr %result, i64 ");
         WriteNumber(output, payload);
         output.Write("\n  call void @llvm.memcpy.p0.p0.i64(ptr %payload, ptr %slot, i64 ");
         WriteNumber(output, Stride(helper));
-        output.Write(", i1 false)\n  store i32 0, ptr %result, align 4\n  store i64 %last, ptr %length_ptr, align 8\n  ret void\nnone:\n  store i32 1, ptr %result, align 4\n  ret void\n");
+        output.Write("""
+            , i1 false)
+              store i32 0, ptr %result, align 4
+              store i64 %last, ptr %length_ptr, align 8
+              ret void
+            none:
+              store i32 1, ptr %result, align 4
+              ret void
+
+            """);
     }
 
     // Requires 0 <= index < length, moves the element out and shifts the tail down (SPEC 4.9.3).
     private static void WriteArrayRemove(TextWriter output, ArrayHelper helper)
     {
         var scalar = helper.Element.IsScalar;
-        output.Write("  %negative = icmp slt i64 %index, 0\n  %beyond = icmp sge i64 %index, %length\n  %invalid = or i1 %negative, %beyond\n  br i1 %invalid, label %bounds_failure, label %remove\nremove:\n  %buffer = load ptr, ptr %handle, align 8\n  %offset = mul i64 %index, ");
+        output.Write("""
+              %negative = icmp slt i64 %index, 0
+              %beyond = icmp sge i64 %index, %length
+              %invalid = or i1 %negative, %beyond
+              br i1 %invalid, label %bounds_failure, label %remove
+            remove:
+
+            """);
+        output.Write("  %buffer = load ptr, ptr %handle, align 8\n  %offset = mul i64 %index, ");
         WriteNumber(output, Stride(helper));
         output.Write("\n  %slot = getelementptr i8, ptr %buffer, i64 %offset\n");
         if (scalar)
         {
-            var element = helper.Element.Value;
-            var storage = element.Layout.StorageType;
-            var narrowed = storage != element.ComputationType;
-            output.Write(narrowed ? "  %loaded = load " : "  %value = load ");
-            output.Write(storage);
-            output.Write(", ptr %slot, align ");
-            WriteNumber(output, element.Layout.Alignment);
-            output.Write('\n');
-            if (narrowed)
-            {
-                output.Write("  %value = trunc ");
-                output.Write(storage);
-                output.Write(" %loaded to ");
-                output.Write(element.ComputationType);
-                output.Write('\n');
-            }
+            WriteArrayElementLoad(output, helper.Element.Value);
         }
-        else if (!helper.Element.IsZeroSized)
+        else
         {
-            output.Write("  call void @llvm.memcpy.p0.p0.i64(ptr %result, ptr %slot, i64 ");
-            WriteNumber(output, Stride(helper));
-            output.Write(", i1 false)\n");
+            WriteStoredCopy(output, "%result", "%slot", Stride(helper));
         }
 
         output.Write("  %next = getelementptr i8, ptr %slot, i64 ");
@@ -281,34 +373,67 @@ internal static partial class LlvmModuleWriter
         output.Write("\n  %last = sub i64 %length, 1\n  %tail_count = sub i64 %last, %index\n  %tail_bytes = mul i64 %tail_count, ");
         WriteNumber(output, Stride(helper));
         output.Write("\n  call void @llvm.memmove.p0.p0.i64(ptr %slot, ptr %next, i64 %tail_bytes, i1 false)\n  store i64 %last, ptr %length_ptr, align 8\n");
-        WriteArrayReturn(output, helper, scalar);
+        output.Write("  ret ");
+        output.Write(scalar ? helper.Element.Value.ComputationType : "void");
+        output.Write(scalar ? " %value\n" : "\n");
         WriteArrayBoundsFailure(output);
+    }
+
+    // Loads a removed scalar from its slot into %value, narrowing a wider storage form (SPEC 21.3.1).
+    private static void WriteArrayElementLoad(TextWriter output, ValueLowering element)
+    {
+        var storage = element.Layout.StorageType;
+        var narrowed = storage != element.ComputationType;
+        output.Write(narrowed ? "  %loaded = load " : "  %value = load ");
+        output.Write(storage);
+        output.Write(", ptr %slot, align ");
+        WriteNumber(output, element.Layout.Alignment);
+        output.Write('\n');
+        if (narrowed)
+        {
+            output.Write("  %value = trunc ");
+            output.Write(storage);
+            output.Write(" %loaded to ");
+            output.Write(element.ComputationType);
+            output.Write('\n');
+        }
     }
 
     // Requires both indices in [0, length) and exchanges the two element slots through a stack buffer (SPEC 4.9.3).
     private static void WriteArraySwap(TextWriter output, ArrayHelper helper)
     {
-        if (Stride(helper) == 0)
+        var stride = Stride(helper);
+        if (stride == 0)
         {
             // Zero-sized elements have no bytes to exchange; the indices are still checked.
-            output.Write("  %first_negative = icmp slt i64 %first, 0\n  %first_beyond = icmp sge i64 %first, %length\n  %second_negative = icmp slt i64 %second, 0\n  %second_beyond = icmp sge i64 %second, %length\n  %first_invalid = or i1 %first_negative, %first_beyond\n  %second_invalid = or i1 %second_negative, %second_beyond\n  %invalid = or i1 %first_invalid, %second_invalid\n  br i1 %invalid, label %bounds_failure, label %done\ndone:\n  ret void\n");
+            output.Write(SwapIndexChecks);
+            output.Write("  br i1 %invalid, label %bounds_failure, label %done\ndone:\n  ret void\n");
             WriteArrayBoundsFailure(output);
             return;
         }
 
         output.Write("  %scratch = alloca i8, i64 ");
-        WriteNumber(output, Stride(helper));
-        output.Write(", align 16\n  %first_negative = icmp slt i64 %first, 0\n  %first_beyond = icmp sge i64 %first, %length\n  %second_negative = icmp slt i64 %second, 0\n  %second_beyond = icmp sge i64 %second, %length\n  %first_invalid = or i1 %first_negative, %first_beyond\n  %second_invalid = or i1 %second_negative, %second_beyond\n  %invalid = or i1 %first_invalid, %second_invalid\n  br i1 %invalid, label %bounds_failure, label %check\ncheck:\n  %same = icmp eq i64 %first, %second\n  br i1 %same, label %done, label %exchange\nexchange:\n  %buffer = load ptr, ptr %handle, align 8\n  %first_offset = mul i64 %first, ");
-        WriteNumber(output, Stride(helper));
+        WriteNumber(output, stride);
+        output.Write(", align 16\n");
+        output.Write(SwapIndexChecks);
+        output.Write("""
+              br i1 %invalid, label %bounds_failure, label %check
+            check:
+              %same = icmp eq i64 %first, %second
+              br i1 %same, label %done, label %exchange
+            exchange:
+              %buffer = load ptr, ptr %handle, align 8
+
+            """);
+        output.Write("  %first_offset = mul i64 %first, ");
+        WriteNumber(output, stride);
         output.Write("\n  %first_slot = getelementptr i8, ptr %buffer, i64 %first_offset\n  %second_offset = mul i64 %second, ");
-        WriteNumber(output, Stride(helper));
-        output.Write("\n  %second_slot = getelementptr i8, ptr %buffer, i64 %second_offset\n  call void @llvm.memcpy.p0.p0.i64(ptr %scratch, ptr %first_slot, i64 ");
-        WriteNumber(output, Stride(helper));
-        output.Write(", i1 false)\n  call void @llvm.memcpy.p0.p0.i64(ptr %first_slot, ptr %second_slot, i64 ");
-        WriteNumber(output, Stride(helper));
-        output.Write(", i1 false)\n  call void @llvm.memcpy.p0.p0.i64(ptr %second_slot, ptr %scratch, i64 ");
-        WriteNumber(output, Stride(helper));
-        output.Write(", i1 false)\n  br label %done\ndone:\n  ret void\n");
+        WriteNumber(output, stride);
+        output.Write("\n  %second_slot = getelementptr i8, ptr %buffer, i64 %second_offset\n");
+        WriteStoredCopy(output, "%scratch", "%first_slot", stride);
+        WriteStoredCopy(output, "%first_slot", "%second_slot", stride);
+        WriteStoredCopy(output, "%second_slot", "%scratch", stride);
+        output.Write("  br label %done\ndone:\n  ret void\n");
         WriteArrayBoundsFailure(output);
     }
 
@@ -326,7 +451,14 @@ internal static partial class LlvmModuleWriter
     // {storage, position 0, count length, capacity}; the consumed Array slot is not read again.
     private static void WriteArrayOwn(TextWriter output, ArrayHelper helper)
     {
-        output.Write("  %buffer = load ptr, ptr %value, align 8\n  %length_ptr = getelementptr i8, ptr %value, i64 8\n  %length = load i64, ptr %length_ptr, align 8\n  %capacity_ptr = getelementptr i8, ptr %value, i64 16\n  %capacity = load i64, ptr %capacity_ptr, align 8\n");
+        output.Write("""
+              %buffer = load ptr, ptr %value, align 8
+              %length_ptr = getelementptr i8, ptr %value, i64 8
+              %length = load i64, ptr %length_ptr, align 8
+              %capacity_ptr = getelementptr i8, ptr %value, i64 16
+              %capacity = load i64, ptr %capacity_ptr, align 8
+
+            """);
         if (helper.Fields.Storage == 0)
         {
             output.Write("  store ptr %buffer, ptr %result, align 8\n");
@@ -349,9 +481,8 @@ internal static partial class LlvmModuleWriter
         {
             output.Write("  %storage_slot = getelementptr i8, ptr %result, i64 ");
             WriteNumber(output, helper.Fields.Storage);
-            output.Write("\n  call void @llvm.memcpy.p0.p0.i64(ptr %storage_slot, ptr %value, i64 ");
-            WriteNumber(output, helper.Fields.StorageSize);
-            output.Write(", i1 false)\n");
+            output.Write('\n');
+            WriteStoredCopy(output, "%storage_slot", "%value", helper.Fields.StorageSize);
         }
 
         WriteRemainderField(output, "position", helper.Fields.Position, "i64 0");
@@ -380,29 +511,38 @@ internal static partial class LlvmModuleWriter
         {
             output.Write("  %buffer = load ptr, ptr %handle, align 8\n  %offset = mul i64 %length, ");
             WriteNumber(output, Stride(helper));
-            output.Write("\n  %slot = getelementptr i8, ptr %buffer, i64 %offset\n  call void @llvm.memcpy.p0.p0.i64(ptr %slot, ptr %source, i64 ");
-            WriteNumber(output, Stride(helper));
-            output.Write(", i1 false)\n");
+            output.Write("\n  %slot = getelementptr i8, ptr %buffer, i64 %offset\n");
+            WriteStoredCopy(output, "%slot", "%source", Stride(helper));
         }
 
         output.Write("  %next = add i64 %length, 1\n  store i64 %next, ptr %length_ptr, align 8\n  ret void\n");
     }
 
     // Destroys the elements in reverse index order and keeps the capacity; Drop then releases the buffer (SPEC 4.9.7).
-    private static void WriteArrayClear(TextWriter output, ArrayHelper helper, bool release)
+    private static void WriteArrayClear(TextWriter output, ArrayHelper helper)
     {
         if (helper.Element.NeedsDestruction)
         {
-            output.Write("  %buffer = load ptr, ptr %handle, align 8\n  br label %test\ntest:\n  %remaining = phi i64 [ %length, %entry ], [ %index, %body ]\n  %done = icmp eq i64 %remaining, 0\n  br i1 %done, label %end, label %body\nbody:\n  %index = sub i64 %remaining, 1\n  %offset = mul i64 %index, ");
+            output.Write("""
+                  %buffer = load ptr, ptr %handle, align 8
+                  br label %test
+                test:
+                  %remaining = phi i64 [ %length, %entry ], [ %index, %body ]
+                  %done = icmp eq i64 %remaining, 0
+                  br i1 %done, label %end, label %body
+                body:
+                  %index = sub i64 %remaining, 1
+
+                """);
+            output.Write("  %offset = mul i64 %index, ");
             WriteNumber(output, Stride(helper));
             output.Write("\n  %element = getelementptr i8, ptr %buffer, i64 %offset\n");
             WriteStoredDestruction(output, helper.Element, "%element");
-
             output.Write("  br label %test\nend:\n");
         }
 
         output.Write("  store i64 0, ptr %length_ptr, align 8\n");
-        if (release)
+        if (helper.Kind == ArrayHelperKind.Drop)
         {
             output.Write("  call void @__kimi_array_free(ptr %handle, ptr %location, i64 %location_length)\n");
         }
@@ -410,27 +550,32 @@ internal static partial class LlvmModuleWriter
         output.Write("  ret void\n");
     }
 
-    private static void WriteArrayElementStore(TextWriter output, ArrayHelper helper)
-        => WriteStoredArgument(output, helper.Element.Value, helper.Element.IsScalar, "%value", "%slot", "%stored");
-
-    private static void WriteArrayReturn(TextWriter output, ArrayHelper helper, bool scalar)
-    {
-        output.Write("  ret ");
-        output.Write(scalar ? helper.Element.Value.ComputationType : "void");
-        output.Write(scalar ? " %value\n" : "\n");
-    }
-
+    // The checked count of an append or insert; a full Array's count overflow Aborts before any growth (SPEC 4.9.3).
     private static void WriteArrayIncrease(TextWriter output)
     {
-        output.Write("  %count_pair = call { i64, i1 } @llvm.sadd.with.overflow.i64(i64 %length, i64 1)\n  %needed = extractvalue { i64, i1 } %count_pair, 0\n  %count_overflow = extractvalue { i64, i1 } %count_pair, 1\n  br i1 %count_overflow, label %count_failure, label %grow\ncount_failure:\n  call void @__kimi_abort(i32 ");
-        WriteNumber(output, AbortReasons.IntegerOverflow);
-        output.Write(", ptr %location, i64 %location_length, i64 -2)\n  unreachable\ngrow:\n");
+        output.Write("""
+              %count_pair = call { i64, i1 } @llvm.sadd.with.overflow.i64(i64 %length, i64 1)
+              %needed = extractvalue { i64, i1 } %count_pair, 0
+              %count_overflow = extractvalue { i64, i1 } %count_pair, 1
+              br i1 %count_overflow, label %count_failure, label %grow
+            count_failure:
+
+            """);
+        WriteArrayAbort(output, AbortReasons.IntegerOverflow);
+        output.Write("grow:\n");
     }
 
     private static void WriteArrayBoundsFailure(TextWriter output)
     {
-        output.Write("bounds_failure:\n  call void @__kimi_abort(i32 ");
-        WriteNumber(output, AbortReasons.IndexBounds);
+        output.Write("bounds_failure:\n");
+        WriteArrayAbort(output, AbortReasons.IndexBounds);
+    }
+
+    // A helper's precondition failure Aborts at its caller's location with no operating-system error (SPEC 22.5.2).
+    private static void WriteArrayAbort(TextWriter output, int reason)
+    {
+        output.Write("  call void @__kimi_abort(i32 ");
+        WriteNumber(output, reason);
         output.Write(", ptr %location, i64 %location_length, i64 -2)\n  unreachable\n");
     }
 }

@@ -18,7 +18,7 @@ internal sealed partial class BodyLowering
 
     private readonly record struct ArrayElement(BoundType Type, ValueLowering Value, AggregateLayout? Layout, bool IsString)
     {
-        internal bool IsScalar => this.Layout is null && !this.IsString && !ReferenceEquals(this.Type, BoundType.Unit);
+        internal bool IsScalar => StoredValue.TravelsAsScalar(this.Value);
 
         // A zero-sized value (Unit or an empty aggregate) has no slot, so its helpers take no value or result pointer.
         internal bool IsZeroSized => this.Value.Layout.Size == 0;

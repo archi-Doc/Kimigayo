@@ -1563,14 +1563,16 @@ structure is recorded here by the unit that first implements it.
   S2-S4 X4; promoted under R5-M14) A Backend component that owns the Array, Dictionary, formatting and string-comparison runtime
   text until R8 replaces it with Kimigayo library code (PLAN10 §5.8), so its declarations carry `[Transitional("R8")]`. It holds
   a module's helper requests, which leave `EmissionModule`: the Array and Dictionary helper records, the `Needs*` flags, the
-  seven `DictionaryStorage` ABIs and the `FunctionReferences` the Dictionary helpers call, the formatting wrapper lists. Each
-  module holds one instance (the old one as `RuntimeHelpers`, checked before writing). It also holds the element descriptor
-  `StoredValue` (`ValueLowering`, drop routine name, text flag), which replaces the helpers' `AggregateLayout`; the Option
-  payload offset and the remainder Field offsets travel in the helper record, the entry offsets in `DictionaryEntryLayout`.
-  The stored-value kernels, `Reason` and the string-comparison routines live here too. A value travels as a scalar exactly
-  when its argument form is its computation form (SPEC 21.3.1), so the descriptor has no scalar flag. The old Array,
-  Dictionary and formatting writers join at P1b-P1d, the storage kernels at P2a/P2b; each Body-disposition kind then becomes
-  one row that declares its library callees and type-driven needs, which the collector reads (X4). Rejected: requests left in
+  seven `DictionaryStorage` ABIs and the `FunctionReferences` (every source call the compiler requested, destructors included,
+  which the Dictionary helpers call through), the formatting wrapper lists. Each module holds one instance (the old one as
+  `RuntimeHelpers`, checked before writing). It also holds the element descriptor `StoredValue` (`ValueLowering`, drop routine
+  name, text flag), which replaces the helpers' `AggregateLayout`; the Option payload offset and the remainder Field offsets
+  travel in the helper record, the entry offsets in `DictionaryEntryLayout`. The stored-value kernels and the string-comparison
+  routines live here too (`Reason`'s template number text joined `LlvmModuleText.Number` at P1b). A value travels as a scalar
+  exactly when its argument form is its computation form (SPEC 21.3.1), so the descriptor has no scalar flag;
+  `StoredValue.TravelsAsScalar` decides it once, for the helpers and the old lowering's requests (P1b). The old Array,
+  Dictionary and formatting writers join at P1b-P1d, the storage kernels at P2a/P2b; each Body-disposition kind then becomes one
+  row that declares its library callees and type-driven needs, which the collector reads (X4). Rejected: requests left in
   `EmissionModule` with the Backend reading it (a non-neutral input); `AggregateLayout` in the records (the old pool as a
   Backend input); a scalar flag beside `ValueLowering` (a second statement of SPEC 21.3.1's argument form).
 - **R5-M17 `LlvmScalarText`** (2026-10-18, planning session; plan P4a, package §3.4, promoted under R5-M14) A permanent Backend
