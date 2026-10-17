@@ -661,3 +661,13 @@ ending) and **P12**.
   pipeline keeps the earlier rules until R6-check (STATUS): `tests/diagnostics/spec-cases.json` rows
   `15.6.3-outer-replacement` and `15.6.3-abstract-descent` state the SPEC verdicts with class (d) `Old` entries naming
   E8 and P12, and `14.10.3-unreachable` adds `use(y)`. Not refreshed: SPECJ and GUIDE.
+
+## 2026-10-18 — R5 and R6 implementation plan
+
+- [R5 and R6 Implementation Plan](Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md): 一部取り込み (open). The
+  owner adopted it on 2026-10-18 as the formal plan for R5, R6-gen and R6-check, with its three exit gates, and answered its
+  questions OQ1–OQ17 (its status line and §2.2 record the outcomes; DECISIONS R5-M1–R5-M13). It is a working plan: no
+  section is integrated into SPEC or IMPL, and no text is frozen.
+- Its specification work goes separately: the SETTLED "Instance-evaluated generic defaults" revision at H15 (R5-M11) and
+  any SPEC or IMPL change H0's check-only pass finds, each as an explicit revision recorded here when it lands. Adoption
+  implies no implementation support.

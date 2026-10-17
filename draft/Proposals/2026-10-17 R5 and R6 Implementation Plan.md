@@ -2,9 +2,12 @@
 
 Date: 2026-10-17
 
-Status: Proposal (plan only). It changes no SPEC, compiler or test. The owner asked for a unit-level plan for R5, R6-gen and
-R6-check and for an assessment of the parts that are too large or too hard (§6). An independent six-lens review with a
-skeptic pass checked this text; its confirmed findings are applied.
+Status: Adopted working plan. On 2026-10-18 the owner adopted it as the formal plan for R5, R6-gen and R6-check, with its
+three exit gates (§5), decided that R5 runs now in parallel with R4 under its own planning session, and answered OQ1–OQ17
+(§2.2 records the outcomes; DECISIONS R5-M1–R5-M13). OQ17 (b) and (c) differ from the recommendations. The text below is
+otherwise the 2026-10-17 proposal: the owner asked for a unit-level plan for R5, R6-gen and R6-check and for an assessment of
+the parts that are too large or too hard (§6); an independent six-lens review with a skeptic pass checked it, and its
+confirmed findings are applied. It changes no SPEC, compiler or test.
 
 Base: `dev` at `5c42b577`; current records read from `origin/dev` at `2aac946b`. Counts are grep counts at the base and
 planning figures: the unit that uses a count re-measures it.
@@ -146,6 +149,28 @@ Three packets, each answerable "as recommended" (the OD13 pattern). "Blocks" nam
 | --- | --- | --- | --- |
 | OQ17 | Minor: does the no-LINQ rule extend to tests? Is static shutdown pulled into R5 (+60 lines, ahead of P42)? Is one NativeAOT publish plus one milestone run added at the R6-gen exit (AGENTS runs NativeAOT tests only on explicit instruction, and the distributed compiler is NativeAOT)? | No; no; yes, one run | G11 |
 
+**Outcomes (owner, 2026-10-18; DECISIONS R5-M1–R5-M13).** Every question was answered "as recommended" except OQ17 (b) and
+(c), and the three design packages are approved after their design review, not before.
+
+| ID | Outcome | DEC |
+| --- | --- | --- |
+| OQ1 | Adopted, with the three exit gates; R5 starts now, in parallel with R4 (option (a); OD4 stands) | R5-M1 |
+| OQ2 | PRE5 §2 superseded as recommended; the cited pre-R5 evidence directory does not exist, so PLAN §3's baseline line is corrected and E6 retakes the variance | R5-M2 |
+| OQ3 | Waived; B's first slice is measured against legacy (E13 at C1a's group review); S6 does not run | R5-M3 |
+| OQ4 | S2–S4 approved as one package, the owner looking once after its design review; the summary highlights PD3 and PD11 | R5-M1 |
+| OQ5 | Every sub-item as recommended | R5-M4 |
+| OQ6 | Option (e): Q1–Q3, Q4 superseding OD10's clause, deletion at G7 | R5-M5 |
+| OQ7 | (e) as PLAN10, plus (a) legacy-wrong and (d) intended, each with item, reason and SPEC clause | R5-M6 |
+| OQ8 | PD20's hold list is an ARCH rule | R5-M7 |
+| OQ9 | Metric, stop rules, VERIFICATION's R5 rows and ask A-10 adopted; no CI sel lane | R5-M8 |
+| OQ10, OQ11 | Q8 and H0 approved as packages, each once after its design review | R5-M1 |
+| OQ12 | R7 for Binding's forwarding-property reads and ARCH's Binding-wide Syntax restriction; Parsing and root-helper reads at H14 | R5-M9 |
+| OQ13 | R7, after the CallPlan pipeline gives syntax-free selection | R5-M9 |
+| OQ14 | ARCH:135 and ARCH:149 amended; the 17 real sites fixed (Q16) | R5-M10 |
+| OQ15 | The SETTLED rewrite is performed at H15 as an explicit, formal revision; the R4 session's note: write it against the implemented inline fold (`MirBuilder.Defaults`), with its own independent review | R5-M11 |
+| OQ16 | Class rules R/P/I/S approved once; each family unit applies them | R5-M12 |
+| OQ17 | (a) not extended to tests; (b) not pulled into R5: P42's remainder is the first feature work after R6-check's acceptance flip, completed by Milestone42, and C7's slot state follows SPEC 22.4.3's four states; (c) no NativeAOT run at R6-gen's exit (§5.4 item 7 and G11 drop it), one publish and run before the next distribution instead | R5-M13 |
+
 ---
 
 ## 3. Structure and order
@@ -268,7 +293,7 @@ and its contract entry file in the commit that creates it.
 | S2 | Chapter K: instance key, collection before acceptance, R6-gen switch contract | Second independent design beside the deep dive: erase-late key and A5P-C1; roots; edges per MIR form; the four limits in one `Admit` (growing key 16, depth 128, set 1,024; `Apply` null per PD30); Generated at emit; partitions and publication per stage (OQ5); A3b; capability table; layout obligations; the R6-gen switch (MIR in every Analyze, publication at check, PD12's gate, rollback, deletion order in call-graph order); review groups G:K-core, G:K-edges, G:C-frame, G:C-scalar, G:C-aggregate, G:call, G:C-drop, G:closure, G:object, G:library-1, G:library-2, G:format, G:test, G:R6-gen-switch and G:R6-gen-del | OQ1 | Doc | doc | 3 | FP (one design review for S2–S4) | no |
 | S3 | Chapter F: R5 fact schema | Second design: `VTableDef`/`TyCtxt.Applies`, `TyCtxt.Witness` sharing `Witnesses`' core, `TyCtxt.Comparison(self, equality, operators)`, the tuple-operator expansion's inputs (PD15), `AdtDef.IsCLayout`, symbol columns (startup, imports, Dictionary storage, test cases), Core runtime-location text, `TyCtxt.Instantiates`; for each: producer, the post-Bind mutations it removes, R7 shape, first consumer | OQ1 | Doc | doc | 3 | FP | no |
 | S4 | Chapter C: codegen, Layout/Abi, DropGlue, selector, coverage rows, debug-info record | Second design: `FunctionCodegen` contract (inputs, outputs, invariants, prohibitions), A on paper, the O2 parity list from LLVM_OPTIMIZATION's implemented rows (align, `noundef nonnull dereferenceable`, memcpy `noalias`, `noreturn`, no `mustprogress`/`willreturn`), PD2's sharing rule, `Layout.Of(erased Type)`/`Abi.Of`, DropGlue (PD18), `KIMI_CODEGEN` (PD4), the gate (PD12), coverage rows (PD11), deviation form (PD10), statics (PD19: the cycle Abort at the access, the `KIMI_E_STATIC_CYCLE` reason row, the constant-StaticInit fold, the D2 rows), the successor code and partition for output, native-configuration and backend failures after `GenerationFailed_Kd` (and whether `DiagnosticPartition.Emission` and the `Emission` requirement name remain), debug-info record (PD24) | OQ1 | Doc | doc | 3 | FP | no |
-| S5 | Owner-outcome records | DEC: the OQ1–OQ9 answers; the S2–S4 package as the owner-approved design with its review groups (each PD, component and temporary structure is recorded by its first implementing unit); ARCH: the three exit gates (§5), the hold rule (OQ8), the "Temporary structures" list extended with the R5 temporaries; PLAN §3 pointer line | S1–S4 reviewed (and S6 if OQ3 is declined); OQ1–OQ5 | Doc | ≈ +60 doc | 1 | R (DEC/ARCH keep their review) | no |
+| S5 | Owner-outcome records (the OQ answers, the hold rule and the ledger pointers were recorded at adoption, DECISIONS R5-M1–R5-M13; S5 keeps the package records) | DEC: the OQ1–OQ9 answers; the S2–S4 package as the owner-approved design with its review groups (each PD, component and temporary structure is recorded by its first implementing unit); ARCH: the three exit gates (§5), the hold rule (OQ8), the "Temporary structures" list extended with the R5 temporaries; PLAN §3 pointer line | S1–S4 reviewed (and S6 if OQ3 is declined); OQ1–OQ5 | Doc | ≈ +60 doc | 1 | R (DEC/ARCH keep their review) | no |
 | S6 | (Only if OQ3 declines) measured A and B slices | Throwaway A and B slices of the scalar families, timed before S5 | S4; OQ3 | Bench | ≤ 800 throwaway | 2 | — | no |
 
 ### 4.2 R5 evidence, tooling and PRE5 carry-overs (E)
@@ -455,7 +480,7 @@ most 60 statements, no LINQ.
 | G8 | Delete the physical IR layer | `EmissionModule`, the per-instruction serializers and the rest of `LlvmModuleWriter*`, `AggregateLayoutPool`'s destruction half, `FunctionAbiPool`'s `FunctionKoto` keying, the old-path adapters of the P units; `KimiLibraryShapeTest`'s pool use re-pointed; the unit lists what remains in `C/Emission` (toolchain files, `ArtifactPaths`, the `.ll.in` resources) | G7 | Comp: Session + `'*.ll'` | ≈ −3,600 | 2 | G:R6-gen-del | no |
 | G9 | Emission-only Binding members and `GenerationFailed_Kd` | `IsInapplicableVirtualBody`, `ImplementationContext`, `IsVerifiedSpecialization`, `PrepareTypeStorage`, `SameModuloOpenOrigins`, the `DictionaryStorageCall` readers (each after a grep over `C/Analysis` and `C/Mir` finds no reference); `GenerationFailed_Kd` replaced by S4's successor for output, native-configuration and backend failures, with a DIAGNOSTICS §4.2 row; "Emission failure strings" ratchet 446 → 0 | G8 | Comp: `DiagnosticContractTest`, `EmissionArtifactsTest`; snapshot | ≈ −400 | 2 | G:R6-gen-del | no |
 | G10 | Zero-reference rows | `ArchitectureRulesTest` zero-reference rows for `BodyLowering`, `EmissionModule`, `LlvmModuleWriter`, `LlvmEmitter`, `GenericStoragePlan` over src, tests and `src/Benchmark` (`LegacyRuntimeHelpers` excluded until R8); EmitFixture's constants re-pointed to P0b's records | G9 | Bench: slnx build; `ArchitectureRulesTest` | +10/−10 | 1 | G:R6-gen-del | no |
-| G11 | R6-gen exit | STATUS (old-Emission defects and support rows), CODEMAP (Emission → Backend), DIAGNOSTICS, VERIFICATION (fixture policy), ARCH ledger (R6-gen done; Emission freeze ends); area sizes, change hotspots and duplication candidates in `artifacts/benchmarks/`; exceptions and Transitional declarations reviewed with the owner; OQ17's NativeAOT run; the exit-gate evidence (§5.4); final review | G3–G10, OQ17 | Doc + Session | docs | 1 | final review | no |
+| G11 | R6-gen exit | STATUS (old-Emission defects and support rows), CODEMAP (Emission → Backend), DIAGNOSTICS, VERIFICATION (fixture policy), ARCH ledger (R6-gen done; Emission freeze ends); area sizes, change hotspots and duplication candidates in `artifacts/benchmarks/`; exceptions and Transitional declarations reviewed with the owner; the exit-gate evidence (§5.4); final review (no NativeAOT run, OQ17 (c)) | G3–G10 | Doc + Session | docs | 1 | final review | no |
 
 ### 4.10 R6-check (H)
 
@@ -552,7 +577,7 @@ Before C0b2 exists M1 cannot move, so the first sessions move M3–M6.
    R4 has exited (OQ6 (d)).
 6. PLAN10-P3 records: "BuildMir + collection + codegen" against the old Analyze + Emission, and G2's default check and warm LSP
    Analyze measurement.
-7. OQ17's NativeAOT run; records and the R6-gen final review.
+7. Records and the R6-gen final review (no NativeAOT run: OQ17 (c) moves it to before the next distribution).
 
 ### 5.5 R6-check exit gate (new)
 
