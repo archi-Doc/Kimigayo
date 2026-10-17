@@ -1,0 +1,61 @@
+// Milestone 44: virtual slots, overrides, direct base calls and dispatch by Dynamic Type.
+open struct Device
+    public let id: i32
+    public init(id: i32) => self.id = id
+    public virtual func power(self: objref/Self, level: i32 = 1) -> i32 => level
+    public virtual func kind(self: objref/Self) -> i32 => 0
+    // A nonvirtual member: its calls of the slots still dispatch.
+    public func report(self: objref/Self) -> i32 => self.power() + self.kind() * 1000
+    drop => Console.writeLine("Device \(self.id) released.")
+
+open struct Lamp : Device
+    public init(id: i32) : base(id) => ()
+    override func power(self: objref/Self, level: i32) -> i32 => base.power(level) * 40
+    override func kind(self: objref/Self) -> i32 => 1
+
+struct DeskLamp : Lamp
+    public init(id: i32) : base(id) => ()
+    // The direct base call runs Lamp's implementation; kind stays Lamp's inherited one.
+    override func power(self: objref/Self, level: i32) -> i32 => base.power(level) + 5
+
+struct Fan : Device
+    public init(id: i32) : base(id) => ()
+    override func kind(self: objref/Self) -> i32 => 2
+
+func describe(device: objref/Device)
+    match device.kind()
+        0 => Console.writeLine("Device \(device.id) draws \(device.power()) W.")
+        1 => Console.writeLine("Lamp \(device.id) draws \(device.power()) W.")
+        _ => Console.writeLine("Fan \(device.id) draws \(device.power(2)) W.")
+
+func invoke<F>(f: ref/F, device: objref/Device) -> i32
+    F is Callable<(objref/Device, i32) -> i32>
+    return f(device, 3)
+
+public func main()
+    do
+        let plain = Device.init(1)@obj
+        let lamp = Lamp.init(2)@obj
+        let desk = DeskLamp.init(3)@obj
+        let fan = Fan.init(4)@obj
+        // The slot is selected statically; each object's Dynamic Type selects the implementation.
+        describe(plain@objref/Device)
+        describe(lamp@objref/Device)
+        describe(desk@objref/Device)
+        describe(fan@objref/Device)
+        require desk.report() == 1045 else => $abort("Nonvirtual member did not dispatch")
+        require Device.power(desk@objref/Device, 2) == 85 else => $abort("Qualified call did not dispatch")
+        let item = Device.power
+        require item(lamp@objref/Device, 3) == 120 and invoke(item, desk@objref/Device) == 125 else => $abort("Function item did not dispatch")
+        let erased: (objref/Device, i32) -> i32 = item
+        require erased(fan@objref/Device, 3) == 3 and erased(desk@objref/Device, 1) == 45 else => $abort("Erased value did not dispatch")
+        Console.writeLine("Static slots, dynamic implementations.")
+        // Scope exit destroys fan, desk, lamp, then plain; only the Device layer has a drop.
+    do
+        let shared = DeskLamp.init(5)@rc
+        let copy = Kimi.Intrinsics.clone(shared@ref)
+        let atomic = Fan.init(6)@arc
+        require copy.power() == 45 and Device.power(shared@objref/Device, 2) == 85 and atomic.report() == 2001 else => $abort("Handle did not dispatch")
+        Console.writeLine("Shared handles dispatch on their payload.")
+        // atomic releases Device 6; copy, then shared, releases the final strong of Device 5.
+    Console.writeLine("Virtual dispatch finished.")
