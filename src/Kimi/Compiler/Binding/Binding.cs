@@ -474,6 +474,7 @@ public sealed partial class Binding
             }
         }
 
+        this.PrepareBuiltinTargets();
         this.ValidateVirtualDeclarations();
         this.ValidateLayoutFragments();
         this.ValidateLibraryImports();

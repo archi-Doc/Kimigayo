@@ -56,10 +56,9 @@ public sealed partial class Binding
     }
 
     // SPEC 21.3.1: a generic `tryResolve` requirement call on an integer instantiates the witness at that integer Type.
-    private CallPlan? InstantiateIntegerPosition(CallPlan call, BoundType self, CallPlan? destination)
+    private CallPlan? InstantiateIntegerPosition(CallPlan call, BoundType self, BindingSymbol target, CallPlan? destination)
     {
-        if (this.IntegerPositionWitness() is not { Declaration: FunctionKoto witness } target ||
-            !this.scopes.TryGetValue(witness, out var scope) || !scope.Types.TryGetValue("I", out var parameter) || parameter.Slot < 0)
+        if (!this.scopes.TryGetValue(target.Declaration, out var scope) || !scope.Types.TryGetValue("I", out var parameter) || parameter.Slot < 0)
         {
             return null;
         }
