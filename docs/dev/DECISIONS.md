@@ -1549,11 +1549,13 @@ structure is recorded here by the unit that first implements it.
   is within ARCH's parameter limits; `RuntimeAbi`, the windows-x64-v1 runtime ABI: the Unit, string and string-handle
   representations, the static release kind, the zero-sized buffer address, one `FunctionAbi` per runtime routine and
   `RuntimeDefinitions`, the routines `LlvmModuleText`'s splice defines from them; `AbortReasons`, the closed SPEC 22.5.2 table
-  (`All`, `Expand` without LINQ, constants named without the `Reason` suffix). Like every promoted member they take no
+  (`All`, `Expand` without LINQ, constants named without the `Reason` suffix). As promoted members they take no
   `BoundType`, layout pool, `EmissionModule` or syntax type, so the Type-keyed decisions stay in the old Emission until their
   successors land: `WindowsLowering.GetValue` and its scalar table (P7a, `Layout.Of`); `WindowsLowering.GetCompilerFunction`,
   which falls through to the formatting table (P1d); `FunctionAbi`'s `Supports`, `GetValue`, `HasResultSlot` and
-  `ResultType`, now `FunctionAbiPool`'s (P8, `Abi.Of`; the `Supports` gate stays in the old pool until R6-gen). Rejected: one
-  component with `LlvmModuleText` (a text writer, not records); the Type-keyed table in Backend; a runtime-only
+  `ResultType`, now `FunctionAbiPool`'s (its Type dispatch goes to `Layout.Of`, P7a/P7b, and its signature part to `Abi.Of`, P8;
+  the `Supports` gate stays in the old pool until R6-gen). Rejected: one
+  component with `LlvmModuleText` (a text writer, not records); the Type-keyed table in Backend now (`Layout.Of`, a new Backend
+  component, owns scalar representation from P7a, so moving the table first would make a second Backend rule or a second move); a runtime-only
   `GetCompilerFunction` in Backend with an Emission fallback (a try-then-fallback chain); keeping the Type-keyed statics callable
   as `FunctionAbi` members through C# extension members (a Backend name defined in Emission).
