@@ -228,7 +228,7 @@ public sealed partial class Binding
             {
                 var method = new IdentifierNameKoto(node, accessor.Property.Symbol.Name + "." + accessor.Kind);
                 Koto[] arguments = input is null ? receiver is null ? [] : [receiver] : receiver is null ? [input] : [input, receiver];
-                call = new(node, method, arguments) { CallStorage = new() };
+                call = new(node, method, arguments) { CallStorage = new() { Evaluated = input is EvaluatedKoto ? 0 : -1 } };
                 this.propertyCalls[(node, accessor.Kind)] = call;
             }
 
