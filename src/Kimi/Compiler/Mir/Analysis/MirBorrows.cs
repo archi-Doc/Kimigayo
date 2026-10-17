@@ -1,8 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns A5's Loan stratum (SPEC 15.6–15.8; design A3 3, 5 and 6 with its 12 errata; DECISIONS R4-M57) per body and Semantics case view.
+// Owns A5's Loan stratum (SPEC 15.6–15.8; design A3 3, 5 and 6 with its errata; DECISIONS R4-M57, R4-M63) per body and Semantics case view.
 // Input: a validated body, its dataflow (MirDataflow, begun) and move paths (MirMoveData, built), the selected view (MirCases), A2's
-// verdicts (MirProgram.Drops), and Binding's call retention (TyCtxt.Retains) and published rows (TyCtxt.Published). Output: each Loan
+// verdicts (MirProgram.Drops), Binding's call retention (TyCtxt.Retains, an intrinsic's declaration included, with the intrinsic table's
+// retained operand, MirDescriptors) and published rows (TyCtxt.Published). Output: each Loan
 // conflict at its access or activation, coded by A3 5's A6 table (CallReservationConflict_Kd for a Loan in its reservation holder,
 // CallActivationConflict_Kd or PlacementActivationConflict_Kd for an activation at a Call or at the writeback write, else
 // ComparisonLoanConflict_Kd, also for a value that keeps a guard candidate's guard-local Origin past its EndBorrow), with the Loan's

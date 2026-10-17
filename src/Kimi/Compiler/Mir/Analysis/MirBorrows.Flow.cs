@@ -15,6 +15,7 @@ internal sealed partial class MirBorrows
     private Entry[] entries = [];
     private int[] argValues = [];
     private int[] argOwns = [];
+    private Retention[] rows = []; // A Call's retention rows by operand position (Rows).
     private int entryCount;
     private int chainHead = -1; // The checks replay's chain: its head and first block.
     private int chainFirst;
@@ -342,20 +343,16 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // A Call (A3 5, Calls): its arguments' Moves, then each row of its retention (Retaining) into the result or through an argument's
-    // referents, then the result into the destination; Φ_E for an untied result. An intrinsic's operands all reach its result; a default
-    // template's call is an unknown callee: every argument reaches the result and every exclusive argument's referents, and the result is
-    // untied. A Value callee's environment, its value or what a reference to it refers to, reaches the result too (its captures; temporary
-    // until F7 reads TyCtxt.Closure, unit 2c).
+    // A Call (A3 5, Calls; E14): its arguments' Moves, then each row of its retention (Rows) into the result or through an argument's
+    // referents, then the result into the destination; Φ_E for an untied result. A Value callee's environment, its value or what a reference
+    // to it refers to, reaches the result too (its captures; temporary until F7 reads TyCtxt.Closure, unit 2c).
     private void Call(ulong[] state, in MirTerminator call)
     {
         MirDataflow.Grow(ref this.argValues, call.Count);
         MirDataflow.Grow(ref this.argOwns, call.Count);
-        var (all, allOwn) = (0, 0);
         for (var i = 0; i < call.Count; i++)
         {
             (this.argValues[i], this.argOwns[i]) = this.Operand(state, call.Start + i);
-            (all, allOwn) = (this.sets.Union(all, this.argValues[i]), this.sets.Union(allOwn, this.argOwns[i]));
         }
 
         var callee = call.Callee;
@@ -367,61 +364,82 @@ internal sealed partial class MirBorrows
             this.Add(moved.Root, 0, 0, Cleared, issue: false);
         }
 
-        if (callee.Kind == MirCalleeKind.Intrinsic)
+        var retained = this.Rows(call, out var untied);
+        foreach (var row in retained)
         {
-            (result, resultOwn) = (all, allOwn);
-        }
-        else if (callee.Kind == MirCalleeKind.Fn && callee.Arg > 0)
-        {
-            (result, resultOwn) = (this.sets.Union(all, this.escapedSet), allOwn);
-            for (var j = 0; j < call.Count; j++)
+            var (value, own) = this.Retained(state, call.Start + row.Input, row.Input, row.Kind);
+            if (row.Output == Retention.Result)
             {
-                if (MirTypes.IsExclusive(this.TypeOf(call.Start + j)))
-                {
-                    this.Refs(this.sets.Union(this.argValues[j], this.argOwns[j]));
-                    foreach (var target in this.targets)
-                    {
-                        this.AddSlot(target, all, allOwn, Joined, issue: false);
-                    }
-                }
-            }
-        }
-        else if (this.Retaining(call) is { IsLimit: false } retention)
-        {
-            foreach (var row in retention.Rows)
-            {
-                var input = MirCallee.Position(callee.Symbol, row.Input);
-                var output = row.Output == Retention.Result ? -1 : MirCallee.Position(callee.Symbol, row.Output);
-                var (value, own) = this.Retained(state, call.Start + input, input, row.Kind);
-                if (output < 0)
-                {
-                    (result, resultOwn) = (this.sets.Union(result, value), this.sets.Union(resultOwn, own));
-                    continue;
-                }
-
-                this.Refs(this.sets.Union(this.argValues[output], this.argOwns[output]));
-                foreach (var target in this.targets)
-                {
-                    this.AddSlot(target, value, own, Joined, issue: false);
-                }
+                (result, resultOwn) = (this.sets.Union(result, value), this.sets.Union(resultOwn, own));
+                continue;
             }
 
-            result = retention.Untied ? this.sets.Union(result, this.escapedSet) : result;
+            this.Refs(this.sets.Union(this.argValues[row.Output], this.argOwns[row.Output]));
+            foreach (var target in this.targets)
+            {
+                this.AddSlot(target, value, own, Joined, issue: false);
+            }
         }
 
+        result = untied ? this.sets.Union(result, this.escapedSet) : result;
         if (call.Target >= 0)
         {
             this.Store(state, call.Place, result, resultOwn, issue: false);
         }
     }
 
-    // The retention a Call's contract gives (TyCtxt.Retains over the callee and Subst, or a Value callee's declared signature); none for
-    // another terminator, an intrinsic or a default template's call. Its Limit, a contract Binding does not instantiate, retains nothing the
-    // stratum follows: the checks record a located Unsupported_Kd at the call (R4-M51).
+    // A Call's retention rows by operand position, into the scratch (A3 E14): its callee's contract (Retaining), slots to positions, with
+    // an intrinsic's row for the operand the builder adds beyond its declaration (MirDescriptors); a default template's call is an unknown
+    // callee until F9 (unit 2e): every input reaches the result and each exclusive input's referents, and its result is untied.
+    private ReadOnlySpan<Retention> Rows(in MirTerminator call, out bool untied)
+    {
+        var (callee, count) = (call.Callee, 0);
+        if (callee is { Kind: MirCalleeKind.Fn, Arg: > 0 })
+        {
+            MirDataflow.Grow(ref this.rows, call.Count * (call.Count + 1));
+            for (var output = Retention.Result; output < call.Count; output++)
+            {
+                if (output >= 0 && !MirTypes.IsExclusive(this.TypeOf(call.Start + output)))
+                {
+                    continue;
+                }
+
+                for (var i = 0; i < call.Count; i++)
+                {
+                    this.rows[count++] = new(i, RetentionKind.Value, output);
+                }
+            }
+
+            untied = true;
+            return this.rows.AsSpan(0, count);
+        }
+
+        var retention = this.Retaining(call) is { IsLimit: false } contract ? contract : null;
+        var declared = retention is null ? default : retention.Rows;
+        untied = retention?.Untied == true;
+        MirDataflow.Grow(ref this.rows, declared.Length + 1);
+        foreach (var row in declared)
+        {
+            var output = row.Output == Retention.Result ? Retention.Result : MirCallee.Position(callee.Symbol, row.Output);
+            this.rows[count++] = new(MirCallee.Position(callee.Symbol, row.Input), row.Kind, output);
+        }
+
+        if (callee.Kind == MirCalleeKind.Intrinsic && MirDescriptors.Of((IntrinsicId)callee.Arg).Retained is >= 0 and var added)
+        {
+            this.rows[count++] = new(added, RetentionKind.Value, Retention.Result);
+        }
+
+        return this.rows.AsSpan(0, count);
+    }
+
+    // The retention a Call's contract gives: TyCtxt.Retains over the callee's declaration (an intrinsic's library declaration, E14) and
+    // Subst, or a Value callee's declared signature; none for another terminator, an intrinsic without a declaration or a default template's
+    // call. Its Limit, a contract Binding does not instantiate, retains nothing the stratum follows: the checks record a located
+    // Unsupported_Kd at the call (R4-M51).
     private CallRetention? Retaining(in MirTerminator call)
     {
         var callee = call.Callee;
-        if (call.Kind != MirTerminatorKind.Call || callee.Kind == MirCalleeKind.Intrinsic || (callee.Kind == MirCalleeKind.Fn && callee.Arg > 0))
+        if (call.Kind != MirTerminatorKind.Call || callee is { Kind: MirCalleeKind.Intrinsic, Symbol: null } or { Kind: MirCalleeKind.Fn, Arg: > 0 })
         {
             return null;
         }

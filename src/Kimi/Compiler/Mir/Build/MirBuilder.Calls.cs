@@ -38,12 +38,12 @@ internal sealed partial class MirBuilder
     // receiver mode, the receiver, then the arguments in their order (an assignment's secured value first, SPEC 13.7.1), each as its Adjust
     // takes it for its parameter's Type or as the value an expansion evaluated for it (given), each read where it is evaluated (SPEC 12.2:
     // secured before a later argument that builds code, or in its pending slot), then its omitted defaults (Defaults), passed by parameter
-    // slot, the receiver first. A compiler function is its intrinsic where the table gives one (IntrinsicDisposition), with
-    // the operands it takes beyond the written arguments (Extra), and a direct base call the implementation the virtual selection names. A
-    // call of a Never function or a diverging intrinsic has no runtime successor and continues for the checks (SPEC 14.10); a call whose
-    // operand does not complete enters no callee at run time (SPEC 15.6.7), but for the checks it continues where that operand's code
-    // continues, its later operands, defaults and activation checked there (SPEC 14.10.3), each operand as built: a Never form's
-    // is the Never value (DECISIONS R4-M62).
+    // slot, the receiver first. A compiler function is its intrinsic where the table gives one (IntrinsicDisposition), naming its library
+    // declaration (A3 E14), with the operands it takes beyond the written arguments (Extra), and a direct base call the implementation the
+    // virtual selection names. A call of a Never function or a diverging intrinsic has no runtime successor and continues for the checks
+    // (SPEC 14.10); a call whose operand does not complete enters no callee at run time (SPEC 15.6.7), but for the checks it continues where
+    // that operand's code continues, its later operands, defaults and activation checked there (SPEC 14.10.3), each operand as built: a
+    // Never form's is the Never value (DECISIONS R4-M62).
     private void Call(MirPlace destination, CallPlan call, Koto node, Koto? first, Koto? given = null, in MirOperand value = default)
     {
         var function = call.Kind == CalleeKind.Value ? null : call.Target;
@@ -133,7 +133,8 @@ internal sealed partial class MirBuilder
             this.arguments.Add(extra);
         }
 
-        var callee = disposition.Kind == DispositionKind.Intrinsic ? MirCallee.Intrinsic(disposition.Id, subst) : call.Kind switch
+        var declaration = function?.LibraryDeclaration is null ? null : function; // The compiler-only $abort has none (SPEC 17.4).
+        var callee = disposition.Kind == DispositionKind.Intrinsic ? MirCallee.Intrinsic(disposition.Id, declaration, subst) : call.Kind switch
         {
             CalleeKind.Requirement => new(MirCalleeKind.Requirement, function, subst, Contract: call.RequirementContract),
             CalleeKind.Virtual when !call.VirtualIsDirect => new(MirCalleeKind.Virtual, function, subst),
@@ -186,7 +187,9 @@ internal sealed partial class MirBuilder
         var function = compilation.Library.Function(kind)!;
         var disposition = IntrinsicDisposition.Of(kind);
         var subst = compilation.Types.Synthesized(function, declaring, types);
-        var callee = disposition.Kind == DispositionKind.Intrinsic ? MirCallee.Intrinsic(disposition.Id, subst) : new(MirCalleeKind.Fn, function, subst);
+        var callee = disposition.Kind == DispositionKind.Intrinsic
+            ? MirCallee.Intrinsic(disposition.Id, function, subst)
+            : new(MirCalleeKind.Fn, function, subst);
         this.Invoke(destination, callee, start, node);
     }
 

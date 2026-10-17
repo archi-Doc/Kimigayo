@@ -14,8 +14,9 @@
 // Callable-bounded Type parameter, each callable Type its contract names and each Callable bound of the callee's premises), was compared
 // under premises no view reads, so it relates each fixed Origin of an input to each fixed Origin of an output, an abstract carrier's
 // hidden Origins among them (owner decision 2026-10-17, DECISIONS R4-M52). An unproven absence of retention is a row.
-// Must not: read the call's solved Origins or its arguments, judge an Origin relation, cover intrinsics or unknown callees (A5's), or
-// expose its premise walk as a view of its own (A3 9, item 9).
+// Must not: read the call's solved Origins or its arguments, judge an Origin relation, cover unknown callees or the operands an intrinsic
+// takes beyond its library declaration (A5's; an intrinsic's declaration is a callee like any other, A3 E14), or expose its premise walk as
+// a view of its own (A3 9, item 9).
 
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -73,8 +74,8 @@ internal sealed partial class TyCtxt
     // The Callable bounds of the computation's premises, instantiated as its inputs; reused.
     private readonly List<BoundType> retentionBounds = new();
 
-    // SPEC 15.6.4: a callee's retention under a call's Subst (a Fn, Requirement or Virtual MIR callee, the function the Subst targets; its
-    // default templates are A5's), called in `definition`.
+    // SPEC 15.6.4: a callee's retention under a call's Subst (a Fn, Requirement or Virtual MIR callee, the function the Subst targets, or an
+    // Intrinsic one's library declaration; its default templates are A5's), called in `definition`.
     internal CallRetention Retains(BindingSymbol callee, Subst? subst, BindingSymbol? definition)
     {
         Debug.Assert(subst is null || ReferenceEquals(subst.Target, callee));

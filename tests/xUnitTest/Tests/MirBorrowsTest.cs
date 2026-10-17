@@ -321,6 +321,72 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
                     inspect(slot)
                 """));
 
+    // SPEC 15.6, 15.6.4 (A3 E14, review B4): an intrinsic's call retains as its library declaration says. Raw.initialize stores its value
+    // into the raw storage, which the body does not own (E), so its Loans are checked at every later point: a write or an exclusive use of
+    // the borrowed Place after it errs, and a local's borrow outlives the local (its end errs) unless a write ended it first; a parameter's
+    // referent may still be read, or written before. clone keeps its payload's Loans (Content), not the borrow of its handle, which may then
+    // be moved (135b, 135c); an object creation keeps its value's Loans.
+    [Fact]
+    public void AnIntrinsicRetainsAsItsDeclarationSays()
+        => Assert.Equal(
+            ["rawStored: x = 2", "rawStoredLocal: var x = 1", "rawStoredParameter: y@follow = 2", "rawStoredUniq: y@follow", "clonedPayload: x = 5",
+                "made: x = 2", "madeArc: x = 2"],
+            Problems("""
+                func rawStored()
+                    var x = 1
+                    let p: raw/(ref/i32) = Raw.allocate(1)
+                    unsafe => Raw.initialize(p, x@ref)
+                    x = 2
+                    unsafe
+                        let q: ref/i32 = p[0]
+                        inspect(q)
+                        Raw.release(p)
+                func rawStoredLocal()
+                    var x = 1
+                    let p: raw/(ref/i32) = Raw.allocate(1)
+                    unsafe => Raw.initialize(p, x@ref)
+                    inspect(x)
+                func rawStoredParameter(y: uniq/i32)
+                    let p: raw/(ref/i32) = Raw.allocate(1)
+                    unsafe => Raw.initialize(p, y@follow@ref)
+                    y@follow = 2
+                func rawStoredParameterWrittenBefore(y: uniq/i32)
+                    let p: raw/(ref/i32) = Raw.allocate(1)
+                    y@follow = 2
+                    unsafe => Raw.initialize(p, y@follow@ref)
+                func rawStoredParameterRead(y: uniq/i32)
+                    let p: raw/(ref/i32) = Raw.allocate(1)
+                    unsafe => Raw.initialize(p, y@follow@ref)
+                    let v = y@follow
+                func rawStoredUniq(y: uniq/i32)
+                    let p: raw/(uniq/i32) = Raw.allocate(1)
+                    unsafe => Raw.initialize(p, y@follow@uniq)
+                    let v = y@follow
+                func cloned()
+                    var x = 1
+                    let owner = Kimi.Intrinsics.makeRc(S.init(r: x@ref))
+                    let c = Kimi.Intrinsics.clone(owner@ref)
+                    _ = owner@move
+                    inspect(c@ref)
+                func clonedPayload()
+                    var x = 1
+                    let owner = Kimi.Intrinsics.makeRc(S.init(r: x@ref))
+                    let c = Kimi.Intrinsics.clone(owner@ref)
+                    _ = owner@move
+                    x = 5
+                    inspect(c@ref)
+                func made()
+                    var x = 1
+                    let h = Kimi.Intrinsics.makeObj(S.init(r: x@ref))
+                    x = 2
+                    inspect(h@ref)
+                func madeArc()
+                    var x = 1
+                    let h = Kimi.Intrinsics.makeArc(S.init(r: x@ref))
+                    x = 2
+                    inspect(h@ref)
+                """));
+
     // SPEC 15.6.3 (S1, A3 E3, PLAN G110): a Borrow past a shared Deref forms no Loan; it carries the Loans of the layers from its last
     // shared reference on, so its source may be moved or written while it lives, but not what it refers to (39a–39f, 39l–39n).
     [Fact]
@@ -1126,7 +1192,8 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
         Assert.True(Grows(bytes, 2), $"bytes {string.Join(", ", bytes)}");
     }
 
-    // V16: A5 on a program version it checked before allocates nothing: its sets, tables and the dataflow keep their storage.
+    // V16: A5 on a program version it checked before allocates nothing: its sets, tables, call rows (an intrinsic's too) and the dataflow
+    // keep their storage.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmRunAllocatesNothing()
@@ -1137,11 +1204,12 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
             "func written()\n    var x = 1\n    let v = x@ref\n    x += 1\n    inspect(v)\nfunc destroyed()\n    var x = 1\n    var y = 2\n" +
             "    var s = D.init(r: x@uniq)\n    let c = s.r@follow@uniq\n    s = D.init(r: y@uniq)\n    c@follow = 1\nfunc escaped()\n" +
             "    let fallback = Data.init()\n    let packet: Packet = .Data(Data.init())\n    var saved = fallback@ref\n    match packet\n" +
-            "        .Data(let d) if save(saved@uniq, d) => ()\n        _ => ()\n    inspect(saved)\n");
+            "        .Data(let d) if save(saved@uniq, d) => ()\n        _ => ()\n    inspect(saved)\nfunc raw()\n    var x = 1\n" +
+            "    let p: raw/(ref/i32) = Raw.allocate(1)\n    unsafe => Raw.initialize(p, x@ref)\n    x = 2\n");
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);
         Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
-        Assert.Equal(6, program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code)));
+        Assert.Equal(7, program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code)));
     }
 
     // The Loan problems of a program's own bodies: function and the subject's first line, with the code unless it is a comparison's.

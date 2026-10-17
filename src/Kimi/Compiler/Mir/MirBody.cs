@@ -102,12 +102,15 @@ internal readonly record struct MirStatement(MirStatementKind Kind, MirPlace Pla
 
 /// <summary>What a Call calls: a Fn, Requirement or Virtual callee's function under its Subst (a Fn one's default template, plan 5.6.2, as
 /// its index plus 1 in <see cref="Arg"/>; a Virtual one's slot by the slot's function; a Requirement's dispatching Contract reference in
-/// <see cref="Contract"/>, null for its requirement's own Contract) or an Intrinsic's <see cref="IntrinsicId"/> in <see cref="Arg"/>; a
-/// Value callee is the terminator's operand, the Callable signature its callee declares the TypeToken constant at <see cref="Arg"/> (DECISIONS
-/// R4-M41).</summary>
+/// <see cref="Contract"/>, null for its requirement's own Contract) or an Intrinsic's <see cref="IntrinsicId"/> in <see cref="Arg"/>, its
+/// <see cref="Symbol"/> the library declaration of the compiler function it serves, under its Subst, whose parameters its first operands
+/// pass (those the builder adds follow them, MirDescriptors), or null for one without a library declaration, whose result holds no Loan
+/// (A3 E14, DECISIONS R4-M63); a Value callee is the terminator's operand, the Callable signature its callee declares the TypeToken
+/// constant at <see cref="Arg"/> (DECISIONS R4-M41).</summary>
 internal readonly record struct MirCallee(MirCalleeKind Kind, BindingSymbol? Symbol = null, Subst? Subst = null, int Arg = 0, BindingSymbol? Contract = null)
 {
-    internal static MirCallee Intrinsic(IntrinsicId id, Subst? subst = null) => new(MirCalleeKind.Intrinsic, null, subst, (int)id);
+    internal static MirCallee Intrinsic(IntrinsicId id, BindingSymbol? declaration = null, Subst? subst = null)
+        => new(MirCalleeKind.Intrinsic, declaration, subst, (int)id);
 
     // SPEC 7.3: a call passes its callee's parameters receiver first (the self parameter at its written slot), then the others in slot order:
     // the slot an argument position passes, and its inverse.

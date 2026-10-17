@@ -1072,7 +1072,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M40** (2026-10-17; design A3 §4.1's Slice row, owner approval of its §9 item 8 on 2026-10-17, implemented on the planning
   session's instruction of the same day; its handle copy and Open amended by A3 §12 E10, G123 and G94, recorded with
   their units) `RawSlice` takes a third operand, its backing, what the Slice retains under A5's intrinsic
-  retention (every operand to the result), so a Slice cannot outlive or alias a write of what it views, which A3 found otherwise
+  retention (every operand to the result; R4-M63: the intrinsic table's row for it), so a Slice cannot outlive or alias a write
+  of what it views, which A3 found otherwise
   accepted. A range selection's backing follows SPEC 4.8.1: an array (fixed or `Array`) lends its whole Place, a shared borrow made
   with the call (`Borrow`); a Slice receiver's handle is copied first where it is located (SPEC 4.7.4), its length, element address
   and backing all read from that copy, so the reslice retains its source and borrows no handle variable. A written
@@ -1272,7 +1273,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `RefParentsInTransit`, is over-strict on 30b). Transit counts a store into a holder live after ℓ, made live by the closure, or E.
   - Liveness: each location's touches (use, kill) are built once per view; the backward replay records each touch's live-after bit,
     and the checks replay rebuilds the live holders from a head's stored state (`MirDataflow.Before`, added) and those bits.
-  - Calls read `TyCtxt.Retains` (slots to argument positions by `MirCallee.Position`); an intrinsic's operands all reach its result.
+  - Calls read `TyCtxt.Retains` (slots to argument positions by `MirCallee.Position`); an intrinsic's operands all reach its result
+    (superseded by R4-M63: an intrinsic reads its declaration, and every row set goes through one loop).
     Temporary: a default template's call is an unknown callee until F9 (unit 2e), and a Value callee's environment (its value, or
     what a reference to it refers to) reaches the result until F7 reads `TyCtxt.Closure` (unit 2c).
   - The driver's step 4 is not wired: `TyCtxt.Retains` discarded its memo with every Binding pass (R4-M51), so A5 in `MirAnalysis`
@@ -1460,6 +1462,31 @@ and migration obligations remain in force; no numeric cap changes are authorized
   the effects of the statements this builds (R4-M6a). Rejected: keeping `Reached` with a located `Unsupported_Kd` (owner); an
   A5-side rule over operands the MIR does not build; a diverging Call writing its destination on its check edge (SPEC 14.10.3
   leaves it open). Not temporary.
+- **R4-M63** (2026-10-18; A3 §12 E14, decided by the planning session on the core lane's group review B4 and N2 and its design review
+  of 2026-10-18; supersedes R4-M57's intrinsic rule and its separate unknown-callee loop, and R4-M40's "every operand to the result")
+  A Call retains as its callee's contract says (SPEC 15.6, 15.6.4).
+  - An Intrinsic `MirCallee`'s `Symbol` is the library declaration of the compiler function it serves, under its Subst, whose
+    parameters its first operands pass (a written call's target, `Serve`'s function); it is null for an intrinsic without one,
+    those the builder synthesizes and the compiler-only `$abort` (SPEC 17.4), whose results hold no Loan. `MirValidator` reports
+    `Callee` for a Symbol that is no library declaration of a compiler function the intrinsic serves; that the table's arity covers
+    the declaration's parameters is a table fact (`MirValidatorTest`).
+  - A5 applies every row set through one loop, by operand position (`MirBorrows.Rows`, a reused scratch): `TyCtxt.Retains` over the
+    declaration and Subst, an intrinsic's included; the intrinsic table's `Retained` column, the operand the builder adds beyond a
+    declaration that the result retains (Value; `RawSlice`'s backing only); a default template's call the unknown-callee rows until
+    F9 (2e): every input to the result (Value) and to each exclusive input's referents, untied. A store row into a raw pointer reaches
+    E by the store rule, so `Raw.initialize(p, x@ref)` stores `L_x` into E: a later `x = 2` errs, and so does x's end unless a write
+    ended the Loan first.
+  - Census of the IntrinsicIds MIR builds. Declared: MakeObj, MakeRc and MakeArc (value to result), Clone (Content only),
+    RawInitialize (value into the storage; the pointer's own row carries nothing), RawSlice (untied, with its backing row),
+    RawAllocate (untied raw result), ErasedWriter (destination to result), RawRelease, TryAllocateBytes, MoveBytes,
+    TestTempDirectory and the written Fails (nothing a Loan reaches). Without a declaration: Abort, the synthesized Fail,
+    StaticEnsure, Capacity, FormatBuffer, FormatHint, FormatFinish, TestMessage, TestRequireAbort, TestObserve and TypeTest, whose
+    results (Unit, Never, bool, integers, string, HeapBuffer) hold no Loan. Never built: Stride, DestroyValues, ReinterpretLoan,
+    WriteStdout, FormatFloat, ErasedReserve, FormatInteger128, TestRecordValue, TestPhaseEnter and TestPhaseLeave.
+  Rejected: an intrinsic row storing a writing input into E (a second copy of the contract its declaration states); keeping
+  "every operand to the result" (wrong for `clone`, which retains its payload's Loans only, so `let c = clone(owner@ref)` then
+  `_ = owner@move` was rejected); every operand beyond a declaration reaching the result by rule (the table names the one
+  operand); giving `$abort` parameter symbols for `TyCtxt.Retains` (its Never result retains nothing). Not temporary.
 - **R4-M64** (owner, 2026-10-17, O3, choosing the recommended option 「書き換え＋記録」) Milestone 27 line 100,
   `references.sliceUniq().slice().toArray()` followed by `references = [copied]`, is an error by SPEC 15.6 and 15.6.4 as
   integrated at `4372b058` (S1, design A3's loss P4): the temporary UniqSlice's holder carries its own exclusive Loan on

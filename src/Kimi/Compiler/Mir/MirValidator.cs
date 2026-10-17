@@ -29,7 +29,7 @@ internal enum MirViolation : byte
     Binder, // A PairAcquire of a binder out of range or other than its Place's pair layer, or more cases than PairBinder.CaseBound.
     OperandRange,
     Arity, // An rvalue's or a Call's operands disagree with its kind, its Type or its callee.
-    Callee, // A Fn, Requirement or Virtual callee without its function, a Value one without its signature, or a diverging intrinsic with a target.
+    Callee, // A Fn, Requirement or Virtual callee without its function, a Value one without its signature, a misdeclared or diverging intrinsic.
     Discriminant, // A Discriminant of a Place that is not an enum.
     Len, // A Len of a Place that is not a sequence.
     Opaque, // An Opaque site or root out of range, or Opaque sites without an Opaque value.
@@ -46,8 +46,9 @@ internal readonly record struct MirFinding(MirViolation Rule, SourceRef Subject)
 /// <summary>The one structural verifier of MIR (plan 14-5): a body's structure, locals, projections against their base Types, operands,
 /// rvalues and arities, the Types values flow between (<see cref="MirTypes.Agree"/>, modulo Origins) and each Adapt under every
 /// Semantics case view (<see cref="MirCases"/>), before any analysis reads it. It keeps its scratch, so a warm run allocates nothing.</summary>
-/// <remarks>An intrinsic's operands are checked by its row's arity only, and a Value callee's against its Type's signature where that Type
-/// is a Function Type, else by its declared signature's arity only.</remarks>
+/// <remarks>An intrinsic's operands are checked by its row's arity only (its declaration's parameters come first, a fact of the table,
+/// MirValidatorTest), and a Value callee's against its Type's signature where that Type is a Function Type, else by its declared
+/// signature's arity only.</remarks>
 /// <param name="types">The Type context of the bodies, which interns their case Types.</param>
 internal sealed partial class MirValidator(TyCtxt types)
 {
@@ -518,6 +519,10 @@ internal sealed partial class MirValidator(TyCtxt types)
                 case MirCalleeKind.Intrinsic when !row.Defined || (uint)callee.Arg > byte.MaxValue:
                 case > MirCalleeKind.Intrinsic:
                     this.Report(MirViolation.UnknownKind);
+                    break;
+                case MirCalleeKind.Intrinsic when callee.Symbol is { } declaration &&
+                    (declaration.LibraryDeclaration is null || IntrinsicDisposition.Of(declaration.CompilerFunction).Id != (IntrinsicId)callee.Arg):
+                    this.Report(MirViolation.Callee); // A3 E14: its function is the library declaration of a compiler function it serves.
                     break;
                 case MirCalleeKind.Intrinsic when row.Arity >= 0 && row.Arity != call.Count:
                     this.Report(MirViolation.Arity);

@@ -47,6 +47,25 @@ public sealed class MirValidatorTest
         Assert.Equal(new[] { IntrinsicId.Abort, IntrinsicId.Fail, IntrinsicId.TestRequireAbort }, Enum.GetValues<IntrinsicId>().Where(static x => MirDescriptors.Of(x).Diverges));
     }
 
+    // A3 E14: an intrinsic serving a library declaration takes its parameters first, so its row's arity covers them, and the operand its
+    // row says the result retains is one the builder adds beyond them (RawSlice's backing).
+    [Fact]
+    public void AnIntrinsicsRowCoversItsDeclaration()
+    {
+        var c = Fixture.Value.Compilation;
+        var declared = Enum.GetValues<CompilerFunctionKind>().Where(static x => IntrinsicDisposition.Of(x).Kind == DispositionKind.Intrinsic)
+            .Select(x => (Row: MirDescriptors.Of(IntrinsicDisposition.Of(x).Id), Declaration: c.Library.Function(x)))
+            .Where(static x => x.Declaration is not null).ToArray();
+        Assert.NotEmpty(declared);
+        foreach (var (row, declaration) in declared)
+        {
+            _ = TyCtxt.Signature(declaration!, null, -1, out var count);
+            Assert.True(count <= row.Arity && (row.Retained < 0 || (row.Retained >= count && row.Retained < row.Arity)), declaration!.Name);
+        }
+
+        Assert.Equal([IntrinsicId.RawSlice], Enum.GetValues<IntrinsicId>().Where(static x => MirDescriptors.Of(x) is { Defined: true, Retained: >= 0 }));
+    }
+
     // An rvalue's operands before its Place, the index locals of a Place before it, a destination last; static accesses, pair cases,
     // intrinsic and Opaque effects as the rows give them; a diverging Call writes no destination. An Adapt's acquired Place and payload are
     // case-dependent and its creation possible; under a Semantics case view it is the operation its case selects: of a T to s/T (s is
@@ -138,8 +157,9 @@ public sealed class MirValidatorTest
     // pointer's displacement, a comparison's operands below their layers, a Cast, a Ref, an object upcast and a branch's operand that their
     // kind does not admit; an Adapt whose operand is no by-value acquisition, whose source token is not its operand's Type, that a case
     // view selects no operation for (i32 to f64), or whose object borrow there takes a Place other than the payload, and one whose Op is no
-    // shorthand flag, of an unknown kind; a Value callee whose signature is no TypeToken constant (C8), and a Closure callee given more
-    // arguments than its declared signature has inputs. A local an Opaque value defines has an unknown Type (the replaced syntax may have
+    // shorthand flag, of an unknown kind; an intrinsic callee whose function is not the library declaration of a compiler function it
+    // serves (A3 E14); a Value callee whose signature is no TypeToken constant (C8), and a Closure callee given more arguments than its
+    // declared signature has inputs. A local an Opaque value defines has an unknown Type (the replaced syntax may have
     // none), which any use admits; the same use of a local a Unit constant defines is a finding. So is the Never value's at every operand
     // position (a Use, an operator, an aggregate; SPEC 3.8, DECISIONS R4-M62), but a ref/Never is no ref/i32.
     [Theory]
@@ -151,6 +171,7 @@ public sealed class MirValidatorTest
     [InlineData("template", "Type")]
     [InlineData("value", "Type")]
     [InlineData("signature", "Callee")]
+    [InlineData("declaration", "Callee")]
     [InlineData("arity", "Arity")]
     [InlineData("return", "Type")]
     [InlineData("operands", "Operation")]
@@ -338,7 +359,10 @@ public sealed class MirValidatorTest
         body.AddCase(0, blocks[1]);
         body.Terminate(blocks[0], MirTerminator.SwitchInt(MirOperand.Copy(broken == "switch" ? real : flag), 0, 1, blocks[1], Where("switch")));
         var (first, second) = broken == "argument" ? (flag, flag) : (a, flag);
-        body.Terminate(blocks[1], MirTerminator.Call(new(MirCalleeKind.Fn, Function("h")), Operands(MirOperand.Copy(first), MirOperand.Copy(second)), 2, broken == "result" ? a : flag, blocks[2], Where(broken == "argument" ? "argument" : "result")));
+        var h = broken == "declaration" ? MirCallee.Intrinsic(IntrinsicId.RawInitialize, Function("h")) : new(MirCalleeKind.Fn, Function("h"));
+        var site = Where(broken is "argument" or "declaration" ? broken : "result");
+        var passed = Operands(MirOperand.Copy(first), MirOperand.Copy(second));
+        body.Terminate(blocks[1], MirTerminator.Call(h, passed, 2, broken == "result" ? a : flag, blocks[2], site));
         var signature = broken == "signature" ? one.Arg : Token(body.TypeOf(callable)!).Arg;
         var (callee, arguments) = broken == "arity"
             ? (Local(c.Types.Intern(BoundTypeKind.Closure, types.Function, SemanticsKind.Owner, [])), Operands(MirOperand.Copy(a), MirOperand.Copy(a)))
