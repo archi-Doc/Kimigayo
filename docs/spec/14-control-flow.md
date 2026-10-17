@@ -511,7 +511,7 @@ func insideContradiction(animal: objref/Animal) -> i32
 
 ### 14.10.3. Unreachable code
 
-An item that no Runtime Reachability path reaches is still checked, in a state built from assumed paths. On an assumed path, these Never forms are taken to complete normally: a transfer, `$abort` and a call whose result Type is Never continue after their operands are evaluated and before any cleanup, at their own lexical scope; a `loop` without a self-targeted `exit` continues with its iteration-entry state. Cleanup is checked the same way, so a transfer whose delivery a cleanup blocks is also assumed delivered. An item with at least one real incoming path uses only real paths; otherwise it uses the join of its assumed incoming paths, keeping only what holds on all of them. Loans that only an abandoned comparison needed end before the assumed continuation. All checks apply in this state: reading an uninitialized or Moved value, a second Move and a Loan conflict are errors, and Effective Types and condition facts carry over as on real paths. Assumed paths add no implicit result, no normal completion and no Runtime Reachability edge; explicit result sources in unreachable code still count ([§14.9.1](#1491-result-sources)).
+An item that no Runtime Reachability path reaches is still checked, in a state built from assumed paths. On an assumed path, these Never forms are taken to complete normally: a transfer, `$abort` and a call whose result Type is Never continue after their operands are evaluated and before any cleanup, at their own lexical scope; a `loop` without a self-targeted `exit` continues with its iteration-entry state. Such a form still has no value, so its assumed completion initializes nothing it is placed into: after `let y: i32 = fail()`, `y` is uninitialized. Cleanup is checked the same way, so a transfer whose delivery a cleanup blocks is also assumed delivered. An item with at least one real incoming path uses only real paths; otherwise it uses the join of its assumed incoming paths, keeping only what holds on all of them. Loans that only an abandoned comparison needed end before the assumed continuation. All checks apply in this state: reading an uninitialized or Moved value, a second Move and a Loan conflict are errors, and Effective Types and condition facts carry over as on real paths. Assumed paths add no implicit result, no normal completion and no Runtime Reachability edge; explicit result sources in unreachable code still count ([§14.9.1](#1491-result-sources)).
 
 ```kimi
 func scoreInBranch(animal: objref/Animal) -> i32
@@ -533,6 +533,8 @@ use(p)                 // Error: p is uninitialized on the assumed path.
 consume(x@move)
 fail()                 // fail: () -> Never
 consume(x@move)        // Error: x was Moved.
+let y: i32 = fail()
+use(y)                 // Error: y is uninitialized; fail() places no value.
 ```
 
 ## 14.11. `require`

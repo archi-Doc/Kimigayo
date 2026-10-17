@@ -304,7 +304,7 @@ err(destroy,L,ℓ)   :- destroys(ℓ, K, e), X = (K's elements if e else K), L �
 err(effect,L,ℓ)    :- key(ℓ,f,k), L∈CS_call(ℓ,−) via H, root(place(L)) a static of Field f (P5), conflicts(k, mode(L,H)).
 err(effect,L,ℓ)    :- unknown(ℓ), L∈CS_call(ℓ,−), root(place(L)) a mutable static.  // calls, erased Drops (S16:196)
 err(ended,L,ℓ)     :- EndBorrow H at ℓ, issued(L,_,_,_,H), L ∈ CS(ℓ).               // guard-local Origin end (E7: by γ_H, guards only)
-partition(L,ℓ,k,X) :- k = destroy, root(X) a body root, L ∈ σ_in(_0) and L in no other part of CS(ℓ).   // DIAGNOSTICS
+partition(L,ℓ,k,X) :- k = destroy, root(X) a body root, L ∈ σ_in(_0) and L in no other part of CS(ℓ).   // DIAGNOSTICS (E12: A6's merge instead)
 
 // ---- F6 preserves results (S2)
 disturbed at ℓ     :- ℓ writes, Moves or destroys a direct D ⊑ recv(c), or writes through a Place hitting recv(c)
@@ -357,7 +357,7 @@ excused(L,ℓ)       :- ℓ forms an argument reservation of a Call c2 with excu
 
 A problem whose access is an Opaque site's, or whose witness holder carries `τ_s`, is derived from s.
 
-**Partition lemma** (DIAGNOSTICS): every Loan that exactly reaches `_0` passed a fit into the result's fixed Origin, so a
+**Partition lemma** (DIAGNOSTICS; E12 replaces it): every Loan that exactly reaches `_0` passed a fit into the result's fixed Origin, so a
 body-rooted one is the Refuted relation (S15:575). Over-approximated Loans are harmless to exclude.
 
 ## 6. Evaluator
@@ -434,7 +434,7 @@ under the same term. `MirBorrows.Work` counts each term: transfer steps, slot jo
 first shared layer, the same cut as `obs` (`MirCases.Layer` for pair layers). Edges between fixed atoms are entailed by
 Binding's meet.
 
-**Boundary.** Each failure is reported once, by partition.
+**Boundary.** Each failure is reported once, by partition (E12: A6's merge).
 
 - **Binding keeps** OJ1–OJ7, T1–T4 and the fixed–fixed body relations it forms directly (B1/B2 fixed ends, B3, B4, B6's
   fixed part, B7, B9–B11, B14, B15).
@@ -500,8 +500,8 @@ loss P12, `desc(c)` (PLAN G113, prototype round 9).
 Until the SPEC simplifications landed (plan §5.3), a violation of an approved loss was a located `Unsupported_Kd`. They
 were integrated at `4372b058` (`draft/INTEGRATED.md`), so A5 reports a
 violation of an approved loss with its Language code, in shadow (plan §5.3; S1: DEC R4-M39); the default pipeline keeps
-the earlier rules until R6-check (DEC R4-M50). P12 (item 10) is approved but not yet in SPEC: until its SPEC revision
-lands, A5 reports a violation of it (36f) as a located `Unsupported_Kd` (plan §5.3).
+the earlier rules until R6-check (DEC R4-M50). P12 (item 10) is in SPEC since `0779b975` (SPEC 15.6.3, 15.6.4), so A5 reports a violation of it (36f) with its Language
+code.
 
 **Item 11 was decided by the owner on 2026-10-17** (DECISIONS R4-M52), choosing each recommended option of
 `../A5 Step 1/choice-1b.md` §4: G92b the fold (b2), G92a assumed completion with α, the case 23a proposal as option (c),
@@ -532,7 +532,7 @@ implementation a call cannot see relates its fixed input-position Origins to its
 | 0e | Builder contracts G5, G6, writeback, Slice, Guard, C8 | Dump goldens updated; validator clean | `MirBuildTest`, goldens |
 | 0f | A4 `Keys` | Keys per Call/Drop, linear | `MirEffects` tests, scaling |
 | 1a | Binding C1+C8 `Retains(callee, Subst)`; catalog `InPlace` | Immutable after Bind; allow list | View tests, `KimiLibraryShapeTest` |
-| 1b | `MirLoanSets`, `MirBorrows` F1, F2, F3, F10 (joint core), with §12's errata. Units (`../A5 Step 1/choice-1b.md` §3): 1b-1 `MirLoanSets`; 1b-2 pre-pass, liveness, carrying with retention and stores, check sets and the conflict check; 1b-3 reservations, activation, E1, destroying calls and `obs`; 1b-4 guards (E7) and the partition rule; 1b-5 the driver step in shadow. Before 1b-5: the MIR units G92b, G123, G94 (one MirBuilder lane) and G91; G92a may follow | Library and milestones produce no A5 problem (R4-M12 from here). Shadow watch: raw writes in `Storage.kimi` and `DictionaryStorage.kimi` moving Loans into `σ(E)` | SPEC-example table (`tests/diagnostics/spec-cases.json`: about 40 error and 34 accepting variants); 0b's cases as MIR-layer tests; scaling shapes 1–8 |
+| 1b | `MirLoanSets`, `MirBorrows` F1, F2, F3, F10 (joint core), with §12's errata. Units (`../A5 Step 1/choice-1b.md` §3): 1b-1 `MirLoanSets`; 1b-2 pre-pass, liveness, carrying with retention and stores, check sets and the conflict check; 1b-3 reservations, activation, E1, destroying calls and `obs`; 1b-4 guards (E7), with `partition` leaving the Loan stratum (E12); 1b-5 the driver step in shadow. Before 1b-5: the MIR units G92b, G123, G94 (one MirBuilder lane) and G91; G92a may follow | Library and milestones produce no A5 problem (R4-M12 from here). Shadow watch: raw writes in `Storage.kimi` and `DictionaryStorage.kimi` moving Loans into `σ(E)` | SPEC-example table (`tests/diagnostics/spec-cases.json`: about 40 error and 34 accepting variants); 0b's cases as MIR-layer tests; scaling shapes 1–8 |
 | 1c | A6 mapping and derived taint for 1b's codes | Codes per §5 | Corpus snapshots, ledger |
 | 2a0 | Binding boundary: OriginObligations, atoms, universal relations, T1 rows, unowned items, `ValidateOriginRelations` split, ledger split | Rows immutable; no double owner | View tests, ledger |
 | 2a | F4 `MirOrigins` | audit-origins §3 tests; the old reporter's rows matched | Shape 9, ledger |
@@ -593,7 +593,7 @@ above disagrees, these errata govern; the lines they replace are marked "(E…)"
 - **E7, guard-local Origin (SPEC 14.8.3).** A marker `γ_H` (with `Φ_E` and `τ_s`): each value issued into a guard
   candidate H (`MirLocalRole.GuardCandidate`) carries `γ_H`, which never conflicts and is carried like a Loan but is no
   Place Loan (`ended` does not remove it). `err(ended,ℓ) :- EndBorrow H at ℓ, H a guard candidate, γ_H ∈ CS(ℓ)`; the
-  Loan-based `err(ended)` row is deleted, and other `EndBorrow`s get no ended check. The partition row also covers
+  Loan-based `err(ended)` row is deleted, and other `EndBorrow`s get no ended check. A6's merge (E12) also covers
   `err(ended)` when `γ_H` reaches `_0` (one failure, one code; unit 1c). It makes the case 23a review's C2 lowering
   contract unnecessary.
 - **E8, Loan ending (owner, 2026-10-17: the case 23a proposal, option (c); DECISIONS R4-M52).** Destroying in place a Move
@@ -601,25 +601,38 @@ above disagrees, these errata govern; the lines they replace are marked "(E…)"
   K's steps compare exactly (a constant index only with the same constant, never a runtime index), and the path may
   continue with any steps, borrow Derefs included. This replaces `base(L, B)`, the `within` kill and "no kill across a
   Deref" (§3), and recovers 23a, 30d, 34c, 35a and 35b. Checks still precede the end. Its SPEC revision (§15.6.3, Appendix E,
-  §13.5.5) comes with P12's; until it lands A5 runs in shadow, so nothing is published.
+  §13.5.5) landed with P12's at `0779b975`.
 - **E9, MIR contracts decided by the owner (2026-10-17, DECISIONS R4-M52; supersede parts of R4-M37).** G92a, assumed
   completion: on a check-only continuation every node is built and makes its own value and accesses; a node of Type
   Never has no value, its consumer taking an unwritten Never temp that fits any operand position; a placement rvalue
   (`Set`) that has an input and whose every input is that value is not built, and then the old value at `=` is not
   dropped either (`Replace` takes a Never-typed temp when its right side has Type Never), so `x = stop()` leaves x
   unwritten, as today; a Call is still built with its Never operands. Binding gives a Never element of a literal its
-  expected Type (α). G92b, the fold: a written exclusive borrow that a preparation path continues through is not
-  formed, so each input has one reservation at its lending point.
+  expected Type (α). G92b, the fold: on a reserved input's path, a written exclusive borrow that the path continues
+  through is not formed, so the input has one reservation at its lending point; on a shared input's path a written
+  exclusive borrow stays a live exclusive Borrow (SPEC 7.3.3, `tasks@uniq.length`; corrected by the planning session on
+  the SPEC revision session's finding, DECISIONS R4-M52).
 - **E10, MIR contracts decided by the planning session (2026-10-17; recorded in DECISIONS with their units).** G123: an
   operand is read where it is evaluated (a Place operand is secured into a temp when a later operand of the same
   operation builds code). G94: a built-in selection lends its receiver's storage shared where it locates it (a range's
   backing, an element's guard ended once the index is evaluated), amending R4-M40. G91: the Destruction walk enters each
-  reported part once per query.
+  Type once per query (every walked Type, not only reported parts: the A1–A4 audit's DAG case).
 - **E11, a destroying call's observing part (§5 `err(destroy)`; review r3 N4's intent).** The row's exclusion is
   `¬hits(X, place(L), write)` for an `InPlace` target (`uborrow` for the `clear`s), the activation's own kind; as written
   (`¬hits(…, uborrow)`, a deep kind) it never fires, and A3 accepts a `replace` that destroys an observing target while a child lives (26a, SPEC 15.6.6's "in a call that
   destroys a target") and 123.
   Checked at the call on `CS_call(ℓ, t_K)`, with E5's seed.
+
+- **E12, the partition row (§5 `partition`, its lemma and §7's boundary; DIAGNOSTICS; decided by the planning session,
+  2026-10-17, on the SPEC revision's review, PLAN G113).** The Loan stratum cannot tell a Loan a value carries exactly
+  from one it carries by a simplification, so it excludes nothing: it reports every conflict it finds, a `destroy`
+  conflict on a Loan `_0` carries included, and `partition` leaves `err(conflict)` (unit 1b-4). A6's merge (unit 1c,
+  completed in 2g) drops such a Loan-stratum problem only when the Origin stratum reported the relation of the same
+  Borrow as Refuted (one failure, one code), never by Loan membership. A Loan `_0` carries only by a simplification,
+  such as P1's whole holders or P12's parent Loans, has no Refuted relation, so its conflict stays: SPEC states those
+  simplifications (15.6's holders, 15.6.3–15.6.4), and 36f without its write errs at `return first` (SPEC 15.6.5,
+  16.2.2). The lemma's "over-approximated Loans are harmless to exclude" no longer holds. Until the Origin stratum lands
+  (2a), a returned borrow of a local is reported by the Loan stratum alone.
 
 ## Revision history
 
@@ -643,4 +656,4 @@ above disagrees, these errata govern; the lines they replace are marked "(E…)"
 - **Step 1 errata** (2026-10-17, §12; prototype round 10, unit 0b closed): E1 reservation route, E2 derived excuse, E3
   Borrows past a shared Deref, E4 containment wording, E5 own-value seed, E6 Slice index, E7 guard-local marker; owner
   decisions §9 item 11: E8 Loan ending by exact Move-Path prefix (case 23a, option (c)) and E9 MIR contracts; E10 the
-  planning session's MIR contracts; E11 the `err(destroy)` exclusion (records review round 2).
+  planning session's MIR contracts; E11 the `err(destroy)` exclusion (records review round 2); E12 the partition row (SPEC revision's review).
