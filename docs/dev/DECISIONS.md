@@ -1108,6 +1108,54 @@ and migration obligations remain in force; no numeric cap changes are authorized
   revised rule, dropping the trait, when MIR decides acceptance. Rejected: changing the expectations now (the default
   pipeline decides acceptance until R6-check); splitting mixed theories (churn for a marker); per-row markers (xUnit traits
   are per method). Temporary: removed at R6-check.
+- **R4-M51** (2026-10-17; design A3 §4.3's C1+C8 view and §4.1's In place row, owner approval of its §9 items 8 and 9 on
+  2026-10-17; A5 step 1, unit 1a, redone after its review) Call retention, the Binding view A5's Loan flow reads for calls
+  (SPEC 15.6.4). `TyCtxt.Retains(callee, Subst, definition)` and `TyCtxt.Retains(calleeType, signature, definition)` (a Value
+  callee's Type and declared Callable signature, R4-M41; `definition` is the calling body's, null at top level) give an
+  immutable `CallRetention`: rows `Retention(Input, Kind, Output)` over the parameter slots `TyCtxt.Signature` numbers (Output
+  `Retention.Result`, or j for a store into input j's writable storage) and `Untied`. Rule: an output retains input i exactly
+  when the callee's body may move a value of i there under the premises it is checked under. The own part is instantiated:
+  the Subst's Types, `Self` and declaring Type only, so the callee's Origins stay fresh regions (step 1) and retention is per
+  argument; its inputs' and declaring Type's R2 (`AddTypePremises`), its result's R3 (`AddResultPremises`) and its clauses
+  through `SubstituteClauseOrigin`. The enclosing part is the catalog's own walk, `ExtractOriginPremises` from the binder's
+  parent outward (`callee.Accessor?.Binder ?? callee`; for C8 a Closure's or function item's declaration,
+  `Binding.SignatureOwner`), after `CollectOriginResolvers`. Erased callables (owner decision 2026-10-17, DECISIONS R4-M52):
+  every callable whose implementation the call cannot see, a Function Type value or a value of a Callable-bounded Type
+  parameter with no concrete body (C8), each callable Type inside a C1 or C8 contract and each Callable bound of the
+  callee's premises (`Binding.CallableBoundSignatures`, instantiated by the call's Subst), relates each fixed (non-static,
+  non-per-call) Origin of its inputs to each fixed Origin of its outputs, its result and the storage it may write
+  (`AddErasedRelations`), since its implementation was compared under premises no view reads (SPEC 15.6.4: an unproven
+  absence of retention never permits access); its per-call Origins relate only by entailment. An abstract carrier's hidden
+  Origins are fixed Origins for this rule (planning session 2026-10-17, review r3 B3: A3 §4.3 retains "with abstract
+  carriers" and R4-M36 counts an abstract Type as hiding Origins). An erased C8 call reads no
+  declaration's premises, only its signature's well-formedness, so its key is the calling definition's constraint scope
+  (`DefinitionUse`), which decides only its pair layers' admitted cases; a Closure's or item's key is its declaration, so
+  two computations reading different premises never share a key (review r2). This closes the Open on binder-null calls. An
+  instance with an abstract part is normalized under the calling definition's premise scope (`EffectPremises`, read by
+  `CallableContractType`), so a requirement on an abstract Self reads `I.Item`, not `I.LentItem(step)`, under `I is
+  Iterator` (SPEC 22.2.3's `nextPair` stays valid); the C1 key is (callee, types-only Subst, that scope), and a concrete
+  instance reads alike everywhere. Entailment is one `OriginPremiseClosure.Close` per output atom,
+  every Semantics-case edge followed; its work is what it reaches, so the total is output-sensitive (rows plus closures).
+  An abstract carrier (a Type parameter or pair target) has one unnamed closure node per computation
+  (`OriginPremiseClosure.Node()`, nodes no Origin expression names), the Origins its instances hide, which outlive the
+  layer above each occurrence (R2); occurrences share it, which replaces the identity scan (`MarkCarrier`) and its
+  closure branch, and `AddErasedRelations` relates it like any fixed Origin.
+  Kind: Value through anything but a borrowed input's referent, Content through that referent only (step 4). Stores:
+  invariant positions (`ComponentVariance`) reached through storage the call may write: not past a shared layer unless a
+  raw pointer is followed again (SPEC 5.2.1), nor past a non-exclusive pair layer, nor in a callable Type. Untied: a
+  non-static result atom or carrier no input reaches. Caller relations among the caller's own Origins add no row. Memo
+  discarded in `ResetPass`. The catalog's `PublishedRow` gains `InPlace`: `Replace` (`Destroys: 0, InPlace`) for `replace`,
+  `Target` for the `clear`s (relaxation (c) not adopted); `TyCtxt.Published` adds it and A4 reads `Destroys` unchanged.
+  Rejected: a graph of its own and premises only from the named declarations (unsound: a nested function's body uses its
+  enclosing function's well-formedness, review B1); `Relate` (no two Types are fitted); `TyCtxt.Callable` (R4-M41 publishes
+  the signature); the call-solved Origins (per Origin); rows per declaration without the Subst (review r1 finding 9); only
+  top-level exclusive inputs as stores; an erased callable read under its writing site's or calling definition's premises
+  (unsound, review r2 B2: its implementation was compared where it was converted); a located `Unsupported_Kd` for such
+  calls (review r2 option 2). Open: the Callable bounds are all of the callee's premise scope, not only those of carriers
+  its contract names (a sound superset); a C8 Closure's or item's bounds are read as declared, not instantiated by an item
+  instance's Type arguments as C1's are (latent: Binding rejects such an item value, `UnprovenConstraint_Kd`, review r3); a
+  pair-layer input gives Value through its target even in borrow cases (step 4
+  would give Content); A5 reads the view once per pass, its warm cost unmeasured. Not temporary.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

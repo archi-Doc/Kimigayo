@@ -35,7 +35,8 @@ internal enum OriginPremiseRule : byte
 
 /// <summary>
 /// SPEC 15.3.6: a finite premise graph over Origin expressions and its single-target closure (PLAN G74, proposal §3.5). Nodes are
-/// interned expressions; an edge `A >= B` is stored in B's incoming list, and every meet keeps its operands. `Outlivers(S)` seeds
+/// interned expressions, or unnamed nodes a caller adds for Origins no expression names (the Origins an abstract Type hides, for call
+/// retention); an edge `A >= B` is stored in B's incoming list, and every meet keeps its operands. `Outlivers(S)` seeds
 /// S and the top-like nodes, follows incoming edges, adds the operands of a reached meet, and adds a meet once all of its operands
 /// are reached. Each node is inserted once, each edge activated once and each operand incidence decremented once per closure, so a
 /// closure is linear in nodes, edges and meet incidences. Storage is reused across environments and allocates nothing when warm.
@@ -45,7 +46,7 @@ internal enum OriginPremiseRule : byte
 internal sealed class OriginPremiseClosure
 {
     private readonly Dictionary<BoundOrigin, int> index = new(ReferenceEqualityComparer.Instance);
-    private BoundOrigin[] nodes = new BoundOrigin[32];
+    private BoundOrigin?[] nodes = new BoundOrigin?[32];
     private int[] firstIncoming = new int[32];
     private int[] firstMeet = new int[32];
     private int[] operandCount = new int[32];
@@ -133,24 +134,8 @@ internal sealed class OriginPremiseClosure
         }
 
         added = true;
-        node = this.nodeCount++;
-        Grow(ref this.nodes, this.nodeCount);
-        Grow(ref this.firstIncoming, this.nodeCount);
-        Grow(ref this.firstMeet, this.nodeCount);
-        Grow(ref this.operandCount, this.nodeCount);
-        Grow(ref this.operandStart, this.nodeCount);
-        Grow(ref this.reachedStamp, this.nodeCount);
-        Grow(ref this.unmetStamp, this.nodeCount);
-        Grow(ref this.unmet, this.nodeCount);
-        Grow(ref this.reachedBy, this.nodeCount);
-        Grow(ref this.reachedFrom, this.nodeCount);
-        Grow(ref this.queue, this.nodeCount);
+        node = this.Node();
         this.nodes[node] = origin;
-        this.firstIncoming[node] = -1;
-        this.firstMeet[node] = -1;
-        this.operandCount[node] = 0;
-        this.reachedStamp[node] = 0;
-        this.unmetStamp[node] = 0;
         this.index.Add(origin, node);
         if (origin.Kind is OriginKind.Static or OriginKind.Anchor)
         {
@@ -179,10 +164,34 @@ internal sealed class OriginPremiseClosure
         return node;
     }
 
+    /// <summary>Adds an unnamed node, neither top-like nor a meet: Origins no expression names, which only its edges relate.</summary>
+    /// <returns>The node.</returns>
+    internal int Node()
+    {
+        var node = this.nodeCount++;
+        Grow(ref this.nodes, this.nodeCount);
+        Grow(ref this.firstIncoming, this.nodeCount);
+        Grow(ref this.firstMeet, this.nodeCount);
+        Grow(ref this.operandCount, this.nodeCount);
+        Grow(ref this.operandStart, this.nodeCount);
+        Grow(ref this.reachedStamp, this.nodeCount);
+        Grow(ref this.unmetStamp, this.nodeCount);
+        Grow(ref this.unmet, this.nodeCount);
+        Grow(ref this.reachedBy, this.nodeCount);
+        Grow(ref this.reachedFrom, this.nodeCount);
+        Grow(ref this.queue, this.nodeCount);
+        this.firstIncoming[node] = -1;
+        this.firstMeet[node] = -1;
+        this.operandCount[node] = 0;
+        this.reachedStamp[node] = 0;
+        this.unmetStamp[node] = 0;
+        return node;
+    }
+
     /// <summary>Gets the expression of a node.</summary>
     /// <param name="node">The node.</param>
-    /// <returns>The expression.</returns>
-    internal BoundOrigin Origin(int node) => this.nodes[node];
+    /// <returns>The expression, or null for an unnamed node.</returns>
+    internal BoundOrigin? Origin(int node) => this.nodes[node];
 
     /// <summary>Adds the premise edge `longer >= shorter`.</summary>
     /// <param name="longer">The longer node.</param>
@@ -285,6 +294,11 @@ internal sealed class OriginPremiseClosure
         this.LastWork = (tail, activations, decrements);
         return entailed;
     }
+
+    /// <summary>Gets a node the last closure reached, in the order it reached them: the first <see cref="LastWork"/> insertions.</summary>
+    /// <param name="index">The position, below the last closure's insertions.</param>
+    /// <returns>The node.</returns>
+    internal int ReachedNode(int index) => this.queue[index];
 
     /// <summary>The node whose processing first reached a node in the last closure, or -1 for a seed; following it from an
     /// entailed node back to the target gives the witness of the entailment (proposal §3.6).</summary>
