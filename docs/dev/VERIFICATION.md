@@ -34,8 +34,8 @@ still requires explicit instruction.
 The Code Rules Analyzer, its configuration/baseline and CompilerSizeBudgetTest were removed in
 `2e341155`. DECISIONS CR-R1 retires their Report, SARIF-marker and commit-approval workflow.
 `verify.ps1` still builds nonincrementally with warnings as errors, validates every requested
-test selector against the new assembly, rejects zero executed tests and checks source/NuGet
-input stability. `verify-commit.ps1` still requires a successful run and exact committed inputs.
+test selector against the new assembly, rejects zero executed tests and a requested selector
+that executed none, and checks source/NuGet input stability. `verify-commit.ps1` still requires a successful run and exact committed inputs.
 `ArchitectureRulesTest` retains its existing no-growth assertions and joins every Unit selection.
 
 The structure, dependency and vocabulary rules in COMPILER_ARCHITECTURE remain review
@@ -88,7 +88,7 @@ inputs invalidate their evidence and require reverification. PLAN/history bookke
 
 Verify accepts both `ClassName` / `ClassName.Method` and their fully qualified forms; short names use the repository's `XunitTest` namespace. A wildcard `*` may occur at the beginning or end. Invalid pattern syntax is rejected before building. Verify expands outer selections to include nested `AllocationTests`, so focused selections retain their allocation coverage.
 
-After the build, Unit verification discovers methods from that exact assembly, checks **every** requested class and method, and records the effective selection in `selected-methods.json` before running tests. A misspelled selector cannot be hidden by another selector that matches. Class selections are ORed, method selections are ORed, and those two groups intersect; the runner also applies the purpose filter. The common checks join each nonempty group, as `Class.*` among methods, so they add to the selection rather than narrowing it. Discovery never checks an older assembly against newly edited test sources. Both zero-method and zero-executed-test selections fail.
+After the build, Unit verification discovers methods from that exact assembly, checks **every** requested class and method, and records the effective selection in `selected-methods.json` before running tests. A misspelled selector cannot be hidden by another selector that matches. Class selections are ORed, method selections are ORed, and those two groups intersect; the runner also applies the purpose filter. The common checks join each nonempty group, as `Class.*` among methods, so they add to the selection rather than narrowing it. Discovery never checks an older assembly against newly edited test sources. Both zero-method and zero-executed-test selections fail. After the run, every requested class and method must also match a test the run executed, read from its per-test results (`tests-*.xml`): discovery lists Explicit methods, which xUnit then reports Not Run, so a selector matching only those fails even when the common checks or another selector execute tests.
 
 `-Pipeline mir` (R3–R5; default `legacy`) sets `KIMI_PIPELINE` for every compiler process of the run, the tests, fixtures and milestone harnesses, and records the pipeline in `summary.json`.
 
