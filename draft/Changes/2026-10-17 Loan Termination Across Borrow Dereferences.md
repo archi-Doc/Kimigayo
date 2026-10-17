@@ -1,7 +1,8 @@
 # Loan Termination Across Borrow Dereferences
 
 Date: 2026-10-17, revised the same day after an independent review and prototype round 8 (§2), and for round 9
-(PLAN G113). Status: proposal for the owner's decision; not adopted, integrated or implemented.
+(PLAN G113). Status: adopted by the owner on 2026-10-17 as option (c), the same rule worded without the base
+(DECISIONS R4-M52), and integrated into SPEC on 2026-10-17 (`draft/INTEGRATED.md`); not implemented.
 Requested outcome: accept case 23a with a small, predictable extension of S1, preserving soundness rather than
 maximizing acceptance. This document proposes a change to the adopted rule; it does not authorize its implementation
 or supersede DECISIONS R4-M39 by itself.
