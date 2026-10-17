@@ -202,10 +202,14 @@ internal sealed partial class MirBuilder
         return this.Temporary(reference, this.Ref(place, reference, input), node, into);
     }
 
-    // SPEC 13.5.6, 5.4, 6.2.2: a reference of a Type to a Place, the one rule of every borrow: of the Place's layer whose Type is the
-    // reference's referent (an object borrow's payload, a reborrow's referent) or its base that is (a base view), in its Type's mode
+    // SPEC 13.5.6, 5.4: a reference of a Type to a Place, the one rule of every borrow: of the Place it lends (Lent), in its Type's mode
     // (MirTypes.RefKind; an exclusive reservation, a call's input or an update's destination, is two-phase).
     private MirRvalue Ref(MirPlace place, BoundType reference, bool input)
+        => MirRvalue.Ref(MirTypes.RefKind(reference, input), this.Lent(place, reference), reference);
+
+    // SPEC 13.5.6, 6.2.2: the Place a reference of a Type to a Place lends: the Place's layer whose Type is the reference's referent (an
+    // object borrow's payload, a reborrow's referent) or its base that is (a base view).
+    private MirPlace Lent(MirPlace place, BoundType reference)
     {
         var referent = reference.Components is [var target] ? target : null;
         var depth = 0;
@@ -215,7 +219,7 @@ internal sealed partial class MirBuilder
             depth = AdtDef.Base(layer) is null ? 0 : depth + 1;
         }
 
-        return MirRvalue.Ref(MirTypes.RefKind(reference, input), depth == 0 ? place : this.body.Project(place, MirProjectionKind.Base, depth), reference);
+        return depth == 0 ? place : this.body.Project(place, MirProjectionKind.Base, depth);
     }
 
     // An rvalue in a new temp of its Type, or in the place given where that has its Type, moved.

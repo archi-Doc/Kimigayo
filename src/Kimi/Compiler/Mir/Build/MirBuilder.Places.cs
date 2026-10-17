@@ -11,9 +11,18 @@ internal sealed partial class MirBuilder
     // The one operand of a group, a borrow, a conversion or a Deref.
     private static Koto Child(Koto node) => node switch { LabeledKoto label => label.Target, BinaryKoto binary => binary.Left, _ => ((UnaryKoto)node).Operand };
 
+    // The written exclusive borrow a node's value is, also in parentheses; null for another node.
+    private static Koto? Lending(Koto node) => HirTables.Op(node) switch
+    {
+        HirOp.Group => Lending(Child(node)),
+        HirOp.Borrow when MirTypes.IsExclusive(TypeOf(node)) => node,
+        _ => null,
+    };
+
     // The Place a node designates: one an expansion located already (Located), a parenthesized Place its operand's; a value its consumer needs
     // as a Place is held in a temp. A call's input (input) is its preparation path down to a value or a call result, whose exclusive
-    // borrows are reservations (SPEC 15.6.7).
+    // borrows are reservations (SPEC 15.6.7): a written one the path continues through is not formed, the path going on from the Place it
+    // lends, so the input has one reservation, at its lending point, as the path without it has (DECISIONS R4-M52).
     private MirPlace Place(Koto node, bool input = false)
     {
         if (this.Located(node) is { } located)
@@ -22,6 +31,11 @@ internal sealed partial class MirBuilder
         }
 
         var shape = HirTables.PlaceOf(node);
+        if (input && shape is { Kind: HirPlaceKind.Value, Layers: > 0 } && Lending(node) is { } borrow)
+        {
+            return this.Follow(this.Lent(this.Place(Child(borrow), input), TypeOf(borrow)), shape.Layers - 1);
+        }
+
         var place = shape.Kind switch
         {
             _ when node is ParenthesizedKoto group && shape.Kind != HirPlaceKind.Value => this.Place(group.Operand, input),

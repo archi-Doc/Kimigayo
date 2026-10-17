@@ -1149,6 +1149,18 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Error keeps evaluated children); a `HirOp` member (40 of 40); a Binding failure written at publish (publishing decides nothing,
   `PublishIsInvisible`); non-nullable fact types now (R7's CallPlan and declaration-table scope). Lasting: `HasFacts` and
   `HirTables.Broken` are the publication contract; at R7 the publisher walk goes and Binding's inline Op writes call `HasFacts`.
+- **R4-M54** (2026-10-17; PLAN G92, implementing R4-M52's fold (owner) on the planning session's instruction of the same day)
+  On an invocation's preparation path (`MirBuilder.Place` with `input`), a written exclusive borrow whose value the path follows
+  (PlaceShape `Value`, `Layers > 0`; also in groups, `Lending`) is not formed: the path goes on from the Place the borrow lends
+  (`Lent`, the Place half of `Ref`: the follow to its referent and its base view), followed by `Layers - 1`. Each input then has
+  one reservation, at its lending point: `holder@uniq.items.append(x)`, `(holder@uniq).items.append(x)`,
+  `holder.items@uniq.append(x)` and `holder.items.append(x)` build the same MIR, and `inspect(holder@uniq.items)` the MIR of
+  `inspect(holder.items)` (SPEC 15.6.7: the same call). A written borrow that is the input itself (`take(p@uniq)`,
+  `h.c@uniq.bump(1)`) stays its reservation; off an input path (a `let`, an operator's operand, an update's target) a written
+  `@uniq` stays a live `Uniq` borrow. Supersedes R4-M37 G5's "or on the Place path of a receiver or an argument down to a value"
+  and its Open note on a parent reservation's mode: no reservation is formed through another reservation's holder, so A3's mode
+  rule stands. Rejected: an A5 reservation chain (R4-M52); a parent link on the Ref (an O1 vocabulary entry for a fact the Place
+  shows). Not temporary.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

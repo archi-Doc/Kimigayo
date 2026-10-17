@@ -565,7 +565,8 @@ public sealed class MirBuildTest(ITestOutputHelper output)
 
     // SPEC 15.6.7: every exclusive borrow that produces an invocation's argument or receiver is reserved (TwoPhaseUniq): a written @uniq,
     // also in parentheses, the Reborrow of a stored uniq at a uniq parameter and a synthesized receiver (an Array literal's reserve and
-    // appends), and a written @uniq on a receiver's path; a borrow saved in storage or a control-flow result is live when formed (Uniq).
+    // appends); a written @uniq on a receiver's path is not formed (DECISIONS R4-M52), so the receiver has one reservation, at its lending
+    // point; a borrow saved in storage or a control-flow result is live when formed (Uniq).
     [Fact]
     public void ReservedCallInputsAreTwoPhase()
     {
@@ -573,16 +574,47 @@ public sealed class MirBuildTest(ITestOutputHelper output)
             "    var r = p@uniq\n    take(r, 3)\n    let values = [1, 2]\nstruct Counter\n    var count: i32\n    public init() => self.count = 0\n" +
             "    public func bump(self: uniq/Self, by: i32) => self.count = self.count + by\nstruct Holder\n    public var c: Counter\n" +
             "    public init() => self.c = Counter.init()\nfunc g(h: uniq/Holder)\n    h@follow@uniq.c.bump(1)\n    h@follow@uniq.c@uniq.bump(2)\nfunc chosen()\n    var p: i32 = 1\n" +
-            "    take(if p > 0 => p@uniq else => p@uniq, 4)\n";
+            "    take(if p > 0 => p@uniq else => p@uniq, 4)\nstruct Bag\n    public var items: Array<i32>\n    public var count: i32\n" +
+            "    public init()\n        self.items = []\n        self.count = 0\nfunc fill()\n    var bag = Bag.init()\n    bag@uniq.items.append(bag.count)\n";
         Assert.Equal(
             [MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq, MirRefKind.Uniq, MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq,
                 MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq],
-            Refs(Body(source, "f")));
-        Assert.Equal([MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq], Refs(Body(source, "g")));
-        Assert.Equal([MirRefKind.Uniq, MirRefKind.Uniq], Refs(Body(source, "chosen")));
+            Refs(Body(source, "f")).Select(static x => x.Kind));
+        var g = Body(source, "g");
+        var lent = Refs(g).ToArray();
+        Assert.Equal([MirRefKind.TwoPhaseUniq, MirRefKind.TwoPhaseUniq], lent.Select(static x => x.Kind));
+        Assert.All(lent, x => Assert.Equal("_1*.0", Steps(g, x.Place))); // (*h).c, each time.
+        Assert.Equal([MirRefKind.Uniq, MirRefKind.Uniq], Refs(Body(source, "chosen")).Select(static x => x.Kind));
+        var fill = Body(source, "fill");
+        var items = Assert.Single(Refs(fill));
+        Assert.Equal(MirRefKind.TwoPhaseUniq, items.Kind);
+        Assert.Matches(@"^_\d+\.0$", Steps(fill, items.Place)); // bag.items, at the local.
 
-        static IEnumerable<MirRefKind> Refs(MirBody body) => body.Statements.ToArray()
-            .Where(static x => x.Kind == MirStatementKind.Assign && x.Rvalue.Kind == MirRvalueKind.Ref).Select(static x => (MirRefKind)x.Rvalue.Op);
+        static IEnumerable<(MirRefKind Kind, MirPlace Place)> Refs(MirBody body) => body.Statements.ToArray()
+            .Where(static x => x.Kind == MirStatementKind.Assign && x.Rvalue.Kind == MirRvalueKind.Ref).Select(static x => ((MirRefKind)x.Rvalue.Op, x.Rvalue.Place));
+    }
+
+    // SPEC 15.6.7 (DECISIONS R4-M52): an invocation's preparation path is one preparation even when it contains written exclusive borrows,
+    // so the three spellings of one call build the same MIR, and so does a shared input through a written exclusive borrow.
+    [Theory]
+    [InlineData("holder@uniq.items.append(x)", "holder.items.append(x)")]
+    [InlineData("holder.items@uniq.append(x)", "holder.items.append(x)")]
+    [InlineData("(holder@uniq).items.append(x)", "holder.items.append(x)")]
+    [InlineData("inspect(holder@uniq.items)", "inspect(holder.items)")]
+    public void AWrittenBorrowOnAPreparationPathIsThePlaceItLends(string written, string path)
+    {
+        Assert.Equal(Built(path), Built(written));
+
+        static string Built(string statement)
+        {
+            var program = Compile("struct Holder\n    public var items: Array<i32>\n    public var count: i32\n    public init()\n" +
+                $"        self.items = []\n        self.count = 0\nfunc inspect(values: ref/Array<i32>) => ()\nfunc f(x: i32)\n    var holder = Holder.init()\n    {statement}\n").BuildMir();
+            Assert.Empty(program.Findings);
+            Assert.Empty(program.Records);
+            var text = new StringBuilder();
+            MirDump.Write(program, 0, text);
+            return string.Join('\n', text.ToString().Split('\n').Select(static x => x.Split(" @")[0]));
+        }
     }
 
     // SPEC 15.6.7, 14.10.3: a call whose argument does not complete is still built where that argument's code continues for the checks,
@@ -827,6 +859,15 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.Empty(program.Findings);
         return program.Bodies.ToArray().Single(x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == name);
     }
+
+    // A Place as its root and its projections in order: a Deref as *, a Field as its position, so (*_1).0 is _1*.0.
+    private static string Steps(MirBody body, MirPlace place) => place.Projection == 0 ? $"_{place.Root}"
+        : Steps(body, place with { Projection = body.Projections[place.Projection].Prefix }) + body.Projections[place.Projection] switch
+        {
+            { Kind: MirProjectionKind.Deref } => "*",
+            { Kind: MirProjectionKind.Field } row => $".{row.Arg}",
+            var row => $"?{row.Kind}{row.Arg}",
+        };
 
     // The census key of a record: its Op, a Name's Res, a call's callee kind or the part of the call not built yet, and an Adjust the
     // builder does not take yet.
