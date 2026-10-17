@@ -127,7 +127,10 @@ public class OwnedStoredReferenceTest
     public void DisjointPartsKeepTheirOwnDependencies(string name, string source)
         => ScalarEmissionTest.EmitFixture("OwnedStoredReferenceDisjoint" + name, source, string.Empty);
 
+    // Expects the old location: under SPEC 15.6.2 (A5 S1, P3) the conflict is at `item@ref`, a shared Borrow of a prefix
+    // of the live exclusive child's path; the default pipeline keeps the old rule until R6-check.
     [Fact]
+    [Trait("OldRule", "S1")]
     public void ABorrowThatReachesTheReferenceStillConflicts()
     {
         var c = MinimalEmissionTest.Analyze("var value = 42\nlet item = (value@uniq, 5)\nlet child = item.0@follow@uniq\nlet whole = item@ref\nlet read: i32 = whole.0@follow\nchild@follow = 1");
@@ -149,7 +152,10 @@ public class OwnedStoredReferenceTest
         Assert.False(c.Validate(out _));
     }
 
+    // The `slot.0` row expects the old location: under SPEC 15.6.2 (A5 S1, P3) the conflict is at `item@ref`; the default
+    // pipeline keeps the old rule until R6-check.
     [Theory]
+    [Trait("OldRule", "S1")]
     [InlineData("let child = item.0@follow@uniq\nitem.0@follow = 5\nchild@follow = 1", "item.0")]
     [InlineData("let child = item.0@follow@ref\nitem.0@follow = 5\nrequire child == 42 else => $abort(\"child\")", "item.0")]
     [InlineData("let child = item.0@follow@uniq\nlet copy = item.0@follow\nchild@follow = 1", "item.0")]
@@ -201,7 +207,10 @@ public class OwnedStoredReferenceTest
         ScalarEmissionTest.EmitFixture("OwnedStoredReferenceLayered" + name, Read + "var value = 1\n" + body, string.Empty);
     }
 
+    // The `view` row expects the old location: under SPEC 15.6.3 (A5 S1) the conflict is at `t.0@uniq`, an exclusive
+    // Borrow of the base of the live child `view`; the default pipeline keeps the old rule until R6-check.
     [Theory]
+    [Trait("OldRule", "S1")]
     [InlineData("var t = (value@uniq, 2)\nlet r = t.0@uniq\nlet inner = r@follow@follow@ref\nr@follow@follow = 5\nrequire inner == 1 else => $abort(\"inner\")", "r@follow")]
     [InlineData("var t = (value@uniq, 2)\nlet view = t.0@follow@ref\nlet r = t.0@uniq\nr@follow@follow = 5\nrequire view == 1 else => $abort(\"view\")", "r@follow")]
     [InlineData("var t = (value@uniq, 2)\nlet r = t.0@uniq\nlet inner = r@follow@follow@ref\nlet other = r@follow@follow@uniq\nother@follow = 2\nrequire inner == 1 else => $abort(\"inner\")", "r@follow@follow")]

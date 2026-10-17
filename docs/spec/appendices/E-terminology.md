@@ -6,12 +6,13 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 
 | Term | Meaning | Owner |
 | --- | --- | --- |
-| Access path | How a non-raw Place is reached: Direct, through an exclusive reference or through a shared reference. Raw Places have none. | [§3.4.1](../03-types-and-values.md#341-access-paths-and-value-kinds) |
+| Access path | How a non-raw Place is reached: Direct, through an exclusive reference or through a shared reference; Loan checking compares its steps ([§15.6.2](../15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts)). Raw Places have none. | [§3.4.1](../03-types-and-values.md#341-access-paths-and-value-kinds) |
 | Acquisition mode | What a parameter requires of a bare owned Place argument: ByValue, Shared or Exclusive, by the outer Semantics of its Type. | [§7.4.1](../07-functions-and-callable-values.md#741-acquisition-modes-and-admitted-cases) |
 | Adaptation Target | What `@` requests: a Semantics and Core, an inner Type or an object View Target. | [§13.5.1](../13-operators-and-assignment.md#1351-forms-and-adaptation-targets) |
 | Admitted set | The Semantics a pair binder may take under its premises. | [§8.3.4](../08-generics-constraints-and-contracts.md#834-semantics-admitted-set) |
 | Associated Type | A Type that each conformance fixes; it may declare Origin parameters. | [§8.5](../08-generics-constraints-and-contracts.md#85-associated-types) |
 | Bare acquisition | Acquisition of an expression written without an `@` operation. | [§3.5](../03-types-and-values.md#35-copy-and-move) |
+| Base (of a child Loan) | The Place before the last dereference ([§15.6.2](../15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts)) in a child Loan's access path; destroying in place a Move Path that is it or contains it with no dereference between them ends the child. | [§15.6.3](../15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting) |
 | Binding set / Origin projection | A Type occurrence's mapping from Origin slots to Origins / selecting one slot. | [§15.3.1](../15-ownership-and-lifetime-analysis.md#1531-borrow-annotations-and-binding-sets) |
 | Borrow value | A value whose outer Semantics is `ref`, `uniq`, `objref` or `objuniq`. | [§3.4.1](../03-types-and-values.md#341-access-paths-and-value-kinds) |
 | Built-in numeric Type | A numeric Type, a Type parameter with proven `PrimitiveInteger`, or `Wrapping<T>` of such a parameter. | [§13.3.3](../13-operators-and-assignment.md#1333-arithmetic-contracts) |
@@ -51,6 +52,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Fixed expected call signature | The one call signature fixed by a position's expected Type: a common Function Type, or the one signature the Callable Constraints of an unbound slot `F` give at `F`, `ref/F` or `uniq/F`. | [§10.5.2](../10-overload-resolution-and-inference.md#1052-call-signatures) |
 | Follow | `@follow`: selects the Place a reference or a qualifying pair layer points to, or the payload of an object handle whose View Target is a proven Sealed Type. | [§13.5.5](../13-operators-and-assignment.md#1355-follow) |
 | Function Item / common Function Type | One resolved function declaration, no environment / the erased calling contract shared by callable values. | [§3.2.1](../03-types-and-values.md#321-callable-value-types) |
+| Holder | A local, parameter or temporary, which carries the Loans of the values stored in every part of it. | [§15.6](../15-ownership-and-lifetime-analysis.md#156-borrow-checking) |
 | Independently typable argument | A non-literal argument whose complete Type is fixed with no expectation from the call and no literal default; a nested call qualifies only with exactly one applicable candidate without an expected result, and an anonymous function never does. | [§10.5.1](../10-overload-resolution-and-inference.md#1051-argument-kinds) |
 | Indexable / UniqIndexable | Contracts whose `index` and `indexUniq` return the reference that `receiver[key]` follows to its element. | [§4.7.1](../04-arrays-indexing-and-slices.md#471-index-expression-resolution) |
 | Integer / wrapping integer / numeric Type | One of twelve integer Cores / `Wrapping<T>` / integer, wrapping integer or floating-point. | [§3.1](../03-types-and-values.md#31-primitive-cores) |
@@ -63,7 +65,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Lending rule | When a transfer or a new exclusive borrow must be written explicitly. | [§15.1.5](../15-ownership-and-lifetime-analysis.md#1515-access-operations-and-acquisition) |
 | Literal argument | An untyped literal, a literal-only expression, or a control-flow expression whose result sources are all such; no evidence for a slot. | [§10.5.1](../10-overload-resolution-and-inference.md#1051-argument-kinds) |
 | Literal-only expression | An untyped numeric literal, or an integer, floating-point or position/range form built from such operands by the listed operators; whether it fits a Type is decided separately. | [§12.3.3](../12-expressions.md#1233-literal-only-expressions) |
-| Loan | A borrowed Place and its access mode (`ref` or `uniq`); live while a value that carries it may be used. | [§15.6](../15-ownership-and-lifetime-analysis.md#156-borrow-checking) |
+| Loan | A borrowed Place, named by its access path, and its access mode (`ref` or `uniq`), identified by its Borrow site and Semantics case; live while a value that carries it may be used. | [§15.6](../15-ownership-and-lifetime-analysis.md#156-borrow-checking) |
 | `Loan<T>` | A zero-sized struct expressing a borrow dependency without storage. | [§15.3.5](../15-ownership-and-lifetime-analysis.md#1535-variance-loan-requirements-and-phantom-origins) |
 | Movable Place | A Place whose value `@move` can transfer. | [§15.1.5](../15-ownership-and-lifetime-analysis.md#1515-access-operations-and-acquisition) |
 | Move | Transfer of a value and its destruction responsibility; on a Place, written `@move`. | [§3.5](../03-types-and-values.md#35-copy-and-move) |

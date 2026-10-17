@@ -408,7 +408,7 @@ One implementation may satisfy several requirements, including requirements of d
 | Constraints | The Type, conformance and requirement premises prove the implementation's Constraints and conditions. |
 | Inputs | Every input the requirement admits stays valid; a call-local borrow is not narrowed to `static`. |
 | Result Type | Result compatibility ([§10.7](10-overload-resolution-and-inference.md#107-callable-signature-compatibility)). |
-| Result Origins | At least the required guarantees, and no mutable-static anchor ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)). |
+| Result Origins | At least the required guarantees. |
 | Access | Usable throughout the conformance's domain ([§9.4.6](09-names-signatures-and-access.md#946-conformance-accessibility)). |
 | Context and Effects | No stronger calling context; a safe requirement never needs unsafe. No effect outside the applicable bounds ([§8.11](#811-effect-bounds)). |
 
@@ -853,7 +853,7 @@ Applicability ([§10.1](10-overload-resolution-and-inference.md#101-candidate-ap
 | Type parameter or projection | A premise on it with the same signature, an equal or stronger receiver (`ref` < `uniq` < `owner`) and the bound. |
 | Common Function Type | None. |
 
-Binding a Function Item or Closure whose result may carry a mutable-static anchor to a Callable-constrained Type is an error ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)). A call through `F` uses the bounds of premises with its signature and an equal or stronger receiver, under rules 1 to 3 of [§8.11.4](#8114-checking-and-use). Callers compose a declaration's calls through Callable inputs with the actual argument ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)). An implementation cannot add an unrequired Callable bound.
+A call through `F` uses the bounds of premises with its signature and an equal or stronger receiver, under rules 1 to 3 of [§8.11.4](#8114-checking-and-use). Callers compose a declaration's calls through Callable inputs with the actual argument ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)). An implementation cannot add an unrequired Callable bound.
 
 ```kimi
 func apply<F>(transform: ref/F, value: i32) -> i32
