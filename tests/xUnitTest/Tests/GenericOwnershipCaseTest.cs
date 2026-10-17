@@ -59,22 +59,30 @@ public class GenericOwnershipCaseTest
         var row = Rows.Value[name];
         var c = MinimalEmissionTest.Analyze(row.Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(row.Old is null || row.Old.Expected.Keys.All(row.Expected.ContainsKey), $"{name}: an old verdict names no Semantics case of the row.");
+        Assert.True(row.Old is null || (row.Old.Rule is { Length: > 0 } && row.Old.Expected.Keys.All(row.Expected.ContainsKey)), $"{name}: Old names its revision item and cases of the row.");
         var rejected = false;
         foreach (var (semantics, written) in row.Expected)
         {
-            var expected = row.Old is { } old && old.Expected.TryGetValue(semantics, out var kept) ? kept : written;
+            var expected = written;
+            if (row.Old is { } old && old.Expected.TryGetValue(semantics, out var kept))
+            {
+                // The SPEC verdict that the default pipeline does not decide yet differs from the kept one and is located in the source.
+                Assert.NotEqual(written.GetRawText(), kept.GetRawText());
+                if (written.ValueKind != JsonValueKind.String)
+                {
+                    Locate(row.Source, written);
+                }
+
+                expected = kept;
+            }
+
             if (expected.ValueKind == JsonValueKind.String)
             {
                 continue;
             }
 
             rejected = true;
-            var code = expected.GetProperty("Code").GetString();
-            var line = expected.GetProperty("Line").GetString()!;
-            var loan = expected.GetProperty("Loan").GetString()!;
-            Assert.Equal("ComparisonLoanConflict_Kd", code);
-            var at = LineOf(row.Source, line);
+            var (at, loan) = Locate(row.Source, expected);
             Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict && LineAt(row.Source, x.Source.Span.Start) == at &&
                 x.LoanSource is { } holder && Text(holder).Contains(loan, StringComparison.Ordinal));
         }
@@ -92,6 +100,16 @@ public class GenericOwnershipCaseTest
         var row = Rows.Value[name];
         var run = (row.Old?.Run ?? row.Run)!;
         ScalarEmissionTest.EmitFixture("GenericCase" + name.Replace("-", string.Empty, StringComparison.Ordinal), run.Source, run.Stdout);
+    }
+
+    // A rejection's zero-based operation line and Loan holder text, both found in the source.
+    private static (int Line, string Loan) Locate(string source, JsonElement rejection)
+    {
+        Assert.Equal("ComparisonLoanConflict_Kd", rejection.GetProperty("Code").GetString());
+        var line = LineOf(source, rejection.GetProperty("Line").GetString()!);
+        var loan = rejection.GetProperty("Loan").GetString()!;
+        Assert.True(line >= 0 && source.Contains(loan, StringComparison.Ordinal), rejection.GetRawText());
+        return (line, loan);
     }
 
     private static string Text(Kimi.Compiler.Parsing.Koto node) => node.ToString().Replace("\r", string.Empty, StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal);
@@ -126,7 +144,7 @@ public class GenericOwnershipCaseTest
 
     private sealed record PairCaseRun(string Source, string Stdout);
 
-    // The default pipeline's verdicts of the Semantics cases that differ from the SPEC's, and its native run, under the rule replaced by
-    // the revision item that `Rule` names as R4-M50's trait does; removed at R6-check.
+    // What the default pipeline decides where it differs from the SPEC, under the rule that the revision item `Rule` (an id of R4-M50's
+    // trait) replaced: the verdicts of those Semantics cases and the native run, the row's when absent. Removed at R6-check.
     private sealed record PairCaseOld(string Rule, Dictionary<string, JsonElement> Expected, PairCaseRun? Run);
 }

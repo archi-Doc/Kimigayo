@@ -1110,12 +1110,14 @@ and migration obligations remain in force; no numeric cap changes are authorized
   are per method). Temporary: removed at R6-check.
 - **R4-M60** (2026-10-17, tooling session; PLAN G111; refines R4-M50 for corpus rows) A corpus row that expects a rule an
   adopted SPEC revision replaced states the SPEC's verdict and, in an `Old` entry, what the default pipeline decides until
-  R6-check, as `spec-cases.json` states a path's differences beside the SPEC's records (R4-M45). In
-  `tests/diagnostics/pair-cases.json`, `Old` names the revision item as R4-M50's trait does (`Rule`) and holds the old
-  verdicts of the Semantics cases that differ (`Expected`) and the old native run (`Run`; a row the SPEC rejects has none).
-  `GenericOwnershipCaseTest` judges and runs such a row by its `Old` values; `Old` is the row's marker. First row:
+  R6-check, as `spec-cases.json` states a path's differences beside the SPEC's records (R4-M45); it is that table's class
+  (d), named by the revision item instead of a class and clause. In `tests/diagnostics/pair-cases.json`, `Old` names the item
+  as R4-M50's trait does (`Rule`) and holds the old verdicts of the Semantics cases that differ (`Expected`) and the old
+  native run (`Run`, absent when it is the row's; a row whose program the SPEC rejects has none). `GenericOwnershipCaseTest`
+  judges and runs such a row by its `Old` values, `Old` being the row's marker, and checks that `Old` names its item and
+  changes verdicts of the row's cases, and that an overridden SPEC rejection is located in the source. First row:
   `B12-parent-move` (S1, SPEC 15.6.3: its `uniq` case Moves the base `value` while the child `r` is live). The SPEC verdicts
-  that `Old` overrides stay unchecked until the corpus is checked on the MIR (A5) or the old path is deleted. Rejected: the
+  that `Old` overrides are otherwise unchecked until the corpus is checked on the MIR (A5) or the old path is deleted. Rejected: the
   trait on the whole theories (it marks every other row); a per-row trait (`TheoryDataRow.WithTrait`: xUnit v3 does not
   pre-enumerate theories by default, so a row's trait reaches neither discovery, `-trait` selection nor the result file);
   the old verdict in `Expected` with a `Mir` entry (the corpora state the SPEC in `Expected`); `Run` on the row (the SPEC
