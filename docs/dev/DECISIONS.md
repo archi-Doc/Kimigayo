@@ -446,7 +446,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M15** `OwnershipStorageLimit_Kd` stays the one Resource code, decided by the byte size of A5's Loan × point arena. The
   arena scope is superseded by R4-M15a.
 - **R4-M16** The ledger's classification table is tracked (`tests/xUnitTest/TestData/mir-diff/classification.tsv`); raw
-  rows, reproducers and ledgers are evidence under `artifacts/verify/mir-diff/`. R4-M35 adds a SPEC-clause column for (d) rows.
+  rows, reproducers and ledgers are evidence under `artifacts/verify/mir-diff/`. R4-M35 adds a SPEC-clause column for (d) rows,
+  which R4-M46 refines.
 - **R4-M2a** (2026-10-12, planning session; design A of two independent U0b designs; supersedes R4-M2's stub clause, its
   layout stays). U0b creates only `MirAnalysis`, the driver whose contract fixes the pass order (A3 per body; per body and
   view A1, A2, A4's local facts; A4 over the program; A5 per view; A6 inside `MirReport`), and `MirReport`; each analysis
@@ -519,6 +520,43 @@ and migration obligations remain in force; no numeric cap changes are authorized
   form: it hides their independent errors, SPEC 23.1); MIR deciding the bound; a non-form failure (order-dependent caller
   records); a template guard on an unset Op (Binding.Check leaves no node unvisited before publication); a Koto-keyed count table.
   Diagnostic sets change only in already-rejected programs; acceptance does not change.
+- **R4-M45** (2026-10-17, tooling session; plan §8 of the Complete Polonius A5 Plan, R4-M35; amends R4-M17's MIR side) The
+  SPEC-example oracle, which gives R4-M17's tier 1 its expected codes as an always-on theory beside `RequestedCorpus`.
+  `tests/diagnostics/spec-cases.json` gives SPEC examples the Error records the SPEC gives them: the code DIAGNOSTICS names, else the
+  catalog entry whose message states the rule, else a code with a written basis. A row names its block by section number and an
+  anchor that one `kimi` block of the section contains, never by line; a prelude supplies what the example assumes (an indent places
+  a body fragment under the prelude's header). Each variant (the block as written, or one commented line uncommented) has its records
+  (a dependent one, whose report SPEC 23.1.2 leaves implementation-defined, may be absent), its decider (the analysis that decides its
+  verdict: Binding, A1–A4 or an A5 family of plan §6.1), and the old path's or the MIR's records where they differ, with a class and
+  the SPEC clause (plan §9.2); every error verdict of the block needs a record, a variant or a written omission, so moved lines keep a
+  row and a changed block, anchor or verdict fails it. `VerifiedSpecExampleTest` checks every variant on the old path until R6-check
+  and on the MIR once its decider is `Landed` (Binding, A1, A3, A4; each rule unit adds its family). The sides come from
+  `MirDifferenceLedger.Sides`, the ledger's one split of a compilation's records: Binding's, which both paths publish; the old path's
+  A-owned ones (R4-M4); the old analyses' others, which pass through; and the MIR's records, problems and validator findings, which the
+  mir pipeline publishes as `InternalInvariant_Kd` (the ledger's MIR side now includes them). Rejected: marker comments in the SPEC (an
+  explicit SPEC revision); block names by line (SPEC revisions move lines); tier 1 alone (it compares the paths, with no expectation);
+  a second record reader beside the ledger's. The number follows the range the planning session assigned to this session.
+- **R4-M46** (2026-10-17, tooling session; plan §9.2, R4-M35; refines R4-M16's row shape) The classification table names the SPEC
+  sections that decide each row: a `clause` column after `category`, space-separated section numbers of the SPEC's numbered headings
+  (`DiagnosticCorpus.SpecSections`), which `ledger.tsv` repeats for its signatures; references keep plan and DEC references only.
+  An (a), (c) or (d) row needs a clause, since a row of plan §8's blocking kinds passes the R4 exit only as (a), (c) or (d) with a
+  SPEC clause; a (b) or (e) row, which a repair unit resolves, may write `-` where no SPEC rule decides it (a primary location).
+  Rejected: clauses inside `reference` (unchecked, mixed with plan and DEC references); a second table keyed by row id (two tables
+  for one row).
+- **R4-M47** (2026-10-17, tooling session; plan §8, R4-M35; replaces PLAN10 §18 P9 in `summary.md`) The ledger's aggregation reports
+  plan §8's metrics from the data the test assembly holds: the families landed on the MIR (`VerifiedSpecExampleTest.Landed`), the
+  SPEC-example variants and those checked on the MIR (R4-M45; they stand in for "rule tests passing", whose pass or fail is the run's),
+  and the open blocking rows, beside the unclassified and open (b) counts; `ledger.tsv` gains a blocking count per signature. A6's
+  completion is listed in `Landed` when it lands, though A6 decides no SPEC example's verdict (it is no `Families` decider). A
+  difference blocks the R4 exit when it is unsound: in a Binding-complete compilation, a missing row whose body keeps no unpaired MIR
+  record (with one, it is a code choice; an acceptance difference only repeats its missing rows); when it lies in a library body
+  (`LegacyRecords.Library`, analyzed in every compilation, R4-M12); or when it lies in a Binding-complete milestone program (a saved
+  source holding a `tests/milestones` program's whole text). It is open unless its signature is classified (a), (c) or (d), with its
+  clause (R4-M46). A Binding-incomplete compilation never blocks except in the library: its old records may rest on Binding's failures
+  (R4-M5, R4-M10) and Binding rejects the program on both paths (unverified for its 259 missing rows at the step-0 base). Rules expressed
+  and precision losses are counted from the step-0 audit tables and plan §10 OD13 (design A3 §9), which are draft records, not tracked
+  test inputs (Verify's manifest excludes `draft/`). Rejected: blocking by kind alone (code and location choices would block); a
+  milestone flag in the raw row (a second R4-M17 row shape); a tracked metrics table.
 - **R4-M19** (owner O1, 2026-10-12; two designs compared, the first taken with two parts of the second). An explicit case
   adaptation (SPEC 8.14, 13.5.3), whose operation each Semantics case selects, is the one case-dependent rvalue
   `MirRvalueKind.Adapt` (KR1003: 9 → 10). Operand 0 is the by-value acquisition (a written Place's Copy, a temporary's Move);
