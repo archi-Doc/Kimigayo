@@ -119,3 +119,13 @@ for SPEC 22.4.3's shutdown rule; A-2 is required and R4 agreed (recorded at appr
 wording; the final `MonoKind` list; O2's analysis (SPEC 23.1.1 allows reuse; `MissingNativeRequirement_Kd` is an option for the
 missing-supply cause); A-2 moves C4a, the drop chain and X1–X3 behind R4's unit 1c (A5 step 1), so plan §3.2's fallback (d)
 loses its meaning.
+
+## After the round-1 redo — decisions on the synthesizers' notes
+
+| # | Note | Decision |
+| --- | --- | --- |
+| X26 | X8 still named a C-layout instance view while X18 makes `Layout.Of` the owner (K, C) | The view is dropped from `TyCtxt.Instances.cs` (it holds `Instantiates` and `Erase` only); `Layout.Of` is the one owner of the zero-sized C-layout rule; F1's `AdtDef.IsCLayout` feeds it; Binding keeps rejecting written forms and loses its eager instance report at G2b |
+| X27 | The intrinsic row table and the direct-part enumeration are needed before their C units exist (K P9, P10) | First consumer creates (R4-M2a): K1 creates the intrinsic row table with its `Target` column (C0b1 extends it with codegen rows); K7 creates the direct-part enumeration in `Backend/DropGlue.cs` and C4a writes glue from it |
+| X28 | `TyCtxt.Witness`'s result needs the witness kind for X14's key (F) | `(Kind, Target, Subst, Access)`, `Access` the existing `PropertyWitnessKind`; K keys the property-witness item on (Field, erased Self, `Access`) |
+| X29 | G131: `MirValidator` accepts a Never-typed operand on every path (R4) | New unit F11 in window W1 (W1's files gain `Mir/MirValidator*.cs`): a Never temp is read only in check-only blocks; prerequisite of C0b1; an R4 reviewer signs it off (A1–A5 trust the validator) |
+| X22′ | X22's options (C) | Revised recommendation to the owner: (b) the K7 row exempts a static whose StaticInit folds to a constant (`Statics.ConstantOf`; the value is the same for every storage key, so one slot is exact), which covers the observed accepted form `Cache<i64>.Statistics.count`; any other generic-container static is deferred under PD27 as a D2 (e) row if no library, milestone or corpus program uses it. Alternatives: (a) PD27 deferral of every generic-container static; (c) `MirStatic` carries the container's Type arguments before G2 |
