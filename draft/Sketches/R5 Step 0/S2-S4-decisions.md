@@ -181,5 +181,12 @@ Applied without design change: X31's rows are P7a's (the old pool keeps an expli
 
 Owner summary additions (round 3): F11's rule reached two rounds and is presented as the proposed whitelist (X30′); under sel, a gate refusal may hide independent coverage gaps until X2 (a temporary SPEC 23.1.2 limit, sel only).
 
+## From implementing units (facts that correct the package)
+
+| # | Source | Decision |
+| --- | --- | --- |
+| X36 | P4a and its review (merged `5f77d886`, DECISIONS R5-M17) | C §3.4's and PD8's "`select i1` only in its failure block" is corrected: `EmitFixture`'s check admits the `%zeroN` reason select and the `%minusoneN` selects, and `LlvmScalarText`'s contract states both forms. Before C1a, `LlvmScalarText`'s inputs state their preconditions or take typed values: an integer constant is spelled as the decimal of its signed value (through `WriteNumber`; LLVM's `i8 255` spelling would skip SPEC 13.3.1's −1 substitution), operand width ≤ 64 or an explicit failure (128-bit division stays `Unsupported_Kd`), and the location operands named as §3.4 says rather than hard-coded. `LlvmScalarText` also owns IMPL 21.3.3's literal −1 rule for unchecked quotients and remainders (`WriteOperation`), and the tuple relation calls its `WriteEquality` |
+| X37 | P1a and its review (merged `8fc244c6`, DECISIONS R5-M16) | P1b's completion condition: one scalar decision — the kernel takes `in StoredValue`, `ArrayElement.IsScalar` calls a static Backend predicate over `ValueLowering` (warm lookups allocation-free), and the `bool scalar` parameter of `WriteStoredArgument` goes; the rows' callees and needs (X4) land in P1b–P2b and the entry file says so |
+
 R4 information: under `mir`, a slot-typed static (`let zero: T = 0` in a generic group) also produces a MIR `InternalInvariant_Kd`
 beside Binding's `Unsupported_Kd` (seen at `147c4616`; it should be a derived value); check on dev.
