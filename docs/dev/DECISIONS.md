@@ -1101,7 +1101,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   (an index's Op Call its selected call, a ConstIndex its folded position), after which the builder trusts them; the planning
   session decides. Rejected: a `MirViolation` (the validator verifies MIR; the broken contract is HIR's); an exception (AGENTS: a
   located internal invariant without recovery); a code parameter on `Unsupported` (one function steered by a parameter for two
-  contracts). Not temporary.
+  contracts). Not temporary. Its detection in the builder (`Broken`) is superseded by R4-M61: the publisher checks the facts.
 - **R4-M50** (2026-10-17; the A5 plan's §9.2 under OD5) A test that expects a rule an adopted SPEC revision replaced carries
   `[Trait("OldRule", "<id>")]`, the id naming the revision's item as `draft/INTEGRATED.md` maps it (S1, S4, P1–P11, a, b),
   with a comment naming the affected rows. It marks what the default pipeline still decides; each such test migrates to the
@@ -1122,6 +1122,33 @@ and migration obligations remain in force; no numeric cap changes are authorized
   pre-enumerate theories by default, so a row's trait reaches neither discovery, `-trait` selection nor the result file);
   the old verdict in `Expected` with a `Mir` entry (the corpora state the SPEC in `Expected`); `Run` on the row (the SPEC
   rejects its program). Temporary: removed at R6-check with R4-M50's traits.
+- **R4-M61** (2026-10-17; PLAN G96, two independent designs compared and the chosen one reviewed independently, implemented on the
+  planning session's instruction of the same day; supersedes R4-M42's `MirBuilder.Broken`) A published Op guarantees the Binding
+  facts the MIR builder reads for it, which `Binding.HasFacts` (`Binding/Binding.Hir.Facts.cs`, whose header is the contract) lists:
+  every call the builder builds for it complete (each argument with its Source, a direct base call with its implementation's
+  symbol), and per Op the call it builds (an index's selected call), the Evaluated argument of a key resolution and of an update's
+  setter, an assignment's or update's accessor plans and, for an update with one standard accessor, the Property's symbol, an
+  interpolation's formatting calls, a for loop's entry, step, iterator symbol and decomposition (a counted loop's binding symbols),
+  a match's current plan, a dictionary literal's lookup, a closure's definition, a conversion's binding (a case adaptation's plan),
+  a Tuple or array literal's Type and an enum Case construction's plan, and a declared local's and a name's symbol; an index's
+  selected call is `Binding.SelectedIndexCall`, which `ExpansionPlan` reads too. A ConstIndex keeps its position on its own plan row
+  (`Folded`), written with its PlaceShape, not on its literal's. The publisher gives a node the Op its form calls for and publishes
+  it only with these facts; without them the node is `HirOp.Error`, which the builder replaces whole. Where Binding resolved that
+  node and did not reject it (no failure, recovery or `#switch` without an arm), the contract is broken: the publisher lists the
+  node in `HirTables.Broken`, and `MirBuilder.Build` records `InternalInvariant_Kd` at it in `MirProgram.Records`, which the mir
+  pipeline publishes and which refuses generation; its Opaque value is derived (`Rejected`), so each such node is recorded once. A
+  resolved form that no HirOp member describes keeps `Unset`, which the builder reports as `Unsupported_Kd` (HirOp's contract),
+  instead of a silent Error. The builder trusts every listed fact: `MirBuilder.Broken` and its two sites and the builder's
+  missing-fact fallbacks are deleted (a direct base call without its implementation and an update's setter without its Evaluated
+  argument reported Unsupported; an interpolation, a for loop, a match and a dictionary literal without their plans were a silent
+  Opaque; a key resolution without its Evaluated argument dropped the length; ConstElement walked to its literal; `Named` reported a
+  Storage symbol without its Property as Unsupported). An Unresolved node lacking its facts is an Error now, so its children are not
+  published as evaluated and a closure inside it is not built, as inside any Error (PLAN G121). Rejected: `Broken` at each builder
+  site (an open family, and a resolved node published Error stayed silent); checking only the Op arms that test a plan (leaves
+  symbols, Sources, Type arguments and the adaptation plan to faults); a validator walk after the publish (a node it turns into an
+  Error keeps evaluated children); a `HirOp` member (40 of 40); a Binding failure written at publish (publishing decides nothing,
+  `PublishIsInvisible`); non-nullable fact types now (R7's CallPlan and declaration-table scope). Lasting: `HasFacts` and
+  `HirTables.Broken` are the publication contract; at R7 the publisher walk goes and Binding's inline Op writes call `HasFacts`.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

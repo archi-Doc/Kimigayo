@@ -325,12 +325,14 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 13.7.1: the value secured first, then the target located, its old value dropped where its Type may need it, and the value placed;
-    // a target that is not a Place is a Property's, whose setter (its last call, after any getter) takes the value, evaluated first.
+    // a target that is not a Place is a Property's, designated through its parentheses, whose setter (its last call, after any getter)
+    // takes the value, evaluated first.
     private void Replace(MirPlace destination, BinaryKoto assignment)
     {
         if (HirTables.PlaceOf(assignment.Left).Kind is HirPlaceKind.Unset or HirPlaceKind.Value)
         {
-            if ((CallPlan.Of(assignment.Left, 1) ?? CallPlan.Of(assignment.Left)) is { } setter)
+            var property = KotoHelper.UnwrapParentheses(assignment.Left);
+            if ((CallPlan.Of(property, 1) ?? CallPlan.Of(property)) is { } setter)
             {
                 this.Call(destination, setter, assignment, assignment.Right);
             }

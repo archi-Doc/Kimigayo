@@ -79,6 +79,12 @@ public sealed partial class Binding
             this.exclusive = this.ExclusiveUse(node);
             if (node.SyntaxOwner is { Hir.Ops: { } ops, Hir.Res: { } res, Hir.Completions: { } completions, Hir.Places: { } places } && node.SyntaxId < ops.Length)
             {
+                // An Error Binding resolved without rejecting it lacks the facts its Op guarantees (HasFacts): a broken HIR contract.
+                if (op == HirOp.Error && node.BindingState == BindingState.Resolved && !Rejected(node))
+                {
+                    node.SyntaxOwner.Hir.Broken!.Add(node);
+                }
+
                 ops[node.SyntaxId] = op;
                 res[node.SyntaxId] = this.ResOf(node);
                 completions[node.SyntaxId] = op is HirOp.Unset or HirOp.Syntax or HirOp.Body ? HirCompletion.Unset
@@ -101,6 +107,12 @@ public sealed partial class Binding
                 var value = node.BoundType is { IsFloatingPoint: true } type ? ScalarTypes.TryFloatLiteral(number, type, negative, out var bits) ? (Int128)bits : null
                     : number.TryGetIntegerMagnitude(out var magnitude) ? unchecked((Int128)(negative ? 0 - magnitude : magnitude)) : (Int128?)null;
                 HirTables.PlanFor(node, value is not null).Folded = value;
+            }
+
+            // A fixed-array element at a literal position keeps the position on its own row, beside its PlaceShape (SPEC 15.1.3).
+            if (node is IndexKoto index && HirTables.PlaceOf(node).Kind == HirPlaceKind.ConstIndex)
+            {
+                HirTables.PlanFor(node, written: true).Folded = ElementAccess.StaticSelector(index);
             }
 
             if (op is not (HirOp.Unset or HirOp.Error) &&
@@ -136,6 +148,7 @@ public sealed partial class Binding
             }
 
             (hir.Defaults ??= []).Clear();
+            (hir.Broken ??= []).Clear();
             this.table = table;
             this.completion?.Clear();
             (this.parent, this.position, this.exclusive) = (null, HirPosition.None, false);
@@ -148,6 +161,9 @@ public sealed partial class Binding
         // A definition's parts (body, defaults, initializer, accessor bodies) are published only when Binding resolved the definition: those
         // of an unresolved one, such as a definition beyond the case bound (Binding.CaseLimits), are not verified.
         private static bool PartsPublished(Koto definition) => definition.BindingState == BindingState.Resolved;
+
+        // Whether the lexer, the parser or Binding rejected a node: a recovery, a #switch that selected no arm (SPEC 19.3) or a failure.
+        private static bool Rejected(Koto node) => IsRecovery(node, out _) || node is CompileTimeSwitchKoto || node.BindingFailure != BindingFailure.None;
 
         // The position of a child: a declaration evaluates its body, defaults and initializer, an expression its operands, and
         // nothing evaluates Types, names it declares or selects, attributes, Origin clauses or a fill length.
@@ -233,14 +249,20 @@ public sealed partial class Binding
                 return HirOp.Syntax;
             }
 
-            // Binding rejected the node, or left it unresolved without the fact its Op needs.
-            if (IsRecovery(node, out _) || node is CompileTimeSwitchKoto || node.BindingFailure != BindingFailure.None)
+            if (Rejected(node))
             {
                 return HirOp.Error;
             }
 
+            // A form no member describes keeps Unset, which the builder reports as Unsupported, unless Binding left it unresolved; an Op is
+            // published only with the facts it guarantees (HasFacts), else the node is an Error.
             var op = node.BindingState == BindingState.Unvisited ? HirOp.Unset : this.KindOp(node);
-            return op == HirOp.Unset && node.BindingState != BindingState.Unvisited ? HirOp.Error : op;
+            if (op == HirOp.Unset)
+            {
+                return node.BindingState is BindingState.Unresolved or BindingState.Invalid ? HirOp.Error : op;
+            }
+
+            return binding.HasFacts(node, op) ? op : HirOp.Error;
         }
 
         // SPEC 13.5: @move, @copy and a same-Type conversion acquire their operand, @follow selects a referent, the rest convert.
@@ -254,8 +276,8 @@ public sealed partial class Binding
             ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.Address } => HirOp.Borrow,
             DereferenceKoto or ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } => HirOp.Deref,
             ConversionKoto { ConversionBinding: ConversionBinding.ObjectCreation } => HirOp.Call,
-            ConversionKoto conversion => conversion.ConversionBinding == ConversionBinding.None ? HirOp.Unset : HirOp.Convert,
-            TupleLiteralKoto or ArrayLiteralKoto => node.BoundType is null ? HirOp.Unset : HirOp.Aggregate, // Without its Type (a rejected element).
+            ConversionKoto => HirOp.Convert,
+            TupleLiteralKoto or ArrayLiteralKoto => HirOp.Aggregate,
             DictionaryLiteralKoto => HirOp.DictionaryLiteral,
             CodeBlockKoto => HirOp.Block,
             IfKoto => HirOp.If,
@@ -274,11 +296,11 @@ public sealed partial class Binding
             NoInitKoto => HirOp.NoInit,
             TestVerificationKoto => HirOp.TestVerification,
             FieldKoto => HirOp.Let,
-            FunctionKoto closure => BoundClosure.Of(closure) is null ? HirOp.Unset : HirOp.Closure, // Without its definition (ClosureDef).
+            FunctionKoto => HirOp.Closure,
             IsKoto { IsRuntimeTest: true } => HirOp.RuntimeTypeTest,
             IndexKoto index => (binding.IndexerCall(index, false) ?? binding.IndexerCall(index, true) ?? binding.ViewRangeCall(index)) is null ? HirOp.Index : HirOp.Call,
             RangeKoto or FromEndIndexKoto => CallPlan.Of(node) is null ? HirOp.Range : HirOp.Call,
-            InvocationKoto => CallPlan.Of(node) is not null ? HirOp.Call : node.BoundSymbol?.Kind == BindingSymbolKind.EnumCase ? HirOp.Aggregate : HirOp.Unset,
+            InvocationKoto => CallPlan.Of(node) is null && node.BoundSymbol?.Kind == BindingSymbolKind.EnumCase ? HirOp.Aggregate : HirOp.Call,
             MemberAccessKoto { Right: NumberLiteralKoto } => HirOp.Field,
             MemberAccessKoto or IdentifierNameKoto or GenericsKoto or SyntaxFormKoto => this.NameOp(node),
             UnaryKoto { Akind: KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement } or
@@ -301,7 +323,7 @@ public sealed partial class Binding
         // A name evaluates what its symbol is; a Property with a custom accessor is its accessor calls.
         private HirOp NameOp(Koto node) => node.BoundSymbol?.Kind switch
         {
-            null => node is MemberAccessKoto { BindingState: BindingState.Resolved } ? HirOp.PrimitiveOp : HirOp.Unset, // The metadata of a sequence.
+            null => node is MemberAccessKoto { BindingState: BindingState.Resolved } ? HirOp.PrimitiveOp : HirOp.Name, // The metadata of a sequence.
             BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture or BindingSymbolKind.PatternCandidate or
                 BindingSymbolKind.Storage or BindingSymbolKind.LengthParameter or BindingSymbolKind.Function => HirOp.Name,
             BindingSymbolKind.Property => CallPlan.Of(node) is not null ? HirOp.Call : this.ResOf(node) == HirRes.Static ? HirOp.Name : HirOp.Field,
