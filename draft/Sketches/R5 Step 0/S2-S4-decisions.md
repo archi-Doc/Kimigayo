@@ -18,7 +18,7 @@ owner (OQ4, DECISIONS R5-M1). Where a package and this file disagree, this file 
 | X8 | File of `Instantiates`, `Erase` and the C-layout instance view (K P2, F 3) | One partial `Binding/TyCtxt.Instances.cs` (PD20's `TyCtxt.Erasure.cs` renamed) | One concern: instance identity; `Erase`'s null rule calls `Instantiates` |
 | X9 | Property witnesses (F 1) | Backend Storage shims (PLAN10 §5.7); K6 adds the item row; F5p is not adopted | F facts 4 and 12; no extra MIR bodies |
 | X10 | Closure bridge memo (K §4.2, F §3.11) | Memoized per closure Type, not per Subst; K2 adds the two-closure regression | Per-Subst memo gives two closures in one instance one CallPlan (legacy wrong code) |
-| X11 | R4 ask numbering | A-11 = G91's per-query cut before K7 (K); A-12 = A4's `Witnesses` comparison branch reads `TyCtxt.Comparison(operators: false)` (F's "A-11", optional); F's withdrawn D2 A-12 is not used | Unique ids |
+| X11 | R4 ask numbering | A-11 = G91's per-query cut before K7 (K) *(satisfied; no longer a K7 prerequisite (X21))*; A-12 = A4's `Witnesses` comparison branch reads `TyCtxt.Comparison(operators: false)` (F's "A-11", optional); F's withdrawn D2 A-12 is not used | Unique ids |
 | X12 | A-2 (C O1) | Required before C4a: `MirDropTable` publishes per-body completeness from A1's and A2's own outcome per body (name as R4 fixes it, e.g. `Incomplete(body)`); the R4 planning session agreed to land it in unit 1c, independent of G125 | `MirReport` merges by (code, subject) with no body; A5's arena code equals A1's |
 
 ## Chapter K open points
@@ -28,11 +28,11 @@ owner (OQ4, DECISIONS R5-M1). Where a package and this file disagree, this file 
 | P1 | X7 |
 | P2 | X8 |
 | P3 | X6 |
-| P4 | The three inline depth bounds (walk 32, storage 64, layout 64) are not unified in R5; K7 counts destruction-walk Deep hits over library, milestones and fixtures; a real hit is an (e) row with a PLAN issue |
+| P4 | The three inline depth bounds (walk 32, storage 64, layout 64) are not unified in R5; K7 counts destruction-walk Deep hits over library, milestones and fixtures; a real hit is an (e) row with a PLAN issue *(the Deep count: superseded by X20/X21)* |
 | P5 | The bundled library's checked set is rooted once by a test, not in every compilation; user modules (and a user Library project's own modules) are roots. The design review is asked to challenge this reading of SPEC 8.15.3 and IMPL 21.3.3 explicitly |
 | P6 | Instance-stage records use the source-module location rule with the Inlined step-out |
-| P7 | A destruction-walk Deep in a glue item is `Unsupported_Kd` (R4's code for this cause, A4's Limit), one code per cause |
-| P8 | The prepared-storage invariant covers admitted items only; a root's own Types are not checked against the depth bound (K0: a nongeneric `Option^32<ref/i32>` local builds today) |
+| P7 | A destruction-walk Deep in a glue item is `Unsupported_Kd` (R4's code for this cause, A4's Limit), one code per cause *(superseded by X20/X21)* |
+| P8 | The prepared-storage invariant covers admitted items only; a root's own Types are not checked against the depth bound (K0: a nongeneric `Option^32<ref/i32>` local builds today) *(superseded by X20/X21)* |
 
 ## Chapter C open points
 
@@ -79,7 +79,7 @@ of findings go to the owner (AGENTS).
 | # | Finding (lens) | Decision |
 | --- | --- | --- |
 | X13 | The item's view has two owners (C, x, K) | The collector publishes `View(item)` (K §4.3); codegen selects it with `MirCases.Select`; C's own `MirCases.Views` call and C §2 row 6 are withdrawn. C's inputs add `CheckedSet.Find` (an Open drop row needs a child's glue) |
-| X14 | Property-witness shims cannot be keyed or written (x, F, K) | Implemented in R5, not deferred: `MonoKind` gains a property-witness member whose key carries the Field symbol, the Self Type and the witness kind (K fixes the exact `MonoKey` shape); K6 creates the item from `TyCtxt.Witness`'s Storage kind; a new unit C3c in G:call writes the shim, prerequisites K6, P7b and C4a (Set needs DropGlue), fixtures `Counted`/`Own` |
+| X14 | Property-witness shims cannot be keyed or written (x, F, K) | Implemented in R5, not deferred: `MonoKind` gains a property-witness member whose key carries the Field symbol, the Self Type and the witness kind (K fixes the exact `MonoKey` shape); K6 creates the item from `TyCtxt.Witness`'s Storage kind; a new unit C3c in G:call *(→ G:C-drop (X32))* writes the shim, prerequisites K6, P7b and C4a (Set needs DropGlue), fixtures `Counted`/`Own` |
 | X15 | Target-bearing intrinsics stated inconsistently (x, K) | One whitelist column on the intrinsic row table names the intrinsics whose sites carry a collector target (`ErasedWriter`, `StaticEnsure`, `MakeObj`/`MakeRc`/`MakeArc`/`Clone`/`TypeTest`, `DestroyValues`, as K's rows); every other intrinsic has none. C9b reads K6's target (prerequisite K6) and never calls `TyCtxt.Witness` |
 | X16 | K6/F5b interface (F, K) | K6 calls `TyCtxt.Witness(requirement, contract, subst)` with `MirCallee.Contract` (formatting rows pass their Contract); kinds Body, Builtin, Storage, Refused, Limit; K's rows are updated |
 | X17 | `Core/Compilation.Pipeline.cs` changed without a hold, fourth R5 change (x) | C0a puts the generation entry and the gate in a new R5-owned partial `Core/Compilation.Generation.cs` (contract entry); C4a's gate step 2 and K11's mark change that partial only. K1 and K4b keep their adv hold lines on `Compilation.Pipeline.cs`; G1's split stays at R6-gen |
@@ -127,7 +127,7 @@ loses its meaning.
 | X26 | X8 still named a C-layout instance view while X18 makes `Layout.Of` the owner (K, C) | The view is dropped from `TyCtxt.Instances.cs` (it holds `Instantiates` and `Erase` only); `Layout.Of` is the one owner of the zero-sized C-layout rule; F1's `AdtDef.IsCLayout` feeds it; Binding keeps rejecting written forms and loses its eager instance report at G2b |
 | X27 | The intrinsic row table and the direct-part enumeration are needed before their C units exist (K P9, P10) | First consumer creates (R4-M2a): K1 creates the intrinsic row table with its `Target` column (C0b1 extends it with codegen rows); K7 creates the direct-part enumeration in `Backend/DropGlue.cs` and C4a writes glue from it |
 | X28 | `TyCtxt.Witness`'s result needs the witness kind for X14's key (F) | `(Kind, Target, Subst, Access)`, `Access` the existing `PropertyWitnessKind`; K keys the property-witness item on (Field, erased Self, `Access`) |
-| X29 | G131: `MirValidator` accepts a Never-typed operand on every path (R4) | New unit F11 in window W1 (W1's files gain `Mir/MirValidator*.cs`): a Never temp is read only in check-only blocks; prerequisite of C0b1; an R4 reviewer signs it off (A1–A5 trust the validator) |
+| X29 | G131: `MirValidator` accepts a Never-typed operand on every path (R4) | New unit F11 in window W1 (W1's files gain `Mir/MirValidator*.cs`): a Never temp is read only in check-only blocks *(rule replaced by X30)*; prerequisite of C0b1; an R4 reviewer signs it off (A1–A5 trust the validator) |
 | X22′ | X22's options (C) | Superseded by X33 |
 
 ## Design review round 2 — decisions
