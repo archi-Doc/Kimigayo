@@ -4,7 +4,9 @@
 // Input: a callee with its call Subst, or a Value callee operand's Type (CallPlan.CalleeType, which MIR's operand reproduces) with the
 // Callable signature it declares (CallPlan.DeclaredSignature, DECISIONS R4-M41); the calling definition (null: top-level statements).
 // Output: an immutable CallRetention, rows Retention(Input, Kind, Output) and Untied, one per callee or signature, Type instantiation and
-// the premise scope or declaration it reads, for the latest Binding pass and reused by later passes until an edit.
+// the premise scope or declaration it reads, for the latest Binding pass and reused by later passes until an edit; CallRetention.Limit
+// where Binding's storage instantiation does not complete the contract (storage nested past its depth bound, which a growing recursive
+// Type of SPEC 15.3.5 always reaches), never an exception.
 // Invariants: an output retains an input exactly when the callee's body may move a value of the input there under the premises its
 // body is checked under: the instantiated contract (the Subst's Types, Self and declaring Type substituted, the callee's own Origins
 // left as the call's fresh regions, so retention is per argument) and the premises of its enclosing declarations; or when both name
@@ -43,15 +45,23 @@ internal readonly record struct Retention(int Input, RetentionKind Kind, int Out
 }
 
 /// <summary>A call's retention: its rows, by output (the result, then each written input) and input, and whether a result atom is
-/// reached from no input and is not <c>static</c>, so the result may refer to storage the caller does not own (design A3's Φ_E).</summary>
-internal sealed class CallRetention(Retention[] rows, bool untied)
+/// reached from no input and is not <c>static</c>, so the result may refer to storage the caller does not own (design A3's Φ_E); or
+/// <see cref="Limit"/>, which has neither.</summary>
+internal sealed class CallRetention(Retention[]? rows, bool untied)
 {
-    private readonly Retention[] rows = rows;
+    /// <summary>The retention of a call whose contract Binding's storage instantiation does not complete under its Subst (storage nested
+    /// past its depth bound, which a growing recursive Type of SPEC 15.3.5 always reaches), as A4's effects take it: no rows are computed,
+    /// and A5 records a located Unsupported_Kd at the call. Reading its rows or Untied is a broken contract.</summary>
+    internal static readonly CallRetention Limit = new(null, untied: false);
+
+    private readonly Retention[]? rows = rows;
     private readonly bool untied = untied;
 
-    internal ReadOnlySpan<Retention> Rows => this.rows;
+    internal bool IsLimit => this.rows is null;
 
-    internal bool Untied => this.untied;
+    internal ReadOnlySpan<Retention> Rows => this.rows ?? throw new InvalidOperationException("The Limit retention has no rows.");
+
+    internal bool Untied => this.rows is null ? throw new InvalidOperationException("The Limit retention has no Untied.") : this.untied;
 }
 
 internal sealed partial class TyCtxt
@@ -79,25 +89,7 @@ internal sealed partial class TyCtxt
             return known;
         }
 
-        var result = this.Instance(callee, types, -1, scope, out var count);
-        var inputs = new BoundType[count];
-        for (var i = 0; i < count; i++)
-        {
-            inputs[i] = this.Instance(callee, types, i, scope, out _);
-        }
-
-        // Its Callable bounds, erased callables its body may call through a carrier, as the call instantiates them.
-        var declaration = (FunctionKoto)callee.Declaration;
-        var bounds = this.retentionBounds;
-        binding.CallableBoundSignatures(declaration, bounds);
-        for (var i = 0; i < bounds.Count; i++)
-        {
-            var bound = types is null ? bounds[i] : this.Apply(bounds[i], types) ??
-                throw new InvalidOperationException($"The call substitution does not instantiate a Callable bound of {callee.Name}.");
-            bounds[i] = scope is null ? bound : binding.CallableContractType(bound, scope);
-        }
-
-        var retention = binding.Retains(declaration, inputs, result, types?.Declaring, CollectionsMarshal.AsSpan(bounds));
+        var retention = this.InstanceRetention(callee, types, scope) ?? CallRetention.Limit;
         this.retentions.Add((callee, types, scope), retention);
         return retention;
     }
@@ -145,13 +137,55 @@ internal sealed partial class TyCtxt
         return found;
     }
 
-    // A parameter's Type, or at -1 the result's, as the Types instantiate it, under `scope`'s premises when given (TyCtxt.Premised's
-    // rule). A call MIR built has a contract its Subst instantiates (the validator reads the same Signature); one it does not is a
-    // broken contract.
-    private BoundType Instance(BindingSymbol callee, Subst? types, int slot, BindingScope? scope, out int count)
+    // The retention of a callee's contract and Callable bounds (erased callables its body may call through a carrier) as the Types
+    // instantiate them; null where Binding's storage instantiation does not complete one of them (CallRetention.Limit).
+    private CallRetention? InstanceRetention(BindingSymbol callee, Subst? types, BindingScope? scope)
     {
-        var type = Signature(callee, types, slot, out count) ??
-            throw new InvalidOperationException($"The call substitution does not instantiate {callee.Name}'s signature.");
-        return scope is null ? type : binding.CallableContractType(type, scope);
+        if (this.Instance(callee, types, -1, scope, out var count) is not { } result)
+        {
+            return null;
+        }
+
+        var inputs = new BoundType[count];
+        for (var i = 0; i < count; i++)
+        {
+            if (this.Instance(callee, types, i, scope, out _) is not { } input)
+            {
+                return null;
+            }
+
+            inputs[i] = input;
+        }
+
+        var declaration = (FunctionKoto)callee.Declaration;
+        var bounds = this.retentionBounds;
+        binding.CallableBoundSignatures(declaration, bounds);
+        for (var i = 0; i < bounds.Count; i++)
+        {
+            if (this.Instance(bounds[i], types, scope) is not { } bound)
+            {
+                return null;
+            }
+
+            bounds[i] = bound;
+        }
+
+        return binding.Retains(declaration, inputs, result, types?.Declaring, CollectionsMarshal.AsSpan(bounds));
+    }
+
+    // A parameter's Type, or at -1 the result's, as the Types instantiate it (null: CallRetention.Limit). A declared contract without
+    // the Type is a broken contract: MIR's validator reads the same Signature.
+    private BoundType? Instance(BindingSymbol callee, Subst? types, int slot, BindingScope? scope, out int count)
+    {
+        var declared = Signature(callee, null, slot, out count) ?? throw new InvalidOperationException($"{callee.Name}'s signature has no Type at {slot}.");
+        return this.Instance(declared, types, scope);
+    }
+
+    // A declared Type as the Types instantiate it, under `scope`'s premises when given (TyCtxt.Premised's rule); null where Binding's storage
+    // instantiation does not complete it.
+    private BoundType? Instance(BoundType declared, Subst? types, BindingScope? scope)
+    {
+        var type = types is null ? declared : this.Apply(declared, types);
+        return type is null || scope is null ? type : binding.CallableContractType(type, scope);
     }
 }
