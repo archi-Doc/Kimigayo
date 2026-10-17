@@ -4,7 +4,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// The requirement-witness core (SPEC 8.6.1, 8.11.4, 11.9.2, 22.1; IMPL 21.3.1; DECISIONS R5-M18).
+// The requirement-witness core (SPEC 8.6.1, 8.11.4, 11.9.2, 22.1; IMPL 21.3.1; DECISIONS R5-M22).
 // - Responsibility: the one rule from a requirement, a Self that is not abstract, the Contract reference the call selected and a premise
 //   scope to what the requirement runs.
 // - Inputs: verified conformance paths under the caller's scope; the built-in targets, which take their requirements' signatures once
