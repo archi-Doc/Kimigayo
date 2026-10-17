@@ -189,10 +189,10 @@ first. IntrinsicId returns to 30 at R8.
   forwarding properties (R7, their Parsing and root-helper reads at R6-check; DECISIONS R5-M9); the HIR publisher walk, replaced by inline writes (R7, DECISIONS R2b-D2); the temporary
   intrinsics `Capacity`, `FormatBuffer`, `FormatHint` and `FormatFinish` that the owner admitted on 2026-10-11
   (`IntrinsicId` limit 34, back to 30 in R8; DECISIONS R3-9, R3-10); the `Compilation.Analyzed` event, the difference
-  ledger's observation point, and `Binding.IsEffectRecord`, the ledger's old-side effect subset (R6, DECISIONS R4-M17, R4-M23).
-  Transitional attributes identify these declarations (CR-A7). The lasting HIR publication/version contract is unmarked;
-  only its publisher walk and private state disappear at R7. LegacyRuntimeHelpers has no declaration yet; its future
-  producer must record the R8 obligation when introducing it.
+  ledger's observation point, and `Binding.IsEffectRecord`, the ledger's old-side effect subset (R6, DECISIONS R4-M17, R4-M23);
+  `LegacyRuntimeHelpers`, the Backend's Array, Dictionary, formatting and string-comparison runtime text and its requests
+  (R8, DECISIONS R5-M16). Transitional attributes identify these declarations (CR-A7). The lasting HIR publication/version
+  contract is unmarked; only its publisher walk and private state disappear at R7.
 - **Performance and allocation.** Generated native code may not regress in O2 run time or allocation counts (plan §18
   P1, P2); O0 run time and compiler processing time may, when recorded (P1, P3). A timing regression exceeds the
   variation of repeated matched runs (P4). Compiler allocations follow the owner's decision of 2026-10-11 (AGENTS,

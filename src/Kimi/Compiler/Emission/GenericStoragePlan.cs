@@ -234,7 +234,7 @@ internal sealed partial class GenericStoragePlan
                     "void",
                     [new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "self", LogicalIndex: 0), new("ptr", "value", LogicalIndex: 1)]) { ResultSlot = true };
                 this.formattingWrites.Add(abi, wrapper);
-                module.FormattingWrites.Add(new(wrapper, abi));
+                module.RuntimeHelpers.FormattingWrites.Add(new(wrapper, abi));
             }
 
             abi = wrapper;
@@ -569,7 +569,7 @@ internal sealed partial class GenericStoragePlan
         AbiParameter[] parameters = fixedBuffer ? [ret, value, new("ptr", "destination", LogicalIndex: 1), new("i64", "capacity", AbiParameterKind.Context), location, length] : [ret, value, location, length];
         result = new("__kimi_format_conversion" + this.formattingConversions.Count, "void", parameters) { ResultSlot = true };
         this.formattingConversions.Add((write, kind), result);
-        module.FormattingConversions.Add((result, write, fixedBuffer));
+        module.RuntimeHelpers.FormattingConversions.Add((result, write, fixedBuffer));
         return result;
     }
 

@@ -11,7 +11,9 @@ namespace Kimi.Compiler;
 internal sealed partial class BodyLowering
 {
     private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar, int Remainder, int Option, RemainderFields Fields), ArrayHelper> arrayHelpers = new();
-    private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar, int Remainder, int Option, RemainderFields Fields), ArrayHelper> arrayHelperCache = new();
+    private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar, int Remainder, int Option, RemainderFields Fields), CachedArrayHelper>
+        arrayHelperCache = new();
+
     private bool arrayRuntimeUsed;
 
     private readonly record struct ArrayElement(BoundType Type, ValueLowering Value, AggregateLayout? Layout, bool IsString)
@@ -24,7 +26,17 @@ internal sealed partial class BodyLowering
         internal bool NeedsDestruction => this.IsString || this.Layout?.NeedsDestruction == true;
 
         internal long Stride => this.Value.Layout.Stride;
+
+        // The Backend element descriptor of the helpers; an aggregate that needs destruction is destroyed by its layout's routine.
+        internal StoredValue ToStored()
+        {
+            var drop = this.Layout is { NeedsDestruction: true } layout ? "__kimi_drop_aggregate" + layout.Id.ToString(CultureInfo.InvariantCulture) : null;
+            return new(this.Value, drop, this.IsString);
+        }
     }
+
+    // A cached helper with the Option and remainder records it was built from, which a cache hit must match.
+    private readonly record struct CachedArrayHelper(ArrayHelper Helper, AggregateLayout? Option, AggregateLayout? Remainder);
 
     // SPEC 22.2: the storage boundary writes a remainder record {storage, position, count[, capacity]} by Field name.
     private static RemainderFields GetRemainderFields(AggregateLayout layout, BoundType type, bool capacity)
@@ -101,10 +113,10 @@ internal sealed partial class BodyLowering
         }
 
         // Keep syntax-free physical helpers across warm emission, but register only this module's used helpers.
-        if (this.arrayHelperCache.TryGetValue(key, out existing) && ReferenceEquals(existing.Option, option) && ReferenceEquals(existing.Remainder, remainder))
+        if (this.arrayHelperCache.TryGetValue(key, out var cached) && ReferenceEquals(cached.Option, option) && ReferenceEquals(cached.Remainder, remainder))
         {
-            this.arrayHelpers.Add(key, existing);
-            return existing;
+            this.arrayHelpers.Add(key, cached.Helper);
+            return cached.Helper;
         }
 
         var suffix = element.Layout is { } layout ? "a" + layout.Id.ToString(CultureInfo.InvariantCulture) : element.IsString ? "string" : element.Value.ComputationType;
@@ -153,8 +165,8 @@ internal sealed partial class BodyLowering
                 => new(name, unit, [new("ptr", "value"), new("i64", "count"), new("ptr", "result", AbiParameterKind.ResultSlot)]) { ResultSlot = true },
             _ => new(name, unit, [handle, location, length]),
         };
-        var helper = new ArrayHelper(kind, abi, element.Value, element.Layout, element.IsString, option, remainder, fields);
-        this.arrayHelperCache[key] = helper;
+        var helper = new ArrayHelper(kind, abi, element.ToStored(), option?.PayloadOffset, fields);
+        this.arrayHelperCache[key] = new(helper, option, remainder);
         this.arrayHelpers.Add(key, helper);
         return helper;
     }

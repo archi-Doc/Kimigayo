@@ -19,12 +19,12 @@ internal sealed partial class BodyLowering
     private static long AlignDictionary(long size, int alignment) => (size + alignment - 1) & -(long)alignment;
 
     // Physical entry metadata is independent of the operations that acquire or destroy its stored values.
-    private static (long KeyOffset, long ValueOffset, long Stride) GetDictionaryEntryLayout(in ArrayElement key, in ArrayElement value)
+    private static DictionaryEntryLayout GetDictionaryEntryLayout(in ArrayElement key, in ArrayElement value)
     {
         var alignment = Math.Max(8, Math.Max(key.Value.Layout.Alignment, value.Value.Layout.Alignment));
         var keyOffset = AlignDictionary(16, key.Value.Layout.Alignment);
         var valueOffset = AlignDictionary(keyOffset + key.Value.Layout.Size, value.Value.Layout.Alignment);
-        return (keyOffset, valueOffset, AlignDictionary(valueOffset + value.Value.Layout.Size, alignment));
+        return new(keyOffset, valueOffset, AlignDictionary(valueOffset + value.Value.Layout.Size, alignment));
     }
 
     private DictionaryHelper GetDictionaryHelper(DictionaryHelperKind kind, in ArrayElement key, in ArrayElement value)
@@ -50,8 +50,7 @@ internal sealed partial class BodyLowering
                 DictionaryHelperKind.Place => new(name, "void", [handle, new(key.IsScalar ? key.Value.ComputationType : "ptr", "key"), new(value.IsScalar ? value.Value.ComputationType : "ptr", "value"), location, length]),
                 _ => new(name, "void", [handle, location, length]),
             };
-            var layout = GetDictionaryEntryLayout(key, value);
-            helper = new(kind, abi, key.Value, key.Layout, key.IsString, value.Value, value.Layout, value.IsString, layout.KeyOffset, layout.ValueOffset, layout.Stride, related);
+            helper = new(kind, abi, key.ToStored(), value.ToStored(), GetDictionaryEntryLayout(key, value), related);
             this.dictionaryHelperCache.Add(cacheKey, helper);
         }
 

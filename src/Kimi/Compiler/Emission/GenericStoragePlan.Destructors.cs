@@ -59,7 +59,7 @@ internal sealed partial class GenericStoragePlan
                     return false;
                 }
 
-                module.FunctionReferences.Add(abi!);
+                module.RuntimeHelpers.FunctionReferences.Add(abi!);
             }
             finally
             {

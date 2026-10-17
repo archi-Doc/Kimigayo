@@ -189,13 +189,14 @@ public sealed partial class LlvmEmitter
             this.lowering.Virtuals = this.virtuals;
             this.objects.Virtuals = this.virtuals;
 
-            module.DictionaryAppendSlot = this.functions.GetValueOrDefault(c.Library.DictionaryAppendSlot);
-            module.DictionaryInitialize = this.functions.GetValueOrDefault(c.Library.DictionaryInitialize);
-            module.DictionaryClearLinks = this.functions.GetValueOrDefault(c.Library.DictionaryClearLinks);
-            module.DictionaryRequireAbsent = this.functions.GetValueOrDefault(c.Library.DictionaryRequireAbsent);
-            module.DictionaryReserveStorage = this.functions.GetValueOrDefault(c.Library.DictionaryReserveStorage);
-            module.DictionaryAppend = this.functions.GetValueOrDefault(c.Library.DictionaryAppend);
-            module.DictionaryShrink = this.functions.GetValueOrDefault(c.Library.DictionaryShrink);
+            var helpers = module.RuntimeHelpers;
+            helpers.DictionaryAppendSlot = this.functions.GetValueOrDefault(c.Library.DictionaryAppendSlot);
+            helpers.DictionaryInitialize = this.functions.GetValueOrDefault(c.Library.DictionaryInitialize);
+            helpers.DictionaryClearLinks = this.functions.GetValueOrDefault(c.Library.DictionaryClearLinks);
+            helpers.DictionaryRequireAbsent = this.functions.GetValueOrDefault(c.Library.DictionaryRequireAbsent);
+            helpers.DictionaryReserveStorage = this.functions.GetValueOrDefault(c.Library.DictionaryReserveStorage);
+            helpers.DictionaryAppend = this.functions.GetValueOrDefault(c.Library.DictionaryAppend);
+            helpers.DictionaryShrink = this.functions.GetValueOrDefault(c.Library.DictionaryShrink);
 
             if (!this.generics.Prepare(c, module, this.lowering.AggregateLayouts, this.functions, out failure))
             {
@@ -233,7 +234,7 @@ public sealed partial class LlvmEmitter
                     return false;
                 }
 
-                module.NeedsStringComparison |= function.NeedsStringComparison;
+                helpers.NeedsStringComparison |= function.NeedsStringComparison;
                 this.lowering.RegisterAggregates(module);
             }
 
@@ -444,7 +445,7 @@ public sealed partial class LlvmEmitter
 
                 if (lowered)
                 {
-                    module.NeedsStringComparison |= function.NeedsStringComparison;
+                    module.RuntimeHelpers.NeedsStringComparison |= function.NeedsStringComparison;
                     this.lowering.RegisterAggregates(module);
                     this.generics.LoweredCount++;
                 }

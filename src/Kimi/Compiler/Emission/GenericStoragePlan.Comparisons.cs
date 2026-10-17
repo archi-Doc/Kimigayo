@@ -166,7 +166,7 @@ internal sealed partial class GenericStoragePlan
         }
         else if (ReferenceEquals(plan.Type, BoundType.String))
         {
-            module.NeedsStringComparison = true;
+            module.RuntimeHelpers.NeedsStringComparison = true;
             function.AddScalar(plan.Equality ? EmissionOpcode.StringEquals : EmissionOpcode.StringCompare, result, [left, right], op: plan.Equality ? "eq" : "order");
         }
         else if (WindowsLowering.GetValue(plan.Type) is { } scalar)
