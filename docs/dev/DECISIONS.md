@@ -1152,8 +1152,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
   non-static result atom or carrier no input reaches. Caller relations among the caller's own Origins add no row. The memo
   lives until an edit: passes with no edit reuse its rows, so a warm rebuild allocates nothing, and `Binding.Invalidate`
   discards it at every edit, whether or not a pass finished, as it does the item contexts (A5 1a2; rejected:
-  per-declaration invalidation, a dependency table only this view would use, and pooled recomputation per pass). The
-  catalog's `PublishedRow` gains `InPlace`: `Replace` (`Destroys: 0, InPlace`) for `replace`,
+  per-declaration invalidation, a dependency table only this view would use, and pooled recomputation per pass). A
+  contract Binding's storage instantiation does not complete under the Subst (its depth bound: a growing recursive Type,
+  SPEC 15.3.5) gives `CallRetention.Limit` (`IsLimit`; no rows, and reading its `Rows` or `Untied` is a broken contract),
+  memoized like any retention; A5 records a located `Unsupported_Kd` at the call, as A4 does for `Apply`'s null (A5 1a4;
+  rejected: the exception it threw, every argument retained). The catalog's `PublishedRow` gains `InPlace`: `Replace`
+  (`Destroys: 0, InPlace`) for `replace`,
   `Target` for the `clear`s (relaxation (c) not adopted); `TyCtxt.Published` adds it and A4 reads `Destroys` unchanged.
   Rejected: a graph of its own and premises only from the named declarations (unsound: a nested function's body uses its
   enclosing function's well-formedness, review B1); `Relate` (no two Types are fitted); `TyCtxt.Callable` (R4-M41 publishes

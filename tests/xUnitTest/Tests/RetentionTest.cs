@@ -101,6 +101,23 @@ public sealed class RetentionTest
     public void ExclusiveReceiversAreStores(string method, string expected)
         => Assert.Equal(expected, Declared(Bind(Slot), method));
 
+    // SPEC 15.3.5: a call whose contract instantiates a growing recursive Type (a Nest<T> stores a Nest<(T, T)>) passes the bound of
+    // Binding's storage instantiation, so its retention is the Limit, with no rows (A5 records Unsupported_Kd), as A4's effects are; a
+    // repeating recursive Type (a List<T> stores a List<T>) still gives rows.
+    [Fact]
+    public void GrowingRecursiveContractsAreTheLimit()
+    {
+        var c = Bind("struct Nest<T>\n    public var value: T\n    public var next: Option<rc/Nest<(T, T)>> = .None\n    public init(value: T) => self.value = value\n" +
+            "struct List<T>\n    public var value: T\n    public var next: Option<rc/List<T>> = .None\n    public init(value: T) => self.value = value\n" +
+            "func inspect<T>(value: ref/T) => ()\nvar n = 1\nlet nest = Nest<ref/i32>.init(value: n@ref)\ninspect(nest@ref)\n" +
+            "let list = List<ref/i32>.init(value: n@ref)\ninspect(list@ref)\n");
+        Assert.Equal(["limit", "0 Value result"], Calls(c, "init"));
+        Assert.Equal(["limit", string.Empty], Calls(c, "inspect"));
+        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf()!).First(static x => x.Target.Name == "inspect");
+        Assert.Same(c.Types.Retains(call.Target, c.Types.SubstOf(call), null), c.Types.Retains(call.Target, c.Types.SubstOf(call), null));
+        Assert.Throws<InvalidOperationException>(() => c.Types.Retains(call.Target, c.Types.SubstOf(call), null).Rows.Length);
+    }
+
     // SPEC 4.8.1, 4.8.2, 15.6.4 step 4: a Slice or UniqSlice input is a borrow of its elements, its outer Origin Value and the elements'
     // Origins Content, which a UniqSlice lets the call write: `toArray` keeps the dependencies inside `T` but not the outer borrow, and
     // `appendCopies` stores the elements' only.
@@ -401,6 +418,6 @@ public sealed class RetentionTest
             .Select(x => Show(c.Types.Retains(x.Call!.CalleeType, x.Call.DeclaredSignature, Definition(x.Node)))).ToArray();
 
     private static string Show(CallRetention retention)
-        => string.Join(", ", retention.Rows.ToArray().Select(static x => $"{x.Input} {x.Kind} {(x.Output == Retention.Result ? "result" : $"store {x.Output}")}")
+        => retention.IsLimit ? "limit" : string.Join(", ", retention.Rows.ToArray().Select(static x => $"{x.Input} {x.Kind} {(x.Output == Retention.Result ? "result" : $"store {x.Output}")}")
             .Append(retention.Untied ? "untied" : null).OfType<string>());
 }
