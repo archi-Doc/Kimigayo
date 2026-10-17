@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
 using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler;
@@ -109,7 +110,7 @@ internal static partial class LlvmModuleWriter
     {
         var id = instruction.Operation;
         var input = function.GetOperands(instruction)[0];
-        WriteEquality(output, "%tupleUnordered", id, "i32", input, 2);
+        LlvmScalarText.WriteEquality(output, "%tupleUnordered", id, "i32", Spell(input, stackalloc char[OperandLength]), 2);
         Name(output, "  %tupleOrdered", id);
         Name(output, " = xor i1 %tupleUnordered", id);
         output.Write(", true\n");
