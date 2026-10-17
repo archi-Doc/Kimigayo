@@ -65,7 +65,7 @@ tests and plan references use the new IDs; there are no compatibility aliases. P
 | [43](Milestone43.kimi) | 38 | Integrated Properties, inheritance, objects, static state and formatting |
 | [44](Milestone44.kimi) | — | Virtual slots, overrides, direct base calls and dispatch by Dynamic Type through views, Items, erased values and handles |
 
-Programs 1–37 are complete within their recorded boundaries. The remaining main track is
+Programs 1–37 and 44 are complete within their recorded boundaries. The remaining main track is
 **38 (inheritance) → 39 (exclusive objects) → 41 (Weak) → 42 (static storage) → OCC-X → 43 (integration)**.
 Program **40 (shared objects)** is the alternating track; its strong ownership and nonnull
 Option prerequisites precede Weak. The compiler reduction and owner holds in PLAN still govern
@@ -123,7 +123,7 @@ any explicitly recorded owner decision. The pending diagnostic baselines remain 
 | 41 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Binding: `Unsupported_Kd` at `Weak`; Weak/cyclic construction declarations remain incomplete (G4). |
 | 42 | YES | PASS | NOT_RUN | NOT_RUN | IN_PROGRESS | Binding passes; Ownership: `Unsupported_Kd` at `Registry`; static initialization/shutdown remain incomplete. |
 | 43 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Binding: `Unsupported_Kd` at `Weak`; also depends on refinement, object accessors and OCC-X. |
-| 44 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | IN_PROGRESS | Shared `objref` dispatch within the STATUS "Virtual calls" boundary; `Virtual*Test` cover neighboring forms. The completion Session (PLAN §5 condition 3) is pending. |
+| 44 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Shared `objref` dispatch within the STATUS "Virtual calls" boundary; `Virtual*Test` cover neighboring forms. |
 
 `MilestoneSourcesTest` checks the exact 44-file set, these Binding results and every pending
 stage, first published Error and underlined source anchor in [stage-baselines.json](stage-baselines.json).
@@ -152,7 +152,7 @@ From a source checkout, select the related verification explicitly:
 ```
 
 The second command selects all 40 existing harnesses, including the executable targets
-38, 40 and 44 whose broader implementation work remains IN_PROGRESS. There are no harnesses
+38 and 40 whose broader implementation work remains IN_PROGRESS. There are no harnesses
 for 39, 41, 42 or 43 yet. Release is the default compiler configuration; Debug is opt-in.
 
 Each `test-milestone<N>.ps1` uses the shared original-source harness: one build and one direct
