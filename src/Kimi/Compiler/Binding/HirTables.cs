@@ -35,6 +35,7 @@ internal struct HirTables
     internal HirAdjust[]? Adjusts;
     internal HirPlace[]? Places;
     internal List<DefaultDecl>? Defaults; // The parameter defaults the latest publish evaluated, in walk order: the MIR's default templates.
+    internal List<Koto>? Broken; // The nodes Binding resolved that the latest publish found without the facts their Op guarantees, published Error.
 
     /// <summary>The plan rows from 1 to <see cref="PlanCount"/>; a node gets one at its first plan write and keeps it across passes.</summary>
     internal PlanRow[] Plans;
@@ -188,8 +189,8 @@ internal struct HirTables
 
 /// <summary>
 /// The plan slots of one node (the planIndex column): its kind's retained plan, a second plan, its formatting plan, a folded
-/// constant (a conversion's, or a number literal's value, which <see cref="HirTables.Publish"/> writes), a mode and a flag. Each Koto
-/// class fixes what its slots hold; a class reads them by type, so a slot it does not use reads as absent.
+/// constant (a conversion's, or a number literal's value and a ConstIndex position, which <see cref="HirTables.Publish"/> writes), a
+/// mode and a flag. Each Koto class fixes what its slots hold; a class reads them by type, so a slot it does not use reads as absent.
 /// </summary>
 internal struct PlanRow
 {
@@ -204,7 +205,7 @@ internal struct PlanRow
     private ulong foldedHigh;
     private ulong foldedLow;
 
-    /// <summary>Gets or sets the folded constant of a conversion.</summary>
+    /// <summary>Gets or sets the folded constant of a conversion, a number literal's value or a ConstIndex position.</summary>
     internal Int128? Folded
     {
         readonly get => this.folded ? new Int128(this.foldedHigh, this.foldedLow) : null;

@@ -997,7 +997,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Type holding itself in an Array is deep (PLAN G91). Rejected: `CarriesOriginOrSlot` as the test (builder-made references carry no
   Origin); a depth bound alone, as HoldsRaw has (a repeating recursive Origin-free Type would become a holder and keep the Loans read
   into it live); one fact for both (two readers, two rules). Not temporary.
-- **R4-M37** (2026-10-17; design A3 §4.1 G5, G6, the writeback and the guard row, owner approval of its §9 item 8 on 2026-10-17) The
+- **R4-M37** (2026-10-17; design A3 §4.1 G5, G6, the writeback and the guard row, owner approval of its §9 item 8 on 2026-10-17;
+  G5's path clause and G6's value rule superseded by R4-M52; its `EndBorrow` meaning for guards replaced by A3 §12 E7, recorded
+  with unit 1b-4) The
   MIR builder contracts A5's reservations and guard-local Origins read. G5: every exclusive borrow on an invocation's preparation path
   is `TwoPhaseUniq` (SPEC 15.6.7): a written `@uniq`, also in parentheses or on the Place path of a receiver or an argument down to a
   value (`h@follow@uniq.c.bump(1)`; a call result or a getter activates at its own call), the Reborrow of a stored exclusive reference
@@ -1050,7 +1052,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   at N = 1,024 against 3,310); a stored record per site (+36–60% cold A4 allocation in `SummariesScaleLinearly` against +3–6% for
   the query); open keys and owner Type arguments on `MirStatic` (needed only without P5); a key list per node (union and growth
   checks per element); A4 re-deriving reads and writes from access flags (a second copy of MirUses' rule). Not temporary.
-- **R4-M39** (owner: adopted on 2026-10-17, 「S1採用します」) The A5 plan's S1,
+- **R4-M39** (owner: adopted on 2026-10-17, 「S1採用します」; its SPEC revision landed at `4372b058`; its ending rule, the base
+  before the last dereference, is superseded by R4-M52) The A5 plan's S1,
   [Loan Identity by Base](../../draft/Proposals/2026-10-16%20Loan%20Identity%20by%20Base.md) as revised in `61b1abf2`, which states
   the additions from design A3 that the owner approved on 2026-10-17: a Loan is identified by its Borrow site and Semantics case, its
   Place named by its access path; a child Loan's base is the Place before the last borrow dereference of its path, and destroying in
@@ -1065,7 +1068,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   companion S2 ([Preserves Results by Receiver Place](../../draft/Proposals/2026-10-16%20Preserves%20Results%20by%20Receiver%20Place.md))
   is not decided here.
 - **R4-M40** (2026-10-17; design A3 §4.1's Slice row, owner approval of its §9 item 8 on 2026-10-17, implemented on the planning
-  session's instruction of the same day) `RawSlice` takes a third operand, its backing, what the Slice retains under A5's intrinsic
+  session's instruction of the same day; its handle copy and Open amended by A3 §12 E10, G123 and G94, recorded with
+  their units) `RawSlice` takes a third operand, its backing, what the Slice retains under A5's intrinsic
   retention (every operand to the result), so a Slice cannot outlive or alias a write of what it views, which A3 found otherwise
   accepted. A range selection's backing follows SPEC 4.8.1: an array (fixed or `Array`) lends its whole Place, a shared borrow made
   with the call (`Borrow`); a Slice receiver's handle is copied first where it is located (SPEC 4.7.4), its length, element address
@@ -1101,13 +1105,61 @@ and migration obligations remain in force; no numeric cap changes are authorized
   (an index's Op Call its selected call, a ConstIndex its folded position), after which the builder trusts them; the planning
   session decides. Rejected: a `MirViolation` (the validator verifies MIR; the broken contract is HIR's); an exception (AGENTS: a
   located internal invariant without recovery); a code parameter on `Unsupported` (one function steered by a parameter for two
-  contracts). Not temporary.
+  contracts). Not temporary. Its detection in the builder (`Broken`) is superseded by R4-M61: the publisher checks the facts.
 - **R4-M50** (2026-10-17; the A5 plan's §9.2 under OD5) A test that expects a rule an adopted SPEC revision replaced carries
   `[Trait("OldRule", "<id>")]`, the id naming the revision's item as `draft/INTEGRATED.md` maps it (S1, S4, P1–P11, a, b),
   with a comment naming the affected rows. It marks what the default pipeline still decides; each such test migrates to the
   revised rule, dropping the trait, when MIR decides acceptance. Rejected: changing the expectations now (the default
   pipeline decides acceptance until R6-check); splitting mixed theories (churn for a marker); per-row markers (xUnit traits
   are per method). Temporary: removed at R6-check.
+- **R4-M51** (2026-10-17; design A3 §4.3's C1+C8 view and §4.1's In place row, owner approval of its §9 items 8 and 9 on
+  2026-10-17; A5 step 1, unit 1a, redone after its review) Call retention, the Binding view A5's Loan flow reads for calls
+  (SPEC 15.6.4). `TyCtxt.Retains(callee, Subst, definition)` and `TyCtxt.Retains(calleeType, signature, definition)` (a Value
+  callee's Type and declared Callable signature, R4-M41; `definition` is the calling body's, null at top level) give an
+  immutable `CallRetention`: rows `Retention(Input, Kind, Output)` over the parameter slots `TyCtxt.Signature` numbers (Output
+  `Retention.Result`, or j for a store into input j's writable storage) and `Untied`. Rule: an output retains input i exactly
+  when the callee's body may move a value of i there under the premises it is checked under. The own part is instantiated:
+  the Subst's Types, `Self` and declaring Type only, so the callee's Origins stay fresh regions (step 1) and retention is per
+  argument; its inputs' and declaring Type's R2 (`AddTypePremises`), its result's R3 (`AddResultPremises`) and its clauses
+  through `SubstituteClauseOrigin`. The enclosing part is the catalog's own walk, `ExtractOriginPremises` from the binder's
+  parent outward (`callee.Accessor?.Binder ?? callee`; for C8 a Closure's or function item's declaration,
+  `Binding.SignatureOwner`), after `CollectOriginResolvers`. Erased callables (owner decision 2026-10-17, DECISIONS R4-M52):
+  every callable whose implementation the call cannot see, a Function Type value or a value of a Callable-bounded Type
+  parameter with no concrete body (C8), each callable Type inside a C1 or C8 contract and each Callable bound of the
+  callee's premises (`Binding.CallableBoundSignatures`, instantiated by the call's Subst), relates each fixed (non-static,
+  non-per-call) Origin of its inputs to each fixed Origin of its outputs, its result and the storage it may write
+  (`AddErasedRelations`), since its implementation was compared under premises no view reads (SPEC 15.6.4: an unproven
+  absence of retention never permits access); its per-call Origins relate only by entailment. An abstract carrier's hidden
+  Origins are fixed Origins for this rule (planning session 2026-10-17, review r3 B3: A3 §4.3 retains "with abstract
+  carriers" and R4-M36 counts an abstract Type as hiding Origins). An erased C8 call reads no
+  declaration's premises, only its signature's well-formedness, so its key is the calling definition's constraint scope
+  (`DefinitionUse`), which decides only its pair layers' admitted cases; a Closure's or item's key is its declaration, so
+  two computations reading different premises never share a key (review r2). This closes the Open on binder-null calls. An
+  instance with an abstract part is normalized under the calling definition's premise scope (`EffectPremises`, read by
+  `CallableContractType`), so a requirement on an abstract Self reads `I.Item`, not `I.LentItem(step)`, under `I is
+  Iterator` (SPEC 22.2.3's `nextPair` stays valid); the C1 key is (callee, types-only Subst, that scope), and a concrete
+  instance reads alike everywhere. Entailment is one `OriginPremiseClosure.Close` per output atom,
+  every Semantics-case edge followed; its work is what it reaches, so the total is output-sensitive (rows plus closures).
+  An abstract carrier (a Type parameter or pair target) has one unnamed closure node per computation
+  (`OriginPremiseClosure.Node()`, nodes no Origin expression names), the Origins its instances hide, which outlive the
+  layer above each occurrence (R2); occurrences share it, which replaces the identity scan (`MarkCarrier`) and its
+  closure branch, and `AddErasedRelations` relates it like any fixed Origin.
+  Kind: Value through anything but a borrowed input's referent, Content through that referent only (step 4). Stores:
+  invariant positions (`ComponentVariance`) reached through storage the call may write: not past a shared layer unless a
+  raw pointer is followed again (SPEC 5.2.1), nor past a non-exclusive pair layer, nor in a callable Type. Untied: a
+  non-static result atom or carrier no input reaches. Caller relations among the caller's own Origins add no row. Memo
+  discarded in `ResetPass`. The catalog's `PublishedRow` gains `InPlace`: `Replace` (`Destroys: 0, InPlace`) for `replace`,
+  `Target` for the `clear`s (relaxation (c) not adopted); `TyCtxt.Published` adds it and A4 reads `Destroys` unchanged.
+  Rejected: a graph of its own and premises only from the named declarations (unsound: a nested function's body uses its
+  enclosing function's well-formedness, review B1); `Relate` (no two Types are fitted); `TyCtxt.Callable` (R4-M41 publishes
+  the signature); the call-solved Origins (per Origin); rows per declaration without the Subst (review r1 finding 9); only
+  top-level exclusive inputs as stores; an erased callable read under its writing site's or calling definition's premises
+  (unsound, review r2 B2: its implementation was compared where it was converted); a located `Unsupported_Kd` for such
+  calls (review r2 option 2). Open: the Callable bounds are all of the callee's premise scope, not only those of carriers
+  its contract names (a sound superset); a C8 Closure's or item's bounds are read as declared, not instantiated by an item
+  instance's Type arguments as C1's are (latent: Binding rejects such an item value, `UnprovenConstraint_Kd`, review r3); a
+  pair-layer input gives Value through its target even in borrow cases (step 4
+  would give Content); A5 reads the view once per pass, its warm cost unmeasured. Not temporary.
 - **R4-M60** (2026-10-17, tooling session; PLAN G111; refines R4-M50 for corpus rows) A corpus row that expects a rule an
   adopted SPEC revision replaced states the SPEC's verdict and, in an `Old` entry, what the default pipeline decides until
   R6-check, as `spec-cases.json` states a path's differences beside the SPEC's records (R4-M45); it is that table's class
@@ -1122,6 +1174,47 @@ and migration obligations remain in force; no numeric cap changes are authorized
   pre-enumerate theories by default, so a row's trait reaches neither discovery, `-trait` selection nor the result file);
   the old verdict in `Expected` with a `Mir` entry (the corpora state the SPEC in `Expected`); `Run` on the row (the SPEC
   rejects its program). Temporary: removed at R6-check with R4-M50's traits.
+- **R4-M52** (owner, 2026-10-17, choosing the recommended option of each of the planning session's questions on A5 step
+  1: 「(b2) 折り畳み」, 「assumed completion + α」, 「(c) base なしで採用」, 「別セッションで実施」, and for unit 1a
+  「固定 Origin を関係ありと扱う」; supersedes R4-M39's ending rule and parts of R4-M37) The choices of
+  `draft/Sketches/A5 Step 1/choice-1b.md` §4, recorded as design A3 §9 item 11 and §12 E8–E9, from two independent
+  designs per part, the case 23a proposal's independent review and a design review; prototype round 10 (246 cases) has
+  no unsound acceptance and no unlisted rejection.
+  - **Loan ending** (the [case 23a proposal](../../draft/Proposals/2026-10-17%20Loan%20Termination%20Across%20Borrow%20Dereferences.md),
+    option (c)): destroying in place a Move Path ends every Loan whose access path it exactly prefixes (A3 E8). It replaces
+    R4-M39's base before the last dereference and its ending; S1's other requirements stand. Recovers 23a, 30d, 34c, 35a,
+    35b; census (grep proxies): library, milestones and xUnit literals 0 verdict changes. Conditions from the review: the
+    reservation-route check (A3 E1) and the guard-local marker (E7) land with or before it, and the SPEC revision amends the
+    proposal's safety argument and maps SPEC 13.5.5's pair-layer cell. Not an integration: SPEC and INTEGRATED change at
+    that revision. Rejected: keeping the last base (23a, 30d, 35a, 35b and 11 review cases stay losses); the term "base"
+    (option (b), the same verdicts with one more concept).
+  - **G92b, the fold:** a written exclusive borrow that an invocation's preparation path continues through is not formed;
+    the path's Place is the Place it lends, so each input has one reservation at its lending point, as `holder.items.append(x)`
+    (SPEC 15.6.7: "the same call"), on a shared input's path too. Supersedes R4-M37 G5's path clause and its Open note on a
+    parent reservation's mode. Rejected: an A5 reservation chain (≈ +25 lines and a chain fact for G119; it rejects
+    `let r = holder.count@ref; holder@uniq.items.append(1); inspect(r)`).
+  - **G92a, assumed completion:** on a check-only continuation every node is built and makes its own value and accesses; a
+    node of Type Never has no value, its consumer taking an unwritten Never temp that fits any operand position; a
+    placement rvalue that has an input and whose every input is that value is not built, and the old value at `=` is then
+    not dropped either (`Replace` takes a Never-typed temp when its right side has Type Never), so `x = stop()` leaves x
+    unwritten, as today; a Call is still built with its Never operands. Prerequisite α: Binding gives a Never element of a
+    literal its expected Type. Supersedes R4-M37 G6's rule that a node which does not complete assigns no value (`Set`),
+    with its `Never` operands, and its validator exception (a Never operand's Type is unknown at any operand position).
+    Rejected: keeping `Reached` with a located `Unsupported_Kd` until α.
+  - **SPEC revision** (the owner's explicit instruction): P12, the Loan ending above and the reported gaps (SPEC 14.10.3's
+    Never placement, 15.6.7's overlapping arguments read through Loans, the fold on a shared input's path) go to a
+    separate session with its own review. Until then A5 runs in shadow and publishes nothing.
+  - **Retention through an erased callable** (unit 1a, `TyCtxt.Retains`; asked after its second review round found
+    missing premises again, with that round's three reproducers): a callable whose implementation a call cannot see, a
+    Function Type value (compared at its conversion site under premises the call does not see), a Callable-bound value
+    with no concrete body, and each callable Type inside a contract (or Callable bound of a carrier it names), relates
+    every fixed (non-static, non-per-call) Origin at an input position to every fixed Origin at an output position, its
+    result or the writable storage it may write (SPEC 15.6.4: an unproven absence of retention never permits access);
+    per-call Origins are related by the Function Type's own clauses only; Closures and function items keep their binder
+    chain. Not a loss. Rejected: a hold with a located `Unsupported_Kd`. Census: library 0, milestones 0 (grep proxies).
+  The implementing units record their contracts in the commits that first implement them, including the planning
+  session's decisions of A3 §12 (E1–E7, E10, E11): E7 replaces R4-M37's `EndBorrow` meaning for guards (unit 1b-4), and
+  G123 and G94 amend R4-M40's handle copy and its Open.
 - **R4-M53** (2026-10-17; design A3 §6.1 and §8, the A5 representation its §9 item 9 records, approved by the owner on 2026-10-17;
   A5 step 1, unit 1b-1) A5's Loan sets. `MirLoanSets` owns interned immutable sets of the ids A5 numbers (Loans and markers), the
   only Loan-set form in Mir: a set is a node id, node 0 the empty set, and a node's elements are a strictly ascending run in one
@@ -1136,6 +1229,33 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Rejected (A3 §3, §6.1): dense holder × Loan bits (cubic: heads × holders × Loans); a per-Loan traversal (a check walks every
   Loan); persistent tree sets (no int identity, an allocation per insertion); `Remove` by element (one call per ended Loan and
   holder) or by predicate (no memo key, so every holder's set is scanned at every point). Not temporary.
+- **R4-M61** (2026-10-17; PLAN G96, two independent designs compared and the chosen one reviewed independently, implemented on the
+  planning session's instruction of the same day; supersedes R4-M42's `MirBuilder.Broken`) A published Op guarantees the Binding
+  facts the MIR builder reads for it, which `Binding.HasFacts` (`Binding/Binding.Hir.Facts.cs`, whose header is the contract) lists:
+  every call the builder builds for it complete (each argument with its Source, a direct base call with its implementation's
+  symbol), and per Op the call it builds (an index's selected call), the Evaluated argument of a key resolution and of an update's
+  setter, an assignment's or update's accessor plans and, for an update with one standard accessor, the Property's symbol, an
+  interpolation's formatting calls, a for loop's entry, step, iterator symbol and decomposition (a counted loop's binding symbols),
+  a match's current plan, a dictionary literal's lookup, a closure's definition, a conversion's binding (a case adaptation's plan),
+  a Tuple or array literal's Type and an enum Case construction's plan, and a declared local's and a name's symbol; an index's
+  selected call is `Binding.SelectedIndexCall`, which `ExpansionPlan` reads too. A ConstIndex keeps its position on its own plan row
+  (`Folded`), written with its PlaceShape, not on its literal's. The publisher gives a node the Op its form calls for and publishes
+  it only with these facts; without them the node is `HirOp.Error`, which the builder replaces whole. Where Binding resolved that
+  node and did not reject it (no failure, recovery or `#switch` without an arm), the contract is broken: the publisher lists the
+  node in `HirTables.Broken`, and `MirBuilder.Build` records `InternalInvariant_Kd` at it in `MirProgram.Records`, which the mir
+  pipeline publishes and which refuses generation; its Opaque value is derived (`Rejected`), so each such node is recorded once. A
+  resolved form that no HirOp member describes keeps `Unset`, which the builder reports as `Unsupported_Kd` (HirOp's contract),
+  instead of a silent Error. The builder trusts every listed fact: `MirBuilder.Broken` and its two sites and the builder's
+  missing-fact fallbacks are deleted (a direct base call without its implementation and an update's setter without its Evaluated
+  argument reported Unsupported; an interpolation, a for loop, a match and a dictionary literal without their plans were a silent
+  Opaque; a key resolution without its Evaluated argument dropped the length; ConstElement walked to its literal; `Named` reported a
+  Storage symbol without its Property as Unsupported). An Unresolved node lacking its facts is an Error now, so its children are not
+  published as evaluated and a closure inside it is not built, as inside any Error (PLAN G121). Rejected: `Broken` at each builder
+  site (an open family, and a resolved node published Error stayed silent); checking only the Op arms that test a plan (leaves
+  symbols, Sources, Type arguments and the adaptation plan to faults); a validator walk after the publish (a node it turns into an
+  Error keeps evaluated children); a `HirOp` member (40 of 40); a Binding failure written at publish (publishing decides nothing,
+  `PublishIsInvisible`); non-nullable fact types now (R7's CallPlan and declaration-table scope). Lasting: `HasFacts` and
+  `HirTables.Broken` are the publication contract; at R7 the publisher walk goes and Binding's inline Op writes call `HasFacts`.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

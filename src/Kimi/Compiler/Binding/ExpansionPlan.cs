@@ -49,14 +49,15 @@ internal readonly record struct ExpansionPlan(ExpansionKind Kind, CallPlan? Firs
                 return new(ExpansionKind.CompoundAssign, binding.PropertyCall(target, PropertyAccessorKind.Get)?.CallStorage, setter, EvaluatedArgument(setter));
             case HirOp.Index or HirOp.Call when node is IndexKoto index:
                 var key = binding.ResolvedKeyCall(index)?.CallStorage;
-                var selected = binding.IndexerCall(index, HirTables.PlanOf(index).Mode != 0) ?? binding.ViewRangeCall(index);
+                var selected = binding.SelectedIndexCall(index, HirTables.PlanOf(index).Mode != 0);
                 return new(ExpansionKind.Index, key, selected?.CallStorage, EvaluatedArgument(key));
             default:
                 return null;
         }
     }
 
-    private static int EvaluatedArgument(CallPlan? call)
+    // The position of the argument an expansion supplies to its call (a setter's computed value, a key resolution's length), -1 without one.
+    internal static int EvaluatedArgument(CallPlan? call)
     {
         for (var i = 0; call is not null && i < call.ArgumentOperations.Length; i++)
         {

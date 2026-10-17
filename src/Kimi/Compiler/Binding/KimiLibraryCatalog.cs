@@ -21,16 +21,18 @@ internal enum KimiLibraryContainer : byte
 }
 
 // SPEC 4.9.6, 12.4.3: the user-code effects a library operation publishes beside its input accesses, allocation and Abort: the requirement
-// of Contract Runs on the Type below parameter On, and a destruction of the Type below parameter Destroys (-1: none).
-internal readonly record struct PublishedRow(KimiDeclarationId? Runs = null, sbyte On = -1, sbyte Destroys = -1);
+// of Contract Runs on the Type below parameter On, and a destruction of the Type below parameter Destroys (-1: none). InPlace: the
+// destruction destroys that target in place (SPEC 15.6.3, 15.7: `replace`), which ends the children based in it (design A3 4.1).
+internal readonly record struct PublishedRow(KimiDeclarationId? Runs = null, sbyte On = -1, sbyte Destroys = -1, bool InPlace = false);
 
 /// <summary>Immutable recognition rules, shared across compilations. Stable IDs are independent of catalog and syntax order.</summary>
 internal static class KimiLibraryCatalog
 {
-    // The published rows (SPEC 4.9.6) several operations share: no user code beyond the input accesses; `K` equality; the destruction
-    // of the target; a formatting of the value (first parameter, or second after a writer).
-    private static readonly PublishedRow None = default;
+    // The published rows (SPEC 4.9.6): no user code beyond the input accesses; `K` equality; the destruction of the target in place
+    // (`replace`) or of its elements (the `clear`s); a formatting of the value (first parameter, or second after a writer).
+    private static readonly PublishedRow None = new(Runs: null); // Not `default`, which skips the parameter defaults (On 0, Destroys 0).
     private static readonly PublishedRow Equality = new(KimiDeclarationId.Equatable, On: 1);
+    private static readonly PublishedRow Replace = new(Destroys: 0, InPlace: true);
     private static readonly PublishedRow Target = new(Destroys: 0);
     private static readonly PublishedRow Formats = new(KimiDeclarationId.Utf8Format, On: 0);
     private static readonly PublishedRow FormatsValue = new(KimiDeclarationId.Utf8Format, On: 1);
@@ -75,7 +77,7 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.Sealed, "Sealed", Intrinsic: IntrinsicKind.Sealed),
         new(KimiDeclarationId.ObjectPayload, "ObjectPayload", Intrinsic: IntrinsicKind.ObjectPayload),
         new(KimiDeclarationId.PrimitiveInteger, "PrimitiveInteger", Intrinsic: IntrinsicKind.PrimitiveInteger),
-        new(KimiDeclarationId.Replace, "replace", KimiLibraryContainer.Intrinsics, Function: CompilerFunctionKind.Replace, Row: Target),
+        new(KimiDeclarationId.Replace, "replace", KimiLibraryContainer.Intrinsics, Function: CompilerFunctionKind.Replace, Row: Replace),
         new(KimiDeclarationId.Exchange, "exchange", KimiLibraryContainer.Intrinsics, Function: CompilerFunctionKind.Exchange),
         new(KimiDeclarationId.Swap, "swap", KimiLibraryContainer.Intrinsics, Function: CompilerFunctionKind.Swap),
         new(KimiDeclarationId.MakeObj, "makeObj", KimiLibraryContainer.Intrinsics, Function: CompilerFunctionKind.MakeObj),

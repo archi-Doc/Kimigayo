@@ -30,7 +30,7 @@ dotnet run proto.cs -- -v        # also every error fact (Loan, point, access) p
 dotnet run proto.cs -- -dump 9n  # per-point carries, liveness and Loan places for one case
 ```
 
-- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 1,376 lines after rounds 2–7.
+- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 3,101 lines after round 10.
 - The first run takes about 30 s, mostly compilation; evaluation is a naive fixpoint.
 - `out.txt` holds the last `-v` run.
 
@@ -769,3 +769,65 @@ keeps `Φ_c` with the parent Loans a Reborrow of the receiver would have, but no
 - **A with `FirstDerefBase`:** 84 same, 20 with an earlier or moved error, 7 listed losses; 33c; 36h.
 - `KillAcrossDeref` and `P3RootMost` no longer accept 36a; their 34a and 34b remain unsound.
 - **S1′:** fails 29a and 30c (unsound, round 6), 33c, 34c, 36f and 36h. The exit code is 6.
+
+## Round 10 (A5 step 1's 1b design diff; unit 0b closed)
+
+**Inputs.** The planning session's choice `../A5 Step 1/choice-1b.md`, built from two independent rule designs, the case
+23a proposal's independent review (cases 50–94) and the choice's design review (cases 100–112b). Round 10's file is
+built from those copies; earlier cases keep their expectations.
+
+**Rules added in design A mode** (S1′, PROV and S1 unchanged):
+
+- **G119:** while a Loan sits in its reservation holder, a write or destruction of a prefix of its Place, across borrow
+  Derefs, reaches it, a destroying activation (`replace(cur@uniq, …)`) included; checked on `σ_in`. No chain fact: under
+  G92b's fold, A's 38d (`h@follow@uniq.c.bump(do { h = y@uniq; 1 })`) is one reservation on `(*h).c`. The prototype's
+  window is positional; A3 states it by the reservation holder.
+- **33c:** the excuse at c2's reservations is derived from `reserved` (round 7's erratum). Encoding fix: a Call uses its
+  reservation holders, as A3's `use` says.
+- **G110:** a Ref past a shared Deref forms no Loan and carries the layers from its last shared Deref on; no `obs` cut.
+- **Own-value seed:** the closure of `CS(ℓ)` is seeded with `σ_in(T)` for each T named by a direct Loan (E for `Φ_E`) of
+  the value ℓ stores into a holder live as `transit` reads it (the Ref's own Loan and its R2 parents), and that of
+  `CS_call(ℓ, t)` with those of `σ_in(t)`. It replaces the narrower 39o row of the rule design.
+- **A destroying call** (A3 E11): its observing part is checked at the call on `CS_call(ℓ, t_K)`, excluding the Loans
+  the activation's own kind hits (write for `replace`, uborrow for `clear`).
+- **Slice index:** a Slice handle's Index is a shared borrow Deref. UniqSlice has no built-in Index (42c is encoded as
+  `indexUniq`/`index` calls).
+- **Guard-local marker `γ`:** a guard candidate's values carry `γ_H` (SPEC 14.8.3's `g`); `err(ended)` fires when a
+  value other than H carries `γ_H` at `EndBorrow H`. The Loan-based `err(ended)` row is deleted.
+- **`PrefixKill`** (the case 23a review's form of the first-dereference base): destroying in place a Move Path ends every
+  Loan whose access path it exactly prefixes. The owner adopted it on 2026-10-17 (DECISIONS R4-M52).
+
+**Cases: 246.** Round 9's 113; the rule designs' 33d, 33e, 38a–38n, 39a–39n, 40c–40h, 41c–41q (B's duplicates of A's
+cases skipped); 42a–42d (Slice); 43a (SPEC 14.8.3's example); 44a–44c (`EndBorrow` on a transfer edge); the 23a review's
+50–94 with 92g and 93g; the design review's 100–112b; its round 2's 120–127b (with 123b, 123c).
+
+| Mode (246 cases) | Same | Earlier or moved error | Listed loss | Unlisted rejection | Unsound |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Design A (last base) | 199 | 24 | 23 | 0 | 0 |
+| Design A with `FirstDerefBase` = with `PrefixKill` | 218 | 21 | 7 | 0 | 0 |
+
+- Against round 9, design A changes only 33c (valid), 36e (adds the write) and 36h (error at the write).
+- `PrefixKill`'s seven listed losses are P1 (5b, 7, 18a), S1′'s base operations (9k, 9l, 14) and P12 (36f).
+- Unit 0b's condition (A3 §10: no unsound acceptance, no unlisted rejection) holds under both bases. **0b is closed.**
+
+**Ablations** (design A; cases each one changes):
+
+| Variant | Effect |
+| --- | --- |
+| `NoRouteReach` (G119 off) | UNSOUND 36h, 38a–38d, 38g, 38i, 40g, 85, 107 |
+| `RouteWriteOnly` | UNSOUND 38g |
+| `RouteAllParents` | over-strict 38e, 40e |
+| `ExcuseAtCallOnly` | over-strict 33c |
+| `LoanPastShared` (A3's letter) | over-strict 39a, 39c, 39i, 39k, 39m, 41c, 41f, 41l |
+| `ObsSharedCut` | none: the cut is vacuous |
+| `FreshOnly` / `FreshParents` / `NoFreshClosure` | UNSOUND 100, 100d, 101, 109 / 100d, 101, 109 / those and 41o |
+| `RefParentsInTransit` | over-strict 30b |
+| `SliceIndexInline` | over-strict 42b, 42d |
+| `EndedByLoan` (no `γ`) | UNSOUND 43a, 92g, 102, 108 (and 93, 93g with the first-dereference kill) |
+| `KillAcrossDeref` | UNSOUND 34a, 34b, 72 |
+| `DestroyAsDrop` (a destroying call's destruction as a Drop on `CS`, rounds 6–10's first encoding) | UNSOUND 123 |
+| `SeedLiveOutOnly` (E5's "live" as `live_out` only) | UNSOUND 120b |
+
+**Findings recorded elsewhere:** 109 (`s.r = s.n@ref; s.n += 1` with s dead after) is an error by SPEC 15.6's sentence, as
+in rustc (E0506); the builder never forms a guard candidate through a user holder (93; `MirBuilder.Match`).
+The prototype models no Types, views or statics; writeback and effect paths are argued, not run.

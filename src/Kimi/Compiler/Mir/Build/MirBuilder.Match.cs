@@ -17,7 +17,8 @@ internal sealed partial class MirBuilder
     // on a constant, to the next one, so that even a catch-all can fail for the analyses.
     private void Match(MirPlace destination, MatchKoto match)
     {
-        if (BoundMatch.Of(match) is not { IsCurrent: true } plan || plan.Invalid || plan.Pending)
+        var plan = BoundMatch.Of(match)!;
+        if (plan.Invalid || plan.Pending)
         {
             this.Opaque(match, destination); // Binding rejected a Pattern of it.
             return;

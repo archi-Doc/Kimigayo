@@ -288,6 +288,26 @@ public class KimiLibraryShapeTest
         Assert.Null(library.Function(CompilerFunctionKind.None));
     }
 
+    // SPEC 4.9.6, 12.4.3: each published row, as TyCtxt.Published gives it to the MIR: the requirement it runs and the parameter below
+    // which, the parameter below which it destroys (-1: none, so a row without user code destroys nothing), and whether in place,
+    // `replace` only (SPEC 15.6.3, 15.7; design A3 4.1: a `clear` destroys its target's elements and ends no child Loan).
+    [Fact]
+    public void PublishedRowsAreFixed()
+    {
+        var c = Library.Value;
+        var rows = KimiLibraryCatalog.Entries.ToArray().Where(static x => x.Row is not null)
+            .Select(x => (x.Id, Row: c.Types.Published(c.Library.GetSymbol(x.Id)!)!.Value)).Select(static x => $"{x.Id} {x.Row.Runs?.Name} {x.Row.On} {x.Row.Destroys} {x.Row.InPlace}");
+        Assert.Equal(
+            [
+                "Replace  -1 0 True", "ArrayClear  -1 0 False", "ArrayCapacityImplementation  -1 -1 False", "ArrayRepeatingImplementation  -1 -1 False",
+                "TextToString format 0 -1 False", "TextTryFormat format 0 -1 False", "WriterWrite format 1 -1 False", "DictionaryReserve  -1 -1 False",
+                "DictionaryTryInsert equals 1 -1 False", "DictionaryInsertOrReplace equals 1 1 False", "DictionaryRemove equals 1 -1 False",
+                "DictionaryTryGet equals 1 -1 False", "DictionaryClear  -1 0 False", "DictionaryShrinkToFit  -1 -1 False",
+                "DictionaryIndexUniq equals 1 -1 False", "DictionaryStorageFindEntry equals 1 -1 False",
+            ],
+            rows);
+    }
+
     [Theory]
     [MemberData(nameof(CompilerFunctions))]
     public void CompilerFunctionShapesAreFixed(KimiDeclarationId id, string shape)

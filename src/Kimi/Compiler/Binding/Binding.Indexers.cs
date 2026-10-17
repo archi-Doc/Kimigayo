@@ -21,6 +21,12 @@ public sealed partial class Binding
         => KotoHelper.UnwrapParentheses(node) is IndexKoto index && index.BindingState == BindingState.Resolved &&
             this.indexerCalls.TryGetValue((index, exclusive), out var call) && call.BindingState == BindingState.Resolved ? call : null;
 
+    /// <summary>Gets the call a user or view index expression selects (SPEC 4.7.1): its indexer in the mode given, else its view range call.</summary>
+    /// <param name="node">The index expression.</param>
+    /// <param name="exclusive">Whether an update or an exclusive borrow takes the element (indexUniq).</param>
+    /// <returns>The selected call, or null for built-in indexing.</returns>
+    internal InvocationKoto? SelectedIndexCall(Koto node, bool exclusive) => this.IndexerCall(node, exclusive) ?? this.ViewRangeCall(node);
+
     /// <summary>Gets a value indicating whether the receiver of a user index expression conforms to UniqIndexable, whatever its path permits.</summary>
     /// <param name="node">The index expression.</param>
     /// <returns>Whether indexUniq exists for the receiver.</returns>
