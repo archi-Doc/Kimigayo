@@ -30,7 +30,7 @@ dotnet run proto.cs -- -v        # also every error fact (Loan, point, access) p
 dotnet run proto.cs -- -dump 9n  # per-point carries, liveness and Loan places for one case
 ```
 
-- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 3,101 lines after round 10.
+- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 3,401 lines after round 11.
 - The first run takes about 30 s, mostly compilation; evaluation is a naive fixpoint.
 - `out.txt` holds the last `-v` run.
 
@@ -831,3 +831,153 @@ cases skipped); 42a–42d (Slice); 43a (SPEC 14.8.3's example); 44a–44c (`EndB
 **Findings recorded elsewhere:** 109 (`s.r = s.n@ref; s.n += 1` with s dead after) is an error by SPEC 15.6's sentence, as
 in rustc (E0506); the builder never forms a guard candidate through a user holder (93; `MirBuilder.Match`).
 The prototype models no Types, views or statics; writeback and effect paths are argued, not run.
+
+## Round 11 (A3 E13 and E14; the core lane's review B1, B2, B4)
+
+**Inputs.** The core lane's group review of units 1b-1 to 1b-4
+(`artifacts/handoff/r4-a5-step1/reviews/core-1b1-1b4/review.md`, B1, B2, B4) and the planning session's rules E13 and E14.
+The review found these outside round 10's model: it had no Value callee operand, no operand access at a Call, no
+PairAcquire and no intrinsic store. Round 10's 246 cases are unchanged.
+
+**Rules added in design A mode:**
+
+- **E13 (1), inputs at the Call (B2).** A Call's inputs are its argument operands and a Value callee's operand. The
+  accesses they make at the Call ℓ are checked on `CS_call(ℓ, −)` = closure(⋃{σ_in(H) | H ∈ live_in(ℓ)} ∪ σ_in(E)), not
+  on `CS(ℓ)`. Two kinds of access count:
+  - `Node.Input`: the read or Move of a direct Place operand that the MIR leaves at the Call;
+  - `Node.AcquireAt`: a PairAcquire's exclusive Reborrow left at the Call.
+
+  No holder is excluded and no seed is added. A reservation in its own holder stays `ref`. The Call's destination write
+  and its stores keep `CS(ℓ)`.
+- **E13 (2), the Value callee (B1).** The callee's reservation activates at the Call, as an argument's does
+  (`Node.Callee`).
+- **E13 (3), PairAcquire (B2).** A Reborrowing PairAcquire that the MIR secures into a temp is a TwoPhaseUniq reservation
+  in that temp (`Node.Acquire`) and is activated at the Call. One left at the Call is (1)'s exclusive access.
+- **E14, raw stores (B4).** A call that writes an input into storage reached through a raw pointer stores
+  `ret(i, Value)` into E (`Node.RawStore`), as `Raw.initialize(storage, value)` does.
+
+**Variants.** Each one restores one behavior of the reviewed branch (`claude/a5-1b-core` at `8961f577`), or applies this
+round's fix:
+
+- `CalleeNotActivated` (B1);
+- `InputsOnCS` (B2, the implementation's `CS(ℓ)`);
+- `PairAcquireLive` (a PairAcquire as a live Uniq Loan wherever it is formed);
+- `NoRawStore` (B4, A3 §4's intrinsic row);
+- `Implemented1b` (all four);
+- `SecureAcquire` (the finding below; the case carries its secured encoding as `Case.Secured`).
+
+**Cases: 278.** Round 10's 246 plus 32 new ones:
+
+- 130a–130g: B1. `bump = func [r] (k: i32) => r@follow += k` with `r = value@uniq` makes an Exclusive call; `peek` makes a
+  Shared one.
+- 131a–131g: B2, non-generic. `give(a: uniq/i32, b: i32)`, `giveR(a: ref/i32, b: i32)` and
+  `giveS(a: uniq/i32, b: ref/i32)`.
+- 132a–132n: B2 with pair layers. Each case is one Semantics view, in a generic caller `outer<s/T>(p: s/T)` where
+  `s is ref or uniq`.
+- 133a–133d: B4.
+
+Where an operand sits (at the Call or secured) follows G123 as the MIR lane builds it (R4-M55; `MirBuilder.Builds` and
+`Call` on `claude/a5-1b-mir`). An operand is secured into a temp when a later operand of the operation builds code, and
+every operand builds code except a constant and a Place read as it is (Copied or Moved). So a PairAcquire
+(`HirAcquire.ByCase`) builds code and secures every operand before it, while a Copy or Move of a Place builds none.
+
+| Case | Program | SPEC | Design A | Reviewed branch (`Implemented1b`) |
+| --- | --- | --- | --- | --- |
+| 130a | `let v = bump@ref; bump(); inspect(v)` (review B1) | error at the call | error at the call | **valid: UNSOUND** |
+| 130b | `let u = bump@uniq; let v = u@ref; u(); inspect(v)` | error at the call | error at the call | **UNSOUND** |
+| 130c | Shared call: `let v = peek@ref; peek(); inspect(v)` | valid | valid | valid |
+| 130d | `bump(do { let v = bump@ref; inspect(v); 1 })` | valid | valid | valid |
+| 130e | `let v = bump@ref; bump(n); inspect(v)` | error at the call | error at the call | **UNSOUND** |
+| 130f | `let u = bump@uniq; u(do { keep = u@ref; 1 }); inspect(keep)` | error at the call | error at the call | **UNSOUND** |
+| 130g | `bump(value)`: `value` read at the Call while the callee's temp carries r's Loan as a parent | error at the call | error at the call | **UNSOUND** (`InputsOnCS`) |
+| 131a | `let r = x@uniq; give(r, x)` (`$4 = &uniq two-phase (*r)`; `give(move $4, copy x)`) | error at the call | error at the call | **UNSOUND** |
+| 131b | `let r = x@uniq; giveR(r, x)` (`$4 = &(*r)`; `giveR(move $4, copy x)`) | error at the call | error at the call | **UNSOUND** |
+| 131c | `let r = x@uniq; giveS(r, x)` (`$5 = &x` before the Call) | error at `$5 = &x` | same | same |
+| 131d | `give(x@uniq, x)` | valid | valid | valid |
+| 131e | `let r = x@uniq; give(r, r@follow)` | valid | valid | valid |
+| 131f | `s.set(s.n)` | valid | valid | valid |
+| 131g | `replace(x@uniq, with: x)`, the read left at the Call | valid | valid | valid |
+| 132a | uniq view: `var v = p; inner2(v@ref, v)` (`inner2(move $4, acquire v)`) | error at the call | error at the call | **UNSOUND** |
+| 132b | 132a, ref view | valid | valid | valid |
+| 132c | uniq view: `inner3(v, v@ref)` (`$3 = acquire v` secured) | error at the call | error at the call | error at `$4 = v@ref` |
+| 132d | 132c, ref view | valid | valid | valid |
+| 132e | uniq view: `inner7(p, p.n + 1)` (`$3 = acquire p` secured) | valid | valid | **error at `$4 = p.n + 1`** (`PairAcquireLive`) |
+| 132f | uniq view: `inner7(p, bumpS(p))` | error at `bumpS` | same | same |
+| 132g | uniq view: `inner8(p.n + 1, p)` (the PairAcquire left at the Call, last) | valid | valid | valid |
+| 132h | uniq view: `var v = p; inner9(v, v)` (`$3 = acquire v` secured; `inner9(move $3, acquire v)`) | error at the call | error at the call | **UNSOUND** |
+| 132i | 132h, ref view | valid | valid | valid |
+| 132j | uniq view: `inner11(p, p.n)` (`inner11(acquire p, copy (*p).n)`) | valid | valid | valid |
+| 132k | uniq view: `var w = W(a: p); innerW(w.a, w)` (`innerW(acquire w.a, move w)`) | error at the call | **valid: UNSOUND** | **UNSOUND** |
+| 132l | 132k, ref view | valid | valid | valid |
+| 132m | uniq view: `var v = p; let u = v@follow@ref; innerR(v, u)` (`innerR(acquire v, copy u)`) | error at the call | error at the call | **UNSOUND** |
+| 132n | 132m, ref view | valid | valid | valid |
+| 133a | `Raw.initialize(p, x@ref); x = 2; let q = p[0]; inspect(q)` (review B4) | error at `x = 2` | same | **UNSOUND** |
+| 133b | 133a with `x = 2` before the initialize | valid | valid | valid |
+| 133c | 133a without the write; `inspect(x)` at the end | valid | valid | valid |
+| 133d | `Raw.initialize(p, x@uniq); inspect(x)` | error at the read | same | **UNSOUND** |
+
+`PrefixKill` gives the same verdict and error location as design A on every new case.
+
+| Mode (278 cases) | Same | Earlier or moved error | Listed loss | Unlisted rejection | Unsound |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Design A (last base) | 230 | 24 | 23 | 0 | 1 (132k) |
+| Design A with `PrefixKill` | 249 | 21 | 7 | 0 | 1 (132k) |
+| Design A with `SecureAcquire` | 231 | 24 | 23 | 0 | 0 |
+| Design A with `PrefixKill` and `SecureAcquire` | 250 | 21 | 7 | 0 | 0 |
+| The reviewed branch (`Implemented1b`) | 216 | 25 | 23 | 1 (132e) | 13 |
+
+Round 10's 246 cases keep their classification, case by case.
+
+| Variant | Effect |
+| --- | --- |
+| `CalleeNotActivated` (B1) | UNSOUND 130a, 130b, 130e, 130f |
+| `InputsOnCS` (B2) | UNSOUND 130g, 131a, 131b, 132a, 132h, 132m |
+| `PairAcquireLive` | 132c's error moves to `$4 = v@ref`; 132e over-strict at `$4 = p.n + 1` |
+| `NoRawStore` (B4) | UNSOUND 133a, 133d |
+| `SecureAcquire` | 132k errs at the call; no other case changes |
+
+**Findings.**
+
+1. **E13 misses a Move left at the Call after a Reborrowing PairAcquire left there (132k).**
+   - **Facts (`-v`, `-dump`).** At `Call innerW(w.a, w)`, live_in = {w} and σ_in(w) = {Lw on `p.*`, Lp}, where Lp is the
+     parameter's entry Loan and never conflicts. The at-Call Reborrow of `w.a.*` forms a Loan that no holder carries, so
+     the Move of w, checked on `CS_call(ℓ, −)`, meets no Loan. The Reborrow itself meets only Lw, whose root is p.
+   - **SPEC 15.6.7 rejects it.** The first input is a reservation of `*(w.a)`, and the Move of w moves the route's owner
+     during it. The ref view (132l) is valid, so the generic body is rejected.
+   - **Scope.**
+     - G123 leaves both operands at the Call, because a Move of a Place read as it is builds no code. A PairAcquire
+       does build code, so in `inner9(v, v)` the first PairAcquire is secured and 132h errs as SPEC requires.
+     - Only a PairAcquire forms a Loan at ℓ. A Copy or Move operand's Loans are its source holder's, and that holder is
+       live into ℓ, so a Copy after an at-Call PairAcquire is sound: 132m errs through `Lu` in u, and 132j is valid as
+       SPEC requires.
+     - The gap is a Move operand after an at-Call PairAcquire (a receiver or a Value callee too) that moves a prefix of
+       the Reborrow's Place.
+   - **Fix (M), MIR (amends R4-M55).** A PairAcquire operand is also secured where it is evaluated when any later
+     operand of the operation is not a constant. A PairAcquire then stays at its Call only as the last operand read there,
+     and E13 is unchanged. `SecureAcquire` runs this on 132j, 132k and 132m. 132k errs with
+     `L3 live at Call innerW(w.a, w) vs Move w`, 132j stays valid, 132m keeps its error, and no other case changes.
+   - **Fix (A), A5.** A later operand's access at the Call is also checked against an earlier at-Call PairAcquire's
+     Loan, which counts as a reservation (`ref`). This needs operand order in A5's Call facts.
+   - The planning session decides between (M) and (A).
+2. **E13 (1) needs every input's holder, the callee's included.** 130g errs only through the parent Loan that the
+   callee's temp carries. `CalleeNotActivated` alone keeps 130g's error, and `InputsOnCS` loses it.
+3. **E13 (3) is what keeps 132e valid.** A live Uniq Loan rejects the shared read `p.n` that SPEC 15.6.7 allows during
+   the reservation. A write-class acquisition during it (132f) is still rejected.
+4. **E14 changes no round-10 case.** E is always checked, so after a raw store of a Loan every later conflicting access
+   errs (SPEC 15.6: "a value stored there may be used after every point").
+5. **Open for A6.** A3 §5's code table has no row for a failure of an access an input makes at the Call (131a, 132a):
+   should it be `CallActivationConflict_Kd` or `ComparisonLoanConflict_Kd` ("Otherwise")?
+
+**Not modeled.**
+
+- Where the MIR leaves an operand is hand-encoded from `MirBuilder.Builds` and `Call` on `claude/a5-1b-mir`. The
+  prototype does not run them.
+- Each pair case is hand-encoded for one view. The view's choice of Copy or Reborrow (`MirCases.Reborrows`) is not
+  computed.
+- An at-Call PairAcquire issues no Loan, so a callee that retains it (`id<s/T>(a: s/T) -> s/T`) is not modeled.
+- A Value callee that is itself a PairAcquire is not modeled.
+- Closures are modeled only as a Move of the capture into the closure holder and a hand-chosen call kind. `TyCtxt.Closure`
+  receiver modes and retention rows are not modeled.
+- E14 covers only `Raw.initialize`'s store row. Other raw-writing catalog rows are not enumerated, and the raw referent
+  `p.*` gets no access, because its fresh anchor compares with nothing here.
+- Diagnostic codes, A4 effects, statics, the inputs' Drops and callee cleanup are not modeled.

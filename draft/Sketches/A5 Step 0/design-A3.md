@@ -176,7 +176,7 @@ Inputs come from producers; derived facts come from §5. One Semantics case view
 | `base_op(ℓ, K)` | Place | a Move, a borrow (P3), an `exchange`/`swap` target, the destruction of an old value whose drop may reach a base below K (`obs`: MIR's separate Drop at `=`, a destroying call such as `replace`), except a `destroying` Ref | derived (deep accesses) |
 | `reserved(L, H, ℓ1, ℓ2)` | site | TwoPhaseUniq issue into H at ℓ1; its Call, or the writeback write through H, at ℓ2; reserved only in H | derived |
 | `observes(T)` | Type | `MirTypes.Observes(case Type)`; for a Drop also its group verdict ≠ Elide (`M/Analysis/MirDrops.cs:88`) | input |
-| `retains(c, i, κ, o)`, `untied(c)` | (callee, Subst), slot | Binding `TyCtxt.Retains(callee, Subst)` (C1/C8), `TyCtxt.Closure` (C2); intrinsics: every operand → result | input |
+| `retains(c, i, κ, o)`, `untied(c)` | (callee, Subst), slot | Binding `TyCtxt.Retains(callee, Subst)` (C1/C8), `TyCtxt.Closure` (C2); intrinsics through their declarations (E14) | input |
 | `key(ℓ, f, k)`, `unknown(ℓ)` | Call or Drop | A4 `MirEffects.Keys` | input |
 | `preserves(c)`, `recv(c)`, `abstract(c)` | call | `DispatchBounds`/`CallableBounds` (`B/Binding.EffectObligations.cs:83,98`); receiver Place; Requirement or abstract Callable callee | input |
 | `σ`, `live`, `transit`, `CS`, `err` | holder, location | §5 | derived |
@@ -634,6 +634,21 @@ above disagrees, these errata govern; the lines they replace are marked "(E…)"
   16.2.2). The lemma's "over-approximated Loans are harmless to exclude" no longer holds. Until the Origin stratum lands
   (2a), a returned borrow of a local is reported by the Loan stratum alone.
 
+- **E14, call retention (the core lane's group review B4 and N2; its design review, 2026-10-18; SPEC 15.6, 15.6.4; decided by the
+  planning session).** A Call retains as its callee's contract says: `TyCtxt.Retains` over the callee's declaration and Subst, an
+  intrinsic's library declaration included (its MIR callee keeps that declaration symbol). A store row into a raw-pointer input
+  reaches `E` by the store rule (the refs of a value with no direct Loan are `E`), so `Raw.initialize(p, x@ref)` stores `L_x` into
+  `E` and a later `x = 2` conflicts (SPEC 15.6: raw storage is storage the body does not own, and a value stored there may be used
+  after every point). The intrinsic table keeps rows only for operands the builder adds beyond a declaration (`RawSlice`'s backing
+  → result, Value); an intrinsic the builder synthesizes without a declaration has a result that holds no Loan and retains
+  nothing. A default template's call (until F9) is the unknown-callee row set: every input → result (Value) and → each exclusive
+  input's referents; untied. A5 applies every row set through one loop. This replaces §4's "intrinsics: every operand → result",
+  which made `clone` carry the handle borrow (SPEC 15.6.4 retains only the payload's Loans, Content) and so rejected
+  `entries.append(clone(owner@ref)); _ = owner@move` (the design review's case 135b). Among today's intrinsics only `RawInitialize`
+  writes into storage the body does not own (the design review's census); the library's `Raw.initialize` calls store generic or
+  parameter values, which already carry `Φ_E`. Prototype round 11 (278 cases) models the store; the design review's extension
+  (cases 134a–135c) joins round 12 with E13.
+
 ## Revision history
 
 - **A** (step 0): per-root holders, Loan-set nodes, base-named Loans, syntactic access with deep borrows.
@@ -657,3 +672,5 @@ above disagrees, these errata govern; the lines they replace are marked "(E…)"
   Borrows past a shared Deref, E4 containment wording, E5 own-value seed, E6 Slice index, E7 guard-local marker; owner
   decisions §9 item 11: E8 Loan ending by exact Move-Path prefix (case 23a, option (c)) and E9 MIR contracts; E10 the
   planning session's MIR contracts; E11 the `err(destroy)` exclusion (records review round 2); E12 the partition row (SPEC revision's review).
+- **E14** (2026-10-18, §12): call retention through the callee's declaration, intrinsics included (core review B4, N2; its design
+  review). E13 (a call's and an operation's inputs) follows with prototype round 12.
