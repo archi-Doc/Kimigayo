@@ -13,3 +13,6 @@ authority: SPEC and DECISIONS decide. The design these records correct is [desig
 | [review-1b-r1.md](review-1b-r1.md) | Design review of the choice, round 1: B1 (own-value seed) and B2 (Never placement) redone |
 | [review-1b-r2.md](review-1b-r2.md) | Design review round 2: the redone B1/B2 accepted; record fixes F1–F8 (E11, the `err(destroy)` exclusion) |
 | [review-1a-r1.md](review-1a-r1.md) | Review of unit 1a's first commit: redo (enclosing premises) |
+| [review-1a-r2.md](review-1a-r2.md) | Review round 2 of unit 1a's redo: B1, item 2 and the split accepted; B2 (erased callables), decided by the owner (DECISIONS R4-M52) |
+| [review-1a-r3.md](review-1a-r3.md) | Review round 3: the erased rule accepted for Origins; B3 (abstract carriers at erased positions) |
+| [review-1a-r4.md](review-1a-r4.md) | Review round 4: B3 closed by one node per carrier; unit 1a accepted |
