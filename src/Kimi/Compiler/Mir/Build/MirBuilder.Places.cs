@@ -172,7 +172,7 @@ internal sealed partial class MirBuilder
     private MirPlace StaticRoot(BindingSymbol symbol)
     {
         var type = symbol.Type ?? BoundType.Unit;
-        return this.body.Static(new(symbol, type, symbol.Declaration is PropertyKoto { VariableKind: VariableKind.Var }, MirTypes.HoldsRaw(type)));
+        return this.body.Static(new(symbol, type, symbol.Declaration is PropertyKoto { VariableKind: VariableKind.Var }, MirTypes.HoldsRaw(type, this.walked)));
     }
 
     // SPEC 6.2.2, 3.2: a stored Field or a Tuple element of the receiver's Place, which the receiver's Layers follow.

@@ -131,6 +131,7 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
 {
     private readonly List<Node> trees = []; // The state trees of the Drops recorded in the current solve, each in pre-order.
     private readonly List<StateEvent> events = [];
+    private readonly HashSet<BoundType> walked = new(ReferenceEqualityComparer.Instance); // MayNeedDrop's scratch.
     private int[] last = []; // Each block's last group in the table's rows, -1 without one.
     private bool[] flagged = []; // Each path a judged row tests.
     private int[] before = []; // Each path's flag: the flagged paths before it.
@@ -286,7 +287,7 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
             MirDataflow.Grow(ref this.types, node.Depth + 1);
             var type = this.types[node.Depth] = node.Depth == 0 ? cases.Type(this.body.TypeOf(drop.Terminator.Place)!)
                 : this.body.ProjectedType(this.types[node.Depth - 1], step.Kind, step.Arg);
-            var verdict = MirTypes.MayNeedDrop(type) ? node.State : MirDropVerdict.Elide;
+            var verdict = MirTypes.MayNeedDrop(type, this.walked) ? node.State : MirDropVerdict.Elide;
             elided = verdict == MirDropVerdict.Elide ? node.Depth : int.MaxValue;
             if (verdict == MirDropVerdict.Open && AdtDef.Destructor(type!) is not null)
             {

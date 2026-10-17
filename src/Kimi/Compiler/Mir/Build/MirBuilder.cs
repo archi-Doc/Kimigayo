@@ -28,6 +28,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private readonly Dictionary<BindingSymbol, int> locals = new(); // The local of each parameter and local symbol of the body.
     private readonly List<MirOperand> arguments = []; // The evaluated arguments of the calls being built, innermost last.
     private readonly List<int> roots = [];
+    private readonly HashSet<BoundType> walked = new(ReferenceEqualityComparer.Instance); // A Type walk's scratch (MayNeedDrop, HoldsRaw).
     private Roots? collector;
     private MirBody body = null!;
     private Koto declaration = null!;
@@ -255,7 +256,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private int Argument(BoundType type, string? name, int parameters, MirLocalRole role = MirLocalRole.None)
     {
         var local = this.body.AddLocal(new(type, MirLocalKind.Arg, this.Info(this.declaration, local: true), Name: name, Role: role));
-        if (MirTypes.MayNeedDrop(type))
+        if (MirTypes.MayNeedDrop(type, this.walked))
         {
             this.Register(Cleanup.Drop, local, null, parameters);
         }

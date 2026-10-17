@@ -8,12 +8,16 @@ namespace Kimi.Compiler.Mir;
 internal static partial class MirTypes
 {
     /// <summary>Gets whether a value of a Type holds a raw pointer, an rc handle or a Weak of one at any depth, so that reading it from an
-    /// immutable static obtains authority from the environment (SPEC 8.11.2); a referent reached through the value counts too.</summary>
+    /// immutable static obtains authority from the environment (SPEC 8.11.2); a referent reached through the value counts too. Each Type
+    /// is walked once per query, as HoldsLoans' are, so a repeating recursive Type ends exactly; past depth 32 the answer is yes.</summary>
     /// <param name="type">The Type.</param>
-    /// <param name="depth">The walk's depth; past 32 the answer is yes.</param>
+    /// <param name="seen">Scratch for the Types walked, cleared first.</param>
     /// <returns>Whether the value holds raw authority.</returns>
-    internal static bool HoldsRaw(BoundType? type, int depth = 0)
-        => type is not null && (depth > 32 || type.Semantics is SemanticsKind.Raw or SemanticsKind.Rc || Any(type.Components, depth) || Stored(type, depth));
+    internal static bool HoldsRaw(BoundType? type, HashSet<BoundType> seen)
+    {
+        seen.Clear();
+        return Raw(type, seen, 0);
+    }
 
     /// <summary>Gets whether a value of a Type may hold a Loan (SPEC 15.6), so that A5 tracks it: a part of it is a borrow or pair layer, a
     /// Slice, a Function or Closure value, or an abstract Type, whose instance may store a borrow its Origins do not show. Its parts are its
@@ -30,31 +34,44 @@ internal static partial class MirTypes
         return Holds(type, seen, 0);
     }
 
-    private static bool Any(IReadOnlyList<BoundType> types, int depth)
+    // HoldsRaw's walk: a Type seen before adds nothing; its components, a struct's Fields and base and an enum's payload Tuples.
+    private static bool Raw(BoundType? type, HashSet<BoundType> seen, int depth)
     {
-        for (var i = 0; i < types.Count; i++)
+        if (type is null || !seen.Add(type))
         {
-            if (HoldsRaw(types[i], depth + 1))
+            return false;
+        }
+
+        if (depth > 32 || type.Semantics is SemanticsKind.Raw or SemanticsKind.Rc)
+        {
+            return true;
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (Raw(type.Components[i], seen, depth + 1))
             {
                 return true;
             }
         }
 
-        return false;
-    }
-
-    // A struct's Fields and base, an enum's payload Tuples.
-    private static bool Stored(BoundType type, int depth)
-    {
         for (var i = 0; AdtDef.IsStruct(type) && i < AdtDef.Count(type); i++)
         {
-            if (HoldsRaw(AdtDef.FieldType(type, i), depth + 1))
+            if (Raw(AdtDef.FieldType(type, i), seen, depth + 1))
             {
                 return true;
             }
         }
 
-        return (AdtDef.Base(type) is { } parent && HoldsRaw(parent, depth + 1)) || (AdtDef.CaseTypes(type) is { } cases && Any(cases, depth));
+        foreach (var payload in AdtDef.CaseTypes(type) ?? [])
+        {
+            if (Raw(payload, seen, depth + 1))
+            {
+                return true;
+            }
+        }
+
+        return Raw(AdtDef.Base(type), seen, depth + 1);
     }
 
     // HoldsLoans' walk: a Type seen before adds nothing.

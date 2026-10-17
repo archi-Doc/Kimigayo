@@ -397,7 +397,7 @@ internal sealed partial class MirBuilder
     // SPEC 13.7.1: a target's old value dropped where its Type may need it (A2 elaborates a moved one away), then the value placed.
     private void Overwrite(MirPlace target, in MirOperand value, Koto node)
     {
-        if (Completes(node) && MirTypes.MayNeedDrop(this.body.TypeOf(target)))
+        if (Completes(node) && MirTypes.MayNeedDrop(this.body.TypeOf(target), this.walked))
         {
             this.DropAt(target, this.Info(node));
         }
