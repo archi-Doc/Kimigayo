@@ -14,6 +14,11 @@ namespace XunitTest;
 /// deterministic and a warm rebuild allocates nothing. The census measures what the builder covers (V9).</summary>
 public sealed class MirBuildTest(ITestOutputHelper output)
 {
+    // A struct with an Array Field, an inspection of it and the start of a function f that binds a holder (SPEC 15.6.7).
+    private const string Holder = "struct Holder\n    public var items: Array<i32>\n    public var count: i32\n    public init()\n" +
+        "        self.items = []\n        self.count = 0\nfunc inspect(values: ref/Array<i32>) => ()\nfunc see(value: ref/i32) => ()\n" +
+        "func f(x: i32)\n    var holder = Holder.init()\n";
+
     // The callees of the operand order tests and the start of their function f, which binds x (SPEC 12.2).
     private const string Operations = "func take(a: i32, b: ()) -> i32 => a\nfunc pair(t: (i32, ())) => ()\nfunc reset(p: uniq/i32) -> i32 => 0\n" +
         "func consume(a: string, b: ()) => ()\nfunc touch(p: uniq/Slice<i32>) -> isize => 0\nfunc jump(p: uniq/raw/i32) -> isize => 0\n" +
@@ -599,27 +604,38 @@ public sealed class MirBuildTest(ITestOutputHelper output)
             .Where(static x => x.Kind == MirStatementKind.Assign && x.Rvalue.Kind == MirRvalueKind.Ref).Select(static x => ((MirRefKind)x.Rvalue.Op, x.Rvalue.Place));
     }
 
-    // SPEC 15.6.7 (DECISIONS R4-M52): an invocation's preparation path is one preparation even when it contains written exclusive borrows,
-    // so the three spellings of one call build the same MIR, and so does a shared input through a written exclusive borrow.
+    // SPEC 15.6.7 (DECISIONS R4-M54): the preparation path of an input that starts a reservation is one preparation even when it contains
+    // written exclusive borrows, so the three spellings of one call build the same MIR.
     [Theory]
     [InlineData("holder@uniq.items.append(x)", "holder.items.append(x)")]
     [InlineData("holder.items@uniq.append(x)", "holder.items.append(x)")]
     [InlineData("(holder@uniq).items.append(x)", "holder.items.append(x)")]
-    [InlineData("inspect(holder@uniq.items)", "inspect(holder.items)")]
     public void AWrittenBorrowOnAPreparationPathIsThePlaceItLends(string written, string path)
     {
         Assert.Equal(Built(path), Built(written));
 
         static string Built(string statement)
         {
-            var program = Compile("struct Holder\n    public var items: Array<i32>\n    public var count: i32\n    public init()\n" +
-                $"        self.items = []\n        self.count = 0\nfunc inspect(values: ref/Array<i32>) => ()\nfunc f(x: i32)\n    var holder = Holder.init()\n    {statement}\n").BuildMir();
+            var program = Compile(Holder + $"    {statement}\n").BuildMir();
             Assert.Empty(program.Findings);
             Assert.Empty(program.Records);
             var text = new StringBuilder();
             MirDump.Write(program, 0, text);
             return string.Join('\n', text.ToString().Split('\n').Select(static x => x.Split(" @")[0]));
         }
+    }
+
+    // SPEC 15.6.7, 7.3.3 (DECISIONS R4-M54): on the path of an input that starts no reservation, a shared one, and off input paths, a
+    // written exclusive borrow is a live exclusive borrow of its operand (holder@uniq.items.length lends holder exclusively, then reads).
+    [Theory]
+    [InlineData("    inspect(holder@uniq.items)\n")]
+    [InlineData("    let r = holder.items[0]@ref\n    let n = holder@uniq.items.length\n    see(r)\n")]
+    public void AWrittenBorrowOffAReservationIsLive(string statements)
+    {
+        var body = Body(Holder + statements, "f");
+        var holder = Enumerable.Range(0, body.Locals.Length).Single(x => body.Locals[x].Name == "holder");
+        Assert.Contains(body.Statements.ToArray(), x => x is { Kind: MirStatementKind.Assign, Rvalue: { Kind: MirRvalueKind.Ref, Place.Projection: 0 } } &&
+            x.Rvalue.Place.Root == holder && x.Rvalue.Op == (byte)MirRefKind.Uniq);
     }
 
     // SPEC 12.2 (DECISIONS R4-M55): operands are evaluated once, left to right, so a Place operand is read where it is evaluated: where a

@@ -20,9 +20,9 @@ internal sealed partial class MirBuilder
     };
 
     // The Place a node designates: one an expansion located already (Located), a parenthesized Place its operand's; a value its consumer needs
-    // as a Place is held in a temp. A call's input (input) is its preparation path down to a value or a call result, whose exclusive
-    // borrows are reservations (SPEC 15.6.7): a written one the path continues through is not formed, the path going on from the Place it
-    // lends, so the input has one reservation, at its lending point, as the path without it has (DECISIONS R4-M52).
+    // as a Place is held in a temp. A reserved input's path (input) is its preparation path down to a value or a call result (SPEC
+    // 15.6.7): a written exclusive borrow it continues through is not formed, the path going on from the Place it lends, so the input has
+    // one reservation, at its lending point, as the path without it has (DECISIONS R4-M54).
     private MirPlace Place(Koto node, bool input = false)
     {
         if (this.Located(node) is { } located)

@@ -159,10 +159,14 @@ internal sealed partial class MirBuilder
 
     // A node's value as its consumer takes it (plan: Adjust to operand): a literal as its constant, another value through a temp, a Place,
     // or a value held in a temp, as Acquire takes it for the expected Type, a call's input as the call's (input), a value the acquisition
-    // forms in the place given (into) where it has that Type.
+    // forms in the place given (into) where it has that Type. SPEC 15.6.7: only an input the call takes as an exclusive reference (its
+    // expected Type, or without one, a value call's callee, the reference it is or its acquisition forms) starts a reservation, so only its
+    // path is a preparation path (Place); on another input's path a written exclusive borrow is live, as SPEC 7.3.3's is.
     private MirOperand Operand(Koto node, BoundType? expected, bool input = false, MirPlace? into = null)
     {
         var adjust = HirTables.AdjustOf(node);
+        input &= MirTypes.IsExclusive(expected) ||
+            (expected is null && (adjust.Adaptation == HirAdaptation.ExclusiveBorrow || MirTypes.IsExclusive(TypeOf(node))));
         if (adjust is { Acquire: HirAcquire.Temporary or HirAcquire.None, Adaptation: HirAdaptation.None })
         {
             return HirTables.Op(node) == HirOp.Literal && this.Literal(node) is var constant and >= 0 ? MirOperand.Const(constant)
