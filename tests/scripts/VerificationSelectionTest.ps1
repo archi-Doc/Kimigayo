@@ -51,4 +51,10 @@ Assert-KimiTestSelections @() (Join-KimiCommonTestSelections @('XunitTest.TwoTes
 $cases++
 Reject { Assert-KimiTestSelections (Join-KimiCommonTestSelections @('XunitTest.TypoTest')) @() $methods } 'TypoTest'
 Reject { Assert-KimiTestSelections @() (Join-KimiCommonTestSelections @('XunitTest.OneTest.Typo') -Method) $methods } 'OneTest.Typo'
+# Tests reported as Not Run (Explicit tests not requested) were not executed; a run without a summary executed none.
+Equal (Get-KimiExecutedTestCount 'xUnitTest  Total: 271, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 19.640s') 271
+Equal (Get-KimiExecutedTestCount 'xUnitTest  Total: 6, Errors: 0, Failed: 0, Skipped: 0, Not Run: 1, Time: 1.250s') 5
+Equal (Get-KimiExecutedTestCount 'xUnitTest  Total: 1, Errors: 0, Failed: 0, Skipped: 0, Not Run: 1, Time: 0.306s') 0
+Equal (Get-KimiExecutedTestCount 'xUnitTest  Total: 0') 0
+Equal (Get-KimiExecutedTestCount 'no summary') 0
 Write-Output "Passed $cases verification selector checks."

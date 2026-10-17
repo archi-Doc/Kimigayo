@@ -1,4 +1,4 @@
-# Shared selector rules for verify.ps1. Discovery must use the freshly built assembly.
+# Shared selector and executed-test rules for verify.ps1. Discovery must use the freshly built assembly.
 function ConvertTo-KimiTestPattern([string] $Pattern, [switch] $Method) {
     if (-not $Pattern -or $Pattern -notmatch '^\*?[\p{L}\p{N}_.+]*\*?$' -or $Pattern -eq '**') {
         throw "Invalid test selector '$Pattern'. Use a class or Class.Method name, with '*' only at the beginning or end."
@@ -35,6 +35,13 @@ function Join-KimiCommonTestSelections([string[]] $Selection, [switch] $Method) 
         $pattern = if ($Method) { "$common.*" } else { $common }
         if ($Selection -notcontains $pattern) { $pattern }
     }
+}
+
+# xUnit's summary line counts in Total the tests it reports as Not Run (Explicit tests not requested); a missing or
+# unrecognized summary counts none.
+function Get-KimiExecutedTestCount([string] $Summary) {
+    if ($Summary -match 'Total: (\d+), Errors: \d+, Failed: \d+, Skipped: \d+, Not Run: (\d+)') { return [int]$Matches[1] - [int]$Matches[2] }
+    0
 }
 
 function Assert-KimiTestSelections([string[]] $Class, [string[]] $Method, [string[]] $DiscoveredMethods) {

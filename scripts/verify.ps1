@@ -161,10 +161,10 @@ function Invoke-Tests([string] $configuration, [string[]] $filters, [string] $ta
         $code = $LASTEXITCODE
     }
     finally { $env:KIMI_FIXTURE_DIRECTORY = $previousDirectory }
-    $summary = Select-String -LiteralPath $log -Pattern 'Total: (\d+), Errors: (\d+), Failed: (\d+)' | Select-Object -Last 1
-    $total = if ($summary) { [int]$summary.Matches[0].Groups[1].Value } else { 0 }
-    # Zero executed tests is never evidence (for example, a mistyped filter).
-    Add-Step "tests $configuration $tag" ($code -eq 0 -and $total -gt 0) "$(if ($summary) { $summary.Line.Trim() } else { 'no summary' }); $log" $timer.Elapsed.TotalSeconds
+    $summary = Select-String -LiteralPath $log -Pattern 'Total: \d+' | Select-Object -Last 1
+    $line = if ($summary) { $summary.Line.Trim() } else { 'no summary' }
+    # Zero executed tests is never evidence (for example, a mistyped filter or a selection of only Explicit tests).
+    Add-Step "tests $configuration $tag" ($code -eq 0 -and (Get-KimiExecutedTestCount $line) -gt 0) "$line; $log" $timer.Elapsed.TotalSeconds
 }
 
 function Test-Selection([string] $configuration, [string[]] $filters) {

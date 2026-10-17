@@ -8,7 +8,7 @@ Compiler review obligations are in [COMPILER_ARCHITECTURE](COMPILER_ARCHITECTURE
 [ArchitectureRulesTest](../../tests/xUnitTest/Tests/ArchitectureRulesTest.cs) owns the retained structural ratchets.
 The analyzer and CompilerSizeBudgetTest were retired (DECISIONS CR-R1); no live owner provides their former reports.
 [`verify.ps1`](../../scripts/verify.ps1) owns build/test execution and input stability;
-[`verification-selection.ps1`](../../scripts/verification-selection.ps1) owns selector normalization and discovery checks;
+[`verification-selection.ps1`](../../scripts/verification-selection.ps1) owns selector normalization, discovery checks and the executed-test count;
 [`verification-inputs.ps1`](../../scripts/verification-inputs.ps1) owns source/NuGet manifests and Git-normalized matching;
 [`verify-commit.ps1`](../../scripts/verify-commit.ps1) associates successful evidence with exact committed inputs.
 The matching script regressions are VerificationSelectionTest.ps1 and VerificationInputsTest.ps1.
