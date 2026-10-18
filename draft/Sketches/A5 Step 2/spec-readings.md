@@ -65,17 +65,20 @@ rejects g5, r1, r2 and r3 and accepts r4 (both parts body-owned); the old path a
 - (c) Hold. A5 keeps a rejection no integrated SPEC clause states, which fails §5.4 item 5 (prototype parity), so (c) needs OQ9's
   list; G147 (8ii)'s (d) then rests on reading "derives" only.
 
-**Interim (PD30, R4-M74 OQ8).** A5 has reported g5's Language code in shadow since 1b; a located `Unsupported_Kd` would need the
-per-part fact (b) adds. Question: does the shadow code stand as a PD30 exception until the SPEC session, or under (b) until its
-unit? Nothing is published before R6-check and no corpus program has the form. The session comes before g5's MIR test, X-1 and
-R6-check; the sentence can join OQ12's SPEC session (S3's §15.3.6 clarification, before 2a0-3b).
+**Interim (PD30, R4-M74 OQ8; R4-M35).** A5 has reported g5's Language code in shadow since 1b; a located `Unsupported_Kd` would
+need the per-part fact (b) adds (argued). Question: does the shadow code stand, until the SPEC session or under (b) until its unit,
+as an exception to both PD30 and R4-M35 ("Until the SPEC revisions land, … a violation of an approved loss is a located
+`Unsupported_Kd`")? Nothing is published before R6-check and no corpus program has the form (tests: H). The session comes before
+g5's MIR test, X-1 and R6-check; the sentence can join OQ12's SPEC session (S3's §15.3.6 clarification, before 2a0-3b).
 
 **Against G148's P13** (owner today: a representation, OQ8 (b); PLAN G148). Alike: a per-holder simplification against a per-part
 letter, lib 0 / ms 0, recoverable by a per-part representation. Unlike:
-1. P13 was a new loss; S1-a's rule is the approved P1 applied to Φ_E, with the intake's decision, so (a) records a decision made.
-2. P13 had 3 tests and a library-shaped form (a generic `for` over a local `Array<T>`); S1-a has none, and re-spells as separate
-   locals (H).
-3. P13's interim was a guard bit; S1-a's would cost the representation itself.
+1. P13 was a new loss; A3 as approved already carries Φ_E per holder (P1, with the intake's decision), so (a) records a decision
+   made.
+2. P13 had 3 tests and a library-shaped form (a generic `for` over a local `Array<T>`); S1-a has no test (by reading, H) and no
+   named library form, and re-spells as separate locals (H).
+3. P13's interim is "a located `Unsupported_Kd` where a conflict depends on such a step" (PLAN G148); S1-a's would need the
+   per-part fact itself (argued).
 4. (b) recovers in-body aggregates only. A struct built by `init` is a call result, one value (S15:594), so r2 stays an error while
    its tuple twin r3 becomes valid: two verdicts for one data shape (Principle 1). Under (a) both are errors.
 5. (b) gives storage the body does not own a second carrying unit while Loans keep the holder (INTEGRATED:523–524).
@@ -169,7 +172,7 @@ The readings' forms (A3, the design, carrier, desc, own id) have no unsound acce
 S1-a's (g5, r3).
 Run: the header of `spec-readings-cases.cs` (`dotnet run proto.cs -- -s2x1`, .NET SDK 11.0.100-rc.2); the hook adds a flag only.
 
-MIR's unsound acceptances today, all A5-F6 rule I (2f-3, 2f-4): c2, c3, h1–h4, p3, p3b, p5b. The old path's, frozen until
+MIR's unsound acceptances today, all A5-F6 (2f-3; c2's code at 2f-4): c2, c3, h1–h4, p3, p3b, p5b. The old path's, frozen until
 R6-check: g3, g6, p3, p3b. Findings for other units (nothing changed): 2f-6's completion condition names 936f8571825e "rejected on
 MIR", but S8:843 and S2 make it valid (c1), so after 2f-4 its old row is R1g's limit, to classify; 2f-3's "desc(c) … through W into
 the storage its store rows write" must skip the receiver's own row (§6, 3).

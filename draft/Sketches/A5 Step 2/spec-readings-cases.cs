@@ -160,7 +160,9 @@ static class S2x1
             var (t0, t1) = split ? ("t0", "t1") : ("t.0", "t.1");
             var agg = c.N(sibling ? "var t = (local@uniq, loc2@uniq)" : "var t = (local@uniq, w2@move)").Def(split ? new[] { "t0", "t1" } : new[] { "t" }).Borrow("Ll", "local", Uniq, t0);
             if (sibling) agg.Borrow("Ll2", "loc2", Uniq, t1);
-            else agg.A(K.Move, "w2").Flow("w2", phi ? "t~1" : t1); // Φ_E per part: w2's Φ_E in part 1's side holder only
+            // Φ_E per part: the side holder t~1 takes w2's whole carried set, which is exact here only because w2 carries only Φ_E
+            // (Lw2). A real model of (b) puts a part's Loans in the holder and only its Φ_E in the side holder.
+            else agg.A(K.Move, "w2").Flow("w2", phi ? "t~1" : t1);
             target = split ? (k == 0 ? "t0" : "t1") : (k == 0 ? "t.0" : "t.1");
             if (phi) // a part read carries the holder's Loans (P1) and its own part's Φ_E
             {
