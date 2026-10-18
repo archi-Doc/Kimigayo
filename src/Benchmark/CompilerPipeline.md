@@ -13,7 +13,7 @@ is outside timing.
 | --- | --- | --- |
 | 1 | `PreparationTokenizerParser` | `Compilation.CreateForTest`, target `Prepare`, document creation and `Kotonoha.AddSource` (registration, tokenization and parsing) |
 | 2 | `BindingAndStartup` | `Compilation.Bind` and application `CheckStartup` |
-| 3 | `MirPublishBuildValidate` | `Compilation.BuildMir`: HIR publication, MIR construction and validation of every body, the source's and the Kimi library's, and the MIR analyses (R4; V18 later times them as their own intervals) |
+| 3 | `MirPublishBuildValidate` | `Compilation.BuildMir`: HIR publication, MIR construction and validation of every body, the source's and the Kimi library's, and the MIR analyses (R4; V18 later times them as their own intervals); under MIR code generation also the instance collector (R5), which this default configuration does not run |
 | 4 | `ControlFlowAndOwnership` | `Ownership.Analyze` |
 | 5 | `EmissionLowering` | `LlvmEmitter.TryPrepare`: emission preconditions, layouts, ABI and lowered output model |
 | 6 | `LlvmIrWriting` | `EmissionModule.WriteIr`: serialize that prepared model to LLVM IR |
@@ -59,6 +59,18 @@ the same whole pipeline without timestamp/allocation boundary reads. Its twelve 
 use the existing MediumRun and MemoryDiagnoser configuration. The old mixed
 fresh/reused-state stage entries are removed: their timings cannot describe the
 fraction of a fresh compilation. Other feature-specific benchmarks are unchanged.
+
+## Check cost (`--analyze-cost`)
+
+`--analyze-cost` measures the check of the `Generic` shape (sizes 1, 32, 64 and 128) under three configurations set per
+compilation: `legacy`, `mir` (the MIR built, validated and analyzed beside the old path) and `sel` (`mir` with MIR code
+generation, whose `Analyze` also collects the checked set, R5 K1-K4b). `freshCheck` is one fresh compilation's
+`Bind`, `CheckStartup` and `Analyze` (the stages 2 to 4 above; preparation and parsing are untimed); `warmAnalyze` repeats
+them on one compilation without an edit, as an LSP server does. Four warmups precede seven samples of four operations;
+each result reports mean milliseconds and current-thread allocated bytes, the managed heap the checked compilation retains
+(`retainedBytes`, after full collections) and its growth over the warm Analyzes (`warmRetainedGrowthBytes`) and, under `sel`, the
+collected items. Follow the
+measurement protocol below and save `--analyze-cost` output beside it.
 
 ## Validation
 

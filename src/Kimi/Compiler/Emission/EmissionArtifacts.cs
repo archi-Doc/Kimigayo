@@ -20,6 +20,12 @@ public static class EmissionArtifacts
     internal static bool Publish(Compilation compilation, ArtifactPaths? paths, out string? irPath, out string? failure)
     {
         irPath = null;
+        if (compilation.RefusesCodegen())
+        {
+            failure = Compilation.CodegenRefusal; // Never the old generator under MIR code generation (R5 K1 to C0b1).
+            return false;
+        }
+
         string? tempIr = null;
         string? tempManifest = null;
         try

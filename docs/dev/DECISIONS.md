@@ -2270,6 +2270,34 @@ structure is recorded here by the unit that first implements it.
   - Rejected: both readers on the SPEC rule (the old generator refuses that program, `GenerationFailed_Kd`); a copy of the old
     rule in Emission (two rules for one fact); a mode parameter on `Instantiates`; the old view in `CloseClosureTypes` (the
     collector would key a generic closure as closed).
+- **R5-M35 `InstanceCollector`, `CheckedSet` and the code generator selector** (2026-10-18, planning session; plan K1, package K
+  §4.3-4.5, §5 and §9, S2-S4 X7, X15, X27, PD4, PD5; under R5-M18) A permanent Backend component, `InstanceCollector`
+  (`Backend/Instances/InstanceCollector.cs`, contract entry), owns the checked set of a program version (SPEC 8.15.3, IMPL 21.3.1) and
+  the one resolution of each call site's callee that code generation reads. It publishes `CheckedSet` (`Backend/Instances/CheckedSet.cs`):
+  items in admission order, the roots first in `MirProgram.Bodies` order, then a FIFO worklist, one item per `MonoKey`; each item's
+  targets `MonoTarget(Item, At, Runtime)` in its body's location order, a range of one array; `Find(MonoKey)`. The body-instance key is
+  `Instantiation(MirDefKey, Subst? Erased)`, null exactly when the definition does not instantiate (PD5, KD1). Roots: each body of a
+  root module (`Source.Module < rootModules`, an input range, not a mode) whose definition does not instantiate. Templates: once per
+  body and version, the Call sites that may carry a target (Fn, Requirement and Value callees and the intrinsics whose `Target` is not
+  None; a Virtual call none, X5), each with its runtime bit from the collector's own `MirReach` walk without CheckTarget edges. K1's
+  replay admits closed callees: a Fn callee's body by `TyCtxt.Implementation(..., 0)` and `MirProgram.Callee` (a default template's,
+  the function's, getter's or setter's) and a Closure of a closed definition, which is called through a borrow (`TyCtxt.Layer`).
+  `Compilation.BuildMir()` runs it after `MirAnalysis.Run`, whatever that found, under MIR code generation only until G2; it records
+  nothing until K4b and decides no acceptance; a warm run allocates nothing.
+  - `IntrinsicRows` (`Backend/IntrinsicRows.cs`), the Backend's row per `IntrinsicId`, with the `Target` column (X15): ErasedWriter
+    Witness, StaticEnsure StaticInit, MakeObj, MakeRc, MakeArc, Clone and TypeTest Descriptor, DestroyValues Glue, every other None; an
+    id without a row, None included, throws. The template builder is its first reader; C0b1 adds the writer column.
+  - Staged as rows of the same representation: `MonoKind` has only `Body`; the other kinds, `MonoKey`'s Symbol, Type and Variant, and
+    `MonoItem`'s representative, view, parent, depth and site come with the units that produce them (K4a-K8).
+  - Temporary structures: the `KIMI_CODEGEN` selector (`CompilerCodegen`, `Compilation.DefaultCodegen`, `CodegenOf` and the
+    per-compilation `Codegen`), read once per process, `mir` valid only with `KIMI_PIPELINE=mir` (any other value or combination is a
+    configuration error), a compilation's code generator following its pipeline, marked in `CompilerIdentity` (` [mir, codegen mir]`)
+    and the test artifact manifest; G4 removes it. The sel generation refusal (`Compilation.RefusesCodegen`), read by `WriteIr`,
+    `Validate` and `EmissionArtifacts.Publish`: one `Unsupported_Kd` in the Emission partition at the body of each output root (an
+    Application's startup, a test build's tests, a Library's roots), never the old generator, which `Project.Emit` leaves in place; C0a
+    moves it into the generation entry and C0b1 deletes it.
+  - Rejected: a process-wide selector only (no compilation could select MIR code generation in a test); sharing the driver's `MirReach`
+    (an edit of the driver); the refusal in the old generator's `TryPrepare` or `ReportFailure` (it is not that generator's failure).
 - **R5-M36 Closure contexts as `Subst`** (2026-10-18, planning session; plan K2 (A5P-C1), package K §4.2 and §9, S2-S4 X10, under
   R5-M18) `BoundType.ClosureContext` is the `Subst` of the instance that closed the closure. `CloseClosureTypes` interns it through
   `TyCtxt.ClosureContext(enclosing, declaring, types, lengths, origins, inputs)`, the value the old synthetic CallPlan's `SubstOf` gave
@@ -2332,3 +2360,78 @@ structure is recorded here by the unit that first implements it.
     Resource record for a Language error); first-failure precedence (a limit hid a Language failure); a Result of independent
     fields (invalid combinations).
   - R5-M29's reason no longer holds: rows stay one static owner and placement needs a per-program owner for its memo.
+- **R5-M39 `TyCtxt.Erase`** (2026-10-18, planning session; plan K3, package K §4.1 and KD1-KD3, S2-S4 X20 and X26, under R5-M18)
+  `TyCtxt.Erase(BoundType)` and `TyCtxt.Erase(Subst)` (`Binding/TyCtxt.Instances.cs`, X26's placement) give the Origin-erased form, the
+  one identity rule of instance keys, descriptors, glue and layouts (SPEC 3.3.1, 8.13.3). Every Origin becomes `BoundOrigin.Static`: a
+  reference's (`ref`, `uniq`, `objref`, `objuniq`) or a Slice's, written or inferred, any other written one, every Origin argument and a
+  substitution's Origins and Inputs; Kind, Semantics, symbols, lengths, arities, Self and the declaring Type are kept, their Types erased;
+  a closure context (R5-M36), whose binder instantiates, erases to its erased bindings. `Erase(Subst)` is null when its Target does not
+  instantiate (KD1's null rule). Interned and idempotent; it only interns (no storage preparation, X20) and never rewrites a value; two
+  reference-keyed memos beside the interning, never cleared like it, since erasure is structural (the null rule reads `Instantiates`,
+  discarded at an edit, outside the memos); a warm erasure allocates nothing. No proof runs on an erased value.
+  - Verified (`TyCtxtTest`): calls whose substitutions differ in Origins only have one erased substitution, and the Types of their
+    instances, the closure's context included, erase alike; idempotence; a Type without Origins erases to itself; every struct and enum
+    instance a MIR local of the library and the milestones holds stores the erasure of what that instance stores (the property `Layout.Of`
+    will rely on, K10a).
+  - Rejected: a separate `TyCtxt.Erasure.cs` (X8, X26); the null rule inside Type erasure for closure contexts (it would tie the
+    structural memo to `Instantiates`); a second Origin sentinel (KD2).
+- **R5-M40 Admission, the location rule and `Capability`** (2026-10-18, planning session; plan K4a, the K package's first half of K4,
+  §4.3, §4.5-4.7, §4.9, KD3, KD9, KD10, KD12, S2-S4 X19, PD30; under R5-M18) The instance collector (R5-M35) composes each site's
+  substitution with its item's representative (`TyCtxt.Compose`) and admits generic callees, keyed by definition and `Erase` (R5-M39).
+  The first composed substitution is the representative; the item's one view of its body is `MirCases.Views` on the representative, and
+  none or several is `InternalInvariant_Kd`. `Admit`, one function: a known key is reused, so Origin-only variants and a recursion under
+  one substitution share an item; a new key whose composition fails or whose body's local Types `TyCtxt.Apply` cannot make under the
+  representative is the capability table's storage-nesting gap (`Unsupported_Kd`, PD30), so each later Type of the item exists; a depth
+  past 128, 16 items of the definition on the admission chain, or 1,024 items of the definition are `GenerationResourceLimit_Kd` (X19;
+  every item is a Body item so far); a representative that is open or leaves a local Type of its body open is `InternalInvariant_Kd`
+  (K §4.3: representatives are closed). A refused edge is dropped and collection continues. The location rule (KD12): the cause's site,
+  moved out of inlined default templates outside the root modules to the outermost omitting call, else the root-module site of the
+  item's first admission, which each item keeps as `Site`. Records live in `CheckedSet.Records`, one per code and subject, unpublished
+  until K4b; `Work` counts replayed sites and admissions.
+  - Enclosing instances (group review B1, B2): `TyCtxt.Compose` takes the declaring Type from the inner substitution only, and a call
+    carries the instance of the function enclosing its callee only as that declaring Type, which Binding writes one level into a generic
+    function. A call of a function nested in an instantiating function (two levels in, in a block, in a method or a specialization of a
+    generic container) whose substitution does not carry that function's instance (`TyCtxt.EnclosingFunction`, a new view in
+    `TyCtxt.Instances.cs`) is therefore the capability gap `EnclosingInstance` (`Unsupported_Kd` at the call), never an admitted item:
+    one key for every enclosing instance and an open representative would accept such a program at check (SPEC 8.13.3, R5-M34). A
+    function nested in a closed function has no enclosing instance to carry and is admitted by its own substitution.
+    Removal condition: K5, which makes `SubstOfItem` pure for ordinary items and so carries the enclosing instance in the call's
+    substitution; the F3 reproducers in `InstanceCollectorTest` then expect two items each.
+  - Departure from KD3, owned here: a closed item's representative is stored as null, which every reader treats as the identity,
+    instead of `Identity(Decl)`; an accessor's executing function would need its own binder for an identity.
+  - A permanent Backend component, `Capability` (`Backend/Capability.cs`): the one table of what the backend does not generate on
+    windows-x64 (IMPL 21.3.3, SPEC 23.1.1), the capability check of ARCH's closed vocabularies; its first row is `StorageNesting` (PLAN
+    G128) with its code. OCC-X's refusal (K6), the generic static storage key (K7) and the operation rows (K9a) join it.
+  - Verified (`InstanceCollectorTest`): instances keyed by erased substitutions, erased exactly when the definition instantiates;
+    Origin-only variants and finite recursion reuse one item; a growing key stops at 16 items, depth at 128 and a definition at 1,024
+    items, each with the record at its call; `pick<Option^31<ref/i32>>` and `pick<Array^64<i32>>` are instances while `Option^32<ref/i32>`
+    and `Array^65<i32>` are the gap at the call; the F3 reproducers: one level into a generic function two items, the other shapes the
+    `EnclosingInstance` gap, a generic function nested in a closed one one item, every admitted representative closing its body, and a
+    forged open representative `InternalInvariant_Kd`; with a second, non-root module the location rule moves a
+    record out of its inlined default and out of its body; the work doubles and quadruples with the instances; a warm run allocates
+    nothing; the library (as roots) and the 44 milestones give no record.
+  - Rejected: the storage check by `Erase` (erasure never fails); limits per call site (X19 keys them by definition and chain).
+- **R5-M41 Collector records under MIR code generation (OD4)** (2026-10-18, planning session; plan K4b, the K package's second half of
+  K4, §4.4, §4.9, §5 and §10 D-A and D-B; under R5-M18; meets R5-M4's "under sel, collector records publish from K4" with K4b) Under
+  MIR code generation (sel), `Compilation.MirRecords` counts and lists the records of the checked set of the program version (R5-M40)
+  with the MIR's construction records and validator findings: analysis Errors in the ControlFlow partition (R5-M4, PD7), so they reject
+  at check, count in `Analysis` and block generation. On the default pipeline and under `mir` alone the collector does not run (PD4)
+  until G2.
+  - D-A: the collector runs in `Compilation.BuildMir`, after the MIR analyses and before acceptance, not as a Mir pass; ARCH's pipeline
+    table moves the definition-stage capability check from P7-P9 to it (A3b joins its body scan at K9a).
+  - D-B (P5): the bundled library is no root in user compilations. `KimiLibraryShapeTest.TheLibraryCollectsWithoutRecords` collects it
+    with every module a root module and asserts no record. Preconditions: no library declaration under a compile-time Condition (SPEC
+    19.2) and one target profile (windows-x64); a change to either reopens P5. Library instances user code requests are collected by
+    edges and located by R5-M40's rule (KD12).
+  - Cost (`Benchmark --analyze-cost`, new; `artifacts/benchmarks/r5-k4b-analyze-cost-*`; Generic shape 1/32/64/128 on a machine shared
+    with other builds, so only allocations are exact): a fresh check under sel allocates 0.15, 1.29, 2.31 and 4.61 MB more than under
+    `mir` for 16, 450, 898 and 1,794 collected items, linear in the items; a warm Analyze allocates the same under sel as under `mir` (the
+    collector's warm run is 0 B); the checked compilation retains 0.10, 0.97, 1.79 and 3.56 MB more under sel than under `mir` (the
+    checked set, the `Erase` memos and the instances' interned Types, about 2 KB per item), and its retained heap grows by the same few
+    KB over warm Analyzes under every configuration (none from the collector); the timings vary more between repeated sizes than the
+    configurations differ and await G2's quiet-machine measurement (R5-M4).
+  - Staged sel coverage: until K5-K8 the collector follows Fn calls and calls of closures of closed definitions only, so requirement
+    calls, closures of instances, function items, virtual calls and the descriptor, glue and static-initializer intrinsics add no edge
+    and no record; sel's absence of records over the library and the milestones covers only the edges collected.
+  - Verified: under sel a storage-nesting gap rejects the program at check at its call (`PipelineSwitchTest`); the library and the 44
+    milestones analyzed under sel give no collector record (`InstanceCollectorTest`).
