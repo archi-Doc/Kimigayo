@@ -198,6 +198,17 @@ public sealed class CallPlan
     internal static BindingSymbol Accessor(PropertyAccessorKoto accessor)
         => accessor.CodeContext.Compilation.Binding.AccessorFunction(Binding.Accessor(accessor)).BoundSymbol!;
 
+    /// <summary>Gets how a call of a function is selected (SPEC 6.4.6, 8.4): a virtual slot dispatches on its receiver's Type, a requirement
+    /// to its conforming Type's witness, any other function is called directly.</summary>
+    /// <param name="target">The function.</param>
+    /// <returns>Virtual, Requirement or Function.</returns>
+    internal static CalleeKind KindOf(BindingSymbol target) => target.Declaration switch
+    {
+        FunctionKoto { IsVirtual: true } => CalleeKind.Virtual,
+        FunctionKoto { IsRequirement: true } => CalleeKind.Requirement,
+        _ => CalleeKind.Function,
+    };
+
     /// <summary>Gets a function's parameter as its body reads it: slot <paramref name="index"/>, an accessor's <c>self</c> and <c>value</c>
     /// included, or at -1 the receiver <c>self</c> a constructor initializes or a destructor destroys (SPEC 6.3).</summary>
     /// <param name="function">A function, a closure or an accessor's executing function.</param>
@@ -261,8 +272,7 @@ public sealed class CallPlan
 
     internal void Set(BindingSymbol target, BoundType result, Koto? receiver, ReadOnlySpan<int> mapping, ReadOnlySpan<BoundType?> typeArguments, BoundType? conformingType = null, BoundType? declaringType = null, ReadOnlySpan<BoundOrigin> origins = default, ReadOnlySpan<BoundOrigin> inputOrigins = default, ReadOnlySpan<BoundArgumentOperation> operations = default, BoundArgumentOperation receiverOperation = default, BoundMemberPath? basePath = null, ReadOnlySpan<BoundDefaultArgument> defaults = default, ReadOnlySpan<BoundLength?> lengthArguments = default)
     {
-        this.Kind = target.Declaration is FunctionKoto { IsVirtual: true } ? CalleeKind.Virtual
-            : target.Declaration is FunctionKoto { IsRequirement: true } ? CalleeKind.Requirement : CalleeKind.Function;
+        this.Kind = KindOf(target);
         this.AdaptationSource = null;
         this.Target = target;
         this.ReturnType = result;

@@ -80,11 +80,18 @@ internal sealed partial class InstanceCollector
     }
 
     // K 4.3, 4.8: the item of a type-driven key requested at a site, admitted once per erased Type whose layout verdict is Ok (a failure is
-    // the Type's one record, or derived) and represented by the first unerased Type that requests it; past the depth limit
+    // the Type's one record, or derived) and represented by the first unerased Type that requests it, which is closed (an open one is a
+    // broken contract, InternalInvariant_Kd); past the depth limit
     // GenerationResourceLimit_Kd. -1 when refused.
     private int AdmitType(int parent, SourceRef site, MonoKind kind, BoundType type)
     {
         var set = this.Set;
+        if (type.ContainsParameter)
+        {
+            set.Report(DiagnosticCode.InternalInvariant_Kd, site);
+            return -1;
+        }
+
         var key = new MonoKey(kind, default, this.types.Erase(type));
         if (set.Find(key) is >= 0 and var found)
         {

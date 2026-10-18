@@ -2407,8 +2407,9 @@ structure is recorded here by the unit that first implements it.
     `TyCtxt.Instances.cs`) is therefore the capability gap `EnclosingInstance` (`Unsupported_Kd` at the call), never an admitted item:
     one key for every enclosing instance and an open representative would accept such a program at check (SPEC 8.13.3, R5-M34). A
     function nested in a closed function has no enclosing instance to carry and is admitted by its own substitution.
-    Removal condition: PLAN G149, a representation of the enclosing-instance chain in a call's substitution (full process, before G2;
-    R5-M43 states why K5's pure `SubstOfItem` does not carry it); the F3 reproducers in `InstanceCollectorTest` then expect two items each.
+    Removal condition: PLAN G149, a representation of the enclosing-instance chain in a call's substitution (full process, scheduled
+    inside R5 before its exit, so the gap's `[Transitional("R5")]` stage stands; R5-M43 states why K5's pure `SubstOfItem` does not carry
+    it); the F3 reproducers in `InstanceCollectorTest` then expect two items each.
   - Departure from KD3, owned here: a closed item's representative is stored as null, which every reader treats as the identity,
     instead of `Identity(Decl)`; an accessor's executing function would need its own binder for an identity.
   - A permanent Backend component, `Capability` (`Backend/Capability.cs`): the one table of what the backend does not generate on
@@ -2448,17 +2449,18 @@ structure is recorded here by the unit that first implements it.
   - Verified: under sel a storage-nesting gap rejects the program at check at its call (`PipelineSwitchTest`); the library and the 44
     milestones analyzed under sel give no collector record (`InstanceCollectorTest`).
 - **R5-M43 Closure, item and erasure edges; the pure item substitution** (2026-10-18, planning session; plan K5, the K package's §4.3
-  and §4.5 rows 5 and 10-12; under R5-M18) `TyCtxt.SubstOfItem` gives an ordinary function item's substitution from its Item Type alone:
+  and §4.5 rows 5 and 11-13; under R5-M18) `TyCtxt.SubstOfItem` gives an ordinary function item's substitution from its Item Type alone:
   its function's own Type arguments (`Binding.CopyItemArguments`), the declaring Type its last Component holds and its length arguments,
   without Origins, the substitution `FunctionItemContext` built, without its cache or storage preparation; a requirement Item's stays its
   requirement call's until K6. The collector's templates gain statement sites, in location order with the calls: an `Aggregate(Closure)`
-  is the Closure's body (row 10), a `Use` of a `Const(FnItem)` (the builder's one form of that operand) the Item's (row 11), a
-  `Cast(Erasure)` a `ClosureErasure` or `ItemAdapter` item keyed by the erased Closure or Item Type (row 12); a Value callee's Closure or
+  is the Closure's body (row 11), a `Use` of a `Const(FnItem)` (the builder's one form of that operand) the Item's (row 12), a
+  `Cast(Erasure)` a `ClosureErasure` or `ItemAdapter` item keyed by the erased Closure or Item Type (row 13); a Value callee's Closure or
   Item in the item's instance (`Apply`) is its body (row 5). A Closure's body is keyed by its definition and the erased substitution of
   the instance that closed it (`SubstOfClosure`, exact since G142, R5-M36), an Item's by its function's implementation under the Item's
-  substitution; the Item of a function whose calls dispatch (`TyCtxt.Dispatches`, new: a requirement, K6; a virtual slot, K8) and a
-  Function Type value have no target. A type-driven item holds its representative Type (`MonoItem.RepresentativeType`) and key Type
-  (`MonoKey.Type`), no body (`BodyOrdinal` -1), takes its target at admission (the body its Closure or Item runs, at the default site,
+  substitution; the Item of a function whose calls dispatch (`TyCtxt.Dispatches`, new, over `CallPlan.KindOf`, the one rule that also
+  gives a call's `Kind`: a requirement, K6; a virtual slot, K8) and a Function Type value have no target. A type-driven item holds its
+  representative Type (`MonoItem.RepresentativeType`, closed, an open one being `InternalInvariant_Kd`) and key Type (`MonoKey.Type`), no
+  body (`BodyOrdinal` -1), takes its target at admission (the body its Closure or Item runs, at the default site,
   runtime; K7 adds the environment's glue) and past depth 128 is `GenerationResourceLimit_Kd`. `TyCtxt.EnclosingFunction` walks through
   anonymous functions, and a substitution carries the enclosing instance as its binder (a Closure's context) or its declaring Type.
   - The `EnclosingInstance` gap stays (planning session): a call's substitution carries the enclosing instance only as `Declaring =
@@ -2466,13 +2468,14 @@ structure is recorded here by the unit that first implements it.
     Fn call (probe at 2c0371da: the nested calls of the F3 shapes are Fn callees, with `Declaring` null two levels in, in a block, in a
     method or a specialization of a generic struct), so a pure item substitution cannot carry it, and two slot-bearing levels fit in no one
     `Declaring`. The fix, a representation of the enclosing-instance chain in a call's substitution, changes shared structure under the full
-    process before G2: PLAN G149, R5-M40's removal condition.
+    process: PLAN G149, R5-M40's removal condition, scheduled inside R5 before its exit, so the gap stays `[Transitional("R5")]`.
   - Rejected: widening `CallDeclaringType` to the nearest slot-bearing enclosing declaration (two levels stay unrepresentable, and legacy
     CallPlans change); the collector testing `IsRequirement` or `IsVirtual` (syntax in the Backend; `Dispatches` publishes it); targets per
     operand of every statement (a site would hold several).
   - Verified (`InstanceCollectorTest`): Closures of two instances, a Closure in a Closure and a Closure never called are bodies of their
     instances, a function item constant and an Item called through a Callable parameter their function's, an erasure of each its adapter
-    item with the body as its target, a call of the Function Type value none, no records; every target at a call or a rows 10-12 statement;
+    item with the body as its target, a call of the Function Type value none, a requirement's and a virtual slot's Item none, an open
+    adapter Type `InternalInvariant_Kd`, no records otherwise; every target at a call or a rows 11-13 statement;
     the F3 expectations unchanged; the library (as roots) and the 44 milestones under sel give no record; `TyCtxtTest`'s one length entry
     per slot holds for the pure item substitution, and `MirEffectsTest` passes on it. Staged sel coverage: requirement calls and Items,
     virtual calls and Items, and the descriptor, glue and static-initializer intrinsics still collect nothing until K6-K8.
@@ -2486,7 +2489,8 @@ structure is recorded here by the unit that first implements it.
   parameter syntax), so a library instance's limit is reported where user code requests it, not at the project file as the old
   generator does; Rejected storage derives from the Binding error that rejected it (no record); CLayout is K10b's `InvalidCLayout_Kd`;
   a `ClosureErasure` or `ItemAdapter` item is admitted only for an Ok verdict. The uses are template sites beside the target sites, in
-  location order; locals are laid out per item before its sites. PLAN G146 (2^63 - 1) stays out of scope.
+  location order; locals are laid out per item before its sites. PLAN G146 (2^63 - 1) stays out of scope, and so do a collection's
+  element Types (X34): an Array's or Dictionary's own layout is its handle words, so the element verdict comes with its glue item (K7).
   - The height-64 (d) row (R5-M37, P7c's Q6; the final review's N6) does not arise: a struct chain and a one-component Tuple chain, read
     down to the scalar leaf, are accepted by both MIR and the old generator at 64 placed levels and refused by both at 65, since the old
     pool takes `Layout`'s depth verdict before counting its own (`InstanceCollectorTest.TheDepthLimitCountsPlacedLevels`); no R5-M6 row is

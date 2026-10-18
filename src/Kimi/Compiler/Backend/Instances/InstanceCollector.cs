@@ -115,7 +115,7 @@ internal sealed partial class InstanceCollector
         _ => throw new InvalidOperationException($"A call has the callee kind {callee.Kind}."),
     };
 
-    // K 4.5 rows 10-12 and K 4.8: a statement is a site by its rvalue: an aggregate, a by-value use whose Closure environment also carries a
+    // K 4.5 rows 11-13 and K 4.8: a statement is a site by its rvalue: an aggregate, a by-value use whose Closure environment also carries a
     // target; an erasure to a Function Type; a function item constant.
     private static bool IsSite(MirBody body, in MirStatement statement)
         => statement is { Kind: MirStatementKind.Assign, Rvalue: var rvalue } && rvalue.Kind switch
