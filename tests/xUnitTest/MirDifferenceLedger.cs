@@ -21,12 +21,13 @@ namespace XunitTest;
 /// findings and problems on code and subject node (<see cref="Sides"/>), appending one row per record to <c>raw-&lt;pid&gt;.tsv</c> there and saving the source once as
 /// <c>sources/&lt;sha&gt;.kimi</c>. Disposal aggregates the rows (<see cref="Aggregate"/>). Without the variable nothing is observed.
 /// </summary>
-/// <remarks>A raw row is <c>event section side analysis code requirement location form body sha</c>: the comparison, complete or
-/// incomplete Binding (R4-M5), both, old or new, the owning analysis (A1, A3, A4, A5, U for an old Unsupported gate, - for the expansion
-/// limit, B for a MIR construction record, validator finding or contract break; a MIR problem takes its pair's in the compared set), the
-/// code, the requirement (the old record's; a MIR problem's own, R4-M67; - for a MIR construction record or validator finding, which name
-/// none until H3; <c>old&gt;mir</c> for a matched pair whose requirements differ), the subject's document, offset and length, its syntax
-/// form, the location of its enclosing definition and the source's hash.</remarks>
+/// <remarks>A raw row is <c>event section side analysis code requirement location form body sha</c>: the comparison, complete (Binding
+/// accepted the program: a complete result without a lint Error) or incomplete Binding (R4-M5), both, old or new, the owning analysis (A1,
+/// A3, A4, A5, U for an old Unsupported gate, - for the expansion limit, B for a MIR construction record, validator finding or contract
+/// break; a MIR problem takes its pair's in the compared set), the code, the requirement (the old record's; a MIR problem's own, R4-M67; -
+/// for a MIR construction record or validator finding, which name none until H3; <c>old&gt;mir</c> for a matched pair whose requirements
+/// differ), the subject's document, offset and length, its syntax form, the location of its enclosing definition and the source's
+/// hash.</remarks>
 public sealed class MirDifferenceLedger : IDisposable
 {
     internal const int Event = 0;
@@ -387,7 +388,8 @@ public sealed class MirDifferenceLedger : IDisposable
     {
         var source = Source(compilation);
         var sha = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(source)))[..12];
-        var section = compilation.Binding.Result.IsComplete ? "complete" : "incomplete";
+        // Binding accepted the program (R4-M47): a complete result and no lint Error, which leaves it complete (R5-M31).
+        var section = compilation.Binding.Result.IsComplete && compilation.Binding.LintErrors == 0 ? "complete" : "incomplete";
         var comparison = $"{Environment.ProcessId}.{Interlocked.Increment(ref this.events)}";
         var rows = new StringBuilder();
         foreach (var (side, (code, requirement, analysis, node)) in matched)

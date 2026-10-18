@@ -234,6 +234,33 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     inspect(r)
                 """));
 
+    // SPEC 15.1.6, 15.6 (DECISIONS R5-M38): a pattern binding of a Never payload borrows the subject in place and keeps that Loan, so a
+    // write to the subject while the binding lives conflicts, in an arm that never runs too.
+    [Fact]
+    public void ANeverPayloadBindingKeepsItsLoan()
+        => Assert.Equal(
+            ["written: s = NeverErr.Ok(1)"],
+            Problems("""
+                enum NeverErr
+                    Ok(i32)
+                    Err(Never)
+                func written(r: NeverErr) -> i32
+                    var s = r@move
+                    return match s
+                        .Ok(let v) => v
+                        .Err(let e)
+                            s = NeverErr.Ok(1)
+                            _ = e
+                            yield 0
+                func unwritten(r: NeverErr) -> i32
+                    var s = r@move
+                    return match s
+                        .Ok(let v) => v
+                        .Err(let e)
+                            _ = e
+                            yield 0
+                """));
+
     // SPEC 14.9, 14.10.3 (F10): Loans flow forward over every path, joined at heads, around loops into the next iteration, and into code
     // only the checks reach; a holder reassigned before its next use carries nothing across.
     [Fact]

@@ -160,7 +160,7 @@ public sealed class HirColumnsTest
 
     // SPEC 14.5.2, 14.7: the jump binding writes a transfer's target row only when the transfer may go there; with no target (none
     // in scope, behind a defer or a default) or an unlabeled yield whose selection discards its result the row is null, and Binding
-    // records row 9 or 10 at the jump.
+    // records row 9 or 10 at the jump, from which the MIR's jump is derived, with no record of its own (DECISIONS R5-M42).
     [Theory]
     [InlineData("loop\n    yield 1", "InvalidJumpTarget_Kd")]
     [InlineData("func f()\n    defer => return", "InvalidJumpTarget_Kd")]
@@ -175,6 +175,7 @@ public sealed class HirColumnsTest
         Assert.Null(HirTables.PlanOf(jump).Plan);
         Assert.True(HoldsItsTarget(jump));
         Assert.Contains(CompilationTestHelper.BindingErrors(c), x => x.Code == code && x.Span == jump.Span);
+        Assert.DoesNotContain(c.BuildMir().Records, x => x.Subject == SourceRef.Of(jump));
     }
 
     // SPEC 3.5, 10.2, 15.1.5, 15.1.6: a Copy Place is Copied, a stored exclusive reference Reborrowed, a Place a ref parameter takes

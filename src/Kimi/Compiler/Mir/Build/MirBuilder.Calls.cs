@@ -93,11 +93,9 @@ internal sealed partial class MirBuilder
                 direct!.ReceiverIndex,
                 out _);
             var slot = defaults ? this.Slot(parameter, receiver) : (MirPlace?)null;
-            var operand = this.Operand(
-                receiver,
-                ReferenceEquals(direct, function) ? call.ReceiverOperation.AdaptedType ?? parameter : parameter,
-                input: true,
-                slot);
+            var view = ReferenceEquals(direct, function) ? call.ReceiverOperation.AdaptedType ?? parameter : parameter;
+            var operand = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: false } ? this.Dispatched(receiver, view!, slot)
+                : this.Operand(receiver, view, input: true, slot);
             operand = slot is null && last > -2 ? this.Secure(operand, receiver) : operand;
             this.arguments[start] = slot is { } place ? this.Pending(place, operand, receiver) : operand;
         }
@@ -152,6 +150,26 @@ internal sealed partial class MirBuilder
             ReferenceEquals(call.ReturnType, BoundType.Never) || MirDescriptors.Of(disposition.Id).Diverges,
             function is null ? this.arguments[pending] : default);
         this.arguments.RemoveRange(pending, start - pending);
+    }
+
+    // SPEC 6.4.5: a virtual receiver's borrow covers the whole payload, so the receiver is borrowed as the view of its payload's own Type
+    // and that view upcast to the slot's (SPEC 13.6.1), the Loan on the payload rather than on its base subobject (DECISIONS R5-M49).
+    private MirOperand Dispatched(Koto receiver, BoundType view, MirPlace? slot)
+    {
+        var payload = TypeOf(receiver);
+        while (TyCtxt.Layer(payload, out var below, out _) != HirPlaceKind.Value && below is not null)
+        {
+            payload = below;
+        }
+
+        var whole = compilation.Types.Reference(view.Semantics, payload, view.Origin);
+        if (view.Components is not [var referent] || MirTypes.Agree(payload, referent))
+        {
+            return this.Operand(receiver, view, input: true, slot);
+        }
+
+        var borrowed = this.body.AddOperand(this.Operand(receiver, whole, input: true));
+        return this.Temporary(view, MirRvalue.Cast(MirCastKind.Upcast, borrowed, view) with { Proven = true }, receiver, slot);
     }
 
     // A Call terminator of a callee on the operands pushed since start, into the destination; one that diverges continues for the checks
