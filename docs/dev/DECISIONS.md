@@ -2639,9 +2639,10 @@ structure is recorded here by the unit that first implements it.
   許可一覧（変換なしの Never Place 読み出し・Never 型の Opaque・発散する呼び出しの戻り先）を加え、この系統を閉じます。R5 側で
   実装と再レビューが必要です。」) Rule (`MirBuilder.Values.cs`, `MirValidator`): the Never value is a temp of Type Never
   (`IsNeverValue`); every acquisition takes it as it is and `Set` places nothing of it, as R4-M62 has it. A named Place of Type
-  Never (a parameter, a binding, a payload) is not the Never value: an acquisition of it with no adaptation, the Copy (a bare
-  read, since Never is Copy, BU-4) or Move Binding publishes, goes into a fresh Never temp, which `Acquire` gives, so whatever
-  takes it places nothing; an adapted acquisition (a pattern binding of a Never payload, which borrows the subject in place) is
+  Never (a parameter, a binding, a payload) is not the Never value: any acquisition of it without adaptation (the Copy of a
+  bare read, since Never is Copy, BU-4, a Move, or the in-place path's ByCase, which a Copy Type takes by Copy) goes into a
+  fresh Never temp, which `Acquire` gives, so whatever takes it places nothing; an adapted acquisition (a pattern binding of a
+  Never payload, which borrows the subject in place) is
   built as Binding publishes it, a `ref/Never` that keeps its Loan, so a write to the subject while the binding lives is a
   conflict, even in an arm that never runs. `MirValidator`'s `NeverWrite` row whitelists a Never temp's writers: an unadapted
   Copy or Move of a Place of Type Never, an Opaque value, and a diverging Call's destination (R5-M33); any other is a finding.
@@ -2849,8 +2850,10 @@ structure is recorded here by the unit that first implements it.
   and places it into its target's result temp (no storage of its own) before the Scope Exit, and the target's delivery block,
   after the drop tree, moves it into the target's destination: the target's Destination and Break become that temp and that block
   at its first such transfer (`Target.Delivers`), so every later transfer to it takes them as it shares its drop tree. A transfer
-  leaving no cleanup places its result directly, as before. So a block value borrowing a departing local conflicts with that
-  local's storage end even when nothing reads the value later; a return's `_0` gains the delivery too (unobservable there, since
-  the return reads `_0`). Rejected: delivering per transfer after a drop tree of its own (one drop tree per target); a result temp
-  for every construct (MIR on every path, not only where a scope is left); the delivery block and temp as new Target
-  parameters (the record already has seven; its Destination and Break take them).
+  leaving no cleanup places its result directly, as before. The result temp lies in the target's scope, the MIR scope the target
+  opened in (`Target.Scope`; a defer's is the scope that registered it, a function's return target's scope 0), not the jump's. So
+  a block value borrowing a departing local conflicts with that local's storage end even when nothing reads the value later; a
+  return's `_0` gains the delivery too (unobservable there, since the return reads `_0`). Rejected: delivering per transfer after
+  a drop tree of its own (one drop tree per target); a result temp for every construct (MIR on every path, not only where a scope
+  is left); the delivery block, temp and scope as new Target parameters (the record already has seven; its Destination and Break
+  take the first two, an init property the scope).

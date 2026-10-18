@@ -78,7 +78,7 @@ fn make @54
   _5: rc/Plain var counted @87 s1
   _6: Plain temp @95 s1
   _7: i32 temp @100 s1
-  _8: i32 temp @54 s1
+  _8: i32 temp @54
   s1: lexical in s0 @56
   bb0:
       StorageLive(_1) @57 s1
