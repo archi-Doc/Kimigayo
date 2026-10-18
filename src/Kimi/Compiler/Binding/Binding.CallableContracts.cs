@@ -83,7 +83,7 @@ public sealed partial class Binding
             }
 
             var actual = Translate(implementation.Input(i)!);
-            if (actual is null || !this.FitsTypeAt(required, actual, requirement.Binder) || !this.ProvesInputPremises(actual, required, requirement.Binder))
+            if (actual is null || !this.IsSubtypeAt(required, actual, requirement.Binder) || !this.ProvesInputPremises(actual, required, requirement.Binder))
             {
                 return ConstraintProof.Refuted;
             }
@@ -101,7 +101,12 @@ public sealed partial class Binding
         }
 
         var expected = requirement.Result is { } requiredOutput ? this.ContractType(requiredOutput, scope, self) : null;
-        return result is null || expected is null ? ConstraintProof.Unknown : this.FitsTypeAt(result, expected, requirement.Binder) ? ConstraintProof.Proven : ConstraintProof.Refuted;
+        if (result is null || expected is null)
+        {
+            return ConstraintProof.Unknown;
+        }
+
+        return this.IsSubtypeAt(result, CompatibleResult(result, expected), requirement.Binder) ? ConstraintProof.Proven : ConstraintProof.Refuted;
 
         BoundType? Translate(BoundType type)
         {

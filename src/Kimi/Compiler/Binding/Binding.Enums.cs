@@ -452,7 +452,7 @@ public sealed partial class Binding
             }
 
             this.acquisitionFailure = null;
-            if (fit == CandidateApplicability.Error || (source.BoundType ?? this.BindNode(source, scope, type)) is not { } completed ||
+            if (fit == CandidateApplicability.Error || (this.PropagateBound(source, type) ?? this.BindNode(source, scope, type)) is not { } completed ||
                 (fitted.Adaptation == ArgumentAdaptation.Erasure && completed is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } &&
                 !this.ErasePart(source, completed, type)))
             {

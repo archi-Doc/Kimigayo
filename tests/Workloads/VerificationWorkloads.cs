@@ -278,14 +278,16 @@ internal static class VerificationWorkloads
         return source.ToString();
     }
 
+    // SPEC 10.4 step 3: two fitting references, the one with no generic parameters of its own ranking above the generic one (SPEC 3.8
+    // makes `(i32) -> Never` no subtype of `(i32) -> i32`, so parameter Types rank none).
     internal static string FunctionReferenceRanking(bool borrowed)
     {
-        const string Source = "func fail(value: i32) -> Never => $abort(\"not called\")\nfunc choose(value: (i32) -> i32) -> i32 => 0\nfunc choose(value: (i32) -> Never) -> i32 => 42\nlet action: ((i32) -> Never) -> i32 = choose\nlet value: (i32) -> Never = fail\nlet result = action(value@move)";
+        const string Source = "func fail(value: i32) -> Never => $abort(\"not called\")\nfunc choose<F>(value: F) -> i32 => 0\nfunc choose(value: (i32) -> Never) -> i32 => 42\nlet action: ((i32) -> Never) -> i32 = choose\nlet value: (i32) -> Never = fail\nlet result = action(value@move)";
         return borrowed ? BorrowFunctionReferenceInputs(Source) : Source;
     }
 
     internal static string BorrowFunctionReferenceInputs(string source)
-        => source.Replace("func choose(value: (i32) -> i32)", "func choose(value: ref/((i32) -> i32))", StringComparison.Ordinal)
+        => source.Replace("func choose<F>(value: F)", "func choose<F>(value: ref/F)", StringComparison.Ordinal)
             .Replace("func choose(value: (i32) -> Never)", "func choose(value: ref/((i32) -> Never))", StringComparison.Ordinal)
             .Replace("((i32) -> Never) -> i32", "(ref/((i32) -> Never)) -> i32", StringComparison.Ordinal)
             .Replace("action(value@move)", "action(value@ref)", StringComparison.Ordinal);

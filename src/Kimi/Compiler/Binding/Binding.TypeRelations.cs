@@ -4,6 +4,11 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
+// The Type relation (SPEC 3.8, 15.3.5, 15.6.1; DECISIONS BU-4): subtyping, identity up to Origin variance, read by Type-to-Type
+// comparisons (identity tests, slot unification, ranking, contract and layer matching) through IsSubtype, IsStructuralSubtype,
+// IsSubtypeAt and FitsStructuralPart, and by the value fits (Binding.ValueFits.cs) below their root. Never relates only to itself: a
+// Type holding Never is an ordinary Type, and Never fitting is a value judgment (SPEC 3.8), as 10.7's result compatibility is a
+// callable one (CallableSignatureFits).
 public sealed partial class Binding
 {
     /// <summary>Compares interned complete types without erasing their Origin contracts.</summary>
@@ -12,28 +17,25 @@ public sealed partial class Binding
     /// <returns>Whether both references identify the same complete type.</returns>
     public static bool SameType(BoundType left, BoundType right) => ReferenceEquals(left, right);
 
-    /// <summary>Proves the implemented structural subtype rules without performing a value operation.</summary>
-    /// <param name="actual">The supplied complete type.</param>
-    /// <param name="expected">The required complete type.</param>
-    /// <returns>Whether the implemented rules prove the relation.</returns>
-    public static bool FitsType(BoundType actual, BoundType expected) => FitsTypeCore(actual, expected, null, null);
+    // SPEC 3.8: whether `actual` is a subtype of `expected`; `own` is the declaration whose per-call inputs `actual` names.
+    internal static bool IsSubtype(BoundType actual, BoundType expected, Koto? own = null) => FitsTypeCore(actual, expected, null, null, own: own);
 
-    // SPEC 15.6.1: the structural part of a fit, with all Origin bindings treated as equal; only its failure is a Type mismatch. The
-    // Origin part of a Function Type, a comparison of whole contracts, is still judged here (SPEC 10.7).
-    internal static bool FitsStructurally(BoundType actual, BoundType expected) => FitsTypeCore(actual, expected, null, null, structural: true);
+    // SPEC 15.6.1: the structural part of the relation, every Origin binding outside Function Types treated as equal.
+    internal static bool IsStructuralSubtype(BoundType actual, BoundType expected) => FitsTypeCore(actual, expected, null, null, structural: true);
 
     // SPEC 10.4 step 2, 15.6.1: the structural part with every Origin binding treated as equal, inside Function Types too, since Origin
     // bindings never rank candidates.
-    internal static bool FitsStructuralPart(BoundType actual, BoundType expected) => FitsTypeCore(actual, expected, null, null, structural: true, everywhere: true);
+    internal static bool FitsStructuralPart(BoundType actual, BoundType expected)
+        => FitsTypeCore(actual, expected, null, null, structural: true, everywhere: true);
 
-    internal bool FitsTypeAt(BoundType actual, BoundType expected, Koto use) => FitsTypeCore(actual, expected, this, use);
+    // SPEC 10.7, 15.3.7: callable compatibility of an implementation's signature with a required one: subtyping against the required
+    // signature, its result Never when the implementation's is (CompatibleResult); `own` is the declaration whose per-call inputs the
+    // implementation's signature names.
+    internal bool CallableSignatureFits(BoundType actual, BoundType expected, Koto? own)
+        => FitsTypeCore(actual, this.CompatibleSignature(actual, expected), null, null, own: own);
 
-    // Lowering rechecks the already verified contract without adding constraints or reopening inference.
-    internal bool FitsVerifiedTypeAt(BoundType actual, BoundType expected, Koto use)
-        => this.FitsTypeAt(actual, expected, use) || ((actual.CarriesOrigin || expected.CarriesOrigin) &&
-            this.FitsStructurallyAt(actual, expected, use) && this.FailedOriginRelation(actual, expected, use, OriginVariance.Covariant, verified: true) is null);
-
-    internal bool FitsStructurallyAt(BoundType actual, BoundType expected, Koto use) => FitsTypeCore(actual, expected, this, use, structural: true);
+    // SPEC 3.8 at a use whose premises and Origins the relation reads.
+    internal bool IsSubtypeAt(BoundType actual, BoundType expected, Koto use) => FitsTypeCore(actual, expected, this, use);
 
     // Only Origin restriction is inferred here. No Core conversion or common base search is
     // introduced; every invariant position stays identical and both inputs must fit the result.
@@ -79,7 +81,7 @@ public sealed partial class Binding
             }
 
             var result = this.types.Intern(left.Kind, left.Symbol, left.Semantics, components.AsSpan(0, left.Components.Count), left.Length, !InactiveOuterOrigin(left, this, null) && left.Origin is { } a ? this.Meet(a, right.Origin!) : null, origins.AsSpan(0, left.OriginArguments.Count), left.LengthExpression, left.ClosureContext, left.LengthArguments);
-            return FitsType(left, result) && FitsType(right, result) ? result : null;
+            return IsSubtype(left, result) && IsSubtype(right, result) ? result : null;
         }
         finally
         {
@@ -101,8 +103,10 @@ public sealed partial class Binding
         Mismatch,
     }
 
-    // `own` is the declaration whose own per-call inputs the root actual signature names (SPEC 8.10); a nested Function Type's own
-    // syntax binds its inputs. `skipOrigin` leaves the outer Origin to an instantiation that already fixed it; `instance` is the
+    // SPEC 10.7: an implementation's result R fits a required result Q when R <: Q or R is Never, at the result's top level only: the
+    // required result it is compared against.
+    private static BoundType CompatibleResult(BoundType result, BoundType required) => ReferenceEquals(result, BoundType.Never) ? BoundType.Never : required;
+
     // SPEC 15.3.5: the layers invariant in their target: an exclusive borrow, a writable object handle, a raw pointer, and a pair
     // layer whose binder admits one of them (InvariantAdmitted), since a relation between pair layers must hold for every admitted
     // Semantics. A comparison without a Binding sees only the concrete layers.
@@ -125,11 +129,13 @@ public sealed partial class Binding
         return (semantics & SemanticsMask.Borrow) == 0;
     }
 
-    // Callable comparison whose per-call Origins the parts are compared under; `structural` treats Origin bindings as equal outside
-    // Function Types, and `everywhere` inside them too.
+    // SPEC 3.8: the relation; Never relates only to itself. `own` is the declaration whose own per-call inputs the root actual signature
+    // names (SPEC 8.10); a nested Function Type's own syntax binds its inputs. `skipOrigin` leaves the outer Origin to an instantiation
+    // that already fixed it; `instance` is the Callable comparison whose per-call Origins the parts are compared under; `structural`
+    // treats Origin bindings as equal outside Function Types, and `everywhere` inside them too.
     private static bool FitsTypeCore(BoundType actual, BoundType expected, Binding? binding, Koto? use, bool invariant = false, bool skipOrigin = false, CallableInstance instance = default, Koto? own = null, bool structural = false, bool everywhere = false)
     {
-        if (ReferenceEquals(actual, expected) || ReferenceEquals(actual, BoundType.Never))
+        if (ReferenceEquals(actual, expected))
         {
             return true;
         }
@@ -337,6 +343,29 @@ public sealed partial class Binding
         return binding is null ? OriginOutlives(a, b) : binding.FitOrigin(a, b, use!);
     }
 
+    // The required signature an implementation's is compared against (CompatibleResult): the required one, its result replaced.
+    private BoundType CompatibleSignature(BoundType implementation, BoundType required)
+    {
+        if (implementation.Kind != BoundTypeKind.Function || required.Kind != BoundTypeKind.Function ||
+            implementation.Components.Count != 2 || required.Components.Count != 2)
+        {
+            return required;
+        }
+
+        return ReferenceEquals(CompatibleResult(implementation.Components[1], required.Components[1]), required.Components[1]) ? required
+            : this.types.Intern(
+                required.Kind,
+                required.Symbol,
+                required.Semantics,
+                [required.Components[0], BoundType.Never],
+                required.Length,
+                required.Origin,
+                (BoundOrigin[])required.OriginArguments,
+                required.LengthExpression,
+                required.ClosureContext,
+                required.LengthArguments);
+    }
+
     // SPEC 10.7, 15.6.1, 23.1: the first member of a conversion whose Origin part fails under the call-time instantiation: the n-th
     // parameter, whose required input must outlive the implementation's, or the result, which must outlive the required one. Both ends
     // are instantiated, so neither is a call-time Origin of the implementation.
@@ -414,78 +443,6 @@ public sealed partial class Binding
 
         return null;
     }
-
-    // SPEC 15.6.1: a fit whose structure holds leaves each differing Origin position as an obligation that ownership judges and reports
-    // with facts at the value. `polarity` is the variance of the compared position within the fitted Type (SPEC 15.3.5), composed as
-    // FitsTypeCore composes it: a contravariant position reverses the relation, and an invariant or unused one makes it `==`, also for
-    // every position nested in it, such as the slots of a Type argument stored through `uniq/T` or read by `(T) -> i32`.
-    private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use, OriginVariance polarity = OriginVariance.Covariant)
-    {
-        if (!HasLocalRegion(actual) && !HasLocalRegion(expected) &&
-            (polarity == OriginVariance.Contravariant ? this.FitsTypeAt(expected, actual, use) : FitsTypeCore(actual, expected, this, use, polarity == OriginVariance.Invariant)))
-        {
-            return true;
-        }
-
-        if (actual.Kind != expected.Kind || actual.Semantics != expected.Semantics || actual.Symbol != expected.Symbol || actual.Length != expected.Length || !ReferenceEquals(actual.LengthExpression, expected.LengthExpression) || !actual.LengthArguments.AsSpan().SequenceEqual(expected.LengthArguments) || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count || actual.Kind == BoundTypeKind.Primitive)
-        {
-            return false;
-        }
-
-        if (actual.Kind == BoundTypeKind.Function)
-        {
-            return false; // SPEC 10.7, 15.6.1: a conversion compares whole contracts, so its failure is one record (RecordMismatch).
-        }
-
-        switch (FitOuterOrigins(actual, expected, this, use, out var longer, out var shorter))
-        {
-            case OuterOriginFit.Mismatch:
-                return false;
-            case OuterOriginFit.Relation:
-                this.AddOriginFit(longer, shorter, expected, use, polarity, SlotCondition(actual, this, use));
-                break;
-        }
-
-        for (var i = 0; i < actual.OriginArguments.Count; i++)
-        {
-            var a = actual.OriginArguments[i];
-            var b = expected.OriginArguments[i];
-            if (!ReferenceEquals(a, b))
-            {
-                this.AddOriginFit(a, b, expected, use, ComposeVariance(polarity, expected.Symbol?.Schema?.Origins[i].Variance ?? OriginVariance.Invariant));
-            }
-        }
-
-        for (var i = 0; i < actual.Components.Count; i++)
-        {
-            if (IsInvariantLayer(actual, this))
-            {
-                if (!this.CheckTypeUse(actual.Components[i], expected.Components[i], use, OriginVariance.Invariant))
-                {
-                    return false;
-                }
-
-                continue;
-            }
-
-            var position = actual.Kind == BoundTypeKind.Constructed && actual.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count
-                ? schema.GenericSlots[i].OriginVariance : OriginVariance.Covariant;
-            if (!this.CheckTypeUse(actual.Components[i], expected.Components[i], use, ComposeVariance(polarity, position)))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    // One Origin position of a fit by its variance: `actual` outlives `expected` at a covariant position, the reverse at a contravariant
-    // one, and `==` otherwise; `type` is the expected Type at that position, the record's destination, and `condition` the Semantics
-    // case the position exists in.
-    private void AddOriginFit(BoundOrigin actual, BoundOrigin expected, BoundType type, Koto use, OriginVariance variance, ulong condition = 0)
-        => this.AddObligation(variance == OriginVariance.Contravariant
-            ? new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, type, expected, actual, Condition: condition)
-            : new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, type, actual, expected, Equality: variance != OriginVariance.Covariant, Condition: condition));
 
     private BoundType DirectTarget(BoundType whole)
     {

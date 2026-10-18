@@ -19,7 +19,8 @@ public sealed partial class Binding
                 // A lookup borrows K itself, including when K is a reference value.
                 // An existing ref/K is reborrowed; it is never read into a key snapshot.
                 var written = source.Right.BoundType;
-                if (written is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && !FitsType(written, key) && FitsType(written.Components[0], key))
+                if (written is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
+                    !IsSubtype(written, key) && IsSubtype(written.Components[0], key))
                 {
                     this.adaptations.Remove(source.Right);
                     actual = written.Components[0];

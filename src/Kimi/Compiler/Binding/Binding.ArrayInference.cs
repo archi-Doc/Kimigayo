@@ -93,6 +93,7 @@ public sealed partial class Binding
         var complete = true;
         for (var i = 0; i < literal.Elements.Count; i++)
         {
+            this.PropagateBound(literal.Elements[i], expected.Components[0]);
             var actual = this.BindNode(literal.Elements[i], scope, expected.Components[0]);
             if (actual is null)
             {
@@ -234,17 +235,34 @@ public sealed partial class Binding
 
     // SPEC 4.3: without a fixed-array expectation an independent literal constructs an Array whose element Type is the
     // one complete Type its elements establish; unfitted numeric literals follow ordinary inference. Call arguments keep
-    // candidate-local fitting and never take this default.
+    // candidate-local fitting and never take this default. While it collects that evidence, its parts' literals wait for it.
     private BoundType? BindIndependentArrayLiteral(ArrayLiteralKoto literal, BindingScope scope)
     {
         BoundType? established = null;
         BoundType? literalDefault = null;
-        for (var i = 0; i < literal.Elements.Count; i++)
+        var collecting = this.collectingElements;
+        this.collectingElements = literal;
+        var collected = true;
+        for (var i = 0; collected && i < literal.Elements.Count; i++)
         {
-            if (!this.CollectLiteralElementEvidence(literal.Elements[i], scope, ref established, ref literalDefault))
-            {
-                return Complete(literal, null);
-            }
+            collected = this.CollectLiteralElementEvidence(literal.Elements[i], scope, ref established, ref literalDefault);
+        }
+
+        this.collectingElements = collecting;
+        if (collected && established is null && this.DecidedLater(literal))
+        {
+            return Complete(literal, null); // SPEC 14.9.2 step 3, 4.3: no element establishes a Type, so the literal waits for its position's.
+        }
+
+        // Without an established Type, or when an element failed (SPEC 23.1.2: the others are still bound), the waiting parts default.
+        for (var i = 0; (!collected || established is null) && i < literal.Elements.Count; i++)
+        {
+            this.DefaultWaitingPart(literal.Elements[i], ref literalDefault);
+        }
+
+        if (!collected)
+        {
+            return Complete(literal, null);
         }
 
         if ((established ?? literalDefault) is not { } element)
@@ -254,7 +272,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < literal.Elements.Count; i++)
         {
-            this.RequireType(literal.Elements[i], scope, element);
+            this.RequireAtPosition(literal.Elements[i], scope, element);
         }
 
         return Complete(literal, this.types.Intern(BoundTypeKind.Array, this.Library.DynamicArray, SemanticsKind.Owner, [element]));
@@ -274,11 +292,18 @@ public sealed partial class Binding
         var actual = this.BindNode(source, scope);
         if (actual is null)
         {
-            return false;
+            return this.Deferred(source); // SPEC 4.3, 14.9.2 step 3: a part waiting for the element Type supplies none; it is bound at it.
         }
 
         if (ReferenceEquals(actual, BoundType.Never))
         {
+            return true;
+        }
+
+        if (this.AwaitsPosition(source))
+        {
+            // SPEC 14.9.2 step 3, 4.3: it takes the established element Type; without one, the awaiting elements' own common Type.
+            literalDefault = literalDefault is null ? actual : this.CommonOriginType(literalDefault, actual) ?? literalDefault;
             return true;
         }
 
