@@ -101,9 +101,9 @@ public sealed class MirDifferenceLedger : IDisposable
         Compilation.Analyzed += this.Record;
     }
 
-    /// <summary>Gets the tracked classification table (R4-M16, R4-M46): per row <c>id section kind analysis code requirement form category
-    /// clause reference note</c>, where <c>*</c> matches anything, the form is a regular expression and the clause names the SPEC sections
-    /// deciding the row (- for none).</summary>
+    /// <summary>Gets the tracked classification table (R4-M16, R4-M46): per row <c>id section kind side analysis code requirement form
+    /// category clause reference note</c>, where each field matches an equal one or is <c>*</c> (a side matches only itself: mir never
+    /// matches both), the form is a regular expression and the clause names the SPEC sections deciding the row (- for none).</summary>
     internal static string[][] Table
         => [.. File.ReadLines(DiagnosticCorpus.RepositoryPath("tests", "xUnitTest", "TestData", "mir-diff", "classification.tsv")).Skip(1)
             .Where(static x => x.Length != 0).Select(static x => x.Split('\t'))];
@@ -174,13 +174,14 @@ public sealed class MirDifferenceLedger : IDisposable
         return [.. old.Select((x, i) => (matched[i] ? "both" : "old", x with { Requirement = requirements[i] })), .. unmatched.Select(static x => ("new", x))];
     }
 
-    /// <summary>Lists the differences of raw rows by signature (section, kind, analysis, code, requirement, form): per event and body, an
-    /// unmatched old and new row of one code pair into one <c>location</c> difference with the old row's facts, and the other unmatched
-    /// rows are <c>missing</c> (old) or <c>new</c>; an event whose A-owned records are on one side only adds an <c>acceptance</c>
-    /// difference with that side's first row. A matched row whose requirements differ (<c>old&gt;mir</c>) is a <c>requirement</c>
-    /// difference; other matched rows are no difference. A missing row is unsound, the old path rejecting what the
-    /// MIR accepts (plan §8 of the Complete Polonius A5 Plan, R4-M47), when its compilation's Binding is complete and its body keeps no
-    /// unpaired MIR record, which would make it a code choice.</summary>
+    /// <summary>Lists the differences of raw rows by signature (section, kind, side, analysis, code, requirement, form): per event and
+    /// body, an unmatched old and new row of one code pair into one <c>location</c> difference with the old row's facts, and the other
+    /// unmatched rows are <c>missing</c> (old) or <c>new</c>; an event whose A-owned records are on one side only adds an
+    /// <c>acceptance</c> difference with that side's first row. A matched row whose requirements differ (<c>old&gt;mir</c>) is a
+    /// <c>requirement</c> difference; other matched rows are no difference. The side is the path whose records a difference reports:
+    /// old for missing, mir for new, both for location and requirement, and for acceptance the side that holds the event's records.
+    /// A missing row is unsound, the old path rejecting what the MIR accepts (plan §8 of the Complete Polonius A5 Plan, R4-M47), when its
+    /// compilation's Binding is complete and its body keeps no unpaired MIR record, which would make it a code choice.</summary>
     /// <param name="rows">The raw rows.</param>
     /// <returns>Each difference's signature, its source's hash, its subject's location and whether it is unsound.</returns>
     internal static List<(string Signature, string Sha, string Location, bool Unsound)> Differences(IEnumerable<string[]> rows)
@@ -192,7 +193,7 @@ public sealed class MirDifferenceLedger : IDisposable
             var (old, mir) = (group.FirstOrDefault(static x => x[Side] != "new"), group.FirstOrDefault(static x => x[Side] != "old"));
             if ((old is null) != (mir is null))
             {
-                differences.Add(Difference(old ?? mir!, "acceptance", false));
+                differences.Add(Difference(old ?? mir!, "acceptance", old is null ? "mir" : "old", unsound: false));
             }
 
             var olds = new List<(string[] Row, bool Paired)>();
@@ -207,11 +208,11 @@ public sealed class MirDifferenceLedger : IDisposable
             }
 
             differences.AddRange(group.Where(static x => x[Side] == "both" && x[Requirement].Contains('>'))
-                .Select(static x => Difference(x, "requirement", unsound: false)));
+                .Select(static x => Difference(x, "requirement", "both", unsound: false)));
             var complete = group.First()[Section] == "complete";
-            differences.AddRange(olds.Select(x => x.Paired ? Difference(x.Row, "location", false)
-                : Difference(x.Row, "missing", complete && !news.Exists(y => y[Body] == x.Row[Body]))));
-            differences.AddRange(news.Select(static x => Difference(x, "new", false)));
+            differences.AddRange(olds.Select(x => x.Paired ? Difference(x.Row, "location", "both", unsound: false)
+                : Difference(x.Row, "missing", "old", complete && !news.Exists(y => y[Body] == x.Row[Body]))));
+            differences.AddRange(news.Select(static x => Difference(x, "new", "mir", unsound: false)));
         }
 
         return differences;
@@ -238,11 +239,15 @@ public sealed class MirDifferenceLedger : IDisposable
                 var row = Array.Find(table, y => Matches(y, x.Key));
                 used.Add(row?[0] ?? string.Empty);
                 var blocking = x.Where(static y => y.Unsound || y.Library || y.Milestone).ToList();
-                return (Signature: x.Key, Count: x.Count(), Blocking: blocking, Category: row?[7] ?? "?", Clause: row?[8] ?? "-", Reference: row?[9] ?? "-", Example: x.First().Sha);
+                return (Signature: x.Key, Count: x.Count(), Blocking: blocking, Category: row?[8] ?? "?", Clause: row?[9] ?? "-",
+                    Reference: row?[10] ?? "-", Example: x.First().Sha);
             }).OrderByDescending(static x => x.Count).ThenBy(static x => x.Signature, StringComparer.Ordinal).ToList();
         File.WriteAllLines(
             Path.Combine(directory, "ledger.tsv"),
-            ["section\tkind\tanalysis\tcode\trequirement\tform\tcount\tblocking\tcategory\tclause\treference\texample", .. ledger.Select(static x => $"{x.Signature}\t{x.Count}\t{x.Blocking.Count}\t{x.Category}\t{x.Clause}\t{x.Reference}\t{x.Example}")],
+            [
+                "section\tkind\tside\tanalysis\tcode\trequirement\tform\tcount\tblocking\tcategory\tclause\treference\texample",
+                .. ledger.Select(static x => $"{x.Signature}\t{x.Count}\t{x.Blocking.Count}\t{x.Category}\t{x.Clause}\t{x.Reference}\t{x.Example}"),
+            ],
             new UTF8Encoding(false));
         var open = ledger.Where(static x => x.Category is not ("a" or "c" or "d")).ToList();
         var blocked = open.SelectMany(static x => x.Blocking).ToList();
@@ -259,7 +264,7 @@ public sealed class MirDifferenceLedger : IDisposable
             .Append($"- Open blocking rows: {blocked.Count} of {ledger.Sum(static x => x.Blocking.Count)} (an old rejection the MIR lacks {blocked.Count(static x => x.Unsound)}, ")
             .Append($"else a library body {blocked.Count(static x => !x.Unsound && x.Library)}, else a milestone {blocked.Count(static x => !x.Unsound && !x.Library)})\n\n")
             .Append("| analysis | section | unclassified signatures | rows | open blocking rows |\n| --- | --- | ---: | ---: | ---: |\n");
-        foreach (var split in open.GroupBy(static x => (Analysis: x.Signature.Split('\t')[2], Section: x.Signature.Split('\t')[0])).OrderBy(static x => x.Key))
+        foreach (var split in open.GroupBy(static x => (Analysis: x.Signature.Split('\t')[3], Section: x.Signature.Split('\t')[0])).OrderBy(static x => x.Key))
         {
             var unclassified = split.Where(static x => x.Category == "?").ToList();
             summary.Append($"| {split.Key.Analysis} | {split.Key.Section} | {unclassified.Count} | {unclassified.Sum(static x => x.Count)} | {split.Sum(static x => x.Blocking.Count)} |\n");
@@ -311,22 +316,26 @@ public sealed class MirDifferenceLedger : IDisposable
         return (common, old, passed, mir);
     }
 
+    /// <summary>Gets whether a classification row matches a signature: each field is * or equal, a side included (a row of side mir
+    /// never matches a both signature), and the form, a regular expression, matches the whole form.</summary>
+    /// <param name="row">The classification row.</param>
+    /// <param name="signature">The signature (<see cref="Differences"/>).</param>
+    /// <returns>Whether it matches.</returns>
+    internal static bool Matches(string[] row, string signature)
+    {
+        var fields = signature.Split('\t');
+        return Enumerable.Range(0, 6).All(i => row[i + 1] is "*" || row[i + 1] == fields[i]) &&
+            (row[7] is "*" || Regex.IsMatch(fields[6], $"^(?:{row[7]})$", RegexOptions.CultureInvariant));
+    }
+
     private static DiagnosticRequirement Ownership(OwnershipRequirement requirement) => DiagnosticRequirement.Ownership(requirement);
 
     // A compared pair whose MIR problem names the old record's requirement.
     private static (DiagnosticRequirement Requirement, DiagnosticCode Code, string Analysis, DiagnosticRequirement? Mir) Same(
         DiagnosticRequirement requirement, DiagnosticCode code, string analysis) => (requirement, code, analysis, requirement);
 
-    private static (string Signature, string Sha, string Location, bool Unsound) Difference(string[] row, string kind, bool unsound)
-        => (string.Join('\t', row[Section], kind, row[Analysis], row[Code], row[Requirement], row[Form]), row[Sha], row[Location], unsound);
-
-    // A classification row matches a signature when each field is * or equal and the form, a regular expression, matches the whole form.
-    private static bool Matches(string[] row, string signature)
-    {
-        var fields = signature.Split('\t');
-        return Enumerable.Range(0, 5).All(i => row[i + 1] is "*" || row[i + 1] == fields[i]) &&
-            (row[6] is "*" || Regex.IsMatch(fields[5], $"^(?:{row[6]})$", RegexOptions.CultureInvariant));
-    }
+    private static (string Signature, string Sha, string Location, bool Unsound) Difference(string[] row, string kind, string side, bool unsound)
+        => (string.Join('\t', row[Section], kind, side, row[Analysis], row[Code], row[Requirement], row[Form]), row[Sha], row[Location], unsound);
 
     // The definition whose body holds a node: the node itself or its nearest function, Property or accessor, else its tree's root.
     private static Koto BodyOf(Koto node)

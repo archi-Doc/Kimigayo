@@ -73,9 +73,10 @@ public sealed class MirDifferenceTest
 
     // R4-M17: per comparison and body, an unmatched old and new row of one code pair into one location difference with the old row's
     // facts, and the rest are missing or new; a comparison with A-owned records on one side only adds an acceptance difference, and
-    // matched rows are no difference unless their requirements differ (R4-M67: a requirement difference). R4-M47: in a Binding-complete
-    // compilation a missing row is unsound unless its body keeps an unpaired MIR record (a code choice); a matched record does not exempt
-    // it, and no other difference is unsound.
+    // matched rows are no difference unless their requirements differ (R4-M67: a requirement difference). R5-M56: each difference names
+    // its side, old for missing, mir for new, both for location and requirement, and for acceptance the side holding the records (2 and
+    // 4 old, 3 mir). R4-M47: in a Binding-complete compilation a missing row is unsound unless its body keeps an unpaired MIR record (a
+    // code choice); a matched record does not exempt it, and no other difference is unsound.
     [Fact]
     public void DifferencesPairByBodyAndCode()
     {
@@ -100,26 +101,26 @@ public sealed class MirDifferenceTest
         ]).Select(static x => (x.Signature, x.Unsound)).ToArray();
         (string, bool)[] expected =
         [
-            ("complete\tlocation\tA1\tMovedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto", false),
-            ("complete\tmissing\tA1\tUninitializedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto", true),
-            ("complete\tnew\t-\tUninitializedPlace_Kd\t-\tIdentifierNameKoto", false),
-            ("complete\tacceptance\tA1\tMovedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto", false),
-            ("complete\tmissing\tA1\tMovedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto", true),
-            ("complete\tacceptance\t-\tMovedPlace_Kd\t-\tIdentifierNameKoto", false),
-            ("complete\tnew\t-\tMovedPlace_Kd\t-\tIdentifierNameKoto", false),
-            ("incomplete\tacceptance\tA1\tMovedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto", false),
-            ("incomplete\tmissing\tA1\tMovedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto", false),
-            ("complete\tmissing\tA1\tMovedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto", false),
-            ("complete\tnew\t-\tUninitializedPlace_Kd\t-\tIdentifierNameKoto", false),
-            ("complete\tmissing\tA1\tUninitializedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto", true),
-            ("complete\trequirement\tA1\tMovedPlace_Kd\tBinding.VirtualEffectBound>Ownership.VirtualEffectBound\tIdentifierNameKoto", false),
+            ("complete\tlocation\tboth\tA1\tMovedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto", false),
+            ("complete\tmissing\told\tA1\tUninitializedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto", true),
+            ("complete\tnew\tmir\t-\tUninitializedPlace_Kd\t-\tIdentifierNameKoto", false),
+            ("complete\tacceptance\told\tA1\tMovedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto", false),
+            ("complete\tmissing\told\tA1\tMovedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto", true),
+            ("complete\tacceptance\tmir\t-\tMovedPlace_Kd\t-\tIdentifierNameKoto", false),
+            ("complete\tnew\tmir\t-\tMovedPlace_Kd\t-\tIdentifierNameKoto", false),
+            ("incomplete\tacceptance\told\tA1\tMovedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto", false),
+            ("incomplete\tmissing\told\tA1\tMovedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto", false),
+            ("complete\tmissing\told\tA1\tMovedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto", false),
+            ("complete\tnew\tmir\t-\tUninitializedPlace_Kd\t-\tIdentifierNameKoto", false),
+            ("complete\tmissing\told\tA1\tUninitializedPlace_Kd\tOwnership.UninitializedUse\tIdentifierNameKoto", true),
+            ("complete\trequirement\tboth\tA1\tMovedPlace_Kd\tBinding.VirtualEffectBound>Ownership.VirtualEffectBound\tIdentifierNameKoto", false),
         ];
         Assert.Equal(expected, differences);
     }
 
     // R4-M47 (plan §8): a difference blocks the R4 exit when it is unsound, lies in a library body, or lies in a Binding-complete program
     // that holds a milestone's whole text; it stays open unless its signature is classified (a), (c) or (d). The library row's new
-    // signature, whose MIR side names its requirement (R4-M67), is the tracked (d) row a1-c3.
+    // signature, on side mir and naming its requirement (R4-M67, R5-M56), is the tracked (d) row a1-c3.
     [Fact]
     public void BlockingRowsAreUnsoundOrInTheLibraryOrAMilestone()
     {
@@ -142,16 +143,17 @@ public sealed class MirDifferenceTest
                 ]);
             MirDifferenceLedger.Aggregate(directory);
             var blocking = File.ReadAllLines(Path.Combine(directory, "ledger.tsv")).Skip(1).Select(static x => x.Split('\t'))
-                .ToDictionary(static x => $"{x[0]} {x[1]} {x[4]} {x[5]}", static x => (x[6], x[7]));
+                .ToDictionary(static x => $"{x[0]} {x[1]} {x[2]} {x[5]} {x[6]}", static x => (x[7], x[8]));
             var expected = new Dictionary<string, (string, string)>
             {
-                ["complete missing Ownership.UninitializedUse UnitLiteralKoto"] = ("1", "1"),
-                ["complete acceptance Ownership.UninitializedUse UnitLiteralKoto"] = ("3", "1"),
-                ["complete new Ownership.UninitializedUse UnitLiteralKoto"] = ("2", "1"),
-                ["complete new Ownership.UninitializedUse IdentifierNameKoto"] = ("1", "1"),
-                ["complete acceptance Ownership.UninitializedUse IdentifierNameKoto"] = ("1", "1"),
-                ["incomplete new Ownership.UninitializedUse UnitLiteralKoto"] = ("1", "0"),
-                ["incomplete acceptance Ownership.UninitializedUse UnitLiteralKoto"] = ("1", "0"),
+                ["complete missing old Ownership.UninitializedUse UnitLiteralKoto"] = ("1", "1"),
+                ["complete acceptance old Ownership.UninitializedUse UnitLiteralKoto"] = ("1", "0"),
+                ["complete acceptance mir Ownership.UninitializedUse UnitLiteralKoto"] = ("2", "1"),
+                ["complete new mir Ownership.UninitializedUse UnitLiteralKoto"] = ("2", "1"),
+                ["complete new mir Ownership.UninitializedUse IdentifierNameKoto"] = ("1", "1"),
+                ["complete acceptance mir Ownership.UninitializedUse IdentifierNameKoto"] = ("1", "1"),
+                ["incomplete new mir Ownership.UninitializedUse UnitLiteralKoto"] = ("1", "0"),
+                ["incomplete acceptance mir Ownership.UninitializedUse UnitLiteralKoto"] = ("1", "0"),
             };
             Assert.Equal(expected, blocking);
             Assert.Contains("- Open blocking rows: 4 of 5 (an old rejection the MIR lacks 1, else a library body 1, else a milestone 2)\n", File.ReadAllText(Path.Combine(directory, "summary.md")));
@@ -205,9 +207,21 @@ public sealed class MirDifferenceTest
         Assert.Null(MirDifferenceLedger.MirAnalysisOf(DiagnosticRequirement.Ownership(defect), DiagnosticCode.InternalInvariant_Kd));
     }
 
-    // R4-M16, R4-M46: every classification row has a unique id, known fields or * (a requirement difference's old>mir), a valid form
-    // pattern, a category a–e, a clause of SPEC sections or -, and a reference; an (a), (c) or (d) row, which plan §8 lets the R4 exit
-    // pass, names its clause.
+    // R5-M56: a classification row matches a signature's side by equality or *; a row of side mir does not match a both signature.
+    [Theory]
+    [InlineData("mir", "mir", true)]
+    [InlineData("mir", "both", false)]
+    [InlineData("old", "both", false)]
+    [InlineData("both", "both", true)]
+    [InlineData("*", "old", true)]
+    public void ARowMatchesItsSideOrStar(string row, string signature, bool matches)
+        => Assert.Equal(matches, MirDifferenceLedger.Matches(
+            ["id", "complete", "*", row, "A5", "*", "*", "*", "b", "-", "ref", "note"],
+            $"complete\tlocation\t{signature}\tA5\tComparisonLoanConflict_Kd\tOwnership.ComparisonLoanConflict\tIdentifierNameKoto"));
+
+    // R4-M16, R4-M46: every classification row has a unique id, known fields or * (a requirement difference's old>mir; R5-M56's side),
+    // a valid form pattern, a category a–e, a clause of SPEC sections or -, and a reference; an (a), (c) or (d) row, which plan §8 lets
+    // the R4 exit pass, names its clause.
     [Fact]
     public void TheClassificationTableIsWellFormed()
     {
@@ -217,16 +231,17 @@ public sealed class MirDifferenceTest
         var requirements = DiagnosticRequirements.All.Select(static x => x.Name).Append("-").ToHashSet(StringComparer.Ordinal);
         foreach (var row in table)
         {
-            Assert.Equal(11, row.Length);
+            Assert.Equal(12, row.Length);
             Assert.Contains(row[1], (string[])["*", "complete", "incomplete"]);
             Assert.Contains(row[2], (string[])["*", "missing", "new", "location", "acceptance", "requirement"]);
-            Assert.Contains(row[3], (string[])["*", "A1", "A3", "A4", "A5", "U", "B", "-"]);
-            Assert.True(row[4] == "*" || Enum.GetNames<DiagnosticCode>().Contains(row[4]), row[0]);
-            Assert.True(row[5] == "*" || row[5].Split('>').All(requirements.Contains), row[0]);
-            Assert.True(row[6] == "*" || Record.Exception(() => new Regex($"^(?:{row[6]})$")) is null, row[0]);
-            Assert.Contains(row[7], (string[])["a", "b", "c", "d", "e"]);
-            Assert.True(row[8] == "-" ? row[7] is "b" or "e" : row[8].Split(' ').All(DiagnosticCorpus.SpecSections.Contains), row[0]);
-            Assert.NotEqual(string.Empty, row[9].Trim());
+            Assert.Contains(row[3], (string[])["*", "old", "mir", "both"]);
+            Assert.Contains(row[4], (string[])["*", "A1", "A3", "A4", "A5", "U", "B", "-"]);
+            Assert.True(row[5] == "*" || Enum.GetNames<DiagnosticCode>().Contains(row[5]), row[0]);
+            Assert.True(row[6] == "*" || row[6].Split('>').All(requirements.Contains), row[0]);
+            Assert.True(row[7] == "*" || Record.Exception(() => new Regex($"^(?:{row[7]})$")) is null, row[0]);
+            Assert.Contains(row[8], (string[])["a", "b", "c", "d", "e"]);
+            Assert.True(row[9] == "-" ? row[8] is "b" or "e" : row[9].Split(' ').All(DiagnosticCorpus.SpecSections.Contains), row[0]);
+            Assert.NotEqual(string.Empty, row[10].Trim());
         }
     }
 

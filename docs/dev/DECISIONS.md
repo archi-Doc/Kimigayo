@@ -553,6 +553,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   (`DiagnosticCorpus.SpecSections`), which `ledger.tsv` repeats for its signatures; references keep plan and DEC references only.
   An (a), (c) or (d) row needs a clause, since a row of plan §8's blocking kinds passes the R4 exit only as (a), (c) or (d) with a
   SPEC clause; a (b) or (e) row, which a repair unit resolves, may write `-` where no SPEC rule decides it (a primary location).
+  R5-M56 (Q17, 2026-10-19) adds a `side` column directly after `kind`, the path whose records a difference reports: `old`, `mir`,
+  `both` or `*`, matched by equality or `*` (`mir` does not match `both`), which `ledger.tsv` repeats.
   Rejected: clauses inside `reference` (unchecked, mixed with plan and DEC references); a second table keyed by row id (two tables
   for one row).
 - **R4-M47** (2026-10-17, tooling session; plan §8, R4-M35; replaces PLAN10 §18 P9 in `summary.md`) The ledger's aggregation reports
@@ -2901,14 +2903,29 @@ structure is recorded here by the unit that first implements it.
   problem is one ledger row: `MirReport.Add` owns the merge per code and subject (R4-M67), so the ledger merges nothing; R4's 1c-8,
   which changes that key under G125, adapts the ledger (agreed with R4). MirReport's disagreement record (`Ownership.Internal`) and
   any pair outside the set are contract-break rows (B), never an exception. A matched pair whose requirements differ is a
-  `requirement` difference, its requirement column `old>mir`; a MIR side that names none agrees. The classification table stays
-  R4's; with R4's approval its rows that read `-` on the MIR side name the requirement each recording rule names, the A4
-  requirement difference is (d) (`a4-requirement`), the dead `a1-result` row goes, and `a4-x2` (d) and `a4-preserves` (b), one
-  signature once the MIR side names its requirement, are one (b) row `a4-preserves` whose note names both causes (F6's rows and
-  X2's).
+  `requirement` difference, its requirement column `old>mir`; a MIR side that names none agrees.
+  - The side (2026-10-19, the owner's decision, R4's shape; review round 2), verbatim:
+    「Q17 も E10 も (A) で進めてください。Q17 は side 列を加える形（R4 承認の形）、E10 は sel で完全なテスト名を使う形。」
+    Before Q17 a MIR row's `-` requirement was the only mark of its side, so once the MIR names its requirement, old-side rows of
+    kind `*` met MIR rows and old-only and MIR-only `acceptance` rows shared one signature. Each difference carries its side, computed once by `MirDifferenceLedger.Differences` as the signature's third field:
+    `old` for missing, `mir` for new, `both` for location and requirement, and for acceptance the side that holds the event's
+    records; no consumer derives it again. The table gains a `side` column after `kind` (R4-M46), matched by equality or `*` (`mir`
+    does not match `both`).
+  - The table stays R4's. With R4's approval its rows that read `-` on the MIR side name the requirement each recording rule names
+    and take side `mir`, which reproduces their pre-Q17 matches (Q21's `a5-kept-closure` too); the A4 requirement difference is
+    (d) (`a4-requirement`); the dead `a1-result` row goes; `a4-x2` (d) and `a4-preserves` (b) stay two rows, since the side
+    separates them exactly (X2's new and acceptance rows on mir, F6's missing and acceptance rows on old). Every other row takes
+    `*`, except `u-never-loop`, which takes `old`: with `*` it would take a MIR-only Unsupported_Kd it never matched (at
+    `let nest = Nest<ref/i32>.init(value: n@ref)`), and its one location row, the old Never gate at `var t = (1, stop())` paired
+    with a MIR construction record at `(1, stop())`, met it only through the old row's facts and is unclassified until R4 decides
+    it. Otherwise the classification equals the one before Q17.
   - Rejected: a code-to-requirement lookup on the MIR side (R5-M23 D7); throwing on a pair outside the set (the ledger would lose the
     run); comparing requirements in `location` pairs (their subject is the difference); keeping `-` on the MIR side (the comparison
-    the package asks for); the ledger merging problems over bodies itself (a second copy of `MirReport.Add`'s rule, review round 1).
+    the package asks for); the ledger merging problems over bodies itself (a second copy of `MirReport.Add`'s rule, review round 1);
+    one `a4-preserves` row for X2's and F6's rows (review round 2: X2's new rows are (d)); the owner's (B), a whitelist of the
+    signatures each old-side row may meet (a second list beside the table, one more entry per MIR requirement), and (C), holding
+    Q17 with `-` on the MIR side (the comparison waits); splitting `acceptance` into two kinds (the side would hold for one kind
+    only); `mir` also matching `both` (an implicit second value); `*` for `u-never-loop` (a MIR rejection classified (a)).
 - **R5-M53 The capability table's operation rows and the definition-stage check (A3b)** (2026-10-18, planning session; plan K9a, the K
   package's §4.7, §9 row K9a and D-A; implements R4-M8; under R5-M18) `Capability.Of(rvalue, operand)` gives the row of an operation the
   backend does not generate (IMPL 21.3.3's 128-bit subset), or none: `WideDivision`, a `BinaryOp` `Div` or `Rem` of i128 or u128 (a
