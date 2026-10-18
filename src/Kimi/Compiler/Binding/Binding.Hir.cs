@@ -175,9 +175,9 @@ public sealed partial class Binding
         // Whether the lexer, the parser or Binding rejected a node: a recovery, a #switch that selected no arm (SPEC 19.3) or a failure.
         private static bool Rejected(Koto node) => IsRecovery(node, out _) || node is CompileTimeSwitchKoto || node.BindingFailure != BindingFailure.None;
 
-        // SPEC 3.4.3, 13.5.5: the form of a compound Place Binding can reject: a Field, an Index or a Deref (`*p`, `p@follow`). A group is
-        // bound as its operand and never rejected where it is evaluated (an unclosed one's recovery is its operand), so it is no such form.
-        private static bool CompoundPlace(Koto node) => node is MemberAccessKoto or IndexKoto or DereferenceKoto ||
+        // SPEC 3.4.3, 13.5.5: the form of a compound Place: a Field, an Index, a Deref (`*p`, `p@follow`) or a group (such as a list item the
+        // parser recovered, a parameter default or a call's last argument).
+        private static bool CompoundPlace(Koto node) => node is MemberAccessKoto or IndexKoto or DereferenceKoto or ParenthesizedKoto ||
             (node is ConversionKoto conversion && ConversionTargetSyntax(conversion) is TypeSemanticsKoto target && target.Names(Constants.FollowOperation));
 
         // The position of a child: a declaration evaluates its body, defaults and initializer, an expression its operands, and

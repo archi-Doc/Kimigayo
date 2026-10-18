@@ -2875,14 +2875,13 @@ structure is recorded here by the unit that first implements it.
   node the HIR publishes (`MirBuilder.Published`, equal to the Body and Closure Ops before this entry: 0 differences over 740 table
   definitions of the goldens and the library and 863 of the milestones and the library). Amendment (review): the definition must also
   be one the publisher reached (an Op written), since a synthesized executing function shares its accessor's body. (2) A failed
-  compound Place (a Field, an Index, or a Deref, `*p` or `p@follow`, the latter recognized by Binding's target rule
-  `TypeSemanticsKoto.Names`, that Binding rejected or did not resolve, not a broken contract) keeps each operand Binding resolved at its
-  position, written in place `(None, None)`, which under an Error node marks a kept operand (`HirPublisher.Keeps`). Amendment
-  (review): an operand is kept only when its own Op is published with its facts, so a Type or group name (Syntax) and a name both of
-  whose paths resolve (an Error) stay replaced. A group is no such form: Binding binds it as its operand and never rejects it where it
-  is evaluated, and the parser records an unclosed group's operand as the recovery (Q8 §3.8's Group needs no rule). The builder
-  evaluates an Error node's kept operands in syntax order as their Places (a value in a temp) before its Opaque value, never acquiring
-  them; the site names their roots and the roots of the rest of the node's syntax, which root collection skips (it walks the Error
+  compound Place (a Field, an Index, a Deref, `*p` or `p@follow`, the latter recognized by Binding's target rule
+  `TypeSemanticsKoto.Names`, or a group, such as a list item the parser recovered (a parameter default, a call's last argument), that
+  Binding rejected or did not resolve, not a broken contract) keeps each operand Binding resolved at its position, written in place
+  `(None, None)`, which under an Error node marks a kept operand (`HirPublisher.Keeps`). Amendment (review): an operand is kept only
+  when its own Op is published with its facts, so a Type or group name (Syntax) and a name both of whose paths resolve (an Error)
+  stay replaced. The builder evaluates an Error node's kept operands in syntax order as their Places (a value in a temp) before its
+  Opaque value, never acquiring them; the site names their roots and the roots of the rest of the node's syntax, which root collection skips (it walks the Error
   node's own children; no parent is read), so a moved operand is not used again at the site (A1 checks each root at the site's
   subject). Any other child stays replaced. A kept body keeps what Binding refuted: a closure rejected for its inferred result's Origin
   builds the refuted borrow, so A5 adds records caused only by Binding's, `ComparisonLoanConflict_Kd` where the borrowed parameter or

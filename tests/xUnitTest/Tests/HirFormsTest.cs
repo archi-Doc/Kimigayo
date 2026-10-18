@@ -424,7 +424,8 @@ public sealed class HirFormsTest
     // SPEC 23.1.2 (DECISIONS R5-M63): a failed Field, Index, follow or `*p` keeps the operands Binding resolved as a value or a Place at
     // their positions, written in place (None, None) with their own Ops; a member name, a follow target, a Type name and an operand Binding
     // did not resolve, or resolved without the facts of an evaluated name (both paths of a name), stay replaced, so the MIR records
-    // nothing. A group is never the failed node (its operand is), and a failed call's children stay replaced (PLAN G121).
+    // nothing. A group the parser recovered (a parameter default) keeps its operand; a group around a failed call is not the failed node,
+    // and the call's children stay replaced (PLAN G121).
     [Fact]
     public void AFailedPlaceKeepsTheOperandsBindingResolved()
     {
@@ -450,5 +451,12 @@ public sealed class HirFormsTest
         var ambiguous = MinimalEmissionTest.Analyze("group Config\n    public var count: i32 = 3\nstruct Settings\n    public var count: i32 = 0\n" +
             "func read(Config: ref/Settings) -> i32\n    return Config.count\n");
         Assert.Empty(ambiguous.BuildMir().Records);
+        var recovered = MinimalEmissionTest.Analyze(
+            "func take(a: string, b: string) -> i32 => 1\nfunc g(s: string, x: i32 = (take(s@move, s@move)) y: i32 = 0) -> i32 => x\n");
+        HirTables.Publish(recovered);
+        var group = Reachable(recovered.Kotonoha).OfType<ParenthesizedKoto>().Single();
+        Assert.Equal(
+            (HirOp.Error, HirOp.Call, new HirAdjust(HirAcquire.None, HirAdaptation.None)),
+            (HirTables.Op(group), HirTables.Op(group.Operand), HirTables.AdjustOf(group.Operand)));
     }
 }

@@ -377,6 +377,10 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f(n: i32) -> i32\n    let s = \"x\"\n    _ = once(s@move)\n    return n[once(s@move)]\n"));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f()\n    let s = \"x\"\n    unsafe\n        _ = *take(s@move, s@move)\n"));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f(n: i32)\n    let s = \"x\"\n    _ = n[func (k: i32) -> i32 => take(s@move, s@move)]\n"));
+        // A recovered group (the default's list item) gives the problems of the default written correctly: each Move of the prepared slot.
+        string[] slot = ["StaticMovePathRequired_Kd s 1", "StaticMovePathRequired_Kd s 1"];
+        Assert.Equal(slot, Problems(Take + "func g(s: string, x: i32 = (take(s@move, s@move)), y: i32 = 0) -> i32 => x\n"));
+        Assert.Equal(slot, Problems(Take + "func g(s: string, x: i32 = (take(s@move, s@move)) y: i32 = 0) -> i32 => x\n"));
     }
 
     // R4-M20: the words of A1's state arena for a body begun and built: its heads × the stored words of its lanes.
