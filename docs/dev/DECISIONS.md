@@ -2197,8 +2197,9 @@ structure is recorded here by the unit that first implements it.
     collector would key a generic closure as closed).
 - **R5-M36 Closure contexts as `Subst`** (2026-10-18, planning session; plan K2 (A5P-C1), package K §4.2 and §9, S2-S4 X10, under
   R5-M18) `BoundType.ClosureContext` is the `Subst` of the instance that closed the closure. `CloseClosureTypes` interns it through
-  `TyCtxt.ClosureContext(enclosing, declaring, types, lengths, origins, inputs)`, the value `SubstOf` gives that instance's call, so
-  one instance's closures share it, and interning replaces the never-cleared list of synthetic CallPlans and its linear scan; the
+  `TyCtxt.ClosureContext(enclosing, declaring, types, lengths, origins, inputs)`, the value the old synthetic CallPlan's `SubstOf` gave
+  (a call with a conforming Self, a Direct virtual call or a bound contract would add Self, which `CloseClosureTypes` does not receive;
+  PLAN G142), so one instance's closures share it, and interning replaces the never-cleared list of synthetic CallPlans and its linear scan; the
   closure's result in the instance stays the failure check, while the CallPlan's ReturnType, a function of the rest, is dropped.
   `SubstOfClosure` reads the field, `ClosureSignature` is `Apply(signature, context)`, and Hover identifies a context by
   `SubstIdentity` (`Checking/Hover/HoverBuilder.Substitutions.cs`; `HoverBuilder.cs` is over the token limit): its binder and every
@@ -2206,8 +2207,9 @@ structure is recorded here by the unit that first implements it.
   - Temporary structure, deleted by G7 with its readers: `[Transitional("R6-gen")] Binding.ClosureCall(closure)`, the CallPlan the old
     generator keys a closure's instance by (`GenericStoragePlan.PrepareClosures`, `BodyLowering`'s value callees). There is one per
     (closure symbol, context), as the old scan gave, so two closures of one instance keep two (X10). It is kept with the function item
-    contexts until an edit (`ResetCallContexts`, which keeps `Binding.cs` from growing); the package's "for the pass" is read as their
-    lifetime, kept across unchanged passes, so a warm rebind and generation allocate no new CallPlan, as with the old list.
+    contexts until an edit (`ResetCallContexts`, which keeps `Binding.cs` from growing; G7 inlines it); the planning session reads the
+    package's "for the pass" as their lifetime, kept across unchanged passes, so a warm rebind and generation build no new CallPlan, as
+    with the old list (not measured: no warm test rebinds). Bridge CallPlans carry the context's padded Lengths, not the caller's.
   - Evidence: the semantic snapshot (HIR and MIR), the diagnostic snapshot and the fixture IR of the closure emission classes are
     identical to the parent's, with the native Closure, GenericClosure, GenericCapture, NestedGeneric, GenericStorage and GenericDefault
     families; `GenericClosureIdentityTest` adds the two-closure regression.

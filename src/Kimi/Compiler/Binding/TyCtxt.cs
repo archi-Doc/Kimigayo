@@ -220,8 +220,8 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
         return closure.ClosureContext ?? this.Identity(binder);
     }
 
-    // SPEC 8.2: the context of a closure an instance of its enclosing function closes, that instance's substitution (DECISIONS R5-M36), as
-    // its call's would be: one interned value per instance, which all of the instance's closures share.
+    // SPEC 8.2: the context of a closure an instance of its enclosing function closes, that instance's substitution without a conforming
+    // Self (DECISIONS R5-M36, PLAN G142): one interned value per instance, which all of the instance's closures share.
     internal Subst ClosureContext(
         BindingSymbol enclosing,
         BoundType? declaring,

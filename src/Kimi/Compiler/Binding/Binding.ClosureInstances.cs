@@ -99,7 +99,8 @@ public sealed partial class Binding
         }
     }
 
-    // The call contexts of function items and of closures for the old generator, kept across unchanged passes and revoked by an edit.
+    // The call contexts of function items (read by TyCtxt.SubstOfItem and the old generator) and of closures for the old generator, kept
+    // across unchanged passes and revoked by an edit; G7 inlines this with ClosureCall's removal.
     private void ResetCallContexts()
     {
         this.functionItemContexts.Clear();
