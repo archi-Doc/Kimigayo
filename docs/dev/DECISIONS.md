@@ -1432,8 +1432,9 @@ R5 on the owner's request of 2026-10-18.
   Type. A shared layer or a non-exclusive pair layer stops the walk from reaching writable storage only before such a
   position (an rc payload held by value and a shared input's referent stay read only, SPEC 15.6.2, 5.2.1); a callable Type
   stores nothing. Why: rc and arc have no outer Origin, so the cut lost their payload's Origins (`Array<rc/S>.append`
-  stored nothing, so A5 accepted writing `x` while the Array held `x@ref`); a borrow layer's writable outer Origin, which
-  its referent's Origins outlive (R2), hid the cut for borrows. Supersedes R4-M51's "not past a shared layer … nor past a
+  stored nothing, so A5 accepted writing `x` while the Array held `x@ref`), nor has a pair layer admitting only owning
+  handles (`s is rc or arc`), so its concrete target had no R2 edge to the writable slot; a borrow layer's writable outer
+  Origin, which its referent's Origins outlive (R2), hid the cut for borrows. Supersedes R4-M51's "not past a shared layer … nor past a
   non-exclusive pair layer" below a writable invariant position. Rejected: removing rc and arc from the shared layers (a
   case per form; it would also make an rc payload held by value writable); a store row per handle input. Not temporary.
 
