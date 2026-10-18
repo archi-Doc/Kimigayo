@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Kimi.Compiler;
@@ -9,7 +10,8 @@ namespace Benchmark;
 
 // The check-time cost of the Generic shape under each analysis configuration (R5 K4b): a fresh check (Bind, CheckStartup and Analyze, the
 // compiler pipeline's stages 2 to 4) and a warm Analyze, the same compilation rebound without an edit and analyzed again, as an LSP
-// server repeats it. MIR code generation ("sel") adds the instance collector to Analyze.
+// server repeats it. MIR code generation ("sel") adds the instance collector to Analyze. Retained memory is the managed heap after full
+// collections with the compilation alive: after its first check, and the growth over its warm Analyzes.
 internal static class AnalyzeCostMeasurements
 {
     private const int Warmups = 4;
@@ -31,31 +33,13 @@ internal static class AnalyzeCostMeasurements
             var source = CompilerPipelineBenchmark.GenericSource(size);
             foreach (var (name, pipeline, codegen) in Configurations)
             {
-                for (var i = 0; i < Warmups; i++)
-                {
-                    Check(Create(source, pipeline, codegen));
-                }
-
-                var (freshTicks, freshBytes) = Measure(() => Create(source, pipeline, codegen), static c => Check(c));
-                var warm = Create(source, pipeline, codegen);
-                Check(warm);
-                var (warmTicks, warmBytes) = Measure(() => warm, static c => Check(c));
-                results.Add(new
-                {
-                    size,
-                    configuration = name,
-                    freshCheckMeanMilliseconds = Milliseconds(freshTicks),
-                    freshCheckMeanAllocatedBytes = (double)freshBytes / (Samples * Iterations),
-                    warmAnalyzeMeanMilliseconds = Milliseconds(warmTicks),
-                    warmAnalyzeMeanAllocatedBytes = (double)warmBytes / (Samples * Iterations),
-                    collectedItems = warm.Instances?.Items.Length ?? 0,
-                });
+                results.Add(Result(size, source, name, pipeline, codegen));
             }
         }
 
         var report = new
         {
-            schemaVersion = 1,
+            schemaVersion = 2,
             measuredAtUtc = DateTimeOffset.UtcNow,
             compiler = Compilation.CompilerVersion,
             runtime = RuntimeInformation.FrameworkDescription,
@@ -67,7 +51,40 @@ internal static class AnalyzeCostMeasurements
             iterationsPerSample = Iterations,
             results,
         };
-        Console.WriteLine(JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+        var options = new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+        Console.WriteLine(JsonSerializer.Serialize(report, options));
+    }
+
+    // One configuration's measurements, in a frame of its own, so that no compilation of another stays reachable during them.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static object Result(int size, string source, string name, CompilerPipeline pipeline, CompilerCodegen codegen)
+    {
+        for (var i = 0; i < Warmups; i++)
+        {
+            Check(Create(source, pipeline, codegen));
+        }
+
+        var (freshTicks, freshBytes) = Measure(() => Create(source, pipeline, codegen), static c => Check(c));
+        var baseline = GC.GetTotalMemory(forceFullCollection: true);
+        var warm = Create(source, pipeline, codegen);
+        Check(warm);
+        var retained = GC.GetTotalMemory(forceFullCollection: true) - baseline;
+        var (warmTicks, warmBytes) = Measure(() => warm, static c => Check(c));
+        var growth = GC.GetTotalMemory(forceFullCollection: true) - baseline - retained;
+        var result = new
+        {
+            size,
+            configuration = name,
+            freshCheckMeanMilliseconds = Milliseconds(freshTicks),
+            freshCheckMeanAllocatedBytes = (double)freshBytes / (Samples * Iterations),
+            warmAnalyzeMeanMilliseconds = Milliseconds(warmTicks),
+            warmAnalyzeMeanAllocatedBytes = (double)warmBytes / (Samples * Iterations),
+            retainedBytes = retained,
+            warmRetainedGrowthBytes = growth,
+            collectedItems = warm.Instances?.Items.Length ?? 0,
+        };
+        GC.KeepAlive(warm);
+        return result;
     }
 
     // A compilation of the source under a configuration, prepared and parsed, outside measurement.

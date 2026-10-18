@@ -4,7 +4,7 @@ namespace Kimi.Compiler.Backend;
 
 /// <summary>The checked set of a program version (SPEC 8.15.3, IMPL 21.3.1), which only <see cref="InstanceCollector"/> writes: its items in
 /// admission order, the roots first, each with its targets in its body's location order, and its instance-stage records, one per code and
-/// subject (unpublished until K4b). Its arrays and lookup keep their storage, so collecting a program again allocates nothing.</summary>
+/// subject, which <c>Compilation.MirRecords</c> publishes under MIR code generation. Its arrays and lookup keep their storage, so collecting a program again allocates nothing.</summary>
 internal sealed class CheckedSet
 {
     private readonly Dictionary<MonoKey, int> lookup = new();

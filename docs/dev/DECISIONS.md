@@ -2308,7 +2308,12 @@ structure is recorded here by the unit that first implements it.
   - Cost (`Benchmark --analyze-cost`, new; `artifacts/benchmarks/r5-k4b-analyze-cost-*`; Generic shape 1/32/64/128 on a machine shared
     with other builds, so only allocations are exact): a fresh check under sel allocates 0.15, 1.29, 2.31 and 4.61 MB more than under
     `mir` for 16, 450, 898 and 1,794 collected items, linear in the items; a warm Analyze allocates the same under sel as under `mir` (the
-    collector's warm run is 0 B); the timings vary more between repeated sizes than the configurations differ and await G2's
-    quiet-machine measurement (R5-M4).
+    collector's warm run is 0 B); the checked compilation retains 0.10, 0.97, 1.79 and 3.56 MB more under sel than under `mir` (the
+    checked set, the `Erase` memos and the instances' interned Types, about 2 KB per item), and its retained heap grows by the same few
+    KB over warm Analyzes under every configuration (none from the collector); the timings vary more between repeated sizes than the
+    configurations differ and await G2's quiet-machine measurement (R5-M4).
+  - Staged sel coverage: until K5-K8 the collector follows Fn calls and calls of closures of closed definitions only, so requirement
+    calls, closures of instances, function items, virtual calls and the descriptor, glue and static-initializer intrinsics add no edge
+    and no record; sel's absence of records over the library and the milestones covers only the edges collected.
   - Verified: under sel a storage-nesting gap rejects the program at check at its call (`PipelineSwitchTest`); the library and the 44
     milestones analyzed under sel give no collector record (`InstanceCollectorTest`).

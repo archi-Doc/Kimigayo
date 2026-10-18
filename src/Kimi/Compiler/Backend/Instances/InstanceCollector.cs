@@ -6,8 +6,8 @@
 // Input: a built, validated MirProgram; the number of root modules (a range of Source.Module, not a mode); TyCtxt (Instantiates, Erase,
 // Compose, Apply, Implementation); MirCases (Views); the Target column of the intrinsic rows; the capability table.
 // Output: the CheckedSet of the program version: the roots, in MirProgram.Bodies order, then the items a FIFO worklist admits, each with one
-// target per resolved site of its body, in location order, with whether a runtime path reaches the site; and its records, unpublished
-// until K4b.
+// target per resolved site of its body, in location order, with whether a runtime path reaches the site; and its records, which
+// Compilation.MirRecords publishes under MIR code generation (K4b).
 // Roots (K 4.4): each body of a root module whose definition does not instantiate, a module's top-level statements included.
 // Edges (K 4.5): one template per body and version lists its call sites that may carry a target (Fn, Requirement and Value callees and the
 // intrinsics the Target column names; a Virtual call none, X5), each with its runtime bit from one MirReach walk without CheckTarget edges.
@@ -25,7 +25,7 @@
 // Invariants: deterministic; one item per key; every representative is closed and closes its body (K 4.3); a repeated run of a version is
 // a no-op; a program with validator findings has an empty set; a warm run of a program as large as an earlier one allocates nothing.
 // Must not: read syntax, HIR or plans; depend on the MIR analyses' results or edit their driver; decide acceptance or publish its records
-// (K4b); prove anything on an erased value; add an IntrinsicId, CompilerFunctionKind or BindingFailure (PD21).
+// (Compilation does); prove anything on an erased value; add an IntrinsicId, CompilerFunctionKind or BindingFailure (PD21).
 
 using Kimi.Compiler.Mir;
 

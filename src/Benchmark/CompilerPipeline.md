@@ -67,7 +67,9 @@ compilation: `legacy`, `mir` (the MIR built, validated and analyzed beside the o
 generation, whose `Analyze` also collects the checked set, R5 K1-K4b). `freshCheck` is one fresh compilation's
 `Bind`, `CheckStartup` and `Analyze` (the stages 2 to 4 above; preparation and parsing are untimed); `warmAnalyze` repeats
 them on one compilation without an edit, as an LSP server does. Four warmups precede seven samples of four operations;
-each result reports mean milliseconds and current-thread allocated bytes and, under `sel`, the collected items. Follow the
+each result reports mean milliseconds and current-thread allocated bytes, the managed heap the checked compilation retains
+(`retainedBytes`, after full collections) and its growth over the warm Analyzes (`warmRetainedGrowthBytes`) and, under `sel`, the
+collected items. Follow the
 measurement protocol below and save `--analyze-cost` output beside it.
 
 ## Validation
