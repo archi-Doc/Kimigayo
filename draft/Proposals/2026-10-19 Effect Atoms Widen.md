@@ -7,9 +7,9 @@ not yet integrated or implemented. Written by R4 unit 2x-S5 of the
 expressible gets its own SPEC proposal. The owner adopted S5 on 2026-10-19 (OQ13 (a), DECISIONS R4-M74) as A5P §5.2 words it:
 an effect atom on an associated projection that grows under polymorphic recursion widens. After the second blocking review round
 on the definition of a recursive Contract, **the owner chose on 2026-10-19 the form (c) below, with "recursive" defined through
-the existing proof rule** (relayed by the R4 planning session). That form departs from OQ13's word "grows": it widens every
-parameter-dependent effect on a projection with a recursive base, growing or not (§9). Changes SPEC §4.9.6, §8.3.3, §15.6.4,
-§16.3.3 and Appendix E.
+the existing proof rule** (DECISIONS R4-M76, the owner's answers of 2026-10-19, which supersedes R4-M74 OQ13's "grows"). That
+form departs from OQ13's word "grows": it widens every parameter-dependent effect on a projection with a recursive base, growing
+or not (§9). Changes SPEC §4.9.6, §8.3.3, §15.6.4, §16.3.3 and Appendix E.
 
 Base: `48a42168` (`dev`). Line numbers refer to that commit; SPEC, `docs/impl` and A4 are unchanged up to `da9ea8f7`. "(H)" marks
 an inference not checked by running code. Evidence: the model [S5EffectWidening.cs](<../Sketches/A5 Step 2/S5EffectWidening.cs>)
@@ -57,10 +57,10 @@ recursion, so it holds for every way a summary includes another.
 
 ### 2.1. Definitions
 
-- **Recursive Contract.** A Contract `C` is recursive when `T is C` supplies (the proof rule "Contract refinement",
-  [§8.3.2](../../docs/spec/08-generics-constraints-and-contracts.md#832-proof-rules)), directly or through the Constraints of the
-  Contracts so supplied, a conformance of a projection of `T` to `C`'s declaration, with any Type arguments, or to a Contract that
-  refines it. This covers, without listing Constraint kinds:
+- **Recursive Contract.** A Contract `C` is recursive when `T is C` supplies
+  ([§8.3.2](../../docs/spec/08-generics-constraints-and-contracts.md#832-proof-rules): `C`'s own and inherited Constraints, with `T`
+  for `Self`), directly or through the Constraints of the Contracts so supplied, a conformance of a projection of `T` to `C`'s
+  declaration, with any Type arguments, or to a Contract that refines it. This covers, without listing Constraint kinds:
   - `contract Tree: associate Child is Tree` and `CopyTree: Tree, Copy` with `Self.(Tree).Child is CopyTree` (§8.5.3);
   - `A.X is B` with `B.Y is A` (each supplies the other's conformance for a projection);
   - `Rec: Node` with `Self.(Node).Child is Rec`, a Constraint on an inherited associated Type;
@@ -69,7 +69,7 @@ recursion, so it holds for every way a summary includes another.
   - `contract A: associate X is B; Self.(A).X.(B).Y is A` with an unconstrained `B.Y`: `T is A` supplies `T.X.Y is A`, a
     Constraint on a projection of Self two steps deep (review B5; probe rv-G, model case 18). (H): SPEC does not state outright
     that such a two-step clause is valid. Appendix F admits it (`ConstraintSubject := Name | "Self" | AssociatedTypeReference`,
-    lines 405, 419, 421), §6.1.4 (line 90) makes a Constraint on the conforming Self an implementation requirement, and Binding
+    lines 405, 419, 421), §6.1.4 (line 94) makes a Constraint on the conforming Self an implementation requirement, and Binding
     accepts it and proves `g`'s premise from it. If the SPEC session rules it invalid, the case vanishes; the definition is
     unchanged.
 
@@ -139,10 +139,10 @@ receiver statuses.
 
 - Now: "When a Contract's associated-Type Constraint leads back to the same Contract, the Contract is valid, but no concrete Type
   can be proven to conform."
-- New: "A Contract `C` is **recursive** when `T is C` supplies ([§8.3.2](#832-proof-rules)), directly or through the Constraints
-  of the Contracts so supplied, a conformance of a projection of `T` to `C`'s declaration, with any Type arguments, or to a
-  Contract that refines it. A recursive Contract is valid, but no concrete Type can be proven to conform." The `Tree`/`Node`
-  example stays.
+- New: "A Contract `C` is **recursive** when `T is C` supplies ([§8.3.2](#832-proof-rules): `C`'s own and inherited
+  Constraints, with `T` for `Self`), directly or through the Constraints of the Contracts so supplied, a conformance of a
+  projection of `T` to `C`'s declaration, with any Type arguments, or to a Contract that refines it. A recursive Contract is
+  valid, but no concrete Type can be proven to conform." The `Tree`/`Node` example stays.
 
 **§15.6.4, line 596**, after "…as the least fixed point over recursive calls.", insert:
 
@@ -282,7 +282,9 @@ second draft's scan read only one-step `Self.(C).X` clauses; a grep finds no dee
 `docs/spec`, `docs/impl`, `tests/mir` or `tests/diagnostics`.) Over those and `tests/xUnitTest` and `tests/Workloads` it finds 3,
 all naming themselves: SPEC §8.3.3's `Tree` (a declaration without calls) and xUnit
 `AssociatedRefinementCapabilityBindingTest.cs:77` `Trait.Next` and `ConditionalConformanceBindingTest.cs:170` `C.E` (neither with
-a call). A declaration split over several C# lines is not followed (H). By the reviewer's reading, no library Contract is
+a call). A declaration split over several C# lines is not followed (H). The scan does not read `or`, so it would count
+`Child is Tree or Leafy` as recursive, which §2.1 excludes: a harmless over-count, since it can only add hits and each of the 3 was
+checked by reading. By the reviewer's reading, no library Contract is
 recursive (Iterator, LendingIterator, IntoIterable, Iterable, UniqIterable, Indexable and Comparable checked). This replaces A5P
 §5.2's "(H) lib 0, ms 0"; step 0's `census.md` has no S5 count.
 
@@ -335,8 +337,9 @@ recursive (Iterator, LendingIterator, IntoIterable, Iterable, UniqIterable, Inde
 - **Interim.** Until the SPEC session, the forms the rule widens keep today's verdicts, deliberately. A growing atom is already a
   located `Unsupported_Kd` (today's Limit at G128's bound; A5-F5's 2b-3 maps Limit to `Unsupported_Kd` at the call). The rule's
   other losses (§4 item 2) stay accepted: the current letter accepts them and no SPEC example covers them, so nothing reports a
-  Language error for a valid form, and no test expects `Unsupported_Kd` for them. This is not PD30's case: no unit implements the
-  rule before its SPEC text exists. The unit after the SPEC session adds the test and records Unknown in one step, with existing
+  Language error for a valid form, and no test expects `Unsupported_Kd` for them. PD30 does not apply before the SPEC session: no
+  unit implements S5 until then (the A4 unit follows the session), so no program is rejected by S5 in the meantime (planning
+  session, 2026-10-19). The unit after the SPEC session adds the test and records Unknown in one step, with existing
   codes: `IncompatibleContractImplementation_Kd` for `confined`, `UnsatisfiedEffectBound_Kd` for a Callable bound,
   `ComparisonLoanConflict_Kd` at a call against a live mutable-static Loan (R4-M72).
 - **Old path.** Unchanged (OD5: SPEC changes on MIR only; D5).
@@ -354,9 +357,9 @@ OQ13 adopted "an effect atom on an associated projection that grows under polymo
 the owner (Q1) to choose between form (a), which keeps "grows", and form (c), which widens every parameter-dependent effect on a
 projection with a recursive base; the first review found that a growth test must follow every summary dependency (B3), and the
 second found a gap in the list of Constraint kinds that made a Contract recursive (B5), the second blocking round on that family.
-**On 2026-10-19 the owner chose form (c), with "recursive" defined through the existing proof rule.** The rule departs from OQ13's
-word "grows" by that choice: it also widens effects with a recursive base that do not grow (§4 item 2), which matters only in
-declarations no concrete Type can instantiate.
+**On 2026-10-19 the owner chose form (c), with "recursive" defined through the existing proof rule** (DECISIONS R4-M76, which
+supersedes R4-M74 OQ13's "grows"). The rule departs from OQ13's word "grows" by that choice: it also widens effects with a
+recursive base that do not grow (§4 item 2), which matters only in declarations no concrete Type can instantiate.
 
 | | The rule, form (c) | Form (a), rejected |
 | --- | --- | --- |
@@ -399,6 +402,11 @@ declarations no concrete Type can instantiate.
   (`src/Kimi/Compiler/Binding/TyCtxt.Effects.cs:59`, `Binding.EffectObligations.cs:119`), so the cause more likely lies in that
   premise scope or in the Type form MIR passes (Binding, BU) than in A4; not diagnosed. An open-issue candidate for the planning
   session.
+- **SPEC gaps found.** (1) §8.3.2's row "Contract refinement" (ch. 8 line 145) says "`T is C` supplies each ancestor
+  conformance and inherited Constraint, with `T` for `Self`": it names neither `C`'s own Constraints nor what generic checking
+  needs from them, though §2.1's definition and every generic body under `T is C` rely on both. The S5 SPEC session fixes the row
+  together with §2.5. (2) Whether a Constraint on a two-step projection of Self (`Self.(A).X.(B).Y is A`) is valid is not stated
+  outright (§2.1, H); the same session states it.
 - **Not verified.** §2.3 as a proof (argued; model-checked without Contract Type arguments); whether two-step Constraints of Self
   are valid by SPEC's letter (H, §2.1); §12.7.1's reading; recursion through Closures, accessors, defaults or specialization sets
   (covered by the rule's independence from dependencies, not tested); whether rv-F's `drop` form is valid by every clause of §16
@@ -429,3 +437,8 @@ declarations no concrete Type can instantiate.
 - §2.3 gains the (H) sentence on finitely many Contract references in projection qualifiers (§8.9.2, rv-I).
 - §8's interim states deliberately that the rule's extra losses stay accepted until the SPEC session, outside PD30.
 - Form (a) is kept only as a rejected alternative (§6).
+
+**Round 3** (`29974860`): passed, with edits applied in the next commit: the supply in the definition is explicit (`C`'s own and
+inherited Constraints, with `T` for `Self`) and §8.3.2's row is listed as a SPEC gap (§10); PD30's non-application before the SPEC
+session is recorded as the planning session's reading; the owner's choice cites DECISIONS R4-M76; §6.1.4's line is 94; the scan's
+over-count of `or` Constraints is noted (§5).
