@@ -13,14 +13,8 @@ namespace Kimi.Compiler;
 /// <param name="Argument">The message argument.</param>
 public sealed record ControlFlowIssue(Koto Node, DiagnosticCode Code, object? Argument = null)
 {
-    /// <summary>Gets the part of the node that is the primary location, when it is not the whole node.</summary>
-    public SourceSpan? Span { get; init; }
-
     /// <summary>Gets the message formatted from the catalog.</summary>
     public string Message => DiagnosticEntries.TryGet(this.Code, out var entry) ? entry.FormatMessage(this.Argument, null) : this.Code.ToString();
-
-    /// <summary>Gets the repair candidates the warning offers (SPEC 23.1.3).</summary>
-    internal DiagnosticRepairFact[]? Repairs { get; init; }
 }
 
 /// <summary>The control-flow facts of an analyzed expression or boundary.</summary>
@@ -30,8 +24,8 @@ public sealed class ControlFlowNodeInfo
     public bool CanCompleteNormally { get; internal set; }
 }
 
-/// <summary>Analyzes lexical transfers, reachability, result coverage and unsafe permission; the discard, while true and owning
-/// write checks are Binding's HIR lints.</summary>
+/// <summary>Analyzes lexical transfers, reachability and result coverage; the discard, while true, owning write and Unsafe Block
+/// checks are Binding's HIR lints.</summary>
 /// <remarks>
 /// Run after compile-time directive selection. Bodies containing invalid directive groups are skipped.
 /// Types, Never results, match coverage and selected calls are Binding's facts; a node Binding has not resolved leaves its
@@ -43,8 +37,6 @@ public sealed class ControlFlowAnalysis
     private readonly Dictionary<Koto, ControlFlowNodeInfo> nodes = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<JumpKoto, Koto?> targets = new(ReferenceEqualityComparer.Instance);
     private readonly List<ControlFlowIssue> issues = new();
-    private readonly List<ControlFlowIssue> warnings = new();
-    private readonly HashSet<Koto> warningNodes = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<Koto> pending = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<(Koto Node, DiagnosticCode Code)> reported = new();
     private readonly Dictionary<DeferredBlockKoto, Flow> cleanups = new(ReferenceEqualityComparer.Instance);
@@ -71,11 +63,6 @@ public sealed class ControlFlowAnalysis
     // The depth of the defaults being visited; the closures they create are visited when it returns to zero.
     private int defaultDepth;
 
-    // SPEC 14.3: whether an operation in the innermost Unsafe Block being visited used its permission, and whether one whose
-    // need is unknown, such as an unresolved operation, may have.
-    private bool unsafeUsed;
-    private bool unsafeUncertain;
-
     private ControlFlowAnalysis()
     {
         this.structural = new(this.IsNever);
@@ -90,9 +77,6 @@ public sealed class ControlFlowAnalysis
 
     /// <summary>Gets definite errors.</summary>
     public IReadOnlyList<ControlFlowIssue> Issues => this.issues;
-
-    /// <summary>Gets warnings that do not affect type fitting or acceptance.</summary>
-    public IReadOnlyList<ControlFlowIssue> Warnings => this.warnings;
 
     /// <summary>Gets obligations requiring directive selection or further type Binding.</summary>
     public IReadOnlyCollection<Koto> PendingBinding => this.pending;
@@ -116,8 +100,6 @@ public sealed class ControlFlowAnalysis
         this.nodes.Clear();
         this.targets.Clear();
         this.issues.Clear();
-        this.warnings.Clear();
-        this.warningNodes.Clear();
         this.pending.Clear();
         this.reported.Clear();
         this.cleanups.Clear();
@@ -129,17 +111,15 @@ public sealed class ControlFlowAnalysis
         this.childBuffer.Clear();
         this.arrivedTransfers.Clear();
         this.infoCursor = this.transferCursor = this.registrationCursor = 0;
-        this.unsafeUsed = this.unsafeUncertain = false;
         this.Visit(root);
     }
 
-    /// <summary>Records the definite errors and warnings; ownership analysis discards earlier ones when it analyzes again.</summary>
+    /// <summary>Records the definite errors; ownership analysis discards earlier ones when it analyzes again.</summary>
     public void ReportDiagnostics()
     {
         // A check that reads Binding's result at a node that Binding failed, or left resting on a failure, is not decided on
-        // valid input: its Error is derived from those causes, which also covers Binding's own check of the same requirement,
-        // and its warning is dropped. Structural checks stay independent of Binding, but rest on a recovery that guessed what
-        // they read.
+        // valid input: its Error is derived from those causes, which also covers Binding's own check of the same requirement.
+        // Structural checks stay independent of Binding, but rest on a recovery that guessed what they read.
         foreach (var issue in this.issues)
         {
             if (this.GuessedBy(issue) is { } syntax)
@@ -155,14 +135,6 @@ public sealed class ControlFlowAnalysis
                 issue.Node.Report(DiagnosticRequirement.ControlFlow, issue.Code, issue.Argument);
             }
         }
-
-        foreach (var warning in this.warnings)
-        {
-            if ((!ReadsBinding(warning.Code) || this.binding.FailureCauses(warning.Node) is null) && this.GuessedBy(warning) is null)
-            {
-                warning.Node.Report(DiagnosticRequirement.ControlFlow, warning.Code, warning.Argument, span: warning.Span, repairs: warning.Repairs);
-            }
-        }
     }
 
     internal void Append(Koto root) => this.Visit(root);
@@ -175,72 +147,10 @@ public sealed class ControlFlowAnalysis
 
     internal bool RecursiveDefault(Koto expression) => this.recursiveDefaults.Contains(expression);
 
-    // The edits that remove an Unsafe Block statement from an indented body: delete `unsafe => ` before an inline Body on the same
-    // line, or delete the unsafe line and one indentation level of every line of an indented Body. No candidate when the unsafe line
-    // holds other text, a Body line lacks a full level of space indentation, or a string literal spans lines (its content would change).
-    private static DiagnosticEditFact[]? RemoveUnsafeEdits(UnsafeBlockKoto block)
-    {
-        if (block.CodeContext.SourceDocument is not { } document)
-        {
-            return null;
-        }
-
-        var text = document.SourceText.AsSpan();
-        var body = block.Body;
-        var keywordEnd = block.Span.Start + Constants.UnsafeKeyword.Length;
-        var line = document.GetPosition(block.Span.Start).Line;
-        var lineStart = document.LineStarts[line];
-        if (!text[lineStart..block.Span.Start].IsWhiteSpace())
-        {
-            return null;
-        }
-
-        if (body.IsExpressionBody)
-        {
-            var bodyStart = body.Span.Start;
-            return document.GetPosition(bodyStart).Line == line && text[keywordEnd..bodyStart].Trim().SequenceEqual("=>")
-                ? [block.Edit(SourceSpan.FromBounds(block.Span.Start, bodyStart), string.Empty)] : null;
-        }
-
-        var lineEnd = lineStart + document.GetLineSpan(line).Length;
-        var lastLine = document.GetPosition(Math.Max(body.Span.Start, body.Span.End - 1)).Line;
-        if (!text[keywordEnd..lineEnd].IsWhiteSpace() || lastLine <= line || line + 1 >= document.LineCount || SpansLines(body, document))
-        {
-            return null;
-        }
-
-        var edits = new List<DiagnosticEditFact>(lastLine - line + 1) { block.Edit(SourceSpan.FromBounds(lineStart, document.LineStarts[line + 1]), string.Empty) };
-        for (var current = line + 1; current <= lastLine; current++)
-        {
-            var content = document.GetLineSpan(current);
-            if (content.IsWhiteSpace())
-            {
-                continue;
-            }
-
-            if (content.Length < Constants.IndentationSpaces || content[..Constants.IndentationSpaces].ContainsAnyExcept(' '))
-            {
-                return null;
-            }
-
-            edits.Add(block.Edit(new(document.LineStarts[current], Constants.IndentationSpaces), string.Empty));
-        }
-
-        return edits.ToArray();
-    }
-
-    // Whether a string literal inside the node spans lines; dedenting its continuation lines would change its content.
-    private static bool SpansLines(Koto node, SourceDocument document)
-    {
-        var finder = new MultiLineLiteralFinder(document);
-        finder.Visit(node);
-        return finder.Found;
-    }
-
-    // Jump targets, labels, fallthrough and Unsafe Blocks are judged from syntax alone.
+    // Jump targets, labels and fallthrough are judged from syntax alone.
     private static bool ReadsBinding(DiagnosticCode code)
         => code is not (DiagnosticCode.InvalidJumpTarget_Kd or DiagnosticCode.UnlabeledYieldTarget_Kd or DiagnosticCode.RequireFallthrough_Kd or
-            DiagnosticCode.FunctionFallthrough_Kd or DiagnosticCode.OverlappingLabel_Kd or DiagnosticCode.UnsafeBlockRequired_Kd);
+            DiagnosticCode.FunctionFallthrough_Kd or DiagnosticCode.OverlappingLabel_Kd);
 
     // An expression Binding has not resolved leaves its completion unknown; a recovery completes as its written operands do,
     // and an Error expression is not evaluated.
@@ -261,26 +171,6 @@ public sealed class ControlFlowAnalysis
 
     private static bool IsBoundRuntimeTypeTest(Koto expression)
         => expression is IsKoto { BindingState: BindingState.Resolved, BoundRuntimeTest: not null };
-
-    // The function Binding selected for a function reference, including a direct call's callee.
-    private static FunctionKoto? GetReferencedFunction(Koto expression)
-        => expression is ExpressionKoto and not InvocationKoto && expression.BindingState == BindingState.Resolved &&
-            expression.BoundSymbol is { Kind: BindingSymbolKind.Function, Declaration: FunctionKoto function } ? function : null;
-
-    // SPEC 14.3: whether a bound operation requires lexical unsafe permission; null while Binding has not resolved it.
-    private static bool? RequiresUnsafeContext(Koto expression)
-    {
-        if (expression.BindingState != BindingState.Resolved)
-        {
-            return null;
-        }
-
-        return expression is DereferenceKoto or NoInitKoto ||
-            (expression is BinaryKoto binary && ReferenceTypes.IsPointer(binary.Left.BoundType) &&
-                binary.Akind is KotoKind.Index or KotoKind.Plus or KotoKind.Minus or KotoKind.PlusEquals or KotoKind.MinusEquals) ||
-            (expression is ExpressionKoto &&
-            expression.BoundSymbol is { Kind: BindingSymbolKind.Function, Declaration: FunctionKoto f } && (f.Modifier & ModifierKind.Unsafe) != 0);
-    }
 
     /// <summary>Merges transfer sets. A child's set is consumed exactly once, so it can be reused as the result.</summary>
     private static HashSet<JumpKoto>? Union(HashSet<JumpKoto>? left, HashSet<JumpKoto>? right)
@@ -402,38 +292,6 @@ public sealed class ControlFlowAnalysis
         if (node is FunctionKoto && TestDefinition.Marker(node) is not null && !TestDefinition.IsIncluded(node))
         {
             return new(true);
-        }
-
-        var referencedFunction = GetReferencedFunction(node);
-        if (referencedFunction is not null && (referencedFunction.Modifier & ModifierKind.Unsafe) != 0)
-        {
-            var reference = node;
-            while ((reference.Parent is GenericsKoto generics && generics.Identifier == reference) ||
-                reference.Parent is ParenthesizedKoto ||
-                (reference.Parent is MemberAccessKoto member && member.Right == reference))
-            {
-                reference = reference.Parent;
-            }
-
-            if (reference.Parent is InvocationKoto invocation && invocation.Method == reference)
-            {
-                this.CheckUnsafePermission(invocation);
-            }
-            else
-            {
-                this.Error(node, DiagnosticCode.UnsafeFunctionValue_Kd);
-            }
-        }
-
-        var requiresUnsafe = RequiresUnsafeContext(node);
-        if (requiresUnsafe == true)
-        {
-            this.CheckUnsafePermission(node);
-        }
-        else if (requiresUnsafe is null && node is ExpressionKoto or NoInitKoto)
-        {
-            // An operation whose need is unknown may use the permission, so the enclosing block is not reported as unused.
-            this.unsafeUncertain = true;
         }
 
         Flow flow;
@@ -596,20 +454,8 @@ public sealed class ControlFlowAnalysis
                 // Registration never evaluates its body. Its completion matters at scope exit only.
                 return new(true);
             case UnsafeBlockKoto unsafeBlock:
-                // SPEC 14.3: an operation uses the permission of the innermost enclosing Unsafe Block.
-                var (outerUsed, outerUncertain) = (this.unsafeUsed, this.unsafeUncertain);
-                (this.unsafeUsed, this.unsafeUncertain) = (false, false);
                 flow = this.Visit(unsafeBlock.Body);
-                if (!this.unsafeUsed && !this.unsafeUncertain)
-                {
-                    this.WarnUnnecessaryUnsafe(unsafeBlock);
-                }
-
-                (this.unsafeUsed, this.unsafeUncertain) = (outerUsed, outerUncertain || this.unsafeUncertain);
-                var unsafeInfo = this.RentInfo();
-                unsafeInfo.CanCompleteNormally = flow.Normal;
-                this.nodes[unsafeBlock] = unsafeInfo;
-                return flow;
+                break;
             case DoKoto scoped:
                 this.Begin(scoped);
                 flow = this.Finish(scoped, this.VisitBranch(scoped.Body));
@@ -818,46 +664,6 @@ public sealed class ControlFlowAnalysis
     {
         this.NodeInfo(function).CanCompleteNormally = true;
         return new(true);
-    }
-
-    private void CheckUnsafePermission(Koto node)
-    {
-        if (!KotoHelper.IsUnsafeContext(node))
-        {
-            this.Error(node, DiagnosticCode.UnsafeBlockRequired_Kd);
-        }
-        else
-        {
-            this.unsafeUsed = true;
-        }
-    }
-
-    // SPEC 14.3, 23.1.3: the warning is at the unsafe keyword. Removing the block keeps the statements' meaning only when its Body,
-    // an independent scope (SPEC 14.2.1), declares no Name and registers no defer (Structure); a statement of an indented body whose
-    // lines allow the edit then offers Repair.RemoveUnsafe.
-    private void WarnUnnecessaryUnsafe(UnsafeBlockKoto block)
-    {
-        if (!this.warningNodes.Add(block))
-        {
-            return;
-        }
-
-        var scoped = false;
-        if (block.Body is CodeBlockKoto { IsExpressionBody: false } body)
-        {
-            foreach (var item in body.Items)
-            {
-                scoped |= item is FieldKoto or FunctionKoto or DeferredBlockKoto or DeclarationContainerKoto;
-            }
-        }
-
-        DiagnosticRepairFact[]? repairs = null;
-        if (!scoped && block.Parent is CodeBlockKoto { IsExpressionBody: false } && RemoveUnsafeEdits(block) is { } edits)
-        {
-            repairs = [new(RepairKind.RemoveUnsafe, null, edits, RepairConditionSet.Structure)];
-        }
-
-        this.warnings.Add(new(block, DiagnosticCode.UnnecessaryUnsafeBlock_Kd) { Span = new(block.Span.Start, Constants.UnsafeKeyword.Length), Repairs = repairs });
     }
 
     private void VisitDeclarations(DeclarationContainerKoto container)
@@ -1253,27 +1059,6 @@ public sealed class ControlFlowAnalysis
     private sealed class ChildCollector(List<Koto> children) : KotoVisitor
     {
         public override void Visit(Koto node) => children.Add(node);
-    }
-
-    private sealed class MultiLineLiteralFinder(SourceDocument document) : KotoVisitor
-    {
-        public bool Found { get; private set; }
-
-        public override void Visit(Koto node)
-        {
-            if (this.Found)
-            {
-                return;
-            }
-
-            if (node is StringLiteralKoto or InterpolatedStringKoto && document.SourceText.AsSpan(node.Span.Start, node.Span.Length).Contains('\n'))
-            {
-                this.Found = true;
-                return;
-            }
-
-            base.Visit(node);
-        }
     }
 
     private readonly record struct DefaultCompletion(bool Normal, bool Pending);

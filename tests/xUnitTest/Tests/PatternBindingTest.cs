@@ -311,7 +311,8 @@ public class PatternBindingTest
         var unsafeGuard = Parse("func f(x: bool, p: raw/bool) => match x\n    _ if *p => ()");
         unsafeGuard.Bind();
         Assert.Contains(unsafeGuard.Binding.Issues, x => x.Code == DiagnosticCode.NonExhaustiveMatch_Kd);
-        Assert.Contains(unsafeGuard.AnalyzeControlFlow().Issues, i => i.Message.Contains("unsafe", StringComparison.OrdinalIgnoreCase));
+        unsafeGuard.Binding.ReportDiagnostics();
+        Assert.Contains(TestDiagnostics.Of(unsafeGuard), x => x.Code == nameof(DiagnosticCode.UnsafeBlockRequired_Kd) && x.Text == "*p");
     }
 
     [Fact]

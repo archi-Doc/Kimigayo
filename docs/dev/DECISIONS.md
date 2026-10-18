@@ -1894,6 +1894,12 @@ structure is recorded here by the unit that first implements it.
   unresolved expression as a guess besides a supplied body (Q8 design 2 §2.4); the old control-flow analysis's fallthrough checks
   call it until H10. The six codes' requirement becomes `Binding` (was `ControlFlow`). Removing them from `ControlFlowAnalysis`
   is an R6-check item landed early under D5.
+  - Q10, rows 7-8 (`UnsafeBlockRequired`, `UnnecessaryUnsafeBlock`; SPEC 14.3): an operation needs the permission when it forms
+    a raw Place, does pointer arithmetic, is `noinit`, or one of its calls (`CallPlan.Of`) selects an unsafe function, so a
+    synthesized call is judged at its source node and a function reference never; the walk keeps the innermost block's used and
+    uncertain bits. `LintErrors` counts the lint Errors, which the old analysis adds to its own (earlier rejection, verification)
+    and `LegacyRecords` lists as Binding records, until H10. The old analysis's copy of `UnsafeFunctionValue_Kd` goes: Binding
+    rejects every form at the reference (its four sites), and the copy only repeated it at a requirement item's inner name.
   - Rejected: a node failure per lint (the old analysis would skip the program; PD29, PD31); a Koto-keyed set of warned nodes
     (ARCH Syntax identity, warm allocations); a copy of the old walk's synthesized-evaluation switch (rows 1-6 judge source
     syntax only: a synthesized call's parent is its source node, a Value Context); a reporter in each owning file (Binding.cs and

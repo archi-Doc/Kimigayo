@@ -353,9 +353,8 @@ public class StartupBindingTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var flow = c.AnalyzeControlFlow();
-        Assert.Empty(flow.PendingBinding);
-        Assert.Equal(error, flow.Issues.Count != 0);
+        Assert.Empty(c.AnalyzeControlFlow().PendingBinding);
+        Assert.Equal(error, c.Binding.LintErrors != 0);
     }
 
     [Theory]

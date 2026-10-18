@@ -184,15 +184,17 @@ public class CurrentControlFlowTest
     {
         const string Source = "enum Direction\n    Self is Copy\n    North\nfunc compute() -> i32 => 1\nfunc source() -> Result<i32, i32> => .Ok(1)\n" +
             "func run() -> Result<(), i32>\n    source()\n    try source()\n    let x = do\n        compute()\n    (1, 2)\n    Direction.North\n" +
-            "    while true => exit\n    return .Ok(())";
+            "    while true => exit\n    return .Ok(())\nfunc touch(p: raw/i32)\n    unsafe => *p = 1\n    unsafe => ()\n    *p = 2";
         var c = Parse(Source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        string[] codes = ["DiscardedResult_Kd", "UnusedTrySuccess_Kd", "DiscardedTail_Kd", "DiscardedValue_Kd", "DiscardedValue_Kd", "StaticWhileTrue_Kd"];
+        string[] codes = ["DiscardedResult_Kd", "UnusedTrySuccess_Kd", "DiscardedTail_Kd", "DiscardedValue_Kd", "DiscardedValue_Kd", "StaticWhileTrue_Kd", "UnnecessaryUnsafeBlock_Kd"];
         Assert.Equal(codes.Order(), CompilationTestHelper.BindingWarnings(c).Select(static x => x.Code).Order());
+        Assert.Equal(1, c.Binding.LintErrors);
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(valid);
         Assert.Equal(codes.Order(), CompilationTestHelper.BindingWarnings(c).Select(static x => x.Code).Order());
+        Assert.Equal(1, c.Binding.LintErrors);
     }
 
     private static Compilation Parse(string source)
