@@ -5,10 +5,10 @@ using Xunit;
 namespace XunitTest;
 
 /// <summary>The MIR-expressible cases of prototype round 10 (draft/Sketches/A5 Step 0/prototype.md, 246 cases) that the rule tests do not already
-/// spell, with the verdicts of the adopted design (its PrefixKill mode, A3 E8; the listed losses as listed), each function named by its case.
-/// Left out: the linked-list walks (30a–30d, 35a–35b, 82–83) and 25c, which bind their payloads through a match (F8); the F6 cases (33a–33e,
-/// 36a–36g, `preserves results`); 108, which Binding rejects (its Origin relation); 8c and 120b, which have no MIR-problem observable or
-/// form; and 75 (PLAN G147).</summary>
+/// spell, each function named by its case, with the verdicts of the adopted design (its PrefixKill mode, A3 E8; the listed losses as listed)
+/// but 75's, an error by SPEC's letter (the owner's decision of 2026-10-18; PLAN G147). Left out: the linked-list walks (30a–30d, 35a–35b,
+/// 82–83) and 25c, which bind their payloads through a match (F8); the F6 cases (33a–33e, 36a–36g, `preserves results`); 108, which Binding
+/// rejects (its Origin relation); and 8c and 120b, which have no MIR-problem observable or form.</summary>
 public sealed partial class MirBorrowsTest
 {
     // SPEC 15.6, 15.6.3, 15.7 (prototype rounds 1–2, round 10's design verdicts): replacing a holder ends its Loans, a Reborrow keeps its
@@ -552,7 +552,9 @@ public sealed partial class MirBorrowsTest
     // SPEC 15.6.3 (A3 E8; the case 23a review's 50–94 with 23b, 34b and 37): replacing an outer holder, a constant element or a Field ends
     // the children formed through its old value, whose parent Loans protect the old route; a runtime index, another element or Field, a
     // Move, exchange or swap ends none; an obj handle's replacement ends its payload's children, an rc one's release may run a drop that
-    // writes through them.
+    // writes through them. Replacing a Field of an obj handle's payload ends none (75, an error against round 10's verdict, by the owner's
+    // decision of 2026-10-18): a Loan ends only where a Move Path is destroyed in place (SPEC 15.6.3), and a Move Path takes no own step
+    // (15.1.3), which the payload step is (15.6.2).
     [Fact]
     public void TheOuterReplacementCasesKeepTheirVerdicts()
         => Assert.Equal(
@@ -563,7 +565,8 @@ public sealed partial class MirBorrowsTest
                 "c63: Kimi.Intrinsics.exchange(rr@uniq, with: slot2@uniq) CallActivationConflict_Kd", "c64: rr@uniq",
                 "c64: Kimi.Intrinsics.swap(rr@uniq, rr2@uniq) CallActivationConflict_Kd", "c66: rr@follow@follow = 7", "c68: arr[0]@follow@follow = 7",
                 "c69: arr[j]", "c69: arr[0]@follow@follow = 7", "c70: arr[j]", "c70: arr[i]", "c70: arr[i]@follow@follow = 7", "c72: m[i]",
-                "c72: m[i][0]@follow@follow = 7", "c74: p.pa@follow@follow = 7", "c77: slot@follow = 5", "c79: slot@follow = 5",
+                "c72: m[i][0]@follow@follow = 7", "c74: p.pa@follow@follow = 7", "c75: h@follow.r@follow@follow = 7",
+                "c77: slot@follow = 5", "c79: slot@follow = 5",
                 "c80: h = Kimi.Intrinsics.makeRc(HRD.init(r: slot2@uniq))", "c81: q@follow@follow = 5", "c84: rr = slot2@uniq CallReservationConflict_Kd",
                 "c85: rr = slot2@uniq CallReservationConflict_Kd", "c86: c@follow = 1", "c87: slot@follow = 5", "c88: arr[j]", "c88: arr[j]@follow = 7",
                 "c90: slot@follow = 5", "c91: t = TTD.init(r: slot2@uniq, c: t.r@follow@follow@uniq)", "c94: slot@follow@uniq"
@@ -913,6 +916,16 @@ public sealed partial class MirBorrowsTest
                     let c = p.pa@follow@follow@uniq
                     p.pb = t3@uniq
                     p.pa@follow@follow = 7
+                    c@follow = 1
+                func c75()
+                    var x = 1
+                    var z = 3
+                    var slot = x@uniq
+                    var slot2 = z@uniq
+                    var h = HR.init(r: slot@uniq)@obj
+                    let c = h@follow.r@follow@follow@uniq
+                    h@follow.r = slot2@uniq
+                    h@follow.r@follow@follow = 7
                     c@follow = 1
                 func c76()
                     var x = 1

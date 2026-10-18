@@ -1896,7 +1896,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         return (stratum.Borrows.Work, stratum.Borrows.Bytes);
     }
 
-    // A5 over every body view of a built program, as the driver's step 4 will run it (R4-M57).
+    // A5 over every view of every body of a built program, as the driver's step 4 runs it over the views A1 and A2 completed (R4-M57).
+    // BuildMir has already run the driver, so a run here adds only the problems of views the driver left out and merges the others into
+    // the driver's (MirReport keeps the first problem and its facts); Work and Bytes count this instance's runs only.
     private sealed class Stratum
     {
         private readonly MirDataflow flow = new(new MirReach());

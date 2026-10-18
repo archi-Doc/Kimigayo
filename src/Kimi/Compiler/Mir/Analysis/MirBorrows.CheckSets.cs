@@ -11,8 +11,9 @@ namespace Kimi.Compiler.Mir;
 // and E5's seeds (Stored); a borrow's R2 parents (Parented); an observing destruction's value (Observed); an activation holder's seed
 // (Seeded); then each operand's value in operand order, so a Loan keeps the first operand that reaches it, and each operand's root in
 // reverse, so it keeps the last. A pass scans a holder's state once and a value it takes once per holder it is found under (a later take
-// tags nothing more), and the location's entries are listed by holder, so the gather is linear in the (holder, node) entries it reads and
-// the entries it stores (E13 (5)); each access then scans its root's Loans.
+// tags nothing more; Took finds it by scanning the values taken under that holder at the location, so a take costs that list's length),
+// and the location's entries are listed by holder, so a holder's lookup reads only its own entries (E13 (5)); each access then scans its
+// root's Loans.
 internal sealed partial class MirBorrows
 {
     private const byte Based = 1;
