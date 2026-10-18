@@ -44,11 +44,11 @@ public sealed class InstanceCollectorTest
         "let p = pick<i32>\n";
 
     // The first line of CLayoutP's constructor, the subject of its instance's by-value uses.
-    private const string Init = "public init(n: i32, value: T) => (self.n, self.value) = (n, value@move)";
+    private const string Init = "public init(n: i32, value: T)";
 
     // A C-layout struct over a Type parameter, which a zero-sized argument makes store a zero-sized Field.
     private const string CLayoutP = "#Layout(\"C\")\nstruct P<T>\n    public var n: i32\n    public var value: T\n" +
-        "    public init(n: i32, value: T) => (self.n, self.value) = (n, value@move)\n";
+        "    public init(n: i32, value: T)\n        self.n = n\n        self.value = value@move\n";
 
     // A generic function nested in a closed function, which has no instance to carry.
     private const string InClosed = "func host() -> i32\n    func pick<U>(x: U) -> U => x@move\n    return pick(1)\n" + Outer + "    _ = host()\n    return x\n";
@@ -385,7 +385,11 @@ public sealed class InstanceCollectorTest
     {
         var c = MirBuildTest.Compile(source);
         Assert.Equal(refused is null ? [] : [(DiagnosticCode.Unsupported_Kd, refused)], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
-        Assert.Empty(new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1).Records);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings); // A program with findings is never collected, so the check would not run.
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.NotEqual(0, set.Items.Length);
+        Assert.Empty(set.Records);
     }
 
     // A3b (R4-M8): once Binding's gate is gone (H7), a closed operation of the table is Unsupported_Kd at its own location, in any block,
@@ -421,7 +425,11 @@ public sealed class InstanceCollectorTest
     {
         var c = MirBuildTest.Compile("func half<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value / 2\nfunc keep() -> i32 => 1\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Empty(new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1).Records);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings); // A program with findings is never collected, so the check would not run.
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.NotEqual(0, set.Items.Length);
+        Assert.Empty(set.Records);
     }
 
     // K 4.7 instance stage, IMPL 21.3.3, DECISIONS R5-M54: an operation whose Types depend on slots is checked in each instance of the
@@ -449,7 +457,9 @@ public sealed class InstanceCollectorTest
     // top level (P.init(1, ())), with the instance's constructor, a written parameter of an unused function, nested in an Option and through
     // an inferred Option<P<T>>, with the .None that makes it; each valid twin has none. Subjects by their first line.
     [Theory]
-    [InlineData("func make<T>(value: T) -> i32\n    let p = P<T>.init(1, value@move)\n    return p.n\nlet r = make(())\n", "let p = P<T>.init(1, value@move)|" + Init)]
+    [InlineData(
+        "func make<T>(value: T) -> i32\n    let p = P<T>.init(1, value@move)\n    return p.n\nlet r = make(())\n",
+        "let p = P<T>.init(1, value@move)|" + Init)]
     [InlineData("func make<T>(value: T) -> i32\n    let p = P<T>.init(1, value@move)\n    return p.n\nlet r = make(5)\n", "")]
     [InlineData("let q = P.init(1, ())\n", "let q = P.init(1, ())|" + Init)]
     [InlineData("let q = P.init(1, 2)\n", "")]
@@ -458,12 +468,27 @@ public sealed class InstanceCollectorTest
     [InlineData("let x: Option<P<()>> = .None\n", "let x: Option<P<()>> = .None|.None")]
     [InlineData("func g<T>(value: T) -> i32\n    let x: Option<P<T>> = .None\n    return 0\nlet r = g(())\n", "let x: Option<P<T>> = .None|.None")]
     [InlineData("func g<T>(value: T) -> i32\n    let x: Option<P<T>> = .None\n    return 0\nlet r = g(1)\n", "")]
+    [InlineData("func g<T>(value: T) -> i32\n    let x: Option<ref/P<T>> = .None\n    return 0\nlet r = g(())\n", "")]
     public void AZeroSizedFieldOfACLayoutInstanceIsARecordAtEachUse(string uses, string subjects)
     {
         var c = MirBuildTest.Compile(CLayoutP + uses);
+        Assert.All(c.Binding.Issues, static x => Assert.Equal(DiagnosticCode.InvalidCLayout_Kd, x.Code)); // A written instance's eager report.
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         var expected = subjects.Length == 0 ? [] : subjects.Split('|').Select(static x => (DiagnosticCode.InvalidCLayout_Kd, x)).ToArray();
         Assert.Equal(expected, set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString().Split('\n')[0])));
+    }
+
+    // DECISIONS R5-M55: a C-layout declaration Binding rejects for a direct zero-sized Field is rejected storage for Layout, derived from
+    // Binding's records (at the Field and the struct), so its by-value uses add no collector record.
+    [Fact]
+    public void ARejectedCLayoutDeclarationIsBindingsAlone()
+    {
+        var c = MirBuildTest.Compile("#Layout(\"C\")\nstruct Q\n    public var n: i32 = 1\n    public var u: () = ()\n    public init() => ()\n" +
+            "func use(q: Q) -> i32 => q.n\nlet q = Q.init()\nlet n = use(q@move)\n");
+        Assert.Equal(
+            [(DiagnosticCode.InvalidTypeFormation_Kd, true), (DiagnosticCode.InvalidCLayout_Kd, false)],
+            c.Binding.Issues.Select(static x => (x.Code, x.Node is StructKoto)).OrderBy(static x => x.Code));
+        Assert.Empty(new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1).Records);
     }
 
     // DECISIONS R5-M55 (a declared overlap, removed at G2b): Binding still reports a written instance eagerly at the written Type, so under

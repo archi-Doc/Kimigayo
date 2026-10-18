@@ -29,6 +29,11 @@ internal sealed class AdtDef
     /// every struct in every pass, before storage is prepared; header binding runs earlier and reads the attributes instead.</summary>
     internal bool IsCLayout { get; set; }
 
+    /// <summary>Gets or sets a value indicating whether the struct's C-layout declaration was rejected for a direct zero-sized Field
+    /// (InvalidCLayout_Kd at the Field). C-layout Field validation writes it for every struct in every pass; Layout reads it as storage
+    /// Binding rejected (DECISIONS R5-M55).</summary>
+    internal bool CLayoutRejected { get; set; }
+
     /// <summary>Gets or sets a value indicating whether the declaration lies on an inline storage cycle (InvalidInlineLayout_Kd).
     /// Inline layout validation writes it for every struct and enum in every pass; Layout reads it (DECISIONS R5-M37).</summary>
     internal bool InlineCycle { get; set; }

@@ -2057,7 +2057,8 @@ structure is recorded here by the unit that first implements it.
   F2b and F2c apply the rule to library imports and the legacy Dictionary rows' callees. Rejected: a module ordinal column (plan
   row F2a; always 0); replacing `Function` by `Symbol` now (for the Implicit body a reader would derive the Koto from `Kind`,
   not from the symbol).
-- **R5-M26 `AdtDef.IsCLayout`** (2026-10-18, planning session; plan F1, package F §4.9 and §9, S2-S4 X18 and X26, under R5-M18)
+- **R5-M26 `AdtDef.IsCLayout`** (2026-10-18, planning session; plan F1, package F §4.9 and §9, S2-S4 X18 and X26, under R5-M18; R5-M55
+  adds `AdtDef.CLayoutRejected` for a declaration rejected for a direct zero-sized Field)
   Binding's published fact that a struct's C layout validated (SPEC 21.1). Producer: `ValidateLayoutFragments`
   (`Binding/Binding.Attributes.cs`), true exactly for a struct whose selected mode is `#Layout("C")` with valid fragments and that
   is neither open, derived nor empty. It is written true or false for every struct in every pass; on a first pass the shape is
@@ -2579,6 +2580,11 @@ structure is recorded here by the unit that first implements it.
   - Declared overlap, removed at G2b: Binding's eager report of a written instance (`Binding.Attributes.cs`) stays, so under MIR code
     generation a written by-value use is reported at the written Type by Binding and at the use by the collector; an inferred one only
     at the use (`InstanceCollectorTest.BindingsEagerReportOfAWrittenInstanceStaysBesideTheUse`).
+  - Derived in the owning component (review B1): a C-layout declaration Binding rejects for a direct zero-sized Field
+    (`ValidateCLayoutFields`, which reports at the Field and the struct and keeps `IsCLayout`, R5-M26) is published as
+    `AdtDef.CLayoutRejected`, written in every pass like `InlineCycle` (R5-M37); `Layout` lays such a struct out as Rejected storage, so
+    its by-value uses add no record and the collector never repeats Binding's declaration check (DIAGNOSTICS rule 1). This overlap is not
+    temporary: X26 keeps Binding's declaration check.
   - Waiting: a collection's element (X34) is laid out by its glue item, so an empty `Array<P<()>>` local's record comes with K7.
   - Rejected: one Language record per Type (SPEC 8.15.3 places it at the use; R5-M44's rejected record per use concerns the Resource code);
     a second outcome table beside R5-M44's.
