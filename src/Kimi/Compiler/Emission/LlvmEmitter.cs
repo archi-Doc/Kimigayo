@@ -326,8 +326,9 @@ public sealed partial class LlvmEmitter
         for (var i = 0; i < imports.Count; i++)
         {
             var import = imports[i];
-            if (ReferenceEquals(import.Function.CodeContext.Kotonoha, this.compilation.Library.Kotonoha) &&
-                !this.compilation.Ownership.UsesImport(import.Function))
+            var function = (FunctionKoto)import.Decl.Declaration;
+            if (ReferenceEquals(function.CodeContext.Kotonoha, this.compilation.Library.Kotonoha) &&
+                !this.compilation.Ownership.UsesImport(function))
             {
                 continue;
             }
@@ -345,7 +346,7 @@ public sealed partial class LlvmEmitter
 
             if (abi is null)
             {
-                abi = Matches(cached, import.Function) ? cached : CreateImportAbi(import, name);
+                abi = Matches(cached, function) ? cached : CreateImportAbi(function, name);
                 if (abi is null)
                 {
                     failure = "A foreign import needs an unsupported parameter or result representation.";
@@ -365,7 +366,7 @@ public sealed partial class LlvmEmitter
             }
 
             ordinal++;
-            functions.Add(import.Function, abi);
+            functions.Add(function, abi);
         }
 
         return true;
@@ -388,9 +389,8 @@ public sealed partial class LlvmEmitter
             return true;
         }
 
-        static FunctionAbi? CreateImportAbi(LibraryImport import, string name)
+        static FunctionAbi? CreateImportAbi(FunctionKoto function, string name)
         {
-            var function = import.Function;
             var result = function.BoundSymbol!.Type!;
             var resultType = ReferenceEquals(result, BoundType.Unit) ? RuntimeAbi.Unit.ComputationType : ImportType(result);
             var parameters = new AbiParameter[function.Parameters.Count];
