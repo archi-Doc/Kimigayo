@@ -108,9 +108,9 @@ internal sealed partial class MirBuilder
         var operand = jump.Expression;
         if (plan is null)
         {
-            // The published target row is null exactly where Binding recorded no valid target (DECISIONS R5-M31, R5-M42), so the jump is
-            // derived from that record (SPEC 23.1.2): its operand is built, keeping its own records, and the jump is an Opaque value of
-            // what the operand gave, without a record.
+            // The published target row is null exactly where Binding rejected the jump (no valid target, or a #switch around it selected
+            // no arm; DECISIONS R5-M31, R5-M42), so the jump is derived from that record (SPEC 23.1.2): its operand is built, keeping its
+            // own records, and the jump is an Opaque value of what the operand gave, without a record.
             var given = operand is null ? default : this.Operand(operand, expected: null);
             this.roots.Clear();
             if (operand is not null && given.Kind != MirOperandKind.Const)

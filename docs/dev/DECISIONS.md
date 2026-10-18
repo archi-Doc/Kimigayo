@@ -2197,10 +2197,12 @@ structure is recorded here by the unit that first implements it.
     rejects every form at the reference (its four sites), and the copy only repeated it at a requirement item's inner name.
   - Q11, rows 9-11 (`InvalidJumpTarget`, `UnlabeledYieldTarget`, `OverlappingLabel`; SPEC 14.5.2, 14.7, 14.4): one rule,
     `KotoHelper.IsValidTransfer` (a target exists; an unlabeled yield's selection uses its result), decides a transfer; the jump
-    binding writes the target row (`PlanRow.Plan`) only for a valid transfer, so the HIR publisher no longer resolves targets,
-    and the walk records rows 9-10 by the same rule. HIR contract: a null target row of a published Jump or Continue means
-    Binding recorded row 9 or 10 there (ask A-8). The table's guess column names what a row reads that a recovery may have
-    guessed: a completion (rows 1 and 12) or a target (rows 9-11, which rest only on a guessed label or a recovered label).
+    binding writes the target row (`PlanRow.Plan`) only for a valid transfer, so the HIR publisher no longer resolves targets, and
+    the walk records rows 9-10 by the same rule. HIR contract: a null target row of a published Jump or Continue means Binding
+    recorded row 9 or 10 there (ask A-8), or, the lints being dropped there, that the jump lies in a function part whose `#switch`
+    selected no arm, which `NonExhaustiveCompileTimeCase_Kd` rejects (amended by R5-M42's unit). The table's guess column names
+    what a row reads that a recovery may have guessed: a completion (rows 1 and 12) or a target (rows 9-11, which rest only on a
+    guessed label or a recovered label).
   - Rejected: one shared `ResultStructure()` per walk (any query inside the walk clears it; per-query clearing composed a nested
     selection's completion 8,256 times instead of 528); a node failure per lint (the old analysis would skip the program; PD29, PD31); a Koto-keyed set of warned nodes
     (ARCH Syntax identity, warm allocations); a copy of the old walk's synthesized-evaluation switch (rows 1-6 judge source
@@ -2301,12 +2303,13 @@ structure is recorded here by the unit that first implements it.
   in `Acquire` (Binding publishes Copy or None with no adaptation at every traced site; the validator reports a `ref/Never`).
 - **R5-M42 A jump without a target row is derived from Binding's record** (2026-10-18, planning session; plan F13, PLAN G143, R4's
   ask A-8's jump part (G103-E9b's), handed to R5; after Q11, R5-M31) Rule (`MirBuilder.Transfer`): the builder reads the target
-  row the jump binding publishes. A null row means Binding recorded row 9 or 10 at the jump (R5-M31's HIR contract), so the jump
-  is derived from that record (SPEC 23.1.2): its operand is built with no expected Type, keeping its own records and accesses,
-  and the jump is an Opaque value naming what the operand gave, with no record, ending its block for the checks only as a
-  jump does. A non-null row is built as before; one that no construct around the jump opened is a broken HIR contract (every
-  target construct opens one), recorded as `InternalInvariant_Kd` at the jump, the jump an Opaque value. So an unlabeled `yield` into a discarded selection, a jump with no target
-  in scope and one behind a defer or a default lose MIR's second record, and `loop => yield helper(a)` builds its call.
-  Rejected: a located `Unsupported_Kd` at the jump (a second record of an invalid program, the operand unbuilt); an Opaque
-  value of the jump's whole syntax (the operand's records lost and its accesses unbuilt); a target lookup in MIR (the jump
-  binding owns targets since Q11).
+  row the jump binding publishes. A null row means Binding rejected the jump (R5-M31's HIR contract: row 9 or 10 at the jump, or
+  `NonExhaustiveCompileTimeCase_Kd` at a `#switch` that selected no arm around it), so the jump is derived from that record (SPEC
+  23.1.2): its operand is built with no expected Type, keeping its own records and accesses, and the jump is an Opaque value
+  naming what the operand gave, with no record, ending its block for the checks only as a jump does. A non-null row is built as
+  before; one that no construct around the jump opened is a broken HIR contract (every target construct opens one), recorded as
+  `InternalInvariant_Kd` at the jump, the jump an Opaque value. So an unlabeled `yield` into a discarded selection, a jump with no
+  target in scope and one behind a defer or a default lose MIR's second record, and `loop => yield helper(a)` builds its call.
+  Rejected: a located `Unsupported_Kd` at the jump (a second record of an invalid program, the operand unbuilt); an Opaque value
+  of the jump's whole syntax (the operand's records lost and its accesses unbuilt); a target lookup in MIR (the jump binding owns
+  targets since Q11).
