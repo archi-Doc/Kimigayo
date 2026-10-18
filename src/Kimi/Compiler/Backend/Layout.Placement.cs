@@ -80,7 +80,7 @@ internal sealed partial class Layout
 
         entry = type.Kind switch
         {
-            _ when type.Symbol?.Adt is { InlineCycle: true } => Rejected(type),
+            _ when type.Symbol?.Adt is { InlineCycle: true } or { CLayoutRejected: true } => Rejected(type),
             BoundTypeKind.FixedArray => this.PlaceArray(type, budget - 1),
             _ when AdtDef.IsEnum(type) => this.PlaceEnum(type, budget - 1),
             _ => this.Place(type, budget - 1),
