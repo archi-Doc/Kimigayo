@@ -15,6 +15,7 @@
 #pragma warning disable SA1402 // The verdict, its rows, the flag points and the table belong to drop elaboration.
 
 using System.Runtime.InteropServices;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Mir;
 
@@ -291,7 +292,8 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
             elided = verdict == MirDropVerdict.Elide ? node.Depth : int.MaxValue;
             if (verdict == MirDropVerdict.Open && AdtDef.Destructor(type!) is not null)
             {
-                this.report.Add(new(DiagnosticCode.MovedPlace_Kd, this.body.Subject(drop.Terminator.Source), views));
+                var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.PossiblyMovedUse);
+                this.report.Add(new(DiagnosticCode.MovedPlace_Kd, requirement, this.body.Subject(drop.Terminator.Source), views));
             }
 
             var flag = verdict == MirDropVerdict.Elide ? -1 : node.Flag;

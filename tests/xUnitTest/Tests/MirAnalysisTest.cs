@@ -5,29 +5,135 @@ using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
 
-/// <summary>The MIR analyses' driver and problem record (docs/dev/DECISIONS.md R4-M2a, R4-M3a): <see cref="MirAnalysis"/> runs once per
-/// program version, and <see cref="MirReport"/> keeps one problem per code and subject with the views that have it; the analyses' costs
-/// (V16), A3's (<see cref="MirLints"/>, R4-M7a) first.</summary>
+/// <summary>The MIR analyses' driver and problem record (docs/dev/DECISIONS.md R4-M2a, R4-M3a, R5-M23): <see cref="MirAnalysis"/> runs once
+/// per program version, and <see cref="MirReport"/> keeps one problem per code and subject with its requirement and the views that have it;
+/// the analyses' costs (V16), A3's (<see cref="MirLints"/>, R4-M7a) first.</summary>
 public sealed class MirAnalysisTest
 {
+    // One problem of each recording rule (MirEffectsTest's, MirDropTest's and MirBorrowsTest's forms).
+    private const string Requirements = """
+        contract Sink
+            func put(self: uniq/Self, value: i32) -> i32
+                effect confined
+        struct S
+            Self is Sink
+            public func put(self: uniq/Self, value: i32) -> i32
+                H.discard(Loud.init())
+                return value
+        func apply<F>(f: ref/F) -> i32
+            F is Callable<() -> i32>
+                effect confined
+            return f()
+        func noisy() -> i32
+            Console.writeLine("noisy")
+            return 0
+        func entry() -> i32 => apply(noisy)
+        struct Loud
+            public var n: i32 = 0
+            drop => Console.writeLine("drop")
+        group H
+            public func discard<T>(item: T) => ()
+        open struct Base
+            public virtual func read(self: objref/Self) -> i32
+                effect confined
+                return 1
+        struct Derived : Base
+            override func read(self: objref/Self) -> i32
+                H.discard(Loud.init())
+                return 1
+        struct Resource
+            var name: string
+            public init(name: string) => self.name = name@move
+        func make() -> Resource => Resource.init("r")
+        func consume(r: Resource) => ()
+        struct Box
+            public var value: Resource
+            public init(value: Resource) => self.value = value@move
+            drop => ()
+        func layer()
+            var box = Box.init(make())
+            consume(box.value@move)
+        func moved(r: Resource)
+            consume(r@move)
+            consume(r@move)
+        func unset(flag: bool) -> i32
+            var n: i32
+            if flag => n = 1
+            return n
+        func falls(flag: bool)
+            require flag else => ()
+        func inspect(value: ref/i32) => ()
+        func conflict()
+            var x = 1
+            let r = x@ref
+            x = 2
+            inspect(r)
+        public func main() => ()
+
+        """;
+
+    private static readonly DiagnosticRequirement Moved = DiagnosticRequirement.Ownership(OwnershipRequirement.PossiblyMovedUse);
+    private static readonly DiagnosticRequirement Uninitialized = DiagnosticRequirement.Ownership(OwnershipRequirement.UninitializedUse);
+
     // R4-M3a: a problem of a code and subject added again ORs its views into the first; another code or subject is its own problem.
     [Fact]
     public void ARepeatedProblemMergesItsViews()
     {
         var report = new MirReport();
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, new(0, 5), 0b01));
-        report.Add(new(DiagnosticCode.UninitializedPlace_Kd, new(0, 5), 0b01));
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, new(0, 6), 0b01));
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, new(0, 5), 0b10));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0b01));
+        report.Add(new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, 5), 0b01));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), 0b01));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0b10));
         Assert.Equal(
-            [new(DiagnosticCode.MovedPlace_Kd, new(0, 5), 0b11), new(DiagnosticCode.UninitializedPlace_Kd, new(0, 5), 0b01), new MirProblem(DiagnosticCode.MovedPlace_Kd, new(0, 6), 0b01)],
+            [
+                new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0b11), new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, 5), 0b01),
+                new MirProblem(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), 0b01),
+            ],
             report.All.ToArray());
         report.Clear();
         Assert.Equal(0, report.All.Length);
+    }
+
+    // R5-M23: the problems a key merges name one requirement, the first's; a problem that names another is a recording rule's defect, one
+    // InternalInvariant_Kd problem at the subject with the views that disagreed, however often it disagrees.
+    [Fact]
+    public void AMergeNamesOneRequirement()
+    {
+        var report = new MirReport();
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0b01));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Uninitialized, new(0, 5), 0b10));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Uninitialized, new(0, 5), 0b100));
+        Assert.Equal(
+            [
+                new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0b01),
+                new MirProblem(DiagnosticCode.InternalInvariant_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Internal), new(0, 5), 0b110),
+            ],
+            report.All.ToArray());
+    }
+
+    // R5-M23, DIAGNOSTICS rule 1: each recording rule names the requirement it judged, beside its code: A1's uses and Moves, A2's
+    // incomplete layer at a Drop, A3's falling failure body, A4's confined obligations as Binding's row carries them (a conformance, a
+    // virtual function, a Callable binding) and A5's Loan conflicts.
+    [Fact]
+    public void EachRecordingRuleNamesItsRequirement()
+    {
+        var c = MirBuildTest.Compile(Requirements);
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(
+            [
+                "ControlFlow RequireFallthrough_Kd ()", "Ownership.CallableEffectBound UnsatisfiedEffectBound_Kd noisy",
+                "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd x = 2",
+                "Ownership.EffectBound IncompatibleContractImplementation_Kd Self is Sink", "Ownership.PossiblyMovedUse MovedPlace_Kd r",
+                "Ownership.PossiblyMovedUse MovedPlace_Kd var box = Box.init(make())", "Ownership.UninitializedUse UninitializedPlace_Kd n",
+                "Ownership.VirtualEffectBound UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32",
+            ],
+            c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
+                .Select(x => $"{x.Requirement} {x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()}").Order(StringComparer.Ordinal));
     }
 
     // R4-M1: the analyses run once per program version: building an unchanged version again keeps its problems, and a new Binding pass
@@ -37,7 +143,7 @@ public sealed class MirAnalysisTest
     {
         var (c, _) = SemanticSnapshotTest.Bind("milestone/Milestone1");
         var program = c.BuildMir();
-        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, program.Bodies[0].Source, 1));
+        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, program.Bodies[0].Source, 1));
         Assert.Equal(1, c.BuildMir().Problems.All.Length);
         c.Binding.Bind(BindingMode.Final);
         Assert.Equal(0, c.BuildMir().Problems.All.Length);
@@ -87,7 +193,8 @@ public sealed class MirAnalysisTest
             report.Clear();
             for (var i = 0; i < 64; i++)
             {
-                report.Add(new(i % 2 == 0 ? DiagnosticCode.MovedPlace_Kd : DiagnosticCode.UninitializedPlace_Kd, new(0, (i % 48) + 1), 1UL << (i % 3)));
+                report.Add(i % 2 == 0 ? new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, (i % 48) + 1), 1UL << (i % 3))
+                    : new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, (i % 48) + 1), 1UL << (i % 3)));
             }
         }));
         Assert.Equal(64 - 16, report.All.Length);

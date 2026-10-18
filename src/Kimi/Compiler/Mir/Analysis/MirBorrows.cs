@@ -26,6 +26,8 @@
 // every head.
 // Must not read syntax or HIR, judge Origins, re-derive retention or Move Paths, intern projections, or copy the body per view.
 
+using Kimi.Diagnostics;
+
 namespace Kimi.Compiler.Mir;
 
 /// <summary>A5's Loan stratum (design A3, R4 shadow: the old path still decides): <see cref="Run"/> checks a body under the selected
@@ -90,7 +92,8 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
         var state = flow.Prepare((this.flowCount + 63) >> 6, this.flowCount, Math.Max(words, this.holderCount));
         if (state is null)
         {
-            program.Problems.Add(new(DiagnosticCode.OwnershipStorageLimit_Kd, body.Source, all)); // R4-M15a.
+            var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.StorageLimit);
+            program.Problems.Add(new(DiagnosticCode.OwnershipStorageLimit_Kd, requirement, body.Source, all)); // R4-M15a.
             return;
         }
 
