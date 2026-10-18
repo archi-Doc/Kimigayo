@@ -22,9 +22,10 @@ namespace XunitTest;
 /// <c>sources/&lt;sha&gt;.kimi</c>. Disposal aggregates the rows (<see cref="Aggregate"/>). Without the variable nothing is observed.
 /// </summary>
 /// <remarks>A raw row is <c>event section side analysis code requirement location form body sha</c>: the comparison, complete (Binding
-/// accepted the program: a complete result without a lint Error) or incomplete Binding (R4-M5), both, old or new, the owning analysis (A1, A3, A4, A5, U for an old Unsupported gate, - for the expansion
-/// limit, B for a MIR construction record or validator finding; a MIR problem takes its code's), the code, the old requirement (- on the MIR side, R4-M3a), the
-/// subject's document, offset and length, its syntax form, the location of its enclosing definition and the source's hash.</remarks>
+/// accepted the program: a complete result without a lint Error) or incomplete Binding (R4-M5), both, old or new, the owning analysis (A1,
+/// A3, A4, A5, U for an old Unsupported gate, - for the expansion limit, B for a MIR construction record or validator finding; a MIR
+/// problem takes its code's), the code, the old requirement (- on the MIR side, R4-M3a), the subject's document, offset and length, its
+/// syntax form, the location of its enclosing definition and the source's hash.</remarks>
 public sealed class MirDifferenceLedger : IDisposable
 {
     internal const int Event = 0;

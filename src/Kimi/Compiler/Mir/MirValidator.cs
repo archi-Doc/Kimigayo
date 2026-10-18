@@ -20,6 +20,7 @@ internal enum MirViolation : byte
     CheckTarget, // A check target on a terminator other than Goto, a Call without a target and Unreachable.
     Unreachable, // A block that neither runtime nor check edges reach from the entry.
     Diverged, // A read, move or borrow, where runtime edges reach, of a Temp whose only writes are diverging Calls' destinations (G131).
+    NeverWrite, // A Temp of Type Never written by other than an unadapted Copy or Move of a Never Place, an Opaque value or a diverging Call.
     Local, // Local 0 is not the Return local, an Arg local does not directly follow it, or a local has no Type.
     Scope, // A scope that its outer scope does not precede, or a source outside the scopes.
     StorageLocal, // StorageLive or StorageDead of a Place other than a Var or Temp local.
@@ -429,6 +430,13 @@ internal sealed partial class MirValidator(TyCtxt types)
             => (place.Root >= 0 ? place.Root < body.Locals.Length : ~place.Root < body.Statics.Length) &&
                 (uint)place.Projection < (uint)body.Projections.Length;
 
+        // Whether an rvalue may write a Temp of Type Never (DECISIONS R5-M38): an unadapted Copy or Move of a Place of Type Never, or an
+        // Opaque value; a diverging Call's destination is the third writer.
+        private readonly bool WritesNever(in MirRvalue rvalue) => rvalue.Kind == MirRvalueKind.Opaque ||
+            (rvalue is { Kind: MirRvalueKind.Use, Op: 0, Count: 1 } &&
+                body.Operands[rvalue.Start] is { Kind: MirOperandKind.Copy or MirOperandKind.Move } operand &&
+                this.IsValid(operand.Place) && ReferenceEquals(body.TypeOf(operand.Place), BoundType.Never));
+
         private readonly bool Admits(BoundType? type, in MirProjection row) => row.Type is not null && ReferenceEquals(
             row.Type,
             body.ProjectedType(type, row.Kind, row.Arg));
@@ -456,6 +464,12 @@ internal sealed partial class MirValidator(TyCtxt types)
                     break;
                 case MirStatementKind.Assign when !this.Rvalue(statement.Rvalue, this.IsValid(place) ? body.TypeOf(place) : null):
                     return false;
+            }
+
+            if (statement.Kind == MirStatementKind.Assign && local is { Kind: MirLocalKind.Temp } && ReferenceEquals(local.Type, BoundType.Never) &&
+                !this.WritesNever(statement.Rvalue))
+            {
+                this.Report(MirViolation.NeverWrite); // R5-M38: the Never value's writers are a whitelist.
             }
 
             this.acquires = statement is
@@ -609,6 +623,11 @@ internal sealed partial class MirValidator(TyCtxt types)
             if (call is { Target: < 0, Place: { Projection: 0, Root: >= 0 and var root } } && root < body.Locals.Length)
             {
                 writes[root] |= DivergingWrite; // The destination MirUses does not report.
+            }
+            else if (call is { Place: { Projection: 0, Root: >= 0 and var written } } && written < body.Locals.Length &&
+                body.Locals[written] is { Kind: MirLocalKind.Temp } local && ReferenceEquals(local.Type, BoundType.Never))
+            {
+                this.Report(MirViolation.NeverWrite); // A returning Call writes the Never value (R5-M38).
             }
 
             return true;

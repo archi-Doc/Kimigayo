@@ -222,8 +222,8 @@ internal sealed partial class MirBuilder
     // shared or exclusive borrow), to the referent its layers reach (ReferenceRead), to an object handle's payload or to the base the
     // expected Type names. An implicit exclusive borrow of a call's input is two-phase: reserved here, activated at the Call (SPEC 15.6.7).
     // SPEC 3.8, 14.10.3 (DECISIONS R4-M62, R5-M38): any acquisition takes the Never value as it is, which fits any operand position; a
-    // named Place of Type Never is acquired as Binding publishes it into the node's Never temp, this its one writer, and gives that Never
-    // value, so whatever takes it places nothing.
+    // named Place of Type Never that Binding acquires with no adaptation, a Copy or a Move, is acquired so into a fresh Never temp and gives
+    // that Never value, so whatever takes it places nothing; an adapted one (a borrow) is built as Binding publishes it and keeps its Loan.
     private MirOperand Acquire(HirAdjust adjust, MirPlace place, BoundType? expected, bool input, Koto node, MirPlace? into = null)
     {
         if (this.IsNeverValue(place))
@@ -231,7 +231,7 @@ internal sealed partial class MirBuilder
             return MirOperand.Move(place);
         }
 
-        if (!this.IsNever(place))
+        if (!this.IsNever(place) || adjust.Adaptation != HirAdaptation.None)
         {
             return this.Acquired(adjust, place, expected, input, node, into);
         }
@@ -532,8 +532,9 @@ internal sealed partial class MirBuilder
         }
     }
 
-    // SPEC 3.1.3, 3.8: whether a Place is the Never value, the temp of a node of Type Never, which nothing writes but a named Place's
-    // acquisition (Acquire), carries no Loan and fits any operand position (DECISIONS R4-M62, R5-M38).
+    // SPEC 3.1.3, 3.8: whether a Place is the Never value, a temp of Type Never, which carries no Loan and fits any operand position; only
+    // an unadapted Copy or Move of a Never Place (Acquire), an Opaque value of Type Never and a diverging Call write it (DECISIONS R4-M62,
+    // R5-M38, R5-M33; MirValidator).
     private bool IsNeverValue(MirPlace place) => this.IsTemp(place) && this.IsNever(place);
 
     // Whether a Place is of Type Never: the Never value or a named Place, neither of which has a referent to borrow or view.

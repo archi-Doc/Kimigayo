@@ -557,6 +557,10 @@ public sealed class MirValidatorTest
             case MirViolation.Opaque:
                 Assign(flag, MirRvalue.Opaque(BoundType.Boolean, 5), Broken);
                 break;
+            case MirViolation.NeverWrite: // R5-M38: an operator's value, which no whitelisted writer gives, into a Temp of Type Never.
+                var never = MirModelTest.Local(body, BoundType.Never, MirLocalKind.Temp);
+                Assign(never, MirRvalue.Unary(MirUnaryOp.Neg, Operands(MirOperand.Copy(never)), false), Broken);
+                break;
         }
 
         body.AddCase(0, abort);
