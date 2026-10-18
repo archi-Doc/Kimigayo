@@ -16,7 +16,7 @@ namespace Kimi.Compiler;
 //   bound once, at the decided Type (BindWaiting from PropagateSources, RequireAtPosition, DecideWaiting) or, with nothing decided, at
 //   its defaults (AwaitsWithoutCandidate, DefaultWaitingPart); (3) the late fit of a bound expression that awaits its position
 //   (AwaitsPosition: a Tuple, array or dictionary literal with a part of Type Never or a part that awaits; a result target every value
-//   source of which awaits or has Type Never; through parentheses, labels, expression bodies, @move and @copy), which is no evidence
+//   source of which awaits or has Type Never; through parentheses, labels and expression bodies), which is no evidence
 //   beside one that is (SPEC 14.9.2 step 2, 4.3, 10.8) and takes the Type that a join, its literal's element evidence or its selected
 //   call decides (TryPropagate).
 // - Inputs: the bound expression, its parts' Types, the value sources a join recorded (ResultContext.SourceNodes) and whether it still
@@ -41,16 +41,13 @@ public sealed partial class Binding
     // SPEC 14.9.1: a result target whose value is its result, a selection, `do` or `loop`; a function's value is itself, not its result.
     private static bool DeliversResult(Koto node) => node is IfKoto or MatchKoto or DoKoto or LoopKoto;
 
-    // The operand a value-preserving form delivers as it is: parentheses, a label, an expression body, @move and @copy, read from the
-    // syntax so that it holds before they are bound.
+    // The operand a form delivers with its position's Type: parentheses, a label, an expression body, read from the syntax so that it
+    // holds before they are bound. An @move or @copy operand takes no Type from its position (SPEC 12.3.1, 13.5.2; DECISIONS BU-9).
     private static Koto? DeliveredOperand(Koto node) => node switch
     {
         ParenthesizedKoto parentheses => parentheses.Operand,
         LabeledKoto label => label.Target,
         CodeBlockKoto { IsExpressionBody: true } block => block.Items[0],
-        ConversionKoto acquisition when
-            ConversionTargetSyntax(acquisition) is TypeSemanticsKoto { Type: null, Identifier: Constants.MoveOperation or Constants.CopyOperation }
-            => acquisition.Left,
         _ => null,
     };
 
@@ -284,23 +281,9 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 14.9.2 step 3: binds a source that waited at `type` (null: its defaults): its delivered operand first, since @move and @copy
-    // bind theirs without an expected Type, then the forms around it. Returns the Type the source supplies, null when it fails.
+    // SPEC 14.9.2 step 3: binds a source that waited at `type` (null: its defaults). Returns the Type the source supplies, null when it fails.
     private BoundType? BindWaiting(Koto source, BoundType? type)
-    {
-        var operand = source;
-        while (DeliveredOperand(operand) is { } inner)
-        {
-            operand = inner;
-        }
-
-        if (!ReferenceEquals(operand, source))
-        {
-            this.BindNode(operand, this.ConstraintScope(operand), type);
-        }
-
-        return this.BindNode(source, this.ConstraintScope(source), type) is null ? null : this.SuppliedType(source);
-    }
+        => this.BindNode(source, this.ConstraintScope(source), type) is null ? null : this.SuppliedType(source);
 
     // SPEC 14.9.2 step 2: the candidates of a join, Never supplying none: a source that awaits its position supplies none and is checked
     // by its late Type (PropagateSources), with or without a fixed Target Result Type; a source that waited unbound supplies none either,
@@ -445,16 +428,12 @@ public sealed partial class Binding
         return this.LateWrite(node, late);
     }
 
-    // Records the write of a late Type: the node, and the target name of an @move or @copy, which names its operand's Type.
+    // Records the write of a late Type to the node.
     private BoundType? LateWrite(Koto node, BoundType? late)
     {
         if (late is not null)
         {
             this.lateWrites.Add((node, late));
-            if (node is ConversionKoto acquisition)
-            {
-                this.lateWrites.Add((acquisition.Right, late)); // @move's and @copy's target name the operand's Type.
-            }
         }
 
         return late;

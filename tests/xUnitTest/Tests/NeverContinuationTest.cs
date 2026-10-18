@@ -23,7 +23,7 @@ public class NeverContinuationTest
         "func dictionary(c: bool, a: i64) -> i64\n    let x = if c => [\"k\": (a, a)] else => [\"k\": (a, a), \"j\": (a, (return 4))]\n    return x[\"k\"].1\n" +
         "func entries(c: bool, a: i64) -> i64\n    let x = if c => [\"k\": (a, a)] else => [\"k\": (a, (return 3))]\n    return x[\"k\"].1\n" +
         "func values(c: bool, p: P) -> i64\n    let x = if c => [\"k\": p.x] else => [\"k\": 4000000000]\n    return x[\"k\"]\n" +
-        "func moved(c: bool, a: i64) -> i64\n    let t = if c => (a, a) else => (a, (return 5))@move\n    return t.1\n" +
+        "func grouped(c: bool, a: i64) -> i64\n    let t = if c => (a, a) else => ((a, (return 5)))\n    return t.1\n" +
         "func literal(c: bool, p: P) -> i64\n    let t = if c => p.x else => 4000000000\n    return t\n" +
         "func leaf(c: bool, a: i64) -> i64\n    let t = if c => (a, a) else => (a, 3000000000)\n    return t.1\n" +
         "func elements(c: bool, p: P) -> i64\n    let x = if c => [p.x] else => [1, 4000000000]\n    return x[1]\n" +
@@ -31,7 +31,7 @@ public class NeverContinuationTest
         "require tuple(true, 2) == 4 and tuple(false, 2) == 7 else => $abort(\"tuple\")\n" +
         "require nested(true, true, 3) == 3 and nested(false, true, 3) == 8 and nested(false, false, 3) == 9 else => $abort(\"nested\")\n" +
         "require array(true, 2) == 2 and array(false, 2) == 6 and dictionary(true, 2) == 2 and dictionary(false, 2) == 4 else => $abort(\"array\")\n" +
-        "require moved(true, 2) == 2 and moved(false, 2) == 5 else => $abort(\"moved\")\n" +
+        "require grouped(true, 2) == 2 and grouped(false, 2) == 5 else => $abort(\"grouped\")\n" +
         "require entries(true, 2) == 2 and entries(false, 2) == 3 and values(false, P.init()) == 4000000000 else => $abort(\"entries\")\n" +
         "require literal(true, P.init()) == 5 and literal(false, P.init()) == 4000000000 and leaf(false, 2) == 3000000000 else => $abort(\"literal\")\n" +
         "require elements(false, P.init()) == 4000000000 and deep(false, true, P.init()) == 4000000000 and deep(false, false, P.init()) == 3000000000 else => $abort(\"deep\")\n" +
@@ -70,7 +70,7 @@ public class NeverContinuationTest
     }
 
     // SPEC 14.9.2 step 3, 3.8: a literal whose element is Never awaits its position: beside a source that supplies a candidate it supplies
-    // none, and it takes the Target Result Type once the join selects it, nested, through @move, as an array element, a dictionary value,
+    // none, and it takes the Target Result Type once the join selects it, nested, in parentheses, as an array element, a dictionary value,
     // a part of a Tuple, array or dictionary literal source and a call argument too, which its published Type shows; one holding only
     // Never parts takes the Type a literal source's default supplies; MIR builds it at that Type with no record and no finding.
     [Theory]
@@ -79,7 +79,7 @@ public class NeverContinuationTest
     [InlineData("let t = match c\n        true => (a, a)\n        false => (a, (return 1))", "(a, (return 1))")]
     [InlineData("let t = if c => (a, a) else => (if d => (a, (return 1)) else => (a, (return 2)))", "(a, (return 2))")]
     [InlineData("let t = loop\n        if c => exit (a, (return 1))\n        exit (a, a)", "(a, (return 1))")]
-    [InlineData("let t = if c => (a, a) else => (a, (return 1))@move", "(a, (return 1))")]
+    [InlineData("let t = if c => (a, a) else => ((a, (return 1)))", "(a, (return 1))")]
     [InlineData("let t = if c => (p.x, p.x) else => (p.x, (return 1))", "(p.x, (return 1))")]
     [InlineData("let x = [(a, a), (a, (return 1))]", "(a, (return 1))")]
     [InlineData("let x = [\"k\": (a, a), \"j\": (a, (return 1))]", "(a, (return 1))")]
@@ -107,11 +107,14 @@ public class NeverContinuationTest
         => ScalarEmissionTest.EmitFixture("NeverContinuation" + Configuration + "Joins", JoinedLiterals, "ok\n");
 
     // The counterparts: such a literal takes the Target Result Type only when its parts fit it, an array literal's elements included
-    // (SPEC 4.3); otherwise the join is a Type mismatch.
+    // (SPEC 4.3); otherwise the join is a Type mismatch. An @move operand takes no Type from its position, so it keeps its own (SPEC
+    // 12.3.1, 13.5.2; the owner, 2026-10-19).
     [Theory]
     [InlineData("let t = if c => (d, d) else => (a, (return 1))")]
     [InlineData("let t = if c => [(a, a)] else => [(a, (return 1)), (a, true)]")]
     [InlineData("let t = if c => [\"k\": (a, a)] else => [\"k\": (a, (return 1)), \"j\": (a, true)]")]
+    [InlineData("let t = if c => (a, a) else => (a, (return 1))@move")]
+    [InlineData("let t: (i64, i64) = if c => (a, a) else => (a, (return 1))@move")]
     public void ANeverElementLiteralThatDoesNotFitItsJoinIsAMismatch(string statement)
     {
         var c = MirBuildTest.Compile(Joins + statement + "\n    return 0\n");
@@ -156,9 +159,9 @@ public class NeverContinuationTest
     }
 
     // SPEC 14.9.2 step 3: a literal holding Never that a join types late fits a Target Result Type fixed by an outer expectation through
-    // its late Type, not by Never fitting, also through @move and when a nested join waited for it.
+    // its late Type, not by Never fitting, also in parentheses and when a nested join waited for it.
     [Theory]
-    [InlineData("let t: (i64, i64) = if c => (a, a) else => (a, (return 1))@move", "(a, (return 1))")]
+    [InlineData("let t: (i64, i64) = if c => (a, a) else => ((a, (return 1)))", "(a, (return 1))")]
     [InlineData("let t: (i64, i64) = if c => (a, a) else => (if d => (a, (return 1)) else => (a, 4000000000))", "(a, (return 1))")]
     [InlineData("let t = if c => (a, a) else => (if d => (a, (return 1)) else => (a, 4000000000))", "(a, (return 1))")]
     [InlineData("let t: (i64, i64) = if c => (a, a) else => (a, (return 1))", "(a, (return 1))")]

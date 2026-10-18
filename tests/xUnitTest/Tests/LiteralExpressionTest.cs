@@ -86,9 +86,8 @@ public class LiteralExpressionTest
     [InlineData("let t = if c => p.x else => (if d => (if c => 4000000000 else => 1) else => -2)", "-2", "i64")]
     [InlineData("let g = func [] (e: bool)\n        return func [] ()\n            return 7", "7", "i32")]
     [InlineData("let g = func [] (e: bool, q: P) => if e => (return q.x) else => 4000000000", "4000000000", "i64")]
-    [InlineData("let t = if c => p.x else => (if d => 4000000000 else => 2)@move", "2", "i64")]
     [InlineData("let t = if c => p.x else => (label inner: if d => 4000000000 else => 3)", "3", "i64")]
-    [InlineData("let t = if c => p.x else => (4000000000)@copy", "4000000000", "i64")]
+    [InlineData("let t = if c => p.x else => (4000000000)", "4000000000", "i64")]
     [InlineData("let t = if c => (n, (return 1)) else => (n, 5)", "(n, (return 1))", "(i64, i32)")]
     [InlineData("let g = func [] (e: bool, a: i64)\n        if e => return (1, 2)\n        return (a, a)", "(1, 2)", "(i64, i64)")]
     [InlineData("let t = if c => [\"k\": p.x] else => [\"k\": 4000000000]", "[\"k\": 4000000000]", "Dictionary<string, i64>")]
@@ -110,7 +109,8 @@ public class LiteralExpressionTest
     }
 
     // SPEC 14.9.2 step 4, 12.3: a literal source is checked once, at its join's Type or, with none decided, at its default, so one that
-    // does not fit that Type is the literal's own problem, on which the join rests; a source bound at its default is decided.
+    // does not fit that Type is the literal's own problem, on which the join rests; a source bound at its default is decided. SPEC 12.3.1,
+    // 13.5.2 (the owner, 2026-10-19): an @move or @copy operand takes no Type from its position, so its literal takes its default.
     [Theory]
     [InlineData("let t = if c => p.y else => 300", nameof(DiagnosticCode.InvalidNumericLiteral_Kd), "300")]
     [InlineData("let t = if c => p.b else => 1", nameof(DiagnosticCode.TypeMismatch_Kd), "1")]
@@ -119,9 +119,12 @@ public class LiteralExpressionTest
     [InlineData("let t = if c => [1, 4000000000] else => [2]", nameof(DiagnosticCode.InvalidNumericLiteral_Kd), "4000000000")]
     [InlineData("let t = if c => [[1, 4000000000]] else => [[2]]", nameof(DiagnosticCode.InvalidNumericLiteral_Kd), "4000000000")]
     [InlineData("let t = if c => [1, 4000000000] else => [(return)]", nameof(DiagnosticCode.InvalidNumericLiteral_Kd), "4000000000")]
+    [InlineData("let t = if c => p.x else => (4000000000)@copy", nameof(DiagnosticCode.InvalidNumericLiteral_Kd), "4000000000")]
+    [InlineData("let t = if c => p.x else => (2)@copy", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => p.x else => (2)@copy")]
     public void ALiteralSourceThatDoesNotFitItsJoinsTypeIsItsOwnProblem(string statement, string code, string at)
     {
-        var source = "struct P\n    public var y: i8 = 1\n    public var b: bool = true\nfunc f(c: bool, p: P)\n    " + statement + "\n    _ = t\npublic func main() => ()\n";
+        var source = "struct P\n    public var y: i8 = 1\n    public var b: bool = true\n    public var x: i64 = 5\nfunc f(c: bool, p: P)\n    " + statement +
+            "\n    _ = t\npublic func main() => ()\n";
         var diagnostic = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((code, at), (diagnostic.Code, source.Substring(diagnostic.Span!.Value.Start, diagnostic.Span.Value.Length)));
     }
