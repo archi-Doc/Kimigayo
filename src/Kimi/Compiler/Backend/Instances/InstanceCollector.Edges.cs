@@ -18,15 +18,21 @@ internal sealed partial class InstanceCollector
     private static BoundType OperandType(MirBody body, in MirOperand operand)
         => operand.Kind == MirOperandKind.Const ? body.Consts[operand.Arg].Type : body.TypeOf(operand.Place)!;
 
-    // K 4.5 rows 1 and 5: a Fn callee's body under the site's substitution composed with the item's representative (TyCtxt.Compose, whose
-    // declaring Type is the site's own, so a nested function's call carries its enclosing instance only as Admit checks; a default template's,
-    // the original's, SPEC 8.13.2; else the implementation the composed key selects, SPEC 8.13.3), and the body a Value callee's Closure or
-    // function item runs; an intrinsic's Type argument a by-value use (K 4.8) where its row says so. The admitted item, or -1 for a callee
-    // without a body, a refused edge or a later row (K6-K8).
+    // K 4.5 rows 1, 5, 7, 9 and 10: a Fn callee's body under the site's substitution composed with the item's representative (TyCtxt.Compose,
+    // whose declaring Type is the site's own, so a nested function's call carries its enclosing instance only as Admit checks; a default
+    // template's, the original's, SPEC 8.13.2; else the implementation the composed key selects, SPEC 8.13.3), the body a Value callee's
+    // Closure or function item runs, an intrinsic's target where its row names one (a staticEnsure's StaticInit, a DestroyValues' glue) and
+    // a dropped value's glue; an intrinsic's Type argument a by-value use (K 4.8) where its row says so. The admitted item, or -1 for a
+    // callee without a body, a refused edge or a later row (K6, K8).
     private int Edge(MirProgram program, int item, MirBody body, in MirTerminator call)
     {
         var callee = call.Callee;
         var subject = this.Subject(item, body, call.Source);
+        if (call.Kind == MirTerminatorKind.Drop)
+        {
+            return this.Glue(item, subject, body.TypeOf(call.Place)!);
+        }
+
         if (callee.Kind == MirCalleeKind.Value)
         {
             return Callable(body, call.Operand) is { } callable && this.In(item, subject, callable) is { } closed
@@ -39,9 +45,19 @@ internal sealed partial class InstanceCollector
             _ = this.LaysOut(subject, argument);
         }
 
+        if (callee.Kind == MirCalleeKind.Intrinsic)
+        {
+            return IntrinsicRows.Of((IntrinsicId)callee.Arg).Target switch
+            {
+                IntrinsicTarget.StaticInit => this.Static(program, item, body, subject, call),
+                IntrinsicTarget.Glue => this.Glue(item, subject, callee.Subst!.Types[0]!),
+                _ => -1, // The writer witness (K6) and the object descriptors (K8).
+            };
+        }
+
         if (callee.Kind != MirCalleeKind.Fn)
         {
-            return -1; // Requirement callees and the intrinsics' targets: K6-K8.
+            return -1; // Requirement callees: K6.
         }
 
         var representative = this.Set.Items[item].Representative;
@@ -78,10 +94,6 @@ internal sealed partial class InstanceCollector
         return rvalue.Kind != MirRvalueKind.Cast ? this.Callee(program, item, subject, closed)
             : this.AdmitType(item, subject, closed.Kind == BoundTypeKind.Closure ? MonoKind.ClosureErasure : MonoKind.ItemAdapter, closed);
     }
-
-    // K 4.3: a ClosureErasure or ItemAdapter item's target, the body its Closure or function item runs (K7 adds the environment's glue).
-    private int Expand(MirProgram program, int item)
-        => this.Callee(program, item, this.Set.Items[item].Site, this.Set.Items[item].RepresentativeType!);
 
     // The body a Closure or function item Type of an item's instance runs: a Closure's under its context, the substitution of the instance
     // that closed it (TyCtxt.SubstOfClosure, R5-M36); an ordinary item's function under the item's substitution (TyCtxt.SubstOfItem), as the

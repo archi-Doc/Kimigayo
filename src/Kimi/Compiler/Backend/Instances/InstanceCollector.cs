@@ -1,6 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the checked set (SPEC 8.15.3, IMPL 21.3.1; R5 package K 4.3-4.6, 4.8, 4.9; DECISIONS R5-M35, R5-M40, R5-M43, R5-M44): every body
+// Owns the checked set (SPEC 8.15.3, IMPL 21.3.1; R5 package K 4.3-4.6, 4.8, 4.9; DECISIONS R5-M35, R5-M40, R5-M43, R5-M44, R5-M60): every body
 // instance and type-driven item a root requires through runtime or check-only edges, its instance-stage records, and the one resolution of
 // each site's target that code generation reads.
 // Input: a built, validated MirProgram; the number of root modules (a range of Source.Module, not a mode); TyCtxt (Instantiates, Erase,
@@ -12,8 +12,9 @@
 // Roots (K 4.4): each body of a root module whose definition does not instantiate, a module's top-level statements included.
 // Edges (K 4.5, InstanceCollector.Edges.cs): one template per body and version lists its sites that may carry a target (Fn, Requirement and
 // Value calls and the intrinsics the Target column names, a Virtual call none, X5; a Closure environment, an erasure and a function item
-// constant), each with its runtime bit from one MirReach walk without CheckTarget edges. Replaying an item's template resolves each site
-// under the item's representative; a type-driven item's targets follow from its representative Type. K6-K8 add the other rows.
+// constant; a Drop), each with its runtime bit from one MirReach walk without CheckTarget edges. Replaying an item's template resolves
+// each site under the item's representative; a type-driven item's targets follow from its representative Type (InstanceCollector.Glue.cs:
+// a DropGlue's direct parts, DropGlue.Parts). K6 and K8 add the other rows.
 // Layout obligations (K 4.8, InstanceCollector.Layouts.cs): each item's by-value uses (its body's locals but drop flags, its aggregates and
 // the Type argument of an intrinsic whose row names one) and each type-driven item's Type take one Layout verdict per erased Type: a limit is
 // GenerationResourceLimit_Kd at the first use, Rejected storage derives from a Binding error, and a type-driven item needs an Ok verdict.
@@ -43,6 +44,8 @@ internal sealed partial class InstanceCollector
     private readonly Layout layout;
     private readonly HashSet<BoundType> limited = new(); // The erased Types whose verdict is a limit, each reported once (K 4.8).
     private readonly Dictionary<MirDefKey, int> counts = new(); // Items per definition (X19).
+    private readonly HashSet<BoundType> seen = new(); // MirTypes.MayNeedDrop's scratch.
+    private readonly List<DropPart> parts = new(); // DropGlue.Parts' scratch.
     private (MirLocation At, bool Runtime)[] sites = []; // The templates: each body's sites, in body order.
     private int[] starts = []; // By body ordinal, its first site; the entry after the last body ends the sites.
     private int rootModules;
@@ -124,9 +127,10 @@ internal sealed partial class InstanceCollector
         _ => false,
     };
 
-    // Whether a block's terminator is a site: a call that may carry a target, or an intrinsic call whose Type argument is a by-value use.
-    private static bool IsSite(in MirTerminator terminator) => terminator is { Kind: MirTerminatorKind.Call, Callee: var callee } &&
-        (Carries(callee) || (callee.Kind == MirCalleeKind.Intrinsic && IntrinsicRows.Of((IntrinsicId)callee.Arg).LaysOutType));
+    // Whether a block's terminator is a site: a Drop (row 10), a call that may carry a target, or an intrinsic call whose Type argument is a
+    // by-value use.
+    private static bool IsSite(in MirTerminator terminator) => terminator.Kind == MirTerminatorKind.Drop || (terminator is { Kind: MirTerminatorKind.Call, Callee: var callee } &&
+        (Carries(callee) || (callee.Kind == MirCalleeKind.Intrinsic && IntrinsicRows.Of((IntrinsicId)callee.Arg).LaysOutType)));
 
     // Each body's sites, once per version, in location order, with whether a runtime path from its entry reaches each.
     private void Templates(MirProgram program)
@@ -186,11 +190,7 @@ internal sealed partial class InstanceCollector
         var set = this.Set;
         if (set.Items[item].BodyOrdinal < 0)
         {
-            if (this.Expand(program, item) is >= 0 and var expanded)
-            {
-                set.Target(item, new(expanded, default, Runtime: true));
-            }
-
+            this.Expand(program, item);
             return;
         }
 
