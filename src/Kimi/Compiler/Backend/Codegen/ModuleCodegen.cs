@@ -140,6 +140,9 @@ internal sealed class ModuleCodegen
             case MonoKind.DropGlue or MonoKind.ClosureErasure or MonoKind.ItemAdapter:
                 this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // C4a writes drop glue; C5b the erasure and item adapters.
                 return;
+            case MonoKind.Builtin or MonoKind.PropertyWitness:
+                this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // K6's requirement shims: C3b, C8f and C9b write them (R5-M67).
+                return;
             default:
                 throw new InvalidOperationException($"The mono item kind {entry.Key.Kind} has no code generation row.");
         }
