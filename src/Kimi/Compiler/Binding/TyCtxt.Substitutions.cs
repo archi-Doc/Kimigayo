@@ -1,0 +1,241 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+// Owns substitution interning (Subst): the substitutions of selected calls, closures, function items and the calls the compiler
+// synthesizes, and their application to a Type and composition (SPEC 8.2, 8.10, 8.13.3; plan 5.6.2; DECISIONS R5-M36, R5-M43, R5-M70).
+// Input: CallPlans, Closure and function item Types, a binder, a target with its slot bindings; Binding's storage instantiation, length
+// substitution and Origin forwarding.
+// Output: interned Subst values, identity being equality, kept as long as the TyCtxt; a Type or a substitution in an instance (Apply,
+// Compose; null where the instance does not substitute it).
+// Invariants: one Subst per (target, Self, declaring Type, Types, lengths, Origins, inputs), with one length entry per slot; the scratch
+// arrays Fit grows are reused.
+// Must not: clear its interning, resolve source expressions, or construct a Subst outside Intern.
+
+using System.Runtime.CompilerServices;
+using Kimi.Compiler.Parsing;
+
+namespace Kimi.Compiler;
+
+internal sealed partial class TyCtxt
+{
+    private readonly Dictionary<int, List<Subst>> substs = new();
+
+    // Compose's bindings before interning, reused.
+    private BoundType?[] composedTypes = [];
+    private BoundLength?[] composedLengths = [];
+    private BoundOrigin[] composedOrigins = [];
+
+    // A function item's own Type arguments before interning, reused.
+    private BoundType?[] itemTypes = [];
+
+    // The lengths of a substitution whose binder has no length slot; never written, so every entry is null.
+    private BoundLength?[] noLengths = [];
+
+    // SPEC 8.10, 10.5: a selected call's substitution, as its selection committed it; a value call has none. A direct base call's is its
+    // implementation's in the Type implementing it, which it calls (virtual-dispatch 4).
+    internal Subst? SubstOf(CallPlan call) => call.Kind == CalleeKind.Value ? null
+        : call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true, VirtualImplementation.BoundSymbol: { } implementation }
+            ? this.Intern(implementation, null, call.VirtualImplementingType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins)
+            : this.Intern(call.Target, call.ConformingType, call.DeclaringType ?? BoundContract(call), call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
+
+    // SPEC 8.2: a closure's substitution, the context of the instance that closed it; a closure no instance closed is in the identity of
+    // the declaration enclosing it.
+    internal Subst? SubstOfClosure(BoundType closure)
+    {
+        if (closure.Symbol?.Declaration is not FunctionKoto { BoundClosure: not null } binder)
+        {
+            return null;
+        }
+
+        while (binder is { IsAnonymous: true } && binder.BoundSymbol?.Scope.Function is { } enclosing)
+        {
+            binder = enclosing;
+        }
+
+        return closure.ClosureContext ?? this.Identity(binder);
+    }
+
+    // The substitution Binding's storage instantiation of a call applies (Binding.InstantiateStorageType(type, call)): its target's slots,
+    // declaring Type and Origins, without the conforming Self, the bound Contract reference or the implementation of a direct base call
+    // that SubstOf adds, as the old analyses and generator have always instantiated a call's Types. A second substitution per call beside
+    // SubstOf, it goes when the readers of that CallPlan form apply SubstOf instead: the old generator's at G7, the old analyses' at R6-check
+    // and Binding's own with R7's CallPlan pipeline (DECISIONS R5-M36).
+    [Transitional("R7", Reason = "R7's CallPlan pipeline moves the last readers of the CallPlan form of InstantiateStorageType to SubstOf.")]
+    internal Subst StorageSubst(CallPlan call)
+        => this.Intern(call.Target, null, call.DeclaringType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
+
+    // SPEC 7.3: a function item's substitution, the context its Item Type binds: its function's own Type arguments, the declaring Type its
+    // last Component holds and its length arguments, without Origins (an Item keeps its per-call Origins in place); a function of the Type
+    // alone, which caches and prepares nothing (DECISIONS R5-M43). A requirement Item's is its context's call (Binding's): its witness's for a
+    // closed Self, which A4 enters, the requirement's on an abstract one; what an Item runs in the checked set is Witness(item) (R5-M70).
+    internal Subst? SubstOfItem(BoundType item)
+    {
+        if (item is not { Kind: BoundTypeKind.FunctionItem, Symbol: { Declaration: FunctionKoto function } target })
+        {
+            return null;
+        }
+
+        if (function.IsRequirement)
+        {
+            return binding.FunctionItemContext(item, false) is { } context ? this.SubstOf(context) : null;
+        }
+
+        var count = function.GenericArguments.Count;
+        _ = Fit(ref this.itemTypes, count);
+        Binding.CopyItemArguments(item, function, this.itemTypes);
+        return this.Intern(target, null, Binding.ItemDeclaringType(item, function), this.itemTypes.AsSpan(0, count), item.LengthArguments, [], []);
+    }
+
+    // The substitution that binds none of a binder's slots: its own body's.
+    internal Subst Identity(Koto binder) => this.Intern(binder.BoundSymbol!, null, null, [], [], [], []);
+
+    // A call the MIR builder synthesizes, of the function serving a built-in form (R3 decision 5): its declaring Type's instance and its Type
+    // arguments; its Origins are the analyses' to relate.
+    internal Subst Synthesized(BindingSymbol target, BoundType? declaring, ReadOnlySpan<BoundType?> types) => this.Intern(target, null, declaring, types, [], [], []);
+
+    // A call of a requirement on a Self through a Contract reference that a compiler function or a requirement's function item makes (a
+    // comparison's Requirement leaf, a compiler function's call of a user witness, an Item's call): a bound reference is its declaring Type
+    // (F fact 5, as SubstOf holds a call's), a Contract's own Type binds nothing; its Origins are the analyses' to relate.
+    internal Subst Synthesized(BindingSymbol requirement, BoundType self, BoundType reference)
+        => this.Intern(requirement, self, ReferenceEquals(reference.Symbol?.Type, reference) ? null : reference, [], [], [], []);
+
+    // SPEC 8.2, 8.10: a declared Type in the instance a substitution makes, which Binding's storage instantiation computes until R7 moves it
+    // here; the identity keeps the Type.
+    internal BoundType? Apply(BoundType type, Subst subst) => subst.IsIdentity ? type : binding.InstantiateStorageType(type, subst);
+
+    // Plan 5.6.2: the substitution of a call in a body that another substitution instantiates, as a call in a default template folds under
+    // the substitution of the call omitting the default: each binding of the inner one in the outer instance, as Binding forwards a call of
+    // a generic body (InstantiateForwardedCall), so Apply(t, Compose(inner, outer)) is that call's instantiation of t. Null when the outer
+    // instance does not substitute an inner Type, the conforming Self or the declaring Type.
+    internal Subst? Compose(Subst inner, Subst outer)
+    {
+        if (outer.IsIdentity)
+        {
+            return inner;
+        }
+
+        var types = Fit(ref this.composedTypes, inner.Types.Length);
+        var lengths = Fit(ref this.composedLengths, inner.Lengths.Length);
+        var origins = Fit(ref this.composedOrigins, inner.Origins.Length + inner.Inputs.Length);
+        var self = inner.Self is { } conforming ? this.Apply(conforming, outer) : null;
+        var declaring = inner.Declaring is { } owner ? this.Apply(owner, outer) : null;
+        var failed = (self is null && inner.Self is not null) || (declaring is null && inner.Declaring is not null);
+        for (var i = 0; i < types.Length; i++)
+        {
+            types[i] = inner.Types[i] is { } type ? this.Apply(type, outer) : null;
+            failed |= types[i] is null && inner.Types[i] is not null;
+        }
+
+        for (var i = 0; i < lengths.Length; i++)
+        {
+            lengths[i] = inner.Lengths[i] is { } length ? binding.SubstituteLength(length, outer.Binder, outer.Lengths) : null;
+            failed |= lengths[i] is null && inner.Lengths[i] is not null;
+        }
+
+        for (var i = 0; i < origins.Length; i++)
+        {
+            origins[i] = (i < inner.Origins.Length ? inner.Origins[i] : inner.Inputs[i - inner.Origins.Length]) is { } origin
+                ? binding.ForwardOrigin(origin, outer.Target, outer.Declaring, outer.Origins, outer.Inputs, outer.Types) : null!;
+        }
+
+        return failed ? null : this.Intern(inner.Target, self, declaring, types, lengths, origins[..inner.Origins.Length], origins[inner.Origins.Length..]);
+    }
+
+    // SPEC 8.4.3: the bound Contract reference a requirement call dispatches through (Indexable<isize>), which declares the requirement as a
+    // generic container's instance declares a member; null for a reference to the requirement's own Contract or another call.
+    private static BoundType? BoundContract(CallPlan call)
+        => call is { Kind: CalleeKind.Requirement, RequirementContract: { Type: { } bound } contract } && !ReferenceEquals(bound.Symbol, contract) ? bound : null;
+
+    private static Span<T> Fit<T>(ref T[] scratch, int length)
+    {
+        if (scratch.Length < length)
+        {
+            scratch = new T[length * 2];
+        }
+
+        return scratch.AsSpan(0, length);
+    }
+
+    // SPEC 8.13.3: a substitution holds one length entry per slot, the selection key's form, as a CallPlan does. The lengths are empty (the
+    // binder has no length slot) or one per slot of the Types.
+    private Subst Intern(BindingSymbol target, BoundType? self, BoundType? declaring, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs)
+    {
+        System.Diagnostics.Debug.Assert(lengths.IsEmpty || lengths.Length == types.Length);
+        lengths = lengths.IsEmpty ? Fit(ref this.noLengths, types.Length) : lengths;
+        var hash = default(HashCode);
+        hash.Add(RuntimeHelpers.GetHashCode(target));
+        hash.Add(self is null ? 0 : RuntimeHelpers.GetHashCode(self));
+        hash.Add(declaring is null ? 0 : RuntimeHelpers.GetHashCode(declaring));
+        foreach (var type in types)
+        {
+            hash.Add(type is null ? 0 : RuntimeHelpers.GetHashCode(type));
+        }
+
+        foreach (var length in lengths)
+        {
+            hash.Add(length is null ? 0 : RuntimeHelpers.GetHashCode(length));
+        }
+
+        foreach (var origin in origins)
+        {
+            hash.Add(RuntimeHelpers.GetHashCode(origin));
+        }
+
+        foreach (var input in inputs)
+        {
+            hash.Add(RuntimeHelpers.GetHashCode(input));
+        }
+
+        var key = hash.ToHashCode();
+        if (this.substs.TryGetValue(key, out var bucket))
+        {
+            for (var i = 0; i < bucket.Count; i++)
+            {
+                var subst = bucket[i];
+                if (ReferenceEquals(subst.Target, target) && ReferenceEquals(subst.Self, self) && ReferenceEquals(subst.Declaring, declaring) && subst.Types.SequenceEqual(types) &&
+                    subst.Lengths.SequenceEqual(lengths) && subst.Origins.SequenceEqual(origins) && subst.Inputs.SequenceEqual(inputs))
+                {
+                    return subst;
+                }
+            }
+        }
+        else
+        {
+            this.substs.Add(key, bucket = new(1));
+        }
+
+        var created = new Subst(target, self, declaring, types.ToArray(), lengths.ToArray(), origins.ToArray(), inputs.ToArray());
+        bucket.Add(created);
+        return created;
+    }
+}
+
+/// <summary>The substitution of a binder's generic slots that a selected call, an instantiated closure or a function item makes: its Type
+/// and length arguments (a pair slot holds the whole Type), the conforming Type of a requirement, the Type declaring a member of a generic
+/// container and the principal Origin substitution the selection committed. <see cref="TyCtxt"/> interns it, so identity is equality.</summary>
+internal sealed class Subst(BindingSymbol target, BoundType? self, BoundType? declaring, BoundType?[] types, BoundLength?[] lengths, BoundOrigin[] origins, BoundOrigin[] inputs)
+{
+    // The symbol whose slots it binds: a call's callee as its selection names it (an instantiated witness of a declaration too), or the
+    // function enclosing a closure.
+    internal BindingSymbol Target => target;
+
+    internal Koto Binder => target.Declaration;
+
+    internal BoundType? Self => self;
+
+    internal BoundType? Declaring => declaring;
+
+    // In declaration-slot order; length slots are null.
+    internal ReadOnlySpan<BoundType?> Types => types;
+
+    // In declaration-slot order, one per slot of Types; Type slots are null.
+    internal ReadOnlySpan<BoundLength?> Lengths => lengths;
+
+    // The substitution of the binder's declared Origins.
+    internal ReadOnlySpan<BoundOrigin> Origins => origins;
+
+    // The input Origins in parameter-slot order.
+    internal ReadOnlySpan<BoundOrigin> Inputs => inputs;
+
+    // Binds nothing: the binder's own body.
+    internal bool IsIdentity => self is null && declaring is null && types.Length + origins.Length + inputs.Length == 0;
+}

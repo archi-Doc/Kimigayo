@@ -12,14 +12,15 @@
 // Compilation.MirRecords publishes under MIR code generation (K4b); for code generation (R5 C0b1) also an item's Types (TypeOf) and the
 // location of a record at a site of its body (Subject).
 // Roots (K 4.4): each body of a root module whose definition does not instantiate, a module's top-level statements included.
-// Edges (K 4.5, InstanceCollector.Edges.cs): one template per body and version lists its sites that may carry a target (Fn, Requirement and
-// Value calls and the intrinsics the Target column names, a Virtual call none, X5; a Closure environment, an erasure and a function item
-// constant; a Drop), each with its runtime bit from one MirReach walk without CheckTarget edges. Replaying an item's template resolves
-// each site under the item's representative, a Requirement call's, a requirement Item's, a bodyless callee's published row's and an erased
-// writer's by the witness there (InstanceCollector.Witnesses.cs: a body, a Builtin or a property-witness shim keyed by its compiler
-// function or Field and the erased Self, or a gap); a type-driven item's targets follow from its representative Type
-// (InstanceCollector.Glue.cs: a DropGlue's direct parts, DropGlue.Parts; an adapter's Item, a comparison shim's leaf witnesses,
-// TyCtxt.Comparison; a property-witness setter's Field glue). K8 adds the object rows.
+// Edges (K 4.5): one template per body and version (InstanceCollector.Templates.cs) lists its sites that may carry a target (Fn,
+// Requirement and Value calls and the intrinsics the Target column names, a Virtual call none, X5; a Closure environment, an erasure and a
+// function item constant; a Drop), each with its runtime bit from one MirReach walk without CheckTarget edges. Replaying an item's template
+// resolves each site's row under the item's representative (InstanceCollector.Edges.cs), a callee's body (InstanceCollector.Callees.cs),
+// and a Requirement call's, a requirement Item's, a bodyless callee's published row's and an erased writer's by the witness there
+// (InstanceCollector.Witnesses.cs: a body, a Builtin or a property-witness shim keyed by its compiler function or Field and the erased
+// Self, or a gap); a type-driven item's targets follow from its representative Type (InstanceCollector.Glue.cs: a DropGlue's direct
+// parts, DropGlue.Parts; an adapter's Item, a comparison shim's leaf witnesses, TyCtxt.Comparison; a property-witness setter's Field
+// glue). K8 adds the object rows.
 // Capability (K 4.7, InstanceCollector.Capabilities.cs): the definition-stage check (A3b) of every operation of a root-module body whose
 // Types are closed, every block included, once per definition and location; Binding's refusals are Opaque values, so it never repeats them.
 // An operation whose Types depend on slots is a template site, checked in each instance with its Types there, once per location.
@@ -52,14 +53,11 @@ internal sealed partial class InstanceCollector
 {
     private readonly TyCtxt types;
     private readonly MirCases cases;
-    private readonly MirReach reach = new();
     private readonly Layout layout;
     private readonly HashSet<BoundType> limited = new(); // The erased Types whose verdict is a limit, each reported once (K 4.8).
     private readonly Dictionary<MirDefKey, int> counts = new(); // Items per definition (X19).
     private readonly HashSet<BoundType> seen = new(); // MirTypes.MayNeedDrop's scratch.
     private readonly List<DropPart> parts = new(); // DropGlue.Parts' scratch.
-    private (MirLocation At, bool Runtime)[] sites = []; // The templates: each body's sites, in body order.
-    private int[] starts = []; // By body ordinal, its first site; the entry after the last body ends the sites.
     private int rootModules;
 
     /// <summary>Initializes a new instance of the <see cref="InstanceCollector"/> class.</summary>
@@ -126,93 +124,6 @@ internal sealed partial class InstanceCollector
     internal BoundType? TypeOf(int item, BoundType type)
         => this.Set.Items[item].Representative is { } representative ? this.types.Apply(type, representative) : type;
 
-    // K 4.5 rows 1-9: a call carries a target by its callee: a Fn, Requirement or Value callee, or an intrinsic whose row names one; a
-    // Virtual call none, its receiver's VTable holding the entries (X5).
-    private static bool Carries(in MirCallee callee) => callee.Kind switch
-    {
-        MirCalleeKind.Fn or MirCalleeKind.Requirement or MirCalleeKind.Value => true,
-        MirCalleeKind.Intrinsic => IntrinsicRows.Of((IntrinsicId)callee.Arg).Target != IntrinsicTarget.None,
-        MirCalleeKind.Virtual => false,
-        _ => throw new InvalidOperationException($"A call has the callee kind {callee.Kind}."),
-    };
-
-    // K 4.5 rows 11-13, K 4.7 and K 4.8: a statement is a site by its rvalue: an aggregate, a by-value use whose Closure environment also
-    // carries a target; an erasure to a Function Type; a function item constant; an operation whose Types depend on slots, which the
-    // capability table checks per instance.
-    private static bool IsSite(MirBody body, in MirStatement statement)
-        => statement is { Kind: MirStatementKind.Assign, Rvalue: var rvalue } && rvalue.Kind switch
-    {
-        MirRvalueKind.Aggregate => true,
-        MirRvalueKind.Cast when (MirCastKind)rvalue.Op == MirCastKind.Erasure => true,
-        MirRvalueKind.Cast or MirRvalueKind.BinaryOp => IsOpen(body, rvalue),
-        MirRvalueKind.Use => body.Operands[rvalue.Start] is { Kind: MirOperandKind.Const } operand && body.Consts[operand.Arg].Kind == MirConstKind.FnItem,
-        _ => false,
-    };
-
-    // Whether a block's terminator is a site: a Drop (row 10), a call that may carry a target, or an intrinsic call whose Type argument is a
-    // by-value use.
-    private static bool IsSite(in MirTerminator terminator) => terminator.Kind == MirTerminatorKind.Drop ||
-        (terminator is { Kind: MirTerminatorKind.Call, Callee: var callee } &&
-            (Carries(callee) || (callee.Kind == MirCalleeKind.Intrinsic && IntrinsicRows.Of((IntrinsicId)callee.Arg).LaysOutType)));
-
-    // Each body's sites, once per version, in location order, with whether a runtime path from its entry reaches each.
-    private void Templates(MirProgram program)
-    {
-        var bodies = program.Bodies;
-        if (this.starts.Length <= bodies.Length)
-        {
-            this.starts = new int[Math.Max(bodies.Length + 1, this.starts.Length * 2)];
-        }
-
-        var count = 0;
-        foreach (var body in bodies)
-        {
-            this.starts[body.Ordinal] = count;
-            count = this.Template(body, count);
-        }
-
-        this.starts[bodies.Length] = count;
-    }
-
-    // A body's sites, appended from `count` in location order with their runtime bits; a root-module body's operations are checked against
-    // the capability table on the way (A3b). Returns the new count.
-    private int Template(MirBody body, int count)
-    {
-        var blocks = body.Blocks;
-        var root = body.Source.Module < this.rootModules;
-        this.reach.Clear(blocks.Length);
-        this.reach.Walk(body, 0, checks: false);
-        for (var block = 0; block < blocks.Length; block++)
-        {
-            var (start, end) = (blocks[block].Start, blocks[block].Count);
-            for (var index = 0; index <= end; index++)
-            {
-                if (index < end && root)
-                {
-                    this.CheckOperation(body, body.Statements[start + index]);
-                }
-
-                if (index < end ? IsSite(body, body.Statements[start + index]) : IsSite(blocks[block].Terminator))
-                {
-                    count = this.AddSite(count, new(block, index), this.reach[block]);
-                }
-            }
-        }
-
-        return count;
-    }
-
-    private int AddSite(int count, MirLocation at, bool runtime)
-    {
-        if (count == this.sites.Length)
-        {
-            Array.Resize(ref this.sites, Math.Max(256, count * 2));
-        }
-
-        this.sites[count] = (at, runtime);
-        return count + 1;
-    }
-
     // An item's targets: a body item's template replayed under its representative, the target of each site that resolves and is admitted;
     // a type-driven item's from its representative Type.
     private void Replay(MirProgram program, int item)
@@ -239,5 +150,17 @@ internal sealed partial class InstanceCollector
                 set.Target(item, new(target, at, runtime));
             }
         }
+    }
+
+    // A Type of an item's body in the item's instance (TypeOf); null, with the storage-nesting gap at the site, when TyCtxt cannot make it.
+    private BoundType? In(int item, SourceRef subject, BoundType type)
+    {
+        var closed = this.TypeOf(item, type);
+        if (closed is null)
+        {
+            this.Set.Report(Capability.Code(CapabilityGap.StorageNesting), subject);
+        }
+
+        return closed;
     }
 }
