@@ -58,6 +58,14 @@ internal sealed class MirProgram
     internal MirBody? Callee(in MirCallee callee) => callee.Arg > 0 ? this[new(callee.Symbol, MirBodyKind.DefaultTemplate, callee.Arg - 1)]
         : this[new(callee.Symbol, MirBodyKind.Fn)] ?? this[new(callee.Symbol, MirBodyKind.Getter)] ?? this[new(callee.Symbol, MirBodyKind.Setter)];
 
+    /// <summary>Gets the initializer a <c>staticEnsure</c> names (plan 5.6.2): the StaticInit body of the static whose index in the calling
+    /// body's statics the call's operand holds as a constant.</summary>
+    /// <param name="body">The calling body.</param>
+    /// <param name="operand">The staticEnsure call's operand.</param>
+    /// <returns>The body, or null for a static without one.</returns>
+    internal MirBody? StaticInit(MirBody body, in MirOperand operand)
+        => this[new(body.Statics[(int)body.Consts[operand.Arg].Bits].Symbol, MirBodyKind.StaticInit)];
+
     internal void Clear()
     {
         this.bodies.Clear();

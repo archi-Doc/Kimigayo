@@ -52,7 +52,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
                 foreach (var block in body.Blocks)
                 {
                     var ensured = block.Terminator is not { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.StaticEnsure } } ensure ||
-                        program[new(body.Statics[(int)body.Consts[body.Operands[ensure.Start].Arg].Bits].Symbol, MirBodyKind.StaticInit)] is not null;
+                        program.StaticInit(body, body.Operands[ensure.Start]) is not null;
                     Assert.True(ensured, $"{name}: a static without its initializer");
                     var templated = block.Terminator is not { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Fn, Arg: > 0 } template } ||
                         program[new(template.Symbol, MirBodyKind.DefaultTemplate, template.Arg - 1)] is not null;
