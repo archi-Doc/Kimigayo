@@ -146,6 +146,22 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
         Assert.False(c.Validate(out _));
     }
 
+    // SPEC 4.7.1, 15.6.2 (DECISIONS BU-8): on the MIR a write, an exclusive borrow or an exclusive Reborrow through the stored reference
+    // selects indexUniq, whose exclusive receiver Loan conflicts with a live shared borrow of the Dictionary; a read through it does not.
+    [Theory]
+    [InlineData("change(entries[1])", true)]
+    [InlineData("entries[1]@follow = 99", true)]
+    [InlineData("let child = entries[1]@follow@uniq\n    child@follow = 3", true)]
+    [InlineData("let read: i32 = entries[1]@follow", false)]
+    public void AnExclusiveUseConflictsWithASharedBorrowOnTheMir(string use, bool conflicts)
+    {
+        var c = MirBuildTest.Compile("func inspect<T>(value: ref/T) => ()\n" + Header + "    let view = entries@ref\n    " + use + "\n    inspect(view)\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Equal(conflicts, program.Problems.All.ToArray().Any(static x => x.Code.IsLoanConflict() && x.Subject.Module == 0));
+    }
+
     // SPEC 15.6.4: a referent stored in a Dictionary stays borrowed from the store until the Dictionary's last use, also on the
     // next iteration of a loop, whose earlier operations follow the store at run time. A write through the reference before the
     // store and the second exclusive store of the same reference are each a conflict.
