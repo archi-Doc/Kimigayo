@@ -458,7 +458,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   or a pass interface (declarations without behavior, one call shape forced on different analyses); the driver and record
   landing with the first analysis unit (parallel units would invent the same files). R4-M35 moves the restructuring to before the R5
   split.
-- **R4-M3a** (2026-10-12, planning session; design B's record taken into design A; supersedes R4-M3's fields).
+- **R4-M3a** (2026-10-12, planning session; design B's record taken into design A; supersedes R4-M3's fields; its fields amended by
+  R4-M67: the requirement each recording rule names).
   `MirProblem(DiagnosticCode Code, SourceRef Subject, ulong Views)`; `MirReport` merges by (Code, Subject), the canonical
   `Problem` key, OR-ing Views into the first problem, until U11 adds the Reason fact and Reason joins the key (R4-M11's
   (code, subject, Reason)); a merge keeps the first problem's facts. Construction records keep their own merge in
@@ -656,7 +657,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   A5 read the arena (U5, U7). Reason: the dense arena is O(heads × paths/64), and a body bounded only by the 65,536-statement
   expansion limit could otherwise exhaust memory.
 - **R4-M6a** (2026-10-12, main session; design A of two independent U5 designs, with design B's problem code; refines R4-M6's
-  shape, supersedes R4-M21's "three lanes" and implements R4-M15a's driver skip for A2) Drop elaboration (A2). `MirDrops` judges
+  shape, supersedes R4-M21's "three lanes" and implements R4-M15a's driver skip for A2; its table amended by R4-M67: each body's
+  completed views) Drop elaboration (A2). `MirDrops` judges
   each Drop the runtime edges reach from the state A1's checks replay holds before it and writes `MirProgram.Drops`
   (`MirDropTable`, per program version by body ordinal); MIR is not rewritten. A Drop only check edges reach has no row (plan
   5.6.3; the R4 rewrite of SPEC 14.10.3, plan §16-4, states that drop elaboration and its destructor rule apply to runtime paths
@@ -1583,6 +1585,16 @@ and migration obligations remain in force; no numeric cap changes are authorized
     reborrow's parent (SPEC 15.6.3), errs at its own end too.
   - Rejected: a gather per access or per activation (quadratic in an operation's operands, E13 (5)); leaving out only t's
     reservations (a choice by Loan id, A3 §3). Not temporary.
+- **R4-M67** (2026-10-18; planning session; R5's asks A-5 (3) and A-2; DECISIONS R5-M23 and `draft/Sketches/R5 Step 0/Q8-package.md`
+  §3.6; units 1c-1 and 1c-2). A6's problems carry their requirement, and A2 publishes per-body completeness. `MirProblem` is
+  `(Code, Requirement, Subject, Views)`. Each recording rule names its requirement: A1, A2 and A3 a constant each; A4 the obligation
+  row's, which Binding's `EffectObligation` carries beside its code (`EffectBound`, `VirtualEffectBound`, `CallableEffectBound`; the
+  analysis limit `Unsupported`); A5 `ComparisonLoanConflict` for its four Loan codes, `Unsupported` and `StorageLimit`.
+  `MirReport.Add` keeps the key (code, subject). A merge that names another requirement is a recording-rule defect, a contract break
+  as in R4-M3a: it adds one `InternalInvariant_Kd` (`Ownership.Internal`) at the subject. There is no code-to-requirement table; this
+  supersedes R4-M3a's naming clause, as R5-M23 records. `MirDropTable.ViewsOf(body)` gives the views A1 and A2 completed (R4-M15a): 0
+  past A1's arena limit or for a body not analyzed. A5's driver step reads it, and R5's C4a will. It replaces the driver's private
+  `completed` array and amends R4-M6a's drop table. Rejected: the code-to-requirement table of the plan row (R5-M23's departure D7).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

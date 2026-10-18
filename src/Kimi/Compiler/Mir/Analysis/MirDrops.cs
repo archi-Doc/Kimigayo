@@ -4,12 +4,12 @@
 // Input: the state MirInit's checks replay holds before each Drop the runtime edges reach (the lanes MaybeUninit, MaybeInit and MaybePartial
 // over MirMoveData's paths), each state event there and the paths A1's entry initializes (the arguments'; a constructing _0's own bit has
 // no subtree event, so no point); the selected view (MirCases). Output: MirProgram.Drops, per Drop one verdict group per view class, the
-// body's flags and their set and clear points, the views judged (A1 and A2 completed them), and MovedPlace_Kd through MirReport where a layer with its own drop may be incomplete at its
-// Drop. Elide where the view's Type needs no drop
-// (MirTypes.MayNeedDrop) or nothing is initialized on any path; Keep where the whole is initialized on every path or the Place has no Move
-// Path; Flag where it is complete or wholly absent on every path, the flag mirroring the path's own bit; Open where a part may be missing:
-// the components without a child path follow the own bit, each child path its own verdict. The states are per solve, recorded as Type-free
-// trees; the Type rule is per view. Flags are numbered in path order per body, so a subtree's flags are one range.
+// body's flags and their set and clear points, the views judged (A1 and A2 completed them), and MovedPlace_Kd through MirReport where a
+// layer with its own drop may be incomplete at its Drop. Elide where the view's Type needs no drop (MirTypes.MayNeedDrop) or nothing is
+// initialized on any path; Keep where the whole is initialized on every path or the Place has no Move Path; Flag where it is complete or
+// wholly absent on every path, the flag mirroring the path's own bit; Open where a part may be missing: the components without a child
+// path follow the own bit, each child path its own verdict. The states are per solve, recorded as Type-free trees; the Type rule is per
+// view. Flags are numbered in path order per body, so a subtree's flags are one range.
 // Must not rewrite MIR, judge a Drop only check edges reach (SPEC 14.10.3), read syntax, or apply a derived-problem rule (MirReport's).
 
 #pragma warning disable SA1402 // The verdict, its rows, the flag points and the table belong to drop elaboration.

@@ -61,6 +61,28 @@ public sealed class MirAnalysisTest
         func moved(r: Resource)
             consume(r@move)
             consume(r@move)
+        func twice()
+            let resource: Resource
+            resource = make()
+            consume(resource@move)
+            resource = make()
+        func take(s: string) => ()
+        func runtime(values: Array<string>, i: isize)
+            take(values[i]@move)
+        struct Nest<T>
+            public var value: T
+            public var next: Option<rc/Nest<(T, T)>> = .None
+            public init(value: T) => self.value = value
+        contract Store
+            func keep(self: uniq/Self, value: i32) -> i32
+                effect confined
+        struct Deep
+            Self is Store
+            public func keep(self: uniq/Self, value: i32) -> i32
+                _ = Nest<i32>.init(value: 1)
+                return value
+        func deep(n: Nest<ref/i32 during a>)
+            let r = n@ref
         func unset(flag: bool) -> i32
             var n: i32
             if flag => n = 1
@@ -116,9 +138,10 @@ public sealed class MirAnalysisTest
             report.All.ToArray());
     }
 
-    // R5-M23, DIAGNOSTICS rule 1: each recording rule names the requirement it judged, beside its code: A1's uses and Moves, A2's
-    // incomplete layer at a Drop, A3's falling failure body, A4's confined obligations as Binding's row carries them (a conformance, a
-    // virtual function, a Callable binding) and A5's Loan conflicts.
+    // R5-M23, DIAGNOSTICS rule 1: each recording rule names the requirement it judged, beside its code: A1's uses, Moves without a Move
+    // Path and second initializations of a let, A2's incomplete layer at a Drop, A3's falling failure body, A4's confined obligations as
+    // Binding's row carries them (a conformance, a virtual function, a Callable binding) and its limit, and A5's Loan conflicts and its
+    // limit (a destruction past the walk's bound). The storage limits need large bodies: A5ChecksTheViewsA1Completed has A1's.
     [Fact]
     public void EachRecordingRuleNamesItsRequirement()
     {
@@ -129,7 +152,9 @@ public sealed class MirAnalysisTest
                 "ControlFlow RequireFallthrough_Kd ()", "Ownership.CallableEffectBound UnsatisfiedEffectBound_Kd noisy",
                 "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd x = 2",
                 "Ownership.EffectBound IncompatibleContractImplementation_Kd Self is Sink", "Ownership.PossiblyMovedUse MovedPlace_Kd r",
-                "Ownership.PossiblyMovedUse MovedPlace_Kd var box = Box.init(make())", "Ownership.UninitializedUse UninitializedPlace_Kd n",
+                "Ownership.PossiblyMovedUse MovedPlace_Kd var box = Box.init(make())", "Ownership.ReassignedLet ReassignedLet_Kd resource = make()",
+                "Ownership.StaticMovePathRequired StaticMovePathRequired_Kd values[i]", "Ownership.UninitializedUse UninitializedPlace_Kd n",
+                "Ownership.Unsupported Unsupported_Kd Self is Store", "Ownership.Unsupported Unsupported_Kd func deep(n: Nest<ref/i32 during a>)",
                 "Ownership.VirtualEffectBound UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32",
             ],
             c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
@@ -150,14 +175,20 @@ public sealed class MirAnalysisTest
     }
 
     // R4-M15a, design A3 6.1: A5 runs as the driver's step 4 over the views A1 and A2 completed, which A2's table publishes (ask A-2):
-    // every view of a body, so a Loan conflict is a problem of the version, and none of a body whose A1 arena exceeds the limit (N locals
-    // live across N branches, MirInitTest), which records only OwnershipStorageLimit_Kd, though A5's own arena would fit.
+    // every view of a body, two for a pair-generic one, so a Loan conflict is a problem of the version, and none of a body whose A1 arena
+    // exceeds the limit (N locals live across N branches, MirInitTest), which records only OwnershipStorageLimit_Kd, though A5's own arena
+    // would fit.
     [Fact]
     public void A5ChecksTheViewsA1Completed()
     {
-        foreach (var (size, views, expected) in new[] { (64, 1, "ComparisonLoanConflict_Kd x = 2"), (13_500, 0, "OwnershipStorageLimit_Kd func f(flag: bool) -> i32") })
+        foreach (var (size, views, expected) in new[]
         {
-            var text = new StringBuilder("func inspect(value: ref/i32) => ()\nfunc f(flag: bool) -> i32\n    var x = 1\n    let r = x@ref\n");
+            (64, 1, "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd x = 2"),
+            (13_500, 0, "Ownership.StorageLimit OwnershipStorageLimit_Kd func f(flag: bool) -> i32"),
+        })
+        {
+            var text = new StringBuilder("func inspect(value: ref/i32) => ()\nfunc pair<s/T>(p: s/T) -> ()\n    s is owner or uniq\n    let v = p@move\n")
+                .Append("func f(flag: bool) -> i32\n    var x = 1\n    let r = x@ref\n");
             for (var n = 0; n < size; n++)
             {
                 text.Append("    var v").Append(n).Append(" = ").Append(n).Append('\n');
@@ -171,11 +202,11 @@ public sealed class MirAnalysisTest
             var c = MirBuildTest.Compile(text.Append("    x = 2\n    inspect(r)\n    return x\n").ToString());
             var program = c.BuildMir();
             Assert.Equal([expected], program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
-                .Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()}"));
+                .Select(x => $"{x.Requirement} {x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()}"));
             Assert.Equal(
-                [("f", (long)views), ("inspect", 1L)],
-                program.Bodies.ToArray().Where(static x => x.Key.Decl?.Name is "f" or "inspect").Select(x => (x.Key.Decl!.Name, program.Drops.ViewsOf(x.Ordinal)))
-                    .Order());
+                [("f", (long)views), ("inspect", 1L), ("pair", 2L)],
+                program.Bodies.ToArray().Where(static x => x.Key.Decl?.Name is "f" or "inspect" or "pair")
+                    .Select(x => (x.Key.Decl!.Name, program.Drops.ViewsOf(x.Ordinal))).Order());
         }
     }
 

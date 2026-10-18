@@ -50,7 +50,8 @@ public sealed partial class Binding
                 {
                     var target = dispatched ? null : witness.Implementation;
                     var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.EffectBound);
-                    rows.Add(new(SourceRef.Of(path.Use), DiagnosticCode.IncompatibleContractImplementation_Kd, requirement, target, null, default, Owner: false));
+                    var code = DiagnosticCode.IncompatibleContractImplementation_Kd;
+                    rows.Add(new(SourceRef.Of(path.Use), code, requirement, target, null, default, Owner: false));
                 }
             }
         }
