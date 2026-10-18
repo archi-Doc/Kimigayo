@@ -78,21 +78,14 @@ internal static partial class LlvmModuleWriter
 
         if (instruction.ScalarOperator == "RawSlice")
         {
-            // SPEC 5.6: Raw.slice writes the Slice record {buffer, length} into its result slot.
+            // SPEC 5.6: operands 0 and 1 are the raw pointer and the element count of the Slice record.
             var record = function.GetOperands(instruction);
-            output.Write("  store ptr ");
-            WriteOperand(output, record[0]);
-            output.Write(", ptr ");
-            WriteSlot(output, function, instruction.Place);
-            output.Write(", align 8\n  %rslen");
-            WriteNumber(output, instruction.Operation);
-            output.Write(" = getelementptr i8, ptr ");
-            WriteSlot(output, function, instruction.Place);
-            output.Write(", i64 8\n  store i64 ");
-            WriteOperand(output, record[1]);
-            output.Write(", ptr %rslen");
-            WriteNumber(output, instruction.Operation);
-            output.Write(", align 8\n");
+            LegacyRuntimeHelpers.WriteRawSlice(
+                output,
+                Spell(record[0], stackalloc char[OperandLength]),
+                Spell(record[1], stackalloc char[OperandLength]),
+                SpellSlot(function, instruction.Place, stackalloc char[OperandLength]),
+                instruction.Operation);
             return;
         }
 
@@ -346,15 +339,11 @@ internal static partial class LlvmModuleWriter
         }
         else if (instruction.ScalarOperator == "capacity")
         {
-            // SPEC 4.9.5: an Array handle stores its capacity after the buffer and length.
-            Name(output, "  %seqcapptr", id);
-            output.Write(" = getelementptr i8, ptr ");
-            Address();
-            output.Write(", i64 16\n");
-            Name(output, "  %v", id);
-            output.Write(" = load i64, ptr ");
-            Name(output, "%seqcapptr", id);
-            output.Write(", align 8\n");
+            LegacyRuntimeHelpers.WriteCapacity(
+                output,
+                SpellStorageAddress(function, addressOperand, stackalloc char[OperandLength]),
+                Spell(new(EmissionOperandKind.Value, id), stackalloc char[OperandLength]),
+                id);
         }
         else if (instruction.ScalarOperator == "fromEnd")
         {

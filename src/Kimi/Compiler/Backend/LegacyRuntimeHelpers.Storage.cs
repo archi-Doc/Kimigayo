@@ -60,8 +60,9 @@ internal delegate void StorageKernelWriter(TextWriter output, in StorageKernelIn
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal sealed record StorageKernelRow(StorageKernelKind Kind, StorageKernelWriter Write, HelperNeeds Needs);
 
-/// <summary>SPEC 22.2: the storage-boundary kernels written inline in their caller's body, and the addressing of a library
-/// record's Field that they share with the old writer (Windows x64 profile).</summary>
+/// <summary>SPEC 22.2: the storage-boundary kernels written inline in their caller's body, the kernels of the Raw.slice and
+/// capacity intrinsics (SPEC 5.6, 4.9.5), and the addressing of a library record's Field that they share with the old writer
+/// (Windows x64 profile).</summary>
 internal sealed partial class LegacyRuntimeHelpers
 {
     // One row per kind, in StorageKernelKind order; a new kind adds a row.
@@ -84,6 +85,49 @@ internal sealed partial class LegacyRuntimeHelpers
         => (uint)kind < (uint)StorageKernelRows.Length && StorageKernelRows[(int)kind].Kind == kind
             ? StorageKernelRows[(int)kind]
             : throw new InvalidOperationException("A storage kernel kind has no row.");
+
+    /// <summary>Writes SPEC 5.6's <c>Raw.slice</c>: the Slice record {buffer, length} stored into its result slot; nothing is read
+    /// or checked.</summary>
+    /// <param name="output">The function text.</param>
+    /// <param name="buffer">The spelling of the raw pointer.</param>
+    /// <param name="count">The spelling of the element count.</param>
+    /// <param name="record">The spelling of the result slot's address.</param>
+    /// <param name="id">The number naming the kernel's temporaries.</param>
+    internal static void WriteRawSlice(TextWriter output, ReadOnlySpan<char> buffer, ReadOnlySpan<char> count, ReadOnlySpan<char> record, int id)
+    {
+        output.Write("  store ptr ");
+        output.Write(buffer);
+        output.Write(", ptr ");
+        output.Write(record);
+        output.Write(", align 8\n  %rslen");
+        WriteNumber(output, id);
+        output.Write(" = getelementptr i8, ptr ");
+        output.Write(record);
+        output.Write(", i64 8\n  store i64 ");
+        output.Write(count);
+        output.Write(", ptr %rslen");
+        WriteNumber(output, id);
+        output.Write(", align 8\n");
+    }
+
+    /// <summary>Writes SPEC 4.9.5's <c>capacity</c>: an Array or Dictionary handle stores its capacity at offset 16, an Array's
+    /// after its buffer and length.</summary>
+    /// <param name="output">The function text.</param>
+    /// <param name="handle">The spelling of the handle's address.</param>
+    /// <param name="result">The name of the loaded capacity.</param>
+    /// <param name="id">The number naming the kernel's temporaries.</param>
+    internal static void WriteCapacity(TextWriter output, ReadOnlySpan<char> handle, ReadOnlySpan<char> result, int id)
+    {
+        output.Write("  %seqcapptr");
+        WriteNumber(output, id);
+        output.Write(" = getelementptr i8, ptr ");
+        output.Write(handle);
+        output.Write(", i64 16\n  ");
+        output.Write(result);
+        output.Write(" = load i64, ptr %seqcapptr");
+        WriteNumber(output, id);
+        output.Write(", align 8\n");
+    }
 
     /// <summary>Defines the address of a library record's Field at its named layout offset when it needs one: offset 0 is the
     /// record's own address, and a nonzero offset is reached through <c>{name}{id}_{offset}</c>, written here before its use.</summary>

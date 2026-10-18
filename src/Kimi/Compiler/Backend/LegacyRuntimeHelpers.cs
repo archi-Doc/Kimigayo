@@ -6,9 +6,9 @@
 // formatting wrappers), the element descriptor of a stored collection value, the stored-value text kernels the helpers write
 // through, the Array capacity routines and helpers (LegacyRuntimeHelpers.Arrays.cs), the Dictionary runtime, the storage byte
 // primitives and the Dictionary helpers (LegacyRuntimeHelpers.Dictionaries.cs), the formatting runtime with its routines' ABIs
-// and the wrappers over user formatting witnesses (LegacyRuntimeHelpers.Formatting.cs), the storage-boundary kernels written
-// inline in their caller's body with the library record Field addressing they share with the old writer
-// (LegacyRuntimeHelpers.Storage.cs) and the string-comparison routines. Each generator's module holds one instance, and both
+// and the wrappers over user formatting witnesses (LegacyRuntimeHelpers.Formatting.cs), the storage-boundary, Raw.slice and
+// capacity kernels written inline in their caller's body with the library record Field addressing they share with the old
+// writer (LegacyRuntimeHelpers.Storage.cs) and the string-comparison routines. Each generator's module holds one instance, and both
 // write the helpers through this component (promoted, never copied).
 // Input: helper records built from FunctionAbi, ValueLowering, StoredValue (drop routine name, text flag), the Option payload
 // offset and remainder Field offsets; the compiled ABIs of the DictionaryStorage functions the Dictionary helpers call, keyed
@@ -30,7 +30,8 @@
 // formatting runtime calls none; the formatting witness WriterWrite, TextToString and TextTryFormat run is the need their
 // published library rows state (Formats, SPEC 4.9.6), which the collector reads there. Each inline storage kernel's row
 // (StorageRow; P2a) holds its writer over StorageKernelInput and HelperNeeds, which are none: its text is loads, stores and
-// address arithmetic in the caller's body, so it declares no callee and nothing is requested for it.
+// address arithmetic in the caller's body, so it declares no callee and nothing is requested for it. The Raw.slice and capacity
+// kernels (P2b) are plain writers without a row: their calls are intrinsics, whose rows are IntrinsicRows'.
 // Invariants: a new helper kind adds a row; a kind without a row fails; a request's runtime flags come from its row; each
 // requested helper is written once (the planner requests each formatting wrapper once), in request order, after the runtimes its
 // row declares;
