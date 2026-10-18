@@ -2313,12 +2313,12 @@ structure is recorded here by the unit that first implements it.
 - **R5-M42 A jump without a target row is derived from Binding's record** (2026-10-18, planning session; plan F13, PLAN G143, R4's
   ask A-8's jump part (G103-E9b's), handed to R5; after Q11, R5-M31) Rule (`MirBuilder.Transfer`): the builder reads the target
   row the jump binding publishes. A null row means Binding rejected the jump (R5-M31's HIR contract: row 9 or 10 at the jump, or
-  `NonExhaustiveCompileTimeCase_Kd` at a `#switch` that selected no arm around it), so the jump is derived from that record (SPEC
-  23.1.2): its operand is built with no expected Type, keeping its own records and accesses, and the jump is an Opaque value
-  naming what the operand gave, with no record, ending its block for the checks only as a jump does. A non-null row is built as
-  before; one that no construct around the jump opened is a broken HIR contract (every target construct opens one), recorded as
-  `InternalInvariant_Kd` at the jump, the jump an Opaque value. So an unlabeled `yield` into a discarded selection, a jump with no
-  target in scope and one behind a defer or a default lose MIR's second record, and `loop => yield helper(a)` builds its call.
-  Rejected: a located `Unsupported_Kd` at the jump (a second record of an invalid program, the operand unbuilt); an Opaque value
-  of the jump's whole syntax (the operand's records lost and its accesses unbuilt); a target lookup in MIR (the jump binding owns
-  targets since Q11).
+  `NonExhaustiveCompileTimeCase_Kd` at a `#switch` in its function part that selected no arm, which need not enclose it), so the
+  jump is derived from that record (SPEC 23.1.2): its operand is built with no expected Type, keeping its own records and
+  accesses, and the jump is an Opaque value naming what the operand gave, with no record, ending its block for the checks only as
+  a jump does. A non-null row is built as before; one that no construct around the jump opened is a broken HIR contract (every
+  target construct opens one), recorded as `InternalInvariant_Kd` at the jump, the jump an Opaque value. So an unlabeled `yield`
+  into a discarded selection, a jump with no target in scope and one behind a defer or a default lose MIR's second record, and
+  `loop => yield helper(a)` builds its call. Rejected: a located `Unsupported_Kd` at the jump (a second record of an invalid
+  program, the operand unbuilt); an Opaque value of the jump's whole syntax (the operand's records lost and its accesses unbuilt);
+  a target lookup in MIR (the jump binding owns targets since Q11).
