@@ -2191,12 +2191,14 @@ structure is recorded here by the unit that first implements it.
   R4's consent to amending R4-M62's acquisition clause, after BU-4; supersedes that clause of R4-M62) Rule (`MirBuilder.Values.cs`):
   the Never value, the temp of a node of Type Never that nothing writes (`IsNeverValue`), is taken as it is by every acquisition and
   makes `Set` build nothing, as R4-M62 has it; a named Place of Type Never (a parameter, a binding, a payload) is a Place as any
-  other: `Acquire` gives it the operand kind Binding publishes for it (Copy for a bare read, since Never is Copy, BU-4) with no
-  adaptation (it has no referent to read or borrow), and `Set` writes it and reads it. `IsNever` (any Place of Type Never) stays for
+  other: `Acquire` gives it the operand kind Binding publishes for it (Copy for a bare read, since Never is Copy, BU-4; Copy for
+  an in-place use, `None`) with no adaptation (it has no referent to read or borrow), and `Set` writes it and reads it, also into
+  a Never temp that secures its value (`g2(x, k())`), building nothing only for the Never value's own inputs. `IsNever` (any Place of Type Never) stays for
   the sites that would borrow or view it (a runtime Type test's handle, a verification's message, `$tryWrite`'s writer). So
-  `func absurd(x: Never) => g(x, x)` has no MovedPlace, and `absurd(x: Never) -> i32 => x` writes `_0 = copy _1`. Binding
-  publishes `x@move` on a Never Place as an Abrupt conversion (`HirOp.Convert`, Completion Diverges) whose name it reads by Copy,
-  so MIR moves nothing there and `g(x@move, x)` has no problem on either pipeline; whether `x@move` on a Never Place moves, and so
-  whether `g(x@move, x)` is rejected (SPEC 3.5, 14.10.3), is Binding's publication, a SPEC and Binding question, not MIR's. No
-  library, milestone or corpus program changes its MIR. Rejected: every Never-typed Place as the Never value (R4-M62's clause: a
+  `func absurd(x: Never) => g(x, x)` has no MovedPlace, and `absurd(x: Never) -> i32 => x` writes `_0 = copy _1`. Per BU-6
+  (pending, owner decision 2026-10-18, G129) every expression of Type Never supplies no normal completion and an explicit
+  acquisition keeps its effect on assumed paths, so an explicit `x@move` on a Never Place is a Move. Binding publishes it today as
+  a Convert (Diverges) whose name it reads by Copy, so MIR moves nothing there; MIR builds whatever Binding publishes, so once
+  Binding publishes the Move (after G129), the moved read in `g(x@move, x)` is A1's `MovedPlace`, whose row R5 adds then (BU adds
+  the Binding and HIR rows). No library, milestone or corpus program changes its MIR. Rejected: every Never-typed Place as the Never value (R4-M62's clause: a
   Copy Place read twice became two Moves); Move for every named Never Place (a second rule beside Binding's published kind).
