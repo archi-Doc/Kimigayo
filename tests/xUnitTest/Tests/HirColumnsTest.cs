@@ -411,19 +411,22 @@ public sealed class HirColumnsTest
     }
 
     // SPEC 3.4.3, 4.7.1, 7.3, 15.1.6 (PLAN G147 (2b)): a part below an element storing reference layers is a Place reached through those
-    // layers, as below a local of the element's Type: a receiver borrows it in place in the receiver's mode and a Subject in place.
+    // layers, as below a local of the element's Type: a receiver borrows it in place in the receiver's mode, and a Subject or a compared
+    // operand (SPEC 13.4) in place.
     [Fact]
     public void APartBelowAStoredReferenceIsAPlace()
     {
         const string Source = """
             struct Inner
                 public var x: i32 = 0
+                public var name: string = ""
                 public init() => ()
                 public func mutate(self: uniq/Self) => self.x = 7
                 public func look(self) -> i32 => self.x
             struct Point
                 public var inner: Inner = Inner.init()
                 public var opt: Option<string> = .None
+                public var name: string = ""
                 public init() => ()
                 public func bump(self: uniq/Self) => self.inner.x += 1
             func parts(value: uniq/Point during a) -> i32
@@ -440,13 +443,22 @@ public sealed class HirColumnsTest
                 var entries: Dictionary<i32, uniq/(Inner, i32) during a> = [1: value@move]
                 entries[1].0.mutate()
             func local(p: uniq/Point) => p.inner.mutate()
+            func compared(value: uniq/Point during a) -> bool
+                var entries: Dictionary<i32, uniq/Point during a> = [1: value@move]
+                return entries[1].name == "a" and entries[1].inner.name == "b"
+            func pairs(value: uniq/(string, i32) during a) -> bool
+                var entries: Dictionary<i32, uniq/(string, i32) during a> = [1: value@move]
+                return entries[1].0 == "a"
+            func shared(value: ref/Point during a) -> bool
+                var entries: Dictionary<i32, ref/Point during a> = [1: value]
+                return entries[1].name == "a"
 
             """;
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
-        string[] parts = ["entries[1].inner", "entries[1].opt", "entries[1].0", "p.inner"];
+        string[] parts = ["entries[1].inner", "entries[1].opt", "entries[1].0", "p.inner", "entries[1].name", "entries[1].inner.name"];
         var adjusted = Reachable(c.Kotonoha).Where(x => x.Span.Start >= Source.IndexOf("func parts", StringComparison.Ordinal) && parts.Contains(Text(x)))
             .Select(x => $"{Line(x.Span.Start)}: {Text(x)} {HirTables.AdjustOf(x).Acquire}/{HirTables.AdjustOf(x).Adaptation}");
         string[] expected =
@@ -454,6 +466,10 @@ public sealed class HirColumnsTest
             "entries[1].inner.mutate(): entries[1].inner None/ExclusiveBorrow", "match entries[1].opt: entries[1].opt None/SharedBorrow",
             ".None => return entries[1].inner.look(): entries[1].inner None/SharedBorrow", "entries[1].inner.mutate(): entries[1].inner None/ExclusiveBorrow",
             "entries[1].0.mutate(): entries[1].0 None/ExclusiveBorrow", "func local(p: uniq/Point) => p.inner.mutate(): p.inner None/ExclusiveBorrow",
+            "return entries[1].name == \"a\" and entries[1].inner.name == \"b\": entries[1].name None/SharedBorrow",
+            "return entries[1].name == \"a\" and entries[1].inner.name == \"b\": entries[1].inner.name None/SharedBorrow",
+            "return entries[1].name == \"a\" and entries[1].inner.name == \"b\": entries[1].inner None/SharedBorrow",
+            "return entries[1].0 == \"a\": entries[1].0 None/SharedBorrow", "return entries[1].name == \"a\": entries[1].name None/SharedBorrow",
         ];
         Assert.Equal(expected, adjusted);
         var element = Reachable(c.Kotonoha).Single(x => Text(x) == "entries[1]" && Line(x.Span.Start) == "entries[1].bump()");

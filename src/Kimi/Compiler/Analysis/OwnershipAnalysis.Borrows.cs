@@ -7,6 +7,23 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
+    // DECISIONS BU-10 (removed with the old path at R6-check): whether a Place's path selects a built-in element, one that no user
+    // index's selected call designates, which the old paths never borrow through exclusively to a stored reference's referent.
+    private static bool SelectsBuiltInElement(Koto place)
+    {
+        for (var node = KotoHelper.UnwrapParentheses(place); node is BinaryKoto selection and (IndexKoto or MemberAccessKoto);)
+        {
+            if (selection is IndexKoto index && !ElementAccess.IsUserIndex(index))
+            {
+                return true;
+            }
+
+            node = KotoHelper.UnwrapParentheses(selection.Left);
+        }
+
+        return false;
+    }
+
     // SPEC 15.6.1: every obligation receives one verdict once Binding is final (PLAN G74 U4), and every Origin obligation that
     // remains unchecked is its own record, reported without adding constraints, so an unchecked obligation leaves the analysis
     // unverified. A failed Origin relation leaves the Loan, destruction and result checks to proceed without it; any other unchecked
@@ -413,12 +430,12 @@ public sealed partial class OwnershipAnalysis
 
         if (this.compilation.Binding.TryGetAdaptation(root, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.SharedBorrow)
         {
-            // DECISIONS BU-10 (removed with the old path at R6-check): the old Emission reborrows the reference an element stores only
-            // one layer deep, and exclusively only through a user index's selected call (a built-in element's stored exclusive reference
-            // is not Reborrowed, STATUS); a read reaching through more of the element's layers has no matching reference source there.
+            // DECISIONS BU-10 (removed with the old path at R6-check): the old paths reach the referent of the reference an element
+            // stores only one layer deep, and exclusively only where no built-in element is on the path (they borrow no dynamic element
+            // exclusively, STATUS); any other read through an element's stored layers has no matching reference source there.
             var read = adaptation.Type.Components[0];
             if (root.BoundType is { Kind: BoundTypeKind.Semantics, Components: [var stored] } element && !ReferenceEquals(read, element) &&
-                (!ReferenceEquals(read, stored) || (exclusive && !ElementAccess.IsUserIndex(root))))
+                (!ReferenceEquals(read, stored) || (exclusive && SelectsBuiltInElement(root))))
             {
                 this.Unsupported(root);
                 return -1;

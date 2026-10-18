@@ -100,22 +100,27 @@ public class PublishedPlaceProjectionTest
         ScalarEmissionTest.EmitFixture("PublishedPlaceField" + name, source, string.Empty);
     }
 
-    // SPEC 3.4.3, 4.7.1, 7.3 (PLAN G147 (2b)): a part below an element storing one reference layer is a Place reached through that
-    // reference, so a receiver, a write, an update and a Tuple element change the referent, and a shared read of a built-in element
-    // reads it through its stored reference.
+    // SPEC 3.4.3, 4.7.1, 7.3, 13.4 (PLAN G147 (2b)): a part below an element storing one reference layer is a Place reached through that
+    // reference, so a receiver, a write, an update and a Tuple element change the referent, a compared string is inspected in place,
+    // and a shared read of a built-in element reads it through its stored reference.
     [Fact]
     public void PartsBelowAStoredReferenceReachItsReferent()
     {
         const string Source = """
             struct Inner
                 public var x: i32 = 0
+                public var name: string = "i"
                 public init() => ()
                 public func mutate(self: uniq/Self) => self.x += 7
                 public func look(self) -> i32 => self.x
             struct Point
                 public var inner: Inner = Inner.init()
                 public var n: i32 = 1
+                public var name: string = "p"
                 public init() => ()
+            func named(value: uniq/Point during a) -> bool
+                var entries: Dictionary<i32, uniq/Point during a> = [1: value@move]
+                return entries[1].name == "p" and entries[1].inner.name == "i"
             func change(value: uniq/Point during a)
                 var entries: Dictionary<i32, uniq/Point during a> = [1: value@move]
                 entries[1].inner.mutate()
@@ -131,14 +136,15 @@ public class PublishedPlaceProjectionTest
             change(p@uniq)
             var t: (i32, i32) = (1, 2)
             pair(t@uniq)
-            require p.inner.x == 7 and p.n == 12 and t.0 == 3 and read(p@uniq) == 12 else => $abort("stored")
+            require p.inner.x == 7 and p.n == 12 and t.0 == 3 and read(p@uniq) == 12 and named(p@uniq) else => $abort("stored")
             """;
         ScalarEmissionTest.EmitFixture("PublishedPlaceStoredLayer", Source, string.Empty);
     }
 
-    // DECISIONS BU-10 (until R6-check): the old Emission reborrows the reference an element stores only one layer deep, and exclusively
-    // only through a user index's selected call, so the old analysis reports any other read through an element's stored layers as the
-    // located Unsupported_Kd at the element, although Binding accepts it and the MIR builds it in place.
+    // DECISIONS BU-10 (until R6-check): the old paths reach the referent of the reference an element stores only one layer deep, and
+    // exclusively only where no built-in element is on the path, so the old analysis reports any other read through an element's stored
+    // layers, a comparison's included, as the located Unsupported_Kd at the element, although Binding accepts it and the MIR builds it
+    // in place.
     [Theory]
     [InlineData("func f(value: uniq/(uniq/Point during a) during b)\n    var entries: Dictionary<i32, uniq/(uniq/Point during a) during b> = [1: value@move]\n    entries[1].inner.mutate()", "entries[1]")]
     [InlineData("func f(value: uniq/(uniq/Point during a) during b) -> i32\n    var entries: Dictionary<i32, uniq/(uniq/Point during a) during b> = [1: value@move]\n    return entries[1].n", "entries[1]")]
@@ -150,10 +156,13 @@ public class PublishedPlaceProjectionTest
     [InlineData("func f(a: uniq/Array<uniq/Point during x>) => a[0].n = 5", "a[0]")]
     [InlineData("func f(value: uniq/(i32, i32) during a)\n    var vals: Array<uniq/(i32, i32) during a> = [value@move]\n    vals[0].0 = 5", "vals[0]")]
     [InlineData("func f(value: uniq/(uniq/Point during a) during b) -> i32\n    var vals: Array<uniq/(uniq/Point during a) during b> = [value@move]\n    return vals[0].n", "vals[0]")]
+    [InlineData("func f(value: uniq/Point during a)\n    var vals: Array<Dictionary<i32, uniq/Point during a>> = [[1: value@move]]\n    vals[0][1].n = 5", "vals[0][1]")]
+    [InlineData("func f(value: uniq/Point during a)\n    var vals: Array<Dictionary<i32, uniq/Point during a>> = [[1: value@move]]\n    vals[0][1].inner.mutate()", "vals[0][1]")]
+    [InlineData("func f(value: uniq/(uniq/Point during a) during b) -> bool\n    var entries: Dictionary<i32, uniq/(uniq/Point during a) during b> = [1: value@move]\n    return entries[1].name == \"a\"", "entries[1]")]
     public void TheOldEmissionReborrowLimitIsUnsupported(string function, string element)
     {
         var c = MinimalEmissionTest.Analyze("struct Inner\n    public var x: i32 = 0\n    public init() => ()\n    public func mutate(self: uniq/Self) => self.x = 7\n" +
-            "struct Point\n    public var inner: Inner = Inner.init()\n    public var n: i32 = 0\n    public init() => ()\n" + function + "\n");
+            "struct Point\n    public var inner: Inner = Inner.init()\n    public var n: i32 = 0\n    public var name: string = \"\"\n    public init() => ()\n" + function + "\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var unsupported = Assert.Single(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
         Assert.Equal(element, c.SyntaxOf(unsupported.Subject).ToString());

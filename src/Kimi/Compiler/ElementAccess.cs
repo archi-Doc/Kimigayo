@@ -247,8 +247,8 @@ internal static class ElementAccess
     // the Type its safe reference layers reach (Binding.ElementRead), is a representation of the selection rather than a reference
     // layer on its path.
     internal static bool IsSynthesizedAccess(Koto node)
-        => node.CodeContext.Compilation.Binding.TryGetAdaptation(node, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.SharedBorrow &&
-            adaptation.Type.Components is [var read] && node.BoundType is { } type &&
+        => node.CodeContext.Compilation.Binding.TryGetAdaptation(node, out var adaptation) &&
+            adaptation is { Kind: ExpectedAdaptationKind.SharedBorrow, Type.Components: [var read] } && node.BoundType is { } type &&
             (ReferenceEquals(read, type) || ReferenceEquals(read, Binding.ComparisonReferent(type)));
 
     // SPEC 15.6: a direct field/Tuple path whose base is a borrowed struct or

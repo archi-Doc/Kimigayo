@@ -1044,21 +1044,28 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         }
     }
 
-    // SPEC 3.4.3, 4.7.1, 7.3 (PLAN G147 (2b)): a receiver below an element storing an exclusive reference is borrowed in place, through the
-    // selected call's reference and the stored one, never through a copy, so the call's write reaches the element's referent.
-    [Fact]
-    public void AReceiverBelowAStoredReferenceIsBorrowedInPlace()
+    // SPEC 3.4.3, 4.7.1, 7.3, 13.4 (PLAN G147 (2b)): a receiver or a compared operand below an element storing an exclusive reference
+    // is borrowed in place, through the selected call's reference and the stored one, never through a copy, so a call's write reaches
+    // the element's referent and a compared string is neither copied out nor dropped.
+    [Theory]
+    [InlineData("Point", "entries[1].inner.mutate()", @"= &uniq two-phase \(\*\(\*_\d+\)\)\.0: uniq/Inner")]
+    [InlineData("Point", "_ = entries[1].name == \"a\"", @"= &\(\*\(\*_\d+\)\)\.1: ref/string")]
+    [InlineData("Point", "_ = entries[1].inner.name == \"a\"", @"= &\(\*\(\*_\d+\)\)\.0\.1: ref/string")]
+    [InlineData("(string, i32)", "_ = entries[1].0 == \"a\"", @"= &\(\*\(\*_\d+\)\)\.0: ref/string")]
+    public void APartBelowAStoredReferenceIsBorrowedInPlace(string element, string statement, string borrow)
     {
-        var program = Compile("struct Inner\n    public var x: i32 = 0\n    public init() => ()\n    public func mutate(self: uniq/Self) => self.x = 7\n" +
-            "struct Point\n    public var inner: Inner = Inner.init()\n    public init() => ()\nfunc f(value: uniq/Point during a)\n" +
-            "    var entries: Dictionary<i32, uniq/Point during a> = [1: value@move]\n    entries[1].inner.mutate()\n").BuildMir();
+        var program = Compile("struct Inner\n    public var x: i32 = 0\n    public var name: string = \"\"\n    public init() => ()\n" +
+            "    public func mutate(self: uniq/Self) => self.x = 7\nstruct Point\n    public var inner: Inner = Inner.init()\n" +
+            "    public var name: string = \"\"\n    public init() => ()\n" + $"func f(value: uniq/{element} during a)\n" +
+            $"    var entries: Dictionary<i32, uniq/{element} during a> = [1: value@move]\n    " + statement + "\n").BuildMir();
         Assert.Empty(program.Findings);
         Assert.Empty(program.Records);
         var text = new StringBuilder();
         MirDump.Write(program, 0, text);
         var body = text.ToString()[text.ToString().IndexOf("fn f @", StringComparison.Ordinal)..];
-        Assert.Matches(@"= &uniq two-phase \(\*\(\*_\d+\)\)\.0: uniq/Inner", body);
+        Assert.Matches(borrow, body);
         Assert.DoesNotContain("copy (*(*", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("move (*(*", body, StringComparison.Ordinal);
     }
 
     // SPEC 3.4, 13.7: Binding designates a Property target through its parentheses, so an update or assignment of a parenthesized

@@ -166,9 +166,12 @@ public sealed partial class Binding
 
     // SPEC 3.4.3, 15.6.2: the layer a Place's own Type adds to a path below the Place: Ref when its reference layers pass a shared
     // one, Uniq for an exclusive reference or objuniq view, none for an owned Type.
-    private static SemanticsKind? LayerAuthority(BoundType? type)
-        => HasSharedLayer(type) ? SemanticsKind.Ref
-            : type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq } ? SemanticsKind.Uniq : null;
+    private static SemanticsKind? LayerAuthority(BoundType? type) => type switch
+    {
+        _ when HasSharedLayer(type) => SemanticsKind.Ref,
+        { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq } => SemanticsKind.Uniq,
+        _ => null,
+    };
 
     // SPEC 3.4, 15.1.5: the one diagnostic for a capability that a Place's path denies. A shared layer grants Read only, an
     // exclusive reference grants Read and Write but not Take, and otherwise the binding itself forbids the access.
@@ -303,8 +306,10 @@ public sealed partial class Binding
             SharedReadTypes.BorrowSemantics(published) is { } placeSemantics)
         {
             // SPEC 4.7.1, 13.4: a Non-Copy element of receiver[key] on a user Type is compared in place through the reference
-            // its selected call returns.
-            this.adaptations[operand] = new(ExpectedAdaptationKind.SharedBorrow, this.types.Intern(BoundTypeKind.Semantics, null, placeSemantics, [published], origin: this.PlaceOrigin(operand)));
+            // its selected call returns, continued through the layers it stores as any in-place read of it (ElementRead).
+            var origin = this.PlaceOrigin(operand);
+            var read = this.ElementRead(published, origin) ?? this.types.Intern(BoundTypeKind.Semantics, null, placeSemantics, [published], origin: origin);
+            this.adaptations[operand] = new(ExpectedAdaptationKind.SharedBorrow, read);
             return;
         }
 
