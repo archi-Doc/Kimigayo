@@ -313,7 +313,7 @@ internal sealed partial class GenericStoragePlan
 
             var declared = body.SubstituteDefaults(environment, body.ContextAt(i));
             var type = declared is null || call is null ? declared : compilation.Binding.InstantiateStorageType(declared, call);
-            if (type?.ClosureContext is not { } context || !this.templates.TryGetValue(closure, out var template) ||
+            if (type is null || compilation.Binding.ClosureCall(type) is not { } context || !this.templates.TryGetValue(closure, out var template) ||
                 !this.PrepareEntry(compilation, module, layouts, context, template, out _, out failure, depth))
             {
                 return Fail(failure ?? "Generic closure requires its enclosing concrete substitution.", out failure);

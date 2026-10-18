@@ -80,7 +80,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // over its direct target, which the MIR's case views give every Type by.
     internal BoundType CaseType(BoundType type, ReadOnlySpan<PairCase> cases) => binding.CaseType(type, cases);
 
-    internal BoundType Intern(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null, CallPlan? closureContext = null, ReadOnlySpan<BoundLength?> lengthArguments = default)
+    internal BoundType Intern(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null, Subst? closureContext = null, ReadOnlySpan<BoundLength?> lengthArguments = default)
     {
         if (kind == BoundTypeKind.SemanticsAdaptation && components.Length > 0)
         {
@@ -217,8 +217,19 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
             binder = enclosing;
         }
 
-        return closure.ClosureContext is { } context ? this.SubstOf(context) : this.Identity(binder);
+        return closure.ClosureContext ?? this.Identity(binder);
     }
+
+    // SPEC 8.2: the context of a closure an instance of its enclosing function closes, that instance's substitution (DECISIONS R5-M36), as
+    // its call's would be: one interned value per instance, which all of the instance's closures share.
+    internal Subst ClosureContext(
+        BindingSymbol enclosing,
+        BoundType? declaring,
+        ReadOnlySpan<BoundType?> types,
+        ReadOnlySpan<BoundLength?> lengths,
+        ReadOnlySpan<BoundOrigin> origins,
+        ReadOnlySpan<BoundOrigin> inputs)
+        => this.Intern(enclosing, null, declaring, types, lengths, origins, inputs);
 
     // SPEC 7.3: a function item's substitution, the context its Item Type binds; an Item keeps its per-call Origins in place.
     internal Subst? SubstOfItem(BoundType item) => binding.FunctionItemContext(item, false) is { } context ? this.SubstOf(context) : null;
