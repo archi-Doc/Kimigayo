@@ -249,8 +249,8 @@ public sealed partial class Binding
         var structural = this.ResultStructure();
         switch (node)
         {
-            case FunctionKoto { Body: { } body }:
-                this.AddBodyResult(body, context, structural);
+            case FunctionKoto function:
+                this.AddBodyResult((function.Body ?? function.ExpressionBody)!, context, structural);
                 break;
             case IfKoto conditional:
                 for (var i = 0; i < conditional.Branches.Count; i++)
@@ -337,7 +337,7 @@ public sealed partial class Binding
             return Complete(node, null);
         }
 
-        var completion = node is FunctionKoto { Body: { } functionBody } ? functionBody : node;
+        var completion = node is FunctionKoto function ? (function.Body ?? function.ExpressionBody)! : node;
         return Complete(node, !suppliedValue && !this.ResultStructure().CanComplete(completion) ? BoundType.Never : common);
     }
 

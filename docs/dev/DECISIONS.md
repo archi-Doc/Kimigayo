@@ -1853,6 +1853,31 @@ R5 on the owner's request of 2026-10-18.
     of a join takes no late Type (`if c => ["k": (a, a)] else => ["k": (a, (return 4))]`: mir `InternalInvariant_Kd`, as on dev); a
     join under `@move` or a label does not wait for an outer join, so its literals take their defaults first; a control-flow
     argument whose literals sit beside an unknown typed source still waits (PLAN G152).
+- **BU-5** (2026-10-18; the BU planning session; G129 E5, before R4-M59's removal) An anonymous function's result sources
+  (SPEC 14.9.1, 14.9.2) and the survey of an operator's result (SPEC 13.3.4). (1) Without a declared or expected result, an
+  anonymous function with a single-item body is a result target exactly as one with an indented body: `BeginResult`
+  surveys the body's value and every self-targeted `return` operand, the body takes the surveyed Type as an `if` branch
+  does, and `FinishResult` joins the operands with the body's value (an indented body: its structural end Unit) and checks
+  each. A declared or expected result stays the Target Result Type. (2) The 14.9.2 survey (`ResultEvidence`) gives binary
+  `+ - * / %` and unary `-` their operands' terminal Type only on the built-in route, selected when every operand is
+  literal-only or has a surveyed Type ending, past safe reference layers, in a built-in numeric Type; a user provider (its
+  result is its conformance's Output) or an unknown operand gives no evidence. Comparisons, logical operators and
+  assignments are route-independent; bitwise, shift and unary `+` are built-in only and keep their operands' Type. Why: (1)
+  the single-item path only bound its body, so a `return` operand was no evidence, no source and unchecked (`func [] (c:
+  bool, a: i64) => if c => a else => (return 1)` kept an i32 `1` in an i64 function: `GenerationFailed_Kd`, mir
+  `InternalInvariant_Kd`; `(return true)` was accepted; `func [] () => (return 1)` was Never; `try` in a single-item body
+  was `InvalidTryReturn_Kd`); (2) the survey typed these operators by `Left ?? Right`, so `return x - y` (Value's
+  `Subtractable<Value>.Output is i32`) or `if c => x - x else => -x` took Value and `s * v` (Vec2's
+  `LeftMultipliable<f64>`) f64, and (1) would have exposed every single-item body to it. Census (both pipelines, Session
+  default and mir, MilestoneSourcesTest, library unchanged): those forms valid; an open-result closure argument also
+  reports its own sources' conflict beside `UnboundTypeArgument_Kd` (SPEC 23.1.2). Rejected: a separate return check for
+  single-item bodies (a second copy of 14.9); keeping `Left ?? Right` for unknown operands (wrong evidence for an unknown
+  user provider). Open: (N1) closed for joins by G129 U3, with which (1) and (2) land (BU-4: a join's literal sources and
+  leaves wait for its decided Type, the single-item body included as its function's source):
+  `if c => (a, a) else => (1, 2)`, `(return (1, 2))` beside `(a, a)`, `if c => p.x else => 1` and `if c => p.x + n else => 1`
+  are valid; a control-flow argument whose literals sit beside an unknown typed source still waits (PLAN G152).
+  (N3) `if c => a else => true` as a result source reports `TypeMismatch_Kd` twice, at the `if` and at its target (one per
+  cause required); pre-existing in indented bodies, and (1) extends it to single-item bodies. Not temporary.
 - **BU-6** (2026-10-18; owner decision, 「推奨の通りでお願いします」, on the BU planning session's question from R5's F12 finding;
   an explicitly authorized SPEC revision of 14.9.3 and 14.10.3, not of SPECJ, GUIDE or history) Every expression of Type
   Never, a read or an explicit acquisition of a Place of Type Never included, supplies no normal completion (SPEC 14.9.3),

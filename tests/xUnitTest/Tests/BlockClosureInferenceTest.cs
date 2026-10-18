@@ -10,7 +10,8 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 7.7.1, 14.9: anonymous blocks share result-source inference, including unreachable returns and structural end Unit.
+// SPEC 7.7.1, 14.9: anonymous functions, with an indented or a single-item body, share result-source inference, including
+// unreachable returns and structural end Unit.
 public sealed class BlockClosureInferenceTest
 {
     [Theory]
@@ -36,6 +37,9 @@ public sealed class BlockClosureInferenceTest
     [InlineData("NestedTransfers", "let f = func [] (flag: bool)\n    let n = label done: do\n        if flag => exit to done 2\n        exit to done 3\n    defer => ()\n    return n\nrequire f(true) == 2 else => $abort(\"transfers\")")]
     [InlineData("LengthItemResult", "func keep<length N>(a: [N of i32]) -> [N of i32] => a\nlet factory = func [] ()\n    return keep<2>\nlet f = factory()\nrequire f([4, 7])[1] == 7 else => $abort(\"item\")")]
     [InlineData("EmptyArray", "let f = func [] (flag: bool, a: [0 of i32])\n    if flag => return []\n    return a\nlet empty: [0 of i32] = []\nrequire f(true, empty).length == 0 else => $abort(\"array\")")]
+    [InlineData("ExpressionReturn", "let f = func [] (flag: bool, n: i64) => if flag => n else => (return 1)\nrequire f(true, 5000000000) == 5000000000 and f(false, 5000000000) == 1 else => $abort(\"expression\")")]
+    [InlineData("ExpressionReturnOnly", "let f = func [] () => (return 1)\nrequire f() == 1 else => $abort(\"return\")")]
+    [InlineData("ExpressionTry", "let f = func [] (value: i32?) => Option<i32>.Some((try value) + 1)\nmatch f(.Some(4))\n    .Some(let n) => require n == 5 else => $abort(\"try\")\n    .None => $abort(\"none\")\nmatch f(.None)\n    .None => ()\n    .Some(let n) => $abort(\"failure\")")]
     public void AnonymousBlocksInferAndExecuteTheirResult(string name, string source)
         => ScalarEmissionTest.EmitFixture("BlockClosureInference" + name, source, string.Empty);
 
@@ -60,6 +64,8 @@ public sealed class BlockClosureInferenceTest
     [InlineData("let f = func [] (flag: bool)\n    if flag => return func [] () => 1\n    return func [] () => 2")]
     [InlineData("let f = func [] (flag: bool)\n    if flag => return func [] ()\n        return 1\n    return func [] ()\n        return 2")]
     [InlineData("func named()\n    return 1")]
+    [InlineData("let f = func [] (flag: bool, n: i64) => if flag => n else => (return true)")]
+    [InlineData("let f = func [] (flag: bool, n: i64) -> i64 => if flag => n else => (return true)")]
     public void AllWrittenResultsAndStructuralFallthroughConstrainTheType(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -76,6 +82,27 @@ public sealed class BlockClosureInferenceTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous);
         Assert.Same(BoundType.I32, closure.SymbolOf()!.Type);
+        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+    }
+
+    // SPEC 14.9.1, 14.9.2: a single-item body's value and each self-targeted return operand are the sources, so the operand takes the
+    // Target Result Type: the common Type of the sources, or the declared or expected result; a diverging operand supplies no candidate,
+    // and a diverging body none either.
+    [Theory]
+    [InlineData("let f = func [] (flag: bool, n: i64) => if flag => n else => (return 1)", "i64", "i64")]
+    [InlineData("let f = func [] (flag: bool, n: i64) => if flag => 1 else => (return n)", "i64", "i64")]
+    [InlineData("let f = func [] (flag: bool, n: i64) -> i64 => if flag => n else => (return 1)", "i64", "i64")]
+    [InlineData("let f: (bool, i64) -> i64 = func [] (flag, n) => if flag => n else => (return 1)", "i64", "i64")]
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nlet f = func [] (flag: bool, n: i64) => if flag => n else => (return stop())", "i64", "Never")]
+    [InlineData("let f = func [] () => (return 1)", "i32", "i32")]
+    public void ASingleItemBodyJoinsItsValueWithItsReturnOperands(string source, string type, string operand)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous);
+        Assert.Equal(type, TyCtxt.Name(closure.SymbolOf()!.Type!));
+        var returned = Assert.Single(KotoTree.Walk(closure).OfType<ReturnKoto>());
+        Assert.Equal(operand, TyCtxt.Name((BoundType)HirTables.Meaning(returned.Expression!)!));
         Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
     }
 
@@ -150,6 +177,7 @@ public sealed class BlockClosureInferenceTest
     [Trait("Purpose", "Allocation")]
     [InlineData("let f = func [] (flag: bool, n: i64)\n    if flag => return 1\n    return n\n_ = f(false, 5000000000)")]
     [InlineData("func wide() -> i64 => 5000000000\nlet f = func [] (flag: bool)\n    if flag => return 1\n    let n = wide()\n    let m = n\n    return m\n_ = f(false)")]
+    [InlineData("let f = func [] (flag: bool, n: i64) => if flag => n else => (return 1)\n_ = f(false, 5000000000)")]
     public void WarmBlockInferenceReusesItsResultContexts(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
