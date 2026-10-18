@@ -2262,13 +2262,23 @@ structure is recorded here by the unit that first implements it.
 - **R5-M40 Admission, the location rule and `Capability`** (2026-10-18, planning session; plan K4a, the K package's first half of K4,
   §4.3, §4.5-4.7, §4.9, KD3, KD9, KD10, KD12, S2-S4 X19, PD30; under R5-M18) The instance collector (R5-M35) composes each site's
   substitution with its item's representative (`TyCtxt.Compose`) and admits generic callees, keyed by definition and `Erase` (R5-M39).
-  The first composed substitution is the representative, stored as null for a closed item, which every reader treats as the identity
-  (KD3's `Identity(Decl)`); the item's one view of its body is `MirCases.Views` on the representative, and none or several is
-  `InternalInvariant_Kd`. `Admit`, one function: a known key is reused, so Origin-only variants and a recursion under one substitution
-  share an item; a new key whose composition fails or whose body's local Types `TyCtxt.Apply` cannot make under the representative is
-  the capability table's storage-nesting gap (`Unsupported_Kd`, PD30), so each later Type of the item exists; a depth past 128, 16 items
-  of the definition on the admission chain, or 1,024 items of the definition are `GenerationResourceLimit_Kd` (X19; every item is a Body
-  item so far). A refused edge is dropped and collection continues. The location rule (KD12): the cause's site, moved out of inlined
+  The first composed substitution is the representative; the item's one view of its body is `MirCases.Views` on the representative, and
+  none or several is `InternalInvariant_Kd`. `Admit`, one function: a known key is reused, so Origin-only variants and a recursion under
+  one substitution share an item; a new key whose composition fails or whose body's local Types `TyCtxt.Apply` cannot make under the
+  representative is the capability table's storage-nesting gap (`Unsupported_Kd`, PD30), so each later Type of the item exists; a depth
+  past 128, 16 items of the definition on the admission chain, or 1,024 items of the definition are `GenerationResourceLimit_Kd` (X19;
+  every item is a Body item so far); a representative that is open or leaves a local Type of its body open is `InternalInvariant_Kd`
+  (K §4.3: representatives are closed). A refused edge is dropped and collection continues.
+  - Enclosing instances (group review B1): `TyCtxt.Compose` takes the declaring Type from the inner substitution only, and a call
+    carries the instance of the function enclosing its callee only as that declaring Type, which Binding writes one level into a generic
+    function. A call of a function nested in a body (two levels in, in a block, in a method or a specialization of a generic container)
+    whose substitution does not carry the enclosing function's instance (`TyCtxt.EnclosingFunction`, a new view in
+    `TyCtxt.Instances.cs`) is therefore the capability gap `EnclosingInstance` (`Unsupported_Kd` at the call), never an admitted item:
+    one key for every enclosing instance and an open representative would accept such a program at check (SPEC 8.13.3, R5-M34).
+    Removal condition: K5, which makes `SubstOfItem` pure for ordinary items and so carries the enclosing instance in the call's
+    substitution; the F3 reproducers in `InstanceCollectorTest` then expect two items each.
+  - Departure from KD3, owned here: a closed item's representative is stored as null, which every reader treats as the identity,
+    instead of `Identity(Decl)`; an accessor's executing function would need its own binder for an identity. The location rule (KD12): the cause's site, moved out of inlined
   default templates outside the root modules to the outermost omitting call, else the root-module site of the item's first admission,
   which each item keeps as `Site`. Records live in `CheckedSet.Records`, one per code and subject, unpublished until K4b; `Work` counts
   replayed sites and admissions.
@@ -2276,11 +2286,12 @@ structure is recorded here by the unit that first implements it.
     windows-x64 (IMPL 21.3.3, SPEC 23.1.1), the capability check of ARCH's closed vocabularies; its first row is `StorageNesting` (PLAN
     G128) with its code. OCC-X's refusal (K6), the generic static storage key (K7) and the operation rows (K9a) join it.
   - Verified (`InstanceCollectorTest`): instances keyed by erased substitutions, erased exactly when the definition instantiates;
-    Origin-only variants and finite recursion reuse one item; a growing key stops at 16 items with the record at its recursive call;
-    `pick<Option^31<ref/i32>>` and `pick<Array^64<i32>>` are instances while `Option^32<ref/i32>` and `Array^65<i32>` are the gap at the
-    call; the work doubles and quadruples with the instances; a warm run allocates nothing; the library (as roots) and the 44 milestones
-    give no record. Not reached by any test: the location rule's inlined and admission-chain branches (no library body of the corpus
-    fails).
+    Origin-only variants and finite recursion reuse one item; a growing key stops at 16 items, depth at 128 and a definition at 1,024
+    items, each with the record at its call; `pick<Option^31<ref/i32>>` and `pick<Array^64<i32>>` are instances while `Option^32<ref/i32>`
+    and `Array^65<i32>` are the gap at the call; the F3 reproducers: one level into a generic function two items, the other shapes the
+    `EnclosingInstance` gap, every admitted representative closing its body; with a second, non-root module the location rule moves a
+    record out of its inlined default and out of its body; the work doubles and quadruples with the instances; a warm run allocates
+    nothing; the library (as roots) and the 44 milestones give no record.
   - Rejected: the storage check by `Erase` (erasure never fails); limits per call site (X19 keys them by definition and chain).
 - **R5-M41 Collector records under MIR code generation (OD4)** (2026-10-18, planning session; plan K4b, the K package's second half of
   K4, §4.4, §4.9, §5 and §10 D-A and D-B; under R5-M18; meets R5-M4's "under sel, collector records publish from K4" with K4b) Under

@@ -64,6 +64,10 @@ internal sealed partial class TyCtxt
         return erased;
     }
 
+    // The function whose body declares a definition, a named function nested in a body; null for a member or a top-level declaration. An
+    // instance of a nested function holds that function's instance (SPEC 6.1.3), which the instance collector requires its call to carry.
+    internal BindingSymbol? EnclosingFunction(BindingSymbol definition) => definition.Scope.Function?.BoundSymbol;
+
     // K package KD1, KD2: the erased substitution of a binder that instantiates; null for one that does not, whose bodies are keyed without
     // a substitution.
     internal Subst? Erase(Subst subst) => this.Instantiates(subst.Target) ? this.EraseBindings(subst) : null;

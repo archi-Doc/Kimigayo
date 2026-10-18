@@ -12,9 +12,18 @@ internal sealed partial class InstanceCollector
     private const int GrowthLimit = 16; // Ancestors of one definition with other keys: a growing key.
     private const int SetLimit = 1024; // Items of one definition.
 
+    // Whether an instance's Types exist and are closed.
+    private enum Instance : byte
+    {
+        Closed,
+        Missing,
+        Open,
+    }
+
     // The item of a callee body requested at a site of an item's body, admitted once per key (KD1): keyed by its definition and, when it
-    // instantiates, its erased substitution, represented by the substitution itself (KD3). A new key whose instance's Types TyCtxt cannot
-    // make is the storage-nesting gap, one past a limit GenerationResourceLimit_Kd; the edge is dropped either way. -1 when refused.
+    // instantiates, its erased substitution, represented by the substitution itself (KD3). A function nested in a body whose call does not
+    // carry the enclosing instance, or a new key whose instance's Types TyCtxt cannot make, is a capability gap; one past a limit is
+    // GenerationResourceLimit_Kd; a representative that leaves its body open is a broken contract. -1 when refused.
     private int Admit(int parent, MirBody body, in SourceInfo source, MirBody target, Subst? subst)
     {
         var set = this.Set;
@@ -22,6 +31,14 @@ internal sealed partial class InstanceCollector
         if (target.Key.Decl is { } decl && this.types.Instantiates(decl) && (subst is null || (erased = this.types.Erase(subst)) is null))
         {
             set.Report(DiagnosticCode.InternalInvariant_Kd, this.Subject(parent, body, source)); // An instance without its substitution.
+            return -1;
+        }
+
+        // SPEC 6.1.3, 8.13.3: an instance of a nested function holds its enclosing function's instance, which a call's substitution
+        // carries only as its declaring Type (one level into a generic function); until K5 any other is the EnclosingInstance gap.
+        if (erased is not null && this.types.EnclosingFunction(target.Key.Decl!) is { } enclosing && !ReferenceEquals(subst!.Declaring?.Symbol, enclosing))
+        {
+            set.Report(Capability.Code(CapabilityGap.EnclosingInstance), this.Subject(parent, body, source));
             return -1;
         }
 
@@ -33,9 +50,9 @@ internal sealed partial class InstanceCollector
 
         var site = this.Subject(parent, body, source);
         var representative = erased is null ? null : subst;
-        if (representative is not null && !this.Instantiable(target, representative))
+        if (representative is not null && this.Instantiable(target, representative) is var instance && instance != Instance.Closed)
         {
-            set.Report(Capability.Code(CapabilityGap.StorageNesting), site);
+            set.Report(instance == Instance.Missing ? Capability.Code(CapabilityGap.StorageNesting) : DiagnosticCode.InternalInvariant_Kd, site);
             return -1;
         }
 
@@ -56,18 +73,39 @@ internal sealed partial class InstanceCollector
         });
     }
 
-    // Whether TyCtxt makes every local Type of a body in an instance, so that each of the item's Types exists (PD30: else PLAN G128).
-    private bool Instantiable(MirBody body, Subst representative)
+    // Whether a representative is closed and TyCtxt makes every local Type of its body in its instance, closed: Missing, a Type TyCtxt cannot
+    // make (PD30: PLAN G128), Open, a Type left open, which K 4.3's closed representatives exclude.
+    private Instance Instantiable(MirBody body, Subst representative)
     {
-        foreach (var local in body.Locals)
+        if (Open(representative.Self) || Open(representative.Declaring))
         {
-            if (this.types.Apply(local.Type, representative) is null)
+            return Instance.Open;
+        }
+
+        foreach (var type in representative.Types)
+        {
+            if (Open(type))
             {
-                return false;
+                return Instance.Open;
             }
         }
 
-        return true;
+        foreach (var local in body.Locals)
+        {
+            if (this.types.Apply(local.Type, representative) is not { } instance)
+            {
+                return Instance.Missing;
+            }
+
+            if (instance.ContainsParameter)
+            {
+                return Instance.Open;
+            }
+        }
+
+        return Instance.Closed;
+
+        static bool Open(BoundType? type) => type is { ContainsParameter: true };
     }
 
     // Whether the admission chain from an item already holds GrowthLimit items of a definition, all with other keys than a new one's.

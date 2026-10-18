@@ -7,8 +7,8 @@ using Kimi.Compiler.Mir;
 namespace Kimi.Compiler.Backend;
 
 /// <summary>The key of a body instance (R5 PD5; K package KD1): its MIR definition and its Origin-erased substitution, null exactly when
-/// the definition does not instantiate (<see cref="TyCtxt.Instantiates"/>), so that a root and an edge to it agree by construction. K3
-/// brings the erasure; until then only closed definitions are keyed.</summary>
+/// the definition does not instantiate (<see cref="TyCtxt.Instantiates"/>), so that a root and an edge to it agree by construction; the
+/// erasure is <see cref="TyCtxt.Erase(Subst)"/>.</summary>
 /// <param name="Def">The definition.</param>
 /// <param name="Erased">The erased substitution, or null for a closed definition.</param>
 internal readonly record struct Instantiation(MirDefKey Def, Subst? Erased);
