@@ -149,31 +149,32 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.Equal(["let x = missing", "x"], bodies["k"].OpaqueSites.ToArray().Select(x => c.SyntaxOf(x.Source).ToString()));
     }
 
-    // SPEC 3.8, 14.9.2, DECISIONS R4-M59: a literal whose Type holds a Never element (a Tuple's component or an array's element, through
-    // those kinds), since Binding typed it before its position's Type was decided (an if branch), is an Opaque value at its one record, and
-    // no validator finding follows; so is one holding a Never Place. A literal fitted to its expected Type, a Case payload completed at its
-    // payload Type (G130, DECISIONS BU-2) and one whose Type has a Never elsewhere (a Function's result, a Type argument) are built.
+    // SPEC 3.1.3, 3.8: a literal whose Type holds a Never element is built at its published Type, with no record and no validator finding:
+    // its own Type where no position decides one (a fresh local, an array element), the payload Type of a Case (DECISIONS BU-2), its
+    // expected Type, its join's Type for a Never Place element, and a Type with a Never elsewhere (a Function's result, a Type argument).
+    // Other joins: NeverContinuationTest.
     [Theory]
-    [InlineData("let t = if c => (a, a) else => (a, (return 1))", "(a, (return 1))")]
-    [InlineData("let t = if c => (a, (return 1)) else => (a, a)", "(a, (return 1))")]
-    [InlineData("let t = if c => ((a, a), a) else => ((a, (return 1)), a)", "((a, (return 1)), a)")]
-    [InlineData("let t = if c => [(a, a)] else => [(a, (return 1))]", "[(a, (return 1))]")]
-    [InlineData("let x = P.Pair(1, (a, (return 1)))", null)]
-    [InlineData("let x = P.Pair(1, ((return 1), a))", null)]
-    [InlineData("let x = P2.Pair((a, (return 1)), a)", null)]
-    [InlineData("let t = if c => (a, a) else => (a, x)", "(a, x)", ", x: Never")]
-    [InlineData("let t: (i64, i64) = if c => (a, a) else => (a, (return 1))", null)]
-    [InlineData("let x: P<i64> = P.Pair(1, (a, (return 1)))", null)]
-    [InlineData("let t = (a, h@move)", null)]
-    [InlineData("let n: Option<Never> = .None\n    let t = (a, n@move)", null)]
-    public void NeverElementLiteralsAreOpaque(string statement, string? literal, string parameters = "")
+    [InlineData("let t = (a, (return 1))", "(a, (return 1))", "(i64, Never)")]
+    [InlineData("let t = (a, (return 1))@move", "(a, (return 1))", "(i64, Never)")]
+    [InlineData("let t = [(a, (return 1))]", "[(a, (return 1))]", "Array<(i64, Never)>")]
+    [InlineData("let x = P.Pair(1, (a, (return 1)))", "(a, (return 1))", "(i64, i64)")]
+    [InlineData("let x = P.Pair(1, ((return 1), a))", "((return 1), a)", "(i64, i64)")]
+    [InlineData("let x = P2.Pair((a, (return 1)), a)", "(a, (return 1))", "(i64, i64)")]
+    [InlineData("let x: P<i64> = P.Pair(1, (a, (return 1)))", "(a, (return 1))", "(i64, i64)")]
+    [InlineData("let t: (i64, i64) = (a, (return 1))", "(a, (return 1))", "(i64, i64)")]
+    [InlineData("let t = if c => (a, a) else => (a, x)", "(a, x)", "(i64, i64)", ", x: Never")]
+    [InlineData("let t = (a, h@move)", "(a, h@move)", "(i64, () -> Never)")]
+    [InlineData("let n: Option<Never> = .None\n    let t = (a, n@move)", "(a, n@move)", "(i64, Option<Never>)")]
+    public void NeverElementLiteralsAreBuilt(string statement, string literal, string type, string parameters = "")
     {
         var c = Compile("enum P<T>\n    Pair(T, (T, T))\nenum P2<T>\n    Pair((T, T), T)\nfunc f(a: i64, c: bool, h: () -> Never" + parameters +
             ") -> i32\n    " + statement + "\n    return 0\n");
+        Assert.Empty(c.Binding.Issues);
+        var node = KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x is TupleLiteralKoto or ArrayLiteralKoto && x.ToString() == literal);
+        Assert.Equal(type, TyCtxt.Name((BoundType)HirTables.Meaning(node)!));
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        string[] records = literal is null ? [] : [literal];
-        Assert.Equal(records, program.Records.Where(static x => x.Subject.Module == 0).Select(x => c.SyntaxOf(x.Subject).ToString()));
+        Assert.DoesNotContain(program.Records, static x => x.Subject.Module == 0);
     }
 
     // SPEC 17.6.3 (PD22): a verification records each Scalar operand of its built-in comparison, side 0 the left and 1 the right: a

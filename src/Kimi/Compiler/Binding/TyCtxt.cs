@@ -234,7 +234,8 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 
     // SPEC 7.3: a function item's substitution, the context its Item Type binds: its function's own Type arguments, the declaring Type its
     // last Component holds and its length arguments, without Origins (an Item keeps its per-call Origins in place); a function of the Type
-    // alone, which caches and prepares nothing (DECISIONS R5-M43). A requirement Item's is its requirement call's on the conforming Self.
+    // alone, which caches and prepares nothing (DECISIONS R5-M43). A requirement Item's is its context's call (Binding's): its witness's for a
+    // closed Self, which A4 enters, the requirement's on an abstract one; what an Item runs in the checked set is Witness(item) (R5-M70).
     internal Subst? SubstOfItem(BoundType item)
     {
         if (item is not { Kind: BoundTypeKind.FunctionItem, Symbol: { Declaration: FunctionKoto function } target })
@@ -244,7 +245,6 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 
         if (function.IsRequirement)
         {
-            // Until K6b (DECISIONS R5-M43, R5-M67): the requirement call of the Item's context, built and cached by Binding; K6b gives the witness's.
             return binding.FunctionItemContext(item, false) is { } context ? this.SubstOf(context) : null;
         }
 
@@ -261,9 +261,11 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // arguments; its Origins are the analyses' to relate.
     internal Subst Synthesized(BindingSymbol target, BoundType? declaring, ReadOnlySpan<BoundType?> types) => this.Intern(target, null, declaring, types, [], [], []);
 
-    // A call a compiler function makes of a requirement on a Self (a comparison's Requirement leaf, a compiler function's call of a user
-    // witness); its Origins are the analyses' to relate.
-    internal Subst Synthesized(BindingSymbol requirement, BoundType self) => this.Intern(requirement, self, null, [], [], [], []);
+    // A call of a requirement on a Self through a Contract reference that a compiler function or a requirement's function item makes (a
+    // comparison's Requirement leaf, a compiler function's call of a user witness, an Item's call): a bound reference is its declaring Type
+    // (F fact 5, as SubstOf holds a call's), a Contract's own Type binds nothing; its Origins are the analyses' to relate.
+    internal Subst Synthesized(BindingSymbol requirement, BoundType self, BoundType reference)
+        => this.Intern(requirement, self, ReferenceEquals(reference.Symbol?.Type, reference) ? null : reference, [], [], [], []);
 
     // SPEC 8.2, 8.10: a declared Type in the instance a substitution makes, which Binding's storage instantiation computes until R7 moves it
     // here; the identity keeps the Type.

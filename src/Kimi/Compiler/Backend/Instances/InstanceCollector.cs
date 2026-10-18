@@ -1,12 +1,12 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the checked set (SPEC 8.15.3, IMPL 21.3.1; R5 package K 4.3-4.9; DECISIONS R5-M35, R5-M40, R5-M43, R5-M44, R5-M52-55, R5-M60,
-// R5-M67): every body instance, type-driven item and shim a root requires through runtime or check-only edges, its instance-stage records,
-// and the one resolution of each site's target that code generation reads.
+// R5-M67, R5-M70): every body instance, type-driven item and shim a root requires through runtime or check-only edges, its instance-stage
+// records, and the one resolution of each site's target that code generation reads.
 // Input: a built, validated MirProgram; the number of root modules (a range of Source.Module, not a mode); TyCtxt (Instantiates, Erase,
-// Compose, Apply, Implementation, Witness, Signature, SubstOfClosure, SubstOfItem, Synthesized); MirCases (Views); MirTypes.MayNeedDrop;
-// DropGlue.Parts; AdtDef.FindField; MirProgram.StaticInit; the Target and Layout columns of the intrinsic rows; the capability table; the
-// compilation's Layout, whose outcomes the collector alone maps (R5-M37).
+// Compose, Apply, Implementation, Witness, Comparison, OwnRequirement, Published, Signature, SubstOfClosure, SubstOfItem, Synthesized);
+// MirCases (Views); MirTypes.MayNeedDrop; DropGlue.Parts; AdtDef.FindField; MirProgram.StaticInit; the Target and Layout columns of the
+// intrinsic rows; the capability table; the compilation's Layout, whose outcomes the collector alone maps (R5-M37).
 // Output: the CheckedSet of the program version: the roots, in MirProgram.Bodies order, then the items a FIFO worklist admits, each with one
 // target per resolved site of its body, in location order, with whether a runtime path reaches the site; and its records, which
 // Compilation.MirRecords publishes under MIR code generation (K4b); for code generation (R5 C0b1) also an item's Types (TypeOf) and the
@@ -15,10 +15,11 @@
 // Edges (K 4.5, InstanceCollector.Edges.cs): one template per body and version lists its sites that may carry a target (Fn, Requirement and
 // Value calls and the intrinsics the Target column names, a Virtual call none, X5; a Closure environment, an erasure and a function item
 // constant; a Drop), each with its runtime bit from one MirReach walk without CheckTarget edges. Replaying an item's template resolves
-// each site under the item's representative, a Requirement call's by its witness there (InstanceCollector.Witnesses.cs: a body, a Builtin
-// or a property-witness shim keyed by the erased Self, or a gap); a type-driven item's targets follow from its representative Type
-// (InstanceCollector.Glue.cs: a DropGlue's direct parts, DropGlue.Parts; a property-witness setter's Field glue). K6b adds the requirement
-// Items, the formatting and writer witnesses and a Builtin's leaves (DECISIONS R5-M67), K8 the object rows.
+// each site under the item's representative, a Requirement call's, a requirement Item's, a bodyless callee's published row's and an erased
+// writer's by the witness there (InstanceCollector.Witnesses.cs: a body, a Builtin or a property-witness shim keyed by its compiler
+// function or Field and the erased Self, or a gap); a type-driven item's targets follow from its representative Type
+// (InstanceCollector.Glue.cs: a DropGlue's direct parts, DropGlue.Parts; an adapter's Item, a comparison shim's leaf witnesses,
+// TyCtxt.Comparison; a property-witness setter's Field glue). K8 adds the object rows.
 // Capability (K 4.7, InstanceCollector.Capabilities.cs): the definition-stage check (A3b) of every operation of a root-module body whose
 // Types are closed, every block included, once per definition and location; Binding's refusals are Opaque values, so it never repeats them.
 // An operation whose Types depend on slots is a template site, checked in each instance with its Types there, once per location.
