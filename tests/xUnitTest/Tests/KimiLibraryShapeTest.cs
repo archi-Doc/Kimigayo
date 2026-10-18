@@ -584,7 +584,7 @@ public class KimiLibraryShapeTest
     {
         var record = Record(path);
         var type = Library.Value.Binding.SelfType(record.SymbolOf()!);
-        var pool = new AggregateLayoutPool();
+        var pool = new AggregateLayoutPool(Library.Value.Layout);
         if (AdtDef.Destructor(type) is { } destructor)
         {
             pool.RegisterDestructor(destructor, 0);

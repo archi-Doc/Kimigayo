@@ -274,7 +274,7 @@ public class DictionaryLibraryTest
     {
         var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]");
         var pointer = c.Library.DictionaryUnlink.Parameters[0].Type.TypeOf()!;
-        var layout = Assert.IsType<AggregateLayout>(new AggregateLayoutPool().Get(pointer.Components[0]));
+        var layout = Assert.IsType<AggregateLayout>(new AggregateLayoutPool(c.Layout).Get(pointer.Components[0]));
         Assert.True(layout.CLayout);
         Assert.Equal(56, layout.Value.Layout.Size);
         Assert.Equal(8, layout.Value.Layout.Alignment);

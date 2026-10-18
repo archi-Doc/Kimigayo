@@ -1918,7 +1918,8 @@ structure is recorded here by the unit that first implements it.
     `MissingNativeRequirement_Kd` for the missing-supply cause only.
 - **R5-M19 `Layout`** (2026-10-18, planning session; plan P7a, package §3.5 and §7, S2-S4 X18, X31, X34 and O9, under R5-M18;
   promoted under R5-M14) A permanent Backend component that owns the storage layout of a closed Type for every generator:
-  `Layout.Of(BoundType)` returns its `ValueLowering` (size, alignment, stride, Field offsets, LLVM representation). P7a's rows:
+  `Layout.Of(BoundType)` (static here; an instance method per compilation since R5-M37) returns its `ValueLowering` (size, alignment,
+  stride, Field offsets, LLVM representation). P7a's rows:
   IMPL 21.1.3's scalars (the table that was `WindowsLowering`'s), Unit, string, Never (zero-sized, laid out as Unit), borrows,
   object borrows and raw pointers (one pointer, `RuntimeAbi.StringReference`), object handles (one word), function values
   (16 bytes), `Loan<T>` (the record of a struct without stored Fields), and the Slice, Array and Dictionary handles (2, 3 and 7
@@ -2121,7 +2122,8 @@ structure is recorded here by the unit that first implements it.
   and the open, derived and empty re-check are deleted, since Binding rejects those), the `i32` tag before the payload union,
   zero-sized parts kept, and the complete base with its tail padding as the prefix (X1; a derived struct has no C layout, SPEC
   6.7.1). The `Loan<T>` row is deleted: struct placement gives the identical record. Each representation has one record, shared by
-  every Type, compilation and thread (a concurrent table keyed by storage text, size, alignment and offsets; per-thread scratch), so
+  every Type, compilation and thread (a concurrent table keyed by storage text, size, alignment and offsets; per-thread scratch;
+  superseded by R5-M37: records and scratch per compilation), so
   a call that finds its records allocates nothing. The old pool keeps its own recursion (the Origin guard, Never's null through the
   scalar gate, destruction, collection Fields, the count and depth bounds) and calls `Layout.Of` where it placed, after its shape
   interning, mapping CLayout to its refusal and Limit to its resource failure.
@@ -2142,7 +2144,8 @@ structure is recorded here by the unit that first implements it.
     memoizes per body. P7c takes the full process before any MIR caller of `Layout.Of` (C2a, C3c) and owns the memo, the depth and
     cycle guard, the count bound (`[2147483648 of ()]` gets OK today), a Limit that is not `default(Result)`, and the scope of the
     process-wide record table (its lifetime in the LSP server).
-  - Rejected: a per-compilation `Layout` instance (R5-M19 fixes the static `Layout.Of`, and rows and placement would split);
+  - Rejected: a per-compilation `Layout` instance (R5-M19 fixes the static `Layout.Of`, and rows and placement would split;
+    superseded by R5-M37);
     `Layout.Place(fields)` fed by the old pool's records (a second entry beside `Of`); comparing records instead of the layout-mode
     flag in the old pool's shape interning (a struct of a raw pointer and an `isize` would stop sharing the Slice handle's shape);
     keeping the per-Field C-mode check in the old pool (a second owner of X18's rule); the C-mode refusal of an alignment above 16
@@ -2195,3 +2198,11 @@ structure is recorded here by the unit that first implements it.
   - Rejected: both readers on the SPEC rule (the old generator refuses that program, `GenerationFailed_Kd`); a copy of the old
     rule in Emission (two rules for one fact); a mode parameter on `Instantiates`; the old view in `CloseClosureTypes` (the
     collector would key a generic closure as closed).
+- **R5-M37 `Layout` per compilation: memo, bounds and outcomes** (2026-10-18, planning session; plan P7c, full process,
+  `draft/Sketches/R5 P7c/P7c-package.md`; package C §3.5 and §3.13, K §4.3 and §4.8, S2-S4 X18; supersedes R5-M19's static
+  `Layout.Of`, and R5-M29's rejected per-compilation instance and its records "shared by every Type, compilation and thread")
+  - `Layout` is one instance per compilation, `Compilation.Layout`. `Of(BoundType)` is its instance method, the one entry for every
+    closed Type of that compilation; the old pool takes the instance through `BodyLowering`. IMPL 21.1.3's rows stay static in
+    `Layout.Row`, read only by `WindowsLowering.GetValue` until G8 (then private). The records and the placement scratch belong to
+    the instance; the process-wide concurrent table and the thread-static scratch are deleted; one thread at a time.
+  - R5-M29's reason no longer holds: rows stay one static owner and placement needs a per-program owner for its memo.

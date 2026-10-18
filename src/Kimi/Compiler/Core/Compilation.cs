@@ -5,6 +5,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Arc.Collections;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Kimi.Compiler.Target;
@@ -122,6 +123,11 @@ public partial class Compilation
 
     /// <summary>Gets the runtime location texts of this compilation's syntax (SPEC 22.5.1), which both generators read.</summary>
     internal SourceLocationTable Locations => this.locations ??= new(this);
+
+    private Layout? layout;
+
+    /// <summary>Gets the storage layout of this compilation's closed Types (IMPL 21.1), which both generators read.</summary>
+    internal Layout Layout => this.layout ??= new();
 
     /// <summary>Gets the facts Binding publishes to Hover, the LSP and tests.</summary>
     internal SemanticQuery Semantics => this.Binding.Semantics;

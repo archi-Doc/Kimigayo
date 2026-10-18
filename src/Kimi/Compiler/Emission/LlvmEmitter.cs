@@ -32,7 +32,7 @@ public sealed partial class LlvmEmitter
     internal LlvmEmitter(Compilation compilation)
     {
         this.compilation = compilation;
-        this.lowering = new(compilation.Locations);
+        this.lowering = new(compilation.Locations, compilation.Layout);
         // A Dictionary helper row's Entries callee is generic over the entry Types (Binding.DictionaryStorageCall fails closed on others).
         this.lowering.RequireDictionaryOperation = (callee, key, value)
             => this.generics.RequireSourceCall(this.compilation.Binding.DictionaryStorageCall(callee, key, value));

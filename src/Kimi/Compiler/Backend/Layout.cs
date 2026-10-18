@@ -1,7 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the storage layout of a closed Type in the windows-x64-v1 profile (IMPL 21.1; plan P7a-P7c; DECISIONS R5-M19, R5-M29): its
-// size, alignment, stride, Field offsets and LLVM representation, for every generator (PD2: the old pool calls it, never a copy).
+// Owns the storage layout of a closed Type in the windows-x64-v1 profile (IMPL 21.1; plan P7a-P7c; DECISIONS R5-M19, R5-M29,
+// R5-M37): its size, alignment, stride, Field offsets and LLVM representation, for every generator (PD2: the old pool calls it,
+// never a copy). One instance per compilation (Compilation.Layout) holds the placement records; IMPL 21.1.3's rows are static (Row).
 // Rows: IMPL 21.1.3's scalars, Unit, string, Never, borrows and raw pointers, object and function handles, and the sequence handles
 // (Slice, Array, Dictionary words). Placement (Layout.Placement.cs): structs (Loan<T> among them), Tuples, fixed arrays, enums,
 // Closures and Function Items. P7c brings the Type memo, typed limits, the count bound and the depth and cycle guard (R5-M29), before
@@ -9,21 +10,21 @@
 // Input: a closed Type. A borrow, raw pointer, handle or sequence is laid out without reading its referent or element Type (X34).
 // Output: a Result (S2-S4 X18): OK with the Type's ValueLowering; CLayout with the C-layout instance, at any depth, that stores a
 // zero-sized Field; or Limit, when a size or offset exceeds 2^31 - 1. A Type without a row is an internal error.
-// Invariants: deterministic; one shared record per representation, so a call that finds its records allocates nothing; the
-// complete base is a prefix of a derived struct, its tail padding included (X1); Never is zero-sized, laid out as Unit (IMPL
-// 21.1.3), while the old Emission keeps Never without a representation (WindowsLowering.GetValue's gate), so legacy .ll is
-// unchanged. No Type memo until P7c: Binding keeps interned Types across passes and re-substitutes their stored Types, so the old
-// pool memoizes per body.
+// Invariants: deterministic; one record per representation, so a call that finds its records allocates nothing; the complete base
+// is a prefix of a derived struct, its tail padding included (X1); Never is zero-sized, laid out as Unit (IMPL 21.1.3), while the
+// old Emission keeps Never without a representation (WindowsLowering.GetValue's gate), so legacy .ll is unchanged. No Type memo
+// until P7c: Binding keeps interned Types across passes and re-substitutes their stored Types, so the old pool memoizes per body.
 // Must not read syntax (AdtDef.IsCLayout is the C-layout fact), Origins, HIR, MIR or ownership state, decide destruction (the old
-// pool keeps its callbacks until G8), lay out IMPL 21.1.3's nonnull Option before PLAN U8 (STATUS), or use LINQ.
+// pool keeps its callbacks until G8), lay out IMPL 21.1.3's nonnull Option before PLAN U8 (STATUS), use LINQ, or be called
+// concurrently on one instance.
 
 using System.Globalization;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Backend;
 
-/// <summary>The storage layout of closed Types (IMPL 21.1).</summary>
-internal static partial class Layout
+/// <summary>The storage layout of one compilation's closed Types (IMPL 21.1).</summary>
+internal sealed partial class Layout
 {
     private const string Removal = "R8 declares the Slice, Array and Dictionary handles in the Kimigayo library, whose struct placement lays them out.";
 
@@ -45,19 +46,10 @@ internal static partial class Layout
 
     private static readonly Dictionary<BoundType, ValueLowering> Primitives = CreatePrimitives();
 
-    /// <summary>Gets the layout and representation of a closed Type.</summary>
-    /// <param name="type">A Type of one of the laid-out rows.</param>
-    /// <returns>The shared representation record, or the Limit or CLayout result of a placement.</returns>
-    internal static Result Of(BoundType type) => type.Kind switch
-    {
-        BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.FunctionItem => Place(type),
-        BoundTypeKind.FixedArray => PlaceArray(type),
-        _ when AdtDef.IsStruct(type) => Place(type),
-        _ when AdtDef.IsEnum(type) => PlaceEnum(type),
-        _ => new(Row(type), null),
-    };
-
-    private static ValueLowering Row(BoundType type) => type.Kind switch
+    /// <summary>Gets IMPL 21.1.3's static row of a Type, which the old scalar-value gate reads until G8.</summary>
+    /// <param name="type">A scalar, Unit, string, Never, borrow, raw pointer, handle or sequence Type.</param>
+    /// <returns>The row's shared record; a Type without a row is an internal error.</returns>
+    internal static ValueLowering Row(BoundType type) => type.Kind switch
     {
         BoundTypeKind.Primitive => Primitives.GetValueOrDefault(type) ?? throw Outside(type),
         BoundTypeKind.Semantics => type.Semantics switch
@@ -73,6 +65,18 @@ internal static partial class Layout
         BoundTypeKind.Array => ArrayHandle,
         BoundTypeKind.Dictionary => DictionaryHandle,
         _ => throw Outside(type),
+    };
+
+    /// <summary>Gets the layout and representation of a closed Type of this compilation.</summary>
+    /// <param name="type">A Type of one of the laid-out rows.</param>
+    /// <returns>The shared representation record, or the Limit or CLayout result of a placement.</returns>
+    internal Result Of(BoundType type) => type.Kind switch
+    {
+        BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.FunctionItem => this.Place(type),
+        BoundTypeKind.FixedArray => this.PlaceArray(type),
+        _ when AdtDef.IsStruct(type) => this.Place(type),
+        _ when AdtDef.IsEnum(type) => this.PlaceEnum(type),
+        _ => new(Row(type), null),
     };
 
     private static InvalidOperationException Outside(BoundType type) => new("Layout has no row for the Type " + type.Name + ".");

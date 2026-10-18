@@ -34,7 +34,7 @@ public class LayoutTest
     public void ScalarsFollowTheProfileRows(string type, string storage, string computation, int size)
     {
         // IMPL 21.1.3: size, alignment and stride are equal; arguments pass the computation Type; the old gate reads the record.
-        var value = Layout.Of(BoundType.Primitives[type]).Value!;
+        var value = Layout.Row(BoundType.Primitives[type]);
         Assert.Equal((storage, size, size, size, computation, computation), Row(value));
         Assert.Same(value, WindowsLowering.GetValue(BoundType.Primitives[type]));
     }
@@ -42,11 +42,11 @@ public class LayoutTest
     [Fact]
     public void UnitStringAndNeverUseTheRuntimeRecords()
     {
-        Assert.Same(RuntimeAbi.Unit, Layout.Of(BoundType.Unit).Value);
-        Assert.Same(RuntimeAbi.String, Layout.Of(BoundType.String).Value);
+        Assert.Same(RuntimeAbi.Unit, Layout.Row(BoundType.Unit));
+        Assert.Same(RuntimeAbi.String, Layout.Row(BoundType.String));
 
         // IMPL 21.1.3: Never has size 0, alignment 1 and stride 0, laid out as Unit; the old gate keeps it without a record (X31).
-        var never = Layout.Of(BoundType.Never).Value!;
+        var never = Layout.Row(BoundType.Never);
         Assert.Same(RuntimeAbi.Unit, never);
         Assert.Equal(("void", 0, 1, 0, "void", null), Row(never));
         Assert.Null(WindowsLowering.GetValue(BoundType.Never));
@@ -60,10 +60,10 @@ public class LayoutTest
         var c = CompilationTestHelper.BindSuccess("let a: Option<Never> = .None");
         var option = Variable(c, "a");
         Assert.Same(BoundType.Never, option.Components[0]);
-        var value = Layout.Of(option).Value!;
+        var value = c.Layout.Of(option).Value!;
         Assert.Equal(("{ i32, { [0 x i8], [0 x i8] } }", 4, 4, 4, "{ i32, { [0 x i8], [0 x i8] } }", "ptr"), Row(value));
         Assert.Equal(new[] { 0, 4 }, value.Layout.FieldOffsets.ToArray());
-        Assert.Null(new AggregateLayoutPool().Get(option));
+        Assert.Null(new AggregateLayoutPool(c.Layout).Get(option));
     }
 
     [Theory]
@@ -82,10 +82,10 @@ public class LayoutTest
         // C mode keeps the written order; an enum is an i32 tag, then its payload union. The old pool's record is Layout's.
         var c = CompilationTestHelper.BindSuccess(declarations + "\nfunc probe(value: " + type + ") => ()");
         var probed = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters[0].Type.TypeOf()!;
-        var value = Layout.Of(probed).Value!;
+        var value = c.Layout.Of(probed).Value!;
         Assert.Equal((storage, size, alignment, size, storage, "ptr"), Row(value));
         Assert.Equal(offsets, string.Join(',', value.Layout.FieldOffsets.ToArray()));
-        Assert.Same(value, new AggregateLayoutPool().Get(probed)!.Value);
+        Assert.Same(value, new AggregateLayoutPool(c.Layout).Get(probed)!.Value);
     }
 
     [Fact]
@@ -94,14 +94,14 @@ public class LayoutTest
         // A Closure stores its captures like a Tuple; a Function Item's Components are generic arguments, so it stores nothing.
         var c = CompilationTestHelper.BindSuccess("func g<T>() -> i32 => 1\nlet item = g<i64>\nlet x: u8 = 4\nlet y: i64 = 1\nlet f = func [x, y] () -> i64 => y");
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous).ClosureOf()!.EnvironmentType!;
-        var environment = Layout.Of(closure).Value!;
+        var environment = c.Layout.Of(closure).Value!;
         Assert.Equal(("{ [0 x i64], [16 x i8] }", 16, 8), (environment.Layout.StorageType, environment.Layout.Size, environment.Layout.Alignment));
         Assert.Equal(new[] { 8, 0 }, environment.Layout.FieldOffsets.ToArray());
-        Assert.Same(environment, new AggregateLayoutPool().Get(closure)!.Value);
+        Assert.Same(environment, new AggregateLayoutPool(c.Layout).Get(closure)!.Value);
 
         var item = Variable(c, "item");
         Assert.Equal(BoundTypeKind.FunctionItem, item.Kind);
-        Assert.Same(Layout.Of(c.Binding.SelfType(c.Library.GetSymbol(KimiDeclarationId.Loan)!)).Value, Layout.Of(item).Value);
+        Assert.Same(c.Layout.Of(c.Binding.SelfType(c.Library.GetSymbol(KimiDeclarationId.Loan)!)).Value, c.Layout.Of(item).Value);
     }
 
     [Theory]
@@ -115,14 +115,14 @@ public class LayoutTest
         // only Kimigayo-mode Fields. The old pool's records are Layout's.
         var c = CompilationTestHelper.BindSuccess("#Layout(\"C\")\nstruct C\n    var x: u8\n    var y: i32\nopen struct B\n    var c: C\n    var t: u8\nstruct E: B\n    var u: u8\nstruct D: B\n    var u: u8\n    var w: i64\nlet p: raw/" + derivedName + " = null");
         var derived = Variable(c, "p").Components[0];
-        var whole = Layout.Of(derived).Value!;
-        var prefix = Layout.Of(AdtDef.Base(derived)!).Value!;
+        var whole = c.Layout.Of(derived).Value!;
+        var prefix = c.Layout.Of(AdtDef.Base(derived)!).Value!;
         Assert.Equal(("{ [0 x i32], [12 x i8] }", 12, 4), (prefix.Layout.StorageType, prefix.Layout.Size, prefix.Layout.Alignment));
         Assert.Equal(new[] { 0, 8 }, prefix.Layout.FieldOffsets.ToArray());
         Assert.Equal((storage, size, alignment), (whole.Layout.StorageType, whole.Layout.Size, whole.Layout.Alignment));
         Assert.Equal(offsets, string.Join(',', whole.Layout.FieldOffsets.ToArray()));
 
-        var old = new AggregateLayoutPool().Get(derived)!;
+        var old = new AggregateLayoutPool(c.Layout).Get(derived)!;
         Assert.Same(whole, old.Value);
         Assert.Same(prefix, old.Base!.Value);
     }
@@ -138,11 +138,11 @@ public class LayoutTest
         var c = CompilationTestHelper.Parse(CLayoutGeneric + "struct Q<T>\n    var value: T\n" + use);
         c.Bind();
         var option = Variable(c, "x");
-        var result = Layout.Of(option);
+        var result = c.Layout.Of(option);
         Assert.Null(result.Value);
         Assert.Equal("P", result.CLayout!.Name);
-        Assert.Equal(0, Layout.Of(result.CLayout.Components[0]).Value!.Layout.Size);
-        var pool = new AggregateLayoutPool();
+        Assert.Equal(0, c.Layout.Of(result.CLayout.Components[0]).Value!.Layout.Size);
+        var pool = new AggregateLayoutPool(c.Layout);
         Assert.Null(pool.Get(option));
         Assert.Null(pool.ResourceLimitFailure);
     }
@@ -156,8 +156,8 @@ public class LayoutTest
         var declared = Variable(c, "x");
         var instances = calls.Select(x => c.Types.Apply(declared, c.Types.SubstOf(x!)!)!).ToArray();
         Assert.Equal([BoundType.Unit, BoundType.I32], instances.Select(static x => x.Components[0].Components[0]));
-        Assert.Same(instances[0].Components[0], Layout.Of(instances[0]).CLayout);
-        Assert.Equal(("{ i32, { [0 x i32], [8 x i8] } }", 12), (Layout.Of(instances[1]).Value!.Layout.StorageType, Layout.Of(instances[1]).Value!.Layout.Size));
+        Assert.Same(instances[0].Components[0], c.Layout.Of(instances[0]).CLayout);
+        Assert.Equal(("{ i32, { [0 x i32], [8 x i8] } }", 12), (c.Layout.Of(instances[1]).Value!.Layout.StorageType, c.Layout.Of(instances[1]).Value!.Layout.Size));
     }
 
     [Theory]
@@ -169,7 +169,7 @@ public class LayoutTest
     {
         // IMPL 21.3.2: sizes and offsets are bounded by 2^31 - 1 (a size bound here; P7c types the count and depth bounds).
         var c = CompilationTestHelper.BindSuccess(declarations + "func probe(value: " + type + ") => ()");
-        var result = Layout.Of(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters[0].Type.TypeOf()!);
+        var result = c.Layout.Of(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters[0].Type.TypeOf()!);
         Assert.Equal(default, result);
     }
 
@@ -182,7 +182,7 @@ public class LayoutTest
     public void BorrowsAndRawPointersAreOnePointer(SemanticsKind semantics)
     {
         // IMPL 21.1.3: 8 / 8 / 8, whatever the referent.
-        var value = Layout.Of(new BoundType("p", BoundTypeKind.Semantics, semantics: semantics, components: [BoundType.String])).Value!;
+        var value = Layout.Row(new BoundType("p", BoundTypeKind.Semantics, semantics: semantics, components: [BoundType.String]));
         Assert.Same(RuntimeAbi.StringReference, value);
         Assert.Equal(("ptr", 8, 8, 8, "ptr", "ptr"), Row(value));
     }
@@ -194,10 +194,10 @@ public class LayoutTest
     public void ObjectHandlesAreOneWordForEveryPayload(SemanticsKind semantics)
     {
         var handle = new BoundType("h", BoundTypeKind.Semantics, semantics: semantics, components: [BoundType.I32]);
-        var value = Layout.Of(handle).Value!;
+        var value = Layout.Row(handle);
         Assert.Equal(("[8 x i8]", 8, 8, 8, "[8 x i8]", "ptr"), Row(value));
-        Assert.Same(value, Layout.Of(new BoundType("h", BoundTypeKind.Semantics, semantics: semantics, components: [BoundType.String])).Value);
-        Assert.Same(value, new AggregateLayoutPool().Get(handle)!.Value);
+        Assert.Same(value, Layout.Row(new BoundType("h", BoundTypeKind.Semantics, semantics: semantics, components: [BoundType.String])));
+        Assert.Same(value, new AggregateLayoutPool(new Layout()).Get(handle)!.Value);
     }
 
     [Fact]
@@ -205,10 +205,10 @@ public class LayoutTest
     {
         // IMPL 21.1.3: a common function value is 16 bytes with alignment 8: code and environment words.
         var function = new BoundType("fn", BoundTypeKind.Function, components: [BoundType.I32, BoundType.I32]);
-        var value = Layout.Of(function).Value!;
+        var value = Layout.Row(function);
         Assert.Equal(("[16 x i8]", 16, 8, 16, "[16 x i8]", "ptr"), Row(value));
         Assert.Equal(new[] { 0, 8 }, value.Layout.FieldOffsets.ToArray());
-        Assert.Same(value, new AggregateLayoutPool().Get(function)!.Value);
+        Assert.Same(value, new AggregateLayoutPool(new Layout()).Get(function)!.Value);
     }
 
     [Theory]
@@ -220,13 +220,13 @@ public class LayoutTest
         // SPEC 4.8.6, 4.9.5: the buffer pointer, then the length and further words; the old pool's handle record is Layout's.
         BoundType[] components = kind == BoundTypeKind.Dictionary ? [BoundType.String, BoundType.I32] : [BoundType.I32];
         var sequence = new BoundType("s", kind, components: components);
-        var value = Layout.Of(sequence).Value!;
+        var value = Layout.Row(sequence);
         var storage = "{ [0 x i64], [" + (words * 8) + " x i8] }";
         Assert.Equal((storage, words * 8, 8, words * 8, storage, "ptr"), Row(value));
         Assert.Equal(Enumerable.Range(0, words).Select(static x => x * 8), value.Layout.FieldOffsets.ToArray());
-        Assert.Same(value, Layout.Of(new BoundType("s", kind, components: [.. components.Select(static _ => BoundType.Boolean)])).Value);
+        Assert.Same(value, Layout.Row(new BoundType("s", kind, components: [.. components.Select(static _ => BoundType.Boolean)])));
 
-        var layout = new AggregateLayoutPool().Get(sequence)!;
+        var layout = new AggregateLayoutPool(new Layout()).Get(sequence)!;
         Assert.Same(value, layout.Value);
         Assert.Equal(words, layout.Fields.Length);
     }
@@ -237,15 +237,15 @@ public class LayoutTest
         // IMPL 21.1.3: Loan<T> has size 0, alignment 1 and stride 0, the one record of a struct without stored Fields.
         var c = CompilationTestHelper.BindSuccess("()");
         var loan = c.Binding.SelfType(c.Library.GetSymbol(KimiDeclarationId.Loan)!);
-        var value = Layout.Of(loan).Value!;
+        var value = c.Layout.Of(loan).Value!;
         Assert.Equal(("{ [0 x i8], [0 x i8] }", 0, 1, 0, "{ [0 x i8], [0 x i8] }", "ptr"), Row(value));
         Assert.Equal(0, value.Layout.FieldOffsets.Length);
-        Assert.Same(value, new AggregateLayoutPool().Get(loan)!.Value);
+        Assert.Same(value, new AggregateLayoutPool(c.Layout).Get(loan)!.Value);
     }
 
     [Fact]
     public void ATypeWithoutARowIsAnInternalError()
-        => Assert.Throws<InvalidOperationException>(() => Layout.Of(new BoundType("T", BoundTypeKind.Parameter)));
+        => Assert.Throws<InvalidOperationException>(() => new Layout().Of(new BoundType("T", BoundTypeKind.Parameter)));
 
     [Trait("Purpose", "Allocation")]
     [Fact]
@@ -267,7 +267,7 @@ public class LayoutTest
         {
             foreach (var type in types)
             {
-                size += Layout.Of(type).Value?.Layout.Size ?? 0;
+                size += c.Layout.Of(type).Value?.Layout.Size ?? 0;
             }
         });
         Assert.Equal(0, allocated);
