@@ -25,8 +25,9 @@
 # -Pipeline mir (R3-R5) runs every compiler process of the run with KIMI_PIPELINE=mir; the default is legacy.
 #   ./scripts/verify.ps1 -Class XunitTest.PipelineSwitchTest -Pipeline mir
 # -Codegen mir (R5, until G4) also sets KIMI_CODEGEN=mir, MIR code generation ("sel"), which needs -Pipeline mir; the default is legacy.
-# A sel run that wrote test results then runs the pending ledger report (codegen-pending.ps1): codegen-pending.json and the
-# summary.json field codegenPending; the failing set does not fail it, a malformed ledger does.
+# Its tests print theory arguments in full, and a sel run that wrote test results then runs the pending ledger report
+# (codegen-pending.ps1): codegen-pending.json and the summary.json field codegenPending; the failing set does not fail it,
+# a malformed ledger or a case name run twice does.
 #   ./scripts/verify.ps1 -Class XunitTest.PipelineSwitchTest -Pipeline mir -Codegen mir
 #
 # Tests run up to -TestParallel collections at a time (default up to 8), respecting disabled
@@ -170,7 +171,9 @@ function Invoke-Tests([string] $configuration, [string[]] $filters, [string] $ta
     try {
         $env:KIMI_FIXTURE_DIRECTORY = $fixtureDirectory
         $parallelMode = if ($TestParallel -eq 1) { 'none' } else { 'collections' }
-        & dotnet $dll -parallelMode $parallelMode -maxThreads $TestParallel -failSkips -result-xml $xml @filters *> $log
+        # The pending ledger names a sel case by its full name (R5-M66), so xUnit prints its arguments uncut.
+        $names = if ($Codegen -eq 'mir') { @('-printMaxStringLength', '0', '-printMaxEnumerableLength', '0') } else { @() }
+        & dotnet $dll -parallelMode $parallelMode -maxThreads $TestParallel -failSkips -result-xml $xml @names @filters *> $log
         $code = $LASTEXITCODE
     }
     finally { $env:KIMI_FIXTURE_DIRECTORY = $previousDirectory }
