@@ -1825,7 +1825,8 @@ structure is recorded here by the unit that first implements it.
   the Backend reading it (a non-neutral input); `AggregateLayout` in the records (the old pool as a Backend input); a scalar
   flag beside `ValueLowering` (a second statement of SPEC 21.3.1's argument form); a needs flag on the built helper (the
   collector reads rows by kind before any `ValueLowering` exists); two bool needs (ARCH's one-bool parameter limit). The
-  Dictionary rows (P1c) and the count of the `DictionaryStorage` functions are refined by R5-M27.
+  Dictionary rows (P1c) and the count of the `DictionaryStorage` functions are refined by R5-M27, the formatting rows (P1d) by
+  R5-M30.
 - **R5-M17 `LlvmScalarText`** (2026-10-18, planning session; plan P4a, P4b, package §3.4, S2-S4 X36, promoted under R5-M14) A
   permanent Backend component owning the LLVM text of scalar arithmetic, numeric conversions and their checks: the instruction
   (`WriteOperation`), the overflow intrinsic (`WriteOverflowChecked`), the signed quotient with its zero and minimum / −1 checks
@@ -1922,8 +1923,9 @@ structure is recorded here by the unit that first implements it.
   gate remains. The package's "explicit Never guard" in the old pool is this existing gate: it gives Never no record, so the old
   pool keeps its null for Never (X31; STATUS), as `GetCore`'s comment and `LayoutTest` state. Rejected: re-pointing the gate's
   callers to `Layout.Of` (frozen lowering that relies on the gate's null for every other Type); a per-Type memo (no P7a row
-  depends on more than the Type's kind; placement brings it); `Loan<T>` as Unit's record (P7b's placement would then change the
-  old pool's `Loan<T>` record and argument slot); a separate Never test in the old pool beside the gate.
+  depends on more than the Type's kind; placement brings it — superseded by R5-M29, which stages the memo to P7c); `Loan<T>` as
+  Unit's record (P7b's placement would then change the old pool's `Loan<T>` record and argument slot); a separate Never test in the
+  old pool beside the gate.
 - **R5-M20 Runtime location text in Core** (2026-10-18, planning session; plan P5, package F §4.10 and §5, OQ4) A permanent
   Core component, `SourceLocationTable` (`Core/SourceLocationTable.cs`), one per compilation as `Compilation.Locations`:
   `Text(SourceRef)` resolves the site through `Compilation.SyntaxOf` and renders SPEC 22.5.1's `path:line:column` with IMPL
@@ -2051,7 +2053,8 @@ structure is recorded here by the unit that first implements it.
   Emission's attribute walk and `Open` re-check. Rejected: a C-layout instance view in `TyCtxt.Instances` (X26); keeping
   `cLayouts` beside the fact.
 - **R5-M27 Legacy Dictionary helper rows** (2026-10-18, planning session; plan P1c and its follow-up P1c2, PD2, S2-S4 X4;
-  refines R5-M16; refined by R5-M28) `DictionaryHelperRow` is one static row per `DictionaryHelperKind` (CheckKey, Place, Drop), read by
+  refines R5-M16; refined by R5-M28 and by R5-M30, which adds the formatting rows and the `HelperNeeds` member
+  `FormattingRuntime`) `DictionaryHelperRow` is one static row per `DictionaryHelperKind` (CheckKey, Place, Drop), read by
   `LegacyRuntimeHelpers.DictionaryRow(kind)`, which fails closed: `Kind`; `Shape`, the ABI over the generator's name suffix and
   the key and value descriptors, with the kind's name prefix inside it; `Write`, the body's writer over the helper and the ABIs
   of its two callees; `Entries`, the `DictionaryStorage` function generic over the entry Types, which a helper reaches through
@@ -2060,8 +2063,8 @@ structure is recorded here by the unit that first implements it.
   `KimiLibrary` declaration the old emitter resolves each from, until F2c's symbol view; the emitter maps a row's `Entries`
   callee to its generic function exhaustively and fails closed on any other. `CallsEntries(destroysEntries)` is the one decision
   whether a helper calls its `Entries` function (always, or under `ElementGlue` only when an entry needs destruction), read by
-  BodyLowering's `Related`, `HasUnresolvedReference` and the writer. `HelperNeeds` is shared by the Array and Dictionary rows:
-  `ArrayRuntime` (every Dictionary kind), `DictionaryRuntime` (P1c2; CheckKey, whose duplicate callback reports through the
+  BodyLowering's `Related` and `LegacyRuntimeHelpers.HasUnresolvedReference`. `HelperNeeds` is shared by the Array and
+  Dictionary rows: `ArrayRuntime` (every Dictionary kind), `DictionaryRuntime` (P1c2; CheckKey, whose duplicate callback reports through the
   runtime's adapter) and `ElementGlue` (Drop). A request's runtime flags come from its row (`Request`, through one `JoinNeeds`
   for both families), and every requested helper is written after the runtimes its row declares: before P1c2 a Drop helper
   requested only by a Field's drop glue set no flag and was never written (PLAN G133). The row callees are exactly the functions
@@ -2098,3 +2101,61 @@ structure is recorded here by the unit that first implements it.
   (a temporary view in a held file); one symbol property per function (each consumer would map a row's callee to its property);
   a key beside `DictionaryCallee` (two names for one concept); reading the symbol from the declaration's HIR column (a forwarding
   property, removed at R6); keeping appendSlot and clearLinks (no legacy text calls them).
+- **R5-M29 `Layout.Of` placement and its result** (2026-10-18, planning session; plan P7b, package C §3.5, S2-S4 X1, X18, X31 and
+  X34, under R5-M18 and R5-M19) `Layout.Of` returns `Layout.Result(Value, CLayout)`: OK with the shared `ValueLowering`; CLayout
+  with the C-layout instance, at any depth, that stores a zero-sized Field (a stored Never counts, IMPL 21.1.3); Limit, neither, when
+  a size or offset exceeds 2^31 − 1. `Backend/Layout.Placement.cs` holds the old pool's `Place` and enum placement, promoted:
+  Kimigayo mode's alignment-descending groups in written order, C mode's written order (from `AdtDef.IsCLayout`; the attribute walk
+  and the open, derived and empty re-check are deleted, since Binding rejects those), the `i32` tag before the payload union,
+  zero-sized parts kept, and the complete base with its tail padding as the prefix (X1; a derived struct has no C layout, SPEC
+  6.7.1). The `Loan<T>` row is deleted: struct placement gives the identical record. Each representation has one record, shared by
+  every Type, compilation and thread (a concurrent table keyed by storage text, size, alignment and offsets; per-thread scratch), so
+  a call that finds its records allocates nothing. The old pool keeps its own recursion (the Origin guard, Never's null through the
+  scalar gate, destruction, collection Fields, the count and depth bounds) and calls `Layout.Of` where it placed, after its shape
+  interning, mapping CLayout to its refusal and Limit to its resource failure.
+  - Declared behavior change (planning session): the old pool now visits every Field of a C-layout instance before `Layout.Of`
+    reports its zero-sized Field. For `#Layout("C") struct P<T>` with `var value: T`, then `var big: [2147483648 of u8]`, and an
+    inferred `f(())` writing `Option<P<T>>`, the parent reported `GenerationFailed_Kd` and P7b reports
+    `GenerationResourceLimit_Kd` (`InlineLayoutTest`): only which of two real failures an invalid program reports, and K10b's
+    `InvalidCLayout_Kd` supersedes both. The visit also runs the pool's side effects before the refusal: where a refusal is
+    tolerated, as for a Sealed object handle's payload (`SealedObjectHandle` falls back to dynamic cleanup), a later collection
+    Field's `CollectionDrop` registers its element drop helper. A probe (`#Layout("C") struct P<A, B>` with `var a: A` and
+    `var b: B`, `Option<obj/P<A, B>>` in an inferred `f((), values@move)` with `values: Array<i32>`) then emits the collection
+    Field's descriptor and the Array helpers it calls, unreferenced, and the later aggregate numbers shift by one; execution is
+    unchanged.
+  - Staged gap (new unit P7c): `Layout` keeps no Type memo, against package C §3.5's "memoization by interned Type" and R5-M19's
+    "placement brings it". Binding keeps interned Types across passes (`Binding.ResetPass`) and re-substitutes their stored Types
+    when `storageVersion` advances (`Binding.Storage.cs`); a nominal Type reaches its compilation (`AdtDef.Instance`) but a
+    structural one does not, so a static memo keyed by Type would go stale and retain every compilation's Types. The old pool
+    memoizes per body. P7c takes the full process before any MIR caller of `Layout.Of` (C2a, C3c) and owns the memo, the depth and
+    cycle guard, the count bound (`[2147483648 of ()]` gets OK today), a Limit that is not `default(Result)`, and the scope of the
+    process-wide record table (its lifetime in the LSP server).
+  - Rejected: a per-compilation `Layout` instance (R5-M19 fixes the static `Layout.Of`, and rows and placement would split);
+    `Layout.Place(fields)` fed by the old pool's records (a second entry beside `Of`); comparing records instead of the layout-mode
+    flag in the old pool's shape interning (a struct of a raw pointer and an `isize` would stop sharing the Slice handle's shape);
+    keeping the per-Field C-mode check in the old pool (a second owner of X18's rule); the C-mode refusal of an alignment above 16
+    (unreachable: no row is more aligned, and placement takes the maximum).
+- **R5-M30 Legacy formatting rows** (2026-10-18, planning session; plan P1d, PD2, S2-S4 X4, K package §4.5 row 2 and K6;
+  refines R5-M16 and R5-M27) `FormattingHelperRow(Kind, Abi, Needs)` is one row per formatting compiler function, the 28
+  `CompilerFunctionKind`s TextFixed through BuiltinFormat (the 26 Body-disposition kinds and the routines of the ErasedWriter
+  intrinsic and the BuiltinFormat shim), read by `LegacyRuntimeHelpers.FormattingRow(kind)`, which returns null outside that
+  range and throws on a missing row. `Abi` is the routine's ABI in the formatting runtime: the fixed symbol every call names and
+  the runtime splice defines (rows sharing a symbol share its routine, defined by the first of them in kind order). A row declares
+  only what its text calls or needs: every row's `Needs` is the new `HelperNeeds` member `FormattingRuntime` (the UTF-8 buffer,
+  writer, formatting and floating-point runtime and the memory declarations), and no row declares a library callee, since the
+  formatting runtime calls none. The formatting witness that WriterWrite, TextToString and TextTryFormat run is already
+  published once: their `KimiLibraryCatalog` rows carry SPEC 4.9.6's `Formats` and `FormatsValue` rows (Runs `Utf8Format`, On
+  parameter 0 or 1), read through `TyCtxt.Published` as A4 reads them (`MirEffects`). K6 takes the witness target of these
+  Body-disposition calls from `TyCtxt.Published` (refining K row 2 and K6); TextWriter's is the ErasedWriter intrinsic's target
+  (K row 6) and BuiltinFormat's leaves are its Builtin item's. The wrapper requests (`RequestFormattingWrite`, for WriterWrite's
+  row; `RequestFormattingConversion`, for TextToString's or TextTryFormat's) join their row's needs through the `JoinNeeds` the
+  three families share; the planner (`GenericStoragePlan`) requests each wrapper once and only for those kinds, and
+  `WriteFormatting` writes every requested wrapper after the runtime, no longer under its flag (G133's shape; a full-suite probe
+  at 70f06c4b found no module with a wrapper but no flag, so no output changed). The old lowering still sets the flag for its
+  direct calls of formatting routines and for interpolation: calls, not helper requests, like R5-M27's direct capacity calls.
+  The rows are per compiler function because the collector reads a Body-disposition call by its compiler function (K row 2)
+  and C9a calls the routines through their row ABIs; the wrappers are codegen's, derived from the witness target. Rejected: no
+  rows (C9a would read the old Emission's table); rows per wrapper kind (the collector never sees a wrapper); a
+  `FormattingWitness` row bit (a third statement of the published `Formats` rows, beside `IntrinsicDisposition.Effect`'s
+  `Formatting` class, naming neither the requirement nor the parameter; and no formatting routine's text calls a witness, unlike
+  an `ElementGlue` helper's); wrappers written only under the runtime flag (G133).
