@@ -158,6 +158,25 @@ public sealed class HirColumnsTest
         Assert.All(jumps, static x => Assert.IsType<IfKoto>(HirTables.PlanOf(Assert.IsType<YieldKoto>(x)).Plan));
     }
 
+    // SPEC 14.5.2, 14.7: the jump binding writes a transfer's target row only when the transfer may go there; with no target (none
+    // in scope, behind a defer or a default) or an unlabeled yield whose selection discards its result the row is null, and Binding
+    // records row 9 or 10 at the jump.
+    [Theory]
+    [InlineData("loop\n    yield 1", "InvalidJumpTarget_Kd")]
+    [InlineData("func f()\n    defer => return", "InvalidJumpTarget_Kd")]
+    [InlineData("func f(x: i32 = (return 1)) => ()", "InvalidJumpTarget_Kd")]
+    [InlineData("if true\n    yield 1", "UnlabeledYieldTarget_Kd")]
+    public void AnInvalidTransferHasANullTargetRow(string source, string code)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        HirTables.Publish(c);
+        var jump = Assert.Single(Reachable(c.Kotonoha).OfType<JumpKoto>());
+        Assert.True(HirTables.Op(jump) is HirOp.Jump or HirOp.Continue, MinimalEmissionTest.Describe(c, null));
+        Assert.Null(HirTables.PlanOf(jump).Plan);
+        Assert.True(HoldsItsTarget(jump));
+        Assert.Equal(code, Assert.Single(c.Binding.LintErrorRecords).Code.ToString());
+    }
+
     // SPEC 3.5, 10.2, 15.1.5, 15.1.6: a Copy Place is Copied, a stored exclusive reference Reborrowed, a Place a ref parameter takes
     // shared-borrowed in place, an @move operand moved, a Subject borrowed in place, and a value taken as a Temporary.
     [Fact]
@@ -395,7 +414,7 @@ public sealed class HirColumnsTest
                 problems.Add($"{where} {symbol.Kind} {HirTables.ResOf(node)}");
             }
 
-            if (op is HirOp.Jump or HirOp.Continue && (HirTables.PlanOf(node).Plan is not Koto target || !ReferenceEquals(target, KotoHelper.ResolveTransferTarget((JumpKoto)node))))
+            if (op is HirOp.Jump or HirOp.Continue && !HoldsItsTarget((JumpKoto)node))
             {
                 problems.Add($"{where} without its target");
             }
@@ -676,6 +695,16 @@ public sealed class HirColumnsTest
 
         result = type;
         return layers == 0;
+    }
+
+    // The HIR contract of a published Jump or Continue (ARCH "Binding facts for MIR"): its row holds the target it may go to, and a null
+    // row is a transfer Binding recorded as InvalidJumpTarget_Kd or UnlabeledYieldTarget_Kd.
+    private static bool HoldsItsTarget(JumpKoto jump)
+    {
+        var target = KotoHelper.ResolveTransferTarget(jump);
+        return HirTables.PlanOf(jump).Plan is Koto row
+            ? ReferenceEquals(row, target) && KotoHelper.IsValidTransfer(jump, target)
+            : jump.CodeContext.Compilation.Binding.LintErrorRecords.Any(x => x.Node == jump && x.Code is Kimi.DiagnosticCode.InvalidJumpTarget_Kd or Kimi.DiagnosticCode.UnlabeledYieldTarget_Kd);
     }
 
     private static bool IsWithin(Koto node, Koto ancestor)

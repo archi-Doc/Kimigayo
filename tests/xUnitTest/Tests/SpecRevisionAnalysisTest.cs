@@ -102,7 +102,11 @@ public class SpecRevisionAnalysisTest
     [InlineData("if true\n    defer => yield 1", "No valid target")]
     [InlineData("defer\n    if false\n        return", "No valid target")]
     public void DeferredBoundaryCannotBeCrossed(string source, string diagnostic)
-        => Assert.Contains(Analyze(source).Issues, issue => issue.Message.Contains(diagnostic, StringComparison.Ordinal));
+    {
+        var compilation = Parse(source).Compilation;
+        compilation.Bind();
+        Assert.Contains(CompilationTestHelper.BindingErrors(compilation), issue => issue.Message.Contains(diagnostic, StringComparison.Ordinal));
+    }
 
     [Fact]
     public void DeferredDivergenceAffectsExitRatherThanRegistration()

@@ -1900,6 +1900,12 @@ structure is recorded here by the unit that first implements it.
     uncertain bits. `LintErrors` counts the lint Errors, which the old analysis adds to its own (earlier rejection, verification)
     and `LegacyRecords` lists as Binding records, until H10. The old analysis's copy of `UnsafeFunctionValue_Kd` goes: Binding
     rejects every form at the reference (its four sites), and the copy only repeated it at a requirement item's inner name.
+  - Q11, rows 9-11 (`InvalidJumpTarget`, `UnlabeledYieldTarget`, `OverlappingLabel`; SPEC 14.5.2, 14.7, 14.4): one rule,
+    `KotoHelper.IsValidTransfer` (a target exists; an unlabeled yield's selection uses its result), decides a transfer; the jump
+    binding writes the target row (`PlanRow.Plan`) only for a valid transfer, so the HIR publisher no longer resolves targets,
+    and the walk records rows 9-10 by the same rule. HIR contract: a null target row of a published Jump or Continue means
+    Binding recorded row 9 or 10 there (ask A-8). The table's guess column names what a row reads that a recovery may have
+    guessed: a completion (row 1) or a target (rows 9-11, which rest only on a guessed label or a recovered label).
   - Rejected: a node failure per lint (the old analysis would skip the program; PD29, PD31); a Koto-keyed set of warned nodes
     (ARCH Syntax identity, warm allocations); a copy of the old walk's synthesized-evaluation switch (rows 1-6 judge source
     syntax only: a synthesized call's parent is its source node, a Value Context); a reporter in each owning file (Binding.cs and

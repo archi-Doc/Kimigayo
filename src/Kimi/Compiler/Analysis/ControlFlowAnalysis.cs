@@ -10,11 +10,10 @@ namespace Kimi.Compiler;
 /// <summary>A control-flow diagnostic associated with source syntax.</summary>
 /// <param name="Node">The offending syntax.</param>
 /// <param name="Code">The code of the requirement.</param>
-/// <param name="Argument">The message argument.</param>
-public sealed record ControlFlowIssue(Koto Node, DiagnosticCode Code, object? Argument = null)
+public sealed record ControlFlowIssue(Koto Node, DiagnosticCode Code)
 {
     /// <summary>Gets the message formatted from the catalog.</summary>
-    public string Message => DiagnosticEntries.TryGet(this.Code, out var entry) ? entry.FormatMessage(this.Argument, null) : this.Code.ToString();
+    public string Message => DiagnosticEntries.TryGet(this.Code, out var entry) ? entry.FormatMessage(null, null) : this.Code.ToString();
 }
 
 /// <summary>The control-flow facts of an analyzed expression or boundary.</summary>
@@ -24,8 +23,8 @@ public sealed class ControlFlowNodeInfo
     public bool CanCompleteNormally { get; internal set; }
 }
 
-/// <summary>Analyzes lexical transfers, reachability and result coverage; the discard, while true, owning write and Unsafe Block
-/// checks are Binding's HIR lints.</summary>
+/// <summary>Analyzes lexical transfers, reachability and result coverage; the discard, while true, owning write, Unsafe Block,
+/// jump target and label checks are Binding's HIR lints.</summary>
 /// <remarks>
 /// Run after compile-time directive selection. Bodies containing invalid directive groups are skipped.
 /// Types, Never results, match coverage and selected calls are Binding's facts; a node Binding has not resolved leaves its
@@ -117,22 +116,16 @@ public sealed class ControlFlowAnalysis
     /// <summary>Records the definite errors; ownership analysis discards earlier ones when it analyzes again.</summary>
     public void ReportDiagnostics()
     {
-        // A check that reads Binding's result at a node that Binding failed, or left resting on a failure, is not decided on
-        // valid input: its Error is derived from those causes, which also covers Binding's own check of the same requirement.
-        // Structural checks stay independent of Binding, but rest on a recovery that guessed what they read.
+        // The fallthrough checks are structural, independent of Binding, but rest on a recovery that guessed what they read.
         foreach (var issue in this.issues)
         {
             if (this.GuessedBy(issue) is { } syntax)
             {
                 issue.Node.ReportDerived(DiagnosticRequirement.ControlFlow, syntax);
             }
-            else if (ReadsBinding(issue.Code) && this.binding.FailureCauses(issue.Node) is { } causes)
-            {
-                issue.Node.ReportDerived(DiagnosticRequirement.ControlFlow, causes);
-            }
             else
             {
-                issue.Node.Report(DiagnosticRequirement.ControlFlow, issue.Code, issue.Argument);
+                issue.Node.Report(DiagnosticRequirement.ControlFlow, issue.Code);
             }
         }
     }
@@ -146,11 +139,6 @@ public sealed class ControlFlowAnalysis
     internal bool DefaultCompletionPending(Koto expression) => !this.defaultCompletions.TryGetValue(expression, out var completion) || completion.Pending;
 
     internal bool RecursiveDefault(Koto expression) => this.recursiveDefaults.Contains(expression);
-
-    // Jump targets, labels and fallthrough are judged from syntax alone.
-    private static bool ReadsBinding(DiagnosticCode code)
-        => code is not (DiagnosticCode.InvalidJumpTarget_Kd or DiagnosticCode.UnlabeledYieldTarget_Kd or DiagnosticCode.RequireFallthrough_Kd or
-            DiagnosticCode.FunctionFallthrough_Kd or DiagnosticCode.OverlappingLabel_Kd);
 
     // An expression Binding has not resolved leaves its completion unknown; a recovery completes as its written operands do,
     // and an Error expression is not evaluated.
@@ -212,30 +200,16 @@ public sealed class ControlFlowAnalysis
         return bound is not null || call.BoundValueCall is not null;
     }
 
-    // The syntax Errors of the recoveries that guessed what a check reads, or null when it reads written syntax alone. A recovered
-    // operand does not invalidate independently parsed target syntax, so only the guessed target of an unlabeled jump or a label
-    // counts. A fallthrough reads normal completion, which Binding's one guess rule judges (Binding.GuessedCompletion).
+    // The syntax Errors of the recoveries that guessed the normal completion a fallthrough check reads, which Binding's one guess
+    // rule judges (Binding.GuessedCompletion), or null when the check reads written syntax alone.
     private DiagnosticKey[]? GuessedBy(ControlFlowIssue issue)
-    {
-        var node = issue.Node;
-        if (!node.CodeContext.HasRecoveries)
-        {
-            return null;
-        }
+        => issue.Node.CodeContext.HasRecoveries ? this.binding.GuessedCompletion(issue.Node, issue.Node) : null;
 
-        if (node is LabeledKoto or JumpKoto { Label: "" })
-        {
-            return node.CodeContext.RecoveryCause(node) is { } syntax ? [syntax] : null;
-        }
-
-        return issue.Code is DiagnosticCode.FunctionFallthrough_Kd or DiagnosticCode.RequireFallthrough_Kd ? this.binding.GuessedCompletion(node, node) : null;
-    }
-
-    private void Error(Koto node, DiagnosticCode code, object? argument = null)
+    private void Error(Koto node, DiagnosticCode code)
     {
         if (this.reported.Add((node, code)))
         {
-            this.issues.Add(new(node, code, argument));
+            this.issues.Add(new(node, code));
         }
     }
 
@@ -444,7 +418,6 @@ public sealed class ControlFlowAnalysis
 
                 break;
             case LabeledKoto labeled:
-                this.CheckLabel(labeled);
                 flow = this.Visit(labeled.Target);
                 this.nodes[labeled] = this.NodeInfo(labeled.Target);
                 break;
@@ -822,18 +795,7 @@ public sealed class ControlFlowAnalysis
 
     private Flow VisitJump(JumpKoto jump)
     {
-        var target = KotoHelper.ResolveTransferTarget(jump);
-        this.targets[jump] = target;
-        if (target is null)
-        {
-            this.Error(jump, DiagnosticCode.InvalidJumpTarget_Kd, jump.Keyword);
-        }
-
-        if (jump is YieldKoto { Label: null } && target is IfKoto or MatchKoto && !KotoHelper.IsValueContext(target))
-        {
-            this.Error(jump, DiagnosticCode.UnlabeledYieldTarget_Kd);
-        }
-
+        this.targets[jump] = KotoHelper.ResolveTransferTarget(jump);
         var operand = jump.Expression is { } expression ? this.Visit(expression) : new Flow(true);
         var transfers = operand.Transfers;
         if (operand.Normal)
@@ -1036,23 +998,6 @@ public sealed class ControlFlowAnalysis
 
         this.nodes[node].CanCompleteNormally = flow.Normal;
         return flow;
-    }
-
-    private void CheckLabel(LabeledKoto label)
-    {
-        for (var parent = label.Parent; parent is not null; parent = parent.Parent)
-        {
-            if (parent is FunctionKoto or PropertyAccessorKoto)
-            {
-                break;
-            }
-
-            if (parent is LabeledKoto outer && outer.Label == label.Label && KotoHelper.IsInsideLabeledBody(label, outer))
-            {
-                this.Error(label, DiagnosticCode.OverlappingLabel_Kd, label.Label);
-                break;
-            }
-        }
     }
 
     /// <summary>Appends direct children without descending, so traversal needs no iterator allocations.</summary>

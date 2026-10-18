@@ -45,8 +45,10 @@ public class ControlFlowAnalysisTest
     [InlineData("func f()\n    require false else => return\n    ()")]
     public void AcceptsValidControlFlow(string source)
     {
-        var analysis = Analyze(source);
+        var c = Compile(source);
+        var analysis = c.AnalyzeControlFlow();
         Assert.True(analysis.Issues.Count == 0, string.Join("\n", analysis.Issues.Select(x => x.Message)));
+        Assert.Empty(CompilationTestHelper.BindingErrors(c));
     }
 
     [Theory]
@@ -61,7 +63,10 @@ public class ControlFlowAnalysisTest
     [InlineData("func f(ready: bool) -> i32\n    require ready else => return 0\n    ()", "cannot fall through")]
     public void RejectsInvalidControlFlow(string source, string diagnostic)
     {
-        Assert.Contains(Analyze(source).Issues, x => x.Message.Contains(diagnostic, StringComparison.Ordinal));
+        // The jump target and label checks are Binding's HIR lints; the fallthrough checks are control flow's.
+        var c = Compile(source);
+        var messages = c.AnalyzeControlFlow().Issues.Select(static x => x.Message).Concat(CompilationTestHelper.BindingErrors(c).Select(static x => x.Message));
+        Assert.Contains(messages, x => x.Contains(diagnostic, StringComparison.Ordinal));
     }
 
     // SPEC 14.11, 14.10.3 (DECISIONS R4-M7a): the MIR's A3 reports a falling failure body exactly where the old analysis does: the
@@ -95,12 +100,13 @@ public class ControlFlowAnalysisTest
     [Fact]
     public void ResolvesYieldsBeforeClassifyingDiscardedSelections()
     {
-        var analysis = Analyze("if true\n    if false\n        yield 1\n    else\n        yield 2\nelse\n    ()");
+        var c = Compile("if true\n    if false\n        yield 1\n    else\n        yield 2\nelse\n    ()");
+        var analysis = c.AnalyzeControlFlow();
         var selections = analysis.Nodes.Keys.OfType<IfKoto>().ToArray();
         Assert.False(KotoHelper.IsResultRequiringSelection(selections[0]));
         Assert.False(KotoHelper.IsResultRequiringSelection(selections[1]));
         Assert.All(analysis.Targets.Where(x => x.Key is YieldKoto), x => Assert.Same(selections[1], x.Value));
-        Assert.Contains(analysis.Issues, x => x.Message.Contains("discarded selection", StringComparison.Ordinal));
+        Assert.Contains(CompilationTestHelper.BindingErrors(c), x => x.Message.Contains("discarded selection", StringComparison.Ordinal));
     }
 
     [Fact]

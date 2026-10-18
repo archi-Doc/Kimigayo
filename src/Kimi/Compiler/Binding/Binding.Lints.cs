@@ -8,7 +8,7 @@
 // Output: the pass's lint records (node, row, completion root), cleared by ResetPass and published by ReportDiagnostics at a
 // Final pass as Binding records: requirement Binding with BindingFailure.None and the row as condition, so a lint never shares
 // a check key with Binding's own warnings (condition 0). A row that reads Binding's result at a node Binding failed, or rests
-// on a guessed completion, records nothing when its code is a warning and is derived from those causes when it is an Error.
+// on syntax a recovery guessed, records nothing when its code is a warning and is derived from those causes when it is an Error.
 // LintErrors counts the Error records for the old analysis, which rejects the program with them until H10.
 // Invariants: never fails a node; at one node the discard rows keep only the first (SPEC 17.5's priority); a warm rebind
 // allocates nothing (duplicates are resolved by sorting at report time, never by a Koto-keyed set).
@@ -21,20 +21,23 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // The lint table (SPEC 17.5, 14.9.3, 22.10.4, 14.3): each row's code, whether the row reads Binding's result at its node
-    // (Derived) and whether it reads a completion the parser may have guessed (Guessed). A row's number is its records' condition;
-    // rows 1-4 are the discard checks in SPEC 17.5's priority order.
-    private static readonly (DiagnosticCode Code, bool Derived, bool Guessed)[] LintTable =
+    // The lint table (SPEC 17.5, 14.9.3, 22.10.4, 14.3, 14.5.2, 14.4): each row's code, whether the row reads Binding's result at
+    // its node (Derived) and which syntax it reads that a recovery may have guessed (Guess). A row's number is its records'
+    // condition; rows 1-4 are the discard checks in SPEC 17.5's priority order.
+    private static readonly (DiagnosticCode Code, bool Derived, LintGuess Guess)[] LintTable =
     [
         default,
-        (DiagnosticCode.DiscardedTail_Kd, Derived: true, Guessed: true),
-        (DiagnosticCode.DiscardedResult_Kd, Derived: true, Guessed: false),
-        (DiagnosticCode.UnusedTrySuccess_Kd, Derived: true, Guessed: false),
-        (DiagnosticCode.DiscardedValue_Kd, Derived: true, Guessed: false),
-        (DiagnosticCode.OwningWriteArgument_Kd, Derived: true, Guessed: false),
-        (DiagnosticCode.StaticWhileTrue_Kd, Derived: false, Guessed: false),
-        (DiagnosticCode.UnsafeBlockRequired_Kd, Derived: false, Guessed: false),
-        (DiagnosticCode.UnnecessaryUnsafeBlock_Kd, Derived: true, Guessed: false),
+        (DiagnosticCode.DiscardedTail_Kd, Derived: true, LintGuess.Completion),
+        (DiagnosticCode.DiscardedResult_Kd, Derived: true, LintGuess.None),
+        (DiagnosticCode.UnusedTrySuccess_Kd, Derived: true, LintGuess.None),
+        (DiagnosticCode.DiscardedValue_Kd, Derived: true, LintGuess.None),
+        (DiagnosticCode.OwningWriteArgument_Kd, Derived: true, LintGuess.None),
+        (DiagnosticCode.StaticWhileTrue_Kd, Derived: false, LintGuess.None),
+        (DiagnosticCode.UnsafeBlockRequired_Kd, Derived: false, LintGuess.None),
+        (DiagnosticCode.UnnecessaryUnsafeBlock_Kd, Derived: true, LintGuess.None),
+        (DiagnosticCode.InvalidJumpTarget_Kd, Derived: false, LintGuess.Target),
+        (DiagnosticCode.UnlabeledYieldTarget_Kd, Derived: false, LintGuess.Target),
+        (DiagnosticCode.OverlappingLabel_Kd, Derived: false, LintGuess.Target),
     ];
 
     private readonly List<(Koto Node, LintRow Row, Koto? Root)> lints = new();
@@ -57,6 +60,18 @@ public sealed partial class Binding
         StaticWhileTrue,
         UnsafeBlockRequired,
         UnnecessaryUnsafeBlock,
+        InvalidJumpTarget,
+        UnlabeledYieldTarget,
+        OverlappingLabel,
+    }
+
+    // The syntax a row reads that a recovery may have guessed: a normal completion (GuessedCompletion), or a transfer's or label's
+    // target syntax, which only a guessed label or a label recovered over its target makes rest on the recovery.
+    private enum LintGuess : byte
+    {
+        None,
+        Completion,
+        Target,
     }
 
     /// <summary>Gets the number of the pass's lint records whose code is an Error, which the old analysis counts with its own errors
@@ -164,6 +179,8 @@ public sealed partial class Binding
     {
         LintRow.DiscardedResult or LintRow.UnusedTrySuccess => (null, null, DiscardRepairs(node, row)),
         LintRow.UnnecessaryUnsafeBlock => (null, new SourceSpan(node.Span.Start, Constants.UnsafeKeyword.Length), RemoveUnsafeRepairs((UnsafeBlockKoto)node)),
+        LintRow.InvalidJumpTarget => (((JumpKoto)node).Keyword, null, null),
+        LintRow.OverlappingLabel => (((LabeledKoto)node).Label, null, null),
         _ => default,
     };
 
@@ -269,6 +286,20 @@ public sealed partial class Binding
         return finder.Found;
     }
 
+    // SPEC 14.4: whether an enclosing label of the same function has the label's name and holds the label in its body.
+    private static bool Overlaps(LabeledKoto label)
+    {
+        for (var parent = label.Parent; parent is not (null or FunctionKoto or PropertyAccessorKoto); parent = parent.Parent)
+        {
+            if (parent is LabeledKoto outer && outer.Label == label.Label && KotoHelper.IsInsideLabeledBody(label, outer))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // SPEC 5, 4.3.4, 7.6: whether an operation needs an unsafe context: forming a raw Place, pointer arithmetic, noinit, or one of the
     // node's calls whose selected target is an unsafe function (the requirement is checked after selection); null while Binding has not
     // resolved an expression, whose need is then unknown.
@@ -336,9 +367,14 @@ public sealed partial class Binding
                 continue;
             }
 
-            var (code, derived, guessed) = LintTable[(int)row];
+            var (code, derived, guess) = LintTable[(int)row];
             var causes = derived ? this.FailureCauses(node) : null;
-            causes ??= guessed ? this.GuessedCompletion(node, root ?? node) : null;
+            causes ??= guess switch
+            {
+                LintGuess.Completion => this.GuessedCompletion(node, root ?? node),
+                LintGuess.Target when node is LabeledKoto or JumpKoto { Label: "" } && node.CodeContext.RecoveryCause(node) is { } syntax => [syntax],
+                _ => null,
+            };
             if (causes is null)
             {
                 var (argument, span, repairs) = LintFacts(node, row);
@@ -382,13 +418,23 @@ public sealed partial class Binding
         return this.adaptations.TryGetValue(node, out var adaptation) ? adaptation.Type : node.ErasedFunctionType ?? node.BoundType;
     }
 
-    // The rows judged at one evaluated node: while true (SPEC 14.9.3), an owning write argument (SPEC 17.5, 22.10.4) and the discard
-    // rows of an expression in Discard Context (SPEC 14.2.4), recorded at the expression inside its parentheses.
+    // The rows judged at one evaluated node: while true (SPEC 14.9.3), an owning write argument (SPEC 17.5, 22.10.4), a transfer's
+    // target (SPEC 14.5.2: none, or an unlabeled yield whose selection discards its result), a label overlapping an enclosing one
+    // (SPEC 14.4) and the discard rows of an expression in Discard Context (SPEC 14.2.4), recorded at the expression inside its
+    // parentheses.
     private void LintNode(Koto node)
     {
         if (node is WhileKoto loop && KotoHelper.UnwrapParentheses(loop.Condition) is BoolLiteralKoto { Value: true })
         {
             this.lints.Add((node, LintRow.StaticWhileTrue, null));
+        }
+        else if (node is JumpKoto jump && KotoHelper.ResolveTransferTarget(jump) is var target && !KotoHelper.IsValidTransfer(jump, target))
+        {
+            this.lints.Add((node, target is null ? LintRow.InvalidJumpTarget : LintRow.UnlabeledYieldTarget, null));
+        }
+        else if (node is LabeledKoto label && Overlaps(label))
+        {
+            this.lints.Add((node, LintRow.OverlappingLabel, null));
         }
         else if (node is InvocationKoto call && CallPlan.Of(call) is { Target.CompilerFunction: CompilerFunctionKind.WriterWrite } write)
         {

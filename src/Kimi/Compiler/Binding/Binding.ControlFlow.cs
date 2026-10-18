@@ -85,6 +85,16 @@ public sealed partial class Binding
     internal bool InfersUnit(Koto target) => this.resultContexts.TryGetValue(target, out var context) && context.Inferred &&
         target.BindingState == BindingState.Resolved && ReferenceEquals(target.BoundType, BoundType.Unit);
 
+    // SPEC 14.5.2: a transfer's lexical target, which the jump binding writes to the jump's target row when the transfer may go there
+    // (KotoHelper.IsValidTransfer). A null row is a jump the HIR lints record as invalid (rows 9-10), so no transfer is built from it.
+    private static Koto? BindTransferTarget(JumpKoto jump)
+    {
+        var target = KotoHelper.ResolveTransferTarget(jump);
+        var valid = KotoHelper.IsValidTransfer(jump, target);
+        HirTables.PlanFor(jump, valid).Plan = valid ? target : null;
+        return target;
+    }
+
     // Whether each operand of a written `^x` or range is literal-only, already bound or a Name, so binding it while surveying
     // result sources reaches no syntax the survey cannot bind yet.
     private static bool SurveyablePosition(Koto node)

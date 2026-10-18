@@ -1,7 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns publication of HIR facts from the completed Binding pass.
-// Input: that pass's decisions and syntax slots. Output: Op, Res, Completion, Adjust, Place and jump columns.
+// Input: that pass's decisions and syntax slots. Output: Op, Res, Completion, Adjust and Place columns (the jump binding writes the
+// jump target rows).
 // Publication is versioned and reused; it decides nothing beyond Binding's existing facts.
 // Must not resolve again; R7 replaces the publisher walk with inline writes.
 
@@ -9,7 +10,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// The HIR publisher (plan R2b): the Op, Res, Completion, Adjust and PlaceShape columns and the jump targets of every module, read from the facts
+// The HIR publisher (plan R2b): the Op, Res, Completion, Adjust and PlaceShape columns of every module, read from the facts
 // the latest pass keeps; it decides nothing Binding has not decided. Tests call it in R2b and the MIR builder from R3; R7 writes the columns inline.
 public sealed partial class Binding
 {
@@ -93,12 +94,6 @@ public sealed partial class Binding
                 {
                     places[node.SyntaxId] = new(this.KindOf(node, op, res[node.SyntaxId]), this.Layers(node));
                 }
-            }
-
-            if (op is HirOp.Jump or HirOp.Continue)
-            {
-                var target = KotoHelper.ResolveTransferTarget((JumpKoto)node);
-                HirTables.PlanFor(node, target is not null).Plan = target;
             }
 
             // A number literal's value as Binding fits it (SPEC 3.1, 13.5.4): its floating-point Type's bits, else the integer it names.

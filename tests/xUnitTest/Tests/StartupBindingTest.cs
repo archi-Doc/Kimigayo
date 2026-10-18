@@ -325,8 +325,7 @@ public class StartupBindingTest
     {
         var c = Parse("return");
         c.Bind();
-        var flow = c.AnalyzeControlFlow();
-        Assert.NotEmpty(flow.Issues);
+        Assert.NotEqual(0, c.Binding.LintErrors);
     }
 
     [Theory]

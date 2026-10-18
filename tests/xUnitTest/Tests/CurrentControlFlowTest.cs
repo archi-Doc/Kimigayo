@@ -78,6 +78,7 @@ public class CurrentControlFlowTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.Issues);
+        Assert.Equal(0, c.Binding.LintErrors);
         Assert.Empty(flow.PendingBinding);
     }
 
@@ -96,7 +97,7 @@ public class CurrentControlFlowTest
         var c = Parse(source);
         var bound = c.Bind();
         var flow = c.AnalyzeControlFlow();
-        Assert.True(!bound.IsComplete || flow.Issues.Count > 0, source);
+        Assert.True(!bound.IsComplete || c.Binding.LintErrors > 0 || flow.Issues.Count > 0, source);
     }
 
     [Fact]
@@ -122,6 +123,7 @@ public class CurrentControlFlowTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.Issues);
+        Assert.Equal(0, c.Binding.LintErrors);
         Assert.Empty(flow.PendingBinding);
     }
 

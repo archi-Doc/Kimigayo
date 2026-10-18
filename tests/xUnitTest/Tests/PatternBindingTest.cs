@@ -130,9 +130,8 @@ public class PatternBindingTest
         var c = Parse("func f(x: bool) => match x\n    true if true => ()\n    false if yield () => ()");
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(MatchCoverageState.NonExhaustive, Plan(c).Coverage.State);
-        var flow = c.AnalyzeControlFlow();
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NonExhaustiveMatch_Kd);
-        Assert.Contains(flow.Issues, x => x.Message.Contains("target", StringComparison.Ordinal));
+        Assert.Contains(CompilationTestHelper.BindingErrors(c), x => x.Message.Contains("target", StringComparison.Ordinal));
     }
 
     [Fact]
