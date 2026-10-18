@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -209,6 +210,28 @@ public sealed class MirInitTest(ITestOutputHelper output)
 
         new MirAnalysis(c.Types).Run(program);
         Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
+    }
+
+    // SPEC 3.1.3 (DECISIONS R5-M38): a named Place of Type Never takes the acquisition Binding publishes, Copy for a bare read (Never is
+    // Copy, BU-4), so a Never parameter read twice is no MovedPlace; only the Never value, a node's unwritten temp, is taken as it is.
+    // Binding publishes x@move of a Never Place as an Abrupt conversion that does not complete, its name read by Copy: MIR moves nothing
+    // and A1 finds no problem in g(x@move, x) either (whether it should move is Binding's publication, R5-M38).
+    [Fact]
+    public void ANeverPlaceIsAcquiredAsBindingPublishes()
+    {
+        const string G = "func g(a: Never, b: Never) => ()\n";
+        var c = MirBuildTest.Compile(G + "func absurd(x: Never) => g(x@move, x)\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var arguments = KotoTree.Walk(c.Kotonoha.RootKoto).Where(static x => x.ToString() is "x" or "x@move");
+        Assert.Equal(
+            ["x@move Convert Temporary Abrupt Diverges", "x Name Copy None Diverges", "x Name Copy None Diverges"],
+            arguments.Select(static x => $"{x} {HirTables.Op(x)} {HirTables.AdjustOf(x).Acquire} " +
+                $"{(x is BinaryKoto ? (ConversionBinding)HirTables.PlanOf(x).Mode : ConversionBinding.None)} {HirTables.CompletionOf(x)}"));
+        var absurd = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "absurd");
+        Assert.DoesNotContain(MirOperand.Move(new(1)), absurd.Operands.ToArray());
+        Assert.Empty(Problems(G + "func absurd(x: Never) => g(x@move, x)\n"));
+        Assert.Empty(Problems(G + "func absurd(x: Never) => g(x, x)\n"));
     }
 
     // Plan 5.6.1, SPEC 13.5.5: a PairLayer is the Place itself in the owner case and a Deref in a reference case, so writing through an

@@ -223,13 +223,15 @@ internal sealed partial class MirBuilder
     // expected Type names. An implicit exclusive borrow of a call's input is two-phase: reserved here, activated at the Call (SPEC 15.6.7).
     private MirOperand Acquire(HirAdjust adjust, MirPlace place, BoundType? expected, bool input, Koto node, MirPlace? into = null)
     {
-        if (this.IsNever(place))
+        if (this.IsNeverValue(place))
         {
             return MirOperand.Move(place); // SPEC 3.8: any acquisition takes the Never value as it is, which fits any operand position.
         }
 
-        var adaptation = adjust.Adaptation;
+        // SPEC 3.1.3: a named Place of Type Never is Copied or Moved as Binding acquires it (Never is Copy), never adapted: it has no
+        // referent to read or borrow (DECISIONS R5-M38).
         var type = this.body.TypeOf(place) ?? BoundType.Unit;
+        var adaptation = ReferenceEquals(type, BoundType.Never) ? HirAdaptation.None : adjust.Adaptation;
         var target = expected?.Components is [var referent] ? referent : null;
         switch (adaptation)
         {
@@ -503,20 +505,23 @@ internal sealed partial class MirBuilder
     // to the Never value, since a node of Type Never makes none (but its Opaque value, which stands for its syntax, of its Type).
     private void Set(MirPlace destination, in MirRvalue rvalue, Koto node)
     {
-        var never = rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Len or MirRvalueKind.Discriminant ? this.IsNever(rvalue.Place) : rvalue.Count > 0;
+        var never = rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Len or MirRvalueKind.Discriminant ? this.IsNeverValue(rvalue.Place) : rvalue.Count > 0;
         for (var i = 0; never && i < rvalue.Count; i++)
         {
-            never = this.body.Operands[rvalue.Start + i] is { Kind: not MirOperandKind.Const } operand && this.IsNever(operand.Place);
+            never = this.body.Operands[rvalue.Start + i] is { Kind: not MirOperandKind.Const } operand && this.IsNeverValue(operand.Place);
         }
 
-        if (!never && (rvalue.Kind == MirRvalueKind.Opaque || !this.IsNever(destination)))
+        if (!never && (rvalue.Kind == MirRvalueKind.Opaque || !this.IsNeverValue(destination)))
         {
             this.body.Push(this.current, MirStatement.Assign(destination, rvalue, this.Info(node)));
         }
     }
 
     // SPEC 3.1.3, 3.8: whether a Place is the Never value, the temp of a node of Type Never, which is never written, carries no Loan and
-    // fits any operand position.
+    // fits any operand position. A named Place of Type Never (a parameter, a binding, a payload) is a Place as any other (R5-M38).
+    private bool IsNeverValue(MirPlace place) => this.IsTemp(place) && this.IsNever(place);
+
+    // Whether a Place is of Type Never: the Never value or a named Place, neither of which has a referent to borrow or view.
     private bool IsNever(MirPlace place) => ReferenceEquals(this.body.TypeOf(place), BoundType.Never);
 
     // The destination takes an operand, unless the operand is the destination's own value moved (an acquisition formed it there).
