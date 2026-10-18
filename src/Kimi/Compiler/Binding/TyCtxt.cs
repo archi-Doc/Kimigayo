@@ -24,6 +24,9 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     private BoundLength?[] composedLengths = [];
     private BoundOrigin[] composedOrigins = [];
 
+    // A function item's own Type arguments before interning, reused.
+    private BoundType?[] itemTypes = [];
+
     // The lengths of a substitution whose binder has no length slot; never written, so every entry is null.
     private BoundLength?[] noLengths = [];
 
@@ -229,8 +232,26 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     internal Subst StorageSubst(CallPlan call)
         => this.Intern(call.Target, null, call.DeclaringType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
 
-    // SPEC 7.3: a function item's substitution, the context its Item Type binds; an Item keeps its per-call Origins in place.
-    internal Subst? SubstOfItem(BoundType item) => binding.FunctionItemContext(item, false) is { } context ? this.SubstOf(context) : null;
+    // SPEC 7.3: a function item's substitution, the context its Item Type binds: its function's own Type arguments, the declaring Type its
+    // last Component holds and its length arguments, without Origins (an Item keeps its per-call Origins in place); a function of the Type
+    // alone, which caches and prepares nothing (DECISIONS R5-M43). A requirement Item's is its requirement call's on the conforming Self.
+    internal Subst? SubstOfItem(BoundType item)
+    {
+        if (item is not { Kind: BoundTypeKind.FunctionItem, Symbol: { Declaration: FunctionKoto function } target })
+        {
+            return null;
+        }
+
+        if (function.IsRequirement)
+        {
+            return binding.FunctionItemContext(item, false) is { } context ? this.SubstOf(context) : null;
+        }
+
+        var count = function.GenericArguments.Count;
+        _ = Fit(ref this.itemTypes, count);
+        Binding.CopyItemArguments(item, function, this.itemTypes);
+        return this.Intern(target, null, Binding.ItemDeclaringType(item, function), this.itemTypes.AsSpan(0, count), item.LengthArguments, [], []);
+    }
 
     // The substitution that binds none of a binder's slots: its own body's.
     internal Subst Identity(Koto binder) => this.Intern(binder.BoundSymbol!, null, null, [], [], [], []);

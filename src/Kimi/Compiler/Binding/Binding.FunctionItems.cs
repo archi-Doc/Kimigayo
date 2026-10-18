@@ -16,6 +16,16 @@ public sealed partial class Binding
     internal static BoundType? ItemDeclaringType(BoundType item, FunctionKoto function)
         => !function.IsRequirement && item.Components.Count > ItemTypeArgumentCount(function) ? item.Components[^1] : null;
 
+    // An Item's own Type arguments in its function's generic-slot order (a length slot's entry is null), its first Components.
+    internal static void CopyItemArguments(BoundType item, FunctionKoto function, BoundType?[] arguments)
+    {
+        var component = 0;
+        for (var i = 0; i < function.GenericArguments.Count; i++)
+        {
+            arguments[i] = function.GenericArguments[i] is LengthParameterKoto ? null : item.Components[component++];
+        }
+    }
+
     // Generation-only context of an already selected declaration. An override never becomes a public Item.
     internal CallPlan? ImplementationContext(FunctionKoto function, BoundType declaring)
         => this.FunctionItemContext(this.FunctionItemType(function.BoundSymbol!, [], declaring));
@@ -150,15 +160,6 @@ public sealed partial class Binding
         }
 
         return count;
-    }
-
-    private static void CopyItemArguments(BoundType item, FunctionKoto function, BoundType?[] arguments)
-    {
-        var component = 0;
-        for (var i = 0; i < function.GenericArguments.Count; i++)
-        {
-            arguments[i] = function.GenericArguments[i] is LengthParameterKoto ? null : item.Components[component++];
-        }
     }
 
     private static bool ReferenceSlotsComplete(FunctionKoto function, BoundType?[] arguments, BoundLength?[] lengths)
