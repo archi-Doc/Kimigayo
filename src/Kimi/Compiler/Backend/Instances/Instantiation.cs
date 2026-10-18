@@ -13,12 +13,13 @@ namespace Kimi.Compiler.Backend;
 /// <param name="Erased">The erased substitution, or null for a closed definition.</param>
 internal readonly record struct Instantiation(MirDefKey Def, Subst? Erased);
 
-/// <summary>The kind of a mono item (K package 4.3); the other type-driven items and shims come with their units (K6-K8).</summary>
+/// <summary>The kind of a mono item (K package 4.3); the other type-driven items and shims come with their units (K6, K8).</summary>
 internal enum MonoKind : byte
 {
     Body, // A body instance.
     ClosureErasure, // The Function Type value of a Closure Type (SPEC 10.2): its erased Closure Type.
     ItemAdapter, // The Function Type value of a function item Type (SPEC 10.2): its erased Item Type.
+    DropGlue, // The destruction of a value of a Type (SPEC 16.3): its erased Type.
 }
 
 /// <summary>The key of a mono item; the checked set holds one item per key.</summary>

@@ -252,6 +252,30 @@ public partial class Project
     internal bool Check(CheckContext context, CancellationToken cancellationToken)
         => this.BuildTargetsAndPublish(false, cancellationToken, null, context);
 
+    /// <summary>Publishes the IR and manifest of an accepted compilation through the generation entry, or renders the Emission result:
+    /// the generation records, or the publication failure. Emission is a later phase with its own result, rendered after the front-end
+    /// result, for <c>kimi build</c> and <c>kimi test</c> alike (R5 C0a).</summary>
+    /// <param name="compilation">The accepted compilation.</param>
+    /// <param name="paths">The artifact paths, or null for the project's.</param>
+    /// <param name="context">The check context, or null for a command.</param>
+    /// <param name="irPath">The published IR path on success.</param>
+    /// <returns>Whether the artifacts were published.</returns>
+    internal bool PublishArtifacts(Compilation compilation, ArtifactPaths? paths, CheckContext? context, out string? irPath)
+    {
+        if (EmissionArtifacts.Publish(compilation, paths, out irPath, out var failure))
+        {
+            return true;
+        }
+
+        if (failure is not null)
+        {
+            compilation.Emission.ReportFailure(failure); // A publication failure (GenerationFailed_Kd until G9b); generation records its own.
+        }
+
+        this.Publish(compilation.Diagnostics, DiagnosticPartition.Emission, DiagnosticPartition.Emission, context);
+        return false;
+    }
+
     // Test sources were read without a handler; a failure is rethrown where the read used to happen.
     private static List<(string Path, SourceContent? Content, Exception? Failure)> ReadTestSources(CheckInputSource inputs, HashSet<string> testSources)
     {
@@ -540,19 +564,10 @@ public partial class Project
         }
     }
 
-    // Emission is a later phase with its own result, rendered after the front-end result.
     private bool Emit(Compilation compilation, ArtifactPaths? paths, CheckContext? context)
     {
-        if (!EmissionArtifacts.Publish(compilation, paths, out var pathIr, out var failure))
+        if (!this.PublishArtifacts(compilation, paths, context, out var pathIr))
         {
-            // SPEC 21.3.2: an exceeded mandatory generation limit is a resource diagnostic, not a semantic error. Under MIR code generation
-            // the refusal has reported its records (R5 K1 to C0b1).
-            if (compilation.Codegen != CompilerCodegen.Mir)
-            {
-                compilation.Emission.ReportFailure(failure);
-            }
-
-            this.Publish(compilation.Diagnostics, DiagnosticPartition.Emission, DiagnosticPartition.Emission, context);
             return false;
         }
 

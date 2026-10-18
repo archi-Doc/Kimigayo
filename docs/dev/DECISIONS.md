@@ -3104,3 +3104,52 @@ structure is recorded here by the unit that first implements it.
   records and the HIR version unchanged. Rejected: the match re-expressed over `Subst.Declaring` in TyCtxt (a second copy); a Builtin
   without the bound reference (the substitution needs it for the signature); a twin over collector sites (no mapping from a MIR site
   back to its CallPlan pair exists); reading a None of the core as Limit (an Unknown proof is no depth limit).
+- **R5-M64 The generation entry** (2026-10-19, planning session; plan C0a, package C §3.8 and D2 §2.11, S2-S4 X7 and X17, PD12's gate
+  step 1; under R5-M18 and R5-M35) A permanent Core component, the generation entry (`Core/Compilation.Generation.cs`, contract entry), owns
+  the one way the latest analysis becomes module text: `Compilation.Generate(TextWriter)` passes the gate, runs the compilation's code
+  generator and writes the complete module, or writes nothing and records why in the Emission partition; it returns no failure text.
+  `EmissionArtifacts.Publish` generates only through it, and `Project.PublishArtifacts`, the one publication path of `kimi build` and
+  `kimi test`, renders the Emission result, so `kimi test` reports located records where it reported failure text. Outside the gate until
+  G7 deletes `LlvmEmitter` (and `Compilation.Emission`): its direct readers in tests (G5 deletes them) and four `src/Benchmark` stage
+  measurements run the old generator without the gate, under sel too.
+  - Gate, step 1: no MIR records of the version (`MirRecords`: construction records, validator findings and, under MIR code generation, the
+    checked set's records). They are analysis Errors that check publishes, so a refusal adds no record; `Publish` skipped this gate before.
+    C4a adds step 2 (A2's per-body completeness fact, R5-M18) and K11 the Generated mark in this file only.
+  - Records now: under MIR code generation R5-M35's refusal, moved here (one `Unsupported_Kd` per output root until C0b1); under the old
+    generator its own record (`Emission.ReportFailure`: an instance's located records, `GenerationResourceLimit_Kd`, `GenerationFailed_Kd`
+    until G9b, R5-M18). A publication failure keeps `GenerationFailed_Kd` until G9b's `ArtifactPublicationFailed_Kd`.
+  - Publication order: `Publish` checks its inputs (adopted backend, paths, native libraries and supplies, archive hash, `LlvmBin`) before
+    it generates into the temporary IR file. A program that fails both now reports the configuration failure, and a failed generation can
+    leave a created output directory without files.
+  - Temporary structures: the out-string adapters `WriteIr` and `Validate` (`[Transitional("R6-gen")]`, G9b): the same gate with its text,
+    then the old generator's text without its record, for their test callers. `verify.ps1 -Codegen legacy|mir` sets `KIMI_CODEGEN` for the
+    run and records `codegen` in `summary.json`; `-Codegen mir` without `-Pipeline mir` is rejected before building (PD4); both go with
+    the selector at G4.
+  - Rejected: an entry returning the prepared old module (Core would publish `EmissionModule`, which MIR code generation replaces);
+    buffering the module before the publication checks (an allocation the size of the module); a writer opened on first write (a wrapper
+    kept only for the old order); reporting publication failures in `Generate` (publication is `EmissionArtifacts`', G9b's record).
+- **R5-M60 Drop glue, destructor and static edges of the checked set** (2026-10-19, planning session; plan K7, the K package's §4.5 rows
+  7, 9, 10 and "DropGlue", §4.7 and §4.8, S2-S4 X3, X23, X27, X33 (a) and X34; under R5-M18, R5-M35 and R5-M44; DEC Q6 form 1) Every Drop
+  (A2's verdicts do not narrow the checked set) and every `DestroyValues` call is the `DropGlue` item of its Type in the item's instance,
+  keyed by the erased Type, when `MirTypes.MayNeedDrop` holds. A glue item's targets, at its default site, are the glues of
+  `DropGlue.Parts`, a new Backend component (`Backend/DropGlue.cs`; C4a writes glue from the same enumeration, X27): a closed Type's
+  direct parts in destruction order (SPEC 16.3.2, 16.4): a declared destructor alone, its Body in the struct's instance
+  (`TyCtxt.Synthesized`, R4-M6b); else Fields last to first, then the base; Tuple and fixed-array elements by decreasing index; each Case's
+  payloads last to first; a Closure environment's captures in reverse initialization order (X23); an Array's or Dictionary's element
+  Types (its legacy Drop row's ElementGlue need, X4); an `obj`, `rc` or `arc` payload when `TyCtxt.Sealed` holds (else the descriptor's
+  finalizer runs the actual Type's glue, K8). A `ClosureErasure` also targets its environment's glue. A destructor without a body is one
+  Binding rejected, so its edge derives from that error.
+  - X34: a glue item lays out its collection element Types, also those that need no drop, and their verdicts join its admission (a
+    type-driven item needs an Ok verdict), so an element that fails refuses the glue: a Language record at each request (an empty
+    `Array<P<()>>` local's declaration), a Resource record once per erased Type.
+  - Row 7: a `staticEnsure` targets the StaticInit body `MirProgram.StaticInit` names (F10); none is `InternalInvariant_Kd` at the access.
+    A static of a generic container's group, whose storage the MIR keys by its symbol alone, is the capability row `GenericStaticKey`
+    (`Unsupported_Kd` at each access; X33 (a)). Search (K7's condition): over the library, the 44 milestones, the mutation, syntax and pair
+    corpora (456 cases) and the 63 spec-case variants, only Milestone 42 uses the form, P42's completion program, which the old analysis
+    rejects at the same accesses; no accepted program does. An immutable scalar `let` there, which the old path accepts and builds, is
+    refused under MIR code generation from this unit and at `check` from G2: the (e) row the PD27 list approves at R5's exit.
+  - The plan row's "through a `MirTypes.Destruction` visitor" is `MayNeedDrop` (presence) with `DropGlue.Parts` (the parts), as X3 and
+    X27 decided.
+  - Rejected: laying out the elements after admission (an admitted glue with a failed element); a target for every part whatever
+    `MayNeedDrop` says; Parts derived from `MirTypes.Destruction` (a deep forward walk, and Mir does not read the Backend); a
+    collector-side element table (X4).
