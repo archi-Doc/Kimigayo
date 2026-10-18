@@ -89,11 +89,11 @@ internal sealed partial class InstanceCollector
         });
     }
 
-    // K 4.3, 4.8: the item of a type-driven key requested at a site, admitted once per erased Type whose layout verdict is Ok, a DropGlue's
-    // with its collection elements' (X34; a failure is the Type's record, or derived), and represented by the first unerased Type that
-    // requests it, which is closed (an open one is a broken contract, InternalInvariant_Kd); past the depth limit
-    // GenerationResourceLimit_Kd. -1 when refused.
-    private int AdmitType(int parent, SourceRef site, MonoKind kind, BoundType type)
+    // K 4.3, 4.8: the item of a type-driven key (its kind, a property witness's Field and a shim's variant) requested at a site, admitted
+    // once per erased Type whose layout verdict is Ok, a DropGlue's with its collection elements' (X34; a failure is the Type's record, or
+    // derived), and represented by the first unerased Type that requests it, which is closed (an open one is a broken contract,
+    // InternalInvariant_Kd); past the depth limit GenerationResourceLimit_Kd. -1 when refused.
+    private int AdmitType(int parent, SourceRef site, MonoKey key, BoundType type)
     {
         var set = this.Set;
         if (type.ContainsParameter)
@@ -102,13 +102,13 @@ internal sealed partial class InstanceCollector
             return -1;
         }
 
-        var key = new MonoKey(kind, default, this.types.Erase(type));
+        key = key with { Type = this.types.Erase(type) };
         if (set.Find(key) is >= 0 and var found)
         {
             return found;
         }
 
-        if (!this.LaysOut(site, type) || (kind == MonoKind.DropGlue && !this.ElementsLayOut(site, type)))
+        if (!this.LaysOut(site, type) || (key.Kind == MonoKind.DropGlue && !this.ElementsLayOut(site, type)))
         {
             return -1;
         }

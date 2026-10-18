@@ -2759,7 +2759,8 @@ structure is recorded here by the unit that first implements it.
   and §4.5 rows 5 and 11-13; under R5-M18) `TyCtxt.SubstOfItem` gives an ordinary function item's substitution from its Item Type alone:
   its function's own Type arguments (`Binding.CopyItemArguments`), the declaring Type its last Component holds and its length arguments,
   without Origins, the substitution `FunctionItemContext` built, without its cache or storage preparation; a requirement Item's stays its
-  requirement call's until K6. The collector's templates gain statement sites, in location order with the calls: an `Aggregate(Closure)`
+  requirement call's until K6b (superseded by R5-M67, which moved it from K6). The collector's templates gain statement sites, in
+  location order with the calls: an `Aggregate(Closure)`
   is the Closure's body (row 11), a `Use` of a `Const(FnItem)` (the builder's one form of that operand) the Item's (row 12), a
   `Cast(Erasure)` a `ClosureErasure` or `ItemAdapter` item keyed by the erased Closure or Item Type (row 13); a Value callee's Closure or
   Item in the item's instance (`Apply`) is its body (row 5). A Closure's body is keyed by its definition and the erased substitution of
@@ -3161,3 +3162,29 @@ structure is recorded here by the unit that first implements it.
     premise scope); Witness's Body Subst as the leaf's (its Origins are the requirement's own atoms, foreign to a synthesized call);
     `ComparisonProof` on the same rule (an acceptance proof under the caller's premises, which proves built-in Types through the
     constraint solver: another contract).
+- **R5-M67 Requirement edges of the checked set** (2026-10-19, planning session; plan K6, the K package's §4.3 and §4.5 row 3 with its
+  witness results, package F §4.5, S2-S4 X14, X16, X28; under R5-M18, R5-M40 and R5-M61; DEC Q6 form 1; `MonoKind.Builtin`,
+  `MonoKind.PropertyWitness` and the capability rows are approved with the K package, §11, `ExclusiveInheritedWitness` being KD10's and
+  §4.7's OCC-X row) A Requirement call of an item's
+  body is, under the call's substitution composed with the item's representative, the target `TyCtxt.Witness(requirement,
+  MirCallee.Contract, composed)` gives: Body, the item of the implementation its substitution selects (`TyCtxt.Implementation`,
+  `MirProgram.Callee`; none without a body), admitted as a Fn callee's; Builtin, a shim item keyed by the erased Self and the compiler
+  function (new `MonoKind.Builtin`, `MonoKey.Variant`); Storage, a shim item keyed by the Field, the erased Self and the
+  `PropertyWitnessKind` (new `MonoKind.PropertyWitness`, `MonoKey.Symbol`, X14), admitted only when the requirement's signature in
+  the instance (`TyCtxt.Signature`) is the key's up to Origins (a `ref/Self` or `uniq/Self` receiver, a result `F`, `ref/F` or Unit,
+  a set input `F`, `F` the Field's Type in Self by `AdtDef.FindField`), else `InternalInvariant_Kd`, and a set's item targets the
+  Field Type's glue; Refused, the capability row `ExclusiveInheritedWitness` (OCC-X, `Unsupported_Kd` at the call); Limit, the
+  storage-nesting row; None, a broken contract (`InternalInvariant_Kd` at the call). Both shims are type-driven items: the Self's
+  layout verdict joins their admission (R5-M44). A composed substitution whose Self does not instantiate is null (`TyCtxt.Compose`,
+  PLAN G157 (4)), the storage-nesting gap at the call as for the other parts. Locations: R5-M40's rule.
+  - Staged to unit K6b (after F6; before C3b, C8f and C9b, which read these targets): requirement Items (rows 5 and 12), whose
+    substitution needs a witness form of `TyCtxt.SubstOfItem` (this supersedes R5-M43's "until K6": they now wait for K6b); row 6's
+    writer witness and row 2's formatting witnesses (`TyCtxt.Published`, R5-M30) with its Shim disposition's Builtin item, which need
+    F6's Self-bearing `Synthesized` factory (package F §4.5's input); a Builtin item's leaves, from F6's `TyCtxt.Comparison`
+    (BuiltinFormat's too, R5-M30). Until K6b these sites carry no target and no record; C3b, C8f and C9b depend on K6b, which keeps
+    that safe (under sel `build` is still refused by C0b1's frame). Refused has no reproducer: Binding rejects every inherited
+    exclusive witness at its conformance (`Unsupported_Kd` at `Self is C`, ObjectCompatibility Unknown), so the row is reached once
+    OCC-X proves one.
+  - Rejected: Self's layout skipped for the shims (a shim reads Self's storage); the signature agreement left to C3c (the F package
+    places the check at K6, where the key is made); a requirement edge resolved from the forwarded CallPlan (the collector reads no
+    plans).
