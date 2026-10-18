@@ -21,7 +21,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // The lint table (SPEC 17.5, 14.9.3, 22.10.4, 14.3, 14.5.2, 14.4): each row's code, whether the row reads Binding's result at
+    // The lint table (SPEC 17.5, 14.9.3, 22.10.4, 14.3, 14.5.2, 14.4, 7.1): each row's code, whether the row reads Binding's result at
     // its node (Derived) and which syntax it reads that a recovery may have guessed (Guess). A row's number is its records'
     // condition; rows 1-4 are the discard checks in SPEC 17.5's priority order.
     private static readonly (DiagnosticCode Code, bool Derived, LintGuess Guess)[] LintTable =
@@ -38,6 +38,7 @@ public sealed partial class Binding
         (DiagnosticCode.InvalidJumpTarget_Kd, Derived: false, LintGuess.Target),
         (DiagnosticCode.UnlabeledYieldTarget_Kd, Derived: false, LintGuess.Target),
         (DiagnosticCode.OverlappingLabel_Kd, Derived: false, LintGuess.Target),
+        (DiagnosticCode.FunctionFallthrough_Kd, Derived: false, LintGuess.Completion),
     ];
 
     private readonly List<(Koto Node, LintRow Row, Koto? Root)> lints = new();
@@ -63,6 +64,7 @@ public sealed partial class Binding
         InvalidJumpTarget,
         UnlabeledYieldTarget,
         OverlappingLabel,
+        FunctionFallthrough,
     }
 
     // The syntax a row reads that a recovery may have guessed: a normal completion (GuessedCompletion), or a transfer's or label's
@@ -122,6 +124,23 @@ public sealed partial class Binding
         }
 
         return rests && causes.Count > 0 ? [.. causes] : null;
+    }
+
+    /// <summary>Gets the check key of row 12 when the pass recorded it at a function's body: the old analysis's missing result at
+    /// that body's end rests on it until H10.</summary>
+    /// <param name="function">The function.</param>
+    /// <returns>The key, or null when the body cannot fall through.</returns>
+    internal DiagnosticKey? FallthroughKey(FunctionKoto function)
+    {
+        foreach (var (node, row, _) in this.lints)
+        {
+            if (row == LintRow.FunctionFallthrough && node == function.Body)
+            {
+                return node.KeyOf(DiagnosticRequirement.Binding(BindingFailure.None), (ushort)row);
+            }
+        }
+
+        return null;
     }
 
     // A single-item body: the item of a body introduced by =>, a require failure body or a match arm's body.
@@ -604,7 +623,7 @@ public sealed partial class Binding
                     this.VisitFunction(function);
                     return;
                 case PropertyAccessorKoto accessor:
-                    this.VisitPart(accessor.Body);
+                    this.VisitBody(accessor, accessor.Body);
                     return;
                 case UnsafeBlockKoto block:
                     this.VisitUnsafe(block);
@@ -669,15 +688,24 @@ public sealed partial class Binding
             }
 
             this.VisitPart(function.BaseInitializer);
-            this.VisitPart((Koto?)function.Body ?? function.ExpressionBody);
+            this.VisitBody(function, (Koto?)function.Body ?? function.ExpressionBody);
         }
 
-        // A function part: its records are dropped when it holds a #switch that selected no arm.
-        private void VisitPart(Koto? part)
+        // A body, then its end arrival (SPEC 7.1), unless the body holds a #switch that selected no arm.
+        private void VisitBody(Koto owner, Koto? body)
+        {
+            if (this.VisitPart(body))
+            {
+                binding.EndArrival(owner);
+            }
+        }
+
+        // A function part: its records are dropped when it holds a #switch that selected no arm. Returns whether it was linted.
+        private bool VisitPart(Koto? part)
         {
             if (part is null)
             {
-                return;
+                return false;
             }
 
             var start = binding.lints.Count;
@@ -689,7 +717,9 @@ public sealed partial class Binding
                 binding.lints.RemoveRange(start, binding.lints.Count - start);
             }
 
+            var linted = !this.unselected;
             this.unselected = outer;
+            return linted;
         }
     }
 

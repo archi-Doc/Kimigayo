@@ -145,7 +145,7 @@ public class ControlFlowAnalysisTest
             "func stop() -> Never => stop()\nfunc f() -> i32\n    if false\n        return \"text\"\n    stop()");
         compilation.Bind();
         Assert.Contains(compilation.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.TypeMismatch_Kd);
-        Assert.DoesNotContain(compilation.AnalyzeControlFlow().Issues, x => x.Code == Kimi.DiagnosticCode.FunctionFallthrough_Kd);
+        Assert.DoesNotContain(compilation.Binding.LintErrorRecords, x => x.Code == Kimi.DiagnosticCode.FunctionFallthrough_Kd);
     }
 
     [Fact]

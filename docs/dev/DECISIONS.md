@@ -1906,6 +1906,20 @@ structure is recorded here by the unit that first implements it.
     and the walk records rows 9-10 by the same rule. HIR contract: a null target row of a published Jump or Continue means
     Binding recorded row 9 or 10 there (ask A-8). The table's guess column names what a row reads that a recovery may have
     guessed: a completion (row 1) or a target (rows 9-11, which rest only on a guessed label or a recovered label).
+- **R5-M32 FunctionFallthrough is result validation** (2026-10-18, planning session; plan Q12, Q8 package §3.4, PD32, under
+  R5-M23 and R5-M24) SPEC 14.9.3 judges a Block body's structural end by Structural Completion: the end supplies Unit, which a
+  declared result other than Unit cannot take (SPEC 7.1). `Binding.EndArrival`, beside `AddBodyResult` in `Binding.ControlFlow.cs`,
+  decides it once per function and accessor from the HIR lint walk (row 12 at the body, Error), with `ResultStructure()` and the
+  declared result (`Binding.DeclaredResult`: the written result, else the bound contract; Unit for a discarded body or a setter),
+  which moves from the old control-flow analysis; the old analysis still asks it whether a contract is pending. The record rests
+  on a guessed completion (`GuessedCompletion`), which replaces the old check's pending gate: an unresolved expression is a
+  guess whose Binding causes the record is derived from. `Binding.FallthroughKey` gives the record's key, on which the old
+  analysis's missing result at that body's end rests until H10. The MIR records nothing at that end (Q8 probe p9, p10; R4-M21),
+  so nothing on the MIR side derives from it and the ledger's `a1-result` row stays. The requirement becomes `Binding` (was
+  `ControlFlow`). This departs from PLAN10 §5.5/§9, which gave the check to A3 (owner-approved with R5-M23).
+  - Rejected: an A3 rule on the MIR (a second completion rule beside Structural Completion); a check in `BindFunction`,
+    `BindAccessorBody` and `BindClosure` (three sites and records from tentative passes); keeping the old pending gate (a
+    second guess rule).
   - Rejected: a node failure per lint (the old analysis would skip the program; PD29, PD31); a Koto-keyed set of warned nodes
     (ARCH Syntax identity, warm allocations); a copy of the old walk's synthesized-evaluation switch (rows 1-6 judge source
     syntax only: a synthesized call's parent is its source node, a Value Context); a reporter in each owning file (Binding.cs and

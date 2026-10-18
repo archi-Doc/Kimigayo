@@ -30,6 +30,21 @@ public sealed partial class Binding
         return terminal.Kind == BoundTypeKind.Primitive && ScalarTypes.Supports(terminal) ? terminal : null;
     }
 
+    /// <summary>Gets the result a function's or accessor's Block body must deliver: the written result, else the bound contract; Unit
+    /// for a discarded body and a setter (SPEC 7.1, 11.3).</summary>
+    /// <param name="boundary">The function or accessor.</param>
+    /// <returns>The result Type, or null while Binding has not resolved it.</returns>
+    internal static BoundType? DeclaredResult(Koto boundary) => boundary switch
+    {
+        FunctionKoto { ReturnType: { BindingState: BindingState.Resolved } written } => written.BoundType,
+        FunctionKoto function => KotoHelper.DiscardsFunctionBody(function) ? BoundType.Unit : function.BoundSymbol?.Type,
+        PropertyAccessorKoto { AccessorKind: PropertyAccessorKind.Set } => BoundType.Unit,
+        PropertyAccessorKoto { ReturnType: { BindingState: BindingState.Resolved } written } => written.BoundType,
+        PropertyAccessorKoto { Parent: PropertyKoto { BindingState: BindingState.Resolved } property } => property.BoundType,
+        PropertyAccessorKoto accessor => accessor.ReturnType?.BoundType ?? accessor.BoundType,
+        _ => null,
+    };
+
     /// <summary>Selects the result Type that every supplied Type fits, independently of source order (SPEC 14.9.2).</summary>
     /// <param name="types">The non-Never source Types.</param>
     /// <param name="scope">The scope supplying read-Type Constraints.</param>
@@ -535,6 +550,19 @@ public sealed partial class Binding
         else if (structural.CanComplete(body))
         {
             context.Sources.Add(BoundType.Unit);
+        }
+    }
+
+    // SPEC 7.1, 14.9.3 (DECISIONS PD32): the structural end of a function's or accessor's Block body supplies Unit, which a declared
+    // result other than Unit cannot take, so a body that can complete there is HIR lint row 12 at the body. The Final walk asks once
+    // per function and accessor.
+    private void EndArrival(Koto owner)
+    {
+        var body = owner switch { FunctionKoto function => function.Body, PropertyAccessorKoto accessor => accessor.Body, _ => null };
+        if (body is CodeBlockKoto && DeclaredResult(owner) is { } result && !ReferenceEquals(result, BoundType.Unit) &&
+            this.ResultStructure().CanComplete(body))
+        {
+            this.lints.Add((body, LintRow.FunctionFallthrough, null));
         }
     }
 

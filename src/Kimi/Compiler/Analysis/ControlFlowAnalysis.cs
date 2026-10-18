@@ -23,8 +23,8 @@ public sealed class ControlFlowNodeInfo
     public bool CanCompleteNormally { get; internal set; }
 }
 
-/// <summary>Analyzes lexical transfers, reachability and result coverage; the discard, while true, owning write, Unsafe Block,
-/// jump target and label checks are Binding's HIR lints.</summary>
+/// <summary>Analyzes lexical transfers, reachability and require failure bodies; the discard, while true, owning write, Unsafe
+/// Block, jump target, label and function fallthrough checks are Binding's HIR lints.</summary>
 /// <remarks>
 /// Run after compile-time directive selection. Bodies containing invalid directive groups are skipped.
 /// Types, Never results, match coverage and selected calls are Binding's facts; a node Binding has not resolved leaves its
@@ -32,7 +32,6 @@ public sealed class ControlFlowNodeInfo
 /// </remarks>
 public sealed class ControlFlowAnalysis
 {
-    private readonly StructuralCompletion structural;
     private readonly Dictionary<Koto, ControlFlowNodeInfo> nodes = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<JumpKoto, Koto?> targets = new(ReferenceEqualityComparer.Instance);
     private readonly List<ControlFlowIssue> issues = new();
@@ -64,7 +63,6 @@ public sealed class ControlFlowAnalysis
 
     private ControlFlowAnalysis()
     {
-        this.structural = new(this.IsNever);
         this.childCollector = new(this.childBuffer);
     }
 
@@ -95,7 +93,6 @@ public sealed class ControlFlowAnalysis
     public void Reanalyze(Koto root)
     {
         this.binding = root.CodeContext.Compilation.Binding;
-        this.structural.Clear();
         this.nodes.Clear();
         this.targets.Clear();
         this.issues.Clear();
@@ -116,7 +113,7 @@ public sealed class ControlFlowAnalysis
     /// <summary>Records the definite errors; ownership analysis discards earlier ones when it analyzes again.</summary>
     public void ReportDiagnostics()
     {
-        // The fallthrough checks are structural, independent of Binding, but rest on a recovery that guessed what they read.
+        // The require fallthrough check is structural, independent of Binding, but rests on a recovery that guessed what it reads.
         foreach (var issue in this.issues)
         {
             if (this.GuessedBy(issue) is { } syntax)
@@ -132,9 +129,6 @@ public sealed class ControlFlowAnalysis
 
     internal void Append(Koto root) => this.Visit(root);
 
-    // Whether this analysis found an Error of the code at the node; a later phase that meets the same problem rests on it.
-    internal bool Reported(Koto node, DiagnosticCode code) => this.reported.Contains((node, code));
-
     // An omitted default with pending completion cannot be expanded by ownership; the same finite cycle boundary applies.
     internal bool DefaultCompletionPending(Koto expression) => !this.defaultCompletions.TryGetValue(expression, out var completion) || completion.Pending;
 
@@ -144,18 +138,6 @@ public sealed class ControlFlowAnalysis
     // and an Error expression is not evaluated.
     private static bool Unknown(Koto node)
         => node.BindingState != BindingState.Resolved && node is ExpressionKoto and not ErrorKoto && node.CodeContext.RecoveryCause(node) is null;
-
-    // The result a Block body must deliver: the written result, else the bound contract; Unit for discarded bodies and setters.
-    private static BoundType? DeclaredResult(Koto boundary) => boundary switch
-    {
-        FunctionKoto { ReturnType: { BindingState: BindingState.Resolved } written } => written.BoundType,
-        FunctionKoto function => KotoHelper.DiscardsFunctionBody(function) ? BoundType.Unit : function.BoundSymbol?.Type,
-        PropertyAccessorKoto { AccessorKind: PropertyAccessorKind.Set } => BoundType.Unit,
-        PropertyAccessorKoto { ReturnType: { BindingState: BindingState.Resolved } written } => written.BoundType,
-        PropertyAccessorKoto { Parent: PropertyKoto { BindingState: BindingState.Resolved } property } => property.BoundType,
-        PropertyAccessorKoto accessor => accessor.ReturnType?.BoundType ?? accessor.BoundType,
-        _ => null,
-    };
 
     private static bool IsBoundRuntimeTypeTest(Koto expression)
         => expression is IsKoto { BindingState: BindingState.Resolved, BoundRuntimeTest: not null };
@@ -200,8 +182,8 @@ public sealed class ControlFlowAnalysis
         return bound is not null || call.BoundValueCall is not null;
     }
 
-    // The syntax Errors of the recoveries that guessed the normal completion a fallthrough check reads, which Binding's one guess
-    // rule judges (Binding.GuessedCompletion), or null when the check reads written syntax alone.
+    // The syntax Errors of the recoveries that guessed the normal completion a require fallthrough check reads, which Binding's one
+    // guess rule judges (Binding.GuessedCompletion), or null when the check reads written syntax alone.
     private DiagnosticKey[]? GuessedBy(ControlFlowIssue issue)
         => issue.Node.CodeContext.HasRecoveries ? this.binding.GuessedCompletion(issue.Node, issue.Node) : null;
 
@@ -742,8 +724,8 @@ public sealed class ControlFlowAnalysis
         return item is DeferredBlockKoto deferred ? this.cleanups[deferred] : flow;
     }
 
-    // SPEC 7.1: an indented body supplies Unit at its structural end, so a non-Unit result cannot fall through. The result is
-    // pending while a written or getter contract is unresolved.
+    // A body's flow; it is pending while a written or getter contract is unresolved (Binding.DeclaredResult). Binding judges a
+    // fallthrough at its end (Binding.EndArrival).
     private void VisitFunction(Koto node, Koto? body, bool contract)
     {
         if (body is null || this.HasInvalidDirective(body))
@@ -752,8 +734,7 @@ public sealed class ControlFlowAnalysis
         }
 
         this.Begin(node);
-        var result = DeclaredResult(node);
-        if (contract && result is null)
+        if (contract && Binding.DeclaredResult(node) is null)
         {
             this.pending.Add(node);
         }
@@ -762,10 +743,6 @@ public sealed class ControlFlowAnalysis
         var flow = this.VisitBodyItem(body);
         flow = baseFlow.Normal ? flow with { Transfers = Union(baseFlow.Transfers, flow.Transfers), Pending = baseFlow.Pending || flow.Pending } : baseFlow;
         this.Finish(node, flow);
-        if (body is CodeBlockKoto && this.structural.CanComplete(body) && !flow.Pending && result is not null && !ReferenceEquals(result, BoundType.Unit))
-        {
-            this.Error(body, DiagnosticCode.FunctionFallthrough_Kd);
-        }
     }
 
     /// <summary>Determines whether a body contains an unselected directive group, excluding nested function bodies.</summary>

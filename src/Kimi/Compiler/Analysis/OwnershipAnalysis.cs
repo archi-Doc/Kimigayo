@@ -259,10 +259,10 @@ public sealed partial class OwnershipAnalysis
 
             // The delivery at the normal end is the only use at the function itself apart from a constructor's field checks, whose
             // discarded body never falls through; a return delivers at its jump.
-            if (issue.Failure == OwnershipRequirement.UninitializedUse && issue.Source is FunctionKoto { Body: { } body } &&
-                this.flow?.Reported(body, DiagnosticCode.FunctionFallthrough_Kd) == true)
+            if (issue.Failure == OwnershipRequirement.UninitializedUse && issue.Source is FunctionKoto function &&
+                this.compilation.Binding.FallthroughKey(function) is { } fallthrough)
             {
-                issue.Source.ReportDerived(requirement, [body.KeyOf(DiagnosticRequirement.ControlFlow)]);
+                issue.Source.ReportDerived(requirement, [fallthrough]);
                 continue;
             }
 
