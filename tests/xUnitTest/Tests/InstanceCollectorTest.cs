@@ -36,6 +36,13 @@ public sealed class InstanceCollectorTest
     private const string InSpecialization = CopyBox + "    public func f<U>(x: U) -> i32 => 1\n    specialize func f<i32>(x: i32) -> i32\n" +
         "        func inner(y: i32) -> i32 => y\n        return inner(2)\nfunc outer<T>(x: T) -> i32\n    T is Copy\n    return Box<T>.f(5)\n";
 
+    // Generic functions whose bodies make Closures (one called, with a Closure in it; one never called), a function item constant and a
+    // Callable parameter that is called.
+    private const string ItemSource = "func apply<T>(x: T) -> T\n    T is Copy\n    let f = func [] (y: T) -> T\n        let g = func [] (z: T) -> T => z\n" +
+        "        return g(y)\n    return f(x)\nfunc make<T>(x: T) -> T\n    T is Copy\n    let unused = func [] (y: T) -> T => y\n    return x\n" +
+        "func pick<T>(value: T) -> T => value@move\nfunc one<T>() -> i32 => 1\nfunc run<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n    return f()\n" +
+        "let p = pick<i32>\n";
+
     // A generic function nested in a closed function, which has no instance to carry.
     private const string InClosed = "func host() -> i32\n    func pick<U>(x: U) -> U => x@move\n    return pick(1)\n" + Outer + "    _ = host()\n    return x\n";
 
@@ -82,13 +89,14 @@ public sealed class InstanceCollectorTest
             set.Items[set.RootCount..].ToArray().Select(x => Label(program, x)).Order(StringComparer.Ordinal));
     }
 
-    // K 4.5 rows 1 and 5: each callee is a target at its call, in location order (a default omitted by a call of f is its template's call,
-    // the Closure is called through a borrow, pick and Box's init are instances).
+    // K 4.5 rows 1, 5 and 10: each callee is a target at its call, in location order (a default omitted by a call of f is its template's
+    // call, the Closure is a target where its environment is made and where it is called through a borrow, pick and Box's init are
+    // instances); every target is at a call or at one of the statements rows 10-12 name.
     [Fact]
     public void ClosedCallsAreTargetsInLocationOrder()
     {
         var (program, set) = Collect(Source);
-        Assert.Equal(["Fn plain", "Closure host"], Targets(program, set, "Fn host"));
+        Assert.Equal(["Closure host", "Fn plain", "Closure host"], Targets(program, set, "Fn host"));
         Assert.Equal(["DefaultTemplate g", "Fn g"], Targets(program, set, "DefaultTemplate f"));
         Assert.Equal(
             [
@@ -100,7 +108,11 @@ public sealed class InstanceCollectorTest
         {
             var targets = set.Targets(item).ToArray();
             Assert.Equal(targets.OrderBy(static x => x.At.Block).ThenBy(static x => x.At.Index), targets);
-            Assert.All(targets, x => Assert.Equal(MirTerminatorKind.Call, program.Bodies[set.Items[item].BodyOrdinal].Blocks[x.At.Block].Terminator.Kind));
+            var body = program.Bodies[set.Items[item].BodyOrdinal];
+            Assert.All(targets, x => Assert.True(x.At.Index == body.Blocks[x.At.Block].Count
+                ? body.Blocks[x.At.Block].Terminator.Kind == MirTerminatorKind.Call
+                : body.Statements[body.Blocks[x.At.Block].Start + x.At.Index] is
+                    { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Aggregate or MirRvalueKind.Cast or MirRvalueKind.Use }));
         }
     }
 
@@ -189,7 +201,8 @@ public sealed class InstanceCollectorTest
     // SPEC 6.1.3, 8.13.3, DECISIONS R5-M40 (the F3 reproducers, X40): an instance of a nested function holds its enclosing instance. A call
     // one level into a generic function carries it, so each instance of the enclosing function has its own item; a call two levels in,
     // from a block, in a generic struct's method or in a specialization inside a generic struct does not, so the edge is the
-    // EnclosingInstance gap at the call until K5, whose calls carry it (then two items each). Every admitted representative closes its body.
+    // EnclosingInstance gap at the call until a representation of the enclosing chain carries it (DECISIONS R5-M43; then two items each).
+    // Every admitted representative closes its body.
     [Theory]
     [MemberData(nameof(NestedCases))]
     public void NestedFunctionsNeedTheirEnclosingInstance(string declarations, string nested, int items, string? refused)
@@ -201,6 +214,56 @@ public sealed class InstanceCollectorTest
         Assert.Equal(items, set.Items.ToArray().Count(x => Label(program, x).StartsWith("Fn " + nested + " [", StringComparison.Ordinal)));
         Assert.Equal(refused is null ? [] : [(DiagnosticCode.Unsupported_Kd, refused)], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
         Assert.All(set.Items.ToArray(), x => Assert.True(x.Representative is null || Closes(c.Types, program.Bodies[x.BodyOrdinal], x.Representative), Label(program, x)));
+    }
+
+    // K 4.5 rows 5, 10 and 11, DECISIONS R5-M43: a Closure of an instance is an instance of its body under the instance's substitution,
+    // where its environment is made (also when it is never called) and where it is called, one per enclosing instance and a Closure in a
+    // Closure among them; a function item constant and an Item called through a Callable parameter are their function's instances.
+    [Fact]
+    public void ClosuresAndItemsOfInstancesAreTheirBodies()
+    {
+        var c = MirBuildTest.Compile(
+            ItemSource + "require apply(3) == 3 and apply(true) and make(1) == 1 and p(4) == 4 and run(one<bool>) == 1 else => $abort(\"k5\")\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types).Run(program, 1);
+        Assert.Empty(set.Records);
+        Assert.Equal(
+            [
+                "Closure apply [bool]", "Closure apply [bool]", "Closure apply [i32]", "Closure apply [i32]", "Closure make [i32]", "Fn apply [bool]",
+                "Fn apply [i32]", "Fn make [i32]", "Fn one [bool]", "Fn pick [i32]", "Fn run [function item one<bool>]",
+            ],
+            set.Items[set.RootCount..].ToArray().Select(x => Label(program, x)).Order(StringComparer.Ordinal));
+        Assert.Equal(
+            ["Fn pick [i32]", "Fn apply [i32]", "Fn apply [bool]", "Fn make [i32]", "Fn pick [i32]", "Fn one [bool]", "Fn run [function item one<bool>]"],
+            Targets(program, set, "Fn top"));
+        Assert.Equal(["Fn one [bool]"], Targets(program, set, "Fn run [function item one<bool>]"));
+        Assert.All(
+            set.Items.ToArray(),
+            x => Assert.True(x.Representative is null || Closes(c.Types, program.Bodies[x.BodyOrdinal], x.Representative), Label(program, x)));
+    }
+
+    // K 4.5 row 12: an erasure of a Closure or function item to its Function Type is its ClosureErasure or ItemAdapter item, keyed by the
+    // erased Type and represented by the first Type that requests it, whose target is the body the Closure or Item runs; a call of the
+    // Function Type value has no target.
+    [Fact]
+    public void AnErasureIsItsAdapterItem()
+    {
+        var c = MirBuildTest.Compile("func adder<T>(x: T) -> T\n    T is Copy\n    let f = func [] (y: T) -> T => y\n    let e: (T) -> T = f\n" +
+            "    return e(x)\n" +
+            "func pick<T>(value: T) -> T => value@move\nlet h: (i32) -> i32 = pick<i32>\nrequire adder(1) == 1 and h(2) == 2 else => $abort(\"erasure\")\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types).Run(program, 1);
+        Assert.Empty(set.Records);
+        var adapters = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].BodyOrdinal < 0).ToArray();
+        Assert.Equal([MonoKind.ClosureErasure, MonoKind.ItemAdapter], adapters.Select(x => set.Items[x].Key.Kind).Order());
+        Assert.All(adapters, x => Assert.Same(c.Types.Erase(set.Items[x].RepresentativeType!), set.Items[x].Key.Type));
+        Assert.Equal(
+            ["Closure adder [i32]", "Fn pick [i32]"],
+            adapters.SelectMany(x => set.Targets(x).ToArray()).Select(x => Label(program, set.Items[x.Item])).Order(StringComparer.Ordinal));
+        var adder = set.Targets(Item(program, set, "Fn adder [i32]")).ToArray();
+        Assert.DoesNotContain(adder, x => Label(program, set.Items[x.Item]).StartsWith("Fn pick", StringComparison.Ordinal));
     }
 
     // K 4.3: a representative that leaves its body open is a broken contract, InternalInvariant_Kd at the call and no item. Binding never
@@ -356,10 +419,15 @@ public sealed class InstanceCollectorTest
     private static string[] Targets(MirProgram program, CheckedSet set, string label)
         => set.Targets(Item(program, set, label)).ToArray().Select(x => Label(program, set.Items[x.Item]) + (x.Runtime ? string.Empty : " (check)")).ToArray();
 
-    // A body's kind and definition, a closure by the function enclosing it, a module's top-level statements as top, a library body with
-    // the declaration it is in, an instance with its representative's declaring Type and Type arguments.
+    // A body's kind and definition, a closure by the named function enclosing it, a module's top-level statements as top, a library body with
+    // the declaration it is in, an instance with its representative's declaring Type and Type arguments; a type-driven item's kind and Type.
     private static string Label(MirProgram program, in MonoItem item)
     {
+        if (item.BodyOrdinal < 0)
+        {
+            return $"{item.Key.Kind} {TyCtxt.Name(item.RepresentativeType!)}";
+        }
+
         var body = program.Bodies[item.BodyOrdinal];
         var name = body.Key.Decl?.Declaration switch
         {
@@ -372,6 +440,6 @@ public sealed class InstanceCollectorTest
             : string.Empty;
         return (body.Source.Module == 0 ? $"{body.Key.Kind} {name}" : $"library {body.Key.Kind} {name} in {body.Key.Decl!.Scope.Owner}") + instance;
 
-        static FunctionKoto Enclosing(Koto node) => node as FunctionKoto ?? Enclosing(node.Parent!);
+        static FunctionKoto Enclosing(Koto node) => node is FunctionKoto { IsAnonymous: false } named ? named : Enclosing(node.Parent!);
     }
 }
