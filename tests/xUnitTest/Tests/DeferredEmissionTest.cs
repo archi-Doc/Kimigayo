@@ -147,8 +147,7 @@ public class DeferredEmissionTest
         Assert.DoesNotContain(module.GetFunction(0).Instructions, x => x.Opcode is EmissionOpcode.Phi or EmissionOpcode.ReturnVoid);
         using var writer = new StringWriter();
         module.WriteIr(writer);
-        Assert.DoesNotContain("mustprogress", writer.ToString());
-        Assert.DoesNotContain("willreturn", writer.ToString());
+        GeneratedIr.Parse(writer.ToString()).AssertNoTerminationClaim();
     }
 
     // A cleanup that never completes leaves the cleanups registered before it to the checks (their MIR: tests/mir/scopes.kimi

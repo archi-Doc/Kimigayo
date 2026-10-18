@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
@@ -52,39 +51,55 @@ public sealed class FunctionCodegenTest
     public void FrameProgramsRun(string name, string source)
         => ScalarEmissionTest.EmitFixture(name, source, string.Empty);
 
-    // I2 (IMPL 21.1.3): one aligned slot per local of nonzero size, bool stored as i8 and never as i1, none for a zero-sized local; an
-    // integer constant is its value's two's complement at its width.
+    // I2 (IMPL 21.1.3): one aligned slot per local of nonzero size, in local order, bool stored as i8 and never as i1, none for a zero-sized
+    // local; an integer constant is its value's two's complement at its width, stored into its local's slot (GeneratedIrTest covers the
+    // entry and the profile attributes for both generators).
     [Fact]
     public void EachLocalOfNonzeroSizeHasOneSlot()
     {
-        var ir = Generate("let flag = true\nlet n: i32 = 7\nlet nothing = ()\nlet small: u8 = 255\nlet big: u64 = 18446744073709551615\nlet wide: i128 = -5\n");
-        var body = Definition(ir, "define internal void @__kimi_f0() #0 {");
+        var text = Generate(
+            "let flag = true\nlet n: i32 = 7\nlet nothing = ()\nlet small: u8 = 255\nlet big: u64 = 18446744073709551615\nlet wide: i128 = -5\n");
+        var ir = GeneratedIr.Parse(text);
+        var body = ir.Startup;
+        var slots = body.Instructions.Where(static x => x.Opcode == "alloca").ToArray();
         Assert.Equal(
-            ["%l1 = alloca i8, align 1", "%l2 = alloca i32, align 4", "%l4 = alloca i8, align 1", "%l5 = alloca i64, align 8", "%l6 = alloca i128, align 16"],
-            Regex.Matches(body, @"%l\d+ = alloca [^\n]+").Select(static x => x.Value));
-        Assert.Contains("store i8 1, ptr %l1, align 1", body);
-        Assert.Contains("store i32 7, ptr %l2, align 4", body);
-        Assert.Contains("store i8 -1, ptr %l4, align 1", body);
-        Assert.Contains("store i64 -1, ptr %l5, align 8", body);
-        Assert.Contains("store i128 -5, ptr %l6, align 16", body);
-        Assert.DoesNotMatch(@"store i1\b", ir);
-        Assert.Contains("define void @__kimi_start() noreturn #0 {\nentry:\n  call void @__kimi_f0()\n  call void @__kimi_exit(i32 0)\n  unreachable\n}\n", ir);
+            ["alloca i8, align 1", "alloca i32, align 4", "alloca i8, align 1", "alloca i64, align 8", "alloca i128, align 16"],
+            slots.Select(static x => x.Shape));
+        Assert.Equal(
+            [
+                ("store i8 1, ptr %, align 1", slots[0]), ("store i32 7, ptr %, align 4", slots[1]), ("store i8 -1, ptr %, align 1", slots[2]),
+                ("store i64 -1, ptr %, align 8", slots[3]), ("store i128 -5, ptr %, align 16", slots[4]),
+            ],
+            body.Instructions.Where(static x => x.Opcode == "store").Select(static x => (x.Shape, x.Operands[^1])));
+        Assert.DoesNotMatch(@"store i1\b", text);
     }
 
     // I2: a Value argument is stored into its local's slot (bool widened), a pointer-passed argument is its local's home, a zero-sized one has
-    // no parameter; a bool result is narrowed to be returned.
+    // no parameter; a bool result is narrowed to be returned. I1: values %t<n>, slots %l<local> and arguments %a<slot> are numbered per
+    // function.
     [Fact]
     public void ArgumentsLiveInTheirLocalsHomes()
     {
-        var ir = Generate("func f(flag: bool, n: i64, text: ref/string, unit: ()) -> bool => flag\nfunc g(pair: (i32, i64)) => ()\n()");
-        var f = Definition(ir, "(i1 %a0, i64 %a1, ptr noundef nonnull align 8 dereferenceable(24) %a2) #0 {");
-        Assert.StartsWith("define internal i1 @__kimi_f", f);
-        Assert.Contains("  %t0 = zext i1 %a0 to i8\n  store i8 %t0, ptr %l1, align 1\n  store i64 %a1, ptr %l2, align 8\n", f);
-        Assert.Contains("  store ptr %a2, ptr %l3, align 8\n  br label %b0\n", f);
-        Assert.Matches(@"%(t\d+) = trunc i8 %t\d+ to i1\n  ret i1 %\1\n", f);
-        var g = Definition(ir, "(ptr %a0) #0 {");
-        Assert.StartsWith("define internal void @__kimi_f", g);
-        Assert.DoesNotContain("alloca", g);
+        var text = Generate("func f(flag: bool, n: i64, text: ref/string, unit: ()) -> bool => flag\nfunc g(pair: (i32, i64)) => ()\n()");
+        Assert.Contains("  %t0 = zext i1 %a0 to i8\n  store i8 %t0, ptr %l1, align 1\n  store i64 %a1, ptr %l2, align 8\n", text);
+        var ir = GeneratedIr.Parse(text);
+        var f = ir.Single("internal i1 (i1, i64, ptr noundef nonnull align 8 dereferenceable(24))");
+        var entry = f.Blocks[0].Instructions;
+        Assert.Equal(
+            [
+                "alloca i8, align 1", "alloca i8, align 1", "alloca i64, align 8", "alloca ptr, align 8", "zext i1 % to i8", "store i8 %, ptr %, align 1",
+                "store i64 %, ptr %, align 8", "store ptr %, ptr %, align 8", "br label %",
+            ],
+            entry.Select(static x => x.Shape));
+        Assert.Equal([f.Parameters[0]], entry[4].Operands);
+        Assert.Equal([entry[4], entry[1]], entry[5].Operands);
+        Assert.Equal([f.Parameters[1], entry[2]], entry[6].Operands);
+        Assert.Equal([f.Parameters[2], entry[3]], entry[7].Operands);
+        Assert.Same(f.Blocks[1], Assert.Single(f.Blocks[0].Successors));
+        var result = Assert.Single(f.Instructions, static x => x.Opcode == "ret");
+        Assert.Equal("ret i1 %", result.Shape);
+        Assert.Equal("trunc i8 % to i1", Assert.Single(result.Operands).Shape);
+        Assert.DoesNotContain(ir.Single("internal void (ptr)").Instructions, static x => x.Opcode == "alloca");
     }
 
     // I3 (SPEC 14.10.3): exactly the blocks a runtime path from the entry reaches are generated; a block only the checks reach is not.
@@ -100,7 +115,7 @@ public sealed class FunctionCodegenTest
         reach.Walk(body, 0, checks: false);
         var expected = Enumerable.Range(0, body.Blocks.Length).Where(x => reach[x]).Select(static x => "b" + x).ToArray();
         Assert.NotEqual(body.Blocks.Length, expected.Length);
-        Assert.Equal(expected, Regex.Matches(Definition(ir, "(i1 %a0) #0 {"), @"^(b\d+):$", RegexOptions.Multiline).Select(static x => x.Groups[1].Value));
+        Assert.Equal(expected, GeneratedIr.Parse(ir).Single("internal i32 (i1)").Blocks.Skip(1).Select(static x => x.Label));
     }
 
     // PD11: a form the frame does not cover yet is one Unsupported_Kd in the Emission partition at its location, and no module is written;
@@ -192,13 +207,6 @@ public sealed class FunctionCodegenTest
         using var writer = new StringWriter();
         Assert.True(c.Generate(writer), string.Join(", ", Records(c)));
         return writer.ToString();
-    }
-
-    // The definition whose first line contains the text, through its closing brace.
-    private static string Definition(string ir, string header)
-    {
-        var start = ir.LastIndexOf("define ", ir.IndexOf(header, StringComparison.Ordinal) + header.Length, StringComparison.Ordinal);
-        return ir[start..(ir.IndexOf("\n}\n", start, StringComparison.Ordinal) + 3)];
     }
 
     private static (string Code, string? Text)[] Records(Compilation c)

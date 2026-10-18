@@ -120,8 +120,7 @@ public class BitwiseEmissionTest
         Assert.DoesNotContain(" nsw ", ir);
         Assert.DoesNotContain(" nuw ", ir);
         Assert.DoesNotContain(" exact ", ir);
-        Assert.DoesNotContain("mustprogress", ir);
-        Assert.DoesNotContain("willreturn", ir);
+        GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 
     [Theory]
