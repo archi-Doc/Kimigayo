@@ -342,6 +342,22 @@ public sealed class InstanceCollectorTest
         Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x) == "DropGlue Plain");
     }
 
+    // K 4.5 "DropGlue", SPEC 16.3.2: a fixed array's glue destroys its elements through its element Type's glue, and a fixed array of
+    // elements that need no drop has none; a derived struct's glue ends with its base's, which is the base's declared destructor alone, as
+    // a base without one ends with its Fields.
+    [Fact]
+    public void AFixedArraysAndADerivedStructsGluesEndWithTheirParts()
+    {
+        var (program, set) = Collect("open struct Res\n    public var id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n" +
+            "struct Derived: Res\n    public var name: string = \"d\"\n    public var count: i32 = 0\n    public init() : base(1) => ()\n" +
+            "func use() -> ()\n    let f: [2 of string] = [\"x\", \"y\"]\n    let g: [2 of i32] = [1, 2]\n    let d = Derived.init()\n    return\n");
+        Assert.Empty(set.Records);
+        Assert.Equal(["DropGlue string"], Targets(program, set, "DropGlue [2 of string]"));
+        Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x) == "DropGlue [2 of i32]");
+        Assert.Equal(["DropGlue string", "DropGlue Res"], Targets(program, set, "DropGlue Derived"));
+        Assert.Equal(["Fn drop"], Targets(program, set, "DropGlue Res"));
+    }
+
     // K 4.5 "DropGlue", R4-M6b, SPEC 16.3.2: a struct that declares a drop is destroyed by its destructor alone, the Body of the struct's
     // instance (TyCtxt.Synthesized), which drops the struct's own Fields: one destructor item per instance of a generic struct, the root
     // for a closed one.
@@ -365,14 +381,15 @@ public sealed class InstanceCollectorTest
     [Fact]
     public void AGrowingDestructorStopsAtItsDrop()
     {
-        var c = MirBuildTest.Compile("struct Grow<T>\n    public var value: Option<T>\n    public init(value: Option<T>) => self.value = value@move\n    drop\n" +
-            "        let next = Grow<(T,)>.init(.None)\nfunc use() -> ()\n    let g = Grow<i32>.init(.None)\n    return\n");
+        var c = MirBuildTest.Compile("struct Grow<T>\n    public var value: Option<T>\n    public init(value: Option<T>) => self.value = value@move\n" +
+            "    drop\n        let next = Grow<(T,)>.init(.None)\nfunc use() -> ()\n    let g = Grow<i32>.init(.None)\n    return\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var program = c.BuildMir();
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal(16, set.Items.ToArray().Count(x => Label(program, x).StartsWith("Fn drop [", StringComparison.Ordinal)));
         Assert.Equal(
-            [(DiagnosticCode.GenerationResourceLimit_Kd, "let next = Grow<(T,)>.init(.None)")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+            [(DiagnosticCode.GenerationResourceLimit_Kd, "let next = Grow<(T,)>.init(.None)")],
+            set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
     }
 
     // K 4.5 "DropGlue", SPEC 16.3.3: an owning handle's glue destroys a Sealed payload through the payload's glue; an open payload is destroyed
@@ -443,9 +460,9 @@ public sealed class InstanceCollectorTest
     [Fact]
     public void AStaticAccessIsItsInitializer()
     {
-        var c = MirBuildTest.Compile("struct Cache<T>\n    public group Statistics\n        public let count: i32 = 0\ngroup Registry\n    public let total: i32 = 5\n" +
-            "func use() -> i32 => Cache<i32>.Statistics.count + Registry.total\nfunc read<T>() -> i32 => Cache<T>.Statistics.count + Registry.total\n" +
-            "let n = read<bool>()\n");
+        var c = MirBuildTest.Compile("struct Cache<T>\n    public group Statistics\n        public let count: i32 = 0\n" +
+            "group Registry\n    public let total: i32 = 5\nfunc use() -> i32 => Cache<i32>.Statistics.count + Registry.total\n" +
+            "func read<T>() -> i32 => Cache<T>.Statistics.count + Registry.total\nlet n = read<bool>()\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var program = c.BuildMir();
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
@@ -467,8 +484,8 @@ public sealed class InstanceCollectorTest
         var program = c.BuildMir();
         var use = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "use");
         var plain = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "plain").Key.Decl!;
-        var block = Enumerable.Range(0, use.Blocks.Length)
-            .Single(b => use.Blocks[b].Terminator is { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.StaticEnsure } });
+        var block = Enumerable.Range(0, use.Blocks.Length).Single(b => use.Blocks[b].Terminator is
+            { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.StaticEnsure } });
         var root = use.Static(new(plain, BoundType.Unit, false, false)).Root;
         var operand = use.AddOperand(MirOperand.Const(use.Const(new(MirConstKind.Integer, BoundType.ISize, ~root))));
         use.Terminate(block, use.Blocks[block].Terminator with { Start = operand });
@@ -487,8 +504,8 @@ public sealed class InstanceCollectorTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var program = c.BuildMir();
         var make = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "make");
-        var block = Enumerable.Range(0, make.Blocks.Length)
-            .Single(b => make.Blocks[b].Terminator is { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.RawAllocate } });
+        var block = Enumerable.Range(0, make.Blocks.Length).Single(b => make.Blocks[b].Terminator is
+            { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.RawAllocate } });
         var call = make.Blocks[block].Terminator;
         make.Terminate(block, call with { Callee = call.Callee with { Arg = (int)IntrinsicId.DestroyValues } });
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
