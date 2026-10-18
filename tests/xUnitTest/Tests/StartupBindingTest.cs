@@ -29,13 +29,13 @@ public class StartupBindingTest
         if (source.StartsWith("public", StringComparison.Ordinal))
         {
             Assert.Equal(StartupKind.Explicit, result.Kind);
-            Assert.Same(GetMain(c), result.Function);
+            Assert.Same(GetMain(c).SymbolOf(), result.Symbol);
             Assert.Empty(c.Binding.StartupItems);
         }
         else
         {
             Assert.Equal(StartupKind.Implicit, result.Kind);
-            Assert.Same(c.Kotonoha.GeneratedFunction, result.Function);
+            Assert.Null(result.Symbol);
             Assert.Same(c.Kotonoha.GeneratedFunction!.Body!.Items[0], c.Binding.StartupItems[0]);
         }
     }
@@ -73,7 +73,7 @@ public class StartupBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.False(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Contains(c.Binding.StartupIssues, x => x.Code == DiagnosticCode.InvalidStartupMain_Kd);
-        Assert.Null(c.Binding.Startup.Function);
+        Assert.Null(c.Binding.Startup.Symbol);
         Assert.True(c.Binding.CheckStartup(OutputKind.Library).IsComplete, Describe(c));
         Assert.Empty(c.Binding.StartupIssues);
         Assert.True(c.Binding.CheckBound().IsComplete);
@@ -283,7 +283,7 @@ public class StartupBindingTest
         var c = Parse(source);
         c.Bind();
         Assert.False(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Null(c.Binding.Startup.Function);
+        Assert.Null(c.Binding.Startup.Symbol);
         Assert.True(GetMain(c).IsSpecialization || c.Binding.StartupIssues.Any(x => x.Code == DiagnosticCode.InvalidStartupMain_Kd));
     }
 

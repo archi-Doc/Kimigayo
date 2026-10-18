@@ -1788,3 +1788,12 @@ structure is recorded here by the unit that first implements it.
   added (PD21). Rejected: a parallel enumeration mapped from `OwnershipFailure` (a second copy); moving
   `OwnershipFailure` unchanged (its name describes the old analysis); one cross-partition requirement enumeration now (R7's
   replacement of `BindingFailure`, PLAN10 §7).
+- **R5-M25 Backend roots and externs named by symbol** (2026-10-18, planning session; plan F2a, package F §4.10 and fact 8,
+  S2-S4 decision 4, under R5-M18) Rule: a Backend root or extern names its definition the way `MirDefKey` does. A Koto column is
+  replaced where every reader can derive the Koto from the symbol; otherwise the symbol is added, and the Koto column goes with
+  its last syntax reader. F2a applies it to startup: `StartupResult.Symbol` (`Binding/Binding.Startup.cs`) holds the explicit
+  `main`, and `Kind == Implicit` means the startup body is the generated function of top-level statements, `MirDefKey(null, Fn,
+  0)`: the startup module is always ordinal 0 (`SourceModules[0]` is `Compilation.Kotonoha`), so no module column is published.
+  `StartupResult.Function` stays for its last reader, the old Emission's `LlvmEmitter` (D5), and goes with it at G7; tests read
+  `Symbol` and `Kind`. F2b and F2c apply the rule to library imports and the legacy Dictionary rows' callees. Rejected: a module
+  ordinal column (plan row F2a; always 0); replacing `Function` now (a frozen reader).
