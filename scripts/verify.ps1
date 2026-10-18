@@ -25,8 +25,8 @@
 # -Pipeline mir (R3-R5) runs every compiler process of the run with KIMI_PIPELINE=mir; the default is legacy.
 #   ./scripts/verify.ps1 -Class XunitTest.PipelineSwitchTest -Pipeline mir
 # -Codegen mir (R5, until G4) also sets KIMI_CODEGEN=mir, MIR code generation ("sel"), which needs -Pipeline mir; the default is legacy.
-# A sel run that wrote test results ends with the pending ledger report (codegen-pending.ps1): codegen-pending.json and the
-# summary.json field codegenPending; it reports and does not gate.
+# A sel run that wrote test results then runs the pending ledger report (codegen-pending.ps1): codegen-pending.json and the
+# summary.json field codegenPending; the failing set does not fail it, a malformed ledger does.
 #   ./scripts/verify.ps1 -Class XunitTest.PipelineSwitchTest -Pipeline mir -Codegen mir
 #
 # Tests run up to -TestParallel collections at a time (default up to 8), respecting disabled
@@ -323,7 +323,7 @@ if (-not $failed -and $Milestone.Count -gt 0) {
 
 $codegenPending = $null
 if ($Codegen -eq 'mir' -and @(Get-ChildItem -LiteralPath $evidence -Filter 'tests-*.xml' -File).Count -gt 0) {
-    # The sel failing set against the pending ledger (R5 E10); it runs after failed tests too and does not gate.
+    # The sel failing set against the pending ledger (R5 E10), also after failed tests; until E11 the failing set fails no step.
     $timer = Start-Step 'codegen pending'
     try {
         $codegenPending = Write-KimiCodegenPending $evidence $Mode $Configuration $Fixtures (Join-Path $repo 'tests/xUnitTest/TestData/codegen-pending')

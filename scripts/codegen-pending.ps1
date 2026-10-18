@@ -1,10 +1,12 @@
 # The R5 pending ledger report (R5 plan E10, PD10; DECISIONS R5-M66; removed with the selector at G4), dot-sourced by verify.ps1
-# after verification-selection.ps1, whose Get-KimiExecutedTests decides which cases ran. The ledger is the union of
+# after verification-selection.ps1, whose Get-KimiExecutedCases decides which cases ran. The ledger is the union of
 # tests/xUnitTest/TestData/codegen-pending/<group>.tsv, one file per review group, with the rows
-#   test<TAB><type>.<method><TAB><failing cases>    fixture<TAB><stem>.ll<TAB>1
+#   test<TAB><type>.<method><TAB><display name><TAB><failing cases>    fixture<TAB><stem>.ll<TAB>1
+# where a count above 1 stands for cases whose display names collide (xUnit truncates long theory arguments with "···").
 # The report compares the failing set of a MIR code generation run with it and writes codegen-pending.json into the evidence.
 
-# The ledger rows by "<kind> <key>". A malformed row, a file other than .tsv or a key listed twice throws; no directory is an empty ledger.
+# The ledger rows by id (kind, key and name, tab-separated). A malformed row, a file other than .tsv or an id listed twice throws;
+# no directory is an empty ledger.
 function Read-KimiCodegenLedger([string] $Directory) {
     $rows = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::Ordinal)
     $groups = [Collections.Generic.List[string]]::new()
@@ -15,38 +17,36 @@ function Read-KimiCodegenLedger([string] $Directory) {
             $number = 0
             foreach ($line in [IO.File]::ReadAllLines($file.FullName)) {
                 $number++
-                if ($line -cnotmatch '^(test\t\S+\.[^\s.]+\t[1-9]\d*|fixture\t\S+\.ll\t1)$') {
-                    throw "$($file.Name):$number is not a pending row (test<TAB>Type.Method<TAB>cases or fixture<TAB>name.ll<TAB>1)."
+                if ($line -cnotmatch '^(test\t\S+\.[^\s.]+\t[^\t]+\t[1-9]\d*|fixture\t\S+\.ll\t1)$') {
+                    throw "$($file.Name):$number is not a pending row (test<TAB>Type.Method<TAB>display name<TAB>cases or fixture<TAB>name.ll<TAB>1)."
                 }
-                $kind, $key, $count = $line.Split("`t")
-                if ($rows.ContainsKey("$kind $key")) { throw "$($file.Name):$number lists $kind $key again." }
-                $rows["$kind $key"] = [pscustomobject]@{ group = $file.BaseName; count = [int]$count }
+                $fields = $line.Split("`t")
+                $id = $fields[0..($fields.Count - 2)] -join "`t"
+                if ($rows.ContainsKey($id)) { throw "$($file.Name):$number lists $($id.Replace("`t", ' ')) again." }
+                $rows[$id] = [pscustomobject]@{ group = $file.BaseName; count = [int]$fields[-1] }
             }
         }
     }
     [pscustomobject]@{ rows = $rows; groups = $groups }
 }
 
-# The run's executed and failing counts by "<kind> <key>": a case failed when it ran and did not pass, counted per type.method; a
-# fixture failed when its native run did not pass at both O0 and O2 (test-scalars.ps1's rule).
+# The run's executed and failing counts by id: a case failed when it ran and did not pass, counted per type.method and display
+# name; a fixture failed when a native run of it did not pass at both O0 and O2 (test-scalars.ps1's rule).
 function Get-KimiCodegenRun([string] $Evidence) {
     $executed = [Collections.Generic.Dictionary[string, int]]::new([StringComparer]::Ordinal)
-    $passed = [Collections.Generic.Dictionary[string, int]]::new([StringComparer]::Ordinal)
+    $failing = [Collections.Generic.Dictionary[string, int]]::new([StringComparer]::Ordinal)
     $results = @(Get-ChildItem -LiteralPath $Evidence -Filter 'tests-*.xml' -File)
     if ($results.Count -eq 0) { throw "$Evidence records no test results." }
-    foreach ($xml in $results) {
-        foreach ($test in @(Get-KimiExecutedTests $xml.FullName)) { $executed["test $test"] += 1 }
-        foreach ($node in @(Select-Xml -LiteralPath $xml.FullName -XPath '//test[@result="Pass"]')) {
-            $passed["test $($node.Node.type).$($node.Node.method)"] += 1
-        }
+    foreach ($case in @($results | ForEach-Object { Get-KimiExecutedCases $_.FullName })) {
+        $id = "test`t$($case.type).$($case.method)`t$($case.name)"
+        $executed[$id] += 1
+        if ($case.result -cne 'Pass') { $failing[$id] += 1 }
     }
-    $failing = [Collections.Generic.Dictionary[string, int]]::new([StringComparer]::Ordinal)
-    foreach ($id in $executed.Keys) { $failing[$id] = $executed[$id] - $passed[$id] }
     $native = @(Get-ChildItem -LiteralPath $Evidence -Directory -Filter 'native*-fixtures' | ForEach-Object { Join-Path $_.FullName 'results.json' } |
         Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })
     foreach ($record in @($native | ForEach-Object { Get-Content -LiteralPath $_ -Raw | ConvertFrom-Json })) {
         # A fixture several native steps ran failed when one of its runs failed.
-        $id = "fixture $($record.fixture)"
+        $id = "fixture`t$($record.fixture)"
         $executed[$id] = 1
         $failing[$id] = [int]($failing[$id] -gt 0 -or -not $record.ok -or ($record.levels -join ',') -cne 'O0,O2')
     }
@@ -66,9 +66,10 @@ function Get-KimiCodegenTotals($Entries) {
     $totals
 }
 
-# Writes <Evidence>/codegen-pending.json and returns the summary.json field. A row not executed is no longer executed when the run
-# covers it (a Session every test, a Unit run its selected methods and any method its fresh assembly lacks, the native steps the
-# fixtures of their patterns), else out of scope.
+# Writes <Evidence>/codegen-pending.json and returns the summary.json field. A row whose cases fail fewer times passes now only as
+# far as passing cases of its name account for it, else it is no longer executed, as is a row not executed that the run covers (a
+# Session every test, a Unit run its selected methods and any method its fresh assembly lacks, the native steps the fixtures of
+# their patterns); a row the run does not cover is out of scope.
 function Write-KimiCodegenPending([string] $Evidence, [string] $Mode, [string] $Configuration, [string[]] $Fixtures, [string] $Ledger) {
     $ledgerRows = Read-KimiCodegenLedger $Ledger
     $run = Get-KimiCodegenRun $Evidence
@@ -83,22 +84,25 @@ function Write-KimiCodegenPending([string] $Evidence, [string] $Mode, [string] $
     $ids = [Collections.Generic.SortedSet[string]]::new([string[]]@($ledgerRows.rows.Keys), [StringComparer]::Ordinal)
     foreach ($id in $run.failing.Keys) { if ($run.failing[$id] -gt 0) { $null = $ids.Add($id) } }
     $entries = @(foreach ($id in $ids) {
-        $kind, $key = $id.Split(' ', 2)
+        $kind, $key, $name = $id.Split("`t")
         $row = $ledgerRows.rows[$id]
         $count = if ($row) { $row.count } else { 0 }
         $failing = [int]$run.failing[$id]
         $state = if ($run.executed.ContainsKey($id)) {
-            if ($failing -lt $count) { 'passesNow' } elseif ($failing -gt $count) { 'added' } else { 'pending' }
+            if ($failing -gt $count) { 'added' }
+            elseif ($failing -eq $count) { 'pending' }
+            elseif ($run.executed[$id] - $failing -ge $count - $failing) { 'passesNow' }
+            else { 'noLongerExecuted' }
         }
         elseif ($kind -ceq 'fixture') {
             if ($run.native -and @($Fixtures | Where-Object { $key -like $_ }).Count -gt 0) { 'noLongerExecuted' } else { 'outOfScope' }
         }
         elseif ($Mode -ceq 'Session' -or $selected.Contains($key) -or -not $discovered.Contains($key)) { 'noLongerExecuted' }
         else { 'outOfScope' }
-        [ordered]@{ kind = $kind; key = $key; group = $row.group; ledger = $count; executed = [int]$run.executed[$id]; failing = $failing; state = $state }
+        [ordered]@{ kind = $kind; key = $key; name = $name; group = $row.group; ledger = $count; executed = [int]$run.executed[$id]; failing = $failing; state = $state }
     })
     $executed = [ordered]@{ tests = 0; fixtures = 0 }
-    foreach ($id in $run.executed.Keys) { if ($id.StartsWith('fixture ')) { $executed.fixtures++ } else { $executed.tests += $run.executed[$id] } }
+    foreach ($id in $run.executed.Keys) { if ($id.StartsWith("fixture`t")) { $executed.fixtures++ } else { $executed.tests += $run.executed[$id] } }
     $groups = [ordered]@{}
     foreach ($group in $ledgerRows.groups) { $groups[$group] = Get-KimiCodegenTotals @($entries | Where-Object { $_.group -ceq $group }) }
     $totals = Get-KimiCodegenTotals $entries

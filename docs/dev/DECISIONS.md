@@ -3021,18 +3021,26 @@ structure is recorded here by the unit that first implements it.
     kept only for the old order); reporting publication failures in `Generate` (publication is `EmissionArtifacts`', G9b's record).
 - **R5-M66 The pending ledger and its report** (2026-10-19, planning session; plan E10, PD10, R5-M8's M1; a temporary structure
   removed with the selector at G4) The pending ledger is the union of `tests/xUnitTest/TestData/codegen-pending/<group>.tsv`, one
-  file per review group named by the group (`C-frame.tsv`), with the rows `test<TAB><type>.<method><TAB><failing cases>` and
-  `fixture<TAB><stem>.ll<TAB>1`; a malformed row, a file other than `.tsv` or a key listed twice in any files is refused, and no
-  directory is an empty ledger. `scripts/codegen-pending.ps1`, dot-sourced by Verify, owns the comparison of a sel run with it: a
-  case fails when it ran (`Get-KimiExecutedTests`) and did not pass, counted per `type.method` (theory names collide); a fixture
-  fails when a native run of it did not pass at O0 and O2. Each key of the ledger and the failing set is `pending`, `passesNow`
-  (fewer failing cases), `added` (more, or unlisted), `noLongerExecuted` (not executed although the run covers it: a Session every
-  test, a Unit run its selected methods and any method its fresh assembly lacks, native steps that wrote results the fixtures of
-  their patterns) or `outOfScope`; totals of ledger, failing and each state's cases and fixtures, per group too, go into
-  `codegen-pending.json`, and Verify records them as `summary.json` `codegenPending` under `-Codegen mir` only, in a step that
-  reports and does not gate (E11 adds the gate and `-UpdatePending`). Rejected: one ledger file (lanes serialize, PD10); a reason
-  column (the group file groups, the commit explains); a standalone script reading `summary.json` (written after the steps, so
-  Verify could neither record the report as a step nor its totals).
+  file per review group named by the group (`C-frame.tsv`), with the rows `test<TAB><type>.<method><TAB><display name><TAB><failing
+  cases>` and `fixture<TAB><stem>.ll<TAB>1`. A test row is one case, or the count of cases whose display names collide (xUnit
+  truncates long theory arguments with "···"); a malformed row, a file other than `.tsv` or a row listed twice in any files is
+  refused, and no directory is an empty ledger. `scripts/codegen-pending.ps1`, dot-sourced by Verify, owns the comparison of a sel
+  run with it: a case fails when it ran (`Get-KimiExecutedCases`, verification-selection's one executed rule) and did not pass; a
+  fixture fails when a native run of it did not pass at O0 and O2. A row whose name ran is `pending` (as many failures), `added`
+  (more; a failing case without a row is added too), or, with fewer, `passesNow` when the passing cases of its name account for
+  them, else `noLongerExecuted`; a row whose name did not run is `noLongerExecuted` when the run covers it (a Session every test, a
+  Unit run its selected methods and any method its fresh assembly lacks, native steps that wrote results the fixtures of their
+  patterns), else `outOfScope`. Totals of ledger, failing and each state's cases and fixtures, per group too, go into
+  `codegen-pending.json`; Verify records them as `summary.json` `codegenPending` under `-Codegen mir` only, in a step after the
+  tests, native steps and milestones that the failing set does not fail (a malformed ledger or missing evidence does; E11 adds the
+  gate and `-UpdatePending`). Limits: a renamed case shows as `noLongerExecuted` plus `added`, which the gate treats
+  conservatively; within one colliding name, a removed failing case beside passing cases of that name counts as passing now (the
+  count records no executed cases); a test that neither ran nor has a row (a partial or crashed run) is invisible to the report, so
+  E11 compares the executed methods with the selected and discovered ones. Rejected: a failing count per `type.method` (a deleted
+  failing theory case passed now, and a fixed case beside a new failure stayed pending); also recording executed counts per
+  method (keeps that masking); one ledger file (lanes serialize, PD10); a reason column (the group file groups, the commit
+  explains); a standalone script reading `summary.json` (written after the steps, so Verify could neither record the report as a
+  step nor its totals).
 - **R5-M60 Drop glue, destructor and static edges of the checked set** (2026-10-19, planning session; plan K7, the K package's §4.5 rows
   7, 9, 10 and "DropGlue", §4.7 and §4.8, S2-S4 X3, X23, X27, X33 (a) and X34; under R5-M18, R5-M35 and R5-M44; DEC Q6 form 1) Every Drop
   (A2's verdicts do not narrow the checked set) and every `DestroyValues` call is the `DropGlue` item of its Type in the item's instance,
