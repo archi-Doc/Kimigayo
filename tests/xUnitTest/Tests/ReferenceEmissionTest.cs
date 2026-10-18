@@ -225,7 +225,7 @@ public class ReferenceEmissionTest
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var pool = new FunctionAbiPool();
         var same = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "same");
-        var abi = pool.Get(0, same);
+        var abi = pool.Get(0, same, c.Layout);
         var oldType = same.Parameters[0].Type.TypeOf();
         c = MinimalEmissionTest.Analyze(Source.Replace("same", "renamed", StringComparison.Ordinal));
         Assert.True(c.Bind().IsComplete);
@@ -234,7 +234,7 @@ public class ReferenceEmissionTest
         Assert.True(c.Emission.TryPrepare(out module, out error), error);
         var renamed = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "renamed");
         Assert.NotSame(oldType, renamed.Parameters[0].Type.TypeOf());
-        Assert.Same(abi, pool.Get(0, renamed));
+        Assert.Same(abi, pool.Get(0, renamed, c.Layout));
     }
 
     [Fact]
@@ -289,7 +289,7 @@ public class ReferenceEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(Same + "()");
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "same");
-        pool.Get(0, function);
+        pool.Get(0, function, c.Layout);
         return new WeakReference(function);
     }
 }
