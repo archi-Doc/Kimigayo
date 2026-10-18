@@ -196,7 +196,7 @@ public sealed partial class Binding
         // definitions are instantiated.
         this.associatedOrigins.Clear();
         this.localRegions.Clear();
-        this.functionItemContexts.Clear();
+        this.ResetCallContexts();
         this.types.ResetRetentions();
         this.types.ResetInstances();
     }

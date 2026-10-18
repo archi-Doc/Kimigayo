@@ -1656,6 +1656,22 @@ R5 on the owner's request of 2026-10-18.
   and now the pair does too. Rejected: no store row at all (the exclusive case may write the referent, and a concrete
   `uniq/T` input keeps its row: dropping it would be a second rule for self-stores); a retention per Semantics case (one
   view per instantiation, R4-M51). Not temporary.
+- **BU-4** (2026-10-18; the BU planning session; PLAN G129, whose later units extend this entry) G129 U1: Never's
+  capabilities per SPEC 3.1.3. Never is Copy and Owned, Proven by `TryLeafCapability`'s Primitive row (its Never row, which
+  answered Unknown, is deleted), so a Type storing Never is decided by its structure (`(i32, Never)`, `[2 of Never]` and
+  `Option<Never>` Copy and Owned, `Array<Never>` Owned and Non-Copy by SPEC 4.5); it stays not Sealed, ObjectPayload,
+  PrimitiveInteger or Callable, and every declared Contract is refuted for it (`ResolveConformance` drops Never's exemption
+  from a primitive's fixed environment). Transferable has no implementation (STATUS Async row). The old analysis's
+  `CopyProof` loses its Never parameter (its primitive classification now agrees with Binding); `Place` keeps `neverResult`
+  in its Unsupported guard, so every Place of a Type holding Never stays the old path's `Unsupported_Kd` until R6-check.
+  Why: Unknown for a closed Type was the old analysis's `InternalInvariant_Kd` (`var t = (1, stop())`, an `Option<Never>`
+  local or parameter) and Binding's Move for SPEC 3.1.3's own `let b = a; let c = a` (`TransferRequired_Kd`, A1
+  `MovedPlace_Kd`). The rest of G129 (Never fitting at the root, the late fit, R4-M59's removal) follows G130. Rejected:
+  design A's MIR Copy for every Never Place (it would hide `g(x@move, x)`; the MIR Never-Place acquisition moved to R5,
+  PLAN G139); keeping Never's Unknown leaf (SPEC 3.1.3). Open: generic uses with a Never-holding Type argument that now
+  pass Binding under `T is Copy` (`let r = id<Never>`, `f<Option<Never>>(o)` with `o: ref/Option<Never>`) stop at the old
+  Emission's existing `GenerationFailed_Kd` rather than a located `Unsupported_Kd`, as the same programs without the
+  Constraint already did, until R6. Not temporary.
 
 ## R5 and R6 (adopted 2026-10-18)
 
@@ -1954,7 +1970,7 @@ structure is recorded here by the unit that first implements it.
   corpus such programs stay refused, with a different `GenerationFailed_Kd` Note visible on build or run only; accepted ones whose
   nested function ignores the slots get per-instance entries with the same behavior; a two-level nested call that selects a
   specialization stays wrong in legacy, which forwards one level. F3 is therefore not a D5 miscompile fix.
-  - Departure (temporary): a specialization stops the walk, so it and everything nested in it count as closed, although SPEC
+  - Departure (temporary; superseded by R5-M34): a specialization stops the walk, so it and everything nested in it count as closed, although SPEC
     8.13.1 closes only its arguments and SPEC 6.1.3 makes a specialization in a generic container generic in the container's
     slots. Reason: it is the only behavior-preserving rule for the re-pointed legacy readers. Both SPEC-literal variants (the walk
     passing an enclosing specialization; no specialization rule) make legacy refuse a closure in a specialization of a generic
@@ -2159,3 +2175,48 @@ structure is recorded here by the unit that first implements it.
   `FormattingWitness` row bit (a third statement of the published `Formats` rows, beside `IntrinsicDisposition.Effect`'s
   `Formatting` class, naming neither the requirement nor the parameter; and no formatting routine's text calls a witness, unlike
   an `ElementGlue` helper's); wrappers written only under the runtime flag (G133).
+- **R5-M34 `Instantiates` follows SPEC 6.1.3; the old generator keeps its view** (2026-10-18, planning session; plan K1's
+  prerequisite, S2-S4 X40, package K §4.1, PLAN SP; under R5-M18; supersedes R5-M21's departure clause) `TyCtxt.Instantiates`
+  is true when the definition or a declaration on its scope chain has a Type, Semantics or length slot. A specialization declares
+  none (SPEC 8.13.1) and no longer stops the walk, so a specialization in a generic container and every declaration nested in it
+  are generic in the container's slots, their instance key holding the container's arguments (SPEC 8.13.3); a top-level
+  specialization stays closed. One walk classifies a definition as Closed, Generic or GenericThroughSpecialization (a slot reached
+  past a specialization), memoized as before.
+  - Temporary structure, removed by G7 with its reader: `[Transitional("R6-gen")] TyCtxt.InstantiatesInLegacy`, true for Generic
+    only (R5-M21's rule), read by the old generator's `GenericStoragePlan.IsGeneric` alone, the one rule under which it
+    generates a closure in a specialization of a generic struct's Type function, as it does today.
+  - Binding's closure contexts (`CloseClosureTypes`, which `TyCtxt.Apply` delegates to) read `Instantiates`: a context is made only
+    for a substitution whose target is the closure's nearest named enclosing function, and the old generator forms none whose
+    target its view counts closed, so its output is unchanged, while MIR's `Apply` gives a closure in such a specialization the
+    container's context, which the collector's closure edges key by (K5). The effect-bound check's specialization call plan
+    (`Binding.EffectBounds.cs` `Specialization`, resolving body Types through `InstantiateStorageType`) and `MirEffects` through
+    `Apply` reach the same contexts on both pipelines, a move toward SPEC that no corpus case shows (X40 review). The "old
+    readers" of X40 are the old generator's: `Binding.ClosureInstances` takes the SPEC view (K5 keys closures by it).
+  - Evidence: no definition among the 456 snapshot cases (library, milestones, corpus) changes class (temporary probe); the 17
+    F3 reproducers and three new probes give the parent's old-generator output; the program R5-M21 named still builds
+    (`GenericClosureDispatchTest`). Legacy-only sites keeping the old treatment: `OwnershipModel.IsConcrete` (R6-check) and
+    `LlvmEmitter`'s body filter (G7).
+  - Rejected: both readers on the SPEC rule (the old generator refuses that program, `GenerationFailed_Kd`); a copy of the old
+    rule in Emission (two rules for one fact); a mode parameter on `Instantiates`; the old view in `CloseClosureTypes` (the
+    collector would key a generic closure as closed).
+- **R5-M36 Closure contexts as `Subst`** (2026-10-18, planning session; plan K2 (A5P-C1), package K §4.2 and §9, S2-S4 X10, under
+  R5-M18) `BoundType.ClosureContext` is the `Subst` of the instance that closed the closure. `CloseClosureTypes` interns it through
+  `TyCtxt.ClosureContext(enclosing, declaring, types, lengths, origins, inputs)`, the value the old synthetic CallPlan's `SubstOf` gave
+  (a call with a conforming Self, a Direct virtual call or a bound contract would add Self, which `CloseClosureTypes` does not receive;
+  PLAN G142), so one instance's closures share it, and interning replaces the never-cleared list of synthetic CallPlans and its linear scan; the
+  closure's result in the instance stays the failure check, while the CallPlan's ReturnType, a function of the rest, is dropped.
+  `SubstOfClosure` reads the field, `ClosureSignature` is `Apply(signature, context)`, and Hover identifies a context by
+  `SubstIdentity` (`Checking/Hover/HoverBuilder.Substitutions.cs`; `HoverBuilder.cs` is over the token limit): its binder and every
+  binding. The rebuild sites and the reference comparisons of `ClosureContext` are unchanged.
+  - Temporary structure, deleted by G7 with its readers: `[Transitional("R6-gen")] Binding.ClosureCall(closure)`, the CallPlan the old
+    generator keys a closure's instance by (`GenericStoragePlan.PrepareClosures`, `BodyLowering`'s value callees). There is one per
+    (closure symbol, context), as the old scan gave, so two closures of one instance keep two (X10). It is kept with the function item
+    contexts until an edit (`ResetCallContexts`, which keeps `Binding.cs` from growing; G7 inlines it); the planning session reads the
+    package's "for the pass" as their lifetime, kept across unchanged passes, so a warm rebind and generation build no new CallPlan, as
+    with the old list (not measured: no warm test rebinds). Bridge CallPlans carry the context's padded Lengths, not the caller's.
+  - Evidence: the semantic snapshot (HIR and MIR), the diagnostic snapshot and the fixture IR of the closure emission classes are
+    identical to the parent's, with the native Closure, GenericClosure, GenericCapture, NestedGeneric, GenericStorage and GenericDefault
+    families; `GenericClosureIdentityTest` adds the two-closure regression.
+  - Rejected: a memo per Subst (two closures of one instance would share one CallPlan: wrong code); a memo cleared per pass (each warm
+    rebind would rebuild the old generator's CallPlans); a canonical CallPlan per context (A5P's C2: a fact outside R7's shape); a
+    comparer modulo Origins (D1's Design B).
