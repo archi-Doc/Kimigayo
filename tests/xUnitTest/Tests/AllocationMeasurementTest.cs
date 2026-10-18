@@ -2,6 +2,8 @@
 
 using System.Buffers;
 using System.Diagnostics;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using Xunit;
 
 namespace XunitTest;
@@ -61,11 +63,13 @@ public class AllocationMeasurementTest
     }
 
     // A pooled allocation that the operation makes once after the warm-up, of a length that no trim drops, is measured like
-    // any other allocation: it is late growth, not the effect of a pool's trim.
+    // any other allocation: it is late growth, not the effect of a pool's trim. A first measurement compiles the pool's and
+    // the listener's code for it, so that the measured window compiles nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void MeasuresAPooledAllocationThatNoTrimExplains()
     {
+        AllocationMeasurement.Measure(static () => ArrayPool<PoolItem>.Shared.Return(ArrayPool<PoolItem>.Shared.Rent(16)));
         var calls = 0;
         var bytes = AllocationMeasurement.Measure(() =>
         {
@@ -136,6 +140,56 @@ public class AllocationMeasurementTest
         }
     }
 
+    // The first run of a method in the first measured operation compiles it on the measuring thread and allocates there, as
+    // the first tier-0 run of a comparison does when it creates the comparer: that window is invalid, and the next measures
+    // the operation, (4 + 12) + (4 + 28) operations in all. An allocation that recurs is still measured there.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DiscardsTheWindowThatAllocatedWhileCompiling(bool recurring)
+    {
+        var calls = 0;
+        var bytes = AllocationMeasurement.Measure(() =>
+        {
+            if (++calls == AllocationMeasurement.WarmupOperations + 1)
+            {
+                _ = recurring ? FirstRun<RecurringMarker>() : FirstRun<OnceMarker>();
+            }
+
+            if (recurring)
+            {
+                GC.KeepAlive(new byte[128]);
+            }
+        });
+        Assert.Equal(48, calls);
+        if (recurring)
+        {
+            Assert.True(bytes >= 128 * AllocationMeasurement.MeasuredOperations, $"{bytes} bytes");
+        }
+        else
+        {
+            Assert.Equal(0, bytes);
+        }
+    }
+
+    // An operation that compiles and allocates every time disturbs every window: the measurement fails instead of passing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void FailsWhenCompilationDisturbsEveryWindow()
+    {
+        Type[] types = [typeof(byte), typeof(sbyte), typeof(short), typeof(ushort), typeof(int), typeof(uint), typeof(long), typeof(ulong), typeof(char), typeof(bool), typeof(float), typeof(double), typeof(decimal), typeof(nint), typeof(nuint)];
+        var method = typeof(AllocationMeasurementTest).GetMethod(nameof(FirstRunOfPair), BindingFlags.NonPublic | BindingFlags.Static)!;
+        var calls = 0;
+        var failure = Assert.Throws<InvalidOperationException>(() => AllocationMeasurement.Measure(() =>
+        {
+            method.MakeGenericMethod(types[calls % types.Length], types[calls / types.Length]).Invoke(null, null);
+            calls++;
+        }));
+        Assert.Contains("compiled", failure.Message, StringComparison.Ordinal);
+        Assert.Equal(112, calls);
+    }
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void PropagatesWorkerFailure()
@@ -144,5 +198,21 @@ public class AllocationMeasurementTest
         Assert.Same(failure, Assert.Throws<InvalidOperationException>(() => AllocationMeasurement.Measure(() => throw failure)));
     }
 
+    // Compiled at its first run for each value Type, which also creates the Type's default comparer.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static bool FirstRun<T>()
+        where T : struct
+        => EqualityComparer<T>.Default.Equals((new T[1])[0], default);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void FirstRunOfPair<T1, T2>()
+        where T1 : struct
+        where T2 : struct
+        => GC.KeepAlive(new (T1, T2)[1]);
+
     private readonly struct PoolItem;
+
+    private readonly struct OnceMarker;
+
+    private readonly struct RecurringMarker;
 }

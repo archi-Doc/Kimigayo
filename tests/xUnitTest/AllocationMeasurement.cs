@@ -2,6 +2,7 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics.Tracing;
+using System.Runtime;
 
 namespace XunitTest;
 
@@ -19,6 +20,13 @@ internal static class AllocationMeasurement
     // collection, or after any collection of a pool first used in the process; the next Rent then allocates. A window with
     // pooled-buffer events that all have such a cause, or a full pool, is invalid, and another warm-up and window follow; any
     // other pooled allocation, such as storage that first grows after the warm-up, is measured.
+    // The first tier-0 run of a comparison creates EqualityComparer<T>.Default or Comparer<T>.Default (88 bytes on .NET 10)
+    // once per process, charged to the running thread; optimized code needs none. A comparison that OSR or inlined code ran
+    // first therefore creates it whenever tiering first runs it at tier 0, for example in a callee first called on its own once
+    // its caller's tier-1 code stops inlining it, and the thread compiles that tier-0 method first. A window that allocated
+    // while the measuring thread compiled methods is invalid in the same way; a window that allocated nothing is valid, and an
+    // allocation that recurs is measured in the next window. A comparer of a reference type T runs shared code that may need no
+    // compilation, so its creation is not covered.
     private const int MaximumWindows = 3;
 
     private static readonly PoolEvents Pool = new();
@@ -55,6 +63,7 @@ internal static class AllocationMeasurement
                     // A gen0 collection retires it; a full one would also trim shared pools (gen2 callbacks) under
                     // the measurements running on other threads.
                     GC.Collect(0, GCCollectionMode.Forced, blocking: true);
+                    var compiled = JitInfo.GetCompiledMethodCount(currentThread: true);
                     readings[0] = GC.GetAllocatedBytesForCurrentThread();
                     for (var i = 1; i < readings.Length; i++)
                     {
@@ -62,20 +71,21 @@ internal static class AllocationMeasurement
                         readings[i] = GC.GetAllocatedBytesForCurrentThread();
                     }
 
+                    compiled = JitInfo.GetCompiledMethodCount(currentThread: true) - compiled;
                     run += readings.Length - 1;
-                    if (!Pool.FollowTrims(events, trims))
+                    var largest = Largest(readings);
+                    var trimmed = Pool.FollowTrims(events, trims);
+                    if (!trimmed && (largest == 0 || compiled == 0))
                     {
-                        for (var i = MeasuredOperations; i < readings.Length; i++)
-                        {
-                            allocated = Math.Max(allocated, readings[i] - readings[i - MeasuredOperations]);
-                        }
-
+                        allocated = largest;
                         return;
                     }
 
                     if (window == MaximumWindows)
                     {
-                        throw new InvalidOperationException($"High-pressure ArrayPool trims or full pools disturbed all {MaximumWindows} allocation windows.");
+                        throw new InvalidOperationException(trimmed
+                            ? $"High-pressure ArrayPool trims or full pools disturbed all {MaximumWindows} allocation windows."
+                            : $"Trims or methods compiled on the measuring thread disturbed all {MaximumWindows} allocation windows; the last allocated {largest} bytes while {compiled} methods were compiled.");
                     }
                 }
             }
@@ -102,6 +112,18 @@ internal static class AllocationMeasurement
         }
 
         return allocated;
+    }
+
+    // The largest allocation of MeasuredOperations consecutive operations of a window's readings.
+    private static long Largest(long[] readings)
+    {
+        long largest = 0;
+        for (var i = MeasuredOperations; i < readings.Length; i++)
+        {
+            largest = Math.Max(largest, readings[i] - readings[i - MeasuredOperations]);
+        }
+
+        return largest;
     }
 
     // ArrayPoolEventSource reports a pool's allocation or full-pool drop of a buffer synchronously on the thread that rents
