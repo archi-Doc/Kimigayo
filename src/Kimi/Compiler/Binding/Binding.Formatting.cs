@@ -6,6 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    [Transitional("R7", Reason = "The legacy comparison composition's leaves (A-12, else R7) and TryResolveFormattingCallback's (H11).")]
     private readonly Dictionary<(BindingSymbol Site, BoundType Type, KimiDeclarationId Contract, string? Name), (ulong Version, CallPlan Call)> requirementCalls = new();
     private readonly Dictionary<BoundType, CallPlan> destructionCalls = new(ReferenceEqualityComparer.Instance);
     private BindingSymbol? builtinFormat;
@@ -54,9 +55,11 @@ public sealed partial class Binding
 
     // Compiler-created calls use the same verified witness and storage substitution as source calls.
     // Their input Origins remain the implementation's external inputs; no borrowed value is captured.
+    [Transitional("R6", Reason = "H11 deletes it with TryResolveFormattingCallback.")]
     internal CallPlan? RequirementImplementation(CallPlan site, BoundType self, KimiDeclarationId identity, string? name = null)
         => this.RequirementImplementation(site.Target, self, identity, name);
 
+    [Transitional("R7", Reason = "The legacy comparison composition's leaves (A-12, else R7) and TryResolveFormattingCallback's (H11).")]
     private CallPlan? RequirementImplementation(BindingSymbol site, BoundType self, KimiDeclarationId identity, string? name = null)
     {
         var key = (site, self, identity, name);

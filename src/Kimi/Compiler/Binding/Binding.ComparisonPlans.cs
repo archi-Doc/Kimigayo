@@ -4,16 +4,31 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    [Transitional("R7", Reason = "The legacy comparison composition beside TyCtxt.Comparison, read by A4's Witnesses until A-12 reads the view, else R7.")]
     private readonly Dictionary<(BindingSymbol Site, BoundType Type, KimiDeclarationId Contract, bool Operators), (ulong Version, BoundComparison Plan)> comparisonPlans = new();
+
+    // SPEC 13.4, 13.4.1, 12.4.3: how a comparison under Equatable or Comparable composes a Type, the one rule of the legacy plan and of
+    // TyCtxt.Comparison: elementwise over its parts (a Tuple or a safe `ref` layer), natively (a built-in Type; under source operators also
+    // a numeric Type, by IEEE), else by the Contract's mapping for the Type: its witness when the Type is closed, its requirement in every
+    // instance when it has an abstract part.
+    internal static ComparisonKind ComparisonKindOf(BoundType self, KimiDeclarationId? contract, bool operators)
+        => ComparisonTypes.IsComposite(self) ? ComparisonKind.Composite
+            : ComparisonTypes.IsBuiltin(self, contract) || (operators && self.IsNumeric) ? ComparisonKind.Builtin
+            : self.HasAbstractPart ? ComparisonKind.Requirement : ComparisonKind.Witness;
 
     // One verified tree supplies both effect traversal and generation. Selection of a leaf uses
     // the conformance witness map, exactly like an explicit requirement invocation.
+    [Transitional("R6", Reason = "H11 deletes it with its readers, the old effect walk (H5) and the old generator (G7).")]
     internal BoundComparison? ComparisonPlan(CallPlan site)
         => site.ConformingType is { } self ? this.ComparisonPlan(site.Target, self, site.Target.CompilerFunction == CompilerFunctionKind.BuiltinEquals ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable, site.TupleOperator) : null;
 
+    [Transitional("R6", Reason = "H11 deletes it with its reader, the old effect walk's Dictionary comparison (H5).")]
     internal BoundComparison? DictionaryComparison(BoundType dictionary)
         => this.ComparisonPlan(this.Library.GetSymbol(KimiDeclarationId.Dictionary)!, dictionary.Components[0], KimiDeclarationId.Equatable, false);
 
+    // The legacy composition: CallPlan leaves from RequirementImplementation under the built-in target's scope, null where a leaf does not
+    // resolve there (a Type parameter's), retained per storage version (DECISIONS R5-M68).
+    [Transitional("R7", Reason = "The legacy comparison composition beside TyCtxt.Comparison, read by A4's Witnesses until A-12 reads the view, else R7.")]
     private BoundComparison? ComparisonPlan(BindingSymbol site, BoundType self, KimiDeclarationId identity, bool operators)
     {
         var key = (site, self, identity, operators);
@@ -24,7 +39,8 @@ public sealed partial class Binding
 
         CallPlan? implementation = null;
         BoundComparison[] parts = [];
-        if (ComparisonTypes.IsComposite(self))
+        var kind = ComparisonKindOf(self, identity, operators);
+        if (kind == ComparisonKind.Composite)
         {
             parts = cached.Plan?.Parts.Length == self.Components.Count ? cached.Plan.Parts : new BoundComparison[self.Components.Count];
             for (var i = 0; i < parts.Length; i++)
@@ -45,7 +61,7 @@ public sealed partial class Binding
                 }
             }
         }
-        else if (!ComparisonTypes.IsBuiltin(self, identity) && !(operators && self.IsNumeric))
+        else if (kind != ComparisonKind.Builtin)
         {
             implementation = this.RequirementImplementation(site, self, identity, identity == KimiDeclarationId.Equatable ? "equals" : "compare");
             if (implementation is null)

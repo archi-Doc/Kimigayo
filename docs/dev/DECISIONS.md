@@ -3067,3 +3067,34 @@ structure is recorded here by the unit that first implements it.
   fill after slot selection, and nothing reads a table during a pass); a table per closed instance or a layer per slot (one table per
   declaration with the consumer's Base walk serves every instance); applicability in the table (a closed instance's proof, the view's);
   a per-pass side set of filled structs (the table carries its pass's storage version, as `AdtDef` and `InstanceStorage` do).
+- **R5-M68 `TyCtxt.Comparison`, a comparison's composition by Type, and the legacy comparison twin** (2026-10-19, planning session;
+  plan F6, package F §4.1, §4.6, §4.7, §5 and §6, S2-S4 F 2, F 5 and X25; under R5-M18 form 1 and R5-M61) A permanent view of the
+  dispatch facts (`TyCtxt.Dispatch.cs`): `TyCtxt.Comparison(contract, self, operators)`, given Equatable or Comparable, a Type and the
+  mode (source operators, which compare floats by IEEE, or the Contract's mapping, whose float `equals` is NaN-reflexive; SPEC 13.4,
+  13.4.1, 12.4.3), returns a `ComparisonNode(Type, Kind, Target, Subst, Parts)` tree, whose kind enum is local, not an ARCH vocabulary:
+  Composite (a Tuple or a safe `ref` layer) over its parts; Builtin; Witness, a closed leaf: the Body `TyCtxt.Witness` gives for the
+  Contract's own requirement on the leaf, under its declaring instance (`TyCtxt.Synthesized(witness, declaring, [])`, its Origins the
+  analyses'); Requirement, a leaf with an abstract part: that requirement on the leaf in every instance, under the Self-bearing factory
+  `TyCtxt.Synthesized(requirement, self)`, which K's rows 2 and 6 also use; None: no answer, a broken contract for a closed accepted
+  Self that its reader records as `InternalInvariant_Kd`; null for a Limit (Witness's: the leaf's storage does not complete). One rule
+  decides the kinds, `Binding.ComparisonKindOf(self, contract, operators)` (`Binding.ComparisonPlans.cs`), which the legacy plan reads
+  too, so the view holds no second copy of the composition. One node per (contract, self, operators), kept until an edit
+  (`ResetDispatch`, under `TyCtxt.ResetViews`); a warm call allocates 0 B. Readers: F7 (operators), C8f (the Contract's mapping: the
+  BuiltinEquals and BuiltinCompare shims and the Dictionary key-equality row), K6's Builtin items; A4 only through A-12.
+  - The legacy comparison twin (package §4.7), a temporary structure marked `[Transitional]`: the private `ComparisonPlan` overload,
+    `BoundComparison`, `comparisonPlans` and `RequirementImplementation` with `requirementCalls` stay for A4's `Witnesses` until A-12,
+    else R7; `ComparisonPlan(CallPlan)` and `DictionaryComparison` go at H11 after their readers (H5, G7), and `RequirementImplementation`'s
+    CallPlan overload with `TryResolveFormattingCallback` at H11. While it lives A4 and codegen resolve comparison leaves with two
+    resolvers (X25). Twin (`ComparisonCompositionTest.TheViewHasTheLegacyPlansLeaves`): each comparison call of the library, the
+    milestones and four direct programs has, for a closed Self, the legacy plan's leaves (Types, kinds, witness and declaring instance)
+    and, for a Self with an abstract part, the requirement on each leaf with one; the views leave Binding's records and the HIR version
+    unchanged. Every closed comparison has a plan: an inherited witness, which the plan refuses, implements no comparison requirement,
+    whose `other` is `ref/Self` (`MissingContractImplementation_Kd`), so package §4.6's inherited case has no instance.
+  - Departures: the Self-bearing factory is an overload of `Synthesized` in `TyCtxt.Dispatch.cs`, not in `TyCtxt.cs`, which K6 holds;
+    group G:library-2, reviewed per unit, instead of G:compare (planning session).
+  - Rejected: a view mapping the legacy plan's tree (null at every abstract leaf, F fact 1, so F7 could not expand a generic tuple
+    comparison); a mode on the legacy overload choosing the leaf resolver (a mode steering one function; its CallPlan leaves and
+    per-version retention are the legacy readers'); the core called directly for a Witness leaf (a second copy of Witness's Limit and
+    premise scope); Witness's Body Subst as the leaf's (its Origins are the requirement's own atoms, foreign to a synthesized call);
+    `ComparisonProof` on the same rule (an acceptance proof under the caller's premises, which proves built-in Types through the
+    constraint solver: another contract).
