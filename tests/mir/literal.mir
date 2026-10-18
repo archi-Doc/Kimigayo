@@ -53,7 +53,7 @@ fn floats @20
   _20: f64 var d9 @103 s1
   _21: f64 var d10 @107 s1
   _22: f64 temp @112 s1
-  _23: f64 temp @20 s1
+  _23: f64 temp @20
   s1: lexical in s0 @22
   bb0:
       StorageLive(_1) @23 s1

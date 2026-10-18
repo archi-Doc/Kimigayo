@@ -3,7 +3,8 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's Loans of the view (A3 4's issued, E3, E13 (4)): one per non-raw Ref and Reborrowing PairAcquire past no shared borrow Deref, by
-// location, each with its Place's steps, in group order.
+// location, each with its Place's steps, in group order; and whether the body has a guard candidate, whose guard-local Origin a check
+// follows without a Loan (E7).
 internal sealed partial class MirBorrows
 {
     private bool[] named = []; // By local: whether a direct Loan names it, so it is a flow holder.
@@ -17,6 +18,7 @@ internal sealed partial class MirBorrows
     private int[] renumbered = []; // By Loan in issue order: its id in group order.
     private int loanCount;
     private int loanStepCount;
+    private bool guarded; // Whether a local is a guard candidate (MirLocalRole.GuardCandidate).
 
     // The Reborrow a statement's PairAcquire makes under the view (A3 E13 (4)): the borrow its Use's marker names (Uniq, or TwoPhaseUniq for
     // an invocation's input), or Raw where it Copies or the statement is none.
@@ -37,9 +39,11 @@ internal sealed partial class MirBorrows
         Array.Fill(this.loanAt, -1, 0, locations);
         Array.Clear(this.borrowed, 0, keys);
         Array.Clear(this.named, 0, locals);
+        this.guarded = false;
         for (var i = 0; i < locals; i++)
         {
             this.lent[i] = new(i);
+            this.guarded |= this.body.Locals[i].Role == MirLocalRole.GuardCandidate;
         }
 
         (this.loanCount, this.loanStepCount) = (0, 0);

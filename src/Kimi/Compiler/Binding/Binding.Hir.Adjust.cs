@@ -109,18 +109,18 @@ public sealed partial class Binding
                     this.Bindings(decomposition);
                     break;
                 case MacroKoto { Formatting.Acquisition.BoundCall.ArgumentOperations: [var writer, ..] }:
-                    this.Take(writer.Source, HirAdjust.Of(writer)); // A $tryWrite acquires its writer operand (SPEC 22.10.4).
+                    this.Take(writer.Source, writer); // A $tryWrite acquires its writer operand (SPEC 22.10.4).
                     break;
             }
 
             // An enum Case's payloads, then each call of the node: a value call's callee in its receiver mode (SPEC 7.7.3), a reference to the
-            // callable passed as it is in that mode. Of a user index's index and indexUniq, an update or an exclusive borrow of the element
-            // takes indexUniq (SPEC 4.7.1), which its plan row records for its ExpansionPlan.
+            // callable passed as it is in that mode. Of a user index's index and indexUniq, a use of the element that needs write or exclusive
+            // capability (ExclusiveUse) takes indexUniq (SPEC 4.7.1), which its plan row records for its ExpansionPlan.
             if (op == HirOp.Aggregate && binding.TryGetEnumConstruction(node, out var construction))
             {
                 foreach (ref readonly var payload in construction!.PayloadOperations)
                 {
-                    this.Take(payload.Source, HirAdjust.Of(payload));
+                    this.Take(payload.Source, payload);
                 }
             }
 
@@ -148,12 +148,12 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    this.Take(call.Kind == CalleeKind.Value ? call.ReceiverOperation.Source : call.Receiver, HirAdjust.Of(call.ReceiverOperation));
+                    this.Take(call.Kind == CalleeKind.Value ? call.ReceiverOperation.Source : call.Receiver, call.ReceiverOperation);
                 }
 
                 foreach (ref readonly var argument in call.ArgumentOperations)
                 {
-                    this.Take(argument.Source, HirAdjust.Of(argument));
+                    this.Take(argument.Source, argument);
                 }
             }
         }
@@ -161,16 +161,32 @@ public sealed partial class Binding
         // A body or operand that supplies its construct's value (SPEC 14.9).
         private void Result(Koto? source) => this.Take(source is not null && KotoHelper.IsValueContext(source) ? source : null);
 
+        // A child an operation takes (a call's receiver or argument, a Case payload, a writer; SPEC 7.3, 10.2), as the operation adapts it and
+        // with the capability its target needs (Exclusive).
+        private void Take(Koto? child, in BoundArgumentOperation operation)
+        {
+            if (this.Exclusive(operation.AdaptedType ?? operation.ParameterType) && this.Owns(child))
+            {
+                this.claims[child!.SyntaxId] = true;
+            }
+
+            this.Take(child, HirAdjust.Of(operation));
+        }
+
         // A consumed child: an adaptation Binding recorded at the node itself (at its fixed expected Type, or as a receiver; an erasure to its
-        // Function Type, SPEC 7.7.4) wins over its consumer's operation. A Place adapted or used in place is not acquired, an adapted value is
-        // a Temporary, and an unadapted one taken by value, or erased, is acquired by the bare rule. A built-in operator's operand that is not
-        // Copy, a comparison's, is inspected through a shared Loan from its evaluation instead (SPEC 13.4): a Place in place, a value other
-        // than a literal in its temporary.
+        // Function Type, SPEC 7.7.4) wins over its consumer's operation, except Binding's in-place read of a selection (a shared borrow of the
+        // child's own stored Type, ElementAccess.IsSynthesizedAccess), which a consumer needing exclusive capability of the child (an exclusive
+        // borrow, or an operation whose target needs it) overrides (SPEC 4.7.1, 7.3). A Place adapted or used in place is not acquired, an
+        // adapted value is a Temporary, and an unadapted one taken by value, or erased, is acquired by the bare rule. A built-in operator's
+        // operand that is not Copy, a comparison's, is inspected through a shared Loan from its evaluation instead (SPEC 13.4): a Place in
+        // place, a value other than a literal in its temporary.
         private void Take(Koto? child, HirAdaptation adaptation = HirAdaptation.None, bool inPlace = false, bool inspect = false)
         {
             if (child is not null)
             {
-                adaptation = binding.adaptations.TryGetValue(child, out var recorded) ? HirAdjust.Of(recorded, child.BoundType)
+                var recordedWins = binding.adaptations.TryGetValue(child, out var recorded) && !(ElementAccess.IsSynthesizedAccess(child) &&
+                    (adaptation == HirAdaptation.ExclusiveBorrow || (this.Owns(child) && this.claims[child.SyntaxId])));
+                adaptation = recordedWins ? HirAdjust.Of(recorded, child.BoundType)
                     : HirTables.ErasedType(child) is not null ? HirAdaptation.Erasure : adaptation;
                 var acquire = adaptation is not (HirAdaptation.None or HirAdaptation.Erasure) || inPlace ? this.IsPlace(child) ? HirAcquire.None : HirAcquire.Temporary
                     : this.Bare(child);
@@ -198,12 +214,20 @@ public sealed partial class Binding
             return bare == HirAcquire.Move && proof == ConstraintProof.Error ? HirAcquire.Unset : bare;
         }
 
-        // Whether a node's consumer updates it or borrows it exclusively, directly or through the projections of a Place path, where the old
-        // path selects a user index's indexUniq (SPEC 4.7.1); the parent is the node's while the node is visited.
-        private bool ExclusiveUse(Koto node) => HirTables.AdjustOf(node).Adaptation == HirAdaptation.ExclusiveBorrow ||
-            (this.parentOp == HirOp.Borrow && this.parent!.BoundType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq) ||
-            ((this.parentOp is HirOp.Assign or HirOp.CompoundAssign || (this.exclusive && (this.parentOp is HirOp.Field or HirOp.Index || this.parent is ParenthesizedKoto))) &&
-                ReferenceEquals(Operand(this.parent), node));
+        // Whether a node's use needs write or exclusive capability, which selects a user index's indexUniq (SPEC 4.7.1; DECISIONS BU-8): the
+        // capability its consumer's operation needs, which Take and Write recorded (claims), or it is updated or exclusively borrowed, or an
+        // exclusive use reaches it as the receiver of a Field or an element, as a group's operand or as the reference, handle or pair layer a
+        // follow selects through (SPEC 13.5.5, 15.6.2: past a shared layer only reads), unless that use is of a raw Place, whose capability its
+        // path does not decide (SPEC 5.2). The parent is the node's while the node is visited.
+        private bool ExclusiveUse(Koto node)
+            => (this.Owns(node) && this.claims[node.SyntaxId]) || (this.parentOp == HirOp.Borrow && this.Exclusive(this.parent!.BoundType)) ||
+            ((this.parentOp is HirOp.Assign or HirOp.CompoundAssign || (this.exclusive && (this.parentOp is HirOp.Field or HirOp.Index or HirOp.Deref ||
+                this.parent is ParenthesizedKoto) && !ElementAccess.IsRawPlace(this.parent!))) && ReferenceEquals(Operand(this.parent), node));
+
+        // Whether an acquisition's target needs exclusive capability of what it takes (SPEC 4.7.1, 13.5.5): an exclusive reference or object
+        // view, or a pair layer admitting one, whose exclusive case does.
+        private bool Exclusive(BoundType? target) => target is { Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq } ||
+            (target is not null && (binding.LayerAdmitted(target) & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0);
 
         // A bare Place (SPEC 3.5), a raw Place (SPEC 5.2), a static, or the storage a formatting plan prepared (its buffer, its writer).
         private bool IsPlace(Koto child) => IsBarePlace(child) || ElementAccess.IsRawPlace(child) || child is FormattingKoto { Operation: FormattingOperation.Storage } ||
@@ -239,17 +263,23 @@ public sealed partial class Binding
             }
         }
 
-        // Only the nodes of the module being published; a call shared across modules names nodes of another.
+        // Only the nodes of the module being published; a call shared across modules names nodes of another. An exclusive borrow, and the
+        // Reborrow or pair-case acquisition of a Place whose Type needs exclusive capability (SPEC 10.2, 4.7.2, 8.14), is an exclusive use.
         private void Write(Koto? node, HirAdjust adjust, HirPlaceKind place = HirPlaceKind.Unset)
         {
-            if (node is not null && ReferenceEquals(node.SyntaxOwner, this.table) && this.table!.Hir.Adjusts is { } adjusts && node.SyntaxId < adjusts.Length)
+            if (this.Owns(node))
             {
-                adjusts[node.SyntaxId] = adjust;
+                this.table!.Hir.Adjusts![node!.SyntaxId] = adjust;
+                this.claims[node.SyntaxId] |= adjust.Adaptation == HirAdaptation.ExclusiveBorrow ||
+                    (adjust.Acquire is HirAcquire.Reborrow or HirAcquire.ByCase && this.Exclusive(node.BoundType));
                 if (place != HirPlaceKind.Unset)
                 {
                     this.table.Hir.Places![node.SyntaxId] = new(place, 0);
                 }
             }
         }
+
+        // Whether a node is of the module being published.
+        private bool Owns(Koto? node) => node is not null && ReferenceEquals(node.SyntaxOwner, this.table) && node.SyntaxId < this.table!.Hir.Adjusts!.Length;
     }
 }

@@ -24,6 +24,8 @@
 #
 # -Pipeline mir (R3-R5) runs every compiler process of the run with KIMI_PIPELINE=mir; the default is legacy.
 #   ./scripts/verify.ps1 -Class XunitTest.PipelineSwitchTest -Pipeline mir
+# -Codegen mir (R5, until G4) also sets KIMI_CODEGEN=mir, MIR code generation ("sel"), which needs -Pipeline mir; the default is legacy.
+#   ./scripts/verify.ps1 -Class XunitTest.PipelineSwitchTest -Pipeline mir -Codegen mir
 #
 # Tests run up to -TestParallel collections at a time (default up to 8), respecting disabled
 # parallelization on test classes. Use -TestParallel 1 for serial execution.
@@ -38,6 +40,7 @@ param(
     [ValidateSet('Unit', 'Session')] [string] $Mode = 'Unit',
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release',
     [ValidateSet('legacy', 'mir')] [string] $Pipeline = 'legacy',
+    [ValidateSet('legacy', 'mir')] [string] $Codegen = 'legacy',
     [string[]] $Class = @(),
     [string[]] $Method = @(),
     [ValidateSet('All', 'Functional', 'Allocation')] [string] $TestPurpose = 'All',
@@ -64,8 +67,12 @@ $requestedMethod = @($Method | ForEach-Object { ConvertTo-KimiTestPattern $_ -Me
 $Class = @(Join-KimiCommonTestSelections $requestedClass)
 $Method = @(Join-KimiCommonTestSelections $requestedMethod -Method)
 $Pipeline = $Pipeline.ToLowerInvariant()
+$Codegen = $Codegen.ToLowerInvariant()
+Assert-KimiCompilerConfiguration $Pipeline $Codegen
 $previousPipeline = $env:KIMI_PIPELINE
+$previousCodegen = $env:KIMI_CODEGEN
 $env:KIMI_PIPELINE = $Pipeline # Tests, fixtures and milestone harnesses inherit it.
+$env:KIMI_CODEGEN = $Codegen
 $repo = Split-Path -Parent $PSScriptRoot
 $buildTarget = if ($Mode -eq 'Session') { 'Kimigayo.slnx' } else { 'tests/xUnitTest/xUnitTest.csproj' }
 $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss-fff')
@@ -326,7 +333,8 @@ if ($null -ne $beforeInputs) {
     }
 }
 $env:KIMI_PIPELINE = $previousPipeline
-[ordered]@{ mode = $Mode; configuration = $Configuration; pipeline = $Pipeline; buildTarget = $buildTarget; testPurpose = $TestPurpose; head = $head; dirty = $dirty; inputStability = $inputStability; started = $stamp; workDirectory = $work; toolchainVerification = $toolchainVerification; testParallel = $TestParallel; nativeParallel = $NativeParallel; milestoneParallel = $Parallel; seconds = [Math]::Round($totalTimer.Elapsed.TotalSeconds, 3); steps = $steps } |
+$env:KIMI_CODEGEN = $previousCodegen
+[ordered]@{ mode = $Mode; configuration = $Configuration; pipeline = $Pipeline; codegen = $Codegen; buildTarget = $buildTarget; testPurpose = $TestPurpose; head = $head; dirty = $dirty; inputStability = $inputStability; started = $stamp; workDirectory = $work; toolchainVerification = $toolchainVerification; testParallel = $TestParallel; nativeParallel = $NativeParallel; milestoneParallel = $Parallel; seconds = [Math]::Round($totalTimer.Elapsed.TotalSeconds, 3); steps = $steps } |
     ConvertTo-Json -Depth 4 | Set-Content (Join-Path $evidence 'summary.json')
 Write-Host "Evidence: $evidence (HEAD $head$(if ($dirty) { ', uncommitted changes' }))"
 if ($failed) { exit 1 }

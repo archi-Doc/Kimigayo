@@ -110,7 +110,7 @@ fn methods @93
   _12: ref/Counter temp @123 s1
   _13: i32 temp @125 s1
   _14: ref/Counter temp @126 s1
-  _15: i32 temp @93 s1
+  _15: i32 temp @93
   s1: lexical in s0 @98
   bb0:
       StorageLive(_3) @99 s1
@@ -182,7 +182,7 @@ fn same @128
   _3: bool temp @138 s1
   _4: ref/T temp @139 s1
   _5: ref/T temp @140 s1
-  _6: bool temp @128 s1
+  _6: bool temp @128
   s1: lexical in s0 @136
   bb0:
       StorageLive(_3) @138 s1
@@ -225,7 +225,7 @@ fn apply @141
   _0: i32 return @141
   _1: ref/F arg action @141
   _2: i32 temp @156 s1
-  _3: i32 temp @141 s1
+  _3: i32 temp @141
   s1: lexical in s0 @154
   bb0:
       StorageLive(_2) @156 s1
@@ -297,7 +297,7 @@ fn indexed @186
   _15: isize temp @202 s1
   _16: ref/isize temp @202 s1
   _17: i32 temp @200 s1
-  _18: i32 temp @186 s1
+  _18: i32 temp @186
   s1: lexical in s0 @190
   bb0:
       StorageLive(_2) @191 s1

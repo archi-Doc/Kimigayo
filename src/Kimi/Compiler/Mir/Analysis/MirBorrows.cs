@@ -80,9 +80,9 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
         this.guardBase = 1 + body.OpaqueSites.Length;
         (this.loanBase, this.escapedSet) = (this.guardBase + body.Locals.Length, this.sets.Add(0, Escaped));
         this.Loans();
-        if (this.loanCount == 0)
+        if (this.loanCount == 0 && !this.guarded)
         {
-            return; // A view without a Loan has no conflict (A3 6.1).
+            return; // A view without a Loan or a guard candidate has no problem (A3 6.1; E7's γ needs no Loan).
         }
 
         this.Holders();

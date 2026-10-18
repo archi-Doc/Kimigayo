@@ -38,8 +38,7 @@ public class StringGuardEmissionTest
     {
         var suffix = source.Contains("forever(s)", StringComparison.Ordinal) ? "Borrow" : "Plain";
         var ir = ScalarEmissionTest.EmitFixture("StringGuardDivergent" + suffix, source, string.Empty, timeoutMilliseconds: 300);
-        Assert.DoesNotContain("mustprogress", ir);
-        Assert.DoesNotContain("willreturn", ir);
+        GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 
     [Theory]
