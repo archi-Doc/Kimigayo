@@ -1473,7 +1473,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   diverges writes through its reservation, and a construction around a Never form keeps its operands' Moves and Loans; A4 counts
   the effects of the statements this builds (R4-M6a). Rejected: keeping `Reached` with a located `Unsupported_Kd` (owner); an
   A5-side rule over operands the MIR does not build; a diverging Call writing its destination on its check edge (SPEC 14.10.3
-  leaves it open). Not temporary.
+  leaves it open). Not temporary. Amended by R5-M38: the Never value is a temp of Type Never; an unadapted acquisition of a named
+  Place of Type Never goes into a fresh Never temp, which every consumer takes as it is (the placement rule unchanged), and an
+  adapted one is built as Binding publishes it.
 - **R4-M63** (2026-10-18; A3 §12 E14, decided by the planning session on the core lane's group review B4 and N2 and its design review
   of 2026-10-18; supersedes R4-M57's intrinsic rule and its separate unknown-callee loop, and R4-M40's "every operand to the result")
   A Call retains as its callee's contract says (SPEC 15.6, 15.6.4).
@@ -2364,10 +2366,12 @@ structure is recorded here by the unit that first implements it.
     rejects every form at the reference (its four sites), and the copy only repeated it at a requirement item's inner name.
   - Q11, rows 9-11 (`InvalidJumpTarget`, `UnlabeledYieldTarget`, `OverlappingLabel`; SPEC 14.5.2, 14.7, 14.4): one rule,
     `KotoHelper.IsValidTransfer` (a target exists; an unlabeled yield's selection uses its result), decides a transfer; the jump
-    binding writes the target row (`PlanRow.Plan`) only for a valid transfer, so the HIR publisher no longer resolves targets,
-    and the walk records rows 9-10 by the same rule. HIR contract: a null target row of a published Jump or Continue means
-    Binding recorded row 9 or 10 there (ask A-8). The table's guess column names what a row reads that a recovery may have
-    guessed: a completion (rows 1 and 12) or a target (rows 9-11, which rest only on a guessed label or a recovered label).
+    binding writes the target row (`PlanRow.Plan`) only for a valid transfer, so the HIR publisher no longer resolves targets, and
+    the walk records rows 9-10 by the same rule. HIR contract: a null target row of a published Jump or Continue means Binding
+    recorded row 9 or 10 there (ask A-8), or, the lints being dropped there, that the jump lies in a function part whose `#switch`
+    selected no arm, which `NonExhaustiveCompileTimeCase_Kd` rejects (amended by R5-M42's unit). The table's guess column names
+    what a row reads that a recovery may have guessed: a completion (rows 1 and 12) or a target (rows 9-11, which rest only on a
+    guessed label or a recovered label).
   - Rejected: one shared `ResultStructure()` per walk (any query inside the walk clears it; per-query clearing composed a nested
     selection's completion 8,256 times instead of 528); a node failure per lint (the old analysis would skip the program; PD29, PD31); a Koto-keyed set of warned nodes
     (ARCH Syntax identity, warm allocations); a copy of the old walk's synthesized-evaluation switch (rows 1-6 judge source
@@ -2531,6 +2535,33 @@ structure is recorded here by the unit that first implements it.
     Resource record for a Language error); first-failure precedence (a limit hid a Language failure); a Result of independent
     fields (invalid combinations).
   - R5-M29's reason no longer holds: rows stay one static owner and placement needs a per-program owner for its memo.
+- **R5-M38 A named Never Place takes the acquisition Binding publishes** (2026-10-18, planning session; plan F12, PLAN G139,
+  R4's consent to amending R4-M62's acquisition clause, after BU-4; R4's review choice (a), which keeps R4-M62's placement rule;
+  the owner's choice on B2, selecting R4's option 「借用は公開どおり作る（推奨）」: 「Never 用の分岐は、借用などの変換が付かない
+  読み出しだけに使います。参照による束縛では、Binding が公開した借用を `ref/Never` 型のまま作ります。こうすると、その束縛が r
+  に対する Loan を持つので、SPEC の文言どおり競合を検出できます。あわせて MirValidator に「Never 用の一時変数へ書けるもの」の
+  許可一覧（変換なしの Never Place 読み出し・Never 型の Opaque・発散する呼び出しの戻り先）を加え、この系統を閉じます。R5 側で
+  実装と再レビューが必要です。」) Rule (`MirBuilder.Values.cs`, `MirValidator`): the Never value is a temp of Type Never
+  (`IsNeverValue`); every acquisition takes it as it is and `Set` places nothing of it, as R4-M62 has it. A named Place of Type
+  Never (a parameter, a binding, a payload) is not the Never value: an acquisition of it with no adaptation, the Copy (a bare
+  read, since Never is Copy, BU-4) or Move Binding publishes, goes into a fresh Never temp, which `Acquire` gives, so whatever
+  takes it places nothing; an adapted acquisition (a pattern binding of a Never payload, which borrows the subject in place) is
+  built as Binding publishes it, a `ref/Never` that keeps its Loan, so a write to the subject while the binding lives is a
+  conflict, even in an arm that never runs. `MirValidator`'s `NeverWrite` row whitelists a Never temp's writers: an unadapted
+  Copy or Move of a Place of Type Never, an Opaque value, and a diverging Call's destination (R5-M33); any other is a finding.
+  So `func absurd(x: Never) => g(x, x)` copies x twice and has no MovedPlace, `g2(x, k())` secures the acquired temp, and since
+  a read of a Never Place supplies no normal completion (SPEC 14.10.3, Binding's Diverges; BU-6), its assumed completion
+  initializes nothing it is placed into: `let y: i32 = x`, `y = x` and `var y: Never = x` leave y uninitialized, each later read
+  of it an `UninitializedPlace`. `IsNever` (any Place of Type Never) stays for the sites that would borrow or view it (a runtime
+  Type test's handle, a verification's message, `$tryWrite`'s writer). Per BU-6 (pending, owner decision 2026-10-18, G129) an
+  explicit `x@move` on a Never Place is a Move; Binding publishes it today as a Convert (Diverges) whose name it reads by Copy,
+  so MIR moves nothing there; MIR builds whatever Binding publishes, so once Binding publishes the Move (after G129), the moved
+  read in `g(x@move, x)` is A1's `MovedPlace`, whose row R5 adds then (BU adds the Binding and HIR rows). No library, milestone or
+  corpus program changes its MIR. Rejected: every Never-typed Place as the Never value (R4-M62's clause: a Copy Place read twice
+  became two Moves); `Set` placing a named Never Place's value (an earlier follow-up's exemption: a written and an unwritten
+  Never temp were one spelling, and `let y: i32 = x` initialized y, against SPEC 14.10.3); the owner's rejected options
+  「変換せず Move/Copy にする」 (R4 reviewer's (A), the published kind never adapted: a binding in an arm whose payload is Never
+  would hold no Loan) and 「F12 を保留する」.
 - **R5-M39 `TyCtxt.Erase`** (2026-10-18, planning session; plan K3, package K §4.1 and KD1-KD3, S2-S4 X20 and X26, under R5-M18)
   `TyCtxt.Erase(BoundType)` and `TyCtxt.Erase(Subst)` (`Binding/TyCtxt.Instances.cs`, X26's placement) give the Origin-erased form, the
   one identity rule of instance keys, descriptors, glue and layouts (SPEC 3.3.1, 8.13.3). Every Origin becomes `BoundOrigin.Static`: a
@@ -2607,6 +2638,18 @@ structure is recorded here by the unit that first implements it.
     and no record; sel's absence of records over the library and the milestones covers only the edges collected.
   - Verified: under sel a storage-nesting gap rejects the program at check at its call (`PipelineSwitchTest`); the library and the 44
     milestones analyzed under sel give no collector record (`InstanceCollectorTest`).
+- **R5-M42 A jump without a target row is derived from Binding's record** (2026-10-18, planning session; plan F13, PLAN G143, R4's
+  ask A-8's jump part (G103-E9b's), handed to R5; after Q11, R5-M31) Rule (`MirBuilder.Transfer`): the builder reads the target
+  row the jump binding publishes. A null row means Binding rejected the jump (R5-M31's HIR contract: row 9 or 10 at the jump, or
+  `NonExhaustiveCompileTimeCase_Kd` at a `#switch` in its function part that selected no arm, which need not enclose it), so the
+  jump is derived from that record (SPEC 23.1.2): its operand is built with no expected Type, keeping its own records and
+  accesses, and the jump is an Opaque value naming what the operand gave, with no record, ending its block for the checks only as
+  a jump does. A non-null row is built as before; one that no construct around the jump opened is a broken HIR contract (every
+  target construct opens one), recorded as `InternalInvariant_Kd` at the jump, the jump an Opaque value. So an unlabeled `yield`
+  into a discarded selection, a jump with no target in scope and one behind a defer or a default lose MIR's second record, and
+  `loop => yield helper(a)` builds its call. Rejected: a located `Unsupported_Kd` at the jump (a second record of an invalid
+  program, the operand unbuilt); an Opaque value of the jump's whole syntax (the operand's records lost and its accesses unbuilt);
+  a target lookup in MIR (the jump binding owns targets since Q11).
 - **R5-M43 Closure, item and erasure edges; the pure item substitution** (2026-10-18, planning session; plan K5, the K package's §4.3
   and §4.5 rows 5 and 11-13; under R5-M18) `TyCtxt.SubstOfItem` gives an ordinary function item's substitution from its Item Type alone:
   its function's own Type arguments (`Binding.CopyItemArguments`), the declaring Type its last Component holds and its length arguments,
@@ -2698,3 +2741,20 @@ structure is recorded here by the unit that first implements it.
   capacity routines, because one member names them with the memory declarations; splitting it adds a vocabulary entry. Rejected:
   that split here (beyond G134's rows); keeping the hand-set flag for every Array operation (G133's cause, a flag set by its
   requester instead of its row).
+- **R5-M49 A virtual receiver borrows the whole payload** (2026-10-18, planning session; plan F14, PLAN G147 (4) from R4's 1b-5
+  ledger; SPEC 6.4.5) Rule (`MirBuilder.Dispatched`, call assembly): a dispatched virtual call (`CallPlan` Virtual, not direct)
+  borrows its receiver as the view of the receiver payload's own Type, in the slot view's Semantics and Origin, and upcasts that
+  view to the slot's (`Cast` Upcast, SPEC 13.6.1), so the Loan lies on the whole payload and an update of a derived Field
+  conflicts with the call's result. A receiver whose payload is the slot's own Type, a direct base call and a nonvirtual call keep
+  the borrow `Lent` forms (a base view's subobject). Rejected: widening the base subobject's Loan in A5 (an analysis rule for a
+  builder fact); borrowing the payload under the slot's view Type (the validator's Ref Type agreement).
+- **R5-M50 A transfer delivers its result after the Scope Exit** (2026-10-18, planning session; plan F15, PLAN G147 (5) from R4's
+  1b-5 ledger; SPEC 16.2.2) Rule (`MirBuilder.Transfer`): a valued transfer that leaves a scope with a cleanup secures its result
+  and places it into its target's result temp (no storage of its own) before the Scope Exit, and the target's delivery block,
+  after the drop tree, moves it into the target's destination: the target's Destination and Break become that temp and that block
+  at its first such transfer (`Target.Delivers`), so every later transfer to it takes them as it shares its drop tree. A transfer
+  leaving no cleanup places its result directly, as before. So a block value borrowing a departing local conflicts with that
+  local's storage end even when nothing reads the value later; a return's `_0` gains the delivery too (unobservable there, since
+  the return reads `_0`). Rejected: delivering per transfer after a drop tree of its own (one drop tree per target); a result temp
+  for every construct (MIR on every path, not only where a scope is left); the delivery block and temp as new Target
+  parameters (the record already has seven; its Destination and Break take them).

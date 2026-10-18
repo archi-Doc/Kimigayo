@@ -105,6 +105,23 @@ internal sealed partial class MirBuilder
     private void Transfer(JumpKoto jump)
     {
         var plan = HirTables.PlanOf(jump).Plan;
+        var operand = jump.Expression;
+        if (plan is null)
+        {
+            // The published target row is null exactly where Binding rejected the jump (no valid target, or a #switch in its function part
+            // selected no arm; DECISIONS R5-M31, R5-M42), so the jump is derived from that record (SPEC 23.1.2): its operand is built,
+            // keeping its own records, and the jump is an Opaque value of what the operand gave, without a record.
+            var given = operand is null ? default : this.Operand(operand, expected: null);
+            this.roots.Clear();
+            if (operand is not null && given.Kind != MirOperandKind.Const)
+            {
+                this.roots.Add(given.Place.Root);
+            }
+
+            this.Site(jump, this.Temp(jump), Completes(jump));
+            return;
+        }
+
         var index = this.targets.Count - 1;
         while (index >= 0 && !ReferenceEquals(this.targets[index].Node, plan))
         {
@@ -113,11 +130,12 @@ internal sealed partial class MirBuilder
 
         if (index < 0)
         {
-            this.Unsupported(jump); // A target not built yet: a for, a match or a defer.
+            // A published target no construct around the jump opened, though every target construct opens one: a broken HIR contract.
+            this.program.Report(SourceRef.Of(jump), DiagnosticCode.InternalInvariant_Kd);
+            this.Unsupported(jump, derived: true);
             return;
         }
 
-        var operand = jump.Expression;
         var continues = jump is ContinueKoto;
         MirOperand value = default;
         if (!continues)
@@ -139,7 +157,20 @@ internal sealed partial class MirBuilder
         }
 
         target.Reached |= !continues;
-        var (inner, place, mark) = (info with { StatementStart = false }, target.Destination, target.Mark);
+        var inner = info with { StatementStart = false };
+        if (!continues && !target.Delivers && this.Departs(target.Depth))
+        {
+            // SPEC 16.2.2: the secured result is delivered after the Scope Exit of the scopes left: the target's Destination becomes a
+            // result temp, with no storage of its own, and its Break the block that delivers that temp to the old Destination, which
+            // every later transfer to it takes, as they share its drop tree (DECISIONS R5-M50).
+            var result = new MirPlace(this.body.AddLocal(new(this.body.TypeOf(target.Destination)!, MirLocalKind.Temp, this.Info(target.Node, local: true))));
+            var deliver = this.body.AddBlock();
+            this.body.Push(deliver, MirStatement.Assign(target.Destination, MirRvalue.Use(this.body.AddOperand(MirOperand.Move(result))), inner));
+            this.body.Terminate(deliver, MirTerminator.Goto(target.Break, inner));
+            (target.Destination, target.Break, target.Delivers) = (result, deliver, true);
+        }
+
+        var (place, mark) = (target.Destination, target.Mark);
         var entry = this.Exit(target.Depth, continues ? target.Continue : target.Break);
         var runtime = continues ? -1 : this.body.AddBlock(); // The runtime edge's first block: the abandoned borrows end, the result is placed.
         for (var i = mark; i < this.arguments.Count; i++)
@@ -361,8 +392,26 @@ internal sealed partial class MirBuilder
         return reached;
     }
 
+    // Whether leaving the scopes from a depth cleans anything up: a departing scope registered a cleanup.
+    private bool Departs(int depth)
+    {
+        for (var index = depth; index < this.scopes.Count; index++)
+        {
+            if (this.scopes[index].Count > 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // A construct a transfer may target (SPEC 14.5.2): where its result goes, the block after it (-1: the function's return block, not built
     // yet), its next iteration's block, the pending operands below its transfers, the open scopes around it, and whether an exit or a
     // yield reached it.
-    private record struct Target(Koto Node, MirPlace Destination, int Break, int Continue, int Mark, int Depth, bool Reached);
+    private record struct Target(Koto Node, MirPlace Destination, int Break, int Continue, int Mark, int Depth, bool Reached)
+    {
+        // Whether its Destination and Break are a result temp and the block delivering it after a Scope Exit (SPEC 16.2.2).
+        internal bool Delivers { get; set; }
+    }
 }

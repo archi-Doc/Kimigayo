@@ -41,7 +41,7 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
             Lines(Resource + "func f(flag: bool, r: Resource)\n    if flag => consume(r@move)\n", "f"));
         const string Exits = Resource + "func log() => ()\nfunc f(flag: bool) -> i32\n    let r = make()\n    defer => log()\n    if flag\n" +
             "        consume(r@move)\n        return 1\n    return 2\n";
-        Assert.Contains("drop _2 -> bb11 [flag f0] [clear f0]", Lines(Exits, "f"));
+        Assert.Contains("drop _2 -> bb12 [flag f0] [clear f0]", Lines(Exits, "f"));
         Assert.Equal(
             ["drop _2 -> bb10 [keep]", "drop _6 -> bb6 [elide]", "drop _2 -> bb8 [elide]", "drop _8 -> bb9 [elide]"],
             Lines(Resource + "func f(flag: bool)\n    var r = make()\n    if flag\n        consume(r@move)\n        r = make()\n", "f"));
@@ -128,10 +128,10 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
         Assert.Equal(["drop _1 -> bb1 [keep in v0; elide in v1]"], Lines("func hold<s/T>(value: s/T) -> ()\n    s is owner or ref\n    ()\n", "hold"));
         const string Select = "struct Payload\n    drop => ()\ngroup Helpers\n    public func select<s/T>(pair: (s/T, s/T)) -> s/T\n" +
             "        s is ref or obj\n        return pair.0@move\n";
-        Assert.Equal(["drop _1 -> bb3 [elide in v0; open (.0 elide) in v1]", "drop _2 -> bb5 [elide]"], Lines(Select, "select"));
+        Assert.Equal(["drop _1 -> bb4 [elide in v0; open (.0 elide) in v1]", "drop _2 -> bb6 [elide]"], Lines(Select, "select"));
         const string Pick = "func pick<T>(a: T, b: T = a) -> T\n    T is Copy\n    return b\nfunc generic<U>(a: U) -> U\n    U is Copy\n    return pick(a)\n" +
             "func concrete() -> i32 => pick(1)\n";
-        Assert.Equal(["drop _1 -> bb5 [keep]", "drop _4 -> bb7 [elide]", "drop _3 -> bb8 [elide]", "drop _2 -> bb9 [elide]"], Lines(Pick, "generic"));
+        Assert.Equal(["drop _1 -> bb6 [keep]", "drop _4 -> bb8 [elide]", "drop _3 -> bb9 [elide]", "drop _2 -> bb10 [elide]"], Lines(Pick, "generic"));
         Assert.Empty(Lines(Pick, "concrete", all: true));
     }
 
@@ -150,7 +150,7 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
     public void OnlyRuntimeDropsHaveVerdicts()
     {
         Assert.Equal(
-            ["drop _1 -> bb4 [keep]", "drop _2 -> bb9", "drop _2 -> bb12", "drop _1 -> bb13"],
+            ["drop _1 -> bb5 [keep]", "drop _3 -> bb10", "drop _3 -> bb13", "drop _1 -> bb14"],
             Lines(Resource + "func f() -> i32\n    let r = make()\n    return 1\n    let s = make()\n    return 2\n", "f", all: true));
         Assert.Empty(Problems(Box + "func f() -> i32\n    return 1\n    var box = Box.init(make())\n    consume(box.value@move)\n"));
         Assert.Equal(["drop _10 -> bb11 [keep]", "drop _2 -> bb12 [keep]"], Lines("func label(n: i32) -> string => \"n=\\(n)\"\n", "label"));

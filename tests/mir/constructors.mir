@@ -78,6 +78,7 @@ fn make @54
   _5: rc/Plain var counted @87 s1
   _6: Plain temp @95 s1
   _7: i32 temp @100 s1
+  _8: i32 temp @54 s1
   s1: lexical in s0 @56
   bb0:
       StorageLive(_1) @57 s1
@@ -104,38 +105,41 @@ fn make @54
       StorageDead(_6) @95 s1
       StorageLive(_7) @100 s1
     * _7 = Add(copy _1.0, copy _2.0) @100 s1
-      goto bb14 check bb15 @99 s1
+      goto bb15 check bb16 @99 s1
   bb8:
       return @54
   bb9:
-      drop _5 -> bb10 [keep] @87 s1
+      _0 = move _8 @99 s1
+      goto bb8 @99 s1
   bb10:
-      StorageDead(_5) @87 s1
-      drop _3 -> bb11 [keep] @71 s1
+      drop _5 -> bb11 [keep] @87 s1
   bb11:
+      StorageDead(_5) @87 s1
+      drop _3 -> bb12 [keep] @71 s1
+  bb12:
       StorageDead(_3) @71 s1
       StorageDead(_2) @65 s1
-      drop _1 -> bb12 [keep] @57 s1
-  bb12:
-      StorageDead(_1) @57 s1
-      goto bb8 @54
+      drop _1 -> bb13 [keep] @57 s1
   bb13:
-      StorageDead(_7) @100 s1
+      StorageDead(_1) @57 s1
       goto bb9 @54
   bb14:
-      _0 = move _7 @99 s1
-      goto bb13 @99 s1
-  bb15:
       StorageDead(_7) @100 s1
-      drop _5 -> bb16 @87 s1
+      goto bb10 @54
+  bb15:
+      _8 = move _7 @99 s1
+      goto bb14 @99 s1
   bb16:
-      StorageDead(_5) @87 s1
-      drop _3 -> bb17 @71 s1
+      StorageDead(_7) @100 s1
+      drop _5 -> bb17 @87 s1
   bb17:
+      StorageDead(_5) @87 s1
+      drop _3 -> bb18 @71 s1
+  bb18:
       StorageDead(_3) @71 s1
       StorageDead(_2) @65 s1
-      drop _1 -> bb18 @57 s1
-  bb18:
+      drop _1 -> bb19 @57 s1
+  bb19:
       StorageDead(_1) @57 s1
       unreachable @56
 fn init @107

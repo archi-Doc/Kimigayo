@@ -37,6 +37,7 @@ fn shared @15
   _10: i32 temp @74 s1
   _11: i32 temp @75 s1
   _12: i32 temp @76 s1
+  _13: i32 temp @15 s1
   s1: lexical in s0 @17
   bb0:
       StorageLive(_1) @18 s1
@@ -74,48 +75,51 @@ fn shared @15
     * _12 = Add(copy (*_1).0, copy (*_3).0) @76 s1
       _11 = Add(move _12, copy (*_5).0) @75 s1
       _10 = Add(move _11, copy (*_9).0) @74 s1
-      goto bb15 check bb16 @73 s1
+      goto bb16 check bb17 @73 s1
   bb8:
       return @15
   bb9:
-      StorageDead(_9) @68 s1
-      drop _7 -> bb10 [keep] @55 s1
+      _0 = move _13 @73 s1
+      goto bb8 @73 s1
   bb10:
-      StorageDead(_7) @55 s1
-      drop _5 -> bb11 [keep] @42 s1
+      StorageDead(_9) @68 s1
+      drop _7 -> bb11 [keep] @55 s1
   bb11:
-      StorageDead(_5) @42 s1
-      drop _3 -> bb12 [keep] @31 s1
+      StorageDead(_7) @55 s1
+      drop _5 -> bb12 [keep] @42 s1
   bb12:
-      StorageDead(_3) @31 s1
-      drop _1 -> bb13 [keep] @18 s1
+      StorageDead(_5) @42 s1
+      drop _3 -> bb13 [keep] @31 s1
   bb13:
-      StorageDead(_1) @18 s1
-      goto bb8 @15
+      StorageDead(_3) @31 s1
+      drop _1 -> bb14 [keep] @18 s1
   bb14:
-      StorageDead(_12) @76 s1
-      StorageDead(_11) @75 s1
-      StorageDead(_10) @74 s1
+      StorageDead(_1) @18 s1
       goto bb9 @15
   bb15:
-      _0 = move _10 @73 s1
-      goto bb14 @73 s1
+      StorageDead(_12) @76 s1
+      StorageDead(_11) @75 s1
+      StorageDead(_10) @74 s1
+      goto bb10 @15
   bb16:
+      _13 = move _10 @73 s1
+      goto bb15 @73 s1
+  bb17:
       StorageDead(_12) @76 s1
       StorageDead(_11) @75 s1
       StorageDead(_10) @74 s1
       StorageDead(_9) @68 s1
-      drop _7 -> bb17 @55 s1
-  bb17:
-      StorageDead(_7) @55 s1
-      drop _5 -> bb18 @42 s1
+      drop _7 -> bb18 @55 s1
   bb18:
-      StorageDead(_5) @42 s1
-      drop _3 -> bb19 @31 s1
+      StorageDead(_7) @55 s1
+      drop _5 -> bb19 @42 s1
   bb19:
-      StorageDead(_3) @31 s1
-      drop _1 -> bb20 @18 s1
+      StorageDead(_5) @42 s1
+      drop _3 -> bb20 @31 s1
   bb20:
+      StorageDead(_3) @31 s1
+      drop _1 -> bb21 @18 s1
+  bb21:
       StorageDead(_1) @18 s1
       unreachable @17
 fn obtainCell @89
@@ -184,6 +188,7 @@ fn eitherCell @115
   _6: bool temp @123 s1
   _7: bool temp @130 s1
   _8: objref/Cell temp @130 s1
+  _9: bool temp @115 s1
   s1: lexical in s0 @120
   must not complete bb9 from bb1 @127
   bb0:
@@ -224,15 +229,18 @@ fn eitherCell @115
   bb9:
       unreachable @121 s1
   bb10:
-      goto bb12 check bb13 @129 s1
+      goto bb13 check bb14 @129 s1
   bb11:
+      _0 = move _9 @129 s1
+      goto bb7 @129 s1
+  bb12:
       StorageDead(_8) @130 s1
       StorageDead(_7) @130 s1
-      goto bb7 @115
-  bb12:
-      _0 = move _7 @129 s1
-      goto bb11 @129 s1
+      goto bb11 @115
   bb13:
+      _9 = move _7 @129 s1
+      goto bb12 @129 s1
+  bb14:
       StorageDead(_8) @130 s1
       StorageDead(_7) @130 s1
       unreachable @120
