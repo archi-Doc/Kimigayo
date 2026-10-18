@@ -194,16 +194,12 @@ public sealed partial class Binding
                 continue;
             }
 
-            // Open slots are neither identical nor subtypes; Origin bindings never rank even inside Function Types.
-            var xy = x is not null && y is not null && FitsStructuralPart(x, y);
-            var yx = x is not null && y is not null && FitsStructuralPart(y, x);
-            better |= xy && !yx;
-            worse |= !xy;
-        }
-
-        if (worse || better)
-        {
-            return better && !worse;
+            // SPEC 10.4 step 2: the structural parts must be identical (Origin bindings never rank, even inside Function Types), or the
+            // candidates are incomparable; open slots are never identical.
+            if (x is null || y is null || !FitsStructuralPart(x, y))
+            {
+                return false;
+            }
         }
 
         var aGeneric = a.Symbol?.Declaration is FunctionKoto { GenericArguments.Count: > 0 };

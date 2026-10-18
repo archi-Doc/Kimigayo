@@ -5,6 +5,7 @@ using System.Text;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Backend;
+using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -71,6 +72,20 @@ public class LayoutTest
         Assert.Equal(("{ i32, { [0 x i8], [0 x i8] } }", 4, 4, 4, "{ i32, { [0 x i8], [0 x i8] } }", "ptr"), Row(value));
         Assert.Equal(new[] { 0, 4 }, value.Layout.FieldOffsets.ToArray());
         Assert.Null(new AggregateLayoutPool(c.Layout).Get(option));
+    }
+
+    [Fact]
+    public void EveryLocalOfTheNeverExampleIsLaidOut()
+    {
+        // SPEC 3.1.3's example through MIR construction: each local of its body, Option<Never> and Result<i32, Never> included, is laid
+        // out (X31).
+        var c = MirBuildTest.Compile("func use(v: i32) => ()\nfunc f(r: Result<i32, Never>)\n    let a: Option<Never> = .None\n    let b = a\n" +
+            "    match r\n        .Ok(let v) => use(v)\n        .Err(_) => ()\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        Assert.Contains(body.Locals.ToArray(), static x => x.Type.Kind == BoundTypeKind.Constructed && ReferenceEquals(x.Type.Components[0], BoundType.Never));
+        Assert.All(body.Locals.ToArray(), x => Assert.Equal(Layout.Outcome.Ok, c.Layout.Of(x.Type).Outcome));
     }
 
     [Theory]

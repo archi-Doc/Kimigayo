@@ -52,14 +52,16 @@ public class FunctionReferenceConditionTest(ITestOutputHelper output)
         }
     }
 
+    // SPEC 10.4 step 3, 8.3: the best fitting reference, here the non-generic one, is selected even when its condition is unknown, and the
+    // generic one never takes its place. (SPEC 3.8: the reference fits `((i32) -> i32) -> i32` exactly; `(i32) -> Never` would fit none.)
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void UnknownConditionsNeverSelectAnotherReference(bool overload)
     {
         var source = "struct Box<T>\n    public func choose(value: (i32) -> i32) -> i32\n        T is Copy\n        return 1\n" +
-            (overload ? "    public func choose(value: (i32) -> Never) -> i32 => 2\n" : string.Empty) +
-            "func use<T>()\n    T is Owned\n    let f: ((i32) -> Never) -> i32 = Box<T>.choose\n()";
+            (overload ? "    public func choose<U>(value: U) -> i32 => 2\n" : string.Empty) +
+            "func use<T>()\n    T is Owned\n    let f: ((i32) -> i32) -> i32 = Box<T>.choose\n()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         c.Binding.ReportDiagnostics();
