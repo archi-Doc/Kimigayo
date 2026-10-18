@@ -5,7 +5,6 @@ using System.Runtime.CompilerServices;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
-using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -217,20 +216,30 @@ public sealed class MirValidatorTest
     }
 
     // G131 (DECISIONS R5-M33): only check-only blocks read a Temp whose only writes are diverging Calls' destinations, an argument's here;
-    // a Never parameter, a payload of Result<i32, Never> and a destination an if's other arm writes are read on runtime paths, validly
-    // (SPEC 3.1.3, 14.9.3). EachRuleRejectsTheBodyThatBreaksIt has the invalid read.
+    // a Never parameter and a destination an if's other arm writes are read on runtime paths, validly (SPEC 3.1.3). A read of a Never
+    // payload binding (SPEC 14.9.3) is valid too, but Binding rejects it today, so no row has one. EachRuleRejectsTheBodyThatBreaksIt has
+    // the invalid read.
     [Theory]
     [InlineData("func absurd(x: Never) -> i32 => x\n")]
-    [InlineData("func get(r: Result<i32, Never>) -> i32\n    return match r\n        .Ok(let v) => v\n        .Err(let e) => e\n")]
-    [InlineData("func consume(x: Never) -> i32 => x\n" +
-        "func get(r: Result<i32, Never>) -> i32\n    return match r\n        .Ok(let v) => v\n        .Err(let e) => consume(e)\n")]
     [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc pick(c: bool) -> i32\n    let x: i32 = if c => stop() else => 1\n    return x\n")]
     [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc take(a: i32, b: i32) -> i32 => a + b\nfunc f(n: i32) -> i32 => take(n, stop())\n")]
     public void OnlyCheckOnlyBlocksReadWhatOnlyADivergingCallWrites(string source)
     {
         var c = MirBuildTest.Compile(source);
-        Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Binding));
+        Assert.Empty(c.Binding.Issues);
         Assert.Empty(c.BuildMir().Findings);
+    }
+
+    // G131 (DECISIONS R5-M33): a Drop, like a StorageDead, reads nothing, so a runtime Drop of a Temp only a diverging Call writes, storage
+    // nothing initialized, is valid: the validator's body here drops the Abort's destination where it dropped point.
+    [Fact]
+    public void ARuntimeDropOfWhatOnlyADivergingCallWritesIsValid()
+    {
+        var body = Build(null);
+        var stopped = new MirPlace(Enumerable.Range(0, body.Locals.Length).Single(x => body.Locals[x].Type == BoundType.Never));
+        var drop = Enumerable.Range(0, body.Blocks.Length).Single(x => body.Blocks[x].Terminator.Kind == MirTerminatorKind.Drop);
+        body.Terminate(drop, body.Blocks[drop].Terminator with { Place = stopped });
+        Assert.Empty(Validate(body));
     }
 
     // Plan 5.6.1: a PairAcquire and a PairLayer name the binder of their Place's pair layer, so each resolves under every Semantics case view
