@@ -47,6 +47,25 @@ public sealed class MirValidatorTest
         Assert.Equal(new[] { IntrinsicId.Abort, IntrinsicId.Fail, IntrinsicId.TestRequireAbort }, Enum.GetValues<IntrinsicId>().Where(static x => MirDescriptors.Of(x).Diverges));
     }
 
+    // A3 E14: an intrinsic serving a library declaration takes its parameters first, so its row's arity covers them, and the operand its
+    // row says the result retains is one the builder adds beyond them (RawSlice's backing).
+    [Fact]
+    public void AnIntrinsicsRowCoversItsDeclaration()
+    {
+        var c = Fixture.Value.Compilation;
+        var declared = Enum.GetValues<CompilerFunctionKind>().Where(static x => IntrinsicDisposition.Of(x).Kind == DispositionKind.Intrinsic)
+            .Select(x => (Row: MirDescriptors.Of(IntrinsicDisposition.Of(x).Id), Declaration: c.Library.Function(x)))
+            .Where(static x => x.Declaration is not null).ToArray();
+        Assert.NotEmpty(declared);
+        foreach (var (row, declaration) in declared)
+        {
+            _ = TyCtxt.Signature(declaration!, null, -1, out var count);
+            Assert.True(count <= row.Arity && (row.Retained < 0 || (row.Retained >= count && row.Retained < row.Arity)), declaration!.Name);
+        }
+
+        Assert.Equal([IntrinsicId.RawSlice], Enum.GetValues<IntrinsicId>().Where(static x => MirDescriptors.Of(x) is { Defined: true, Retained: >= 0 }));
+    }
+
     // An rvalue's operands before its Place, the index locals of a Place before it, a destination last; static accesses, pair cases,
     // intrinsic and Opaque effects as the rows give them; a diverging Call writes no destination. An Adapt's acquired Place and payload are
     // case-dependent and its creation possible; under a Semantics case view it is the operation its case selects: of a T to s/T (s is
@@ -74,13 +93,13 @@ public sealed class MirValidatorTest
         Assign(result, MirRvalue.Binary(MirBinaryOp.Add, Operands(MirOperand.Copy(body.Project(pairs, MirProjectionKind.Field, 0)), one), false));
         Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(array, MirProjectionKind.Index, index.Root)))));
         body.Push(entry, MirStatement.Of(MirStatementKind.FakeRead, shared, At));
-        Assign(pair, MirRvalue.Use(Operands(MirOperand.PairAcquire(0, pair))));
+        Assign(pair, MirRvalue.Acquire(Operands(MirOperand.PairAcquire(0, pair)), MirRefKind.Uniq));
         body.Push(entry, MirStatement.Of(MirStatementKind.FakeRead, body.Project(pair, MirProjectionKind.PairLayer, 0), At));
         Assign(exclusive, MirRvalue.Ref(MirRefKind.Uniq, shared, body.TypeOf(exclusive)!));
         Assign(pointer, MirRvalue.Cast(MirCastKind.IntToPointer, Operands(MirOperand.Copy(index)), body.TypeOf(pointer)!));
         Assign(result, MirRvalue.Opaque(BoundType.I32, body.AddOpaque(default, [array.Root])));
         var token = MirOperand.Const(body.Const(new(MirConstKind.TypeToken, payload!)));
-        Assign(pair, MirRvalue.Adapt(Operands(MirOperand.Copy(value), token), value, types.Pair, shorthand: true));
+        Assign(pair, MirRvalue.Adapt(Operands(MirOperand.Copy(value), token), value, types.Pair, shorthand: true, input: false));
         body.Terminate(entry, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.MakeObj), Operands(MirOperand.Copy(result)), 1, result, abort, At));
         var text = Operands(MirOperand.Const(body.Const(new(MirConstKind.String, BoundType.String, Value: "abort"))));
         body.Terminate(abort, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.Abort), text, 1, result, -1, At) with { CheckTarget = drop });
@@ -137,11 +156,12 @@ public sealed class MirValidatorTest
     // result, a Value callee's argument and _0 at a Return disagreeing with their Types; an operator's operands, a shift count, a raw
     // pointer's displacement, a comparison's operands below their layers, a Cast, a Ref, an object upcast and a branch's operand that their
     // kind does not admit; an Adapt whose operand is no by-value acquisition, whose source token is not its operand's Type, that a case
-    // view selects no operation for (i32 to f64), or whose object borrow there takes a Place other than the payload, and one whose Op is no
-    // shorthand flag, of an unknown kind; a Value callee whose signature is no TypeToken constant (C8). A local an Opaque value
-    // defines has an unknown Type (the replaced syntax may have none), which any use admits; the same use of a local a Unit constant
-    // defines is a finding. So is the Never value's at every operand position (a Use, an operator, an aggregate; SPEC 3.8, DECISIONS
-    // R4-M62), but a ref/Never is no ref/i32.
+    // view selects no operation for (i32 to f64), or whose object borrow there takes a Place other than the payload, and one whose Op has a
+    // bit besides its shorthand and input flags, of an unknown kind; an intrinsic callee whose function is not the library declaration of a compiler function it
+    // serves (A3 E14); a Value callee whose signature is no TypeToken constant (C8), and a Closure callee given more arguments than its
+    // declared signature has inputs. A local an Opaque value defines has an unknown Type (the replaced syntax may have
+    // none), which any use admits; the same use of a local a Unit constant defines is a finding. So is the Never value's at every operand
+    // position (a Use, an operator, an aggregate; SPEC 3.8, DECISIONS R4-M62), but a ref/Never is no ref/i32.
     [Theory]
     [InlineData("assign", "Type")]
     [InlineData("component", "Type")]
@@ -151,6 +171,8 @@ public sealed class MirValidatorTest
     [InlineData("template", "Type")]
     [InlineData("value", "Type")]
     [InlineData("signature", "Callee")]
+    [InlineData("declaration", "Callee")]
+    [InlineData("arity", "Arity")]
     [InlineData("return", "Type")]
     [InlineData("operands", "Operation")]
     [InlineData("shift", "Operation")]
@@ -209,7 +231,10 @@ public sealed class MirValidatorTest
         _ = (TyCtxt.Layer(pa, out var t, out _), TyCtxt.Layer(pb, out var u, out _));
         PairBinder.Collect(function, body.Binders);
         var block = body.AddBlock();
-        void Read(MirOperand operand, BoundType type, SourceInfo source) => body.Push(block, MirStatement.Assign(MirModelTest.Local(body, type), MirRvalue.Use(body.AddOperand(operand)), source));
+        void Read(MirOperand operand, BoundType type, SourceInfo source) => body.Push(block, MirStatement.Assign(
+            MirModelTest.Local(body, type),
+            operand.Kind == MirOperandKind.PairAcquire ? MirRvalue.Acquire(body.AddOperand(operand), MirRefKind.Uniq) : MirRvalue.Use(body.AddOperand(operand)),
+            source));
         Read(MirOperand.PairAcquire(0, a), pa, At);
         Read(MirOperand.PairAcquire(1, b), pb, At);
         Read(MirOperand.Copy(body.Project(a, MirProjectionKind.PairLayer, 0)), t!, At);
@@ -220,6 +245,46 @@ public sealed class MirValidatorTest
         Read(MirOperand.PairAcquire(1, a), pa, Broken);
         Read(MirOperand.Copy(body.Project(b, MirProjectionKind.PairLayer, 0)), u!, Broken);
         Assert.Equal([(MirViolation.Binder, Broken.Syntax), (MirViolation.Projection, Broken.Syntax)], Validate(body).Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // A3 E13 (4): a PairAcquire is always the whole rvalue of an Assign to a local's whole Place, its Use marked with the Reborrow its
+    // exclusive case makes (Uniq, or TwoPhaseUniq for an invocation's input), and only such a Use is marked. A PairAcquire passed to a Call,
+    // gathered into an aggregate or assigned to a projection, one unmarked or marked Raw, and a marked Use of a constant are each an
+    // Operation finding at their syntax.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("argument")]
+    [InlineData("aggregate")]
+    [InlineData("projection")]
+    [InlineData("unmarked")]
+    [InlineData("raw")]
+    [InlineData("constant")]
+    public void APairAcquireIsTheWholeRvalueOfAnAssignToALocal(string? broken)
+    {
+        var c = MirBuildTest.Compile("func both<s/T, t/U>(a: s/T, b: t/U) -> ()\n    s is owner or uniq\n    t is owner or ref\n    T is Copy\n    U is Copy\n    _ = a\n    _ = b\n");
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "both");
+        var body = new MirBody();
+        body.Reset(new(function.SymbolOf()!, MirBodyKind.Fn), default);
+        body.AddLocal(new(BoundType.Unit, MirLocalKind.Return, At));
+        var (pa, pb) = (function.Parameters[0].Type.TypeOf()!, function.Parameters[1].Type.TypeOf()!);
+        var (a, b) = (MirModelTest.Local(body, pa, MirLocalKind.Arg), MirModelTest.Local(body, pb, MirLocalKind.Arg));
+        PairBinder.Collect(function, body.Binders);
+        var (first, second) = (MirModelTest.Local(body, pa, MirLocalKind.Temp), MirModelTest.Local(body, pb, MirLocalKind.Temp));
+        var (tuple, number) = (MirModelTest.Local(body, c.Types.Tuple([pa, BoundType.I32])), MirModelTest.Local(body, BoundType.I32));
+        var (block, next) = (body.AddBlock(), body.AddBlock());
+        SourceInfo Where(string form) => broken == form ? Broken : At;
+        void Assign(MirPlace place, MirRvalue rvalue, string form) => body.Push(block, MirStatement.Assign(place, rvalue, Where(form)));
+        var (acquire, one) = (MirOperand.PairAcquire(0, a), MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.I32, 1))));
+        var mark = broken switch { "unmarked" => MirRefKind.Shared, "raw" => MirRefKind.Raw, _ => MirRefKind.Uniq };
+        Assign(first, MirRvalue.Acquire(body.AddOperand(acquire), mark), broken is "unmarked" or "raw" ? broken : string.Empty);
+        Assign(second, MirRvalue.Acquire(body.AddOperand(MirOperand.PairAcquire(1, b)), MirRefKind.TwoPhaseUniq), string.Empty);
+        Assign(broken == "projection" ? body.Project(tuple, MirProjectionKind.Field, 0) : first, MirRvalue.Acquire(body.AddOperand(acquire), MirRefKind.Uniq), "projection");
+        Assign(tuple, MirRvalue.Aggregate(MirAggregateKind.Tuple, AddOperands(body, [broken == "aggregate" ? acquire : MirOperand.Move(first), one]), 2, body.TypeOf(tuple)!), "aggregate");
+        Assign(number, MirRvalue.Use(body.AddOperand(one)) with { Op = (byte)(broken == "constant" ? MirRefKind.Uniq : MirRefKind.Shared) }, "constant");
+        var passed = AddOperands(body, [broken == "argument" ? acquire : MirOperand.Move(first), MirOperand.Move(second)]);
+        body.Terminate(block, MirTerminator.Call(new(MirCalleeKind.Fn, function.SymbolOf()), passed, 2, new(0), next, Where("argument")));
+        body.Terminate(next, MirTerminator.Return(At));
+        Assert.Equal(broken is null ? [] : [(MirViolation.Operation, Broken.Syntax)], Validate(body).Select(static x => (x.Rule, x.Subject)));
     }
 
     // SPEC 8.15, 23.1.1: Binding publishes no part of a definition beyond PairBinder.CaseBound views (Binding.CaseLimits), so a body with more
@@ -237,7 +302,7 @@ public sealed class MirValidatorTest
         _ = TyCtxt.Layer(Fixture.Value.Types.Pair, out var payload, out _);
         var (value, adapted, block) = (MirModelTest.Local(body, payload!), MirModelTest.Local(body, BoundType.Boolean), body.AddBlock());
         var token = MirOperand.Const(body.Const(new(MirConstKind.TypeToken, payload!)));
-        var adapt = MirRvalue.Adapt(AddOperands(body, [MirOperand.Copy(value), token]), value, BoundType.Boolean, shorthand: false);
+        var adapt = MirRvalue.Adapt(AddOperands(body, [MirOperand.Copy(value), token]), value, BoundType.Boolean, shorthand: false, input: false);
         body.Push(block, MirStatement.Assign(adapted, adapt, At));
         body.Terminate(block, MirTerminator.Return(At));
         body.Binders.AddRange(Enumerable.Repeat(binder, 6));
@@ -329,18 +394,25 @@ public sealed class MirValidatorTest
         Assign(a, MirRvalue.Use(Operands(MirOperand.Move(lost))), "opaque");
         MirOperand Token(BoundType type) => MirOperand.Const(body.Const(new(MirConstKind.TypeToken, type)));
         var (acquired, payload) = (broken == "token" ? flag : a, body.Project(handle, MirProjectionKind.Deref, 0));
-        var adapt = MirRvalue.Adapt(Operands(broken == "acquisition" ? one : MirOperand.Copy(acquired), Token(BoundType.I32)), acquired, body.TypeOf(adapted)!, shorthand: false);
-        Assign(adapted, broken == "shorthand" ? adapt with { Op = 2 } : adapt, broken is "acquisition" or "token" or "shorthand" ? broken : "adapt");
-        var borrow = MirRvalue.Adapt(Operands(MirOperand.Copy(handle), Token(body.TypeOf(handle)!)), broken == "payload" ? handle : payload, body.TypeOf(borrowed)!, shorthand: false);
+        var adapt = MirRvalue.Adapt(Operands(broken == "acquisition" ? one : MirOperand.Copy(acquired), Token(BoundType.I32)), acquired, body.TypeOf(adapted)!, shorthand: false, input: false);
+        Assign(adapted, broken == "shorthand" ? adapt with { Op = 4 } : adapt, broken is "acquisition" or "token" or "shorthand" ? broken : "adapt");
+        var borrow = MirRvalue.Adapt(Operands(MirOperand.Copy(handle), Token(body.TypeOf(handle)!)), broken == "payload" ? handle : payload, body.TypeOf(borrowed)!, shorthand: false, input: false);
         Assign(borrowed, borrow, "payload");
 
         body.AddCase(0, blocks[1]);
         body.Terminate(blocks[0], MirTerminator.SwitchInt(MirOperand.Copy(broken == "switch" ? real : flag), 0, 1, blocks[1], Where("switch")));
         var (first, second) = broken == "argument" ? (flag, flag) : (a, flag);
-        body.Terminate(blocks[1], MirTerminator.Call(new(MirCalleeKind.Fn, Function("h")), Operands(MirOperand.Copy(first), MirOperand.Copy(second)), 2, broken == "result" ? a : flag, blocks[2], Where(broken == "argument" ? "argument" : "result")));
+        var h = broken == "declaration" ? MirCallee.Intrinsic(IntrinsicId.RawInitialize, Function("h")) : new(MirCalleeKind.Fn, Function("h"));
+        var site = Where(broken is "argument" or "declaration" ? broken : "result");
+        var passed = Operands(MirOperand.Copy(first), MirOperand.Copy(second));
+        body.Terminate(blocks[1], MirTerminator.Call(h, passed, 2, broken == "result" ? a : flag, blocks[2], site));
         var signature = broken == "signature" ? one.Arg : Token(body.TypeOf(callable)!).Arg;
-        var value = MirTerminator.Call(new(MirCalleeKind.Value, Arg: signature), Operands(MirOperand.Copy(broken == "value" ? flag : a)), 1, flag, blocks[3], Where(broken == "signature" ? "signature" : "value"));
-        body.Terminate(blocks[2], value with { Operand = MirOperand.Copy(callable) });
+        var (callee, arguments) = broken == "arity"
+            ? (Local(c.Types.Intern(BoundTypeKind.Closure, types.Function, SemanticsKind.Owner, [])), Operands(MirOperand.Copy(a), MirOperand.Copy(a)))
+            : (callable, Operands(MirOperand.Copy(broken == "value" ? flag : a)));
+        var at = Where(broken is "signature" or "arity" ? broken : "value");
+        var value = MirTerminator.Call(new(MirCalleeKind.Value, Arg: signature), arguments, broken == "arity" ? 2 : 1, flag, blocks[3], at);
+        body.Terminate(blocks[2], value with { Operand = MirOperand.Copy(callee) });
         body.Terminate(blocks[3], MirTerminator.Call(new(MirCalleeKind.Fn, Function("d"), Arg: 2), Operands(broken == "template" ? MirOperand.Copy(a) : MirOperand.Copy(view)), 1, flag, blocks[4], Where("template")));
         var (receiver, by) = (MirOperand.Copy(gauge), MirOperand.Copy(a));
         body.Terminate(blocks[4], MirTerminator.Call(new(MirCalleeKind.Fn, Function("scaled")), broken == "receiver" ? Operands(by, receiver) : Operands(receiver, by), 2, a, blocks[5], Where("receiver")));
@@ -395,9 +467,10 @@ public sealed class MirValidatorTest
         Push(MirStatementKind.EndBorrow, reference);
         Push(MirStatementKind.FakeRead, shared);
         Push(MirStatementKind.FakeRead, body.Project(pair, MirProjectionKind.PairLayer, 0));
-        Assign(pair, MirRvalue.Use(Operands(MirOperand.PairAcquire(0, pair))));
+        Assign(pair, MirRvalue.Acquire(Operands(MirOperand.PairAcquire(0, pair)), MirRefKind.Uniq));
+        Assign(pair, MirRvalue.Acquire(Operands(MirOperand.PairAcquire(0, pair)), MirRefKind.TwoPhaseUniq));
         var layer = body.Project(pair, MirProjectionKind.PairLayer, 0);
-        Assign(pair, MirRvalue.Adapt(Operands(MirOperand.Copy(layer), Const(MirConstKind.TypeToken, body.TypeOf(layer)!)), layer, types.Pair, shorthand: true));
+        Assign(pair, MirRvalue.Adapt(Operands(MirOperand.Copy(layer), Const(MirConstKind.TypeToken, body.TypeOf(layer)!)), layer, types.Pair, shorthand: true, input: true));
         Assign(flag, MirRvalue.Opaque(BoundType.Boolean, body.AddOpaque(default, [point.Root])));
         Assign(index, MirRvalue.Discriminant(shape));
         Assign(index, MirRvalue.Len(array));
@@ -436,7 +509,7 @@ public sealed class MirValidatorTest
                 Assign(result, MirRvalue.Use(Operands(MirOperand.Const(99))), Broken);
                 break;
             case MirViolation.Binder:
-                Assign(pairs, MirRvalue.Use(Operands(MirOperand.PairAcquire(0, pairs))), Broken);
+                Assign(pairs, MirRvalue.Acquire(Operands(MirOperand.PairAcquire(0, pairs)), MirRefKind.Uniq), Broken);
                 break;
             case MirViolation.OperandRange:
                 Assign(result, MirRvalue.Use(999), Broken);

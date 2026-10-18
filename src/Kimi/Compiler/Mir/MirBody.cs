@@ -22,7 +22,8 @@ internal readonly record struct MirPlace(int Root, int Projection = 0)
 }
 
 /// <summary>An operand: a Place copied, moved or acquired as a pair binder's Semantics case decides (<see cref="Arg"/>: the binder's
-/// index in <see cref="MirBody.Binders"/>), or a constant (<see cref="Arg"/>: its id in <see cref="MirBody.Consts"/>).</summary>
+/// index in <see cref="MirBody.Binders"/>; only as the operand of its own Use, <see cref="MirRvalue.Acquire"/>), or a constant
+/// (<see cref="Arg"/>: its id in <see cref="MirBody.Consts"/>).</summary>
 internal readonly record struct MirOperand(MirOperandKind Kind, MirPlace Place, int Arg = 0)
 {
     internal static MirOperand Copy(MirPlace place) => new(MirOperandKind.Copy, place);
@@ -36,10 +37,12 @@ internal readonly record struct MirOperand(MirOperandKind Kind, MirPlace Place, 
 
 /// <summary>An rvalue. Its operands are <see cref="Count"/> entries of <see cref="MirBody.Operands"/> from <see cref="Start"/>;
 /// <see cref="Op"/> is a Ref's <see cref="MirRefKind"/>, an operator's <see cref="MirBinaryOp"/> or <see cref="MirUnaryOp"/>, a Cast's
-/// <see cref="MirCastKind"/>, an aggregate's <see cref="MirAggregateKind"/> or an Adapt's 1 for the Semantics shorthand;
-/// <see cref="Arg"/> is an Adt aggregate's Case ordinal or an Opaque's site; <see cref="Place"/> is a Ref's, Discriminant's or Len's
-/// Place or an Adapt's payload; <see cref="Type"/> is a Ref's reference Type, a Cast's or an Adapt's target Type or an aggregate's or
-/// Opaque's Type.</summary>
+/// <see cref="MirCastKind"/>, an aggregate's <see cref="MirAggregateKind"/>, an Adapt's <see cref="AdaptShorthand"/> and
+/// <see cref="AdaptInput"/> bits, or a Use's 0 but for a PairAcquire, which is always the whole rvalue of an Assign to a local and whose
+/// Use holds the <see cref="MirRefKind"/> of the Reborrow its exclusive case makes (Uniq, TwoPhaseUniq for an invocation's input; design
+/// A3 E13 (4)); <see cref="Arg"/> is an Adt aggregate's Case ordinal or an Opaque's site; <see cref="Place"/> is a Ref's, Discriminant's
+/// or Len's Place or an Adapt's payload; <see cref="Type"/> is a Ref's reference Type, a Cast's or an Adapt's target Type or an
+/// aggregate's or Opaque's Type.</summary>
 internal readonly record struct MirRvalue(
     MirRvalueKind Kind,
     byte Op = 0,
@@ -50,7 +53,16 @@ internal readonly record struct MirRvalue(
     BoundType? Type = null,
     bool Proven = false)
 {
+    /// <summary>An Adapt's bit for the Semantics shorthand (SPEC 8.14).</summary>
+    internal const byte AdaptShorthand = 1;
+
+    /// <summary>An Adapt's bit for an invocation's input, whose exclusive borrow is two-phase (SPEC 15.6.7).</summary>
+    internal const byte AdaptInput = 2;
+
     internal static MirRvalue Use(int operand) => new(MirRvalueKind.Use, Start: operand, Count: 1);
+
+    // A PairAcquire's Use, with the borrow its exclusive case makes.
+    internal static MirRvalue Acquire(int operand, MirRefKind kind) => new(MirRvalueKind.Use, (byte)kind, Start: operand, Count: 1);
 
     internal static MirRvalue Ref(MirRefKind kind, MirPlace place, BoundType type) => new(MirRvalueKind.Ref, (byte)kind, place, Type: type);
 
@@ -83,9 +95,9 @@ internal readonly record struct MirRvalue(
 
     // From the first, the operand acquired by value and the token of Binding's source Type; the payload is the Place one implicit layer
     // below the operand's, which an object borrow borrows.
-    internal static MirRvalue Adapt(int operands, MirPlace payload, BoundType target, bool shorthand) => new(
+    internal static MirRvalue Adapt(int operands, MirPlace payload, BoundType target, bool shorthand, bool input) => new(
         MirRvalueKind.Adapt,
-        (byte)(shorthand ? 1 : 0),
+        (byte)((shorthand ? AdaptShorthand : 0) | (input ? AdaptInput : 0)),
         payload,
         operands,
         2,
@@ -102,12 +114,15 @@ internal readonly record struct MirStatement(MirStatementKind Kind, MirPlace Pla
 
 /// <summary>What a Call calls: a Fn, Requirement or Virtual callee's function under its Subst (a Fn one's default template, plan 5.6.2, as
 /// its index plus 1 in <see cref="Arg"/>; a Virtual one's slot by the slot's function; a Requirement's dispatching Contract reference in
-/// <see cref="Contract"/>, null for its requirement's own Contract) or an Intrinsic's <see cref="IntrinsicId"/> in <see cref="Arg"/>; a
-/// Value callee is the terminator's operand, the Callable signature its callee declares the TypeToken constant at <see cref="Arg"/> (DECISIONS
-/// R4-M41).</summary>
+/// <see cref="Contract"/>, null for its requirement's own Contract) or an Intrinsic's <see cref="IntrinsicId"/> in <see cref="Arg"/>, its
+/// <see cref="Symbol"/> the library declaration of the compiler function it serves, under its Subst, whose parameters its first operands
+/// pass (those the builder adds follow them, MirDescriptors), or null for one without a library declaration, whose result holds no Loan
+/// (A3 E14, DECISIONS R4-M63); a Value callee is the terminator's operand, the Callable signature its callee declares the TypeToken
+/// constant at <see cref="Arg"/> (DECISIONS R4-M41).</summary>
 internal readonly record struct MirCallee(MirCalleeKind Kind, BindingSymbol? Symbol = null, Subst? Subst = null, int Arg = 0, BindingSymbol? Contract = null)
 {
-    internal static MirCallee Intrinsic(IntrinsicId id, Subst? subst = null) => new(MirCalleeKind.Intrinsic, null, subst, (int)id);
+    internal static MirCallee Intrinsic(IntrinsicId id, BindingSymbol? declaration = null, Subst? subst = null)
+        => new(MirCalleeKind.Intrinsic, declaration, subst, (int)id);
 
     // SPEC 7.3: a call passes its callee's parameters receiver first (the self parameter at its written slot), then the others in slot order:
     // the slot an argument position passes, and its inverse.

@@ -593,7 +593,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   row) and deriving every path through an Opaque site (drops written recovered failure bodies, DIAGNOSTICS §4.3).
   Rejected also: per-row walks (quadratic), U1's dataflow framework, copying rows into copies. No temporary structure.
 - **R4-M20** (2026-10-12, planning session; design A of two independent U1 designs, with design B's three lanes; its union join and
-  backward clause superseded by R4-M34) MIR dataflow.
+  backward clause superseded by R4-M34, its ring worklist by R4-M65) MIR dataflow.
   `MirDataflow` solves forward bit-set problems over flow heads: a block whose only edge is a runtime edge into a block with no
   other predecessor that is not the entry continues into it, so a chain of blocks shares one state, stored only at its head. One
   pooled arena of heads × stored words, word-major (the lanes of 64 paths per word group); only flow paths are stored, and
@@ -931,7 +931,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   apply again; R4-M30 and the other R4 decisions stand. Removed with the units, for the replan: the validator's signature
   check of function-item and Closure calls (U7c) and the Q1-ref and A5-closure findings. Unlanded U8/C1b work is not carried.
 - **R4-M34** (2026-10-17; design A3 §4.1 G1 of the [A5 plan](../../draft/Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md)'s
-  step 0, owner approval of its §9 item 9 on 2026-10-17; supersedes R4-M20's union join and its backward clause) MIR dataflow, forward and
+  step 0, owner approval of its §9 item 9 on 2026-10-17; supersedes R4-M20's union join and its backward clause; its backward ring
+  superseded by R4-M65) MIR dataflow, forward and
   backward. `IMirFlow.Join(target, incoming)` is the transfer's join and says whether the state grew: A1 keeps union (`MirDataflow.Union`),
   A5's Loan sets will join by node union. `MirDataflow.Begin` decides each chain's phase once per body, P1 where `MirReach`'s runtime walk
   from the entry reaches it, else P2, and records each block's predecessor edges; `Forward` keeps R4-M20's phases, and A4 reads
@@ -1003,7 +1004,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   into it live); one fact for both (two readers, two rules). Not temporary.
 - **R4-M37** (2026-10-17; design A3 §4.1 G5, G6, the writeback and the guard row, owner approval of its §9 item 8 on 2026-10-17;
   G5's path clause and G6's value rule superseded by R4-M52 (implemented as R4-M54 and R4-M62); its `EndBorrow` meaning for guards
-  replaced by A3 §12 E7, recorded with unit 1b-4) The
+  replaced by A3 §12 E7, recorded with unit 1b-4; its Open "a pair-layer argument is acquired at its Call" superseded by R4-M66) The
   MIR builder contracts A5's reservations and guard-local Origins read. G5: every exclusive borrow on an invocation's preparation path
   is `TwoPhaseUniq` (SPEC 15.6.7): a written `@uniq`, also in parentheses or on the Place path of a receiver or an argument down to a
   value (`h@follow@uniq.c.bump(1)`; a call result or a getter activates at its own call), the Reborrow of a stored exclusive reference
@@ -1074,7 +1075,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M40** (2026-10-17; design A3 §4.1's Slice row, owner approval of its §9 item 8 on 2026-10-17, implemented on the planning
   session's instruction of the same day; its handle copy and Open amended by A3 §12 E10, G123 and G94, recorded with
   their units) `RawSlice` takes a third operand, its backing, what the Slice retains under A5's intrinsic
-  retention (every operand to the result), so a Slice cannot outlive or alias a write of what it views, which A3 found otherwise
+  retention (every operand to the result; R4-M63: the intrinsic table's row for it), so a Slice cannot outlive or alias a write
+  of what it views, which A3 found otherwise
   accepted. A range selection's backing follows SPEC 4.8.1: an array (fixed or `Array`) lends its whole Place, a shared borrow made
   with the call (`Borrow`); a Slice receiver's handle is copied first where it is located (SPEC 4.7.4), its length, element address
   and backing all read from that copy, so the reslice retains its source and borrows no handle variable. A written
@@ -1234,6 +1236,105 @@ and migration obligations remain in force; no numeric cap changes are authorized
   The implementing units record their contracts in the commits that first implement them, including the planning
   session's decisions of A3 §12 (E1–E7, E10, E11): E7 replaces R4-M37's `EndBorrow` meaning for guards (unit 1b-4), and
   G123 and G94 amend R4-M40's handle copy and its Open.
+- **R4-M53** (2026-10-17; design A3 §6.1 and §8, the A5 representation its §9 item 9 records, approved by the owner on 2026-10-17;
+  A5 step 1, unit 1b-1) A5's Loan sets. `MirLoanSets` owns interned immutable sets of the ids A5 numbers (Loans and markers), the
+  only Loan-set form in Mir: a set is a node id, node 0 the empty set, and a node's elements are a strictly ascending run in one
+  pooled array, interned by its elements (a dictionary over node ids that hashes and compares their runs; a candidate run is written
+  after the last node's and dropped when an equal node exists), so equal sets have one id and a holder's state, a join and an
+  equality test are an int. `Add(set, element)`, `Union(a, b)` (keyed unordered) and `Remove(set, removed)`, set \ removed, are
+  each memoized by their operands, so repeating one costs a lookup. `Remove` takes a set because the Loans a point ends are one set
+  removed from every holder's (A3 §5's `ended` and `step`), each holder after the first with an equal state a memo hit. `Contains`,
+  `Count` and `Elements` read a node; `Bytes` counts the element bytes of the nodes made, A3 §6.2's ν, which `MirBorrows.Work`
+  reports. `Clear` empties the storage per body view and keeps its capacity, so a warm run allocates nothing; the memory limit stays
+  the dataflow's (R4-M15a). Its first reader is `MirBorrows` (unit 1b-2); `Map`, for disturbance (F6), comes with unit 2f.
+  Review fix B3 (2026-10-18): `Range(first, count)`, memoized, interns a run of consecutive ids (the Loans a Move Path's destruction
+  ends, R4-M57), and `Remove` scans its smaller operand, returning the set itself when it removes nothing.
+  Rejected (A3 §3, §6.1): dense holder × Loan bits (cubic: heads × holders × Loans); a per-Loan traversal (a check walks every
+  Loan); persistent tree sets (no int identity, an allocation per insertion); `Remove` by element (one call per ended Loan and
+  holder) or by predicate (no memo key, so every holder's set is scanned at every point). Not temporary.
+- **R4-M57** (2026-10-17; design A3 §3, §5, §6 and §8 with its §12 errata E3, E5, E6, E8 and E12; A5 step 1, unit 1b-2, on the
+  planning session's instruction of the same day; its check sets amended by R4-M66: a borrow's stored value only seeding and 1b-3's
+  CS_call over live_in(ℓ) superseded) A5's Loan stratum, its joint core. `MirBorrows` (`MirBorrows.cs`, the pre-pass;
+  `.Liveness`, `.Flow`, `.Checks`) checks a body per Semantics case view, once for a body no view decides (as A1), and reports each
+  conflict as `ComparisonLoanConflict_Kd` at its access with the Loan's anchor and its witness as facts: the witness holder's next use
+  in its chain, or the store whose value carries the Loan. `MirReport` gains pooled fact rows per problem (`MirFact`, kinds `Anchor`,
+  `Use`, `Store`; a merge keeps the first problem's, R4-M3a); A6's code mapping is unit 1c's. The choices within A3:
+  - Holder slots: E is slot 0, then the flow holders, then the chain-local ones. A holder is a flow holder when MirMoveData makes its
+    root a flow root or a direct Loan names it, since content, refs and the closure read a named holder's state at any location;
+    A3 §3's rule by MirMoveData alone would read a chain-local state outside its chain.
+  - Elements: Φ_E is 0, τ_s is 1 + s, Loan i follows the sites; a state slot is one word holding a MirLoanSets node, and a head
+    stores E and the flow holders; `Prepare(⌈(Hf + 1)/64⌉, Hf + 1, …)` sizes both problems under R4-M15a's one limit.
+  - Loans: one table per view, their Places' steps in one pool (a Base of depth d as d steps, an owner-case pair layer as none, a
+    Slice index a shared borrow Deref), grouped by root key (locals, then statics); a PairAcquire the view makes a Reborrow is a
+    Uniq Loan of its Place's referent. E8's ended set of each location is built in the pre-pass and removed from every slot after
+    the location's checks and transfer (A3's `step`, σ_out \ ended; corrected by 1b-3: removing it first made `replace` store its
+    new value through its already ended target reservation into E).
+    Review fix B3 (2026-10-18, the planning session within V16): the Loans are ordered by group, the Move Path of their Place's longest
+    inline prefix (`MirMoveData.Find`; statics after the paths), not by root key, so a destroyed path K ends the run of K's subtree
+    [K, End), made once by `MirLoanSets.Range`; the comparison with every Loan of the root (a second copy of Move-Path identity, ν =
+    Θ(B²)) is deleted. A destroyed Place is a Move Path only when all its steps are inline under the view (a reference-case
+    PairLayer is a Deref there). A static has no Move Path, so its write ends none of its Loans: over-strict, never unsound, latent
+    until P6's static borrows (unit 2b), which must give them an ending. (ended points) × holders stays a Dense term (A3 6.3).
+  - A location's effect is planned as entries on the state (clear, replace, join), then committed, so the checks replay reads the
+    plan on `σ_in`; a borrow's stored value only seeds the closure (E5), as the prototype's chosen rule (its parents as candidates,
+    `RefParentsInTransit`, is over-strict on 30b). Transit counts a store into a holder live after ℓ, made live by the closure, or E.
+  - Liveness: each location's touches (use, kill) are built once per view; the backward replay records each touch's live-after bit,
+    and the checks replay rebuilds the live holders from a head's stored state (`MirDataflow.Before`, added) and those bits.
+  - Calls read `TyCtxt.Retains` (slots to argument positions by `MirCallee.Position`); an intrinsic's operands all reach its result
+    (superseded by R4-M63: an intrinsic reads its declaration, and every row set goes through one loop).
+    Temporary: a default template's call is an unknown callee until F9 (unit 2e), and a Value callee's environment (its value, or
+    what a reference to it refers to) reaches the result until F7 reads `TyCtxt.Closure` (unit 2c).
+  - The driver's step 4 is not wired: `TyCtxt.Retains` discarded its memo with every Binding pass (R4-M51), so A5 in `MirAnalysis`
+    allocated on each warm rebuild (Milestone34: 35,584 B per pass, 0 B without the retention calls), against V11's warm-rebuild
+    tests; the memo now lives until an edit (R4-M51 as amended), and the wiring is unit 1b-5's.
+  Not in this unit: `γ` (1b-4); effects (2b); F6 (2f). Rejected: per-location live rows (N × H/64 words, outside the one arena
+  limit); a per-Loan holder index for `ended` (a second carrying representation); pruning dead holders at heads (the same verdicts;
+  until measured). Not temporary, but the two call rules above.
+  Unit 1b-3 (A3 §5's err(activate), err(destroy), `obs` and the A6 table's Loan rows, with E1, E5 and E11; `.Activations` added):
+  - A reservation is a two-phase Loan in its reservation holder t, the slot it was issued into, the one holder where its mode is
+    shared. It activates where a Call takes t as an argument or a statement writes through t's Deref (the writeback, R4-M37): the
+    reservations σ_in(t) carries in t, each checked on CS_call(ℓ, t), the holders live into ℓ (the replay's live-after bits with ℓ's
+    touches applied) but t, and E, closed, seeded by those σ_in(t)'s direct Loans name (E5), with no transit; as an exclusive borrow
+    of its Place, so the arguments of one call meet each other there.
+  - E1: a write or destruction (StorageDead, a shallow Drop, a destroying activation) reaches a Loan found in its reservation holder
+    through any prefix of its Place, across borrow Derefs but not a raw one.
+  - destroying(site) is a Loan column (`Destroying`), set in the pre-pass for the two-phase Loans issued into the target argument
+    holder of a call whose published row destroys its target in place (`replace`): its Ref reads the target, its activation writes
+    it, and err(destroy) checks the same CS_call for the Loans an exclusive deep use of the target hits and the write does not, where
+    its case Type observes. A destroying row that is not in place (the `clear`s) adds nothing: its activation is already exclusive
+    and deep (E3 leaves `obs` no shared cut).
+  - A Drop's access is the one rule `Dropping`, which liveness reads too: `Observe` (exclusive and deep) where its case Type observes
+    (`MirTypes.Observes`) and its A2 group's verdict is not Elide (no group: the case Type alone), `Unclassified` past the destruction
+    walk's bound, a located `Unsupported_Kd` at a Drop of a borrowed root or a destroying call, as A4's Limit; else a shallow destroy.
+  - Codes: a Loan found in its reservation holder gives `CallReservationConflict_Kd`, whatever the access; else an activation at a
+    Call `CallActivationConflict_Kd`, at the writeback `PlacementActivationConflict_Kd`, any other conflict and err(destroy)
+    `ComparisonLoanConflict_Kd`, so SPEC 15.6.7's `tasks.append(tasks.remove(0))` is a reservation conflict and 4.9.6's `values.sort()`
+    with a live view an activation conflict, as the SPEC-example table records. `MirFactKind.Reservation` is an activation's or a
+    destruction's reservation anchor (A3 §6.4's other anchor); a CS_call witness is its holder's first use from the call on.
+  - ret(i, Value) reads through a borrow argument, a reference or a view handle (`MirTypes.View`: a Slice shared, a UniqSlice
+    exclusive), the rule by which a Slice's Index is a borrow Deref (E6); found by the planning session's Milestone27 analysis, with
+    Binding's matching `Retains` fix (unit 1a3).
+  Found, for the planning session: a reservation formed while an exclusive Loan of its Place lives gets the formation's
+  `ComparisonLoanConflict_Kd` and the activation's `CallActivationConflict_Kd` on one Loan (`arr.clear()` with a live element borrow;
+  the old path reports the activation only), A6's merge or a rule; `TyCtxt.Retains` threw for a Subst holding a growing recursive
+  Type (`Nest<ref/i32>.init`), now its `CallRetention.Limit` (1b-4). Rejected: transit in CS_call (a call's retained result would bring its own reservation into its
+  check); activations by a table of issue sites (σ_in(t) already says which reservations reach the call); the destroying mode on the
+  access instead of the Loan (formation and activation are separate locations). Not temporary.
+  Unit 1b-4 (A3 §12 E7 and E12; it replaces R4-M37's `EndBorrow` meaning for guards, as `MirStatementKind.EndBorrow`'s doc now says):
+  - γ: a guard candidate H's (`MirLocalRole.GuardCandidate`) guard-local Origin is a marker beside Φ_E and τ_s, element
+    1 + (Opaque sites) + H, so the Loans follow every local's γ slot. A value assigned to H's whole Place carries it, issued with H
+    (born there, in no state before), and every carrying rule carries it as it carries Loans; no ending removes it, and it never
+    conflicts: a check notes the holder each marker is first seen in.
+  - err(ended): at H's `EndBorrow`, γ_H in CS(ℓ) (the values live after ℓ but H, transit included, with E5's seed) is a borrow that
+    escapes the guard: `ComparisonLoanConflict_Kd` at the cleanup, anchored at the candidate, with the holder's next use, as
+    DIAGNOSTICS' escaped borrows (no guard-local code exists; A6's merge, unit 1c, finalizes it, also where γ reaches `_0`). Another
+    `EndBorrow` (an abandoned comparison or reservation) checks nothing. E12: the stratum keeps no `partition` clause (1b-2).
+  - A call whose retention is `CallRetention.Limit` (R4-M51: a contract Binding's storage instantiation does not complete) is a
+    located `Unsupported_Kd` at the call in a body view with a Loan, as A4's Limit; it retains nothing, with no fallback rule.
+  Found: a value returned from a guard (A3's 108) is Binding's `UnsatisfiedOriginRelation_Kd`, so its MIR is Opaque and the
+  stratum sees no escape (the Origin stratum's, unit 2a). Rejected: the Loan-based err(ended) (prototype round 10's `EndedByLoan`,
+  unsound on 43a, 92g, 102 and 108: past the Subject's shared Deref the candidate forms no Loan, E3); a γ id table per candidate
+  (the local index is the key).
 - **R4-M61** (2026-10-17; PLAN G96, two independent designs compared and the chosen one reviewed independently, implemented on the
   planning session's instruction of the same day; supersedes R4-M42's `MirBuilder.Broken`) A published Op guarantees the Binding
   facts the MIR builder reads for it, which `Binding.HasFacts` (`Binding/Binding.Hir.Facts.cs`, whose header is the contract) lists:
@@ -1261,7 +1362,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Error keeps evaluated children); a `HirOp` member (40 of 40); a Binding failure written at publish (publishing decides nothing,
   `PublishIsInvisible`); non-nullable fact types now (R7's CallPlan and declaration-table scope). Lasting: `HasFacts` and
   `HirTables.Broken` are the publication contract; at R7 the publisher walk goes and Binding's inline Op writes call `HasFacts`.
-- **R4-M54** (2026-10-17; PLAN G92, implementing R4-M52's fold (owner) on the planning session's instruction of the same day)
+- **R4-M54** (2026-10-17; PLAN G92, implementing R4-M52's fold (owner) on the planning session's instruction of the same day;
+  its pair-layer input amended by R4-M66)
   On the preparation path of an input that starts a reservation (`MirBuilder.Place` with `input`: `Operand` keeps it only for an
   input the call takes as an exclusive reference, by its expected Type, or without one, a value call's callee, by the reference it is
   or its acquisition forms), a written exclusive borrow whose value the path follows (PlaceShape `Value`, `Layers > 0`; also in
@@ -1277,7 +1379,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   and its Open note on a parent reservation's mode: no reservation is formed through another reservation's holder, so A3's mode
   rule stands. Rejected: an A5 reservation chain (R4-M52); a parent link on the Ref (an O1 vocabulary entry for a fact the Place
   shows). Not temporary.
-- **R4-M55** (2026-10-17; PLAN G123, the planning session's design A3 E10, implemented on its instruction of the same day) An
+- **R4-M55** (2026-10-17; PLAN G123, the planning session's design A3 E10, implemented on its instruction of the same day;
+  amended by R4-M66: also an operand out of operand order, captures, and every pair-layer acquisition secured and marked) An
   operand is read where it is evaluated (SPEC 12.2): a Place operand (Copied, Moved or acquired by case) of an operation is
   secured into a temp where it is evaluated (`Secure`, as a transfer's result is) when a later operand of the same operation builds
   code. `MirBuilder.Builds` decides that from the HIR: every operand builds code except a literal's constant and a Place read as it
@@ -1368,6 +1471,31 @@ and migration obligations remain in force; no numeric cap changes are authorized
   the effects of the statements this builds (R4-M6a). Rejected: keeping `Reached` with a located `Unsupported_Kd` (owner); an
   A5-side rule over operands the MIR does not build; a diverging Call writing its destination on its check edge (SPEC 14.10.3
   leaves it open). Not temporary.
+- **R4-M63** (2026-10-18; A3 §12 E14, decided by the planning session on the core lane's group review B4 and N2 and its design review
+  of 2026-10-18; supersedes R4-M57's intrinsic rule and its separate unknown-callee loop, and R4-M40's "every operand to the result")
+  A Call retains as its callee's contract says (SPEC 15.6, 15.6.4).
+  - An Intrinsic `MirCallee`'s `Symbol` is the library declaration of the compiler function it serves, under its Subst, whose
+    parameters its first operands pass (a written call's target, `Serve`'s function); it is null for an intrinsic without one,
+    those the builder synthesizes and the compiler-only `$abort` (SPEC 17.4), whose results hold no Loan. `MirValidator` reports
+    `Callee` for a Symbol that is no library declaration of a compiler function the intrinsic serves; that the table's arity covers
+    the declaration's parameters is a table fact (`MirValidatorTest`).
+  - A5 applies every row set through one loop, by operand position (`MirBorrows.Rows`, a reused scratch): `TyCtxt.Retains` over the
+    declaration and Subst, an intrinsic's included; the intrinsic table's `Retained` column, the operand the builder adds beyond a
+    declaration that the result retains (Value; `RawSlice`'s backing only); a default template's call the unknown-callee rows until
+    F9 (2e): every input to the result (Value) and to each exclusive input's referents, untied. A store row into a raw pointer reaches
+    E by the store rule, so `Raw.initialize(p, x@ref)` stores `L_x` into E: a later `x = 2` errs, and so does x's end unless a write
+    ended the Loan first.
+  - Census of the IntrinsicIds MIR builds. Declared: MakeObj, MakeRc and MakeArc (value to result), Clone (Content only),
+    RawInitialize (value into the storage; the pointer's own row carries nothing), RawSlice (untied, with its backing row),
+    RawAllocate (untied raw result), ErasedWriter (destination to result), RawRelease, TryAllocateBytes, MoveBytes,
+    TestTempDirectory and the written Fails (nothing a Loan reaches). Without a declaration: Abort, the synthesized Fail,
+    StaticEnsure, Capacity, FormatBuffer, FormatHint, FormatFinish, TestMessage, TestRequireAbort, TestObserve and TypeTest, whose
+    results (Unit, Never, bool, integers, string, HeapBuffer) hold no Loan. Never built: Stride, DestroyValues, ReinterpretLoan,
+    WriteStdout, FormatFloat, ErasedReserve, FormatInteger128, TestRecordValue, TestPhaseEnter and TestPhaseLeave.
+  Rejected: an intrinsic row storing a writing input into E (a second copy of the contract its declaration states); keeping
+  "every operand to the result" (wrong for `clone`, which retains its payload's Loans only, so `let c = clone(owner@ref)` then
+  `_ = owner@move` was rejected); every operand beyond a declaration reaching the result by rule (the table names the one
+  operand); giving `$abort` parameter symbols for `TyCtxt.Retains` (its Never result retains nothing). Not temporary.
 - **R4-M64** (owner, 2026-10-17, O3, choosing the recommended option 「書き換え＋記録」) Milestone 27 line 100,
   `references.sliceUniq().slice().toArray()` followed by `references = [copied]`, is an error by SPEC 15.6 and 15.6.4 as
   integrated at `4372b058` (S1, design A3's loss P4): the temporary UniqSlice's holder carries its own exclusive Loan on
@@ -1380,6 +1508,77 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `MirBorrows.Flow`, is unit 1b-3's). Rejected: a precision refinement narrowing P4 ("a view holder
   stores no elements": prototype 255 cases sound, but a SPEC revision and the full process for one program; kept as
   PLAN G127).
+- **R4-M65** (owner, 2026-10-18, on the core lane's re-review V1, the second V16 round on the lane: a representation chosen
+  over a 64 MiB cap on the Loan-set pool and over restating V16; supersedes R4-M20's ring worklist and R4-M34's backward ring)
+  The MIR dataflow's worklist order. `MirDataflow`'s worklist is a bit per head; a solve starts with every head pending and
+  takes the pending head first in its direction's order: reverse postorder forward (the heads' numbering from `Begin`),
+  postorder backward. A head whose state grows is pending again and lowers the scan's start word, so growth along a loop's
+  back edge settles the loop before the code after it is applied again; acyclic code still converges in one sweep. Cause: the
+  FIFO ring queued a grown head at its tail, so growth from loop j reached loop k only after k − j rounds: N loops that each
+  write x, borrow it into r and read r applied loop k Θ(k) times, each with r's set one Loan larger, Θ(N²) chain visits and
+  Θ(N³) work and node bytes (720 MB at N = 1024; R4-M15a's arena limit does not bound `MirLoanSets`), against V16's
+  (passes − 1) × locations (design A3 §6.3). The least fixed point of a monotone transfer does not depend on the order: A1, A2
+  and A5 give the same results (their tests, the problems of the MIR goldens' and milestones' 16,444 bodies, and the
+  difference ledger, 223 signatures and 2,383 rows before and after), and A4 reads only `Begin`. On that shape at N = 128 …
+  1024, chain visits fall from 26,851 … 1,581,859 to 2,336 … 9,504, A5's work from 3.03M … 1.28G to 206k … 5.74M and its node
+  bytes from 1.47 MB … 720 MB to 36 KB … 2.1 MB (r's k Loans in loop k, the output); A5 takes 0.2 s instead of 4.9 s at 1024.
+  On that corpus chain visits fall by 0.07 % and A1–A4 and A5 time is unchanged within noise. Rejected: the cap (it stops a
+  body whose cost is the order's defect; owner); restating V16 to admit passes × node sizes (owner); a priority queue (a log
+  factor and storage for an index set a bitset scans); a FIFO ring that favors loop heads (two orders). Not temporary.
+- **R4-M66** (2026-10-18; design A3 §12 E13, decided by the planning session on the core lane's group review B1 and B2 with the
+  owner's choices of 2026-10-18: A5 orders operands (option R1) and, after the second design round, one rule for every access;
+  three design reviews, the last accepting with wording changes; prototype round 13, 332 cases; amends R4-M55 and R4-M54,
+  supersedes R4-M37's "a pair-layer argument (`PairAcquire`) is acquired at its Call") The values an access takes (SPEC 12.2, 15.6),
+  and the operand order MIR gives them. Unit E13a, MIR (E13 (2), (4)):
+  - Operand order: a Place operand is secured into a temp where it is evaluated also when an operand evaluated after it precedes
+    it in the operation's operand order: a named argument, a constructor's included (SPEC 10.1.1), an argument before an unbound
+    reference's receiver supplied after it, which `MirCallee.Position` passes first (7.3.4), and a setter's value (13.7.1); `Call`
+    keeps the least position of the arguments evaluated after each (`leastAfter`, a stack the nested calls share). A Closure's
+    captures take G123's rule: a capture before one whose acquisition builds code (`Reads`, shared with `Builds`) is secured. Case
+    payloads are positional (6.5.1). Evaluation order is a source fact the MIR does not record, so this is a lowering contract like
+    R4-M55's, which MirValidator cannot check (MirBuildTest, `tests/mir/order`).
+  - Pair-layer acquisitions: a PairAcquire is always the whole rvalue of an Assign to a local's whole Place (a temp, a local such
+    as `var v = p`, or `_0`); where it is an operand of another operation (a call, an aggregate, a capture) it is secured into its
+    own temp. Its Use's `Op` holds the `MirRefKind` of the Reborrow its exclusive case makes (`MirRvalue.Acquire`): TwoPhaseUniq
+    where it produces an invocation's input, else Uniq. `Operand` tells the two facts apart: an input the call takes as a pair layer
+    reserves where it is acquired, and its path is no preparation path, so R4-M54's "a pair-layer input, exclusive only by case,
+    starts none here" gains: its own PairAcquire reserves in the exclusive case, and the fold still does not apply on its path. An
+    Adapt's `Op` gains an input bit beside its shorthand bit (`MirRvalue.AdaptShorthand`, `AdaptInput`), which `MirCases.Adapt`
+    reads instead of `input: false`; a default's copy re-acquires a PairAcquire by its marker, not with `input: false` (the same
+    cause). The marker decides the reservation, not where the acquisition stands. No closed-vocabulary entry (`MirRefKind` gains no
+    member). The validator admits a PairAcquire only as the operand of a Use assigned to a local's whole Place marked Uniq or
+    TwoPhaseUniq, a marked Use only of a PairAcquire (`Operation` otherwise), and an Adapt's two bits (`UnknownKind` otherwise).
+  - Rejected: R2's every Place operand through a temp (more MIR for no change of what is read, R4-M55's reason, which still
+    holds); a reservation A5 derives from the MIR shape (prototype 134d's `ShapeReservation`, unsound); a quadratic scan of the later
+    arguments per argument. Not temporary.
+  Unit E13b, A5 (E13 (1), (3), (5), (6) and (4)'s A5 part; supersedes R4-M57's "a borrow's stored value only seeds" and its 1b-3
+  CS_call over live_in(ℓ), and its "a Call takes t as an argument" reads "as an input"):
+  - Each access at ℓ is checked on the closure of σ_in of the holders live after ℓ that ℓ does not overwrite and of E, with the
+    values it takes: operand i's (MirUses's order, a Value callee first), the values of the operands up to it and the roots of the
+    later ones; a reservation's activation in t and a destroying call's destroy, the operands' values but those found in t, seeded
+    by σ_in(t), t left out (so `let r = y@ref; give(y@uniq, r@follow)` is valid); a Ref's or Reborrowing PairAcquire's borrow, its
+    R2 parents within E3's bound whatever its destination's liveness, and E5's seed (without the parents prototype 41o, rf1 and rf2
+    were accepted); an observing destruction, its value; a destination write, a store and an access that takes no value, transit
+    and E5's seed as before. An operand's value is found under its root's holder, so a reservation there stays shared; Discriminant,
+    Len and FakeRead take none; an Opaque site's accesses stay unchecked (R4-M10).
+  - One gather per location (`MirBorrows.CheckSets`) builds every set: passes Based (the live holders, E), Stored (transit, E5),
+    Parented, Observed, Seeded (each activation holder's seed), then each operand's value in operand order, so a Loan keeps the first
+    operand that reaches it, and each operand's root in reverse, so it keeps the last; a pass reads a holder's state once. Candidates
+    are per Loan and mode, tagged by their passes and listed by root, so an access scans its root's; an activation's set holds one the
+    Based, Seeded or Valued passes found in a holder other than t (the first two such holders are kept).
+  - Every reservation input activates at its Call (review B1, landed). A PairAcquire the view makes a Reborrow is issued at its
+    Assign in its marker's mode (TwoPhaseUniq: a reservation in its temp; Uniq: live); a pair layer the view makes a reference or
+    handle is a Deref step (review N3). A Loan found only through a value an access takes has the access's location as its Use
+    witness; codes stay (unit 1c). Deleted: `loanOfOperand` and the operand-range `Reborrows`, the operands' own Loans in calls
+    (`argOwns`), the activation's live-in holders (`LiveInto`) and its separate gather.
+  - Not done: a call's effects, and the uniq mode of an operand's reservation at its own call's effects and cleanup (unit 2b; Binding
+    rejects borrows of statics today). Found, for the planning session: `TyCtxt.Retains` gives a pair-layer input of an abstract
+    Type (`inner11<s/T>(a: s/T, b: i32)`) a store row into its own referent (both name one carrier), so after
+    `inner11(x@(s/T), peek(x@ref))` x carries its own Loan and x's observing end now errs (prototype 139c with a non-Copy T; the
+    prototype and the old path accept it; with `T is Copy` it is valid); and 29b's s, whose new value carries p's Loan as its
+    reborrow's parent (SPEC 15.6.3), errs at its own end too.
+  - Rejected: a gather per access or per activation (quadratic in an operation's operands, E13 (5)); leaving out only t's
+    reservations (a choice by Loan id, A3 §3). Not temporary.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

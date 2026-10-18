@@ -6,7 +6,7 @@
 // Inline storage is traversed under each fact's documented bounds and Type rules; what destroying a value does is the one Destruction walk.
 // Must not inspect source syntax or substitute new Binding decisions.
 // Its concerns: the destruction walk and the facts over it (MirTypes.Destruction.cs), what a value may hold (MirTypes.Holding.cs), and
-// here the reference, selection, borrow-kind, pointer-cast and agreement facts.
+// here the reference, view, selection, borrow-kind, pointer-cast and agreement facts.
 
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
@@ -22,6 +22,17 @@ internal static partial class MirTypes
     internal static bool IsReference(BoundType? type)
         => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq } ||
             (TyCtxt.Layer(type, out _, out var binder) is var _ && binder is not null);
+
+    /// <summary>Gets the borrow a view handle is (SPEC 4.8.1, 4.8.2): a Slice's elements are its handle's referent, shared, and a UniqSlice's,
+    /// exclusive, so a read through the handle reaches its backing as a read through a reference does; null for another Type.</summary>
+    /// <param name="type">The Type.</param>
+    /// <returns>The view's mode, <c>ref</c> or <c>uniq</c>, or null.</returns>
+    internal static SemanticsKind? View(BoundType? type) => type switch
+    {
+        { Kind: BoundTypeKind.Slice } => SemanticsKind.Ref,
+        { Symbol.LibraryDeclaration: KimiDeclarationId.UniqSlice } => SemanticsKind.Uniq,
+        _ => null,
+    };
 
     /// <summary>Gets whether a Type is an exclusive reference, <c>uniq</c> or <c>objuniq</c>: a borrow of its mode is exclusive, and a bare
     /// acquisition of a Place storing it Reborrows it in its own Semantics where another Type's Copies (SPEC 3.5, 8.14).</summary>

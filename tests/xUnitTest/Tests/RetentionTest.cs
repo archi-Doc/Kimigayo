@@ -25,6 +25,10 @@ public sealed class RetentionTest
         "    public func put(self: uniq/Self, value: ref/T during source) => self.data = value\n" +
         "    public func item(self: uniq/Self) -> ref/T during self.source => self.data\n";
 
+    // An object payload that holds a Loan, and a local to lend it.
+    private const string Lent = "struct Lent {a}\n    public var r: ref/i32 during a\n    public init(r: ref/i32 during a) => self.r = r\n" +
+        "var x = 1\n";
+
     // A function whose body relies on its enclosing function's premise c outlives o (y's well-formedness), called while *q is written.
     private const string Enclosing = "func outer(y: ref/(ref/i32 during c) during o, q: uniq/i32 during c) -> i32\n";
 
@@ -302,9 +306,25 @@ public sealed class RetentionTest
         Assert.Equal("0 Value result, 0 Content store 0", Show(c.Types.Retains(call.Target, c.Types.SubstOf(call), null)));
     }
 
-    // Every call of the Kimi library and the milestone programs that MIR does not serve by an intrinsic (A5's) has a retention under its
-    // substitution, for the callee MIR names (a direct base call's implementation), or over its declared Callable signature, whose rows
-    // name its inputs: each call's Subst instantiates the contract.
+    // SPEC 15.6.4 (A3 E14): an intrinsic's call retains as its library declaration says, as any call does: an object creation its value,
+    // clone its handle's payload only (Content), Raw.initialize its value into the raw storage, Text.writer its destination; Raw.slice's
+    // and Raw.allocate's results are untied (a fresh anchor), and a row into a raw pointer's own storage carries nothing (it holds no Loan).
+    [Theory]
+    [InlineData(Lent + "let h = Kimi.Intrinsics.makeObj(Lent.init(r: x@ref))\n", "makeObj", "0 Value result")]
+    [InlineData(Lent + "let h = Kimi.Intrinsics.makeRc(Lent.init(r: x@ref))\n", "makeRc", "0 Value result")]
+    [InlineData(Lent + "let h = Kimi.Intrinsics.makeArc(Lent.init(r: x@ref))\n", "makeArc", "0 Value result")]
+    [InlineData(Lent + "let h = Kimi.Intrinsics.makeRc(Lent.init(r: x@ref))\nlet c = Kimi.Intrinsics.clone(h@ref)\n", "clone", "0 Content result")]
+    [InlineData("var x = 1\nlet p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.initialize(p, x@ref)\n", "initialize", "0 Value store 0, 1 Value store 0")]
+    [InlineData("let p: raw/i32 = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "untied")]
+    [InlineData("var b = Text.heap(8)\nlet w = Text.writer(b@uniq)\n", "writer", "0 Value result")]
+    [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "allocate", "untied")]
+    [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "0 Value store 0")]
+    public void IntrinsicsRetainAsTheirDeclarationsSay(string source, string name, string expected)
+        => Assert.Equal([expected], Calls(Bind(source), name));
+
+    // Every call of the Kimi library and the milestone programs, an intrinsic's included, has a retention under its substitution, for the
+    // callee MIR names (a direct base call's implementation, an intrinsic's library declaration), or over its declared Callable signature,
+    // whose rows name its inputs: each call's Subst instantiates the contract.
     [Theory]
     [MemberData(nameof(HirColumnsTest.Corpus), MemberType = typeof(HirColumnsTest))]
     public void EveryCorpusCallHasARetention(string name)
@@ -317,9 +337,9 @@ public sealed class RetentionTest
             {
                 var value = call.Kind == CalleeKind.Value;
                 var callee = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true } ? call.VirtualImplementation?.SymbolOf() : call.Target;
-                if (callee is null || (!value && IntrinsicDisposition.Of(callee.CompilerFunction).Kind == DispositionKind.Intrinsic))
+                if (callee is null || (callee.LibraryDeclaration is null && IntrinsicDisposition.Of(callee.CompilerFunction).Kind == DispositionKind.Intrinsic))
                 {
-                    continue;
+                    continue; // The compiler-only $abort has no declaration MIR names (SPEC 17.4).
                 }
 
                 var retention = value ? c.Types.Retains(call.CalleeType, call.DeclaredSignature, Definition(node))
