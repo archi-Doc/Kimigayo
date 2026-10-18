@@ -36,6 +36,8 @@ public class OwnershipJoinTest
         Assert.False(c.Validate(out _));
     }
 
+    // SPEC 14.9.2, 15.6 (F1): a joined borrow's Type names both Origins and its value carries both Loans, so a write of either owner while
+    // it is live conflicts, on the MIR (A5) as on the old path, which decides until R6-check.
     [Theory]
     [InlineData("if c => a@ref else => b@ref")]
     [InlineData("if c => b@ref else => a@ref")]
@@ -50,15 +52,18 @@ public class OwnershipJoinTest
             var source = Pair + "    let selected" + annotation + " = " + expression + "\n    let n = selected.value\n    a.value = n\n    b.value = n\ninspect(true)\ninspect(false)";
             var c = MinimalEmissionTest.Analyze(source);
             Assert.True(c.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
-            var body = Assert.Single(c.Ownership.Bodies, b => b.Function.Name == "inspect");
-            var selected = Assert.Single(body.Places, p => p.Source is Kimi.Compiler.Parsing.FieldKoto field && field.NameKoto.ToString() == "selected");
+            var program = c.BuildMir();
+            var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "inspect");
+            var selected = Assert.Single(body.Locals.ToArray(), static x => x.Name == "selected");
             Assert.Equal(OriginKind.Intersection, selected.Type.Origin!.Kind);
             Assert.Equal(2, selected.Type.Origin.Operands.Count);
+            Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Code.IsLoanConflict());
             foreach (var owner in new[] { "a", "b" })
             {
                 var invalid = MinimalEmissionTest.Analyze(source.Replace("    let n =", "    " + owner + ".value = 99\n    let n =", StringComparison.Ordinal));
                 Assert.True(invalid.Binding.Result.IsComplete);
                 Assert.Contains(invalid.Problems, issue => issue.Code.IsLoanConflict());
+                Assert.Contains(invalid.BuildMir().Problems.All.ToArray(), static x => x.Code.IsLoanConflict());
                 Assert.False(invalid.Validate(out _));
             }
         }

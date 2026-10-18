@@ -1565,7 +1565,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Parented, Observed, Seeded (each activation holder's seed), then each operand's value in operand order, so a Loan keeps the first
     operand that reaches it, and each operand's root in reverse, so it keeps the last; a pass reads a holder's state once. Candidates
     are per Loan and mode, tagged by their passes and listed by root, so an access scans its root's; an activation's set holds one the
-    Based, Seeded or Valued passes found in a holder other than t (the first two such holders are kept).
+    Based, Seeded or Valued passes found in a holder other than t (the first two such holders are kept). Its cost is the distinct
+    (holder, node) entries by a per-location memo (PLAN G135, owner 2026-10-18): a pass takes a value once per holder it is found
+    under, the Stored pass and the overwrite test read the location's entries listed by holder, the transfer and the checks read a
+    set's content once per location (a call's rows each output's referents once), and a call reads an input's state only where a
+    two-phase Loan is reserved.
   - Every reservation input activates at its Call (review B1, landed). A PairAcquire the view makes a Reborrow is issued at its
     Assign in its marker's mode (TwoPhaseUniq: a reservation in its temp; Uniq: live); a pair layer the view makes a reference or
     handle is a Deref step (review N3). A Loan found only through a value an access takes has the access's location as its Use

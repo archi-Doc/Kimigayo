@@ -40,10 +40,16 @@ internal sealed partial class MirBorrows
         }
     }
 
+    // A reservation holder's state, read once per call since the call moves it: an input that holds no reservation is not read.
     private void Reserve(ulong[] state, int local, DiagnosticCode code)
     {
         var slot = this.slots[local];
-        var held = slot >= 0 ? (int)state[slot] : 0;
+        if (slot < 0 || !this.reserves[slot])
+        {
+            return;
+        }
+
+        var held = (int)state[slot];
         this.Work += this.sets.Count(held);
         foreach (var element in this.sets.Elements(held))
         {

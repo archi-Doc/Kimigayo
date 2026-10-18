@@ -43,6 +43,31 @@ public sealed class MirAnalysisTest
         Assert.Equal(0, c.BuildMir().Problems.All.Length);
     }
 
+    // R4-M15a, design A3 6.1: A5 runs as the driver's step 4 over the views A1 and A2 completed, so a Loan conflict is a problem of the
+    // version, and a body whose A1 arena exceeds the limit (N locals live across N branches, MirInitTest) records only
+    // OwnershipStorageLimit_Kd, though A5's own arena would fit.
+    [Fact]
+    public void A5ChecksTheViewsA1Completed()
+    {
+        foreach (var (size, expected) in new[] { (64, "ComparisonLoanConflict_Kd x = 2"), (13_500, "OwnershipStorageLimit_Kd func f(flag: bool) -> i32") })
+        {
+            var text = new StringBuilder("func inspect(value: ref/i32) => ()\nfunc f(flag: bool) -> i32\n    var x = 1\n    let r = x@ref\n");
+            for (var n = 0; n < size; n++)
+            {
+                text.Append("    var v").Append(n).Append(" = ").Append(n).Append('\n');
+            }
+
+            for (var n = 0; n < size; n++)
+            {
+                text.Append("    if flag => v").Append(n).Append(" = 1\n");
+            }
+
+            var c = MirBuildTest.Compile(text.Append("    x = 2\n    inspect(r)\n    return x\n").ToString());
+            Assert.Equal([expected], c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
+                .Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()}"));
+        }
+    }
+
     // R4-M12, V17: the library bodies have no problems.
     [Fact]
     public void TheLibraryHasNoProblems()
