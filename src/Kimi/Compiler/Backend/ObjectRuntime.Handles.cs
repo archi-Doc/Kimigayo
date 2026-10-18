@@ -1,49 +1,52 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Compiler.Backend;
 using static Kimi.Compiler.Backend.LlvmModuleText;
 
-namespace Kimi.Compiler;
+namespace Kimi.Compiler.Backend;
 
-internal static partial class LlvmModuleWriter
+// The handle-mode-specific text: rc and arc clone and drop, their release transitions, and a Sealed handle's direct release.
+internal static partial class ObjectRuntime
 {
-    private static void WriteSealedObjectDrop(TextWriter output, ObjectHandleMode mode, int payloadDrop)
+    // The final release of a Sealed handle (IMPL 21.1.3) into a drop routine whose %slot holds it: the counted release transition
+    // of rc or arc, then the payload's drop routine, named by its symbol (empty for a payload without one), then the free.
+    internal static void WriteSealedDrop(TextWriter output, ObjectCountingStep counting, ReadOnlySpan<char> payloadDrop)
     {
         output.Write("  %header = load ptr, ptr %slot, align 8\n");
-        if (mode.Counting == ObjectCountingStep.NonAtomic)
+        if (counting == ObjectCountingStep.NonAtomic)
         {
             WriteRcReleaseTransition(output);
         }
-        else if (mode.Counting == ObjectCountingStep.Atomic)
+        else if (counting == ObjectCountingStep.Atomic)
         {
             WriteArcReleaseTransition(output);
         }
 
-        if (payloadDrop != -1)
+        if (!payloadDrop.IsEmpty)
         {
-            output.Write("  %payload = getelementptr i8, ptr %header, i64 16\n");
-            if (payloadDrop == -2)
-            {
-                output.Write("  call void @__kimi_destroy_string");
-            }
-            else
-            {
-                Name(output, "  call void @__kimi_drop_aggregate", payloadDrop);
-            }
-
+            output.Write("  %payload = getelementptr i8, ptr %header, i64 16\n  call void @");
+            output.Write(payloadDrop);
             output.Write("(ptr %payload, ptr %location, i64 %length)\n");
         }
 
         // Every current factory uses this allocator. Destruction may Abort; free follows only its normal return.
         output.Write("  call void @__kimi_free(ptr %header, ptr %location, i64 %length)\n");
-        if (mode.Counting != ObjectCountingStep.None)
+        if (counting != ObjectCountingStep.None)
         {
             output.Write("  br label %done\ndone:\n");
         }
     }
 
     private static void WriteRcReleaseTransition(TextWriter output)
-        => output.Write("  %control = getelementptr i8, ptr %header, i64 8\n  %old = load i64, ptr %control, align 8\n  %next = sub i64 %old, 2\n  store i64 %next, ptr %control, align 8\n  %final = icmp eq i64 %old, 2\n  br i1 %final, label %destroy, label %done\ndestroy:\n");
+        => output.Write("""
+              %control = getelementptr i8, ptr %header, i64 8
+              %old = load i64, ptr %control, align 8
+              %next = sub i64 %old, 2
+              store i64 %next, ptr %control, align 8
+              %final = icmp eq i64 %old, 2
+              br i1 %final, label %destroy, label %done
+            destroy:
+
+            """);
 
     // Weak and cyclic factories remain closed: every reachable control is inline and even. The complete word is
     // compared and the observed value is retried; opening migration must add representation dispatch at the retry.
