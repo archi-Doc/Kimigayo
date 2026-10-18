@@ -1607,7 +1607,8 @@ structure is recorded here by the unit that first implements it.
   the Backend reading it (a non-neutral input); `AggregateLayout` in the records (the old pool as a Backend input); a scalar
   flag beside `ValueLowering` (a second statement of SPEC 21.3.1's argument form); a needs flag on the built helper (the
   collector reads rows by kind before any `ValueLowering` exists); two bool needs (ARCH's one-bool parameter limit). The
-  Dictionary rows (P1c) and the count of the `DictionaryStorage` functions are refined by R5-M27.
+  Dictionary rows (P1c) and the count of the `DictionaryStorage` functions are refined by R5-M27, the formatting rows (P1d) by
+  R5-M30.
 - **R5-M17 `LlvmScalarText`** (2026-10-18, planning session; plan P4a, P4b, package §3.4, S2-S4 X36, promoted under R5-M14) A
   permanent Backend component owning the LLVM text of scalar arithmetic, numeric conversions and their checks: the instruction
   (`WriteOperation`), the overflow intrinsic (`WriteOverflowChecked`), the signed quotient with its zero and minimum / −1 checks
@@ -1833,7 +1834,8 @@ structure is recorded here by the unit that first implements it.
   Emission's attribute walk and `Open` re-check. Rejected: a C-layout instance view in `TyCtxt.Instances` (X26); keeping
   `cLayouts` beside the fact.
 - **R5-M27 Legacy Dictionary helper rows** (2026-10-18, planning session; plan P1c and its follow-up P1c2, PD2, S2-S4 X4;
-  refines R5-M16) `DictionaryHelperRow` is one static row per `DictionaryHelperKind` (CheckKey, Place, Drop), read by
+  refines R5-M16; refined by R5-M30, which adds the formatting rows and two `HelperNeeds` members) `DictionaryHelperRow` is one
+  static row per `DictionaryHelperKind` (CheckKey, Place, Drop), read by
   `LegacyRuntimeHelpers.DictionaryRow(kind)`, which fails closed: `Kind`; `Shape`, the ABI over the generator's name suffix and
   the key and value descriptors, with the kind's name prefix inside it; `Write`, the body's writer over the helper and the ABIs
   of its two callees; `Entries`, the `DictionaryStorage` function generic over the entry Types, which a helper reaches through
@@ -1858,3 +1860,29 @@ structure is recorded here by the unit that first implements it.
   as its own field (a seventh parameter, over ARCH's six); declaring `reserve`, `shrinkToFit`, `appendSlot` or `clearLinks` as
   row callees (no helper calls them); the Dictionary runtime for every Dictionary request (Place and Drop use neither the
   adapter nor the bridge); helpers written only under the runtime flag, or flags set by their requesters (G133).
+- **R5-M30 Legacy formatting rows** (2026-10-18, planning session; plan P1d, PD2, S2-S4 X4, K package §4.5 row 2 and K6;
+  refines R5-M16 and R5-M27) `FormattingHelperRow(Kind, Abi, Needs)` is one row per formatting compiler function, the 28
+  `CompilerFunctionKind`s TextFixed through BuiltinFormat (the 26 Body-disposition kinds and the routines of the ErasedWriter
+  intrinsic and the BuiltinFormat shim), read by `LegacyRuntimeHelpers.FormattingRow(kind)`, which returns null outside that
+  range and throws on a missing row. `Abi` is the routine's ABI in the formatting runtime: the fixed symbol every call names and
+  the runtime splice defines (rows sharing a symbol share its routine, defined by the first of them in kind order). `Needs` uses
+  two new `HelperNeeds` members: `FormattingRuntime` (the UTF-8 buffer, writer, formatting and floating-point runtime and the
+  memory declarations) on every row, and `FormattingWitness` (the formatted Type's `Utf8Format` witness, SPEC 22.9.2, 22.10.1) on
+  WriterWrite, TextToString and TextTryFormat, which run it, a user witness through a wrapper. TextWriter's witness is the
+  ErasedWriter intrinsic's collector target (K row 6) and BuiltinFormat's leaves are its Builtin item's, so neither row declares
+  it. No row declares a library callee: the formatting runtime calls none. The wrapper requests (`RequestFormattingWrite`, for
+  WriterWrite's row; `RequestFormattingConversion`, for TextToString's or TextTryFormat's) join their row's needs through the
+  `JoinNeeds` the three families share, and `WriteFormatting` writes every requested wrapper after the runtime, no longer under
+  its flag (G133's shape; a full-suite probe at 70f06c4b found no module with a wrapper but no flag, so no output changed). The
+  old lowering still sets the flag for its direct calls of formatting routines and for interpolation: calls, not helper requests,
+  like R5-M27's direct capacity calls. The rows are per compiler function because the collector reads a Body-disposition call by
+  its compiler function (K row 2), K6 reads these rows' witness needs, and C9a calls the routines through their row ABIs; the
+  wrappers are codegen's, derived from the witness target. `FormattingWitness` restates the set `IntrinsicDisposition.Effect`
+  classifies as `Formatting`: one fact (these functions run their formatted Type's witness) stated twice, a second copy accepted
+  until R8, which removes the rows with `LegacyRuntimeHelpers` and gives these functions Kimigayo bodies whose requirement calls
+  the collector follows (K row 3). Binding cannot read the Backend's row (ARCH dependencies), and the row does not read `Effect`:
+  X4 makes the row the declaration of its needs, and `Effect` is the effect-summary contract (SPEC 8.11.2), whose classes follow
+  effect rules rather than instance needs (TextWriter retains a witness yet is classified `Inputs`), so an effect change would
+  silently change collector targets. Rejected: no rows (K6 and C9a would read the old Emission's table); rows per wrapper kind
+  (the collector never sees a wrapper); the witness need read from `Effect` (above); `FormattingWitness` on TextWriter or
+  BuiltinFormat (a second statement of K row 6 or of the shim's leaves); wrappers written only under the runtime flag (G133).
