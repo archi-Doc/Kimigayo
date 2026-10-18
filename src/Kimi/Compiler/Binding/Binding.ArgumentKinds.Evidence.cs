@@ -32,7 +32,7 @@ public sealed partial class Binding
             switch (binding.KindOf(node))
             {
                 case ArgumentKind.Composite:
-                    return NeedsEnumContext(node) || this.InferComposite(pattern, part, late); // A contextual Case is resolved in the expected Type.
+                    return this.InferComposite(pattern, part, late);
                 case ArgumentKind.Literal:
                     return !late || binding.DefaultOf(node) is not { } literalDefault ||
                         binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is not null ||
@@ -163,21 +163,52 @@ public sealed partial class Binding
             }
         }
 
+        // SPEC 10.2.1, 6.5.2: a Case construction's defaults, after its evidence: each payload's Literal leaves at positions that hold a
+        // slot no evidence binds take their defaults. Returns the first part its default does not fit, bound at it for its own record.
+        internal readonly Koto? DefaultPayloads(ReadOnlySpan<Koto> payload, out bool applied)
+        {
+            var count = this.SlotOwner.BoundSymbol!.Schema!.GenericSlots.Count;
+            var unsolved = this.Binding.RentSlotSet(count);
+            try
+            {
+                for (var i = 0; i < count; i++)
+                {
+                    if (this.Types[i] is null)
+                    {
+                        unsolved.Add(i);
+                    }
+                }
+
+                applied = false;
+                Koto? misfit = null;
+                for (var i = 0; i < payload.Length; i++)
+                {
+                    misfit ??= this.DefaultPart(this.Call.ArgumentNodes[i], payload[i].BoundType!, unsolved, ref applied);
+                }
+
+                return misfit;
+            }
+            finally
+            {
+                this.Binding.ReturnSlotSet(unsolved);
+            }
+        }
+
         // An anonymous function: once bound, its Type at any pattern but a Function Type (where its signature meets the pattern after
         // selection); always the Types its header writes, at a pattern with a call signature.
         private bool InferAnonymous(BoundType pattern, Koto part, FunctionKoto closure)
             => (closure.BoundType is not { } actual || pattern.Kind == BoundTypeKind.Function || this.InferAdapted(pattern, actual, part)) &&
-                (!this.Binding.TryCallable(pattern, this.Binding.ConstraintScope(this.Function), out var header, out _) ||
+                (!this.Binding.TryCallable(pattern, this.Binding.ConstraintScope(this.Binder), out var header, out _) ||
                 this.InferClosureHeader(header, closure));
 
         // SPEC 10.8, 10.2: a Type at the pattern of its position, through the common adaptation.
         private bool InferAdapted(BoundType pattern, BoundType actual, Koto source, BoundMemberPath? path = null, bool receiver = false)
         {
             var binding = this.Binding;
-            var function = this.Function;
+            var binder = this.Binder;
             var inferred = this.InfersConstruction(out var target);
             var fixedOwner = inferred ? target!.BoundType : this.DeclaringType;
-            var adaptationPattern = function.IsConstructor ? binding.MemberType(pattern, fixedOwner) ?? pattern : pattern;
+            var adaptationPattern = this.Constructor ? binding.MemberType(pattern, fixedOwner) ?? pattern : pattern;
             if (!binding.AdaptInput(
                 source, adaptationPattern, actual, this.Scope, path, this.DeclaringType, out actual, out _, out _, receiver: receiver, deferAcquisition: true))
             {
@@ -201,22 +232,22 @@ public sealed partial class Binding
             var known = pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function
                 ? new SignatureEvidence(CalleeBinder(callee, actual), source) : (SignatureEvidence?)null;
             var quantifier = known is { } evidence ? evidence.Binder ?? evidence.Source : null; // The argument itself binds nothing.
-            binding.MatchInputOrigins(pattern, actual, function, this.Origins, this.Inputs, quantifier);
+            binding.MatchInputOrigins(pattern, actual, binder, this.Origins, this.Inputs, quantifier);
             if (pattern.CarriesOrigin && actual.CarriesOrigin)
             {
-                this.OriginInference ??= binding.BeginOriginInference(this.Call, function);
+                this.OriginInference ??= binding.BeginOriginInference(this.Call, binder);
                 binding.CollectOriginInference(pattern, actual, this.OriginInference, known: quantifier);
                 binding.CollectInputPremises(pattern, this.OriginInference, this.Call);
             }
 
-            pattern = binding.SubstituteStoredOrigins(pattern, function, this.Origins.AsSpan(0, function.Origins.Count), this.InputSpan());
+            pattern = binding.SubstituteStoredOrigins(pattern, binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());
             // SPEC 10.5: a nested call checked against this candidate supplies relations for checking, never outer slot evidence.
             if (binding.WasWaitingPart(source))
             {
                 return true;
             }
 
-            var common = this.Generic is null && (!function.IsConstructor || inferred);
+            var common = this.Generic is null && (!this.Constructor || inferred);
             var structural = pattern.Kind == BoundTypeKind.Function;
             return binding.Infer(
                 pattern,
@@ -240,7 +271,7 @@ public sealed partial class Binding
             {
                 if (pattern.Origin is { } origin)
                 {
-                    binding.MatchInputOrigin(origin, binding.PlaceOrigin(part), this.Function, this.Origins, this.Inputs);
+                    binding.MatchInputOrigin(origin, binding.PlaceOrigin(part), this.Binder, this.Origins, this.Inputs);
                 }
 
                 pattern = pattern.Components[0];
@@ -295,7 +326,7 @@ public sealed partial class Binding
             }
 
             if (pattern.Kind == BoundTypeKind.FixedArray && pattern.LengthExpression is { Parameter: { } parameter } &&
-                ReferenceEquals(parameter.Scope.Owner, this.Function))
+                ReferenceEquals(parameter.Scope.Owner, this.Binder))
             {
                 var length = array.FillLength is null ? this.Binding.InternLength(KotoKind.NumberLiteral, array.Elements.Count) : array.FillCount;
                 if (length is null)
@@ -358,8 +389,8 @@ public sealed partial class Binding
             }
 
             actual = KotoHelper.UnwrapParentheses(source.Parent!) is RangeKoto && binding.ReadTypeReferent(actual, source) is { } read ? read : actual;
-            binding.MatchInputOrigins(pattern, actual, this.Function, this.Origins, this.Inputs);
-            pattern = binding.SubstituteStoredOrigins(pattern, this.Function, this.Origins.AsSpan(0, this.Function.Origins.Count), this.InputSpan());
+            binding.MatchInputOrigins(pattern, actual, this.Binder, this.Origins, this.Inputs);
+            pattern = binding.SubstituteStoredOrigins(pattern, this.Binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());
             return binding.Infer(pattern, actual, this.SlotOwner, this.Types, inferOrigins: true, lengths: this.Lengths);
         }
 

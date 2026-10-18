@@ -8,31 +8,70 @@ public sealed partial class Binding
 {
     // A candidate's solution from its call's evaluation: the call's slot arrays, scope, Self and explicit Type arguments.
     private SlotSolution Solution(in CallEvaluation evaluation, FunctionKoto function, BoundType? declaringType)
+    {
+        var solution = this.Solution(evaluation.Call, function, evaluation.Scope);
+        solution.Generic = evaluation.Generic;
+        solution.Self = evaluation.Self;
+        solution.DeclaringType = declaringType;
+        solution.Types = evaluation.Scratch;
+        solution.Lengths = evaluation.LengthArguments;
+        solution.Origins = evaluation.Origins;
+        solution.Inputs = evaluation.Inputs;
+        return solution;
+    }
+
+    // A function's solution at its call: the function binds the Origins and owns its slots, or its structure owns them for a constructor.
+    private SlotSolution Solution(InvocationKoto call, FunctionKoto function, BindingScope scope)
         => new()
         {
             Binding = this,
-            Call = evaluation.Call,
-            Function = function,
-            Generic = evaluation.Generic,
-            Scope = evaluation.Scope,
-            Self = evaluation.Self,
-            DeclaringType = declaringType,
-            Types = evaluation.Scratch,
-            Lengths = evaluation.LengthArguments,
-            Origins = evaluation.Origins,
-            Inputs = evaluation.Inputs,
+            Call = call,
+            Binder = function,
+            SlotOwner = CallSlotOwner(function),
+            OriginCount = function.Origins.Count,
+            Constructor = function.IsConstructor,
+            Scope = scope,
         };
 
-    // The SPEC 10.8 solve state of one candidate (DECISIONS BU-2): its Type, length and Origin slots and its input Origins, with what
-    // substitution reads (scope, Self, declaring Type), its explicit Type arguments, whether a construction's inferred Type is checked
-    // fixed (ValidateFixedConstruction) and the Origin inference its evidence begins. The slots belong to the function, or to the
-    // structure for a constructor (SlotOwner); the function binds the Origins. Its operations add an argument part's evidence to the
-    // slots, substitute the solution into a pattern and judge the candidate's Constraints over it.
+    // SPEC 6.5.2, 10.8.1: a Case construction's solution: the enum owns its slots and binds its Origins; it has no Self, declaring Type,
+    // explicit Type argument or input Origin, and its Type is never inferred apart from its slots. A Case without payload has no call,
+    // and nothing reads it then.
+    private SlotSolution Solution(
+        InvocationKoto? call,
+        EnumKoto declaration,
+        BindingScope scope,
+        BoundType?[] slots,
+        BoundLength?[] lengths,
+        BoundOrigin[] origins)
+        => new()
+        {
+            Binding = this,
+            Call = call!,
+            Binder = declaration,
+            SlotOwner = declaration,
+            OriginCount = declaration.BoundSymbol!.Schema!.Origins.Count,
+            Scope = scope,
+            Types = slots,
+            Lengths = lengths,
+            Origins = origins,
+            Inputs = [],
+            FixedConstruction = true,
+        };
+
+    // The SPEC 10.8 solve state of one candidate or one Case construction (DECISIONS BU-2): its Type, length and Origin slots and its
+    // input Origins, with what substitution reads (scope, Self, declaring Type), its explicit Type arguments, whether a construction's
+    // inferred Type is checked fixed (ValidateFixedConstruction) and the Origin inference its evidence begins. The binder (a function or
+    // an enum) binds the Origins; the slots belong to the SlotOwner: the binder, or the structure for a constructor. Its evidence walk
+    // serves both; the operations of a candidate (its Function) add a call's evidence, substitute the solution into a pattern and judge
+    // the candidate's Constraints over it.
     private ref partial struct SlotSolution
     {
         internal Binding Binding;
         internal InvocationKoto Call;
-        internal FunctionKoto Function;
+        internal Koto Binder;
+        internal Koto SlotOwner;
+        internal int OriginCount;
+        internal bool Constructor;
         internal GenericsKoto? Generic;
         internal BindingScope Scope;
         internal BoundType? Self;
@@ -44,7 +83,8 @@ public sealed partial class Binding
         internal bool FixedConstruction;
         internal OriginInference? OriginInference;
 
-        internal readonly Koto SlotOwner => CallSlotOwner(this.Function);
+        // The candidate's function, for the operations of a call.
+        internal readonly FunctionKoto Function => (FunctionKoto)this.Binder;
 
         // The pattern with the solution substituted, or null while it holds an unbound slot.
         internal readonly BoundType? Type(BoundType pattern)
@@ -218,7 +258,7 @@ public sealed partial class Binding
             return target is not null;
         }
 
-        private readonly Span<BoundOrigin> InputSpan() => this.Inputs.AsSpan(0, Math.Min(this.Inputs.Length, InputOriginCount(this.Function)));
+        private readonly Span<BoundOrigin> InputSpan() => this.Inputs.AsSpan(0, Math.Min(this.Inputs.Length, InputOriginCount(this.Binder)));
 
         // The slot F of a parameter `F`, `ref/F` or `uniq/F`; null for any other parameter.
         private readonly BoundType? CallableSlot(int parameter)

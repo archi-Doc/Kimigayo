@@ -52,6 +52,15 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
         Assert.Same(BoundType.Never, call.CallOf()!.TypeArguments[0]);
     }
 
+    // SPEC 10.8, 3.8 (DECISIONS BU-2, R11): a Never component of a typed argument's Type is ordinary evidence.
+    [Fact]
+    public void ANeverComponentOfATypedArgumentIsEvidence()
+    {
+        var c = MinimalEmissionTest.Analyze("func h<T>(x: (T, i64)) -> () => ()\nfunc f(u: (Never, i64)) => h(u@move)");
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => x.CallOf()?.Target.Name == "h");
+        Assert.Same(BoundType.Never, call.CallOf()!.TypeArguments[0]);
+    }
+
     // SPEC 10.8, 10.3: the parts of a fit that do not contain the slot are still checked, so a result whose outer structure the expected
     // Type cannot admit makes the candidate inapplicable, as for a nongeneric function.
     [Theory]

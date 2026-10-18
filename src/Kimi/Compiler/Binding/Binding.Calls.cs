@@ -712,7 +712,7 @@ public sealed partial class Binding
                     // The argument is an expression of the caller's context, not of the selected requirement.
                     var selectedContract = this.activeRequirementContract;
                     this.activeRequirementContract = null;
-                    this.RequireType(call.ArgumentNodes[i], scope, selectedOperations[i].SourceType ?? selectedOperations[i].ParameterType);
+                    this.CompleteArgument(call.ArgumentNodes[i], selectedOperations[i].SourceType ?? selectedOperations[i].ParameterType, scope);
                     this.activeRequirementContract = selectedContract;
                     if (call.ArgumentNodes[i].BindingState != BindingState.Resolved)
                     {
@@ -724,18 +724,8 @@ public sealed partial class Binding
                 else if (call.ArgumentNodes[i].BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } closureType && selectedOperations[i].ParameterType is { Kind: BoundTypeKind.Function } erased &&
                     selectedOperations[i].Adaptation == ArgumentAdaptation.Erasure)
                 {
-                    if (!this.ErasesToFunction(call.ArgumentNodes[i], closureType, erased))
-                    {
-                        // SPEC 10.5, 7.7.4: the erasure conditions are judged after selection, at the argument: an environment that is not
-                        // Owned is the Constraint record, a receiver that is not Shared a Type mismatch with its Note. The call rests on it
-                        // and another candidate is never selected; every failing argument is reported (SPEC 23.1.2).
-                        this.RecordMismatch(call.ArgumentNodes[i], call.ArgumentNodes[i], closureType, erased);
-                        erasureFailed = true;
-                        continue;
-                    }
-
-                    // SPEC 7.7.4: the selected parameter fixes the common Function Type the Closure value is converted to.
-                    call.ArgumentNodes[i].ErasedFunctionType = erased;
+                    // SPEC 10.5: the call rests on a failed erasure and another candidate is never selected; every failing argument is reported.
+                    erasureFailed |= !this.ErasePart(call.ArgumentNodes[i], closureType, erased);
                     selectedOperations[i] = selectedOperations[i] with { SourceType = erased };
                 }
             }
@@ -1709,20 +1699,18 @@ public sealed partial class Binding
         {
             var below = invariant || IsInvariantLayer(pattern, this) ||
                 (pattern.Kind == BoundTypeKind.Constructed && pattern.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count && schema.GenericSlots[i].OriginVariance is OriginVariance.Invariant or OriginVariance.Unused);
-            // A Never component is no evidence until G130 U5 (DECISIONS BU-2); inside a known signature it is exact evidence.
-            if ((structural || !ReferenceEquals(actual.Components[i], BoundType.Never)) &&
-                !this.Infer(
-                    pattern.Components[i],
-                    actual.Components[i],
-                    function,
-                    arguments,
-                    inferOrigins,
-                    lengths,
-                    commonOrigins,
-                    structural,
-                    evidence,
-                    relateLater,
-                    below))
+            if (!this.Infer(
+                pattern.Components[i],
+                actual.Components[i],
+                function,
+                arguments,
+                inferOrigins,
+                lengths,
+                commonOrigins,
+                structural,
+                evidence,
+                relateLater,
+                below))
             {
                 return false;
             }

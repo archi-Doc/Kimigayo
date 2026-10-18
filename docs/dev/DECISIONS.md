@@ -1446,7 +1446,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   (option A: the lane, the core lane and R5's W1 would wait, and it is best designed with G130's SPEC 10.5.1 unit); holding the
   lane until G130 (B); the validator copying Binding's Never leniency (a second copy of a rule); the builder re-typing the aggregate
   at its consumer (a consumer deciding a fact Binding publishes); a walk of every component with a test of the HIR completion
-  (the planning session: the published Type alone decides, through the positions a literal builds).
+  (the planning session: the published Type alone decides, through the positions a literal builds). (G130 U5 removed its
+  Case-payload cause, BU-2: a payload literal is completed at its decided payload Type.)
 - **R4-M62** (2026-10-17; PLAN G92, implementing R4-M52's G92a (owner) as `draft/Sketches/A5 Step 1/choice-1b.md` §2 and A3 E9
   state it, with design review r1's B2 and r2's F3 and F4, on the planning session's instruction of the same day; amends R4-M37
   G6) Assumed completion in MIR construction (SPEC 14.10.3, 3.8, 3.1.3). On a check-only continuation every node is built and
@@ -1718,6 +1719,21 @@ R5 on the owner's request of 2026-10-18.
     is selected again; anonymous functions stay under PLAN R1e. Rejected: binding the part before selection (a node bound
     in a pass is not bound again, so its literal sources would keep their defaults, and binding a `match` twice reports its
     arms as covered).
+  - U5, Case construction on the walks (SPEC 6.5.2 item 2, 10.8.1, 10.5.1; design B section 5, D7, R1, R9, R11): the slots its
+    qualifier and expected Type fix come first; a payload whose payload Type they settle is bound only at it, and every other
+    payload is prepared as an argument is and is evidence by its kind through `SlotSolution.InferArgument`, which now serves a
+    construction as data (the enum is binder and slot owner; `Binder`, `SlotOwner`, `OriginCount` and `Constructor` are fields,
+    and only a candidate's operations read its `Function`). Under the argument probe a construction with an unbound slot waits
+    (`takeOpt(Option.Some(1))`); otherwise the Literal defaults apply (`DefaultPayloads`) and are evidence; an unbound slot is
+    the construction's own `MissingType` record (Q4 open), on which its waiting payloads depend (`MarkWaitingHeaders`; a part
+    that still waits is no prerequisite its call consulted, so `let o = Option.Some(identity(1))` reports that root record).
+    Each payload in source order then fits its decided payload Type (`FitArgument`; a misfit is the construction's
+    `TypeMismatch_Kd`: `P.Pair(1, [a, a])`) and is completed there (`CompleteArgument`, G129's re-fit point, also used by the
+    call path; `ErasePart`, the call path's erasure step) and adapted. Owner decision (1), R1: a contextual `.Case(...)` argument
+    is Waiting and never probed per candidate, so `f(.Some(128))` over `Option<i8>` and `Option<i32>` is `AmbiguousBinding_Kd`.
+    R11's at-depth half: `Infer` no longer skips a Never component (`h(u)` with `u: (Never, i64)` gives `T = Never`; a Never
+    element is still no evidence, so `P.Pair(1, ((return 1), a))` gives `T = i64`). Deleted: the construction's three-pass
+    loop and second adaptation loop, `PrepareContextualEnumInputs` and `ProbeContextualEnum`.
 - **BU-3** (2026-10-18; the BU planning session; found by R4's E13 implementer at `157bc073`; amends R4-M51's Kind rule and
   narrows its Open note) A pair-layer input in call retention (SPEC 15.6.4 step 4, 8.1.2): a pair layer whose binder admits
   only borrows (ref, uniq, objref, objuniq) is a borrowed input in every admitted case, so `BorrowReferent`, the one

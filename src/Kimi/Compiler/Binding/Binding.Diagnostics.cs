@@ -1468,11 +1468,13 @@ public sealed partial class Binding
         (this.consultationStart, this.consultationNode) = parent;
     }
 
-    /// <summary>Records that the node being bound read the result of another node; one that did not resolve becomes a prerequisite.</summary>
+    /// <summary>Records that the node being bound read the result of another node; one that did not resolve becomes a prerequisite, but for
+    /// a part that waits for the call reading it (SPEC 10.5.1), which depends on that call instead.</summary>
     /// <param name="dependency">The node whose result was read.</param>
     private void Consulted(Koto dependency)
     {
-        if (this.consultationStart >= 0 && dependency.BindingState != BindingState.Resolved && !ReferenceEquals(dependency, this.consultationNode))
+        if (this.consultationStart >= 0 && dependency.BindingState != BindingState.Resolved && !ReferenceEquals(dependency, this.consultationNode) &&
+            !this.IsWaitingPart(dependency))
         {
             this.consulted.Add(dependency);
         }
@@ -1610,28 +1612,25 @@ public sealed partial class Binding
 
     private bool PushPrerequisites(Koto node, Stack<Koto> pending)
     {
-        var pushed = false;
+        var count = pending.Count;
         if (this.partPrerequisites.TryGetValue(node, out var part) && (part.BindingState != BindingState.Resolved || IsRecovery(part, out _)))
         {
             pending.Push(part);
-            pushed = true;
         }
 
-        if (!this.prerequisites.TryGetValue(node, out var range))
+        if (this.prerequisites.TryGetValue(node, out var range))
         {
-            return pushed;
-        }
-
-        for (var i = range.Start + range.Count - 1; i >= range.Start; i--)
-        {
-            if (this.prerequisiteStore[i].BindingState != BindingState.Resolved || IsRecovery(this.prerequisiteStore[i], out _))
+            for (var i = range.Start + range.Count - 1; i >= range.Start; i--)
             {
-                pending.Push(this.prerequisiteStore[i]);
-                pushed = true;
+                var cause = this.prerequisiteStore[i];
+                if (cause.BindingState != BindingState.Resolved || IsRecovery(cause, out _))
+                {
+                    pending.Push(cause);
+                }
             }
         }
 
-        return pushed;
+        return pending.Count != count;
     }
 
     // A lookup that misses a Name the language defines but the implementation does not yet provide meets an implementation

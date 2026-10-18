@@ -132,14 +132,6 @@ public sealed partial class Binding
 
     private CandidateApplicability FitComposite(Koto part, Koto node, BoundType type, BindingScope scope, out BoundArgumentOperation operation)
     {
-        if (NeedsEnumContext(node))
-        {
-            var contextual = this.ProbeContextualEnum(node, type, scope);
-            operation = contextual == CandidateApplicability.Applicable
-                ? new(part, type, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact) : default;
-            return contextual;
-        }
-
         var borrow = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref };
         var valueType = borrow ? type.Components[0] : type;
         var result = this.ProbeAggregateArgument(node, valueType, scope);

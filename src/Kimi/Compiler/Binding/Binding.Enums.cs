@@ -92,85 +92,6 @@ public sealed partial class Binding
     private static bool EnumArityMatches(int payloadCount, InvocationKoto? call)
         => payloadCount == (call?.ArgumentNodes.Count ?? 0) && (call is null) == (payloadCount == 0);
 
-    // SPEC 10.1-10.3, 10.5.1, 3.8: a payload input is prepared as a call's argument is (PrepareArgument).
-    private bool PrepareContextualEnumInputs(Koto node, BindingScope scope)
-    {
-        node = KotoHelper.UnwrapParentheses(node);
-        var valid = true;
-        if (node is InvocationKoto call)
-        {
-            for (var i = 0; i < call.ArgumentNodes.Count; i++)
-            {
-                valid &= this.PrepareArgument(call.ArgumentNodes[i], scope, null, callableContext: true);
-            }
-        }
-
-        return valid;
-    }
-
-    // Candidate probing reads syntax and bound inputs only. A losing candidate cannot bind
-    // a leading-dot expression to its enum or publish a construction/Loan operation.
-    private CandidateApplicability ProbeContextualEnum(Koto node, BoundType expected, BindingScope scope)
-    {
-        node = KotoHelper.UnwrapParentheses(node);
-        var call = node as InvocationKoto;
-        var reference = (SyntaxFormKoto)(call?.Method ?? node);
-        if (expected is not { Semantics: SemanticsKind.Owner, Symbol.Declaration: EnumKoto declaration } || reference.Operands.Length != 1 || reference.Operands[0] is not IdentifierNameKoto name)
-        {
-            return expected.Kind == BoundTypeKind.Parameter ? CandidateApplicability.Pending : CandidateApplicability.Inapplicable;
-        }
-
-        var member = this.LookupTypeMember(expected, name.IdentifierName, scope).Member;
-        if (member?.EnumCase is not { } enumeration)
-        {
-            return CandidateApplicability.Inapplicable;
-        }
-
-        if (member.Declaration.BindingState == BindingState.Invalid || declaration.BindingState == BindingState.Invalid)
-        {
-            return CandidateApplicability.Error;
-        }
-
-        if (!EnumArityMatches(enumeration.Payload.Length, call))
-        {
-            return CandidateApplicability.Inapplicable;
-        }
-
-        var proof = this.CheckConstraints(declaration.ConstraintNodes, declaration, (BoundType[])expected.Components, scope);
-        var result = proof switch
-        {
-            ConstraintProof.Proven => CandidateApplicability.Applicable,
-            ConstraintProof.Error => CandidateApplicability.Error,
-            ConstraintProof.Refuted => CandidateApplicability.Inapplicable,
-            _ => CandidateApplicability.Pending,
-        };
-        for (var i = 0; i < enumeration.Payload.Length; i++)
-        {
-            var source = call!.ArgumentNodes[i];
-            var pattern = enumeration.Payload[i].BoundType;
-            if (call.GetArgumentLabel(i) is not null)
-            {
-                return result == CandidateApplicability.Error ? result : CandidateApplicability.Inapplicable;
-            }
-
-            if (pattern is null || this.StoredType(pattern, expected) is not { } type)
-            {
-                return CandidateApplicability.Error;
-            }
-
-            // SPEC 10.5.1: a payload fits its payload Type as an argument does; a waiting one is checked by the construction.
-            var input = this.FitArgument(source, type, scope, source, out _);
-            input = input == CandidateApplicability.Waiting ? CandidateApplicability.Applicable : input;
-
-            // Error remains visible even if another payload cannot fit this candidate.
-            result = result == CandidateApplicability.Error || input == CandidateApplicability.Error ? CandidateApplicability.Error :
-                result == CandidateApplicability.Inapplicable || input == CandidateApplicability.Inapplicable ? CandidateApplicability.Inapplicable :
-                result == CandidateApplicability.Pending || input == CandidateApplicability.Pending ? CandidateApplicability.Pending : CandidateApplicability.Applicable;
-        }
-
-        return result;
-    }
-
     private BoundType? EnumQualifierType(Koto qualifier, BindingSymbol symbol, BindingScope scope, BoundType? expected)
     {
         BoundType? type;
@@ -243,6 +164,8 @@ public sealed partial class Binding
         var arguments = this.typeScratch.Rent(slots);
         var origins = this.originScratch.Rent(originCount);
         var operations = this.argumentOperationScratch.Rent(count);
+        var lengths = this.lengthScratch.Rent(slots);
+        var settled = this.RentSlotSet(count);
         Array.Clear(arguments, 0, slots);
         Array.Clear(origins, 0, originCount);
         try
@@ -278,79 +201,22 @@ public sealed partial class Binding
                 }
             }
 
-            // Infer from typed inputs before fitting literals or expected-Type Case syntax.
-            // This is static analysis order; the committed operations remain in source order.
-            for (var pass = 0; pass < 3; pass++)
+            var solution = this.Solution(call, declaration, scope, arguments, lengths, origins);
+            if (!this.SolveConstruction(use, payload, ref solution, expected, ref settled))
             {
-                for (var i = 0; i < count; i++)
-                {
-                    var source = call!.ArgumentNodes[i];
-                    if (this.KindOf(source) switch { ArgumentKind.Literal => 1, ArgumentKind.Composite when NeedsEnumContext(source) => 2, _ => 0 } != pass)
-                    {
-                        continue;
-                    }
-
-                    if (call.GetArgumentLabel(i) is not null || payload[i].BoundType is not { } pattern)
-                    {
-                        return this.Fail(use, BindingFailure.TypeMismatch);
-                    }
-
-                    var hint = this.SubstituteType(pattern, declaration, arguments.AsSpan(0, slots));
-                    if (hint is not null)
-                    {
-                        hint = this.SubstituteStoredOrigins(hint, declaration, origins.AsSpan(0, originCount));
-                        if (HasUnsubstitutedOrigin(hint, declaration))
-                        {
-                            hint = null;
-                        }
-                    }
-
-                    var actual = this.BindNode(source, scope, hint);
-                    if (actual is null && hint?.Kind != BoundTypeKind.Function &&
-                        source is { BindingState: BindingState.Resolved, BoundSymbol: { Kind: BindingSymbolKind.Function } item })
-                    {
-                        // SPEC 7.7.4: infer an open payload from the declaration's Item Type, just as for a generic call.
-                        actual = this.BindFunctionItem(source, item, scope);
-                    }
-
-                    if (actual is null)
-                    {
-                        return Complete(use, null);
-                    }
-
-                    actual = this.ArgumentType(source, actual);
-                    this.acquisitionFailure = null;
-                    if (!this.AdaptInput(source, hint ?? pattern, actual, scope, null, null, out var adapted, out var quality, out var kind))
-                    {
-                        // SPEC 6.5.2, 3.5: a bare Non-Copy Place never Moves into a payload; name the required spelling.
-                        return this.acquisitionFailure is { } acquisition ? this.FailAcquisition(use, acquisition.Kind, source, acquisition.Object) : this.Fail(use, BindingFailure.TypeMismatch);
-                    }
-
-                    this.MatchInputOrigins(pattern, adapted, declaration, origins, []);
-                    var inferred = this.SubstituteStoredOrigins(pattern, declaration, origins.AsSpan(0, originCount));
-                    // SPEC 10.8: a Never payload is no evidence.
-                    var evidence = ReferenceEquals(adapted, BoundType.Never) || this.Infer(inferred, adapted, declaration, arguments, true);
-                    if (!(hint is not null && (this.FitsTypeAt(adapted, hint, source) || this.CheckLocalTypeUse(adapted, hint, source))) && !evidence)
-                    {
-                        // SPEC 15.6.1: a payload that fits its expected payload Type only structurally fails in its Origin relations, at
-                        // the payload value, never as a Type mismatch.
-                        if (hint is not null && this.FitsStructurallyAt(adapted, hint, source))
-                        {
-                            this.RecordMismatch(source, source, adapted, hint);
-                            return Complete(use, null);
-                        }
-
-                        return this.Fail(use, BindingFailure.TypeMismatch);
-                    }
-
-                    operations[i] = new(source, actual, null, kind, quality, ParameterIndex: i);
-                }
+                return null;
             }
 
             for (var i = 0; i < slots; i++)
             {
                 if (arguments[i] is null)
                 {
+                    // SPEC 10.8, 23.1.2: the unbound slot is the construction's own record; its waiting payloads depend on it.
+                    if (call is not null)
+                    {
+                        this.MarkWaitingHeaders(call);
+                    }
+
                     return this.Fail(use, BindingFailure.MissingType, true);
                 }
             }
@@ -378,16 +244,9 @@ public sealed partial class Binding
                 }
             }
 
-            for (var i = 0; i < count; i++)
+            if (!this.CompletePayloads(use, payload, result, scope, operations, settled))
             {
-                var type = this.StoredType(payload[i].BoundType!, result)!;
-                var operation = operations[i];
-                if (!this.AdaptInput(operation.Source!, type, operation.SourceType!, scope, null, null, out var adapted, out var quality, out var kind) || (!this.FitsTypeAt(adapted, type, operation.Source!) && !this.CheckLocalTypeUse(adapted, type, operation.Source!)))
-                {
-                    return this.Fail(use, BindingFailure.TypeMismatch);
-                }
-
-                operations[i] = operation with { ParameterType = type, Kind = kind, Adaptation = quality };
+                return null;
             }
 
             var proof = this.CheckConstraints(declaration.ConstraintNodes, declaration, arguments.AsSpan(0, slots), scope);
@@ -414,9 +273,138 @@ public sealed partial class Binding
         finally
         {
             this.argumentOperationScratch.Return(operations, clearArray: true);
+            this.lengthScratch.Return(lengths, clearArray: true);
+            this.ReturnSlotSet(settled);
             this.originScratch.Return(origins, clearArray: true);
             this.typeScratch.Return(arguments, clearArray: true);
         }
+    }
+
+    // SPEC 6.5.2 item 2, 10.8.1, 10.5.1: a Case construction's own slots after those its qualifier and expected Type fix. A payload whose
+    // payload Type those fixed slots settle (`settled`) is bound only at it, on completion; every other payload is prepared as an argument
+    // is and is evidence by its kind (SlotSolution.InferArgument). Under the argument probe a construction with a slot no evidence binds
+    // waits; otherwise the Literal parts' defaults apply, and are evidence once applied. False when the construction is complete: failed
+    // or waiting.
+    private bool SolveConstruction(Koto use, ReadOnlySpan<Koto> payload, ref SlotSolution solution, BoundType? expected, ref SlotSet settled)
+    {
+        var count = solution.SlotOwner.BoundSymbol!.Schema!.GenericSlots.Count;
+        for (var i = 0; i < payload.Length; i++)
+        {
+            if (solution.Call.GetArgumentLabel(i) is not null || payload[i].BoundType is null)
+            {
+                this.Fail(use, BindingFailure.TypeMismatch);
+                return false;
+            }
+
+            if (this.SubstituteType(payload[i].BoundType!, solution.SlotOwner, solution.Types, solution.Lengths) is { } fixedType &&
+                !HasUnsubstitutedOrigin(
+                    this.SubstituteStoredOrigins(fixedType, solution.SlotOwner, solution.Origins.AsSpan(0, solution.OriginCount)), solution.SlotOwner))
+            {
+                settled.Add(i);
+            }
+            else if (!this.PrepareArgument(solution.Call.ArgumentNodes[i], solution.Scope, null, callableContext: true))
+            {
+                Complete(use, null); // The payload's own failure, on which the construction rests.
+                return false;
+            }
+        }
+
+        for (var late = 0; late < 2; late++)
+        {
+            for (var i = 0; i < payload.Length; i++)
+            {
+                if (!settled.Contains(i) && !solution.InferArgument(payload[i].BoundType!, solution.Call.ArgumentNodes[i], late: late == 1))
+                {
+                    this.Fail(use, BindingFailure.TypeMismatch);
+                    return false;
+                }
+            }
+
+            var unbound = false;
+            for (var i = 0; i < count; i++)
+            {
+                unbound |= solution.Types[i] is null;
+            }
+
+            if (late == 1 || !unbound)
+            {
+                break;
+            }
+
+            // SPEC 10.5.1: a construction's result holds all its slots, so under the argument probe one that no evidence binds waits.
+            if (this.DeferNestedCall(use, expected))
+            {
+                Complete(use, null);
+                return false;
+            }
+
+            if (solution.DefaultPayloads(payload, out _) is { } misfit)
+            {
+                this.CompleteDependent(use, misfit); // SPEC 12.3: the literal's own record, on which the construction rests.
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // SPEC 6.5.2, 10.5.1, 10.2: each payload in source order fits its decided payload Type as an argument does (a settled one is bound at
+    // it instead), is completed at it (CompleteArgument, ErasePart) and adapted to it. A misfit is a Type mismatch of the construction;
+    // one only in Origin relations fails at the payload (SPEC 15.6.1), and a bare Non-Copy Place names its required spelling (SPEC 6.5.2).
+    private bool CompletePayloads(
+        Koto use,
+        ReadOnlySpan<Koto> payload,
+        BoundType result,
+        BindingScope scope,
+        BoundArgumentOperation[] operations,
+        SlotSet settled)
+    {
+        for (var i = 0; i < payload.Length; i++)
+        {
+            var source = ((InvocationKoto)use).ArgumentNodes[i];
+            var type = this.StoredType(payload[i].BoundType!, result)!;
+            var fitted = default(BoundArgumentOperation);
+            var fit = settled.Contains(i) ? CandidateApplicability.Applicable : this.FitArgument(source, type, scope, source, out fitted);
+            if (fit is CandidateApplicability.Inapplicable or CandidateApplicability.Pending)
+            {
+                this.Fail(use, BindingFailure.TypeMismatch);
+                return false;
+            }
+
+            this.acquisitionFailure = null;
+            if (fit == CandidateApplicability.Error || this.CompleteArgument(source, type, scope) is not { } completed ||
+                (fitted.Adaptation == ArgumentAdaptation.Erasure && completed is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } &&
+                !this.ErasePart(source, completed, type)))
+            {
+                Complete(use, null); // The payload's own failure, on which the construction rests.
+                return false;
+            }
+
+            var actual = this.ArgumentType(source, source.ErasedFunctionType ?? completed);
+            if (!this.AdaptInput(source, type, actual, scope, null, null, out var adapted, out var quality, out var kind) ||
+                (!this.FitsTypeAt(adapted, type, source) && !this.CheckLocalTypeUse(adapted, type, source)))
+            {
+                if (this.acquisitionFailure is { } acquisition)
+                {
+                    this.FailAcquisition(use, acquisition.Kind, source, acquisition.Object);
+                }
+                else if (FitsStructurally(adapted, type))
+                {
+                    this.RecordMismatch(source, source, adapted, type);
+                    Complete(use, null);
+                }
+                else
+                {
+                    this.Fail(use, BindingFailure.TypeMismatch);
+                }
+
+                return false;
+            }
+
+            operations[i] = new(source, actual, type, kind, quality, ParameterIndex: i);
+        }
+
+        return true;
     }
 
     private void CompleteEnumAcquisitions()
