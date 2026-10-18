@@ -2,23 +2,32 @@
 
 // Owns the legacy runtime helpers of the generated LLVM text until Kimigayo library code replaces them at R8 (plan PD2, P1a-P2b;
 // DECISIONS R5-M16): a module's requests for Array, Dictionary, formatting and string-comparison runtime text (the per-element
-// helper records, the runtime flags, the source functions the compiler requested and the formatting wrappers), the element
-// descriptor of a stored collection value, the stored-value text kernels the helpers write through, the Array capacity routines
-// and helpers (LegacyRuntimeHelpers.Arrays.cs) and the string-comparison routines. Each generator's module holds one instance,
-// and both write the helpers through this component (promoted, never copied); the old writer's Dictionary and formatting family
-// writers join it in P1c-P1d.
+// helper records, the runtime flags, the source functions the compiler requested, the DictionaryStorage functions and the
+// formatting wrappers), the element descriptor of a stored collection value, the stored-value text kernels the helpers write
+// through, the Array capacity routines and helpers (LegacyRuntimeHelpers.Arrays.cs), the Dictionary runtime, the storage byte
+// primitives and the Dictionary helpers (LegacyRuntimeHelpers.Dictionaries.cs) and the string-comparison routines. Each
+// generator's module holds one instance, and both write the helpers through this component (promoted, never copied); the old
+// writer's formatting writers join it in P1d.
 // Input: helper records built from FunctionAbi, ValueLowering, StoredValue (drop routine name, text flag), the Option payload
-// offset and remainder Field offsets; the library ABIs the Dictionary helpers call; a writer, LLVM SSA names and sizes.
+// offset and remainder Field offsets; the compiled ABIs of the DictionaryStorage functions the Dictionary helpers call, keyed
+// by DictionaryCallee; a writer, LLVM SSA names and sizes.
 // Output: the module's request state, in request order, and LLVM text written to the writer; per helper kind one row, readable
 // by kind before any representation exists, which declares the kind's library callees and type-driven needs for the instance
 // collector (X4). The rows land in P1b-P2b: each Array kind's row (ArrayRow; P1b) holds its name prefix, ABI shape, prologue,
 // writer and HelperNeeds (the Array runtime for every kind but BorrowStorage, the element's drop glue for Clear and Drop), and no
-// Array row declares a library callee, since none calls one; the Dictionary and formatting rows follow in P1c and P1d, the storage
+// Array row declares a library callee, since none calls one; each Dictionary kind's row (DictionaryRow; P1c) holds its ABI
+// shape, writer, HelperNeeds (the Array runtime for every kind, the Dictionary runtime for CheckKey, the element's drop glue for
+// Drop) and its callees as DictionaryCallee values: the generic function its helpers call over the entry Types (findEntry for
+// CheckKey, clearEntries for Drop) and the one the module resolves (requireAbsent for CheckKey, append for Place).
+// DictionaryCallee names each function by the KimiLibrary declaration the old emitter resolves it from until F2c supplies their
+// symbol view; the Dictionary runtime (the duplicate-key adapter and the initialization bridge, which calls initialize) has no
+// row, and the old lowering also requests it for a Dictionary's construction. The formatting rows follow in P1d, the storage
 // kernels in P2a-P2b.
-// Invariants: a new helper kind adds a row; a kind without a row fails; each requested helper is written once, in request order;
+// Invariants: a new helper kind adds a row; a kind without a row fails; a request's runtime flags come from its row; each
+// requested helper is written once, in request order, after the runtimes its row declares;
 // the legacy writer's .ll stays byte-identical while it shares this text; warm writes allocate nothing; a Dictionary helper's
-// Related index and library callees resolve before writing; whether a value travels as a scalar is decided once, by
-// StoredValue.TravelsAsScalar.
+// Related index and the callees its row declares resolve before writing; whether a value travels as a scalar is decided once,
+// by StoredValue.TravelsAsScalar.
 // Must not take AggregateLayout, EmissionModule, BoundType, syntax or MIR types, branch on the generator, or use LINQ.
 
 #pragma warning disable SA1402 // The helper records and the element descriptor are this component's request vocabulary.
@@ -27,12 +36,23 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
 
+/// <summary>The needs a legacy helper row declares (X4): runtime text its module must hold and items its helpers call.</summary>
+[Flags]
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
-internal enum DictionaryHelperKind : byte
+internal enum HelperNeeds : byte
 {
-    CheckKey,
-    Place,
-    Drop,
+    None = 0,
+
+    /// <summary>The Array capacity routines and the memory declarations (SPEC 4.9.5).</summary>
+    ArrayRuntime = 1,
+
+    /// <summary>The element's drop glue: the helper destroys elements, a Dictionary helper through its Entries function, which it
+    /// then calls only when an entry needs destruction (SPEC 4.9.7, 16.3.2).</summary>
+    ElementGlue = 2,
+
+    /// <summary>The Dictionary runtime: the duplicate-key adapter a literal's key check reports through and the empty-Dictionary
+    /// initialization bridge (SPEC 4.3, 4.9.6).</summary>
+    DictionaryRuntime = 4,
 }
 
 /// <summary>The element descriptor of a stored collection value (SPEC 4.5, 16.3.2, 21.3.1): its representation, the name of the
@@ -57,16 +77,6 @@ internal readonly record struct StoredValue(ValueLowering Value, string? Drop, b
     /// <returns>True when the value is passed, returned and stored as a scalar.</returns>
     internal static bool TravelsAsScalar(ValueLowering value) => value.ArgumentType == value.ComputationType;
 }
-
-/// <summary>The physical layout of a Dictionary entry: the key and value offsets and the entry stride.</summary>
-[Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
-internal readonly record struct DictionaryEntryLayout(long KeyOffset, long ValueOffset, long Stride);
-
-/// <summary>Physical Dictionary entry helper; source calls resolve to the ordinary instantiated ABI. Related indexes
-/// <see cref="LegacyRuntimeHelpers.FunctionReferences"/>, or is -1.</summary>
-[Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
-internal sealed record DictionaryHelper(
-    DictionaryHelperKind Kind, FunctionAbi Abi, StoredValue Key, StoredValue Value, DictionaryEntryLayout Entry, int Related);
 
 /// <summary>A module's legacy runtime helper requests, and the text kernels and routines its helpers share.</summary>
 [Transitional("R8", Reason = Removal)]
@@ -114,33 +124,12 @@ internal sealed partial class LegacyRuntimeHelpers
     // The per-element Array helpers requested by lowered bodies (SPEC 4.9.3), in first-request order.
     private readonly List<ArrayHelper> arrayHelpers = new();
 
-    internal List<DictionaryHelper> DictionaryHelpers { get; } = new();
-
     /// <summary>Gets the ABI of every source call the compiler requested for generated code, in request order: the destructors
     /// (SPEC 16.3.2) and the Dictionary storage operations, which a Dictionary helper calls through its Related index.</summary>
     internal List<FunctionAbi> FunctionReferences { get; } = new();
 
     /// <summary>Gets or sets a value indicating whether a lowered body uses the Array capacity routines (SPEC 4.9.5).</summary>
     internal bool NeedsArrayRuntime { get; set; }
-
-    internal bool NeedsDictionaryRuntime { get; set; }
-
-    /// <summary>Gets or sets a value indicating whether a lowered body uses the private storage byte primitives (SPEC 22.2).</summary>
-    internal bool NeedsStorageBytes { get; set; }
-
-    internal FunctionAbi? DictionaryAppendSlot { get; set; }
-
-    internal FunctionAbi? DictionaryRequireAbsent { get; set; }
-
-    internal FunctionAbi? DictionaryReserveStorage { get; set; }
-
-    internal FunctionAbi? DictionaryAppend { get; set; }
-
-    internal FunctionAbi? DictionaryInitialize { get; set; }
-
-    internal FunctionAbi? DictionaryClearLinks { get; set; }
-
-    internal FunctionAbi? DictionaryShrink { get; set; }
 
     internal bool NeedsFormattingRuntime { get; set; }
 
@@ -219,38 +208,22 @@ internal sealed partial class LegacyRuntimeHelpers
     internal void Clear()
     {
         this.arrayHelpers.Clear();
-        this.DictionaryHelpers.Clear();
+        this.dictionaryHelpers.Clear();
         this.FunctionReferences.Clear();
         this.NeedsArrayRuntime = false;
         this.NeedsDictionaryRuntime = false;
         this.NeedsStorageBytes = false;
-        this.DictionaryAppendSlot = null;
-        this.DictionaryRequireAbsent = null;
-        this.DictionaryReserveStorage = null;
-        this.DictionaryAppend = null;
-        this.DictionaryInitialize = null;
-        this.DictionaryClearLinks = null;
-        this.DictionaryShrink = null;
+        Array.Clear(this.dictionaryCallees);
         this.NeedsFormattingRuntime = false;
         this.FormattingWrites.Clear();
         this.FormattingConversions.Clear();
         this.NeedsStringComparison = false;
     }
 
-    /// <summary>Gets a value indicating whether a Dictionary helper's Related index or library callee is unresolved.</summary>
-    /// <returns>True when the requests cannot be written.</returns>
-    internal bool HasUnresolvedReference()
+    // A requested helper's runtime needs are its kind row's (X4); they join the module's.
+    private void JoinNeeds(HelperNeeds needs)
     {
-        foreach (var helper in this.DictionaryHelpers)
-        {
-            if (helper.Related < -1 || helper.Related >= this.FunctionReferences.Count ||
-                (helper.Kind == DictionaryHelperKind.CheckKey && (helper.Related < 0 || this.DictionaryRequireAbsent is null)) ||
-                (helper.Kind == DictionaryHelperKind.Place && this.DictionaryAppend is null))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        this.NeedsArrayRuntime |= (needs & HelperNeeds.ArrayRuntime) != 0;
+        this.NeedsDictionaryRuntime |= (needs & HelperNeeds.DictionaryRuntime) != 0;
     }
 }

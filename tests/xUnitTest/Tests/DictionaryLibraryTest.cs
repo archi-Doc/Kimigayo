@@ -53,6 +53,25 @@ public class DictionaryLibraryTest
         Assert.False(module.RuntimeHelpers.NeedsDictionaryRuntime);
     }
 
+    // SPEC 4.5, 16.3.2: a Dictionary Field's drop helper requested only by its owner's drop glue brings the runtimes its row
+    // declares, so the module defines every Dictionary helper it calls (PLAN G133).
+    [Theory]
+    [InlineData("Scalar", "i32")]
+    [InlineData("String", "string")]
+    public void FieldDropHelperRequestedByDropGlueIsDefined(string name, string valueType)
+    {
+        var c = MinimalEmissionTest.Analyze("struct Box\n    public let entries: Dictionary<i32, " + valueType + ">\nlet value: Option<Box> = .None");
+        var ir = CompilationTestHelper.WriteIr(c);
+        var calls = System.Text.RegularExpressions.Regex.Matches(ir, @"call void @(__kimi_dictionary_\w+)\(");
+        Assert.NotEmpty(calls);
+        foreach (System.Text.RegularExpressions.Match call in calls)
+        {
+            Assert.Contains("define internal void @" + call.Groups[1].Value + "(", ir, StringComparison.Ordinal);
+        }
+
+        ScalarEmissionTest.WriteFixture("DictionaryLibraryFieldDrop" + name, ir, string.Empty);
+    }
+
     // SPEC 4.9.6: a Dictionary operation is called with its published summary, not as an unbounded generic call, so a generic body may
     // keep its result across another call; `K` here may be a borrow, whose Loans the ordinary dependencies track.
     [Theory]
@@ -152,7 +171,7 @@ public class DictionaryLibraryTest
         var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]\nentries.reserve(8)\n_ = entries.tryInsert(1, 2)");
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', TestDiagnostics.Of(c.Library.Kotonoha)));
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var reserve = module.RuntimeHelpers.DictionaryReserveStorage!.Name;
+        var reserve = module.RuntimeHelpers.Callee(DictionaryCallee.ReserveStorage)!.Name;
         var ir = CompilationTestHelper.WriteIr(c);
         Assert.Contains(c.Ownership.Bodies, static body => body.Function.Name == "grow" && body.Function.CodeContext.SourceDocument?.Path.EndsWith("DictionaryStorage.kimi", StringComparison.Ordinal) == true);
         var compiled = System.Text.RegularExpressions.Regex.Match(ir, @"(?ms)^define[^\n]*@" + reserve + @"\([^\n]*\n.*?^\}").Value;
