@@ -178,10 +178,14 @@ internal sealed partial class InstanceCollector
         return (byte)BitOperations.TrailingZeroCount(views);
     }
 
-    // K 4.9: the subject of a record caused at a site of an item's body: the site, moved out of the inline defaults of templates outside
-    // the root modules to the outermost omitting call, if that lies in a root module; else the root-module site the item's admission chain
-    // first reached, which each item keeps.
+    // K 4.9: the subject of a record caused at a site of an item's body: the site located in its body, if that lies in a root module; else
+    // the root-module site the item's admission chain first reached, which each item keeps.
     private SourceRef Subject(int item, MirBody body, in SourceInfo source)
+        => this.Located(body, source) is var subject && subject.Module < this.rootModules ? subject : this.Set.Items[item].Site;
+
+    // K 4.9: a site of a body, moved out of the inline defaults of templates outside the root modules to the outermost omitting call; in a
+    // root-module body, always a root-module site.
+    private SourceRef Located(MirBody body, in SourceInfo source)
     {
         var subject = body.Subject(source);
         for (int scope = source.Scope; scope > 0; scope = body.Scopes[scope].Outer)
@@ -192,6 +196,6 @@ internal sealed partial class InstanceCollector
             }
         }
 
-        return subject.Module < this.rootModules ? subject : this.Set.Items[item].Site;
+        return subject;
     }
 }

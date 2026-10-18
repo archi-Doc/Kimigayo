@@ -379,15 +379,19 @@ public sealed partial class Binding
 
     // SPEC 21.1: direct zero-sized Fields reject C layout. Struct sizes need prepared storage
     // shapes; a Field whose size depends on a Type argument is checked when its layout is formed.
+    // A rejected declaration is published as AdtDef.CLayoutRejected, which Layout treats as rejected storage.
     private void ValidateCLayoutFields()
     {
         foreach (var container in this.storageDeclarations)
         {
-            for (var m = 0; container.BoundSymbol!.Adt!.IsCLayout && m < container.Members.Count; m++)
+            var adt = container.BoundSymbol!.Adt!;
+            adt.CLayoutRejected = false;
+            for (var m = 0; adt.IsCLayout && m < container.Members.Count; m++)
             {
                 if (container.Members[m] is PropertyKoto field && IsStoredVariable(field) && (field.Modifier & ModifierKind.Static) == 0 &&
                     field.BoundSymbol?.Property?.Type is { } type && this.HasZeroStride(type))
                 {
+                    adt.CLayoutRejected = true;
                     this.Fail(field, BindingFailure.InvalidCLayout);
                     this.Fail(container, BindingFailure.InvalidTypeFormation);
                 }
