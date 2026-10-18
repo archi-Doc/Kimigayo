@@ -10,23 +10,27 @@ namespace Kimi.Compiler;
 //   12.3). Composite: a Tuple or array literal, a mixed range or a contextual Case, whose parts are classified instead. Waiting: an
 //   anonymous function, a function reference that needs S, or a nested call the argument probe deferred, until the selected
 //   candidate completes it. Typed: every other part.
-// - Inputs: the part's syntax and binding state; the argument probe (BindIndependentArgument), under which a nested call that only an
-//   outer expectation could type defers (DeferNestedCall) and its kind is recorded; arithmetic operands have their own probe (SPEC 13.3.4).
-// - Outputs: KindOf; the preparation of a call's arguments (PrepareCallArguments) and of a Composite's parts; a Composite's fit to a
-//   candidate's parameter Type (ProbeAggregateArgument); SolveSelected, the selected candidate of a call whose slot no evidence binds:
-//   a nested call waits, or the Literal parts' defaults apply to it alone and its checks run once more (SPEC 10.2.1); SlotSolution
-//   (Binding.ArgumentKinds.Solution.cs), one candidate's SPEC 10.8 solve state, whose operations take a part's evidence for the slots
-//   (InferInput, InferAggregateCall for a Composite, InferClosureHeader, InferCallableSignatures), apply the defaults
-//   (DefaultArguments), substitute the solution (Type) and judge the Constraints over it (Prove).
+// - Inputs: the part's syntax and binding state; the argument probe (BindIndependentArgument), under which each part that is not a
+//   Composite is bound: a nested call that only an outer expectation could type defers (DeferNestedCall) and its kind is recorded,
+//   and a function name stays unbound (AtArgumentPosition); arithmetic operands have their own probe (SPEC 13.3.4).
+// - Outputs: KindOf; the preparation of a call's arguments and of each part (PrepareArgument, PrepareComposite); the fit walk, a
+//   part's fit to the parameter Type at its position (FitArgument, Binding.ArgumentKinds.Fit.cs) for call arguments, elements,
+//   contextual Case payloads and value calls; SolveSelected, the selected candidate of a call whose slot no evidence binds: a nested
+//   call waits, or the Literal parts' defaults apply to it alone and its checks run once more (SPEC 10.2.1); CompleteWaiting, the
+//   selected candidate's waiting arguments and waiting elements at its F; SlotSolution (Binding.ArgumentKinds.Solution.cs), one
+//   candidate's SPEC 10.8 solve state, whose evidence walk takes each part's evidence for the slots by its kind (InferArgument,
+//   Binding.ArgumentKinds.Evidence.cs), applies the defaults (DefaultArguments), substitutes the solution (Type) and judges the
+//   Constraints over it (Prove).
 // - Invariants: a recorded kind and a Literal's default are keyed by syntax identity (SourceRef) and live for one pass; a deferred
 //   nested call stays waiting after its completion, so its Type is never evidence for an outer slot (WasWaitingNestedCall); a Literal
-//   is evidence only through the default recorded for the selected candidate.
+//   is evidence only through the default recorded for the selected candidate; a Never-typed part is no evidence (SPEC 10.8).
 // - Prohibitions: a consumer reads a part's kind from KindOf and tells only the forms of one kind apart (an anonymous function from a
-//   reference) to fit them; no Koto-keyed table (COMPILER_ARCHITECTURE, Code rules: Syntax identity).
+//   reference) to fit them; the call, element, contextual payload and value-call paths keep no evidence or fit dispatch of their own;
+//   no Koto-keyed table (COMPILER_ARCHITECTURE, Code rules: Syntax identity).
 public sealed partial class Binding
 {
     private readonly Dictionary<SourceRef, ArgumentFact> argumentKinds = new();
-    private InvocationKoto? nestedArgumentProbe;
+    private Koto? argumentProbe;
     private InvocationKoto? nestedOperandProbe;
 
     private enum ArgumentKind : byte
@@ -74,70 +78,70 @@ public sealed partial class Binding
 
     private bool IsWaitingNestedCall(Koto node) => node.BoundType is null && this.WasWaitingNestedCall(node);
 
+    // SPEC 10.5: a function name that is a call argument or the part under the argument probe is not bound as its Item without an
+    // expectation; PrepareArgument decides whether it is evidence or waits for S.
+    private bool AtArgumentPosition(Koto node)
+        => (TryNameRoot(node, out var root) && root.Parent is InvocationKoto) || ReferenceEquals(this.argumentProbe, node);
+
     // Independent argument evidence is prepared once for named and constraint-based calls.
     private bool PrepareCallArguments(InvocationKoto call, BindingScope scope, BindingSymbol? group = null, bool callableContext = false)
     {
-        var unknownArgument = false;
+        var valid = true;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
-            var argument = call.ArgumentNodes[i];
-            if (KotoHelper.UnwrapParentheses(argument) is FunctionKoto { IsAnonymous: true })
-            {
-                continue; // A common-function argument supplies its fixed signature after selection.
-            }
-
-            if (this.KindOf(argument) == ArgumentKind.Composite)
-            {
-                unknownArgument |= !this.PrepareAggregateArgument(argument, scope);
-                continue;
-            }
-
-            // A literal is fitted after selection, unless the parser kept it as a recovery: that argument fails here, so the call rests on its Error.
-            if ((this.KindOf(argument) != ArgumentKind.Literal || argument.CodeContext.RecoveryCause(argument) is not null) &&
-                this.BindIndependentArgument(argument, scope) is null)
-            {
-                if (this.IsWaitingNestedCall(argument))
-                {
-                    continue; // SPEC 10.5: only a determined outer candidate supplies the missing expectation.
-                }
-
-                if (KotoHelper.UnwrapParentheses(argument) is { BindingState: BindingState.Resolved, BoundSymbol: { Kind: BindingSymbolKind.Function } item })
-                {
-                    if ((callableContext || this.TakesCallableContext(group)) &&
-                        !IndependentFunctionItem(item, this.UnboundMemberReference(argument), this.ReferenceDeclaringType(argument)) &&
-                        !this.ExplicitReferenceValue(argument, item, scope))
-                    {
-                        continue; // SPEC 10.5: a waiting reference uses the selected fixed call signature once.
-                    }
-
-                    // SPEC 10.5: a single closed declaration supplies its own Item Type as generic argument evidence.
-                    // A generic Callable contract checks that Type without erasing it to a common Function handle.
-                    if (this.BindFunctionItem(argument, item, scope) is not null)
-                    {
-                        continue;
-                    }
-                }
-
-                unknownArgument = true;
-            }
+            valid &= this.PrepareArgument(call.ArgumentNodes[i], scope, group, callableContext);
         }
 
-        return !unknownArgument;
+        return valid;
+    }
+
+    // SPEC 10.5.1: prepares an argument part once per pass, by its kind. An anonymous function waits for a candidate's signature; a
+    // Composite prepares its parts; a Literal is fitted after selection, unless the parser kept it as a recovery, which fails here
+    // so that the call rests on its Error; every other part is bound under the argument probe, where a nested call that only an
+    // expectation could type waits, and a function reference that needs S waits for the selected candidate's (SPEC 10.5.3).
+    private bool PrepareArgument(Koto part, BindingScope scope, BindingSymbol? group, bool callableContext)
+    {
+        if (KotoHelper.UnwrapParentheses(part) is FunctionKoto { IsAnonymous: true })
+        {
+            return true;
+        }
+
+        if (this.KindOf(part) == ArgumentKind.Composite)
+        {
+            return this.PrepareComposite(part, scope);
+        }
+
+        if ((this.KindOf(part) == ArgumentKind.Literal && part.CodeContext.RecoveryCause(part) is null) ||
+            this.BindIndependentArgument(part, scope) is not null || this.IsWaitingNestedCall(part))
+        {
+            return true;
+        }
+
+        if (KotoHelper.UnwrapParentheses(part) is not { BindingState: BindingState.Resolved, BoundSymbol: { Kind: BindingSymbolKind.Function } item })
+        {
+            return false;
+        }
+
+        // SPEC 10.5: a single closed declaration supplies its own Item Type as generic argument evidence. A generic Callable contract
+        // checks that Type without erasing it to a common Function handle.
+        return ((callableContext || this.TakesCallableContext(group)) &&
+            !IndependentFunctionItem(item, this.UnboundMemberReference(part), this.ReferenceDeclaringType(part)) &&
+            !this.ExplicitReferenceValue(part, item, scope)) || this.BindFunctionItem(part, item, scope) is not null;
     }
 
     // SPEC 10.5: first obtain independent evidence. Only an inner call that would need a result expectation waits; failures of
     // its own inputs or declarations are still diagnosed here. Parentheses preserve the same boundary.
     private BoundType? BindIndependentArgument(Koto argument, BindingScope scope)
     {
-        var previous = this.nestedArgumentProbe;
-        this.nestedArgumentProbe = KotoHelper.UnwrapParentheses(argument) as InvocationKoto;
+        var previous = this.argumentProbe;
+        this.argumentProbe = KotoHelper.UnwrapParentheses(argument);
         try
         {
             return this.BindNode(argument, scope);
         }
         finally
         {
-            this.nestedArgumentProbe = previous;
+            this.argumentProbe = previous;
         }
     }
 
@@ -159,7 +163,7 @@ public sealed partial class Binding
 
     private bool DeferNestedCall(InvocationKoto call, BoundType? expected)
     {
-        if (expected is not null || !(ReferenceEquals(this.nestedArgumentProbe, call) || ReferenceEquals(this.nestedOperandProbe, call)))
+        if (expected is not null || !(ReferenceEquals(this.argumentProbe, call) || ReferenceEquals(this.nestedOperandProbe, call)))
         {
             return false;
         }
@@ -177,7 +181,7 @@ public sealed partial class Binding
         var call = evaluation.Call;
         var selected = (FunctionKoto)evaluation.Evaluated[winner].Symbol!.Declaration;
         var solution = this.Solution(evaluation, selected, declaringType);
-        var argument = evaluation.Expected is null && ReferenceEquals(this.nestedArgumentProbe, call);
+        var argument = evaluation.Expected is null && ReferenceEquals(this.argumentProbe, call);
         if (argument && (evaluation.Applicable > 1 || (evaluation.Evaluated[winner].Unsolved && solution.ResultHoldsUnsolved(evaluation.Mapping))))
         {
             this.DeferNestedCall(call, evaluation.Expected);
@@ -232,6 +236,104 @@ public sealed partial class Binding
         return false;
     }
 
+    // SPEC 10.5, 10.5.4: completes the selected candidate's waiting arguments against its Types, and the waiting callables of its Tuple
+    // and array literal arguments that bind an F, `ref/F` or `uniq/F` of it. A body or capture failure never retries another
+    // candidate, and an inferred result never supplies outer signature evidence. False when one fails.
+    private bool CompleteWaiting(ref CallEvaluation evaluation, int winner, bool[] completedWaiting, BoundType?[] waitingContexts)
+    {
+        var call = evaluation.Call;
+        var selected = (FunctionKoto)evaluation.Evaluated[winner].Symbol!.Declaration;
+        var solution = this.Solution(evaluation, selected, evaluation.Evaluated[winner].DeclaringType);
+        var operations = evaluation.Operations.AsSpan(winner * evaluation.OperationStride, evaluation.OperationStride);
+        var contract = this.activeRequirementContract;
+        this.activeRequirementContract = null; // The arguments are expressions of the caller's context.
+        try
+        {
+            for (var i = 0; i < call.ArgumentNodes.Count; i++)
+            {
+                var argument = call.ArgumentNodes[i];
+                var pattern = selected.Parameters[evaluation.Mapping[i]].Type.BoundType!;
+                if (this.KindOf(argument) == ArgumentKind.Waiting)
+                {
+                    completedWaiting[i] = true;
+                    waitingContexts[i] = operations[i].ParameterType;
+                    if (this.CompleteWaitingPart(argument, pattern, selected, operations[i].ParameterType, evaluation.Scope) is null)
+                    {
+                        return false;
+                    }
+                }
+                else if (!this.CompleteWaitingElements(argument, pattern, solution))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        finally
+        {
+            this.activeRequirementContract = contract;
+        }
+    }
+
+    // SPEC 10.5: a waiting part at F, `ref/F` or `uniq/F`: an anonymous function with the fixed expected call signature S (`context`), a
+    // reference selected by S, or without S a value only when it needs none (FailUnfixedReference otherwise); any other at its Type.
+    private BoundType? CompleteWaitingPart(Koto part, BoundType pattern, FunctionKoto selected, BoundType? context, BindingScope scope)
+    {
+        var slotType = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } ? pattern.Components[0] : pattern;
+        var concrete = slotType.Kind == BoundTypeKind.Parameter && ContainerSlot(CallSlotOwner(selected), slotType.Symbol!) >= 0;
+        var node = KotoHelper.UnwrapParentheses(part);
+        if (concrete && node is FunctionKoto { IsAnonymous: true } closure)
+        {
+            return this.BindClosureArgument(part, closure, scope, context);
+        }
+
+        if (!concrete || !IsWaitingFunctionReference(part))
+        {
+            return this.BindNode(part, scope, context);
+        }
+
+        return context is { } signature
+            ? this.BindFunctionReference(part, node.BoundSymbol!, signature, scope, erase: false) : this.BindFunctionItem(part, node.BoundSymbol!, scope);
+    }
+
+    // SPEC 10.5.1: the elements of a Tuple or array literal argument at their positions: a waiting callable at an F of the candidate is
+    // completed with that F's signature; the others are completed when the literal is bound at its Type.
+    private bool CompleteWaitingElements(Koto part, BoundType pattern, in SlotSolution solution)
+    {
+        var node = KotoHelper.UnwrapParentheses(part);
+        var elements = node switch
+        {
+            TupleLiteralKoto tuple when pattern.Kind == BoundTypeKind.Tuple && pattern.Components.Count == tuple.Elements.Count => tuple.Elements,
+            ArrayLiteralKoto array when pattern.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray => array.Elements,
+            _ => null,
+        };
+        for (var i = 0; elements is not null && i < elements.Count; i++)
+        {
+            var element = elements[i];
+            var component = pattern.Components[pattern.Kind == BoundTypeKind.Tuple ? i : 0];
+            var slotType = component is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq }
+                ? component.Components[0] : component;
+            if (!IsWaitingCallable(element) || slotType.Kind != BoundTypeKind.Parameter || ContainerSlot(solution.SlotOwner, slotType.Symbol!) < 0)
+            {
+                if (!this.CompleteWaitingElements(element, component, solution))
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
+            var signature = this.TryCallable(slotType, this.ConstraintScope(solution.Function), out var required, out _) ? solution.Type(required) : null;
+            if (this.CompleteWaitingPart(element, component, solution.Function, signature, solution.Scope) is null)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     // SPEC 10.2.1: the selected candidate's checks run once more with its Literal parts' defaults; a failure is its own record and
     // never reselects.
     private bool CheckDefaulted(ref CallEvaluation evaluation, int winner, SlotSolution solution, Span<BoundArgumentOperation> operations)
@@ -267,7 +369,7 @@ public sealed partial class Binding
         source = KotoHelper.UnwrapParentheses(source);
         if (source.BoundType is { } actual)
         {
-            return actual;
+            return ReferenceEquals(actual, BoundType.Never) ? null : actual; // SPEC 10.8: a Never part supplies no evidence.
         }
 
         if (source is RangeKoto range && IsMixedRange(range))
@@ -350,28 +452,24 @@ public sealed partial class Binding
         return KotoHelper.UnwrapParentheses(boundary) is FromEndIndexKoto ? this.FromEndType(integer) : integer;
     }
 
-    private bool PrepareAggregateArgument(Koto source, BindingScope scope)
+    // SPEC 10.5.1, 4.6.2: a Composite's parts: each element of a Tuple or array literal is prepared as an argument at its position (a
+    // function reference among them waits when it needs S), the payloads of a contextual Case likewise, and the written boundaries of a
+    // mixed range on their own, since a boundary is never waiting.
+    private bool PrepareComposite(Koto part, BindingScope scope)
     {
-        source = KotoHelper.UnwrapParentheses(source);
+        var source = KotoHelper.UnwrapParentheses(part);
         if (source is RangeKoto range && IsMixedRange(range))
         {
-            // A typed boundary is bound on its own now; a literal-only one waits for the candidate (SPEC 4.6.2).
-            return (range.Start is null || this.PrepareAggregateArgument(range.Start, scope)) &
-                (range.End is null || this.PrepareAggregateArgument(range.End, scope));
+            return (range.Start is null || IsUnfittedLiteral(range.Start) || this.BindNode(range.Start, scope) is not null) &
+                (range.End is null || IsUnfittedLiteral(range.End) || this.BindNode(range.End, scope) is not null);
         }
 
-        var elements = source switch
+        if (NeedsEnumContext(source))
         {
-            ArrayLiteralKoto array => array.Elements,
-            TupleLiteralKoto tuple => tuple.Elements,
-            _ => null,
-        };
-        if (elements is null)
-        {
-            return NeedsEnumContext(source) ? this.PrepareContextualEnumInputs(source, scope)
-                : this.KindOf(source) == ArgumentKind.Literal || this.BindNode(source, scope) is not null;
+            return this.PrepareContextualEnumInputs(source, scope);
         }
 
+        var elements = source is ArrayLiteralKoto array ? array.Elements : ((TupleLiteralKoto)source).Elements;
         var valid = true;
         if (source is ArrayLiteralKoto { FillLength: { } length } fill)
         {
@@ -380,106 +478,10 @@ public sealed partial class Binding
 
         for (var i = 0; i < elements.Count; i++)
         {
-            valid &= this.PrepareAggregateArgument(elements[i], scope);
+            valid &= this.PrepareArgument(elements[i], scope, null, callableContext: true);
         }
 
         return valid;
-    }
-
-    // Read-only candidate probing: bind only the winning literal's aggregate shape.
-    // General element expressions already have independent Types and cannot be retried.
-    private CandidateApplicability ProbeAggregateArgument(Koto source, BoundType expected, BindingScope scope)
-    {
-        source = KotoHelper.UnwrapParentheses(source);
-        if (source is ArrayLiteralKoto array)
-        {
-            // SPEC 4.3: a call-argument literal fits the candidate's fixed array of exactly its length, or its owned Array.
-            if (expected is not { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array, Semantics: SemanticsKind.Owner } ||
-                (array.FillLength is not null && expected.Kind != BoundTypeKind.FixedArray) ||
-                (expected.Kind == BoundTypeKind.FixedArray && (array.FillLength is null ? expected.Length != array.Elements.Count :
-                    array.FillCount is not { } count || (count.IsConstant
-                        ? expected.LengthExpression is not null || expected.Length != count.Value
-                        : !ReferenceEquals(expected.LengthExpression, count)))))
-            {
-                return CandidateApplicability.Inapplicable;
-            }
-
-            for (var i = 0; i < array.Elements.Count; i++)
-            {
-                var result = this.ProbeAggregateArgument(array.Elements[i], expected.Components[0], scope);
-                if (result != CandidateApplicability.Applicable)
-                {
-                    return result;
-                }
-            }
-
-            return CandidateApplicability.Applicable;
-        }
-
-        if (source is TupleLiteralKoto tuple)
-        {
-            if (expected.Kind != BoundTypeKind.Tuple || expected.Components.Count != tuple.Elements.Count)
-            {
-                return CandidateApplicability.Inapplicable;
-            }
-
-            for (var i = 0; i < tuple.Elements.Count; i++)
-            {
-                var result = this.ProbeAggregateArgument(tuple.Elements[i], expected.Components[i], scope);
-                if (result != CandidateApplicability.Applicable)
-                {
-                    return result;
-                }
-            }
-
-            return CandidateApplicability.Applicable;
-        }
-
-        if (source is RangeKoto range && IsMixedRange(range))
-        {
-            // SPEC 4.6.2: the candidate's range of this shape supplies each literal-only boundary's S or E; a typed boundary
-            // must supply exactly its Type argument, through a value read.
-            if (expected is not { Kind: BoundTypeKind.Constructed, Semantics: SemanticsKind.Owner, Components.Count: 2 } ||
-                !ReferenceEquals(expected.Symbol, range.IsInclusive ? this.Library.ClosedRange : this.Library.Range))
-            {
-                return CandidateApplicability.Inapplicable;
-            }
-
-            var start = this.ProbeRangeBoundary(range.Start, expected.Components[0], this.StartType, scope);
-            return start != CandidateApplicability.Applicable ? start : this.ProbeRangeBoundary(range.End, expected.Components[1], this.EndType, scope);
-        }
-
-        if (NeedsEnumContext(source))
-        {
-            return this.ProbeContextualEnum(source, expected, scope);
-        }
-
-        if (this.KindOf(source) == ArgumentKind.Literal)
-        {
-            return this.FitsInputLiteral(source, expected, scope) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
-        }
-
-        // SPEC 15.6.1: the structural part decides applicability; the element's Origin relations are judged when it is bound.
-        return source.BoundType is not { } actual ? CandidateApplicability.Pending :
-            this.FitsStructurallyAt(actual, expected, source) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
-    }
-
-    private CandidateApplicability ProbeRangeBoundary(Koto? boundary, BoundType expected, BoundType omitted, BindingScope scope)
-    {
-        if (boundary is null)
-        {
-            return ReferenceEquals(expected, omitted) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
-        }
-
-        if (IsUnfittedLiteral(boundary))
-        {
-            return this.FitsInputLiteral(boundary, expected, scope) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
-        }
-
-        var syntax = KotoHelper.UnwrapParentheses(boundary);
-        return syntax.BoundType is not { } actual ? CandidateApplicability.Pending :
-            ReferenceEquals(this.ReadTypeReferent(actual, syntax) ?? actual, expected) ? CandidateApplicability.Applicable
-            : CandidateApplicability.Inapplicable;
     }
 
     // A part's kind as the pass recorded it where its syntax does not give it, and the default a Literal part takes for the selected

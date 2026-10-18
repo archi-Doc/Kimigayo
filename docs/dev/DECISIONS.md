@@ -1474,6 +1474,23 @@ R5 on the owner's request of 2026-10-18.
     never count). Arithmetic operands have their own probe (SPEC 13.3.4), which waits only on an ambiguity or a slot no default
     binds, so `identity(1) + identity(2)` stays typed. Gaps the timing exposed: a Contract argument holding an unbound slot leaves
     its clause unresolved instead of judging the callee's own reference; a pair's target projection `T` mentions its pair slot.
+  - U3, one evidence walk and one fit walk (SPEC 10.5.1, 10.2, 10.8; owner decision (a) of PLAN G130): an element of a Tuple or
+    array literal argument and a payload of a contextual Case are parameter positions. `PrepareArgument` prepares every part by
+    its kind under the argument probe, which now covers elements, so a nested call there waits and a function name stays unbound
+    for its position (`AtArgumentPosition`). `SlotSolution.InferArgument` is the one evidence dispatch for arguments and
+    elements: a typed part through the common adaptation (a value read, erasure) and, at a Function pattern, its known call
+    signature; an anonymous function's written header; a Never-typed part none, and a literal holding one no Type at a bare slot
+    (D6). `FitArgument` is the one fit dispatch for call arguments, elements, contextual payloads and value calls
+    (`ProbeValueCall`). A waiting element at an `F` of the candidate binds it (`WaitingBindsSlot`) and is completed with `F`'s
+    signature after selection (`CompleteWaiting`), as a waiting argument is. Deleted: `InferAggregateCall`,
+    `InferAggregateInputs`, `ProbeAggregateArgument`'s leaf and literal branches, `PrepareAggregateArgument`'s binding without
+    expectation and `IndependentAggregateType`'s Never evidence. R11 is split (planning session, 2026-10-18): U3 lands its
+    expected-result half, so an expected result Never is ordinary evidence (`let x: Never = identity(stop())` gives `T = Never`);
+    the structural `Infer` skips a Never component until U5, whose commit removes the skip as it puts Case payloads on
+    `InferArgument` (then `h(u)` with `u: (Never, i64)` gives `T = Never`, and `P.Pair(1, ((return 1), a))` and its swapped
+    form give `T = i64`: U5's regression rows), since before U5 a Case payload bound whole would make its Never element
+    evidence. Departure from the designs' expected record: `g((identity(true), a))` is `NoApplicableOverload_Kd` at `g`, not
+    the inner call's error, because `identity(true)` is independently typable (`bool`) and that Type does not fit `i64`.
 
 ## R5 and R6 (adopted 2026-10-18)
 

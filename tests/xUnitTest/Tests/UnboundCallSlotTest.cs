@@ -28,6 +28,7 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
     [InlineData("Result", "func make<T>() -> Option<T> => .None\npublic func main() -> ()\n    let x = make()\n", "make()", "T", null)]
     [InlineData("Constraint", "func make<T>() -> i32\n    T is Equatable\n    return 1\npublic func main() -> ()\n    require make() == 1 else => $abort(\"u7b\")\n", "make()", "T", null)]
     [InlineData("TypeIdentity", "func count<I, E>(items: uniq/I) -> i32\n    I is Iterator\n    I.Item is E\n    return 0\npublic func main() -> ()\n    var values = [1, 2, 3]\n    var it = values.iterate()\n    require count(it@uniq) == 0 else => $abort(\"ident\")\n", "count(it@uniq)", "E", null)]
+    [InlineData("NeverElement", "func id<T>(value: T) -> T => value@move\nfunc f() -> i64\n    let a: i64 = 2\n    let x = id((a, (return 1)))\n    return 0\npublic func main() -> () => ()\n", "id((a, (return 1)))", "T", null)]
     public void AnUnsolvedSlotOfTheSelectedCandidateIsTheInferenceBoundary(string name, string source, string call, string slot, string? argument)
     {
         var check = DiagnosticCorpus.Check(source);
@@ -40,6 +41,15 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
         Assert.Contains(related, static x => x.Role == "declaration");
         Assert.Equal(argument, related.SingleOrDefault(static x => x.Role == "argument") is { } waiting ? Text(source, waiting.Span) : null);
         Assert.Contains(argument is null ? $"binds {slot} (SPEC 10.8)" : "never evidence for an outer slot", error.Note, StringComparison.Ordinal);
+    }
+
+    // SPEC 10.8 (DECISIONS BU-2): an expected result Never is ordinary evidence, so it fills the slot that a Never argument does not.
+    [Fact]
+    public void AnExpectedNeverResultFillsTheSlot()
+    {
+        var c = MinimalEmissionTest.Analyze("func identity<T>(value: T) -> T => value@move\nfunc stop() -> Never => $abort(\"stop\")\nlet x: Never = identity(stop())");
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => x.CallOf()?.Target.Name == "identity");
+        Assert.Same(BoundType.Never, call.CallOf()!.TypeArguments[0]);
     }
 
     // SPEC 10.8, 10.3: the parts of a fit that do not contain the slot are still checked, so a result whose outer structure the expected

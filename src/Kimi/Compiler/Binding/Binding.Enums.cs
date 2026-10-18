@@ -92,8 +92,7 @@ public sealed partial class Binding
     private static bool EnumArityMatches(int payloadCount, InvocationKoto? call)
         => payloadCount == (call?.ArgumentNodes.Count ?? 0) && (call is null) == (payloadCount == 0);
 
-    // SPEC 10.1-10.3, 3.8: a payload input is prepared as a call's argument is (PrepareAggregateArgument): an unfitted literal, an
-    // aggregate literal's shape and expected-Type Case syntax wait for the candidate's payload Type; every other input is bound now.
+    // SPEC 10.1-10.3, 10.5.1, 3.8: a payload input is prepared as a call's argument is (PrepareArgument).
     private bool PrepareContextualEnumInputs(Koto node, BindingScope scope)
     {
         node = KotoHelper.UnwrapParentheses(node);
@@ -102,7 +101,7 @@ public sealed partial class Binding
         {
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
-                valid &= this.PrepareAggregateArgument(call.ArgumentNodes[i], scope);
+                valid &= this.PrepareArgument(call.ArgumentNodes[i], scope, null, callableContext: true);
             }
         }
 
@@ -159,16 +158,9 @@ public sealed partial class Binding
                 return CandidateApplicability.Error;
             }
 
-            CandidateApplicability input;
-            if (this.KindOf(source) is ArgumentKind.Composite or ArgumentKind.Literal)
-            {
-                input = this.ProbeAggregateArgument(source, type, scope); // An input waiting for its payload Type (PrepareContextualEnumInputs).
-            }
-            else
-            {
-                input = source.BoundType is not { } actual ? CandidateApplicability.Pending :
-                    this.AdaptInput(source, type, actual, scope, null, null, out var adapted, out _, out _) && FitsStructurally(adapted, type) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
-            }
+            // SPEC 10.5.1: a payload fits its payload Type as an argument does; a waiting one is checked by the construction.
+            var input = this.FitArgument(source, type, scope, source, out _);
+            input = input == CandidateApplicability.Waiting ? CandidateApplicability.Applicable : input;
 
             // Error remains visible even if another payload cannot fit this candidate.
             result = result == CandidateApplicability.Error || input == CandidateApplicability.Error ? CandidateApplicability.Error :
@@ -336,7 +328,9 @@ public sealed partial class Binding
 
                     this.MatchInputOrigins(pattern, adapted, declaration, origins, []);
                     var inferred = this.SubstituteStoredOrigins(pattern, declaration, origins.AsSpan(0, originCount));
-                    if (!(hint is not null && (this.FitsTypeAt(adapted, hint, source) || this.CheckLocalTypeUse(adapted, hint, source))) && !this.Infer(inferred, adapted, declaration, arguments, true))
+                    // SPEC 10.8: a Never payload is no evidence.
+                    var evidence = ReferenceEquals(adapted, BoundType.Never) || this.Infer(inferred, adapted, declaration, arguments, true);
+                    if (!(hint is not null && (this.FitsTypeAt(adapted, hint, source) || this.CheckLocalTypeUse(adapted, hint, source))) && !evidence)
                     {
                         // SPEC 15.6.1: a payload that fits its expected payload Type only structurally fails in its Origin relations, at
                         // the payload value, never as a Type mismatch.

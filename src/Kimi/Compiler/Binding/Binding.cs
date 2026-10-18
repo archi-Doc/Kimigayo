@@ -339,7 +339,7 @@ public sealed partial class Binding
         this.objectPayloadCauses?.Clear();
         this.ResetMatches();
         this.argumentKinds.Clear();
-        this.nestedArgumentProbe = null;
+        this.argumentProbe = null;
         this.resultContexts.Clear();
         this.resultLocalEvidence.Clear();
         this.resultCursor = 0;

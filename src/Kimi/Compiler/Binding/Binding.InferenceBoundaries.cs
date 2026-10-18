@@ -80,20 +80,56 @@ public sealed partial class Binding
         }
     }
 
-    // Whether a waiting argument binds the slot as its F, `ref/F` or `uniq/F` (SPEC 10.5).
+    // Whether a waiting argument, or an element of a Tuple or array literal argument at its position, binds the slot as its F, `ref/F` or
+    // `uniq/F` (SPEC 10.5, 10.5.1).
     private static bool WaitingBindsSlot(InvocationKoto call, FunctionKoto function, int[] mapping, int slot)
     {
         for (var a = 0; a < call.ArgumentNodes.Count; a++)
         {
-            var pattern = function.Parameters[mapping[a]].Type.BoundType!;
-            var slotType = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } ? pattern.Components[0] : pattern;
-            if (IsWaitingCallable(call.ArgumentNodes[a]) && slotType.Kind == BoundTypeKind.Parameter && ContainerSlot(CallSlotOwner(function), slotType.Symbol!) == slot)
+            if (WaitingAt(call.ArgumentNodes[a], function.Parameters[mapping[a]].Type.BoundType!, CallSlotOwner(function), slot))
             {
                 return true;
             }
         }
 
         return false;
+    }
+
+    // Whether the waiting parts of an argument bind every slot of its parameter Type that no evidence binds (SPEC 10.5, 10.8), so the
+    // position is completed with them after selection instead of left open. `rest` is scratch.
+    private static bool WaitingPartsBind(Koto part, BoundType pattern, FunctionKoto function, SlotSet unbound, ref SlotSet rest)
+    {
+        rest.Clear();
+        for (var g = 0; g < CallOwnSlots(function).Count; g++)
+        {
+            if (unbound.Contains(g) && !WaitingAt(part, pattern, CallSlotOwner(function), g))
+            {
+                rest.Add(g);
+            }
+        }
+
+        return !MentionsSlots(pattern, CallSlotOwner(function), rest);
+    }
+
+    private static bool WaitingAt(Koto part, BoundType pattern, Koto owner, int slot)
+    {
+        var node = KotoHelper.UnwrapParentheses(part);
+        var elements = node switch
+        {
+            TupleLiteralKoto tuple when pattern.Kind == BoundTypeKind.Tuple && pattern.Components.Count == tuple.Elements.Count => tuple.Elements,
+            ArrayLiteralKoto array when pattern.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray => array.Elements,
+            _ => null,
+        };
+        for (var i = 0; elements is not null && i < elements.Count; i++)
+        {
+            if (WaitingAt(elements[i], pattern.Components[pattern.Kind == BoundTypeKind.Tuple ? i : 0], owner, slot))
+            {
+                return true;
+            }
+        }
+
+        var slotType = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } ? pattern.Components[0] : pattern;
+        return IsWaitingCallable(node) && slotType.Kind == BoundTypeKind.Parameter && ContainerSlot(owner, slotType.Symbol!) == slot;
     }
 
     private static void ReportUnboundSlots(Koto node, UnboundSlotFact fact, DiagnosticRequirement requirement, DiagnosticCode code)

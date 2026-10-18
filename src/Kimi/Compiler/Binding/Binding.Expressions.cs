@@ -427,7 +427,7 @@ public sealed partial class Binding
 
         if (actual is null && expected?.Kind != BoundTypeKind.Function && node.BindingState == BindingState.Resolved &&
             node.BoundSymbol is { Kind: BindingSymbolKind.Function } item && IsValueUse(node) &&
-            (expected is not null || !TryNameRoot(node, out var root) || root.Parent is not InvocationKoto))
+            (expected is not null || !this.AtArgumentPosition(node)))
         {
             actual = this.BindFunctionItem(node, item, scope);
         }
