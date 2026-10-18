@@ -105,6 +105,23 @@ internal sealed partial class MirBuilder
     private void Transfer(JumpKoto jump)
     {
         var plan = HirTables.PlanOf(jump).Plan;
+        var operand = jump.Expression;
+        if (plan is null)
+        {
+            // The published target row is null exactly where Binding recorded no valid target (DECISIONS R5-M31, R5-M42), so the jump is
+            // derived from that record (SPEC 23.1.2): its operand is built, keeping its own records, and the jump is an Opaque value of
+            // what the operand gave, without a record.
+            var given = operand is null ? default : this.Operand(operand, expected: null);
+            this.roots.Clear();
+            if (operand is not null && given.Kind != MirOperandKind.Const)
+            {
+                this.roots.Add(given.Place.Root);
+            }
+
+            this.Site(jump, this.Temp(jump), Completes(jump));
+            return;
+        }
+
         var index = this.targets.Count - 1;
         while (index >= 0 && !ReferenceEquals(this.targets[index].Node, plan))
         {
@@ -113,11 +130,10 @@ internal sealed partial class MirBuilder
 
         if (index < 0)
         {
-            this.Unsupported(jump); // A target not built yet: a for, a match or a defer.
+            this.Unsupported(jump); // A published target no construct around the jump has opened.
             return;
         }
 
-        var operand = jump.Expression;
         var continues = jump is ContinueKoto;
         MirOperand value = default;
         if (!continues)
