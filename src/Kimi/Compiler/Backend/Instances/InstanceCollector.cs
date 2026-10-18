@@ -105,7 +105,7 @@ internal sealed partial class InstanceCollector
         _ => throw new InvalidOperationException($"A call has the callee kind {callee.Kind}."),
     };
 
-    // K 4.5 rows 10-12: a statement carries a target by its rvalue: a Closure environment, an erasure to a Function Type, or a function item
+    // K 4.5 rows 11-13: a statement carries a target by its rvalue: a Closure environment, an erasure to a Function Type, or a function item
     // constant.
     private static bool Carries(MirBody body, in MirStatement statement)
         => statement is { Kind: MirStatementKind.Assign, Rvalue: var rvalue } && rvalue.Kind switch
@@ -132,28 +132,42 @@ internal sealed partial class InstanceCollector
         foreach (var body in bodies)
         {
             this.starts[body.Ordinal] = count;
-            var blocks = body.Blocks;
-            this.reach.Clear(blocks.Length);
-            this.reach.Walk(body, 0, checks: false);
-            for (var block = 0; block < blocks.Length; block++)
-            {
-                var (start, end) = (blocks[block].Start, blocks[block].Count);
-                for (var index = 0; index <= end; index++)
-                {
-                    if (index < end ? Carries(body, body.Statements[start + index]) : Carries(blocks[block].Terminator))
-                    {
-                        if (count == this.sites.Length)
-                        {
-                            Array.Resize(ref this.sites, Math.Max(256, count * 2));
-                        }
+            count = this.Template(body, count);
+        }
 
-                        this.sites[count++] = (new(block, index), this.reach[block]);
-                    }
+        this.starts[bodies.Length] = count;
+    }
+
+    // A body's sites, appended from `count` in location order with their runtime bits. Returns the new count.
+    private int Template(MirBody body, int count)
+    {
+        var blocks = body.Blocks;
+        this.reach.Clear(blocks.Length);
+        this.reach.Walk(body, 0, checks: false);
+        for (var block = 0; block < blocks.Length; block++)
+        {
+            var (start, end) = (blocks[block].Start, blocks[block].Count);
+            for (var index = 0; index <= end; index++)
+            {
+                if (index < end ? Carries(body, body.Statements[start + index]) : Carries(blocks[block].Terminator))
+                {
+                    count = this.AddSite(count, new(block, index), this.reach[block]);
                 }
             }
         }
 
-        this.starts[bodies.Length] = count;
+        return count;
+    }
+
+    private int AddSite(int count, MirLocation at, bool runtime)
+    {
+        if (count == this.sites.Length)
+        {
+            Array.Resize(ref this.sites, Math.Max(256, count * 2));
+        }
+
+        this.sites[count] = (at, runtime);
+        return count + 1;
     }
 
     // An item's targets: a body item's template replayed under its representative, the target of each site that resolves and is admitted;

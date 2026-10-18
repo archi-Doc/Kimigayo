@@ -50,7 +50,7 @@ internal sealed partial class InstanceCollector
         return found is null ? -1 : this.Admit(item, subject, found, subst);
     }
 
-    // K 4.5 rows 10-12, in the item's instance: a Closure environment's body; a function item constant's body (as row 5); an erasure's
+    // K 4.5 rows 11-13, in the item's instance: a Closure environment's body; a function item constant's body (as row 5); an erasure's
     // ClosureErasure or ItemAdapter item, keyed by the erased Closure or Item Type.
     private int Edge(MirProgram program, int item, MirBody body, in MirStatement statement)
     {
@@ -73,7 +73,7 @@ internal sealed partial class InstanceCollector
     // The body a Closure or function item Type of an item's instance runs: a Closure's under its context, the substitution of the instance
     // that closed it (TyCtxt.SubstOfClosure, R5-M36); an ordinary item's function under the item's substitution (TyCtxt.SubstOfItem), as the
     // implementation that selects (SPEC 8.13.3). -1 for the Item of a function whose calls dispatch (a requirement, K6; a virtual slot, K8),
-    // a Function Type value, whose erasure made its adapter (row 12), or a refused edge.
+    // a Function Type value, whose erasure made its adapter (row 13), or a refused edge.
     private int Callee(MirProgram program, int item, SourceRef subject, BoundType callable)
     {
         if (callable is { Kind: BoundTypeKind.Closure, Symbol: { } closure })

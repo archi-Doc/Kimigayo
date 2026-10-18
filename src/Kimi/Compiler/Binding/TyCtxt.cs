@@ -241,6 +241,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 
         if (function.IsRequirement)
         {
+            // Until K6 (DECISIONS R5-M43): the requirement call of the Item's context, built and cached by Binding; K6 gives the witness's.
             return binding.FunctionItemContext(item, false) is { } context ? this.SubstOf(context) : null;
         }
 

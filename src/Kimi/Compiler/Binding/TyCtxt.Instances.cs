@@ -79,9 +79,10 @@ internal sealed partial class TyCtxt
         return function?.BoundSymbol;
     }
 
-    // SPEC 6.4.6, 8.4: whether a call of a function dispatches, a requirement to the witness of its conforming Type and a virtual slot to the
-    // override its receiver's Type selects, so that no one body is the target of the function's Item (K6 and K8 resolve them).
-    internal bool Dispatches(BindingSymbol function) => function.Declaration is FunctionKoto { IsRequirement: true } or FunctionKoto { IsVirtual: true };
+    // SPEC 6.4.6, 8.4: whether a call of a function dispatches (CallPlan.KindOf), a requirement to the witness of its conforming Type and a
+    // virtual slot to the override its receiver's Type selects, so that no one body is the target of the function's Item (K6 and K8 resolve
+    // them).
+    internal bool Dispatches(BindingSymbol function) => CallPlan.KindOf(function) != CalleeKind.Function;
 
     // K package KD1, KD2: the erased substitution of a binder that instantiates; null for one that does not, whose bodies are keyed without
     // a substitution.
