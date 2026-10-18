@@ -21,11 +21,6 @@ public sealed record ControlFlowIssue(Koto Node, DiagnosticCode Code, object? Ar
 
     /// <summary>Gets the repair candidates the warning offers (SPEC 23.1.3).</summary>
     internal DiagnosticRepairFact[]? Repairs { get; init; }
-
-    internal int Priority { get; init; } = 4;
-
-    /// <summary>Gets the syntax whose normal completion, down to the node, decided a check of a discarded tail.</summary>
-    internal Koto? CompletionRoot { get; init; }
 }
 
 /// <summary>The control-flow facts of an analyzed expression or boundary.</summary>
@@ -35,7 +30,8 @@ public sealed class ControlFlowNodeInfo
     public bool CanCompleteNormally { get; internal set; }
 }
 
-/// <summary>Analyzes lexical transfers, reachability, result coverage, unsafe permission and discards.</summary>
+/// <summary>Analyzes lexical transfers, reachability, result coverage and unsafe permission; the discard, while true and owning
+/// write checks are Binding's HIR lints.</summary>
 /// <remarks>
 /// Run after compile-time directive selection. Bodies containing invalid directive groups are skipped.
 /// Types, Never results, match coverage and selected calls are Binding's facts; a node Binding has not resolved leaves its
@@ -74,11 +70,6 @@ public sealed class ControlFlowAnalysis
 
     // The depth of the defaults being visited; the closures they create are visited when it returns to zero.
     private int defaultDepth;
-
-    // Created only after a parser recovery: completion that assumes the bodies the parser supplied never complete normally, and
-    // the syntax Errors of the supplied bodies it met.
-    private StructuralCompletion? writtenCompletion;
-    private List<DiagnosticKey>? suppliedCauses;
 
     // SPEC 14.3: whether an operation in the innermost Unsafe Block being visited used its permission, and whether one whose
     // need is unknown, such as an unresolved operation, may have.
@@ -246,35 +237,10 @@ public sealed class ControlFlowAnalysis
         return finder.Found;
     }
 
-    // SPEC 17.3: `try` propagates a Result's error only to a function whose result is a Result of the same error Type.
-    private static bool FailureTargetFits(Koto node)
-    {
-        if (node.BoundType is not { Kind: BoundTypeKind.Constructed, Components.Count: 2 } result || result.Symbol?.LibraryDeclaration != KimiDeclarationId.Result)
-        {
-            return false;
-        }
-
-        for (var parent = node.Parent; parent is not null; parent = parent.Parent)
-        {
-            if (parent is FunctionKoto function)
-            {
-                return function.BoundSymbol?.Type is { Kind: BoundTypeKind.Constructed, Components.Count: 2 } target && target.Symbol?.LibraryDeclaration == KimiDeclarationId.Result &&
-                    (ReferenceEquals(target.Components[1], result.Components[1]) || Equals(target.Components[1], result.Components[1]));
-            }
-
-            if (parent is PropertyAccessorKoto or DeferredBlockKoto)
-            {
-                return false;
-            }
-        }
-
-        return false;
-    }
-
-    // Jump targets, labels, fallthrough, Unsafe Blocks and while true are judged from syntax alone.
+    // Jump targets, labels, fallthrough and Unsafe Blocks are judged from syntax alone.
     private static bool ReadsBinding(DiagnosticCode code)
         => code is not (DiagnosticCode.InvalidJumpTarget_Kd or DiagnosticCode.UnlabeledYieldTarget_Kd or DiagnosticCode.RequireFallthrough_Kd or
-            DiagnosticCode.FunctionFallthrough_Kd or DiagnosticCode.OverlappingLabel_Kd or DiagnosticCode.UnsafeBlockRequired_Kd or DiagnosticCode.StaticWhileTrue_Kd);
+            DiagnosticCode.FunctionFallthrough_Kd or DiagnosticCode.OverlappingLabel_Kd or DiagnosticCode.UnsafeBlockRequired_Kd);
 
     // An expression Binding has not resolved leaves its completion unknown; a recovery completes as its written operands do,
     // and an Error expression is not evaluated.
@@ -333,15 +299,6 @@ public sealed class ControlFlowAnalysis
         return left;
     }
 
-    // A single-item body: the item of a body introduced by =>, a require failure body or a match arm's body.
-    private static bool IsBodyItem(Koto node) => node.Parent switch
-    {
-        CodeBlockKoto block => block.IsExpressionBody,
-        RequireKoto require => require.ElseBody == node,
-        MatchKoto match => KotoHelper.IsSelectionBody(match, node),
-        _ => false,
-    };
-
     // SPEC 10.2: the Type an expression supplies is its one adaptation's, else its own; null while Binding has not resolved it.
     private BoundType? SuppliedType(Koto node)
         => node.BindingState != BindingState.Resolved ? null
@@ -349,14 +306,7 @@ public sealed class ControlFlowAnalysis
 
     private bool IsNever(Koto node) => ReferenceEquals(this.SuppliedType(node), BoundType.Never);
 
-    private bool IsKimiResult(Koto expression) => expression.BindingState == BindingState.Resolved &&
-        expression.BoundType is { Kind: BoundTypeKind.Constructed } type && type.Symbol == this.binding.Library.Result;
-
     private bool IsBoundConstruction(Koto expression) => this.binding.TryGetEnumConstruction(expression, out _);
-
-    // Whether a discarded expression's complete Type is proven Copy, so its destruction is not observable.
-    private bool IsProvenCopy(Koto expression)
-        => expression.BindingState == BindingState.Resolved && expression.BoundType is { } type && this.binding.ProveCopy(type, expression) == ConstraintProof.Proven;
 
     // A committed direct call and its receiver, evaluated before the explicit arguments; false while its evaluation is unknown.
     private bool TryGetCallReceiver(InvocationKoto call, out Koto? receiver)
@@ -374,8 +324,7 @@ public sealed class ControlFlowAnalysis
 
     // The syntax Errors of the recoveries that guessed what a check reads, or null when it reads written syntax alone. A recovered
     // operand does not invalidate independently parsed target syntax, so only the guessed target of an unlabeled jump or a label
-    // counts. A fallthrough or a discarded tail reads normal completion: it rests on the bodies the parser supplied for missing
-    // ones when the syntax completes normally only through them, since a written body might have returned or exited.
+    // counts. A fallthrough reads normal completion, which Binding's one guess rule judges (Binding.GuessedCompletion).
     private DiagnosticKey[]? GuessedBy(ControlFlowIssue issue)
     {
         var node = issue.Node;
@@ -389,190 +338,7 @@ public sealed class ControlFlowAnalysis
             return node.CodeContext.RecoveryCause(node) is { } syntax ? [syntax] : null;
         }
 
-        return issue.Code is DiagnosticCode.FunctionFallthrough_Kd or DiagnosticCode.RequireFallthrough_Kd or DiagnosticCode.DiscardedTail_Kd
-            ? this.SuppliedCompletion(node, issue.CompletionRoot ?? node) : null;
-    }
-
-    // Each syntax from the node up to the root completed normally for the check; one that completes only through supplied bodies
-    // makes the check rest on their syntax Errors.
-    private DiagnosticKey[]? SuppliedCompletion(Koto node, Koto root)
-    {
-        var causes = this.suppliedCauses ??= new();
-        var written = this.writtenCompletion ??= new(this.IsNever, this.IsSuppliedBody);
-        causes.Clear();
-        written.Clear();
-        var guessed = false;
-        for (Koto? part = node; part is not null && !guessed; part = part == root ? null : part.Parent)
-        {
-            guessed = this.structural.CanComplete(part) && !written.CanComplete(part);
-        }
-
-        return guessed && causes.Count > 0 ? [.. causes] : null;
-    }
-
-    // A body the parser supplied for a missing one, a recovery: the empty block in place of an indented body, or the Error
-    // expression in place of a single-item body (other Error expressions stand for operands). Records its syntax Error.
-    private bool IsSuppliedBody(Koto node)
-    {
-        if ((node is CodeBlockKoto || (node is ErrorKoto && IsBodyItem(node))) && node.CodeContext.RecoveryCause(node) is { } cause)
-        {
-            this.suppliedCauses!.Add(cause);
-            return true;
-        }
-
-        return false;
-    }
-
-    // SPEC 17.5.1, 23.1.3: a discarded Result or try success value that is a direct item of an indented body offers `_ = ` before it
-    // and, for a Result whose error Type the enclosing function's failure return target takes (SPEC 17.3), `_ = try ` as well;
-    // `_ =` puts the expression in Value Context (SPEC 14.2.4) and changes no scope, so no condition is relevant.
-    private void WarnDiscard(Koto node, DiagnosticCode code, int priority)
-    {
-        node = KotoHelper.UnwrapParentheses(node);
-        if (!this.warningNodes.Add(node))
-        {
-            return;
-        }
-
-        DiagnosticRepairFact[]? repairs = null;
-        if (node.Parent is CodeBlockKoto { IsExpressionBody: false })
-        {
-            var start = new SourceSpan(node.Span.Start, 0);
-            var discard = new DiagnosticRepairFact(RepairKind.ExplicitDiscard, null, [node.Edit(start, "_ = ")], RepairConditionSet.None);
-            repairs = code == DiagnosticCode.DiscardedResult_Kd && FailureTargetFits(node)
-                ? [new(RepairKind.PropagateFailure, null, [node.Edit(start, "_ = try ")], RepairConditionSet.None), discard]
-                : [discard];
-        }
-
-        this.warnings.Add(new(node, code) { Priority = priority, Repairs = repairs });
-    }
-
-    private void Warn(Koto node, DiagnosticCode code, int priority = 4, Koto? completionRoot = null)
-    {
-        node = KotoHelper.UnwrapParentheses(node);
-        if (this.warningNodes.Add(node))
-        {
-            this.warnings.Add(new(node, code) { Priority = priority, CompletionRoot = completionRoot });
-            return;
-        }
-
-        for (var i = 0; i < this.warnings.Count; i++)
-        {
-            if (this.warnings[i].Node == node && priority < this.warnings[i].Priority)
-            {
-                this.warnings[i] = new(node, code) { Priority = priority, CompletionRoot = completionRoot };
-                break;
-            }
-        }
-    }
-
-    private bool IsEffectFree(Koto node)
-    {
-        node = KotoHelper.UnwrapParentheses(node);
-
-        if (node is IsKoto { IsRuntimeTest: true } test)
-        {
-            // A stable name needs no acquisition/destruction. Calls and Properties
-            // retain their effects; the target Type is never a value expression.
-            return IsBoundRuntimeTypeTest(test) && KotoHelper.UnwrapParentheses(test.Left) is
-                IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter };
-        }
-
-        // Tuples and Case constructions are effect-free when every nested operand is (SPEC 17.5.3).
-        // A Case construction must also have a proven Copy Type, so its destruction is not observable.
-        if (node is TupleLiteralKoto tuple)
-        {
-            return this.AreEffectFree(tuple.Elements);
-        }
-
-        if (this.IsBoundConstruction(node))
-        {
-            return this.IsProvenCopy(node) && (node is not InvocationKoto call || this.AreEffectFree(call.ArgumentNodes));
-        }
-
-        var primitive = this.SuppliedType(node)?.Underlying.Name is "bool" or "char" or
-            "i8" or "i16" or "i32" or "i64" or "i128" or "u8" or "u16" or "u32" or "u64" or "u128" or "isize" or "usize" or "f32" or "f64";
-        if (!primitive)
-        {
-            return false;
-        }
-
-        return node switch
-        {
-            NumberLiteralKoto or BoolLiteralKoto or CharLiteralKoto => true,
-            IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter } => true,
-            UnaryKoto { Akind: KotoKind.Not } unary => this.IsEffectFree(unary.Operand),
-            BinaryKoto { Akind: KotoKind.EqualsEquals or KotoKind.ExclamationEquals or KotoKind.LessThan or KotoKind.LessThanEquals or KotoKind.GreaterThan or KotoKind.GreaterThanEquals } comparison =>
-                this.IsEffectFree(comparison.Left) && this.IsEffectFree(comparison.Right),
-            _ => false,
-        };
-    }
-
-    private bool AreEffectFree(IReadOnlyList<Koto> operands)
-    {
-        for (var i = 0; i < operands.Count; i++)
-        {
-            if (!this.IsEffectFree(operands[i]))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    // Descends from the root through syntax that completes normally; the warning keeps the root, so it can tell whether that
-    // completion passes only through bodies the parser supplied.
-    private void WarnUnitTail(Koto body, Koto root)
-    {
-        if (!this.structural.CanComplete(body))
-        {
-            return;
-        }
-
-        if (body is CodeBlockKoto block)
-        {
-            if (block.Items.Count > 0)
-            {
-                this.WarnUnitTail(block.Items[^1], root);
-            }
-
-            return;
-        }
-
-        body = KotoHelper.UnwrapParentheses(body);
-        if (body is LabeledKoto label)
-        {
-            this.WarnUnitTail(label.Target, root);
-        }
-        else if (body is DoKoto scoped)
-        {
-            this.WarnUnitTail(scoped.Body, root);
-        }
-        else if (body is IfKoto conditional)
-        {
-            for (var i = 0; i < conditional.Branches.Count; i++)
-            {
-                this.WarnUnitTail(conditional.Branches[i].Body, root);
-            }
-
-            if (conditional.ElseBody is { } other)
-            {
-                this.WarnUnitTail(other, root);
-            }
-        }
-        else if (body is MatchKoto match && body is not TryKoto)
-        {
-            for (var i = 0; i < match.Arms.Count; i++)
-            {
-                this.WarnUnitTail(match.Arms[i].Body, root);
-            }
-        }
-        else if (body is ExpressionKoto and not (UnitLiteralKoto or JumpKoto or LoopKoto or ForKoto or WhileKoto) &&
-            this.SuppliedType(body) is { } type && !ReferenceEquals(type, BoundType.Unit) && !ReferenceEquals(type, BoundType.Never))
-        {
-            this.Warn(body, DiagnosticCode.DiscardedTail_Kd, 1, root);
-        }
+        return issue.Code is DiagnosticCode.FunctionFallthrough_Kd or DiagnosticCode.RequireFallthrough_Kd ? this.binding.GuessedCompletion(node, node) : null;
     }
 
     private void Error(Koto node, DiagnosticCode code, object? argument = null)
@@ -636,23 +402,6 @@ public sealed class ControlFlowAnalysis
         if (node is FunctionKoto && TestDefinition.Marker(node) is not null && !TestDefinition.IsIncluded(node))
         {
             return new(true);
-        }
-
-        if (node is ExpressionKoto && !KotoHelper.IsValueContext(node) && node.Parent is not ParenthesizedKoto)
-        {
-            var value = KotoHelper.UnwrapParentheses(node);
-            if (this.IsKimiResult(value))
-            {
-                this.WarnDiscard(node, DiagnosticCode.DiscardedResult_Kd, 2);
-            }
-            else if (value is TryKoto && this.SuppliedType(value) is { } type && !ReferenceEquals(type, BoundType.Unit) && !ReferenceEquals(type, BoundType.Never))
-            {
-                this.WarnDiscard(node, DiagnosticCode.UnusedTrySuccess_Kd, 3);
-            }
-            else if (this.IsEffectFree(node))
-            {
-                this.Warn(node, DiagnosticCode.DiscardedValue_Kd);
-            }
         }
 
         var referencedFunction = GetReferencedFunction(node);
@@ -892,17 +641,6 @@ public sealed class ControlFlowAnalysis
                 flow = this.VisitSequence(block.Items, 0, block.Items.Count);
                 break;
             case InvocationKoto call when this.TryGetCallReceiver(call, out var receiver):
-                if (call.Method is not FormattingKoto && call.BoundCall is { Target.CompilerFunction: CompilerFunctionKind.WriterWrite } selected)
-                {
-                    for (var i = 0; i < call.ArgumentNodes.Count; i++)
-                    {
-                        if (selected.ArgumentToParameter[i] == 1 && call.ArgumentNodes[i] is InterpolatedStringKoto literal)
-                        {
-                            this.Warn(literal, DiagnosticCode.OwningWriteArgument_Kd);
-                        }
-                    }
-                }
-
                 // A committed direct callee is a designator, not a function-value acquisition.
                 // Bound receiver syntax precedes the explicit arguments exactly once.
                 var receiverFlow = receiver is null ? new Flow(true) : this.Visit(receiver);
@@ -1446,11 +1184,6 @@ public sealed class ControlFlowAnalysis
                 mayFinish = true;
                 break;
             case WhileKoto w:
-                if (KotoHelper.UnwrapParentheses(w.Condition) is BoolLiteralKoto { Value: true })
-                {
-                    this.Warn(w, DiagnosticCode.StaticWhileTrue_Kd);
-                }
-
                 header = this.Visit(w.Condition);
                 body = w.Body;
                 mayFinish = true;
@@ -1496,15 +1229,6 @@ public sealed class ControlFlowAnalysis
         }
 
         this.nodes[node].CanCompleteNormally = flow.Normal;
-
-        // SPEC 17.5.2: a selection or do whose Unit result Binding inferred, rather than a declaration, a construct rule or
-        // an expected Type fixing it, warns at a non-Unit tail it discards.
-        if (node is DoKoto or IfKoto or MatchKoto and not TryKoto && this.binding.InfersUnit(node))
-        {
-            var root = node is DoKoto scoped ? scoped.Body : node;
-            this.WarnUnitTail(root, root);
-        }
-
         return flow;
     }
 

@@ -166,9 +166,8 @@ public class ControlFlowConformanceTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, source + "\n" + string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node)));
-        var flow = c.AnalyzeControlFlow();
-        Assert.Empty(flow.Issues);
-        Assert.Equal(warns, flow.Warnings.Any(warning => warning.Message.Contains("effect-free")));
+        Assert.Empty(c.AnalyzeControlFlow().Issues);
+        Assert.Equal(warns, CompilationTestHelper.BindingWarnings(c).Any(warning => warning.Message.Contains("effect-free")));
     }
 
     private static Compilation Parse(string source)

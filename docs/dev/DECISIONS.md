@@ -1740,3 +1740,21 @@ structure is recorded here by the unit that first implements it.
   object receiver first (`ProjectedReceiverProof`; R1g), and no test exercises it. Rejected: built-in targets created lazily by
   the core (a view would create symbols); the arithmetic built-ins left with per-call writes (the same cause); the refusal left in
   the materializer (F5b resolves without a CallPlan); extracting `InstanceReference`'s matching half before F5b, its second caller.
+- **R5-M24 HIR lints** (2026-10-18, planning session; Q8 package §3.2 and §6 Q9, under R5-M23 and PD31) A permanent canonical
+  Binding component, `Binding/Binding.Lints.cs`: Binding's checks that never fail a node, one row per code in a lint table
+  (code; derived from `FailureCauses`; rests on a guessed completion), the row number being its records' condition. One walk of
+  the source modules' evaluated syntax is the last step of `Bind(Final)` (Types, attributes, Origin clauses, effect items, a
+  function's signature and a for loop's bindings are not evaluated; an excluded test and a function part holding an unselected
+  `#switch` are not linted, as before). Its records `(node, row, root)` live in a list cleared by `ResetPass` and are published
+  by `ReportDiagnostics` at Final (`ReportNonFailingRecords`, beside the alias, pattern and position warnings) under requirement
+  `Binding` with `BindingFailure.None`; duplicates and SPEC 17.5's priority are resolved by sorting at report time, so a warm
+  rebind allocates nothing. Q9 lands rows 1-6 (`DiscardedTail`, `DiscardedResult`, `UnusedTrySuccess`, `DiscardedValue`,
+  `OwningWriteArgument`, `StaticWhileTrue`) with their repairs; Q10-Q12 add rows 7-12. `Koto.ReportDerived` takes the
+  condition of a derived lint Error. The guess query moves into Binding as `GuessedCompletion` over `ResultStructure`, counting an
+  unresolved expression as a guess besides a supplied body (Q8 design 2 §2.4); the old control-flow analysis's fallthrough checks
+  call it until H10. The six codes' requirement becomes `Binding` (was `ControlFlow`). Removing them from `ControlFlowAnalysis`
+  is an R6-check item landed early under D5.
+  - Rejected: a node failure per lint (the old analysis would skip the program; PD29, PD31); a Koto-keyed set of warned nodes
+    (ARCH Syntax identity, warm allocations); a copy of the old walk's synthesized-evaluation switch (rows 1-6 judge source
+    syntax only: a synthesized call's parent is its source node, a Value Context); a reporter in each owning file (Binding.cs and
+    Binding.Patterns.cs are over the token limit).

@@ -65,6 +65,13 @@ internal static class CompilationTestHelper
         return writer.ToString();
     }
 
+    // Binding's warnings of the latest final pass, such as its HIR lints (SPEC 17.5), as ReportDiagnostics publishes them.
+    internal static TestDiagnostic[] BindingWarnings(Compilation c)
+    {
+        c.Binding.ReportDiagnostics();
+        return [.. TestDiagnostics.Of(c).Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Warning)];
+    }
+
     // The problem codes of a Comparison Loan conflict: the conflicting access decides the code (OwnershipIssue.Code).
     internal static bool IsLoanConflict(this DiagnosticCode code)
         => code is DiagnosticCode.ComparisonLoanConflict_Kd or DiagnosticCode.CallReservationConflict_Kd or DiagnosticCode.CallActivationConflict_Kd or DiagnosticCode.PlacementActivationConflict_Kd;

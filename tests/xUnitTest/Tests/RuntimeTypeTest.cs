@@ -345,7 +345,7 @@ public class RuntimeTypeTest
     {
         var c = CompilationTestHelper.ParseSuccess("struct Dog\nfunc obtain(s: string) -> obj/Dog => obtain(s@move)\nfunc f(s: string) -> bool => obtain(s@move) is Dog");
         AssertBound(c);
-        Assert.Empty(c.AnalyzeControlFlow().Warnings);
+        Assert.Empty(CompilationTestHelper.BindingWarnings(c));
     }
 
     [Fact]

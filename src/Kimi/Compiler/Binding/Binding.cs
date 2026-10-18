@@ -112,7 +112,13 @@ public sealed partial class Binding
             this.BindDeclarations(mode);
             this.BindBodies();
             this.ValidateBoundDeclarations(mode);
-            return this.Result = this.Check(mode);
+            this.Result = this.Check(mode);
+            if (mode == BindingMode.Final)
+            {
+                this.WalkLints();
+            }
+
+            return this.Result;
         }
         finally
         {
@@ -317,6 +323,7 @@ public sealed partial class Binding
         this.callInferenceFailures?.Clear();
         this.storageVersion++;
         this.issues.Clear();
+        this.lints.Clear();
         this.callableSelectionFailures.Clear();
         this.callableSelectionParties.Clear();
         this.libraryImports.Clear();

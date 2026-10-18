@@ -158,11 +158,11 @@ public class CurrentControlFlowTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var flow = c.AnalyzeControlFlow();
-        Assert.Empty(flow.Issues);
-        Assert.Contains(flow.Warnings, warning => warning.Code == code);
-        var count = flow.Warnings.Count;
-        Assert.Equal(count, c.AnalyzeControlFlow().Warnings.Count);
+        Assert.Empty(c.AnalyzeControlFlow().Issues);
+        var warnings = CompilationTestHelper.BindingWarnings(c);
+        Assert.Contains(warnings, warning => warning.Code == code.ToString());
+        Assert.True(c.Bind().IsComplete);
+        Assert.Equal(warnings, CompilationTestHelper.BindingWarnings(c));
     }
 
     [Theory]
@@ -174,7 +174,25 @@ public class CurrentControlFlowTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.Empty(c.AnalyzeControlFlow().Warnings);
+        Assert.Empty(CompilationTestHelper.BindingWarnings(c));
+    }
+
+    // The HIR lints are judged by one walk at the end of each final pass, whose records a warm rebind replaces without allocating.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void LintWalkReusesItsStorage()
+    {
+        const string Source = "enum Direction\n    Self is Copy\n    North\nfunc compute() -> i32 => 1\nfunc source() -> Result<i32, i32> => .Ok(1)\n" +
+            "func run() -> Result<(), i32>\n    source()\n    try source()\n    let x = do\n        compute()\n    (1, 2)\n    Direction.North\n" +
+            "    while true => exit\n    return .Ok(())";
+        var c = Parse(Source);
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        string[] codes = ["DiscardedResult_Kd", "UnusedTrySuccess_Kd", "DiscardedTail_Kd", "DiscardedValue_Kd", "DiscardedValue_Kd", "StaticWhileTrue_Kd"];
+        Assert.Equal(codes.Order(), CompilationTestHelper.BindingWarnings(c).Select(static x => x.Code).Order());
+        var valid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
+        Assert.True(valid);
+        Assert.Equal(codes.Order(), CompilationTestHelper.BindingWarnings(c).Select(static x => x.Code).Order());
     }
 
     private static Compilation Parse(string source)
